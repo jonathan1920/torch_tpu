@@ -1,0 +1,371 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load(
+    "//build_files:build_defs.bzl",
+    "define_cpp_filegroup",
+    "torch_tpu_cc_library",
+    "torch_tpu_cc_test",
+)
+
+package(
+    default_applicable_licenses = ["//:license"],
+    default_visibility = ["//:__subpackages__"],
+)
+
+torch_tpu_cc_library(
+    name = "op_names",
+    srcs = ["op_names.cc"],
+    hdrs = ["op_names.h"],
+    deps = ["@com_google_absl//absl/strings"],
+)
+
+torch_tpu_cc_library(
+    name = "xla_utils",
+    srcs = ["xla_utils.cc"],
+    hdrs = ["xla_utils.h"],
+    deps = [
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/util:base_headers",
+        "@xla//xla:types",
+        "@xla//xla:xla_data_proto_cc",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "op_builder_utils",
+    srcs = ["op_builder_utils.cc"],
+    hdrs = ["op_builder_utils.h"],
+    deps = [
+        ":python_context",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//shims/torch/c10/util:base_headers",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:fixed_size_span",
+        "//torch_tpu/common:shape",
+        "//torch_tpu/common:utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:chlo_builder",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_broadcast_lowering",
+        "@stablehlo//:stablehlo_builder",
+        "@stablehlo//:stablehlo_ops",
+        "@tsl//tsl/platform:path",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/mlir/utils:error_util",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "op_builder_utils_test",
+    srcs = ["op_builder_utils_test.cc"],
+    tags = [
+        "oss_ready_cpu",
+    ],
+    deps = [
+        ":op_builder_utils",
+        ":xla_utils",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//torch_tpu/common:absl_test_shim",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:func_builder",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:register",
+        "@stablehlo//:stablehlo_broadcast_lowering",
+        "@stablehlo//:stablehlo_builder",
+        "@stablehlo//:stablehlo_ops",
+        "@xla//xla:xla_data_proto_cc",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "python_context",
+    srcs = ["python_context.cc"],
+    hdrs = ["python_context.h"],
+    deps = [
+        ":op_names",
+        "//shims/torch",
+        "//shims/torch:torch_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:mlir_builder",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "python_context_test",
+    srcs = ["python_context_test.cc"],
+    tags = [
+        "oss_ready_cpu",
+    ],
+    deps = [
+        ":op_names",
+        ":python_context",
+        "//shims/torch:torch_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:mlir_builder",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "unary",
+    srcs = ["unary.cc"],
+    hdrs = ["unary.h"],
+    deps = [
+        ":op_builder_utils",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:macro_utils",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:chlo_builder",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_builder",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "nullary_aten_kernels",
+    srcs = ["nullary_aten_kernels.cc"],
+    hdrs = ["nullary_aten_kernels.h"],
+    deps = [
+        ":op_builder_utils",
+        ":op_names",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//shims/torch/c10/util:base_headers",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/eager:device",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:op_dispatcher",
+        "//torch_tpu/ops/as_strided:as_strided_aten_kernels",
+        "//torch_tpu/ops/macros:kernel",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@stablehlo//:attr_type_builder_util",
+        "@xla//xla:xla_data_proto_cc",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "unary_aten_kernels",
+    srcs = ["unary_aten_kernels.cc"],
+    hdrs = ["unary_aten_kernels.h"],
+    deps = [
+        ":op_builder_utils",
+        ":op_names",
+        ":unary",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:macro_utils",
+        "//torch_tpu/eager:device",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:op_dispatcher",
+        "//torch_tpu/ops/macros:kernel",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_builder",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "binary",
+    srcs = ["binary.cc"],
+    hdrs = ["binary.h"],
+    deps = [
+        ":op_builder_utils",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:macro_utils",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_builder",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "binary_aten_kernels",
+    srcs = ["binary_aten_kernels.cc"],
+    hdrs = ["binary_aten_kernels.h"],
+    deps = [
+        ":binary",
+        ":nullary_aten_kernels",
+        ":op_builder_utils",
+        ":op_names",
+        ":python_context",
+        ":unary",
+        ":xla_utils",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//shims/torch/c10/util:base_headers",
+        "//torch_tpu/common:aten_utils",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:fixed_size_span",
+        "//torch_tpu/common:macro_utils",
+        "//torch_tpu/common:utils",
+        "//torch_tpu/eager:device",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:op_dispatcher",
+        "//torch_tpu/ops/macros:kernel",
+        "//torch_tpu/ops/macros:logging",
+        "//torch_tpu/ops/resize:resize_aten_kernels",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:chlo_builder",
+        "@stablehlo//:chlo_ops",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_builder",
+        "@xla//xla/mlir/utils:type_util",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "custom_kernels",
+    srcs = ["custom_kernels.cc"],
+    hdrs = ["custom_kernels.h"],
+    deps = [
+        ":op_builder_utils",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:fingerprint_utils",
+        "//torch_tpu/common:utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:func_builder",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_passes",
+        "@tsl//tsl/platform:path",
+        "@xla//xla/mlir/utils:error_util",
+        "@xla//xla/mlir/utils:type_util",
+        "@xla//xla/pjrt:mlir_to_hlo",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "custom_kernels_test",
+    srcs = ["custom_kernels_test.cc"],
+    tags = [
+        "oss_ready_cpu",
+    ],
+    deps = [
+        ":custom_kernels",
+        ":op_builder_utils",
+        "//torch_tpu/common:absl_test_shim",
+        "//torch_tpu/common:error_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:func_builder",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:register",
+    ],
+)
+
+define_cpp_filegroup(name = "all_cpp_files_recursive")

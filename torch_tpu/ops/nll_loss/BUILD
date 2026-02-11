@@ -1,0 +1,80 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("//build_files:build_defs.bzl", "define_cpp_filegroup", "torch_tpu_cc_library")
+
+package(
+    default_applicable_licenses = ["//:license"],
+    default_visibility = ["//:__subpackages__"],
+)
+
+torch_tpu_cc_library(
+    name = "nll_loss_aten_kernels",
+    srcs = ["nll_loss_aten_kernels.cc"],
+    hdrs = ["nll_loss_aten_kernels.h"],
+    deps = [
+        ":nll_loss",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//shims/torch/c10/util:base_headers",
+        "//torch_tpu/common:aten_utils",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/eager:device",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:op_dispatcher",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:python_context",
+        "//torch_tpu/ops:xla_utils",
+        "//torch_tpu/ops/gather",
+        "//torch_tpu/ops/macros:kernel",
+        "//torch_tpu/ops/macros:logging",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "nll_loss",
+    srcs = ["nll_loss.cc"],
+    hdrs = ["nll_loss.h"],
+    deps = [
+        "//shims/torch:aten_headers",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/ops:binary",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops/gather",
+        "//torch_tpu/ops/index_select",
+        "//torch_tpu/ops/reductions",
+        "//torch_tpu/ops/reductions:sum",
+        "//torch_tpu/ops/scatter",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_builder",
+    ],
+)
+
+define_cpp_filegroup(name = "all_cpp_files_recursive")

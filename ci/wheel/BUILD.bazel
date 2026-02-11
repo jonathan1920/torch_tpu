@@ -1,0 +1,123 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
+load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
+load("//ci/wheel:pywrap_mapper.bzl", "remap_pywrap_binaries")
+load("//shims/py_rules:pytype.bzl", "pytype_strict_binary", "pytype_strict_library")
+
+package(
+    default_visibility = PACKAGE_DEFAULT_VISIBILITY,
+)
+
+# Config setting to toggle local torch mode
+# Use by running: bazel build ... --define TORCH_SOURCE=local
+config_setting(
+    name = "use_local_torch",
+    define_values = {
+        "TORCH_SOURCE": "local",
+    },
+)
+
+# Define requirements list that conditionally includes torch
+# If TORCH_SOURCE=local, we do not require torch==2.10.0, allowing
+# the wheel to be installed alongside any local PyTorch version.
+TORCH_REQ = select({
+    ":use_local_torch": [],
+    "//conditions:default": ["torch==2.10.0"],
+})
+
+pytype_strict_binary(
+    name = "wheel_mapper_bin",
+    srcs = ["wheel_mapper.py"],
+    main = "wheel_mapper.py",
+    visibility = ["//visibility:public"],
+)
+
+remap_pywrap_binaries(
+    name = "remapped_pywrap_binaries",
+    srcs = "//torch_tpu/common:pywrap_torch_tpu_binaries",
+)
+
+pytype_strict_library(
+    name = "all_torch_tpu_files",
+    srcs = [
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/compiler_options",
+        "//torch_tpu/_internal/device_utils",
+        "//torch_tpu/_internal/distributed:gpu_env",
+        "//torch_tpu/_internal/distributed:tpu_env",
+        "//torch_tpu/_internal/dynamism",
+        "//torch_tpu/_internal/execution_mode",
+        "//torch_tpu/_internal/export",
+        "//torch_tpu/_internal/pallas",
+        "//torch_tpu/_internal/profiler",
+        "//torch_tpu/_internal/shims/xprof:traceme",
+        "//torch_tpu/_internal/shims/xprof:xprof_session",
+        "//torch_tpu/_internal/sync",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/_internal/utils:benchmarking",
+        "//torch_tpu/_internal/utils:tracer_utils",
+        "//torch_tpu/api",
+        "//torch_tpu/api:_device_module",
+        "//torch_tpu/api:streams",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_package(
+    name = "torch_tpu_package",
+    packages = ["torch_tpu"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":all_torch_tpu_files",
+    ],
+)
+
+py_wheel(
+    name = "torch_tpu_wheel",
+    abi = "cp312",
+    author = "torch team",
+    classifiers = [
+        "Development Status :: 4 - Beta",
+        "License :: OSI Approved :: Apache Software License",
+        "Programming Language :: Python :: 3.12",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    ],
+    description_file = "//:README.md",
+    distribution = "torch_tpu",
+    homepage = "https://github.com/your_org/torch_tpu",
+    license = "Apache 2.0",
+    platform = "manylinux_2_35_x86_64",
+    # HERMETIC Python set to 3.12
+    python_requires = ">=3.12",
+    python_tag = "cp312",
+    requires = [
+        "absl-py==2.3.1",
+        "frozendict==2.4.7",
+        "libtpu==0.0.34",
+        "numpy==2.3.1",
+        "tensorboard==2.20.0",
+    ] + TORCH_REQ,
+    strip_path_prefixes = ["ci/wheel/remapped_pywrap_binaries_pkg"],
+    summary = "TPU/XLA support for PyTorch",
+    tags = ["manual"],
+    # set by .bazelrc or you can override with --define WHEEL_VERSION=0.1.0.dev$(date +%m%d%Y)
+    version = "$(WHEEL_VERSION)",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":remapped_pywrap_binaries",
+        ":torch_tpu_package",
+    ],
+)

@@ -1,0 +1,122 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Defines a library that wraps the internal PJRT client.
+# This is a workaround to avoid depending on internal components
+# directly from the main torch_tpu library.
+
+load("//build_files:build_defs.bzl", "define_cpp_filegroup", "torch_tpu_cc_library")
+
+package(
+    default_applicable_licenses = ["//:license"],
+    default_visibility = ["//:__subpackages__"],
+    licenses = ["notice"],
+)
+
+# This acts as an adapter between the PJRT client and the torch_tpu
+# library. It allows us to use the PJRT client without depending on
+# internal components directly, which are not open-sourced.
+torch_tpu_cc_library(
+    name = "pjrt",
+    srcs = [
+        "pjrt_client.cc",
+    ],
+    hdrs = [
+        "pjrt_client.h",
+    ],
+    deps = [
+        "//torch_tpu/common:error_utils",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/status:statusor",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/pjrt/c_api_client:pjrt_c_api_client",
+        "@xla//xla/pjrt/plugin/xla_cpu:cpu_static_registration",
+        "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "pjrt_init",
+    srcs = ["pjrt_init.cc"],
+    hdrs = ["pjrt_init.h"],
+    deps = [
+        ":pjrt",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:utils",
+        "//torch_tpu/distributed/slicebuilder:discovery",
+        "//torch_tpu/eager:device",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@xla//xla/pjrt:pjrt_api",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/pjrt/plugin:plugin_names",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "pjrt_shutdown",
+    srcs = ["pjrt_shutdown.cc"],
+    hdrs = ["pjrt_shutdown.h"],
+    deps = [
+        ":pjrt_init",
+        "//torch_tpu/common:compilation_cache",
+        "//torch_tpu/eager:device",
+        "@com_google_absl//absl/log:absl_log",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "pjrt_utils",
+    srcs = [
+        "pjrt_utils.cc",
+    ],
+    hdrs = [
+        "pjrt_utils.h",
+    ],
+    deps = [
+        ":pjrt_init",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//torch_tpu/common:compilation",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:utils",
+        "//torch_tpu/eager:device",
+        "//torch_tpu/eager:device_buffer",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@stablehlo//:attr_type_builder_util",
+        "@tsl//tsl/platform:path",
+        "@xla//xla:literal",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/pjrt:pjrt_executable",
+    ],
+)
+
+define_cpp_filegroup(name = "all_cpp_files_recursive")

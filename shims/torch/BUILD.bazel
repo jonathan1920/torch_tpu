@@ -1,0 +1,124 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_python//python:py_library.bzl", "py_library")
+load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
+
+package(default_visibility = PACKAGE_DEFAULT_VISIBILITY)
+
+# Config setting to toggle local torch mode.
+# Use by running: bazel build ... --define TORCH_SOURCE=local
+# Other packages refer to this as "//shims/torch:use_local_torch"
+config_setting(
+    name = "use_local_torch",
+    define_values = {
+        "TORCH_SOURCE": "local",
+    },
+    visibility = ["//visibility:public"],
+)
+
+# TODO: b/457858115 - Bazel likely enforces strict dependencies and requires optional dependencies
+# to be explicitly listed in deps if they are used.
+# Python Rules: Depend on PyPI torch by default, but skip it for local builds
+# (because local builds assume torch is already in the environment)
+py_library(
+    name = "pytorch",
+    deps = [
+        "@pypi//numpy",
+    ] + select({
+        ":use_local_torch": [],
+        "//conditions:default": ["@pypi//torch"],
+    }),
+)
+
+py_library(
+    name = "testing_internal",
+    deps = [
+        "@pypi//expecttest",
+        "@pypi//numpy",
+    ] + select({
+        ":use_local_torch": [],
+        "//conditions:default": ["@pypi//torch"],
+    }),
+)
+
+# Alias test_libs to :pytorch so it inherits the conditional logic
+alias(
+    name = "test_libs",
+    actual = ":pytorch",
+)
+
+# C++ Rules: Switch between pip headers and local headers
+# Note: @local_torch//:libtorch_python is added for local builds to fix ABI linking
+cc_library(
+    name = "torch",
+    deps = [
+        ":aten",
+        ":torch_headers",
+    ] + select({
+        ":use_local_torch": [
+            "@local_torch//:libc10",
+            "@local_torch//:libtorch_cpu",
+            "@local_torch//:libtorch_python",
+        ],
+        "//conditions:default": [
+            "@pypi_torch//:libc10",
+            "@pypi_torch//:libtorch_cpu",
+        ],
+    }),
+)
+
+cc_library(
+    name = "aten",
+    deps = select({
+        ":use_local_torch": [
+            "@local_torch//:libc10",
+            "@local_torch//:libtorch_cpu",
+        ],
+        "//conditions:default": [
+            "@pypi_torch//:libc10",
+            "@pypi_torch//:libtorch_cpu",
+        ],
+    }),
+)
+
+cc_library(
+    name = "aten_headers",
+    deps = select({
+        ":use_local_torch": ["@local_torch//:torch_headers"],
+        "//conditions:default": ["@pypi//torch:torch_headers"],
+    }),
+)
+
+cc_library(
+    name = "torch_headers",
+    deps = select({
+        ":use_local_torch": [
+            "@local_torch//:torch_headers",
+            "@rules_python//python/cc:current_py_cc_headers",
+        ],
+        "//conditions:default": [
+            "@pypi//torch:torch_headers",
+            "@rules_python//python/cc:current_py_cc_headers",
+        ],
+    }),
+)
+
+py_library(
+    name = "tensorboard_support",
+    deps = [
+        "@pypi//tensorboard",
+    ],
+)

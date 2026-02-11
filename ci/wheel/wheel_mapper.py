@@ -1,0 +1,70 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Remap pywrap binaries for Python Wheel."""
+
+import argparse
+import json
+import os
+import re
+import shutil
+
+
+def main():
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      "--manifest",
+      required=True,
+      help="Path to .json containing the mapping of pywrap binaries.",
+  )
+  parser.add_argument("--out_dir", required=True)
+  parser.add_argument("binaries", nargs="+")
+  args = parser.parse_args()
+
+  binary_map = {os.path.basename(p): p for p in args.binaries}
+
+  with open(args.manifest, "r") as f:
+    mapping = json.load(f)
+
+  for original_path, dest_full_path in mapping.items():
+    if not dest_full_path:
+      continue
+
+    basename = os.path.basename(original_path)
+    if basename not in binary_map:
+      continue
+
+    src = binary_map[basename]
+    clean_dest_path = re.sub(r"^.*?/bin/", "", dest_full_path)
+
+    # If the regex didn't match (e.g. no /bin/), fallback to original
+    if clean_dest_path == dest_full_path:
+      # Fallback logic: Assume the first directory component is the start
+      # This handles cases where the path might be different
+      pass
+
+    dest = os.path.join(args.out_dir, clean_dest_path)
+
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    if os.path.exists(dest):
+      os.remove(dest)
+
+    try:
+      os.link(src, dest)
+    except OSError:
+      shutil.copy2(src, dest)
+
+
+if __name__ == "__main__":
+  main()

@@ -1,0 +1,176 @@
+// Copyright 2025 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "torch_tpu/ops/macros/logging.h"
+
+#include <cstdint>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "absl/strings/str_cat.h"
+#include "ATen/core/ATen_fwd.h"
+#include "ATen/ops/ones.h"
+#include "c10/core/Device.h"
+#include "c10/core/Layout.h"
+#include "c10/core/MemoryFormat.h"
+#include "torch/headeronly/core/ScalarType.h"
+
+namespace torch_tpu {
+namespace {
+
+using internal::LogKernelArgs;
+using testing::AllOf;
+using testing::EndsWith;
+using testing::HasSubstr;
+using testing::StartsWith;
+
+TEST(LogKernelArgs, LogsNothingWithNoArgs) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {});
+  EXPECT_EQ(ss.str(), "");
+}
+
+TEST(LogKernelArgs, LogsOneArg) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1"}, 123);
+  EXPECT_EQ(ss.str(), "arg1: 123\n");
+}
+
+TEST(LogKernelArgs, LogsMultipleArgs) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1", "arg2"}, 123, "foo");
+  EXPECT_EQ(ss.str(),
+            "arg1: 123\n"
+            "arg2: foo\n");
+}
+
+TEST(LogKernelArgs, LogsTensor) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1"}, at::ones(3));
+  EXPECT_THAT(ss.str(), StartsWith("arg1: shape=[3]"));
+}
+
+TEST(LogKernelArgs, LogsScalar) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1"}, at::Scalar(123.0));
+  EXPECT_EQ(ss.str(), "arg1: 123\n");
+}
+
+TEST(LogKernelArgs, LogsScalarType) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1"}, at::ScalarType::Float);
+  EXPECT_EQ(ss.str(), "arg1: float32\n");
+}
+
+TEST(LogKernelArgs, LogsOptionalArrayRef) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1"}, c10::OptionalArrayRef<int64_t>({1, 2, 3}));
+  EXPECT_EQ(ss.str(), "arg1: [1, 2, 3]\n");
+}
+
+TEST(LogKernelArgs, LogsNullOptionalArrayRef) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1"}, c10::OptionalArrayRef<int64_t>());
+  EXPECT_EQ(ss.str(), "arg1: nullopt\n");
+}
+
+TEST(LogKernelArgs, LogsOptionalTensor) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1"}, std::optional<at::Tensor>(at::ones(3)));
+  EXPECT_THAT(ss.str(), StartsWith("arg1: shape=[3]"));
+}
+
+TEST(LogKernelArgs, LogsVectorOfTensors) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1"},
+                std::vector<at::Tensor>({at::ones(3), at::ones(4)}));
+  EXPECT_THAT(ss.str(), AllOf(StartsWith("arg1: [\n  shape=[3]"),
+                              HasSubstr("\n  shape=[4]"), EndsWith("]\n")));
+}
+
+TEST(LogKernelArgs, LogsVectorOfInts) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1"}, std::vector<int>{1, 2, 3});
+  EXPECT_EQ(ss.str(), "arg1: [1, 2, 3]\n");
+}
+
+TEST(LogKernelArgs, LogsNullopt) {
+  std::ostringstream ss;
+  std::optional<at::Tensor> null;
+  LogKernelArgs(ss, {"arg1"}, null);
+  EXPECT_THAT(ss.str(), StartsWith("arg1: nullopt\n"));
+}
+
+TEST(LogKernelArgs, LogsBool) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1", "arg2"}, true, false);
+  EXPECT_EQ(ss.str(),
+            "arg1: true\n"
+            "arg2: false\n");
+}
+
+TEST(LogKernelArgs, LogsDevice) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1"}, at::Device("cpu"));
+  EXPECT_EQ(ss.str(), "arg1: cpu\n");
+}
+
+TEST(LogKernelArgs, LogsLayout) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1"}, at::Layout::Strided);
+  EXPECT_EQ(ss.str(), "arg1: Strided\n");
+}
+
+TEST(LogKernelArgs, LogsMemoryFormat) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1"}, at::MemoryFormat::Preserve);
+  EXPECT_EQ(ss.str(), "arg1: Preserve\n");
+}
+
+class CachableInt {
+ public:
+  CachableInt(int value) : value_(value) {}
+
+  [[nodiscard]] int value() const { return value_; }
+
+ private:
+  int value_;
+};
+
+[[nodiscard]] std::string FormatParamCacheKey(const CachableInt& arg) {
+  return absl::StrCat(arg.value());
+}
+
+TEST(LogKernelArgs, LogsTypeWithFormatParamCacheKey) {
+  std::ostringstream ss;
+  // Even though CachableInt doesn't have operator<<() or FormatKernelArg(), it
+  // should still be loggable via FormatParamCacheKey().
+  LogKernelArgs(ss, {"arg1"}, CachableInt(123));
+  EXPECT_EQ(ss.str(), "arg1: 123\n");
+}
+
+TEST(LogKernelArgs, LogsVariadicArgs) {
+  std::ostringstream ss;
+  LogKernelArgs(ss, {"arg1", "arg2", "arg3"}, 123, "foo", at::ones(3));
+  EXPECT_THAT(ss.str(), StartsWith("arg1: 123\n"
+                                   "arg2: foo\n"
+                                   "arg3: shape=[3]"));
+}
+
+}  // namespace
+}  // namespace torch_tpu

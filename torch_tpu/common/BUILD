@@ -1,0 +1,709 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Common utilities for torch_tpu."""
+
+load(
+    "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "pywrap_binaries",
+    "pywrap_library",
+)
+load(
+    "//build_files:build_defs.bzl",
+    "define_cpp_filegroup",
+    "torch_tpu_cc_library",
+    "torch_tpu_cc_test",
+)
+
+package(
+    default_applicable_licenses = ["//:license"],
+    default_visibility = ["//:__subpackages__"],
+)
+
+torch_tpu_cc_library(
+    name = "unique_file_descriptor",
+    srcs = ["unique_file_descriptor.cc"],
+    hdrs = ["unique_file_descriptor.h"],
+)
+
+torch_tpu_cc_library(
+    name = "dtype",
+    srcs = ["dtype.cc"],
+    hdrs = ["dtype.h"],
+    deps = [
+        ":error_utils",
+        ":shape",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:attr_type_builder_util",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "shape",
+    hdrs = ["shape.h"],
+    deps = [
+        "@com_google_absl//absl/container:inlined_vector",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "status_builder",
+    srcs = ["status_builder.cc"],
+    hdrs = ["status_builder.h"],
+    deps = [
+        ":utils",
+        "//shims/torch",
+        "//shims/torch:torch_headers",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "error_utils",
+    srcs = ["error_utils.cc"],
+    hdrs = ["error_utils.h"],
+    deps = [
+        ":macro_utils",
+        ":status_builder",
+        ":utils",
+        "//shims/torch",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//shims/torch/c10/util:base_headers",
+        "//torch_tpu/eager:device",
+        "//torch_tpu/ops:python_context",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@xla//xla:xla_data_proto_cc",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "error_utils_test",
+    srcs = ["error_utils_test.cc"],
+    tags = [
+        "oss_ready_cpu",
+    ],
+    deps = [
+        ":absl_test_shim",
+        ":error_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "compilation",
+    srcs = ["compilation.cc"],
+    hdrs = ["compilation.h"],
+    deps = [
+        ":error_utils",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
+        "@xla//xla:xla_proto_cc",
+        "@xla//xla/client:executable_build_options",
+        "@xla//xla/hlo/translate:register",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/pjrt:pjrt_compiler",
+        "@xla//xla/service:computation_placer_hdr",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "tier2_compilation_cache",
+    srcs = ["tier2_compilation_cache.cc"],
+    hdrs = ["tier2_compilation_cache.h"],
+    deps = [
+        ":cache_key",
+        ":compilation",
+        ":error_utils",
+        ":fingerprint_utils",
+        ":unique_file_descriptor",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/pjrt:pjrt_executable",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "tier2_compilation_cache_test",
+    srcs = ["tier2_compilation_cache_test.cc"],
+    tags = [
+        "requires-tpu-v5lite",  # Needs PjRt client.
+    ],
+    deps = [
+        ":cache_key",
+        ":error_utils",
+        ":shape",
+        ":tier2_compilation_cache",
+        ":unique_file_descriptor",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Tests that the tier-2 cache is disabled by default for world size 1.
+torch_tpu_cc_test(
+    name = "tier2_compilation_cache_enablement_test_default_one_host",
+    srcs = ["tier2_compilation_cache_enablement_test.cc"],
+    # Do not set the TORCH_TPU_TIER2_COMPILATION_CACHE environment variable.
+    args = [
+        "--expected_tier2_cache_name=",
+        "--world_size=1",
+    ],
+    tags = [
+        "requires-tpu-v5lite",  # Needs PjRt client.
+    ],
+    deps = [
+        ":tier2_compilation_cache",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Tests that the tier-2 cache is enabled by default for world size > 1.
+torch_tpu_cc_test(
+    name = "tier2_compilation_cache_enablement_test_default_multi_host",
+    srcs = ["tier2_compilation_cache_enablement_test.cc"],
+    # Do not set the TORCH_TPU_TIER2_COMPILATION_CACHE environment variable.
+    args = [
+        "--expected_tier2_cache_name=default",
+        "--world_size=2",
+    ],
+    tags = [
+        "requires-tpu-v7x",  # Needs PjRt client.
+    ],
+    deps = [
+        ":tier2_compilation_cache",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Tests that the tier-2 cache can be explicitly disabled for world size 1.
+torch_tpu_cc_test(
+    name = "tier2_compilation_cache_enablement_test_disabled_one_host",
+    srcs = ["tier2_compilation_cache_enablement_test.cc"],
+    args = [
+        "--expected_tier2_cache_name=",
+        "--world_size=1",
+    ],
+    env = {
+        "TORCH_TPU_TIER2_COMPILATION_CACHE": "disabled",
+    },
+    tags = [
+        "requires-tpu-v5lite",  # Needs PjRt client.
+    ],
+    deps = [
+        ":tier2_compilation_cache",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Tests that the tier-2 cache can be explicitly disabled for world size > 1.
+torch_tpu_cc_test(
+    name = "tier2_compilation_cache_enablement_test_disabled_multi_host",
+    srcs = ["tier2_compilation_cache_enablement_test.cc"],
+    args = [
+        "--expected_tier2_cache_name=",
+        "--world_size=2",
+    ],
+    env = {
+        "TORCH_TPU_TIER2_COMPILATION_CACHE": "disabled",
+    },
+    tags = [
+        "requires-tpu-v7x",  # Needs PjRt client.
+    ],
+    deps = [
+        ":tier2_compilation_cache",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Tests that the tier-2 cache can be explicitly enabled for world size 1.
+torch_tpu_cc_test(
+    name = "tier2_compilation_cache_enablement_test_enabled_one_host",
+    srcs = ["tier2_compilation_cache_enablement_test.cc"],
+    args = [
+        "--expected_tier2_cache_name=my_cache",
+        "--world_size=1",
+    ],
+    env = {
+        "TORCH_TPU_TIER2_COMPILATION_CACHE": "my_cache",
+    },
+    tags = [
+        "requires-tpu-v5lite",  # Needs PjRt client.
+    ],
+    deps = [
+        ":tier2_compilation_cache",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Tests that the tier-2 cache can be explicitly enabled for world size > 1.
+torch_tpu_cc_test(
+    name = "tier2_compilation_cache_enablement_test_enabled_multi_host",
+    srcs = ["tier2_compilation_cache_enablement_test.cc"],
+    args = [
+        "--expected_tier2_cache_name=my_cache2",
+        "--world_size=2",
+    ],
+    env = {
+        "TORCH_TPU_TIER2_COMPILATION_CACHE": "my_cache2",
+    },
+    tags = [
+        "requires-tpu-v7x",  # Needs PjRt client.
+    ],
+    deps = [
+        ":tier2_compilation_cache",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "tier3_compilation_cache",
+    srcs = ["tier3_compilation_cache.cc"],
+    hdrs = ["tier3_compilation_cache.h"],
+    deps = [
+        ":cache_key",
+        ":compilation",
+        ":error_utils",
+        ":tier2_compilation_cache",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "error_utils_cpp_context_test",
+    srcs = ["error_utils_cpp_context_test.cc"],
+    tags = [
+        "oss_ready_cpu",
+    ],
+    deps = [
+        ":error_utils",
+        ":status_builder",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "repeated_subsequence",
+    hdrs = ["repeated_subsequence.h"],
+    deps = [
+        ":utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "repeated_subsequence_test",
+    srcs = ["repeated_subsequence_test.cc"],
+    tags = [
+        "oss_ready_cpu",
+    ],
+    deps = [
+        ":repeated_subsequence",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "fingerprint_utils",
+    srcs = ["fingerprint_utils.cc"],
+    hdrs = ["fingerprint_utils.h"],
+    deps = [
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:fingerprint",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "fingerprint_utils_test",
+    srcs = ["fingerprint_utils_test.cc"],
+    tags = [
+        "oss_ready_cpu",
+    ],
+    deps = [
+        ":fingerprint_utils",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@stablehlo//:attr_type_builder_util",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "macro_utils",
+    srcs = ["macro_utils.cc"],
+    hdrs = ["macro_utils.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "fixed_size_span",
+    hdrs = ["fixed_size_span.h"],
+    deps = [
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/util:base_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    tags = [
+        "oss_ready_cpu",
+    ],
+    deps = [
+        ":utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "aten_utils",
+    srcs = ["aten_utils.cc"],
+    hdrs = ["aten_utils.h"],
+    deps = [
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//torch_tpu/eager:device",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "absl_test_shim",
+    testonly = True,
+    srcs = [],
+    hdrs = ["absl_test_shim.h"],
+    deps = [
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "environment",
+    srcs = ["environment.cc"],
+    hdrs = ["environment.h"],
+    deps = [
+        ":error_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "thread_pool",
+    srcs = ["thread_pool.cc"],
+    hdrs = ["thread_pool.h"],
+    deps = [
+        "@com_google_absl//absl/log:absl_check",
+        "@xla//xla/tsl/platform:env",
+    ],
+)
+
+# Note: workaround for all pytorch .so files required by torch_tpu
+torch_tpu_cc_library(
+    name = "torch_rpath_flags",
+    linkopts = [
+        "-Wl,-rpath='$$ORIGIN/../../torch/lib'",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+pywrap_library(
+    name = "pywrap_torch_tpu",
+    extra_deps = [
+        ":torch_rpath_flags",
+    ],
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//torch_tpu/_internal:compiler_options_impl",
+        "//torch_tpu/_internal:env",
+        "//torch_tpu/_internal:execution_mode_impl",
+        "//torch_tpu/_internal:testing",
+        "//torch_tpu/_internal/compile:tpu_torch_compile",
+        "//torch_tpu/_internal/distributed:tpu_distributed",
+        "//torch_tpu/_internal/dynamism:_tpu_torch_dynamism",
+        "//torch_tpu/_internal/pallas:tpu_torch_pallas",
+        "//torch_tpu/_internal/profiler:_profiler_backend",
+        "//torch_tpu/_internal/sync:_tpu_torch_sync",
+        "//torch_tpu/api:_device_ops_backend",
+    ],
+)
+
+pywrap_binaries(
+    name = "pywrap_torch_tpu_binaries",
+    dep = ":pywrap_torch_tpu",
+    visibility = ["//:__subpackages__"],
+)
+
+torch_tpu_cc_library(
+    name = "cache_key",
+    srcs = ["cache_key.cc"],
+    hdrs = ["cache_key.h"],
+    deps = [
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//shims/torch/c10/util:base_headers",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:fingerprint_utils",
+        "//torch_tpu/common:utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@stablehlo//:attr_type_builder_util",
+        "@xla//xla:xla_data_proto_cc",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "cache_key_test",
+    srcs = ["cache_key_test.cc"],
+    tags = [
+        "oss_ready_cpu",
+    ],
+    deps = [
+        ":cache_key",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//shims/torch/c10/util:base_headers",
+        "//torch_tpu/ops:op_builder_utils",
+        "@com_google_googletest//:gtest_main",
+        "@stablehlo//:attr_type_builder_util",
+        "@xla//xla:xla_data_proto_cc",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "compilation_cache",
+    srcs = ["compilation_cache.cc"],
+    hdrs = ["compilation_cache.h"],
+    deps = [
+        ":cache_key",
+        ":compilation",
+        ":error_utils",
+        ":thread_pool",
+        ":tier2_compilation_cache",
+        ":tier3_compilation_cache",
+        ":utils",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+        "@tsl//tsl/platform:numbers",
+        "@xla//xla:xla_proto_cc",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/pjrt:pjrt_compiler",
+        "@xla//xla/pjrt:pjrt_executable",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "compilation_cache_test",
+    srcs = ["compilation_cache_test.cc"],
+    tags = [
+        # Do not add tag "oss_ready_tpu" here. Instead, use "oss_compilation_cache_test" below to
+        # run tests in TPU CI.
+        # To initialize PjRt, we need to explicitly set environment variable TPU_LIBRARY_PATH to
+        # point to libtpu.so for C++ tests before starting running the tests, which is not needed
+        # for Python tests.
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":compilation",
+        ":compilation_cache",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla:xla_proto_cc",
+        "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
+    ],
+)
+
+sh_test(
+    name = "oss_compilation_cache_test",
+    srcs = ["oss_compilation_cache_test.sh"],
+    data = [
+        ":compilation_cache_test",
+        "@pypi_libtpu//:whl",
+    ],
+    tags = [
+        "oss_ready_tpu",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "compilation_cache_parse_xla_options_test",
+    srcs = ["compilation_cache_parse_xla_options_test.cc"],
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":compilation",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla:xla_proto_cc",
+        "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "tier3_compilation_cache_test",
+    srcs = ["tier3_compilation_cache_test.cc"],
+    env = {
+        # To use the tier-3 cache, we need to enable the tier-2 cache too.
+        "TORCH_TPU_TIER2_COMPILATION_CACHE": "cache",
+        "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
+    },
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":cache_key",
+        ":error_utils",
+        ":shape",
+        ":tier2_compilation_cache",
+        ":tier3_compilation_cache",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+define_cpp_filegroup(name = "all_cpp_files_recursive")

@@ -1,0 +1,12 @@
+bazel-*
+user.bazelrc
+# Vim swap files (used for recovery)
+.*.swp
+.*.swo
+.*.swn
+# Vim backup files
+*~
+.*~
+# Vim undo files
+*.un~
+.*.un~

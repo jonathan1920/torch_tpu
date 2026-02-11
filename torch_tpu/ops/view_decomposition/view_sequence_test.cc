@@ -1,0 +1,288 @@
+/*
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "torch_tpu/ops/view_decomposition/view_sequence.h"
+
+#include <cstdint>
+#include <utility>
+
+#include "gtest/gtest.h"
+#include "absl/types/span.h"
+#include "torch_tpu/ops/view_decomposition/conj_primitive.h"
+#include "torch_tpu/ops/view_decomposition/unfold_primitive.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "torch_tpu/common/absl_test_shim.h"
+#include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
+#include "torch_tpu/ops/view_decomposition/broadcast_primitive.h"
+#include "torch_tpu/ops/view_decomposition/pad_primitive.h"
+#include "torch_tpu/ops/view_decomposition/reshape_primitive.h"
+#include "torch_tpu/ops/view_decomposition/slice_primitive.h"
+#include "torch_tpu/ops/view_decomposition/strided_layout.h"
+#include "torch_tpu/ops/view_decomposition/transpose_primitive.h"
+
+namespace torch_tpu {
+namespace {
+
+void SimplifyTest(absl::Span<const int64_t> contiguous_base_shape,
+                  ViewSequence sequence, ViewSequenceSpan expected,
+                  bool expect_physical_layout_change = true) {
+  const auto unmodified_layout =
+      MakeContiguousBaseLayout(contiguous_base_shape);
+
+  // The simplified sequence should return the same final layout as the
+  // original un-simplified sequence.
+  auto expected_layout = MakeContiguousBaseLayout(contiguous_base_shape);
+  TT_EXPECT_OK(UpdateLayout(expected_layout, sequence));
+
+  // If the simplified sequence is empty, then the simplified sequence should
+  // not update the layout; otherwise, there should be a meaningful update.
+  const bool expected_updated = !expected.empty();
+
+  TT_EXPECT_OK(Simplify(sequence, contiguous_base_shape));
+
+  EXPECT_EQ(sequence, expected);
+
+  auto actual_layout = MakeContiguousBaseLayout(contiguous_base_shape);
+  auto updated_status = UpdateLayout(actual_layout, sequence);
+  TT_EXPECT_OK(updated_status);
+  EXPECT_EQ(updated_status.value(), expected_updated);
+  EXPECT_EQ(actual_layout, expected_layout);
+
+  // After simplification, a non-empty sequence should not be a net no-op,
+  // while an empty sequence should be a no-op.
+  const bool layout_changed = actual_layout != unmodified_layout;
+  if (expect_physical_layout_change) {
+    EXPECT_EQ(layout_changed, expected_updated);
+  } else {
+    EXPECT_EQ(layout_changed, false);
+  }
+}
+
+TEST(Simplify, EmptyList) { SimplifyTest({54}, {}, {}); }
+
+TEST(Simplify, NothingToSimplify) {
+  Dimensions contiguous_base_shape = {54};
+  // Equivalent to:
+  // torch.arange(54).view(6, 9)[:, 1:].view(
+  //   6, 4, 2, 1).permute(0, 3, 2, 1).expand(6, 999, 2, 4)
+  // No no-ops, nothing to merge
+  ViewSequence sequence = {
+      ReshapePrimitive{.base_sizes = {54}, .new_sizes = {6, 9}},
+      SlicePrimitive{
+          .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
+                         {.start_index = 1, .limit_index = 9, .stride = 1}}},
+      ReshapePrimitive{.base_sizes = {6, 8}, .new_sizes = {6, 4, 2, 1}},
+      TransposePrimitive{.permutation = {0, 3, 2, 1}},
+      BroadcastPrimitive{.new_sizes = {6, 999, 2, 4},
+                         .broadcast_dimensions = {0, 1, 2, 3}}};
+  ViewSequence expected = sequence;  // Should not be modified
+
+  SimplifyTest(contiguous_base_shape, std::move(sequence), std::move(expected));
+}
+
+TEST(Simplify, RemoveNoOpReshape) {
+  SimplifyTest({6, 9},
+               {ReshapePrimitive{.base_sizes = {6, 9}, .new_sizes = {6, 9}}},
+               {});
+}
+
+TEST(Simplify, RemoveNoOpPermute) {
+  SimplifyTest({1, 2, 3, 4}, {TransposePrimitive{.permutation = {0, 1, 2, 3}}},
+               {});
+}
+
+TEST(Simplify, RemoveNoOpBroadcast) {
+  SimplifyTest({6, 2, 4},
+               {BroadcastPrimitive{.new_sizes = {6, 2, 4},
+                                   .broadcast_dimensions = {0, 1, 2}}},
+               {});
+}
+
+TEST(Simplify, RemoveNoOpSlice) {
+  SimplifyTest(
+      {2, 3, 4},
+      {SlicePrimitive{
+          .slice_dims = {{.start_index = 0, .limit_index = 2, .stride = 1},
+                         {.start_index = 0, .limit_index = 3, .stride = 1},
+                         {.start_index = 0, .limit_index = 4, .stride = 1}}}},
+      {});
+}
+
+TEST(Simplify, RemoveNoOpPad) {
+  SimplifyTest(
+      {6, 9},
+      {PadPrimitive{
+          .pad_dims =
+              {{.low_padding = 0, .high_padding = 0, .interior_padding = 0},
+               {.low_padding = 0, .high_padding = 0, .interior_padding = 0}}}},
+      {});
+}
+
+TEST(Simplify, RemoveNoOpBitcast) {
+  SimplifyTest({6, 9},
+               {RealToRealBitcast{.from_type = mlir::ElementType::F32,
+                                  .to_type = mlir::ElementType::F32}},
+               {});
+}
+
+TEST(Simplify, RemoveNoOpUnfold) {
+  SimplifyTest({6, 1, 9},
+               {UnfoldPrimitive{.start_index = 0,
+                                .limit_index = 9,
+                                .window_stride = 999,
+                                .window_size = 9}},
+               {});
+}
+
+// Can't use SimplifyTest because it should be a non-no-op operation that
+// doesn't change the layout.
+TEST(Simplify, DoNotRemoveSameSizeBitcast) {
+  const Dimensions contiguous_base_shape = {6, 9};
+  ViewSequence sequence = {RealToRealBitcast{
+      .from_type = mlir::ElementType::F32, .to_type = mlir::ElementType::UI32}};
+  const ViewSequence expected = sequence;
+
+  const auto unmodified_layout =
+      MakeContiguousBaseLayout(contiguous_base_shape);
+
+  auto expected_layout = MakeContiguousBaseLayout(contiguous_base_shape);
+  TT_EXPECT_OK(UpdateLayout(expected_layout, sequence));
+
+  // Same-size bitcasts to a new type are not no-ops. They should not be
+  // removed by Simplify.
+  const bool expected_updated = true;
+  TT_EXPECT_OK(Simplify(sequence, contiguous_base_shape));
+  EXPECT_EQ(sequence, expected);
+
+  // There is no layout change, even though the sequence is not a no-op,
+  // because the values would be reinterpreted.
+  auto actual_layout = MakeContiguousBaseLayout(contiguous_base_shape);
+  auto updated_status = UpdateLayout(actual_layout, sequence);
+  TT_EXPECT_OK(updated_status);
+  EXPECT_EQ(updated_status.value(), expected_updated);
+  EXPECT_EQ(actual_layout, unmodified_layout);
+}
+
+TEST(Simplify, MergedReshape) {
+  SimplifyTest({54},
+               {ReshapePrimitive{.base_sizes = {54}, .new_sizes = {27, 2}},
+                ReshapePrimitive{.base_sizes = {27, 2}, .new_sizes = {6, 9}}},
+               {ReshapePrimitive{.base_sizes = {54}, .new_sizes = {6, 9}}});
+}
+
+TEST(Simplify, MergedSlice) {
+  SimplifyTest(
+      {6, 9},
+      {SlicePrimitive{
+           .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
+                          {.start_index = 1, .limit_index = 9, .stride = 1}}},
+       SlicePrimitive{
+           .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 2},
+                          {.start_index = 0, .limit_index = 8, .stride = 1}}}},
+      {SlicePrimitive{
+          .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 2},
+                         {.start_index = 1, .limit_index = 9, .stride = 1}}}});
+}
+
+TEST(Simplify, MergedReshapeAndSlice) {
+  SimplifyTest({54},
+               {
+                   ReshapePrimitive{.base_sizes = {54}, .new_sizes = {27, 2}},
+                   ReshapePrimitive{.base_sizes = {27, 2}, .new_sizes = {6, 9}},
+                   SlicePrimitive{
+                       .slice_dims =
+                           {{.start_index = 0, .limit_index = 6, .stride = 1},
+                            {.start_index = 0, .limit_index = 9, .stride = 3}}},
+                   SlicePrimitive{
+                       .slice_dims =
+                           {{.start_index = 0, .limit_index = 6, .stride = 2},
+                            {.start_index = 0, .limit_index = 3, .stride = 1}}},
+               },
+               {
+                   ReshapePrimitive{.base_sizes = {54}, .new_sizes = {6, 9}},
+                   SlicePrimitive{
+                       .slice_dims =
+                           {{.start_index = 0, .limit_index = 6, .stride = 2},
+                            {.start_index = 0, .limit_index = 9, .stride = 3}}},
+               });
+}
+
+TEST(Simplify, RecursiveSimplify) {
+  // The slice and transpose are no ops that get removed.
+  // Then we have 3 sequential reshapes that get merged.
+  // The final remaining reshape is redundant and gets removed.
+  SimplifyTest(
+      {54},
+      {ReshapePrimitive{.base_sizes = {54}, .new_sizes = {27, 2}},
+       SlicePrimitive{
+           .slice_dims = {{.start_index = 0, .limit_index = 27, .stride = 1},
+                          {.start_index = 0, .limit_index = 2, .stride = 1}}},
+       ReshapePrimitive{.base_sizes = {27, 2}, .new_sizes = {6, 9}},
+       TransposePrimitive{.permutation = {0, 1}},
+       ReshapePrimitive{.base_sizes = {6, 9}, .new_sizes = {54}}},
+      {});
+}
+
+TEST(Simplify, ConjReal) {
+  // ConjPrimitive isn't created for real types by decomposition. If one
+  // manually creates it, it's treated as active is_set=true, and it will NOT be
+  // simplified away. This is fine since conjugate on real is a no-op anyway.
+  SimplifyTest({6, 9}, {ConjPrimitive{}}, {ConjPrimitive{}},
+               /*expect_physical_layout_change=*/false);
+}
+
+TEST(Simplify, ConjComplex) {
+  // Conjugate on complex is preserved.
+  SimplifyTest({6, 9}, {ConjPrimitive{}}, {ConjPrimitive{}},
+               /*expect_physical_layout_change=*/false);
+}
+
+TEST(Simplify, DoubleConj) {
+  // Two conjugates on complex are merged into a no-op (identity) and removed.
+  SimplifyTest({6, 9},
+               {
+                   ConjPrimitive{},
+                   ConjPrimitive{},
+               },
+               {},
+               /*expect_physical_layout_change=*/false);
+}
+
+TEST(Simplify, ReshapeConj) {
+  // Reshape then Conj.
+  SimplifyTest({54},
+               {
+                   ReshapePrimitive{.base_sizes = {54}, .new_sizes = {6, 9}},
+                   ConjPrimitive{},
+               },
+               {
+                   ReshapePrimitive{.base_sizes = {54}, .new_sizes = {6, 9}},
+                   ConjPrimitive{},
+               });
+}
+
+TEST(ViewPrimitiveEquality, ConjPrimitive) {
+  ViewPrimitive c1 = ConjPrimitive{.is_set = true};
+  ViewPrimitive c2 = ConjPrimitive{.is_set = true};
+  ViewPrimitive c3 = ConjPrimitive{.is_set = false};
+
+  EXPECT_EQ(c1, c2);
+  EXPECT_NE(c1, c3);
+}
+
+}  // namespace
+}  // namespace torch_tpu

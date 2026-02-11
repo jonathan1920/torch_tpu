@@ -1,0 +1,156 @@
+/*
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
+
+#include "absl/status/statusor.h"
+#include "ATen/core/ATen_fwd.h"
+#include "ATen/core/TensorBody.h"
+#include "c10/core/Device.h"
+#include "c10/core/DeviceType.h"
+#include "c10/core/MemoryFormat.h"
+#include "c10/core/TensorImpl.h"
+#include "c10/core/TensorOptions.h"
+#include "c10/util/Optional.h"
+#include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/eager/device.h"
+#include "torch_tpu/ops/copy_from/cpu_to_tpu.h"
+#include "torch_tpu/ops/copy_from/tpu_to_cpu.h"
+#include "torch_tpu/ops/copy_from/tpu_to_tpu.h"
+#include "torch_tpu/ops/macros/kernel.h"
+#include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
+
+namespace torch_tpu {
+
+namespace {
+
+enum class CopyType {
+  kCpuToTpu,
+  kTpuToTpu,
+  kTpuToCpu,
+};
+
+absl::StatusOr<CopyType> GetCopyType(const at::Tensor& self,
+                                     c10::Device target_device) {
+  c10::DeviceType self_device_type = self.device().type();
+  c10::DeviceType target_device_type = target_device.type();
+  c10::DeviceType private_use1_device_type = GetPrivateUse1DeviceType();
+
+  if (self_device_type == private_use1_device_type &&
+      target_device_type == private_use1_device_type) {
+    return CopyType::kTpuToTpu;
+  } else if (self_device_type == private_use1_device_type &&
+             target_device_type == c10::DeviceType::CPU) {
+    return CopyType::kTpuToCpu;
+  } else if (self_device_type == c10::DeviceType::CPU &&
+             target_device_type == private_use1_device_type) {
+    return CopyType::kCpuToTpu;
+  }
+  return TT_ERROR(error::kUnimplemented)
+         << "copying from device type " << self_device_type
+         << " is not implemented";
+}
+
+}  // namespace
+
+at::Tensor AtenCopyFrom(const at::Tensor& src, const at::Tensor& self_dest,
+                        bool non_blocking) {
+  TT_KERNEL(OpName::kCopyFrom, _, (src, self_dest, non_blocking), {
+    TT_CHECK_THROW(src.device().type() == GetPrivateUse1DeviceType() ||
+                       self_dest.device().type() == GetPrivateUse1DeviceType(),
+                   error::kInvalidArgument)
+        << "at least one of the source and destination tensors must "
+           "have the TPU device type.";
+    if (src.is_same(self_dest)) {
+      // Self-to-self copy is a no-op.
+      return self_dest;
+    }
+
+    // Broadcast if necessary (on the source device).
+    at::Tensor broadcasted_src = src;
+    if (src.sizes() != self_dest.sizes()) {
+      while (broadcasted_src.dim() < self_dest.dim()) {
+        broadcasted_src.unsqueeze_(0);
+      }
+      // This may throw if the src tensor cannot be expanded.
+      broadcasted_src = broadcasted_src.expand(self_dest.sizes());
+    }
+
+    // Perform a CPU-to-TPU, TPU-to-TPU, or TPU-to-CPU copy; in any case,
+    // self_dest will be updated with a new c10::StorageImpl containing the
+    // same values as exist in src's c10::DataPtr.
+    TT_ASSIGN_OR_THROW(CopyType to_copy_type,
+                       GetCopyType(src, self_dest.device()));
+    switch (to_copy_type) {
+      case CopyType::kCpuToTpu:
+        TT_THROW_IF_ERROR(CopyCpuToTpu(broadcasted_src, self_dest));
+        break;
+      case CopyType::kTpuToTpu:
+        TT_THROW_IF_ERROR(CopyTpuToTpu(broadcasted_src, self_dest));
+        break;
+      case CopyType::kTpuToCpu:
+        TT_THROW_IF_ERROR(
+            CopyTpuToCpu(broadcasted_src, self_dest, non_blocking));
+        break;
+    }
+
+    // Also copy the gradient if it exists on the src.
+    if (src.grad().defined()) {
+      // self_dest.grad() may not yet be defined; redispatch through to() and
+      // not copy_ to avoid undefined tensor accesses.
+      at::Tensor new_grad =
+          src.grad().to(self_dest.options(), non_blocking, /*copy=*/true);
+      self_dest.mutable_grad() = new_grad;
+    }
+    return self_dest;
+  });
+}
+
+at::Tensor AtenCopyFromAndResize(const at::Tensor& self,
+                                 const at::Tensor& dst) {
+  TT_KERNEL(OpName::kCopyFromAndResize, _, (self, dst), {
+    if (dst.device().type() == GetPrivateUse1DeviceType()) {
+      AtenResize_(dst, self.sizes(), at::MemoryFormat::Contiguous);
+    } else {
+      dst.resize_(self.sizes());
+    }
+    return AtenCopyFrom(self, dst, /*non_blocking=*/false);
+  });
+}
+
+at::Scalar AtenLocalScalarDense(const at::Tensor& self) {
+  TT_KERNEL(OpName::kLocalScalarDense, _, (self), {
+    TT_CHECK_THROW(self.numel() == 1, error::kInvalidArgument)
+        << "expected input to be a 1-element tensor, got " << self.numel()
+        << " elements.";
+    at::Tensor cpu_tensor =
+        self.to(at::TensorOptions().device(c10::kCPU).memory_format(
+            at::MemoryFormat::Contiguous));
+    return cpu_tensor.item();
+  });
+}
+
+// Identical to _copy_from, only registered to avoid a dispatch error in torch.
+at::Tensor& AtenCopy_(at::Tensor& self, const at::Tensor& src,
+                      bool non_blocking) {
+  TT_KERNEL(OpName::kCopy_, _, (self, src, non_blocking), {
+    AtenCopyFrom(src, self, non_blocking);
+    return self;
+  });
+}
+
+}  // namespace torch_tpu

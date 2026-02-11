@@ -1,0 +1,178 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@xla//third_party/py/rules_pywrap:pywrap.default.bzl", "pybind_extension")
+load("//build_files:build_defs.bzl", "define_cpp_filegroup", "torch_tpu_cc_library", "torch_tpu_py_test")
+load("//shims/py_rules:pytype.bzl", "pytype_library")
+
+package(
+    default_applicable_licenses = ["//:license"],
+    default_visibility = ["//:__subpackages__"],
+)
+
+pytype_library(
+    name = "tpu_backend",
+    srcs = [
+        "__init__.py",
+        "_backend.py",
+    ],
+    visibility = [
+        "//:__subpackages__",
+    ],
+    deps = [
+        ":tpu_torch_compile",
+        "//shims/absl_py:app",
+        "//shims/absl_py/flags",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/export",
+        "//torch_tpu/_internal/utils",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "compiled_mode",
+    srcs = [
+        "compiled_mode.cc",
+    ],
+    hdrs = [
+        "compiled_mode.h",
+    ],
+    deps = [
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//torch_tpu/common:aten_utils",
+        "//torch_tpu/common:compilation",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:materialize",
+        "//torch_tpu/eager:traversal",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:python_context",
+        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_utils",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:stablehlo_serialization",
+        "@tsl//tsl/platform:path",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/pjrt:pjrt_executable",
+        "@xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",  # buildcleaner: keep
+        "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
+    ],
+)
+
+# This library is not used directly, but is needed for go/cclean. Without
+# this rule, cclean complains that tpu_torch_compile.cc has no rule depending on it.
+torch_tpu_cc_library(
+    name = "tpu_torch_compile_lib",
+    srcs = ["tpu_torch_compile.cc"],
+    deps = [
+        ":compiled_mode",
+        "//shims/torch",
+        "//shims/torch:aten",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/common:compilation",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:python_context",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeWriter",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:version",
+        "@xla//xla:shape_util",
+        "@xla//xla/hlo/translate:register",
+        "@xla//xla/mlir/utils:error_util",
+        "@xla//xla/pjrt:mlir_to_hlo",
+        "@xla//xla/pjrt:pjrt_client",
+    ],
+)
+
+# Ensures that :tpu_torch_compile builds. Without this, TAP
+# won't build it as there's no test depending on it.
+build_test(
+    name = "tpu_torch_compile_build_test",
+    tags = [
+        "oss_ready_cpu",
+    ],
+    targets = [":tpu_torch_compile"],
+)
+
+pybind_extension(
+    name = "tpu_torch_compile",
+    srcs = ["tpu_torch_compile.cc"],
+    common_lib_packages = [
+        "torch_tpu/common",
+    ],
+    wrap_py_init = True,
+    # TODO(wzz): Re-enable import test once I figure out the pybind requirements.
+    deps = [
+        ":compiled_mode",
+        "//shims/torch",
+        "//shims/torch:aten",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/common:compilation",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:python_context",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeWriter",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:version",
+        "@xla//xla:shape_util",
+        "@xla//xla/hlo/translate:register",
+        "@xla//xla/mlir/utils:error_util",
+        "@xla//xla/pjrt:mlir_to_hlo",
+        "@xla//xla/pjrt:pjrt_client",
+    ],
+)
+
+define_cpp_filegroup(name = "all_cpp_files_recursive")
+
+torch_tpu_py_test(
+    name = "trace_autograd_ops_test",
+    srcs = ["trace_autograd_ops_test.py"],
+    strict = "true",
+    tags = [
+        "cpu:4",
+        "requires-tpu-v7x",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/sync",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/api",
+    ],
+)

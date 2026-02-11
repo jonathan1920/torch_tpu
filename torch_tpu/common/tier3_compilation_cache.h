@@ -1,0 +1,45 @@
+/*
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#ifndef TORCH_TPU_COMMON_TIER3_COMPILATION_CACHE_H_
+#define TORCH_TPU_COMMON_TIER3_COMPILATION_CACHE_H_
+
+#include <string>
+
+#include "absl/status/statusor.h"
+#include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/compilation.h"
+
+namespace torch_tpu {
+
+// The environment variable that specifies the root path of the tier-3
+// compilation cache. If not set, the tier-3 compilation cache is not used.
+inline constexpr char kTier3CompilationCacheRootEnvVar[] =
+    "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT";
+
+// Returns true if the tier-3 compilation cache is enabled for this process.
+[[nodiscard]] bool UsesTier3CompilationCache();
+
+// Returns the path to the tier-3 cache file for the given key.
+[[nodiscard]] std::string GetTier3CacheEntryPath(CompilationCacheKey key);
+
+// Tries to get a loaded executable from the tier-3 compilation cache.
+absl::StatusOr<SharedLoadedExecutable> GetFromTier3Cache(
+    CompilationCacheKey key);
+
+}  // namespace torch_tpu
+
+#endif  // TORCH_TPU_COMMON_TIER3_COMPILATION_CACHE_H_

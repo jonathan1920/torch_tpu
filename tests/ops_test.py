@@ -1,0 +1,3033 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Fuzz tests for ops.
+
+For each op, we test that the result on TPU matches the result on the golden
+device (either CPU or GPU, depending on the test mode).
+"""
+
+import collections.abc
+import copy
+from typing import Any
+
+from absl.testing import absltest
+import torch
+from torch.nn import attention
+from torch_tpu._internal import env
+from torch_tpu._internal.utils import utils
+from tests import dynamism_test_utils
+from tests import op_testing
+
+# In this file, we use the following naming convention for variables:
+# - golden_*: a value for the device used for computing the golden results
+#   (either CPU or GPU)
+# - tpu_*: a value for the TPU device
+
+COMPLEX_DTYPES = op_testing.COMPLEX_DTYPES
+FLOAT_DTYPES = op_testing.FLOAT_DTYPES
+INTEGRAL_DTYPES = op_testing.INTEGRAL_DTYPES
+
+CheckValueMode = utils.CheckValueMode
+
+# OpInput and OpOutput are not used directly in this file, but needed for
+# pickling the golden results.
+OpInput = op_testing.OpInput
+OpOutput = op_testing.OpOutput
+OpVariant = op_testing.OpVariant
+TorchTpuTestBase = op_testing.TorchTpuTestBase
+
+
+def _expm1_atol(y: float) -> float:
+  """Returns the absolute tolerance for expm1() given the expected value y."""
+
+  # For expm1 (i.e. y = e^x - 1), we especially care about the precision when
+  # y is close to 0. However, a tolerance tight enough for this case is
+  # too tight for y >> 0. Without variable-tolerance, we'd be forced to
+  # pick a large tolerance for all cases, which would cause unnecessary
+  # slack in our tests.
+  #
+  # Using variable-tolerance, we:
+  #   - use a small tolerance for y < 0,
+  #   - use a large (relative) tolerance for y > 1,
+  #   - linearly interpolate the tolerance for y in [0, 1].
+  #
+  # This allows the test to be tight for y near 0 or being negative, while
+  # allowing more slack for y >> 0.
+  atol0 = 3e-6  # small tolerance
+  atol1 = 1e-5  # large tolerance
+  if y < 0:
+    return atol0
+  if y > 1:
+    return atol1 * y
+  return atol0 + (atol1 - atol0) * y
+
+
+# Overrides the default relative and absolute tolerance for the given op and
+# dtype between TPU and CPU. Two tensors are considered to match if
+#
+#   abs(tpu - cpu) <= atol + rtol * abs(cpu)
+#
+# (A common misconception is that the criteria is
+#   abs(tpu - cpu) <= min(atol, rtol * abs(cpu))
+# but that's incorrect.)
+#
+# The overrides apply to both the op and its inplace variant.
+#
+# The default tolerances are defined here:
+#   https://docs.pytorch.org/docs/stable/testing.html
+ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
+    # go/keep-sorted start
+    "_foreach_add": {
+        torch.float16: {"rtol": 5e-3, "atol": 4e-3},
+    },
+    "_foreach_addcmul": {
+        torch.bfloat16: {"rtol": 1, "atol": 7e-2},
+        torch.float16: {"rtol": 3e-1, "atol": 4e-3},
+    },
+    "_foreach_lerp": {
+        torch.bfloat16: {"rtol": 25, "atol": 3e-2},
+        torch.float16: {"rtol": 2e-1, "atol": 4e-3},
+    },
+    "_foreach_mul": {
+        torch.bfloat16: {"rtol": 1e-2, "atol": 4e-2},
+        torch.float16: {"rtol": 1e-2, "atol": 4e-2},
+        torch.complex64: {"rtol": 1.2, "atol": 1.6},
+    },
+    "_foreach_reciprocal": {
+        torch.float32: {"rtol": 1.9e-7, "atol": 1.3e-4},
+    },
+    "_log_softmax_backward_data": {
+        torch.bfloat16: {"rtol": 2e-3, "atol": 2e-1},
+        torch.float16: {"rtol": 6e-3, "atol": 2e-2},
+        torch.float32: {"rtol": 1e-5, "atol": 3e-5},
+    },
+    "_native_batch_norm_legit": {
+        torch.float64: {"rtol": 1e-2, "atol": 1e-2},
+        torch.float32: {"rtol": 1e-2, "atol": 1e-2},
+        torch.float16: {"rtol": 1e-1, "atol": 1e-1},
+        torch.bfloat16: {"rtol": 5e-1, "atol": 5e-1},
+    },
+    "_softmax_backward_data": {
+        torch.float16: {"rtol": 2e-2, "atol": 3e-3},
+        torch.bfloat16: {"rtol": 1e-4, "atol": 1e-1},
+    },
+    "acos": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "acosh": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "add": {
+        torch.float32: {"rtol": 1e-5, "atol": 1e-5},
+        torch.float16: {"rtol": 1e-3, "atol": 2e-3},
+        torch.bfloat16: {"rtol": 5e-1, "atol": 5e-1},
+    },
+    "addcdiv": {
+        torch.float16: {"rtol": 1e-3, "atol": 1e-1},
+        torch.bfloat16: {"rtol": 2e-1, "atol": 1e-1},  # Only fails on xla_cpu.
+    },
+    "addcmul": {
+        torch.float16: {"rtol": 1e-3, "atol": 3e-3},
+        torch.bfloat16: {"rtol": 1e-1, "atol": 1e-2},  # Only fails on xla_cpu.
+    },
+    "addmm": {
+        torch.bfloat16: {"rtol": 1e-2, "atol": 1e-4},
+        torch.float16: {"rtol": 1e-3, "atol": 1e-1},
+        torch.float32: {"rtol": 1.3e-6, "atol": 1.3e-1},
+    },
+    "addmv": {
+        torch.float16: {"rtol": 1e-2, "atol": 5e-2},
+    },
+    "arange": {
+        # TODO: investigate why these dtypes have such a large relative error.
+        torch.bfloat16: {"rtol": 1e-1, "atol": 1e-5},
+        torch.float16: {"rtol": 1e-2, "atol": 1e-5},
+    },
+    "asin": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "asinh": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.uint8: {"rtol": 1e-3, "atol": 1e-3},
+        torch.int8: {"rtol": 1e-3, "atol": 1e-3},
+        torch.int16: {"rtol": 1e-3, "atol": 1e-3},
+        torch.int32: {"rtol": 1e-3, "atol": 1e-3},
+        torch.int64: {"rtol": 1e-3, "atol": 1e-3},
+        torch.bool: {"rtol": 1e-3, "atol": 1e-3},
+    },
+    "atan": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "atanh": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "bmm": {
+        torch.float16: {"rtol": 1e-3, "atol": 1},
+        torch.float32: {"rtol": 1.3e-6, "atol": 6e-1},
+        torch.complex64: {"rtol": 1e-5, "atol": 1.8},
+    },
+    "cdist": {
+        torch.bfloat16: {"rtol": 7e-2, "atol": 0.13},
+        torch.float16: {"rtol": 1.1, "atol": 0.489},
+        torch.float32: {"rtol": 0.04, "atol": 0.11},
+    },
+    "cos": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "cosh": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "cumprod": {
+        torch.float16: {"rtol": 1e-2, "atol": 5e-2},
+    },
+    "cumsum": {
+        torch.float16: {"rtol": 1e-2, "atol": 5e-2},
+    },
+    "erfinv": {
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "exp": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float32: {"rtol": 1e-5, "atol": 1e-5},
+        torch.uint8: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int8: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int16: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int32: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int64: {"rtol": 1e-5, "atol": 1e-5},
+    },
+    "expm1": {
+        torch.complex64: {"rtol": 1e-5, "atol": 1e-5},
+        torch.float32: {"atol": _expm1_atol},
+        torch.uint8: {"atol": _expm1_atol},
+        torch.int8: {"atol": _expm1_atol},
+        torch.int16: {"atol": _expm1_atol},
+        torch.int32: {"atol": _expm1_atol},
+        torch.int64: {"atol": _expm1_atol},
+    },
+    "fft.rfft": {
+        torch.int16: {"rtol": 4.4e-6, "atol": 4.6e-05},
+    },
+    "fmod": {
+        torch.float32: {"rtol": 2.9e-4, "atol": 4.8e-7},
+    },
+    "lerp": {
+        torch.float16: {"rtol": 5e-3, "atol": 3e-3},
+    },
+    "lgamma": {
+        torch.float32: {"rtol": 1e-3, "atol": 1e-3},
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "linalg.lu": {
+        torch.float64: {"rtol": 3.6e-5, "atol": 2.1e-6},
+    },
+    "linalg.lu_factor_ex": {
+        torch.float64: {"rtol": 8.8e-6, "atol": 1.4e-6},
+    },
+    "linalg.solve_ex": {
+        torch.float64: {"rtol": 3.5e-6, "atol": 8.8e-7},
+    },
+    "linalg.vector_norm": {
+        torch.complex64: {"rtol": 1e-5, "atol": 1e-3},
+        torch.float32: {"rtol": 1e-5, "atol": 1e-3},
+    },
+    "log": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "log10": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "log1p": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "log2": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "log_softmax": {
+        torch.float32: {"rtol": 2e-5, "atol": 8e-5},
+        torch.float16: {"rtol": 1e-2, "atol": 5e-2},
+        torch.bfloat16: {"rtol": 3e-2, "atol": 7e-3},
+    },
+    "matmul": {
+        torch.float16: {"rtol": 1e-3, "atol": 1.2},
+        torch.float32: {"rtol": 1.3e-6, "atol": 9e-1},
+        torch.complex64: {"rtol": 1.3e-6, "atol": 1.9},
+    },
+    "mean": {
+        torch.float16: {"rtol": 1e-2, "atol": 5e-2},
+    },
+    "mm": {
+        torch.float16: {"rtol": 8.1e-2, "atol": 6.9e-1},
+        torch.float32: {"rtol": 2.4e-2, "atol": 4.7e-1},
+        torch.complex64: {"rtol": 1.4e-2, "atol": 1.5},
+    },
+    "native_batch_norm": {
+        torch.float64: {"rtol": 1e-2, "atol": 1e-2},
+        torch.float32: {"rtol": 1e-2, "atol": 1e-2},
+        torch.float16: {"rtol": 1e-1, "atol": 1e-1},
+        torch.bfloat16: {"rtol": 5e-1, "atol": 5e-1},
+    },
+    "native_layer_norm": {
+        torch.float16: {"rtol": 3e-2, "atol": 3e-2},
+        torch.bfloat16: {"rtol": 0, "atol": 5e-5},
+    },
+    "nn.functional.adaptive_avg_pool2d": {
+        torch.float16: {"rtol": 3e-2, "atol": 2e-3},
+        torch.bfloat16: {"rtol": 3e-2, "atol": 1.6e-02},
+    },
+    "nn.functional.adaptive_avg_pool3d": {
+        torch.float16: {"rtol": 3e-2, "atol": 8e-3},
+        torch.bfloat16: {"rtol": 3e-2, "atol": 4e-2},
+    },
+    "nn.functional.avg_pool2d": {
+        torch.float16: {"rtol": 5.3e-02, "atol": 1.6e-2},
+        torch.bfloat16: {"rtol": 2.8e-01, "atol": 1.3e-1},
+    },
+    "nn.functional.avg_pool3d": {
+        torch.float32: {"rtol": 0.5, "atol": 0.2},
+        torch.float64: {"rtol": 0.5, "atol": 0.2},
+    },
+    "nn.functional.batch_norm": {
+        torch.float64: {"rtol": 1e-2, "atol": 1e-2},
+        torch.float32: {"rtol": 1e-5, "atol": 1e-5},
+        torch.float16: {"rtol": 1e-1, "atol": 1e-1},
+        torch.bfloat16: {"rtol": 5e-1, "atol": 5e-1},
+    },
+    "nn.functional.conv1d": {
+        torch.float16: {"rtol": 5e-2, "atol": 5e-1},
+        torch.float32: {"rtol": 3.7e-2, "atol": 6.2e-1},
+    },
+    "nn.functional.conv2d": {
+        torch.float32: {"rtol": 2e-5, "atol": 1.1},
+        torch.float16: {"rtol": 5e-3, "atol": 1.2},
+        torch.bfloat16: {"rtol": 1e-2, "atol": 1.0},
+    },
+    "nn.functional.conv_transpose1d": {
+        torch.float16: {"rtol": 5e-2, "atol": 5e-1},
+        torch.bfloat16: {"rtol": 5e-2, "atol": 5e-1},
+        torch.float32: {"rtol": 3.7e-2, "atol": 6.2e-1},
+    },
+    "nn.functional.conv_transpose2d": {
+        torch.float32: {"rtol": 2e-5, "atol": 1.1},
+        torch.float16: {"rtol": 5e-3, "atol": 1.2},
+        torch.bfloat16: {"rtol": 1e-2, "atol": 1.0},
+    },
+    "nn.functional.elu": {
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float16: {"rtol": 1e-4, "atol": 1e-2},
+    },
+    "nn.functional.embedding": {
+        torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
+        torch.float16: {"rtol": 1e-2, "atol": 1e-2},
+    },
+    "nn.functional.gelu": {
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float16: {"rtol": 1e-4, "atol": 1e-2},
+    },
+    "nn.functional.group_norm": {
+        torch.bfloat16: {"rtol": 2e-1, "atol": 2e-2},
+        torch.float16: {"rtol": 2e-1, "atol": 2e-2},
+    },
+    "nn.functional.nll_loss": {
+        torch.float16: {"rtol": 2e-3, "atol": 1e-2},
+    },
+    "nn.functional.pdist": {
+        torch.float32: {"rtol": 4e-6, "atol": 4e-5},
+    },
+    "nn.functional.rms_norm": {
+        torch.float16: {"rtol": 5e-2, "atol": 1e-3},
+        torch.bfloat16: {"rtol": 5e-2, "atol": 1e-2},
+    },
+    "nn.functional.scaled_dot_product_attention": {
+        # this op internally calls bmm, which runs on DEFAULT precision
+        # as that is faster but requires higher tolerances.
+        # changing it to HIGHEST precision allows for lower tolerances:
+        # torch.float16: {"rtol": 1e-3, "atol": 1.2},
+        # torch.float32: {"rtol": 1.3e-6, "atol": 1.2}
+        # torch.bfloat16: {"rtol": 1.6e-2, "atol": 7.5e-1}
+        torch.float32: {"rtol": 5e-2, "atol": 2.3},
+        torch.float16: {"rtol": 2e-1, "atol": 4.0},
+        torch.bfloat16: {"rtol": 8.25, "atol": 8.05e-1},
+    },
+    "nn.functional.silu": {
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float16: {"rtol": 1e-3, "atol": 1e-2},
+        torch.bfloat16: {"rtol": 1e-2, "atol": 5e-2},
+    },
+    "nn.functional.upsample_bilinear": {
+        torch.float32: {"rtol": 3.8e-06, "atol": 1e-5},
+    },
+    "pow": {
+        torch.complex64: {"rtol": 1e-3, "atol": 1e-4},
+        torch.float32: {"rtol": 5e-6, "atol": 1e-5},
+    },
+    "remainder": {
+        # GPU vs CPU float16 edge case: 7.1797 % 0.3779
+        torch.float16: {"rtol": 5e-1, "atol": 1.0},
+    },
+    "sigmoid": {
+        torch.float32: {"rtol": 5e-2, "atol": 2e-5},
+        torch.uint8: {"rtol": 1e-2, "atol": 2e-5},
+        torch.int8: {"rtol": 1e-2, "atol": 2e-5},
+        torch.int16: {"rtol": 1e-2, "atol": 2e-5},
+        torch.int32: {"rtol": 1e-2, "atol": 2e-5},
+        torch.int64: {"rtol": 1e-2, "atol": 2e-5},
+    },  # TODO(b/433380919): Fix the numerical issue.
+    "sin": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "sinh": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "softmax": {
+        torch.float16: {"rtol": 1e-2, "atol": 5e-2},
+    },
+    "sub": {
+        torch.float16: {"rtol": 7e-3, "atol": 1e-2},
+        torch.bfloat16: {"rtol": 6e-3, "atol": 1e-1},
+    },
+    "sum": {
+        torch.float16: {"rtol": 1e-2, "atol": 5e-2},
+    },
+    "tan": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "tanh": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float16: {"rtol": 1e-3, "atol": 1e-3},
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-4},
+    },
+    "var": {
+        torch.float16: {"rtol": 1e-2, "atol": 5e-2},
+        torch.float32: {"rtol": 5e-6, "atol": 5e-4},
+    },
+    # go/keep-sorted end
+}
+
+
+def update_dict(d, u):
+  """Recursively update a dictionary to override tolerance values."""
+  for k, v in u.items():
+    if isinstance(v, collections.abc.Mapping):
+      d[k] = update_dict(d.get(k, {}), v)
+    else:
+      d[k] = v
+  return d
+
+
+# XLA:CPU overrides based on TPU overrides
+ACCURACY_OVERRIDES_XLA_CPU_VS_CPU: dict[
+    str, dict[torch.dtype, dict[str, float]]
+] = update_dict(
+    copy.deepcopy(ACCURACY_OVERRIDES_VS_CPU),
+    {
+        "_log_softmax_backward_data": {
+            torch.bfloat16: {"rtol": 2e-2, "atol": 5e-1},
+        },
+        "asinh": {
+            torch.float16: {"rtol": 2e-3, "atol": 2e-3},
+        },
+        "cumsum": {
+            torch.bfloat16: {"rtol": 5e-2, "atol": 5e-2},
+        },
+        "cdist": {
+            torch.bfloat16: {"rtol": 3e-2, "atol": 0.13},
+            torch.float16: {"rtol": 2e-2, "atol": 3e-3},
+        },
+        "lerp": {
+            torch.bfloat16: {"rtol": 3e-2, "atol": 1e-2},
+        },
+        "nn.functional.conv1d": {
+            torch.float16: {"rtol": 5e-2, "atol": 5e-2},
+        },
+        "log_softmax": {
+            torch.bfloat16: {"rtol": 1.0, "atol": 8e-3},
+        },
+        "mean": {
+            torch.bfloat16: {"rtol": 1e-2, "atol": 5e-2},
+        },
+        "native_layer_norm": {
+            torch.bfloat16: {"rtol": 5e-2, "atol": 5e-3},
+        },
+        "nn.functional.gelu": {
+            torch.bfloat16: {"rtol": 4e-1, "atol": 3e-3},
+        },
+        "nn.functional.elu": {
+            torch.bfloat16: {"rtol": 4e-1, "atol": 3e-3},
+        },
+        "nn.functional.embedding": {
+            torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
+        },
+        "nn.functional.group_norm": {
+            torch.bfloat16: {"rtol": 4e-1, "atol": 4e-2},
+            torch.float16: {"rtol": 2e-1, "atol": 3e-2},
+        },
+        "nn.functional.scaled_dot_product_attention": {
+            torch.float32: {"rtol": 1e-2, "atol": 3e-5},
+            torch.bfloat16: {"rtol": 2e-1, "atol": 5e-3},
+        },
+        "softmax": {torch.bfloat16: {"rtol": 3e-2, "atol": 5e-4}},
+        "sum": {
+            torch.bfloat16: {"rtol": 1e-2, "atol": 5e-2},
+        },
+    },
+)
+
+# Like ACCURACY_OVERRIDES_VS_CPU, but for TPU vs GPU instead.
+ACCURACY_OVERRIDES_VS_GPU = {
+    # go/keep-sorted start
+    "_foreach_add": {
+        torch.bfloat16: {"rtol": 6.8e-1, "atol": 1.5e-3},
+        torch.float16: {"rtol": 4e-3, "atol": 4e-3},
+    },
+    "_foreach_addcdiv": {
+        torch.float16: {"rtol": 3.4e-2, "atol": 2.3e-3},
+    },
+    "_foreach_addcmul": {
+        torch.bfloat16: {"rtol": 2.2e-1, "atol": 2.4e-2},
+        torch.float16: {"rtol": 1.6e-1, "atol": 3.5e-3},
+    },
+    "_foreach_lerp": {
+        torch.float16: {"rtol": 1.2e-1, "atol": 4e-3},
+    },
+    "_foreach_log": {
+        torch.complex64: {"rtol": 2.4e-4, "atol": 3.3e-5},
+        torch.float32: {"rtol": 2.2e-4, "atol": 6.9e-5},
+    },
+    "_foreach_log10": {
+        torch.complex64: {"rtol": 2.1e-4, "atol": 3.0e-5},
+        torch.float32: {"rtol": 2.5e-4, "atol": 2.9e-5},
+    },
+    "_foreach_mul": {
+        torch.bfloat16: {"rtol": 7.9e-3, "atol": 6.3e-2},
+        torch.float16: {"rtol": 9.8e-4, "atol": 7.9e-3},
+        torch.complex64: {"rtol": 1.2e-7, "atol": 1.6e-5},
+    },
+    "_foreach_sub": {
+        torch.bfloat16: {"rtol": 5.9e-2, "atol": 2.0e-3},
+        torch.float16: {"rtol": 2.1e-2, "atol": 3.0e-3},
+    },
+    "_foreach_tan": {
+        torch.complex64: {"rtol": 3.1e-5, "atol": 7.0e-4},
+    },
+    "_log_softmax_backward_data": {
+        torch.float16: {"rtol": 2e-3, "atol": 2e-3},
+        torch.float32: {"rtol": 1e-5, "atol": 1e-4},
+    },
+    "_softmax_backward_data": {
+        torch.bfloat16: {"rtol": 0.017, "atol": 3e-2},
+        torch.float16: {"rtol": 1e-3, "atol": 1e-3},
+    },
+    "acos": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-5},
+    },
+    "acosh": {
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-5},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-5},
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-5},
+    },
+    "add": {
+        torch.float16: {"rtol": 5e-3, "atol": 1e-3},
+    },
+    "addcdiv": {
+        torch.bfloat16: {"rtol": 0.016, "atol": 3e-2},
+        torch.float16: {"rtol": 1e-2, "atol": 1e-3},
+    },
+    "addcmul": {
+        torch.float16: {"rtol": 3e-3, "atol": 1e-3},
+    },
+    "addmm": {
+        torch.float16: {"rtol": 1e-3, "atol": 1e-1},
+        torch.float32: {"rtol": 1.3e-6, "atol": 1.3e-1},
+    },
+    "arange": {
+        torch.bfloat16: {"rtol": 1e-1, "atol": 1e-5},
+        torch.float16: {"rtol": 1e-2, "atol": 1e-5},
+    },
+    "asin": {
+        torch.complex64: {"rtol": 1e-3, "atol": 1e-5},
+    },
+    "asinh": {
+        torch.bool: {"rtol": 1e-4, "atol": 1e-5},
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-5},
+        torch.float32: {"rtol": 1e-3, "atol": 1e-5},
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-5},
+    },
+    "atan": {
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-5},
+    },
+    "atanh": {
+        torch.float32: {"rtol": 1e-3, "atol": 1e-5},
+        torch.complex64: {"rtol": 1e-3, "atol": 1e-5},
+    },
+    "bmm": {
+        torch.float16: {"rtol": 1.7, "atol": 6.5e-1},
+        torch.float32: {"rtol": 1.6, "atol": 8.6e-1},
+        torch.complex64: {"rtol": 1.3e-6, "atol": 1.5},
+    },
+    "cdist": {
+        torch.bfloat16: {"rtol": 3.1, "atol": 3.9e-1},
+        torch.float16: {"rtol": 7.8e-2, "atol": 3.5e-2},
+        torch.float32: {"rtol": 2.1e-4, "atol": 2.0e-4},
+    },
+    "cos": {
+        torch.complex64: {"rtol": 1e-5, "atol": 1e-5},
+    },
+    "cosh": {
+        torch.uint8: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int8: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int16: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int32: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int64: {"rtol": 1e-5, "atol": 1e-5},
+        torch.float32: {"rtol": 1e-5, "atol": 1e-5},
+        torch.complex64: {"rtol": 1e-5, "atol": 1e-5},
+    },
+    "cumsum": {
+        torch.bfloat16: {"rtol": 1e-1, "atol": 1e-2},
+        torch.float16: {"rtol": 1e-2, "atol": 1e-2},
+    },
+    "erfinv": {
+        torch.float32: {"rtol": 1e-4, "atol": 1e-5},
+    },
+    "exp": {
+        torch.uint8: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int8: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int16: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int32: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int64: {"rtol": 1e-5, "atol": 1e-5},
+        torch.float32: {"rtol": 1e-5, "atol": 1e-5},
+        torch.complex64: {"rtol": 1e-5, "atol": 1e-5},
+    },
+    "expm1": {
+        torch.uint8: {"atol": _expm1_atol},
+        torch.int8: {"atol": _expm1_atol},
+        torch.int16: {"atol": _expm1_atol},
+        torch.int32: {"atol": _expm1_atol},
+        torch.int64: {"atol": _expm1_atol},
+        torch.float32: {"atol": _expm1_atol},
+        torch.complex64: {"rtol": 1e-5, "atol": 1e-5},
+    },
+    "fmod": {
+        torch.float32: {"rtol": 3.5e-5, "atol": 4.8e-7},
+    },
+    "lgamma": {
+        torch.float16: {"rtol": 1.3e-2, "atol": 1.5e-4},
+        torch.float32: {"rtol": 1.3e-2, "atol": 2.6e-4},
+        torch.uint8: {"rtol": 1.3e-4, "atol": 2.3e-4},
+        torch.int8: {"rtol": 1.3e-4, "atol": 2.3e-4},
+        torch.int16: {"rtol": 1.3e-4, "atol": 2.3e-4},
+        torch.int32: {"rtol": 1.3e-4, "atol": 2.3e-4},
+        torch.int64: {"rtol": 1.3e-4, "atol": 2.3e-4},
+    },
+    "linalg.vector_norm": {
+        torch.complex64: {"rtol": 5.3e-6, "atol": 5.1e-4},
+        torch.float32: {"rtol": 5.1e-6, "atol": 2.5e-4},
+    },
+    "log": {
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-5},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-5},
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-5},
+    },
+    "log10": {
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-5},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-5},
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-5},
+    },
+    "log1p": {
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-5},
+        torch.float32: {"rtol": 1e-3, "atol": 1e-5},
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-5},
+    },
+    "log2": {
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-5},
+        torch.float16: {"rtol": 5e-2, "atol": 5e-2},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-5},
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-5},
+    },
+    "log_softmax": {
+        torch.float16: {"rtol": 1e-1, "atol": 1e-3},
+        torch.float32: {"rtol": 1e-3, "atol": 1e-3},
+        torch.bfloat16: {"rtol": 3e-2, "atol": 7e-3},
+    },
+    "matmul": {
+        torch.float16: {"rtol": 1e-3, "atol": 9e-1},
+        torch.float32: {"rtol": 1.3e-6, "atol": 9e-1},
+        torch.complex64: {"rtol": 1.3e-6, "atol": 1.9},
+    },
+    "mean": {
+        torch.float16: {"rtol": 5e-3, "atol": 5e-4},
+    },
+    "mm": {
+        torch.float16: {"rtol": 4e-2, "atol": 4.3e-1},
+        torch.float32: {"rtol": 4.4e-2, "atol": 3.5e-1},
+        torch.complex64: {"rtol": 3.2e-2, "atol": 1.2},
+    },
+    "native_batch_norm": {
+        torch.bfloat16: {"rtol": 1e-1, "atol": 1e-5},
+        torch.float16: {"rtol": 1e-1, "atol": 1e-5},
+        torch.float32: {"rtol": 1e-2, "atol": 1e-5},
+        torch.float64: {"rtol": 1e-2, "atol": 1e-5},
+    },
+    "native_layer_norm": {
+        torch.bfloat16: {"rtol": 2e-2, "atol": 6e-3},
+        torch.float16: {"rtol": 2e-3, "atol": 5e-4},
+    },
+    "nn.functional.batch_norm": {
+        torch.bfloat16: {"rtol": 1e-2, "atol": 1e-1},
+        torch.float16: {"rtol": 5e-3, "atol": 5e-2},
+    },
+    "nn.functional.conv1d": {
+        torch.float16: {"rtol": 1e-3, "atol": 4.1e-1},
+        torch.float32: {"rtol": 1e-3, "atol": 4.4e-01},
+    },
+    "nn.functional.conv2d": {
+        torch.bfloat16: {"rtol": 1.0, "atol": 5e-2},
+        torch.float16: {"rtol": 1e-1, "atol": 5.1e-1},
+        torch.float32: {"rtol": 1e-2, "atol": 6.6e-1},
+    },
+    "nn.functional.embedding": {
+        torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
+        torch.float16: {"rtol": 1e-2, "atol": 1e-2},
+    },
+    "nn.functional.gelu": {
+        torch.float16: {"rtol": 1e-1, "atol": 5e-4},
+        torch.float32: {"rtol": 1e-2, "atol": 1e-5},
+    },
+    "nn.functional.group_norm": {
+        torch.bfloat16: {"rtol": 4.1, "atol": 4.0},
+        torch.float16: {"rtol": 8.9e-2, "atol": 5.0e-2},
+        torch.float32: {"rtol": 6.7e-4, "atol": 6.6e-4},
+    },
+    "nn.functional.nll_loss": {
+        torch.bfloat16: {"rtol": 1e-2, "atol": 3e-1},
+        torch.float16: {"rtol": 1e-3, "atol": 1e-2},
+    },
+    "nn.functional.scaled_dot_product_attention": {
+        torch.bfloat16: {"rtol": 1.6e-2, "atol": 1},
+        torch.float16: {"rtol": 1e-3, "atol": 8e-1},
+        torch.float32: {"rtol": 1.3e-6, "atol": 3},
+    },
+    "nn.functional.silu": {
+        torch.bfloat16: {"rtol": 1e-1, "atol": 1e-5},
+        torch.float16: {"rtol": 1e-1, "atol": 1e-5},
+        torch.float32: {"rtol": 1e-1, "atol": 1e-5},
+    },
+    "pow": {
+        torch.float32: {"rtol": 1e-3, "atol": 1e-5},
+        torch.complex64: {"rtol": 1e-3, "atol": 1e-5},
+    },
+    "scatter": {
+        torch.int8: {"rtol": 1e-5, "atol": 1},
+        torch.int16: {"rtol": 1e-5, "atol": 1},
+        torch.int32: {"rtol": 1e-5, "atol": 1},
+        torch.int64: {"rtol": 1e-5, "atol": 1},
+    },
+    "sigmoid": {
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int8: {"rtol": 1e-2, "atol": 1e-5},
+        torch.int16: {"rtol": 1e-2, "atol": 1e-5},
+        torch.int32: {"rtol": 1e-2, "atol": 1e-5},
+        torch.int64: {"rtol": 1e-2, "atol": 1e-5},
+        torch.float16: {"rtol": 1e-1, "atol": 1e-5},
+        torch.float32: {"rtol": 1e-1, "atol": 1e-5},
+    },
+    "sin": {
+        torch.complex64: {"rtol": 1e-5, "atol": 1e-5},
+    },
+    "sinh": {
+        torch.uint8: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int8: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int16: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int32: {"rtol": 1e-5, "atol": 1e-5},
+        torch.int64: {"rtol": 1e-5, "atol": 1e-5},
+        torch.float32: {"rtol": 1e-5, "atol": 1e-5},
+        torch.complex64: {"rtol": 1e-5, "atol": 1e-5},
+    },
+    "softmax": {
+        torch.bfloat16: {"rtol": 5e-2, "atol": 5e-4},
+        torch.float16: {"rtol": 5e-3, "atol": 5e-5},
+    },
+    "tan": {
+        torch.complex64: {"rtol": 1e-5, "atol": 1e-5},
+    },
+    "tanh": {
+        torch.uint8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int8: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int16: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int32: {"rtol": 1e-4, "atol": 1e-5},
+        torch.int64: {"rtol": 1e-4, "atol": 1e-5},
+        torch.float32: {"rtol": 1e-4, "atol": 1e-5},
+        torch.complex64: {"rtol": 1e-4, "atol": 1e-5},
+    },
+    "topk": {
+        torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
+        torch.float32: {"rtol": 1e-5, "atol": 1e-5},
+    },
+    "var": {
+        torch.float16: {"rtol": 5e-3, "atol": 1e-1},
+        torch.float32: {"rtol": 5e-6, "atol": 1e-4},
+    },
+    # go/keep-sorted end
+}
+
+# The gradient tolerances are based on the forward pass tolerances.
+ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
+    update_dict(
+        copy.deepcopy(ACCURACY_OVERRIDES_VS_CPU),
+        {
+            # go/keep-sorted start
+            "acos": {
+                torch.float16: {"rtol": 3e-3, "atol": 2e-2},
+            },
+            "asin": {
+                torch.float16: {"rtol": 3e-3, "atol": 2e-2},
+            },
+            "atan": {
+                torch.float16: {"rtol": 2e-3, "atol": 1e-4},
+            },
+            "atan2": {
+                torch.bfloat16: {"rtol": 2e-2, "atol": 2e-2},
+                torch.float16: {"rtol": 2e-3, "atol": 2e-3},
+            },
+            "atanh": {
+                torch.bfloat16: {"rtol": 2e-2, "atol": 3e-1},
+                torch.float16: {"rtol": 1e-3, "atol": 3e-1},
+                torch.float32: {"rtol": 4e-4, "atol": 8e-2},
+            },
+            "erf": {
+                torch.bfloat16: {"rtol": 2e-2, "atol": 3e-4},
+                torch.float16: {"rtol": 2e-3, "atol": 1e-4},
+            },
+            "erfinv": {
+                torch.float16: {"rtol": 2e-3, "atol": 4e-2},
+            },
+            "mm": {
+                torch.float16: {"rtol": 1e-1, "atol": 7e-2},
+                torch.float32: {"rtol": 9e-1, "atol": 6e-2},
+            },
+            "nn.functional.gelu": {
+                torch.bfloat16: {"rtol": 2e-2, "atol": 4e-4},
+                torch.float32: {"rtol": 7e-3, "atol": 2e-4},
+            },
+            "nn.functional.group_norm": {
+                torch.bfloat16: {"rtol": 6e-1, "atol": 3e-2},
+                torch.float32: {"rtol": 1.7, "atol": 3e-1},
+                torch.float64: {"rtol": 1.7, "atol": 5e-2},
+            },
+            "reciprocal": {
+                torch.float32: {"rtol": 1.9e-7, "atol": 1.3e-4},
+            },
+            "rsqrt": {
+                torch.bfloat16: {"rtol": 2e-2, "atol": 1e-3},
+                torch.float16: {"rtol": 2e-3, "atol": 1e-4},
+            },
+            "tan": {
+                torch.float32: {"rtol": 1e-5, "atol": 2e-2},
+            },
+            "var": {
+                torch.bfloat16: {"rtol": 3e-1, "atol": 2e-2},
+            },
+            # go/keep-sorted end
+        },
+    )
+)
+
+
+# Returns true for test cases that trigger GPU bug.
+#
+# This function detects test cases that run `clamp_()` on an input tensor of
+# dtype `uint8`, and on tensor arguments that hold negative elements. This
+# pattern triggers a known PyTorch GPU bug.
+#
+# Note that this also affects both `clamp_min_()` and `clamp_max_()`, since
+# their implementation is technically the same as `clamp_()`.
+#
+# More details: the bug is actually in the GPU implementation of `maximum()` and
+# `minimum()`. More specifically, PyTorch wasn't promoting the inputs for those
+# ops.
+#
+# Ref: https://github.com/pytorch/pytorch/issues/173110
+#
+# TODO: b/478321000 remove when PyTorch#173110 is fixed.
+def _inplace_clamp_input_has_negative_values_uint8_cuda(
+    golden_device_type: str,
+    variant: OpVariant,
+    op_input: OpInput,
+) -> bool:
+
+  # Returns True if `arg` is a tensor, and it holds a negative value.
+  def is_tensor_and_has_negative_values(arg: Any) -> bool:
+    # Short-circuit non-tensor arguments.
+    if not isinstance(arg, torch.Tensor):
+      return False
+
+    # Check that `torch.any()` is actually run on CPU so as not to cause any
+    # undesireable noise when measuring performance.
+    assert (
+        arg.device.type == "cpu"
+    ), "pre-processing golden results should be run on CPU device."
+
+    return torch.any(arg < 0)
+
+  return (
+      # PyTorch GPU implementation bug.
+      golden_device_type == "gpu"
+      # Main input should be a `uint8` tensor.
+      and isinstance(op_input.input_value, torch.Tensor)
+      and op_input.input_value.dtype == torch.uint8
+      # Only on in-place variant.
+      # It also happens on out-of-place variant, but only when the output tensor
+      # is of the same dtype as the main input tensor.
+      and variant == OpVariant.INPLACE
+      # There should be at least one tensor argument (min or max) that holds a
+      # negative value. This will cause overflow on dtype conversion.
+      and any(is_tensor_and_has_negative_values(arg) for arg in op_input.args)
+  )
+
+
+class TestOps(TorchTpuTestBase):
+  """Tests for ops using randomly generated inputs."""
+
+  # TODO: add tests for the following ops:
+  # go/keep-sorted start
+  # _local_scalar_dense
+  # index_select
+  # native_dropout
+  # relu_
+  # go/keep-sorted end
+
+  def setUp(self):
+    super().setUp()
+    self.set_accuracy_overrides(
+        tpu_cpu_overrides=ACCURACY_OVERRIDES_VS_CPU,
+        xla_cpu_cpu_overrides=ACCURACY_OVERRIDES_XLA_CPU_VS_CPU,
+        tpu_gpu_overrides=ACCURACY_OVERRIDES_VS_GPU,
+        grad_overrides=ACCURACY_OVERRIDES_GRAD,
+    )
+    self.set_dynamism_handlers(
+        dynamism_test_utils.verify_op_supports_dynamism,
+        dynamism_test_utils.mark_input_dynamic,
+    )
+
+  def test_abs(self):
+    self.do_test_op(
+        "abs",
+        # TODO: fix abs() failing with bool dtypes.
+        exclude_dtypes={"gpu": (torch.bool,)},
+        exclude_inplace_dtypes={"gpu": (torch.bool,)},
+    )
+
+  def test_acos(self):
+    self.do_test_op(
+        "acos",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_acosh(self):
+    self.do_test_op(
+        "acosh",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_adaptive_avg_pool2d(self):
+    self.do_test_op(
+        "nn.functional.adaptive_avg_pool2d",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_adaptive_avg_pool3d(self):
+    self.do_test_op(
+        "nn.functional.adaptive_avg_pool3d",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_add(self):
+    self.do_test_op(
+        "add",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_addcdiv(self):
+    self.do_test_op(
+        "addcdiv",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_addcmul(self):
+    self.do_test_op(
+        "addcmul",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_addmm(self):
+    self.do_test_op(
+        "addmm",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: XLA doesn't support complex dtypes currently. Fails with:
+        # algebraic_simplifier.cc:584] Check failed: computation->Accept(this)
+        # is OK (UNIMPLEMENTED: Converting from type C128 to type F32 is not
+        # implemented.
+        exclude_dtypes={
+            "cpu": COMPLEX_DTYPES,
+            # TODO: make addmm fail for integral dtypes to match GPU.
+            "gpu": COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        },
+        # TODO: XLA doesn't support complex dtypes currently. Fails with:
+        # algebraic_simplifier.cc:584] Check failed: computation->Accept(this)
+        # is OK (UNIMPLEMENTED: Converting from type C128 to type F32 is not
+        # implemented.
+        exclude_inplace_dtypes={
+            "cpu": COMPLEX_DTYPES,
+            "gpu": COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        },
+    )
+
+  def test_addmv(self):
+    # TODO: make addmv fail for integral dtypes to match GPU.
+    self.do_test_op(
+        "addmv",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        exclude_dtypes={"gpu": INTEGRAL_DTYPES},
+        exclude_inplace_dtypes={"gpu": INTEGRAL_DTYPES},
+    )
+
+  def test_all(self):
+    self.do_test_op("all")
+
+  def test_any(self):
+    self.do_test_op("any")
+
+  def test_amax(self):
+    self.do_test_op("amax")
+
+  def test_amin(self):
+    self.do_test_op("amin")
+
+  def test_aminmax(self):
+    self.do_test_op(
+        "aminmax",
+        # TODO: make this work with complex dtypes.
+        exclude_dtypes=COMPLEX_DTYPES,
+    )
+
+  def test_arange(self):
+    """Tests arange, arange.start, arange.out, arange.start_step, arange.start_out."""
+
+    self.do_test_op(
+        "arange",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix arange(out=...) failing.
+        check_out_variant=False,
+        # TODO: fix arange() succeeding for bool and complex types (it should
+        # fail).
+        # TODO: fix arange() returning wrong results for uint8 and int64.
+        exclude_dtypes=(torch.bool, torch.uint8, torch.int64) + COMPLEX_DTYPES,
+        # NOTE: the test sample contains torch.arange(5), which *should*
+        # return a tensor on CPU. Therefore we don't check that the result
+        # is on TPU.
+        check_device=False,
+    )
+
+  def test_argmax(self):
+    self.do_test_op(
+        "argmax",
+        exclude_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+    )
+
+  def test_argmin(self):
+    self.do_test_op(
+        "argmin",
+        exclude_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+    )
+
+  def test_as_strided(self):
+    self.do_test_op("as_strided")
+
+  def test_asin(self):
+    self.do_test_op(
+        "asin",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_asinh(self):
+    self.do_test_op(
+        "asinh",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_atan(self):
+    self.do_test_op(
+        "atan",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_atan2(self):
+    self.do_test_op("atan2")
+
+  def test_atanh(self):
+    self.do_test_op(
+        "atanh",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_avg_pool2d(self):
+    self.do_test_op(
+        "nn.functional.avg_pool2d",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix avg_pool2d() succeeding for int64 on TPU.
+        exclude_dtypes={"gpu": (torch.int64,)},
+    )
+
+  def test_avg_pool3d(self):
+    self.do_test_op(
+        "nn.functional.avg_pool3d",
+        # TODO: fix the error avg_pool3d_backward.grad_input is unimplemented.
+        check_grad=False,
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_bincount(self):
+    self.do_test_op(
+        "bincount",
+        # Excluded because they are not supported as input to bincount and
+        # because the op_testing code fails to generate random inputs when
+        # these types are enabled.
+        exclude_dtypes=COMPLEX_DTYPES + FLOAT_DTYPES + (torch.bool,),
+    )
+
+  def test_bitwise_and(self):
+    self.do_test_op("bitwise_and")
+
+  def test_bitwise_left_shift(self):
+    self.do_test_op("bitwise_left_shift")
+
+  def test_bitwise_not(self):
+    self.do_test_op(
+        "bitwise_not",
+        # TODO: fix bitwise_not() succeeding on TPU with float inputs.
+        check_op_failures=False,
+        # TODO: fix bitwise_not_() succeeding on TPU with float inputs.
+        check_inplace_op_failures=False,
+    )
+
+  def test_bitwise_or(self):
+    self.do_test_op("bitwise_or")
+
+  def test_bitwise_right_shift(self):
+    self.do_test_op("bitwise_right_shift")
+
+  def test_bitwise_xor(self):
+    self.do_test_op("bitwise_xor")
+
+  def test_bmm(self):
+    self.do_test_op(
+        "bmm",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        exclude_dtypes={
+            # TODO: make bmm fail for integral dtypes to match GPU.
+            "gpu": INTEGRAL_DTYPES,
+        },
+    )
+
+  def test_cat(self):
+    self.do_test_op("cat")
+
+  def test_cdist_forward(self):
+    # TODO: b/470453016 look into the high relative error for bfloat16.
+    # torch.bfloat16: {"rtol": 3.1, "atol": 3.9e-1}
+    self.do_test_op(
+        "cdist",
+        # TODO: fix the error _cdist_backward is unimplemented.
+        check_grad=False,
+        # Limit the number of samples per dtype to avoid timeout.
+        max_samples_per_op_dtype=20,
+        # TODO: look into making this STRICT.
+        # TODO: look into sometimes tests will fall into certain
+        # CPU implementation.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_ceil(self):
+    self.do_test_op(
+        "ceil",
+        # TODO: fix ceil() failing with integral dtypes.
+        exclude_dtypes=INTEGRAL_DTYPES,
+        # TODO: fix ceil_() failing with integral dtypes.
+        exclude_inplace_dtypes=INTEGRAL_DTYPES,
+    )
+
+  def test_clamp(self):
+    self.do_test_op(
+        "clamp",
+        # b/446131726 - clamp() fails on TPU with bool dtypes but works on GPU.
+        exclude_dtypes=(torch.bool,),
+        exclude_inplace_dtypes=(torch.bool,),
+        # TODO: b/478321000 remove when PyTorch#173110 is fixed.
+        skip_if=_inplace_clamp_input_has_negative_values_uint8_cuda,
+    )
+
+  def test_clamp_min(self):
+    self.do_test_op(
+        "clamp_min",
+        # TODO: this is excluded because it fails on the cpu due to maximum_cpu
+        # not being implemented for torch.complex64. However it works on TPU.
+        exclude_dtypes=(torch.complex64,),
+        # xla_cuda: https://github.com/openxla/stablehlo/issues/560
+        exclude_inplace_dtypes=(torch.complex64,),
+        # TODO: b/478321000 remove when PyTorch#173110 is fixed.
+        skip_if=_inplace_clamp_input_has_negative_values_uint8_cuda,
+    )
+
+  def test_clamp_max(self):
+    self.do_test_op(
+        "clamp_max",
+        # TODO: this is excluded because it fails on the cpu due to minimum_cpu
+        # not being implemented for torch.complex64. However it works on TPU.
+        exclude_dtypes=(torch.complex64,),
+        # xla_cuda: https://github.com/openxla/stablehlo/issues/560
+        exclude_inplace_dtypes=(torch.complex64,),
+        # TODO: b/478321000 remove when PyTorch#173110 is fixed.
+        skip_if=_inplace_clamp_input_has_negative_values_uint8_cuda,
+    )
+
+  def test_clone(self):
+    self.do_test_op("clone")
+
+  def test_complex(self):
+    self.do_test_op(
+        "complex",
+        # TODO: XLA does not support complex<f16> dtype and complex<f64>.
+        exclude_dtypes=(torch.float16, torch.float64),
+    )
+
+  def test_conj(self):
+    self.do_test_op("conj", exclude_dtypes=(torch.complex128,))
+
+  def test_conj_physical(self):
+    self.do_test_op(
+        "conj_physical",
+        # TODO: b/448907643 - there is a problem with the plumbing of the
+        # inplace variant.
+        exclude_inplace_dtypes=COMPLEX_DTYPES,
+    )
+
+  def test_constant_pad_nd(self):
+    self.do_test_op(
+        "constant_pad_nd",
+        # TODO: fix constant_pad_nd() crashing with complex dtypes.
+        exclude_dtypes=COMPLEX_DTYPES,
+    )
+
+  def test_cos(self):
+    self.do_test_op(
+        "cos",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_cosh(self):
+    self.do_test_op(
+        "cosh",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_cumprod(self):
+    self.do_test_op(
+        "cumprod",
+        # TODO: fix the error flip is unimplemented.
+        check_grad=False,
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_cumsum(self):
+    self.do_test_op(
+        "cumsum",
+        # TODO: fix the error flip is unimplemented.
+        check_grad=False,
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_diagonal(self):
+    self.do_test_op("diagonal")
+
+  def test_div(self):
+    self.do_test_op(
+        "div",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_dot(self):
+    self.do_test_op(
+        "dot",
+        exclude_dtypes={
+            # TODO: fix dot() succeeding with uint8, int8, int16, int32, int64
+            # (it should fail to match GPU).
+            "gpu": (
+                COMPLEX_DTYPES
+                + (
+                    torch.uint8,
+                    torch.int8,
+                    torch.int16,
+                    torch.int32,
+                    torch.int64,
+                )
+            ),
+        },
+        # Relaxes the comparison mode from STRICT to LOOSE for floating point
+        # precision differences. The absolute difference between the expected
+        # and actual results can be slightly above the strict tolerance of
+        # 1e-05.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_native_dropout_backward(self):
+    self.do_test_op("native_dropout_backward")
+
+  def test_embedding(self):
+    self.do_test_op(
+        "nn.functional.embedding",
+        check_grad=False,
+        # TODO: fix embedding() failing with complex dtypes.
+        exclude_dtypes=COMPLEX_DTYPES,
+    )
+
+  def test_empty(self):
+    self.do_test_op(
+        "empty",
+        # empty returns a tensor filled with uninitialized data. Tensor content
+        # has no meaning.
+        check_value=CheckValueMode.SKIP,
+    )
+
+  def test_empty_strided(self):
+    self.do_test_op(
+        "empty_strided",
+        # empty returns a tensor filled with uninitialized data. Tensor content
+        # has no meaning.
+        check_value=CheckValueMode.SKIP,
+    )
+
+  def test_eq(self):
+    self.do_test_op("eq")
+
+  def test_equal(self):
+    self.do_test_op("equal")
+
+  def test_erf(self):
+    self.do_test_op(
+        "erf",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_erfinv(self):
+    self.do_test_op(
+        "erfinv",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_exp(self):
+    self.do_test_op(
+        "exp",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_expm1(self):
+    self.do_test_op(
+        "expm1",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_expand(self):
+    self.do_test_op("expand")
+
+  def test_exponential(self):
+    self.do_test_op(
+        "exponential",
+        # By definition, exponential() returns a tensor with random values, so
+        # there's no point in checking the values.
+        check_value=CheckValueMode.SKIP,
+    )
+
+  def test_fft_rfft(self):
+    self.do_test_op(
+        "fft.rfft",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: float64 is not supported for fft.rfft on TPU.
+        exclude_dtypes=(torch.float64,),
+    )
+
+  def test_fill(self):
+    self.do_test_op("fill")
+
+  def test_flatten(self):
+    # TODO: check flatten is being properly exercised.
+    self.do_test_op("flatten")
+
+  def test_floor(self):
+    self.do_test_op(
+        "floor",
+        # TODO: fix floor() failing with integral dtypes.
+        exclude_dtypes=INTEGRAL_DTYPES,
+        # TODO: fix floor_() failing with integral dtypes.
+        exclude_inplace_dtypes=INTEGRAL_DTYPES,
+    )
+
+  def test_floor_divide(self):
+    self.do_test_op(
+        "floor_divide",
+        # TODO: cpu does incorrect rounding for bfloat16 and float16.
+        exclude_dtypes=(torch.bfloat16, torch.float16),
+        exclude_inplace_dtypes=(torch.bfloat16, torch.float16),
+    )
+
+  def test_flip(self):
+    self.do_test_op("flip")
+
+  def test_fmax(self):
+    self.do_test_op(
+        "fmax",
+        exclude_dtypes=INTEGRAL_DTYPES,
+    )
+
+  def test_fmod(self):
+    self.do_test_op("fmod")
+
+  def test_foreach_abs(self):
+    self.do_test_op(
+        "_foreach_abs",
+        # TODO: fix abs() failing with bool dtypes.
+        exclude_dtypes={"gpu": (torch.bool,)},
+        exclude_inplace_dtypes={"gpu": (torch.bool,)},
+    )
+
+  def test_foreach_acos(self):
+    self.do_test_op(
+        "_foreach_acos",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_add(self):
+    self.do_test_op(
+        "_foreach_add",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix _foreach_add() failing with complex dtypes.
+        exclude_dtypes=COMPLEX_DTYPES,
+        # TODO: fix _foreach_add_() failing with complex dtypes.
+        exclude_inplace_dtypes=COMPLEX_DTYPES,
+    )
+
+  def test_foreach_addcdiv(self):
+    self.do_test_op(
+        "_foreach_addcdiv",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_addcmul(self):
+    self.do_test_op(
+        "_foreach_addcmul",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_asin(self):
+    self.do_test_op(
+        "_foreach_asin",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_atan(self):
+    self.do_test_op(
+        "_foreach_atan",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_ceil(self):
+    self.do_test_op(
+        "_foreach_ceil",
+        # TODO: fix ceil() failing with integral dtypes.
+        exclude_dtypes=INTEGRAL_DTYPES,
+        # TODO: fix ceil_() failing with integral dtypes.
+        exclude_inplace_dtypes=INTEGRAL_DTYPES,
+    )
+
+  def test_foreach_clamp_max(self):
+    self.do_test_op(
+        "_foreach_clamp_max",
+        # TODO: "clamp_max_scalar_cpu" not implemented for 'Bool'.
+        # TODO: fix _foreach_clamp_max() failing with complex dtypes.
+        exclude_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+        # TODO: fix _foreach_clamp_max_() failing with complex dtypes.
+        exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+    )
+
+  def test_foreach_clamp_min(self):
+    self.do_test_op(
+        "_foreach_clamp_min",
+        # TODO: "clamp_min_scalar_cpu" not implemented for 'Bool'.
+        # TODO: fix _foreach_clamp_min() failing with complex dtypes.
+        exclude_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+        # TODO: fix _foreach_clamp_min_() failing with complex dtypes.
+        exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+    )
+
+  def test_foreach_copy(self):
+    self.do_test_op("_foreach_copy")
+
+  def test_foreach_cos(self):
+    self.do_test_op(
+        "_foreach_cos",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_cosh(self):
+    self.do_test_op(
+        "_foreach_cosh",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_div(self):
+    self.do_test_op(
+        "_foreach_div",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: CPU returns nans but TPU returns 0.
+        exclude_dtypes=(torch.bool,),
+        # TODO: CPU returns nans but TPU returns 0.
+        exclude_inplace_dtypes=(torch.bool,),
+    )
+
+  def test_foreach_erf(self):
+    self.do_test_op(
+        "_foreach_erf",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_erfc(self):
+    # TODO: enable when erfc op is implemented.
+    self.skipTest("_foreach_erfc is not ready yet: base op not implemented.")
+
+  def test_foreach_exp(self):
+    self.do_test_op(
+        "_foreach_exp",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_expm1(self):
+    # TODO: enable when accuracy issues are resolved.
+    self.skipTest("_foreach_expm1 is not ready yet: accuracy issues.")
+
+  def test_foreach_floor(self):
+    self.do_test_op(
+        "_foreach_floor",
+        # TODO: fix floor() failing with integral dtypes.
+        exclude_dtypes=INTEGRAL_DTYPES,
+        # TODO: fix floor_() failing with integral dtypes.
+        exclude_inplace_dtypes=INTEGRAL_DTYPES,
+    )
+
+  def test_foreach_frac(self):
+    # TODO: enable when frac op is implemented.
+    self.skipTest("_foreach_frac is not ready yet: base op not implemented.")
+
+  def test_foreach_lerp(self):
+    self.do_test_op(
+        "_foreach_lerp",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        exclude_dtypes=(torch.complex64,),
+        exclude_inplace_dtypes=(torch.complex64,),
+    )
+
+  def test_foreach_lgamma(self):
+    # TODO: enable when accuracy issues are resolved.
+    self.skipTest("_foreach_lgamma is not ready yet: accuracy issues.")
+
+  def test_foreach_log(self):
+    self.do_test_op(
+        "_foreach_log",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_log10(self):
+    self.do_test_op(
+        "_foreach_log10",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_log1p(self):
+    self.do_test_op(
+        "_foreach_log1p",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_log2(self):
+    # TODO: enable when accuracy issues are resolved.
+    self.skipTest("_foreach_log2 is not ready yet: accuracy issues.")
+
+  def test_foreach_max(self):
+    # TODO: enable when crash is resolved.
+    self.skipTest("_foreach_log2 is not ready yet: crashing on complex inputs.")
+
+  def test_foreach_maximum(self):
+    self.do_test_op(
+        "_foreach_maximum",
+        # TODO: _foreach_maximum() with dtype torch.bool failed on CPU, so it
+        # should fail on TorchTPU too.
+        # TODO: fix _foreach_maximum() failing with complex dtypes.
+        exclude_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+        # TODO: _foreach_maximum_() with dtype torch.bool failed on CPU, so it
+        # should fail on TorchTPU too.
+        # TODO: fix _foreach_maximum_() failing with complex dtypes.
+        exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+    )
+
+  def test_foreach_minimum(self):
+    self.do_test_op(
+        "_foreach_minimum",
+        # TODO: _foreach_minimum() with dtype torch.bool failed on CPU, so it
+        # should fail on TorchTPU too.
+        # TODO: fix _foreach_minimum() failing with complex dtypes.
+        exclude_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+        # TODO: _foreach_minimum_() with dtype torch.bool failed on CPU, so it
+        # should fail on TorchTPU too.
+        # TODO: fix _foreach_minimum_() failing with complex dtypes.
+        exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+    )
+
+  def test_foreach_mul(self):
+    self.do_test_op(
+        "_foreach_mul",
+        # TODO: fix _foreach_mul() failing with bool dtype. Check failed:
+        # at::canCast(actual_scalar_type, expected_scalar_type) result type
+        # UInt64 can't be cast to the desired output type Bool
+        exclude_dtypes=(torch.bool,),
+        # TODO: fix _foreach_mul_() failing with bool dtype. Check failed:
+        # at::canCast(actual_scalar_type, expected_scalar_type) result type
+        # UInt64 can't be cast to the desired output type Bool
+        exclude_inplace_dtypes=(torch.bool,),
+    )
+
+  def test_foreach_neg(self):
+    self.do_test_op("_foreach_neg")
+
+  def test_foreach_norm(self):
+    # TODO: enable when crash is resolved.
+    self.skipTest("_foreach_norm is not ready yet: crashing on complex inputs.")
+
+  def test_foreach_pow(self):
+    # TODO: fix _foreach_pow_() failing when exponent is bool dtype.
+    # pow(): boolean dtypes are not supported.
+    self.skipTest("_foreach_pow is not ready yet: dtype issues.")
+
+  def test_foreach_reciprocal(self):
+    self.do_test_op("_foreach_reciprocal")
+
+  def test_foreach_round(self):
+    self.do_test_op("_foreach_round")
+
+  def test_foreach_rsqrt(self):
+    self.do_test_op(
+        "_foreach_rsqrt",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_sigmoid(self):
+    # TODO: enable when accuracy issues are resolved.
+    self.skipTest("_foreach_sigmoid is not ready yet: accuracy issues.")
+
+  def test_foreach_sign(self):
+    self.do_test_op("_foreach_sign")
+
+  def test_foreach_sin(self):
+    self.do_test_op(
+        "_foreach_sin",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_sinh(self):
+    self.do_test_op(
+        "_foreach_sinh",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_sqrt(self):
+    self.do_test_op("_foreach_sqrt")
+
+  def test_foreach_sub(self):
+    self.do_test_op(
+        "_foreach_sub",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix _foreach_sub() failing with complex dtypes.
+        exclude_dtypes=COMPLEX_DTYPES,
+        # TODO: fix _foreach_sub_() failing with complex dtypes.
+        exclude_inplace_dtypes=COMPLEX_DTYPES,
+    )
+
+  def test_foreach_tan(self):
+    self.do_test_op(
+        "_foreach_tan",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_tanh(self):
+    self.do_test_op(
+        "_foreach_tanh",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_foreach_trunc(self):
+    self.do_test_op("_foreach_trunc")
+
+  def test_foreach_zero(self):
+    self.do_test_op("_foreach_zero")
+
+  def test_full(self):
+    self.do_test_op(
+        "full",
+        # TODO: fix full() producing wrong results for bool.
+        # TODO: fix full() failing for complex.
+        exclude_dtypes=(torch.bool,) + COMPLEX_DTYPES,
+    )
+
+  def test_full_like(self):
+    self.do_test_op(
+        "full_like",
+        # TODO: fix full_like() crashing on TPU.
+        exclude_dtypes=COMPLEX_DTYPES,
+    )
+
+  def test_gather(self):
+    self.do_test_op(
+        "gather",
+        # TODO: fix the error that function SumBackward0 returned an invalid
+        # gradient.
+        check_grad=False,
+    )
+
+  def test_ge(self):
+    self.do_test_op("ge")
+
+  def test_gt(self):
+    self.do_test_op("gt")
+
+  def test_histc(self):
+    self.do_test_op(
+        "histc",
+        # NOTE: Exclude integral dtypes on CPU, because histc() is not
+        # implemented in the PyTorch CPU backend.
+        # Additionally, exclude float16 and bfloat16 because (expected)
+        # precision variations can lead to binning errors.
+        exclude_dtypes={
+            "cpu": INTEGRAL_DTYPES + (torch.bfloat16, torch.float16),
+            "gpu": (
+                torch.bfloat16,
+                torch.float16,
+            ),
+        },
+    )
+
+    # NOTE: Verify output shapes and dtypes of previously excluded dtypes that
+    # lead to binning errors due to precision variations.
+    self.do_test_op(
+        "histc",
+        exclude_dtypes={
+            "cpu": INTEGRAL_DTYPES,
+        },
+        check_value=CheckValueMode.SKIP,
+    )
+
+  def test_index_add(self):
+    self.do_test_op("index_add")
+
+  def test_index_copy(self):
+    self.do_test_op(
+        "index_copy",
+        # TODO: fix the error index_fill_.int_Scalar is unimplemented.
+        check_grad=False,
+    )
+
+  def test_index_put(self):
+    self.do_test_op("index_put")
+
+  def test_index_select(self):
+    self.do_test_op(
+        "index_select",
+        # TODO: fix index_select(out=...) failing.
+        check_out_variant=False,
+    )
+
+  def test_isfinite(self):
+    self.do_test_op("isfinite")
+
+  def test_isin(self):
+    self.do_test_op("isin")
+
+  def test_isinf(self):
+    self.do_test_op("isinf")
+
+  def test_isnan(self):
+    self.do_test_op("isnan")
+
+  def test_isneginf(self):
+    self.do_test_op(
+        "isneginf",
+        # TODO: fix isneginf() succeeding with complex dtypes (it should fail).
+        exclude_dtypes=COMPLEX_DTYPES,
+    )
+
+  def test_isposinf(self):
+    self.do_test_op(
+        "isposinf",
+        # TODO: fix isposinf() crashing on TPU.
+        exclude_dtypes=COMPLEX_DTYPES,
+    )
+
+  def test_kron(self):
+    self.do_test_op(
+        "kron",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix kron(out=...) having huge numeric errors.
+        check_out_variant=False,
+    )
+
+  def test_le(self):
+    self.do_test_op("le")
+
+  def test_leaky_relu(self):
+    self.do_test_op(
+        "nn.functional.leaky_relu",
+        # TODO: fix the error leaky_relu_backward.grad_input is unimplemented.
+        check_grad=False,
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_lerp(self):
+    self.do_test_op(
+        "lerp",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        exclude_dtypes=(torch.complex64,),
+        exclude_inplace_dtypes=(torch.complex64,),
+    )
+
+  def test_lgamma(self):
+    self.do_test_op(
+        "lgamma",
+        # TODO: fix the error that digamma.out is unimplemented.
+        check_grad=False,
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix lgamma() failing for complex.
+        exclude_dtypes=(torch.complex64,),
+        exclude_inplace_dtypes=(torch.complex64,),
+    )
+
+  def test_linalg_lu_factor_ex(self):
+    if op_testing._TORCH_TPU_DEVICE.value != "tpu":
+      self.skipTest(
+          "linalg.lu_factor_ex is not implemented on"
+          f" {op_testing._TORCH_TPU_DEVICE.value}."
+      )
+    self.do_test_op(
+        "linalg.lu_factor_ex",
+        check_grad=False,
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_linalg_triangular_solve(self):
+    self.do_test_op(
+        "linalg.solve_triangular",
+        check_grad=False,
+        # bool triggers an error in the sample generation code
+        exclude_dtypes=(torch.bool,),
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_lu_unpack(self):
+    self.do_test_op(
+        "lu_unpack",
+        check_grad=False,
+        exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_linalg_lu_solve(self):
+    self.do_test_op(
+        "linalg.lu_solve",
+        check_grad=False,
+        exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_linalg_solve_ex(self):
+    if op_testing._TORCH_TPU_DEVICE.value != "tpu":
+      self.skipTest(
+          "linalg.solve_ex is not implemented on"
+          f" {op_testing._TORCH_TPU_DEVICE.value}."
+      )
+    self.do_test_op(
+        "linalg.solve_ex",
+        check_grad=False,
+        exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_linalg_lu_out(self):
+    if op_testing._TORCH_TPU_DEVICE.value != "tpu":
+      self.skipTest(
+          "linalg.lu is not implemented on"
+          f" {op_testing._TORCH_TPU_DEVICE.value}."
+      )
+    self.do_test_op(
+        "linalg.lu",
+        check_grad=False,
+        exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_linalg_inv_ex_out(self):
+    if op_testing._TORCH_TPU_DEVICE.value != "tpu":
+      self.skipTest(
+          "linalg.inv is not implemented on"
+          f" {op_testing._TORCH_TPU_DEVICE.value}."
+      )
+    self.do_test_op(
+        "linalg.inv",
+        check_grad=False,
+        exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_linalg_vector_norm_other_dtypes(self):
+    self.do_test_op(
+        "linalg.vector_norm",
+        # TODO: fix the error that CPU result is None.
+        check_grad=False,
+        check_value=CheckValueMode.LOOSE,
+        # float64 with stablehlo::pow will be x64rewriter into ~10000
+        # instructions which greatly slow down op test(~180 cases). Skip it and
+        # test a much smaller set in ops_unit_test.py."
+        exclude_dtypes=(torch.float64,),
+    )
+
+  def test_lt(self):
+    self.do_test_op("lt")
+
+  def test_log(self):
+    self.do_test_op(
+        "log",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_log1p(self):
+    self.do_test_op(
+        "log1p",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_log10(self):
+    self.do_test_op(
+        "log10",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_log2(self):
+    self.do_test_op(
+        "log2",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_log_softmax(self):
+    self.do_test_op(
+        "log_softmax",
+        # TODO: fix compilation error in log_softmax_backward_data.
+        check_grad=False,
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_log_softmax_backward_data(self):
+    self.do_test_op(
+        "_log_softmax_backward_data",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO(unda): this fails for complex and integral dtypes because the
+        # sample generation process calls log_softmax() which is not supported
+        # for these dtypes.
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+    )
+
+  def test_logical_and(self):
+    self.do_test_op("logical_and")
+
+  def test_logical_or(self):
+    self.do_test_op("logical_or")
+
+  def test_logical_xor(self):
+    self.do_test_op("logical_xor")
+
+  def test_logical_not(self):
+    self.do_test_op("logical_not")
+
+  def test_masked_scatter(self):
+    self.do_test_op("masked_scatter")
+
+  def test_masked_select(self):
+    self.do_test_op("masked_select")
+
+  def test_masked_fill(self):
+    self.do_test_op("masked_fill")
+
+  def test_matmul(self):
+    self.do_test_op(
+        "matmul",
+        # TODO: fix huge errors in grad.
+        check_grad=False,
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: TPU supports bool dtypes but not all CPU and GPU lowerings do.
+        # Due to how PyTorch decomposes this op, some cases bool dtype is
+        # supported and other cases it's not. This op is supposed to be
+        # delegated, but due to the same reason above, there are some funky
+        # lowering causing delegation to fail for us. This requires additional
+        # work to fix. For now, we just exclude bool dtypes.
+        # TODO: fix matmul(out=...) failing with int64 dtypes. Error:
+        # While rewriting computation to not contain X64 element types, XLA
+        # encountered an HLO for which this rewriting is not implemented:
+        # %_run_op.1 = s64[] dot(%Arg_1.1, %Arg_0.1), lhs_contracting_dims={0},
+        # rhs_contracting_dims={0}, operand_precision={highest,highest}
+        exclude_dtypes={
+            "cpu": (
+                torch.bool,
+                torch.int64,
+            ),
+            # TODO: make matmul fail for integral dtypes to match GPU.
+            "gpu": INTEGRAL_DTYPES,
+        },
+    )
+
+  def test_multinomial(self):
+    self.do_test_op(
+        "multinomial",
+        # TODO: multinomial() returns a tensor with random values, so we can't
+        # check the values until we have a way to seed the random number
+        # generator.
+        check_value=CheckValueMode.SKIP,
+        # TODO: float64 is not supported for rng on TPU.
+        exclude_dtypes=(torch.float64,),
+    )
+
+  def test_max(self):
+    self.do_test_op("max")
+
+  # TODO: b/478321000 remove this comment when PyTorch#173110 is fixed.
+  # If this test starts failing due to large absolute errors, look at the
+  # comments of `_inplace_clamp_input_has_negative_values_uint8()` function.
+  # That might be the cause.
+  def test_maximum(self):
+    self.do_test_op("maximum")
+
+  def test_max_pool2d(self):
+    self.do_test_op(
+        "nn.functional.max_pool2d",
+        # Limit the number of samples per dtype to avoid timeout.
+        max_samples_per_op_dtype=200,
+        # TODO: complex64, float64, and int64 dtypes are not supported on TPU.
+        exclude_dtypes={
+            "cpu": (
+                torch.complex64,
+                torch.float64,
+                torch.int64,
+            ),
+            "gpu": (
+                (
+                    torch.complex64,
+                    torch.float64,
+                )
+                # TODO: b/476417319 reject integer dtypes in TPU implementation,
+                # so that it matches the GPU implementation.
+                + INTEGRAL_DTYPES
+            ),
+        },
+    )
+
+  def test_max_pool3d(self):
+    self.do_test_op(
+        "nn.functional.max_pool3d",
+        # Limit the number of samples per dtype to avoid timeout.
+        max_samples_per_op_dtype=200,
+        # TODO: b/467347286 - complex64, float64, and int64 dtypes
+        # are not supported on TPU.
+        exclude_dtypes={
+            "cpu": (
+                torch.complex64,
+                torch.float64,
+                torch.int64,
+            ),
+            "gpu": (
+                (
+                    torch.complex64,
+                    torch.float64,
+                )
+                # TODO: b/476417319 reject integer dtypes in TPU implementation,
+                # so that it matches the GPU implementation.
+                + INTEGRAL_DTYPES
+            ),
+        },
+    )
+
+  def test_mean(self):
+    self.do_test_op(
+        "mean",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_min(self):
+    self.do_test_op("min")
+
+  # TODO: b/478321000 remove this comment when PyTorch#173110 is fixed.
+  # If this test starts failing due to large absolute errors, look at the
+  # comments of `_inplace_clamp_input_has_negative_values_uint8()` function.
+  # That might be the cause.
+  def test_minimum(self):
+    self.do_test_op("minimum")
+
+  def test_mm(self):
+    self.do_test_op(
+        "mm",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix mm() failing with integral dtypes.
+        exclude_dtypes=INTEGRAL_DTYPES,
+    )
+
+  def test_mul(self):
+    self.do_test_op("mul")
+
+  def test_native_batch_norm(self):
+    self.do_test_op(
+        "native_batch_norm",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # Due to a PyTorch output dtype inconsistency bw CPU and GPU, we skip
+        # checking of the output dtype since we match the dtype returned by
+        # PT/GPU while here we are comparing with CPU.
+        check_dtype=False,
+        # TODO: fix native_batch_norm(out=...) failing.
+        check_out_variant=False,
+        # TODO: fix native_batch_norm() return wrong dtypes for bfloat16
+        # and float16 inputs compared with GPU.
+        # TODO: fix native_batch_norm() returning results with
+        # infinite relative errors (2 vs 0) for float32 and float64 inputs
+        # compared with GPU.
+        exclude_dtypes={
+            "gpu": (
+                torch.bfloat16,
+                torch.float16,
+                torch.float32,
+                torch.float64,
+            )
+        },
+    )
+
+  def test_native_batch_norm_legit(self):
+    self.do_test_op(
+        "_native_batch_norm_legit",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # Due to a PyTorch output dtype inconsistency bw CPU and GPU, we skip
+        # checking of the output dtype since we match the dtype returned by
+        # PT/GPU while here we are comparing with CPU.
+        check_dtype=False,
+        # TODO: fix _native_batch_norm_legit(out=...) failing.
+        check_out_variant=False,
+        # TODO: fix _native_batch_norm_legit() returning wrong dtypes
+        # for float16 and bfloat16 inputs compared with GPU.
+        # TODO: fix _native_batch_norm_legit() returning results with
+        # infinite relative errors (2 vs 0) compared with GPU.
+        exclude_dtypes={
+            "gpu": (
+                torch.bfloat16,
+                torch.float16,
+                torch.float32,
+                torch.float64,
+            )
+        },
+    )
+
+  def test_native_group_norm(self):
+    # TODO: b/470451730 look into the high errors for bfloat16.
+    # torch.bfloat16: {"rtol": 4.1, "atol": 4.0},
+    self.do_test_op(
+        "nn.functional.group_norm",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix native_group_norm() succeeding with integral and
+        # complex dtypes (it should fail).
+        # TODO: b/470458807 look into why native_group_norm() returns NaN values
+        # when using float16 dtype, while GPU succeeds.
+        exclude_dtypes={
+            "cpu": INTEGRAL_DTYPES + (torch.complex64,),
+            "gpu": INTEGRAL_DTYPES + (torch.complex64,) + (torch.float16,),
+        },
+    )
+
+  def test_native_layer_norm(self):
+    self.do_test_op(
+        "native_layer_norm",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: before cl/833944280 introduced the backward ops, this test runs
+        # with check_grad=True. As there is no default implementation of
+        # backward for native_layer_norm, it should fail. Investigate why it's
+        # not failing.
+        # NOTE: native_layer_norm() is not implemented for complex64 on CPU,
+        # so we have to exclude complex64 here.
+        # TODO: fix native_layer_norm() for integer inputs. Currently, they
+        # raise errors on integral inputs, while GPU succeeds.
+        exclude_dtypes={
+            "cpu": COMPLEX_DTYPES,
+            "gpu": INTEGRAL_DTYPES + COMPLEX_DTYPES,
+        },
+        # TODO: look into why this test produces float32 (default dtype) tensors
+        # on GPU for the last 2 tensors being compared, while TPU produces
+        # tensors of the same dtype as the input.
+        skip_output_indices=[1, 2],
+    )
+
+  def test_ne(self):
+    self.do_test_op("ne")
+
+  def test_new_ones(self):
+    self.do_test_op("new_ones")
+
+  def test_new_zeros(self):
+    self.do_test_op("new_zeros")
+
+  def test_neg(self):
+    self.do_test_op("neg")
+
+  def test_nll_loss_forward(self):
+    self.do_test_op(
+        "nn.functional.nll_loss",
+        # TODO: NLLLoss input given through a forward call is expected to
+        # contain log-probabilities (float) of each class. Update the nll_loss
+        # op implementation to fail for invalid inputs.
+        # Temporarily exclude integer types until then as the op is supposed to
+        # fail on invalid inputs.
+        exclude_dtypes=(None if env.IS_INTERNAL_TORCH_TPU else INTEGRAL_DTYPES),
+        # TODO: fix the error that nll_loss2d_backward is unimplemented.
+        check_grad=False,
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_nonzero(self):
+    self.do_test_op("nonzero")
+
+  def test_normal_(self):
+    self.do_test_op(
+        "normal",
+        # By definition, normal() returns a tensor with random values, so
+        # there's no point in checking the values.
+        check_value=CheckValueMode.SKIP,
+        # TODO: fix normal() failing with complex dtypes.
+        # TODO: fix normal() failing with float64 input.
+        exclude_dtypes=COMPLEX_DTYPES + (torch.float64,),
+        exclude_inplace_dtypes=COMPLEX_DTYPES + (torch.float64,),
+    )
+
+  def test_ones(self):
+    self.do_test_op("ones")
+
+  def test_ones_like(self):
+    self.do_test_op("ones_like")
+
+  def test_permute(self):
+    self.do_test_op("permute")
+
+  def test_pow(self):
+    self.do_test_op(
+        "pow",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_nn_functional_conv1d(self):
+    self.do_test_op(
+        "nn.functional.conv1d",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix nn.functional.conv*d() failing with integral and complex
+        # dtypes.
+        # Known issues:
+        # 1. CPU sometimes fails with low-bitwidth integers, even though XLA
+        #    succeeds; possible bug in CPU kernel?
+        # 2. TPU lowering for int64 crashes due to "While rewriting computation
+        #    to not contain X64 element types, XLA encountered an HLO for which
+        #    this rewriting is not implemented: %convolution [...]"
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+    )
+
+  def test_nn_functional_conv2d(self):
+    self.do_test_op(
+        "nn.functional.conv2d",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix nn.functional.conv*d() failing with integral and complex
+        # dtypes. See comments in test_nn_functional_conv1d.
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+    )
+
+  def test_nn_functional_conv_transpose1d(self):
+    if op_testing._TORCH_TPU_DEVICE.value != "tpu":
+      self.skipTest(
+          "transposed convolution 1d is buggy on the xla/gpu path"
+          f" {op_testing._TORCH_TPU_DEVICE.value}."
+      )
+    self.do_test_op(
+        "nn.functional.conv_transpose1d",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix nn.functional.conv*d() failing with integral and complex
+        # dtypes.
+        # Known issues:
+        # 1. CPU sometimes fails with low-bitwidth integers, even though XLA
+        #    succeeds; possible bug in CPU kernel?
+        # 2. TPU lowering for int64 crashes due to "While rewriting computation
+        #    to not contain X64 element types, XLA encountered an HLO for which
+        #    this rewriting is not implemented: %convolution [...]"
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+    )
+
+  def test_nn_functional_conv_transpose2d(self):
+    if op_testing._TORCH_TPU_DEVICE.value != "tpu":
+      self.skipTest(
+          "transposed convolution 2d is buggy on the xla/gpu path"
+          f" {op_testing._TORCH_TPU_DEVICE.value}."
+      )
+    self.do_test_op(
+        "nn.functional.conv_transpose2d",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix nn.functional.conv*d() failing with integral and complex
+        # dtypes.
+        # Known issues:
+        # 1. CPU sometimes fails with low-bitwidth integers, even though XLA
+        #    succeeds; possible bug in CPU kernel?
+        # 2. TPU lowering for int64 crashes due to "While rewriting computation
+        #    to not contain X64 element types, XLA encountered an HLO for which
+        #    this rewriting is not implemented: %convolution [...]"
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+    )
+
+  # TODO(gleasonk): why does compilation time out on this input?
+  #    input shape: (1, 1, 11, 12, 13),
+  #                 created from (1, 1, 10, 11, 12) + pad (0, 0, 1, 1, 1)
+  #    kernel shape: (1, 1, 4, 4, 4)
+  #    strides: (1, 1, 1)
+  #    padding: (4, 4, 4), symmetric
+  #    dilation: (3, 3, 3)
+  #    -> output shape: (1, 1, 10, 11, 12)
+  # Timeout occurs with both XlaBuilder and StableHLO implementations.
+  # def test_nn_functional_conv3d(self):
+  #   self.do_test_op(
+  #       "nn.functional.conv3d",
+  #       # TODO: fix nn.functional.conv*d() failing with integral and complex
+  #       # dtypes. See comments in test_nn_functional_conv1d.
+  #       exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+  #   )
+
+  def test_nn_functional_relu(self):
+    self.do_test_op(
+        "nn.functional.relu",
+        check_grad=True,
+        # TODO: fix relu() succeeding with integral dtypes (it
+        # should fail).  xla_cuda has no support for complex64::min()
+        # xla_cuda: https://github.com/openxla/stablehlo/issues/560
+        exclude_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
+    )
+
+  def test_nn_functional_rms_norm(self):
+    self.do_test_op(
+        "nn.functional.rms_norm",
+        check_value=CheckValueMode.LOOSE,
+        exclude_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
+    )
+
+  # TODO: b/476147793 association of (inputs, outputs) pairs with the op name
+  # and dtype only causes comparison of outputs of different tests.
+  @op_testing.skip_if_torch_tpu_vs_gpu_mode
+  def test_nn_functional_scaled_dot_product_attention_math(self):
+    # Force the MATH backend for both CPU and TPU.
+    with attention.sdpa_kernel(attention.SDPBackend.MATH):
+      self.do_test_op(
+          "nn.functional.scaled_dot_product_attention",
+          # TODO: look into making this STRICT.
+          check_value=CheckValueMode.LOOSE,
+          # TODO: sdpa calles bmm(), on cpu it fails with integral dtypes.
+          # but on tpu it succeeds. Remove this once we fix bmm on tpu.
+          exclude_dtypes=INTEGRAL_DTYPES,
+      )
+
+  # TODO: b/476147793 association of (inputs, outputs) pairs with the op name
+  # and dtype only causes comparison of outputs of different tests.
+  @op_testing.skip_if_torch_tpu_vs_gpu_mode
+  def test_nn_functional_scaled_dot_product_attention_overrideable(self):
+    # TODO: b/476166586 change the SDP backend for GPU device. It doesn't
+    # support `OVERRIDEABLE`, so it fails unconditionally.
+    #
+    # Use OVERRIDEABLE backend for TPU, MATH for CPU.
+    # Only do the forward pass (backward is not implemented yet)
+    with attention.sdpa_kernel(
+        [attention.SDPBackend.OVERRIDEABLE, attention.SDPBackend.MATH],
+        set_priority=True,
+    ):
+      self.do_test_op(
+          "nn.functional.scaled_dot_product_attention",
+          # TODO: look into making this STRICT.
+          check_value=CheckValueMode.LOOSE,
+          # TODO: sdpa calles bmm(), on cpu it fails with integral dtypes.
+          # but on tpu it succeeds. Remove this once we fix bmm on tpu.
+          exclude_dtypes=INTEGRAL_DTYPES,
+          check_grad=True,
+      )
+
+  def test_nn_functional_batch_norm(self):
+    self.do_test_op(
+        "nn.functional.batch_norm",
+        check_grad=True,
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix nn.functional.batch_norm() timing out with complex dtypes.
+        exclude_dtypes=COMPLEX_DTYPES,
+    )
+
+  def test_nn_functional_elu(self):
+    self.do_test_op(
+        "nn.functional.elu",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_nn_functional_gelu(self):
+    self.do_test_op(
+        "nn.functional.gelu",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix nn.functional.gelu() succeeding with complex dtypes (it
+        # should fail).
+        # TODO: fix nn.functional.gelu() failing with float64 input and nan
+        # output.
+        exclude_dtypes=COMPLEX_DTYPES + (torch.float64,),
+    )
+
+  def test_nn_functional_hardtanh(self):
+    self.do_test_op(
+        "nn.functional.hardtanh",
+        # TODO: fix the error hardtanh_backward is unimplemented.
+        check_grad=False,
+    )
+
+  def test_nn_functional_silu(self):
+    self.do_test_op(
+        "nn.functional.silu",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix nn.functional.silu() succeeding with integral dtypes (it
+        # should fail).
+        # TODO: fix nn.functional.silu() failing with complex dtypes.
+        exclude_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
+        # TODO: fix nn.functional.silu_() succeeding with integral dtypes (it
+        # should fail).
+        # TODO: fix nn.functional.silu_() failing with complex dtypes.
+        exclude_inplace_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
+    )
+
+  def test_pdist_forward(self):
+    self.do_test_op(
+        "nn.functional.pdist",
+        # TODO: fix the error _pdist_backward is unimplemented.
+        check_grad=False,
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_polar(self):
+    self.do_test_op(
+        "polar",
+        # TODO: fix polar(out=...) failing.
+        check_out_variant=False,
+        # TODO: fix polar() succeeding with these dtypes (it
+        # should fail).
+        exclude_dtypes=INTEGRAL_DTYPES
+        + COMPLEX_DTYPES
+        + (torch.float64, torch.float16, torch.bfloat16),
+    )
+
+  def test_prod(self):
+    self.do_test_op(
+        "prod",
+        # TODO: fix the error flip is unimplemented.
+        check_grad=False,
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix prod(out=...) having huge numeric errors.
+        check_out_variant=False,
+    )
+
+  def test_randn(self):
+    self.do_test_op(
+        "randn",
+        # TODO: fix randn(out=...) failing.
+        check_out_variant=False,
+        check_value=CheckValueMode.SKIP,  # randn() returns random values.
+        # TODO: fix randn() failing with float64 input.
+        # TODO: fix randn() failing with complex dtypes.
+        exclude_dtypes=(torch.float64,) + COMPLEX_DTYPES,
+    )
+
+  def test_randint(self):
+    self.do_test_op("randint", check_value=CheckValueMode.SKIP)
+
+  def test_reciprocal(self):
+    self.do_test_op("reciprocal")
+
+  def test_reflection_pad(self):
+    self.do_test_op(
+        "nn.functional.pad",
+        variant_test_name="reflect",
+    )
+
+  def test_remainder(self):
+    self.do_test_op(
+        "remainder",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix remainder() failing with bfloat16 dtypes.
+        exclude_dtypes=(torch.bfloat16,),
+        exclude_inplace_dtypes=(torch.bfloat16,),
+    )
+
+  def test_repeat(self):
+    self.do_test_op(
+        "repeat",
+        # TODO: fix the error that SumBackward0 returned an invalid gradient.
+        check_grad=False,
+    )
+
+  def test_replication_pad(self):
+    # TODO: Check why this is failing with torch.bool.
+    self.do_test_op(
+        "nn.functional.pad",
+        variant_test_name="replicate",
+    )
+
+  def test_reshape(self):
+    self.do_test_op("reshape")
+
+  def test_resize_(self):
+    self.do_test_op("resize_")
+
+  def test_resolve_conj(self):
+    self.do_test_op("resolve_conj")
+
+  def test_resolve_neg(self):
+    self.do_test_op("resolve_neg")
+
+  def test_round(self):
+    self.do_test_op("round")
+
+  def test_rsqrt(self):
+    self.do_test_op(
+        "rsqrt",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_rsub(self):
+    self.do_test_op(
+        "rsub",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_scatter(self):
+    self.do_test_op(
+        "scatter",
+        # TODO: fix CHLO failure.
+        check_grad=False,
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_scatter_add(self):
+    self.do_test_op("scatter_add")
+
+  def test_select(self):
+    self.do_test_op("select")
+
+  def test_select_scatter(self):
+    self.do_test_op("select_scatter")
+
+  def test_safe_softmax(self):
+    self.do_test_op(
+        "torch.ops.aten._safe_softmax.default",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_scalar_tensor(self):
+    self.do_test_op("scalar_tensor")
+
+  def test_sigmoid(self):
+    self.do_test_op(
+        "sigmoid",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_sgn(self):
+    self.do_test_op(
+        "sgn",
+        # TODO: fix the error on calling copy_() on an invalid python storage.
+        check_grad=False,
+        # TODO: fix sgn() failing with integral dtypes.
+        exclude_dtypes=INTEGRAL_DTYPES,
+        # TODO: fix sgn_() failing with integral dtypes.
+        exclude_inplace_dtypes=INTEGRAL_DTYPES,
+    )
+
+  def test_sign(self):
+    self.do_test_op("sign")
+
+  def test_signbit(self):
+    self.do_test_op("signbit")
+
+  def test_sin(self):
+    self.do_test_op(
+        "sin",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_sinh(self):
+    self.do_test_op(
+        "sinh",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_slice(self):
+    self.do_test_op("slice")
+
+  def test_softmax(self):
+    self.do_test_op(
+        "softmax",
+        # TODO: fix the error in softmax_backward_data() compilation.
+        check_grad=False,
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_softmax_backward_data(self):
+    self.do_test_op(
+        "_softmax_backward_data",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        # TODO: fix the op for these dtypes.
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+    )
+
+  def test_split(self):
+    self.do_test_op("split")
+
+  def test_split_with_sizes(self):
+    self.do_test_op("split_with_sizes")
+
+  def test_split_with_sizes_copy(self):
+    self.do_test_op(
+        "split_with_sizes_copy",
+        check_dynamism=False,  # b/483055194
+    )
+
+  def test_sqrt(self):
+    self.do_test_op("sqrt")
+
+  def test_squeeze(self):
+    self.do_test_op("squeeze")
+
+  def test_squeeze_copy(self):
+    self.do_test_op("squeeze_copy")
+
+  def test_sort(self):
+    self.do_test_op(
+        "sort",
+        # TODO: fix sort(out=...) failing.
+        check_out_variant=False,
+        # sort() returns a (values, indices) tuple, where indices is
+        # non-deterministic (as there might be duplicates in values).
+        # Therefore we only check the values of the first output.
+        check_value=[CheckValueMode.STRICT, CheckValueMode.SKIP],
+        # TODO: fix sort() succeeding with complex dtypes (it should fail).
+        exclude_dtypes=COMPLEX_DTYPES,
+        # TODO: fix sort() result not on TPU.
+        check_device=False,
+    )
+
+  def test_sub(self):
+    self.do_test_op(
+        "sub",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_sum(self):
+    self.do_test_op(
+        "sum",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_stack(self):
+    self.do_test_op("stack")
+
+  def test_t(self):
+    self.do_test_op("t")
+
+  def test_take(self):
+    self.do_test_op(
+        "take",
+        # TODO: fix the error put_ is unimplemented.
+        check_grad=False,
+    )
+
+  def test_tan(self):
+    self.do_test_op(
+        "tan",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_tanh(self):
+    self.do_test_op(
+        "tanh",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_threshold(self):
+    self.do_test_op("nn.functional.threshold")
+
+  def test_to(self):
+    self.do_test_op("to")
+
+  def test_topk(self):
+    # Skip the indices output in topk as torch doesn't specify the order of the
+    # sorting when multiple indices have the same value.
+    self.do_test_op(
+        "topk",
+        # TODO: fix topk(out=...) failing.
+        check_out_variant=False,
+        # NOTE: topk() is not implemented for bool on CPU, so we
+        # have to exclude bool here.
+        # TODO: fix topk() succeeding with complex dtypes (it should fail).
+        exclude_dtypes={
+            "cpu": (torch.bool,) + COMPLEX_DTYPES,
+            "gpu": (torch.bool,) + COMPLEX_DTYPES,
+        },
+        skip_output_indices=[1],
+        # TODO: fix topk() result not on TPU.
+        check_device=False,
+    )
+
+  def test_transpose(self):
+    self.do_test_op("transpose")
+
+  def test_tril(self):
+    self.do_test_op("tril")
+
+  def test_tril_indices(self):
+    self.do_test_op(
+        "tril_indices",
+        # TODO: b/476115671 add support for other dtypes that GPU supports:
+        # integers other than int32 and int64, floats and complex.
+        exclude_dtypes={
+            "gpu": (
+                (torch.uint8, torch.int8, torch.int16, torch.bool)
+                + FLOAT_DTYPES
+                + COMPLEX_DTYPES
+            ),
+        },
+    )
+
+  def test_triu(self):
+    self.do_test_op("triu")
+
+  def test_trunc(self):
+    self.do_test_op("trunc")
+
+  def test_unbind(self):
+    self.do_test_op("unbind")
+
+  def test_unfold(self):
+    self.do_test_op(
+        "unfold",
+        # TODO: fix the error unfold_backward is unimplemented.
+        check_grad=False,
+    )
+
+  def test_unsqueeze(self):
+    self.do_test_op("unsqueeze")
+
+  def test_unsqueeze_copy(self):
+    self.do_test_op("unsqueeze_copy")
+
+  def test_uniform(self):
+    self.do_test_op(
+        "uniform",
+        # By definition, uniform() returns a tensor with random values, so
+        # there's no point in checking the values.
+        check_value=CheckValueMode.SKIP,
+        # TODO: fix uniform() failing with complex dtypes.
+        exclude_dtypes=COMPLEX_DTYPES,
+        exclude_inplace_dtypes=COMPLEX_DTYPES,
+    )
+
+  def test_unsafe_view(self):
+    self.do_test_op("torch.ops.aten._unsafe_view")
+
+  def test_upsample_nearest(self):
+    # TODO: The CPU side fails for complex dtypes and integers.
+    self.do_test_op(
+        "nn.functional.upsample_nearest",
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+    )
+
+  def test_upsample_bilinear(self):
+    # TODO: The CPU side fails for complex dtypes and integers.
+    self.do_test_op(
+        "nn.functional.upsample_bilinear",
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        # TODO: STRICT fails for some types. Look into narrowing this down.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_upsample_nearest_exact(self):
+    # TODO: The CPU side fails for complex dtypes and integers.
+    self.do_test_op(
+        "nn.functional.interpolate",
+        variant_test_name="nearest-exact",
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+    )
+
+  def test_var(self):
+    self.do_test_op(
+        "var",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_vdot(self):
+    self.do_test_op(
+        "vdot",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
+        exclude_dtypes={
+            # TODO: XLA does not natively support complex dtypes.
+            "cpu": COMPLEX_DTYPES,
+            # TODO: make vdot fail for integral types to match GPU.
+            "gpu": COMPLEX_DTYPES + INTEGRAL_DTYPES,
+        },
+    )
+
+  def test_view(self):
+    self.do_test_op("view")
+
+  def test_view_as_real(self):
+    self.do_test_op("view_as_real")
+
+  def test_view_as_complex(self):
+    self.do_test_op(
+        "view_as_complex",
+        # XLA only allows creating complex dtypes from f32 and f64.
+        # TODO: However, the lowering for converting f64 to complex<f64> isn't
+        # implemented yet, which needs further investigation.
+        exclude_dtypes=(
+            torch.bfloat16,
+            torch.float16,
+            torch.float64,
+        ),
+    )
+
+  def test_where(self):
+    self.do_test_op("where")
+
+  def test_zeros(self):
+    self.do_test_op("zeros")
+
+  def test_zero_(self):
+    self.do_test_op("zero_")
+
+  def test_zeros_like(self):
+    self.do_test_op("zeros_like")
+
+
+def setUpModule() -> None:
+  """Called by absltest.main() after flags are parsed but before tests are run."""
+
+  op_testing.set_up_test_module()
+
+
+def tearDownModule() -> None:
+  """Called by absltest.main() after running all tests."""
+
+  op_testing.tear_down_test_module()
+
+
+if __name__ == "__main__":
+  absltest.main()

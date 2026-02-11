@@ -1,0 +1,63 @@
+/*
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "torch_tpu/eager/forced_split_heuristic.h"
+
+#include "absl/base/nullability.h"
+#include "absl/container/flat_hash_set.h"
+#include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/traversal.h"
+
+namespace torch_tpu {
+
+namespace {
+
+bool ShouldSplitAfter(OpSplitMode mode) {
+  return mode == OpSplitMode::kSplitAfter || mode == OpSplitMode::kSplitBoth;
+}
+
+bool ShouldSplitBefore(OpSplitMode mode) {
+  return mode == OpSplitMode::kSplitBefore || mode == OpSplitMode::kSplitBoth;
+}
+
+}  // namespace
+
+absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
+ForcedSplitHeuristic::ApplyOn(const Traversal& traversal) {
+  absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
+      materialization_nodes;
+  for (const auto& node : traversal.execution_order()) {
+    const auto* deferred_op = node->deferred_op();
+    if (deferred_op == nullptr) {
+      continue;
+    }
+
+    OpSplitMode split_mode = deferred_op->split_mode();
+    if (ShouldSplitAfter(split_mode)) {
+      materialization_nodes.insert(node.get());
+    }
+    if (ShouldSplitBefore(split_mode)) {
+      for (const auto& input : deferred_op->inputs()) {
+        if (input.state() == DeviceBufferRefState::kDeferred) {
+          materialization_nodes.insert(input.device_buffer_list().get());
+        }
+      }
+    }
+  }
+  return materialization_nodes;
+}
+
+}  // namespace torch_tpu

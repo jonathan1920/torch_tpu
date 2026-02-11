@@ -1,0 +1,45 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# TODO: b/431034055 - add build-system when OSS build working
+[project]
+name = "torch-tpu"
+version = "0.0.0"
+# TODO: b/431034055 - Set license parameter. Can't be set currently
+# because piptools (used by bazel compile_pip_requirements) chokes on it
+# license = "LicenseRef-Proprietary"
+
+dependencies = [
+    "torch @ https://download.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp312-cp312-manylinux_2_28_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torch @ https://download.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64'",
+    "numpy",
+    "absl-py",
+    # TODO: b/431034055 - JAX is a dev dependency; move this
+    # to dev deps and update bazel config to understand
+    "jax",
+    "libtpu",
+    # TODO: b/431034055 - portpicker is a dev dependency; move this
+    # to dev deps and update bazel config to understand
+    "portpicker",
+    # TODO: b/431034055 - transformers is a dev dependency; move this
+    # to dev deps and update bazel config to understand that.
+    "transformers",
+    # dev-only dependency.
+    "etils[epath]",
+    # dev-only dependency.
+    "expecttest",
+    "tensorboard",
+    "frozendict",
+    "flax",
+]

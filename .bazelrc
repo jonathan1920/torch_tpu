@@ -1,0 +1,232 @@
+
+# Show various config startup information to aid debugging.
+common --announce_rc
+
+# TODO: b/431034055 - XLA doesn't give visiblity to some pjrt targets.
+# As a work around, disable visibility checking.
+common --check_visibility=false
+
+# The default comes form XLA's setup, which is 3.13,
+# while we have 3.12 configured.
+common --repo_env=HERMETIC_PYTHON_VERSION=3.12
+
+common --enable_bzlmod=false --enable_workspace=true
+
+# Enable usage of pywrap rules for pybind_extension.
+common --repo_env=USE_PYWRAP_RULES=1
+
+# The XLA repo uses repository rules with remotable=True.
+common --experimental_repo_remote_exec
+
+# Disable Python output buffering so that, if C++ crashes the
+# process, buffered output doesn't go missing (e.g. print
+# statements for debugging).
+common --test_env=PYTHONUNBUFFERED=1
+
+common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+common --incompatible_strict_action_env=true
+
+# Enable passing through TPU envvars by default for convenience.
+common --config=tpu_envvars
+
+# Use C++17 by default, but not for `.c` files. Clang 18
+# gives an error when C files use it.
+build --per_file_copt=.*[.](cc|cpp|hpp)$@-std=c++17
+# Let warnings about C++20 slide, we'll use C++20 eventually.
+build --per_file_copt=.*@-Wno-c++20-extensions
+build --per_file_copt=.*@-Wno-c++20-designator
+
+# ===== Start spammy C++ compile warning disables =====
+# Some low-level legacy glibc macros are used in lots of
+# places, which very spammy, so silence this one.
+build --per_file_copt=".*@-Wno-#pragma-messages"
+build --per_file_copt=.*@-Wno-deprecated-declarations
+# NOTE: Absl and Torch both define LOG, DCHECk, etc macros.
+# The two are *usually* source-compatible, but aren't always,
+# and it can manifest is weird ways in far away dependencies.
+build --per_file_copt=.*@-Wno-macro-redefined
+build --per_file_copt=.*@-Wno-defaulted-function-deleted
+build --per_file_copt=.*@-Wno-unused-command-line-argument
+build --per_file_copt=.*@-Wno-return-type
+
+# Disable warnings from external dependencies, which we can't
+# do anything about and are very spammy.
+# NOTE: Some warnings may be due to external dependencies, but
+# get reported as originating from torch_tpu code. Those need
+# to be ignored using a plain `.*` match.
+build --per_file_copt=.*external/.*@-w
+
+# ===== End spammy C++ compile warning disables ===
+
+build --action_env=BAZEL_CXXOPTS="-std=c++17"
+
+# The disk cache uses local disk as a "remote" cache backend, which can
+# significantly speed up builds across server restarts and analysis cache
+# wipes.
+build --disk_cache=~/.cache/bazel/bazel-disk-cache
+build --experimental_disk_cache_gc_max_age=90d
+build --experimental_disk_cache_gc_max_size=100G
+
+# Don't implicitly add repo roots to sys.path. This avoids top-level import
+# name collisions.
+# TODO: b/460162708 - This must be true because XNNPACK relies on its
+# repo root being implicitly added to sys.path. Set this to false when
+# XNNPACK is fixed.
+build --experimental_python_import_all_repositories=true
+
+# llvm has a bug where an empty glob isn't explicitly set.
+build --incompatible_disallow_empty_glob=false
+
+# Disable magic generation of `__init__.py` files. This avoids surprising
+# import behaviors that only happen under Bazel.
+build --incompatible_default_to_explicit_init_py=true
+
+# Don't duplicate all the external dependency filesrunfiles under
+# $runfiles/external.
+build --legacy_external_runfiles=false
+
+# Get notified of file changes to rehash them before the next build.
+build --watchfs
+
+# Some targets have the same py source file, but use different
+# configurations via `requires-` tags. This results in an action
+# conflict when precompiling. Disable to avoid that problem.
+build --@rules_python//python/config_settings:precompile=force_disabled
+
+# NOTE: the --config=faster settings may make builds faster, but at the cost of
+# weaker correctness. If builds act weird, run `bazel clean` and/or remove
+# the `--config=faster` setting to help clear the Bazel state.
+
+# By default, jobs==cores, but much work is IO bound, so can scale higher.
+build:faster --jobs=HOST_CPUS*20
+# Skip checking if an e.g. genrule output was changed manually.
+build:faster --experimental_check_output_files=false
+# Bazel 9 feature: skip checking files on the local host.
+# build:faster --experimental_check_external_other_files=false
+
+# Config to aid debugging.
+# "standalone" means "local" -- run things locally so its easier to
+# inspect state and break out of bazel sandboxes.
+common:local --test_strategy=standalone
+common:local --spawn_strategy=standalone
+common:local --strategy=standalone
+
+# Config for no_remote builds
+common:no_rbe --config=local
+common:no_rbe --remote_cache=
+common:no_rbe --remote_executor=
+common:no_rbe --google_default_credentials=false
+
+# Useful when running a single test target and/or test
+# case within the test.
+common:testone --config=local
+common:testone --test_output=streamed
+
+# Config for when TPU is the target platform.
+common:tpu_envvars --test_env=TPU_SKIP_MDS_QUERY
+common:tpu_envvars --test_env=TPU_TOPOLOGY
+common:tpu_envvars --test_env=TPU_WORKER_ID
+common:tpu_envvars --test_env=TPU_TOPOLOGY_WRAP
+common:tpu_envvars --test_env=TPU_CHIPS_PER_HOST_BOUNDS
+common:tpu_envvars --test_env=TPU_ACCELERATOR_TYPE
+common:tpu_envvars --test_env=TPU_RUNTIME_METRICS_PORTS
+common:tpu_envvars --test_env=TPU_TOPOLOGY_ALT
+common:tpu_envvars --test_env=TPU_HOST_BOUNDS
+common:tpu_envvars --test_env=TPU_WORKER_HOSTNAMES
+common:tpu_envvars --test_env=CHIPS_PER_HOST_BOUNDS
+common:tpu_envvars --test_env=HOST_BOUNDS
+# NOTE: This value can be host-specific and harmful to Bazel caching.
+common:tpu_envvars --test_env=VBAR_CONTROL_SERVICE_URL
+
+# Configs for Bazel remote caching.
+# These are split into read-only and read-write configs for security.
+# Only CI (or other trusted accounts) have write access to the cache to prevent
+# it from being *directly* poisoned/corrupted by untrusted users (a malicious PR
+# triggers CI could still do so, however).
+#
+# However, we still want users to benefit from remote caching, so a read-only
+# config is enabled by default.
+#
+# See https://developers.google.com/remote-build-execution/docs/set-up/set-up-caching
+# for more details.
+common:remote_caching_readonly --remote_upload_local_results=false
+common:remote_caching_readonly --remote_cache=grpcs://remotebuildexecution.googleapis.com
+common:remote_caching_readonly --remote_instance_name=projects/ml-oss-rbe-testing/instances/default_instance
+common:remote_caching_readonly --remote_default_exec_properties=cache-silo-key=FirstCachedBuild
+common:remote_caching_readonly --google_default_credentials
+
+# Allow creation of resultstore URLs for ci bazel invocation, must be used in
+# conjunction with an RBE or RBE cache write config.
+common:resultstore_base --bes_backend=buildeventservice.googleapis.com
+common:resultstore_base --bes_timeout=600s
+common:resultstore_base --bes_results_url="https://source.cloud.google.com/results/invocations"
+
+
+common:remote_caching_readwrite --config=remote_caching_readonly
+common:remote_caching_readwrite --remote_upload_local_results=true
+
+common:remote_execution_readwrite --config=remote_execution_readonly
+common:remote_execution_readwrite --remote_upload_local_results=true
+common:remote_execution_readwrite --bes_instance_name="ml-oss-rbe-testing"
+
+# Settings specific to CI runs.
+common:ci --build_tests_only
+common:ci --config=remote_execution_readwrite
+common:ci --config=resultstore_base
+common:ci --keep_going
+test:ci --test_output=errors
+
+# Settings specific to CPU CI runs.
+common:ci_cpu --config=ci
+common:ci_cpu --build_tag_filters=-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only
+# We exclude tests tagged "notap" as it indicates that the test should be skipped from CI.
+common:ci_cpu --test_tag_filters=oss_ready_cpu,-notap,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only
+
+# Settings specific to TPU CI runs.
+common:ci_tpu --config=ci
+common:ci_tpu --build_tag_filters=requires-tpu-v5lite,requires-tpu-v5lite:8
+# We exclude tests tagged "notap" as it indicates that the test should be skipped from CI.
+common:ci_tpu --test_tag_filters=oss_ready_tpu,-notap
+common:ci_tpu --spawn_strategy=standalone,local
+
+# Setting TPU support true for profiler trace.
+build --define=with_tpu_support=true
+
+# Configs for Bazel remote execution.
+# Do not use instance "projects/ml-oss-rbe-testing/instances/default_instance"
+# because it does not have RBE agents setup.
+common:remote_execution_readonly --remote_instance_name=projects/tensorflow-testing/instances/default_instance
+common:remote_execution_readonly --google_default_credentials
+common:remote_execution_readonly --jobs=200
+common:remote_execution_readonly --remote_timeout=3600
+common:remote_execution_readonly --test_timeout=3600
+# This define is probably vestigial, but it's not entirely clear.
+# Revisit removing this with Bazel 9.
+common:remote_execution_readonly --define=EXECUTOR=remote
+common:remote_execution_readonly --remote_executor=grpcs://remotebuildexecution.googleapis.com
+common:remote_execution_readonly --extra_execution_platforms="@ml_build_config_platform//:platform"
+
+# Allow per-user, project-specific bazelrc.
+# Do this last so it takes precedence.
+try-import %workspace%/user.bazelrc
+
+# TPU wheel version for local default builds.
+build --define WHEEL_VERSION=0.1.0.dev0
+
+# Config for testing wheel builds.
+build --flag_alias=test_wheel=//:test_wheel
+test:wheel_config --test_output=errors
+test:wheel_config --test_wheel=true
+test:wheel_config --config=remote_caching_readonly
+test:wheel_config --config=remote_execution_readonly
+test:wheel_config --test_tag_filters=-wheel_test_excluded
+
+# Config for testing CPU wheel test.
+test:wheel_test_cpu --config=ci_cpu
+test:wheel_test_cpu --config=wheel_config
+
+# Config for testing TPU wheel test.
+test:wheel_test_tpu --config=ci_tpu
+test:wheel_test_tpu --config=wheel_config
+test:wheel_test_tpu --spawn_strategy=local
+

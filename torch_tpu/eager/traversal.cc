@@ -1,0 +1,1109 @@
+/*
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "torch_tpu/eager/traversal.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <sstream>
+#include <stack>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/absl_check.h"
+#include "absl/log/absl_log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/Types.h"
+#include "mlir/Support/DebugStringHelper.h"
+#include "mlir/Support/LLVM.h"
+#include "torch_tpu/_internal/dynamism/dynamism_ops.h"
+#include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/fingerprint_utils.h"
+#include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/python_context.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/FuncBuilder.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "torch_tpu/common/compilation_cache.h"
+#include "torch_tpu/common/dtype.h"
+#include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/utils.h"
+#include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/ops/op_builder_utils.h"
+
+namespace torch_tpu {
+
+absl::StatusOr<Traversal> Traversal::Create(
+    std::vector<DeviceBufferRef> outputs,
+    const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        stopping_points) {
+  ABSL_VLOG(1) << "[Traversal::Create] creating Traversal";
+  tsl::profiler::TraceMe t([] { return "Traversal::Create"; });
+
+  // This will contain the traversal inputs.
+  std::vector<DeviceBufferRef> inputs;
+  // This will contain a topological sort of the internal traversal nodes.
+  std::vector<SharedDeviceBufferList> execution_order;
+  // A stack of deferred nodes to process in depth first, by traversing reverse
+  // edges.
+  std::stack<SharedDeviceBufferList> stack;
+  // Deferred nodes as they are being visited.  A node marked as kGray is on the
+  // stack and is waiting for its inputs to be processed. A node marked as
+  // kBlack has been completely processed and all of its inputs have been
+  // processed too.
+  enum class Color { kGray, kBlack };
+  absl::flat_hash_map<const DeviceBufferList*, Color> visited_deferred;
+  // Tracks inputs already visited.
+  absl::flat_hash_set<DeviceBufferRef> visited_inputs;
+
+  // Populate the stack with the nodes feeding the graph outputs.
+  for (const auto& output : outputs) {
+    // If the output node has a deferred op, then we must consider it for the
+    // DFS traversal; otherwise, it is an input and we store it as such.
+    auto& node = output.device_buffer_list();
+    if (node->deferred_op()) {
+      if (visited_deferred.insert(std::make_pair(node.get(), Color::kGray))
+              .second) {
+        stack.push(node);
+      }
+    } else {
+      if (visited_inputs.insert(output).second) {
+        inputs.push_back(output);
+      }
+    }
+  }
+
+  while (!stack.empty()) {
+    auto node = stack.top();
+
+    // If a node has already been fully processed, then skip it. This happens
+    // for node C in the following graph if the nodes initially pushed on the
+    // stack are [A, C, B]: at the time we process B, we push node C on the
+    // stack again [A, C, B, C], to later rediscover the 1st instance of C on
+    // the stack that by then will be marked as kBlack.
+    //
+    // A -> B -> C
+    // |         ^
+    //  \_______/
+    //
+    if (auto it = visited_deferred.find(node.get());
+        it != visited_deferred.end() && it->second == Color::kBlack) {
+      stack.pop();
+      continue;
+    }
+
+    const DeferredOp* deferred_op = node->deferred_op();
+    TT_RET_CHECK(deferred_op, error::kFailedPrecondition)
+        << "Expected a deferred op";
+
+    size_t prev_stack_size = stack.size();
+    for (const auto& input : deferred_op->inputs()) {
+      auto& input_node = input.device_buffer_list();
+      // If the prev node has a deferred op, then we must consider it for the
+      // DFS traversal; otherwise, it is an input and we store it as such.
+      if (input_node->deferred_op()) {
+        // If the input node hasn't been visited yet, then push it on the stack
+        // and mark it as gray.
+        if (auto it = visited_deferred.find(input_node.get());
+            it == visited_deferred.end()) {
+          // We found a new deferred node, however if it is a stopping point
+          // then need to treat it as a traversal input.
+          if (!stopping_points.contains(input_node.get())) {
+            // Not a stopping point, add the newly discovered node to the stack.
+            stack.push(input_node);
+            visited_deferred.insert(
+                std::make_pair(input_node.get(), Color::kGray));
+          } else {
+            // A stopping point. Treat it as a graph input.
+            if (visited_inputs.insert(input).second) {
+              inputs.push_back(input);
+            }
+          }
+
+        } else if (it->second == Color::kGray) {
+          // A rediscovered gray node is pushed on the stack, again.
+          stack.push(input_node);
+        }
+
+      } else {
+        // A node without a deferred op is always treated as a graph input.
+        if (visited_inputs.insert(input).second) {
+          inputs.push_back(input);
+        }
+      }
+    }
+
+    // If we are done with this node, i.e., it didn't lead to adding more (gray)
+    // nodes to the stack, then we can remove it from the stack and add it to
+    // the execution order.
+    bool node_is_fully_processed = (stack.size() == prev_stack_size);
+    if (node_is_fully_processed) {
+      // Double check that node is still a reference to the top of the stack.
+      ABSL_CHECK(!stack.empty());        // CRASH_OK
+      ABSL_CHECK_EQ(stack.top(), node);  // CRASH_OK
+      visited_deferred.find(node.get())->second = Color::kBlack;
+      execution_order.push_back(node);
+      stack.pop();
+    }
+  }
+
+  auto traversal = Traversal(std::move(inputs), std::move(execution_order),
+                             std::move(outputs));
+#ifndef NDEBUG
+  if (auto status = traversal.Validate(); !status.ok()) {
+    LogLines(traversal.DebugString());
+    return status;
+  }
+#endif
+  return traversal;
+}
+
+namespace {
+
+// A GraphSignature holds all information necessary to uniquely identify and
+// describe a graph of DeferredOps.
+// This is *not* intended to be a long-lived object; it is only intended to be
+// computed ephemerally to produce the fingerprint for a CompilationCacheKey.
+//
+// As an example, if we had this graph:
+// ```python
+//   a = torch.ones(2, 3, dtype=torch.float32)  # materialized
+//   b = torch.ones(3, 4, dtype=torch.float32)  # materialized
+//   c = a.mm(b)  # output, shape will be 2, 4 and dtype will be float32
+// ```
+// Then the theoretical tensors list would be [a, b, c] and the deferred ops
+// list would be [mm], and so the GraphSignature would be:
+// ```
+// {
+//   graph_output_indices: [2]  # tensors are [a, b, c], output index 2 is c
+//   # a is [0, 2), b is [2, 4), c is [4, 6) sliced from tensor_dimensions
+//   tensor_dimensions_starts: [0, 2, 4, 6]
+//   tensor_dimensions: [2, 3, 3, 4, 2, 4]  # (2, 3) x (3, 4) = (2, 4)
+//   tensor_element_types: [F32, F32, F32]  # types of a, b, and c
+//   # mm's inputs are [0, 2)  in op_inputs_indices
+//   op_inputs_starts: [0, 2]
+//   op_inputs_indices: [0, 1]  # mm's inputs are tensors [a, b]
+//   op_names: ["mm"]
+//   op_param_cache_keys_starts: [0, 0]  # mm has params [0, 0), an empty span
+//   op_param_cache_keys: []  # graph has no params
+//   op_outputs_indices: [2]  # tensor c is the output of mm
+// }
+// ```
+struct GraphSignature {
+  // Comparing two graphs for full equality is expensive; it requires
+  // individually checking a significant number of individual graph properties.
+  // For efficiency, we skip this full equality, and only compare 2 graph
+  // fingerprint values; one for all properties except dimension sizes and
+  // dynamism, and another for those properties. This effectively creates a
+  // 128-bit fingerprint, which is sufficiently unlikely to have collisions.
+  [[nodiscard]] CompilationCacheKey cache_key() const {
+    // Note: tensor_dimensions_starts is included in shapeless_key.
+    // This encodes the rank of each tensor; the ith tensor has rank
+    // tensor_dimensions_starts[i+1] - tensor_dimensions_starts[i]
+    // (tensor_dimensions_starts.size() == number of tensors + 1).
+    // Shape dynamism only varies values, not number of dimensions.
+    const ShapelessKey shapeless_key = {FingerprintCat(
+        graph_output_indices, tensor_dimensions_starts, tensor_element_types,
+        op_inputs_starts, op_inputs_indices, op_names,
+        op_param_cache_keys_starts, op_param_cache_keys, op_outputs_indices)};
+    const DimensionsKey dimensions_key(tensor_dimensions);
+    return {
+        .shapeless_key = shapeless_key,
+        .dimensions_key = dimensions_key,
+    };
+  }
+
+  // Two graphs are equal only if they have the same number of inputs and ops,
+  // and if their final outputs are derived from the same graph nodes.
+  int num_inputs() const {
+    // The first non-input tensor appears at index num_inputs.
+    return op_outputs_indices[0];
+  }
+
+  int num_deferred_ops() const {
+    // Every deferred op has exactly one op name.
+    return op_names.size();
+  }
+
+  std::vector<int> graph_output_indices;
+  // Two graphs are equal only if they have the same number of tensors,
+  // and all tensors have the same dimensions and element types.
+  // TODO: The output shapes/dtypes of each DeferredOp should be inferrable from
+  // the input shapes, the op name, and constant op params. As such, we should
+  // only need to hash the input shapes/dtypes and op params for uniqueness.
+  // This is not currently the case and would break for some ops; once all ops
+  // are fixed, we should be able to simplify this to input values only.
+  std::vector<int> tensor_dimensions_starts;
+  std::vector<int64_t> tensor_dimensions;  // INT_VEC_OK=many tensors' dims
+  std::vector<mlir::ElementType> tensor_element_types;
+  // Two graphs are equal only if the edges in the graph are the same, which
+  // we track by input indices into each DeferredOp.
+  std::vector<int> op_inputs_starts;
+  std::vector<int> op_inputs_indices;
+  // Two graphs are equal only if all DeferredOps have matching OpNames.
+  std::vector<OpName> op_names;
+  // Two graphs are equal only if all DeferredOps have the same
+  // OpParamCacheKeys.
+  std::vector<int> op_param_cache_keys_starts;
+  // The key and value of each op param cache key, sorted by key.
+  std::vector<std::pair<std::string, std::string>> op_param_cache_keys;
+  // Two graphs are equal only if all DeferredOps have the same number of
+  // output for each node.
+  std::vector<int> op_outputs_indices;
+};
+
+}  // namespace
+
+ShapeDynamismMetadata Traversal::BuildShapeDynamismMetadata() const {
+  ShapeDynamismMetadata metadata;
+  for (const DeviceBufferRef& input : inputs()) {
+    // Initially assume that all dimensions are static and set the upper and
+    // lower bounds equal to the dimension value.
+    const int64_t tensor_start_dim = metadata.input_dimension_bounds.size();
+    for (int64_t dim : input.dimensions()) {
+      metadata.input_dimension_bounds.push_back({dim, dim});
+    }
+
+    // Then modify the bounds for any dynamic dimensions.
+    for (const auto& dynamic_dim : input.dynamic_dimensions()) {
+      const int64_t dynamic_dim_index =
+          tensor_start_dim + dynamic_dim.dimension;
+      metadata.input_dimension_bounds[dynamic_dim_index] = {
+          dynamic_dim.lower_bound, dynamic_dim.upper_bound};
+    }
+  }
+  return metadata;
+}
+
+CompilationCacheKey Traversal::BuildCacheKey() const {
+  tsl::profiler::TraceMe t("Traversal::BuildCacheKey");
+  // We will be building a GraphSignature object as a simplified
+  // representation of the Traversal graph for the purposes of hashing.
+  GraphSignature graph;
+  auto num_inputs = inputs().size();
+  auto num_deferred_ops = execution_order().size();
+  graph.graph_output_indices.reserve(outputs().size());
+
+  // We don't know ahead of time how many tensors there will be in the graph
+  // (because some ops may be multi-output) or what the rank of each tensor will
+  // be, so we can't pre-reserve space.
+  // To encode the variably-sized property of tensor dimensions, we record
+  // the start indices of each tensor's dimensions.
+  // For example, if we have 2 tensors of shapes [1,2] and [3,4,5] then this
+  // would be expressed as
+  //   tensor_dimensions_starts = [0, 2, 5]
+  //   tensor_dimensions = [1, 2, 3, 4, 5]
+  size_t next_tensor_index = 0;
+  absl::flat_hash_map<DeviceBufferRef, size_t> tensor_index_map;
+  graph.tensor_dimensions_starts.push_back(0);  // first tensor starts at 0
+
+  // Every op has exactly 1 op name, so we can pre-reserve space and don't need
+  // to track start indices.
+  graph.op_names.reserve(num_deferred_ops);
+
+  // Each op can have a variable number of inputs, params, and outputs, but we
+  // know how many ops there are in total. So we can reserve space for the
+  // indices, but not the properties themselves.
+  graph.op_inputs_starts.reserve(num_deferred_ops + 1);
+  graph.op_param_cache_keys_starts.reserve(num_deferred_ops + 1);
+  graph.op_outputs_indices.reserve(num_deferred_ops + 1);
+  graph.op_inputs_starts.push_back(0);
+  graph.op_param_cache_keys_starts.push_back(0);
+  graph.op_outputs_indices.push_back(num_inputs);
+
+  // Add all inputs to tensor-indexed properties.
+  for (const DeviceBufferRef& input : inputs()) {
+    tensor_index_map[input] = next_tensor_index++;
+    for (int64_t dim : input.dimensions()) {
+      graph.tensor_dimensions.push_back(dim);
+    }
+    graph.tensor_dimensions_starts.push_back(graph.tensor_dimensions.size());
+    graph.tensor_element_types.push_back(input.element_type());
+  }
+  const size_t num_dimension_inputs = graph.tensor_dimensions.size();
+
+  // If a graph has had ApplyDynamism() applied to it, then we only want to
+  // consider the input shapes, which must match the padded upper bounds. The
+  // intermediate and output shapes are dynamic and need not match for cache
+  // hits.
+  // TODO(bawilson): remove this check and use the "is_applied_dynamic=true"
+  // logic unconditionally once all ops have proper op param cache key
+  // definitions to define output shape inference.
+  bool is_applied_dynamic = false;
+
+  for (const SharedDeviceBufferList& node : execution_order()) {
+    const DeferredOp* absl_nullable maybe_deferred_op = node->deferred_op();
+    ABSL_CHECK(maybe_deferred_op != nullptr);  // CRASH_OK
+    const DeferredOp& deferred_op = *maybe_deferred_op;
+    if (deferred_op.op_name() == OpName::kSetDimensionSize) {
+      if (!is_applied_dynamic) {
+        graph.tensor_dimensions_starts.resize(num_inputs);
+        graph.tensor_dimensions.resize(num_dimension_inputs);
+      }
+      is_applied_dynamic = true;
+    }
+
+    // Add all op-indexed properties: name, params, and input edges.
+    graph.op_names.push_back(deferred_op.op_name());
+    for (const auto& [key, value] : deferred_op.op_param_cache_keys()) {
+      graph.op_param_cache_keys.push_back({key, value});
+    }
+    graph.op_param_cache_keys_starts.push_back(
+        graph.op_param_cache_keys.size());
+    for (const DeviceBufferRef& op_input : deferred_op.inputs()) {
+      graph.op_inputs_indices.push_back(tensor_index_map[op_input]);
+    }
+    graph.op_inputs_starts.push_back(graph.op_inputs_indices.size());
+
+    // Add all op output tensors to tensor-indexed properties.
+    for (int64_t i = 0; i < node->size(); ++i) {
+      DeviceBufferRef output = DeviceBufferRef::Create(node, i).value();
+      if (!is_applied_dynamic) {
+        for (int64_t dim : output.dimensions()) {
+          graph.tensor_dimensions.push_back(dim);
+        }
+        graph.tensor_dimensions_starts.push_back(
+            graph.tensor_dimensions.size());
+      }
+      graph.tensor_element_types.push_back(output.element_type());
+      tensor_index_map[std::move(output)] = next_tensor_index++;
+    }
+    graph.op_outputs_indices.push_back(next_tensor_index);
+  }
+
+  for (const DeviceBufferRef& output : outputs()) {
+    graph.graph_output_indices.push_back(tensor_index_map[output]);
+  }
+
+  return graph.cache_key();
+}
+
+absl::Status Traversal::ValidateAndReorderInputs(
+    std::vector<DeviceBufferRef> inputs) {
+  ABSL_VLOG(1) << "[Traversal::ValidateAndReorderInputs] validating "
+                  "consistency of provided inputs";
+  // Check to make sure that inputs (the argument) is just a reordering of
+  // inputs_ (the previous list of inputs).
+  // Build a hashmap of the previous inputs, and mark all of them as unused.
+  absl::flat_hash_map<DeviceBufferRef, bool> prev_inputs;
+  for (const DeviceBufferRef& prev_input : inputs_) {
+    // By construction, Traversal::inputs_ should be unique.
+    ABSL_CHECK(  // CRASH_OK
+        prev_inputs.insert_or_assign(prev_input, false).second)
+        << "Traversal::inputs_ has a duplicate input: "
+        << prev_input.DebugString();
+  }
+
+  // Checks that all provided inputs are non-deferred, are non-duplicates, and
+  // marks them as used.
+  for (const DeviceBufferRef& input : inputs) {
+    TT_RET_CHECK(input.state() != DeviceBufferRefState::kDeferred,
+                 error::kInvalidArgument)
+        << "found a deferred input, which is not allowed";
+    auto it = prev_inputs.find(input);
+    if (it == prev_inputs.end()) {
+      // Allow unused inputs.
+      continue;
+    }
+    TT_RET_CHECK(!it->second, error::kInvalidArgument)
+        << "identified a duplicate input";
+    it->second = true;
+  }
+
+  // Check that all previous inputs are included in the new inputs.
+  for (const auto& [input, used] : prev_inputs) {
+    TT_RET_CHECK(used, error::kInvalidArgument)
+        << "identified an input that was not provided";
+  }
+  inputs_ = std::move(inputs);
+  ABSL_VLOG(1) << "[Traversal::ValidateAndReorderInputs] New inputs are valid. "
+                  "Reordering inputs to match.";
+  return absl::OkStatus();
+}
+
+absl::StatusOr<mlir::MlirOp> Traversal::GetMlirOpForProcessedBuffer(
+    const absl::flat_hash_map<DeviceBufferRef, mlir::MlirOp>& ref_to_op_map,
+    const DeviceBufferRef& buffer_ref) const {
+  if (auto it = ref_to_op_map.find(buffer_ref); it != ref_to_op_map.end()) {
+    return it->second;
+  }
+  auto dy_it = dynamic_redirection_.find(buffer_ref);
+  TT_RET_CHECK(dy_it != dynamic_redirection_.end(), error::kInternal)
+      << "DeviceBufferRef not found in ref_to_op_map, and is not "
+         "dynamically redirected: "
+      << buffer_ref.DebugString();
+  auto redirected_buffer_ref = dy_it->second;
+  auto dynamic_input_it = ref_to_op_map.find(redirected_buffer_ref);
+  TT_RET_CHECK(dynamic_input_it != ref_to_op_map.end(), error::kInternal)
+      << "DeviceBufferRef " << buffer_ref.DebugString()
+      << " was dynamically redirected to "
+      << redirected_buffer_ref.DebugString()
+      << " which was not found in the ref_to_op_map.";
+  return dynamic_input_it->second;
+}
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
+    mlir::MLIRContext& mlir_context) const {
+  // Read the traversal's values.
+  absl::Span<const DeviceBufferRef> inputs = this->inputs();
+  absl::Span<const SharedDeviceBufferList> execution_order =
+      this->execution_order();
+  absl::Span<const DeviceBufferRef> outputs = this->outputs();
+
+  // Initialize the module builder and main function builder.
+  const PythonContext* absl_nullable python_context = nullptr;
+  if (!execution_order.empty() && execution_order.back()->deferred_op()) {
+    // Use the python context of the last op in the execution order as the
+    // module name. This will include the op that triggered materialization or
+    // traversal split in the module name.
+    python_context = &execution_order.back()->deferred_op()->op_context();
+  }
+  std::string module_name =
+      BuildModuleNameFromPyContext(mlir_context, python_context);
+  mlir::ModuleBuilder mb(mlir_context, module_name);
+  mlir::func::FunctionBuilder fb(mb, "main");
+
+  // Add a function parameter for each argument DeviceBufferRef.
+  RefToOpMap ref_to_op_map;
+  ABSL_VLOG(2) << "[Traversal::BuildMlirModule] building MLIR ops for "
+               << inputs.size() << " inputs";
+  for (const DeviceBufferRef& input : inputs) {
+    auto type =
+        makeTensorType(mlir_context, input.dimensions(), input.element_type());
+    if (input.state() == DeviceBufferRefState::kZeroSize) {
+      ref_to_op_map[input] = MakeConstant(fb, mlir::ArrayRef<int64_t>{}, type);
+      continue;
+    }
+    ref_to_op_map[input] = mlir::func::Argument(fb, type);
+  }
+
+  // Build an MlirOp for each deferred op in execution_order ordering, so that
+  // inputs are built before their outputs.
+  ABSL_VLOG(2) << "[Traversal::BuildMlirModule] building MLIR ops for "
+               << execution_order.size() << " deferred ops";
+  std::vector<mlir::MlirOp> deferred_inputs;
+  for (const SharedDeviceBufferList& node : execution_order) {
+    // Get the deferred op we need to build.
+    const DeferredOp* absl_nullable maybe_deferred_op = node->deferred_op();
+    TT_RET_CHECK(maybe_deferred_op, error::kInternal)
+        << "DeviceBufferList in execution_order has no deferred op";
+    const DeferredOp& deferred_op = *maybe_deferred_op;
+
+    // Get the MlirOps for all inputs.
+    deferred_inputs.clear();
+    for (const DeviceBufferRef& input : deferred_op.inputs()) {
+      TT_ASSIGN_OR_RETURN(mlir::MlirOp mlir_op,
+                          GetMlirOpForProcessedBuffer(ref_to_op_map, input));
+      deferred_inputs.push_back(mlir_op);
+    }
+
+    // Build the MlirOp.
+    // While `context` is in scope, all MlirOp objects built by `builder` will
+    // be associated with the op's Python context.
+    // This includes both the result of op_builder() and
+    // CastIfNeeded.
+    ScopedPythonContextProvider provider(deferred_op.op_context().Copy(), &fb);
+    TT_ASSIGN_OR_RETURN(
+        DynamicMlirOpResults results,
+        deferred_op.op_builder()(fb, absl::MakeSpan(deferred_inputs)));
+    TT_RET_CHECK(results.size() == node->size(), error::kInternal)
+        << "deferred op " << deferred_op.op_name() << " returned "
+        << results.size() << " results, expected " << node->size();
+
+    // Cast each output of the deferred op to the expected type.
+    for (int64_t index = 0; index < node->size(); ++index) {
+      TT_ASSIGN_OR_RETURN(
+          mlir::MlirOp casted_op,
+          CastIfNeeded(results[index], node->element_type(index)));
+
+      TT_ASSIGN_OR_RETURN(DeviceBufferRef ref,
+                          DeviceBufferRef::Create(node, index));
+      ABSL_VLOG(3) << "[Traversal::BuildMlirModule] built output " << index
+                   << " of deferred op " << deferred_op.op_name() << ": "
+                   << mlir::debugString(casted_op.getValue());
+      ref_to_op_map[std::move(ref)] = std::move(casted_op);
+    }
+  }
+
+  // End the main function by returning the final results. These were already
+  // casted/reshaped in the loop above.
+  DynamicMlirOpResults results;
+  results.reserve(outputs.size());
+  for (const DeviceBufferRef& output : outputs) {
+    TT_RET_CHECK(ref_to_op_map.contains(output), error::kInternal)
+        << "output DeviceBufferRef was not found in ref_to_op map: "
+        << output.DebugString();
+    results.push_back(ref_to_op_map.at(output));
+  }
+  ABSL_VLOG(1) << "[Traversal::BuildMlirModule] Built a total of "
+               << ref_to_op_map.size() << " MlirOps, returning "
+               << results.size() << " of them as results.";
+
+  mlir::func::Return(fb, results);
+  return mb.build();
+}
+
+absl::StatusOr<SharedLoadedExecutableFuture> Traversal::Compile(
+    GraphCompilationMode compilation_mode) const {
+  // Prepare a computation builder closure to be called on a cache miss.  Okay
+  // to capture this here since CompilationCache::GetOrCompile() will call this
+  // builder before the function returns and in the same thread it is invoked.
+  MlirComputationBuilder final_op_builder =
+      [this](mlir::MLIRContext& mlir_context) {
+        return BuildMlirModule(mlir_context);
+      };
+  ABSL_VLOG(1) << "[Compile] cache_key: " << cache_key();
+  TT_ASSIGN_OR_RETURN(UniqueCompileOptions compile_options,
+                      MakeCompilerOptions(compilation_mode));
+  return CompilationCache::GetInstance().GetOrCompile(
+      cache_key(), shape_dynamism_metadata(), std::move(final_op_builder),
+      std::move(compile_options));
+}
+
+absl::StatusOr<std::vector<Traversal>> Traversal::ApplyDynamism() {
+  // Ensure that the Traversal has its cache key and ShapeDynamismMetadata
+  // recorded.
+  if (!cache_key_) {
+    cache_key_ = BuildCacheKey();
+  }
+  if (!shape_dynamism_metadata_) {
+    shape_dynamism_metadata_ = BuildShapeDynamismMetadata();
+  }
+
+  // The padding traversals are the ones that are created to pad the buffers
+  // to the upper bound.
+  std::vector<Traversal> padding_traversals;
+  // We will replace inputs marked as dynamic with padded inputs + a dimension
+  // size buffer ref.
+  std::vector<DeviceBufferRef> new_inputs;
+  new_inputs.reserve(2 * inputs_.size());
+  // The set_dimension_size will be prepended to the execution order of this
+  // traversal.
+  std::vector<SharedDeviceBufferList> new_execution_order;
+  new_execution_order.reserve(inputs_.size() + execution_order_.size());
+
+  // We need to modify the dimensions_key to reflect the upper bounds on the
+  // dynamic dimensions, rather than their original static size.
+  std::vector<int64_t> input_upper_bounds;  // INT_VEC_OK
+
+  for (const auto& input : inputs_) {
+    auto dynamism_info = input.dynamic_dimensions();
+    if (dynamism_info.empty()) {
+      for (int64_t dim : input.dimensions()) {
+        input_upper_bounds.push_back(dim);
+      }
+      new_inputs.push_back(input);
+      continue;
+    }
+    // Assume it's just one dimension for now.
+    TT_RET_CHECK(dynamism_info.size() == 1, error::kInvalidArgument)
+        << "only one dynamic dimension per tensor is supported, but got "
+        << dynamism_info.size();
+    int64_t dimension_index = dynamism_info[0].dimension;
+    int64_t upper_bound = dynamism_info[0].upper_bound;
+    // Create a deferred op that pads the buffer ref to upper_bound.
+    TT_ASSIGN_OR_RETURN(
+        DeviceBufferRef padded_input,
+        PadDynamicDimension(input, dimension_index, upper_bound));
+    for (int64_t dim : padded_input.dimensions()) {
+      input_upper_bounds.push_back(dim);
+    }
+    // Using the original dimension size, set the dynamic dimension size to
+    // the original size.
+    TT_RET_CHECK(
+        0 <= dimension_index && dimension_index < input.dimensions().size(),
+        error::kInvalidArgument)
+        << "dimension index " << dimension_index
+        << " is out of bounds for tensor " << input.dimensions().size()
+        << " dimensions";
+    TT_ASSIGN_OR_RETURN(auto results, SetDynamicDimensionSize(
+                                          padded_input, dimension_index,
+                                          input.dimensions()[dimension_index]));
+    auto [set_dimension_size_buffer_ref, dimension_size_buffer_ref] = results;
+    TT_ASSIGN_OR_RETURN(
+        auto padding_traversal,
+        Traversal::Create({padded_input}, {input.device_buffer_list().get()}));
+    // The padding traversal is static-shaped always, even though it technically
+    // still has dynamic annotations on its inputs.
+    padding_traversal.shape_dynamism_metadata_ = ShapeDynamismMetadata();
+    padding_traversal.shape_dynamism_metadata_->input_dimension_bounds.reserve(
+        input.dimensions().size());
+    for (int64_t dim : input.dimensions()) {
+      padding_traversal.shape_dynamism_metadata_->input_dimension_bounds
+          .push_back({dim, dim});
+    }
+
+    padding_traversals.push_back(std::move(padding_traversal));
+
+    new_inputs.push_back(padded_input);
+    new_inputs.push_back(dimension_size_buffer_ref);
+    SharedDeviceBufferList set_dimension_size_node =
+        set_dimension_size_buffer_ref.device_buffer_list();
+    new_execution_order.push_back(set_dimension_size_node);
+    dynamic_redirection_.insert({input, set_dimension_size_buffer_ref});
+  }
+
+  inputs_ = std::move(new_inputs);
+  new_execution_order.insert(new_execution_order.end(),
+                             execution_order_.begin(), execution_order_.end());
+  execution_order_ = std::move(new_execution_order);
+  // Update the cache key to reflect that the dimensions_key is the upper bound
+  // of a dynamic graph, rather than the actual static sizes.
+  cache_key_->dimensions_key =
+      DimensionsKey(input_upper_bounds, /*is_shape_dynamic=*/true);
+  return padding_traversals;
+}
+
+bool IsSimpleNodeTraversal(const Traversal& traversal) {
+  absl::Span<const DeviceBufferRef> outputs = traversal.outputs();
+  ABSL_CHECK(!outputs.empty());  // CRASH_OK=traversals are nonempty
+  const SharedDeviceBufferList& node = outputs[0].device_buffer_list();
+  const DeferredOp* absl_nullable deferred_op = node->deferred_op();
+  if (deferred_op == nullptr) {
+    return false;
+  }
+  if (node->size() != outputs.size()) {
+    return false;
+  }
+  for (int i = 0; i < outputs.size(); ++i) {
+    if (outputs[i].device_buffer_list() != node || outputs[i].index() != i) {
+      return false;
+    }
+  }
+  return true;
+}
+
+namespace {
+
+// Helper function for Traversal::DebugString() to print one DeviceBufferRef's
+// global index, dtype, and shape, like
+// "#0: float32[1,2,3]"
+void StreamBufferRefDebug(std::ostream& os, const DeviceBufferRef& ref,
+                          const int64_t buffer_index) {
+  os << "#" << buffer_index << ": " << ToDTypeName(ref.element_type())
+     << ToString(ref.dimensions()) << "";
+}
+
+// Helper function for Traversal::DebugString() to print an input onto a row,
+// as either:
+//   #0: float32[0, 1, 2] <- zero-sized constant
+//   #1: float32[1, 2, 3] <- argument 0 (materialized)
+//   #2: float32[2, 3, 4] <- argument 1 (placeholder)
+void StreamInputDebug(
+    std::ostream& os, const DeviceBufferRef& input, size_t& arg_index,
+    size_t& buffer_index,
+    absl::flat_hash_map<DeviceBufferRef, size_t>& buffer_to_index) {
+  StreamBufferRefDebug(os, input, buffer_index);
+  switch (input.state()) {
+    case DeviceBufferRefState::kZeroSize:
+      os << " <- zero-sized constant";
+      break;
+    case DeviceBufferRefState::kMaterialized:
+      os << " <- input " << arg_index++ << " (materialized)";
+      break;
+    case DeviceBufferRefState::kPlaceholder:
+      os << " <- input " << arg_index++ << " (placeholder)";
+      break;
+    case DeviceBufferRefState::kDeferred:
+      os << " <- input " << arg_index++ << " (deferred)";
+      break;
+  }
+  buffer_to_index[input] = buffer_index++;
+  os << "\n";
+}
+
+// Helper function for Traversal::DebugString() to print a deferred op onto a
+// row, as {outputs} <- op_name <- {inputs}, possibly without {inputs} if the
+// op is nullary.
+void StreamDeferredOpDebug(
+    std::ostream& os, const SharedDeviceBufferList& node, size_t& buffer_index,
+    absl::flat_hash_map<DeviceBufferRef, size_t>& buffer_to_index) {
+  for (int i = 0; i < node->size(); ++i) {
+    if (i > 0) os << ", ";
+    auto node_output = DeviceBufferRef::Create(node, i).value();
+    StreamBufferRefDebug(os, node_output, buffer_index);
+    buffer_to_index[node_output] = buffer_index++;
+  }
+
+  auto deferred_op = node->deferred_op();
+  if (!deferred_op) {
+    os << " (missing deferred op)";
+    return;
+  }
+
+  os << " <- " << deferred_op->op_name();
+  if (!deferred_op->inputs().empty()) {
+    os << " <- ";
+  }
+  const auto num_inputs = deferred_op->inputs().size();
+  for (auto i = 0; i < num_inputs; ++i) {
+    if (i > 0) os << ", ";
+    const DeviceBufferRef& input = deferred_op->inputs()[i];
+    if (auto it = buffer_to_index.find(input); it != buffer_to_index.end()) {
+      StreamBufferRefDebug(os, input, it->second);
+    } else {
+      os << "(unexpected input)";
+    }
+  }
+  os << "\n";
+}
+
+}  // namespace
+
+std::string Traversal::DebugString() const {
+  std::ostringstream os;
+  os << "Traversal:\n";
+  size_t arg_index = 0;
+  size_t buffer_index = 0;
+  absl::flat_hash_map<DeviceBufferRef, size_t> buffer_to_index;
+  for (const auto& input : inputs_) {
+    StreamInputDebug(os, input, arg_index, buffer_index, buffer_to_index);
+  }
+  for (const SharedDeviceBufferList& node : execution_order_) {
+    StreamDeferredOpDebug(os, node, buffer_index, buffer_to_index);
+  }
+  os << "Outputs:\n";
+  for (auto i = 0; i < outputs_.size(); ++i) {
+    const DeviceBufferRef& output = outputs_[i];
+    if (i > 0) os << ", ";
+    if (auto it = buffer_to_index.find(output); it != buffer_to_index.end()) {
+      StreamBufferRefDebug(os, output, it->second);
+    } else {
+      os << "(unexpected buffer)";
+    }
+  }
+  return os.str();
+}
+
+namespace {
+
+using Vertex = std::variant<const DeviceBufferRef, const DeferredOp*>;
+
+struct Edge {
+  int from_index = -1;
+  int to_index = -1;
+};
+
+class GraphvizGraph {
+ public:
+  GraphvizGraph() = default;
+
+  // This class is move-only.
+  GraphvizGraph(GraphvizGraph&& other) = default;
+  GraphvizGraph& operator=(GraphvizGraph&& other) = default;
+  GraphvizGraph(const GraphvizGraph&) = delete;
+  GraphvizGraph& operator=(const GraphvizGraph&) = delete;
+
+  static absl::StatusOr<GraphvizGraph> Create(
+      absl::Span<const DeviceBufferRef> inputs,
+      absl::Span<const SharedDeviceBufferList> execution_order) {
+    GraphvizGraph graph;
+    TT_RETURN_IF_ERROR(graph.Init(inputs, execution_order));
+    return graph;
+  }
+
+  const std::vector<Vertex>& vertices() const { return vertices_; }
+  const std::vector<Edge>& edges() const { return edges_; }
+
+ private:
+  absl::Status Init(absl::Span<const DeviceBufferRef> inputs,
+                    absl::Span<const SharedDeviceBufferList> execution_order) {
+    AddInputVertices(inputs);
+    TT_RETURN_IF_ERROR(AddExecutionOrderVerticesAndEdges(execution_order));
+    return absl::OkStatus();
+  }
+
+  void AddInputVertices(absl::Span<const DeviceBufferRef> inputs) {
+    for (const auto& input : inputs) {
+      buffer_to_index_[input] = vertices_.size();
+      vertices_.push_back(input);
+    }
+  }
+
+  absl::Status AddExecutionOrderVerticesAndEdges(
+      absl::Span<const SharedDeviceBufferList> execution_order) {
+    for (const auto& node : execution_order) {
+      std::optional<int> maybe_deferred_op_vertex_index = std::nullopt;
+      if (const DeferredOp* deferred_op = node->deferred_op()) {
+        maybe_deferred_op_vertex_index =
+            AddDeferredOpVertexAndInputEdges(*deferred_op);
+      }
+      TT_RETURN_IF_ERROR(
+          AddOutputVerticesAndEdges(node, maybe_deferred_op_vertex_index));
+    }
+    return absl::OkStatus();
+  }
+
+  std::optional<int> AddDeferredOpVertexAndInputEdges(
+      const DeferredOp& deferred_op) {
+    int deferred_op_vertex_index = vertices_.size();
+    vertices_.push_back(&deferred_op);
+    for (const DeviceBufferRef& input : deferred_op.inputs()) {
+      if (auto it = buffer_to_index_.find(input);
+          it != buffer_to_index_.end()) {
+        edges_.push_back(
+            {.from_index = it->second, .to_index = deferred_op_vertex_index});
+      }
+    }
+    return deferred_op_vertex_index;
+  }
+
+  absl::Status AddOutputVerticesAndEdges(
+      const SharedDeviceBufferList& node,
+      std::optional<int> maybe_deferred_op_vertex_index) {
+    for (int i = 0; i < node->size(); ++i) {
+      TT_ASSIGN_OR_RETURN(DeviceBufferRef output,
+                          DeviceBufferRef::Create(node, i));
+      buffer_to_index_[output] = vertices_.size();
+      vertices_.push_back(output);
+      if (maybe_deferred_op_vertex_index.has_value()) {
+        edges_.push_back({.from_index = *maybe_deferred_op_vertex_index,
+                          .to_index = static_cast<int>(vertices_.size()) - 1});
+      }
+    }
+    return absl::OkStatus();
+  }
+
+  absl::flat_hash_map<DeviceBufferRef, int> buffer_to_index_;
+  std::vector<Vertex> vertices_;
+  std::vector<Edge> edges_;
+};
+
+std::string GraphvizVertexParams(
+    const Vertex& vertex,
+    const absl::flat_hash_map<DeviceBufferRef, std::string>&
+        buffer_ref_to_python_var) {
+  std::ostringstream os;
+  if (std::holds_alternative<const DeviceBufferRef>(vertex)) {
+    const DeviceBufferRef& ref = std::get<const DeviceBufferRef>(vertex);
+    if (auto it = buffer_ref_to_python_var.find(ref);
+        it != buffer_ref_to_python_var.end()) {
+      os << "[shape=\"box\", label=\"" << it->second << ": "
+         << ToDTypeName(ref.element_type()) << ToString(ref.dimensions());
+      switch (ref.state()) {
+        case DeviceBufferRefState::kZeroSize:
+          os << " (zero-sized constant)";
+          break;
+        case DeviceBufferRefState::kMaterialized:
+          os << " (materialized)";
+          break;
+        case DeviceBufferRefState::kPlaceholder:
+          os << " (placeholder)";
+          break;
+        default:
+          break;
+      }
+      os << "\"]";
+    } else {
+      os << "[shape=\"box\", label=\" " << ToDTypeName(ref.element_type())
+         << ToString(ref.dimensions()) << "\"]";
+    }
+  } else {
+    const DeferredOp* deferred_op = std::get<const DeferredOp*>(vertex);
+    os << "[label=\"" << deferred_op->op_name() << "\"]";
+  }
+  return os.str();
+}
+
+}  // namespace
+
+absl::Status Traversal::Validate() const {
+  size_t buffer_index = 0;
+  absl::flat_hash_map<DeviceBufferRef, size_t> buffer_to_index;
+
+  // Get buffers from the traversal's inputs.
+  for (const auto& input : inputs_) {
+    buffer_to_index[input] = buffer_index++;
+  }
+
+  // Validate internal buffers.
+  for (auto i = 0; i < execution_order_.size(); ++i) {
+    const SharedDeviceBufferList& node = execution_order_[i];
+    // Validate that all traversal's internal buffers are from deferred ops
+    // using either buffer inputs or outputs from previously encountered
+    // deferred ops.
+    auto* deferred_op = node->deferred_op();
+    TT_RET_CHECK(deferred_op, error::kFailedPrecondition)
+        << "Missing deferred op at line " << i;
+    const auto num_inputs = deferred_op->inputs().size();
+    for (auto i = 0; i < num_inputs; ++i) {
+      const DeviceBufferRef& input = deferred_op->inputs()[i];
+      TT_RET_CHECK(buffer_to_index.find(input) != buffer_to_index.end(),
+                   error::kFailedPrecondition)
+          << "Unexpected buffer at line " << i;
+    }
+    // Now we can add the deferred ops' outputs to the set of known buffers.
+    for (auto i = 0; i < node->size(); ++i) {
+      TT_ASSIGN_OR_RETURN(auto node_output, DeviceBufferRef::Create(node, i));
+      buffer_to_index[std::move(node_output)] = buffer_index++;
+    }
+  }
+
+  // Validate traversal outputs.
+  for (auto i = 0; i < outputs_.size(); ++i) {
+    const DeviceBufferRef& output = outputs_[i];
+    TT_RET_CHECK(buffer_to_index.find(output) != buffer_to_index.end(),
+                 error::kFailedPrecondition)
+        << "Unexpected buffer at line " << i;
+  }
+
+  return absl::OkStatus();
+}
+
+bool Traversal::is_bounded_dynamic() const {
+  for (const DeviceBufferRef& input : inputs_) {
+    if (!input.dynamic_dimensions().empty()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+namespace {
+
+// Returns true if the traversal's inputs match the metadata's expectations
+// for bounded dynamism. This means that all non-dynamic dimensions match size
+// exactly, and all dynamic dimensions are in the expected bounds.
+bool IsCompatibleBoundedDynamic(const Traversal& traversal,
+                                const ShapeDynamismMetadata& metadata) {
+  // Metadata is recorded in terms of a flat sequence of dimensions, so we
+  // need to "unroll" the dimension index across multiple inputs.
+  int flat_dim_index = 0;
+
+  // Iterate over inputs, and then over the dimensions of each input.
+  for (const auto& input : traversal.inputs()) {
+    for (int64_t input_dim : input.dimensions()) {
+      auto [lower_bound, upper_bound] =
+          metadata.input_dimension_bounds[flat_dim_index];
+
+      if (input_dim < lower_bound || input_dim > upper_bound) {
+        // Dimension is not in bounds, incompatible.
+        return false;
+      }
+      flat_dim_index++;
+    }
+  }
+  // If we made it here, then all dimension in input match either statically
+  // or in bounds dynamically. Make sure that we found as many input
+  // dimensions as the metadata expects, and if so, return true (compatible).
+  return flat_dim_index == metadata.input_dimension_bounds.size();
+}
+
+// PRECONDITION: IsCompatibleBoundedDynamic(traversal, metadata) == true
+// Uses DeviceBufferRef::MarkDynamic to mark the appropriate input dimensions
+// with the appropriate bounds.
+absl::Status MarkBoundedDynamic(const Traversal& traversal,
+                                const ShapeDynamismMetadata& metadata) {
+  int flat_dim_index = 0;
+  for (const auto& input : traversal.inputs()) {
+    for (int64_t input_dim_index = 0;
+         input_dim_index < input.dimensions().size(); ++input_dim_index) {
+      auto [lower_bound, upper_bound] =
+          metadata.input_dimension_bounds[flat_dim_index];
+      if (lower_bound != upper_bound) {
+        TT_RETURN_IF_ERROR(
+            input.MarkDynamic(input_dim_index, lower_bound, upper_bound));
+      }
+      flat_dim_index++;
+    }
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
+
+absl::Status Traversal::ApplyBoundedDynamismAnnotations(
+    absl::Span<const ShapeDynamismMetadata> shape_dynamism_metadata) {
+  TT_RET_CHECK(!is_bounded_dynamic(), error::kFailedPrecondition)
+      << "traversal is already bounded dynamic";
+
+  // Try to find a bounded-dynamic compilation that is compatible.
+  // Compatibility requires that, for each dimension in the input, either the
+  // dimension is static and matches size, or is dynamic and the static value
+  // is between the lower and upper bounds (inclusive)
+  //
+  // We iterate backwards through the metadata because we expect the last
+  // metadata entry to be the most recent compilation attempt, which is most
+  // likely to already be a compatible bounded-dynamic compilation.
+  for (int i = shape_dynamism_metadata.size() - 1; i >= 0; --i) {
+    const ShapeDynamismMetadata& metadata = shape_dynamism_metadata[i];
+    if (IsCompatibleBoundedDynamic(*this, metadata)) {
+      // TODO: maybe try to select the "best" metadata instead of just the
+      // first compatible one?
+      TT_RETURN_IF_ERROR(MarkBoundedDynamic(*this, metadata));
+      shape_dynamism_metadata_.reset();
+      return absl::OkStatus();
+    }
+  }
+  // We didn't find a compatible bounded-dynamic compilation.
+  // TODO: implement auto-dynamism to infer bounds from current and previous
+  // static graphs
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::string> GetGraphviz(
+    const Traversal& traversal,
+    const absl::flat_hash_map<DeviceBufferRef, std::string>&
+        buffer_ref_to_python_var) {
+  TT_ASSIGN_OR_RETURN(
+      GraphvizGraph graph,
+      GraphvizGraph::Create(traversal.inputs(), traversal.execution_order()));
+
+  std::string result =
+      "Graphviz string: (try pasting in http://graphviz/ to see the graph)\n"
+      "digraph {\n"
+      "  // Vertices:\n";
+
+  // Stream vertices in dot format.
+  for (int i = 0; i < graph.vertices().size(); ++i) {
+    const auto& vertex = graph.vertices()[i];
+    absl::StrAppend(&result, "  ", i, " ",
+                    GraphvizVertexParams(vertex, buffer_ref_to_python_var),
+                    ";\n");
+  }
+
+  // Stream edges in dot format.
+  absl::StrAppend(&result, "\n  // Edges:\n  ",
+                  absl::StrJoin(graph.edges(), "\n  ",
+                                [](std::string* out, const Edge& edge) {
+                                  absl::StrAppend(out, edge.from_index, " -> ",
+                                                  edge.to_index);
+                                }),
+                  "\n}\n");
+  return result;
+}
+
+}  // namespace torch_tpu

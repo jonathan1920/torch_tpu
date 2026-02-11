@@ -1,0 +1,2 @@
+# Intentionally empty to prevent WORKSPACE from mixing its
+# contents into bzlmod builds.

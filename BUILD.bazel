@@ -1,0 +1,96 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@pypi//:requirements.bzl", "all_requirements")
+load("@xla//third_party/py:py_import.bzl", "py_import")
+load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
+
+package(
+    default_visibility = PACKAGE_DEFAULT_VISIBILITY,
+)
+
+alias(
+    name = "license",
+    actual = "//torch_tpu:license",
+)
+
+filegroup(
+    name = "pyproject",
+    srcs = ["pyproject.toml"],
+)
+
+exports_files(["README.md"])
+
+bool_flag(
+    name = "test_wheel",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "wheel_test_enabled",
+    flag_values = {":test_wheel": "True"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "use_prebuilt_wheel",
+    flag_values = {":test_wheel": "True"},
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "local_wheel_file",
+    srcs = glob(["dist/*.whl"]),
+)
+
+# Wheel deps not included with the wheel that are needed for testing.
+genrule(
+    name = "wheel_extra_test_deps",
+    testonly = True,
+    srcs = [
+        "//tests:error_testing",
+        "//tests:op_testing",
+        "//tests/compile:stablehlo_compile_testing",
+        "//shims/etils/epath",
+        "//shims/safetensors",
+        "//shims/torch:pytorch",
+        "//shims/torch:tensorboard_support",
+        "//shims/torch:testing_internal",
+    ],
+    outs = ["wheel_extra_test_deps.zip"],
+    cmd = "$(location @bazel_tools//tools/zip:zipper) c $@ $(SRCS)",
+    tools = ["@bazel_tools//tools/zip:zipper"],
+)
+
+py_import(
+    name = "torch_tpu_py_import",
+    testonly = True,
+    wheel = select({
+        "//:use_prebuilt_wheel": ":local_wheel_file",
+        "//conditions:default": "//ci/wheel:torch_tpu_wheel",
+    }),
+    zip_deps = [":wheel_extra_test_deps"],
+    # Add requirements coming from pip_parse from workspace
+    deps = all_requirements,
+)
+
+genrule(
+    name = "debug_wheel_flag",
+    outs = ["wheel_status.txt"],
+    cmd = select({
+        ":wheel_test_enabled": "echo 'WHEEL_TEST IS ENABLED (Matched)' > $@",
+        "//conditions:default": "echo 'WHEEL_TEST IS NOT ENABLED (Did not match)' > $@",
+    }),
+)

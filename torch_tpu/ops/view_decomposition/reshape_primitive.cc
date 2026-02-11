@@ -1,0 +1,270 @@
+/*
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "torch_tpu/ops/view_decomposition/reshape_primitive.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <ostream>
+#include <utility>
+#include <vector>
+
+#include "absl/log/absl_check.h"
+#include "absl/log/absl_log.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_join.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/Support/DebugStringHelper.h"
+#include "torch_tpu/ops/op_builder_utils.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/utils.h"
+#include "torch_tpu/ops/view_decomposition/strided_layout.h"
+
+namespace torch_tpu {
+
+namespace {
+
+// A maximally-contiguous block of dimensions in a strided layout.
+// Any two sequential dimensions in a strided layout which have the property
+// that stride[i] == size[i+1] * stride[i+1] can be viewed as a single dimension
+// with size = size[i] * size[i+1] and stride = stride[i+1].
+// We refer to this as a "contiguity block"; a fully-contiguous tensor will
+// have a single block with minor_stride = 1.
+struct ContiguityBlock {
+  int64_t num_elements = 0;
+  int64_t minor_stride = 1;
+};
+
+// Returns the sequence of contiguity blocks in the given strided layout.
+// This never fails because the worst case is one contiguity block per
+// dimension, which is still valid.
+std::vector<ContiguityBlock> GetContiguityBlocks(const StridedLayout& layout) {
+  if (layout.strided_dims.empty()) {
+    return {};
+  }
+
+  std::vector<ContiguityBlock> blocks;
+
+  // Initialize the first block to be the first dimension with size > 1 to
+  // skip arbitrary size-1 prefix dimensions.
+  int64_t current_num_elements = layout.strided_dims[0].size;
+  int64_t current_minor_stride = layout.strided_dims[0].stride;
+  int64_t start_index = 1;
+  while (current_num_elements == 1 &&
+         start_index < layout.strided_dims.size()) {
+    current_num_elements *= layout.strided_dims[start_index].size;
+    current_minor_stride = layout.strided_dims[start_index].stride;
+    start_index++;
+  }
+
+  for (int64_t i = start_index; i < layout.strided_dims.size(); ++i) {
+    const auto& dim = layout.strided_dims[i];
+    if (dim.size == 1) {
+      // Size-1 dimensions have arbitrary strides, always merge with previous
+      // (which doesn't increase the size or stride).
+      continue;
+    }
+    if (current_minor_stride == dim.size * dim.stride) {
+      // Contiguity criteria is met; extend the current block.
+      current_num_elements *= dim.size;
+      current_minor_stride = dim.stride;
+      continue;
+    }
+
+    // End the previous block and start a new one.
+    blocks.push_back(ContiguityBlock{.num_elements = current_num_elements,
+                                     .minor_stride = current_minor_stride});
+    current_num_elements = dim.size;
+    current_minor_stride = dim.stride;
+  }
+  blocks.push_back(ContiguityBlock{.num_elements = current_num_elements,
+                                   .minor_stride = current_minor_stride});
+  return blocks;
+}
+
+bool IsNoOpReshape(const ReshapePrimitive& reshape,
+                   const StridedLayout& layout) {
+  if (reshape.new_sizes.size() != layout.strided_dims.size()) {
+    return false;
+  }
+  for (int i = 0; i < reshape.new_sizes.size(); ++i) {
+    if (reshape.new_sizes[i] != layout.strided_dims[i].size) {
+      return false;
+    }
+  }
+  return true;
+}
+
+absl::Status ValidateReshapeElementCount(const ReshapePrimitive& reshape,
+                                         const StridedLayout& layout) {
+  TT_RET_CHECK(layout.strided_dims.size() == reshape.base_sizes.size(),
+               error::kInvalidArgument)
+      << "reshape base sizes and layout rank must match. Layout: " << layout
+      << " Op: " << reshape;
+  for (int i = 0; i < layout.strided_dims.size(); ++i) {
+    TT_RET_CHECK(layout.strided_dims[i].size == reshape.base_sizes[i],
+                 error::kInvalidArgument)
+        << "reshape base sizes must match the layout. Layout: " << layout
+        << " Op: " << reshape;
+  }
+  int64_t layout_num_elements = 1;
+  for (const auto& dim : layout.strided_dims) {
+    layout_num_elements *= dim.size;
+  }
+  int64_t reshape_num_elements = 1;
+  for (const auto& size : reshape.new_sizes) {
+    reshape_num_elements *= size;
+  }
+  TT_RET_CHECK(layout_num_elements == reshape_num_elements,
+               error::kInvalidArgument)
+      << "reshape does not match the number of elements in the "
+         "layout. Layout: "
+      << layout << " Op: " << reshape;
+  TT_RET_CHECK(reshape_num_elements > 0, error::kInvalidArgument)
+      << "reshapes to a zero-sized dimension. Layout: " << layout
+      << " Op: " << reshape;
+  return absl::OkStatus();
+}
+
+}  // namespace
+
+std::ostream& operator<<(std::ostream& os, const ReshapePrimitive& reshape) {
+  os << "reshape(base_sizes=" << absl::StrJoin(reshape.base_sizes, ",")
+     << ", new_sizes=" << absl::StrJoin(reshape.new_sizes, ",") << ")";
+  return os;
+}
+
+absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
+                                  const ReshapePrimitive& reshape) {
+  // Check for a no-op reshape
+  if (IsNoOpReshape(reshape, layout)) {
+    return false;
+  }
+
+  // Validate element count matches and is non-zero.
+  TT_RETURN_IF_ERROR(ValidateReshapeElementCount(reshape, layout));
+
+  // Not a no-op, actually need to do the reshape
+  // Storage offset is unchanged.
+  StridedLayout new_layout{.storage_offset = layout.storage_offset};
+
+  // New sizes are given by the reshape reshape.
+  new_layout.strided_dims.reserve(reshape.new_sizes.size());
+  for (int i = 0; i < reshape.new_sizes.size(); ++i) {
+    new_layout.strided_dims.push_back(
+        StridedDimension{.size = reshape.new_sizes[i], .stride = 0});
+  }
+
+  // Solving for the new strides requires tracking the contiguity-like blocks.
+  auto blocks = GetContiguityBlocks(layout);
+  size_t block_index = 0;
+  for (auto& new_dim : new_layout.strided_dims) {
+    if (new_dim.size == 1) {
+      // Size-1 dimensions have arbitrary strides, and we can have as many
+      // trailing size-1 dimensions as necessary.
+      while (block_index < blocks.size() &&
+             blocks[block_index].num_elements == 1) {
+        ++block_index;
+      }
+      new_dim.stride = 1;
+      continue;
+    }
+    TT_RET_CHECK(block_index < blocks.size(), error::kInvalidArgument)
+        << "reshape is not aligned with contiguity-like blocks. Layout: "
+        << layout << " Op: " << reshape;
+    auto& current_block = blocks[block_index];
+    if (new_dim.size == current_block.num_elements) {
+      // Used up the elements in the current block.
+      new_dim.stride = current_block.minor_stride;
+      ++block_index;
+      continue;
+    }
+    TT_RET_CHECK(current_block.num_elements > new_dim.size,
+                 error::kInvalidArgument)
+        << "reshape is not aligned with contiguity-like blocks. Layout: "
+        << layout << " Op: " << reshape;
+    TT_RET_CHECK(current_block.num_elements % new_dim.size == 0,
+                 error::kInvalidArgument)
+        << "reshape is not aligned with contiguity-like blocks. Layout: "
+        << layout << " Op: " << reshape;
+
+    // Split the current block into two blocks to satisfy new_dim.size.
+    // This converts a block with A*B elements and stride S into two blocks:
+    //   1. A elements, stride B*S
+    //   2. B elements, stride S
+    current_block.num_elements /= new_dim.size;
+    new_dim.stride = current_block.num_elements * current_block.minor_stride;
+  }
+  layout = std::move(new_layout);
+  return true;
+}
+
+absl::StatusOr<ReshapePrimitive> Merge(ReshapePrimitive first,
+                                       ReshapePrimitive second) {
+  // The Reshape reshape themselves don't have stride metadata so we can't
+  // validate the contiguity-like property here, but we can check that the
+  // element counts match.
+  int64_t current_num_elements = 1;
+  for (int64_t size : first.new_sizes) {
+    current_num_elements *= size;
+  }
+  int64_t to_merge_num_elements = 1;
+  for (int64_t size : second.new_sizes) {
+    to_merge_num_elements *= size;
+  }
+  TT_RET_CHECK(current_num_elements == to_merge_num_elements,
+               error::kInvalidArgument)
+      << "sequential reshapes must have matching element counts. first: "
+      << first << ", second: " << second;
+
+  // Sequential reshapes from A -> B and B -> C merge to A -> C.
+  second.base_sizes = std::move(first.base_sizes);
+  return second;
+}
+
+absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(
+    mlir::MlirOp input, const ReshapePrimitive& reshape) {
+  const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
+  ABSL_VLOG(3) << "[ReshapePrimitiveShlo]: Module: "
+               << DebugString(GetModuleOp(input.getBuilder()));
+
+  auto result =
+      ReshapeFromStaticDimensions(input, reshape.base_sizes, reshape.new_sizes);
+  if (result.ok()) {
+    if (input_type.hasStaticShape()) {
+      const mlir::RankedTensorType output_type = GetTensorTypeOrDie(*result);
+      // Verify that static shaped reshapes are exactly what PT dictates them to
+      // be.
+      ABSL_CHECK(  // CRASH_OK: For static input, the input/output shape must
+                   // match static base_sizes/new_sizes.
+          input_type.getShape().equals(reshape.base_sizes) &&
+          output_type.getShape().equals(reshape.new_sizes))
+          << "input/output shape must match static base_sizes/new_sizes "
+             "respectively, got "
+             "input: "
+          << ToString(input_type.getShape())
+          << " base sizes: " << ToString(reshape.base_sizes)
+          << " output: " << ToString(output_type.getShape())
+          << " new sizes: " << ToString(reshape.new_sizes);
+    }
+  }
+  return result;
+}
+
+}  // namespace torch_tpu
