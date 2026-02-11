@@ -12,26 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""An adapter for xprof_session module."""
+"""An adapter for xprof_analysis_client module."""
 
 import contextlib
 
 
-class XprofSession(contextlib.AbstractContextManager):
-  """A no-op context manager for XprofSession for OSS."""
+class XprofAnalysisClient(contextlib.AbstractContextManager):
+  """A no-op context manager for XprofAnalysisClient for OSS."""
 
   def __init__(self, *args, **kwargs):
     pass
-
-  def start_session(self, *args, **kwargs):
-    pass
-
-  def end_session_and_get_session_id(self):
-    pass
-
-  def end_session_and_get_url(self):
-    # MUST return a string to satisfy the f-string formatter
-    return "http://dummy-url-for-oss"
 
   def __enter__(self):
     pass

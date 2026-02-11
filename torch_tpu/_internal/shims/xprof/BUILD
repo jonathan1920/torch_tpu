@@ -30,6 +30,11 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
+    name = "xprof_analysis_client",
+    srcs = ["xprof_analysis_client.py"],
+)
+
+pytype_strict_library(
     name = "xprof_session",
     srcs = ["xprof_session.py"],
 )
