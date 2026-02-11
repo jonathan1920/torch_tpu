@@ -40,6 +40,7 @@
 #include "c10/util/Exception.h"
 #include "c10/util/Optional.h"
 #include "c10/util/StringUtil.h"
+#include "torch_tpu/common/env_vars.h"
 #include "xla/xla_data.pb.h"
 #include "torch_tpu/common/status_builder.h"
 #include "torch_tpu/common/utils.h"
@@ -49,7 +50,7 @@ namespace torch_tpu {
 
 bool GetEnableDebugChecks() {
   static const bool enable = [] {
-    const char* const env_var = std::getenv("TORCH_TPU_ENABLE_DEBUG_CHECKS");
+    const char* const env_var = std::getenv(kTorchTpuEnableDebugChecksEnvVar);
     if (env_var == nullptr) return false;
     return std::string_view(env_var) == "1";
   }();

@@ -36,6 +36,7 @@
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/pjrt/pjrt_init.h"
@@ -195,7 +196,8 @@ static absl::StatusOr<xla::ExecutionOptions::EffortLevel> ParseEffortLevel(
 static const CompilerOptionOverrides& GetCompilerOptionOverridesFromEnvVar() {
   static const absl::NoDestructor<CompilerOptionOverrides> overrides([] {
     CompilerOptionOverrides overrides;
-    const char* const xla_flags = getenv("TORCH_TPU_INTERNAL_XLA_OPTIONS");
+    const char* const xla_flags =
+        std::getenv(kTorchTpuInternalXlaOptionsEnvVar);
     if (xla_flags != nullptr) {
       for (std::string_view flag : absl::StrSplit(xla_flags, ' ')) {
         if (flag.empty()) {
@@ -213,7 +215,7 @@ static const CompilerOptionOverrides& GetCompilerOptionOverridesFromEnvVar() {
 
 [[nodiscard]] EagerCompilationMode GetEagerCompilationMode() {
   const char* const env_var =
-      getenv("TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE");
+      std::getenv(kTorchTpuInternalEagerCompilationModeEnvVar);
   if (env_var != nullptr && std::string_view(env_var) == "optimized") {
     return EagerCompilationMode::kOptimized;
   }

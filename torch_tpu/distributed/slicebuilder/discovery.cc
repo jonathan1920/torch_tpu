@@ -128,7 +128,7 @@ absl::StatusOr<SimpleSocket> GetFreePort() {
 
 // Helper function to get a required environment variable or return an error.
 absl::StatusOr<std::string> GetRequiredEnv(const char* env_name) {
-  const char* env_val = getenv(env_name);
+  const char* env_val = std::getenv(env_name);
   if (env_val == nullptr) {
     return TT_ERROR(error::kFailedPrecondition)
            << env_name << " environment variable is not set.";

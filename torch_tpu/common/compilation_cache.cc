@@ -48,9 +48,9 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "mlir/IR/OwningOpRef.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/thread_pool.h"
 #include "torch_tpu/common/tier3_compilation_cache.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -91,7 +91,7 @@ bool IsFutureReady(const SharedLoadedExecutableFuture& future) {
 // Returns the value of the NPROC environment variable (a positive integer), or
 // 0 if it is not set or has an invalid value.
 [[nodiscard]] int GetNumProcs() {
-  if (const char* const num_proc_str = std::getenv("NPROC")) {
+  if (const char* const num_proc_str = std::getenv(kNprocEnvVar)) {
     int num_proc;
     if (absl::SimpleAtoi(num_proc_str, &num_proc) && num_proc > 0) {
       return num_proc;

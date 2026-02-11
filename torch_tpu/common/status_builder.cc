@@ -28,13 +28,14 @@
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "torch/csrc/utils/cpp_stacktraces.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/utils.h"
 
 namespace torch_tpu {
 
 std::optional<bool> TorchShowCppStacktraces() {
   static const auto state = []() -> std::optional<bool> {
-    const char* const env_var = std::getenv("TORCH_SHOW_CPP_STACKTRACES");
+    const char* const env_var = std::getenv(kTorchShowCppStacktracesEnvVar);
     if (env_var == nullptr) {
       return std::nullopt;
     }

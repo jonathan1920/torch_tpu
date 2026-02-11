@@ -27,6 +27,7 @@
 #include "absl/strings/numbers.h"
 #include "absl/time/time.h"
 #include "torch_tpu/common/compilation_cache.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/tpu_hooks.h"
@@ -41,7 +42,7 @@ namespace {
 // piggyback on to determine if we're running in single-device mode or
 // distributed mode when it is set.
 std::optional<int> ReadWorldSizeFromEnv() {
-  const char* env_world_size = getenv("WORLD_SIZE");
+  const char* env_world_size = std::getenv(kWorldSizeEnvVar);
   if (env_world_size == nullptr) {
     // WORLD_SIZE is not set.
     return std::nullopt;

@@ -23,6 +23,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 
 namespace torch_tpu {
@@ -60,7 +61,7 @@ absl::StatusOr<std::string> InferV5Topology(int world_size) {
 }
 
 absl::StatusOr<std::string> GetHostBounds(int world_size) {
-  const char* accelerator_type_env = std::getenv("ACCELERATOR_TYPE");
+  const char* accelerator_type_env = std::getenv(kAcceleratorTypeEnvVar);
   if (accelerator_type_env == nullptr) {
     return TT_ERROR(error::kInvalidArgument)
            << "ACCELERATOR_TYPE environment variable not set.";
@@ -85,7 +86,7 @@ absl::Status InitializeDistributedEnvironment(int rank, int world_size,
                                               int local_rank,
                                               std::string sb_addrs,
                                               int sb_port) {
-  if (std::getenv("TPU_PROCESS_ADDRESSES") == nullptr) {
+  if (std::getenv(kTpuProcessAddressesEnvVar) == nullptr) {
     if (sb_addrs.empty()) {
       return absl::OkStatus();
     }
@@ -94,19 +95,19 @@ absl::Status InitializeDistributedEnvironment(int rank, int world_size,
       return TT_ERROR(error::kInternal) << absl::StrCat(
                  "Failed to get host bounds: ", host_bounds.status().message());
     }
-    setenv("CLOUD_TPU_TASK_ID", absl::StrCat(local_rank).c_str(), 1);
-    setenv("TPU_VISIBLE_CHIPS", absl::StrCat(local_rank).c_str(), 1);
-    setenv("TPU_HOST_BOUNDS", host_bounds->c_str(), 1);
-    setenv("TPU_CHIPS_PER_HOST_BOUNDS", "1,1,1", 1);
+    SetEnv(kCloudTpuTaskIdEnvVar, absl::StrCat(local_rank));
+    SetEnv(kTpuVisibleChipsEnvVar, absl::StrCat(local_rank));
+    SetEnv(kTpuHostBoundsEnvVar, *host_bounds);
+    SetEnv(kTpuChipsPerHostBoundsEnvVar, "1,1,1");
 
     // The free port of this process.
-    setenv("TPU_PROCESS_PORT", absl::StrCat(sb_port).c_str(), 1);
+    SetEnv(kTpuProcessPortEnvVar, absl::StrCat(sb_port));
 
     // The addresses of all other workers in the slice.
-    setenv("TPU_PROCESS_ADDRESSES", sb_addrs.c_str(), 1);
+    SetEnv(kTpuProcessAddressesEnvVar, sb_addrs);
   }
 
-  const char* libtpu_init_args = std::getenv("LIBTPU_INIT_ARGS");
+  const char* libtpu_init_args = std::getenv(kLibtpuInitArgsEnvVar);
   std::string libtpu_init_args_str =
       libtpu_init_args == nullptr ? "" : libtpu_init_args;
   if (!absl::StrContains(libtpu_init_args_str,
@@ -114,7 +115,7 @@ absl::Status InitializeDistributedEnvironment(int rank, int world_size,
     // Preventing distributed hangs, see b/477673365.
     absl::StrAppend(&libtpu_init_args_str,
                     " --xla_tpu_use_enhanced_launch_barrier=false");
-    setenv("LIBTPU_INIT_ARGS", libtpu_init_args_str.c_str(), 1);
+    SetEnv(kLibtpuInitArgsEnvVar, libtpu_init_args_str);
   }
   return absl::OkStatus();
 }

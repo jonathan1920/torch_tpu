@@ -74,6 +74,7 @@ torch_tpu_cc_library(
     srcs = ["status_builder.cc"],
     hdrs = ["status_builder.h"],
     deps = [
+        ":env_vars",
         ":utils",
         "//shims/torch",
         "//shims/torch:torch_headers",
@@ -89,6 +90,7 @@ torch_tpu_cc_library(
     srcs = ["error_utils.cc"],
     hdrs = ["error_utils.h"],
     deps = [
+        ":env_vars",
         ":macro_utils",
         ":status_builder",
         ":utils",
@@ -131,6 +133,7 @@ torch_tpu_cc_library(
     srcs = ["compilation.cc"],
     hdrs = ["compilation.h"],
     deps = [
+        ":env_vars",
         ":error_utils",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/pjrt:pjrt_init",
@@ -462,6 +465,11 @@ torch_tpu_cc_test(
 )
 
 torch_tpu_cc_library(
+    name = "env_vars",
+    hdrs = ["env_vars.h"],
+)
+
+torch_tpu_cc_library(
     name = "aten_utils",
     srcs = ["aten_utils.cc"],
     hdrs = ["aten_utils.h"],
@@ -491,6 +499,7 @@ torch_tpu_cc_library(
     srcs = ["environment.cc"],
     hdrs = ["environment.h"],
     deps = [
+        ":env_vars",
         ":error_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -593,6 +602,7 @@ torch_tpu_cc_library(
     deps = [
         ":cache_key",
         ":compilation",
+        ":env_vars",
         ":error_utils",
         ":thread_pool",
         ":tier2_compilation_cache",
@@ -616,7 +626,6 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:numbers",
         "@xla//xla:xla_proto_cc",
         "@xla//xla/pjrt:pjrt_client",
