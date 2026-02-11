@@ -38,6 +38,9 @@ cc_library(
     ) + glob(
         # 3. Direct Source for Pybind11 (Keep as backup)
         ["third_party/pybind11/include/**"],
+    ) + glob(
+        # 4. MISSING PIECE: Header-only utilities (like util/complex.h)
+        ["torch/headeronly/**"],
     ),
     includes = [
         # Standard paths
@@ -50,6 +53,9 @@ cc_library(
 
         # Local pybind11 path
         "third_party/pybind11/include",
+
+        # Header-only utilities
+        "torch/headeronly",
     ],
 )
 
