@@ -52,4 +52,4 @@ export TPU_LIBRARY_PATH="$ABS_LIBTPU"
 echo "INFO: Set TPU_LIBRARY_PATH=$TPU_LIBRARY_PATH"
 
 # 5. Run the binary
-./torch_tpu/common/compilation_cache_test "$@"
+./torch_tpu/common/compilation_test "$@"

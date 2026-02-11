@@ -549,14 +549,14 @@ torch_tpu_cc_library(
     srcs = ["cache_key.cc"],
     hdrs = ["cache_key.h"],
     deps = [
+        ":dtype",
+        ":error_utils",
+        ":fingerprint_utils",
+        ":utils",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
-        "//torch_tpu/common:dtype",
-        "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:fingerprint_utils",
-        "//torch_tpu/common:utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -626,10 +626,10 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_test(
-    name = "compilation_cache_test",
-    srcs = ["compilation_cache_test.cc"],
+    name = "compilation_test",
+    srcs = ["compilation_test.cc"],
     tags = [
-        # Do not add tag "oss_ready_tpu" here. Instead, use "oss_compilation_cache_test" below to
+        # Do not add tag "oss_ready_tpu" here. Instead, use "oss_compilation_test" below to
         # run tests in TPU CI.
         # To initialize PjRt, we need to explicitly set environment variable TPU_LIBRARY_PATH to
         # point to libtpu.so for C++ tests before starting running the tests, which is not needed
@@ -638,10 +638,8 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":compilation",
-        ":compilation_cache",
         "//shims/torch:torch_headers",
         "//torch_tpu/pjrt:pjrt_init",
-        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
@@ -650,11 +648,24 @@ torch_tpu_cc_test(
     ],
 )
 
+torch_tpu_cc_test(
+    name = "compilation_cache_test",
+    srcs = ["compilation_cache_test.cc"],
+    deps = [
+        ":compilation_cache",
+        "//shims/torch:torch_headers",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla:xla_proto_cc",
+        "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
+    ],
+)
+
 sh_test(
-    name = "oss_compilation_cache_test",
-    srcs = ["oss_compilation_cache_test.sh"],
+    name = "oss_compilation_test",
+    srcs = ["oss_compilation_test.sh"],
     data = [
-        ":compilation_cache_test",
+        ":compilation_test",
         "@pypi_libtpu//:whl",
     ],
     tags = [
@@ -663,8 +674,8 @@ sh_test(
 )
 
 torch_tpu_cc_test(
-    name = "compilation_cache_parse_xla_options_test",
-    srcs = ["compilation_cache_parse_xla_options_test.cc"],
+    name = "compilation_parse_xla_options_test",
+    srcs = ["compilation_parse_xla_options_test.cc"],
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -677,6 +688,7 @@ torch_tpu_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@xla//xla:xla_proto_cc",
+        "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
     ],
 )

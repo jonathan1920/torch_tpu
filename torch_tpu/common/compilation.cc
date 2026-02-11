@@ -17,10 +17,12 @@
 #include "torch_tpu/common/compilation.h"
 
 #include <cstdlib>
+#include <map>
 #include <memory>
 #include <stack>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 #include "absl/base/no_destructor.h"
@@ -235,6 +237,10 @@ static absl::Status SetDefaultDeviceAssignment(
   return absl::OkStatus();
 }
 
+// Sets `options.env_option_overrides` to TPU-specific options, sorted by key
+// in ascending order.
+//
+// Returns whether the current device is a TPU.
 static absl::StatusOr<bool> SetTpuOptions(xla::CompileOptions& options) {
   const xla::PjRtClient* const client = GetPjRtClient();
   TT_RET_CHECK(client, error::kFailedPrecondition)
@@ -245,24 +251,32 @@ static absl::StatusOr<bool> SetTpuOptions(xla::CompileOptions& options) {
     // pass std::string objects as opposed to using string literals, since the
     // C++ compiler used for the OSS version incorrectly casts const char* to
     // bool as opposed to building an std::string object.
-    options.env_option_overrides = {
-        // Reduces TPU binary size by using calls for deduplicated HLOs.
-        {"xla_tpu_enable_deduplicated_calls", std::string("ENABLED")},
-        // Enable "safe" XLA scavenge mode (where "safe" is needed by Pallas),
-        // which helps with a bit for performance, but also helps kernels
-        // which
-        // specify their own scoped limit.
-        {"xla_tpu_vmem_scavenging_mode", std::string("SAFE")},
-        // Enable all known SparseCore offloading flags.
-        {"xla_tpu_enable_offloading_gather_to_sparsecore", true},
-        {"xla_tpu_enable_offloading_scatter_to_sparsecore", true},
-        {"xla_tpu_enable_sparse_core_collective_offload_all_gather", true},
-        {"xla_tpu_enable_sparse_core_collective_offload_2d_all_gather", true},
-        {"xla_tpu_enable_sparse_core_collective_offload_reduce_scatter", true},
-        {"xla_tpu_enable_sparse_core_reduce_scatter_v2", true},
-        {"xla_tpu_enable_sparse_core_collective_offload_all_reduce", true},
-        {"xla_tpu_enable_concurrent_sparse_core_offloading", true},
-    };
+    static const absl::NoDestructor<
+        xla::CompileOptions::EnvironmentOptionOverrides>
+        tpu_env_option_overrides({
+            // Important: keep the keys sorted alphabetically - the override
+            // merging logic relies on this.
+            // go/keep-sorted start
+            {"xla_tpu_enable_concurrent_sparse_core_offloading", true},
+            // Reduces TPU binary size by using calls for deduplicated HLOs.
+            {"xla_tpu_enable_deduplicated_calls", std::string("ENABLED")},
+            // Enable all known SparseCore offloading flags.
+            {"xla_tpu_enable_offloading_gather_to_sparsecore", true},
+            {"xla_tpu_enable_offloading_scatter_to_sparsecore", true},
+            {"xla_tpu_enable_sparse_core_collective_offload_2d_all_gather",
+             true},
+            {"xla_tpu_enable_sparse_core_collective_offload_all_gather", true},
+            {"xla_tpu_enable_sparse_core_collective_offload_all_reduce", true},
+            {"xla_tpu_enable_sparse_core_collective_offload_reduce_scatter",
+             true},
+            {"xla_tpu_enable_sparse_core_reduce_scatter_v2", true},
+            // Enable "safe" XLA scavenge mode (where "safe" is needed by
+            // Pallas), which helps with a bit for performance, but also helps
+            // kernels which specify their own scoped limit.
+            {"xla_tpu_vmem_scavenging_mode", std::string("SAFE")},
+            // go/keep-sorted end
+        });
+    options.env_option_overrides = *tpu_env_option_overrides;
   }
   return is_tpu;
 }
@@ -286,11 +300,28 @@ static CompilerOptionOverrides MakeCompilerOptionOverrides(
   return overrides;
 }
 
+// Updates `compile_options.env_option_overrides` with the given overrides.
+//
+// If a key in `overrides` is already present in the former, the corresponding
+// value in the former is updated. Otherwise, the (key, value) pair is appended
+// to the former.
+//
+// The special keys "xla_optimization_level" and "xla_memory_fitting_level"
+// are translated separately.
 absl::Status ApplyCompilerOptionOverrides(
-    const CompilerOptionOverrides& overrides,
-    xla::CompileOptions& compile_options) {
+    // Pass `overrides` by value as we need to move the values from the map
+    // and the caller passes a temporary object.
+    CompilerOptionOverrides overrides, xla::CompileOptions& compile_options) {
   ABSL_VLOG(1) << "Setting XLA compiler option override: start";
+  const int original_size = compile_options.env_option_overrides.size();
+  int cur_override_idx = 0;
+  static_assert(
+      std::is_same_v<decltype(overrides), std::map<std::string, std::string>>,
+      "The override merge logic relies on the elements in `overrides` being "
+      "sorted by key in ascending order. If the type of `overrides` changes, "
+      "we must revisit the logic.");
   for (auto& [key, value] : overrides) {
+    // `key` is a const std::string&. `value` is a std::string&.
     ABSL_VLOG(1) << "Setting XLA compiler option override: "
                  << absl::CEscape(key) << " = " << absl::CEscape(value);
     TT_RET_CHECK(!key.empty(), error::kInvalidArgument)
@@ -306,16 +337,30 @@ absl::Status ApplyCompilerOptionOverrides(
       // present, or by appending the new (key, value) pair at the end fo the
       // options.
       bool replaced = false;
-      for (auto& p : compile_options.env_option_overrides) {
-        if (p.first == key) {
-          p.second = std::move(value);
+      // Since the keys in `overrides` and
+      // `compile_options.env_option_overrides` are both sorted alphabetically,
+      // to search for `key` in the latter, we can just continue from where we
+      // left off in the previous iteration.
+      //
+      // We search up to the original size, as there's no need to check the
+      // newly appended elements.
+      for (; cur_override_idx < original_size; ++cur_override_idx) {
+        auto& [existing_key, existing_value] =
+            compile_options.env_option_overrides[cur_override_idx];
+        if (existing_key == key) {
           replaced = true;
+          existing_value = std::move(value);
+          ++cur_override_idx;
           break;
         }
       }
       if (!replaced) {
+        // This invalidates iterators on compile_options.env_option_overrides.
+        // This is why we use an index instead of an iterator.
         compile_options.env_option_overrides.push_back(
-            std::make_pair(std::move(key), std::move(value)));
+            // This move is safe despite the move in the for-loop above, as it's
+            // done when when replaced is false.
+            std::make_pair(key, std::move(value)));
       }
     }
   }

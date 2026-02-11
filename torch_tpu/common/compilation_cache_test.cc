@@ -23,60 +23,12 @@
 #include "gtest/gtest.h"
 #include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
-#include "absl/log/absl_check.h"
-#include "absl/status/status.h"
-#include "torch_tpu/common/compilation.h"
 #include "xla/xla.pb.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
 
 ABSL_DECLARE_FLAG(int, torch_tpu_internal_num_compilation_threads);
 
 namespace torch_tpu {
 namespace {
-
-class MakeCompilerOptionsTest : public testing::Test {
- protected:
-  MakeCompilerOptionsTest() {
-    // Before each test case, reset the eager compilation mode to the default
-    // value.
-    unsetenv("TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE");
-  }
-
-  static void SetUpTestSuite() {
-    // This must be done before MakeCompilerOptions() is called, as the latter
-    // depends on the PjRt client.
-    ABSL_CHECK_OK(InitializePjRt({.device_type = "tpu", .world_size = 1}));
-  }
-};
-
-TEST_F(MakeCompilerOptionsTest, DefaultToO1ForEagerMode) {
-  const auto options_or = MakeCompilerOptions(GraphCompilationMode::kEager);
-  ASSERT_EQ(options_or.status(), absl::OkStatus());
-  const auto& options = options_or.value();
-  EXPECT_EQ(options->executable_build_options.optimization_level(),
-            xla::ExecutionOptions::EFFORT_O1);
-}
-
-TEST_F(MakeCompilerOptionsTest, UseO2ForOptimizedEagerMode) {
-  // Set the TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE environment variable to
-  // "optimized".
-  setenv("TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE", "optimized",
-         /*overwrite=*/1);
-  const auto options_or = MakeCompilerOptions(GraphCompilationMode::kEager);
-  ASSERT_EQ(options_or.status(), absl::OkStatus());
-  const auto& options = options_or.value();
-  EXPECT_EQ(options->executable_build_options.optimization_level(),
-            xla::ExecutionOptions::EFFORT_UNKNOWN);
-}
-
-TEST_F(MakeCompilerOptionsTest, DefaultToUnsetForTorchCompileMode) {
-  const auto options_or =
-      MakeCompilerOptions(GraphCompilationMode::kTorchCompile);
-  ASSERT_EQ(options_or.status(), absl::OkStatus());
-  const auto& options = options_or.value();
-  EXPECT_EQ(options->executable_build_options.optimization_level(),
-            xla::ExecutionOptions::EFFORT_UNKNOWN);
-}
 
 class GetNumCompilationThreadsTest : public testing::Test {
  protected:
