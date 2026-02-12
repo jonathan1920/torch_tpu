@@ -598,6 +598,8 @@ std::string_view ToString(OpName op_name) {
       return "resize_";
     case OpName::kRmsNorm:
       return "rms_norm";
+    case OpName::kRoll:
+      return "roll";
     case OpName::kRound:
       return "round";
     case OpName::kRoundDecimalsOut:

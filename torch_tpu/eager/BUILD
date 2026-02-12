@@ -440,6 +440,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/replication_pad:replication_pad_aten_kernels",
         "//torch_tpu/ops/resize:resize_aten_kernels",
         "//torch_tpu/ops/rms_norm:rms_norm_aten_kernels",
+        "//torch_tpu/ops/roll:roll_aten_kernels",
         "//torch_tpu/ops/round:round_aten_kernels",
         "//torch_tpu/ops/scaled_dot_product_attention:scaled_dot_product_attention_aten_kernels",
         "//torch_tpu/ops/scatter:scatter_aten_kernels",

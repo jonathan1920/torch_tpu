@@ -118,6 +118,7 @@ def verify_op_supports_dynamism(
       "normal",  # OK
       "repeat",
       "resize_",
+      "roll",
       "scatter",
       "scatter_add",
       "select",

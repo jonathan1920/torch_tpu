@@ -1551,6 +1551,23 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.round(t)
 
+  def test_roll_errors(self):
+    """roll() fails when input parameters are invalid."""
+    t = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu="shifts and dimensions must align. shifts: 2, dims:1",
+        tpu="roll(): shifts and dims must align, got shifts: 2, dims: 1",
+    ):
+      torch.roll(t, shifts=(2, 3), dims=(0,))
+
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu="shifts and dimensions must align. shifts: 2, dims:0",
+        tpu="roll(): shifts and dims must align, got shifts: 2, dims: 0",
+    ):
+      torch.roll(t, shifts=(2, 3))
+
   def test_reduction_dim_out_of_bounds_var(self):
     self.do_test_reduction_dim_out_of_bounds(torch.var)
 

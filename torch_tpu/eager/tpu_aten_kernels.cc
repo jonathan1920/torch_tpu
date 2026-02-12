@@ -120,6 +120,7 @@
 #include "torch_tpu/ops/replication_pad/replication_pad_aten_kernels.h"
 #include "torch_tpu/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/ops/rms_norm/rms_norm_aten_kernels.h"
+#include "torch_tpu/ops/roll/roll_aten_kernels.h"
 #include "torch_tpu/ops/round/round_aten_kernels.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/scaled_dot_product_attention_aten_kernels.h"
 #include "torch_tpu/ops/scatter/scatter_aten_kernels.h"
@@ -407,6 +408,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
        AtenReplicationPad3dBackwardGradInput);
   Impl(m, OpName::kReplicationPad3dOut, AtenReplicationPad3dOut);
   Impl(m, OpName::kResize_, AtenResize_);
+  Impl(m, OpName::kRoll, AtenRoll);
   Impl(m, OpName::kRoundDecimalsOut, AtenRoundDecimalsOut);
   Impl(m, OpName::kRoundOut, AtenRoundOut);
   Impl(m, OpName::kRshiftScalar, AtenRshiftScalar);

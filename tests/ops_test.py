@@ -2679,6 +2679,9 @@ class TestOps(TorchTpuTestBase):
   def test_resolve_neg(self):
     self.do_test_op("resolve_neg")
 
+  def test_roll(self):
+    self.do_test_op("roll")
+
   def test_round(self):
     self.do_test_op("round")
 

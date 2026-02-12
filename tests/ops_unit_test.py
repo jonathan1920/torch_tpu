@@ -1705,6 +1705,55 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         golden_result=t.to("cpu"), torch_tpu_result=t_again.to("cpu")
     )
 
+  def test_roll(self):
+    # Both dims and shifts are default values.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.roll(torch.arange(10).to(device))
+    )
+    # Flattened tensor.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.roll(
+            torch.arange(10).to(device),
+            shifts=2,
+        )
+    )
+    # Flattened tensor, tuple of one.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.roll(
+            torch.arange(10).to(device),
+            shifts=(2,),
+        )
+    )
+    # Multiple dimensions.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.roll(
+            torch.arange(24).reshape(2, 3, 4).to(device),
+            shifts=(1, 2),
+            dims=(0, 2),
+        )
+    )
+    # Negative shift.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.roll(
+            torch.arange(10).to(device),
+            shifts=-2,
+        )
+    )
+    # shift > dimension size.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.roll(
+            torch.arange(5).to(device),
+            shifts=7,
+        )
+    )
+    # abs(shift) > dimension size.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.roll(
+            torch.arange(5).to(device),
+            shifts=-7,
+        )
+    )
+
   def test_round(self):
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.round(
