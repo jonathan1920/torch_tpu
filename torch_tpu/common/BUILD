@@ -206,7 +206,7 @@ torch_tpu_cc_test(
 torch_tpu_cc_test(
     name = "tier2_compilation_cache_enablement_test_default_one_host",
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
-    # Do not set the TORCH_TPU_TIER2_COMPILATION_CACHE environment variable.
+    # Do not set the TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment variable.
     args = [
         "--expected_tier2_cache_name=",
         "--world_size=1",
@@ -227,7 +227,7 @@ torch_tpu_cc_test(
 torch_tpu_cc_test(
     name = "tier2_compilation_cache_enablement_test_default_multi_host",
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
-    # Do not set the TORCH_TPU_TIER2_COMPILATION_CACHE environment variable.
+    # Do not set the TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment variable.
     args = [
         "--expected_tier2_cache_name=default",
         "--world_size=2",
@@ -253,7 +253,7 @@ torch_tpu_cc_test(
         "--world_size=1",
     ],
     env = {
-        "TORCH_TPU_TIER2_COMPILATION_CACHE": "disabled",
+        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "disabled",
     },
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
@@ -276,7 +276,7 @@ torch_tpu_cc_test(
         "--world_size=2",
     ],
     env = {
-        "TORCH_TPU_TIER2_COMPILATION_CACHE": "disabled",
+        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "disabled",
     },
     tags = [
         "requires-tpu-v7x",  # Needs PjRt client.
@@ -299,7 +299,7 @@ torch_tpu_cc_test(
         "--world_size=1",
     ],
     env = {
-        "TORCH_TPU_TIER2_COMPILATION_CACHE": "my_cache",
+        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "my_cache",
     },
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
@@ -322,7 +322,7 @@ torch_tpu_cc_test(
         "--world_size=2",
     ],
     env = {
-        "TORCH_TPU_TIER2_COMPILATION_CACHE": "my_cache2",
+        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "my_cache2",
     },
     tags = [
         "requires-tpu-v7x",  # Needs PjRt client.
@@ -734,8 +734,8 @@ torch_tpu_cc_test(
     srcs = ["tier3_compilation_cache_test.cc"],
     env = {
         # To use the tier-3 cache, we need to enable the tier-2 cache too.
-        "TORCH_TPU_TIER2_COMPILATION_CACHE": "cache",
-        "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
+        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "cache",
+        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
     },
     tags = [
         "requires-tpu-v5lite",

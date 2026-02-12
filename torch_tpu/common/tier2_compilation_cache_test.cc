@@ -126,7 +126,7 @@ auto* const test_env =
 class Tier2CacheTest : public testing::Test {
  protected:
   Tier2CacheTest() {
-    setenv(kTorchTpuTier2CompilationCacheEnvVar, "my_cache", /*overwrite=*/1);
+    SetEnv(kTorchTpuInternalTier2CompilationCacheEnvVar, "my_cache");
     cache_path_ = GetTier2CompilationCachePath();
 
     // Clear the cache directory before each test, in case any previous tests

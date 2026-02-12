@@ -48,31 +48,31 @@ inline constexpr char kNprocEnvVar[] = "NPROC";
 // https://docs.pytorch.org/docs/stable/debugging_environment_variables.html#pytorch-debug-environment-variables
 inline constexpr char kTorchShowCppStacktracesEnvVar[] =
     "TORCH_SHOW_CPP_STACKTRACES";
-// If set to "1", enable expensive debug checks in TorchTPU. This catches
-// more bugs in user code, but comes at a significant performance cost for
-// some ops.
-inline constexpr char kTorchTpuEnableDebugChecksEnvVar[] =
-    "TORCH_TPU_ENABLE_DEBUG_CHECKS";
 // If set to "optimized", eager compilation is slower but produces more
 // optimized code. Otherwise, eager compilation is faster but produces less
 // optimized code.
 inline constexpr char kTorchTpuInternalEagerCompilationModeEnvVar[] =
     "TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE";
-// XLA compiler option overrides, in the format of "key1=value1 key2=value2
-// ...".
-inline constexpr char kTorchTpuInternalXlaOptionsEnvVar[] =
-    "TORCH_TPU_INTERNAL_XLA_OPTIONS";
+// If set to "1", enable expensive debug checks in TorchTPU. This catches
+// more bugs in user code, but comes at a significant performance cost for
+// some ops.
+inline constexpr char kTorchTpuInternalEnableDebugChecksEnvVar[] =
+    "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS";
 // The name of the tier-2 compilation cache. The special name "disabled" can be
 // used to disable the tier-2 cache. If not set, TorchTPU decides whether to use
 // the tier-2 cache or not based on the world size: if the world size is 1, the
 // tier-2 cache is disabled; otherwise, it is enabled and the name is set to
 // "default".
-inline constexpr char kTorchTpuTier2CompilationCacheEnvVar[] =
-    "TORCH_TPU_TIER2_COMPILATION_CACHE";
+inline constexpr char kTorchTpuInternalTier2CompilationCacheEnvVar[] =
+    "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE";
 // The root path of the tier-3 compilation cache. If not set, the tier-3
 // compilation cache is disabled.
-inline constexpr char kTorchTpuTier3CompilationCacheRootEnvVar[] =
-    "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT";
+inline constexpr char kTorchTpuInternalTier3CompilationCacheRootEnvVar[] =
+    "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT";
+// XLA compiler option overrides, in the format of "key1=value1 key2=value2
+// ...".
+inline constexpr char kTorchTpuInternalXlaOptionsEnvVar[] =
+    "TORCH_TPU_INTERNAL_XLA_OPTIONS";
 inline constexpr char kTpuChipsPerHostBoundsEnvVar[] =
     "TPU_CHIPS_PER_HOST_BOUNDS";  // Read by Google Cloud.
 inline constexpr char kTpuHostBoundsEnvVar[] =

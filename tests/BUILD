@@ -366,8 +366,8 @@ torch_tpu_py_test(
     srcs = ["ops_unit_test.py"],
     env = {
         # To use tier-3 cache, we must use tier-2 cache as well.
-        "TORCH_TPU_TIER2_COMPILATION_CACHE": "my_cache",
-        "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
+        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "my_cache",
+        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
     },
     main = "ops_unit_test.py",
     shard_count = 20,
@@ -480,7 +480,7 @@ torch_tpu_py_test(
     ],
     env = {
         "TORCH_SHOW_CPP_STACKTRACES": "0",
-        "TORCH_TPU_ENABLE_DEBUG_CHECKS": "1",
+        "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "1",
     },
     main = "errors_test.py",
     shard_count = 4,
@@ -509,7 +509,7 @@ torch_tpu_py_test(
     ],
     env = {
         "TORCH_SHOW_CPP_STACKTRACES": "1",
-        "TORCH_TPU_ENABLE_DEBUG_CHECKS": "1",
+        "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "1",
     },
     main = "errors_test.py",
     shard_count = 4,

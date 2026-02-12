@@ -41,14 +41,15 @@ namespace fs = std::filesystem;
 constexpr std::string_view kTier3CacheFileExtension = ".bin";
 
 // Returns the root directory of the tier-3 compilation cache, as set by the
-// TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT environment variable.  If the
+// TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT environment variable.  If the
 // environment variable is not set, it returns an empty string.
 //
 // This function is memoized so that it's cheap to call this multiple times.
 [[nodiscard]] static const std::string& GetTier3CacheRootDir() {
   static const absl::NoDestructor<std::string> root_dir([]() {
     const auto root_dir =
-        GetEnvOnce<kTorchTpuTier3CompilationCacheRootEnvVar>().value_or("");
+        GetEnvOnce<kTorchTpuInternalTier3CompilationCacheRootEnvVar>().value_or(
+            "");
     ABSL_LOG(INFO) << "Tier-3 compilation cache root directory: " << root_dir;
     return root_dir;
   }());

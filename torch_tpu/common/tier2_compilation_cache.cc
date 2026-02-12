@@ -118,18 +118,19 @@ FingerprintType GetTorchTpuBinaryFingerprint() {
   return fingerprint;
 }
 
-// The value of the TORCH_TPU_TIER2_COMPILATION_CACHE environment variable that
-// indicates that the tier-2 cache is disabled.
+// The value of the TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment
+// variable that indicates that the tier-2 cache is disabled.
 constexpr std::string_view kDisabledCacheNameInEnvVar = "disabled";
 
 // The default name of the tier-2 compilation cache, used when the
-// TORCH_TPU_TIER2_COMPILATION_CACHE environment variable is not set and the
-// world size is greater than 1.
+// TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment variable is not set
+// and the world size is greater than 1.
 constexpr std::string_view kDefaultCacheName = "default";
 
 const std::string& GetTier2CacheName() {
   static const absl::NoDestructor<std::string> cache_name([]() {
-    const auto& env_var = GetEnvOnce<kTorchTpuTier2CompilationCacheEnvVar>();
+    const auto& env_var =
+        GetEnvOnce<kTorchTpuInternalTier2CompilationCacheEnvVar>();
     if (!env_var.has_value() || env_var->empty()) {
       // Decide whether to use the tier-2 cache based on the world size.
       const auto world_size_or = GetGlobalDeviceCount();
@@ -153,13 +154,13 @@ const std::string& GetTier2CacheName() {
     if (*env_var == kDisabledCacheNameInEnvVar) {
       ABSL_LOG(INFO) << "Tier-2 compilation cache is disabled as requested by "
                         "the "
-                     << kTorchTpuTier2CompilationCacheEnvVar
+                     << kTorchTpuInternalTier2CompilationCacheEnvVar
                      << " environment variable.";
       return std::string();
     }
     ABSL_LOG(INFO) << "Tier-2 compilation cache is enabled with name '"
                    << *env_var << "' as requested by the "
-                   << kTorchTpuTier2CompilationCacheEnvVar
+                   << kTorchTpuInternalTier2CompilationCacheEnvVar
                    << " environment variable.";
     return *env_var;
   }());

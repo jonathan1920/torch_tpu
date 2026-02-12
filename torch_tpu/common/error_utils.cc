@@ -50,7 +50,8 @@ namespace torch_tpu {
 
 bool GetEnableDebugChecks() {
   static const bool enable = [] {
-    const auto& env_var = GetEnvOnce<kTorchTpuEnableDebugChecksEnvVar>();
+    const auto& env_var =
+        GetEnvOnce<kTorchTpuInternalEnableDebugChecksEnvVar>();
     return env_var.has_value() && *env_var == "1";
   }();
   return enable;
