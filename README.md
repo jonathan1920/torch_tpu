@@ -57,13 +57,13 @@ pip install --pre --extra-index-url "https://oauth2accesstoken:$(gcloud auth pri
 Wheels can be built via:
 
 ```bash
-bazel build -c opt //ci/wheel:torch_tpu_wheel --define=with_tpu_support=true
+bazel build -c opt //ci/wheel:torch_tpu_wheel
 ```
 
 (Alternative) For local build, use bazel command below instead:
 
 ```bash
-bazel build -c opt //ci/wheel:torch_tpu_wheel --config=no_rbe --define=with_tpu_support=true
+bazel build -c opt //ci/wheel:torch_tpu_wheel --config=no_rbe
 ```
 
 Install wheel via:
