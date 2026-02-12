@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from absl import app
 from absl import logging
+from absl.testing import absltest
 import torch
 from torch_tpu import api
 import transformers
@@ -22,28 +22,30 @@ MODEL_PATH = "Qwen/Qwen3-0.6B"
 INPUT_TEXT = "Hello, I am a"
 
 
-# pylint: disable=unused-argument
-def main(argv):
-  device = api.tpu_device()
-  torch.manual_seed(42)
+class HelloWorldLlmEagerTest(absltest.TestCase):
 
-  tokenizer = transformers.AutoTokenizer.from_pretrained(MODEL_PATH)
-  model = transformers.AutoModelForCausalLM.from_pretrained(MODEL_PATH).to(
-      device
-  )
-  inputs = tokenizer(INPUT_TEXT, return_tensors="pt").to(device)
+  def test_hello_world_llm_eager(self):
+    device = api.tpu_device()
+    torch.manual_seed(42)
 
-  # Generate tokens
-  with torch.no_grad():
-    outputs = model.generate(
-        **inputs,
-        max_length=30,
-        pad_token_id=tokenizer.pad_token_id,
+    tokenizer = transformers.AutoTokenizer.from_pretrained(MODEL_PATH)
+    model = transformers.AutoModelForCausalLM.from_pretrained(MODEL_PATH).to(
+        device
     )
-  result = tokenizer.decode(outputs[0], skip_special_tokens=True)
-  logging.info("Input: '%s'", INPUT_TEXT)
-  logging.info("Output: '%s'", result)
+    inputs = tokenizer(INPUT_TEXT, return_tensors="pt").to(device)
+
+    # Generate tokens
+    with torch.no_grad():
+      outputs = model.generate(
+          **inputs,
+          max_length=30,
+          pad_token_id=tokenizer.pad_token_id,
+      )
+    result = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    logging.info("Input: '%s'", INPUT_TEXT)
+    logging.info("Output: '%s'", result)
+    self.assertStartsWith(result, INPUT_TEXT)
 
 
 if __name__ == "__main__":
-  app.run(main)
+  absltest.main()

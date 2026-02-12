@@ -23,13 +23,14 @@ torch_tpu_py_test(
     name = "hello_world_llm_eager_test",
     srcs = ["hello_world_llm_eager_test.py"],
     tags = [
+        "no-sandbox",  # Bazel's linux-sandbox restricts write access to your home directory for downloading weights.
         "notap",  # NOTAP_OK=this is a manual test
         "requires-net:external",
         "requires-tpu-v5lite",
     ],
     deps = [
-        "//shims/absl_py:app",
         "//shims/absl_py/logging",
+        "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu/api",
         "@pypi//accelerate",  # buildcleaner: keep
