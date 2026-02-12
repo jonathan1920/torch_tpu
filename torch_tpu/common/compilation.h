@@ -97,7 +97,8 @@ enum class GraphCompilationMode {
 // Returns the current process's eager compilation mode, as determined by the
 // value of the environment variable TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE:
 // "optimized" means optimized eager; anything else means the original
-// (fast-compile) eager.
+// (fast-compile) eager. This function is memoized so that the environment
+// variable is only read once.
 [[nodiscard]] EagerCompilationMode GetEagerCompilationMode();
 
 // Maps an XLA compiler option name to its string value. We pick this

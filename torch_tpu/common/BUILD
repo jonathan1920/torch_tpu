@@ -651,6 +651,29 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":compilation",
+        ":env_vars",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla:xla_proto_cc",
+        "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "compilation_test_optimized_eager",
+    srcs = ["compilation_test.cc"],
+    env = {
+        "TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE": "optimized",
+    },
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":compilation",
+        ":env_vars",
         "//shims/torch:torch_headers",
         "//torch_tpu/pjrt:pjrt_init",
         "@com_google_absl//absl/log:absl_check",

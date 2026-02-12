@@ -14,26 +14,25 @@
  * limitations under the License.
  */
 
+#include "torch_tpu/common/compilation.h"
+
 #include <string>
 
 #include "gtest/gtest.h"
 #include "absl/log/absl_check.h"
 #include "absl/status/status.h"
-#include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/env_vars.h"
 #include "xla/xla.pb.h"
 #include "torch_tpu/pjrt/pjrt_init.h"
 
 namespace torch_tpu {
 namespace {
 
+const bool kOptimizedEager =
+    GetEnvOnce<kTorchTpuInternalEagerCompilationModeEnvVar>() == "optimized";
+
 class MakeCompilerOptionsTest : public testing::Test {
  protected:
-  MakeCompilerOptionsTest() {
-    // Before each test case, reset the eager compilation mode to the default
-    // value.
-    unsetenv("TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE");
-  }
-
   static void SetUpTestSuite() {
     // This must be done before MakeCompilerOptions() is called, as the latter
     // depends on the PjRt client.
@@ -42,6 +41,9 @@ class MakeCompilerOptionsTest : public testing::Test {
 };
 
 TEST_F(MakeCompilerOptionsTest, DefaultToO1ForEagerMode) {
+  if (kOptimizedEager) {
+    GTEST_SKIP() << "Skipping test for optimized eager mode.";
+  }
   const auto options_or = MakeCompilerOptions(GraphCompilationMode::kEager);
   ASSERT_EQ(options_or.status(), absl::OkStatus());
   const auto& options = options_or.value();
@@ -50,10 +52,9 @@ TEST_F(MakeCompilerOptionsTest, DefaultToO1ForEagerMode) {
 }
 
 TEST_F(MakeCompilerOptionsTest, UseO2ForOptimizedEagerMode) {
-  // Set the TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE environment variable to
-  // "optimized".
-  setenv("TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE", "optimized",
-         /*overwrite=*/1);
+  if (!kOptimizedEager) {
+    GTEST_SKIP() << "Skipping test for fast-compile eager mode.";
+  }
   const auto options_or = MakeCompilerOptions(GraphCompilationMode::kEager);
   ASSERT_EQ(options_or.status(), absl::OkStatus());
   const auto& options = options_or.value();
@@ -62,6 +63,9 @@ TEST_F(MakeCompilerOptionsTest, UseO2ForOptimizedEagerMode) {
 }
 
 TEST_F(MakeCompilerOptionsTest, DefaultToUnsetForTorchCompileMode) {
+  if (kOptimizedEager) {
+    GTEST_SKIP() << "Skipping test for optimized eager mode.";
+  }
   const auto options_or =
       MakeCompilerOptions(GraphCompilationMode::kTorchCompile);
   ASSERT_EQ(options_or.status(), absl::OkStatus());

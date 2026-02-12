@@ -212,13 +212,16 @@ static const CompilerOptionOverrides& GetCompilerOptionOverridesFromEnvVar() {
   return *overrides;
 }
 
-[[nodiscard]] EagerCompilationMode GetEagerCompilationMode() {
-  const char* const env_var =
-      std::getenv(kTorchTpuInternalEagerCompilationModeEnvVar);
-  if (env_var != nullptr && std::string_view(env_var) == "optimized") {
-    return EagerCompilationMode::kOptimized;
-  }
-  return EagerCompilationMode::kFastCompile;
+EagerCompilationMode GetEagerCompilationMode() {
+  static const absl::NoDestructor<EagerCompilationMode> mode([] {
+    const auto& env_var =
+        GetEnvOnce<kTorchTpuInternalEagerCompilationModeEnvVar>();
+    if (env_var.has_value() && *env_var == "optimized") {
+      return EagerCompilationMode::kOptimized;
+    }
+    return EagerCompilationMode::kFastCompile;
+  }());
+  return *mode;
 }
 
 static absl::Status SetDefaultDeviceAssignment(
