@@ -42,4 +42,6 @@ dependencies = [
     "tensorboard",
     "frozendict",
     "flax",
+    "fairscale",
+    "llama-models",
 ]
