@@ -313,7 +313,16 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
   // We will be building a GraphSignature object as a simplified
   // representation of the Traversal graph for the purposes of hashing.
   GraphSignature graph;
+  // TODO(aarfaian): the concept between true and de-facto inputs (stemming from
+  // the fact that eager mode always treats zero-sized constants as inputs,
+  // where compile mode may not necessarily behave the same) needs to be
+  // revisited with regard to variable naming here and throughout the rest of
+  // the Traversal implementation.
   auto num_inputs = inputs().size();
+  auto num_non_input_zero_sized_consts = non_input_zero_sized_consts().size();
+  // For cache key purposes, count non-input zero-sized const tensors as inputs
+  // for both eager and compiled modes.
+  auto num_de_facto_inputs = num_inputs + num_non_input_zero_sized_consts;
   auto num_deferred_ops = execution_order().size();
   graph.graph_output_indices.reserve(outputs().size());
 
@@ -342,7 +351,7 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
   graph.op_outputs_indices.reserve(num_deferred_ops + 1);
   graph.op_inputs_starts.push_back(0);
   graph.op_param_cache_keys_starts.push_back(0);
-  graph.op_outputs_indices.push_back(num_inputs);
+  graph.op_outputs_indices.push_back(num_de_facto_inputs);
 
   // Add all inputs to tensor-indexed properties.
   for (const DeviceBufferRef& input : inputs()) {
@@ -352,6 +361,14 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
     }
     graph.tensor_dimensions_starts.push_back(graph.tensor_dimensions.size());
     graph.tensor_element_types.push_back(input.element_type());
+  }
+  for (const DeviceBufferRef& zsc : non_input_zero_sized_consts()) {
+    tensor_index_map[zsc] = next_tensor_index++;
+    for (int64_t dim : zsc.dimensions()) {
+      graph.tensor_dimensions.push_back(dim);
+    }
+    graph.tensor_dimensions_starts.push_back(graph.tensor_dimensions.size());
+    graph.tensor_element_types.push_back(zsc.element_type());
   }
   const size_t num_dimension_inputs = graph.tensor_dimensions.size();
 
@@ -370,7 +387,7 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
     const DeferredOp& deferred_op = *maybe_deferred_op;
     if (deferred_op.op_name() == OpName::kSetDimensionSize) {
       if (!is_applied_dynamic) {
-        graph.tensor_dimensions_starts.resize(num_inputs);
+        graph.tensor_dimensions_starts.resize(num_de_facto_inputs);
         graph.tensor_dimensions.resize(num_dimension_inputs);
       }
       is_applied_dynamic = true;
@@ -445,6 +462,17 @@ absl::Status Traversal::ValidateAndReorderInputs(
 
   // Check that all previous inputs are included in the new inputs.
   for (const auto& [input, used] : prev_inputs) {
+    // If the graph has any zero-sized constants the traversal will include
+    // these as inputs by default. However, in compiled mode these inputs may
+    // not necessarily be included in the set of inputs expected by the FX
+    // graph. If we run across any zero-sized constants here that aren't already
+    // marked as used then they are not "true" inputs and we can handle them
+    // separately. This allows us to maintain the invariant that FX graph and
+    // our own traversed inputs are always the same.
+    if (!used && input.state() == DeviceBufferRefState::kZeroSize) {
+      non_input_zero_sized_consts_.push_back(input);
+      continue;
+    }
     TT_RET_CHECK(used, error::kInvalidArgument)
         << "identified an input that was not provided";
   }
@@ -503,11 +531,19 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
   for (const DeviceBufferRef& input : inputs) {
     auto type =
         makeTensorType(mlir_context, input.dimensions(), input.element_type());
+    // In compiled mode we can still have zero-sized tensors as explicit inputs
+    // and we handle those here.
     if (input.state() == DeviceBufferRefState::kZeroSize) {
       ref_to_op_map[input] = MakeConstant(fb, mlir::ArrayRef<int64_t>{}, type);
       continue;
     }
     ref_to_op_map[input] = mlir::func::Argument(fb, type);
+  }
+
+  for (const DeviceBufferRef& zsc : non_input_zero_sized_consts()) {
+    auto type =
+        makeTensorType(mlir_context, zsc.dimensions(), zsc.element_type());
+    ref_to_op_map[zsc] = MakeConstant(fb, mlir::ArrayRef<int64_t>{}, type);
   }
 
   // Build an MlirOp for each deferred op in execution_order ordering, so that

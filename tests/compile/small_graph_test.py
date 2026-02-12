@@ -239,6 +239,28 @@ class FunctionTest(absltest.TestCase):
     expected = torch.tensor([[0.0, 0.3]], device="cpu")
     utils.assert_close(actual, expected)
 
+  def test_zero_sized_tensor_in_body(self):
+    def func(a):
+      zero_sized = a[..., 2:]
+      b = a + a
+      return (zero_sized, b)
+
+    inputs = [torch.ones(1, 1, 2)]
+
+    self._run_and_compare(func, inputs)
+
+  def test_zero_sized_slice_input(self):
+    def func(a, b):
+      c = b.view((2, 0))
+      d = a + a
+      return (c, d)
+
+    a = torch.ones(1, 1, 2)
+    zero_sized = a[..., 2:]
+    inputs = [a, zero_sized]
+
+    self._run_and_compare(func, inputs)
+
   def test_zero_sized_inputs(self):
     def func(x, y):
       return x.mm(y)
@@ -249,7 +271,6 @@ class FunctionTest(absltest.TestCase):
     ]
     self._run_and_compare(func, inputs)
 
-  @absltest.skip("Need to fix empty tensor view handling.")
   def test_empty_size_zero_tensor(self):
     """Test that we can handle empty size zero tensor."""
 
@@ -366,7 +387,6 @@ class FunctionTest(absltest.TestCase):
     x_tpu_cpu = args_tpu[0].to("cpu")
     utils.assert_close(x_tpu_cpu, torch.tensor([14.0, 16.0]))
 
-  @absltest.skip("Need to fix empty tensor constant empty.fill_ handling")
   def test_embedded_empty_constants(self):
     """Test that we can handle embedded zero-sized tensor constants."""
 

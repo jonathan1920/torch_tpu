@@ -242,10 +242,24 @@ class Traversal {
   // Validates that the traversal is sound.
   absl::Status Validate() const;
 
+  // Returns zero-sized constants that are not explicit inputs in compiled mode.
+  // In eager mode, this will return an empty span as zero-sized constants are
+  // always considered to be graph inputs.
+  [[nodiscard]] absl::Span<const DeviceBufferRef> non_input_zero_sized_consts()
+      const {
+    return non_input_zero_sized_consts_;
+  }
+
   // The inputs to the Traversal are all DeviceBufferRefs which are leaf nodes
   // in the graph. This includes arguments (kMaterialized or kPlaceholder)
   // zero-sized constants (kZeroSized).
   std::vector<DeviceBufferRef> inputs_;
+  // In eager mode, zero-sized constants are treated as graph inputs.
+  // In compiled mode, these may not necessarily be graph inputs as the inputs
+  // are what is dictated by the FX graph. In order to maintain the input
+  // equivalency invariant between our traversal and the FX graph we track these
+  // separately. This will only be populated in compiled mode.
+  std::vector<DeviceBufferRef> non_input_zero_sized_consts_;
   // A execution_order traversal of the deferred ops in the graph.
   // Each op only depends on arguments, constants, and lower-indexed ops.
   std::vector<SharedDeviceBufferList> execution_order_;
