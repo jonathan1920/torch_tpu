@@ -18,7 +18,10 @@
 #define TORCH_TPU_COMMON_ENV_VARS_H_
 
 #include <cstdlib>
+#include <optional>
 #include <string>
+
+#include "absl/base/no_destructor.h"
 
 namespace torch_tpu {
 
@@ -26,8 +29,9 @@ namespace torch_tpu {
 //
 // If an env var is not introduced by TorchTPU, please document the source.
 //
-// Since std::getenv() takes a const char*, and conversion from std::string_view
-// to const char* is expensive, we define these as C-string literals.
+// Since std::getenv() and setenv() take a const char*, and conversion from
+// std::string_view to const char* is expensive, we define these as C-string
+// literals.
 
 // go/keep-sorted start
 inline constexpr char kAcceleratorTypeEnvVar[] =
@@ -36,16 +40,39 @@ inline constexpr char kCloudTpuTaskIdEnvVar[] =
     "CLOUD_TPU_TASK_ID";  // Read by Google Cloud.
 inline constexpr char kLibtpuInitArgsEnvVar[] =
     "LIBTPU_INIT_ARGS";  // Set by Google Cloud.
-inline constexpr char kNprocEnvVar[] =
-    "NPROC";  // Set by the build system (e.g. bazel).
+// Set by the build system (e.g. bazel) to indicate the number of shards
+// running on the same host.
+inline constexpr char kNprocEnvVar[] = "NPROC";
+// If set to "1", C++ stack traces are appended to error messages.
+// Shared with PyTorch:
+// https://docs.pytorch.org/docs/stable/debugging_environment_variables.html#pytorch-debug-environment-variables
 inline constexpr char kTorchShowCppStacktracesEnvVar[] =
-    "TORCH_SHOW_CPP_STACKTRACES";  // Shared with PyTorch.
+    "TORCH_SHOW_CPP_STACKTRACES";
+// If set to "1", enable expensive debug checks in TorchTPU. This catches
+// more bugs in user code, but comes at a significant performance cost for
+// some ops.
 inline constexpr char kTorchTpuEnableDebugChecksEnvVar[] =
     "TORCH_TPU_ENABLE_DEBUG_CHECKS";
+// If set to "optimized", eager compilation is slower but produces more
+// optimized code. Otherwise, eager compilation is faster but produces less
+// optimized code.
 inline constexpr char kTorchTpuInternalEagerCompilationModeEnvVar[] =
     "TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE";
+// XLA compiler option overrides, in the format of "key1=value1 key2=value2
+// ...".
 inline constexpr char kTorchTpuInternalXlaOptionsEnvVar[] =
     "TORCH_TPU_INTERNAL_XLA_OPTIONS";
+// The name of the tier-2 compilation cache. The special name "disabled" can be
+// used to disable the tier-2 cache. If not set, TorchTPU decides whether to use
+// the tier-2 cache or not based on the world size: if the world size is 1, the
+// tier-2 cache is disabled; otherwise, it is enabled and the name is set to
+// "default".
+inline constexpr char kTorchTpuTier2CompilationCacheEnvVar[] =
+    "TORCH_TPU_TIER2_COMPILATION_CACHE";
+// The root path of the tier-3 compilation cache. If not set, the tier-3
+// compilation cache is disabled.
+inline constexpr char kTorchTpuTier3CompilationCacheRootEnvVar[] =
+    "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT";
 inline constexpr char kTpuChipsPerHostBoundsEnvVar[] =
     "TPU_CHIPS_PER_HOST_BOUNDS";  // Read by Google Cloud.
 inline constexpr char kTpuHostBoundsEnvVar[] =
@@ -56,12 +83,33 @@ inline constexpr char kTpuProcessPortEnvVar[] =
     "TPU_PROCESS_PORT";  // Read by Google Cloud.
 inline constexpr char kTpuVisibleChipsEnvVar[] =
     "TPU_VISIBLE_CHIPS";  // Read by Google Cloud.
-inline constexpr char kWorldSizeEnvVar[] =
-    "WORLD_SIZE";  // Set by launchers like torchrun.
+// How many devices are in this process group. Set by launchers like
+// torchrun.
+inline constexpr char kWorldSizeEnvVar[] = "WORLD_SIZE";
 // go/keep-sorted end
 
+// Sets the environment variable with the given name to the given value.
 inline void SetEnv(const char* name, const std::string& value) {
   setenv(name, value.c_str(), /*overwrite=*/1);
+}
+
+// Returns the value of the environment variable with the given name, or
+// std::nullopt if it is not set.
+//
+// This function is memoized, so the environment variable is only read once.
+//
+// We make the name a template parameter so that different env vars are
+// memoized separately.
+template <const char* name>
+const std::optional<std::string>& GetEnvOnce() {
+  static const absl::NoDestructor<std::optional<std::string>> env_var(
+      []() -> std::optional<std::string> {
+        const char* const env_var =  //
+            std::getenv(name);       // GETENV_OK=implementing GetEnvOnce().
+        if (env_var == nullptr) return std::nullopt;
+        return std::string(env_var);
+      }());
+  return *env_var;
 }
 
 }  // namespace torch_tpu

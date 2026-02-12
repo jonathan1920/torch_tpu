@@ -25,11 +25,6 @@
 
 namespace torch_tpu {
 
-// The environment variable that specifies the root path of the tier-3
-// compilation cache. If not set, the tier-3 compilation cache is not used.
-inline constexpr char kTier3CompilationCacheRootEnvVar[] =
-    "TORCH_TPU_TIER3_COMPILATION_CACHE_ROOT";
-
 // Returns true if the tier-3 compilation cache is enabled for this process.
 [[nodiscard]] bool UsesTier3CompilationCache();
 

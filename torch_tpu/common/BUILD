@@ -162,6 +162,7 @@ torch_tpu_cc_library(
     deps = [
         ":cache_key",
         ":compilation",
+        ":env_vars",
         ":error_utils",
         ":fingerprint_utils",
         ":unique_file_descriptor",
@@ -186,6 +187,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":cache_key",
+        ":env_vars",
         ":error_utils",
         ":shape",
         ":tier2_compilation_cache",
@@ -341,6 +343,7 @@ torch_tpu_cc_library(
     deps = [
         ":cache_key",
         ":compilation",
+        ":env_vars",
         ":error_utils",
         ":tier2_compilation_cache",
         "@com_google_absl//absl/base:no_destructor",
@@ -467,6 +470,7 @@ torch_tpu_cc_test(
 torch_tpu_cc_library(
     name = "env_vars",
     hdrs = ["env_vars.h"],
+    deps = ["@com_google_absl//absl/base:no_destructor"],
 )
 
 torch_tpu_cc_library(

@@ -42,6 +42,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/unique_file_descriptor.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -128,8 +129,8 @@ constexpr std::string_view kDefaultCacheName = "default";
 
 const std::string& GetTier2CacheName() {
   static const absl::NoDestructor<std::string> cache_name([]() {
-    const char* const env_var = std::getenv(kTier2CacheNameEnvVar);
-    if (env_var == nullptr || env_var[0] == '\0') {
+    const auto& env_var = GetEnvOnce<kTorchTpuTier2CompilationCacheEnvVar>();
+    if (!env_var.has_value() || env_var->empty()) {
       // Decide whether to use the tier-2 cache based on the world size.
       const auto world_size_or = GetGlobalDeviceCount();
       if (world_size_or.ok()) {
@@ -149,16 +150,18 @@ const std::string& GetTier2CacheName() {
                      << world_size_or.status();
       return std::string();
     }
-    if (env_var == kDisabledCacheNameInEnvVar) {
+    if (*env_var == kDisabledCacheNameInEnvVar) {
       ABSL_LOG(INFO) << "Tier-2 compilation cache is disabled as requested by "
                         "the "
-                     << kTier2CacheNameEnvVar << " environment variable.";
+                     << kTorchTpuTier2CompilationCacheEnvVar
+                     << " environment variable.";
       return std::string();
     }
     ABSL_LOG(INFO) << "Tier-2 compilation cache is enabled with name '"
-                   << env_var << "' as requested by the "
-                   << kTier2CacheNameEnvVar << " environment variable.";
-    return std::string(env_var);
+                   << *env_var << "' as requested by the "
+                   << kTorchTpuTier2CompilationCacheEnvVar
+                   << " environment variable.";
+    return *env_var;
   }());
   return *cache_name;
 }

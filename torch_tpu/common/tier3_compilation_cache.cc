@@ -30,6 +30,7 @@
 #include "absl/strings/str_cat.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"
 
@@ -46,10 +47,8 @@ constexpr std::string_view kTier3CacheFileExtension = ".bin";
 // This function is memoized so that it's cheap to call this multiple times.
 [[nodiscard]] static const std::string& GetTier3CacheRootDir() {
   static const absl::NoDestructor<std::string> root_dir([]() {
-    const char* root_dir = std::getenv(kTier3CompilationCacheRootEnvVar);
-    if (root_dir == nullptr) {
-      root_dir = "";
-    }
+    const auto root_dir =
+        GetEnvOnce<kTorchTpuTier3CompilationCacheRootEnvVar>().value_or("");
     ABSL_LOG(INFO) << "Tier-3 compilation cache root directory: " << root_dir;
     return root_dir;
   }());

@@ -35,8 +35,8 @@ namespace torch_tpu {
 
 std::optional<bool> TorchShowCppStacktraces() {
   static const auto state = []() -> std::optional<bool> {
-    const char* const env_var = std::getenv(kTorchShowCppStacktracesEnvVar);
-    if (env_var == nullptr) {
+    const auto& env_var = GetEnvOnce<kTorchShowCppStacktracesEnvVar>();
+    if (!env_var.has_value()) {
       return std::nullopt;
     }
     // The env var is set. Let PyTorch parse it.

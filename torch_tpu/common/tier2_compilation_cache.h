@@ -31,14 +31,6 @@
 
 namespace torch_tpu {
 
-// Environment variable that specifies the name of the tier-2 compilation
-// cache. The special name "disabled" can be used to disable the tier-2 cache.
-// If not set, TorchTPU decides whether to use the tier-2 cache or not based
-// on the world size: if the world size is 1, the tier-2 cache is disabled;
-// otherwise, it is enabled and the name is set to "default".
-inline constexpr char kTier2CacheNameEnvVar[] =
-    "TORCH_TPU_TIER2_COMPILATION_CACHE";
-
 // The tier of the cache where an executable comes from.
 enum class CacheTier {
   kUnknown,

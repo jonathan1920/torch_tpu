@@ -39,6 +39,7 @@
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/unique_file_descriptor.h"
@@ -125,7 +126,7 @@ auto* const test_env =
 class Tier2CacheTest : public testing::Test {
  protected:
   Tier2CacheTest() {
-    setenv(kTier2CacheNameEnvVar, "my_cache", /*overwrite=*/1);
+    setenv(kTorchTpuTier2CompilationCacheEnvVar, "my_cache", /*overwrite=*/1);
     cache_path_ = GetTier2CompilationCachePath();
 
     // Clear the cache directory before each test, in case any previous tests

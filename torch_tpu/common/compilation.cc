@@ -196,10 +196,9 @@ static absl::StatusOr<xla::ExecutionOptions::EffortLevel> ParseEffortLevel(
 static const CompilerOptionOverrides& GetCompilerOptionOverridesFromEnvVar() {
   static const absl::NoDestructor<CompilerOptionOverrides> overrides([] {
     CompilerOptionOverrides overrides;
-    const char* const xla_flags =
-        std::getenv(kTorchTpuInternalXlaOptionsEnvVar);
-    if (xla_flags != nullptr) {
-      for (std::string_view flag : absl::StrSplit(xla_flags, ' ')) {
+    const auto& xla_flags = GetEnvOnce<kTorchTpuInternalXlaOptionsEnvVar>();
+    if (xla_flags.has_value()) {
+      for (std::string_view flag : absl::StrSplit(*xla_flags, ' ')) {
         if (flag.empty()) {
           continue;
         }
