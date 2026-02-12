@@ -4373,6 +4373,43 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
 
+  def test_avg_pool3d_backward_padding(self):
+    """Test for avg_pool3d_backward crashing when stride is large.
+
+    - Input Dim: 2
+    - Kernel: 2
+    - Stride: 4
+    - Padding: 1
+
+    - Intermediate tensor dim: (Out-1)*Stride + Kernel = 2
+    - Slice needed: pad_low=1, input_dim=2 -> slice[1:1+2] = slice[1:3]
+
+    - Crash: limit index 3 is larger than dimension size 2 in dimension 2
+    - Fix: Pad the reconstructed tensor to size 3.
+    """
+    input_val = torch.randn(1, 1, 2, 2, 2, dtype=torch.float64)
+    kernel_size = (2, 2, 2)
+    stride = 4
+    padding = 1
+
+    def test_fn(device):
+      inp = input_val.to(device).requires_grad_(True)
+      output = torch.nn.functional.avg_pool3d(
+          inp,
+          kernel_size=kernel_size,
+          stride=stride,
+          padding=padding,
+          divisor_override=8.0,
+      )
+
+      self.assertEqual(output.shape, (1, 1, 1, 1, 1))
+
+      grad_output = torch.ones_like(output)
+      output.backward(grad_output)
+      return inp.grad
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
 
 if __name__ == "__main__":
   absltest.main()

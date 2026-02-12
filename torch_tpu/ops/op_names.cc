@@ -104,6 +104,8 @@ std::string_view ToString(OpName op_name) {
       return "avg_pool2d_backward.grad_input";
     case OpName::kAvgPool2dOut:
       return "avg_pool2d.out";
+    case OpName::kAvgPool3dBackwardGradInput:
+      return "avg_pool3d_backward.grad_input";
     case OpName::kAvgPool3dOut:
       return "avg_pool3d.out";
     case OpName::kBinCount:

@@ -58,6 +58,12 @@ at::Tensor& AtenAvgPool2dBackwardGradInput(
     at::IntArrayRef padding, bool ceil_mode, bool count_include_pad,
     std::optional<int64_t> divisor_override, at::Tensor& grad_input);
 
+at::Tensor& AtenAvgPool3dBackwardGradInput(
+    const at::Tensor& grad_output, const at::Tensor& self,
+    at::IntArrayRef kernel_size, at::IntArrayRef stride,
+    at::IntArrayRef padding, bool ceil_mode, bool count_include_pad,
+    std::optional<int64_t> divisor_override, at::Tensor& grad_input);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_POOLING_AVG_POOL_ATEN_KERNELS_H_

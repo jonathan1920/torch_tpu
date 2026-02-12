@@ -254,6 +254,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kAtanhOut, AtenAtanhOut);
   Impl(m, OpName::kAvgPool2dBackwardGradInput, AtenAvgPool2dBackwardGradInput);
   Impl(m, OpName::kAvgPool2dOut, AtenAvgPool2dOut);
+  Impl(m, OpName::kAvgPool3dBackwardGradInput, AtenAvgPool3dBackwardGradInput);
   Impl(m, OpName::kAvgPool3dOut, AtenAvgPool3dOut);
   Impl(m, OpName::kBitwiseLeftShiftTensorOut, AtenBitwiseLeftShiftTensorOut);
   Impl(m, OpName::kBitwiseRightShiftTensorOut, AtenBitwiseRightShiftTensorOut);

@@ -342,8 +342,8 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 2.8e-01, "atol": 1.3e-1},
     },
     "nn.functional.avg_pool3d": {
-        torch.float32: {"rtol": 0.5, "atol": 0.2},
-        torch.float64: {"rtol": 0.5, "atol": 0.2},
+        torch.float32: {"rtol": 4.1e-01, "atol": 1.1e-01},
+        torch.float64: {"rtol": 4.1e-01, "atol": 1.6e-01},
     },
     "nn.functional.batch_norm": {
         torch.float64: {"rtol": 1e-2, "atol": 1e-2},
@@ -1187,13 +1187,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_avg_pool3d(self):
-    self.do_test_op(
-        "nn.functional.avg_pool3d",
-        # TODO: fix the error avg_pool3d_backward.grad_input is unimplemented.
-        check_grad=False,
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
-    )
+    self.do_test_op("nn.functional.avg_pool3d")
 
   def test_bincount(self):
     self.do_test_op(
