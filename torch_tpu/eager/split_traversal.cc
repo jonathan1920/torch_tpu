@@ -384,18 +384,6 @@ absl::StatusOr<std::vector<Traversal>> SplitTraversal(Traversal traversal) {
 
   std::vector<Traversal> traversals;
 
-  if (traversal.is_bounded_dynamic()) {
-    // TODO(bawilson, unda, gleasonk): remove this once we support auto-dynamism
-    // Right now, if a graph is marked as bounded dynamic and we split it, then
-    // the bounded dynamism stops at the first graph split, and all later
-    // graphs are treated static and probably recompiled.
-    // Preventing a graph split creates a single graph that is fully dynamic.
-    // But in the future we want to be able to split a graph into multiple
-    // subgraphs, each of which is dynamically bounded.
-    traversals.push_back(std::move(traversal));
-    return traversals;
-  }
-
   // SplitTraversal returns traversals in topological order.
   TT_ASSIGN_OR_RETURN(bool must_split, MustSplit(traversal));
   if (!must_split) {
