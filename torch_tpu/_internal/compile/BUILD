@@ -66,6 +66,7 @@ torch_tpu_cc_library(
         "//torch_tpu/pjrt:pjrt_init",
         "//torch_tpu/pjrt:pjrt_utils",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",

@@ -30,6 +30,7 @@ The `torch.compile()` function has the following relevant arguments:
   disable (bool):
     Disables the compilation. No ops for us.
 """
+
 import logging
 from typing import Any, Callable, List, Sequence, TypeAlias
 import torch
@@ -263,14 +264,15 @@ class TpuBackend:
       A function that executes the compiled graph on the TPU.
     """
     if logger.isEnabledFor(logging.DEBUG):
-      logger.debug("[TpuBackend.compile_graph_module] Graph:")
-      for line in graph_module.code.splitlines():
-        logger.debug(line)
-    logger.debug(
-        "[TpuBackend.compile_graph_module] Sample Inputs (len = %d): \n%s",
-        len(example_inputs),
-        utils.InputMetadata(example_inputs),
-    )
+      logger.debug(
+          "[TpuBackend.compile_graph_module] Graph:\n%s",
+          graph_module.print_readable(print_output=False),
+      )
+      logger.debug(
+          "[TpuBackend.compile_graph_module] Sample Inputs (len = %d): \n%s",
+          len(example_inputs),
+          utils.InputMetadata(example_inputs),
+      )
 
     # Exit fake mode to trace, see _DisableFakeTensorMode docstring for details.
     with _DisableFakeTensorMode():

@@ -348,11 +348,8 @@ std::string DeviceBufferRef::DebugString() const {
      << "\n\tIndex: " << index_
      << "\n\tShape and type: " << ToDTypeName(element_type())
      << ToString(dimensions()) << "\n\tData state: ";
-  const MaterializedBuffers* absl_nullable buffers =
-      device_buffer_list_->materialized_buffers();
-  if (buffers != nullptr) {
-    DebugDataState(os, deferred_op(), buffers, dimensions());
-  }
+  DebugDataState(os, deferred_op(), device_buffer_list_->materialized_buffers(),
+                 dimensions());
   return sb.str();
 }
 

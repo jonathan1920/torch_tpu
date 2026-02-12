@@ -449,14 +449,15 @@ absl::Status Traversal::ValidateAndReorderInputs(
   for (const DeviceBufferRef& input : inputs) {
     TT_RET_CHECK(input.state() != DeviceBufferRefState::kDeferred,
                  error::kInvalidArgument)
-        << "found a deferred input, which is not allowed";
+        << "found a deferred input, which is not allowed: "
+        << input.DebugString();
     auto it = prev_inputs.find(input);
     if (it == prev_inputs.end()) {
       // Allow unused inputs.
       continue;
     }
     TT_RET_CHECK(!it->second, error::kInvalidArgument)
-        << "identified a duplicate input";
+        << "identified a duplicate input: " << input.DebugString();
     it->second = true;
   }
 
@@ -474,7 +475,7 @@ absl::Status Traversal::ValidateAndReorderInputs(
       continue;
     }
     TT_RET_CHECK(used, error::kInvalidArgument)
-        << "identified an input that was not provided";
+        << "identified an input that was not provided: " << input.DebugString();
   }
   inputs_ = std::move(inputs);
   ABSL_VLOG(1) << "[Traversal::ValidateAndReorderInputs] New inputs are valid. "
@@ -995,15 +996,17 @@ absl::Status Traversal::Validate() const {
     TT_RET_CHECK(deferred_op, error::kFailedPrecondition)
         << "Missing deferred op at line " << i;
     const auto num_inputs = deferred_op->inputs().size();
-    for (auto i = 0; i < num_inputs; ++i) {
-      const DeviceBufferRef& input = deferred_op->inputs()[i];
+    for (auto input_idx = 0; input_idx < num_inputs; ++input_idx) {
+      const DeviceBufferRef& input = deferred_op->inputs()[input_idx];
       TT_RET_CHECK(buffer_to_index.find(input) != buffer_to_index.end(),
                    error::kFailedPrecondition)
-          << "Unexpected buffer at line " << i;
+          << "Unexpected buffer at execution order index " << i
+          << ", input index " << input_idx;
     }
     // Now we can add the deferred ops' outputs to the set of known buffers.
-    for (auto i = 0; i < node->size(); ++i) {
-      TT_ASSIGN_OR_RETURN(auto node_output, DeviceBufferRef::Create(node, i));
+    for (auto output_idx = 0; output_idx < node->size(); ++output_idx) {
+      TT_ASSIGN_OR_RETURN(auto node_output,
+                          DeviceBufferRef::Create(node, output_idx));
       buffer_to_index[std::move(node_output)] = buffer_index++;
     }
   }

@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -88,6 +89,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
     TT_RET_CHECK(buffer_ref.state() != DeviceBufferRefState::kDeferred,
                  error::kInternal)
         << "argument tensor has deferred ops: " << ToString(tensor);
+    ABSL_VLOG(3) << "[ExtractMlirFromGraph] arg_tensor: "
+                 << buffer_ref.DebugString();
     argument_refs.push_back(std::move(buffer_ref));
   }
 
@@ -101,6 +104,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
     TT_RET_CHECK(buffer_ref.state() != DeviceBufferRefState::kMaterialized,
                  error::kInternal)
         << "result tensor is already materialized: " << ToString(tensor);
+    ABSL_VLOG(3) << "[ExtractMlirFromGraph] result_tensor: "
+                 << buffer_ref.DebugString();
     result_refs.push_back(std::move(buffer_ref));
   }
 
