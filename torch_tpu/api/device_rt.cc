@@ -41,17 +41,22 @@ namespace {
 // Launcher utilities like torchrun typically set WORLD_SIZE, which we can
 // piggyback on to determine if we're running in single-device mode or
 // distributed mode when it is set.
-std::optional<int> ReadWorldSizeFromEnv() {
-  const char* env_world_size = std::getenv(kWorldSizeEnvVar);
-  if (env_world_size == nullptr) {
-    // WORLD_SIZE is not set.
-    return std::nullopt;
-  }
-  int world_size;
-  if (!absl::SimpleAtoi(std::string_view(env_world_size), &world_size)) {
-    // WORLD_SIZE is not a valid integer.
-    return std::nullopt;
-  }
+//
+// This function is memoized, so the environment variable is only read once.
+[[nodiscard]] std::optional<int> ReadWorldSizeFromEnv() {
+  static const auto world_size = []() -> std::optional<int> {
+    const auto& env_world_size = GetEnvOnce<kWorldSizeEnvVar>();
+    if (!env_world_size.has_value()) {
+      // WORLD_SIZE is not set.
+      return std::nullopt;
+    }
+    int world_size;
+    if (!absl::SimpleAtoi(*env_world_size, &world_size)) {
+      // WORLD_SIZE is not a valid integer.
+      return std::nullopt;
+    }
+    return world_size;
+  }();
   return world_size;
 }
 
