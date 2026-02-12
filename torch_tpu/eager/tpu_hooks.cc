@@ -27,7 +27,6 @@
 #include "ATen/detail/PrivateUse1HooksInterface.h"
 #include "ATen/ops/empty.h"
 #include "c10/core/Device.h"
-#include "c10/core/DeviceType.h"
 #include "c10/core/ScalarType.h"
 #include "c10/core/Storage.h"
 #include "c10/core/Stream.h"
@@ -35,6 +34,7 @@
 #include "c10/core/impl/DeviceGuardImplInterface.h"
 #include "c10/macros/Export.h"
 #include "c10/util/Exception.h"
+#include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch/headeronly/macros/Export.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -88,20 +88,20 @@ c10::DeviceType TpuDeviceGuardImpl::type() const {
 
 c10::Device TpuDeviceGuardImpl::exchangeDevice(c10::Device d) const {
   TT_CHECK_THROW(d.type() == type(), error::kInvalidArgument)
-      << "TpuDeviceGuardImpl: invalid device type ",
-      d.type();
+      << "TpuDeviceGuardImpl: invalid device type " << d.type();
   c10::Device old_device(type(), current_device_index_);
   auto* pjrt_client = GetPjRtClient();
   if (pjrt_client != nullptr) {
-    TT_CHECK_THROW(
-        d.index() >= 0 && d.index() < static_cast<c10::DeviceIndex>(
-                                          pjrt_client->device_count()),
-        error::kInvalidArgument)
-        << "Device index " << d.index() << " out of bounds. Available: ",
-        pjrt_client->device_count();
+    const int addressable_device_count =
+        pjrt_client->addressable_device_count();
+    TT_CHECK_THROW(d.index() >= 0 && d.index() < static_cast<c10::DeviceIndex>(
+                                                     addressable_device_count),
+                   error::kInvalidArgument)
+        << "Device index " << static_cast<int>(d.index())
+        << " out of bounds. Available: " << addressable_device_count;
   } else if (d.index() != 0) {
     TORCH_WARN("PJRT client not available, but setting TPU device index to ",
-               d.index());
+               static_cast<int>(d.index()));
   }
   current_device_index_ = d.index();
   return old_device;
@@ -116,15 +116,16 @@ void TpuDeviceGuardImpl::setDevice(c10::Device d) const {
       << "TpuDeviceGuardImpl: invalid device type " << d.type();
   auto* pjrt_client = GetPjRtClient();
   if (pjrt_client != nullptr) {
-    TT_CHECK_THROW(
-        d.index() >= 0 && d.index() < static_cast<c10::DeviceIndex>(
-                                          pjrt_client->device_count()),
-        error::kInvalidArgument)
-        << "Device index " << d.index() << " out of bounds. Available: ",
-        pjrt_client->device_count();
+    const int addressable_device_count =
+        pjrt_client->addressable_device_count();
+    TT_CHECK_THROW(d.index() >= 0 && d.index() < static_cast<c10::DeviceIndex>(
+                                                     addressable_device_count),
+                   error::kInvalidArgument)
+        << "Device index " << static_cast<int>(d.index())
+        << " out of bounds. Available: " << addressable_device_count;
   } else if (d.index() != 0) {
     TORCH_WARN("PJRT client not available, but setting TPU device index to ",
-               d.index());
+               static_cast<int>(d.index()));
   }
   current_device_index_ = d.index();
 }
@@ -154,7 +155,8 @@ c10::Stream TpuDeviceGuardImpl::exchangeStream(c10::Stream s) const {
 c10::DeviceIndex TpuDeviceGuardImpl::deviceCount() const noexcept {
   auto* pjrt_client = GetPjRtClient();
   if (pjrt_client != nullptr) {
-    return static_cast<c10::DeviceIndex>(pjrt_client->device_count());
+    return static_cast<c10::DeviceIndex>(
+        pjrt_client->addressable_device_count());
   }
   return 0;
 }
