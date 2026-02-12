@@ -3390,11 +3390,13 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     device = api.tpu_device()
 
     test_configs = [
+        # Note: we run the "too large" test first to test that its (expected)
+        # failure does not affect subsequent tests.
+        (torch.int64, 2**31 + 1024),
         (torch.int64, 1000),
         (torch.float32, 1000),
         (torch.int32, 1000),
         (torch.bfloat16, 256),
-        (torch.int64, 2**31 + 1024),
     ]
 
     for dtype, n in test_configs:

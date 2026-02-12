@@ -39,6 +39,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/pooling:avg_pool_aten_kernels",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
         "@stablehlo//:stablehlo_builder",
