@@ -20,12 +20,27 @@ package(
 )
 
 torch_tpu_cc_library(
+    name = "convolution_checks",
+    srcs = ["convolution_checks.cc"],
+    hdrs = ["convolution_checks.h"],
+    deps = [
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "convolution",
     srcs = ["convolution.cc"],
     hdrs = ["convolution.h"],
     deps = [
+        ":convolution_checks",
         "//shims/torch:torch_headers",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
+        "//torch_tpu/common:utils",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
@@ -46,6 +61,7 @@ torch_tpu_cc_library(
     hdrs = ["convolution_aten_kernels.h"],
     deps = [
         ":convolution",
+        ":convolution_checks",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
@@ -55,6 +71,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:fixed_size_span",
+        "//torch_tpu/common:shape",
         "//torch_tpu/common:utils",
         "//torch_tpu/eager:device",
         "//torch_tpu/eager:device_buffer",

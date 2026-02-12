@@ -19,6 +19,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -29,19 +30,20 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/native/Resize.h"
 #include "ATen/ops/promote_types.h"
-#include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/utils.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "xla/xla_data.pb.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/convolution/convolution.h"
+#include "torch_tpu/ops/convolution/convolution_checks.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -73,51 +75,58 @@ Dimensions ExpandIfNecessary(at::IntArrayRef param, int num_spatial_dims) {
   return Dimensions(param.begin(), param.end());
 }
 
+absl::Status CheckConvolutionInputs(
+    const at::Tensor& input, const at::Tensor& weight,
+    absl::Span<const int64_t> bias, absl::Span<const int64_t> stride,
+    absl::Span<const int64_t> padding, absl::Span<const int64_t> dilation,
+    bool transposed, absl::Span<const int64_t> output_padding, int64_t groups) {
+  TT_RETURN_IF_ERROR(CheckConvolutionInput(input.sizes()));
+
+  // Number of dimensions, excluding the batch and channel dimensions.
+  const int64_t num_spatial_dims = input.dim() - 2;
+  const int64_t in_channels = input.size(1);
+
+  TT_RETURN_IF_ERROR(CheckConvolutionSpatialDimensionsMatch(num_spatial_dims,
+                                                            stride, "stride"));
+  TT_RETURN_IF_ERROR(CheckConvolutionSpatialDimensionsMatch(
+      num_spatial_dims, padding, "padding"));
+  TT_RETURN_IF_ERROR(CheckConvolutionSpatialDimensionsMatch(
+      num_spatial_dims, dilation, "dilation"));
+  TT_RETURN_IF_ERROR(CheckConvolutionSpatialDimensionsMatch(
+      num_spatial_dims, output_padding, "output_padding"));
+
+  TT_RETURN_IF_ERROR(CheckConvolutionWeight(weight.sizes(), num_spatial_dims,
+                                            in_channels, groups, transposed));
+
+  if (!bias.empty()) {
+    const int64_t out_channels =
+        transposed ? weight.size(1) * groups : weight.size(0);
+    TT_RETURN_IF_ERROR(CheckConvolutionBias(bias, out_channels));
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status CheckConvolutionInputs(
+    const at::Tensor& input, const at::Tensor& weight,
+    const std::optional<at::Tensor>& bias_opt, absl::Span<const int64_t> stride,
+    absl::Span<const int64_t> padding, absl::Span<const int64_t> dilation,
+    bool transposed, absl::Span<const int64_t> output_padding, int64_t groups) {
+  auto bias_dimensions =
+      bias_opt.has_value() ? bias_opt->sizes() : at::IntArrayRef();
+  return CheckConvolutionInputs(input, weight, bias_dimensions, stride, padding,
+                                dilation, transposed, output_padding, groups);
+}
+
 absl::StatusOr<Dimensions> GetOutputDimensions(
     const at::Tensor& input, const at::Tensor& weight,
     const std::optional<at::Tensor>& bias_opt, absl::Span<const int64_t> stride,
     absl::Span<const int64_t> padding, absl::Span<const int64_t> dilation,
     bool transposed, absl::Span<const int64_t> output_padding, int64_t groups) {
-  const int num_spatial_dims = input.dim() - 2;
-  TT_RET_CHECK(num_spatial_dims > 0, error::kInvalidArgument)
-      << "Convolution requires at least one spatial dimension";
-
-  TT_RET_CHECK(stride.size() == num_spatial_dims, error::kInvalidArgument)
-      << "Inconsistent number of spatial dimensions in stride";
-  TT_RET_CHECK(padding.size() == num_spatial_dims, error::kInvalidArgument)
-      << "Inconsistent number of spatial dimensions in padding";
-  TT_RET_CHECK(dilation.size() == num_spatial_dims, error::kInvalidArgument)
-      << "Inconsistent number of spatial dimensions in dilation";
-  TT_RET_CHECK(output_padding.size() == num_spatial_dims,
-               error::kInvalidArgument)
-      << "Inconsistent number of spatial dimensions in output_padding";
-
-  TT_RET_CHECK(weight.dim() == num_spatial_dims + 2, error::kInvalidArgument)
-      << "Weight should be shaped as (C_out, C_in / groups, *spatial_dims)";
-
-  if (transposed) {
-    TT_RET_CHECK(weight.size(0) == input.size(1), error::kInvalidArgument)
-        << "Dimension 0 of the weight filter must equal the number of "
-           "input channels for transposed convolution";
-  } else {
-    TT_RET_CHECK(weight.size(1) * groups == input.size(1),
-                 error::kInvalidArgument)
-        << "Dimension 1 of the weight filter must equal the number of "
-           "input channels divided by the number of groups";
-  }
-
-  if (bias_opt.has_value()) {
-    TT_RET_CHECK(bias_opt->dim() == 1, error::kInvalidArgument)
-        << "Bias should be shaped as (C_out,)";
-    int64_t out_channels =
-        transposed ? weight.size(1) * groups : weight.size(0);
-    TT_RET_CHECK(bias_opt->size(0) == out_channels, error::kInvalidArgument)
-        << "Bias and weight must have the same number of output channels. Got "
-        << bias_opt->size(0) << " channels in bias and " << out_channels
-        << " channels in weight";
-  }
-
+  // Number of dimensions, excluding the batch and channel dimensions.
+  const int64_t num_spatial_dims = input.dim() - 2;
   Dimensions output_sizes;
+
   output_sizes.reserve(num_spatial_dims + 2);
   output_sizes.push_back(input.size(0));  // Batch
   if (transposed) {
@@ -151,37 +160,31 @@ absl::StatusOr<Dimensions> GetOutputDimensions(
   return output_sizes;
 }
 
-absl::Status IsSupportedDtype(const at::Tensor& tensor) {
-  TT_RET_CHECK(tensor.scalar_type() != at::ScalarType::Undefined,
-               error::kInvalidArgument)
-      << "Tensor scalar type is undefined: caffe2::TypeMeta is "
-      << tensor.unsafeGetTensorImpl()->dtype().name();
-  TT_RET_CHECK(tensor.scalar_type() != at::ScalarType::Bool,
-               error::kFailedPrecondition)
-      << "PyTorch does not support convolution with tensors of type "
-      << c10::toString(tensor.scalar_type()) << " (even though XLA does)";
-  TT_RET_CHECK(tensor.scalar_type() != at::ScalarType::Long,
-               error::kUnimplemented)
-      << "XLA does not currently support convolution with tensors of type "
-      << c10::toString(tensor.scalar_type()) << " (even though PyTorch does)";
+absl::Status IsTypeSupported(const at::Tensor& tensor,
+                             const std::string_view arg_name) {
+  TT_RET_CHECK(!IsBool(tensor) && !IsLong(tensor), error::kInvalidArgument)
+      << "expected the dtype of the " << arg_name
+      << " tensor to be neither long nor bool, got "
+      << ToString(tensor.scalar_type());
   return absl::OkStatus();
 }
 
-absl::StatusOr<at::ScalarType> GetPromotedDtype(
+absl::StatusOr<at::ScalarType> GetPromotedType(
     const at::Tensor& input, const at::Tensor& weight,
     const std::optional<at::Tensor>& bias_opt) {
-  TT_RETURN_IF_ERROR(IsSupportedDtype(input)).SetPrepend()
-      << "input tensor has unsupported type: ";
-  TT_RETURN_IF_ERROR(IsSupportedDtype(weight)).SetPrepend()
-      << "weight tensor has unsupported type: ";
-  at::ScalarType promoted_dtype =
+  TT_RETURN_IF_ERROR(IsTypeSupported(input, "input"));
+  TT_RETURN_IF_ERROR(IsTypeSupported(weight, "weight"));
+
+  at::ScalarType promoted_type =
       at::promote_types(input.scalar_type(), weight.scalar_type());
+
   if (bias_opt.has_value()) {
-    TT_RETURN_IF_ERROR(IsSupportedDtype(*bias_opt)).SetPrepend()
-        << "bias tensor has unsupported type: ";
-    promoted_dtype = at::promote_types(promoted_dtype, bias_opt->scalar_type());
+    // TODO: native PyTorch does not errors on boolean bias.
+    TT_RETURN_IF_ERROR(IsTypeSupported(*bias_opt, "bias"));
+    promoted_type = at::promote_types(promoted_type, bias_opt->scalar_type());
   }
-  return promoted_dtype;
+
+  return promoted_type;
 }
 
 absl::StatusOr<DeviceBufferRef> ConvolutionBinary(
@@ -196,13 +199,16 @@ absl::StatusOr<DeviceBufferRef> ConvolutionBinary(
   Dimensions expanded_output_padding =
       ExpandIfNecessary(output_padding, num_spatial_dims);
 
+  TT_RETURN_IF_ERROR(CheckConvolutionInputs(
+      input, weight, std::nullopt, expanded_stride, expanded_padding,
+      expanded_dilation, transposed, expanded_output_padding, groups));
   TT_ASSIGN_OR_RETURN(
       const Dimensions output_dims,
       GetOutputDimensions(input, weight, std::nullopt, expanded_stride,
                           expanded_padding, expanded_dilation, transposed,
                           expanded_output_padding, groups));
   TT_ASSIGN_OR_RETURN(at::ScalarType promoted_dtype,
-                      GetPromotedDtype(input, weight, std::nullopt));
+                      GetPromotedType(input, weight, std::nullopt));
   TT_ASSIGN_OR_RETURN(const auto mlir_dtype,
                       ConvertTo<mlir::ElementType>(promoted_dtype));
 
@@ -240,13 +246,16 @@ absl::StatusOr<DeviceBufferRef> ConvolutionTernary(
   Dimensions expanded_output_padding =
       ExpandIfNecessary(output_padding, num_spatial_dims);
 
+  TT_RETURN_IF_ERROR(CheckConvolutionInputs(
+      input, weight, bias, expanded_stride, expanded_padding, expanded_dilation,
+      transposed, expanded_output_padding, groups));
   TT_ASSIGN_OR_RETURN(
       Dimensions output_dims,
       GetOutputDimensions(input, weight, bias, expanded_stride,
                           expanded_padding, expanded_dilation, transposed,
                           expanded_output_padding, groups));
   TT_ASSIGN_OR_RETURN(at::ScalarType promoted_dtype,
-                      GetPromotedDtype(input, weight, bias));
+                      GetPromotedType(input, weight, bias));
   TT_ASSIGN_OR_RETURN(const auto mlir_dtype,
                       ConvertTo<mlir::ElementType>(promoted_dtype));
 
@@ -290,18 +299,15 @@ absl::StatusOr<DeviceBufferRef> Convolution(
                            std::move(param_keys));
 }
 
-absl::StatusOr<at::ScalarType> GetPromotedDtypeBackward(
+absl::StatusOr<at::ScalarType> GetPromotedTypeBackward(
     const at::Tensor& grad_output, const at::Tensor& input,
     const at::Tensor& weight) {
-  TT_RETURN_IF_ERROR(IsSupportedDtype(grad_output)).SetPrepend()
-      << "grad_output tensor has unsupported type: ";
-  TT_RETURN_IF_ERROR(IsSupportedDtype(input)).SetPrepend()
-      << "input tensor has unsupported type: ";
-  TT_RETURN_IF_ERROR(IsSupportedDtype(weight)).SetPrepend()
-      << "weight tensor has unsupported type: ";
-  at::ScalarType promoted_dtype =
-      at::promote_types(input.scalar_type(), weight.scalar_type());
-  return at::promote_types(promoted_dtype, grad_output.scalar_type());
+  TT_RETURN_IF_ERROR(IsTypeSupported(grad_output, "grad"));
+  TT_RETURN_IF_ERROR(IsTypeSupported(input, "input"));
+  TT_RETURN_IF_ERROR(IsTypeSupported(weight, "weight"));
+  return at::promote_types(
+      at::promote_types(input.scalar_type(), weight.scalar_type()),
+      grad_output.scalar_type());
 }
 
 }  // namespace
@@ -352,26 +358,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenConvolutionBackward(
     at::IntArrayRef stride, at::IntArrayRef padding, at::IntArrayRef dilation,
     bool transposed, at::IntArrayRef output_padding, int64_t groups,
     std::array<bool, 3> output_mask) {
-  //  Parameter bias_sizes, if specified, indicates that a bias was used in the
-  //  forward pass and contains the shape of the bias. While the bias shape can
-  //  be computed from other inputs, it is provided to this function for ease of
-  //  use. The bias shape is (weight.shape[0]) for normal convolution and
-  //  (weight.shape[1] * groups) for transposed convolution.
-  if (output_mask[2]) {
-    if (transposed) {
-      TT_CHECK_THROW(
-          !bias_sizes || ((bias_sizes->size() == 1) &&
-                          ((*bias_sizes)[0] == (weight.size(1) * groups))),
-          error::kUnimplemented)
-          << "Unexpected bias_sizes: " << ToString(*bias_sizes);
-    } else {
-      TT_CHECK_THROW(!bias_sizes || ((bias_sizes->size() == 1) &&
-                                     ((*bias_sizes)[0] == weight.size(0))),
-                     error::kUnimplemented)
-          << "Unexpected bias_sizes: " << ToString(*bias_sizes);
-    }
-  }
-
   TT_KERNEL(
       OpName::kConvolutionBackward, param_keys,
       (grad_output, input, weight, stride, padding, dilation, transposed,
@@ -387,9 +373,18 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenConvolutionBackward(
         Dimensions expanded_output_padding =
             ExpandIfNecessary(output_padding, num_spatial_dims);
 
-        TT_ASSIGN_OR_THROW(
-            at::ScalarType promoted_dtype,
-            GetPromotedDtypeBackward(grad_output, input, weight));
+        // A non-empty `bias_dimensions` will trigger a bias dimensions check.
+        // This should only be run if we are computing the backwards w.r.t. the
+        // bias tensor. Otherwise, do not check it.
+        auto bias_dimensions = (output_mask[2] && bias_sizes.has_value())
+                                   ? bias_sizes.value()
+                                   : at::IntArrayRef();
+
+        TT_THROW_IF_ERROR(CheckConvolutionInputs(
+            input, weight, bias_dimensions, expanded_stride, expanded_padding,
+            expanded_dilation, transposed, expanded_output_padding, groups));
+        TT_ASSIGN_OR_THROW(at::ScalarType promoted_dtype,
+                           GetPromotedTypeBackward(grad_output, input, weight));
         TT_ASSIGN_OR_THROW(const auto output_dtype,
                            ConvertTo<mlir::ElementType>(promoted_dtype));
 

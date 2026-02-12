@@ -89,6 +89,11 @@ inline bool IsInteger(const at::Tensor& tensor) {
   return c10::isIntegralType(tensor.scalar_type(), /* includeBool= */ false);
 }
 
+// Returns whether `tensor` holds Long typed data.
+inline bool IsLong(const at::Tensor& tensor) {
+  return tensor.scalar_type() == at::ScalarType::Long;
+}
+
 // Returns whether `tensor` holds complex data that is supported by OpenXLA:
 // either complex64 or complex128.
 inline bool IsXlaSupportedComplex(const at::Tensor& tensor) {

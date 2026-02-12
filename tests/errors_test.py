@@ -68,6 +68,198 @@ def _get_aminmax_outputs(
   )
 
 
+def _get_convolution_default_args(is_backward: bool = False) -> dict[str, Any]:
+  """Returns the default arguments for the convolution ops.
+
+  Default arguments for both ops:
+    - `torch.convolution`
+    - `torch.ops.aten.convolution_backward`
+
+  IMPORTANT: keep the arguments ordered. Even though we can pass this dictionary
+  as keyword arguments to `torch.convolution`, we can't do the same for
+  `torch.ops.aten.convolution_backward`, since the latter only accepts
+  positional arguments.
+
+  This is used so that we don't have to keep specifying all default arguments
+  when calling both ops.
+
+  Args:
+    is_backward: flags whether the returned parameter-value dictionary should
+      correspond to the forward or backward op.
+
+  Returns:
+    A dictionary that associates parameters with default values for either the
+    forward or the backward op.
+  """
+
+  default = {
+      "bias": None,
+      "bias_sizes": None,
+      "stride": (1,),
+      "padding": (0,),
+      "dilation": (1,),
+      "transposed": False,
+      "output_padding": (0,),
+      "groups": 1,
+      "output_mask": (True, True, True),
+  }
+
+  # Remove forward/backward-only keyword arguments.
+  if is_backward:
+    default.pop("bias")
+  else:
+    default.pop("bias_sizes")
+    default.pop("output_mask")
+
+  return default
+
+
+def _run_convolution(*args, **kwargs):
+  """Runs torch.convolution with the given arguments.
+
+  Convenient function for running `torch.convolution`, without having to specify
+  all arguments.
+
+  Reason: even though ops like `torch.conv2d` (and other more popular ops) has
+  default arguments, `torch.convolution` doesn't.
+
+  Args:
+    *args: Positional arguments for `torch.convolution`.
+    **kwargs: Keyword arguments to override
+
+  Returns:
+    The output of `torch.convolution`.
+  """
+
+  merged = _get_convolution_default_args()
+  # Update the copied default args dictionary with the kwargs passed as
+  # argument.
+  merged.update(kwargs)
+  # Concatenate the values to the given positional arguments.
+  args = args + tuple(merged.values())
+
+  return torch.convolution(*args)
+
+
+def _run_convolution_backward(*args, **kwargs):
+  """Runs `torch.ops.aten.convolution_backward` with the given arguments.
+
+  Convenient function for running `torch.ops.aten.convolution_backward`, without
+  having to specify all arguments.
+
+  Reason: this function doesn't have default arguments, and only accepts
+  positional arguments.
+
+  Args:
+    *args: Positional arguments for `torch.convolution`.
+    **kwargs: Keyword arguments to override
+
+  Returns:
+    The output of `torch.ops.aten.convolution_backward`.
+  """
+
+  merged = _get_convolution_default_args(is_backward=True)
+  # Update the copied default args dictionary with the kwargs passed as
+  # argument.
+  merged.update(kwargs)
+  # Concatenate the values to the given positional arguments.
+  args = args + tuple(merged.values())
+
+  return torch.ops.aten.convolution_backward(*args)
+
+
+def _parameterize_convolution_fwd_bwd(
+    forward: dict[str, Any] | None = None,
+    backward: dict[str, Any] | None = None,
+):
+  """Parameterizes convolution tests, running the forward and backward ops.
+
+  Convenient test decorator, for parameterizing a convolution test into 2
+  variants: forward (`torch.convolution`) and backward tests
+  (`torch.ops.aten.convolution_backward`). It's equivalent to:
+
+  ```py
+  @parameterized.named_parameters(
+      { "testcase_name": "forward", "convolution": ..., **forward },
+      { "testcase_name": "forward", "convolution": ..., **backward },
+  )
+  ```
+
+  In summary, this test decorator is a wrapper for calling
+  `parameterized.named_parameters()` with 2 dictionaries (forward and backward).
+  In each of them, it will automatically set the value for the following keys:
+
+  - `testcase_name`: with values _"forward"_ and _"backward"_
+  - `convolution` (the function that actually runs the forward or backward
+  convolution): with values `_run_convolution` and `_backward_wrapped_with_grad`
+  (see its definition below)
+
+  Although parameterizing tests is not ideal, we do this because there are many
+  checks (7) that are run on both forward and backward convolution ops.
+  Therefore, this small extra complexity is justified by the following reasons:
+
+    - Setup is identical
+    - Error checks covered are the same
+    - Error messages are identical (modulo name of the function)
+    - Avoid duplicating the tests
+
+  This decorator assumes that:
+
+    - Both `forward` and `backward` parameters have the same key. It will raise
+      an `AssertionError`, otherwise.
+    - the grad shape will be (2, 1, 8, 8). It can be easily adapted by promoting
+      this variable to be a parameter
+
+  Args:
+    forward: a dictionary that will be passed down to the test case keyword
+      arguments of the forward test.
+    backward: a dictionary that will be passed down to the test case keyword
+      arguments of the backward test.
+
+  Returns:
+    A `parameterized.named_parameter()` decorator with forward and backward
+    parameters set.
+  """
+
+  # Leave this variable here for visibility.
+  grad_shape = (2, 1, 8, 8)
+
+  # From this point onwards, both `forward` and `backward` should:
+  #
+  #   - Not be `None`
+  #   - Have the same set of keys
+  forward = forward or {}
+  backward = backward or {}
+
+  assert forward.keys() == backward.keys(), (
+      "convolution parameterization for `forward` and `backward` dictionaries"
+      f" must have the same keys, got {set(forward.keys())} and"
+      f" {set(backward.keys())}"
+  )
+
+  # Wraps `_run_convolution_backward()` function.
+  #
+  # Before actually calling the convolution backward function, creates a grad
+  # tensor. This allows the forward and the backward function to be called with
+  # the same set of positional arguments.
+  def backward_wrapped_with_grad(*args, **kwargs):
+    grad = torch.zeros(grad_shape, device=et.device())
+    return _run_convolution_backward(grad, *args, **kwargs)
+
+  return parameterized.named_parameters(
+      {
+          "testcase_name": "forward",
+          "convolution": _run_convolution,
+          **forward,
+      },
+      {
+          "testcase_name": "backward",
+          "convolution": backward_wrapped_with_grad,
+          **backward,
+      },
+  )
+
+
 class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU."""
 
@@ -4115,6 +4307,258 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         message_reviewed_by="wan",
     ):
       torch.bmm(a, b, out=out)
+
+  @_parameterize_convolution_fwd_bwd(
+      forward={
+          "tpu_fn": "convolution",
+          "cpu_fn": "slow_conv2d_cpu",
+      },
+      backward={
+          "tpu_fn": "convolution_backward",
+          "cpu_fn": "slow_conv2d_cpu_grad_input",
+      },
+  )
+  def test_convolution_bool(self, convolution, tpu_fn: str, cpu_fn: str):
+    inp = torch.ones(2, 3, 10, 10, device=et.device())
+    w = torch.ones(1, 3, 3, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            f"{tpu_fn}(): expected the dtype of the input"
+            " tensor to be neither long nor bool, got bool"
+        ),
+        cpu=f"\"{cpu_fn}\" not implemented for 'Bool'",
+        message_reviewed_by="wan",
+    ):
+      convolution(inp.to(torch.bool), w)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            f"{tpu_fn}(): expected the dtype of the weight"
+            " tensor to be neither long nor bool, got bool"
+        ),
+        cpu="expected scalar type Float but found Bool",
+        message_reviewed_by="wan",
+    ):
+      convolution(inp, w.to(torch.bool))
+
+  @_parameterize_convolution_fwd_bwd(
+      forward={"tpu_fn": "convolution"},
+      backward={"tpu_fn": "convolution_backward"},
+  )
+  def test_convolution_input_invalid_rank(self, convolution, tpu_fn: str):
+    inp = torch.ones(10, 10, device=et.device())
+
+    # PyTorch CPU implementation will check the weight tensor before the input
+    # tensor. So, it must have >3 dimensions.
+    w = torch.ones(2, 3, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            f"{tpu_fn}(): expected the input to have >= 3 dimensions of shape"
+            " [batch, in channels, ... spatial dimensions ...], got shape"
+            " [10, 10]"
+        ),
+        cpu=(
+            "Expected 3-dimensional input for 3-dimensional weight [2, 3, 3],"
+            " but got 2-dimensional input of size [10, 10] instead"
+        ),
+        message_reviewed_by="wan",
+    ):
+      convolution(inp, w)
+
+  @_parameterize_convolution_fwd_bwd(
+      forward={"tpu_fn": "convolution"},
+      backward={"tpu_fn": "convolution_backward"},
+  )
+  def test_convolution_spatial_dimensions_mismatch(
+      self, convolution, tpu_fn: str
+  ):
+    inp = torch.ones(2, 3, 10, 10, device=et.device())
+    w = torch.ones(1, 3, 3, 3, device=et.device())
+
+    def test_arg(arg_name: str):
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu=(
+              f"{tpu_fn}(): expected {arg_name} to be either an integer or a"
+              " 2-element list that matches the convolution dimensions, got"
+              " [1, 1, 1]"
+          ),
+          cpu=(
+              f"expected {arg_name} to be a single integer value or a list of 2"
+              " values to match the convolution dimensions, but got"
+              f" {arg_name}=[1, 1, 1]"
+          ),
+          message_reviewed_by="wan",
+      ):
+        convolution(inp, w, **{arg_name: (1, 1, 1)})
+
+    # Each of these parameters go through the same error check.
+    # Since this test is already parameterized for forward and backward, we use
+    # subTest() for checking each parameter.
+    for arg_name in ("stride", "padding", "dilation", "output_padding"):
+      with self.subTest(arg_name=arg_name):
+        test_arg(arg_name)
+
+  @_parameterize_convolution_fwd_bwd(
+      forward={"tpu_fn": "convolution"},
+      backward={"tpu_fn": "convolution_backward"},
+  )
+  def test_convolution_weight_invalid_rank(self, convolution, tpu_fn: str):
+    inp = torch.ones(2, 3, 10, 10, device=et.device())
+    w = torch.ones(1, 3, 3, 3, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            f"{tpu_fn}(): expected the weight tensor to have 4 dimensions of"
+            " shape [out channels, in channels per group, ... 2 spatial"
+            " dimensions ...], got shape [1, 3, 3, 3, 3]"
+        ),
+        cpu=(
+            "Expected 5-dimensional input for 5-dimensional weight [1, 3, 3, 3,"
+            " 3], but got 4-dimensional input of size [2, 3, 10, 10] instead"
+        ),
+        message_reviewed_by="wan",
+    ):
+      convolution(inp, w)
+
+  @_parameterize_convolution_fwd_bwd(
+      forward={"tpu_fn": "convolution"},
+      backward={"tpu_fn": "convolution_backward"},
+  )
+  def test_convolution_weight_dimension_mismatch(
+      self, convolution, tpu_fn: str
+  ):
+    inp = torch.ones(2, 3, 10, 10, device=et.device())
+    w = torch.ones(1, 3, 3, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            f"{tpu_fn}(): expected the second dimension of the weight tensor of"
+            " shape [1, 3, 3, 3] to be 1 (3 in channels divided by 3 groups),"
+            " got 3"
+        ),
+        cpu=(
+            "Given groups=3, expected weight to be at least 3 at dimension 0,"
+            " but got weight of size [1, 3, 3, 3] instead"
+        ),
+        message_reviewed_by="wan",
+    ):
+      convolution(inp, w, groups=3)
+
+  @_parameterize_convolution_fwd_bwd(
+      forward={"tpu_fn": "convolution"},
+      backward={"tpu_fn": "convolution_backward"},
+  )
+  def test_transposed_convolution_weight_invalid_rank(
+      self, convolution, tpu_fn: str
+  ):
+    inp = torch.ones(2, 3, 10, 10, device=et.device())
+    w = torch.ones(1, 3, 3, 3, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            f"{tpu_fn}(): expected the weight tensor to have 4 dimensions of"
+            " shape [in channels, out channels per group, ... 2 spatial"
+            " dimensions ...], got shape [1, 3, 3, 3, 3]"
+        ),
+        cpu=(
+            "Expected 5-dimensional input for 5-dimensional weight [1, 3, 3, 3,"
+            " 3], but got 4-dimensional input of size [2, 3, 10, 10] instead"
+        ),
+        message_reviewed_by="wan",
+    ):
+      convolution(inp, w, transposed=True)
+
+  @_parameterize_convolution_fwd_bwd(
+      forward={"tpu_fn": "convolution"},
+      backward={"tpu_fn": "convolution_backward"},
+  )
+  def test_transposed_convolution_weight_dimension_mismatch(
+      self, convolution, tpu_fn: str
+  ):
+    inp = torch.ones(2, 3, 10, 10, device=et.device())
+    w = torch.ones(1, 3, 3, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            f"{tpu_fn}(): expected the first dimension of the weight tensor of"
+            " shape [1, 3, 3, 3] to be 3 (number of in channels), got 1"
+        ),
+        cpu=(
+            "Given groups=3, expected weight to be at least 3 at dimension 0,"
+            " but got weight of size [1, 3, 3, 3] instead"
+        ),
+        message_reviewed_by="wan",
+    ):
+      convolution(inp, w, groups=3, transposed=True)
+
+  def test_convolution_bias_invalid_dimensions(self):
+    # Why isn't this test also run on backward?
+    # =========================================
+    #
+    # PyTorch native device implementation doesn't error on invalid bias_sizes
+    # values. This might actually be a bug on PyTorch upstream.
+
+    inp = torch.ones(2, 3, 10, 10, device=et.device())
+    w = torch.ones(1, 3, 3, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "convolution(): expected the bias tensor to have 1 dimension of"
+            " shape [1 (out channels)], got shape [1, 1]"
+        ),
+        cpu=(
+            "Given weight of size [1, 3, 3, 3], expected bias to be"
+            " 1-dimensional with 1 elements, but got bias of size [1, 1]"
+            " instead"
+        ),
+        message_reviewed_by="wan",
+    ):
+      _run_convolution(inp, w, bias=torch.ones(1, 1, device=et.device()))
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "convolution(): expected the bias tensor to have 1 dimension of"
+            " shape [1 (out channels)], got shape [5]"
+        ),
+        cpu=(
+            "Given weight of size [1, 3, 3, 3], expected bias to be"
+            " 1-dimensional with 1 elements, but got bias of size [5] instead"
+        ),
+        message_reviewed_by="wan",
+    ):
+      _run_convolution(inp, w, bias=torch.ones(5, device=et.device()))
+
+  def test_convolution_backward_grad_bool(self):
+    # This test compliments the parameterized test `test_convolution_bool()`,
+    # which does the same for `inp` and `w`. Since `grad` only exists in the
+    # backward, this specifically tests it.
+    grad = torch.ones(2, 1, 8, 8, device=et.device(), dtype=torch.bool)
+
+    inp = torch.ones(2, 3, 10, 10, device=et.device())
+    w = torch.ones(1, 3, 3, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "convolution_backward(): expected the dtype of the grad tensor to"
+            " be neither long nor bool, got bool"
+        ),
+        cpu="expected scalar type Float but found Bool",
+        message_reviewed_by="wan",
+    ):
+      _run_convolution_backward(grad, inp, w)
 
 
 if __name__ == "__main__":

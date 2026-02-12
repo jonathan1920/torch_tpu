@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -35,9 +36,13 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/utils.h"
+#include "torch_tpu/ops/convolution/convolution_checks.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
+
 namespace stablehlo = mlir::stablehlo;
 
 namespace {
@@ -191,33 +196,31 @@ absl::StatusOr<mlir::MlirOp> BuildConvolution(
   const int num_spatial_dims = stride.size();
 
   // Strides will have one entry per spatial dimension (1D, 2D, 3D, etc.)
-  TT_RET_CHECK(padding.size() == num_spatial_dims * 2 &&
-                   dilation.size() == num_spatial_dims,
-               error::kInvalidArgument)
-      << "Inconsistent number of spatial dimensions in stride, padding, and "
-         "dilation; stride has "
-      << num_spatial_dims << " dimensions, padding has " << padding.size()
-      << " elements, and dilation has " << dilation.size() << " dimensions";
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Callers guarantees that padding.size()
+                 // will always have the right size.
+      padding.size() == num_spatial_dims * 2, error::kInvalidArgument)
+      << "expected the padding size to be " << num_spatial_dims * 2
+      << " (2 elements for each of the " << num_spatial_dims
+      << " spatial dimensions), got " << padding.size() << " integers "
+      << ToString(padding);
+
+  TT_RETURN_IF_ERROR(CheckConvolutionSpatialDimensionsMatch(
+      num_spatial_dims, dilation, "dilation"));
 
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
   // Input should be shaped as (B, C_in, *spatial_dims)
   //   B = batch dimension
   //   C_in = in_channels
-  TT_RET_CHECK(input_type.getRank() == num_spatial_dims + 2,
-               error::kInvalidArgument)
-      << "Input should be shaped as (B, C_in, *spatial_dims)";
+  TT_RETURN_IF_ERROR(CheckConvolutionInput(input_type.getShape()));
 
+  const int64_t in_channels = input_type.getDimSize(1);
   const mlir::RankedTensorType weight_type = GetTensorTypeOrDie(weight);
 
   // Weight should be shaped as (C_out, C_in / groups, *spatial_dims)
   //   C_out = out_channels
-  TT_RET_CHECK(weight_type.getRank() == num_spatial_dims + 2,
-               error::kInvalidArgument)
-      << "Weight should be shaped as (C_out, C_in / groups, *spatial_dims)";
-  TT_RET_CHECK(weight_type.getDimSize(1) * groups == input_type.getDimSize(1),
-               error::kInvalidArgument)
-      << "Dimension 1 of the weight filter must equal the number of "
-         "input channels divided by the number of groups";
+  TT_RETURN_IF_ERROR(CheckConvolutionWeight(
+      weight_type.getShape(), num_spatial_dims, in_channels, groups,
+      /* transposed= */ false));
 
   // Spatial dims are all but the first two dimensions.
   Dimensions input_spatial_dims(num_spatial_dims);
@@ -273,13 +276,13 @@ absl::StatusOr<mlir::MlirOp> BuildConvolution(
   if (!bias.has_value()) {
     return conv_op;
   }
-  // If it exists, bias should be shaped as (C_out,)
+
+  const int64_t out_channels = weight_type.getDimSize(0);
   const mlir::RankedTensorType bias_type = GetTensorTypeOrDie(*bias);
-  TT_RET_CHECK(bias_type.getRank() == 1, error::kInvalidArgument)
-      << "Bias should be shaped as (C_out,)";
-  TT_RET_CHECK(bias_type.getDimSize(0) == weight_type.getDimSize(0),
-               error::kInvalidArgument)
-      << "Bias and weight must have the same number of output channels";
+
+  // If it exists, bias should be shaped as (C_out,)
+  TT_RETURN_IF_ERROR(CheckConvolutionBias(bias_type.getShape(), out_channels));
+
   bias = stablehlo::ConvertElementType(*bias, output_dtype);
   // Broadcast bias from shape (C_out,) to (B, C_out, *result_spatial_dims)...
   mlir::MlirOp shaped_bias = stablehlo::BroadcastInDim(
