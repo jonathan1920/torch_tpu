@@ -110,6 +110,7 @@ enum class OpName {
   kDistributedAllReduce,
   kDistributedAllToAll,
   kDistributedAllToAllSingle,
+  kDistributedBarrier,
   kDistributedBroadcast,
   kDistributedReduceScatter,
   kDistributedReduceScatterTensor,

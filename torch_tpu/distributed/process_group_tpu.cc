@@ -42,6 +42,7 @@
 #include "ATen/core/jit_type.h"
 #include "ATen/ops/cat.h"
 #include "ATen/ops/flatten.h"
+#include "ATen/ops/ones.h"
 #include "ATen/ops/stack.h"
 #include "ATen/ops/zeros.h"
 #include "c10/core/DeviceType.h"
@@ -1014,6 +1015,45 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall(
                                         c10d::OpType::ALLTOALL);
   }
   return nullptr;
+}
+
+c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::barrier(
+    const c10d::BarrierOptions& opts) {
+  TT_KERNEL(OpName::kDistributedBarrier, _, (pg_id_, opts), {
+    // Check for unsupported options.
+    TT_CHECK_THROW(opts.device_ids.empty(), error::kUnimplemented)
+        << "device_ids in barrier options is not supported.";
+    TT_CHECK_THROW(opts.timeout == c10d::kUnsetTimeout, error::kUnimplemented)
+        << "timeout in barrier options is not supported.";
+    TT_CHECK_THROW(!opts.device.has_value(), error::kUnimplemented)
+        << "device in barrier options is not supported.";
+
+    // A barrier is implemented by performing an all-reduce operation on a dummy
+    // tensor. Since all-reduce is a synchronizing collective, this ensures all
+    // participating devices reach this point before any can proceed.
+    at::Tensor dummy_tensor =
+        at::ones({1}, at::device(GetPrivateUse1DeviceType()).dtype(at::kLong));
+    std::vector<at::Tensor> tensors = {dummy_tensor};
+
+    c10d::AllreduceOptions allreduce_opts;
+    allreduce_opts.reduceOp = c10d::ReduceOp::SUM;
+    allreduce_opts.asyncOp = opts.asyncOp;
+
+    auto work_ptr = allreduce(tensors, allreduce_opts);
+
+    // If the barrier is synchronous, we must block the host until the
+    // operation completes on the device. We do this by moving the result
+    // to the CPU, which forces a synchronization.
+    if (!opts.asyncOp) {
+      dummy_tensor.item();
+    }
+
+    if (work_ptr != nullptr) {
+      dynamic_cast<TpuWork* absl_nonnull>(work_ptr.get())->opType_ =
+          c10d::OpType::BARRIER;
+    }
+    return work_ptr;
+  });
 }
 
 DeviceGroupList ProcessGroupTpu::GatherAllSubgroups() {

@@ -223,6 +223,9 @@ class ProcessGroupTpu : public c10d::Backend {
       std::vector<at::Tensor>& input_tensors,
       const c10d::AllToAllOptions& opts = c10d::AllToAllOptions()) override;
 
+  c10::intrusive_ptr<c10d::Work> barrier(
+      const c10d::BarrierOptions& opts = c10d::BarrierOptions()) override;
+
  private:
   // Differently from PyTorch distributed APIs, XLA requires that all processes
   // supply *all* the device id subgroups (in replica_groups attribute), even

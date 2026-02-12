@@ -184,6 +184,12 @@ absl::StatusOr<std::string> FormatParamCacheKey(const std::vector<T>& value) {
   return "";
 }
 
+[[nodiscard]] inline std::string FormatParamCacheKey(
+    const c10d::BarrierOptions& value) {
+  // BarrierOptions has no members that affect compilation.
+  return "";
+}
+
 }  // namespace internal
 
 // When defining an op, any parameters that can change the compilation of the

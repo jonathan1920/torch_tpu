@@ -198,6 +198,8 @@ std::string_view ToString(OpName op_name) {
       return "distributed.all_to_all";
     case OpName::kDistributedAllToAllSingle:
       return "distributed.all_to_all_single";
+    case OpName::kDistributedBarrier:
+      return "distributed.barrier";
     case OpName::kDistributedBroadcast:
       return "distributed.broadcast";
     case OpName::kDistributedReduceScatter:
