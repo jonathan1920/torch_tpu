@@ -62,7 +62,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 
-ABSL_FLAG(std::string, torch_tpu_internal_detect_repeated_ops, "",
+ABSL_FLAG(std::string, torch_tpu_internal_detect_repeated_ops, "safe",
           "Look for repeated sequences of ops and compile them as a whole. "
           "Possible values are \"safe\", \"aggressive\", or \"\" if not used");
 
