@@ -19,24 +19,22 @@
 #include <utility>
 
 #include "absl/log/absl_log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "ATen/native/Fill.h"
 #include "ATen/native/ReduceOpsUtils.h"
 #include "ATen/native/Resize.h"
 #include "ATen/ops/empty.h"
-#include "ATen/ops/reshape.h"
 #include "c10/core/ScalarType.h"
 #include "c10/util/DimVector.h"
 #include "c10/util/Optional.h"
-#include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/dtype.h"
-#include "torch_tpu/ops/reductions/reductions.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device.h"
 #include "torch_tpu/eager/device_buffer.h"
@@ -45,6 +43,7 @@
 #include "torch_tpu/ops/min_max/min_max.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/reductions/reductions.h"
 
 namespace torch_tpu {
 
@@ -95,19 +94,27 @@ absl::StatusOr<std::tuple<at::Tensor, at::Tensor>> AtenMinMaxDim(
   return {{value, indices}};
 }
 
+absl::Status CheckNotZeroElementTensor(const at::Tensor& tensor) {
+  TT_RET_CHECK(tensor.numel() > 0, error::kInvalidArgument)
+      << "expected the dim argument to be specified when the input tensor has "
+         "0 elements";
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::StatusOr<at::Tensor&> ArgMinMax(OpName op_name, const at::Tensor& self,
                                       c10::optional<int64_t> dim, bool keep_dim,
                                       MinMaxOp op, at::Tensor& out,
                                       OpParamCacheKeys param_keys) {
-  TT_RET_CHECK(out.device().type() == GetPrivateUse1DeviceType(),
-               error::kInvalidArgument)
-      << "out not on PrivateUse1";
-  TT_RET_CHECK(out.scalar_type() == c10::ScalarType::Long,
-               error::kInvalidArgument)
-      << absl::StrCat("out tensor dtype mismatch. Expected Long but got",
-                      out.scalar_type());
+  TT_RET_CHECK(IsPrivateUse1Device(out), error::kInvalidArgument)
+      << "expected output tensor to be on " << GetPrivateUse1DeviceDebugName()
+      << ", got " << out.device();
+  TT_RET_CHECK(IsLong(out), error::kInvalidArgument)
+      << "expected the output dtype to be int64, got "
+      << ToString(out.scalar_type());
+
   at::Tensor
       input_tensor;  // UNINITIALIZED_TENSOR_OK=initialized in the if-else
   int64_t wrapped_dim;
@@ -128,11 +135,9 @@ absl::StatusOr<at::Tensor&> ArgMinMax(OpName op_name, const at::Tensor& self,
   // not supported. Hence, this check is after the above logic to handle the
   // special case where the input dimension corresponding to the wrapped
   // dimension is 1.
-  TT_RET_CHECK(!isComplexType(self.scalar_type()), error::kInvalidArgument)
-      << "not supported for complex dtypes";
-  TT_RET_CHECK(self.scalar_type() != c10::ScalarType::Bool,
-               error::kInvalidArgument)
-      << "not supported for bool dtypes";
+  TT_RET_CHECK(!IsComplex(self) && !IsBool(self), error::kInvalidArgument)
+      << "expected the input dtype to be neither complex nor bool, got "
+      << ToString(self.scalar_type());
 
   // If the input tensor is a scalar, then argmax should just return 0.
   if (self.dim() == 0) {
@@ -199,8 +204,7 @@ at::Tensor& AtenArgminOut(const at::Tensor& self, c10::optional<int64_t> dim,
 
 at::Tensor AtenMax(const at::Tensor& self) {
   TT_KERNEL(OpName::kMax, _, (self), {
-    TT_CHECK_THROW(self.numel() > 0, error::kInvalidArgument)
-        << "expected a non-empty tensor";
+    TT_THROW_IF_ERROR(CheckNotZeroElementTensor(self));
     at::Tensor self_flat = self.reshape(-1);
     at::Tensor max = at::empty({}, self.options());
     at::Tensor max_indices = at::empty({}, self.options().dtype(at::kLong));
@@ -221,21 +225,17 @@ std::tuple<at::Tensor&, at::Tensor&> AtenMaxDimMax(const at::Tensor& self,
                                                    int64_t dim, bool keep_dim,
                                                    at::Tensor& max,
                                                    at::Tensor& max_indices) {
-  TT_KERNEL(OpName::kMaxDimMax, param_keys,
-            (self, dim, keep_dim, max, max_indices), {
-              TT_CHECK_THROW(AtenMinMaxDim(self, dim, keep_dim, MinMaxOp::kMax,
-                                           param_keys, max, max_indices)
-                                 .ok(),
-                             error::kInternal)
-                  << "error occurred while dispatching " << OpName::kMaxDimMax;
-              return {max, max_indices};
-            });
+  TT_KERNEL(
+      OpName::kMaxDimMax, param_keys, (self, dim, keep_dim, max, max_indices), {
+        TT_THROW_IF_ERROR(AtenMinMaxDim(self, dim, keep_dim, MinMaxOp::kMax,
+                                        param_keys, max, max_indices));
+        return {max, max_indices};
+      });
 }
 
 at::Tensor AtenMin(const at::Tensor& self) {
   TT_KERNEL(OpName::kMin, _, (self), {
-    TT_CHECK_THROW(self.numel() > 0, error::kInvalidArgument)
-        << "expected a non-empty tensor";
+    TT_THROW_IF_ERROR(CheckNotZeroElementTensor(self));
     at::Tensor self_flat = self.reshape(-1);
     at::Tensor min = at::empty({}, self.options());
     at::Tensor min_indices = at::empty({}, self.options().dtype(at::kLong));
@@ -256,15 +256,12 @@ std::tuple<at::Tensor&, at::Tensor&> AtenMinDimMin(const at::Tensor& self,
                                                    int64_t dim, bool keep_dim,
                                                    at::Tensor& min,
                                                    at::Tensor& min_indices) {
-  TT_KERNEL(OpName::kMinDimMin, param_keys,
-            (self, dim, keep_dim, min, min_indices), {
-              TT_CHECK_THROW(AtenMinMaxDim(self, dim, keep_dim, MinMaxOp::kMin,
-                                           param_keys, min, min_indices)
-                                 .ok(),
-                             error::kInternal)
-                  << "error occurred while dispatching " << OpName::kMinDimMin;
-              return {min, min_indices};
-            });
+  TT_KERNEL(
+      OpName::kMinDimMin, param_keys, (self, dim, keep_dim, min, min_indices), {
+        TT_THROW_IF_ERROR(AtenMinMaxDim(self, dim, keep_dim, MinMaxOp::kMin,
+                                        param_keys, min, min_indices));
+        return {min, min_indices};
+      });
 }
 
 }  // namespace torch_tpu

@@ -743,6 +743,24 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       op(tensor, dim=0, out=out)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # This test should be run only on TPU because there are no other available
+  # devices on CPU runs, other than CPU.
+  @parameterized.named_parameters(
+      {"testcase_name": "argmin", "op_name": "argmin", "op": torch.argmin},
+      {"testcase_name": "argmax", "op_name": "argmax", "op": torch.argmax},
+  )
+  def test_argmin_argmax_invalid_output_device(self, op_name: str, op: Any):
+    tensor = torch.ones(5, 2, device=et.device(), dtype=torch.float32)
+    out = torch.empty(5, 1, device="cpu", dtype=torch.float32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=f"{op_name}(): expected output tensor to be on tpu, got cpu",
+        message_reviewed_by="wan",
+    ):
+      op(tensor, dim=0, out=out)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
@@ -4576,6 +4594,86 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         message_reviewed_by="wan",
     ):
       _run_convolution_backward(grad, inp, w)
+
+  @parameterized.named_parameters(
+      {"testcase_name": "min", "op": torch.min, "op_name": "min"},
+      {"testcase_name": "max", "op": torch.max, "op_name": "max"},
+  )
+  def test_min_max_input_with_zero_elements(self, op, op_name: str):
+    inp = torch.ones(2, 2, 0, 5, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            f"{op_name}(): expected the dim argument to be specified when the"
+            " input tensor has 0 elements"
+        ),
+        cpu=(
+            f"{op_name}(): Expected reduction dim to be specified for"
+            " input.numel() == 0. Specify the reduction dim with the 'dim'"
+            " argument."
+        ),
+        message_reviewed_by="wan",
+    ):
+      op(inp)
+
+  @parameterized.named_parameters(
+      {"testcase_name": "argmin", "op": torch.argmin, "op_name": "argmin"},
+      {"testcase_name": "argmax", "op": torch.argmax, "op_name": "argmax"},
+  )
+  def test_argmin_float_output(self, op, op_name: str):
+    inp = torch.ones(2, 2, device=et.device())
+    out = torch.empty(2, device=et.device(), dtype=torch.float32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=f"{op_name}(): expected the output dtype to be int64, got float32",
+        cpu="Expected out tensor to have dtype long, but got float instead",
+        message_reviewed_by="wan",
+    ):
+      op(inp, out=out)
+
+  @parameterized.named_parameters(
+      {"testcase_name": "argmin", "op": torch.argmin, "op_name": "argmin"},
+      {"testcase_name": "argmax", "op": torch.argmax, "op_name": "argmax"},
+  )
+  def test_argmin_invalid_dtypes(self, op, op_name: str):
+    # We need to call the out-of-place variant of `argmin` (`argmax`) op, so
+    # that we don't go through the fallback. Otherwise, the meta kernel will
+    # catch this error before it reaches TorchTPU implementation.
+    out = torch.empty(2, device=et.device(), dtype=torch.int64)
+
+    def test_with(dtype: torch.dtype, tpu: str, cpu: str):
+      """Tests the `op` with the input tensor of the given `dtype`.
+
+      Tests that running `argmin` (`argmax`) with the given `dtype` will result
+      in the expected error.
+
+      Args:
+        dtype: The dtype of the op input tensor.
+        tpu: String representation for `dtype` to be used in the error message
+          of the TPU kernel.
+        cpu: String representation for `dtype` to be used in the error message
+          of the CPU kernel.
+      """
+
+      inp = torch.ones(2, 2, device=et.device(), dtype=dtype)
+
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu=(
+              f"{op_name}(): expected the input dtype to be neither complex nor"
+              f" bool, got {tpu}"
+          ),
+          cpu=f"{op_name}(): does not support {cpu} input",
+          message_reviewed_by="wan",
+      ):
+        op(inp, out=out)
+
+    with self.subTest(dtype=torch.bool):
+      test_with(torch.bool, tpu="bool", cpu="bool")
+    with self.subTest(dtype=torch.complex64):
+      test_with(torch.complex64, tpu="complex64", cpu="complex")
 
 
 if __name__ == "__main__":
