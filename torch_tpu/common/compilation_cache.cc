@@ -89,22 +89,31 @@ bool IsFutureReady(const SharedLoadedExecutableFuture& future) {
 }
 
 // Returns the value of the NPROC environment variable (a positive integer), or
-// 0 if it is not set or has an invalid value.
+// 0 if it is not set or has an invalid value. This function is memoized, so
+// the environment variable is only read once.
 [[nodiscard]] int GetNumProcs() {
-  if (const char* const num_proc_str = std::getenv(kNprocEnvVar)) {
-    int num_proc;
-    if (absl::SimpleAtoi(num_proc_str, &num_proc) && num_proc > 0) {
-      return num_proc;
+  static const int num_procs = [] {
+    const auto& env_var = GetEnvOnce<kNprocEnvVar>();
+    if (env_var.has_value()) {
+      int num_proc;
+      if (absl::SimpleAtoi(*env_var, &num_proc) && num_proc > 0) {
+        return num_proc;
+      }
     }
-  }
-  return 0;
+    return 0;
+  }();
+  return num_procs;
 }
 
 int GetNumCpus() { return sysconf(_SC_NPROCESSORS_ONLN); }
 
 }  // namespace
 
-int GetNumCompilationThreads() {
+// Returns the number of threads to use for compilation.
+//
+// `num_procs` is the value of the `NPROC` environment variable, or 0 if it is
+// not set or has an invalid value.
+int GetNumCompilationThreads(const int num_procs) {
   // Is the flag set?
   if (const int num_threads =
           absl::GetFlag(FLAGS_torch_tpu_internal_num_compilation_threads);
@@ -123,8 +132,8 @@ int GetNumCompilationThreads() {
   int num_hyperthreads_per_cpu;
   std::string_view method;
   // The flag is not set. Is NPROC set?
-  if (const int num_proc = GetNumProcs(); num_proc > 0) {
-    num_cpus = num_proc;
+  if (num_procs > 0) {
+    num_cpus = num_procs;
     num_hyperthreads_per_cpu = 4;
     method = "NPROC";
   } else {
@@ -145,6 +154,10 @@ int GetNumCompilationThreads() {
   ABSL_VLOG(1) << "Using " << concurrency << " compilation threads based on "
                << method;
   return concurrency;
+}
+
+int GetNumCompilationThreads() {
+  return GetNumCompilationThreads(GetNumProcs());
 }
 
 void CompilationCache::Initialize(

@@ -16,7 +16,6 @@
 
 #include "torch_tpu/common/compilation_cache.h"
 
-#include <cstdlib>
 #include <string>
 #include <thread>
 
@@ -28,38 +27,21 @@
 ABSL_DECLARE_FLAG(int, torch_tpu_internal_num_compilation_threads);
 
 namespace torch_tpu {
+
+int GetNumCompilationThreads(int num_procs);
+
 namespace {
 
-class GetNumCompilationThreadsTest : public testing::Test {
- protected:
-  // Saves the original value of the environment variable NPROC. gtest already
-  // saves/restores flags, so we don't need to do that.
-  GetNumCompilationThreadsTest() : original_nproc_(std::getenv("NPROC")) {
-    unsetenv("NPROC");
-  }
-
-  // Restores the original value of the environment variable.
-  ~GetNumCompilationThreadsTest() override {
-    if (original_nproc_ != nullptr) {
-      setenv("NPROC", original_nproc_, 1);
-    } else {
-      unsetenv("NPROC");
-    }
-  }
-
- private:
-  const char* const original_nproc_ = nullptr;
-};
+class GetNumCompilationThreadsTest : public testing::Test {};
 
 TEST_F(GetNumCompilationThreadsTest,
        ReturnsHardwareConcurrencyWhenNprocNotSet) {
-  EXPECT_EQ(GetNumCompilationThreads(),
+  EXPECT_EQ(GetNumCompilationThreads(0),
             std::thread::hardware_concurrency() - 1);
 }
 
 TEST_F(GetNumCompilationThreadsTest, ReturnsNprocTimesTwoWhenNprocSet) {
-  setenv("NPROC", "10", 1);
-  EXPECT_EQ(GetNumCompilationThreads(), 36);
+  EXPECT_EQ(GetNumCompilationThreads(10), 36);
 }
 
 TEST_F(GetNumCompilationThreadsTest, ReturnsFlagValueWhenSet) {
@@ -70,14 +52,13 @@ TEST_F(GetNumCompilationThreadsTest, ReturnsFlagValueWhenSet) {
 TEST_F(GetNumCompilationThreadsTest,
        ReturnsHardwareConcurrencyWhenFlagSetToZero) {
   absl::SetFlag(&FLAGS_torch_tpu_internal_num_compilation_threads, 0);
-  EXPECT_EQ(GetNumCompilationThreads(),
+  EXPECT_EQ(GetNumCompilationThreads(0),
             std::thread::hardware_concurrency() - 1);
 }
 
 TEST_F(GetNumCompilationThreadsTest, FlagTakesPrecedenceOverNproc) {
   absl::SetFlag(&FLAGS_torch_tpu_internal_num_compilation_threads, 42);
-  setenv("NPROC", "10", 1);
-  EXPECT_EQ(GetNumCompilationThreads(), 42);
+  EXPECT_EQ(GetNumCompilationThreads(10), 42);
 }
 
 }  // namespace
