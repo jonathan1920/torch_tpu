@@ -76,6 +76,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/view_decomposition:inversion",
         "//torch_tpu/ops/view_decomposition:strided_layout",
         "//torch_tpu/ops/view_decomposition:view_sequence",
+        "//torch_tpu/pjrt:pjrt_init",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",

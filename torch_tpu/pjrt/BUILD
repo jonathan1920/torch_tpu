@@ -67,6 +67,7 @@ torch_tpu_cc_library(
         "@xla//xla/pjrt:pjrt_api",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt/plugin:plugin_names",
+        "@xla//xla/tsl/framework:allocator",
     ],
 )
 

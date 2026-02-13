@@ -43,6 +43,7 @@
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
 #include "c10/core/Allocator.h"
+#include "c10/core/CachingDeviceAllocator.h"
 #include "c10/core/Device.h"
 #include "c10/core/DispatchKey.h"
 #include "c10/core/DispatchKeySet.h"
@@ -50,6 +51,7 @@
 #include "c10/core/StorageImpl.h"
 #include "c10/core/TensorImpl.h"
 #include "c10/core/impl/DeviceGuardImplInterface.h"
+#include "c10/util/Exception.h"
 #include "c10/util/UniqueVoidPtr.h"
 #include "c10/util/accumulate.h"
 #include "c10/util/intrusive_ptr.h"
@@ -77,6 +79,7 @@
 #include "torch_tpu/ops/view_decomposition/inversion.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/ops/view_decomposition/view_sequence.h"
+#include "torch_tpu/pjrt/pjrt_init.h"
 
 namespace torch_tpu {
 
@@ -427,7 +430,7 @@ c10::DataPtr MakeDataPtr(DeviceBufferRef buffer_ref, const int device_idx) {
                       c10::Device(GetPrivateUse1DeviceType(), device_idx));
 }
 
-class TpuAllocator final : public c10::Allocator {
+class TpuAllocator final : public c10::DeviceAllocator {
  public:
   TpuAllocator() = default;
 
@@ -471,11 +474,88 @@ class TpuAllocator final : public c10::Allocator {
   c10::DeleterFnPtr raw_deleter() const override {
     return DeleteDeviceBufferRef;
   }
+
+  bool initialized() override { return true; }
+
+  void emptyCache(c10::MempoolId_t mempool_id) override {
+    // No-op for now as PjRt handles memory management.
+  }
+
+  void recordStream(const c10::DataPtr& ptr, c10::Stream stream) override {
+    // No-op for now.
+  }
+
+  c10::CachingDeviceAllocator::DeviceStats getDeviceStats(
+      c10::DeviceIndex device) override {
+    c10::CachingDeviceAllocator::DeviceStats stats;
+    auto pjrt_stats_or = GetAllocatorStats();
+    if (!pjrt_stats_or.ok()) {
+      TORCH_WARN("Failed to get allocator stats: ", pjrt_stats_or.status());
+      return stats;
+    }
+    const auto& pjrt_stats = pjrt_stats_or.value();
+
+    // Map available stats
+    using StatType = c10::CachingAllocator::StatType;
+
+    // Both allocated_bytes and active_bytes are fulfilled by bytes in use by
+    // PjRt. There is no differentiation between the two in the underlying stats
+    // implementation.
+    stats.allocated_bytes[static_cast<size_t>(StatType::AGGREGATE)].current =
+        pjrt_stats.bytes_in_use;
+    stats.allocated_bytes[static_cast<size_t>(StatType::AGGREGATE)].peak =
+        pjrt_stats.peak_bytes_in_use;
+
+    stats.active_bytes[static_cast<size_t>(StatType::AGGREGATE)].current =
+        pjrt_stats.bytes_in_use;
+    stats.active_bytes[static_cast<size_t>(StatType::AGGREGATE)].peak =
+        pjrt_stats.peak_bytes_in_use;
+
+    // bytes_reserved -> reserved_bytes[all].current
+    stats.reserved_bytes[static_cast<size_t>(StatType::AGGREGATE)].current =
+        pjrt_stats.bytes_reserved;
+    stats.reserved_bytes[static_cast<size_t>(StatType::AGGREGATE)].peak =
+        pjrt_stats.peak_bytes_reserved;
+
+    // num_allocs -> allocation[all].current
+    stats.allocation[static_cast<size_t>(StatType::AGGREGATE)].current =
+        pjrt_stats.num_allocs;
+
+    return stats;
+  }
+
+  void resetAccumulatedStats(c10::DeviceIndex device) override {
+    TORCH_WARN_ONCE(
+        "torch.accelerator.memory.reset_accumulated_memory_stats is not "
+        "implemented for TPU.");
+  }
+
+  void resetPeakStats(c10::DeviceIndex device) override {
+    TORCH_WARN_ONCE(
+        "torch.accelerator.memory.reset_peak_memory_stats is not implemented "
+        "for TPU.");
+  }
+
+  std::pair<size_t, size_t> getMemoryInfo(c10::DeviceIndex device) override {
+    auto pjrt_stats_or = GetAllocatorStats();
+    if (!pjrt_stats_or.ok()) {
+      TORCH_WARN("Failed to get allocator stats: ", pjrt_stats_or.status());
+      return {0, 0};
+    }
+    const auto& pjrt_stats = pjrt_stats_or.value();
+    size_t limit = pjrt_stats.bytes_limit.value_or(0);
+    size_t used = pjrt_stats.bytes_in_use;
+    return {limit - used, limit};
+  }
 };
 
 c10::Allocator* GetTpuAllocator() {
   static absl::NoDestructor<TpuAllocator> g_tpu_allocator;
   return g_tpu_allocator.get();
+}
+
+void RegisterTpuAllocator() {
+  c10::SetAllocator(GetPrivateUse1DeviceType(), GetTpuAllocator());
 }
 
 absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateMaterialized(

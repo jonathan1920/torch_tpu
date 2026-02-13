@@ -83,6 +83,7 @@ py_strict_test(
     ],
     deps = [
         ":_device_module",
+        ":api",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//shims/torch:testing_internal",
@@ -128,6 +129,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:compilation_cache",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/distributed/slicebuilder:discovery",
+        "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:device_gen_impl",
         "//torch_tpu/eager:tpu_hooks",
         "//torch_tpu/pjrt:pjrt_init",
@@ -159,6 +161,7 @@ pybind_extension(
         "//torch_tpu/common:compilation_cache",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/distributed/slicebuilder:discovery",
+        "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:device_gen_impl",
         "//torch_tpu/eager:tpu_hooks",
         "//torch_tpu/pjrt:pjrt_init",

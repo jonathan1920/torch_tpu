@@ -58,6 +58,12 @@ absl::StatusOr<PjRtInitializationResult> InitializePjRt(
 // is not set. Thread-safe.
 absl::StatusOr<int> GetGlobalDeviceCount();
 
+// Returns allocator stats for the current PjRt device.
+absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats();
+
+// Clears allocator stats for the current PjRt device.
+absl::Status ResetPeakMemoryStats();
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_PJRT_INIT_H_

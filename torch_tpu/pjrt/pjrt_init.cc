@@ -34,6 +34,7 @@
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/plugin_names.h"
+#include "xla/tsl/framework/allocator.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
@@ -82,6 +83,13 @@ absl::StatusOr<int> GetGlobalDeviceCount()
   TT_RET_CHECK(global_device_count.has_value(), error::kFailedPrecondition)
       << "global device count is not set.";
   return *global_device_count;
+}
+
+absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() {
+  xla::PjRtDevice* device = GetPjRtDevice();
+  TT_RET_CHECK(device != nullptr, error::kFailedPrecondition)
+      << "PjRtDevice is not initialized.";
+  return device->GetAllocatorStats();
 }
 
 absl::StatusOr<PjRtInitializationResult> InitializePjRt(

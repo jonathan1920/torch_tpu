@@ -869,6 +869,10 @@ class DeviceBufferList {
 // Returns the C10 allocator singleton for TPU.
 c10::Allocator* GetTpuAllocator();
 
+// Registers the TpuAllocator as the allocator for the PrivateUse1 device.
+// This must be called before using the allocator for any device operations.
+void RegisterTpuAllocator();
+
 // Creates a c10::Storage pointer to a new c10::StorageImpl, which holds a
 // c10::DataPtr to the given DeviceBufferRef.
 // The nbytes of the c10::StorageImpl will be set to the size
