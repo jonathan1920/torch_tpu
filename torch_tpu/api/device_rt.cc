@@ -19,15 +19,11 @@
 #include <pybind11/stl.h>
 
 #include <cstdint>
-#include <cstdlib>
-#include <optional>
 #include <string>
-#include <string_view>
 
-#include "absl/strings/numbers.h"
 #include "absl/time/time.h"
+#include "torch_tpu/distributed/slicebuilder/discovery.h"
 #include "torch_tpu/common/compilation_cache.h"
-#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/tpu_hooks.h"
@@ -35,32 +31,6 @@
 #include "torch_tpu/pjrt/pjrt_shutdown.h"
 
 namespace torch_tpu {
-
-namespace {
-
-// Launcher utilities like torchrun typically set WORLD_SIZE, which we can
-// piggyback on to determine if we're running in single-device mode or
-// distributed mode when it is set.
-//
-// This function is memoized, so the environment variable is only read once.
-[[nodiscard]] std::optional<int> ReadWorldSizeFromEnv() {
-  static const auto world_size = []() -> std::optional<int> {
-    const auto& env_world_size = GetEnvOnce<kWorldSizeEnvVar>();
-    if (!env_world_size.has_value()) {
-      // WORLD_SIZE is not set.
-      return std::nullopt;
-    }
-    int world_size;
-    if (!absl::SimpleAtoi(*env_world_size, &world_size)) {
-      // WORLD_SIZE is not a valid integer.
-      return std::nullopt;
-    }
-    return world_size;
-  }();
-  return world_size;
-}
-
-}  // namespace
 
 namespace py = pybind11;
 
@@ -74,11 +44,12 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       [](const std::string& device_type) -> PjRtInitializationResult {
         TT_ASSIGN_OR_THROW(
             PjRtInitializationResult result,
-            InitializePjRt({.device_type = device_type,
-                            // TODO: what's the right default here?
-                            // Single-device, or "all available devices"?
-                            // Should distributed mode be opt-in or opt-out?
-                            .world_size = ReadWorldSizeFromEnv().value_or(1)}),
+            InitializePjRt(
+                {.device_type = device_type,
+                 // TODO: what's the right default here?
+                 // Single-device, or "all available devices"?
+                 // Should distributed mode be opt-in or opt-out?
+                 .world_size = GetWorldSizeFromEnvOnce().value_or(1)}),
             _.SetPrepend() << "failed to initialize PjRt: ");
         if (device_type == "tpu" || device_type == "xla_cuda") {
           TT_THROW_IF_ERROR(AddTpuHooks()) << "failed to initialize TpuHooks.";

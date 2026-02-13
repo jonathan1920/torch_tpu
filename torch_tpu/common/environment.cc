@@ -61,18 +61,18 @@ absl::StatusOr<std::string> InferV5Topology(int world_size) {
 }
 
 absl::StatusOr<std::string> GetHostBounds(int world_size) {
-  const char* accelerator_type_env = std::getenv(kAcceleratorTypeEnvVar);
-  if (accelerator_type_env == nullptr) {
-    return TT_ERROR(error::kInvalidArgument)
-           << "ACCELERATOR_TYPE environment variable not set.";
-  }
-  std::string accelerator_type = accelerator_type_env;
+  const auto& accelerator_type_env = GetEnvOnce<kAcceleratorTypeEnvVar>();
+  TT_RET_CHECK(accelerator_type_env.has_value(), error::kInvalidArgument)
+      << "ACCELERATOR_TYPE environment variable not set.";
+  const std::string& accelerator_type = *accelerator_type_env;
 
   if (absl::StartsWith(accelerator_type, "v7")) {
     return InferV7Topology(world_size);
-  } else if (absl::StartsWith(accelerator_type, "v6")) {
+  }
+  if (absl::StartsWith(accelerator_type, "v6")) {
     return InferV6Topology(world_size);
-  } else if (absl::StartsWith(accelerator_type, "v5")) {
+  }
+  if (absl::StartsWith(accelerator_type, "v5")) {
     return InferV5Topology(world_size);
   }
   return TT_ERROR(error::kInvalidArgument)
@@ -86,7 +86,7 @@ absl::Status InitializeDistributedEnvironment(int rank, int world_size,
                                               int local_rank,
                                               std::string sb_addrs,
                                               int sb_port) {
-  if (std::getenv(kTpuProcessAddressesEnvVar) == nullptr) {
+  if (!GetEnvOnce<kTpuProcessAddressesEnvVar>().has_value()) {
     if (sb_addrs.empty()) {
       return absl::OkStatus();
     }
@@ -107,9 +107,8 @@ absl::Status InitializeDistributedEnvironment(int rank, int world_size,
     SetEnv(kTpuProcessAddressesEnvVar, sb_addrs);
   }
 
-  const char* libtpu_init_args = std::getenv(kLibtpuInitArgsEnvVar);
   std::string libtpu_init_args_str =
-      libtpu_init_args == nullptr ? "" : libtpu_init_args;
+      GetEnvOnce<kLibtpuInitArgsEnvVar>().value_or("");
   if (!absl::StrContains(libtpu_init_args_str,
                          "--xla_tpu_use_enhanced_launch_barrier")) {
     // Preventing distributed hangs, see b/477673365.

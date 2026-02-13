@@ -23,13 +23,13 @@
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -37,6 +37,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "torch/csrc/distributed/c10d/TCPStore.hpp"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/unique_file_descriptor.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/environment.h"
@@ -127,13 +128,16 @@ absl::StatusOr<SimpleSocket> GetFreePort() {
 }
 
 // Helper function to get a required environment variable or return an error.
-absl::StatusOr<std::string> GetRequiredEnv(const char* env_name) {
-  const char* env_val = std::getenv(env_name);
-  if (env_val == nullptr) {
-    return TT_ERROR(error::kFailedPrecondition)
-           << env_name << " environment variable is not set.";
-  }
-  return std::string(env_val);
+template <const char* env_name>
+const absl::StatusOr<std::string>& GetRequiredEnvOnce() {
+  static const absl::NoDestructor<absl::StatusOr<std::string>> env_var(
+      []() -> absl::StatusOr<std::string> {
+        const auto& env_val = GetEnvOnce<env_name>();
+        TT_RET_CHECK(env_val.has_value(), error::kFailedPrecondition)
+            << "the " << env_name << " environment variable is not set";
+        return *env_val;
+      }());
+  return *env_var;
 }
 
 absl::StatusOr<std::pair<std::string, int64_t>> InitializeWorker(
@@ -215,14 +219,15 @@ absl::Status InitializeAsDistributedWorker(
 absl::StatusOr<DistributedWorkerConfiguration>
 GetDistributedWorkerConfiguration() {
   int rank = -1;
-  TT_ASSIGN_OR_RETURN(std::string env_rank, GetRequiredEnv("RANK"));
+  TT_ASSIGN_OR_RETURN(std::string env_rank, GetRequiredEnvOnce<kRankEnvVar>());
   if (!absl::SimpleAtoi(env_rank, &rank)) {
     return TT_ERROR(error::kFailedPrecondition)
            << "Failed to parse RANK: " << env_rank;
   }
 
   int local_rank = -1;
-  TT_ASSIGN_OR_RETURN(std::string env_local_rank, GetRequiredEnv("LOCAL_RANK"));
+  TT_ASSIGN_OR_RETURN(std::string env_local_rank,
+                      GetRequiredEnvOnce<kLocalRankEnvVar>());
   if (!absl::SimpleAtoi(env_local_rank, &local_rank)) {
     return TT_ERROR(error::kFailedPrecondition)
            << "Failed to parse LOCAL_RANK: " << env_local_rank;
@@ -231,21 +236,16 @@ GetDistributedWorkerConfiguration() {
   // Get the master address and port from the environment variables.
   std::string master_addr;
   int master_port;
-  TT_ASSIGN_OR_RETURN(master_addr, GetRequiredEnv("MASTER_ADDR"));
+  TT_ASSIGN_OR_RETURN(master_addr, GetRequiredEnvOnce<kMasterAddrEnvVar>());
   TT_ASSIGN_OR_RETURN(std::string env_master_port,
-                      GetRequiredEnv("MASTER_PORT"));
+                      GetRequiredEnvOnce<kMasterPortEnvVar>());
   if (!absl::SimpleAtoi(env_master_port, &master_port)) {
     return TT_ERROR(error::kFailedPrecondition)
            << "Failed to parse MASTER_PORT: " << env_master_port;
   }
 
   // Get the world size from the environment variables.
-  int world_size;
-  TT_ASSIGN_OR_RETURN(std::string env_world_size, GetRequiredEnv("WORLD_SIZE"));
-  if (!absl::SimpleAtoi(env_world_size, &world_size)) {
-    return TT_ERROR(error::kFailedPrecondition)
-           << "Failed to parse WORLD_SIZE: " << env_world_size;
-  }
+  TT_ASSIGN_OR_RETURN(const int world_size, GetWorldSizeFromEnvOnce());
 
   auto distributed_worker_config = DistributedWorkerConfiguration{
       .rank = rank,
@@ -262,6 +262,23 @@ GetDistributedWorkerConfiguration() {
                  << distributed_worker_config.master_port;
 
   return distributed_worker_config;
+}
+
+const absl::StatusOr<int>& GetWorldSizeFromEnvOnce() {
+  static const absl::NoDestructor<absl::StatusOr<int>> world_size(
+      []() -> absl::StatusOr<int> {
+        const auto& env_world_size = GetEnvOnce<kWorldSizeEnvVar>();
+        TT_RET_CHECK(env_world_size.has_value(), error::kFailedPrecondition)
+            << "the " << kWorldSizeEnvVar << " environment variable is not set";
+        int world_size;
+        TT_RET_CHECK(absl::SimpleAtoi(*env_world_size, &world_size),
+                     error::kFailedPrecondition)
+            << "the " << kWorldSizeEnvVar
+            << " environment variable is not a valid integer: "
+            << *env_world_size;
+        return world_size;
+      }());
+  return *world_size;
 }
 
 }  // namespace torch_tpu

@@ -40,9 +40,13 @@ inline constexpr char kCloudTpuTaskIdEnvVar[] =
     "CLOUD_TPU_TASK_ID";  // Read by Google Cloud.
 inline constexpr char kLibtpuInitArgsEnvVar[] =
     "LIBTPU_INIT_ARGS";  // Set by Google Cloud.
+inline constexpr char kLocalRankEnvVar[] = "LOCAL_RANK";    // Set by launchers.
+inline constexpr char kMasterAddrEnvVar[] = "MASTER_ADDR";  // Set by launchers.
+inline constexpr char kMasterPortEnvVar[] = "MASTER_PORT";  // Set by launchers.
 // Set by the build system (e.g. bazel) to indicate the number of shards
 // running on the same host.
 inline constexpr char kNprocEnvVar[] = "NPROC";
+inline constexpr char kRankEnvVar[] = "RANK";  // Set by launchers.
 // If set to "1", C++ stack traces are appended to error messages.
 // Shared with PyTorch:
 // https://docs.pytorch.org/docs/stable/debugging_environment_variables.html#pytorch-debug-environment-variables
