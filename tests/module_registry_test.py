@@ -95,6 +95,56 @@ class ModuleRegistryTest(absltest.TestCase):
 
     self.assertEqual(out.logits.shape, expected_logits_shape)
 
+  def test_transformers_get_module_spec_pretrained_using_sample_inputs(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers", "google/gemma-3-270m", load_weights=True
+    )
+    model = module_spec.module_factory()
+    model.eval()
+    _, kwargs = module_spec.sample_inputs_factory()
+    expected_logits_shape = (
+        *kwargs["input_ids"].shape,
+        module_spec.config.vocab_size,
+    )
+
+    out = model(**kwargs)
+
+    self.assertEqual(out.logits.shape, expected_logits_shape)
+
+  def test_transformers_get_module_spec_pretrained_using_tokenizer(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers", "google/gemma-3-270m", load_weights=True
+    )
+    model = module_spec.module_factory()
+    model.eval()
+    tokenizer = module_spec.preprocessor_factory()
+    prompt = "Write a haiku about logits."
+    max_tokens = 300
+    inputs = tokenizer(prompt, return_tensors="pt")
+    batch_size, input_token_count = inputs.input_ids.shape
+    expected_logits_shape = (
+        batch_size,
+        module_spec.config.vocab_size,
+    )
+
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=max_tokens - input_token_count,
+        do_sample=False,
+        temperature=0,
+        top_p=None,
+        top_k=None,
+        pad_token_id=tokenizer.pad_token_id,
+        return_dict_in_generate=True,
+        output_logits=True,
+    )
+    output_text = tokenizer.decode(
+        outputs.sequences[0], skip_special_tokens=True
+    )
+
+    self.assertEqual(outputs.logits[0].shape, expected_logits_shape)
+    self.assertGreater(len(output_text), len(prompt))
+
 
 if __name__ == "__main__":
   absltest.main()

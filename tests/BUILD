@@ -27,6 +27,9 @@ pytype_strict_library(
         "//examples/huggingface_transformers:model_configs_data",
     ],
     deps = [
+        "//shims/absl_py/flags",
+        "//shims/etils/epath",
+        "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
         "@pypi//timm",
         "@pypi//torchvision",
@@ -38,6 +41,9 @@ torch_tpu_py_test(
     name = "module_registry_test",
     srcs = ["module_registry_test.py"],
     shard_count = 6,
+    tags = [
+        "requires-net:external",
+    ],
     deps = [
         ":module_registry",
         "//shims/absl_py/testing:absltest",
