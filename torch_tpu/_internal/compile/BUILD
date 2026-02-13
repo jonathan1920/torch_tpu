@@ -168,10 +168,10 @@ torch_tpu_py_test(
         "requires-tpu-v7x",
     ],
     deps = [
+        ":tpu_backend",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
