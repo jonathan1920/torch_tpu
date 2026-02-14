@@ -45,6 +45,15 @@ cc_library(name = "torch_libs")
         find . -name "BUILD" -delete
         find . -name "BUILD.bazel" -delete
     """])
+    ctx.execute(["bash", "-c", """
+        if [ -d torch/include ]; then
+            rm -rf c10 aten torch/headeronly torch/csrc
+            find torch -maxdepth 1 -name '*.h' -delete
+        fi
+        if [ -d include ] && [ -d torch/include ]; then
+            rm -rf include
+        fi
+    """])
 
     # 3. Link our custom BUILD file to the root
     ctx.symlink(ctx.attr.build_file_content, "BUILD.bazel")

@@ -41,6 +41,20 @@ cc_library(
     ) + glob(
         # 4. MISSING PIECE: Header-only utilities (like util/complex.h)
         ["torch/headeronly/**"],
+    ) + glob(
+        # 4. Source-layout headers (for builds from PyTorch source repo)
+        [
+            "c10/**",
+            "aten/**",
+            "torch/csrc/**",
+        ],
+        exclude = [
+            "**/*.cpp",
+            "**/*.cc",
+            "**/*.cu",
+            "**/*.py",
+            "**/*.md",
+        ],
     ),
     includes = [
         # Standard paths
