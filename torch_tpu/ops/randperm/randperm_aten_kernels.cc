@@ -40,30 +40,6 @@
 
 namespace torch_tpu {
 namespace {
-absl::StatusOr<mlir::MlirOp> BuildRandpermStateUpdateShlo(mlir::MlirOp state,
-                                                          int64_t n) {
-  auto& builder = state.getBuilder();
-  const auto state_type = GetTensorTypeOrDie(state);
-  const int64_t state_size = state_type.getShape()[0];
-
-  // key: output_state[0] = initial_state[0]
-  mlir::MlirOp state_key = mlir::stablehlo::Slice(state, {0}, {1}, {1});
-  // counter: output_state[1] = initial_state[1] + ceil(num_bits / 128)
-  // Note that num_bits = n * 64, and therefore
-  //   ceil(num_bits / 128) = ceil(n / 2) = (n + 1) / 2.
-  mlir::MlirOp state_counter = mlir::stablehlo::Slice(state, {1}, {2}, {1});
-  mlir::MlirOp increment =
-      MakeConstant(builder, (n + 1) / 2, mlir::ElementType::UI64, {1});
-  mlir::MlirOp new_counter = mlir::stablehlo::Add(state_counter, increment);
-
-  mlir::SmallVector<mlir::MlirOp, 3> concat_inputs = {state_key, new_counter};
-  // Keep any additional state (i.e. beyond the first two u64's) unmodified.
-  if (state_size > 2) {
-    concat_inputs.push_back(
-        mlir::stablehlo::Slice(state, {2}, {state_size}, {1}));
-  }
-  return mlir::stablehlo::Concatenate(builder, concat_inputs, 0);
-}
 
 absl::StatusOr<mlir::MlirOp> BuildRandpermShlo(mlir::MlirOp state, int64_t n,
                                                mlir::ElementType output_dtype) {
@@ -83,7 +59,7 @@ absl::StatusOr<mlir::MlirOp> BuildRandpermShlo(mlir::MlirOp state, int64_t n,
 
   // Call rng bit generator using Philox algorithm to generate UI64.
   // We ignore the updated state returned by this op because we compute it
-  // independently in BuildRandpermStateUpdateShlo.
+  // independently in BuildRngStateUpdateShlo.
   auto rng_op = mlir::stablehlo::RngBitGeneratorOp::create(
       op_builder, state.getValue().getLoc(), rng_input_state_type, key_type,
       mlir::stablehlo::RngAlgorithmAttr::get(
@@ -136,7 +112,7 @@ at::Tensor& AtenRandpermGeneratorOut(c10::SymInt n,
     TT_ASSIGN_OR_THROW(auto state_param_keys,
                        TT_MAKE_OP_PARAM_CACHE_KEYS(n_int, "state_update"));
     auto state_op_builder = [n_int](mlir::MlirOp rng_input_state) {
-      return BuildRandpermStateUpdateShlo(rng_input_state, n_int);
+      return BuildRngStateUpdateShlo(rng_input_state, n_int, 64);
     };
     TT_ASSIGN_OR_THROW(
         auto rng_output_state_buf,
@@ -152,8 +128,9 @@ at::Tensor& AtenRandpermGeneratorOut(c10::SymInt n,
 
     // 2. Dispatch the actual randperm.
     // Note that the input state is the *original* state, not the updated one.
-    auto randperm_op_builder = [n_int,
-                                output_dtype](mlir::MlirOp rng_input_state) {
+    auto randperm_op_builder =
+        [n_int, output_dtype](
+            mlir::MlirOp rng_input_state) -> absl::StatusOr<mlir::MlirOp> {
       return BuildRandpermShlo(rng_input_state, n_int, output_dtype);
     };
 

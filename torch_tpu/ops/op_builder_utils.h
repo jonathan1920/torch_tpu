@@ -750,6 +750,14 @@ absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
     mlir::MlirOp op, const Dimensions& static_shape_before,
     const Dimensions& static_shape_after);
 
+// Builds an MLIR op that updates the RNG state (Philox offset) based on the
+// number of elements generated and their bit width.
+// This is used for decoupling the state update from the actual random number
+// generation, making the state update resilient to failures in the generation.
+absl::StatusOr<mlir::MlirOp> BuildRngStateUpdateShlo(mlir::MlirOp state,
+                                                     int64_t num_elements,
+                                                     int64_t bit_width);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_OP_BUILDER_UTILS_H_
