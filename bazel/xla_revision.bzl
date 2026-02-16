@@ -21,5 +21,5 @@
 #    curl -L https://github.com/openxla/xla/archive/{git_hash}.tar.gz | sha256sum
 #    and update XLA_SHA256 with the result.
 
-XLA_COMMIT = "3eb5197b71e3771a69defc25e491b1299d6b93f3"
-XLA_SHA256 = "6673ce28ba907a38ba25083cd9eb91614a09902f2d81b95bbad6464e357ebe45"
+XLA_COMMIT = "ca1f837fbdb0c936168b37d529da1419a9d64df8"
+XLA_SHA256 = "0ae1e21e448d6fb783dae30fab083fc93b8a7b0f7a3f046966782a2bcfb9e288"
