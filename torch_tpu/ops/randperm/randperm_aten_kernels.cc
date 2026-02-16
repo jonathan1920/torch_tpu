@@ -99,9 +99,6 @@ at::Tensor& AtenRandpermGeneratorOut(c10::SymInt n,
     const int64_t n_int = n.guard_int(__FILE__, __LINE__);
 
     TT_ASSIGN_OR_THROW(auto rng_input_state, GetRngState(generator));
-    TT_CHECK_THROW(rng_input_state.size(0) >= 2, error::kFailedPrecondition)
-        << "Expected rng_input_state to have at least 2 elements, got "
-        << rng_input_state.size(0);
     TT_ASSIGN_OR_THROW(const auto output_dtype,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
 

@@ -1203,8 +1203,6 @@ absl::StatusOr<mlir::MlirOp> BuildRngStateUpdateShlo(mlir::MlirOp state,
                                                      int64_t num_elements,
                                                      int64_t bit_width) {
   auto& builder = state.getBuilder();
-  const auto state_type = GetTensorTypeOrDie(state);
-  const int64_t state_size = state_type.getShape()[0];
 
   // seed: output_state[0] = initial_state[0]
   mlir::MlirOp state_seed = mlir::stablehlo::Slice(state, {0}, {1}, {1});
@@ -1219,13 +1217,7 @@ absl::StatusOr<mlir::MlirOp> BuildRngStateUpdateShlo(mlir::MlirOp state,
       MakeConstant(builder, increment_val, mlir::ElementType::UI64, {1});
   mlir::MlirOp new_offset = mlir::stablehlo::Add(state_offset, increment);
 
-  mlir::SmallVector<mlir::MlirOp, 3> concat_inputs = {state_seed, new_offset};
-  // Keep any additional state (i.e. beyond the first two u64's) unmodified.
-  if (state_size > 2) {
-    concat_inputs.push_back(
-        mlir::stablehlo::Slice(state, {2}, {state_size}, {1}));
-  }
-  return mlir::stablehlo::Concatenate(builder, concat_inputs, 0);
+  return mlir::stablehlo::Concatenate(builder, {state_seed, new_offset}, 0);
 }
 
 }  // namespace torch_tpu
