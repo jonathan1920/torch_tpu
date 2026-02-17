@@ -25,17 +25,18 @@
 #include "ATen/core/symbol.h"
 #include "c10/core/ConstantSymNodeImpl.h"
 #include "c10/core/Device.h"
-#include "c10/core/Layout.h"
-#include "c10/core/MemoryFormat.h"
 #include "c10/core/SymInt.h"
 #include "c10/core/SymIntArrayRef.h"
 #include "c10/core/SymNodeImpl.h"
+#include "c10/util/ArrayRef.h"
 #include "c10/util/intrusive_ptr.h"
 #include "torch/csrc/distributed/c10d/Types.hpp"
+#include "torch/headeronly/core/Layout.h"
+#include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/shape.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/xla_data.pb.h"
-#include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
 namespace {
@@ -60,6 +61,21 @@ TEST(OpParamCacheKeys, SetParamScalarType) {
   auto params =
       (*OpParamCacheKeys::SetParam("foo", at::ScalarType::Float)).value();
   EXPECT_THAT(params, ElementsAre(Pair("foo", "Float")));
+}
+
+TEST(OpParamCacheKeys, SetParamScalarArray) {
+  at::Scalar s1(123);
+  at::Scalar s2(4.5);
+  at::Scalar s3(true);
+  at::Scalar scalars[] = {s1, s2, s3};
+  auto params =
+      (*OpParamCacheKeys::SetParam("foo", at::ArrayRef<at::Scalar>(scalars)))
+          .value();
+  EXPECT_THAT(params, ElementsAre(Pair("foo", "[123:Long,4.5:Double,1:Bool]")));
+
+  auto params2 =
+      (*OpParamCacheKeys::SetParam("foo", at::ArrayRef<at::Scalar>())).value();
+  EXPECT_THAT(params2, ElementsAre(Pair("foo", "[]")));
 }
 
 TEST(OpParamCacheKeys, SetParamReduceOp) {

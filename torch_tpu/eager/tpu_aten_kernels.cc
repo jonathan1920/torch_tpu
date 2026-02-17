@@ -299,6 +299,14 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kFloorDivideOut, AtenFloorDivideOut);
   Impl(m, OpName::kFmaxOut, AtenFmaxOut);
   Impl(m, OpName::kFmodTensorOut, AtenFmodTensorOut);
+  Impl(m, OpName::kForeachAddList, AtenForeachAddList);
+  Impl(m, OpName::kForeachAddScalar, AtenForeachAddScalar);
+  Impl(m, OpName::kForeachAddScalarList, AtenForeachAddScalarList);
+  Impl(m, OpName::kForeachAddTensor, AtenForeachAddTensor);
+  Impl(m, OpName::kForeachAdd_List, AtenForeachAdd_List);
+  Impl(m, OpName::kForeachAdd_Scalar, AtenForeachAdd_Scalar);
+  Impl(m, OpName::kForeachAdd_ScalarList, AtenForeachAdd_ScalarList);
+  Impl(m, OpName::kForeachAdd_Tensor, AtenForeachAdd_Tensor);
   Impl(m, OpName::kFusedRmsNorm, AtenFusedRmsNorm);
   Impl(m, OpName::kFusedRmsNormBackward, AtenFusedRmsNormBackward);
   Impl(m, OpName::kGatherOut, AtenGatherOut);

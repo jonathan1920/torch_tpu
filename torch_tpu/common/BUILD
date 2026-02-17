@@ -588,11 +588,11 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":cache_key",
+        ":shape",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
-        "//torch_tpu/ops:op_builder_utils",
         "@com_google_googletest//:gtest_main",
         "@stablehlo//:attr_type_builder_util",
         "@xla//xla:xla_data_proto_cc",

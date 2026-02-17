@@ -37,14 +37,13 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/Dimname.h"
 #include "c10/core/Device.h"
-#include "c10/core/Layout.h"
-#include "c10/core/MemoryFormat.h"
 #include "c10/core/Scalar.h"  // IWYU pragma: keep for c10::Scalar
-#include "c10/core/ScalarType.h"
 #include "c10/core/SymInt.h"
 #include "c10/core/SymIntArrayRef.h"
 #include "c10/util/Optional.h"
 #include "torch/csrc/distributed/c10d/Types.hpp"
+#include "torch/headeronly/core/Layout.h"
+#include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -115,6 +114,8 @@ template <typename T, std::size_t N>
 [[nodiscard]] std::string FormatParamCacheKey(const std::array<T, N>& value);
 template <typename T>
 absl::StatusOr<std::string> FormatParamCacheKey(const std::vector<T>& value);
+template <typename T>
+absl::StatusOr<std::string> FormatParamCacheKey(at::ArrayRef<T> value);
 
 template <typename T>
 absl::StatusOr<std::string> FormatParamCacheKey(const std::optional<T>& value) {
@@ -150,6 +151,19 @@ std::string FormatParamCacheKey(const std::array<T, N>& value) {
 template <typename T>
 absl::StatusOr<std::string> FormatParamCacheKey(const std::vector<T>& value) {
   return FormatParamCacheKey(absl::MakeConstSpan(value));
+}
+template <typename T>
+absl::StatusOr<std::string> FormatParamCacheKey(at::ArrayRef<T> value) {
+  std::vector<std::string> parts;
+  parts.reserve(value.size());
+  for (const T& item : value) {
+    absl::StatusOr<std::string> value_or = FormatParamCacheKey(item);
+    if (!value_or.ok()) {
+      return value_or.status();
+    }
+    parts.push_back(std::move(value_or).value());
+  }
+  return absl::StrCat("[", absl::StrJoin(parts, ","), "]");
 }
 
 [[nodiscard]] inline std::string FormatParamCacheKey(

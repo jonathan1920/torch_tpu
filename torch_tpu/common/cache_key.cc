@@ -36,10 +36,12 @@
 #include "c10/core/Layout.h"
 #include "c10/core/MemoryFormat.h"
 #include "c10/core/Scalar.h"  // IWYU pragma: keep for c10::Scalar
-#include "c10/core/ScalarType.h"
 #include "c10/core/SymInt.h"
 #include "c10/core/SymIntArrayRef.h"
 #include "torch/csrc/distributed/c10d/Types.hpp"
+#include "torch/headeronly/core/Layout.h"
+#include "torch/headeronly/core/MemoryFormat.h"
+#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
 
@@ -144,10 +146,12 @@ std::string FormatParamCacheKey(const at::ITensorListRef& value) {
   }
   return absl::StrCat(
       "[",
-      absl::StrJoin(value, ",",
-                    [](std::string* out, const at::Tensor& tensor) {
-                      absl::StrAppend(out, FormatParamCacheKey(tensor.sizes()));
-                    }),
+      absl::StrJoin(
+          value, ",",
+          [](std::string* out, const at::Tensor& tensor) {
+            absl::StrAppend(
+                out, FormatParamCacheKey(absl::MakeConstSpan(tensor.sizes())));
+          }),
       "]");
 }
 

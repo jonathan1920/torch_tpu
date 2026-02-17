@@ -276,6 +276,20 @@ std::string_view ToString(OpName op_name) {
       return "fmod.Tensor_out";
     case OpName::kForeachAddList:
       return "_foreach_add.List";
+    case OpName::kForeachAddScalar:
+      return "_foreach_add.Scalar";
+    case OpName::kForeachAddScalarList:
+      return "_foreach_add.ScalarList";
+    case OpName::kForeachAddTensor:
+      return "_foreach_add.Tensor";
+    case OpName::kForeachAdd_List:
+      return "_foreach_add_.List";
+    case OpName::kForeachAdd_Scalar:
+      return "_foreach_add_.Scalar";
+    case OpName::kForeachAdd_ScalarList:
+      return "_foreach_add_.ScalarList";
+    case OpName::kForeachAdd_Tensor:
+      return "_foreach_add_.Tensor";
     case OpName::kFusedRmsNorm:
       return "_fused_rms_norm";
     case OpName::kFusedRmsNormBackward:

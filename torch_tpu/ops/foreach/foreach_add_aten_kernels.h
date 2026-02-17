@@ -27,6 +27,24 @@ std::vector<at::Tensor> AtenForeachAddList(at::TensorList self,
                                            at::TensorList other,
                                            const at::Scalar& alpha);
 
+std::vector<at::Tensor> AtenForeachAddScalar(at::TensorList self,
+                                             const at::Scalar& scalar);
+std::vector<at::Tensor> AtenForeachAddScalarList(
+    at::TensorList self, at::ArrayRef<at::Scalar> scalars);
+std::vector<at::Tensor> AtenForeachAddTensor(at::TensorList self,
+                                             const at::Tensor& other,
+                                             const at::Scalar& alpha);
+
+void AtenForeachAdd_List(at::TensorList self, at::TensorList other,
+                         const at::Scalar& alpha);
+
+void AtenForeachAdd_Scalar(at::TensorList self, const at::Scalar& scalar);
+
+void AtenForeachAdd_ScalarList(at::TensorList self,
+                               at::ArrayRef<at::Scalar> scalars);
+void AtenForeachAdd_Tensor(at::TensorList self, const at::Tensor& other,
+                           const at::Scalar& alpha);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_FOREACH_FOREACH_ADD_ATEN_KERNELS_H_
