@@ -44,15 +44,13 @@ absl::StatusOr<MlirOpResults<1>> BuildLerpShlo(mlir::MlirOp self,
                                                mlir::MlirOp end,
                                                mlir::MlirOp weight,
                                                mlir::ElementType common_type) {
-  const mlir::RankedTensorType self_type = GetTensorTypeOrDie(self);
-  const mlir::RankedTensorType weight_type = GetTensorTypeOrDie(weight);
-  const mlir::RankedTensorType end_type = GetTensorTypeOrDie(end);
-  TT_ASSIGN_OR_RETURN(auto common_shape,
-                      InferSize(self_type.getShape(), end_type.getShape(),
-                                weight_type.getShape()));
-  TT_ASSIGN_OR_RETURN(self, BroadcastIfNeeded(self, common_shape));
-  TT_ASSIGN_OR_RETURN(end, BroadcastIfNeeded(end, common_shape));
-  TT_ASSIGN_OR_RETURN(weight, BroadcastIfNeeded(weight, common_shape));
+  // Apply broadcast if needed - unclear if there is a better way to unpack
+  // the return array, std::tie fails in OSS CI.
+  TT_ASSIGN_OR_RETURN((auto [self_bcast, end_bcast, weight_bcast]),
+                      ApplyBroadcastIfNeeded(self, end, weight));
+  self = self_bcast;
+  end = end_bcast;
+  weight = weight_bcast;
   self = mlir::stablehlo::ConvertElementType(self, common_type);
   end = mlir::stablehlo::ConvertElementType(end, common_type);
   weight = mlir::stablehlo::ConvertElementType(weight, common_type);

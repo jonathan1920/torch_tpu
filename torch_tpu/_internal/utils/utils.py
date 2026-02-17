@@ -773,6 +773,9 @@ class _InputArgumentMetadata:
       return get_tensor_summary(self._arg, data=False)
     return str(self._arg)
 
+  def __repr__(self):
+    return self.__str__()
+
 
 class InputMetadata:
   """A class to log call inputs without requiring access to their data.
@@ -790,7 +793,7 @@ class InputMetadata:
       self._inputs = [self._inputs]
 
   def __str__(self):
-    return ", ".join([str(x) for x in self._inputs])
+    return str(self._inputs)
 
 
 class OpTracer(

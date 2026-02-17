@@ -21,12 +21,26 @@ Handles the following details for per-op unit testing:
   - Mark dependent args as dynamic.
 """
 
+import logging
 import random
 from typing import Any
+
 import torch
+from torch.testing._internal import common_methods_invocations
 from torch.testing._internal.opinfo import core
 from torch_tpu._internal import dynamism
 from torch_tpu._internal.utils import utils
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Static variables for op classification.
+foreach_binops = frozenset(
+    op.name for op in common_methods_invocations.foreach_binary_op_db
+)
+foreach_ternary_ops = frozenset(
+    op.name for op in common_methods_invocations.foreach_pointwise_op_db
+)
 
 
 def _get_dynamic_dimension_candidates(input_value: torch.Tensor) -> list[int]:
@@ -34,6 +48,82 @@ def _get_dynamic_dimension_candidates(input_value: torch.Tensor) -> list[int]:
   if isinstance(input_value, torch.Tensor):
     return [i for i, sz in enumerate(input_value.shape) if sz > 1]
   return []
+
+
+def _get_canonical_input_value(
+    op_info: core.OpInfo,
+    input_value: torch.Tensor | list[torch.Tensor],
+) -> torch.Tensor:
+  """Returns the canonical input value for the given input.
+
+  For most ops, this is a noop, but for foreach ops, returns a "canonical" input
+  tensor that is used to check if test case is valid for dynamism. This should
+  be expanded in the future to handle other cases.
+
+  Args:
+    op_info: The op to be tested.
+    input_value: The primary input value to for the op test.
+
+  Returns:
+    The canonical input value for the given input.
+  """
+
+  if isinstance(input_value, (list, tuple)):
+    # Scan for valid input values
+    valid_inputs = [
+        v for v in input_value if not _should_skip_input_marking(op_info, v)
+    ]
+    if valid_inputs:
+      return valid_inputs[0]
+    if input_value:
+      return input_value[0]
+  return input_value
+
+
+def _should_skip_input_marking(
+    op_info: core.OpInfo, input_value: torch.Tensor | Any
+) -> None | str:
+  """Verifies that the input_value is a valid input for dynamism.
+
+  Args:
+    op_info: The op to be tested.
+    input_value: The primary input value to for the op test.
+
+  Returns:
+    None if the op is safe to run, or a string containing the reason why
+    the test is not safe to run.
+  """
+
+  if not isinstance(input_value, torch.Tensor):
+    # Some ops take scalar inputs
+    # empty, empty_strided, full, tril, ones, zeros, stack, tril_indices.
+    return f"Input value is not a tensor, got {type(input_value)}."
+  dtype = input_value.dtype
+  candidates = _get_dynamic_dimension_candidates(input_value)
+  if not candidates:
+    return "No valid input dimensions to mark dynamic."
+  if dtype in [torch.complex64, torch.complex128]:
+    return f"Input value has dtype {dtype}."
+  if not isinstance(input_value, torch.Tensor):
+    return f"Input value is not a tensor, got {type(input_value)}."
+  # TODO: b/449736443 - [XLA] Crash in complex rewriter.
+  if dtype in [torch.complex64, torch.complex128]:
+    return f"{op_info.name} op is not supported with dtype {dtype}."
+  # TODO: b/449736443 - Bug in XLA:TPU handling of 64-bit types?
+  is_64_bit = dtype in [torch.int64, torch.float64]
+  is_foreach_binop = (
+      isinstance(op_info, core.ForeachFuncInfo)
+      and op_info.name in foreach_binops
+  )
+  if (
+      isinstance(op_info, core.BinaryUfuncInfo) or is_foreach_binop
+  ) and is_64_bit:
+    return "Binary ops with int64 or float64 dtypes fail sporadically."
+  # TODO: b/449736443 - Empty tensor handling needs reworking.
+  if input_value.numel() == 0:
+    return "Empty tensors are currently not supported."
+
+  return None
 
 
 def verify_op_supports_dynamism(
@@ -57,9 +147,6 @@ def verify_op_supports_dynamism(
       "_log_softmax_backward_data",
       "_native_batch_norm_legit",
       "_softmax_backward_data",
-      "addcdiv",
-      "addcmul",
-      "addmv",
       "as_strided",
       "bincount",
       "cdist",
@@ -76,7 +163,6 @@ def verify_op_supports_dynamism(
       "index_select",  # invalid gather
       "isin",
       "kron",
-      "lerp",
       "log_softmax",
       "linalg.solve_ex",
       "linalg.lu_factor_ex",
@@ -144,7 +230,6 @@ def verify_op_supports_dynamism(
       "view",
       "view_as_complex",
       "view_as_real",  # OK
-      "where",
   ]
   op = op_info
   if op.name in untriaged_ops_deny_list:
@@ -152,39 +237,33 @@ def verify_op_supports_dynamism(
 
   ### [TEST INFRA TASKS] ###
   # The following indicate changes needed in this file to increase coverage.
-  candidates = _get_dynamic_dimension_candidates(input_value)
-  if not candidates:
-    return "No valid input dimensions to mark dynamic."
-  if not isinstance(input_value, torch.Tensor):
-    return f"Input value is not a tensor, got {type(input_value)}."
+  input_value = _get_canonical_input_value(op, input_value)
+  skip_input = _should_skip_input_marking(op, input_value)
+  if skip_input:
+    return skip_input
   require_mark_dynamic_support = [
-      "clamp",
+      # Needs matmul-style marking
       "addmm",
+      "addmv",
       "dot",
       "native_layer_norm",  # input/weight/bias have dim dependency
       "lu_unpack",  # data, pivots have dim dependency
+      # Can only mark the concatenated dim dynamic for cat-like ops.
+      "cat",
+      "stack",
   ]
   if op.name in require_mark_dynamic_support:
     return f"{op.name} op may work, but requires mark_dynamic test support."
-
-  dtype = input_value.dtype
 
   ### [XLA BUGS] ###
   # TODO: b/449736443 - [XLA] Reduce op with dynamism gets flipped.
   if op.name in ["min", "max"] and args:
     return "min/max with dim flips the result"
   # TODO: b/449736443 - [XLA] Crash in complex rewriter.
-  if op.name in ["polar"] or dtype in [torch.complex64, torch.complex128]:
-    return f"{op.name} op is not supported with dtype {dtype}."
-  # TODO: b/449736443 - Bug in XLA:TPU handling of 64-bit types?
-  is_64_bit = input_value.dtype in [torch.int64, torch.float64]
-  if isinstance(op, core.BinaryUfuncInfo) and is_64_bit:
-    return "Binary ops with int64 or float64 dtypes fail sporadically."
+  if op.name in ["polar"]:
+    return f"{op.name} op is not supported."
 
   ### [VIEW OP BUGS] ###
-  # TODO: b/449736443 - Empty tensor handling needs reworking.
-  if input_value.numel() == 0:
-    return "Empty tensors are currently not supported."
   # TODO: b/449736443 - Reshape support for bounded dynamism needed.
   # transposes and permutes can lower to a reshape sometimes (1x3->3x1)
   if op.name in ["flatten", "t", "t_", "transpose", "reshape", "permute"]:
@@ -200,7 +279,7 @@ def verify_op_supports_dynamism(
   return None
 
 
-def _mark_dependent_arg_dynamic(
+def _mark_numpy_broadcastable_arg_dynamic(
     arg: torch.Tensor, like: torch.Tensor, idx: int, ub: int
 ):
   """Marks dependent dims of a bounded dimension as dynamic.
@@ -221,6 +300,14 @@ def _mark_dependent_arg_dynamic(
     ub: The upper bound of the dynamic dimension.
   """
 
+  logger.debug(
+      "[_mark_numpy_broadcastable_arg_dynamic] arg=%s, like=%s, idx=%d, ub=%d",
+      arg.shape,
+      like.shape,
+      idx,
+      ub,
+  )
+
   # Don't annotate scalar args
   if not arg.shape:
     return
@@ -234,70 +321,239 @@ def _mark_dependent_arg_dynamic(
 
   # Found corresponding arg dim to mark dynamic.
   assert arg.shape[arg_idx] == like.shape[idx], "bound dims mismatch"
-  arg_value_str = utils.get_tensor_summary(arg, data=False)
   print(
-      f">>>> Marking arg dim {arg_idx} dynamic [<={ub}] in {arg_value_str}",
+      f">>>> Marking dependent arg dim {arg_idx} dynamic [<={ub}] in"
+      f" {utils.InputMetadata(arg)}",
       flush=True,
   )
   dynamism.mark_dynamic(arg, dimension=arg_idx, lower_bound=2, upper_bound=ub)
 
 
-def mark_input_dynamic(
-    seed: int,
-    op_info: core.OpInfo,
-    input_value: torch.Tensor,
-    args: tuple[Any, ...],
-):
-  """Mark an arg tensor as dynamic.
+class DynamicOpInfo:
+  """A wrapper around OpInfo that supports bounded dynamism."""
 
-  Args:
-    seed: The seed to use for random choice of the dimension to mark dynamic.
-    op_info: The op to be tested.
-    input_value: The primary input value to for the op test.
-    args: The additional args to the op test.
-  """
+  def __init__(self, op_info: core.OpInfo):
+    self.op_info = op_info
 
-  candidates = _get_dynamic_dimension_candidates(input_value)
-  random.seed(seed)
-  idx = random.choice(candidates)
-  input_value_str = utils.get_tensor_summary(input_value, data=False)
-  ub = input_value.shape[idx] + 10
-  print(
-      f">>>> Marking dim {idx} dynamic [<={ub}] in {input_value_str}",
-      flush=True,
-  )
+  @staticmethod
+  def get(op_info: core.OpInfo):
+    """Returns a DynamicOpInfo for the given op."""
+    adapters = [
+        ForEachDynamicOpInfo,
+        MatmulDynamicOpInfo,
+        BinaryElementwiseDynamicOpInfo,
+        TernaryElementwiseDynamicOpInfo,
+    ]
+    for adapter in adapters:
+      if adapter.adapter_supports_op(op_info):
+        return adapter(op_info)
+    return DynamicOpInfo(op_info)
 
-  # Mark input_value as dynamic.
-  dynamism.mark_dynamic(
-      input_value, dimension=idx, lower_bound=2, upper_bound=ub
-  )
-
-  # For binary elementwise ops, LHS & RHS dynamic dimensions must match or be
-  # compatible, same bound size or one of the dim sizes is 1. If RHS shape is
-  # not 1, mark it as dynamic too.
-  additional_binary_ops = ["equal"]
-  if (
-      isinstance(op_info, core.BinaryUfuncInfo)
-      or op_info.name in additional_binary_ops
+  def mark_dynamic(
+      self, seed: int, input_value: torch.Tensor, args: tuple[Any, ...]
   ):
-    # TODO: b/449736443 - Check if XLA supports elementwise bound mismatches.
-    # Given that XLA will pad to static, it requires bound size to match for
-    # LHS and RHS.
-    rhs = args[0]
-    _mark_dependent_arg_dynamic(rhs, input_value, idx, ub)
+    """Mark the op as dynamic."""
+
+    logger.debug(
+        "[DynamicOpInfo] mark_dynamic(%s, %s, %s)",
+        self.op_info.name,
+        utils.InputMetadata(input_value),
+        utils.InputMetadata(args),
+    )
+
+    # Allow picking a list value from input_value for ops like cat, etc.
+    input_value = _get_canonical_input_value(self.op_info, input_value)
+    candidates = _get_dynamic_dimension_candidates(input_value)
+    random.seed(seed)
+    idx = random.choice(candidates)
+    input_value_str = utils.get_tensor_summary(input_value, data=False)
+    ub = input_value.shape[idx] + 10
+    print(
+        f">>>> Marking dim {idx} dynamic [<={ub}] in {input_value_str}",
+        flush=True,
+    )
+
+    # Mark input_value as dynamic.
+    dynamism.mark_dynamic(
+        input_value, dimension=idx, lower_bound=2, upper_bound=ub
+    )
+
+    # Mark any dependent args as dynamic.
+    self._mark_dependent_arg_dynamic(args, input_value, idx, ub)
+
+  def _mark_dependent_arg_dynamic(
+      self, args: tuple[Any, ...], like: torch.Tensor, idx: int, ub: int
+  ):
+    """Marks dependent dims of a bounded dimension as dynamic."""
+    # No dependent args to mark.
+    del like, idx, ub
+    logger.debug(
+        "[DynamicOpInfo] _mark_dependent_arg_dynamic %s %s",
+        self.op_info.name,
+        utils.InputMetadata(args),
+    )
     return
 
-  ternary_elementwise_ops = ["clamp", "clamp_", "where"]
-  if op_info.name in ternary_elementwise_ops and args:
-    if len(args) > 1 and isinstance(args[0], torch.Tensor):
-      _mark_dependent_arg_dynamic(args[0], input_value, idx, ub)
-    if len(args) > 2 and isinstance(args[1], torch.Tensor):
-      _mark_dependent_arg_dynamic(args[1], input_value, idx, ub)
 
-  if op_info.name in ["bmm", "mm"]:
+class BinaryElementwiseDynamicOpInfo(DynamicOpInfo):
+  """A wrapper around OpInfo that supports bounded dynamism."""
+
+  @staticmethod
+  def adapter_supports_op(op_info: core.OpInfo):
+    """Method to declare ops supported by this adapter."""
+
+    additional_binary_ops = ["equal"]
+    return (
+        isinstance(op_info, core.BinaryUfuncInfo)
+        or op_info.name in additional_binary_ops
+    )
+
+  def _mark_dependent_arg_dynamic(
+      self,
+      args: tuple[Any, ...],
+      like: torch.Tensor,
+      idx: int,
+      ub: int,
+  ):
+    """Mark the args of a binary elementwise op as dynamic."""
     rhs = args[0]
     if isinstance(rhs, torch.Tensor):
-      lhs_ndim = input_value.ndim
+      _mark_numpy_broadcastable_arg_dynamic(rhs, like, idx, ub)
+
+
+class TernaryElementwiseDynamicOpInfo(DynamicOpInfo):
+  """A wrapper around OpInfo that supports bounded dynamism."""
+
+  ternary_elementwise_ops = set([
+      "addcdiv",
+      "addcmul",
+      "clamp",
+      "lerp",
+      "where",
+  ])
+
+  @staticmethod
+  def adapter_supports_op(op_info: core.OpInfo):
+    """Method to declare ops supported by this adapter."""
+
+    return (
+        op_info.name in TernaryElementwiseDynamicOpInfo.ternary_elementwise_ops
+    )
+
+  def _mark_dependent_arg_dynamic(
+      self,
+      args: tuple[Any, ...],
+      like: torch.Tensor,
+      idx: int,
+      ub: int,
+  ):
+    """Mark the args of a ternary elementwise op as dynamic."""
+    if len(args) >= 1 and isinstance(args[0], torch.Tensor):
+      _mark_numpy_broadcastable_arg_dynamic(args[0], like, idx, ub)
+    if len(args) >= 2 and isinstance(args[1], torch.Tensor):
+      _mark_numpy_broadcastable_arg_dynamic(args[1], like, idx, ub)
+
+
+class ForEachDynamicOpInfo(DynamicOpInfo):
+  """A wrapper around OpInfo that supports bounded dynamism."""
+
+  # Max number of inputs in list to mark as dynamic (slow to run)
+  max_dynamic_args = 3
+
+  @staticmethod
+  def adapter_supports_op(op_info: core.OpInfo):
+    """Method to declare ops supported by this adapter."""
+
+    return isinstance(op_info, core.ForeachFuncInfo)
+
+  def mark_dynamic(
+      self,
+      seed: int,
+      input_value: torch.Tensor | list[torch.Tensor],
+      args: tuple[Any, ...],
+  ):
+    """Mark the op as dynamic, handling for list types."""
+    # Split the inputs into their logical units for marking dynamic.
+    # Options are:
+    #   - foreach_add(list, [scalar|tensor])
+    #   - foreach_add(list, [[arg0s], [args1s], ...])
+
+    logger.debug(
+        "[ForEachDynamicOpInfo] mark_dynamic(%s, %s, %s)",
+        self.op_info.name,
+        utils.InputMetadata(input_value),
+        utils.InputMetadata(args),
+    )
+    n_dynamic = 0
+    for idx, value in enumerate(input_value):
+      # If args not a list, no need to mark anything dependent dynamic
+      if _should_skip_input_marking(self.op_info, value):
+        continue
+
+      # For test speed, limit number of dynamic args.
+      if n_dynamic > self.max_dynamic_args:
+        break
+      n_dynamic += 1
+
+      # foreach_add(list, scalar)
+      if (
+          not args
+          or not isinstance(args, (list, tuple))
+          or not isinstance(args[0], (list, tuple))
+      ):
+        super().mark_dynamic(seed, value, [])
+        continue
+
+      # Binary ops expect len(args) == 1
+      if self.op_info.name in foreach_binops:
+        rhs_vals = args[0]
+        BinaryElementwiseDynamicOpInfo(self.op_info).mark_dynamic(
+            seed, value, (rhs_vals[idx],)
+        )
+        continue
+
+      # Ternary ops expect len(args) == 2
+      base_op_name = self.op_info.name.split("_foreach_")[1]
+      if self.op_info.name in foreach_ternary_ops or (
+          base_op_name
+          in TernaryElementwiseDynamicOpInfo.ternary_elementwise_ops
+      ):
+        rhs_vals = args[0] if len(args) >= 1 else None
+        ehs_vals = args[1] if len(args) >= 2 else None
+        TernaryElementwiseDynamicOpInfo(self.op_info).mark_dynamic(
+            seed, value, (rhs_vals[idx], ehs_vals[idx])
+        )
+        continue
+
+      # Not binary or ternary, no dependent args.
+      super().mark_dynamic(seed, value, [])
+      logger.debug(
+          "[ForEachDynamicOpInfo] no dependent args %s",
+          utils.InputMetadata(args),
+      )
+
+
+class MatmulDynamicOpInfo(DynamicOpInfo):
+  """A wrapper around OpInfo that supports bounded dynamism."""
+
+  @staticmethod
+  def adapter_supports_op(op_info: core.OpInfo):
+    """Method to declare ops supported by this adapter."""
+
+    matmul_ops = ["bmm", "mm"]
+    return op_info.name in matmul_ops
+
+  def _mark_dependent_arg_dynamic(
+      self,
+      args: tuple[Any, ...],
+      like: torch.Tensor,
+      idx: int,
+      ub: int,
+  ):
+    """Mark the args of a binary elementwise op as dynamic."""
+    rhs = args[0]
+    if isinstance(rhs, torch.Tensor):
+      lhs_ndim = like.ndim
       rhs_ndim = rhs.ndim
       # If input contracting dim is dynamic, mark other's contracting dim too.
       if idx == lhs_ndim - 1:
@@ -314,5 +570,25 @@ def mark_input_dynamic(
           )
       # If a batch dim is dynamic, mark rhs's batch dim too.
       elif idx < lhs_ndim - 2:
-        _mark_dependent_arg_dynamic(rhs, input_value, idx, ub)
+        _mark_numpy_broadcastable_arg_dynamic(rhs, like, idx, ub)
     return
+
+
+def mark_input_dynamic(
+    seed: int,
+    op_info: core.OpInfo,
+    input_value: torch.Tensor | list[torch.Tensor],
+    args: tuple[Any, ...],
+):
+  """Mark an arg tensor as dynamic.
+
+  Args:
+    seed: The seed to use for random choice of the dimension to mark dynamic.
+    op_info: The op to be tested.
+    input_value: The primary input value to for the op test.
+    args: The additional args to the op test.
+  """
+
+  dynamic_op_info = DynamicOpInfo.get(op_info)
+  print(">>> Marking input dynamic using ", type(dynamic_op_info))
+  dynamic_op_info.mark_dynamic(seed, input_value, args)

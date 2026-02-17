@@ -82,27 +82,25 @@ mlir::MlirOp MatVecDot(mlir::MlirOp mat_op, mlir::MlirOp vec_op, double alpha,
   return mv_op;
 }
 
-absl::StatusOr<mlir::MlirOp> BuildAddmvShloBetaZero(mlir::MlirOp mat_op,
-                                                    mlir::MlirOp vec_op,
-                                                    double alpha,
-                                                    mlir::ElementType out_dtype,
-                                                    Dimensions result_shape) {
+absl::StatusOr<mlir::MlirOp> BuildAddmvShloBetaZero(
+    mlir::MlirOp mat_op, mlir::MlirOp vec_op, double alpha,
+    mlir::ElementType out_dtype) {
   auto mv_op = MatVecDot(mat_op, vec_op, alpha, out_dtype);
   mlir::MlirOp alpha_op = MakeConstantLike(mv_op, alpha);
   return stablehlo::Mul(alpha_op, mv_op);
 }
 
-absl::StatusOr<mlir::MlirOp> BuildAddmvShlo(
-    mlir::MlirOp self_op, mlir::MlirOp mat_op, mlir::MlirOp vec_op, double beta,
-    double alpha, mlir::ElementType out_dtype, Dimensions result_shape) {
+absl::StatusOr<mlir::MlirOp> BuildAddmvShlo(mlir::MlirOp self_op,
+                                            mlir::MlirOp mat_op,
+                                            mlir::MlirOp vec_op, double beta,
+                                            double alpha,
+                                            mlir::ElementType out_dtype) {
   auto mv_op = MatVecDot(mat_op, vec_op, alpha, out_dtype);
 
   mlir::MlirOp alpha_op = MakeConstantLike(mv_op, alpha);
   mlir::MlirOp beta_op = MakeConstantLike(self_op, beta);
   auto bias_op = stablehlo::Mul(beta_op, self_op);
-  TT_ASSIGN_OR_RETURN(auto bias_op_bcast,
-                      ApplyBroadcastIfNeeded(bias_op, mv_op));
-  bias_op = bias_op_bcast[0];
+  TT_ASSIGN_OR_RETURN(bias_op, BroadcastIfNeeded(bias_op, mv_op));
   mv_op = stablehlo::Mul(alpha_op, mv_op);
   return stablehlo::Add(bias_op, mv_op);
 }
@@ -127,12 +125,11 @@ absl::StatusOr<DeviceBufferRef> Addmv(const at::Tensor& self,
   // reading from uninitialized tensors (at::empty) at the moment, so instead of
   // dispatching to ternary op, we dispatch to binary op without self.
   if (beta.toDouble() == 0.0) {
-    auto op_builder = [alpha, out_dtype,
-                       result_shape](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+    auto op_builder = [alpha, out_dtype](FixedSizeSpan<mlir::MlirOp, 2> inputs)
         -> absl::StatusOr<mlir::MlirOp> {
       auto& [mat_op, vec_op] = inputs;
-      return BuildAddmvShloBetaZero(mat_op, vec_op, alpha.toDouble(), out_dtype,
-                                    result_shape);
+      return BuildAddmvShloBetaZero(mat_op, vec_op, alpha.toDouble(),
+                                    out_dtype);
     };
     TT_ASSIGN_OR_RETURN(auto result_buf,
                         DispatchOp<2>(OpName::kAddmvOut, std::move(op_builder),
@@ -145,7 +142,7 @@ absl::StatusOr<DeviceBufferRef> Addmv(const at::Tensor& self,
       -> absl::StatusOr<mlir::MlirOp> {
     auto& [self_op, mat_op, vec_op] = inputs;
     return BuildAddmvShlo(self_op, mat_op, vec_op, beta.toDouble(),
-                          alpha.toDouble(), out_dtype, result_shape);
+                          alpha.toDouble(), out_dtype);
   };
   TT_ASSIGN_OR_RETURN(auto result_buf,
                       DispatchOp<3>(OpName::kAddmvOut, std::move(op_builder),
