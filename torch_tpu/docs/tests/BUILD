@@ -1,0 +1,41 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Tests for TorchTPU documentation."""
+
+load("@rules_python//python:py_library.bzl", "py_library")
+load("//build_files:build_defs.bzl", "define_cpp_filegroup")
+
+package(
+    default_applicable_licenses = ["//:license"],
+)
+
+py_library(
+    # PY_LIBRARY_OK=used in OSS only.
+    name = "test_index",
+    srcs = ["test_index.py"],
+    deps = [
+        "//shims/torch:pytorch",
+        "//torch_tpu/docs:index",
+    ],
+)
+
+py_library(
+    # PY_LIBRARY_OK=used in OSS only.
+    name = "test_get_started_tpu",
+    srcs = ["test_get_started_tpu.py"],
+    deps = ["//shims/torch:pytorch"],
+)
+
+define_cpp_filegroup(name = "all_cpp_files_recursive")
