@@ -25,16 +25,6 @@ First use python 3.12 virtual environment
 ```bash
 mkdir wheel; cd wheel
 python3.12 -m venv venv; source venv/bin/activate
-```
-
-Install a CPU-only build of PyTorch (this is necessary to avoid unnecessary CUDA
-dependencies):
-
-```bash
-pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cpu
-```
-
-NOTE: Nightly wheels earlier than or equal to 01/27/2026 requires torch==2.9.0
 
 ### Install via pip
 
@@ -49,7 +39,7 @@ gcloud auth application-default login
 Install from latest nightly:
 
 ```bash
-pip install --pre --extra-index-url "https://oauth2accesstoken:$(gcloud auth print-access-token)@us-python.pkg.dev/ml-oss-artifacts-transient/torch-tpu-testing-registry/simple/" "torch-tpu!=0.0.0"
+pip install --pre --index-url "https://oauth2accesstoken:$(gcloud auth print-access-token)@us-python.pkg.dev/ml-oss-artifacts-transient/torch-tpu-virtual-registry/simple/" torch_tpu
 ```
 
 ### Build from source
@@ -72,9 +62,12 @@ Install wheel via:
 cd <path_to_repo>
 mkdir wheel; cd wheel
 python3.12 -m venv venv; source venv/bin/activate
-pip install -r ../requirements/requirements.txt
 pip install ../bazel-bin/ci/wheel/*.whl
 ```
+
+Note that this command will install the CUDA version of `torch`; to get the
+CPU-only build, use the `--index-url` parameter from the section on installing
+nightlies, or install the CPU build separately.
 
 ## Getting Started
 
