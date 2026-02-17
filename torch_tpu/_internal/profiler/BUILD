@@ -39,6 +39,13 @@ pybind_extension(
         "profiler.cc",
         "profiler.h",
     ],
+    # Torch_tpu uses rules_pywrap in XLA for OSS builds:
+    # https://github.com/openxla/xla/tree/main/third_party/py/rules_pywrap.
+    # These args are required to link extensions against common libs.
+    common_lib_packages = [
+        "//torch_tpu/common",
+    ],
+    wrap_py_init = True,
     deps = [
         "@tsl//tsl/profiler/lib:profiler_session",
         "@xla//xla/backends/profiler/cpu:host_tracer",
