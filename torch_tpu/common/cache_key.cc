@@ -195,10 +195,4 @@ std::ostream& operator<<(std::ostream& os, CompilationCacheKey key) {
   return os;
 }
 
-std::string ToString(CompilationCacheKey key) {
-  std::ostringstream ss;
-  ss << key;
-  return ss.str();
-}
-
 }  // namespace torch_tpu

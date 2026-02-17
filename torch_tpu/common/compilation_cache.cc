@@ -21,7 +21,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
-#include <cstdlib>
 #include <future>
 #include <ios>
 #include <memory>
@@ -387,8 +386,7 @@ absl::StatusOr<SharedLoadedExecutableFuture> CompilationCache::GetOrCompile(
     return future_compile_result;
   }
   if (ABSL_VLOG_IS_ON(3)) {
-    LogLines(absl::StrCat("[TtPerf] Compiling Module for key: ", ToString(key),
-                          "\n",
+    LogLines(absl::StrCat("[TtPerf] Compiling Module for key: ", key, "\n",
                           DebugString(contexted_module->get(),
                                       DebugStringOptions::kEnableDebugInfo)));
   }

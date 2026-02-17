@@ -17,11 +17,13 @@
 #ifndef TORCH_TPU_COMMON_TIER2_COMPILATION_CACHE_H_
 #define TORCH_TPU_COMMON_TIER2_COMPILATION_CACHE_H_
 
+#include <ostream>
 #include <string>
 #include <string_view>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "torch_tpu/common/fingerprint_utils.h"
@@ -39,8 +41,12 @@ enum class CacheTier {
   kTier3,
 };
 
-// Returns a human-readable string for the given cache tier.
-[[nodiscard]] std::string ToString(CacheTier tier);
+// Formats a cache tier as a human-readable string.
+std::ostream& operator<<(std::ostream& os, CacheTier tier);
+template <typename Sink>
+void AbslStringify(Sink& sink, const CacheTier tier) {
+  absl::Format(&sink, "%s", absl::FormatStreamed(tier));
+}
 
 // Returns true if the tier-2 compilation cache is enabled for this process.
 [[nodiscard]] bool UsesTier2CompilationCache();

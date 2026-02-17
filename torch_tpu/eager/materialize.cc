@@ -133,7 +133,7 @@ ExecutionTask CreateExecutionTask(
     Traversal traversal, SharedLoadedExecutableFuture executable_future) {
   std::string task_name;
   if (ABSL_VLOG_IS_ON(1)) {
-    task_name = ToString(traversal.cache_key());
+    task_name = absl::StrCat(traversal.cache_key());
   }
   Traversal::Parts parts = traversal.IntoParts();
   return ExecutionTask{.inputs = std::move(parts.inputs),

@@ -32,6 +32,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
@@ -517,8 +518,12 @@ static_assert(
     "CompilationCacheKey by value today. We need to revisit the decision if "
     "its size grows.");
 
+// Formats a compilation cache key as a human-readable string.
 std::ostream& operator<<(std::ostream& os, CompilationCacheKey key);
-std::string ToString(CompilationCacheKey key);
+template <typename Sink>
+void AbslStringify(Sink& sink, const CompilationCacheKey key) {
+  absl::Format(&sink, "%s", absl::FormatStreamed(key));
+}
 
 // Bounds of a dimension. If the lower and upper bounds are the same, the
 // dimension is static and not dynamic. If *all* dimensions are static, the

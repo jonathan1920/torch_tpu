@@ -409,13 +409,12 @@ enum class OpName {
   // go/keep-sorted end
 };
 
+// Formats an op name as a human-readable string.
 [[nodiscard]] std::string_view ToString(OpName op_name);
-
 template <typename Sink>
 void AbslStringify(Sink& sink, OpName op_name) {
   sink.Append(ToString(op_name));
 }
-
 inline std::ostream& operator<<(std::ostream& os, const OpName op_name) {
   return os << ToString(op_name);
 }

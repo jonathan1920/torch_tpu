@@ -28,6 +28,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -64,16 +65,16 @@ constexpr std::string_view kTier2CacheRootDir = "/dev/shm/torch_tpu_cache";
 constexpr std::string_view kLockFileExtension = ".lock";
 constexpr std::string_view kTier2CacheFileExtension = ".bin";
 
-std::string ToString(CacheTier tier) {
+std::ostream& operator<<(std::ostream& os, const CacheTier tier) {
   switch (tier) {
     case CacheTier::kUnknown:
-      return "unknown";
+      return os << "unknown";
     case CacheTier::kTier1:
-      return "tier-1";
+      return os << "tier-1";
     case CacheTier::kTier2:
-      return "tier-2";
+      return os << "tier-2";
     case CacheTier::kTier3:
-      return "tier-3";
+      return os << "tier-3";
       // Deliberately omitting the default case to catch any new cache tiers as
       // a compiler error.
   }
@@ -266,15 +267,15 @@ absl::StatusOr<SharedLoadedExecutable> LoadSerializedExecutable(
     CacheTier tier, CompilationCacheKey key, const std::string_view data) {
   xla::PjRtClient* const client = GetPjRtClient();
   TT_RET_CHECK(client, error::kFailedPrecondition)
-      << "PjRtClient must be initialized before accessing the "
-      << ToString(tier) << " cache.";
+      << "PjRtClient must be initialized before accessing the " << tier
+      << " cache.";
   TT_ASSIGN_OR_RETURN(SharedLoadedExecutable executable,
                       client->LoadSerializedExecutable(data,
                                                        /*options=*/std::nullopt,
                                                        xla::LoadOptions()),
                       _.SetPrepend()
                           << "Failed to load serialized executable from the "
-                          << ToString(tier) << " cache for key " << key
+                          << tier << " cache for key " << key
                           << ", where the serialized data has " << data.size()
                           << " bytes:\n");
   return executable;
