@@ -68,10 +68,8 @@ at::Tensor AtenFlip(const at::Tensor& self, at::IntArrayRef flip_dims) {
                        {.out_dtype = element_type,
                         .out_dims = CopyIntVector(self.sizes()),
                         .op_param_cache_keys = std::move(param_keys)})));
-    at::Tensor out = AtenEmptyMemoryFormat(
-        self.sizes(), self.scalar_type(), /*layout_opt=*/std::nullopt,
-        self.device(), /*pin_memory_opt=*/std::nullopt,
-        /*memory_format_opt=*/std::nullopt);
+    at::Tensor out =
+        MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device());
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(out_buf), out));
     return out;
   });

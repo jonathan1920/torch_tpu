@@ -382,11 +382,8 @@ at::Tensor AtenReplicationPad2dBackward(const at::Tensor& grad_output,
                      "does not match the input shape expected "
                   << ToString(self.sizes()) << " but got " << ToString(gidims)
                   << "";
-              at::Tensor grad_input = AtenEmptyMemoryFormat(
-                  gidims, self.scalar_type(),
-                  /*layout_opt=*/std::nullopt, self.device(),
-                  /*pin_memory_opt=*/std::nullopt,
-                  /*memory_format_opt=*/std::nullopt);
+              at::Tensor grad_input =
+                  MakeEmptyTensor(gidims, self.scalar_type(), self.device());
               AtenReplicationPad2dBackwardGradInput(grad_output, self, padding,
                                                     grad_input);
               return grad_input;
@@ -423,10 +420,7 @@ at::Tensor AtenReplicationPad3dBackward(const at::Tensor& grad_output,
             << "calculated grad_input shape "
                "does not match the input shape";
         at::Tensor grad_input =
-            AtenEmptyMemoryFormat(gidims, self.scalar_type(),
-                                  /*layout_opt=*/std::nullopt, self.device(),
-                                  /*pin_memory_opt=*/std::nullopt,
-                                  /*memory_format_opt=*/std::nullopt);
+            MakeEmptyTensor(gidims, self.scalar_type(), self.device());
         AtenReplicationPad3dBackwardGradInput(grad_output, self, padding,
                                               grad_input);
         return grad_input;

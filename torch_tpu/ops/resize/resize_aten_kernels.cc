@@ -28,6 +28,7 @@
 #include "c10/util/ArrayRef.h"
 #include "c10/util/Optional.h"
 #include "c10/util/accumulate.h"
+#include "torch_tpu/common/shape.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/xla_data.pb.h"
 #include "torch_tpu/common/dtype.h"
@@ -69,9 +70,8 @@ const at::Tensor& AtenResize_(
       ABSL_VLOG(1) << "[C++ KERNEL AtenResize_] Resize is growing. Swapping "
                       "tensor storage with a new empty storage.";
       // Create a new empty tensor with the new size.
-      at::Tensor larger_empty = AtenEmptyMemoryFormat(
-          size, self.scalar_type(), at::Layout::Strided, self.device(),
-          /*pin_memory_opt=*/c10::nullopt, at::MemoryFormat::Contiguous);
+      at::Tensor larger_empty =
+          MakeEmptyTensor(size, self.scalar_type(), self.device());
 
       // Take a view on the new tensor corresponding to the existing data.
       Strides base_strides =

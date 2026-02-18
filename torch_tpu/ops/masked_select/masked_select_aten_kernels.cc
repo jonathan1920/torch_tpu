@@ -69,12 +69,10 @@ at::Tensor MaskedSelectWithKnownOutputShape(const at::Tensor& self,
   at::Tensor self_flat = self.flatten();
 
   // Get indices of true values in mask.
-  at::Tensor mask_flat_values = AtenEmptyMemoryFormat(
-      mask_flat.sizes(), mask_flat.scalar_type(), std::nullopt,
-      mask_flat.device(), std::nullopt, std::nullopt);
+  at::Tensor mask_flat_values = MakeEmptyTensor(
+      mask_flat.sizes(), mask_flat.scalar_type(), mask_flat.device());
   at::Tensor mask_flat_indices =
-      AtenEmptyMemoryFormat(mask_flat.sizes(), at::kLong, std::nullopt,
-                            mask_flat.device(), std::nullopt, std::nullopt);
+      MakeEmptyTensor(mask_flat.sizes(), at::kLong, mask_flat.device());
   AtenSortValuesStable(mask_flat, /*stable_opt=*/true, /*dim=*/0,
                        /*descending=*/true, mask_flat_values,
                        mask_flat_indices);
@@ -85,9 +83,8 @@ at::Tensor MaskedSelectWithKnownOutputShape(const at::Tensor& self,
       mask_flat_indices.slice(0, 0, num_selected_elems, 1);
   // Use flattened self tensor as input to gather op.
 
-  at::Tensor result = AtenEmptyMemoryFormat(
-      sliced_indices.sizes(), self_flat.scalar_type(), std::nullopt,
-      self_flat.device(), std::nullopt, std::nullopt);
+  at::Tensor result = MakeEmptyTensor(
+      sliced_indices.sizes(), self_flat.scalar_type(), self_flat.device());
   return AtenGatherOut(self_flat, 0, sliced_indices, false, result);
 }
 

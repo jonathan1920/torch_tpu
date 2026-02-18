@@ -752,8 +752,7 @@ at::Tensor& AtenLeTensorOut(const at::Tensor& self, const at::Tensor& other,
 at::Tensor AtenLshiftScalar(const at::Tensor& self, const at::Scalar& other) {
   TT_KERNEL(OpName::kLshiftScalar, _, (self, other), {
     at::Tensor out =
-        AtenEmptyMemoryFormat(self.sizes(), self.scalar_type(), std::nullopt,
-                              self.device(), std::nullopt, std::nullopt);
+        MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device());
     at::Tensor wrapped_scalar = at::native::wrapped_scalar_tensor(other);
     AtenBitwiseLeftShiftTensorOut(self, wrapped_scalar, out);
     return out;
@@ -764,8 +763,7 @@ at::Tensor AtenLshiftTensor(const at::Tensor& self, const at::Tensor& other) {
   TT_KERNEL(OpName::kLshiftTensor, _, (self, other), {
     at::ScalarType promoted_scalar_type = at::result_type(self, other);
     at::Tensor out =
-        AtenEmptyMemoryFormat(self.sizes(), promoted_scalar_type, std::nullopt,
-                              self.device(), std::nullopt, std::nullopt);
+        MakeEmptyTensor(self.sizes(), promoted_scalar_type, self.device());
     AtenBitwiseLeftShiftTensorOut(self, other, out);
     return out;
   });
@@ -937,8 +935,7 @@ at::Tensor& AtenRemainderTensorOut(const at::Tensor& self,
 at::Tensor AtenRshiftScalar(const at::Tensor& self, const at::Scalar& other) {
   TT_KERNEL(OpName::kRshiftScalar, _, (self, other), {
     at::Tensor out =
-        AtenEmptyMemoryFormat(self.sizes(), self.scalar_type(), std::nullopt,
-                              self.device(), std::nullopt, std::nullopt);
+        MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device());
     at::Tensor wrapped_scalar = at::native::wrapped_scalar_tensor(other);
     AtenBitwiseRightShiftTensorOut(self, wrapped_scalar, out);
     return out;
@@ -949,8 +946,7 @@ at::Tensor AtenRshiftTensor(const at::Tensor& self, const at::Tensor& other) {
   TT_KERNEL(OpName::kRshiftTensor, _, (self, other), {
     at::ScalarType promoted_scalar_type = at::result_type(self, other);
     at::Tensor out =
-        AtenEmptyMemoryFormat(self.sizes(), promoted_scalar_type, std::nullopt,
-                              self.device(), std::nullopt, std::nullopt);
+        MakeEmptyTensor(self.sizes(), promoted_scalar_type, self.device());
     AtenBitwiseRightShiftTensorOut(self, other, out);
     return out;
   });

@@ -30,6 +30,7 @@ torch_tpu_cc_library(
         "//shims/torch/c10/util:base_headers",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/ops:nullary_aten_kernels",
         "//torch_tpu/ops:op_builder_utils",

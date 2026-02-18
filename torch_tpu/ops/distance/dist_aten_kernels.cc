@@ -240,11 +240,7 @@ at::Tensor AtenCdistForward(const at::Tensor& x1, const at::Tensor& x2,
     // If the output shape contains a 0 dimension, return an empty tensor
     for (int64_t dim : output_shape) {
       if (dim == 0) {
-        at::Tensor out = AtenEmptyMemoryFormat(
-            output_shape, x1.scalar_type(), /*layout_opt=*/std::nullopt,
-            x1.device(), /*pin_memory_opt=*/std::nullopt,
-            /*memory_format_opt=*/std::nullopt);
-        return out;
+        return MakeEmptyTensor(output_shape, x1.scalar_type(), x1.device());
       }
     }
 
@@ -291,10 +287,7 @@ at::Tensor AtenPdistForward(const at::Tensor& self, double p) {
 
     // If there are no pairs to compute the distance for, return an empty tensor
     if (num_pairs == 0) {
-      return AtenEmptyMemoryFormat(output_shape, self.scalar_type(),
-                                   /*layout_opt=*/std::nullopt, self.device(),
-                                   /*pin_memory_opt=*/std::nullopt,
-                                   /*memory_format_opt=*/std::nullopt);
+      return MakeEmptyTensor(output_shape, self.scalar_type(), self.device());
     }
 
     // Add check for bfloat16 and float16 after the empty dimension check,

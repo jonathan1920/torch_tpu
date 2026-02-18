@@ -32,6 +32,7 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -332,10 +333,8 @@ at::Tensor AtenReflectionPad2d(const at::Tensor& self,
     out_dimensions[out_dimensions.size() - 2] += padding[2] + padding[3];
     out_dimensions[out_dimensions.size() - 1] += padding[0] + padding[1];
 
-    at::Tensor out = AtenEmptyMemoryFormat(
-        out_dimensions, self.scalar_type(), /*layout_opt=*/std::nullopt,
-        self.device(), /*pin_memory_opt=*/std::nullopt,
-        /*memory_format_opt=*/std::nullopt);
+    at::Tensor out =
+        MakeEmptyTensor(out_dimensions, self.scalar_type(), self.device());
     return AtenReflectionPad2dOut(self, padding, out);
   });
 }
@@ -420,44 +419,39 @@ at::Tensor& AtenReflectionPad3dBackwardGradInput(const at::Tensor& grad_output,
 at::Tensor AtenReflectionPad2dBackward(const at::Tensor& grad_output,
                                        const at::Tensor& self,
                                        at::IntArrayRef padding) {
-  TT_KERNEL(OpName::kReflectionPad2dBackward, _, (grad_output, self, padding),
-            {
-              Dimensions gidims(grad_output.sizes().begin(),
-                                grad_output.sizes().end());
-              TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
-                               // guaranteed to be within range.
-                  gidims.size() > 2, error::kInvalidArgument)
-                  << "expected grad_output to have at least 2 dimensions"
-                  << ", got " << gidims.size();
+  TT_KERNEL(OpName::kReflectionPad2dBackward, _, (grad_output, self, padding), {
+    Dimensions gidims(grad_output.sizes().begin(), grad_output.sizes().end());
+    TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
+                     // guaranteed to be within range.
+        gidims.size() > 2, error::kInvalidArgument)
+        << "expected grad_output to have at least 2 dimensions"
+        << ", got " << gidims.size();
 
-              TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
-                               // guaranteed to be within range.
-                  padding.size() == 4, error::kInvalidArgument)
-                  << "expected padding to have " << 4 << " elements"
-                  << ", got " << padding.size();
+    TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
+                     // guaranteed to be within range.
+        padding.size() == 4, error::kInvalidArgument)
+        << "expected padding to have " << 4 << " elements"
+        << ", got " << padding.size();
 
-              TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
-                               // guaranteed to be within range.
-                  gidims[gidims.size() - 2] - (padding[2] + padding[3]) > 0 &&
-                      gidims[gidims.size() - 1] - (padding[0] + padding[1]) > 0,
-                  error::kInvalidArgument)
-                  << "padding values must add up to a valid input dimension";
-              gidims[gidims.size() - 2] -= (padding[2] + padding[3]);
-              gidims[gidims.size() - 1] -= (padding[0] + padding[1]);
+    TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
+                     // guaranteed to be within range.
+        gidims[gidims.size() - 2] - (padding[2] + padding[3]) > 0 &&
+            gidims[gidims.size() - 1] - (padding[0] + padding[1]) > 0,
+        error::kInvalidArgument)
+        << "padding values must add up to a valid input dimension";
+    gidims[gidims.size() - 2] -= (padding[2] + padding[3]);
+    gidims[gidims.size() - 1] -= (padding[0] + padding[1]);
 
-              TT_CHECK_THROW(gidims == self.sizes(), error::kInvalidArgument)
-                  << "expected the shape of the input gradients calculated "
-                     "using padding to match the input "
-                  << ToString(self.sizes()) << ", got " << ToString(gidims);
-              at::Tensor grad_input = AtenEmptyMemoryFormat(
-                  gidims, self.scalar_type(),
-                  /*layout_opt=*/std::nullopt, self.device(),
-                  /*pin_memory_opt=*/std::nullopt,
-                  /*memory_format_opt=*/std::nullopt);
-              AtenReflectionPad2dBackwardGradInput(grad_output, self, padding,
-                                                   grad_input);
-              return grad_input;
-            });
+    TT_CHECK_THROW(gidims == self.sizes(), error::kInvalidArgument)
+        << "expected the shape of the input gradients calculated "
+           "using padding to match the input "
+        << ToString(self.sizes()) << ", got " << ToString(gidims);
+    at::Tensor grad_input =
+        MakeEmptyTensor(gidims, self.scalar_type(), self.device());
+    AtenReflectionPad2dBackwardGradInput(grad_output, self, padding,
+                                         grad_input);
+    return grad_input;
+  });
 }
 
 }  // namespace torch_tpu
