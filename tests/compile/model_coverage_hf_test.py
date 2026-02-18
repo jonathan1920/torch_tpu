@@ -1,0 +1,225 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Tests inference and training with torch.compile across HuggingFace models.
+
+Compares perplexity (for inference) and loss (for training) between TPU and CPU
+with popular HuggingFace model implementations using the Transformers API.
+"""
+
+import copy
+import functools
+from typing import Any
+
+from absl.testing import absltest
+from absl.testing import parameterized
+import torch
+from torch_tpu import api
+from torch_tpu._internal import compile as torch_tpu_compile
+from torch_tpu._internal.utils import utils
+from tests import module_registry
+
+
+# Threshold number for which perplexity scores should be less than. Anything
+# higher indicates a significant bug in the model or test.
+_PERPLEXITY_THRESHOLD = 100
+
+
+def _calculate_perplexity(
+    logits: torch.Tensor, input_ids: torch.Tensor
+) -> torch.Tensor:
+  """Calculates perplexity from logits and input_ids for a Causal LM."""
+  shift_logits = logits[..., :-1, :].contiguous()
+  shift_labels = input_ids[..., 1:].contiguous()
+
+  loss = torch.nn.functional.cross_entropy(
+      shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
+  )
+  return torch.exp(loss)
+
+
+def _train_step(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    inputs: dict[str, Any],
+) -> torch.Tensor:
+  """Performs a single training step (Forward, Backward, Optimizer Step).
+
+  Args:
+    model: The PyTorch model to train.
+    optimizer: The optimizer to use for the training step.
+    inputs: A dictionary of input tensors.
+
+  Returns:
+    The calculated loss for the training step.
+  """
+  optimizer.zero_grad()
+
+  outputs = model(**inputs, labels=inputs["input_ids"])
+  loss = outputs.loss
+  loss.backward()
+  optimizer.step()
+
+  return loss
+
+
+class ModelCoverageHFTest(parameterized.TestCase):
+
+  @classmethod
+  def setUpClass(cls) -> None:
+    super().setUpClass()
+    cls.tpu_device = api.tpu_device()
+    cls.module_registry = module_registry.ModuleRegistry()
+
+  def _create_model_and_inputs(
+      self, provider: str, module_name: str, *, is_training=False
+  ):
+    module_spec = self.module_registry.get_module_spec(
+        provider, module_name, load_weights=True
+    )
+    cpu_model = module_spec.module_factory()
+    if is_training:
+      cpu_model.train()
+    else:
+      cpu_model.eval()
+    tokenizer = module_spec.preprocessor_factory()
+    prompt = (
+        "Despite the heavy rain and strong winds forecasted for the afternoon,"
+        " the dedicated marathon runners refused to cancel the"
+    )
+    tpu_model = copy.deepcopy(cpu_model)
+    tpu_model.to(self.tpu_device)
+    fn_to_compile = (
+        functools.partial(_train_step, tpu_model) if is_training else tpu_model
+    )
+    compiled_tpu_model = torch.compile(
+        fn_to_compile,
+        dynamic=False,
+        backend=torch_tpu_compile.TpuBackend(),
+    )
+    cpu_inputs = tokenizer(prompt, return_tensors="pt")
+    tpu_inputs = {k: v.to(self.tpu_device) for k, v in cpu_inputs.items()}
+    return cpu_model, tpu_model, compiled_tpu_model, cpu_inputs, tpu_inputs
+
+  # rtol and atol were determined manually by running the test case once,
+  # checking the results and determining tolerances based on the delta between
+  # CPU and TPU.
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="transformers/google/gemma-3-270m",
+          provider="transformers",
+          module_name="google/gemma-3-270m",
+          rtol=6e-3,
+          atol=1e-3,
+      ),
+      dict(
+          testcase_name="transformers/Qwen/Qwen3-0.6B",
+          provider="transformers",
+          module_name="Qwen/Qwen3-0.6B",
+          rtol=1e-3,
+          atol=2e-4,
+      ),
+      dict(
+          testcase_name="transformers/meta-llama/Llama-3.2-1B",
+          provider="transformers",
+          module_name="meta-llama/Llama-3.2-1B",
+          rtol=6e-3,
+          atol=1e-3,
+      ),
+  )
+  def test_hf_transformers_training(
+      self,
+      provider: str,
+      module_name: str,
+      rtol: float | None = None,
+      atol: float | None = None,
+  ) -> None:
+    cpu_model, tpu_model, compiled_tpu_model, cpu_inputs, tpu_inputs = (
+        self._create_model_and_inputs(provider, module_name, is_training=True)
+    )
+    cpu_optimizer = torch.optim.SGD(cpu_model.parameters(), lr=0.01)
+    tpu_optimizer = torch.optim.SGD(tpu_model.parameters(), lr=0.01)
+
+    tpu_loss = compiled_tpu_model(tpu_optimizer, tpu_inputs)
+    cpu_loss = _train_step(cpu_model, cpu_optimizer, cpu_inputs)
+
+    utils.assert_close(
+        actual=tpu_loss,
+        expected=cpu_loss,
+        rtol=rtol,
+        atol=atol,
+        preamble="TPU vs CPU loss",
+        check_value=utils.CheckValueMode.LOOSE,
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="transformers/google/gemma-3-270m",
+          provider="transformers",
+          module_name="google/gemma-3-270m",
+          rtol=6e-2,
+          # This model's perplexity is actually lower than CPU by the tolerance
+          # below which is good but the delta is somewhat large thus need to
+          # specify a higher tolerance.
+          atol=3e-1,
+      ),
+      dict(
+          testcase_name="transformers/Qwen/Qwen3-0.6B",
+          provider="transformers",
+          module_name="Qwen/Qwen3-0.6B",
+          rtol=1e-3,
+          atol=6e-2,
+      ),
+      dict(
+          testcase_name="transformers/meta-llama/Llama-3.2-1B",
+          provider="transformers",
+          module_name="meta-llama/Llama-3.2-1B",
+          rtol=5e-4,
+          atol=1e-2,
+      ),
+  )
+  def test_hf_transformers_inference(
+      self,
+      provider: str,
+      module_name: str,
+      rtol: float | None = None,
+      atol: float | None = None,
+  ) -> None:
+    cpu_model, _, compiled_tpu_model, cpu_inputs, tpu_inputs = (
+        self._create_model_and_inputs(provider, module_name)
+    )
+
+    cpu_out = cpu_model(**cpu_inputs)
+    tpu_out = compiled_tpu_model(**tpu_inputs)
+
+    cpu_ppl = _calculate_perplexity(cpu_out.logits, cpu_inputs["input_ids"])
+    tpu_ppl = _calculate_perplexity(tpu_out.logits, tpu_inputs["input_ids"])
+
+    self.assertLess(
+        tpu_ppl,
+        _PERPLEXITY_THRESHOLD,
+        "TPU produced garbage results (high perplexity).",
+    )
+    utils.assert_close(
+        actual=tpu_ppl,
+        expected=cpu_ppl,
+        rtol=rtol,
+        atol=atol,
+        preamble="TPU vs CPU perplexity",
+        check_value=utils.CheckValueMode.LOOSE,
+    )
+
+
+if __name__ == "__main__":
+  absltest.main()

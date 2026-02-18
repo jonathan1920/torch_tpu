@@ -26,6 +26,7 @@ pytype_strict_library(
     data = [
         "//examples/huggingface_transformers:model_configs_data",
     ],
+    visibility = ["//:__subpackages__"],
     deps = [
         "//shims/absl_py/flags",
         "//shims/etils/epath",
