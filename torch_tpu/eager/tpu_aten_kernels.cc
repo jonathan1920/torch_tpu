@@ -74,6 +74,7 @@
 #include "torch_tpu/ops/fill/fill_aten_kernels.h"
 #include "torch_tpu/ops/flip/flip_aten_kernels.h"
 #include "torch_tpu/ops/foreach/foreach_add_aten_kernels.h"
+#include "torch_tpu/ops/foreach/foreach_mul_aten_kernels.h"
 #include "torch_tpu/ops/gather/gather_aten_kernels.h"
 #include "torch_tpu/ops/gelu/gelu_aten_kernels.h"
 #include "torch_tpu/ops/group_norm/group_norm_aten_kernels.h"
@@ -307,6 +308,14 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kForeachAdd_Scalar, AtenForeachAdd_Scalar);
   Impl(m, OpName::kForeachAdd_ScalarList, AtenForeachAdd_ScalarList);
   Impl(m, OpName::kForeachAdd_Tensor, AtenForeachAdd_Tensor);
+  Impl(m, OpName::kForeachMulList, AtenForeachMulList);
+  Impl(m, OpName::kForeachMulScalar, AtenForeachMulScalar);
+  Impl(m, OpName::kForeachMulScalarList, AtenForeachMulScalarList);
+  Impl(m, OpName::kForeachMulTensor, AtenForeachMulTensor);
+  Impl(m, OpName::kForeachMul_List, AtenForeachMul_List);
+  Impl(m, OpName::kForeachMul_Scalar, AtenForeachMul_Scalar);
+  Impl(m, OpName::kForeachMul_ScalarList, AtenForeachMul_ScalarList);
+  Impl(m, OpName::kForeachMul_Tensor, AtenForeachMul_Tensor);
   Impl(m, OpName::kFusedRmsNorm, AtenFusedRmsNorm);
   Impl(m, OpName::kFusedRmsNormBackward, AtenFusedRmsNormBackward);
   Impl(m, OpName::kGatherOut, AtenGatherOut);

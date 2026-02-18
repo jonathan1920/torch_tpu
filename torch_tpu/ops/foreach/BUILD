@@ -69,4 +69,31 @@ torch_tpu_cc_library(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "foreach_mul_aten_kernels",
+    srcs = [
+        "foreach_mul_aten_kernels.cc",
+    ],
+    hdrs = [
+        "foreach_mul_aten_kernels.h",
+    ],
+    deps = [
+        ":utils",
+        "//shims/torch:aten_headers",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:op_dispatcher",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops/macros:kernel",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_builder",
+    ],
+)
+
 define_cpp_filegroup(name = "all_cpp_files_recursive")

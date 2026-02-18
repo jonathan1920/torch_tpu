@@ -1526,9 +1526,9 @@ class TestOps(TorchTpuTestBase):
         "_foreach_add",
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
-        # TODO: fix _foreach_add() failing with complex dtypes.
+        # TODO(b/485291373): fix _foreach_add() failing with complex dtypes.
         exclude_dtypes=COMPLEX_DTYPES,
-        # TODO: fix _foreach_add_() failing with complex dtypes.
+        # TODO(b/485291373): fix _foreach_add_() failing with complex dtypes.
         exclude_inplace_dtypes=COMPLEX_DTYPES,
     )
 
@@ -1726,11 +1726,13 @@ class TestOps(TorchTpuTestBase):
         # TODO: fix _foreach_mul() failing with bool dtype. Check failed:
         # at::canCast(actual_scalar_type, expected_scalar_type) result type
         # UInt64 can't be cast to the desired output type Bool
-        exclude_dtypes=(torch.bool,),
+        # TODO(b/485291373): fix _foreach_mul() failing with complex dtypes.
+        exclude_dtypes=(torch.bool,) + COMPLEX_DTYPES,
         # TODO: fix _foreach_mul_() failing with bool dtype. Check failed:
         # at::canCast(actual_scalar_type, expected_scalar_type) result type
         # UInt64 can't be cast to the desired output type Bool
-        exclude_inplace_dtypes=(torch.bool,),
+        # TODO(b/485291373): fix _foreach_mul_() failing with complex dtypes.
+        exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
     )
 
   def test_foreach_neg(self):
