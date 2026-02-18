@@ -39,6 +39,7 @@ pytype_strict_library(
 
 torch_tpu_py_test(
     name = "module_registry_test",
+    timeout = "long",
     srcs = ["module_registry_test.py"],
     shard_count = 6,
     tags = [
