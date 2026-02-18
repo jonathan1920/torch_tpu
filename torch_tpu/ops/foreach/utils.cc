@@ -139,7 +139,7 @@ void CheckScalarType(mlir::ElementType out_dtype,
                      mlir::ElementType compute_dtype,
                      at::ScalarType tensor_type, at::ScalarType scalar_type) {
   TT_CHECK_THROW(out_dtype == compute_dtype, error::kInvalidArgument)
-      << "expected the scalar dtype to be castable to the tensors dtype "
+      << "expected the scalar dtype to be castable to the tensor dtype "
          "(e.g. bool to int or int to float), got "
       << ToString(scalar_type) << " and " << ToString(tensor_type);
 }
