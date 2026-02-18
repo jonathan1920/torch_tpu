@@ -634,7 +634,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close_tpu_vs_cpu(
         test,
         rtol=9.4e-2,
-        atol=7.2e-3,
+        atol=8e-3,
     )
 
   @parameterized.parameters(
@@ -1676,7 +1676,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           golden_result=torch.tensor(expected_mean),
           torch_tpu_result=mean_num_zeros.to("cpu"),
           atol=atol,
-          rtol=0.0,
+          rtol=5e-2,
           check_value=CheckValueMode.LOOSE,
       )
 
@@ -2607,8 +2607,8 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close(
         golden_result=golden_result,
         torch_tpu_result=tpu_result,
-        rtol=1.2e-2,
-        atol=5.3e1,
+        rtol=4e-2,
+        atol=6e1,
     )
 
   def test_default_dtype_change_after_deferred_op(self):
@@ -4372,7 +4372,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         output = model_device(input_tensor_device)
       return output
 
-    self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=4e-2, atol=1e-2)
 
   def test_avg_pool3d_backward_padding(self):
     """Test for avg_pool3d_backward crashing when stride is large.

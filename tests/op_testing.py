@@ -67,6 +67,16 @@ SampleInput = core.SampleInput  # pylint: disable=protected-access
 CheckValueMode = utils.CheckValueMode
 Tolerance = utils.Tolerance
 
+# The seed for both Python and PyTorch RNGs. Set before the test program starts
+# and before each test method starts.
+_RANDOM_SEED: int = 0
+
+
+def _seed_rngs(seed: int) -> None:
+  """Seeds the Python and PyTorch RNGs with the given seed."""
+  random.seed(seed)
+  torch.manual_seed(seed)
+
 
 class TestMode(enum.Enum):
   """Mode to run the test in."""
@@ -1146,6 +1156,9 @@ class TorchTpuTestBase(TestCase):
     super().setUp()
     # Show long diffs in assertEqual.
     self.maxDiff = None  # pylint: disable=invalid-name
+
+    # Reseed the RNGs to prevent test methods from interfering with each other.
+    _seed_rngs(_RANDOM_SEED)
 
     # Device used for computing the golden results, or None if the golden
     # results are read from the golden file.
@@ -2289,23 +2302,23 @@ def set_up_test_module() -> None:
     sys.exit(0)
 
   # Pick a random seed for the test.
+  global _RANDOM_SEED
   if absltest.FLAGS["test_random_seed"].present:
     # The user explicitly passed --test_random_seed=N, so we use that value.
-    seed = absltest.FLAGS.test_random_seed
+    _RANDOM_SEED = absltest.FLAGS.test_random_seed
   elif _torch_tpu_vs_cpu_mode():
     # The user did not pass --test_random_seed, so we pick a 5-digit seed
     # based on the current time.
-    seed = time.time_ns() % 100000
+    _RANDOM_SEED = time.time_ns() % 100000
   else:
     # We are either generating the golden GPU file or using it.
     # Pick a fixed seed to ensure that the golden file is stable and we
     # run the tests in the same condition where the golden file was generated.
-    seed = 1234
+    _RANDOM_SEED = 1234
 
   # Set the random seed for Python and Torch.
-  random.seed(seed)
-  torch.manual_seed(seed)
-  print(f"Repro with --test_random_seed={seed}", flush=True)
+  _seed_rngs(_RANDOM_SEED)
+  print(f"Repro with --test_random_seed={_RANDOM_SEED}", flush=True)
   print(f"Torch initial seed: {torch.initial_seed()}", flush=True)
 
   # Assert that `torch.get_default_dtype()` returns `torch.float` when `setUp`
