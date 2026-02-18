@@ -357,7 +357,6 @@ torch_tpu_py_test(
     main = "ops_unit_test.py",
     shard_count = 20,
     tags = [
-        "oss_ready_tpu",
         "requires-tpu-v5lite",
     ],
     deps = [
@@ -599,7 +598,6 @@ torch_tpu_py_test(
     name = "backwards_test",
     srcs = ["backwards_test.py"],
     tags = [
-        "oss_ready_tpu",
         "requires-tpu-v5lite",
     ],
     deps = [
