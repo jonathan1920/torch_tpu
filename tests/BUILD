@@ -139,6 +139,7 @@ torch_tpu_py_test(
     args = [
         "--torch_tpu_device=tpu",
         "--compute_grad=True",
+        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
     main = "ops_test.py",
     shard_count = 50,
@@ -230,6 +231,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "ops_test_tpu_vs_gpu",
+    timeout = "long",
     srcs = ["ops_test.py"],
     args = [
         "--test_mode=torch_tpu_vs_gpu",

@@ -26,6 +26,7 @@ import logging
 import os
 import pathlib
 import plistlib
+import random
 import re
 import statistics
 import sys
@@ -546,44 +547,6 @@ def _op_name_for_logging(op: OpInfo, variant: OpVariant) -> str:
   if variant == OpVariant.INPLACE:
     return f"{op.name}_"
   return f"{op.name}.out"
-
-
-def _have_tested_enough_samples(
-    op_name: str, dtype: torch.dtype, *, sample_index: int, max_samples: int
-) -> bool:
-  """Returns true if we have tested enough samples for an (op_variant, dtype).
-
-  Args:
-    op_name: The name of the op variant.
-    dtype: The dtype of the op variant.
-    sample_index: The 0-based index of the sample to test next.
-    max_samples: The maximum number of samples to test for the (op_variant,
-      dtype) combination. -1 means no limit. We also consider the value of the
-      --max_samples_per_op_dtype flag (both the flag and this parameter must be
-      satisfied).
-  """
-
-  if (
-      _MAX_SAMPLES_PER_OP_DTYPE.value >= 0
-      and sample_index >= _MAX_SAMPLES_PER_OP_DTYPE.value
-  ):
-    print(
-        f"Skipping remaining test samples for {op_name}() with dtype"
-        f" {dtype} as"
-        f" --max_samples_per_op_dtype={_MAX_SAMPLES_PER_OP_DTYPE.value}.",
-        flush=True,
-    )
-    return True
-  if max_samples >= 0 and sample_index >= max_samples:
-    print(
-        f"Skipping remaining test samples for {op_name}() with dtype"
-        f" {dtype} as the total number of samples tested so far"
-        f" {sample_index} has reached the limit specified by the test case's"
-        " max_samples_per_op_dtype parameter.",
-        flush=True,
-    )
-    return True
-  return False
 
 
 def _tensor_tree_map(
@@ -1396,6 +1359,7 @@ class TorchTpuTestBase(TestCase):
       dtype: torch.dtype,
       variant: OpVariant,
       *,
+      max_samples: Optional[int],
       compute_grad: bool = False,
       use_compiled: bool = False,
   ) -> list[tuple[OpInput, OpOutput]]:
@@ -1412,6 +1376,9 @@ class TorchTpuTestBase(TestCase):
       op: The op to test.
       dtype: The dtype to test.
       variant: The variant of the op to test.
+      max_samples: The maximum number of samples to generate for the given (op
+        variant, dtype) combination. If None, the number is determined by the
+        --max_samples_per_op flag.
       compute_grad: If True, compute the gradient of the op with respect to the
         input instead of the op outputs.
       use_compiled: If True, use torch.compile to compile the op before running.
@@ -1427,9 +1394,20 @@ class TorchTpuTestBase(TestCase):
       return _GOLDEN_GPU_DATA.get(op_name, {}).get(dtype, [])
 
     # Generate sample inputs on the golden device.
-    golden_samples = op.sample_inputs(
-        self.golden_device, dtype, requires_grad=False
+    golden_samples = list(
+        op.sample_inputs(self.golden_device, dtype, requires_grad=False)
     )
+    if max_samples is None:
+      max_samples = _MAX_SAMPLES_PER_OP_DTYPE.value
+    if max_samples >= 0 and len(golden_samples) > max_samples:
+      print(
+          f">>> Taking {max_samples} random samples from "
+          f" {len(golden_samples)} test samples ...",
+          flush=True,
+      )
+      # Take at most max_samples from the generated samples.
+      golden_samples = random.sample(golden_samples, max_samples)
+
     pairs = []
     for golden_sample in golden_samples:
       # sample_inputs for scaled_dot_product_attention sometimes includes a
@@ -1904,7 +1882,7 @@ class TorchTpuTestBase(TestCase):
       check_op_failures: bool,
       skip_output_indices: list[int],
       skip_if: Optional[Callable[[str, OpVariant, OpInput], bool]],
-      max_samples_per_op_dtype: int,
+      max_samples_per_op_dtype: Optional[int],
   ) -> None:
     """Tests that the op produces similar results on TorchTPU and the golden device.
 
@@ -1930,8 +1908,9 @@ class TorchTpuTestBase(TestCase):
       skip_output_indices: The indices of the output to skip checking.
       skip_if: A function that returns True if a test case should be skipped,
         given the golden device, the op variant, and the op input.
-      max_samples_per_op_dtype: The maximum number of samples to test. If -1,
-        all samples will be tested.
+      max_samples_per_op_dtype: The maximum number of samples to test for each
+        (op variant, dtype) combination. If None, the number is determined by
+        the --max_samples_per_op_dtype flag.
     """
 
     if dtype not in _dtypes_to_test():
@@ -1954,13 +1933,9 @@ class TorchTpuTestBase(TestCase):
         variant=variant,
         compute_grad=compute_grad,
         use_compiled=use_compiled,
+        max_samples=max_samples_per_op_dtype,
     )
     for i, [golden_input, golden_output] in enumerate(golden_pairs):
-      if _have_tested_enough_samples(
-          op_name, dtype, sample_index=i, max_samples=max_samples_per_op_dtype
-      ):
-        break
-
       golden_result = golden_output.output_value
       golden_thrown = isinstance(golden_result, Exception)
       if golden_thrown and not check_op_failures:
@@ -2053,7 +2028,7 @@ class TorchTpuTestBase(TestCase):
       check_inplace_op_failures: bool = True,
       skip_output_indices: Optional[list[int]] = None,
       skip_if: Optional[Callable[[str, OpVariant, OpInput], bool]] = None,
-      max_samples_per_op_dtype: int = -1,
+      max_samples_per_op_dtype: Optional[int] = None,
       variant_test_name: Optional[str] = None,
   ) -> None:
     """Does the standard suite of testing for the given op.
@@ -2091,8 +2066,8 @@ class TorchTpuTestBase(TestCase):
       skip_if: A function that returns True if a test case should be skipped,
         given the golden device, the op variant, and the op input.
       max_samples_per_op_dtype: The maximum number of samples to test for a
-        given (op_variant, dtype) combination. If -1, all samples will be
-        tested.
+        given (op_variant, dtype) combination. If None, the number is determined
+        by the --max_samples_per_op_dtype flag.
       variant_test_name: The name of the variant to test, referring to the
         variant_test_name field of the OpInfo, when named variants are
         available. If None, the base variant set, filtering only on the op_name,
@@ -2313,6 +2288,7 @@ def set_up_test_module() -> None:
     # test to always fail in this case.
     sys.exit(0)
 
+  # Pick a random seed for the test.
   if absltest.FLAGS["test_random_seed"].present:
     # The user explicitly passed --test_random_seed=N, so we use that value.
     seed = absltest.FLAGS.test_random_seed
@@ -2325,7 +2301,11 @@ def set_up_test_module() -> None:
     # Pick a fixed seed to ensure that the golden file is stable and we
     # run the tests in the same condition where the golden file was generated.
     seed = 1234
+
+  # Set the random seed for Python and Torch.
+  random.seed(seed)
   torch.manual_seed(seed)
+  print(f"Repro with --test_random_seed={seed}", flush=True)
   print(f"Torch initial seed: {torch.initial_seed()}", flush=True)
 
   # Assert that `torch.get_default_dtype()` returns `torch.float` when `setUp`
