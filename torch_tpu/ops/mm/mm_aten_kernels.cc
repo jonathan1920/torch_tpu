@@ -17,17 +17,18 @@
 #include "torch_tpu/ops/mm/mm_aten_kernels.h"
 
 #include <cstdint>
+#include <string_view>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "ATen/core/TensorBody.h"
 #include "ATen/native/Resize.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -38,39 +39,43 @@
 namespace torch_tpu {
 namespace {
 
-absl::Status CheckMmPreconditions(const at::Tensor& lhs,
-                                  const at::Tensor& rhs) {
-  TT_RET_CHECK(lhs.dim() == 2, error::kInvalidArgument)
-      << "the first argument must be a 2D tensor, got a " << lhs.dim()
-      << "D tensor with size [" << absl::StrJoin(lhs.sizes(), ", ") << "]";
-  TT_RET_CHECK(rhs.dim() == 2, error::kInvalidArgument)
-      << "the second argument must be a 2D tensor, got a " << rhs.dim()
-      << "D tensor with size [" << absl::StrJoin(rhs.sizes(), ", ") << "]";
+absl::Status CheckIsMatrix(const at::Tensor& tensor,
+                           const std::string_view arg_name) {
+  TT_RET_CHECK(tensor.dim() == 2, error::kInvalidArgument)
+      << "expected the " << arg_name
+      << " argument to be a 2D tensor (matrix), got " << tensor.dim()
+      << "D of shape " << ToString(tensor.sizes());
+  return absl::OkStatus();
+}
+
+absl::Status CheckMmOutInputs(const at::Tensor& lhs, const at::Tensor& rhs,
+                              at::Tensor& out) {
+  // DType checks.
+  TT_RET_CHECK(lhs.scalar_type() == rhs.scalar_type(), error::kInvalidArgument)
+      << "expected the two arguments to have the same dtype, got "
+      << ToString(lhs.scalar_type()) << " vs " << ToString(rhs.scalar_type());
+  TT_RET_CHECK(lhs.scalar_type() == out.scalar_type(), error::kInvalidArgument)
+      << "expected the inputs and the output to have the same dtype, got "
+      << ToString(lhs.scalar_type()) << " vs " << ToString(out.scalar_type());
+
+  // Dimension checks.
+  TT_RETURN_IF_ERROR(CheckIsMatrix(lhs, /* arg_name= */ "first"));
+  TT_RETURN_IF_ERROR(CheckIsMatrix(rhs, /* arg_name= */ "second"));
   TT_RET_CHECK(lhs.size(1) == rhs.size(0), error::kInvalidArgument)
-      << "the column size of the first argument must equal the row size "
-         "of the second argument, got "
-      << lhs.size(1) << " and " << rhs.size(0);
-  TT_ASSIGN_OR_RETURN(const auto lhs_dtype,
-                      ConvertTo<mlir::ElementType>(lhs.scalar_type()));
-  TT_ASSIGN_OR_RETURN(const auto rhs_dtype,
-                      ConvertTo<mlir::ElementType>(rhs.scalar_type()));
-  TT_RET_CHECK(lhs_dtype == rhs_dtype, error::kInvalidArgument)
-      << "the dtypes of the first and second arguments must be the same, "
-         "got "
-      << ToDTypeName(lhs_dtype) << " and " << ToDTypeName(rhs_dtype);
+      << "expected the column size of the first matrix to match the row size "
+         "of the second matrix, got shape "
+      << ToString(lhs.sizes()) << " vs " << ToString(rhs.sizes()) << " where "
+      << lhs.size(1) << " != " << rhs.size(0);
+
   return absl::OkStatus();
 }
 
 }  // namespace
 
-
 at::Tensor& AtenMmOut(const at::Tensor& lhs, const at::Tensor& rhs,
                       at::Tensor& out) {
   TT_KERNEL(OpName::kMmOut, _, (lhs, rhs, out), {
-    TT_THROW_IF_ERROR(CheckMmPreconditions(lhs, rhs));
-    TT_CHECK_THROW(lhs.dtype() == out.dtype(), error::kInvalidArgument)
-        << "out must have the same dtype as inputs, got input type "
-        << lhs.dtype() << " and output type" << out.dtype();
+    TT_THROW_IF_ERROR(CheckMmOutInputs(lhs, rhs, out));
     int64_t output_dims[2] = {lhs.size(0), rhs.size(1)};
     mlir::ElementType dtype =
         ConvertTo<mlir::ElementType>(lhs.scalar_type()).value();

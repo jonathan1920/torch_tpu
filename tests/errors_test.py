@@ -1171,9 +1171,10 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         RuntimeError,
         cpu="expected m1 and m2 to have the same dtype, but got: float != int",
         tpu=(
-            "mm(): the dtypes of the first and second arguments must be the"
-            " same, got float32 and int32"
+            "mm(): expected the two arguments to have the same dtype, got"
+            " float32 vs int32"
         ),
+        message_reviewed_by="wan",
     ):
       torch.mm(t1, t2)
 
@@ -4705,6 +4706,91 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       test_with(torch.bool, tpu="bool", cpu="bool")
     with self.subTest(dtype=torch.complex64):
       test_with(torch.complex64, tpu="complex64", cpu="complex")
+
+  def test_mm_output_dtype_mismatch(self):
+    lhs = torch.ones(3, 4, device=et.device(), dtype=torch.float32)
+    rhs = torch.ones(4, 5, device=et.device())
+    out = torch.ones(3, 5, device=et.device(), dtype=torch.float64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "mm(): expected the inputs and the output to have the same dtype,"
+            " got float32 vs float64"
+        ),
+        cpu="Expected out tensor to have dtype float, but got double instead",
+        message_reviewed_by="wan",
+    ):
+      torch.mm(lhs, rhs, out=out)
+
+  def test_mm_inputs_dtype_mismatch(self):
+    lhs = torch.ones(3, 4, device=et.device(), dtype=torch.float32)
+    rhs = torch.ones(4, 5, device=et.device(), dtype=torch.float64)
+
+    # Call the out-of-place variant of `mm()` op.
+    out = torch.ones(3, 6, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "mm(): expected the two arguments to have the same dtype, got"
+            " float32 vs float64"
+        ),
+        cpu=(
+            "expected m1 and m2 to have the same dtype, but got: float !="
+            " double"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.mm(lhs, rhs, out=out)
+
+  def test_mm_inputs_are_not_matrices(self):
+    not_a_matrix_tensor = torch.ones(3, 4, 5, device=et.device())
+    matrix_tensor = torch.ones(4, 4, device=et.device())
+
+    # Call the out-of-place variant of `mm()` op.
+    out = torch.ones(4, 4, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "mm(): expected the first argument to be a 2D tensor (matrix),"
+            " got 3D of shape [3, 4, 5]"
+        ),
+        cpu="self must be a matrix",
+        message_reviewed_by="wan",
+    ):
+      torch.mm(not_a_matrix_tensor, matrix_tensor, out=out)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "mm(): expected the second argument to be a 2D tensor (matrix),"
+            " got 3D of shape [3, 4, 5]"
+        ),
+        cpu="mat2 must be a matrix",
+        message_reviewed_by="wan",
+    ):
+      torch.mm(matrix_tensor, not_a_matrix_tensor, out=out)
+
+  def test_mm_inputs_dimension_mismatch(self):
+    lhs = torch.ones(3, 4, device=et.device())
+    rhs = torch.ones(5, 6, device=et.device())
+
+    # Call the out-of-place variant of `mm()` op.
+    out = torch.ones(3, 6, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "mm(): expected the column size of the first matrix to match the"
+            " row size of the second matrix, got shape [3, 4] vs [5, 6] where 4"
+            " != 5"
+        ),
+        cpu="mat1 and mat2 shapes cannot be multiplied (3x4 and 5x6)",
+        message_reviewed_by="wan",
+    ):
+      torch.mm(lhs, rhs, out=out)
 
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
+
 namespace stablehlo = mlir::stablehlo;
 
 absl::StatusOr<mlir::MlirOp> BuildMmShlo(
@@ -39,23 +40,31 @@ absl::StatusOr<mlir::MlirOp> BuildMmShlo(
   mlir::MLIRContext& ctx = builder.getContext();
   const mlir::RankedTensorType lhs_tensor_type = GetTensorTypeOrDie(lhs);
   auto lhs_shape = lhs_tensor_type.getShape();
-  TT_RET_CHECK(lhs_shape.size() == 2, error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Rank constraint is checked before Mlir
+                 // lowering.
+      lhs_shape.size() == 2, error::kInvalidArgument)
       << "BuildMmShlo: lhs must be a 2D tensor, got rank "
       << lhs_tensor_type.getRank();
 
   const mlir::RankedTensorType rhs_tensor_type = GetTensorTypeOrDie(rhs);
   auto rhs_shape = rhs_tensor_type.getShape();
-  TT_RET_CHECK(rhs_shape.size() == 2, error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Rank constraint is checked before Mlir
+                 // lowering.
+      rhs_shape.size() == 2, error::kInvalidArgument)
       << "BuildMmShlo: rhs must be a 2D tensor, got rank "
       << rhs_tensor_type.getRank();
 
   auto dot_general_element_type = lhs_tensor_type.getElementType();
-  TT_RET_CHECK(rhs_tensor_type.getElementType() == dot_general_element_type,
-               error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Type constraint is checked before Mlir
+                 // lowering.
+      rhs_tensor_type.getElementType() == dot_general_element_type,
+      error::kInvalidArgument)
       << "BuildMmShlo: lhs and rhs must have the same element type, got "
       << mlir::debugString(lhs_tensor_type.getElementType()) << " and "
       << mlir::debugString(rhs_tensor_type.getElementType());
-  TT_RET_CHECK(lhs_shape[1] == rhs_shape[0], error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Dimension constraint is checked before
+                 // Mlir lowering.
+      lhs_shape[1] == rhs_shape[0], error::kInvalidArgument)
       << "BuildMmShlo: lhs and rhs must have the same contracting dimension, "
          "got "
       << lhs_shape[1] << " and " << rhs_shape[0];
