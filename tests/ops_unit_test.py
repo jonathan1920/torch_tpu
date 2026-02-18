@@ -1657,26 +1657,26 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         torch.uint32,
         torch.uint64,
     ]:
-      n = 100
+      n = 10000
       t = torch.zeros(n, n, dtype=dtype, device=api.tpu_device())
       t = t.random_(0, 16)
-      # If X = avg of entries that are equal to zero = (1/n^2) sum_{ij} B_ij
-      #   B_ij ~ Bernoulli(1/16)
-      # then
+      # If X = avg of entries of t that are equal to zero, then
       #   E(X) = 1/16
-      #   V(X) = (1/n^2) * V(B_00)
-      #        = 15 / 256 / n / n
+      #   V(X) = (1/n^2) * V(B_00) = 15 / 256 / n / n
       mean_num_zeros = t.eq(0).sum() / n / n
       expected_mean = 1 / 16
-      pop_variance = 15 / 256 / n / n
-      # P(|X - mean| >= atol) <= V(X) / atol^2 = pop_variance / atol^2
-      # make atol big enough so above prob is <= 10^-10\
-      atol = torch.sqrt(torch.tensor(pop_variance)).item() * 1e5
+      # Using Chebyshev's inequality:
+      #   P(|X - mean| >= atol) <= V(X) / atol^2 = 15 / 256 / n^2 / atol^2
+      # 1) To make this probability less than 10^-6 we need
+      #   atol >= sqrt(15) * 10^3 / (16 * n)
+      # 2) To make the test meaningful, we want atol < 1/16, so we need
+      #   n >= sqrt(15) * 10^3 ~= 4000
+      atol = (15**0.5) * 1e3 / (16 * n)  # ~ 0.024
       self.assert_close(
           golden_result=torch.tensor(expected_mean),
           torch_tpu_result=mean_num_zeros.to("cpu"),
           atol=atol,
-          rtol=5e-2,
+          rtol=0.0,
           check_value=CheckValueMode.LOOSE,
       )
 
