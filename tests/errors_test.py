@@ -260,6 +260,17 @@ def _parameterize_convolution_fwd_bwd(
   )
 
 
+def _make_lu_unpack_outputs(
+    p: tuple[int, ...], l: tuple[int, ...], u: tuple[int, ...]
+) -> tuple[torch.Tensor, ...]:
+  """Creates a 3-tuple of tensors for `lu_unpack()` op."""
+  return (
+      torch.empty(p, device=et.device()),
+      torch.empty(l, device=et.device()),
+      torch.empty(u, device=et.device()),
+  )
+
+
 class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU."""
 
@@ -701,14 +712,6 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.add(t, s, alpha=1j)
 
-  def test_linalg_lu_factor_ex_pivot_false(self):
-    a = torch.randn(2, 2, device=et.device())
-    with et.assert_raises_message(
-        RuntimeError,
-        "linalg_lu_factor_ex(): non-pivoting decomposition is not supported",
-    ):
-      torch.linalg.lu_factor_ex(a, pivot=False)
-
   def test_threshold_unsupported_bool_dtype(self):
     with et.assert_raises_message(
         NotImplementedError,
@@ -725,8 +728,8 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
           torch.tensor([1 + 1j, 2 + 2j], device=et.device()), 0.5, 0.0
       )
 
-  # This test should be run only on TPU because there are no other available
-  # devices on CPU runs, other than CPU.
+  # Why do we run this test only on TPU (and not on CPU)?
+  # There are no other available devices on CPU runs, other than CPU.
   @parameterized.named_parameters(
       {"testcase_name": "amin", "op_name": "amin", "op": torch.amin},
       {"testcase_name": "amax", "op_name": "amax", "op": torch.amax},
@@ -760,6 +763,80 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
         message_reviewed_by="wan",
     ):
       op(tensor, dim=0, out=out)
+
+  # Why do we run this test only on TPU (and not on CPU)?
+  # PyTorch core implementations don't check `pivots` rank.
+  # BUG: TPU kernels should mimic native devices behavior, including bugs.
+  def test_lu_unpack_pivots_invalid_rank(self):
+    data = torch.ones(2, 4, 4, device=et.device())
+
+    # TODO: b/485613841 remove this test when the divergence is resolved.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="lu_unpack(): lu_pivots must have at least 1 dimension, got 0",
+    ):
+      pivots = torch.tensor(1, device=et.device(), dtype=torch.int32)
+      torch.lu_unpack(data, pivots)
+
+    # TODO: b/483972819 remove this test when the divergence is resolved.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "lu_unpack(): p must have one more dimension than lu_pivots, got 1"
+            " and 2"
+        ),
+    ):
+      pivots = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
+      out = _make_lu_unpack_outputs(p=(4,), l=(2, 4, 4), u=(2, 4, 4))
+      torch.lu_unpack(data, pivots, out=out)
+
+  # Why do we run this test only on TPU (and not on CPU)?
+  # PyTorch core implementations don't check `pivots` dimensions.
+  # BUG: TPU kernels should mimic native devices behavior, including bugs.
+  def test_lu_unpack_pivots_invalid_dimension(self):
+    data = torch.ones(2, 4, 4, device=et.device())
+
+    # TODO: b/485613841 remove this test when the divergence is resolved.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "lu_unpack(): pivots size must be less than or equal to the size of"
+            " the matrix, got 5 and 4"
+        ),
+    ):
+      pivots = torch.ones(2, 5, device=et.device(), dtype=torch.int32)
+      torch.lu_unpack(data, pivots)
+
+    # TODO: b/485613841 remove this test when the divergence is resolved.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "lu_unpack(): pivots and tensor must have the same batch"
+            " dimensions, got [2] and [3]"
+        ),
+    ):
+      pivots = torch.ones(3, 4, device=et.device(), dtype=torch.int32)
+      torch.lu_unpack(data, pivots)
+
+  # Why do we run this test only on TPU (and not on CPU)?
+  # CPU kernel raises an `IndexError`, instead of a `RuntimeError`, because it
+  # tries to get `pivots.size(-1)` of a 0-dim tensor.
+  # BUG: TPU kernels should mimic native devices behavior, including bugs.
+  def test_lu_solve_pivots_rank_too_low(self):
+    lu = torch.ones(4, 4, device=et.device())
+    pivots = torch.tensor(0, device=et.device(), dtype=torch.int32)
+    b = torch.ones(4, 4, device=et.device())
+
+    # Call the out-of-place variant of linalg.lu_solve() op.
+    out = torch.empty(4, device=et.device())
+
+    # TODO: b/485628812 also test CPU when the TPU kernel is fixed, raising an
+    # `IndexError`, instead of an `RuntimeError`.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="linalg_lu_solve(): pivots must have at least 1 dimension, got 0",
+    ):
+      torch.linalg.lu_solve(lu, pivots, b, out=out)
 
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
@@ -4791,6 +4868,184 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         message_reviewed_by="wan",
     ):
       torch.mm(lhs, rhs, out=out)
+
+  def test_linalg_lu_factor_ex_no_pivoting(self):
+    a = torch.ones(1, 2, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "linalg_lu_factor_ex(): non-pivoting decomposition is not supported"
+        ),
+        cpu=(
+            "linalg.lu_factor: LU without pivoting is not implemented on"
+            " the CPU"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.linalg.lu_factor_ex(a, pivot=False)
+
+  def test_linalg_lu_factor_ex_rank_too_low(self):
+    a = torch.ones(4, device=et.device())
+
+    # We need to call the out-of-place variant of linalg.lu_factor_ex() op, so
+    # that we don't go through the fallback. Otherwise, the meta kernel will
+    # catch this error before it reaches TorchTPU implementation.
+    out = (
+        torch.empty(4, device=et.device()),
+        torch.empty(4, device=et.device()),
+        torch.empty(4, device=et.device()),
+    )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "linalg_lu_factor_ex(): input tensor expected to have at least 2"
+            " dimensions, got 1"
+        ),
+        cpu=(
+            "torch.lu_factor: Expected tensor with 2 or more dimensions. Got"
+            " size: [4] instead"
+        ),
+    ):
+      torch.linalg.lu_factor_ex(a, out=out)
+
+  def test_lu_unpack_data_rank_too_low(self):
+    data = torch.ones(4, device=et.device())
+    pivots = torch.ones(4, device=et.device(), dtype=torch.int32)
+
+    # Call the out-of-place variant of linalg.lu_unpack() op.
+    out = _make_lu_unpack_outputs(p=(4,), l=(4,), u=(4,))
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="lu_unpack(): lu_data must have at least 2 dimensions, got 1",
+        cpu=(
+            "torch.lu_unpack: Expected tensor with 2 or more dimensions. Got"
+            " size: [4] instead"
+        ),
+    ):
+      torch.lu_unpack(data, pivots, out=out)
+
+  def test_lu_solve_rank_too_low(self):
+    lu = torch.ones(4, device=et.device())
+    pivots = torch.ones(4, device=et.device(), dtype=torch.int32)
+    b = torch.ones(4, device=et.device())
+
+    # Call the out-of-place variant of linalg.lu_solve() op.
+    out = torch.empty(4, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="linalg_lu_solve(): lu must have at least 2 dimensions, got 1",
+        cpu=(
+            "torch.linalg.lu_solve: The input tensor A must have at least 2"
+            " dimensions."
+        ),
+    ):
+      torch.linalg.lu_solve(lu, pivots, b, out=out)
+
+  def test_lu_solve_rectangular_matrix(self):
+    lu = torch.ones(4, 2, device=et.device())
+    pivots = torch.ones(4, device=et.device(), dtype=torch.int32)
+    b = torch.ones(4, device=et.device())
+
+    # Call the out-of-place variant of linalg.lu_solve() op.
+    out = torch.empty(4, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="linalg_lu_solve(): lu must be square, got 4 and 2",
+        cpu=(
+            "torch.linalg.lu_solve: A must be batches of square matrices, but"
+            " they are 4 by 2 matrices"
+        ),
+    ):
+      torch.linalg.lu_solve(lu, pivots, b, out=out)
+
+  def test_lu_solve_dimensions_mismatch(self):
+    lu = torch.ones(4, 4, device=et.device())
+    pivots = torch.ones(4, device=et.device(), dtype=torch.int32)
+    b = torch.ones(3, 4, device=et.device())
+
+    # Call the out-of-place variant of linalg.lu_solve() op.
+    out = torch.empty(4, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "linalg_lu_solve(): b must have compatible dimensions with lu, got"
+            " b.shape[-2:]=(3, 4) and lu.shape[-2:]=(4, 4), and left=1"
+        ),
+        cpu=(
+            "linalg.lu_solve: Incompatible shapes of A and B for the equation"
+            " AX = B (4x4 and 3x4)"
+        ),
+    ):
+      torch.linalg.lu_solve(lu, pivots, b, out=out)
+
+  def test_lu_solve_pivots_invalid_dimensions(self):
+    lu = torch.ones(3, 3, device=et.device())
+    pivots = torch.ones(2, 3, device=et.device(), dtype=torch.int32)
+    b = torch.ones(3, 3, device=et.device())
+
+    # Call the out-of-place variant of linalg.lu_solve() op.
+    out = torch.empty(3, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "linalg_lu_solve(): pivots must have one less dimension than the"
+            " tensor, got 2 and 2"
+        ),
+        cpu=(
+            "linalg.lu_solve: Expected LU.shape[:-1] and pivots.shape to be the"
+            " same, but got pivots with shape [2, 3] instead"
+        ),
+    ):
+      torch.linalg.lu_solve(lu, pivots, b, out=out)
+
+  def test_lu_solve_batch_dimensions_mismatch(self):
+    lu = torch.ones(3, 3, 3, device=et.device())
+    pivots = torch.ones(2, 3, device=et.device(), dtype=torch.int32)
+    b = torch.ones(3, 3, 3, device=et.device())
+
+    # Call the out-of-place variant of linalg.lu_solve() op.
+    out = torch.empty(3, 3, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "linalg_lu_solve(): pivots and tensor must have the same batch"
+            " dimensions, got [3] and [2]"
+        ),
+        cpu=(
+            "linalg.lu_solve: Expected LU.shape[:-1] and pivots.shape to be the"
+            " same, but got pivots with shape [2, 3] instead"
+        ),
+    ):
+      torch.linalg.lu_solve(lu, pivots, b, out=out)
+
+  def test_lu_solve_pivots_dimension_too_high(self):
+    lu = torch.ones(3, 3, device=et.device())
+    pivots = torch.ones(4, device=et.device(), dtype=torch.int32)
+    b = torch.ones(3, 3, device=et.device())
+
+    # Call the out-of-place variant of linalg.lu_solve() op.
+    out = torch.empty(3, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "linalg_lu_solve(): pivots size must be less than or equal to the"
+            " size of the matrix, got 4 and 3"
+        ),
+        cpu=(
+            "linalg.lu_solve: Number of pivots per batch should be same as the"
+            " dimension of the matrix"
+        ),
+    ):
+      torch.linalg.lu_solve(lu, pivots, b, out=out)
 
 
 if __name__ == "__main__":

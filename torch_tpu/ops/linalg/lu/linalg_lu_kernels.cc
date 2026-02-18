@@ -71,7 +71,9 @@ absl::StatusOr<MlirOpResults<2>> LuDecompositionBuilder(mlir::MlirOp input) {
   auto a_type = GetTensorTypeOrDie(input);
   auto a_shape = a_type.getShape();
   int rank = a_shape.size();
-  TT_RET_CHECK(rank >= 2, error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Dimensions constraints are checked
+                 // before Mlir lowering.
+      rank >= 2, error::kInvalidArgument)
       << "input tensor expected to have at least 2 dimensions, got " << rank;
 
   const int n = a_shape[rank - 2];
@@ -120,12 +122,18 @@ absl::StatusOr<MlirOpResults<2>> LuDecompositionBuilder(mlir::MlirOp input) {
 absl::Status ApplyPivotsInPlace(at::Tensor& tensor, const at::Tensor& pivots,
                                 bool to_rows, bool inverse) {
   int rank = tensor.dim();
-  TT_RET_CHECK(rank >= 2, error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error is caught before this check.
+      rank >= 2, error::kInvalidArgument)
       << "tensor must have at least 2 dimensions, got " << rank;
   TT_RET_CHECK(pivots.dim() + 1 == rank, error::kInvalidArgument)
       << "pivots must have one less dimension than the tensor, got "
       << pivots.dim() << " and " << rank;
   const int size = to_rows ? tensor.size(-2) : tensor.size(-1);
+  // TODO: PyTorch actually expects: pivots.size(-1) >= size
+  // Otherwise, it accesses out-of-bounds memory.
+  //
+  // See link below:
+  // https://github.com/pytorch/pytorch/blob/b323a6e5a358588d36e6f797ac81d89bf199546c/aten/src/ATen/native/BatchLinearAlgebraKernel.cpp#L1193-L1195
   TT_RET_CHECK(pivots.size(-1) <= size, error::kInvalidArgument)
       << "pivots size must be less than or equal to the size of the matrix, "
          "got "
@@ -245,20 +253,27 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLuUnpackOut(
 
         if (unpack_data) {
           // Check ranks match
-          TT_CHECK_THROW(l.dim() == lu_data.dim() && u.dim() == lu_data.dim(),
-                         error::kInvalidArgument)
+          // TODO: b/483972819 resize outputs instead of raising errors.
+          TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
+                           // resizes the output, instead of raising an error.
+              l.dim() == lu_data.dim() && u.dim() == lu_data.dim(),
+              error::kInvalidArgument)
               << "l, u, and lu_data must have the same rank, got " << l.dim()
               << ", " << u.dim() << ", and " << lu_data.dim();
           // Check last two dimensions match LU decomposition.
           int64_t m = lu_data.size(-2);
           int64_t n = lu_data.size(-1);
           int64_t k = std::min(m, n);
-          TT_CHECK_THROW(l.size(-2) == m && l.size(-1) == k,
-                         error::kInvalidArgument)
+          // TODO: b/483972819 resize outputs instead of raising errors.
+          TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
+                           // resizes the output, instead of raising an error.
+              l.size(-2) == m && l.size(-1) == k, error::kInvalidArgument)
               << "L must have shape (..., m, k), got " << ToString(l.sizes())
               << " and " << m << " and " << k;
-          TT_CHECK_THROW(u.size(-2) == k && u.size(-1) == n,
-                         error::kInvalidArgument)
+          // TODO: b/483972819 resize outputs instead of raising errors.
+          TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
+                           // resizes the output, instead of raising an error.
+              u.size(-2) == k && u.size(-1) == n, error::kInvalidArgument)
               << "U must have shape (..., k, n), got " << ToString(u.sizes())
               << " and " << k << " and " << n;
           // Check batch dimensions match.
@@ -266,9 +281,12 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLuUnpackOut(
           Dimensions U_batch_dims(u.sizes().begin(), u.sizes().end() - 2);
           Dimensions LU_data_batch_dims(lu_data.sizes().begin(),
                                         lu_data.sizes().end() - 2);
-          TT_CHECK_THROW(L_batch_dims == U_batch_dims &&
-                             U_batch_dims == LU_data_batch_dims,
-                         error::kInvalidArgument)
+          // TODO: b/483972819 resize outputs instead of raising errors.
+          TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
+                           // resizes the output, instead of raising an error.
+              L_batch_dims == U_batch_dims &&
+                  U_batch_dims == LU_data_batch_dims,
+              error::kInvalidArgument)
               << "l, u, and lu_data must have the same batch "
                  "dimensions, got "
               << ToString(L_batch_dims) << ", " << ToString(U_batch_dims)
@@ -286,11 +304,15 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLuUnpackOut(
           TT_CHECK_THROW(lu_pivots.dim() >= 1, error::kInvalidArgument)
               << "lu_pivots must have at least 1 dimension, got "
               << lu_pivots.dim();
-          TT_CHECK_THROW(p.dim() == lu_pivots.dim() + 1,
-                         error::kInvalidArgument)
+          // TODO: b/483972819 resize outputs instead of raising errors.
+          TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
+                           // resizes the output, instead of raising an error.
+              p.dim() == lu_pivots.dim() + 1, error::kInvalidArgument)
               << "p must have one more dimension than lu_pivots, got "
               << p.dim() << " and " << lu_pivots.dim();
-          TT_CHECK_THROW(
+          // TODO: b/483972819 resize outputs instead of raising errors.
+          TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
+                           // resizes the output, instead of raising an error.
               p.size(-1) == lu_data.size(-2) && p.size(-2) == lu_data.size(-2),
               error::kInvalidArgument)
               << "p must be square and of size equal to number of (non-batch) "
@@ -323,6 +345,11 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
             << lu.size(-1);
         TT_CHECK_THROW(pivots.dim() >= 1, error::kInvalidArgument)
             << "pivots must have at least 1 dimension, got " << pivots.dim();
+        // TODO: PyTorch checks that `b` is able to be broadcasted into `lu`
+        // batch dimensions.
+        //
+        // See link below:
+        // https://github.com/pytorch/pytorch/blob/b323a6e5a358588d36e6f797ac81d89bf199546c/aten/src/ATen/native/BatchLinearAlgebra.cpp#L684
         TT_CHECK_THROW(b.dim() == lu.dim(), error::kInvalidArgument)
             << "the rank of b must be equal to the rank of lu, got "
                "rank(b) = "
