@@ -1676,7 +1676,8 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           golden_result=torch.tensor(expected_mean),
           torch_tpu_result=mean_num_zeros.to("cpu"),
           atol=atol,
-          rtol=5e-2,
+          rtol=0.0,
+          check_value=CheckValueMode.LOOSE,
       )
 
   def test_random_reproducible(self):
