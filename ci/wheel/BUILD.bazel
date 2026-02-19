@@ -72,6 +72,7 @@ pytype_strict_library(
         "//torch_tpu/api",
         "//torch_tpu/api:_device_module",
         "//torch_tpu/api:streams",
+        "//torch_tpu/shims/g3_multiprocessing",
     ],
     visibility = ["//visibility:public"],
 )
