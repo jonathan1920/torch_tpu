@@ -838,6 +838,19 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.linalg.lu_solve(lu, pivots, b, out=out)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # Currently, generator is not yet supportted in TorchTPU.
+  def test_multinomial_generator(self):
+    inp = torch.randn(2, device=et.device())
+    gen = torch.Generator()
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="multinomial(): generator is not yet supported",
+        message_reviewed_by="wan",
+    ):
+      torch.multinomial(inp, num_samples=1, generator=gen)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
@@ -5046,6 +5059,71 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         ),
     ):
       torch.linalg.lu_solve(lu, pivots, b, out=out)
+
+  def test_multinomial_int(self):
+    inp = torch.tensor([1, 2, 3], device=et.device(), dtype=torch.int32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "multinomial(): expected the input dtype to be floating-point, got"
+            " int32"
+        ),
+        cpu=(
+            "multinomial only supports floating-point dtypes for input,"
+            " got: Int"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.multinomial(inp, num_samples=2)
+
+  def test_multinomial_invalid_dimension(self):
+    inp = torch.randn(2, 2, 2, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "multinomial(): expected the input to have either 1 or 2"
+            " dimensions, got 3 of shape [2, 2, 2]"
+        ),
+        cpu="prob_dist must be 1 or 2 dim",
+        message_reviewed_by="wan",
+    ):
+      torch.multinomial(inp, num_samples=2)
+
+  def test_multinomial_invalid_samples(self):
+    inp = torch.randn(2, device=et.device())
+
+    # Make sure we don't allow, in general, the following cases:
+    #   - negative values
+    #   - zero
+    for num_samples in [-1, 0]:
+      with self.subTest(num_samples=num_samples), et.assert_raises_message(
+          RuntimeError,
+          tpu=(
+              "multinomial(): expected the number of samples to be > 0, got"
+              f" {num_samples}"
+          ),
+          cpu="cannot sample n_sample <= 0 samples",
+          message_reviewed_by="wan",
+      ):
+        torch.multinomial(inp, num_samples=num_samples)
+
+    # Make sure we check the number of samples when `replacement` is set to
+    # `False`.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "multinomial(): expected the number of samples to be <= 2"
+            " (population size) when replacement is disabled, got 3"
+        ),
+        cpu=(
+            "cannot sample n_sample > prob_dist.size(-1) samples without"
+            " replacement"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.multinomial(inp, num_samples=3, replacement=False)
 
 
 if __name__ == "__main__":
