@@ -328,20 +328,21 @@ absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
 // Creates an at::Tensor from an at::Scalar.
 //
 // There are two modes of operation for this:
-//  - Constant mode: the DeviceBufferRef will be an mlir::Constant op. This
-//    enables more aggressive compiler optimizations when we know the scalar
-//    value is constant, achieving better warmed-up performance, but risks
-//    recompilation on future runs where the scalar value changes.
-//    This is used in torch.compile mode, kAll.
+//  - In torch.compile mode (i.e. when the defer mode is kAll), the scalar is
+//    treated as a *constant*, and the DeviceBufferRef in the tensor will be an
+//    mlir::Constant op. This enables more aggressive compiler optimizations
+//    when we know the scalar value is constant, achieving better warmed-up
+//    performance, but risks recompilation on future runs where the scalar value
+//    changes.
 //    If scalar_type_opt is specified, it will be used to determine the MLIR
 //    type of the constant. Otherwise, the type will be determined
 //    automatically.
-//  - Variable mode: ithe DeviceBufferRef will be materialized as a single-
-//    element buffer. This prevents compiler specialization on the value,
-//    meaning that the executable can be reused in the future even if the scalar
-//    value changes. To prevent redundant host-to-device transfers, created
-//    DeviceBufferRefs are cached and reused.
-//    This is used in eager mode, kNever and kDefault.
+//  - In eager mode (i.e. when the defer mode is kDefault or kNever), the scalar
+//    is treated as a *variable*, and the DeviceBufferRef in the tensor will be
+//    materialized as a single- element buffer. This prevents compiler
+//    specialization on the value, meaning that the executable can be reused in
+//    the future even if the scalar value changes. To prevent redundant
+//    host-to-device transfers, created DeviceBufferRefs are cached and reused.
 absl::StatusOr<at::Tensor> MakeTensor(
     const at::Scalar& scalar,
     c10::optional<at::ScalarType> scalar_type_opt = std::nullopt);
