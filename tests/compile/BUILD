@@ -56,9 +56,13 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "compile_with_distributed_test",
     srcs = ["compile_with_distributed_test.py"],
-    env = {"ACCELERATOR_TYPE": "v5litepod-8"},
+    env = {
+        "ACCELERATOR_TYPE": "v5litepod-8",  # Needed for OSS.
+    },
     shard_count = 1,
     tags = [
+        # In OSS, we have to run the test exclusively to avoid the
+        # "TPU initialization failed ... Device or resource busy" error.
         "exclusive",
         "oss_ready_tpu",
         "requires-tpu-v5lite:8",

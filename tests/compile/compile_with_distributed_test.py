@@ -24,10 +24,10 @@ from torch_tpu._internal.utils import utils
 from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
 
 
-def xfail_in_oss(func):
-  if not env.IS_INTERNAL_TORCH_TPU:
-    return unittest.expectedFailure(func)
-  return func
+def expected_to_fail_in_oss(func):
+  """Annotates a test to fail in OSS."""
+
+  return func if env.IS_INTERNAL_TORCH_TPU else unittest.expectedFailure(func)
 
 
 def run_all_reduce_with_torch_compile(rank: int, world_size: int) -> None:  # pylint: disable=unused-argument
@@ -71,7 +71,9 @@ def run_all_reduce_with_torch_compile(rank: int, world_size: int) -> None:  # py
 
 class MultiTpuTorchCompileTest(absltest.TestCase):
 
-  @xfail_in_oss
+  # TODO: fix the failure "compile_mlir(): failed to validate and reorder
+  # inputs" error in OSS.
+  @expected_to_fail_in_oss
   def test_all_reduce_with_torch_compile(self):
     tpu_env.run_in_workers(8, run_all_reduce_with_torch_compile)
 
