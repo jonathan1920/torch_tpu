@@ -179,6 +179,7 @@ torch_tpu_py_test(
         "requires-tpu-v7x:4",
     ],
     deps = [
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",

@@ -19,9 +19,11 @@ with popular HuggingFace model implementations using the Transformers API.
 """
 
 import copy
+import enum
 import functools
 from typing import Any
 
+from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
 import torch
@@ -30,6 +32,24 @@ from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal.utils import utils
 from tests import module_registry
 
+
+class ModelSize(enum.StrEnum):
+  TINY = enum.auto()
+  SMALL = enum.auto()
+  MEDIUM = enum.auto()
+  LARGE = enum.auto()
+
+
+FLAGS = flags.FLAGS
+_MODEL_SIZES_TO_RUN = flags.DEFINE_multi_enum_class(
+    "model_sizes_to_run",
+    default=[ModelSize.TINY],
+    enum_class=ModelSize,
+    help=(
+        "Selects models to run based on their parameter count. 'TINY' <= 500M,"
+        " 500M < 'SMALL' <= 1B, 1B < 'MEDIUM' <= 30B, and 'LARGE' > 30B."
+    ),
+)
 
 # Threshold number for which perplexity scores should be less than. Anything
 # higher indicates a significant bug in the model or test.
@@ -82,6 +102,16 @@ class ModelCoverageHFTest(parameterized.TestCase):
     cls.tpu_device = api.tpu_device()
     cls.module_registry = module_registry.ModuleRegistry()
 
+  def _check_model_size(
+      self, provider: str, module_name: str, model_size: ModelSize
+  ) -> None:
+    if model_size not in _MODEL_SIZES_TO_RUN.value:
+      self.skipTest(
+          f"Skipping {provider}/{module_name} (size: {model_size}) because it's"
+          " not in the provided model_sizes_to_run flag:"
+          f" {_MODEL_SIZES_TO_RUN.value}."
+      )
+
   def _create_model_and_inputs(
       self, provider: str, module_name: str, *, is_training=False
   ):
@@ -120,6 +150,7 @@ class ModelCoverageHFTest(parameterized.TestCase):
           testcase_name="transformers/google/gemma-3-270m",
           provider="transformers",
           module_name="google/gemma-3-270m",
+          model_size=ModelSize.TINY,
           rtol=6e-3,
           atol=1e-3,
       ),
@@ -127,6 +158,7 @@ class ModelCoverageHFTest(parameterized.TestCase):
           testcase_name="transformers/Qwen/Qwen3-0.6B",
           provider="transformers",
           module_name="Qwen/Qwen3-0.6B",
+          model_size=ModelSize.SMALL,
           rtol=1e-3,
           atol=2e-4,
       ),
@@ -134,6 +166,7 @@ class ModelCoverageHFTest(parameterized.TestCase):
           testcase_name="transformers/meta-llama/Llama-3.2-1B",
           provider="transformers",
           module_name="meta-llama/Llama-3.2-1B",
+          model_size=ModelSize.SMALL,
           rtol=6e-3,
           atol=1e-3,
       ),
@@ -142,9 +175,12 @@ class ModelCoverageHFTest(parameterized.TestCase):
       self,
       provider: str,
       module_name: str,
+      model_size: ModelSize,
       rtol: float | None = None,
       atol: float | None = None,
   ) -> None:
+    self._check_model_size(provider, module_name, model_size)
+
     cpu_model, tpu_model, compiled_tpu_model, cpu_inputs, tpu_inputs = (
         self._create_model_and_inputs(provider, module_name, is_training=True)
     )
@@ -168,6 +204,7 @@ class ModelCoverageHFTest(parameterized.TestCase):
           testcase_name="transformers/google/gemma-3-270m",
           provider="transformers",
           module_name="google/gemma-3-270m",
+          model_size=ModelSize.TINY,
           rtol=6e-2,
           # This model's perplexity is actually lower than CPU by the tolerance
           # below which is good but the delta is somewhat large thus need to
@@ -178,6 +215,7 @@ class ModelCoverageHFTest(parameterized.TestCase):
           testcase_name="transformers/Qwen/Qwen3-0.6B",
           provider="transformers",
           module_name="Qwen/Qwen3-0.6B",
+          model_size=ModelSize.SMALL,
           rtol=1e-3,
           atol=6e-2,
       ),
@@ -185,6 +223,7 @@ class ModelCoverageHFTest(parameterized.TestCase):
           testcase_name="transformers/meta-llama/Llama-3.2-1B",
           provider="transformers",
           module_name="meta-llama/Llama-3.2-1B",
+          model_size=ModelSize.SMALL,
           rtol=5e-4,
           atol=1e-2,
       ),
@@ -193,13 +232,15 @@ class ModelCoverageHFTest(parameterized.TestCase):
       self,
       provider: str,
       module_name: str,
+      model_size: ModelSize,
       rtol: float | None = None,
       atol: float | None = None,
   ) -> None:
+    self._check_model_size(provider, module_name, model_size)
+
     cpu_model, _, compiled_tpu_model, cpu_inputs, tpu_inputs = (
         self._create_model_and_inputs(provider, module_name)
     )
-
     cpu_out = cpu_model(**cpu_inputs)
     tpu_out = compiled_tpu_model(**tpu_inputs)
 
