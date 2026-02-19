@@ -17,7 +17,6 @@
 #include "torch_tpu/ops/rms_norm/rms_norm_aten_kernels.h"
 
 #include <array>
-#include <cstdint>
 #include <optional>
 #include <tuple>
 #include <utility>
