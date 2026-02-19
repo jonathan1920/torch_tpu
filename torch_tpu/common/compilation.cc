@@ -261,19 +261,8 @@ static absl::StatusOr<bool> SetTpuOptions(xla::CompileOptions& options) {
             // Important: keep the keys sorted alphabetically - the override
             // merging logic relies on this.
             // go/keep-sorted start
-            {"xla_tpu_enable_concurrent_sparse_core_offloading", true},
             // Reduces TPU binary size by using calls for deduplicated HLOs.
             {"xla_tpu_enable_deduplicated_calls", std::string("ENABLED")},
-            // Enable all known SparseCore offloading flags.
-            {"xla_tpu_enable_offloading_gather_to_sparsecore", true},
-            {"xla_tpu_enable_offloading_scatter_to_sparsecore", true},
-            {"xla_tpu_enable_sparse_core_collective_offload_2d_all_gather",
-             true},
-            {"xla_tpu_enable_sparse_core_collective_offload_all_gather", true},
-            {"xla_tpu_enable_sparse_core_collective_offload_all_reduce", true},
-            {"xla_tpu_enable_sparse_core_collective_offload_reduce_scatter",
-             true},
-            {"xla_tpu_enable_sparse_core_reduce_scatter_v2", true},
             // Enable "safe" XLA scavenge mode (where "safe" is needed by
             // Pallas), which helps with a bit for performance, but also helps
             // kernels which specify their own scoped limit.
