@@ -26,6 +26,8 @@
 
 #include "xla/tsl/profiler/rpc/profiler_server.h"
 #include "tsl/profiler/lib/profiler_session.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace torch_tpu {
 

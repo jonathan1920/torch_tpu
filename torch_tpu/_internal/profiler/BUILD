@@ -48,6 +48,8 @@ pybind_extension(
     wrap_py_init = True,
     deps = [
         "@tsl//tsl/profiler/lib:profiler_session",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@xla//xla/backends/profiler/cpu:host_tracer",
         "@xla//xla/backends/profiler/cpu:python_tracer",
         "@xla//xla/backends/profiler/tpu:tpu_tracer",
