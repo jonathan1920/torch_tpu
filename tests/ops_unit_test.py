@@ -625,7 +625,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     ops_test.py does not support testing modules via OpInfoDB.
     """
     fold = torch.nn.Fold(output_size=(4, 5), kernel_size=(2, 2))
-    img = torch.randn(1, 3 * 2 * 2, 12)
+    img = torch.arange(1 * 12 * 12, dtype=torch.float32).reshape(1, 12, 12)
 
     def test(device):
       output = fold(img.to(device))
