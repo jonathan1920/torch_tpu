@@ -3436,6 +3436,18 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assertEqual(t1_sorted.values.cpu(), expected_asc.cpu())
     self.assertNotEqual(t1.cpu(), expected_asc.cpu())
 
+  def test_randperm_rng(self):
+    """Verifies RNG results and state update for randperm."""
+    device = api.tpu_device()
+    gen = torch.Generator(device=device)
+    gen.manual_seed(42)
+    # Golden Philox bits for seed=42, offset=0.
+    golden_sequence = [8, 7, 0, 5, 9, 4, 6, 3, 1, 2]
+    res = torch.randperm(10, generator=gen, device=device)
+    self.assertEqual(res.cpu().tolist(), golden_sequence)
+    _, offset = gen.get_state()
+    self.assertEqual(offset.item(), 5)
+
   def test_randperm_dtypes(self):
     device = api.tpu_device()
 

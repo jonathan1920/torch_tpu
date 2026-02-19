@@ -99,6 +99,10 @@ at::Tensor& AtenRandpermGeneratorOut(c10::SymInt n,
     const int64_t n_int = n.guard_int(__FILE__, __LINE__);
 
     TT_ASSIGN_OR_THROW(auto rng_input_state, GetRngState(generator));
+    // Snapshot the initial state's buffer to pass it to the generator.
+    TT_ASSIGN_OR_THROW(DeviceBufferRef original_buf,
+                       GetBufferFromAtTensor(rng_input_state));
+
     TT_ASSIGN_OR_THROW(const auto output_dtype,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
 
@@ -134,9 +138,10 @@ at::Tensor& AtenRandpermGeneratorOut(c10::SymInt n,
     TT_ASSIGN_OR_THROW(
         auto output_buf,
         (DispatchOp<1>(OpName::kRandpermGeneratorOut,
-                       std::move(randperm_op_builder), {rng_input_state},
+                       std::move(randperm_op_builder),
+                       {MakeTensor(std::move(original_buf))},
                        {.out_dtype = output_dtype,
-                        .out_dims = CopyIntVector(out.sizes()),
+                        .out_dims = out.sizes(),
                         .op_param_cache_keys = std::move(param_keys)})));
 
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
