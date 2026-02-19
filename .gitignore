@@ -10,3 +10,5 @@ user.bazelrc
 # Vim undo files
 *.un~
 .*.un~
+# Wheel files
+wheel
