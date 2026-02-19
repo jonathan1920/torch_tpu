@@ -327,6 +327,7 @@ enum class OpName {
   kReshapeAlias,
   kResize_,
   kRmsNorm,
+  kRngStateUpdate,
   kRoll,
   kRound,
   kRoundDecimalsOut,

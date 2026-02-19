@@ -295,6 +295,46 @@ absl::StatusOr<at::Tensor> GetRngState(c10::optional<at::Generator> generator) {
   return rng_state;
 }
 
+absl::StatusOr<at::Tensor> GetAndAdvanceRngState(
+    c10::optional<at::Generator> generator, int64_t num_elements,
+    int64_t bit_width) {
+  auto gen = at::get_generator_or_default<DeviceGeneratorImpl>(
+      generator, GetDefaultDeviceGenerator());
+  auto rng_input_state = at::Tensor(gen->get_state());
+  TT_RETURN_IF_ERROR(CheckRngState(rng_input_state));
+  if (num_elements <= 0 || bit_width <= 0) {
+    return rng_input_state;
+  }
+
+  // Snapshot the original buffer so that we can return it after updating the
+  // state.
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef original_buf,
+                      GetBufferFromAtTensor(rng_input_state));
+
+  // Dispatch the state update.
+  TT_ASSIGN_OR_RETURN(
+      auto state_param_keys,
+      TT_MAKE_OP_PARAM_CACHE_KEYS(num_elements, bit_width, "state_update"));
+  auto state_op_builder = [num_elements,
+                           bit_width](mlir::MlirOp rng_input_state) {
+    return BuildRngStateUpdateShlo(rng_input_state, num_elements, bit_width);
+  };
+  TT_ASSIGN_OR_RETURN(
+      auto rng_output_state_buf,
+      (DispatchOp<1>(OpName::kRngStateUpdate, std::move(state_op_builder),
+                     {rng_input_state},
+                     {.out_dtype = mlir::ElementType::UI64,
+                      .out_dims = {2},
+                      .op_param_cache_keys = std::move(state_param_keys)})));
+
+  // Give back the updated state to the generator.
+  auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
+  gen->set_state(*rng_output_state.unsafeGetTensorImpl());
+
+  // Return a tensor pointing to the original buffer.
+  return MakeTensor(std::move(original_buf));
+}
+
 absl::Status UpdateRngState(c10::optional<at::Generator> generator,
                             at::Tensor& rng_state) {
   TT_RETURN_IF_ERROR(CheckRngState(rng_state));

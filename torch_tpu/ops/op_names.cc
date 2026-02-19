@@ -632,6 +632,8 @@ std::string_view ToString(OpName op_name) {
       return "resize_";
     case OpName::kRmsNorm:
       return "rms_norm";
+    case OpName::kRngStateUpdate:
+      return "rng_state_update";
     case OpName::kRoll:
       return "roll";
     case OpName::kRound:

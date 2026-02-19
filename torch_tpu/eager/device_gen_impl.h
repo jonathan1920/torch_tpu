@@ -29,6 +29,7 @@
 #include "c10/core/TensorImpl.h"
 #include "c10/util/Optional.h"
 #include "c10/util/intrusive_ptr.h"
+#include "torch_tpu/ops/op_names.h"
 
 namespace torch_tpu {
 
@@ -78,6 +79,13 @@ const at::Generator& GetDefaultDeviceGenerator(c10::DeviceIndex idx = -1);
 // Returns the rng_state tensor from the given generator, or from the
 // default generator if not specified.
 absl::StatusOr<at::Tensor> GetRngState(c10::optional<at::Generator> generator);
+
+// Returns the current rng_state tensor from the given generator, or from the
+// default generator if not specified. This also advances the generator's state
+// by the amount specified (num_elements * bit_width).
+absl::StatusOr<at::Tensor> GetAndAdvanceRngState(
+    c10::optional<at::Generator> generator, int64_t num_elements,
+    int64_t bit_width = 64);
 
 // Updates the rng_state tensor for the given generator, or for the default
 // generator if not specified.

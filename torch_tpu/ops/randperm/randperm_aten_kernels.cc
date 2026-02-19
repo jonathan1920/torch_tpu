@@ -98,37 +98,14 @@ at::Tensor& AtenRandpermGeneratorOut(c10::SymInt n,
   TT_KERNEL(OpName::kRandpermGeneratorOut, param_keys, (n, generator, out), {
     const int64_t n_int = n.guard_int(__FILE__, __LINE__);
 
-    TT_ASSIGN_OR_THROW(auto rng_input_state, GetRngState(generator));
-    // Snapshot the initial state's buffer to pass it to the generator.
-    TT_ASSIGN_OR_THROW(DeviceBufferRef original_buf,
-                       GetBufferFromAtTensor(rng_input_state));
-
     TT_ASSIGN_OR_THROW(const auto output_dtype,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
 
-    // 1. Dispatch independent state update.
-    // Decoupling the state update from the actual randperm makes the state
-    // update resilient to failures in randperm's execution, e.g. out-of-memory
-    // due to 'n' being too large for the device.
-    TT_ASSIGN_OR_THROW(auto state_param_keys,
-                       TT_MAKE_OP_PARAM_CACHE_KEYS(n_int, "state_update"));
-    auto state_op_builder = [n_int](mlir::MlirOp rng_input_state) {
-      return BuildRngStateUpdateShlo(rng_input_state, n_int, 64);
-    };
-    TT_ASSIGN_OR_THROW(
-        auto rng_output_state_buf,
-        (DispatchOp<1>(OpName::kRandpermGeneratorOut,
-                       std::move(state_op_builder), {rng_input_state},
-                       {.out_dtype = mlir::ElementType::UI64,
-                        .out_dims = {2},
-                        .op_param_cache_keys = std::move(state_param_keys)})));
+    // Query the current RNG state and advance it.
+    TT_ASSIGN_OR_THROW(auto rng_input_state,
+                       GetAndAdvanceRngState(generator, n_int, 64));
 
-    // Give back the updated state to the generator.
-    auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
-    TT_THROW_IF_ERROR(UpdateRngState(generator, rng_output_state));
-
-    // 2. Dispatch the actual randperm.
-    // Note that the input state is the *original* state, not the updated one.
+    // Dispatch the actual randperm.
     auto randperm_op_builder =
         [n_int, output_dtype](
             mlir::MlirOp rng_input_state) -> absl::StatusOr<mlir::MlirOp> {
@@ -138,8 +115,7 @@ at::Tensor& AtenRandpermGeneratorOut(c10::SymInt n,
     TT_ASSIGN_OR_THROW(
         auto output_buf,
         (DispatchOp<1>(OpName::kRandpermGeneratorOut,
-                       std::move(randperm_op_builder),
-                       {MakeTensor(std::move(original_buf))},
+                       std::move(randperm_op_builder), {rng_input_state},
                        {.out_dtype = output_dtype,
                         .out_dims = out.sizes(),
                         .op_param_cache_keys = std::move(param_keys)})));
