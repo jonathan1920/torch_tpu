@@ -212,8 +212,8 @@ void DeviceGeneratorImpl::set_current_seed(uint64_t seed) {
   // set_current_seed() is invoked by PyTorch and behaves like an op.
   TT_KERNEL(OpName::kSetSeed, _, (seed), {
     TT_ASSIGN_OR_THROW(auto rng_state_buffer, UpdateRngSeed(rng_state_, seed));
-    TT_THROW_IF_ERROR(
-        AssignBufferToAtTensor(std::move(rng_state_buffer), rng_state_));
+    auto new_rng_state = MakeTensor(std::move(rng_state_buffer));
+    rng_state_ = new_rng_state;
   });
 }
 
@@ -222,8 +222,8 @@ void DeviceGeneratorImpl::set_offset(uint64_t offset) {
   TT_KERNEL(OpName::kSetOffset, _, (offset), {
     TT_ASSIGN_OR_THROW(auto rng_state_buffer,
                        UpdateRngOffset(rng_state_, offset));
-    TT_THROW_IF_ERROR(
-        AssignBufferToAtTensor(std::move(rng_state_buffer), rng_state_));
+    auto new_rng_state = MakeTensor(std::move(rng_state_buffer));
+    rng_state_ = new_rng_state;
   });
 }
 
@@ -263,7 +263,8 @@ void DeviceGeneratorImpl::set_state(const c10::TensorImpl& new_state) {
   TT_ASSIGN_OR_THROW(DeviceBufferRef new_state_buffer,
                      GetBufferFromAtTensor(new_state));
 
-  TT_THROW_IF_ERROR(AssignBufferToAtTensor(new_state_buffer, rng_state_));
+  auto new_rng_state = MakeTensor(std::move(new_state_buffer));
+  rng_state_ = new_rng_state;
 }
 
 void DeviceGeneratorImpl::graphsafe_set_state(
