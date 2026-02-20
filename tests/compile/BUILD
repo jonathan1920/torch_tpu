@@ -175,6 +175,7 @@ torch_tpu_py_test(
     shard_count = 6,
     tags = [
         "cpu:4",
+        "nofastbuild",  # Run in postsubmit only to avoid long Forge queues.
         "requires-net:external",
         "requires-tpu-v7x:4",
     ],

@@ -226,7 +226,7 @@ torch_tpu_cc_test(
 
 # Tests that the tier-2 cache is enabled by default for world size > 1.
 torch_tpu_cc_test(
-    name = "tier2_compilation_cache_enablement_test_default_multi_host",
+    name = "tier2_compilation_cache_enablement_test_default_multi_device",
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
     # Do not set the TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment variable.
     args = [
@@ -234,7 +234,8 @@ torch_tpu_cc_test(
         "--world_size=2",
     ],
     tags = [
-        "requires-tpu-v7x",  # Needs PjRt client.
+        "nofastbuild",  # Run in postsubmit only to avoid long Forge queues.
+        "requires-tpu-v7x",  # Needs PjRt client and multiple devices.
     ],
     deps = [
         ":tier2_compilation_cache",
@@ -270,7 +271,7 @@ torch_tpu_cc_test(
 
 # Tests that the tier-2 cache can be explicitly disabled for world size > 1.
 torch_tpu_cc_test(
-    name = "tier2_compilation_cache_enablement_test_disabled_multi_host",
+    name = "tier2_compilation_cache_enablement_test_disabled_multi_device",
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
     args = [
         "--expected_tier2_cache_name=",
@@ -280,7 +281,8 @@ torch_tpu_cc_test(
         "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "disabled",
     },
     tags = [
-        "requires-tpu-v7x",  # Needs PjRt client.
+        "nofastbuild",  # Run in postsubmit only to avoid long Forge queues.
+        "requires-tpu-v7x",  # Needs PjRt client and multiple devices.
     ],
     deps = [
         ":tier2_compilation_cache",
@@ -316,7 +318,7 @@ torch_tpu_cc_test(
 
 # Tests that the tier-2 cache can be explicitly enabled for world size > 1.
 torch_tpu_cc_test(
-    name = "tier2_compilation_cache_enablement_test_enabled_multi_host",
+    name = "tier2_compilation_cache_enablement_test_enabled_multi_device",
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
     args = [
         "--expected_tier2_cache_name=my_cache2",
@@ -326,7 +328,8 @@ torch_tpu_cc_test(
         "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "my_cache2",
     },
     tags = [
-        "requires-tpu-v7x",  # Needs PjRt client.
+        "nofastbuild",  # Run in postsubmit only to avoid long Forge queues.
+        "requires-tpu-v7x",  # Needs PjRt client and multiple devices.
     ],
     deps = [
         ":tier2_compilation_cache",

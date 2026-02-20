@@ -68,6 +68,7 @@ torch_tpu_py_test(
     strict = True,
     tags = [
         "cpu:4",  # Matches the CUDA version of the test for a fair comparison.
+        "nofastbuild",  # Run in postsubmit only to avoid long Forge queues.
         "oss_ready_tpu",
         "requires-net:external",
         "requires-tpu-v7x",
