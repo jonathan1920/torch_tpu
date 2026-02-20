@@ -326,6 +326,7 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/ops/macros:kernel",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
