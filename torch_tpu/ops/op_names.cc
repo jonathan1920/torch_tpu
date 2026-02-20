@@ -272,6 +272,8 @@ std::string_view ToString(OpName op_name) {
       return "floor.out";
     case OpName::kFmaxOut:
       return "fmax.out";
+    case OpName::kFminOut:
+      return "fmin.out";
     case OpName::kFmodTensorOut:
       return "fmod.Tensor_out";
     case OpName::kForeachAddList:

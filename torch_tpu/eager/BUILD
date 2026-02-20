@@ -396,6 +396,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/fill:fill_aten_kernels",
         "//torch_tpu/ops/flip:flip_aten_kernels",
         "//torch_tpu/ops/fmax:fmax_aten_kernels",
+        "//torch_tpu/ops/fmin:fmin_aten_kernels",
         "//torch_tpu/ops/foreach:foreach_add_aten_kernels",
         "//torch_tpu/ops/foreach:foreach_mul_aten_kernels",
         "//torch_tpu/ops/gather:gather_aten_kernels",

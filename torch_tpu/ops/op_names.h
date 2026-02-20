@@ -147,6 +147,7 @@ enum class OpName {
   kFloorDivide_Tensor,
   kFloorOut,
   kFmaxOut,
+  kFminOut,
   kFmodTensorOut,
   kForeachAddList,
   kForeachAddScalar,

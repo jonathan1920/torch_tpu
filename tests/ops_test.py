@@ -1503,6 +1503,9 @@ class TestOps(TorchTpuTestBase):
         exclude_dtypes=INTEGRAL_DTYPES,
     )
 
+  def test_fmin(self):
+    self.do_test_op("fmin")
+
   def test_fmod(self):
     self.do_test_op("fmod")
 

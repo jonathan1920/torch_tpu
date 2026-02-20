@@ -40,6 +40,7 @@
 #include "c10/core/TensorImpl.h"
 #include "torch/library.h"
 #include "torch_tpu/ops/fmax/fmax_aten_kernels.h"
+#include "torch_tpu/ops/fmin/fmin_aten_kernels.h"
 #include "xla/xla_data.pb.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/error_utils.h"
@@ -299,6 +300,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kFloorDivide, AtenFloorDivide);
   Impl(m, OpName::kFloorDivideOut, AtenFloorDivideOut);
   Impl(m, OpName::kFmaxOut, AtenFmaxOut);
+  Impl(m, OpName::kFminOut, AtenFminOut);
   Impl(m, OpName::kFmodTensorOut, AtenFmodTensorOut);
   Impl(m, OpName::kForeachAddList, AtenForeachAddList);
   Impl(m, OpName::kForeachAddScalar, AtenForeachAddScalar);
