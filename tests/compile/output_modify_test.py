@@ -23,6 +23,7 @@ import torch
 from torch._dynamo.backends.common import aot_autograd
 from torch_tpu import api
 from torch_tpu._internal import compile
+from torch_tpu._internal.utils import utils
 
 
 def _run_tpu_backend_with_injected_test_case(
@@ -133,6 +134,36 @@ class OutputModifyTest(absltest.TestCase):
     # This should not raise an error.
     result = compiled(in_a, in_b)
     result.to("cpu")
+
+  def test_duplicate_in_graph_output(self):
+    def _my_function(x, y):
+      a = x + y
+      b = x - y
+      return a, b, a
+
+    def _assert_no_duplicate_output(
+        results: List[torch.Tensor],
+    ) -> List[torch.Tensor]:
+      # The third output should be dropped internally.
+      self.assertLen(results, 2)
+      return results
+
+    in_a = torch.randn(5).to(api.tpu_device())
+    in_b = torch.randn(5).to(api.tpu_device())
+    tpu_backend = compile.TpuBackend(debug=True)
+    compiled = torch.compile(
+        _my_function,
+        backend=_run_tpu_backend_with_injected_test_case(
+            tpu_backend,
+            inject_test_case=lambda gm, example_inputs: (gm, example_inputs),
+            map_output=_assert_no_duplicate_output,
+        ),
+    )
+    results = compiled(in_a, in_b)
+    # After the compiled function returns, the duplicate output should be
+    # restored.
+    self.assertLen(results, 3)
+    utils.assert_close(actual=results[0], expected=results[2])
 
 
 if __name__ == "__main__":
