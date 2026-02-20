@@ -40,7 +40,7 @@ absl::StatusOr<std::string> InferV7Topology(int world_size) {
 
 absl::StatusOr<std::string> InferV6Topology(int world_size) {
   if (world_size == 8) {
-    return "4,2,1";
+    return "2,4,1";
   }
   if (world_size == 4) {
     return "2,2,1";
