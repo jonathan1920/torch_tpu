@@ -16,10 +16,6 @@
 
 #include "torch_tpu/common/tier3_compilation_cache.h"
 
-#include <cstdlib>
-#include <filesystem>
-#include <fstream>
-#include <ios>
 #include <string>
 #include <string_view>
 
@@ -34,10 +30,9 @@
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"
+#include "xla/tsl/platform/env.h"
 
 namespace torch_tpu {
-
-namespace fs = std::filesystem;
 
 constexpr std::string_view kTier3CacheFileExtension = ".bin";
 
@@ -106,19 +101,12 @@ absl::StatusOr<SharedLoadedExecutable> GetFromTier3Cache(
   const std::string cache_entry_path = GetTier3CacheEntryPath(key);
   ABSL_VLOG(1) << "Reading tier-3 cache for key " << key << " at path "
                << cache_entry_path;
-  TT_RET_CHECK(fs::exists(cache_entry_path), error::kNotFound)
-      << "cannot find tier-3 cache file " << cache_entry_path;
-  TT_RET_CHECK(fs::is_regular_file(cache_entry_path), error::kInvalidArgument)
-      << cache_entry_path << " is not a regular file";
-  const auto file_size = fs::file_size(cache_entry_path);
-  std::ifstream file(cache_entry_path, std::ios::binary);
-  TT_RET_CHECK(file.is_open(), error::kNotFound)
-      << "cannot open tier-3 cache file " << cache_entry_path;
+
+  tsl::Env* const env = tsl::Env::Default();
   std::string data;
-  data.resize(file_size);
-  file.read(data.data(), file_size);
-  TT_RET_CHECK(file.gcount() == file_size, error::kNotFound)
+  TT_RETURN_IF_ERROR(tsl::ReadFileToString(env, cache_entry_path, &data))
       << "cannot read tier-3 cache file " << cache_entry_path;
+
   ABSL_VLOG(1) << "Read " << data.size() << " bytes from tier-3 cache for key "
                << key << " at path " << cache_entry_path;
 

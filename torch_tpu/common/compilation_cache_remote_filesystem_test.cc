@@ -17,16 +17,17 @@
 #include <cstdint>
 #include <string>
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "absl/flags/flag.h"
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/env_vars.h"
+#include "torch_tpu/common/tier3_compilation_cache.h"
+#include "torch_tpu/pjrt/pjrt_init.h"
 #include "xla/tsl/platform/env.h"
-
-ABSL_FLAG(std::string, test_remote_dir,
-          "",
-          "Remote directory to write test files to.");
 
 namespace torch_tpu {
 
@@ -36,29 +37,48 @@ absl::Status EnsureDirExistsRecursively(const std::string& path);
 
 namespace {
 
-class AtomicWriteToCacheFileTest : public testing::Test {
+using testing::HasSubstr;
+
+// A test environment that initializes the PjRt client, which is required for
+// GetFromTier2Cache() to work.
+class TpuTestEnvironment : public testing::Environment {
+ public:
+  void SetUp() override {
+    // This must be done before testing GetFromTier2Cache(),.
+    ABSL_CHECK_OK(InitializePjRt({.device_type = "tpu", .world_size = 1}));
+  }
+};
+
+// Installs the test environment.
+auto* const test_env =
+    testing::AddGlobalTestEnvironment(new TpuTestEnvironment);
+
+class RemoteCacheTest : public testing::Test {
  protected:
-  ~AtomicWriteToCacheFileTest() override {
+  void SetUp() override {
+    test_dir_ =
+        GetEnvOnce<kTorchTpuInternalTier3CompilationCacheRootEnvVar>().value_or(
+            "");
+    ASSERT_FALSE(test_dir_.empty())
+        << "The TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT env var must "
+           "be set.";
+  }
+
+  ~RemoteCacheTest() override {
     // Clean up the test file if it exists.
     if (!test_file_.empty()) {
       env_->DeleteFile(test_file_).IgnoreError();
     }
-    // Clean up the test directory if it exists.
-    if (!test_dir_.empty()) {
-      int64_t undeleted_files, undeleted_dirs;
-      env_->DeleteRecursively(test_dir_, &undeleted_files, &undeleted_dirs)
-          .IgnoreError();
-    }
   }
 
   tsl::Env* const env_ = tsl::Env::Default();
-  std::string test_file_;
   std::string test_dir_;
+  std::string test_file_;
 };
 
 // Tests that AtomicWriteToCacheFile correctly writes a new file.
-TEST_F(AtomicWriteToCacheFileTest, WriteNewFile) {
-  test_file_ = absl::StrCat(absl::GetFlag(FLAGS_test_remote_dir), "/new_file.");
+TEST_F(RemoteCacheTest, WritesNewCacheFile) {
+  test_file_ = absl::StrCat(test_dir_, "/new_file");
   // Make test_file_ unique in case the test is run with --runs_per_test=N.
   ASSERT_TRUE(env_->CreateUniqueFileName(&test_file_, /*suffix=*/".data"));
   const std::string content = "test_data_content";
@@ -81,9 +101,8 @@ TEST_F(AtomicWriteToCacheFileTest, WriteNewFile) {
 }
 
 // Tests that AtomicWriteToCacheFile correctly overwrites an existing file.
-TEST_F(AtomicWriteToCacheFileTest, OverwriteExistingFile) {
-  test_file_ =
-      absl::StrCat(absl::GetFlag(FLAGS_test_remote_dir), "/existing_file");
+TEST_F(RemoteCacheTest, OverwritesExistingCacheFile) {
+  test_file_ = absl::StrCat(test_dir_, "/existing_file");
   // Make test_file_ unique in case the test is run with --runs_per_test=N.
   ASSERT_TRUE(env_->CreateUniqueFileName(&test_file_, /*suffix=*/".data"));
   const std::string content = "test_data_content";
@@ -112,9 +131,9 @@ TEST_F(AtomicWriteToCacheFileTest, OverwriteExistingFile) {
       << "Unexpected content in file " << test_file_;
 }
 
-TEST_F(AtomicWriteToCacheFileTest, CreateDirectory) {
-  test_dir_ = absl::StrCat(absl::GetFlag(FLAGS_test_remote_dir), "/new_dir");
+TEST_F(RemoteCacheTest, CreatesCacheDirectory) {
   // Make test_dir_ unique in case the test is run with --runs_per_test=N.
+  test_dir_ = absl::StrCat(test_dir_, "/test_dir");
   ASSERT_TRUE(env_->CreateUniqueFileName(&test_dir_, /*suffix=*/""));
   // Add two more levels of directories to test recursive creation.
   const std::string test_subdir = absl::StrCat(test_dir_, "/level1/level2");
@@ -131,6 +150,27 @@ TEST_F(AtomicWriteToCacheFileTest, CreateDirectory) {
   // Verify the directory was created.
   ASSERT_EQ(status, absl::OkStatus());
   ASSERT_EQ(env_->IsDirectory(test_subdir), absl::OkStatus());
+}
+
+TEST_F(RemoteCacheTest, GetFromTier3Cache) {
+  CompilationCacheKey key = {
+      .shapeless_key = ShapelessKey{123},
+      .dimensions_key = DimensionsKey({10}),
+  };
+
+  // Write a cache entry file.
+  const std::string cache_entry_path = GetTier3CacheEntryPath(key);
+  ABSL_LOG(INFO) << "Writing to " << cache_entry_path;
+  const std::string content = "test_data_content";
+  absl::Status status = AtomicWriteToCacheFile(cache_entry_path, content);
+  ASSERT_EQ(status, absl::OkStatus());
+
+  // Read back using GetFromTier3Cache.
+  // We expect failure because the data is invalid, but we want to verify that
+  // it *successfully read the file*.
+  auto result = GetFromTier3Cache(key);
+  ASSERT_NE(result.status(), absl::OkStatus());
+  EXPECT_THAT(result.status().message(), HasSubstr("load serialized"));
 }
 
 }  // namespace

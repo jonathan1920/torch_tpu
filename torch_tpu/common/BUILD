@@ -208,7 +208,7 @@ torch_tpu_cc_test(
 
 # Tests that the tier-2 cache is disabled by default for world size 1.
 torch_tpu_cc_test(
-    name = "tier2_compilation_cache_enablement_test_default_one_host",
+    name = "tier2_compilation_cache_enablement_test_default_one_device",
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
     # Do not set the TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment variable.
     args = [
@@ -249,7 +249,7 @@ torch_tpu_cc_test(
 
 # Tests that the tier-2 cache can be explicitly disabled for world size 1.
 torch_tpu_cc_test(
-    name = "tier2_compilation_cache_enablement_test_disabled_one_host",
+    name = "tier2_compilation_cache_enablement_test_disabled_one_device",
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
     args = [
         "--expected_tier2_cache_name=",
@@ -294,7 +294,7 @@ torch_tpu_cc_test(
 
 # Tests that the tier-2 cache can be explicitly enabled for world size 1.
 torch_tpu_cc_test(
-    name = "tier2_compilation_cache_enablement_test_enabled_one_host",
+    name = "tier2_compilation_cache_enablement_test_enabled_one_device",
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
     args = [
         "--expected_tier2_cache_name=my_cache",
@@ -353,6 +353,7 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/platform:env",
     ],
 )
 
@@ -759,19 +760,30 @@ torch_tpu_cc_test(
 torch_tpu_cc_test(
     name = "compilation_cache_remote_filesystem_test",
     srcs = ["compilation_cache_remote_filesystem_test.cc"],
+    env = {
+        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "tier2_cache",
+        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
+        # TODO(wan): make this work on OSS.
+        "",
+    },
     tags = [
         "requires-net:external",  # Requires remote file access.
+        "requires-tpu-v5lite",
     ],
     deps = [
+        ":cache_key",
+        ":env_vars",
         ":tier2_compilation_cache",  # buildcleaner: keep
+        ":tier3_compilation_cache",
         # TODO(wan): make this work on OSS.
         "@com_google_googletest//:gtest_main",
-        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:env",
         "@tsl//tsl/platform:path",
+        "//torch_tpu/pjrt:pjrt_init",
     ],
 )
 
