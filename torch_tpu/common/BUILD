@@ -168,6 +168,7 @@ torch_tpu_cc_library(
         ":unique_file_descriptor",
         "//torch_tpu/pjrt:pjrt_init",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
@@ -177,6 +178,7 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/time",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
+        "@xla//xla/tsl/platform:env",
     ],
 )
 
@@ -755,6 +757,25 @@ torch_tpu_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "compilation_cache_remote_filesystem_test",
+    srcs = ["compilation_cache_remote_filesystem_test.cc"],
+    tags = [
+        "requires-net:external",  # Requires remote file access.
+    ],
+    deps = [
+        ":tier2_compilation_cache",  # buildcleaner: keep
+        # TODO(wan): make this work on OSS.
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/platform:env",
+        "@tsl//tsl/platform:path",
     ],
 )
 

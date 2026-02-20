@@ -21,6 +21,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
+#include <atomic>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -31,11 +32,10 @@
 #include <ostream>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <utility>
-#include <vector>
 
 #include "absl/base/no_destructor.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
@@ -48,6 +48,8 @@
 #include "torch_tpu/common/unique_file_descriptor.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/error_utils.h"
@@ -308,55 +310,66 @@ absl::StatusOr<SharedLoadedExecutable> GetFromTier2Cache(
   // The dtor of mapped_entry unmaps the file here.
 }
 
-// Writes the given binary data to a unique temp file in the cache directory.
-// Returns the path of the created file.
-static absl::StatusOr<std::string> WriteToUniqueTempFile(
-    const std::string& cache_dir, const std::string& binary_data) {
-  // Prepare the template for mkstemp, which requires a C-string ending in
-  // exactly six 'X's. We use a vector<char> because mkstemp modifies the string
-  // in-place.
-  const std::string path_template = cache_dir + "/file_XXXXXX";
-  std::vector<char> path_buffer(path_template.begin(), path_template.end());
-  path_buffer.push_back('\0');  // Null-terminate to get a C-string.
-
-  // Atomically create and open the file.
-  UniqueFileDescriptor fd(mkstemp(path_buffer.data()));
-  TT_RET_CHECK(fd.valid(), error::kInternal)
-      << "mkstemp(\"" << path_template << "\") failed: " << strerror(errno);
-
-  // Write the binary data to the file.
-  // We handle partial writes (though rare on local tmpfs, it's best practice).
-  size_t total_written = 0;
-  while (total_written < binary_data.size()) {
-    const ssize_t written = write(fd.get(), binary_data.data() + total_written,
-                                  binary_data.size() - total_written);
-    if (written == -1) {
-      if (errno == EINTR) continue;  // Interrupted by signal, retry.
-      fd.reset();
-      unlink(path_buffer.data());  // Delete the corrupt file.
-      return TT_ERROR(error::kInternal) << "Write failed: " << strerror(errno);
-    }
-    total_written += written;
-  }
-
-  // Return the modified path (mkstemp replaced the XXXXXX).
-  return std::string(path_buffer.data());
-}
-
 absl::Status AtomicWriteToCacheFile(const std::string& cache_entry_path,
                                     const std::string& serialized_data) {
   ABSL_VLOG(1) << "Writing serialized executable to " << cache_entry_path;
 
-  const std::string cache_dir = fs::path(cache_entry_path).parent_path();
-  TT_ASSIGN_OR_RETURN(const std::string temp_file_path,
-                      WriteToUniqueTempFile(cache_dir, serialized_data));
+  // Use tsl::Env so that we can support writing to remote files as well as
+  // local files.
+  tsl::Env* const env = tsl::Env::Default();
 
-  // Atomically rename the temp file to the final cache file path.
-  std::error_code ec;
-  fs::rename(temp_file_path, cache_entry_path, ec);
-  TT_RET_CHECK(!ec, error::kInternal)
-      << "Failed to rename temp file " << temp_file_path << " to cache file "
-      << cache_entry_path;
+  // Create a unique temp file in the same directory as the cache file.
+  // We don't use mkstemp() because it's not compatible with Colossus.
+  // We must put the temp file in the same directory as the final cache file
+  // so that we can atomically rename it later.
+  std::string temp_file_path = absl::StrCat(cache_entry_path, ".");
+
+  // CreateUniqueFileName appends "Hostname-ThreadID-PID-TimestampMicroseconds"
+  // to the prefix. We add a suffix ".<counter>.tmp" in the unlikely event that
+  // AtomicWriteToCacheFile() is called in rapid succession with the same
+  // host/pid/thread/timestamp combination.
+  static std::atomic<int> counter = 0;
+  TT_RET_CHECK(env->CreateUniqueFileName(
+                   &temp_file_path,                                 // prefix
+                   absl::StrCat(".", counter.fetch_add(1), ".tmp")  // suffix
+                   ),
+               error::kInternal)
+      << "failed to create unique temp file for " << cache_entry_path;
+
+  {
+    bool success = false;
+
+    // Automatically clean up the temp file and the final cache file if
+    // something goes wrong.
+    auto cleanup = absl::MakeCleanup([&]() {
+      if (!success) {
+        ABSL_LOG(ERROR) << "Failed to write cache file " << cache_entry_path
+                        << ". Cleaning up.";
+        env->DeleteFile(temp_file_path).IgnoreError();
+        env->DeleteFile(cache_entry_path).IgnoreError();
+      }
+    });
+
+    std::unique_ptr<tsl::WritableFile> file;
+    TT_RETURN_IF_ERROR(env->NewWritableFile(temp_file_path, &file))
+        << "failed to create writable file " << temp_file_path;
+    TT_RETURN_IF_ERROR(file->Append(serialized_data))
+        << "failed to write to file " << temp_file_path;
+    TT_RETURN_IF_ERROR(file->Close())
+        << "failed to close file " << temp_file_path;
+
+    // Atomically rename the temp file to the final cache file path.
+    // If the target file already exists, RenameFile() will replace it,
+    // which is what we want (last writer wins).
+    TT_RETURN_IF_ERROR(env->RenameFile(temp_file_path, cache_entry_path))
+        << "failed to rename file " << temp_file_path << " to "
+        << cache_entry_path;
+
+    success = true;
+  }
+
+  ABSL_VLOG(1) << "Successfully wrote serialized executable to "
+               << cache_entry_path;
   return absl::OkStatus();
 }
 
@@ -367,7 +380,7 @@ absl::Status AtomicWriteToCacheFile(const std::string& cache_entry_path,
   TT_ASSIGN_OR_RETURN(const std::string serialized,
                       executable->GetExecutable()->SerializeExecutable(),
                       _.SetPrepend()
-                          << "Failed to serialize executable for cache file "
+                          << "failed to serialize executable for cache file "
                           << cache_entry_path);
   return AtomicWriteToCacheFile(cache_entry_path, serialized);
 }
