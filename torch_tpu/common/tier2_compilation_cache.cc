@@ -399,10 +399,8 @@ absl::Status AtomicWriteToCacheFile(const std::string& cache_entry_path,
 }
 
 absl::Status EnsureDirExistsRecursively(const std::string& path) {
-  tsl::Env* env = tsl::Env::Default();
-  TT_RETURN_IF_ERROR(env->RecursivelyCreateDir(path))
-      << "failed to create directory " << path;
-  return absl::OkStatus();
+  tsl::Env* const env = tsl::Env::Default();
+  return env->RecursivelyCreateDir(path);
 }
 
 // Ensures that the tier-2 cache directory exists. This function only does

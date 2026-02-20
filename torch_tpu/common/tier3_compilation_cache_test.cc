@@ -27,6 +27,7 @@
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"
@@ -76,8 +77,8 @@ TEST_F(Tier3CompilationCacheTest, GetTier3CacheEntryPath) {
 
   // Expected path format: <root>/<fingerprint>/<key>.bin
   const std::string expected_prefix = absl::StrCat(
-      "/tmp/my_cache/",
-      absl::Hex(GetTorchTpuBinaryFingerprint(), absl::kZeroPad16), "/");
+      GetEnvOnce<kTorchTpuInternalTier3CompilationCacheRootEnvVar>().value(),
+      "/", absl::Hex(GetTorchTpuBinaryFingerprint(), absl::kZeroPad16), "/");
 
   ASSERT_THAT(path, StartsWith(expected_prefix));
   const std::string suffix = path.substr(expected_prefix.size());
