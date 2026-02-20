@@ -248,6 +248,8 @@ std::string_view ToString(OpName op_name) {
       return "exp.out";
     case OpName::kExponential_:
       return "exponential_";
+    case OpName::kFakeQuantizePerTensorAffineCachemask:
+      return "fake_quantize_per_tensor_affine_cachemask";
     case OpName::kFftR2c:
       return "_fft_r2c";
     case OpName::kFftR2cOut:

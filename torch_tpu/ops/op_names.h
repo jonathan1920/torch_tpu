@@ -135,6 +135,7 @@ enum class OpName {
   kExpM1Out,
   kExpOut,
   kExponential_,
+  kFakeQuantizePerTensorAffineCachemask,
   kFftR2c,
   kFftR2cOut,
   kFill_Scalar,

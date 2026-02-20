@@ -71,6 +71,7 @@
 #include "torch_tpu/ops/equal/equal_aten_kernels.h"
 #include "torch_tpu/ops/experimental/ragged_dot_aten_kernels.h"
 #include "torch_tpu/ops/exponential/exponential_aten_kernels.h"
+#include "torch_tpu/ops/fake_quantize/fake_quantize_aten_kernels.h"
 #include "torch_tpu/ops/fft/fft_aten_kernels.h"
 #include "torch_tpu/ops/fill/fill_aten_kernels.h"
 #include "torch_tpu/ops/flip/flip_aten_kernels.h"
@@ -528,6 +529,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   m.impl("eq.Tensor_out", AtenEqTensorOut);
   m.impl("erf.out", AtenErfOut);
   m.impl("expm1.out", AtenExpm1Out);
+  m.impl("fake_quantize_per_tensor_affine_cachemask",
+         FakeQuantizePerTensorAffineCachemask);
   m.impl("fill_.Scalar", AtenFillScalar_);
   m.impl("fill_.Tensor", AtenFillTensor_);
   m.impl("flip", AtenFlip);

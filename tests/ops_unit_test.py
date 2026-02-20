@@ -3544,6 +3544,47 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             check_value=CheckValueMode.LOOSE,
         )
 
+  def test_fake_quantize_per_tensor_affine_cachemask(self):
+    scale = 1 / 255
+    zero_point = 10
+    quant_min = -127
+    quant_max = 127
+
+    input_tensor = torch.tensor(
+        [
+            0,  # zero point
+            (quant_min - zero_point - 5)
+            * scale,  # dequantized value smaller than dequantized quant_min
+            (quant_max - zero_point + 5)
+            * scale,  # dequantized value larger than dequantized quant_max
+            (37 - zero_point - 1) * scale,  # arbitrary value within range
+        ],
+        dtype=torch.float32,
+    )
+
+    def test_fn(device):
+      input_tensor_device = input_tensor.to(device)
+      fake_quantized_tensor, mask = (
+          torch.ops.aten.fake_quantize_per_tensor_affine_cachemask(
+              input_tensor_device,
+              scale=scale,
+              zero_point=zero_point,
+              quant_min=quant_min,
+              quant_max=quant_max,
+          )
+      )
+      return fake_quantized_tensor, mask
+
+    cpu_res_tensor, cpu_mask = test_fn("cpu")
+    tpu_res_tensor, tpu_mask = test_fn(api.tpu_device())
+
+    self.assert_close(
+        golden_result=cpu_res_tensor.cpu(),
+        torch_tpu_result=tpu_res_tensor.cpu(),
+    )
+
+    self.assertEqual(cpu_mask.cpu(), tpu_mask.cpu())
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""
