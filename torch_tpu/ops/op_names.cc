@@ -636,6 +636,12 @@ std::string_view ToString(OpName op_name) {
       return "resize_";
     case OpName::kRmsNorm:
       return "rms_norm";
+    case OpName::kRngSeed:
+      return "seed";
+    case OpName::kRngSetOffset:
+      return "set_offset";
+    case OpName::kRngSetSeed:
+      return "set_current_seed";
     case OpName::kRngStateUpdate:
       return "rng_state_update";
     case OpName::kRoll:
@@ -670,14 +676,8 @@ std::string_view ToString(OpName op_name) {
       return "scatter.value_out";
     case OpName::kScatterValueReduceOut:
       return "scatter.value_reduce_out";
-    case OpName::kSeed:
-      return "seed";
     case OpName::kSetDimensionSize:
       return "set_dimension_size";
-    case OpName::kSetOffset:
-      return "set_offset";
-    case OpName::kSetSeed:
-      return "set_seed";
     case OpName::kSet_:
       return "set_";
     case OpName::kSet_SourceStorage:

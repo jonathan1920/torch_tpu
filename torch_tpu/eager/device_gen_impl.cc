@@ -77,7 +77,7 @@ absl::StatusOr<DeviceBufferRef> UpdateRngState(at::Tensor rng_state,
   TT_ASSIGN_OR_RETURN(auto params,
                       TT_MAKE_OP_PARAM_CACHE_KEYS(value, position));
 
-  return DispatchOp<1>(OpName::kSetSeed, std::move(set_seed_builder),
+  return DispatchOp<1>(OpName::kRngSetSeed, std::move(set_seed_builder),
                        {rng_state},
                        {.out_dtype = mlir::ElementType::UI64,
                         .out_dims = {2},
@@ -210,7 +210,7 @@ DeviceGeneratorImpl::DeviceGeneratorImpl(c10::DeviceIndex device_index,
 
 void DeviceGeneratorImpl::set_current_seed(uint64_t seed) {
   // set_current_seed() is invoked by PyTorch and behaves like an op.
-  TT_KERNEL(OpName::kSetSeed, _, (seed), {
+  TT_KERNEL(OpName::kRngSetSeed, _, (seed), {
     TT_ASSIGN_OR_THROW(auto rng_state_buffer, UpdateRngSeed(rng_state_, seed));
     auto new_rng_state = MakeTensor(std::move(rng_state_buffer));
     rng_state_ = new_rng_state;
@@ -219,7 +219,7 @@ void DeviceGeneratorImpl::set_current_seed(uint64_t seed) {
 
 void DeviceGeneratorImpl::set_offset(uint64_t offset) {
   // set_offset() is invoked by PyTorch and behaves like an op.
-  TT_KERNEL(OpName::kSetOffset, _, (offset), {
+  TT_KERNEL(OpName::kRngSetOffset, _, (offset), {
     TT_ASSIGN_OR_THROW(auto rng_state_buffer,
                        UpdateRngOffset(rng_state_, offset));
     auto new_rng_state = MakeTensor(std::move(rng_state_buffer));
@@ -237,7 +237,7 @@ uint64_t DeviceGeneratorImpl::current_seed() const {
 
 uint64_t DeviceGeneratorImpl::seed() {
   // seed() is invoked by PyTorch and behaves like an op.
-  TT_KERNEL(OpName::kSeed, _, (), {
+  TT_KERNEL(OpName::kRngSeed, _, (), {
     auto random = c10::detail::getNonDeterministicRandom(false);
     this->set_current_seed(random);
     return random;
