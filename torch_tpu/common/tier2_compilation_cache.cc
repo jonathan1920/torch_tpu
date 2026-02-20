@@ -46,6 +46,7 @@
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/unique_file_descriptor.h"
+#include "torch_tpu/common/utils.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/tsl/platform/env.h"
@@ -143,10 +144,18 @@ const std::string& GetTier2CacheName() {
                             "size 1.";
           return std::string();
         } else {
+#if TT_IS_INTERNAL_TORCH_TPU
           ABSL_LOG(INFO) << "Tier-2 compilation cache is enabled with name '"
                          << kDefaultCacheName << "' for world size "
                          << *world_size_or << ".";
           return std::string(kDefaultCacheName);
+#else
+          // TODO(b/484142701): remove this branch.
+          ABSL_LOG(WARNING)
+              << "Tier-2 compilation cache is disabled in OSS by default for "
+                 "now while we investigate the crash.";
+          return std::string();
+#endif
         }
       }
       ABSL_LOG(INFO) << "Tier-2 compilation cache is disabled because we could "
