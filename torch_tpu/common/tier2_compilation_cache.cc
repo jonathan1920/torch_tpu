@@ -26,7 +26,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -57,8 +56,6 @@
 #include "torch_tpu/pjrt/pjrt_init.h"
 
 namespace torch_tpu {
-
-namespace fs = std::filesystem;
 
 // Remember to increment this whenever TorchTPU's behavior changes enough to
 // invalidate the tier-2 cache.
@@ -401,21 +398,11 @@ absl::Status AtomicWriteToCacheFile(const std::string& cache_entry_path,
                       kLockFileExtension);
 }
 
-bool EnsureDirExistsRecursively(const std::string& path) {
-  try {
-    // "mkdir -p".
-    fs::create_directories(path);
-    ABSL_VLOG(1) << "Created directory: " << path;
-
-    // Set permissions to 0777 (rwxrwxrwx).
-    fs::permissions(path, fs::perms::all, fs::perm_options::replace);
-    ABSL_VLOG(1) << "Set permissions to 0777 for directory: " << path;
-    return true;
-  } catch (const fs::filesystem_error& e) {
-    ABSL_LOG(ERROR) << "Failed to create directory: " << path
-                    << " with error: " << e.what();
-  }
-  return false;
+absl::Status EnsureDirExistsRecursively(const std::string& path) {
+  tsl::Env* env = tsl::Env::Default();
+  TT_RETURN_IF_ERROR(env->RecursivelyCreateDir(path))
+      << "failed to create directory " << path;
+  return absl::OkStatus();
 }
 
 // Ensures that the tier-2 cache directory exists. This function only does
@@ -423,10 +410,11 @@ bool EnsureDirExistsRecursively(const std::string& path) {
 static void EnsureTier2CacheDirExistsOnceOrDie() {
   static const bool dir_exists = []() {
     const std::string cache_path = GetTier2CompilationCachePath();
-    const bool success = EnsureDirExistsRecursively(cache_path);
-    ABSL_CHECK(success)  // CRASH_OK
-        << "Failed to create tier-2 cache directory: " << cache_path;
-    return success;
+    const absl::Status status = EnsureDirExistsRecursively(cache_path);
+    ABSL_CHECK(status.ok())  // CRASH_OK
+        << "Failed to create tier-2 cache directory: " << cache_path
+        << " with error: " << status.message();
+    return true;
   }();
   static_cast<void>(dir_exists);  // Avoid unused variable warning.
 }

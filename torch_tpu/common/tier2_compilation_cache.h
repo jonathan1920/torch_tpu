@@ -103,11 +103,8 @@ absl::StatusOr<SharedLoadedExecutable> GetFromTier2Cache(
 [[nodiscard]] std::string GetTier2CacheEntryPath(CompilationCacheKey key);
 
 // Creates the directory recursively as needed, and sets the permissions to
-// 0777 (rwxrwxrwx). Returns true if successful, false otherwise.
-//
-// This function is best-effort only. If it fails, it logs the error and
-// returns false.
-bool EnsureDirExistsRecursively(const std::string& path);
+// 0777 (rwxrwxrwx).
+absl::Status EnsureDirExistsRecursively(const std::string& path);
 
 // Loads a serialized executable read from the given cache.
 absl::StatusOr<SharedLoadedExecutable> LoadSerializedExecutable(

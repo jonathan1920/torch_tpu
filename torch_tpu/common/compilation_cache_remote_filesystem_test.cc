@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <cstdint>
 #include <string>
 
 #include "gtest/gtest.h"
@@ -31,6 +32,7 @@ namespace torch_tpu {
 
 absl::Status AtomicWriteToCacheFile(const std::string& cache_entry_path,
                                     const std::string& serialized_data);
+absl::Status EnsureDirExistsRecursively(const std::string& path);
 
 namespace {
 
@@ -41,10 +43,17 @@ class AtomicWriteToCacheFileTest : public testing::Test {
     if (!test_file_.empty()) {
       env_->DeleteFile(test_file_).IgnoreError();
     }
+    // Clean up the test directory if it exists.
+    if (!test_dir_.empty()) {
+      int64_t undeleted_files, undeleted_dirs;
+      env_->DeleteRecursively(test_dir_, &undeleted_files, &undeleted_dirs)
+          .IgnoreError();
+    }
   }
 
   tsl::Env* const env_ = tsl::Env::Default();
   std::string test_file_;
+  std::string test_dir_;
 };
 
 // Tests that AtomicWriteToCacheFile correctly writes a new file.
@@ -101,6 +110,27 @@ TEST_F(AtomicWriteToCacheFileTest, OverwriteExistingFile) {
   ASSERT_EQ(status, absl::OkStatus());
   EXPECT_EQ(read_content, new_content)
       << "Unexpected content in file " << test_file_;
+}
+
+TEST_F(AtomicWriteToCacheFileTest, CreateDirectory) {
+  test_dir_ = absl::StrCat(absl::GetFlag(FLAGS_test_remote_dir), "/new_dir");
+  // Make test_dir_ unique in case the test is run with --runs_per_test=N.
+  ASSERT_TRUE(env_->CreateUniqueFileName(&test_dir_, /*suffix=*/""));
+  // Add two more levels of directories to test recursive creation.
+  const std::string test_subdir = absl::StrCat(test_dir_, "/level1/level2");
+
+  // Clean up test_dir_ if it exists.
+  int64_t undeleted_files, undeleted_dirs;
+  env_->DeleteRecursively(test_dir_, &undeleted_files, &undeleted_dirs)
+      .IgnoreError();
+
+  // Create the directory.
+  ABSL_LOG(INFO) << "Creating directory " << test_subdir;
+  absl::Status status = EnsureDirExistsRecursively(test_subdir);
+
+  // Verify the directory was created.
+  ASSERT_EQ(status, absl::OkStatus());
+  ASSERT_EQ(env_->IsDirectory(test_subdir), absl::OkStatus());
 }
 
 }  // namespace

@@ -26,6 +26,7 @@
 #include "absl/base/no_destructor.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "torch_tpu/common/cache_key.h"
@@ -84,10 +85,11 @@ bool UsesTier3CompilationCache() {
 static void EnsureTier3CacheDirExistsOnceOrDie() {
   static const bool dir_exists = []() {
     const std::string cache_path = GetTier3CompilationCachePath();
-    const bool success = EnsureDirExistsRecursively(cache_path);
-    ABSL_CHECK(success)  // CRASH_OK
-        << "Failed to create tier-3 cache directory: " << cache_path;
-    return success;
+    const absl::Status status = EnsureDirExistsRecursively(cache_path);
+    ABSL_CHECK(status.ok())  // CRASH_OK
+        << "Failed to create tier-3 cache directory: " << cache_path
+        << " with error: " << status.message();
+    return true;
   }();
   static_cast<void>(dir_exists);  // Avoid unused variable warning.
 }
