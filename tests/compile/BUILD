@@ -66,7 +66,6 @@ torch_tpu_py_test(
         "exclusive",
         "oss_ready_tpu",
         "requires-tpu-v5lite:8",
-        "wheel_test_excluded",
     ],
     deps = [
         "//shims/absl_py/testing:absltest",
