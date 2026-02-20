@@ -74,8 +74,8 @@ nightlies, or install the CPU build separately.
 Some pointers to get you started:
 
 *   [PyTorch: Official PyTorch documentation](https://github.com/pytorch/pytorch)
-*   [Tutorials: get you started with sample PyTorch models on TPU](../examples/tutorial)
-*   [Examples: easy to understand PyTorch code using TorchTPU](../examples/README.md)
+*   [Tutorials: easy to understand PyTorch code using TorchTPU](./examples/tutorials)
+*   [Examples: get you started with sample PyTorch models on TPU](./examples/README.md)
 
 ## Dependencies
 

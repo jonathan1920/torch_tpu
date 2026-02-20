@@ -26,9 +26,13 @@ For distributed training examples, refer to `examples/distributed/`.
 
 For model inference examples, refer to `examples/`.
 
-## Resources
+## Available Models
 
-- [TODO](todo.md)
+- simple_nn
+
+## Benchmarking
+
+- TODO
 
 ## Contributing
 
