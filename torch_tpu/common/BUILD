@@ -237,6 +237,7 @@ torch_tpu_cc_test(
         "--world_size=4",
     ],
     tags = [
+        "nofastbuild",  # Run in postsubmit only to avoid long Forge queues.
     ],
     deps = [
         ":tier2_compilation_cache",
@@ -282,6 +283,7 @@ torch_tpu_cc_test(
         "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "disabled",
     },
     tags = [
+        "nofastbuild",  # Run in postsubmit only to avoid long Forge queues.
     ],
     deps = [
         ":tier2_compilation_cache",
@@ -327,6 +329,7 @@ torch_tpu_cc_test(
         "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "my_cache2",
     },
     tags = [
+        "nofastbuild",  # Run in postsubmit only to avoid long Forge queues.
     ],
     deps = [
         ":tier2_compilation_cache",
