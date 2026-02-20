@@ -4066,6 +4066,23 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch._foreach_add_(self_list, [1, 1])
 
+  def test_inplace_foreach_sub_bool(self):
+    self_list = [
+        torch.tensor([True, True], dtype=torch.bool, device=et.device()),
+        torch.tensor([True, True], dtype=torch.bool, device=et.device()),
+    ]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="foreach_sub(): bool dtype is not supported",
+        cpu=(
+            "Subtraction, the `-` operator, with a bool tensor is not"
+            " supported. If you are trying to invert a mask, use the `~` or"
+            " `logical_not()` operator instead."
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._foreach_sub(self_list, [1, 1])
+
   def test_inplace_foreach_sqrt_integral(self):
     self_list = [
         torch.tensor([1, 4], dtype=torch.int32, device=et.device()),

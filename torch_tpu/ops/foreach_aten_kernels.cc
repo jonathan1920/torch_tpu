@@ -201,6 +201,8 @@ absl::StatusOr<UniqueDtypeVec> GetOutputDtypes(
   return out_dtypes_vec;
 }
 
+// Helper functions for input validation.
+
 absl::Status CheckScalarType(mlir::ElementType out_dtype,
                              mlir::ElementType compute_dtype,
                              at::ScalarType tensor_type,
@@ -217,6 +219,32 @@ absl::Status EnsureNotIntegral(at::TensorList self) {
     TT_RET_CHECK(!IsIntegral(self[i]), error::kInvalidArgument)
         << "expected input tensor dtype to be non-integral, got "
         << ToString(self[i].scalar_type());
+  }
+  return absl::OkStatus();
+}
+
+inline absl::Status EnsureNotBool(const at::Scalar& scalar) {
+  TT_RET_CHECK(!IsBool(scalar), error::kInvalidArgument)
+      << "bool dtype is not supported";
+  return absl::OkStatus();
+}
+
+inline absl::Status EnsureNotBool(const at::Tensor& tensor) {
+  TT_RET_CHECK(!IsBool(tensor), error::kInvalidArgument)
+      << "bool dtype is not supported";
+  return absl::OkStatus();
+}
+
+absl::Status EnsureNotBool(at::TensorList self) {
+  for (const auto& tensor : self) {
+    TT_RETURN_IF_ERROR(EnsureNotBool(tensor));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status EnsureNotBool(at::ArrayRef<at::Scalar> scalars) {
+  for (const auto& scalar : scalars) {
+    TT_RETURN_IF_ERROR(EnsureNotBool(scalar));
   }
   return absl::OkStatus();
 }
@@ -779,6 +807,78 @@ void AtenForeachMul_Tensor(at::TensorList self, const at::Tensor& other) {
   TT_KERNEL(OpName::kForeachMul_Tensor, _, (self, other), {
     std::vector<at::Tensor> other_list(self.size(), other);
     AtenForeachMul_List(self, other_list);
+  });
+}
+
+std::vector<at::Tensor> AtenForeachSubList(at::TensorList self,
+                                           at::TensorList other,
+                                           const at::Scalar& alpha) {
+  TT_KERNEL(OpName::kForeachSubList, _, (self, other, alpha), {
+    // _foreach_add supports bool, but _foreach_sub does not.
+    TT_THROW_IF_ERROR(EnsureNotBool(alpha));
+    TT_THROW_IF_ERROR(EnsureNotBool(self));
+    TT_THROW_IF_ERROR(EnsureNotBool(other));
+    return AtenForeachAddList(self, other, -alpha);
+  });
+}
+
+void AtenForeachSub_List(at::TensorList self, at::TensorList other,
+                         const at::Scalar& alpha) {
+  TT_KERNEL(OpName::kForeachSub_List, _, (self, other, alpha), {
+    // _foreach_add supports bool, but _foreach_sub does not.
+    TT_THROW_IF_ERROR(EnsureNotBool(alpha));
+    TT_THROW_IF_ERROR(EnsureNotBool(self));
+    TT_THROW_IF_ERROR(EnsureNotBool(other));
+    AtenForeachAdd_List(self, other, -alpha);
+  });
+}
+
+std::vector<at::Tensor> AtenForeachSubScalar(at::TensorList self,
+                                             const at::Scalar& scalar) {
+  TT_KERNEL(OpName::kForeachSubScalar, _, (self, scalar), {
+    // _foreach_add supports bool, but _foreach_sub does not.
+    TT_THROW_IF_ERROR(EnsureNotBool(scalar));
+    TT_THROW_IF_ERROR(EnsureNotBool(self));
+    return AtenForeachAddScalar(self, -scalar);
+  });
+}
+
+void AtenForeachSub_Scalar(at::TensorList self, const at::Scalar& scalar) {
+  TT_KERNEL(OpName::kForeachSub_Scalar, _, (self, scalar), {
+    // _foreach_add supports bool, but _foreach_sub does not.
+    TT_THROW_IF_ERROR(EnsureNotBool(scalar));
+    TT_THROW_IF_ERROR(EnsureNotBool(self));
+    AtenForeachAdd_Scalar(self, -scalar);
+  });
+}
+
+std::vector<at::Tensor> AtenForeachSubScalarList(
+    at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
+  TT_KERNEL(OpName::kForeachSubScalarList, _, (self, scalars), {
+    // _foreach_add supports bool, but _foreach_sub does not.
+    TT_THROW_IF_ERROR(EnsureNotBool(scalars));
+    TT_THROW_IF_ERROR(EnsureNotBool(self));
+    std::vector<at::Scalar> neg_scalars;
+    neg_scalars.reserve(scalars.size());
+    for (const auto& scalar : scalars) {
+      neg_scalars.push_back(-scalar);
+    }
+    return AtenForeachAddScalarList(self, neg_scalars);
+  });
+}
+
+void AtenForeachSub_ScalarList(at::TensorList self,
+                               at::ArrayRef<at::Scalar> scalars) {
+  TT_KERNEL(OpName::kForeachSub_ScalarList, _, (self, scalars), {
+    // _foreach_add supports bool, but _foreach_sub does not.
+    TT_THROW_IF_ERROR(EnsureNotBool(scalars));
+    TT_THROW_IF_ERROR(EnsureNotBool(self));
+    std::vector<at::Scalar> neg_scalars;
+    neg_scalars.reserve(scalars.size());
+    for (const auto& scalar : scalars) {
+      neg_scalars.push_back(-scalar);
+    }
+    AtenForeachAdd_ScalarList(self, neg_scalars);
   });
 }
 

@@ -324,6 +324,12 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kForeachReciprocal_, AtenForeachReciprocal_);
   Impl(m, OpName::kForeachSqrt, AtenForeachSqrt);
   Impl(m, OpName::kForeachSqrt_, AtenForeachSqrt_);
+  Impl(m, OpName::kForeachSubList, AtenForeachSubList);
+  Impl(m, OpName::kForeachSubScalar, AtenForeachSubScalar);
+  Impl(m, OpName::kForeachSubScalarList, AtenForeachSubScalarList);
+  Impl(m, OpName::kForeachSub_List, AtenForeachSub_List);
+  Impl(m, OpName::kForeachSub_Scalar, AtenForeachSub_Scalar);
+  Impl(m, OpName::kForeachSub_ScalarList, AtenForeachSub_ScalarList);
   Impl(m, OpName::kForeachZero_, AtenForeachZero_);
   Impl(m, OpName::kFusedRmsNorm, AtenFusedRmsNorm);
   Impl(m, OpName::kFusedRmsNormBackward, AtenFusedRmsNormBackward);
@@ -505,7 +511,6 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kWhereSelf, AtenWhereSelf);
   Impl(m, OpName::kWhereSelfOut, AtenWhereSelfOut);
   m.impl("_copy_from", AtenCopyFrom);
-  m.impl("_foreach_add.List", AtenForeachAddList);
   m.impl("_reshape_alias", AtenReshapeAlias);
   m.impl("abs.out", AtenAbsOut);
   m.impl("addmm.dtype", AtenAddmmDtype);

@@ -68,6 +68,20 @@ void AtenForeachMul_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> scalars);
 void AtenForeachMul_Tensor(at::TensorList self, const at::Tensor& other);
 
+std::vector<at::Tensor> AtenForeachSubList(at::TensorList self,
+                                           at::TensorList other,
+                                           const at::Scalar& alpha);
+std::vector<at::Tensor> AtenForeachSubScalar(at::TensorList self,
+                                             const at::Scalar& scalar);
+std::vector<at::Tensor> AtenForeachSubScalarList(
+    at::TensorList self, at::ArrayRef<at::Scalar> scalars);
+
+void AtenForeachSub_List(at::TensorList self, at::TensorList other,
+                         const at::Scalar& alpha);
+void AtenForeachSub_Scalar(at::TensorList self, const at::Scalar& scalar);
+void AtenForeachSub_ScalarList(at::TensorList self,
+                               at::ArrayRef<at::Scalar> scalars);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_FOREACH_ATEN_KERNELS_H_

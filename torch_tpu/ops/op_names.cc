@@ -322,6 +322,18 @@ std::string_view ToString(OpName op_name) {
       return "_foreach_sqrt";
     case OpName::kForeachSqrt_:
       return "_foreach_sqrt_";
+    case OpName::kForeachSubList:
+      return "_foreach_sub.List";
+    case OpName::kForeachSubScalar:
+      return "_foreach_sub.Scalar";
+    case OpName::kForeachSubScalarList:
+      return "_foreach_sub.ScalarList";
+    case OpName::kForeachSub_List:
+      return "_foreach_sub_.List";
+    case OpName::kForeachSub_Scalar:
+      return "_foreach_sub_.Scalar";
+    case OpName::kForeachSub_ScalarList:
+      return "_foreach_sub_.ScalarList";
     case OpName::kForeachZero_:
       return "_foreach_zero_";
     case OpName::kFusedRmsNorm:
