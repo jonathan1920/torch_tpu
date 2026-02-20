@@ -165,8 +165,6 @@ torch_tpu_py_test(
     strict = "true",
     tags = [
         "cpu:4",
-        "nofastbuild",  # Run in postsubmit only to avoid long Forge queues.
-        "requires-tpu-v7x",
     ],
     deps = [
         ":tpu_backend",
