@@ -310,6 +310,20 @@ std::string_view ToString(OpName op_name) {
       return "_foreach_mul_.ScalarList";
     case OpName::kForeachMul_Tensor:
       return "_foreach_mul_.Tensor";
+    case OpName::kForeachNeg:
+      return "_foreach_neg";
+    case OpName::kForeachNeg_:
+      return "_foreach_neg_";
+    case OpName::kForeachReciprocal:
+      return "_foreach_reciprocal";
+    case OpName::kForeachReciprocal_:
+      return "_foreach_reciprocal_";
+    case OpName::kForeachSqrt:
+      return "_foreach_sqrt";
+    case OpName::kForeachSqrt_:
+      return "_foreach_sqrt_";
+    case OpName::kForeachZero_:
+      return "_foreach_zero_";
     case OpName::kFusedRmsNorm:
       return "_fused_rms_norm";
     case OpName::kFusedRmsNormBackward:

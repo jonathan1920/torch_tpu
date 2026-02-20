@@ -17,55 +17,32 @@
 #ifndef TORCH_TPU_OPS_FOREACH_UTILS_H_
 #define TORCH_TPU_OPS_FOREACH_UTILS_H_
 
-#include <array>
 #include <cstdint>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {
 
-// Returns a list of dimensions for each tensor in the input tensor list.
-std::vector<absl::Span<const int64_t>> GetDimsList(at::TensorList tensor_list);
-
 // Builds element-wise binary StableHLO ops for each pair of input tensors.
 //
 // Casts inputs to `out_dtypes` and broadcasts them to a compatible shape
 // before applying `op` element-wise.
-template <typename StablehloOp>
 absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildForeachShlo(
-    absl::Span<mlir::MlirOp> self, absl::Span<mlir::MlirOp> other,
-    absl::Span<const mlir::ElementType> out_dtypes, StablehloOp op,
-    mlir::MlirBuilder& builder) {
-  mlir::SmallVector<mlir::MlirOp> results;
-  results.reserve(self.size());
-  for (int i = 0; i < self.size(); ++i) {
-    mlir::MlirOp current_self = self[i];
-    mlir::MlirOp current_other = other[i];
-
-    current_self = CastIfNeeded(current_self, out_dtypes[i]).value();
-    current_other = CastIfNeeded(current_other, out_dtypes[i]).value();
-
-    std::array<mlir::MlirOp, 2> broadcasted_ops;
-    TT_ASSIGN_OR_RETURN(broadcasted_ops,
-                        ApplyBroadcastIfNeeded(current_self, current_other));
-    current_self = broadcasted_ops[0];
-    current_other = broadcasted_ops[1];
-
-    mlir::MlirOp result = op(current_self, current_other);
-    results.push_back(result);
-  }
-  return results;
-}
+    absl::Span<const mlir::MlirOp> self, absl::Span<const mlir::MlirOp> other,
+    absl::Span<const mlir::ElementType> out_dtypes,
+    absl::AnyInvocable<mlir::MlirOp(mlir::MlirOp&, mlir::MlirOp&)>
+        tensor_transform,
+    mlir::MlirBuilder& builder);
 
 // Converts a list of device buffers to a list of tensors.
 std::vector<at::Tensor> ForeachConvertToTensor(
@@ -73,24 +50,39 @@ std::vector<at::Tensor> ForeachConvertToTensor(
 
 // Assigns the results from device buffers to the input tensor list for
 // in-place operations.
-void ForeachAssignToTensor(std::vector<DeviceBufferRef> result_buffers,
-                           at::TensorList self);
+absl::Status ForeachAssignToTensor(std::vector<DeviceBufferRef> result_buffers,
+                                   at::TensorList self);
+
+// Returns a list of dimensions for each tensor in the input tensor list.
+std::vector<absl::Span<const int64_t>> GetDimsList(at::TensorList tensor_list);
 
 // Returns a list of output dtypes for foreach operations.
 // The overloads are for the variants of foreach operations.
-std::vector<mlir::ElementType> GetOutputDtypes(at::TensorList self);
-std::vector<mlir::ElementType> GetOutputDtypes(at::TensorList self,
-                                               at::TensorList other);
-std::vector<mlir::ElementType> GetOutputDtypes(at::TensorList self,
-                                               const at::Scalar& scalar);
-std::vector<mlir::ElementType> GetOutputDtypes(
+absl::StatusOr<std::vector<mlir::ElementType>> GetOutputDtypes(
+    at::TensorList self);
+absl::StatusOr<std::vector<mlir::ElementType>> GetOutputDtypes(
+    at::TensorList self, at::TensorList other);
+absl::StatusOr<std::vector<mlir::ElementType>> GetOutputDtypes(
+    at::TensorList self, const at::Scalar& scalar);
+absl::StatusOr<std::vector<mlir::ElementType>> GetOutputDtypes(
     at::TensorList self, at::ArrayRef<at::Scalar> scalars);
+
+// Returns a list of floating point output dtypes for foreach operations.
+// Converts integral dtypes to `default_dtype`.
+absl::StatusOr<std::vector<mlir::ElementType>> GetFloatingOutputDtypes(
+    at::TensorList self);
 
 // Checks if the output type is equal to the compute type. Raises an
 // error if not.
-void CheckScalarType(mlir::ElementType out_dtype,
-                     mlir::ElementType compute_dtype,
-                     at::ScalarType tensor_type, at::ScalarType scalar_type);
+absl::Status CheckScalarType(mlir::ElementType out_dtype,
+                             mlir::ElementType compute_dtype,
+                             at::ScalarType tensor_type,
+                             at::ScalarType scalar_type);
+
+// Checks if the input tensor list contains integral types. Raises an
+// error if so.
+absl::Status EnsureNotIntegral(at::TensorList self);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_FOREACH_UTILS_H_

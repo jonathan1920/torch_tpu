@@ -4066,6 +4066,21 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch._foreach_add_(self_list, [1, 1])
 
+  def test_inplace_foreach_sqrt_integral(self):
+    self_list = [
+        torch.tensor([1, 4], dtype=torch.int32, device=et.device()),
+        torch.tensor([9, 16], dtype=torch.int32, device=et.device()),
+    ]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "foreach_sqrt_(): expected input tensor dtype to be non-integral,"
+            " got int32"
+        ),
+        cpu="result type Float can't be cast to the desired output type Int",
+    ):
+      torch._foreach_sqrt_(self_list)
+
   def test_sub_bool(self):
     lhs = torch.tensor([1.0, 1.0], device=et.device())
     rhs = torch.tensor([1.0, 1.0], device=et.device())

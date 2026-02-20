@@ -187,7 +187,7 @@ std::vector<at::Tensor> AtenForeachAddList(at::TensorList self,
                                            at::TensorList other,
                                            const at::Scalar& alpha) {
   TT_KERNEL(OpName::kForeachAddList, param_keys, (self, other, alpha), {
-    const auto out_dtypes = GetOutputDtypes(self, other);
+    TT_ASSIGN_OR_THROW(const auto out_dtypes, GetOutputDtypes(self, other));
     return ForeachConvertToTensor(
         ForeachAddList(self, other, alpha, out_dtypes, std::move(param_keys)));
   });
@@ -196,7 +196,7 @@ std::vector<at::Tensor> AtenForeachAddList(at::TensorList self,
 std::vector<at::Tensor> AtenForeachAddScalar(at::TensorList self,
                                              const at::Scalar& scalar) {
   TT_KERNEL(OpName::kForeachAddScalar, param_keys, (self, scalar), {
-    const auto out_dtypes = GetOutputDtypes(self, scalar);
+    TT_ASSIGN_OR_THROW(const auto out_dtypes, GetOutputDtypes(self, scalar));
     return ForeachConvertToTensor(
         ForeachAddScalar(self, scalar, out_dtypes, std::move(param_keys)));
   });
@@ -205,7 +205,7 @@ std::vector<at::Tensor> AtenForeachAddScalar(at::TensorList self,
 std::vector<at::Tensor> AtenForeachAddScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
   TT_KERNEL(OpName::kForeachAddScalarList, param_keys, (self, scalars), {
-    const auto out_dtypes = GetOutputDtypes(self, scalars);
+    TT_ASSIGN_OR_THROW(const auto out_dtypes, GetOutputDtypes(self, scalars));
     return ForeachConvertToTensor(
         ForeachAddScalarList(self, scalars, out_dtypes, std::move(param_keys)));
   });
@@ -223,39 +223,42 @@ std::vector<at::Tensor> AtenForeachAddTensor(at::TensorList self,
 void AtenForeachAdd_List(at::TensorList self, at::TensorList other,
                          const at::Scalar& alpha) {
   TT_KERNEL(OpName::kForeachAdd_List, param_keys, (self, other, alpha), {
-    const auto out_dtypes = GetOutputDtypes(self);
-    ForeachAssignToTensor(
+    TT_ASSIGN_OR_THROW(const auto out_dtypes, GetOutputDtypes(self));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(
         ForeachAddList(self, other, alpha, out_dtypes, std::move(param_keys)),
-        self);
+        self));
   });
 }
 
 void AtenForeachAdd_Scalar(at::TensorList self, const at::Scalar& scalar) {
   TT_KERNEL(OpName::kForeachAdd_Scalar, param_keys, (self, scalar), {
-    const auto out_dtypes = GetOutputDtypes(self);
-    const auto result_out_dtypes = GetOutputDtypes(self, scalar);
+    TT_ASSIGN_OR_THROW(const auto out_dtypes, GetOutputDtypes(self));
+    TT_ASSIGN_OR_THROW(const auto result_out_dtypes,
+                       GetOutputDtypes(self, scalar));
     for (size_t i = 0; i < self.size(); ++i) {
-      CheckScalarType(out_dtypes[i], result_out_dtypes[i],
-                      self[i].scalar_type(), scalar.type());
+      TT_THROW_IF_ERROR(CheckScalarType(out_dtypes[i], result_out_dtypes[i],
+                                        self[i].scalar_type(), scalar.type()));
     }
 
-    ForeachAssignToTensor(
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(
         ForeachAddScalar(self, scalar, out_dtypes, std::move(param_keys)),
-        self);
+        self));
   });
 }
 void AtenForeachAdd_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> scalars) {
   TT_KERNEL(OpName::kForeachAdd_ScalarList, param_keys, (self, scalars), {
-    const auto out_dtypes = GetOutputDtypes(self);
-    const auto result_out_dtypes = GetOutputDtypes(self, scalars);
+    TT_ASSIGN_OR_THROW(const auto out_dtypes, GetOutputDtypes(self));
+    TT_ASSIGN_OR_THROW(const auto result_out_dtypes,
+                       GetOutputDtypes(self, scalars));
     for (size_t i = 0; i < self.size(); ++i) {
-      CheckScalarType(out_dtypes[i], result_out_dtypes[i],
-                      self[i].scalar_type(), scalars[i].type());
+      TT_THROW_IF_ERROR(CheckScalarType(out_dtypes[i], result_out_dtypes[i],
+                                        self[i].scalar_type(),
+                                        scalars[i].type()));
     }
-    ForeachAssignToTensor(
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(
         ForeachAddScalarList(self, scalars, out_dtypes, std::move(param_keys)),
-        self);
+        self));
   });
 }
 

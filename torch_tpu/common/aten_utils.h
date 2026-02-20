@@ -89,6 +89,11 @@ inline bool IsInteger(const at::Tensor& tensor) {
   return c10::isIntegralType(tensor.scalar_type(), /* includeBool= */ false);
 }
 
+// Returns whether `tensor` holds integral data.
+inline bool IsIntegral(const at::Tensor& tensor) {
+  return c10::isIntegralType(tensor.scalar_type(), /* includeBool= */ true);
+}
+
 // Returns whether `tensor` holds Long typed data.
 inline bool IsLong(const at::Tensor& tensor) {
   return tensor.scalar_type() == at::ScalarType::Long;
