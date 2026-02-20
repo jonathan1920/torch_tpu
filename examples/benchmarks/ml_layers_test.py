@@ -1381,6 +1381,94 @@ class MlLayersTest(parameterized.TestCase):
         is_jax=True,
     )
 
+  # ############################################################################
+  # Nonzero operator tests
+  # ############################################################################
+
+  @dataclass
+  class _NonzeroConfig:
+    shape: tuple[int, ...]
+    dtype: torch.dtype
+    sparsity: float
+
+  _nonzero_configs = (
+      # Default config for smoke test.
+      _NonzeroConfig(
+          shape=(128, 128),
+          dtype=torch.bfloat16,
+          sparsity=0.1,
+      ),
+      # Larger configs.
+      _NonzeroConfig(
+          shape=(8192, 8192),
+          dtype=torch.bfloat16,
+          sparsity=0.01,
+      ),
+  )
+
+  @parameterized.named_parameters(
+      generate_configs_for_parameterized(_nonzero_configs)
+  )
+  def test_nn_nonzero(self, config):
+    """Benchmark nn.nonzero with random data."""
+    if not is_pytorch_framework():
+      self.skipTest("PyTorch not enabled")
+
+    class Model(torch.nn.Module):
+
+      def forward(self, x) -> torch.Tensor:
+        return torch.nonzero(x)
+
+    def inputs_builder(c):
+      x = torch.randn(c.shape, dtype=c.dtype, device=get_torch_device())
+      mask = (torch.rand(c.shape, device=get_torch_device()) < c.sparsity).to(
+          c.dtype
+      )
+      return x * mask
+
+    self._run_model_tests(
+        "nn.nonzero",
+        config,
+        lambda c: Model(),
+        inputs_builder,
+        skip_bw_pass=True,
+    )
+
+  @parameterized.named_parameters(
+      generate_configs_for_parameterized(_nonzero_configs)
+  )
+  def test_nnx_nonzero(self, config):
+    """Benchmark jnp.nonzero with random data."""
+    if not is_jax_framework():
+      self.skipTest("JAX not enabled")
+
+    class Model(flax.nnx.Module):
+
+      def __init__(self, shape: tuple[int, ...]):
+        super().__init__()
+        self.max_size = 1
+        for s in shape:
+          self.max_size *= s
+
+      def __call__(self, x) -> jax.Array:
+        return jnp.stack(jnp.nonzero(x, size=self.max_size), axis=-1)
+
+    def inputs_builder(c, key):
+      x = jax.random.normal(key, c.shape, dtype=pt2jax_dtype(c.dtype))
+      mask = (jax.random.uniform(key, c.shape) < c.sparsity).astype(
+          pt2jax_dtype(c.dtype)
+      )
+      return x * mask
+
+    self._run_model_tests(
+        "nnx.nonzero",
+        config,
+        lambda c: Model(c.shape),
+        inputs_builder,
+        skip_bw_pass=True,
+        is_jax=True,
+    )
+
 
 if __name__ == "__main__":
   absltest.main()
