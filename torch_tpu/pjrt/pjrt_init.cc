@@ -31,6 +31,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "torch_tpu/common/env_vars.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/plugin_names.h"
@@ -39,6 +40,7 @@
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
 #include "torch_tpu/eager/device.h"
+#include "torch_tpu/common/environment.h"
 #include "torch_tpu/pjrt/pjrt_client.h"
 
 namespace torch_tpu {
@@ -103,12 +105,12 @@ absl::StatusOr<PjRtInitializationResult> InitializePjRt(
 
   PjRtDeviceType device_type = PjRtDeviceType::kUnknown;
   if (options.device_type == "tpu") {
-    // On Cloud we need to make sure that env variables are set
-    // before initializing pjrt.
-    absl::StatusOr<DistributedWorkerConfiguration> config_status =
-        GetDistributedWorkerConfiguration();
-    if (config_status.ok()) {
-      TT_RETURN_IF_ERROR(InitializeAsDistributedWorker(*config_status));
+    // If WORLD_SIZE is set, we are in a distributed environment. The mandatory
+    // environment variables must be set by the caller.
+    DistributedWorkerConfiguration config;
+    if (GetEnvOnce<kWorldSizeEnvVar>()) {
+      TT_ASSIGN_OR_RETURN(config, GetDistributedWorkerConfiguration());
+      TT_RETURN_IF_ERROR(InitializeDistributedEnvironment(config));
     }
     TT_RETURN_IF_ERROR(::pjrt::InitializePjrtPlugin(kTpuPjrtName));
     device_type = PjRtDeviceType::kTpu;

@@ -30,9 +30,7 @@ torch_tpu_cc_library(
     deps = [
         "//shims/torch:torch_headers",
         "//torch_tpu/common:env_vars",
-        "//torch_tpu/common:environment",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:unique_file_descriptor",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",

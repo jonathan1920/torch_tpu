@@ -52,6 +52,8 @@ torch_tpu_cc_library(
     hdrs = ["pjrt_init.h"],
     deps = [
         ":pjrt",
+        "//torch_tpu/common:env_vars",
+        "//torch_tpu/common:environment",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:utils",
         "//torch_tpu/distributed/slicebuilder:discovery",

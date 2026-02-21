@@ -28,6 +28,7 @@ import torch
 import torch.multiprocessing as mp
 from torch_tpu import api
 from torch_tpu._internal.distributed import tpu_distributed
+from torch_tpu._internal.distributed import tpu_topology
 
 
 class WorldSpec:
@@ -43,6 +44,13 @@ class WorldSpec:
     # TODO(b/469558756): Reconcile how we pass around world size.
     self.world_size = world_size
     self.c10d_store_port = portpicker.pick_unused_port()
+
+    # Get open ports on this host for slicebuilder.
+    self.sb_ports = [portpicker.pick_unused_port() for _ in range(world_size)]
+    self.sb_addresses = ",".join([f"localhost:{p}" for p in self.sb_ports])
+
+    # Detect TPU topology.
+    self.topology = tpu_topology.get_tpu_topology(world_size)
 
 
 def init_worker(
@@ -128,6 +136,11 @@ def init_worker_and_run(
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = str(world_spec.c10d_store_port)
 
+    # Set slicebuilder and topology environment variables.
+    os.environ["TORCH_TPU_SLICEBUILDER_ADDRESSES"] = world_spec.sb_addresses
+    if world_spec.topology:
+      os.environ["TORCH_TPU_TOPOLOGY"] = world_spec.topology
+
   init_worker(rank, world_spec, xprof_session_id)
   worker_func(rank, world_spec.world_size, *extra_worker_func_args)
 
@@ -146,6 +159,11 @@ def run_in_workers(
     worker_args: Additional arguments to pass to the worker function. These are
       passed as a tuple to the worker function.
   """
+  logging.warning(
+      "tpu_env: run_in_workers is being deprecated, please migrate to"
+      " singlehost_wrapper and torchrun for distributed runs"
+  )
+
   xprof_session_id = str(time.time_ns())
   logging.info("TORCH_TPU_XPROF_SESSION_ID: %s", xprof_session_id)
   mp.spawn(

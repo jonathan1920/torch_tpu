@@ -511,9 +511,8 @@ torch_tpu_cc_library(
     hdrs = ["environment.h"],
     deps = [
         ":env_vars",
-        ":error_utils",
+        "//torch_tpu/distributed/slicebuilder:discovery",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )

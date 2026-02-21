@@ -22,11 +22,13 @@ import re
 from absl import flags
 from absl.testing import absltest
 import torch
+from torch.distributed.elastic.multiprocessing import errors
 import torch.multiprocessing as mp
 from torch_tpu import api
 from torch_tpu._internal import testing as tt_testing
 
 
+ChildFailedError = errors.ChildFailedError
 TEST_MODE = flags.DEFINE_string(
     name="test_mode",
     required=True,
@@ -229,20 +231,58 @@ def assert_subprocess_raises_message(exception_type, expected_msg: str):
   #
   # Therefore we verify that the parent process message ends with
   #   FooError: <expected message>
-  except mp.ProcessRaisedException as e:
+  except (mp.ProcessRaisedException, ChildFailedError) as e:
     msg = str(e)
-    expected_msg_suffix = f"\n{exception_type.__name__}: {expected_msg}"
-    _check_error_message(
-        msg.rstrip(), expected_msg_suffix, "tpu", _MatchType.SUFFIX
-    )
+    # ChildFailedError includes a large report. Extract the traceback part for
+    # matching.
+    if isinstance(e, ChildFailedError):
+      # Find the first observed failure traceback.
+      match = re.search(r"traceback : (.*?)(?:\n\s*==+|$)", msg, re.DOTALL)
+      if match:
+        msg = match.group(1).strip()
+
+    # Both mp.spawn and torchrun include Tracebacks. We want to find the
+    # final line which should be "ExceptionType: Expected Message"
+    # Or for RuntimeError specifically, it often just ends with the message.
+
+    # Let's extract the last non-empty line of the traceback.
+    lines = [l.strip() for l in msg.strip().splitlines() if l.strip()]
+    if not lines:
+      raise AssertionError(f"Empty error message from subprocess: {msg}") from e
+
+    # Check if the last line matches "ExceptionType: Expected Message"
+    # OR if we are using ChildFailedError, it might be in a different format.
+
+    # Try to find a line matching the pattern: "ErrorName: message"
+    # We look from the bottom up.
+    found_match = False
+    expected_full = f"{exception_type.__name__}: {expected_msg}"
+
+    for line in reversed(lines):
+      if line == expected_full or line == expected_msg:
+        found_match = True
+        break
+      if (
+          line.startswith(exception_type.__name__ + ":")
+          and expected_msg in line
+      ):
+        found_match = True
+        break
+
+    if not found_match:
+      raise AssertionError(
+          f"Could not find expected message '{expected_full}' in subprocess"
+          f" output:\n{msg}"
+      ) from e
   except BaseException as e:
     raise AssertionError(
-        f"Expected ProcessRaisedException but got {type(e).__name__}: {e}"
+        "Expected ProcessRaisedException or ChildFailedError but got"
+        f" {type(e).__name__}: {e}"
     ) from e
   else:
     raise AssertionError(
-        "Expected ProcessRaisedException to be raised, but no exception"
-        " was raised."
+        "Expected ProcessRaisedException or ChildFailedError to be raised, but"
+        " no exception was raised."
     )
 
 

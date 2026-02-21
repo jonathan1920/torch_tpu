@@ -17,18 +17,15 @@
 #ifndef TORCH_TPU_COMMON_ENVIRONMENT_H_
 #define TORCH_TPU_COMMON_ENVIRONMENT_H_
 
-#include <string>
-
 #include "absl/status/status.h"
+#include "torch_tpu/distributed/slicebuilder/discovery.h"
 
 namespace torch_tpu {
 
 // This function handles the environment initialization for external
 // distributed TPU environment.
-absl::Status InitializeDistributedEnvironment(int rank, int world_size,
-                                              int local_rank,
-                                              std::string sb_addrs,
-                                              int sb_port);
+absl::Status InitializeDistributedEnvironment(
+    const DistributedWorkerConfiguration& config);
 
 }  // namespace torch_tpu
 

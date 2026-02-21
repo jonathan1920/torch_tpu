@@ -16,95 +16,32 @@
 
 #include "torch_tpu/common/environment.h"
 
-#include <cstdlib>
 #include <string>
 
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "torch_tpu/common/env_vars.h"
-#include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/distributed/slicebuilder/discovery.h"
 
 namespace torch_tpu {
 
-namespace {
-
-absl::StatusOr<std::string> InferV7Topology(int world_size) {
-  if (world_size == 8) {
-    return "2,2,1,2";
-  }
-  return TT_ERROR(error::kInvalidArgument)
-         << absl::StrCat("Unsupported TPU V7 world size: ", world_size);
-}
-
-absl::StatusOr<std::string> InferV6Topology(int world_size) {
-  if (world_size == 8) {
-    return "2,4,1";
-  }
-  if (world_size == 4) {
-    return "2,2,1";
-  }
-  return TT_ERROR(error::kInvalidArgument)
-         << absl::StrCat("Unsupported TPU V6 world size: ", world_size);
-}
-
-absl::StatusOr<std::string> InferV5Topology(int world_size) {
-  if (world_size == 8) {
-    return "2,4,1";
-  }
-  if (world_size == 4) {
-    return "2,2,1";
-  }
-  return TT_ERROR(error::kInvalidArgument)
-         << absl::StrCat("Unsupported TPU V5 world size: ", world_size);
-}
-
-absl::StatusOr<std::string> GetHostBounds(int world_size) {
-  const auto& accelerator_type_env = GetEnvOnce<kAcceleratorTypeEnvVar>();
-  TT_RET_CHECK(accelerator_type_env.has_value(), error::kInvalidArgument)
-      << "ACCELERATOR_TYPE environment variable not set.";
-  const std::string& accelerator_type = *accelerator_type_env;
-
-  if (absl::StartsWith(accelerator_type, "v7")) {
-    return InferV7Topology(world_size);
-  }
-  if (absl::StartsWith(accelerator_type, "v6")) {
-    return InferV6Topology(world_size);
-  }
-  if (absl::StartsWith(accelerator_type, "v5")) {
-    return InferV5Topology(world_size);
-  }
-  return TT_ERROR(error::kInvalidArgument)
-         << absl::StrCat("Unsupported ACCELERATOR_TYPE: ", accelerator_type,
-                         " for world size: ", world_size);
-}
-
-}  // namespace
-
-absl::Status InitializeDistributedEnvironment(int rank, int world_size,
-                                              int local_rank,
-                                              std::string sb_addrs,
-                                              int sb_port) {
+absl::Status InitializeDistributedEnvironment(
+    const DistributedWorkerConfiguration& config) {
   if (!GetEnvOnce<kTpuProcessAddressesEnvVar>().has_value()) {
-    if (sb_addrs.empty()) {
+    if (config.sb_addrs.empty()) {
       return absl::OkStatus();
     }
-    absl::StatusOr<std::string> host_bounds = GetHostBounds(world_size);
-    if (!host_bounds.ok()) {
-      return TT_ERROR(error::kInternal) << absl::StrCat(
-                 "Failed to get host bounds: ", host_bounds.status().message());
-    }
-    SetEnv(kCloudTpuTaskIdEnvVar, absl::StrCat(local_rank));
-    SetEnv(kTpuVisibleChipsEnvVar, absl::StrCat(local_rank));
-    SetEnv(kTpuHostBoundsEnvVar, *host_bounds);
+    SetEnv(kCloudTpuTaskIdEnvVar, absl::StrCat(config.rank));
+    SetEnv(kTpuVisibleChipsEnvVar, absl::StrCat(config.local_rank));
+    SetEnv(kTpuHostBoundsEnvVar, config.topology);
     SetEnv(kTpuChipsPerHostBoundsEnvVar, "1,1,1");
 
-    // The free port of this process.
-    SetEnv(kTpuProcessPortEnvVar, absl::StrCat(sb_port));
+    // The free slicebuilder port of this process.
+    SetEnv(kTpuProcessPortEnvVar, absl::StrCat(config.sb_port));
 
     // The addresses of all other workers in the slice.
-    SetEnv(kTpuProcessAddressesEnvVar, sb_addrs);
+    SetEnv(kTpuProcessAddressesEnvVar, config.sb_addrs);
   }
 
   std::string libtpu_init_args_str =

@@ -13,13 +13,17 @@
 # limitations under the License.
 
 """Tests PyTorch distributed ops with torch.compile()."""
+import os
 import unittest
 from absl.testing import absltest
 import torch
+from torch import distributed as dist
+# from torch.google import distributed as g3_distributed
 import torch.multiprocessing as mp
+from torch_tpu import api
 from torch_tpu._internal import env
 from torch_tpu._internal.compile import TpuBackend
-from torch_tpu._internal.distributed import tpu_env
+from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import utils
 from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
 
@@ -30,8 +34,12 @@ def expected_to_fail_in_oss(func):
   return func if env.IS_INTERNAL_TORCH_TPU else unittest.expectedFailure(func)
 
 
-def run_all_reduce_with_torch_compile(rank: int, world_size: int) -> None:  # pylint: disable=unused-argument
+def run_all_reduce_with_torch_compile() -> None:
   """Tests all-reduce functionality."""
+  _ = api.tpu_device()
+  dist.init_process_group(backend="tpu_dist")
+
+  rank = int(os.environ["RANK"])
 
   def func(x):
     x = x + torch.zeros_like(x)
@@ -75,7 +83,12 @@ class MultiTpuTorchCompileTest(absltest.TestCase):
   # inputs" error in OSS.
   @expected_to_fail_in_oss
   def test_all_reduce_with_torch_compile(self):
-    tpu_env.run_in_workers(8, run_all_reduce_with_torch_compile)
+    dist.torchrun(
+        singlehost_wrapper.tpu_env_wrapper(
+            run_all_reduce_with_torch_compile, 8
+        ),
+        nproc_per_node=8,
+    )()
 
 
 if __name__ == "__main__":
