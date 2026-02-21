@@ -20,6 +20,7 @@
 #include <string>
 
 #include "absl/base/nullability.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_client.h"
 
