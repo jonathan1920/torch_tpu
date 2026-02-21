@@ -31,6 +31,7 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
@@ -52,11 +53,15 @@ namespace stablehlo = mlir::stablehlo;
 
 absl::StatusOr<mlir::MlirOp> BuildIndexShlo(
     mlir::ArrayRef<mlir::MlirOp> input_ops, Indices indexed_dims) {
-  TT_RET_CHECK(input_ops.size() >= 2, error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=AtenIndexTensorOut (caller) makes sure
+                 // `input_ops` has the `self` input and, at least, one index.
+      input_ops.size() >= 2, error::kInvalidArgument)
       << "[BuildIndexShlo]: requires at least two input ops: an operand and an "
          "indexing tensor";
-  TT_RET_CHECK(input_ops.size() == indexed_dims.size() + 1,
-               error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=AtenIndexTensorOut (caller) creates
+                 // `indexed_dims`, making sure there's always a corresponding
+                 // index.
+      input_ops.size() == indexed_dims.size() + 1, error::kInvalidArgument)
       << "[BuildIndexShlo]: requires exactly one indexing tensor per indexed "
          "dimension, plus one for the operand";
 
@@ -65,8 +70,10 @@ absl::StatusOr<mlir::MlirOp> BuildIndexShlo(
   const mlir::RankedTensorType self_type = GetTensorTypeOrDie(self);
 
   if (self_type.getRank() == 0) {
-    TT_RET_CHECK(indexed_dims.size() == 1 && indexed_dims[0] == 0,
-                 error::kInvalidArgument)
+    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=AtenIndexTensorOut (caller) errors
+                   // before calling this function, when rank == 0.
+        indexed_dims.size() == 1 && indexed_dims[0] == 0,
+        error::kInvalidArgument)
         << "[BuildIndexShlo]: if the operand is a scalar, the only indexed "
            "dimension must be 0";
     return self;
@@ -101,8 +108,11 @@ absl::StatusOr<mlir::MlirOp> BuildIndexShlo(
       gather_slice_sizes[i] = 1;
       ++j;
     } else {
-      TT_RET_CHECK(j >= indexed_dims.size() || i < indexed_dims[j],
-                   error::kInvalidArgument)
+      TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=AtenIndexTensorOut (caller) creates
+                     // `indexed_dims`, making sure they are always increasing,
+                     // non-negative, and distinct.
+          j >= indexed_dims.size() || i < indexed_dims[j],
+          error::kInvalidArgument)
           << "[BuildIndexShlo]: indexed dimensions must be increasing, "
              "non-negative and distinct";
       // If the indexed dimensions are consecutive, the indexed dimensions will

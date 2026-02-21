@@ -26,6 +26,13 @@ from tests import error_testing as et
 
 _TEST_MODE = et.TEST_MODE
 
+# Regex used by: TpuVsCpuErrorTest.test_index_no_indices
+# Matches an arbitrary file path.
+_INDEX_INTERNAL_ASSERTION_ERROR_RE = re.compile(
+    r"ntensor >= 3 INTERNAL ASSERT FAILED at .*, please report a bug to"
+    r" PyTorch.*"
+)
+
 
 def _is_internal() -> bool:
   """Returns true if the test is running in the internal environment.
@@ -850,6 +857,17 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
         message_reviewed_by="wan",
     ):
       torch.multinomial(inp, num_samples=1, generator=gen)
+
+  def test_index_bool_indices(self):
+    inp = torch.ones(2, device=et.device())
+    indices = [torch.tensor([True, True], device=et.device())]
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="index(): bool index tensors are not supported, yet",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.index(inp, indices)
 
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
@@ -5179,6 +5197,39 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         message_reviewed_by="wan",
     ):
       torch.multinomial(inp, num_samples=3, replacement=False)
+
+  def test_index_too_many_indices(self):
+    t = torch.ones(2, 2, device=et.device())
+    indices = [
+        torch.ones(2, device=et.device()),
+        torch.ones(2, device=et.device()),
+        torch.ones(2, device=et.device()),
+    ]
+
+    # Call the out-of-place overload.
+    out = torch.empty(1, device=et.device())
+
+    with et.assert_raises_message(
+        IndexError,
+        tpu=(
+            "index(): expected the size of the indices to be <= 2 (number of"
+            " input dimensions), got 3"
+        ),
+        cpu="too many indices for tensor of dimension 2 (got 3)",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.index.Tensor_out(t, indices, out=out)
+
+  def test_index_no_indices(self):
+    t = torch.ones(2, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="index(): at least one index tensor must be defined",
+        cpu=_INDEX_INTERNAL_ASSERTION_ERROR_RE,
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.index.Tensor(t, [None])
 
 
 if __name__ == "__main__":
