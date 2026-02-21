@@ -1615,9 +1615,11 @@ class TestOps(TorchTpuTestBase):
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
         # TODO: CPU returns nans but TPU returns 0.
-        exclude_dtypes=(torch.bool,),
+        # TODO(b/485291373): fix _foreach_div() failing with complex dtypes.
+        exclude_dtypes=(torch.bool,) + COMPLEX_DTYPES,
         # TODO: CPU returns nans but TPU returns 0.
-        exclude_inplace_dtypes=(torch.bool,),
+        # TODO(b/485291373): fix _foreach_div_() failing with complex dtypes.
+        exclude_inplace_dtypes=(torch.bool,) + COMPLEX_DTYPES,
     )
 
   def test_foreach_erf(self):

@@ -3305,18 +3305,16 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     def foreach_add_inside_fn(device):
       self_list = [
-          torch.tensor([1.0, 2.0], dtype=torch.float32),
-          torch.tensor([3, 4], dtype=torch.int32),
-          torch.tensor([5.0, 6.0], dtype=torch.bfloat16),
+          torch.tensor([1.0, 2.0], dtype=torch.float32, device=device),
+          torch.tensor([3, 4], dtype=torch.int32, device=device),
+          torch.tensor([5.0, 6.0], dtype=torch.bfloat16, device=device),
       ]
       other_list = [
-          torch.tensor([1, 2], dtype=torch.int64),
-          torch.tensor([3.0, 4.0], dtype=torch.float32),
-          torch.tensor([5.0, 6.0], dtype=torch.float64),
+          torch.tensor([1, 2], dtype=torch.int64, device=device),
+          torch.tensor([3.0, 4.0], dtype=torch.float32, device=device),
+          torch.tensor([5.0, 6.0], dtype=torch.float64, device=device),
       ]
-      self_list_dev = [t.to(device) for t in self_list]
-      other_list_dev = [t.to(device) for t in other_list]
-      return torch._foreach_add(self_list_dev, other_list_dev, alpha=1.5)
+      return torch._foreach_add(self_list, other_list, alpha=1.5)
 
     self.assert_close_tpu_vs_cpu(foreach_add_inside_fn)
 
@@ -3325,20 +3323,32 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     def foreach_add_inside_fn(device):
       self_list = [
-          torch.tensor([1.0, 2.0], dtype=torch.float32),
-          torch.tensor([3, 4], dtype=torch.int32),
-          torch.tensor([5.0, 6.0], dtype=torch.bfloat16),
+          torch.tensor([1.0, 2.0], dtype=torch.float32, device=device),
+          torch.tensor([3, 4], dtype=torch.int32, device=device),
+          torch.tensor([5.0, 6.0], dtype=torch.bfloat16, device=device),
       ]
       other_list = [
-          torch.tensor([1, 2], dtype=torch.int64),
-          torch.tensor([3.0, 4.0], dtype=torch.float32),
-          torch.tensor([5.0, 6.0], dtype=torch.float64),
+          torch.tensor([1, 2], dtype=torch.int64, device=device),
+          torch.tensor([3.0, 4.0], dtype=torch.float32, device=device),
+          torch.tensor([5.0, 6.0], dtype=torch.float64, device=device),
       ]
-      self_list_dev = [t.to(device) for t in self_list]
-      other_list_dev = [t.to(device) for t in other_list]
-      return torch._foreach_add(self_list_dev, other_list_dev)
+      return torch._foreach_add(self_list, other_list)
 
     self.assert_close_tpu_vs_cpu(foreach_add_inside_fn)
+
+  def test_foreach_div_with_zero_scalar(self):
+    """Tests _foreach_div with a zero scalar."""
+
+    def foreach_div_inside_fn(device):
+      self_list = [
+          torch.tensor([1.0, 2.0], dtype=torch.float32, device=device),
+          torch.tensor([3, 4], dtype=torch.int32, device=device),
+          torch.tensor([5.0, 6.0], dtype=torch.bfloat16, device=device),
+      ]
+      return torch._foreach_div(self_list, 0)
+
+    # Both TPU and CPU should return infinite values.
+    self.assert_close_tpu_vs_cpu(foreach_div_inside_fn)
 
   def test_upsample_nearest_with_size_parameters(self):
     """Tests that the upsample nearest op works with size parameters."""

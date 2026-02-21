@@ -53,6 +53,20 @@ void AtenForeachAdd_ScalarList(at::TensorList self,
 void AtenForeachAdd_Tensor(at::TensorList self, const at::Tensor& other,
                            const at::Scalar& alpha);
 
+std::vector<at::Tensor> AtenForeachDivList(at::TensorList self,
+                                           at::TensorList other);
+std::vector<at::Tensor> AtenForeachDivScalar(at::TensorList self,
+                                             const at::Scalar& scalar);
+std::vector<at::Tensor> AtenForeachDivScalarList(
+    at::TensorList self, at::ArrayRef<at::Scalar> scalars);
+std::vector<at::Tensor> AtenForeachDivTensor(at::TensorList self,
+                                             const at::Tensor& other);
+void AtenForeachDiv_List(at::TensorList self, at::TensorList other);
+void AtenForeachDiv_Scalar(at::TensorList self, const at::Scalar& scalar);
+void AtenForeachDiv_ScalarList(at::TensorList self,
+                               at::ArrayRef<at::Scalar> scalars);
+void AtenForeachDiv_Tensor(at::TensorList self, const at::Tensor& other);
+
 std::vector<at::Tensor> AtenForeachMulList(at::TensorList self,
                                            at::TensorList other);
 std::vector<at::Tensor> AtenForeachMulScalar(at::TensorList self,

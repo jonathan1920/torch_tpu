@@ -717,6 +717,67 @@ void AtenForeachAdd_Tensor(at::TensorList self, const at::Tensor& other,
   });
 }
 
+std::vector<at::Tensor> AtenForeachDivList(at::TensorList self,
+                                           at::TensorList other) {
+  TT_KERNEL(OpName::kForeachDivList, _, (self, other),
+            { return AtenForeachMulList(self, AtenForeachReciprocal(other)); });
+}
+
+std::vector<at::Tensor> AtenForeachDivScalar(at::TensorList self,
+                                             const at::Scalar& scalar) {
+  TT_KERNEL(OpName::kForeachDivScalar, _, (self, scalar),
+            { return AtenForeachMulScalar(self, 1.0 / scalar.to<double>()); });
+}
+
+std::vector<at::Tensor> AtenForeachDivScalarList(
+    at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
+  TT_KERNEL(OpName::kForeachDivScalarList, _, (self, scalars), {
+    std::vector<at::Scalar> reciprocal_scalars;
+    reciprocal_scalars.reserve(scalars.size());
+    for (const auto& scalar : scalars) {
+      reciprocal_scalars.push_back(1.0 / scalar.to<double>());
+    }
+    return AtenForeachMulScalarList(self, reciprocal_scalars);
+  });
+}
+
+std::vector<at::Tensor> AtenForeachDivTensor(at::TensorList self,
+                                             const at::Tensor& other) {
+  TT_KERNEL(OpName::kForeachDivTensor, _, (self, other), {
+    std::vector<at::Tensor> other_list(self.size(), other);
+    return AtenForeachDivList(self, other_list);
+  });
+}
+
+void AtenForeachDiv_List(at::TensorList self, at::TensorList other) {
+  TT_KERNEL(OpName::kForeachDiv_List, _, (self, other),
+            { AtenForeachMul_List(self, AtenForeachReciprocal(other)); });
+}
+
+void AtenForeachDiv_Scalar(at::TensorList self, const at::Scalar& scalar) {
+  TT_KERNEL(OpName::kForeachDiv_Scalar, _, (self, scalar),
+            { AtenForeachMul_Scalar(self, 1.0 / scalar.to<double>()); });
+}
+
+void AtenForeachDiv_ScalarList(at::TensorList self,
+                               at::ArrayRef<at::Scalar> scalars) {
+  TT_KERNEL(OpName::kForeachDiv_ScalarList, _, (self, scalars), {
+    std::vector<at::Scalar> reciprocal_scalars;
+    reciprocal_scalars.reserve(scalars.size());
+    for (const auto& scalar : scalars) {
+      reciprocal_scalars.push_back(1.0 / scalar.to<double>());
+    }
+    AtenForeachMul_ScalarList(self, reciprocal_scalars);
+  });
+}
+
+void AtenForeachDiv_Tensor(at::TensorList self, const at::Tensor& other) {
+  TT_KERNEL(OpName::kForeachDiv_Tensor, _, (self, other), {
+    std::vector<at::Tensor> other_list(self.size(), other);
+    AtenForeachDiv_List(self, other_list);
+  });
+}
+
 std::vector<at::Tensor> AtenForeachMulList(at::TensorList self,
                                            at::TensorList other) {
   TT_KERNEL(OpName::kForeachMulList, param_keys, (self, other), {
