@@ -223,6 +223,19 @@ absl::Status EnsureNotIntegral(at::TensorList self) {
   return absl::OkStatus();
 }
 
+absl::Status EnsureNotBothIntegral(at::TensorList tensor1,
+                                   at::TensorList tensor2) {
+  for (size_t i = 0; i < tensor1.size(); ++i) {
+    TT_RET_CHECK(!(IsIntegral(tensor1[i]) && IsIntegral(tensor2[i])),
+                 error::kInvalidArgument)
+        << "expected at least one of tensor1/tensor2 to be "
+           "non-integral, got "
+        << ToString(tensor1[i].scalar_type()) << " and "
+        << ToString(tensor2[i].scalar_type());
+  }
+  return absl::OkStatus();
+}
+
 inline absl::Status EnsureNotBool(const at::Scalar& scalar) {
   TT_RET_CHECK(!IsBool(scalar), error::kInvalidArgument)
       << "bool dtype is not supported";
@@ -715,6 +728,94 @@ void AtenForeachAdd_Tensor(at::TensorList self, const at::Tensor& other,
     std::vector<at::Tensor> other_list(self.size(), other);
     AtenForeachAdd_List(self, other_list, alpha);
   });
+}
+
+std::vector<at::Tensor> AtenForeachAddcdivScalar(at::TensorList self,
+                                                 at::TensorList tensor1,
+                                                 at::TensorList tensor2,
+                                                 const at::Scalar& value) {
+  TT_KERNEL(OpName::kForeachAddcdivScalar, _, (self, tensor1, tensor2, value), {
+    // _foreach_div supports two integral tensors, but _foreach_addcdiv doesn't.
+    TT_THROW_IF_ERROR(EnsureNotBothIntegral(tensor1, tensor2));
+    std::vector<at::Tensor> quotient = AtenForeachDivList(tensor1, tensor2);
+    std::vector<at::Tensor> product = AtenForeachMulScalar(quotient, value);
+    return AtenForeachAddList(self, product, 1.0);
+  });
+}
+
+std::vector<at::Tensor> AtenForeachAddcdivScalarList(
+    at::TensorList self, at::TensorList tensor1, at::TensorList tensor2,
+    at::ArrayRef<at::Scalar> scalars) {
+  TT_KERNEL(
+      OpName::kForeachAddcdivScalarList, _, (self, tensor1, tensor2, scalars), {
+        // _foreach_div supports two integral tensors, but _foreach_addcdiv
+        // doesn't.
+        TT_THROW_IF_ERROR(EnsureNotBothIntegral(tensor1, tensor2));
+        std::vector<at::Tensor> quotient = AtenForeachDivList(tensor1, tensor2);
+        std::vector<at::Tensor> product =
+            AtenForeachMulScalarList(quotient, scalars);
+        return AtenForeachAddList(self, product, 1.0);
+      });
+}
+std::vector<at::Tensor> AtenForeachAddcdivTensor(at::TensorList self,
+                                                 at::TensorList tensor1,
+                                                 at::TensorList tensor2,
+                                                 const at::Tensor& scalars) {
+  TT_KERNEL(
+      OpName::kForeachAddcdivTensor, _, (self, tensor1, tensor2, scalars), {
+        // _foreach_div supports two integral tensors, but _foreach_addcdiv
+        // doesn't.
+        TT_THROW_IF_ERROR(EnsureNotBothIntegral(tensor1, tensor2));
+        std::vector<at::Tensor> quotient = AtenForeachDivList(tensor1, tensor2);
+        std::vector<at::Tensor> product =
+            AtenForeachMulTensor(quotient, scalars);
+        return AtenForeachAddList(self, product, 1.0);
+      });
+}
+
+void AtenForeachAddcdiv_Scalar(at::TensorList self, at::TensorList tensor1,
+                               at::TensorList tensor2,
+                               const at::Scalar& value) {
+  TT_KERNEL(
+      OpName::kForeachAddcdiv_Scalar, _, (self, tensor1, tensor2, value), {
+        // _foreach_div supports two integral tensors, but _foreach_addcdiv
+        // doesn't.
+        TT_THROW_IF_ERROR(EnsureNotBothIntegral(tensor1, tensor2));
+        std::vector<at::Tensor> quotient = AtenForeachDivList(tensor1, tensor2);
+        std::vector<at::Tensor> product = AtenForeachMulScalar(quotient, value);
+        AtenForeachAdd_List(self, product, 1.0);
+      });
+}
+
+void AtenForeachAddcdiv_ScalarList(at::TensorList self, at::TensorList tensor1,
+                                   at::TensorList tensor2,
+                                   at::ArrayRef<at::Scalar> scalars) {
+  TT_KERNEL(OpName::kForeachAddcdiv_ScalarList, _,
+            (self, tensor1, tensor2, scalars), {
+              // _foreach_div supports two integral tensors, but
+              // _foreach_addcdiv doesn't.
+              TT_THROW_IF_ERROR(EnsureNotBothIntegral(tensor1, tensor2));
+              std::vector<at::Tensor> quotient =
+                  AtenForeachDivList(tensor1, tensor2);
+              std::vector<at::Tensor> product =
+                  AtenForeachMulScalarList(quotient, scalars);
+              AtenForeachAdd_List(self, product, 1.0);
+            });
+}
+
+void AtenForeachAddcdiv_Tensor(at::TensorList self, at::TensorList tensor1,
+                               at::TensorList tensor2,
+                               const at::Tensor& scalars) {
+  TT_KERNEL(
+      OpName::kForeachAddcdiv_Tensor, _, (self, tensor1, tensor2, scalars), {
+        // _foreach_div supports two integral tensors, but _foreach_addcdiv
+        // doesn't.
+        TT_THROW_IF_ERROR(EnsureNotBothIntegral(tensor1, tensor2));
+        std::vector<at::Tensor> quotient = AtenForeachDivList(tensor1, tensor2);
+        std::vector<at::Tensor> product =
+            AtenForeachMulTensor(quotient, scalars);
+        AtenForeachAdd_List(self, product, 1.0);
+      });
 }
 
 std::vector<at::Tensor> AtenForeachDivList(at::TensorList self,

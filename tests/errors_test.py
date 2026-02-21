@@ -4098,6 +4098,29 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch._foreach_sqrt_(self_list)
 
+  def test_foreach_addcdiv_integral(self):
+    self_list = [torch.tensor([1, 2], dtype=torch.int64, device=et.device())]
+    tensor1_list = [torch.tensor([3, 4], dtype=torch.int32, device=et.device())]
+    tensor2_list = [torch.tensor([5, 6], dtype=torch.uint8, device=et.device())]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "foreach_addcdiv(): expected at least one of tensor1/tensor2 to be "
+            "non-integral, got int32 and uint8"
+        ),
+        cpu=(
+            "Integer division with addcdiv is no longer supported, and in a"
+            " future  release addcdiv will perform a true division of tensor1"
+            " and tensor2. The historic addcdiv behavior can be implemented as"
+            " (input + value * torch.trunc(tensor1 / tensor2)).to(input.dtype)"
+            " for integer inputs and as (input + value * tensor1 / tensor2) for"
+            " float inputs. The future addcdiv behavior is just the latter"
+            " implementation: (input + value * tensor1 / tensor2), for all"
+            " dtypes."
+        ),
+    ):
+      torch._foreach_addcdiv(self_list, tensor1_list, tensor2_list)
+
   def test_sub_bool(self):
     lhs = torch.tensor([1.0, 1.0], device=et.device())
     rhs = torch.tensor([1.0, 1.0], device=et.device())

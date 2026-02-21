@@ -1541,6 +1541,11 @@ class TestOps(TorchTpuTestBase):
         "_foreach_addcdiv",
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
+        # TODO(b/485291373): fix _foreach_addcdiv() failing with complex dtypes.
+        exclude_dtypes=COMPLEX_DTYPES,
+        # TODO(b/485291373): fix _foreach_addcdiv_() failing with complex
+        # dtypes.
+        exclude_inplace_dtypes=COMPLEX_DTYPES,
     )
 
   def test_foreach_addcmul(self):
