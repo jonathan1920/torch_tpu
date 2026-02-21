@@ -427,6 +427,7 @@ torch_tpu_py_test(
         ":op_testing",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//torch_tpu/_internal/utils",
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )

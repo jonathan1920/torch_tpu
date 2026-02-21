@@ -53,21 +53,13 @@ absl::Status ValidateIndicesType(
     const c10::List<std::optional<at::Tensor>>& indices_list_opt) {
   for (int64_t i = 0; i < indices_list_opt.size(); ++i) {
     auto maybe_tensor = indices_list_opt[i];
-    // Index tensor must be specified
-    // There are no naive/direct usage of index_put with std::nullopt indices
-    // There exists indirect usage of index_put with std::nullopt indices
-    // using PyTorch internal APIs such as _unsafe_masked_index but it is
-    // only used by the inductor backend and hence not supported on TPU.
-    ABSL_CHECK(maybe_tensor.has_value())  // CRASH_OK
-        << "[IndexPut] index tensor at index " << i << " must be specified";
-    const auto& index_tensor = maybe_tensor.value();
-
-    if (!index_tensor.defined()) {
+    if (!maybe_tensor.has_value() || !maybe_tensor.value().defined()) {
       // tensor is not defined when it is None. This happens in case of
       // slicing for example: self[indices, :, indices] = bar. In this case
       // the second index tensor will be undefined.
       continue;
     }
+    const auto& index_tensor = maybe_tensor.value();
 
     TT_RET_CHECK(index_tensor.scalar_type() == c10::ScalarType::Int ||
                      index_tensor.scalar_type() == c10::ScalarType::Long ||
@@ -118,14 +110,14 @@ absl::StatusOr<std::vector<at::Tensor>> ConvertBooleanIndicesToPositional(
   int64_t dim_indexed = 0;
   for (int64_t i = 0; i < indices_list_opt.size(); ++i) {
     auto maybe_tensor = indices_list_opt[i];
-    const auto& index_tensor = maybe_tensor.value();
-
-    if (!index_tensor.defined()) {
+    if (!maybe_tensor.has_value() || !maybe_tensor.value().defined()) {
       // this dimension of self tensor sliced out, so we
       // move to the next dimension.
       dim_indexed++;
       continue;
     }
+    const auto& index_tensor = maybe_tensor.value();
+
     if (index_tensor.scalar_type() == c10::ScalarType::Bool) {
       int64_t self_dim = dim_indexed;
       for (int64_t mask_dim = 0; mask_dim < index_tensor.dim(); ++mask_dim) {
@@ -311,10 +303,10 @@ bool CanUseIndicesAsMask(
   bool found_mask = false;
   for (int64_t i = 0; i < indices_list_opt.size(); ++i) {
     auto maybe_tensor = indices_list_opt[i];
-    const auto& index_tensor = maybe_tensor.value();
-    if (!index_tensor.defined()) {
+    if (!maybe_tensor.has_value() || !maybe_tensor.value().defined()) {
       continue;
     }
+    const auto& index_tensor = maybe_tensor.value();
     if (index_tensor.scalar_type() == c10::ScalarType::Bool) {
       if (found_mask) {
         // Only one boolean mask is allowed.
@@ -347,8 +339,7 @@ absl::StatusOr<DeviceBufferRef> IndexPutWithBooleanMask(
   int64_t mask_index = 0;
   for (; mask_index < indices_list_opt.size(); ++mask_index) {
     auto maybe_tensor = indices_list_opt[mask_index];
-    const auto& index_tensor = maybe_tensor.value();
-    if (!index_tensor.defined()) {
+    if (!maybe_tensor.has_value() || !maybe_tensor.value().defined()) {
       continue;
     }
     break;

@@ -16,7 +16,9 @@
 
 from absl.testing import absltest
 import torch
+from torch_tpu._internal.utils.utils import OpTracer
 from tests import op_testing
+
 
 OpInput = op_testing.OpInput
 TorchTpuVsCpuTestBase = op_testing.TorchTpuVsCpuTestBase
@@ -709,6 +711,30 @@ class IndexPutTest(TorchTpuVsCpuTestBase):
       # this does not decompose to index_put
       tensor[:, :, :] = values_to_assign
       return tensor
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
+  def test_index_put_leading_none_with_optracer(self):
+    def test_fn(device):
+      data = torch.arange(60, dtype=torch.int32, device=device).reshape(2, 5, 6)
+      indices = torch.tensor([1, 3], dtype=torch.int64, device=device)
+      values = torch.ones(2, 2, 6, dtype=torch.int32, device=device)
+      with OpTracer():
+        data[:, indices] = values
+      return data
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
+  def test_index_put_leading_none_with_optracer_boolean_mask_scalar_value(self):
+    def test_fn(device):
+      data = torch.arange(60, dtype=torch.int32, device=device).reshape(2, 5, 6)
+      indices = torch.tensor(
+          [False, True, False, True, False], dtype=torch.bool, device=device
+      )
+      values = 100
+      with OpTracer():
+        data[:, indices] = values
+      return data
 
     self.assert_close_tpu_vs_cpu(test_fn)
 
