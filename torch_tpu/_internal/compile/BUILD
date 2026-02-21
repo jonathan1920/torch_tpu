@@ -164,7 +164,7 @@ torch_tpu_py_test(
     srcs = ["trace_autograd_ops_test.py"],
     strict = "true",
     tags = [
-        "cpu:4",
+        "requires-tpu-v5lite",
     ],
     deps = [
         ":tpu_backend",
