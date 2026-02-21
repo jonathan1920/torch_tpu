@@ -318,6 +318,12 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kForeachDiv_Scalar, AtenForeachDiv_Scalar);
   Impl(m, OpName::kForeachDiv_ScalarList, AtenForeachDiv_ScalarList);
   Impl(m, OpName::kForeachDiv_Tensor, AtenForeachDiv_Tensor);
+  Impl(m, OpName::kForeachLerpList, AtenForeachLerpList);
+  Impl(m, OpName::kForeachLerpScalar, AtenForeachLerpScalar);
+  Impl(m, OpName::kForeachLerpScalarList, AtenForeachLerpScalarList);
+  Impl(m, OpName::kForeachLerp_List, AtenForeachLerp_List);
+  Impl(m, OpName::kForeachLerp_Scalar, AtenForeachLerp_Scalar);
+  Impl(m, OpName::kForeachLerp_ScalarList, AtenForeachLerp_ScalarList);
   Impl(m, OpName::kForeachMulList, AtenForeachMulList);
   Impl(m, OpName::kForeachMulScalar, AtenForeachMulScalar);
   Impl(m, OpName::kForeachMulScalarList, AtenForeachMulScalarList);

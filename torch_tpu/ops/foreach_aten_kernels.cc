@@ -778,6 +778,63 @@ void AtenForeachDiv_Tensor(at::TensorList self, const at::Tensor& other) {
   });
 }
 
+std::vector<at::Tensor> AtenForeachLerpList(at::TensorList self,
+                                            at::TensorList other,
+                                            at::TensorList weight) {
+  TT_KERNEL(OpName::kForeachLerpList, _, (self, other, weight), {
+    auto diff = AtenForeachSubList(other, self, 1.0);
+    auto weighted_diff = AtenForeachMulList(weight, diff);
+    return AtenForeachAddList(self, weighted_diff, 1.0);
+  });
+}
+
+std::vector<at::Tensor> AtenForeachLerpScalar(at::TensorList self,
+                                              at::TensorList other,
+                                              const at::Scalar& weight) {
+  TT_KERNEL(OpName::kForeachLerpScalar, _, (self, other, weight), {
+    auto diff = AtenForeachSubList(other, self, 1.0);
+    auto weighted_diff = AtenForeachMulScalar(diff, weight);
+    return AtenForeachAddList(self, weighted_diff, 1.0);
+  });
+}
+
+std::vector<at::Tensor> AtenForeachLerpScalarList(
+    at::TensorList self, at::TensorList other,
+    at::ArrayRef<at::Scalar> scalars) {
+  TT_KERNEL(OpName::kForeachLerpScalarList, _, (self, other, scalars), {
+    auto diff = AtenForeachSubList(other, self, 1.0);
+    auto weighted_diff = AtenForeachMulScalarList(diff, scalars);
+    return AtenForeachAddList(self, weighted_diff, 1.0);
+  });
+}
+
+void AtenForeachLerp_List(at::TensorList self, at::TensorList other,
+                          at::TensorList weight) {
+  TT_KERNEL(OpName::kForeachLerp_List, _, (self, other, weight), {
+    auto diff = AtenForeachSubList(other, self, 1.0);
+    auto weighted_diff = AtenForeachMulList(diff, weight);
+    AtenForeachAdd_List(self, weighted_diff, 1.0);
+  });
+}
+
+void AtenForeachLerp_Scalar(at::TensorList self, at::TensorList other,
+                            const at::Scalar& weight) {
+  TT_KERNEL(OpName::kForeachLerp_Scalar, _, (self, other, weight), {
+    auto diff = AtenForeachSubList(other, self, 1.0);
+    auto weighted_diff = AtenForeachMulScalar(diff, weight);
+    AtenForeachAdd_List(self, weighted_diff, 1.0);
+  });
+}
+
+void AtenForeachLerp_ScalarList(at::TensorList self, at::TensorList other,
+                                at::ArrayRef<at::Scalar> scalars) {
+  TT_KERNEL(OpName::kForeachLerp_ScalarList, _, (self, other, scalars), {
+    auto diff = AtenForeachSubList(other, self, 1.0);
+    auto weighted_diff = AtenForeachMulScalarList(diff, scalars);
+    AtenForeachAdd_List(self, weighted_diff, 1.0);
+  });
+}
+
 std::vector<at::Tensor> AtenForeachMulList(at::TensorList self,
                                            at::TensorList other) {
   TT_KERNEL(OpName::kForeachMulList, param_keys, (self, other), {
