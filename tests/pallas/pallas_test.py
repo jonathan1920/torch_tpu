@@ -33,11 +33,15 @@ def add_vectors(x_ref, y_ref, o_ref):
   o_ref[...] = x + y
 
 
-@pallas.custom_kernel(lambda x, y: (torch.empty_like(x), torch.empty_like(y)))
-def add_subtract_vectors(x_ref, y_ref, oadd_ref, osub_ref):
+def add_subtract_vectors_kernel(x_ref, y_ref, oadd_ref, osub_ref):
   x, y = x_ref[...], y_ref[...]
   oadd_ref[...] = x + y
   osub_ref[...] = x - y
+
+
+@pallas.custom_kernel(lambda x, y: (torch.empty_like(x), torch.empty_like(y)))
+def add_subtract_vectors(x_ref, y_ref, oadd_ref, osub_ref):
+  return add_subtract_vectors_kernel(x_ref, y_ref, oadd_ref, osub_ref)
 
 
 @pallas.custom_kernel(lambda x, y: torch.empty_like(x))
@@ -61,6 +65,11 @@ def jax_add_or_subtract_vectors_wrapper(mode, x, y):
 
   This constraint can be changed but should be revisited once use cases and
   usability requirements are more concrete.
+
+  Args:
+    mode: The mode to use, either "add" or "sub".
+    x: The first input tensor.
+    y: The second input tensor.
   """
 
   @functools.partial(jax.jit, static_argnums=(0,))
@@ -83,7 +92,7 @@ class TestPallasKernels(absltest.TestCase):
     self.device = api.tpu_device()
 
   def test_kernel_single_output_functional_style(self):
-    add_vectors = pallas.custom_kernel(
+    add_vectors_fn = pallas.custom_kernel(
         lambda x, y: torch.empty_like(x),
         pallas_kernel=add_vectors_kernel,
         name="add_vectors",
@@ -91,7 +100,21 @@ class TestPallasKernels(absltest.TestCase):
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
     expected = torch.add(x, y).to("cpu")
-    actual = add_vectors(x, y).to("cpu")
+    actual = add_vectors_fn(x, y).to("cpu")
+    utils.assert_close(actual, expected)
+
+  def test_kernel_single_output_functional_style_shape_arg(self):
+    x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
+    y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
+
+    add_vectors_fn = pallas.custom_kernel(
+        output_shapes=x,
+        pallas_kernel=add_vectors_kernel,
+        name="add_vectors",
+    )
+
+    expected = torch.add(x, y).to("cpu")
+    actual = add_vectors_fn(x, y).to("cpu")
     utils.assert_close(actual, expected)
 
   def test_kernel_single_output_decorator(self):
@@ -107,6 +130,22 @@ class TestPallasKernels(absltest.TestCase):
     expected_add = torch.add(x, y).to("cpu")
     expected_sub = torch.sub(x, y).to("cpu")
     actual_add, actual_sub = add_subtract_vectors(x, y)
+    utils.assert_close(actual_add.to("cpu"), expected_add)
+    utils.assert_close(actual_sub.to("cpu"), expected_sub)
+
+  def test_kernel_multiple_outputs_functional_style(self):
+    x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
+    y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
+
+    add_subtract_vectors_fn = pallas.custom_kernel(
+        output_shapes=[x, y],
+        pallas_kernel=add_subtract_vectors_kernel,
+        name="add_subtract_vectors",
+    )
+
+    expected_add = torch.add(x, y).to("cpu")
+    expected_sub = torch.sub(x, y).to("cpu")
+    actual_add, actual_sub = add_subtract_vectors_fn(x, y)
     utils.assert_close(actual_add.to("cpu"), expected_add)
     utils.assert_close(actual_sub.to("cpu"), expected_sub)
 
@@ -170,12 +209,12 @@ class TestPallasKernels(absltest.TestCase):
       o_ref[...] = x - y
 
     propagate = lambda x, y: torch.empty_like(x)
-    add_vectors = pallas.custom_kernel(
+    add_vectors_fn = pallas.custom_kernel(
         propagate,
         pallas_kernel=add_vectors_kernel,
         name="math_kernel",
     )
-    sub_vectors = pallas.custom_kernel(
+    sub_vectors_fn = pallas.custom_kernel(
         propagate,
         pallas_kernel=sub_vectors_kernel,
         name="math_kernel",
@@ -185,8 +224,8 @@ class TestPallasKernels(absltest.TestCase):
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
     expected_add = torch.add(x, y).to("cpu")
     expected_sub = torch.sub(x, y).to("cpu")
-    actual_add = add_vectors(x, y).to("cpu")
-    actual_sub = sub_vectors(x, y).to("cpu")
+    actual_add = add_vectors_fn(x, y).to("cpu")
+    actual_sub = sub_vectors_fn(x, y).to("cpu")
     utils.assert_close(actual_add, expected_add)
     utils.assert_close(actual_sub, expected_sub)
 

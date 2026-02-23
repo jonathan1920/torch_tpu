@@ -276,7 +276,7 @@ class JaxCallable:
 
 
 def custom_kernel(
-    propagate: Callable[..., _KernelResultT],
+    output_shapes: Callable[..., _KernelResultT] | _KernelResultT,
     pallas_kernel: Callable[..., Any] | None = None,
     **pl_kwargs,
 ) -> (
@@ -297,8 +297,9 @@ def custom_kernel(
   ```
 
   Args:
-    propagate: A function that takes the input arguments and returns the output
-      shapes of the Pallas kernel.
+    output_shapes: A tensor or tensor list, or a function that takes the input
+      arguments and returns the output shapes of the Pallas kernel. Note, only
+      the tensor's shape and dtype information is used, the data is not used.
     pallas_kernel: The pallas kernel to compile. If None then return a decorator
       that expects a pallas_kernel argument.
     **pl_kwargs: Additional keyword arguments to configure the inner
@@ -308,6 +309,11 @@ def custom_kernel(
     A decorator that takes a pallas kernel function and returns a callable that
     can be used to call the kernel on torch.Tensor inputs.
   """
+
+  def get_output_shapes(*args, **kwargs):
+    if callable(output_shapes):
+      return output_shapes(*args, **kwargs)
+    return output_shapes
 
   def decorator(
       pallas_kernel: Callable[..., None],
@@ -325,7 +331,7 @@ def custom_kernel(
     # isn't known until call time.
     @functools.wraps(pallas_kernel)
     def wrapped_call(*args, **kwargs) -> _KernelResultT:
-      out_shapes = propagate(*args, **kwargs)
+      out_shapes = get_output_shapes(*args, **kwargs)
       jax_out_shapes = jax_placeholders(out_shapes)
       pl_fn_jit = jax.jit(
           pl.pallas_call(pallas_kernel, out_shape=jax_out_shapes, **pl_kwargs),
