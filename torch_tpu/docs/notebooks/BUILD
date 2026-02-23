@@ -46,4 +46,14 @@ py_library(
     ],
 )
 
+py_library(
+    # PY_LIBRARY_OK=used in OSS only.
+    name = "porting_vit_mnist",
+    srcs = ["porting_vit_mnist.py"],
+    deps = [
+        "//shims/torch:pytorch",
+        "@pypi//numpy",
+    ],
+)
+
 define_cpp_filegroup(name = "all_cpp_files_recursive")
