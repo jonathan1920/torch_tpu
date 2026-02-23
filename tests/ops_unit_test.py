@@ -1587,7 +1587,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       self.assertEqual(results[i], i)
 
   def test_dropout_mean_of_entries(self):
-    n = 200
+    n = 5000
     p = 0.5
     t = torch.rand(n, n, dtype=torch.float32, device=api.tpu_device())
     t = torch.dropout(t, p, train=True)
@@ -1601,13 +1601,14 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     expected_mean = 0.5
     pop_variance = (3 + p) / 12 / (1 - p) / n / n
     # P(|X - mean| >= atol) <= V(X) / atol^2 = pop_variance / atol^2
-    # make atol big enough so above prob is <= 10^-10
-    atol = torch.sqrt(torch.tensor(pop_variance)).item() * 1e5
+    # make atol big enough so above prob is <= 10^-6
+    atol = torch.sqrt(torch.tensor(pop_variance)).item() * 1e3
     self.assert_close(
         golden_result=torch.tensor(expected_mean),
         torch_tpu_result=mean_value.to("cpu"),
         atol=atol,
-        rtol=6e-3,
+        rtol=0.0,
+        check_value=CheckValueMode.LOOSE,
     )
 
   def test_dropout_equal_to_zero_or_scaled_original(self):
