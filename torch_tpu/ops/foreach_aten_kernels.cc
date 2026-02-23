@@ -818,6 +818,98 @@ void AtenForeachAddcdiv_Tensor(at::TensorList self, at::TensorList tensor1,
       });
 }
 
+std::vector<at::Tensor> AtenForeachAddcmulScalar(at::TensorList self,
+                                                 at::TensorList tensor1,
+                                                 at::TensorList tensor2,
+                                                 const at::Scalar& value) {
+  TT_KERNEL(OpName::kForeachAddcmulScalar, _, (self, tensor1, tensor2, value), {
+    // _foreach_mul and _foreach_add supports bool tensors, but _foreach_addcmul
+    // doesn't.
+    TT_THROW_IF_ERROR(EnsureNotBool(self));
+    std::vector<at::Tensor> product = AtenForeachMulList(tensor1, tensor2);
+    std::vector<at::Tensor> scaled_product =
+        AtenForeachMulScalar(product, value);
+    return AtenForeachAddList(self, scaled_product, 1);
+  });
+}
+
+std::vector<at::Tensor> AtenForeachAddcmulScalarList(
+    at::TensorList self, at::TensorList tensor1, at::TensorList tensor2,
+    at::ArrayRef<at::Scalar> scalars) {
+  TT_KERNEL(
+      OpName::kForeachAddcmulScalarList, _, (self, tensor1, tensor2, scalars), {
+        // _foreach_mul and _foreach_add supports bool tensors, but
+        // _foreach_addcmul doesn't.
+        TT_THROW_IF_ERROR(EnsureNotBool(self));
+        std::vector<at::Tensor> product = AtenForeachMulList(tensor1, tensor2);
+        std::vector<at::Tensor> scaled_product =
+            AtenForeachMulScalarList(product, scalars);
+        return AtenForeachAddList(self, scaled_product, 1);
+      });
+}
+
+std::vector<at::Tensor> AtenForeachAddcmulTensor(at::TensorList self,
+                                                 at::TensorList tensor1,
+                                                 at::TensorList tensor2,
+                                                 const at::Tensor& scalars) {
+  TT_KERNEL(
+      OpName::kForeachAddcmulTensor, _, (self, tensor1, tensor2, scalars), {
+        // _foreach_mul and _foreach_add supports bool tensors, but
+        // _foreach_addcmul doesn't.
+        TT_THROW_IF_ERROR(EnsureNotBool(self));
+        std::vector<at::Tensor> product = AtenForeachMulList(tensor1, tensor2);
+        std::vector<at::Tensor> scaled_product =
+            AtenForeachMulTensor(product, scalars);
+        return AtenForeachAddList(self, scaled_product, 1);
+      });
+}
+
+void AtenForeachAddcmul_Scalar(at::TensorList self, at::TensorList tensor1,
+                               at::TensorList tensor2,
+                               const at::Scalar& value) {
+  TT_KERNEL(
+      OpName::kForeachAddcmul_Scalar, _, (self, tensor1, tensor2, value), {
+        // _foreach_mul and _foreach_add supports bool tensors, but
+        // _foreach_addcmul doesn't.
+        TT_THROW_IF_ERROR(EnsureNotBool(self));
+        std::vector<at::Tensor> product = AtenForeachMulList(tensor1, tensor2);
+        std::vector<at::Tensor> scaled_product =
+            AtenForeachMulScalar(product, value);
+        AtenForeachAdd_List(self, scaled_product, 1);
+      });
+}
+
+void AtenForeachAddcmul_ScalarList(at::TensorList self, at::TensorList tensor1,
+                                   at::TensorList tensor2,
+                                   at::ArrayRef<at::Scalar> scalars) {
+  TT_KERNEL(OpName::kForeachAddcmul_ScalarList, _,
+            (self, tensor1, tensor2, scalars), {
+              // _foreach_mul and _foreach_add supports bool tensors, but
+              // _foreach_addcmul doesn't.
+              TT_THROW_IF_ERROR(EnsureNotBool(self));
+              std::vector<at::Tensor> product =
+                  AtenForeachMulList(tensor1, tensor2);
+              std::vector<at::Tensor> scaled_product =
+                  AtenForeachMulScalarList(product, scalars);
+              AtenForeachAdd_List(self, scaled_product, 1);
+            });
+}
+
+void AtenForeachAddcmul_Tensor(at::TensorList self, at::TensorList tensor1,
+                               at::TensorList tensor2,
+                               const at::Tensor& scalars) {
+  TT_KERNEL(
+      OpName::kForeachAddcmul_Tensor, _, (self, tensor1, tensor2, scalars), {
+        // _foreach_mul and _foreach_add supports bool tensors, but
+        // _foreach_addcmul doesn't.
+        TT_THROW_IF_ERROR(EnsureNotBool(self));
+        std::vector<at::Tensor> product = AtenForeachMulList(tensor1, tensor2);
+        std::vector<at::Tensor> scaled_product =
+            AtenForeachMulTensor(product, scalars);
+        AtenForeachAdd_List(self, scaled_product, 1);
+      });
+}
+
 std::vector<at::Tensor> AtenForeachDivList(at::TensorList self,
                                            at::TensorList other) {
   TT_KERNEL(OpName::kForeachDivList, _, (self, other),

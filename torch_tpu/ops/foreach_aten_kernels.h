@@ -74,6 +74,27 @@ void AtenForeachAddcdiv_Tensor(at::TensorList self, at::TensorList tensor1,
                                at::TensorList tensor2,
                                const at::Tensor& scalars);
 
+std::vector<at::Tensor> AtenForeachAddcmulScalar(at::TensorList self,
+                                                 at::TensorList tensor1,
+                                                 at::TensorList tensor2,
+                                                 const at::Scalar& value);
+std::vector<at::Tensor> AtenForeachAddcmulScalarList(
+    at::TensorList self, at::TensorList tensor1, at::TensorList tensor2,
+    at::ArrayRef<at::Scalar> scalars);
+std::vector<at::Tensor> AtenForeachAddcmulTensor(at::TensorList self,
+                                                 at::TensorList tensor1,
+                                                 at::TensorList tensor2,
+                                                 const at::Tensor& scalars);
+
+void AtenForeachAddcmul_Scalar(at::TensorList self, at::TensorList tensor1,
+                               at::TensorList tensor2, const at::Scalar& value);
+void AtenForeachAddcmul_ScalarList(at::TensorList self, at::TensorList tensor1,
+                                   at::TensorList tensor2,
+                                   at::ArrayRef<at::Scalar> scalars);
+void AtenForeachAddcmul_Tensor(at::TensorList self, at::TensorList tensor1,
+                               at::TensorList tensor2,
+                               const at::Tensor& scalars);
+
 std::vector<at::Tensor> AtenForeachDivList(at::TensorList self,
                                            at::TensorList other);
 std::vector<at::Tensor> AtenForeachDivScalar(at::TensorList self,

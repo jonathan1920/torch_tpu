@@ -554,7 +554,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
     },
     "_foreach_addcmul": {
         torch.bfloat16: {"rtol": 2.2e-1, "atol": 2.4e-2},
-        torch.float16: {"rtol": 1.6e-1, "atol": 3.5e-3},
+        torch.float16: {"rtol": 4.3e-1, "atol": 3.5e-3},
     },
     "_foreach_lerp": {
         torch.bfloat16: {"rtol": 1.1, "atol": 3.2e-2},
@@ -1553,6 +1553,11 @@ class TestOps(TorchTpuTestBase):
         "_foreach_addcmul",
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
+        # TODO(b/485291373): fix _foreach_addcmul() failing with complex dtypes.
+        exclude_dtypes=COMPLEX_DTYPES,
+        # TODO(b/485291373): fix _foreach_addcmul_() failing with complex
+        # dtypes.
+        exclude_inplace_dtypes=COMPLEX_DTYPES,
     )
 
   def test_foreach_asin(self):

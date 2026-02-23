@@ -306,6 +306,18 @@ std::string_view ToString(OpName op_name) {
       return "_foreach_addcdiv_.ScalarList";
     case OpName::kForeachAddcdiv_Tensor:
       return "_foreach_addcdiv_.Tensor";
+    case OpName::kForeachAddcmulScalar:
+      return "_foreach_addcmul.Scalar";
+    case OpName::kForeachAddcmulScalarList:
+      return "_foreach_addcmul.ScalarList";
+    case OpName::kForeachAddcmulTensor:
+      return "_foreach_addcmul.Tensor";
+    case OpName::kForeachAddcmul_Scalar:
+      return "_foreach_addcmul_.Scalar";
+    case OpName::kForeachAddcmul_ScalarList:
+      return "_foreach_addcmul_.ScalarList";
+    case OpName::kForeachAddcmul_Tensor:
+      return "_foreach_addcmul_.Tensor";
     case OpName::kForeachDivList:
       return "_foreach_div.List";
     case OpName::kForeachDivScalar:
