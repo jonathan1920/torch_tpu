@@ -17,6 +17,8 @@
 This module provides APIs to call Pallas kernels from PyTorch. Note that use
 of these APIs requires that your environment also has JAX/Pallas installed.
 """
+
+from collections.abc import Mapping
 import functools
 import logging
 from typing import Any, Callable, Sequence
@@ -189,6 +191,7 @@ class JaxCallable:
       jit_fn: Any,
       trace_key: str,
       static_argnums: tuple[int, ...] = (),
+      input_output_aliases: Mapping[int, int] | None = None,
   ):
     """Initializes a JaxCallable, a cached callable for custom kernels.
 
@@ -209,12 +212,17 @@ class JaxCallable:
         function.
       static_argnums: Tuple of argument positions that are compile-time
         constants.
+      input_output_aliases: A mapping of input indices to output indices that
+        alias each input. See docs for jax.experimental.pallas.pallas_call.
     """
     self.name = name
     self.trace_key = trace_key
     self.output_shapes = {}  # cache output shapes per kernel specialization
     self.static_argnums = static_argnums
     self.exported = jax.export.export(jit_fn, platforms=["tpu"])
+    self.input_output_aliases = (
+        dict(input_output_aliases) if input_output_aliases is not None else {}
+    )
 
     logger.debug("Creating JAX callable: %s", self)
 
@@ -266,11 +274,13 @@ class JaxCallable:
         for i, arg in enumerate(args)
         if arg is not None and i not in self.static_argnums
     ]
+
     results = tpu_torch_pallas.call_custom_kernel(
         tensor_args,
         output_shapes,
         self.name,
         kernel_key,
+        self.input_output_aliases,
     )
     return out_tree.unflatten(results)
 
@@ -303,7 +313,8 @@ def custom_kernel(
     pallas_kernel: The pallas kernel to compile. If None then return a decorator
       that expects a pallas_kernel argument.
     **pl_kwargs: Additional keyword arguments to configure the inner
-      pallas_call, like `grid`, `in_specs`, `out_specs`, etc.
+      pallas_call, like `grid`, `in_specs`, `out_specs`, `input_output_aliases`,
+      etc.
 
   Returns:
     A decorator that takes a pallas kernel function and returns a callable that
@@ -340,6 +351,7 @@ def custom_kernel(
           name=name,
           jit_fn=pl_fn_jit,
           trace_key=trace_key,
+          input_output_aliases=pl_kwargs.get("input_output_aliases", None),
       )
       return jax_callable(*args, **kwargs)
 
@@ -354,6 +366,7 @@ def custom_jax_kernel(
     jax_fn: Callable[..., Any] | None = None,
     name: str | None = None,
     static_argnums: tuple[int, ...] = (),
+    input_output_aliases: Mapping[int, int] | None = None,
     **jit_kwargs,
 ) -> Callable[..., JaxCallable] | Callable[[Callable[..., Any]], JaxCallable]:
   """A decorator that imports a JAX kernel into for use with torch_tpu.
@@ -387,6 +400,9 @@ def custom_jax_kernel(
       name if not provided.
     static_argnums: Tuple of argument positions that are compile-time constants.
       These args can be non-tensors and are used for caching by value.
+    input_output_aliases: A mapping of input indices to output indices that
+      alias each input. Optional, default is no aliasing. This must match the
+      settings of `donate_argnums` and/or `donate_argnames` in jit_kwargs.
     **jit_kwargs: Additional keyword arguments to configure the inner `jax.jit`,
       like `donate_argnums`, etc.
 
@@ -413,6 +429,7 @@ def custom_jax_kernel(
         jit_fn=jit_fn,
         trace_key=trace_key,
         static_argnums=static_argnums,
+        input_output_aliases=input_output_aliases,
     )
 
   if jax_fn is None:

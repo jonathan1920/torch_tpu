@@ -77,6 +77,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/view_decomposition:strided_layout",
         "//torch_tpu/ops/view_decomposition:view_sequence",
         "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -527,6 +528,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -536,6 +538,7 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@stablehlo//:attr_type_builder_util",
@@ -544,7 +547,6 @@ torch_tpu_cc_library(
         "@tsl//tsl/platform:path",
         "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla:xla_data_proto_cc",
-        "@xla//xla/pjrt:pjrt_executable",
     ],
 )
 

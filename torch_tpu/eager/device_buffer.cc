@@ -574,7 +574,8 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateMaterialized(
 absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
     OpName op_name, MlirOpBuilder op_builder,
     std::vector<DeviceBufferRef> inputs, OpParamCacheKeys op_param_cache_keys,
-    std::vector<Shape> output_shapes, OpSplitMode split_mode) {
+    std::vector<Shape> output_shapes, OpSplitMode split_mode,
+    Indices aliased_input_indices) {
   // Validate that the output shapes are valid.
   for (const auto& output_shape : output_shapes) {
     TT_RETURN_IF_ERROR(
@@ -606,7 +607,8 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
 
   // Create the DeferredOp.
   auto op = DeferredOp(op_name, std::move(op_builder), std::move(inputs),
-                       std::move(op_param_cache_keys), subgraph, split_mode);
+                       std::move(op_param_cache_keys), subgraph, split_mode,
+                       std::move(aliased_input_indices));
 
   // Wrap the DeferredOp in a DeviceBufferList.
   // Can't use make_shared because the constructor is private.

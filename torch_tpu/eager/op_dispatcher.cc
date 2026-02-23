@@ -408,11 +408,12 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
     output_shapes.push_back(
         Shape{CopyIntVector(out_dims_list[i]), out_dtypes[i]});
   }
-  TT_ASSIGN_OR_RETURN(std::vector<DeviceBufferRef> results,
-                      DeviceBufferList::CreateDeferred(
-                          op_name, std::move(op_builder), std::move(inputs),
-                          std::move(options.op_param_cache_keys),
-                          std::move(output_shapes), options.split_mode));
+  TT_ASSIGN_OR_RETURN(
+      std::vector<DeviceBufferRef> results,
+      DeviceBufferList::CreateDeferred(
+          op_name, std::move(op_builder), std::move(inputs),
+          std::move(options.op_param_cache_keys), std::move(output_shapes),
+          options.split_mode, std::move(options.aliased_input_indices)));
 
   const std::string& detect_repeated_ops =
       absl::GetFlag(FLAGS_torch_tpu_internal_detect_repeated_ops);

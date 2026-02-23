@@ -16,6 +16,7 @@
 
 #include "torch_tpu/eager/traversal.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -28,6 +29,7 @@
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -38,11 +40,13 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseSet.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "torch_tpu/_internal/dynamism/dynamism_ops.h"
@@ -54,7 +58,6 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/FuncBuilder.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "torch_tpu/common/compilation_cache.h"
@@ -237,7 +240,7 @@ struct GraphSignature {
     // Shape dynamism only varies values, not number of dimensions.
     const ShapelessKey shapeless_key = {FingerprintCat(
         graph_output_indices, tensor_dimensions_starts, tensor_element_types,
-        op_inputs_starts, op_inputs_indices, op_names,
+        aliased_input_indices, op_inputs_starts, op_inputs_indices, op_names,
         op_param_cache_keys_starts, op_param_cache_keys, op_outputs_indices)};
     const DimensionsKey dimensions_key(tensor_dimensions);
     return {
@@ -259,6 +262,11 @@ struct GraphSignature {
   }
 
   std::vector<int> graph_output_indices;
+
+  // Two graphs are equal only if they alias their root arguments in the same
+  // way.
+  std::vector<int> aliased_input_indices;
+
   // Two graphs are equal only if they have the same number of tensors,
   // and all tensors have the same dimensions and element types.
   // TODO: The output shapes/dtypes of each DeferredOp should be inferrable from
@@ -381,6 +389,10 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
   // definitions to define output shape inference.
   bool is_applied_dynamic = false;
 
+  // Deduplicate which inputs to the graph are aliased.
+  absl::flat_hash_set<size_t> aliased_input_indices_set;
+  std::vector<int> aliased_input_indices;
+
   for (const SharedDeviceBufferList& node : execution_order()) {
     const DeferredOp* absl_nullable maybe_deferred_op = node->deferred_op();
     ABSL_CHECK(maybe_deferred_op != nullptr);  // CRASH_OK
@@ -405,6 +417,16 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
     }
     graph.op_inputs_starts.push_back(graph.op_inputs_indices.size());
 
+    for (const int64_t aliased_input_index :
+         deferred_op.aliased_input_indices()) {
+      const size_t op_input_index =
+          tensor_index_map[deferred_op.inputs()[aliased_input_index]];
+      if (op_input_index < num_inputs &&
+          aliased_input_indices_set.insert(op_input_index).second) {
+        aliased_input_indices.push_back(op_input_index);
+      }
+    }
+
     // Add all op output tensors to tensor-indexed properties.
     for (int64_t i = 0; i < node->size(); ++i) {
       DeviceBufferRef output = DeviceBufferRef::Create(node, i).value();
@@ -420,6 +442,9 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
     }
     graph.op_outputs_indices.push_back(next_tensor_index);
   }
+
+  std::sort(aliased_input_indices.begin(), aliased_input_indices.end());
+  graph.aliased_input_indices = std::move(aliased_input_indices);
 
   for (const DeviceBufferRef& output : outputs()) {
     graph.graph_output_indices.push_back(tensor_index_map[output]);
@@ -547,6 +572,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
     ref_to_op_map[zsc] = MakeConstant(fb, mlir::ArrayRef<int64_t>{}, type);
   }
 
+  // Identify which inputs are donated.
+  // Deduplicate by the mlir::Value, not by the DeviceBufferRef, to avoid false
+  // negatives for no-op DeferredOps that get created by CopyTpuToTpu.
+  llvm::DenseSet<mlir::Value> aliased_inputs;
+
   // Build an MlirOp for each deferred op in execution_order ordering, so that
   // inputs are built before their outputs.
   ABSL_VLOG(2) << "[Traversal::BuildMlirModule] building MLIR ops for "
@@ -565,6 +595,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
       TT_ASSIGN_OR_RETURN(mlir::MlirOp mlir_op,
                           GetMlirOpForProcessedBuffer(ref_to_op_map, input));
       deferred_inputs.push_back(mlir_op);
+    }
+
+    // Get the MlirOps for all aliased inputs.
+    for (int64_t aliased_input_index : deferred_op.aliased_input_indices()) {
+      aliased_inputs.insert(deferred_inputs[aliased_input_index].getValue());
     }
 
     // Build the MlirOp.
@@ -610,7 +645,22 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
                << results.size() << " of them as results.";
 
   mlir::func::Return(fb, results);
-  return mb.build();
+  auto module = mb.build();
+
+  // Identify which inputs to the Traversal are aliased.
+  Indices donated_inputs;
+  if (!aliased_inputs.empty()) {
+    for (int64_t i = 0; i < inputs.size(); ++i) {
+      mlir::MlirOp input_op = ref_to_op_map[inputs[i]];
+      if (aliased_inputs.contains(input_op.getValue())) {
+        donated_inputs.push_back(i);
+      }
+    }
+  }
+  if (!donated_inputs.empty()) {
+    AnnotateBufferDonations(module.get(), donated_inputs);
+  }
+  return module;
 }
 
 absl::StatusOr<SharedLoadedExecutableFuture> Traversal::Compile(

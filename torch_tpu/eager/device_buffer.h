@@ -31,6 +31,8 @@
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -41,6 +43,7 @@
 #include "c10/core/Allocator.h"
 #include "c10/core/TensorImpl.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -349,10 +352,12 @@ class DeferredOp {
              std::vector<DeviceBufferRef> inputs,
              OpParamCacheKeys op_param_cache_keys,
              std::shared_ptr<Subgraph> subgraph,
-             OpSplitMode split_mode = OpSplitMode::kNone)
+             OpSplitMode split_mode = OpSplitMode::kNone,
+             Indices aliased_input_indices = {})
       : op_name_(op_name),
         op_builder_(std::move(op_builder)),
         inputs_(std::move(inputs)),
+        aliased_input_indices_(std::move(aliased_input_indices)),
         op_param_cache_keys_(std::move(op_param_cache_keys)),
         op_context_(ScopedPythonContextCapturer::GetContext()),
         split_mode_(split_mode),
@@ -470,6 +475,10 @@ class DeferredOp {
   // Returns the subgraph this op belongs to.
   std::shared_ptr<Subgraph> subgraph() const { return subgraph_; }
 
+  [[nodiscard]] absl::Span<const int64_t> aliased_input_indices() const {
+    return aliased_input_indices_;
+  }
+
  private:
   // The name of the deferred op.
   OpName op_name_;
@@ -479,6 +488,12 @@ class DeferredOp {
   // ensures that the DeviceBuffers backing the at::Tensors are not freed as
   // long as this DeferredOp exists.
   std::vector<DeviceBufferRef> inputs_;
+
+  // The indices of the inputs that should be aliased as outputs. This is only
+  // used for custom kernels, and only when the DeferredOp directly depends on
+  // an input to the overall MLIR module.
+  Indices aliased_input_indices_;
+
   // The cache keys for the op parameters. These are used to ensure that the
   // compilation cache does not reuse a cached compiled op if there are
   // meaningful differences in the op_builder (such as "floor" vs "trunc" in
@@ -677,7 +692,8 @@ class DeviceBufferList {
       OpName op_name, MlirOpBuilder op_builder,
       std::vector<DeviceBufferRef> inputs, OpParamCacheKeys op_param_cache_keys,
       std::vector<Shape> output_shapes,
-      OpSplitMode split_mode = OpSplitMode::kNone);
+      OpSplitMode split_mode = OpSplitMode::kNone,
+      Indices aliased_input_indices = {});
 
   // Creates a DeviceBufferList as if by using the torch.empty() operation
   // with fill_uninitialized_memory=True.

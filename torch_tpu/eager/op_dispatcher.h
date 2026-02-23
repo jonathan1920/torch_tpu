@@ -30,6 +30,7 @@
 #include "ATen/core/ATen_fwd.h"
 #include "c10/util/Optional.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/shape.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
@@ -110,6 +111,7 @@ struct DispatchOpOptions {
   std::optional<mlir::ElementType> computation_dtype;
   OpParamCacheKeys op_param_cache_keys;
   OpSplitMode split_mode = OpSplitMode::kNone;
+  Indices aliased_input_indices = {};
 };
 
 // Specialization for the case where the number of outputs is unknown at compile
@@ -121,6 +123,7 @@ struct DispatchOpOptions<kDynamicSize> {
   std::optional<mlir::ElementType> computation_dtype;
   OpParamCacheKeys op_param_cache_keys;
   OpSplitMode split_mode = OpSplitMode::kNone;
+  Indices aliased_input_indices = {};
 };
 
 // Specialization for the case where the number of outputs is 1.
@@ -131,6 +134,7 @@ struct DispatchOpOptions<1> {
   std::optional<mlir::ElementType> computation_dtype;
   OpParamCacheKeys op_param_cache_keys;
   OpSplitMode split_mode = OpSplitMode::kNone;
+  Indices aliased_input_indices = {};
 };
 
 namespace internal {
