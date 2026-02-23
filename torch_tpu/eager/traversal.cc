@@ -996,28 +996,28 @@ std::string GraphvizVertexParams(
   std::ostringstream os;
   if (std::holds_alternative<const DeviceBufferRef>(vertex)) {
     const DeviceBufferRef& ref = std::get<const DeviceBufferRef>(vertex);
+    os << "[shape=\"box\", label=\"";
     if (auto it = buffer_ref_to_python_var.find(ref);
         it != buffer_ref_to_python_var.end()) {
-      os << "[shape=\"box\", label=\"" << it->second << ": "
-         << ToDTypeName(ref.element_type()) << ToString(ref.dimensions());
-      switch (ref.state()) {
-        case DeviceBufferRefState::kZeroSize:
-          os << " (zero-sized constant)";
-          break;
-        case DeviceBufferRefState::kMaterialized:
-          os << " (materialized)";
-          break;
-        case DeviceBufferRefState::kPlaceholder:
-          os << " (placeholder)";
-          break;
-        default:
-          break;
-      }
-      os << "\"]";
+      os << it->second << ": ";
     } else {
-      os << "[shape=\"box\", label=\" " << ToDTypeName(ref.element_type())
-         << ToString(ref.dimensions()) << "\"]";
+      os << " ";
     }
+    os << ToDTypeName(ref.element_type()) << ToString(ref.dimensions());
+    switch (ref.state()) {
+      case DeviceBufferRefState::kZeroSize:
+        os << " (zero-sized constant)";
+        break;
+      case DeviceBufferRefState::kMaterialized:
+        os << " (materialized)";
+        break;
+      case DeviceBufferRefState::kPlaceholder:
+        os << " (placeholder)";
+        break;
+      default:
+        break;
+    }
+    os << "\"]";
   } else {
     const DeferredOp* deferred_op = std::get<const DeferredOp*>(vertex);
     os << "[label=\"" << deferred_op->op_name() << "\"]";
