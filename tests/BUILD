@@ -368,6 +368,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
         "//torch_tpu/eager:tpu_aten_kernels",
+        "@pypi//scipy",
     ],
 )
 
@@ -391,6 +392,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
         "//torch_tpu/eager:tpu_aten_kernels",
+        "@pypi//scipy",
     ],
 )
 

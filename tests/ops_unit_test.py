@@ -25,6 +25,7 @@ from typing import Any
 
 from absl.testing import absltest
 from absl.testing import parameterized
+from scipy import stats
 import torch
 from torch_tpu import api
 from torch_tpu._internal.utils import utils
@@ -2652,6 +2653,95 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
               to(embedding_table, device=device),
           )
       )
+
+  def test_randn_scalar(self):
+    with set_default_dtype(torch.float32):
+      torch.manual_seed(46)
+      x = torch.randn((), device=api.tpu_device())
+      y = torch.randn((), device=api.tpu_device())
+      torch.manual_seed(47)
+      z = torch.randn((), device=api.tpu_device())
+      torch.manual_seed(46)
+      w = torch.randn((), device=api.tpu_device())
+      with self.subTest("same_seed_same_result"):
+        self.assertEqual(x, w)
+
+      with self.subTest("different_call_different_result"):
+        self.assertNotEqual(x, y)
+
+      with self.subTest("different_seed_different_result"):
+        self.assertNotEqual(x, z)
+
+  def test_randn_isotropy(self):
+    with set_default_dtype(torch.float32):
+      torch.manual_seed(46)
+      n = 1000
+      x = torch.randn((n, n), device=api.tpu_device())
+      y = torch.randn((n, 1), device=api.tpu_device())
+      count = (x @ y > 0).sum()
+      # Count should be close to N/2.
+      n_tensor = torch.tensor(n, dtype=torch.float32, device=api.tpu_device())
+      self.assertGreater(count, n_tensor / 2 - 3 * torch.sqrt(n_tensor) / 2)
+      self.assertLess(count, n_tensor / 2 + 3 * torch.sqrt(n_tensor) / 2)
+
+  def test_randn_magnitude(self):
+    with set_default_dtype(torch.float32):
+      torch.manual_seed(48)
+      n = 1000
+      x = torch.randn((n, n), device=api.tpu_device())
+      norm_squared = (x**2).sum(dim=1)
+      mean_sq_norm = torch.mean(norm_squared).item()
+      self.assertGreater(mean_sq_norm, n - 6)
+      self.assertLess(mean_sq_norm, n + 6)
+
+  @parameterized.named_parameters(
+      ("scalar", ()),
+      ("1d", (10,)),
+      ("all_odds", (3, 5)),
+      ("3d_1", (10, 5, 6)),
+      ("3d_2", (11, 5, 6)),
+  )
+  def test_randn_shape(self, shape):
+    with set_default_dtype(torch.float32):
+      x = torch.randn(shape, device=api.tpu_device())
+      self.assertEqual(x.shape, shape)
+
+  @parameterized.named_parameters(
+      ("both_scalar", 3.0, 9.0),
+      ("mean_scalar_only", 3.0, torch.tensor([[1.0, 2.0], [3.0, 4.0]])),
+      ("std_scalar_only", torch.tensor([[0.0, 1.0], [2.0, 3.0]]), 9.0),
+      (
+          "none_scalar",
+          torch.tensor([[0.0, 1.0], [2.0, 3.0]]),
+          torch.tensor([[1.0, 2.0], [3.0, 4.0]]),
+      ),
+  )
+  def test_randn_broadcast(self, mean, std):
+    with set_default_dtype(torch.float32):
+      torch.manual_seed(49)
+      if isinstance(mean, torch.Tensor):
+        mean = mean.to(api.tpu_device())
+      if isinstance(std, torch.Tensor):
+        std = std.to(api.tpu_device())
+      if isinstance(mean, float) and isinstance(std, float):
+        x = torch.normal(mean, std, (3, 3), device=api.tpu_device())
+      else:
+        x = torch.normal(mean, std)
+      self.assertIsInstance(x, torch.Tensor)
+
+  def test_randn_gaussianity(self):
+    with set_default_dtype(torch.float32):
+      samples = torch.randn((10000,), device=api.tpu_device()).cpu()
+
+      # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html
+      with self.subTest("shapiro_wilk_test"):
+        _, p_value = stats.shapiro(samples)
+        self.assertGreater(p_value, 0.01)
+
+      # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.normaltest.html
+      with self.subTest("d_agostino_k_squared_test"):
+        _, p = stats.normaltest(samples)
+        self.assertGreater(p, 0.01)
 
   def test_embedding_vector_indices(self):
     """Tests that embedding works with a vector of indices."""

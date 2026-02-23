@@ -96,7 +96,7 @@ absl::StatusOr<MlirOpResults<2>> BuildUniformShlo(
       op_builder, rng_input_state.getValue().getLoc(), rng_input_state_type,
       output_tensor_type_uint64,
       stablehlo::RngAlgorithmAttr::get(op_builder.getContext(),
-                                       stablehlo::RngAlgorithm::PHILOX),
+                                       stablehlo::RngAlgorithm::DEFAULT),
       rng_input_state.getValue());
   mlir::MlirOp rng_output_state =
       mlir::MlirOp(builder, rng_op.getOutputState());

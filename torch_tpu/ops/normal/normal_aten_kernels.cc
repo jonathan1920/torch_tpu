@@ -16,84 +16,84 @@
 
 #include "torch_tpu/ops/normal/normal_aten_kernels.h"
 
-#include <cstdint>
 #include <optional>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/SmallVector.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/ops/scalar_tensor.h"
-#include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
-#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/ChloBuilder.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/ops/binary_aten_kernels.h"
+#include "torch_tpu/eager/device_gen_impl.h"
+#include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
-#include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/uniform/uniform.h"
 
 namespace torch_tpu {
 namespace {
 
-absl::StatusOr<mlir::MlirOp> BuildNormalShlo(mlir::MlirBuilder& builder,
-                                             double mean, double std,
-                                             llvm::ArrayRef<int64_t> sizes,
-                                             mlir::ElementType mlir_type) {
-  mlir::MlirOp a = MakeScalarConstant(builder, mean, mlir_type);
-  mlir::MlirOp b = MakeScalarConstant(builder, std, mlir_type);
-  mlir::MlirOp shape = mlir::stablehlo::Constant(
-      builder,
-      makeConstant(sizes, makeTensorType(builder.getContext(),
-                                         {static_cast<int64_t>(sizes.size())},
-                                         mlir::ElementType::I64)));
-  return mlir::stablehlo::Rng(a, b, shape,
-                              mlir::stablehlo::RngDistribution::NORMAL);
+// This function generates a vector of standard normal random numbers using the
+// chlo::ErfInv function.// We control the source of our randomness by keeping
+// our random generator state in eager/device_gen_impl.h and pass it to
+// shlo::RngBitGenerator to generate random bits. We then use those to sample
+// from distributions. Note: shlo::Rng doesn't support a custom seed/algorithm.
+absl::StatusOr<MlirOpResults<2>> BuildStandardNormalShloLike(
+    mlir::MlirOp self, mlir::MlirOp rng_state) {
+  auto self_type = GetTensorTypeOrDie(self);
+  TT_ASSIGN_OR_RETURN(auto mlir_type,
+                      ConvertTo<mlir::ElementType>(self_type.getElementType()));
+
+  // Use chlo::erfcinv to generate a standard normal distribution from a uniform
+  // distribution.
+  TT_ASSIGN_OR_RETURN(
+      (auto [rng_output_state, uniform_op]),
+      BuildUniformShlo(rng_state, -1.0, 1.0, self_type.getShape(), mlir_type));
+  auto erf_inv_op = mlir::chlo::ErfInv(uniform_op);
+  auto two = MakeConstantLike(erf_inv_op, 2.0, mlir_type);
+  auto sqrt_two = mlir::stablehlo::Sqrt(two);
+  auto gaussian_op = mlir::stablehlo::Mul(erf_inv_op, sqrt_two);
+  return {{rng_output_state, gaussian_op}};
 }
 
-absl::StatusOr<MlirNullaryOpBuilder> GetNormalFunctional(
-    double mean, double std, llvm::ArrayRef<int64_t> sizes,
-    at::ScalarType aten_dtype) {
-  TT_ASSIGN_OR_RETURN(const auto mlir_type,
-                      ConvertTo<mlir::ElementType>(aten_dtype));
-  return [mean, std, sizes = CopyIntVector(sizes), mlir_type](
-             mlir::MlirBuilder& builder) -> absl::StatusOr<mlir::MlirOp> {
-    return BuildNormalShlo(builder, mean, std, sizes, mlir_type);
+// Generate a tensor of normal random numbers with the given shape, mean, and
+// standard deviation.
+absl::StatusOr<MlirOpResults<2>> BuildNormalShloLike(mlir::MlirOp self,
+                                                     mlir::MlirOp rng_state,
+                                                     mlir::MlirOp mean,
+                                                     mlir::MlirOp std) {
+  TT_ASSIGN_OR_RETURN((auto [rng_output_state, std_normal]),
+                      BuildStandardNormalShloLike(self, rng_state));
+  TT_ASSIGN_OR_RETURN(mean, BroadcastIfNeeded(mean, self));
+  TT_ASSIGN_OR_RETURN(std, BroadcastIfNeeded(std, self));
+  auto self_type = GetTensorTypeOrDie(self);
+  TT_ASSIGN_OR_RETURN(auto mlir_type,
+                      ConvertTo<mlir::ElementType>(self_type.getElementType()));
+  TT_ASSIGN_OR_RETURN(mean, CastIfNeeded(mean, mlir_type));
+  TT_ASSIGN_OR_RETURN(std, CastIfNeeded(std, mlir_type));
+  auto normal_with_variance = mlir::stablehlo::Mul(std_normal, std);
+  auto normal = mlir::stablehlo::Add(normal_with_variance, mean);
+  return {{rng_output_state, normal}};
+}
+
+absl::StatusOr<NAryMlirOpBuilder<4, 2>> GetNormalFunctional() {
+  return [](FixedSizeSpan<mlir::MlirOp, 4> inputs)
+             -> absl::StatusOr<MlirOpResults<2>> {
+    auto [self, rng_state, mean, std] = inputs;
+    return BuildNormalShloLike(self, rng_state, mean, std);
   };
 }
 
-absl::StatusOr<mlir::MlirOp> BuildBinaryNormalShlo(mlir::MlirBuilder& builder,
-                                                   mlir::MlirOp mean_op,
-                                                   mlir::MlirOp std_op) {
-  TT_ASSIGN_OR_RETURN(const Dimensions bcast_dims,
-                      InferSize(GetTensorTypeOrDie(mean_op).getShape(),
-                                GetTensorTypeOrDie(std_op).getShape()));
-  llvm::SmallVector<int64_t> bcast_dims_vec(bcast_dims.begin(),
-                                            bcast_dims.end());
-  auto shape_op = mlir::stablehlo::Constant(
-      builder,
-      makeConstant(llvm::ArrayRef<int64_t>(bcast_dims_vec),
-                   makeTensorType(builder.getContext(),
-                                  {static_cast<int64_t>(bcast_dims.size())},
-                                  mlir::ElementType::I64)));
-  return mlir::stablehlo::Rng(mean_op, std_op, shape_op,
-                              mlir::stablehlo::RngDistribution::NORMAL);
-}
-
-absl::Status CheckNormalPreconditions(const at::Tensor& self,
-                                      std::optional<at::Generator> generator) {
-  // TODO(b/437527594): Support RNG on-host vs RNG on-device.
-  TT_RET_CHECK(!generator.has_value(), error::kUnimplemented)
-      << "normal: generator is not yet supported.";
+absl::Status CheckNormalPreconditions(const at::Tensor& self) {
   TT_RET_CHECK(!self.is_complex(), error::kUnimplemented)
       << "normal: input tensor must not be complex type. XLA doesn't "
       << "support complex types for this op.";
@@ -105,18 +105,43 @@ absl::Status CheckNormalPreconditions(const at::Tensor& self,
   return absl::OkStatus();
 }
 
+// Retrieves the rng_state tensor from the generator, dispatches the normal op,
+// updates the generator with the new rng_state, and returns the output tensor.
+absl::StatusOr<DeviceBufferRef> NormalLike(
+    const at::Tensor& self, OpName op_name, const at::Tensor& mean,
+    const at::Tensor& std, std::optional<at::Generator> generator) {
+  TT_ASSIGN_OR_RETURN(auto mlir_type,
+                      ConvertTo<mlir::ElementType>(self.scalar_type()));
+  // Retrieve the rng_state tensor from the generator.
+  TT_ASSIGN_OR_RETURN(auto rng_input_state, GetRngState(generator));
+  TT_ASSIGN_OR_RETURN(auto builder, GetNormalFunctional());
+  TT_ASSIGN_OR_RETURN(
+      (auto [rng_output_state_buf, output_buf]),
+      (DispatchOp<4, 2>(OpName::kNormal_, std::move(builder),
+                        {self, rng_input_state, mean, std},
+                        {.out_dtypes = {mlir::ElementType::UI64, mlir_type},
+                         .out_dims_list = {{2}, self.sizes()},
+                         .split_mode = OpSplitMode::kSplitAfter})));
+  // After the state has been used (and updated) to generate random bits, we
+  // give it back to the generator, so that it can be used by other ops in the
+  // same graph.
+  auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
+  TT_RETURN_IF_ERROR(UpdateRngState(generator, rng_output_state));
+  return output_buf;
+}
+
 }  // namespace
 
 at::Tensor& AtenNormal_(at::Tensor& self, double mean, double std,
                         std::optional<at::Generator> generator) {
-  TT_KERNEL(OpName::kNormal_, param_keys, (self, mean, std, generator), {
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(self, generator));
+  TT_KERNEL(OpName::kNormal_, _, (self, mean, std, generator), {
+    TT_THROW_IF_ERROR(CheckNormalPreconditions(self));
+    at::Tensor mean_tensor = at::scalar_tensor(mean, self.options());
+    at::Tensor std_tensor = at::scalar_tensor(std, self.options());
     TT_ASSIGN_OR_THROW(
-        auto builder,
-        GetNormalFunctional(mean, std, self.sizes(), self.scalar_type()));
-    TT_THROW_IF_ERROR(ApplyNullaryOpOut(
-        self, OpName::kNormal_, std::move(builder), self.scalar_type(),
-        self.sizes(), std::move(param_keys), OpSplitMode::kSplitAfter));
+        auto output_buf,
+        NormalLike(self, OpName::kNormal_, mean_tensor, std_tensor, generator));
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), self));
     return self;
   });
 }
@@ -124,9 +149,12 @@ at::Tensor& AtenNormal_(at::Tensor& self, double mean, double std,
 at::Tensor AtenNormalFloatTensor(double mean, const at::Tensor& std,
                                  std::optional<at::Generator> generator) {
   TT_KERNEL(OpName::kNormalFloatTensor, _, (mean, std, generator), {
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(std, generator));
+    TT_THROW_IF_ERROR(CheckNormalPreconditions(std));
     at::Tensor mean_tensor = at::scalar_tensor(mean, std.options());
-    return AtenNormalTensorTensor(mean_tensor, std, generator);
+    TT_ASSIGN_OR_THROW(auto output_buf,
+                       NormalLike(std, OpName::kNormalFloatTensor, mean_tensor,
+                                  std, generator));
+    return MakeTensor(std::move(output_buf));
   });
 }
 
@@ -134,9 +162,12 @@ at::Tensor& AtenNormalFloatTensorOut(double mean, const at::Tensor& std,
                                      std::optional<at::Generator> generator,
                                      at::Tensor& out) {
   TT_KERNEL(OpName::kNormalFloatTensorOut, _, (mean, std, generator, out), {
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(std, generator));
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(out, std::nullopt));
-    out = AtenNormalFloatTensor(mean, std, generator);
+    TT_THROW_IF_ERROR(CheckNormalPreconditions(out));
+    at::Tensor mean_tensor = at::scalar_tensor(mean, out.options());
+    TT_ASSIGN_OR_THROW(auto output_buf,
+                       NormalLike(out, OpName::kNormalFloatTensorOut,
+                                  mean_tensor, std, generator));
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
     return out;
   });
 }
@@ -144,9 +175,12 @@ at::Tensor& AtenNormalFloatTensorOut(double mean, const at::Tensor& std,
 at::Tensor AtenNormalTensorFloat(const at::Tensor& mean, double std,
                                  std::optional<at::Generator> generator) {
   TT_KERNEL(OpName::kNormalTensorFloat, _, (mean, std, generator), {
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(mean, generator));
+    TT_THROW_IF_ERROR(CheckNormalPreconditions(mean));
     at::Tensor std_tensor = at::scalar_tensor(std, mean.options());
-    return AtenNormalTensorTensor(mean, std_tensor, generator);
+    TT_ASSIGN_OR_THROW(auto output_buf,
+                       NormalLike(mean, OpName::kNormalTensorFloat, mean,
+                                  std_tensor, generator));
+    return MakeTensor(std::move(output_buf));
   });
 }
 
@@ -154,7 +188,12 @@ at::Tensor& AtenNormalTensorFloatOut(const at::Tensor& mean, double std,
                                      std::optional<at::Generator> generator,
                                      at::Tensor& out) {
   TT_KERNEL(OpName::kNormalTensorFloatOut, _, (mean, std, generator, out), {
-    out = AtenNormalTensorFloat(mean, std, generator);
+    TT_THROW_IF_ERROR(CheckNormalPreconditions(out));
+    at::Tensor std_tensor = at::scalar_tensor(std, out.options());
+    TT_ASSIGN_OR_THROW(auto output_buf,
+                       NormalLike(out, OpName::kNormalTensorFloatOut, mean,
+                                  std_tensor, generator));
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
     return out;
   });
 }
@@ -162,18 +201,12 @@ at::Tensor& AtenNormalTensorFloatOut(const at::Tensor& mean, double std,
 at::Tensor AtenNormalTensorTensor(const at::Tensor& mean, const at::Tensor& std,
                                   std::optional<at::Generator> generator) {
   TT_KERNEL(OpName::kNormalTensorTensor, _, (mean, std, generator), {
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(mean, generator));
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(std, generator));
+    TT_THROW_IF_ERROR(CheckNormalPreconditions(mean));
+    TT_THROW_IF_ERROR(CheckNormalPreconditions(std));
     TT_ASSIGN_OR_THROW(
-        auto result,
-        BinaryOp(OpName::kNormalTensorTensor, mean, std,
-                 [](mlir::MlirOp mean_op,
-                    mlir::MlirOp std_op) -> absl::StatusOr<mlir::MlirOp> {
-                   return BuildBinaryNormalShlo(mean_op.getBuilder(), mean_op,
-                                                std_op);
-                 },
-                 {.split_mode = OpSplitMode::kSplitAfter}));
-    return result;
+        auto output_buf,
+        NormalLike(mean, OpName::kNormalTensorTensor, mean, std, generator));
+    return MakeTensor(std::move(output_buf));
   });
 }
 
@@ -182,7 +215,11 @@ at::Tensor& AtenNormalTensorTensorOut(const at::Tensor& mean,
                                       std::optional<at::Generator> generator,
                                       at::Tensor& out) {
   TT_KERNEL(OpName::kNormalTensorTensorOut, _, (mean, std, generator, out), {
-    out = AtenNormalTensorTensor(mean, std, generator);
+    TT_THROW_IF_ERROR(CheckNormalPreconditions(out));
+    TT_ASSIGN_OR_THROW(
+        auto output_buf,
+        NormalLike(out, OpName::kNormalTensorTensorOut, mean, std, generator));
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
     return out;
   });
 }

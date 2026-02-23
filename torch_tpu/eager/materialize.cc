@@ -161,7 +161,9 @@ absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>> GetRootArgs(
                << "Materialize was called on a placeholder tensor. This "
                   "should never happen.\nkPlaceholder tensors should only "
                   "appear in compiled mode, which should never try to "
-                  "materialize tensors.";
+                  "materialize tensors."
+               << input.DebugString();
+
       case DeviceBufferRefState::kDeferred:
         return TT_ERROR(error::kInternal)
                << "Traversal input is unexpectedly deferred";

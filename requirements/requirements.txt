@@ -1204,6 +1204,7 @@ scipy==1.16.0 \
     --hash=sha256:f56296fefca67ba605fd74d12f7bd23636267731a72cb3947963e76b8c0a25db \
     --hash=sha256:f91b87e1689f0370690e8470916fe1b2308e5b2061317ff76977c8f836452a47
     # via
+    #   torch-tpu (pyproject.toml)
     #   jax
     #   jaxlib
 setuptools==80.9.0 \

@@ -1833,7 +1833,9 @@ class TorchTpuTestBase(TestCase):
 
     torch_tpu_printable_input = _to_torch_tpu_printable_input(golden_input)
     if _PRINT_OP_INPUTS.value > 0:
-      print_reproducer(subtest_name, op, golden_input, variant)
+      # TODO b/486861095
+      if op.name != "normal":
+        print_reproducer(subtest_name, op, golden_input, variant)
       print_op_input(torch_tpu_printable_input, data=_PRINT_OP_INPUTS.value > 1)
 
     # TODO(wan): measure compilation time and execution time separately
