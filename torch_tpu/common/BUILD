@@ -166,7 +166,6 @@ torch_tpu_cc_library(
         ":error_utils",
         ":fingerprint_utils",
         ":unique_file_descriptor",
-        ":utils",
         "//torch_tpu/pjrt:pjrt_init",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/cleanup",
