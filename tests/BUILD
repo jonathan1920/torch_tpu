@@ -376,8 +376,6 @@ torch_tpu_py_test(
     name = "ops_unit_test_tier3_cache",
     srcs = ["ops_unit_test.py"],
     env = {
-        # To use tier-3 cache, we must use tier-2 cache as well.
-        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "my_cache",
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
     },
     main = "ops_unit_test.py",

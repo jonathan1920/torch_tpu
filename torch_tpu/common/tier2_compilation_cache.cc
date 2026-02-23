@@ -123,16 +123,25 @@ FingerprintType GetTorchTpuBinaryFingerprint() {
 // variable that indicates that the tier-2 cache is disabled.
 constexpr std::string_view kDisabledCacheNameInEnvVar = "disabled";
 
-// The default name of the tier-2 compilation cache, used when the
-// TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment variable is not set
-// and the world size is greater than 1.
+// The default name of the tier-2 compilation cache, used when:
+// 1. the tier-3 cache is enabled, or
+// 2. the TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment variable is
+//    not set and the world size is greater than 1.
 constexpr std::string_view kDefaultCacheName = "default";
 
 const std::string& GetTier2CacheName() {
   static const absl::NoDestructor<std::string> cache_name([]() {
-    const auto& env_var =
+    const auto& tier2_cache =
         GetEnvOnce<kTorchTpuInternalTier2CompilationCacheEnvVar>();
-    if (!env_var.has_value() || env_var->empty()) {
+    if (!tier2_cache.has_value() || tier2_cache->empty()) {
+      // If tier-3 is enabled, we must enable tier-2 as well.
+      const auto& tier3_cache_root =
+          GetEnvOnce<kTorchTpuInternalTier3CompilationCacheRootEnvVar>();
+      if (tier3_cache_root.has_value() && !tier3_cache_root->empty()) {
+        ABSL_LOG(INFO) << "Tier-2 compilation cache is enabled with name '"
+                       << kDefaultCacheName << "' because tier-3 is enabled.";
+        return std::string(kDefaultCacheName);
+      }
       // Decide whether to use the tier-2 cache based on the world size.
       const auto world_size_or = GetGlobalDeviceCount();
       if (world_size_or.ok()) {
@@ -160,7 +169,7 @@ const std::string& GetTier2CacheName() {
                      << world_size_or.status();
       return std::string();
     }
-    if (*env_var == kDisabledCacheNameInEnvVar) {
+    if (*tier2_cache == kDisabledCacheNameInEnvVar) {
       ABSL_LOG(INFO) << "Tier-2 compilation cache is disabled as requested by "
                         "the "
                      << kTorchTpuInternalTier2CompilationCacheEnvVar
@@ -168,10 +177,10 @@ const std::string& GetTier2CacheName() {
       return std::string();
     }
     ABSL_LOG(INFO) << "Tier-2 compilation cache is enabled with name '"
-                   << *env_var << "' as requested by the "
+                   << *tier2_cache << "' as requested by the "
                    << kTorchTpuInternalTier2CompilationCacheEnvVar
                    << " environment variable.";
-    return *env_var;
+    return *tier2_cache;
   }());
   return *cache_name;
 }

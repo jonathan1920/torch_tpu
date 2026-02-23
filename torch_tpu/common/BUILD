@@ -227,6 +227,31 @@ torch_tpu_cc_test(
     ],
 )
 
+# Tests that the tier-2 cache is enabled by default when tier-3 is enabled.
+torch_tpu_cc_test(
+    name = "tier2_compilation_cache_enablement_test_enabled_by_tier3",
+    srcs = ["tier2_compilation_cache_enablement_test.cc"],
+    args = [
+        "--expected_tier2_cache_name=default",
+        "--world_size=1",
+    ],
+    # Do not set the TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment variable.
+    env = {
+        # This should force enable tier-2.
+        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/cache",
+    },
+    tags = [
+        "requires-tpu-v5lite",  # Needs PjRt client.
+    ],
+    deps = [
+        ":tier2_compilation_cache",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 # Tests that the tier-2 cache is enabled by default for world size > 1.
 torch_tpu_cc_test(
     name = "tier2_compilation_cache_enablement_test_default_multi_device",
@@ -739,8 +764,6 @@ torch_tpu_cc_test(
     name = "tier3_compilation_cache_test",
     srcs = ["tier3_compilation_cache_test.cc"],
     env = {
-        # To use the tier-3 cache, we need to enable the tier-2 cache too.
-        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "cache",
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
     },
     tags = [
@@ -766,8 +789,6 @@ torch_tpu_cc_test(
     name = "remote_tier3_compilation_cache_test",
     srcs = ["tier3_compilation_cache_test.cc"],
     env = {
-        # To use the tier-3 cache, we need to enable the tier-2 cache too.
-        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "cache",
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
         # TODO(wan): make this work on OSS.
         "",
@@ -795,8 +816,6 @@ torch_tpu_cc_test(
     name = "compilation_cache_remote_filesystem_test",
     srcs = ["compilation_cache_remote_filesystem_test.cc"],
     env = {
-        # To use tier-3 cache, we must use tier-2 cache as well.
-        "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "tier2_cache",
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
         # TODO(wan): make this work on OSS.
         "",
