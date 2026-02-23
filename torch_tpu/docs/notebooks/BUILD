@@ -19,7 +19,7 @@ load("//build_files:build_defs.bzl", "define_cpp_filegroup")
 
 package(
     default_applicable_licenses = ["//:license"],
-    default_visibility = ["//torch_tpu/docs:__subpackages__"],
+    default_visibility = ["//torch_tpu/docs/notebooks:__subpackages__"],
 )
 
 py_library(
