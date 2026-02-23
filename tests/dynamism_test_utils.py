@@ -154,7 +154,7 @@ def verify_op_supports_dynamism(
       "cumprod",
       "cumsum",
       "diagonal",
-      "expand",  # view op - expand not supported yet
+      "expand",  # view op - expand not yet supported
       "fft.rfft",
       "histc",
       "index_add",  # invalid bound length (likely bad tensor copy)

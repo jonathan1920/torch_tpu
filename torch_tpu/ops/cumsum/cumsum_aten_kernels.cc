@@ -49,7 +49,7 @@ at::Tensor& AtenCumsumOut(const at::Tensor& self, int64_t dim,
                          ConvertTo<mlir::ElementType>(dtype.value()));
       TT_CHECK_THROW(!mlir::IsBoolean(dtype_element_type.value()),
                      error::kUnimplemented)
-          << "dtype bool is not supported yet";
+          << "dtype bool is not yet supported";
     }
 
     TT_ASSIGN_OR_THROW(const int64_t normalized_dim,

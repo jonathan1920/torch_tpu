@@ -128,7 +128,7 @@ absl::StatusOr<mlir::MlirOp> BuildCumsumShlo(
                    // ensure any direct use of this builder from any other op
                    // errors out
         !mlir::IsBoolean(out_dtype.value()), error::kUnimplemented)
-        << "dtype bool is not supported yet";
+        << "dtype bool is not yet supported";
     element_type = getElementType(builder.getContext(), out_dtype.value());
   } else if (input_type.getElementType().isInteger()) {
     element_type = builder.getOpBuilder().getI64Type();

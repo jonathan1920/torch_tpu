@@ -50,7 +50,7 @@ absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
                << ", index_type: " << mlir::debugString(index_type)
                << ", sparse_grad: " << (sparse_grad ? "true" : "false");
   TT_RET_CHECK(sparse_grad == false, error::kUnimplemented)
-      << "sparse_grad is not supported yet";
+      << "sparse_grad is not yet supported";
 
   // self and index should have the same rank, except when one of them is a
   // scalar and the other is a vector.

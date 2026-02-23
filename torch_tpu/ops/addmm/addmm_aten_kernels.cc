@@ -126,7 +126,7 @@ absl::StatusOr<DeviceBufferRef> AddMm(
                    alpha.type() != at::kComplexFloat &&
                    alpha.type() != at::kComplexDouble,
                error::kUnimplemented)
-      << "complex dtypes are not supported yet";
+      << "complex dtypes are not yet supported";
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch prevents non-matrix mat1.
       mat1.dim() == 2, error::kInvalidArgument)
       << "mat1 must be a matrix, got " << mat1.dim() << "-D tensor";

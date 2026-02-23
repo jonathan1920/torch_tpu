@@ -71,7 +71,7 @@ absl::StatusOr<IndicesInfo> CheckedGetIndicesInfo(
     if (tensor.has_value() && tensor->defined()) {
       // TODO(unda): Add support for bool index tensors.
       TT_RET_CHECK(!IsBool(*tensor), error::kUnimplemented)
-          << "bool index tensors are not supported yet";
+          << "bool index tensors are not yet supported";
 
       info.dimensions.push_back(i);
       info.indices.push_back(*tensor);

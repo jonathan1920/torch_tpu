@@ -634,14 +634,14 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     mat2 = complex_val.clone()
     with et.assert_raises_message(
         NotImplementedError,
-        "addmm(): complex dtypes are not supported yet",
+        "addmm(): complex dtypes are not yet supported",
     ):
       torch.addmm(input_, mat1, mat2)
 
   def test_cumsum_with_unsupported_boolean_dtype(self):
     with et.assert_raises_message(
         NotImplementedError,
-        "cumsum(): dtype bool is not supported yet",
+        "cumsum(): dtype bool is not yet supported",
     ):
       t = torch.ones(2, 2, device="tpu")
       res = torch.cumsum(t, dim=1, dtype=torch.bool)
@@ -715,7 +715,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     s = torch.ones(4, device=device, dtype=torch.complex64)
     with et.assert_raises_message(
         NotImplementedError,
-        "add(): complex128 alpha value is not supported yet",
+        "add(): complex128 alpha value is not yet supported",
     ):
       torch.add(t, s, alpha=1j)
 
@@ -864,7 +864,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         NotImplementedError,
-        tpu="index(): bool index tensors are not supported, yet",
+        tpu="index(): bool index tensors are not yet supported",
         message_reviewed_by="wan",
     ):
       torch.ops.aten.index(inp, indices)
