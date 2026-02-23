@@ -27,7 +27,7 @@ py_library(
     srcs = ["test_index.py"],
     deps = [
         "//shims/torch:pytorch",
-        "//torch_tpu/docs:index",
+        "//torch_tpu/docs/notebooks:index",
     ],
 )
 
