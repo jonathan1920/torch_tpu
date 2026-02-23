@@ -86,9 +86,9 @@ pybind_extension(
     common_lib_packages = [
         "torch_tpu/common",
     ],
-    wrap_py_init = True,
     # The pybind import test doesn't work with "third_party/py/torch/torch/extension.h"
     # for some reason; complains about missing symbol pybind1::detail::type_caster::at::Tensor[...]
+    wrap_py_init = True,
     deps = [
         ":sync_cc",
         "//shims/torch:aten_headers",
