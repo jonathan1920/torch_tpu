@@ -191,4 +191,25 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "model_coverage_timm_test",
+    timeout = "long",
+    srcs = ["model_coverage_timm_test.py"],
+    shard_count = 6,
+    tags = [
+        "cpu:4",
+        "requires-net:external",
+        "requires-tpu-v7x:4",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//tests:module_registry",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/api",
+    ],
+)
+
 define_cpp_filegroup(name = "all_cpp_files_recursive")
