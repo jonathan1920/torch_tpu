@@ -23,14 +23,95 @@
 
 namespace torch_tpu {
 
-std::vector<at::Tensor> AtenForeachSqrt(at::TensorList self);
-void AtenForeachSqrt_(at::TensorList self);
+std::vector<at::Tensor> AtenForeachAbs(at::TensorList self);
+void AtenForeachAbs_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachAcos(at::TensorList self);
+void AtenForeachAcos_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachAsin(at::TensorList self);
+void AtenForeachAsin_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachAtan(at::TensorList self);
+void AtenForeachAtan_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachCeil(at::TensorList self);
+void AtenForeachCeil_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachCos(at::TensorList self);
+void AtenForeachCos_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachCosh(at::TensorList self);
+void AtenForeachCosh_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachErf(at::TensorList self);
+void AtenForeachErf_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachErfc(at::TensorList self);
+void AtenForeachErfc_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachExp(at::TensorList self);
+void AtenForeachExp_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachExpm1(at::TensorList self);
+void AtenForeachExpm1_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachFloor(at::TensorList self);
+void AtenForeachFloor_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachFrac(at::TensorList self);
+void AtenForeachFrac_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachLgamma(at::TensorList self);
+void AtenForeachLgamma_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachLog(at::TensorList self);
+void AtenForeachLog_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachLog10(at::TensorList self);
+void AtenForeachLog10_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachLog1p(at::TensorList self);
+void AtenForeachLog1p_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachLog2(at::TensorList self);
+void AtenForeachLog2_(at::TensorList self);
 
 std::vector<at::Tensor> AtenForeachNeg(at::TensorList self);
 void AtenForeachNeg_(at::TensorList self);
 
 std::vector<at::Tensor> AtenForeachReciprocal(at::TensorList self);
 void AtenForeachReciprocal_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachRound(at::TensorList self);
+void AtenForeachRound_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachRsqrt(at::TensorList self);
+void AtenForeachRsqrt_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachSigmoid(at::TensorList self);
+void AtenForeachSigmoid_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachSign(at::TensorList self);
+void AtenForeachSign_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachSin(at::TensorList self);
+void AtenForeachSin_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachSinh(at::TensorList self);
+void AtenForeachSinh_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachSqrt(at::TensorList self);
+void AtenForeachSqrt_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachTan(at::TensorList self);
+void AtenForeachTan_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachTanh(at::TensorList self);
+void AtenForeachTanh_(at::TensorList self);
+
+std::vector<at::Tensor> AtenForeachTrunc(at::TensorList self);
+void AtenForeachTrunc_(at::TensorList self);
 
 void AtenForeachZero_(at::TensorList self);
 

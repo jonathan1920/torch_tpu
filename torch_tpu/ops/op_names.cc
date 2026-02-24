@@ -278,6 +278,14 @@ std::string_view ToString(OpName op_name) {
       return "fmin.out";
     case OpName::kFmodTensorOut:
       return "fmod.Tensor_out";
+    case OpName::kForeachAbs:
+      return "_foreach_abs";
+    case OpName::kForeachAbs_:
+      return "_foreach_abs_";
+    case OpName::kForeachAcos:
+      return "_foreach_acos";
+    case OpName::kForeachAcos_:
+      return "_foreach_acos_";
     case OpName::kForeachAddList:
       return "_foreach_add.List";
     case OpName::kForeachAddScalar:
@@ -318,6 +326,26 @@ std::string_view ToString(OpName op_name) {
       return "_foreach_addcmul_.ScalarList";
     case OpName::kForeachAddcmul_Tensor:
       return "_foreach_addcmul_.Tensor";
+    case OpName::kForeachAsin:
+      return "_foreach_asin";
+    case OpName::kForeachAsin_:
+      return "_foreach_asin_";
+    case OpName::kForeachAtan:
+      return "_foreach_atan";
+    case OpName::kForeachAtan_:
+      return "_foreach_atan_";
+    case OpName::kForeachCeil:
+      return "_foreach_ceil";
+    case OpName::kForeachCeil_:
+      return "_foreach_ceil_";
+    case OpName::kForeachCos:
+      return "_foreach_cos";
+    case OpName::kForeachCos_:
+      return "_foreach_cos_";
+    case OpName::kForeachCosh:
+      return "_foreach_cosh";
+    case OpName::kForeachCosh_:
+      return "_foreach_cosh_";
     case OpName::kForeachDivList:
       return "_foreach_div.List";
     case OpName::kForeachDivScalar:
@@ -334,6 +362,30 @@ std::string_view ToString(OpName op_name) {
       return "_foreach_div_.ScalarList";
     case OpName::kForeachDiv_Tensor:
       return "_foreach_div_.Tensor";
+    case OpName::kForeachErf:
+      return "_foreach_erf";
+    case OpName::kForeachErf_:
+      return "_foreach_erf_";
+    case OpName::kForeachErfc:
+      return "_foreach_erfc";
+    case OpName::kForeachErfc_:
+      return "_foreach_erfc_";
+    case OpName::kForeachExp:
+      return "_foreach_exp";
+    case OpName::kForeachExp_:
+      return "_foreach_exp_";
+    case OpName::kForeachExpm1:
+      return "_foreach_expm1";
+    case OpName::kForeachExpm1_:
+      return "_foreach_expm1_";
+    case OpName::kForeachFloor:
+      return "_foreach_floor";
+    case OpName::kForeachFloor_:
+      return "_foreach_floor_";
+    case OpName::kForeachFrac:
+      return "_foreach_frac";
+    case OpName::kForeachFrac_:
+      return "_foreach_frac_";
     case OpName::kForeachLerpList:
       return "_foreach_lerp.List";
     case OpName::kForeachLerpScalar:
@@ -346,6 +398,26 @@ std::string_view ToString(OpName op_name) {
       return "_foreach_lerp_.Scalar";
     case OpName::kForeachLerp_ScalarList:
       return "_foreach_lerp_.ScalarList";
+    case OpName::kForeachLgamma:
+      return "_foreach_lgamma";
+    case OpName::kForeachLgamma_:
+      return "_foreach_lgamma_";
+    case OpName::kForeachLog10:
+      return "_foreach_log10";
+    case OpName::kForeachLog10_:
+      return "_foreach_log10_";
+    case OpName::kForeachLog1p:
+      return "_foreach_log1p";
+    case OpName::kForeachLog1p_:
+      return "_foreach_log1p_";
+    case OpName::kForeachLog2:
+      return "_foreach_log2";
+    case OpName::kForeachLog2_:
+      return "_foreach_log2_";
+    case OpName::kForeachLog:
+      return "_foreach_log";
+    case OpName::kForeachLog_:
+      return "_foreach_log_";
     case OpName::kForeachMulList:
       return "_foreach_mul.List";
     case OpName::kForeachMulScalar:
@@ -370,6 +442,30 @@ std::string_view ToString(OpName op_name) {
       return "_foreach_reciprocal";
     case OpName::kForeachReciprocal_:
       return "_foreach_reciprocal_";
+    case OpName::kForeachRound:
+      return "_foreach_round";
+    case OpName::kForeachRound_:
+      return "_foreach_round_";
+    case OpName::kForeachRsqrt:
+      return "_foreach_rsqrt";
+    case OpName::kForeachRsqrt_:
+      return "_foreach_rsqrt_";
+    case OpName::kForeachSigmoid:
+      return "_foreach_sigmoid";
+    case OpName::kForeachSigmoid_:
+      return "_foreach_sigmoid_";
+    case OpName::kForeachSign:
+      return "_foreach_sign";
+    case OpName::kForeachSign_:
+      return "_foreach_sign_";
+    case OpName::kForeachSin:
+      return "_foreach_sin";
+    case OpName::kForeachSin_:
+      return "_foreach_sin_";
+    case OpName::kForeachSinh:
+      return "_foreach_sinh";
+    case OpName::kForeachSinh_:
+      return "_foreach_sinh_";
     case OpName::kForeachSqrt:
       return "_foreach_sqrt";
     case OpName::kForeachSqrt_:
@@ -386,6 +482,18 @@ std::string_view ToString(OpName op_name) {
       return "_foreach_sub_.Scalar";
     case OpName::kForeachSub_ScalarList:
       return "_foreach_sub_.ScalarList";
+    case OpName::kForeachTan:
+      return "_foreach_tan";
+    case OpName::kForeachTan_:
+      return "_foreach_tan_";
+    case OpName::kForeachTanh:
+      return "_foreach_tanh";
+    case OpName::kForeachTanh_:
+      return "_foreach_tanh_";
+    case OpName::kForeachTrunc:
+      return "_foreach_trunc";
+    case OpName::kForeachTrunc_:
+      return "_foreach_trunc_";
     case OpName::kForeachZero_:
       return "_foreach_zero_";
     case OpName::kFusedRmsNorm:

@@ -54,6 +54,8 @@ absl::StatusOr<mlir::MlirOp> BuildSigmoidBackwardShlo(mlir::MlirOp grad_output,
   return mlir::stablehlo::Mul(grad_output, mul);
 }
 
+}  // namespace
+
 absl::StatusOr<mlir::MlirOp> BuildSigmoidShlo(mlir::MlirOp input_op) {
   // Convert integral dtypes to float since StableHLO doesn't support
   // Logistic for integer dtypes.
@@ -61,8 +63,6 @@ absl::StatusOr<mlir::MlirOp> BuildSigmoidShlo(mlir::MlirOp input_op) {
                       ConvertIfInteger(input_op, mlir::ElementType::F32));
   return mlir::stablehlo::Logistic(input_op);
 }
-
-}  // namespace
 
 at::Tensor& AtenSigmoidOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kSigmoidOut, _, (self, out), {

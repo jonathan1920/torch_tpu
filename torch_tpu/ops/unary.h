@@ -58,7 +58,6 @@ TT_UNARY_BUILDER_(BuildFloorShlo, mlir::stablehlo::Floor);
 TT_UNARY_BUILDER_(BuildNegShlo, mlir::stablehlo::Neg);
 TT_UNARY_BUILDER_(BuildNotShlo, mlir::stablehlo::Not);
 TT_UNARY_BUILDER_(BuildSgnShlo, mlir::stablehlo::Sign);
-TT_UNARY_BUILDER_(BuildSignShlo, mlir::stablehlo::Sign);
 TT_UNARY_BUILDER_FP_ONLY_(BuildAcosShlo, mlir::chlo::Acos);
 TT_UNARY_BUILDER_FP_ONLY_(BuildAcoshShlo, mlir::chlo::Acosh);
 TT_UNARY_BUILDER_FP_ONLY_(BuildAsinShlo, mlir::chlo::Asin);
@@ -99,6 +98,7 @@ absl::StatusOr<mlir::MlirOp> BuildLog2Shlo(mlir::MlirOp input_op,
                                            mlir::ElementType default_mlir_type);
 absl::StatusOr<mlir::MlirOp> BuildLog10Shlo(
     mlir::MlirOp input_op, mlir::ElementType default_mlir_type);
+absl::StatusOr<mlir::MlirOp> BuildSignShlo(mlir::MlirOp input_op);
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_UNARY_H_

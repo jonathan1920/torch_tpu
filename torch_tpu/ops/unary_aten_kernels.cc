@@ -258,26 +258,12 @@ at::Tensor& AtenSignOut(const at::Tensor& self, at::Tensor& out) {
         << "does not support complex dtype. Please use torch.sgn() instead";
     TT_ASSIGN_OR_THROW(auto out_dtype,
                        ConvertTo<mlir::ElementType>(self.scalar_type()));
-    if (IsBoolean(out_dtype) || IsUnsignedInteger(out_dtype)) {
-      auto op_builder = [](mlir::MlirOp input) {
-        auto zero = MakeConstantLike(input, 0);
-        return mlir::stablehlo::Compare(
-            input, zero, mlir::stablehlo::ComparisonDirection::NE);
-      };
-      TT_ASSIGN_OR_THROW(
-          auto result_buf,
-          DispatchOp<1>(OpName::kSignOut, std::move(op_builder), self,
-                        /*options=*/
-                        {.out_dtype = out_dtype, .out_dims = self.sizes()}));
-      TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
-    } else {
-      TT_ASSIGN_OR_THROW(
-          auto result_buf,
-          DispatchOp<1>(OpName::kSignOut, BuildSignShlo, self,
-                        /*options=*/
-                        {.out_dtype = out_dtype, .out_dims = self.sizes()}));
-      TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
-    }
+    TT_ASSIGN_OR_THROW(
+        auto result_buf,
+        DispatchOp<1>(OpName::kSignOut, BuildSignShlo, self,
+                      /*options=*/
+                      {.out_dtype = out_dtype, .out_dims = self.sizes()}));
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
 }

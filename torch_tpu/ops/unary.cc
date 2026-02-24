@@ -153,4 +153,28 @@ absl::StatusOr<mlir::MlirOp> BuildLog10Shlo(
   return LogN(input_op, 10, default_mlir_type);
 }
 
+absl::StatusOr<mlir::MlirOp> BuildSignShlo(mlir::MlirOp input) {
+  const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
+  mlir::Type element_type = input_type.getElementType();
+
+  // mlir::stablehlo::Sign requires non-boolean signless integer type.
+  auto compute_type = element_type;
+  if (element_type.isUnsignedInteger()) {
+    // Convert to signless if unsigned.
+    compute_type = mlir::IntegerType::get(&input.getContext(),
+                                          element_type.getIntOrFloatBitWidth(),
+                                          mlir::IntegerType::Signless);
+  } else if (element_type.isInteger(1)) {
+    // Convert to i8 if boolean.
+    compute_type = mlir::IntegerType::get(&input.getContext(), 8,
+                                          mlir::IntegerType::Signless);
+  }
+  if (compute_type != element_type) {
+    input = mlir::stablehlo::ConvertElementType(input, compute_type);
+    auto output = mlir::stablehlo::Sign(input);
+    return mlir::stablehlo::ConvertElementType(output, element_type);
+  }
+  return mlir::stablehlo::Sign(input);
+}
+
 }  // namespace torch_tpu

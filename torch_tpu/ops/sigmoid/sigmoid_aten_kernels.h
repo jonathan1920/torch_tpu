@@ -17,9 +17,13 @@
 #ifndef TORCH_TPU_OPS_SIGMOID_SIGMOID_ATEN_KERNELS_H_
 #define TORCH_TPU_OPS_SIGMOID_SIGMOID_ATEN_KERNELS_H_
 
+#include "absl/status/statusor.h"
 #include "ATen/core/TensorBody.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {
+
+absl::StatusOr<mlir::MlirOp> BuildSigmoidShlo(mlir::MlirOp input_op);
 
 at::Tensor& AtenSigmoidOut(const at::Tensor& self, at::Tensor& out);
 
