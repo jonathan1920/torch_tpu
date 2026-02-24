@@ -127,10 +127,16 @@ def get_jax_device() -> jax.Device:
   return jax.devices()[0]
 
 
-def sync_device(tensor_to_sync: torch.Tensor, wait=True) -> None:
+def sync_device(
+    tensors_to_sync: torch.Tensor | Sequence[torch.Tensor], wait: bool = True
+) -> None:
   if _DEVICE.value == "tpu" or _DEVICE.value == "xla_cuda":
     # Wait for the compilation and execution of model output to complete.
-    sync.synchronize(tensor_to_sync, wait=wait)
+    if isinstance(tensors_to_sync, torch.Tensor):
+      sync.synchronize(tensors_to_sync, wait=wait)
+    else:
+      for t in tensors_to_sync:
+        sync.synchronize(t, wait=wait)
   elif _DEVICE.value == "cuda":
     torch.cuda.synchronize()
 
@@ -441,12 +447,15 @@ class MlLayersTest(parameterized.TestCase):
       runnable_model = model
     inputs_on_device = inputs.to_device(device)
 
+    def sync_jax_device(x):
+      jax.tree_util.tree_map(lambda leaf: leaf.block_until_ready(), x)
+
     # Warm up the model.
     warmup_start_time = time.time()
     for i in range(_NUM_WARMUP_STEPS.value):
       with traceme.TraceMe("Warmup", step_num=i):
         output = runnable_model(inputs_on_device)
-        output.block_until_ready()
+        sync_jax_device(output)
     warmup_end_time = time.time()
     warmup_time = (
         warmup_end_time - warmup_start_time
@@ -458,7 +467,7 @@ class MlLayersTest(parameterized.TestCase):
     for i in range(_NUM_STEPS.value):
       with traceme.TraceMe("Eval", step_num=i):
         output = runnable_model(inputs_on_device)
-        output.block_until_ready()
+        sync_jax_device(output)
     eval_end_time = time.time()
     evaluation_time = (eval_end_time - eval_start_time) / _NUM_STEPS.value
     logging.info("Eval average step time: %fms", 1e3 * evaluation_time)
@@ -1465,6 +1474,90 @@ class MlLayersTest(parameterized.TestCase):
         config,
         lambda c: Model(c.shape),
         inputs_builder,
+        skip_bw_pass=True,
+        is_jax=True,
+    )
+
+  # ############################################################################
+  # Topk operator tests
+  # ############################################################################
+
+  @dataclass
+  class _TopkConfig:
+    shape: tuple[int, ...]
+    k: int
+    dtype: torch.dtype
+    dim: int = -1
+
+  _topk_configs = (
+      # Default config for smoke test.
+      _TopkConfig(
+          shape=(128, 16),
+          k=2,
+          dtype=torch.bfloat16,
+      ),
+      # Larger configs.
+      _TopkConfig(
+          shape=(8192, 256),
+          k=8,
+          dtype=torch.bfloat16,
+      ),
+  )
+
+  @parameterized.named_parameters(
+      generate_configs_for_parameterized(_topk_configs)
+  )
+  def test_nn_topk(self, config):
+    """Benchmark torch.topk with random data."""
+    if not is_pytorch_framework():
+      self.skipTest("PyTorch not enabled")
+
+    class Model(torch.nn.Module):
+
+      def __init__(self, k: int, dim: int):
+        super().__init__()
+        self.k = k
+        self.dim = dim
+
+      def forward(self, x) -> tuple[torch.Tensor, torch.Tensor]:
+        return torch.topk(x, self.k, dim=self.dim)
+
+    self._run_model_tests(
+        "nn.topk",
+        config,
+        lambda c: Model(c.k, c.dim),
+        lambda c: torch.randn(
+            c.shape, dtype=c.dtype, device=get_torch_device()
+        ),
+        skip_bw_pass=True,
+    )
+
+  @parameterized.named_parameters(
+      generate_configs_for_parameterized(_topk_configs)
+  )
+  def test_nnx_topk(self, config):
+    """Benchmark jax.lax.top_k with random data."""
+    if not is_jax_framework():
+      self.skipTest("JAX not enabled")
+
+    class Model(flax.nnx.Module):
+
+      def __init__(self, k: int, axis: int):
+        super().__init__()
+        self.k = k
+        self.axis = axis
+
+      def __call__(self, x) -> tuple[jax.Array, jax.Array]:
+        # jax.lax.top_k always operates on the last dimension.
+        return jax.lax.top_k(x, self.k, axis=self.axis)
+
+    self._run_model_tests(
+        "nnx.topk",
+        config,
+        lambda c: Model(c.k, c.dim),
+        lambda c, key: jax.random.normal(
+            key, c.shape, dtype=pt2jax_dtype(c.dtype)
+        ),
         skip_bw_pass=True,
         is_jax=True,
     )
