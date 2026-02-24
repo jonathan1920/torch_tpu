@@ -16,6 +16,7 @@
 
 import logging
 import os
+import pickle
 from typing import List
 
 from absl.testing import absltest
@@ -433,6 +434,36 @@ class FunctionTest(absltest.TestCase):
     compiled = torch.compile(func_with_int_put, backend=tpu_backend)
     result_tpu = compiled(3, api.tpu_device()).to("cpu")
     self.assertEqual(result_tpu, 3)
+
+  def test_compiled_executable_is_picklable(self):
+    """Test that TpuBackend's compiled output can be pickled and unpickled.
+
+    This is required for vLLM's compilation caching which serialize compiled
+    functions to disk.
+    """
+
+    class SimpleModel(torch.nn.Module):
+
+      def forward(self, x):
+        return (x * 3 + 1,)
+
+    model = SimpleModel().to(api.tpu_device())
+    x = torch.randn(4, 8).to(api.tpu_device())
+
+    backend = compile.TpuBackend()
+    gm = torch.fx.symbolic_trace(model)
+    # Get the raw executable
+    compiled_fn = backend._compile_graph_module(gm, [x])
+
+    # Run before pickle
+    result_before = compiled_fn(x)  # pylint: disable=unused-variable
+
+    # Pickle roundtrip
+    data = pickle.dumps(compiled_fn)
+    restored = pickle.loads(data)
+
+    result = restored(x)
+    utils.assert_close(result[0].cpu(), x * 3 + 1)
 
 
 class ModuleTest(absltest.TestCase):

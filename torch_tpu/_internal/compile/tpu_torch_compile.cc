@@ -41,6 +41,8 @@
 #include "torch/extension.h"  // IWYU pragma: keep for aten::Tensor pybind type
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/utils.h"
+#include "torch_tpu/pjrt/pjrt_init.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/hlo/translate/register.h"
 #include "xla/mlir/utils/error_util.h"
@@ -255,6 +257,27 @@ void PySetMlirTracebacksEnabled(bool enabled) {
 
 }  // namespace
 
+py::bytes PySerializeExecutable(const SharedLoadedExecutable& executable) {
+  TT_ASSIGN_OR_THROW(const std::string serialized,
+                     executable->GetExecutable()->SerializeExecutable(),
+                     _.SetPrepend() << "Failed to serialize executable: ");
+  return py::bytes(serialized);
+}
+
+SharedLoadedExecutable PyLoadSerializedExecutable(py::bytes& serialized_bytes) {
+  const auto data = py::cast<std::string_view>(serialized_bytes);
+  xla::PjRtClient* const client = GetPjRtClient();
+  TT_CHECK_THROW(client != nullptr, error::kFailedPrecondition)
+      << "PjRtClient must be initialized before loading a serialized "
+         "executable.";
+  TT_ASSIGN_OR_THROW(SharedLoadedExecutable executable,
+                     client->LoadSerializedExecutable(
+                         data, /*options=*/std::nullopt, xla::LoadOptions()),
+                     _.SetPrepend()
+                         << "Failed to load serialized executable: ");
+  return executable;
+}
+
 PYBIND11_MODULE(tpu_torch_compile, m) {
   py::class_<xla::PjRtLoadedExecutable,  // NOLINT(bugprone-unused-raii)
              std::shared_ptr<xla::PjRtLoadedExecutable>>(
@@ -279,6 +302,11 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
       "set_mlir_tracebacks_enabled", &PySetMlirTracebacksEnabled,
       py::arg("enabled"),
       "Sets whether MLIR location tracebacks should be captured with each op.");
+  m.def("serialize_executable", PySerializeExecutable, py::arg("executable"),
+        "Serializes a PjRtLoadedExecutable to bytes for caching.");
+  m.def("load_serialized_executable", PyLoadSerializedExecutable,
+        py::arg("serialized_bytes"),
+        "Loads a PjRtLoadedExecutable from serialized bytes.");
 }
 
 }  // namespace torch_tpu

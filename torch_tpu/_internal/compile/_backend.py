@@ -190,6 +190,26 @@ class _TorchTpuCompiledExecutable:
 
     return outputs
 
+  def __reduce__(self):
+    """Enable pickling by serializing the PjRt executable to bytes."""
+    serialized = tpu_torch_compile.serialize_executable(self._executable)
+    return (
+        _unpickle_compiled_executable,
+        (serialized, self._map_output_fn),
+    )
+
+
+def _unpickle_compiled_executable(
+    serialized_bytes: bytes,
+    map_output_fn,
+) -> _TorchTpuCompiledExecutable:
+  """Reconstruct a _TorchTpuCompiledExecutable from serialized bytes."""
+  executable = tpu_torch_compile.load_serialized_executable(serialized_bytes)
+  return _TorchTpuCompiledExecutable(
+      executable=executable,
+      map_output_fn=map_output_fn,
+  )
+
 
 class TpuBackend:
   """TPU backend for torch.compile() integratation."""
