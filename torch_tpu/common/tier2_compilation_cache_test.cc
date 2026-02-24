@@ -126,8 +126,14 @@ auto* const test_env =
 class Tier2CacheTest : public testing::Test {
  protected:
   Tier2CacheTest() {
-    SetEnv(kTorchTpuInternalTier2CompilationCacheEnvVar, "my_cache");
+    SetEnv(kTorchTpuInternalTier2CompilationCacheEnvVar,
+           absl::StrCat("my_cache_", getpid()));
     cache_path_ = GetTier2CompilationCachePath();
+
+    // Ensure the cache directory exists. Otherwise tests that run first
+    // without acquiring a Tier2CacheEntryLock (like
+    // ConcurrentWritesDoNotCorruptCacheFile) will fail to write.
+    ABSL_CHECK_OK(EnsureDirExistsRecursively(cache_path_));
 
     // Clear the cache directory before each test, in case any previous tests
     // didn't clean up properly.
@@ -224,8 +230,8 @@ TEST_F(Tier2CacheEntryLockTest, OnlyOneUserCanHoldLockAtATime) {
 }
 
 TEST_F(Tier2CacheTest, CachePath) {
-  const std::string_view kCachePathPrefix =
-      "/dev/shm/torch_tpu_cache/my_cache/";
+  const std::string kCachePathPrefix =
+      absl::StrCat("/dev/shm/torch_tpu_cache/my_cache_", getpid(), "/");
   ASSERT_THAT(cache_path_, StartsWith(kCachePathPrefix));
 
   // The suffix should be a 16-character hexadecimal string.
