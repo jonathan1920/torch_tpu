@@ -378,7 +378,9 @@ def fx_to_mlir(
   output_none_map_fn = partial(_map_output, output_map=output_map)
   mlir_bytes = tpu_torch_compile.build_mlir(
       result_tensors=_to_list(tpu_outputs),
-      argument_tensors=_to_list(args),
+      argument_tensors=[
+          a for a in _to_list(args) if isinstance(a, torch.Tensor)
+      ],
       print_config=print_config.value,
   )
 

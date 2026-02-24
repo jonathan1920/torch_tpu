@@ -282,7 +282,10 @@ class TpuBackend:
       # (2) Act as TPU-compatible FakeTensors, so that tracing does not depend
       #     on tensor data.
       placeholder_args = [
-          tpu_torch_compile.placeholder_like(arg) for arg in example_inputs
+          tpu_torch_compile.placeholder_like(arg)
+          if isinstance(arg, torch.Tensor)
+          else arg
+          for arg in example_inputs
       ]
 
       # Convert the ATen greph to StableHLO
@@ -310,4 +313,31 @@ class TpuBackend:
       executable.graph_module_debug_str = str(graph_module.code)
       executable.mlir_graph = mlir_graph
 
+    # If there are non-tensor inputs (e.g. concrete ints from dynamic shapes),
+    # wrap the executable to filter them out at call time since
+    # tpu_torch_compile.execute() only accepts tensors.
+    has_non_tensor_inputs = any(
+        not isinstance(arg, torch.Tensor) for arg in example_inputs
+    )
+    if has_non_tensor_inputs:
+      return _TensorFilterExecutable(executable)
+
     return executable
+
+
+class _TensorFilterExecutable:
+  """Wraps a compiled executable to filter out non-tensor args at call time.
+
+  Used when aot_autograd passes concrete integers alongside tensors.
+  Implemented as a class (not a closure) to support pickling.
+  """
+
+  def __init__(self, executable: _TorchTpuCompiledExecutable):
+    self._executable = executable
+
+  def __call__(self, *args):
+    tensor_args = tuple(a for a in args if isinstance(a, torch.Tensor))
+    return self._executable(*tensor_args)
+
+  def __reduce__(self):
+    return (type(self), (self._executable,))

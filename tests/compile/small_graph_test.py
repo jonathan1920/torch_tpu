@@ -400,6 +400,24 @@ class FunctionTest(absltest.TestCase):
     args = [torch.tensor([], dtype=torch.bool).reshape(0, 1)]
     self._run_and_compare(where_const, args)
 
+  def test_module_with_integer_input(self):
+    """Test that TpuBackend handles integer inputs."""
+
+    class ScaleModule(torch.nn.Module):
+
+      def forward(self, x: torch.Tensor, scale: int) -> torch.Tensor:
+        return x * scale
+
+    model = ScaleModule()
+    x = torch.randn(4, 8)
+    scale = 3
+
+    x_tpu = x.to(api.tpu_device())
+    compiled = torch.compile(model, backend="tpu")
+    result_tpu = compiled(x_tpu, scale).cpu()
+
+    utils.assert_close(result_tpu, x * scale)
+
   def test_input_baked_into_graph(self):
     """Test that input are baked into the graph.
 
