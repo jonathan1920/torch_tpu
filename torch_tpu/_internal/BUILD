@@ -100,6 +100,7 @@ pybind_extension(
     ],
     wrap_py_init = True,
     deps = [
+        "//shims/torch:torch_headers",
         "//torch_tpu/common:utils",
     ],
 )
