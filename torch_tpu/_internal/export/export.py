@@ -336,7 +336,7 @@ def enable_tracebacks():
 
 def fx_to_mlir(
     module: torch.fx.GraphModule,
-    args: List[torch.Tensor],
+    args: List[torch.Tensor | Any],
     print_config: MlirPrintConfig = MlirPrintConfig.MLIR_PRETTY,
 ) -> Tuple[
     bytes,
@@ -352,7 +352,8 @@ def fx_to_mlir(
 
   Args:
     module: The `torch.fx.GraphModule` to be converted to MLIR.
-    args: A list of input tensors to trace the module.
+    args: A list of input arguments to trace the module. These will be run
+      through an FX graph interpreter to identify the graph's output tensors.
     print_config: The desired MLIR output format.
     allow_output_modification: If True, filters `None` from outputs and returns
       a function to reconstruct them. If False, `None` outputs are not
