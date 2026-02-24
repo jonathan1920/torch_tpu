@@ -25,9 +25,12 @@ namespace torch_tpu {
 
 class ThreadPool {
  public:
-  // Constructs a pool for low-latency ops that contains "num_threads" threads
-  // with the specified name. The thread name should be shown as "tf_<name>".
-  ThreadPool(const std::string& name, int num_threads);
+  // Constructs a pool of `num_threads` threads with the given name. The thread
+  // name will be shown as "tf_<name>" in logs. `low_latency_hint` is a hint to
+  // the thread pool implementation that lower latency is preferred at the cost
+  // of higher CPU usage, e.g. by letting one or more idle threads spin wait.
+  ThreadPool(const std::string& name, int num_threads,
+             bool low_latency_hint = true);
 
   // This class is neither copyable nor movable.
   ThreadPool(const ThreadPool&) = delete;
@@ -43,6 +46,8 @@ class ThreadPool {
     auto task = std::make_shared<F>(std::forward<F>(f));
     pool_.Schedule([task = std::move(task)]() { (*task)(); });
   }
+
+  int NumThreads() const { return pool_.NumThreads(); }
 
  private:
   tsl::thread::ThreadPool pool_;

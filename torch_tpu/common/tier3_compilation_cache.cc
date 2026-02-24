@@ -54,7 +54,35 @@ constexpr std::string_view kTier3CacheFileExtension = ".bin";
 
 bool UsesTier3CompilationCache() {
   // To use tier-3 cache, we must use tier-2 cache as well.
-  return UsesTier2CompilationCache() && !GetTier3CacheRootDir().empty();
+  static const bool result =
+      UsesTier2CompilationCache() && !GetTier3CacheRootDir().empty();
+  return result;
+}
+
+bool UsesLocalBackupTaskForTier3Read() {
+  static const bool result = [] {
+    if (!UsesTier3CompilationCache()) {
+      ABSL_LOG(INFO) << "Backup compilation for tier-3 cache read is disabled "
+                        "as tier-3 cache is disabled.";
+      return false;
+    }
+    const auto& backup = GetEnvOnce<
+        kTorchTpuInternalTier3CompilationCacheLocalBackupTaskEnvVar>();
+    if (!backup.has_value()) {
+      ABSL_LOG(INFO)
+          << "Backup compilation for tier-3 cache read is enabled by default.";
+      return true;
+    }
+    const bool enabled = *backup != "0";
+    ABSL_LOG(INFO)
+        << "Backup compilation for tier-3 cache read is "
+        << (enabled ? "enabled" : "disabled")
+        << " based on the environment variable "
+        << kTorchTpuInternalTier3CompilationCacheLocalBackupTaskEnvVar
+        << ", which has value \"" << *backup << "\".";
+    return enabled;
+  }();
+  return result;
 }
 
 // Returns the path to the tier-3 compilation cache directory for the current

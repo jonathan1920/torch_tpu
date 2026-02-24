@@ -69,6 +69,15 @@ inline constexpr char kTorchTpuInternalEnableDebugChecksEnvVar[] =
 // "default".
 inline constexpr char kTorchTpuInternalTier2CompilationCacheEnvVar[] =
     "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE";
+// If unset or set to "1", schedule local compilation right away as a backup to
+// tier-3 compilation cache read (whichever succeeds first will unblock
+// execution). If set to "0", local compilation is done only after tier-3
+// compilation cache read fails.
+//
+// This env var is only used when the tier-3 compilation cache is enabled.
+inline constexpr char
+    kTorchTpuInternalTier3CompilationCacheLocalBackupTaskEnvVar[] =
+        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK";
 // The root path of the tier-3 compilation cache. If not set, the tier-3
 // compilation cache is disabled.
 inline constexpr char kTorchTpuInternalTier3CompilationCacheRootEnvVar[] =

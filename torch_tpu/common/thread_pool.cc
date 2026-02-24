@@ -23,8 +23,10 @@
 
 namespace torch_tpu {
 
-ThreadPool::ThreadPool(const std::string& name, int num_threads)
-    : pool_(tsl::Env::Default(), name, num_threads) {
+ThreadPool::ThreadPool(const std::string& name, int num_threads,
+                       bool low_latency_hint)
+    : pool_(tsl::Env::Default(), tsl::ThreadOptions(), name, num_threads,
+            low_latency_hint) {
   ABSL_CHECK_LE(name.size(), 12)  // CRASH_OK
       << "Thread name must be at most 12 characters, or it will be truncated.";
   ABSL_CHECK_GT(num_threads, 0)  // CRASH_OK

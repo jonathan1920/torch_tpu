@@ -26,7 +26,13 @@
 namespace torch_tpu {
 
 // Returns true if the tier-3 compilation cache is enabled for this process.
+// This function is memoized, so it's cheap to call this multiple times.
 [[nodiscard]] bool UsesTier3CompilationCache();
+
+// Returns true if a local compilation backup task should be scheduled in
+// parallel with a tier-3 cache read.
+// This function is memoized, so it's cheap to call this multiple times.
+[[nodiscard]] bool UsesLocalBackupTaskForTier3Read();
 
 // Returns the path to the tier-3 cache file for the given key.
 [[nodiscard]] std::string GetTier3CacheEntryPath(CompilationCacheKey key);

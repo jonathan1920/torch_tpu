@@ -170,11 +170,26 @@ void CompilationCache::Initialize(
 CompilationCache::CompilationCache()
     : compilation_pool_(std::make_unique<ThreadPool>(
           // The actual thread name will be "tf_tt_compile" in logs.
-          "tt_compile", GetNumCompilationThreads())) {}
+          "tt_compile", GetNumCompilationThreads())),
+      backup_compilation_pool_(
+          UsesLocalBackupTaskForTier3Read()
+              ? std::make_unique<ThreadPool>(
+                    // The actual thread name will be "tf_tt_compile2" in
+                    // logs. Unfortunately, we cannot use a longer, more
+                    // descriptive name, as that will cause the thread name to
+                    // be truncated in logs.
+                    "tt_compile2",
+                    // Use fewer threads for backup compilations.
+                    std::max(1, compilation_pool_->NumThreads() / 2),
+                    // Don't optimize for low latency - we want to leave room
+                    // for the main compilation pool.
+                    /*low_latency_hint=*/false)
+              : nullptr) {}
 
 CompilationCache::~CompilationCache() {
   ABSL_VLOG(1) << "CompilationCache shutting down.";
   compilation_pool_.reset();
+  backup_compilation_pool_.reset();
   EvictAll();
   TT_MUTEX_LOCK(lock, cache_mutex_);
   ABSL_LOG(INFO) << "CompilationCache final stats: "
@@ -324,10 +339,9 @@ CompilationCache::GetShapeDynamism(absl::Span<const CompilationCacheKey> keys) {
 
 bool CompilationCache::IsExecutableReady(CompilationCacheKey key) const {
   TT_MUTEX_LOCK(lock, cache_mutex_);
-  CacheLookupInternal cache_lookup = LookupCacheEntry(key);
-  if (const auto* cache_entry = std::get_if<const CacheEntry*>(&cache_lookup)) {
-    auto& f = (*cache_entry)->executable_future();
-    return IsFutureReady(f);
+  if (const auto it = executable_cache_.find(key);
+      it != executable_cache_.end()) {
+    return IsFutureReady(it->second.executable_future());
   }
   return false;
 }
@@ -414,6 +428,11 @@ void CompilationCache::SetExecutable(
   ABSL_CHECK(executable_cache_.contains(key))  // CRASH_OK=TorchTPU bug
       << "Executable not found in cache for key: " << key;
   CacheEntry& cache_entry = executable_cache_.at(key);
+
+  if (IsFutureReady(cache_entry.executable_future())) {
+    return;
+  }
+
   cache_entry.stats() = std::move(stats);
   if (cache_entry.stats().compilation_duration > absl::ZeroDuration()) {
     ABSL_VLOG(1) << "Compile duration for key " << key << ": "
@@ -487,6 +506,22 @@ void CompilationCache::GetFromTier3OrCompile(
   absl::StatusOr<SharedLoadedExecutable> executable_or;
   CacheTier tier = CacheTier::kUnknown;
 
+  const bool backup_compilation = UsesLocalBackupTaskForTier3Read();
+  if (backup_compilation) {
+    backup_compilation_pool_->Schedule(
+        [this, key, builder = std::move(executable_builder),
+         options = std::move(compile_options)]() mutable {
+          // As an optimization, if the tier-3 cache read has already
+          // populated the executable, skip the backup compilation.
+          if (this->IsExecutableReady(key)) {
+            ABSL_VLOG(1) << "Skipping backup compilation for key: " << key
+                         << " because it is already ready.";
+            return;
+          }
+          this->Compile(key, std::move(builder), std::move(options));
+        });
+  }
+
   // If tier-3 cache is enabled, try to get the executable from it first.
   if (uses_tier3) {
     executable_or = GetFromTier3Cache(key);
@@ -504,17 +539,32 @@ void CompilationCache::GetFromTier3OrCompile(
     // Either tier-3 cache is disabled, or the executable was not found in it.
     // Compile the graph and save the result to the tier-1 cache.
     tier = CacheTier::kTier1;
-    Compile(key, std::move(executable_builder), std::move(compile_options));
+    if (!backup_compilation) {
+      // Clang-tidy reports a false positive here that executable_builder and
+      // compile_options are used after being moved in the backup compilation
+      // above. It is wrong as that move only happens when backup_compilation is
+      // true.
+      Compile(key, std::move(executable_builder),  // NOLINT
+              std::move(compile_options));         // NOLINT
+    }
     // When the above call finishes, the tier-1 cache will contain the compiled
     // executable and its initial stats.
   }
 
-  // Critical section for reading the tier-1 cache.
+  // Read the tier-1 cache.
+  SharedLoadedExecutableFuture f;
   {
     TT_MUTEX_LOCK(lock, cache_mutex_);
     CacheEntry& cache_entry = executable_cache_[key];
-    executable_or = cache_entry.executable_future().get();
-  }  // End of critical section.
+    f = cache_entry.executable_future();
+  }
+  // Important: the .get() must be called outside the lock region to avoid a
+  // deadlock. For example, if this function (GetFromTier3OrCompile) scheduled
+  // a backup compilation above, and the future is not ready yet, f.get() will
+  // block until the backup compilation finishes and sets the future. However,
+  // the backup compilation is running in a separate thread and won't be able
+  // to set the future as the lock is still held by this thread.
+  executable_or = f.get();
 
   if (!executable_or.ok()) {
     // The compilation failed.

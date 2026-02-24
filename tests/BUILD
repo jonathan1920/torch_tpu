@@ -396,6 +396,31 @@ torch_tpu_py_test(
     ],
 )
 
+# Tests the tier-3 compilation cache without local backup compilation.
+torch_tpu_py_test(
+    name = "ops_unit_test_tier3_cache_no_backup",
+    srcs = ["ops_unit_test.py"],
+    env = {
+        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
+        "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK": "0",
+    },
+    main = "ops_unit_test.py",
+    shard_count = 20,
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":op_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/api",
+        "//torch_tpu/eager:tpu_aten_kernels",
+        "@pypi//scipy",
+    ],
+)
+
 torch_tpu_py_test(
     name = "compiler_option_test",
     srcs = ["compiler_option_test.py"],

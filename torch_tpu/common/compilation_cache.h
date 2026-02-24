@@ -141,27 +141,32 @@ class CompilationCache {
 
   // Evicts all executables from the cache. The function returns only after all
   // entries in the cache have been cleared.
-  void EvictAll();
+  void EvictAll() ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Sets the cache to allow caching or not. On initialization, the cache is
   // in allow-cache mode by default. We only need to call this function if we
   // want to disable caching (e.g. for debugging or perf analysis).
-  void SetAllowCacheMode(bool allow = true);
+  void SetAllowCacheMode(bool allow = true) ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Sets the cache to only lookup and not compile if cache_only is true.
   // In this mode, the cache will not compile any programs, and will return
   // errors for all cache misses.
-  void SetCacheOnlyMode(bool cache_only = true);
+  void SetCacheOnlyMode(bool cache_only = true)
+      ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Cache statistics.
-  [[nodiscard]] int64_t GetCacheRequests() const;
-  [[nodiscard]] int64_t GetCacheHits() const;
-  [[nodiscard]] int64_t GetCacheMisses() const;
-  [[nodiscard]] PerfStats GetCacheStats() const;
+  [[nodiscard]] int64_t GetCacheRequests() const
+      ABSL_LOCKS_EXCLUDED(cache_mutex_);
+  [[nodiscard]] int64_t GetCacheHits() const ABSL_LOCKS_EXCLUDED(cache_mutex_);
+  [[nodiscard]] int64_t GetCacheMisses() const
+      ABSL_LOCKS_EXCLUDED(cache_mutex_);
+  [[nodiscard]] PerfStats GetCacheStats() const
+      ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Returns true if the executable associated with a cache key is compiled and
   // ready for execution.
-  bool IsExecutableReady(CompilationCacheKey key) const;
+  bool IsExecutableReady(CompilationCacheKey key) const
+      ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Fetches a compiled executable from the cache, or compiles it if it is not
   // found. This method returns immediately with a future.
@@ -169,7 +174,7 @@ class CompilationCache {
       CompilationCacheKey key,
       const ShapeDynamismMetadata& shape_dynamism_metadata,
       MlirComputationBuilder computation_builder,
-      UniqueCompileOptions compile_options);
+      UniqueCompileOptions compile_options) ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Given a list of keys, identifies all keys which have hits that require
   // shape-dynamic modifications to the graph to use an existing executable.
@@ -177,11 +182,12 @@ class CompilationCache {
   // an empty return value for each key indicates either a static hit, or a
   // full miss.
   std::vector<std::vector<ShapeDynamismMetadata>> GetShapeDynamism(
-      absl::Span<const CompilationCacheKey> keys);
+      absl::Span<const CompilationCacheKey> keys)
+      ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Debugging function to return the total resident size of the loaded
   // executables in HBM.
-  std::string HbmUsageSummary() const;
+  std::string HbmUsageSummary() const ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
  private:
   // Private constructor and destructor to enforce singleton pattern.
@@ -222,7 +228,8 @@ class CompilationCache {
   // after a failed tier-2 cache lookup.
   void Compile(CompilationCacheKey key,
                LoadedExecutableBuilder executable_builder,
-               UniqueCompileOptions compile_options);
+               UniqueCompileOptions compile_options)
+      ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Tries to get the compilation result from the tier-2 cache; if not found,
   // compiles the graph and stores the executable in the tier-1/2/3 caches.
@@ -234,7 +241,8 @@ class CompilationCache {
   // be updated with the compiled executable.
   void GetFromTier2OrCompile(CompilationCacheKey key,
                              LoadedExecutableBuilder executable_builder,
-                             UniqueCompileOptions compile_options);
+                             UniqueCompileOptions compile_options)
+      ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Tries to get the compilation result from the tier-3 cache; if not found,
   // compiles the graph and stores the executable in the tier-1/2/3 caches.
@@ -250,7 +258,8 @@ class CompilationCache {
                              LoadedExecutableBuilder executable_builder,
                              UniqueCompileOptions compile_options,
                              Tier2CacheEntryLock& lock,
-                             absl::Time request_start);
+                             absl::Time request_start)
+      ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Global mutex for singleton creation.
   static absl::Mutex g_mutex_;
@@ -260,6 +269,10 @@ class CompilationCache {
 
   // Thread pool for running compilations concurrently.
   std::unique_ptr<ThreadPool> compilation_pool_;
+
+  // Lower-priority thread pool for running backup compilations.
+  // Set only when tier-3 cache is enabled and local backup task is enabled.
+  std::unique_ptr<ThreadPool> backup_compilation_pool_;
 
   // The cache of successfully compiled and in flight executables.
   absl::flat_hash_map<CompilationCacheKey, CacheEntry,
