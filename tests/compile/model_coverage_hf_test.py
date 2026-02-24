@@ -18,9 +18,9 @@ Compares perplexity (for inference) and loss (for training) between TPU and CPU
 with popular HuggingFace model implementations using the Transformers API.
 """
 
-import copy
 import enum
 import functools
+import gc
 from typing import Any
 
 from absl import flags
@@ -112,35 +112,48 @@ class ModelCoverageHFTest(parameterized.TestCase):
           f" {_MODEL_SIZES_TO_RUN.value}."
       )
 
-  def _create_model_and_inputs(
-      self, provider: str, module_name: str, *, is_training=False
-  ):
+  def _create_inputs(self, provider: str, module_name: str):
     module_spec = self.module_registry.get_module_spec(
         provider, module_name, load_weights=True
     )
-    cpu_model = module_spec.module_factory()
-    if is_training:
-      cpu_model.train()
-    else:
-      cpu_model.eval()
     tokenizer = module_spec.preprocessor_factory()
     prompt = (
         "Despite the heavy rain and strong winds forecasted for the afternoon,"
         " the dedicated marathon runners refused to cancel the"
     )
-    tpu_model = copy.deepcopy(cpu_model)
-    tpu_model.to(self.tpu_device)
-    fn_to_compile = (
-        functools.partial(_train_step, tpu_model) if is_training else tpu_model
+    return tokenizer(prompt, return_tensors="pt")
+
+  def _create_model(
+      self,
+      provider: str,
+      module_name: str,
+      *,
+      device=torch.device("cpu"),
+      is_training=False,
+  ):
+    module_spec = self.module_registry.get_module_spec(
+        provider, module_name, load_weights=True
     )
-    compiled_tpu_model = torch.compile(
-        fn_to_compile,
-        dynamic=False,
-        backend=torch_tpu_compile.TpuBackend(),
-    )
-    cpu_inputs = tokenizer(prompt, return_tensors="pt")
-    tpu_inputs = {k: v.to(self.tpu_device) for k, v in cpu_inputs.items()}
-    return cpu_model, tpu_model, compiled_tpu_model, cpu_inputs, tpu_inputs
+    with device:
+      model = module_spec.module_factory()
+    if is_training:
+      model.train()
+    else:
+      model.eval()
+
+    compiled_model = None
+
+    if device == api.tpu_device():
+      fn_to_compile = (
+          functools.partial(_train_step, model) if is_training else model
+      )
+      compiled_model = torch.compile(
+          fn_to_compile,
+          dynamic=False,
+          backend=torch_tpu_compile.TpuBackend(),
+      )
+
+    return model, compiled_model
 
   # rtol and atol were determined manually by running the test case once,
   # checking the results and determining tolerances based on the delta between
@@ -181,14 +194,22 @@ class ModelCoverageHFTest(parameterized.TestCase):
   ) -> None:
     self._check_model_size(provider, module_name, model_size)
 
-    cpu_model, tpu_model, compiled_tpu_model, cpu_inputs, tpu_inputs = (
-        self._create_model_and_inputs(provider, module_name, is_training=True)
-    )
+    # To reduce memory pressure, we first conduct a training step on CPU and
+    # garbage collect the model and other objects we no longer need before doing
+    # the train step on TPU.
+    cpu_model, _ = self._create_model(provider, module_name, is_training=True)
+    cpu_inputs = self._create_inputs(provider, module_name)
     cpu_optimizer = torch.optim.SGD(cpu_model.parameters(), lr=0.01)
-    tpu_optimizer = torch.optim.SGD(tpu_model.parameters(), lr=0.01)
-
-    tpu_loss = compiled_tpu_model(tpu_optimizer, tpu_inputs)
     cpu_loss = _train_step(cpu_model, cpu_optimizer, cpu_inputs)
+    del cpu_model, cpu_optimizer
+    gc.collect()
+
+    tpu_model, tpu_compiled_model = self._create_model(
+        provider, module_name, device=self.tpu_device, is_training=True
+    )
+    tpu_inputs = {k: v.to(self.tpu_device) for k, v in cpu_inputs.items()}
+    tpu_optimizer = torch.optim.SGD(tpu_model.parameters(), lr=0.01)
+    tpu_loss = tpu_compiled_model(tpu_optimizer, tpu_inputs)
 
     utils.assert_close(
         actual=tpu_loss,
@@ -238,13 +259,23 @@ class ModelCoverageHFTest(parameterized.TestCase):
   ) -> None:
     self._check_model_size(provider, module_name, model_size)
 
-    cpu_model, _, compiled_tpu_model, cpu_inputs, tpu_inputs = (
-        self._create_model_and_inputs(provider, module_name)
-    )
-    cpu_out = cpu_model(**cpu_inputs)
-    tpu_out = compiled_tpu_model(**tpu_inputs)
-
+    # To reduce memory pressure, we first conduct inference on CPU and garbage
+    # collect the model and other objects we no longer need before doing work
+    # on the TPU.
+    cpu_model, _ = self._create_model(provider, module_name)
+    cpu_inputs = self._create_inputs(provider, module_name)
+    with torch.inference_mode():
+      cpu_out = cpu_model(**cpu_inputs)
     cpu_ppl = _calculate_perplexity(cpu_out.logits, cpu_inputs["input_ids"])
+    del cpu_out, cpu_model
+    gc.collect()
+
+    _, tpu_compiled_model = self._create_model(
+        provider, module_name, device=self.tpu_device
+    )
+    tpu_inputs = {k: v.to(self.tpu_device) for k, v in cpu_inputs.items()}
+    with torch.inference_mode():
+      tpu_out = tpu_compiled_model(**tpu_inputs)
     tpu_ppl = _calculate_perplexity(tpu_out.logits, tpu_inputs["input_ids"])
 
     self.assertLess(

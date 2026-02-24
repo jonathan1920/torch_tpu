@@ -188,6 +188,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
+        "@pypi//accelerate",  # buildcleaner: keep
     ],
 )
 
