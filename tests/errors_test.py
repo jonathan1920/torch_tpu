@@ -278,6 +278,40 @@ def _make_lu_unpack_outputs(
   )
 
 
+def _run_native_layer_norm(
+    inp: torch.Tensor, normalized_shape: tuple[int, ...]
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  """Runs `torch.native_layer_norm` with default arguments."""
+  return torch.native_layer_norm(
+      inp, normalized_shape, weight=None, bias=None, eps=1e-5
+  )
+
+
+def _run_native_layer_norm_backward(
+    inp: torch.Tensor, normalized_shape: tuple[int, ...]
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  """Runs `torch.ops.aten.native_layer_norm_backward` with default arguments."""
+
+  grad = torch.randn(inp.shape, device=et.device())
+
+  # Shape of `mean` and `rstd`.
+  diff = len(inp.shape) - len(normalized_shape)
+
+  shape = [s if i < diff else 1 for i, s in enumerate(inp.shape)]
+  mean = torch.randn(shape, device=et.device())
+  rstd = torch.randn(shape, device=et.device())
+
+  # torch.ops.aten.native_layer_norm_backward op does not take in kwargs.
+  # Therefore, all of them must be passed as positional arguments.
+  weight = None
+  bias = None
+  output_mask = (False, False, False)
+
+  return torch.ops.aten.native_layer_norm_backward(
+      grad, inp, normalized_shape, mean, rstd, weight, bias, output_mask
+  )
+
+
 class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU."""
 
@@ -5325,6 +5359,105 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
           ),
           torch.tensor([0, 1], dtype=torch.int64, device=et.device()),
       )
+
+  def test_native_layer_norm_int(self):
+    inp = torch.ones(5, 5, device=et.device(), dtype=torch.int32)
+    normalized_shape = (5,)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "layer_norm(): expected the input dtype to be floating point, got"
+            " int32"
+        ),
+        cpu="\"LayerNormKernelImpl\" not implemented for 'Int'",
+        message_reviewed_by="wan",
+    ):
+      _run_native_layer_norm(inp, normalized_shape)
+
+  def test_native_layer_norm_backward_int(self):
+    inp = torch.ones(5, 5, device=et.device(), dtype=torch.int32)
+    normalized_shape = (5,)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "native_layer_norm_backward(): expected the input dtype to be"
+            " floating point, got int32"
+        ),
+        cpu="\"LayerNormBackwardKernelImpl\" not implemented for 'Int'",
+        message_reviewed_by="wan",
+    ):
+      _run_native_layer_norm_backward(inp, normalized_shape)
+
+  def test_native_layer_norm_normalized_shape_empty(self):
+    inp = torch.ones(5, 5, device=et.device())
+    normalized_shape = []
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="layer_norm(): the normalized shape must have >= 1 dimensions",
+        cpu=(
+            "Expected normalized_shape to be at least 1-dimensional, i.e.,"
+            " containing at least one element, but got normalized_shape = []"
+        ),
+        message_reviewed_by="wan",
+    ):
+      _run_native_layer_norm(inp, normalized_shape)
+
+  def test_native_layer_norm_backward_normalized_shape_empty(self):
+    inp = torch.ones(5, 5, device=et.device())
+    normalized_shape = []
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "native_layer_norm_backward(): the normalized shape must have >= 1"
+            " dimensions"
+        ),
+        cpu=(
+            "Expected normalized_shape to be at least 1-dimensional, i.e.,"
+            " containing at least one element, but got normalized_shape = []"
+        ),
+        message_reviewed_by="wan",
+    ):
+      _run_native_layer_norm_backward(inp, normalized_shape)
+
+  def test_native_layer_norm_normalized_shape_too_large(self):
+    inp = torch.ones(5, 5, device=et.device())
+    normalized_shape = (5, 3, 3)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "layer_norm(): expected the normalized shape to have <= 2"
+            " dimensions, got 3 dimensions of shape [5, 3, 3]"
+        ),
+        cpu=(
+            "Given normalized_shape=[5, 3, 3], expected input with shape [*, 5,"
+            " 3, 3], but got input of size[5, 5]"
+        ),
+        message_reviewed_by="wan",
+    ):
+      _run_native_layer_norm(inp, normalized_shape)
+
+  def test_native_layer_norm_backward_normalized_shape_too_large(self):
+    inp = torch.ones(5, 5, device=et.device())
+    normalized_shape = (5, 3, 3)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "native_layer_norm_backward(): expected the normalized shape to"
+            " have <= 2 dimensions, got 3 dimensions of shape [5, 3, 3]"
+        ),
+        cpu=(
+            "Given normalized_shape=[5, 3, 3], expected input with shape [*, 5,"
+            " 3, 3], but got input of size[5, 5]"
+        ),
+        message_reviewed_by="wan",
+    ):
+      _run_native_layer_norm_backward(inp, normalized_shape)
 
 
 if __name__ == "__main__":

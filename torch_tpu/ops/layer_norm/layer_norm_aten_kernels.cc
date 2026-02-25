@@ -17,23 +17,27 @@
 #include "torch_tpu/ops/layer_norm/layer_norm_aten_kernels.h"
 
 #include <array>
+#include <cstddef>
 #include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/log/absl_check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBase.h"
-#include "c10/core/ScalarType.h"
 #include "c10/util/Optional.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "xla/xla_data.pb.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/layer_norm/layer_norm.h"
@@ -43,30 +47,41 @@
 
 namespace torch_tpu {
 
+namespace {
+
+absl::Status CheckInputs(const at::Tensor& input,
+                         const at::IntArrayRef normalized_shape) {
+  TT_RET_CHECK(IsFloatingPoint(input), error::kInvalidArgument)
+      << "expected the input dtype to be floating point, got "
+      << ToString(input.scalar_type());
+
+  TT_RET_CHECK(!normalized_shape.empty(), error::kInvalidArgument)
+      << "the normalized shape must have >= 1 dimensions";
+
+  TT_RET_CHECK(normalized_shape.size() <= input.dim(), error::kInvalidArgument)
+      << "expected the normalized shape to have <= " << input.dim()
+      << " dimensions, got " << normalized_shape.size()
+      << " dimensions of shape " << ToString(normalized_shape);
+
+  return absl::OkStatus();
+}
+
+}  // namespace
+
 std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenNativeLayerNorm(
-    const at::Tensor& input, const at::IntArrayRef normalized_shape_arr,
+    const at::Tensor& input, const at::IntArrayRef normalized_shape,
     const c10::optional<at::Tensor>& weight_opt,
     const c10::optional<at::Tensor>& bias_opt, const double eps) {
   TT_KERNEL(
       OpName::kLayerNorm, param_keys,
-      (input, normalized_shape_arr, weight_opt, bias_opt, eps), {
-        TT_CHECK_THROW(c10::isFloatingType(input.scalar_type()),
-                       error::kInvalidArgument)
-            << "input dtype must be floating point, but got "
-            << input.scalar_type();
-        const int normalized_num_dims = normalized_shape_arr.size();
-        TT_CHECK_THROW(normalized_num_dims > 0, error::kInvalidArgument)
-            << "normalized shape cannot be empty.";
-
-        const int input_num_dims = input.dim();
-        TT_CHECK_THROW(normalized_num_dims <= input_num_dims,
-                       error::kInvalidArgument)
-            << "expected normalized_shape to have <= " << input_num_dims
-            << " dimensions, got " << normalized_num_dims << ".";
+      (input, normalized_shape, weight_opt, bias_opt, eps), {
+        TT_THROW_IF_ERROR(CheckInputs(input, normalized_shape));
 
         const bool has_weight = weight_opt.has_value();
         const bool has_bias = bias_opt.has_value();
-        auto op_builder = [has_weight, has_bias, normalized_num_dims, eps](
+        const size_t normalized_shape_dims = normalized_shape.size();
+
+        auto op_builder = [has_weight, has_bias, normalized_shape_dims, eps](
                               absl::Span<const mlir::MlirOp> inputs,
                               mlir::MlirBuilder& builder)
             -> absl::StatusOr<MlirOpResults<3>> {
@@ -90,7 +105,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenNativeLayerNorm(
           auto input_op = inputs[0];
           TT_ASSIGN_OR_RETURN(
               results, BuildLayerNormMomentsShlo(input_op, weight_op, bias_op,
-                                                 normalized_num_dims, eps));
+                                                 normalized_shape_dims, eps));
 
           return {{results.normalized_values, results.mean,
                    results.reciprocal_std}};
@@ -105,7 +120,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenNativeLayerNorm(
           stats_dtype = mlir::ElementType::F32;
         }
 
-        const auto input_sizes = input.sizes();
+        const at::IntArrayRef input_sizes = input.sizes();
+        const size_t input_dims = input_sizes.size();
         Dimensions output_dims = CopyIntVector(input_sizes);
 
         // The StableHLO reduction op will remove all normalized dimensions, but
@@ -115,14 +131,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenNativeLayerNorm(
         // as necessary to get the desired shape.
         Dimensions mean_rstd_buffer_shape;
         Dimensions mean_rstd_tensor_shape;
-        mean_rstd_buffer_shape.reserve(input_num_dims - normalized_num_dims);
-        mean_rstd_tensor_shape.reserve(input_num_dims);
-        for (int i = 0; i < input_num_dims - normalized_num_dims; ++i) {
+        mean_rstd_buffer_shape.reserve(input_dims - normalized_shape_dims);
+        mean_rstd_tensor_shape.reserve(input_dims);
+        for (int i = 0; i < input_dims - normalized_shape_dims; ++i) {
           mean_rstd_buffer_shape.push_back(input_sizes[i]);
           mean_rstd_tensor_shape.push_back(input_sizes[i]);
         }
-        for (int i = input_num_dims - normalized_num_dims; i < input_num_dims;
-             ++i) {
+        for (int i = input_dims - normalized_shape_dims; i < input_dims; ++i) {
           mean_rstd_tensor_shape.push_back(1);
         }
 
@@ -162,18 +177,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenLayerNormBackward(
       (dY, input, normalized_shape, mean, rstd, weight_opt, bias_opt,
        grad_input_mask),
       {
+        TT_THROW_IF_ERROR(CheckInputs(input, normalized_shape));
+
         // Alias input to x, for readability.
         const at::Tensor& x = input;
-
-        const int normalized_num_dims = normalized_shape.size();
-        TT_CHECK_THROW(normalized_num_dims > 0, error::kInvalidArgument)
-            << "normalized shape cannot be empty.";
-
-        const int input_num_dims = x.dim();
-        TT_CHECK_THROW(normalized_num_dims <= input_num_dims,
-                       error::kInvalidArgument)
-            << "expected normalized_shape to have <= " << input_num_dims
-            << " dimensions, got " << normalized_num_dims << ".";
 
         // Note that bias is not an input to the backward compute.
         // We just need to know if it was present, in order to compute dbeta
