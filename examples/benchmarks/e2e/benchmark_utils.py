@@ -76,7 +76,7 @@ MLCOMPASS_TRACKING_ID = flags.DEFINE_string(
 MLCOMPASS_EXECUTION_MODE = flags.DEFINE_enum(
     "mlcompass_execution_mode",
     "oneshot",
-    ["cbuild", "oneshot"],
+    ["cbuild", "oneshot", "cbuild-autoperfcop", "autoperfcop"],
     "The execution mode of the mlcompass run. This is only used to filter out"
     " data for dashboarding post run and doesn't have any impact on the run."
     " The value is set to cbuild for continuous guitar runs and oneshot"
