@@ -188,6 +188,7 @@ def verify_op_supports_dynamism(
       "nn.functional.conv_transpose1d",
       "nn.functional.conv_transpose2d",
       "nn.functional.embedding",
+      "nn.functional.embedding_bag",  # invalid gather
       "nn.functional.group_norm",
       "nn.functional.interpolate",  # gather with dynamic slice size
       "nn.functional.leaky_relu",  # binop LHS / RHS mismatch

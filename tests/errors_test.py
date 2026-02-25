@@ -5305,6 +5305,28 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.vdot(lhs, rhs)
 
+  def test_embedding_bag_invalid_dtypes(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "embedding_bag_forward_only(): expected weight dtype to be float16,"
+            " bfloat16, float32, or float64, got int64"
+        ),
+        cpu=(
+            "Expected tensor for argument #1 'weight' to have one of the"
+            " following scalar types: Half, BFloat16, Float, Double; but got"
+            " torch.LongTensor instead (while checking arguments for"
+            " embedding_bag)"
+        ),
+    ):
+      torch.nn.functional.embedding_bag(
+          torch.tensor([0, 1], dtype=torch.int64, device=et.device()),
+          torch.tensor(
+              [[0, 1, 2, 3, 4]], dtype=torch.int64, device=et.device()
+          ),
+          torch.tensor([0, 1], dtype=torch.int64, device=et.device()),
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

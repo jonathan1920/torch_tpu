@@ -17,9 +17,14 @@
 #include "torch_tpu/ops/embedding/embedding_aten_kernels.h"
 
 #include <cstdint>
+#include <optional>
+#include <tuple>
 #include <utility>
+#include <vector>
 
+#include "absl/log/absl_check.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/_unsafe_index_put.h"
@@ -32,6 +37,7 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/embedding/embedding.h"
@@ -73,6 +79,101 @@ at::Tensor UnsqueezeToDim(const at::Tensor& x, int dim) {
 }
 
 }  // namespace
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> AtenEmbeddingBag(
+    const at::Tensor& weight, const at::Tensor& indices,
+    const at::Tensor& offsets, bool scale_grad_by_freq, int64_t mode,
+    bool sparse, const std::optional<at::Tensor>& per_sample_weights,
+    bool include_last_offset, int64_t padding_idx) {
+  TT_KERNEL(
+      OpName::kEmbeddingBag, param_keys,
+      (weight, indices, offsets, scale_grad_by_freq, mode, sparse,
+       per_sample_weights, include_last_offset, padding_idx),
+      {
+        TT_CHECK_THROW(weight.scalar_type() == at::ScalarType::Half ||
+                           weight.scalar_type() == at::ScalarType::BFloat16 ||
+                           weight.scalar_type() == at::ScalarType::Float ||
+                           weight.scalar_type() == at::ScalarType::Double,
+                       error::kInvalidArgument)
+            << "expected weight dtype to be float16, bfloat16, float32,"
+            << " or float64, got " << torch_tpu::ToString(weight.scalar_type());
+
+        TT_ASSIGN_OR_THROW(const auto weight_dtype,
+                           ConvertTo<mlir::ElementType>(weight.scalar_type()));
+        TT_ASSIGN_OR_THROW(const auto indices_dtype,
+                           ConvertTo<mlir::ElementType>(indices.scalar_type()));
+        TT_ASSIGN_OR_THROW(const auto offsets_dtype,
+                           ConvertTo<mlir::ElementType>(offsets.scalar_type()));
+
+        int64_t indices_size = indices.numel();
+        int64_t batch_size = offsets.numel();
+        // If True, the size of offsets is equal to the number of bags + 1
+        if (include_last_offset) batch_size -= 1;
+        int64_t emb_dim = weight.size(1);
+        const bool has_per_sample_weights =
+            per_sample_weights.has_value() && per_sample_weights->defined();
+
+        auto op_builder =
+            [scale_grad_by_freq, mode, sparse, include_last_offset, padding_idx,
+             has_per_sample_weights](absl::Span<const mlir::MlirOp> inputs,
+                                     mlir::MlirBuilder& builder)
+            -> absl::StatusOr<MlirOpResults<4>> {
+          const int64_t expected_inputs = has_per_sample_weights ? 4 : 3;
+          ABSL_CHECK_EQ(  // CRASH_OK=Input not set correctly by the backend.
+              inputs.size(), expected_inputs);
+
+          auto weight_op = inputs[0];
+          auto indices_op = inputs[1];
+          auto offsets_op = inputs[2];
+          std::optional<mlir::MlirOp> per_sample_weights_op;
+          if (has_per_sample_weights) {
+            per_sample_weights_op = inputs[3];
+          }
+
+          return BuildEmbeddingBagShlo(
+              weight_op, indices_op, offsets_op, scale_grad_by_freq, mode,
+              sparse, per_sample_weights_op, include_last_offset, padding_idx);
+        };
+
+        std::vector<at::Tensor> inputs = {weight, indices, offsets};
+        if (has_per_sample_weights) {
+          inputs.push_back(per_sample_weights.value());
+        }
+
+        TT_ASSIGN_OR_THROW(
+            (auto [output, offset2bag, bag_sizes, max_indices]),
+            (DispatchOp<kDynamicSize, 4>(
+                OpName::kEmbeddingBag, std::move(op_builder), inputs,
+                {.out_dtypes = {weight_dtype, indices_dtype, offsets_dtype,
+                                indices_dtype},
+                 .out_dims_list = {{batch_size, emb_dim},
+                                   {indices_size},
+                                   {batch_size},
+                                   {batch_size, emb_dim}},
+                 .op_param_cache_keys = std::move(param_keys)})));
+
+        return std::make_tuple(MakeTensor(std::move(output)),
+                               MakeTensor(std::move(offset2bag)),
+                               MakeTensor(std::move(bag_sizes)),
+                               MakeTensor(std::move(max_indices)));
+      });
+}
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>
+AtenEmbeddingBagForwardOnly(const at::Tensor& weight, const at::Tensor& indices,
+                            const at::Tensor& offsets, bool scale_grad_by_freq,
+                            int64_t mode, bool sparse,
+                            const std::optional<at::Tensor>& per_sample_weights,
+                            bool include_last_offset, int64_t padding_idx) {
+  TT_KERNEL(OpName::kEmbeddingBagForwardOnly, _,
+            (weight, indices, offsets, scale_grad_by_freq, mode, sparse,
+             per_sample_weights, include_last_offset, padding_idx),
+            {
+              return AtenEmbeddingBag(
+                  weight, indices, offsets, scale_grad_by_freq, mode, sparse,
+                  per_sample_weights, include_last_offset, padding_idx);
+            });
+}
 
 at::Tensor& AtenEmbeddingRenorm_(at::Tensor& self, const at::Tensor& indices,
                                  double max_norm, double norm_type) {

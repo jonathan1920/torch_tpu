@@ -381,6 +381,11 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
         torch.float16: {"rtol": 1e-2, "atol": 1e-2},
     },
+    "nn.functional.embedding_bag": {
+        torch.bfloat16: {"rtol": 2.7e-2, "atol": 1.3e-1},
+        torch.float16: {"rtol": 1.4e-1, "atol": 3.2e-1},
+        torch.float32: {"rtol": 2.9e-6, "atol": 1.6e-5},
+    },
     "nn.functional.gelu": {
         torch.float32: {"rtol": 1e-4, "atol": 1e-4},
         torch.float16: {"rtol": 1e-4, "atol": 1e-2},
@@ -1409,6 +1414,13 @@ class TestOps(TorchTpuTestBase):
         check_grad=False,
         # TODO: fix embedding() failing with complex dtypes.
         exclude_dtypes=COMPLEX_DTYPES,
+    )
+
+  def test_embedding_bag(self):
+    self.do_test_op(
+        "nn.functional.embedding_bag",
+        # TODO: fix _embedding_bag_backward is unimplemented.
+        check_grad=False,
     )
 
   def test_empty(self):

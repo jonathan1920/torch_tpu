@@ -124,6 +124,8 @@ enum class OpName {
   kDropout,
   kEluBackwardGradInput,
   kEluOut,
+  kEmbeddingBag,
+  kEmbeddingBagForwardOnly,
   kEmbeddingDenseBackward,
   kEmbeddingRenorm_,
   kEmpty,

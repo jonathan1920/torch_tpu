@@ -226,6 +226,10 @@ std::string_view ToString(OpName op_name) {
       return "elu_backward.grad_input";
     case OpName::kEluOut:
       return "elu.out";
+    case OpName::kEmbeddingBag:
+      return "_embedding_bag";
+    case OpName::kEmbeddingBagForwardOnly:
+      return "_embedding_bag_forward_only";
     case OpName::kEmbeddingDenseBackward:
       return "embedding_dense_backward";
     case OpName::kEmbeddingRenorm_:

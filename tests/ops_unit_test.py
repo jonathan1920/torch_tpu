@@ -3688,6 +3688,57 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assertEqual(cpu_mask.cpu(), tpu_mask.cpu())
 
+  def test_embedding_bag_max_indices(self):
+    """Tests that max_indices is computed correctly in _embedding_bag."""
+    weight = torch.tensor(
+        [[1.0, 5.0], [10.0, 2.0], [10.0, 8.0]], dtype=torch.float32
+    )
+    indices = torch.tensor([0, 1, 2], dtype=torch.long)
+    offsets = torch.tensor([0], dtype=torch.long)
+
+    def test_fn(device):
+      # returns output, grad_input, grad_weight, max_indices
+      output, _, _, max_indices = torch.ops.aten._embedding_bag(
+          weight.to(device), indices.to(device), offsets.to(device), mode=2
+      )
+
+      expected_output = torch.tensor([[10.0, 8.0]])
+      expected_max_indices = torch.tensor([[1, 2]], dtype=torch.long)
+      self.assert_close(
+          golden_result=expected_output.cpu(),
+          torch_tpu_result=output.cpu(),
+      )
+      self.assert_close(
+          golden_result=expected_max_indices.cpu(),
+          torch_tpu_result=max_indices.cpu(),
+      )
+      return output, max_indices
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
+  def test_embedding_bag_empty_bag(self):
+    """Tests that empty bags are handled correctly in _embedding_bag."""
+    weight = torch.randn(5, 2).to(api.tpu_device())
+    indices = torch.tensor([0, 1, 2], dtype=torch.long).to(api.tpu_device())
+    # The first bag is empty
+    offsets = torch.tensor([0, 0], dtype=torch.long).to(api.tpu_device())
+
+    output_sum, _, _, _ = torch.ops.aten._embedding_bag(
+        weight, indices, offsets, mode=0
+    )
+    self.assertTrue(torch.all(output_sum[0] == 0))
+
+    output_mean, _, _, _ = torch.ops.aten._embedding_bag(
+        weight, indices, offsets, mode=1
+    )
+    self.assertTrue(torch.all(output_mean[0] == 0))
+
+    output_max, _, _, max_indices = torch.ops.aten._embedding_bag(
+        weight, indices, offsets, mode=2
+    )
+    self.assertTrue(torch.all(output_max[0] == 0))
+    self.assertTrue(torch.all(max_indices[0] == 0))
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""

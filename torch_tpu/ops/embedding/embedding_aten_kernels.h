@@ -17,10 +17,27 @@
 #ifndef TORCH_TPU_OPS_EMBEDDING_EMBEDDING_ATEN_KERNELS_H_
 #define TORCH_TPU_OPS_EMBEDDING_EMBEDDING_ATEN_KERNELS_H_
 
+#include <cstdint>
+#include <optional>
+#include <tuple>
+
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 
 namespace torch_tpu {
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> AtenEmbeddingBag(
+    const at::Tensor& weight, const at::Tensor& indices,
+    const at::Tensor& offsets, bool scale_grad_by_freq, int64_t mode,
+    bool sparse, const std::optional<at::Tensor>& per_sample_weights,
+    bool include_last_offset, int64_t padding_idx);
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>
+AtenEmbeddingBagForwardOnly(const at::Tensor& weight, const at::Tensor& indices,
+                            const at::Tensor& offsets, bool scale_grad_by_freq,
+                            int64_t mode, bool sparse,
+                            const std::optional<at::Tensor>& per_sample_weights,
+                            bool include_last_offset, int64_t padding_idx);
 
 at::Tensor& AtenEmbeddingRenorm_(at::Tensor& self, const at::Tensor& indices,
                                  double max_norm, double norm_type);

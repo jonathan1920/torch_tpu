@@ -17,10 +17,20 @@
 #ifndef TORCH_TPU_OPS_EMBEDDING_EMBEDDING_H_
 #define TORCH_TPU_OPS_EMBEDDING_EMBEDDING_H_
 
+#include <cstdint>
+#include <optional>
+
 #include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
+
+absl::StatusOr<MlirOpResults<4>> BuildEmbeddingBagShlo(
+    mlir::MlirOp weight, mlir::MlirOp indices, mlir::MlirOp offsets,
+    bool scale_grad_by_freq, int64_t mode, bool sparse,
+    std::optional<mlir::MlirOp> per_sample_weights, bool include_last_offset,
+    int64_t padding_idx);
 
 absl::StatusOr<mlir::MlirOp> BuildEmbeddingRenormShlo(mlir::MlirOp weight,
                                                       mlir::MlirOp indices,
