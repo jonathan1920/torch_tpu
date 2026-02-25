@@ -425,11 +425,20 @@ void CompilationCache::SetExecutable(
     CompilationCacheKey key, absl::StatusOr<SharedLoadedExecutable> executable,
     CacheEntryStats stats) {
   TT_MUTEX_LOCK(lock, cache_mutex_);
-  ABSL_CHECK(executable_cache_.contains(key))  // CRASH_OK=TorchTPU bug
-      << "Executable not found in cache for key: " << key;
-  CacheEntry& cache_entry = executable_cache_.at(key);
+  // If the user requested to evict the cache while we were compiling this
+  // executable, the key may be missing. In this case, adding the key back to
+  // the cache doesn't help as EvictAll() already set the executable future
+  // to a failed state, so we just log and return.
+  const auto it = executable_cache_.find(key);
+  if (it == executable_cache_.end()) {
+    ABSL_LOG(WARNING) << "Key already evicted when setting executable for key "
+                      << key;
+    return;
+  }
 
+  CacheEntry& cache_entry = it->second;
   if (IsFutureReady(cache_entry.executable_future())) {
+    // Another thread has already set the executable future.
     return;
   }
 
