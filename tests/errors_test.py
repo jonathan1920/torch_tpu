@@ -647,6 +647,18 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
       res = torch.cumsum(t, dim=1, dtype=torch.bool)
       res.to("cpu")
 
+  def test_cummax_dimension_size_limit(self):
+    """Tests cummax fails if dimension size has > 2^31-1 elements."""
+    # Create an empty tensor with shape 2**31
+    t = torch.empty(2**31, dtype=torch.float32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        "cummax_helper(): expected dimension size to be less than or equal to"
+        " 2147483647, got 2147483648",
+    ):
+      y, _ = torch.cummax(t, dim=0)
+      y.cpu()
+
   def test_index_add_with_assign_buffer_to_at_tensor_failure(self):
     """Tests that index_add() bubbles up the error from AssignBufferToAtTensor.
 

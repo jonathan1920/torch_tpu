@@ -60,6 +60,7 @@
 #include "torch_tpu/ops/col2im/col2im_aten_kernels.h"
 #include "torch_tpu/ops/convolution/convolution_aten_kernels.h"
 #include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
+#include "torch_tpu/ops/cummax/cummax_aten_kernels.h"
 #include "torch_tpu/ops/cumprod/cumprod_aten_kernels.h"
 #include "torch_tpu/ops/cumsum/cumsum_aten_kernels.h"
 #include "torch_tpu/ops/distance/dist_aten_kernels.h"
@@ -283,6 +284,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kCopyFromAndResize, AtenCopyFromAndResize);
   Impl(m, OpName::kCosOut, AtenCosOut);
   Impl(m, OpName::kCoshOut, AtenCoshOut);
+  Impl(m, OpName::kCummaxHelper, AtenCummaxHelper);
   Impl(m, OpName::kCumprodOut, AtenCumprodOut);
   Impl(m, OpName::kCumsumOut, AtenCumsumOut);
   Impl(m, OpName::kDivOut, AtenDivOut);

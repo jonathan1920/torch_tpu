@@ -100,6 +100,7 @@ enum class OpName {
   kCopy_,
   kCosOut,
   kCoshOut,
+  kCummaxHelper,
   kCumprodOut,
   kCumsumOut,
   kCustomKernel,

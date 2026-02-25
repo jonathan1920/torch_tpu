@@ -208,6 +208,9 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.int32: {"rtol": 1e-4, "atol": 1e-4},
         torch.int64: {"rtol": 1e-4, "atol": 1e-4},
     },
+    "cummax": {
+        torch.float64: {"rtol": 5.2e-8, "atol": 4.5e-7},
+    },
     "cumprod": {
         torch.float16: {"rtol": 1e-2, "atol": 5e-2},
     },
@@ -1345,6 +1348,13 @@ class TestOps(TorchTpuTestBase):
         check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_cummax(self):
+    self.do_test_op(
+        "cummax",
+        # TODO: fix the error flip is unimplemented.
+        check_grad=False,
     )
 
   def test_cumsum(self):
