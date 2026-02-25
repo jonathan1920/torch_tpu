@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//build_files:build_defs.bzl", "define_cpp_filegroup", "torch_tpu_py_test")
 
 # Copyright 2025 Google LLC
@@ -214,3 +215,10 @@ torch_tpu_py_test(
 )
 
 define_cpp_filegroup(name = "all_cpp_files_recursive")
+
+build_test(
+    name = "notap_build_test",
+    targets = [
+        ":stablehlo_compile_test",
+    ],
+)

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_python//python:py_library.bzl", "py_library")
 load("//build_files:build_defs.bzl", "define_cpp_filegroup", "torch_tpu_py_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
@@ -784,3 +785,12 @@ torch_tpu_py_test(
 )
 
 define_cpp_filegroup(name = "all_cpp_files_recursive")
+
+build_test(
+    name = "notap_build_test",
+    targets = [
+        ":errors_test_cov",
+        ":errors_test_cpu",
+        ":errors_test_tpu",
+    ],
+)
