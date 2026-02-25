@@ -198,9 +198,8 @@ torch_tpu_py_test(
     srcs = ["model_coverage_timm_test.py"],
     shard_count = 6,
     tags = [
-        "cpu:4",
         "requires-net:external",
-        "requires-tpu-v7x:4",
+        "requires-tpu-v5lite",
     ],
     deps = [
         "//shims/absl_py/testing:absltest",
