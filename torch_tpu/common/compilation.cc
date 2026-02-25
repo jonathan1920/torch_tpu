@@ -16,7 +16,6 @@
 
 #include "torch_tpu/common/compilation.h"
 
-#include <cstdlib>
 #include <map>
 #include <memory>
 #include <stack>
@@ -129,9 +128,8 @@ MlirComputationBuilderToExecutableBuilder(
 GetMutableCompileOptionOverridesStack() {
   // User PyTorch code may set different overrides in different Python
   // threads, so this needs to be thread-local.
-  static thread_local absl::NoDestructor<std::stack<CompilerOptionOverrides>>
-      overrides;
-  return *overrides;
+  static thread_local std::stack<CompilerOptionOverrides> overrides;
+  return overrides;
 }
 
 // Returns the compile option overrides for the current thread, as set in

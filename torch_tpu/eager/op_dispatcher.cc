@@ -449,9 +449,8 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
 
 // Returns the defer mode for the current thread.
 static DeferMode& GetMutableDeferMode() {
-  static thread_local absl::NoDestructor<DeferMode> defer_mode{
-      DeferMode::kDefault};
-  return *defer_mode;
+  static thread_local DeferMode defer_mode = DeferMode::kDefault;
+  return defer_mode;
 }
 
 DeferMode GetDeferMode() { return GetMutableDeferMode(); }

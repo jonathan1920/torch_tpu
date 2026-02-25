@@ -38,7 +38,6 @@
 #include <string_view>
 #include <vector>
 
-#include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -200,7 +199,7 @@ class ScopedPythonContextCapturer {
   // current thread. This is the size of the context capturer stack for the
   // current thread.
   [[nodiscard]] static int64_t GetNumAliveForThread() {
-    return op_names_->size();
+    return op_names_.size();
   }
 
   // While the state of this class is *conceptually* a per-thread stack, the
@@ -211,11 +210,11 @@ class ScopedPythonContextCapturer {
 
   // The names of the ops in the context capturer stack for the current thread,
   // from bottom to top.
-  thread_local static absl::NoDestructor<std::vector<std::string>> op_names_;
+  thread_local static std::vector<std::string> op_names_;
   // nullptr when the context capturer stack for the current thread is
   // empty, or when traceback capture is disabled.
   // Otherwise, the traceback of all contexts in the stack.
-  thread_local static absl::NoDestructor<MaybeSharedTraceback> traceback_;
+  thread_local static MaybeSharedTraceback traceback_;
 };
 
 // RAII class to provide a PythonContext captured earlier to an MlirOp build
@@ -252,14 +251,13 @@ class ScopedPythonContextProvider {
   // Returns the top python context on the singleton context provider stack for
   // the current thread, or std::nullopt if the stack is empty.
   static const std::optional<PythonContext>& MaybeGetContext() {
-    return *top_context_;
+    return top_context_;
   }
 
  private:
   // The top python context on the singleton context provider stack, one for
   // each thread, or std::nullopt if the stack is empty.
-  thread_local static absl::NoDestructor<std::optional<PythonContext>>
-      top_context_;
+  thread_local static std::optional<PythonContext> top_context_;
 
   // Each alive ScopedPythonContextProvider instance corresponds to an element
   // in the context provider stack for the current thread. This field is the

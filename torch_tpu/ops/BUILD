@@ -132,7 +132,6 @@ torch_tpu_cc_library(
         ":op_names",
         "//shims/torch",
         "//shims/torch:torch_headers",
-        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",

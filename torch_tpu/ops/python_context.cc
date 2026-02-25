@@ -25,7 +25,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
 #include "absl/flags/flag.h"
 #include "absl/log/absl_check.h"
@@ -54,8 +53,8 @@ namespace torch_tpu {
 namespace {
 
 TracebackMode& MutableTracebackMode() {
-  thread_local absl::NoDestructor<TracebackMode> mode{TracebackMode::kDisabled};
-  return *mode;
+  thread_local TracebackMode mode = TracebackMode::kDisabled;
+  return mode;
 }
 
 }  // namespace
@@ -242,49 +241,47 @@ mlir::Location MakeMlirLocation(mlir::MLIRContext& ctx,
 }
 
 ScopedPythonContextCapturer::ScopedPythonContextCapturer(const OpName op_name) {
-  op_names_->push_back(std::string(ToBaseName(op_name)));
+  op_names_.push_back(std::string(ToBaseName(op_name)));
   if (GetNumAliveForThread() == 1) {
-    ABSL_CHECK(*traceback_ == nullptr)  // CRASH_OK
+    ABSL_CHECK(traceback_ == nullptr)  // CRASH_OK
         << "While creating the first alive ScopedPythonContextCapturer, we "
            "found an element in the context capturer stack. This is a "
            "torch_tpu bug.";
     if (GetTracebackMode() == TracebackMode::kEnabled) {
-      *traceback_ = CaptureCurrentPythonTrackback();
+      traceback_ = CaptureCurrentPythonTrackback();
     }
   }
   ABSL_VLOG(1) << "[ScopedPythonContextCapturer] Created for op: " << op_name;
   ABSL_VLOG(3) << "[ScopedPythonContextCapturer] Current call chain: "
-               << absl::StrJoin(*op_names_, ", ");
+               << absl::StrJoin(op_names_, ", ");
 }
 
 ScopedPythonContextCapturer::~ScopedPythonContextCapturer() {
-  ABSL_CHECK(!op_names_->empty())  // CRASH_OK
+  ABSL_CHECK(!op_names_.empty())  // CRASH_OK
       << "ScopedPythonContextCapturer::~ScopedPythonContextCapturer() called "
          "when the context capturer stack is empty. This is a torch_tpu bug.";
-  op_names_->pop_back();
-  if (op_names_->empty()) {
-    *traceback_ = nullptr;
+  op_names_.pop_back();
+  if (op_names_.empty()) {
+    traceback_ = nullptr;
   }
 }
 
 PythonContext ScopedPythonContextCapturer::GetContext() {
-  ABSL_CHECK(!op_names_->empty())  // CRASH_OK
+  ABSL_CHECK(!op_names_.empty())  // CRASH_OK
       << "ScopedPythonContextCapturer::GetContext() called when no "
          "ScopedPythonContextCapturer is alive. This is a torch_tpu bug. Make "
          "sure a ScopedPythonContextCapturer object is defined "
          "somewhere up the stack. See go/catto-design for details.";
-  return PythonContext(*op_names_, *traceback_);
+  return PythonContext(op_names_, traceback_);
 }
 
 std::optional<PythonContext> ScopedPythonContextCapturer::MaybeGetContext() {
-  if (op_names_->empty()) return std::nullopt;
-  return PythonContext(*op_names_, *traceback_);
+  if (op_names_.empty()) return std::nullopt;
+  return PythonContext(op_names_, traceback_);
 }
 
-thread_local absl::NoDestructor<std::vector<std::string>>
-    ScopedPythonContextCapturer::op_names_;
-thread_local absl::NoDestructor<MaybeSharedTraceback>
-    ScopedPythonContextCapturer::traceback_;
+thread_local std::vector<std::string> ScopedPythonContextCapturer::op_names_;
+thread_local MaybeSharedTraceback ScopedPythonContextCapturer::traceback_;
 
 ScopedPythonContextProvider::ScopedPythonContextProvider(
     PythonContext context, mlir::MlirBuilder* absl_nullable const builder) {
@@ -292,15 +289,15 @@ ScopedPythonContextProvider::ScopedPythonContextProvider(
     scoped_builder_loc_.emplace(
         *builder, MakeMlirLocation(builder->getContext(), context));
   }
-  previous_context_ = std::move(*top_context_);
-  *top_context_ = std::move(context);
+  previous_context_ = std::move(top_context_);
+  top_context_ = std::move(context);
 }
 
 ScopedPythonContextProvider::~ScopedPythonContextProvider() {
-  *top_context_ = std::move(previous_context_);
+  top_context_ = std::move(previous_context_);
 }
 
-thread_local absl::NoDestructor<std::optional<PythonContext>>
+thread_local std::optional<PythonContext>
     ScopedPythonContextProvider::top_context_;
 
 std::string GetRootOpName(const std::optional<OpName> current_op_name) {
