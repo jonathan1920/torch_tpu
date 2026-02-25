@@ -3348,16 +3348,23 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     t_again = torch.Tensor.uniform_(t_again, 0, 1)
     self.assert_close(golden_result=t.cpu(), torch_tpu_result=t_again.cpu())
 
-  def test_uniform_distribution(self):
+  @parameterized.named_parameters(
+      ("float64", torch.float64),
+      ("float32", torch.float32),
+      # ("float16", torch.float16), Disabled because some conversions produce
+      # NaNs for f16.
+      ("bfloat16", torch.bfloat16),
+  )
+  def test_uniform_distribution(self, dtype: torch.dtype):
     # To make sure atol is small, and the test is meaningful
     n = 1000
-    t = torch.zeros(n, n, dtype=torch.float32, device=api.tpu_device())
+    t = torch.zeros(n, n, dtype=dtype, device=api.tpu_device())
     t = torch.Tensor.uniform_(t, 0, 1)
     # P(|mean(t) - 0.5| > atol) < 1 / 12 / n / n / a^2
     # Make P < 1e-6, by picking a = sqrt(1e6 / 12 / n / n) = sqrt(1 / 12)
     atol = torch.sqrt(torch.tensor(1e6 / 12 / n / n))
     self.assert_close(
-        golden_result=torch.tensor(0.5),
+        golden_result=torch.tensor(0.5, dtype=dtype),
         torch_tpu_result=t.mean().cpu(),
         atol=atol,
         rtol=0.0,

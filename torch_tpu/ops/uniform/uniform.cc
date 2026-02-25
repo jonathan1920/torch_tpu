@@ -19,6 +19,7 @@
 #include <cstdint>
 
 #include "absl/status/statusor.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -32,50 +33,76 @@ namespace torch_tpu {
 
 namespace stablehlo = mlir::stablehlo;
 
-// Converts u64 random bits to a uniform distribution in [from, to). The idea is
-// to reinterpret as f64s, and set the exponent bits to logically represent 1.
-// This gives us numbers in [1, 2), because of the implicit 1.mantissa in f64s.
-// We then subtract 1, and scale to [from, to), and cast back to the desired
-// type.
+// Converts random bits to a uniform distribution in [from, to). The idea is
+// to reinterpret as float types, and set the exponent bits to logically
+// represent 1.
 absl::StatusOr<mlir::MlirOp> BitsToUniform(mlir::MlirOp random_bits,
-                                           mlir::RankedTensorType output_type,
                                            mlir::MlirOp from, mlir::MlirOp to) {
   mlir::RankedTensorType random_bits_type = GetTensorTypeOrDie(random_bits);
   auto& builder = random_bits.getBuilder();
   auto& op_builder = builder.getOpBuilder();
-  // We will create a f64 tensor and cast it down to the desired type.
-  // Clear the exponent and sign bits
-  mlir::MlirOp clear_exponent_mask =
-      MakeConstantLike(random_bits, 0x000F'FFFF'FFFF'FFFFUL);
+  // We will create a f64, f32 or f16 depending on the bit width of random bits,
+  // and then cast it to the output type.
+  mlir::MlirOp clear_exponent_mask;
+  mlir::MlirOp set_exp_to_bias_mask;
+  mlir::RankedTensorType random_bits_as_float_type;
+  mlir::RankedTensorType from_type = GetTensorTypeOrDie(from);
+  switch (random_bits_type.getElementType().getIntOrFloatBitWidth()) {
+    case 64:
+      clear_exponent_mask =
+          MakeConstantLike(random_bits, 0x000F'FFFF'FFFF'FFFFUL);
+      set_exp_to_bias_mask =
+          MakeConstantLike(random_bits, 0x3FF0'0000'0000'0000UL);
+      random_bits_as_float_type = from_type.clone(op_builder.getF64Type());
+      break;
+    case 32:
+      clear_exponent_mask = MakeConstantLike(random_bits, 0x007F'FFFFUL);
+      set_exp_to_bias_mask = MakeConstantLike(random_bits, 0x3F80'0000UL);
+      random_bits_as_float_type = from_type.clone(op_builder.getF32Type());
+      break;
+    case 16:
+      clear_exponent_mask = MakeConstantLike(random_bits, 0x03FFU);
+      set_exp_to_bias_mask = MakeConstantLike(random_bits, 0x3C00U);
+      random_bits_as_float_type = from_type.clone(op_builder.getF16Type());
+      break;
+    default:
+      return TT_ERROR(error::kInvalidArgument)
+             << "unsupported random bits type width: "
+             << random_bits_type.getElementType().getIntOrFloatBitWidth();
+  }
+
+  // float is 1 sign bit, k exponent bits, and n mantissa bits, exponent is
+  // interpreted as an unsigned integer minus a bias, so we make it zero by
+  // setting the exponent bits to the bias.
+  //   f64: k = 11, n = 52, bias = 1023 = 0x3FF
+  //        -> clear_exponent_mask = 0^12 1^52 = 0x000F'FFFF'FFFF'FFFF
+  //        -> set_exp_to_bias_mask = 0^2 1^10 0^52 = 0x3F80'0000'0000'0000
+  //   f32: k = 8, n = 23, bias = 127 = 0x7F
+  //        -> clear_exponent_mask = 0^9 1^23 = 0x007F'FFFF
+  //        -> set_exp_to_bias_mask = 0^2 1^7 0^23 = 0x3F80'0000
+  //   f16: k = 5, n = 10, bias = 15 = 0xF
+  //        -> clear_exponent_mask = 0^6 1^10 = 0x03FF
+  //        -> set_exp_to_bias_mask = 0^2 1^4 0^10 = 0x3C00
+  //
   mlir::MlirOp random_mantissa =
       stablehlo::And(random_bits, clear_exponent_mask);
-  // Set the exponent bits to 0 (f64 bias is 1023, so we store 0 + 1023 =
-  // 0x3FF)
-  mlir::MlirOp set_exp_to_one_mask =
-      MakeConstantLike(random_bits, 0x3FF0'0000'0000'0000UL);
+
   mlir::MlirOp random_between_one_and_two =
-      stablehlo::Or(random_mantissa, set_exp_to_one_mask);
-  // Interpret as f64s
-  auto random_bits_type_f64 = random_bits_type.clone(op_builder.getF64Type());
+      stablehlo::Or(random_mantissa, set_exp_to_bias_mask);
+
+  // Interpret as floats
   random_between_one_and_two = stablehlo::BitcastConvert(
-      random_bits_type_f64, random_between_one_and_two);
+      random_bits_as_float_type, random_between_one_and_two);
+  random_between_one_and_two =
+      stablehlo::Convert(from_type, random_between_one_and_two);
   // Subtract 1.0
   mlir::MlirOp one_const = MakeConstantLike(random_between_one_and_two, 1.0);
   mlir::MlirOp random_between_zero_and_one =
       stablehlo::Subtract(random_between_one_and_two, one_const);
   // Scale to [from, to)
-  mlir::RankedTensorType from_type = GetTensorTypeOrDie(from);
-  from_type = from_type.clone(op_builder.getF64Type());
-  from = stablehlo::Convert(from_type, from);
-  mlir::RankedTensorType to_type = GetTensorTypeOrDie(to);
-  to_type = to_type.clone(op_builder.getF64Type());
-  to = stablehlo::Convert(to_type, to);
   auto diff_op = stablehlo::Subtract(to, from);
-  diff_op = stablehlo::BroadcastInDim(random_bits_type_f64, diff_op, {});
   auto scaled_op = stablehlo::Mul(diff_op, random_between_zero_and_one);
-  from = stablehlo::BroadcastInDim(random_bits_type_f64, from, {});
-  auto result_f64 = stablehlo::Add(from, scaled_op);
-  return stablehlo::Convert(output_type, result_f64);
+  return stablehlo::Add(from, scaled_op);
 }
 
 absl::StatusOr<MlirOpResults<2>> BuildUniformShlo(
@@ -85,25 +112,26 @@ absl::StatusOr<MlirOpResults<2>> BuildUniformShlo(
       GetTensorTypeOrDie(rng_input_state);
   auto& builder = rng_input_state.getBuilder();
   auto& op_builder = builder.getOpBuilder();
-  auto output_tensor_type =
+  mlir::RankedTensorType output_tensor_type =
       makeTensorType(builder.getContext(), sizes, mlir_type);
-  mlir::MlirOp from_op =
-      MakeScalarConstant(builder, from, mlir::ElementType::F64);
-  mlir::MlirOp to_op = MakeScalarConstant(builder, to, mlir::ElementType::F64);
-  auto output_tensor_type_uint64 =
-      output_tensor_type.clone(op_builder.getIntegerType(64, false));
-  auto rng_op = stablehlo::RngBitGeneratorOp::create(
-      op_builder, rng_input_state.getValue().getLoc(), rng_input_state_type,
-      output_tensor_type_uint64,
+  mlir::MlirOp from_op = MakeConstant(builder, from, output_tensor_type);
+  mlir::MlirOp to_op = MakeConstant(builder, to, output_tensor_type);
+  int64_t bit_width =
+      output_tensor_type.getElementType().getIntOrFloatBitWidth();
+  mlir::RankedTensorType rng_bits_type =
+      output_tensor_type.clone(op_builder.getIntegerType(bit_width,
+                                                         /*isSigned=*/false));
+  const mlir::stablehlo::RngAlgorithmAttr rng_alg =
       stablehlo::RngAlgorithmAttr::get(op_builder.getContext(),
-                                       stablehlo::RngAlgorithm::DEFAULT),
-      rng_input_state.getValue());
+                                       stablehlo::RngAlgorithm::DEFAULT);
+  auto rng_bits_op = stablehlo::RngBitGeneratorOp::create(
+      op_builder, rng_input_state.getValue().getLoc(), rng_input_state_type,
+      rng_bits_type, rng_alg, rng_input_state.getValue());
   mlir::MlirOp rng_output_state =
-      mlir::MlirOp(builder, rng_op.getOutputState());
-  mlir::MlirOp rng_output_op = mlir::MlirOp(builder, rng_op.getOutput());
-  TT_ASSIGN_OR_RETURN(
-      auto result,
-      BitsToUniform(rng_output_op, output_tensor_type, from_op, to_op));
+      mlir::MlirOp(builder, rng_bits_op.getOutputState());
+  mlir::MlirOp rng_output_op = mlir::MlirOp(builder, rng_bits_op.getOutput());
+  TT_ASSIGN_OR_RETURN(auto result,
+                      BitsToUniform(rng_output_op, from_op, to_op));
   return {{rng_output_state, result}};
 }
 
