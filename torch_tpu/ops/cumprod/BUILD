@@ -27,6 +27,7 @@ torch_tpu_cc_library(
         "cumprod",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
+        "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:unary_aten_kernels",
@@ -40,7 +41,7 @@ torch_tpu_cc_library(
     srcs = ["cumprod.cc"],
     hdrs = ["cumprod.h"],
     deps = [
-        "//shims/torch:torch_headers",
+        "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_builder_utils",

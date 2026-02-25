@@ -89,9 +89,9 @@ torch_tpu_cc_library(
     hdrs = ["tpu_to_cpu.h"],
     deps = [
         "//shims/torch:aten_headers",
-        "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
+        "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
