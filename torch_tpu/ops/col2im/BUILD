@@ -30,6 +30,8 @@ torch_tpu_cc_library(
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
+        "//torch_tpu/common:utils",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/ops:op_builder_utils",
@@ -48,6 +50,7 @@ torch_tpu_cc_library(
     deps = [
         "//shims/torch:torch_headers",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",

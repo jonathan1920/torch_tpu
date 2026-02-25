@@ -14,6 +14,7 @@
 
 #include "torch_tpu/ops/col2im/col2im_aten_kernels.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <utility>
 
@@ -23,6 +24,8 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/col2im/col2im.h"
@@ -36,12 +39,33 @@ namespace torch_tpu {
 namespace {
 
 // Returns the number of blocks to slide over the input tensor.
-absl::StatusOr<int64_t> ComputeOutputSize(int64_t input_size, int64_t pad,
-                                          int64_t dilation, int64_t kernel_size,
-                                          int64_t stride) {
-  TT_RET_CHECK(stride > 0, error::kInvalidArgument)
-      << "expected stride to be positive, got " << stride;
-  return (input_size + 2 * pad - dilation * (kernel_size - 1) - 1) / stride + 1;
+//
+// All of the input arrays should have exactly 2 elements. This condition is
+// directly (by `GetOutputDimensions()` function) or indirectly (by
+// `AtenCol2Im()` function) checked calling the `GetOutputDimensions()`
+// function.
+absl::StatusOr<SmallInt64Vector> ComputeOutputSize(at::IntArrayRef input_size,
+                                                   at::IntArrayRef padding,
+                                                   at::IntArrayRef dilation,
+                                                   at::IntArrayRef kernel_size,
+                                                   at::IntArrayRef stride) {
+  bool are_strides_positive = std::all_of(
+      stride.begin(), stride.end(), [](const int64_t s) { return s > 0; });
+
+  TT_RET_CHECK(are_strides_positive, error::kInvalidArgument)
+      << "expected all stride elements to be positive, got "
+      << ToString(stride);
+
+  auto compute_size_of_dimension = [input_size, padding, dilation, kernel_size,
+                                    stride](const int64_t dim) {
+    return (input_size[dim] + 2 * padding[dim] -
+            dilation[dim] * (kernel_size[dim] - 1) - 1) /
+               stride[dim] +
+           1;
+  };
+
+  return SmallInt64Vector(
+      {compute_size_of_dimension(0), compute_size_of_dimension(1)});
 }
 
 // Returns the output dimensions for a col2im operation, and validates
@@ -82,15 +106,14 @@ absl::StatusOr<Dimensions> GetOutputDimensions(const at::Tensor& input,
       << "expected input channels to be divisible by kernel product ("
       << kernel_prod << "), got " << c_col;
 
+  TT_ASSIGN_OR_RETURN(
+      const auto col_size,
+      ComputeOutputSize(output_size, padding, dilation, kernel_size, stride));
+
+  const int64_t col_h = col_size[0];
+  const int64_t col_w = col_size[1];
+
   // Verify input length matches calculated column size
-  const int64_t output_h = output_size[0];
-  const int64_t output_w = output_size[1];
-  TT_ASSIGN_OR_RETURN(
-      const int64_t col_h,
-      ComputeOutputSize(output_h, padding[0], dilation[0], k_h, stride[0]));
-  TT_ASSIGN_OR_RETURN(
-      const int64_t col_w,
-      ComputeOutputSize(output_w, padding[1], dilation[1], k_w, stride[1]));
   const int64_t length_col = input.size(2);
 
   TT_RET_CHECK(length_col == col_h * col_w, error::kInvalidArgument)
@@ -110,13 +133,10 @@ absl::StatusOr<DeviceBufferRef> AtenCol2Im(
   TT_ASSIGN_OR_RETURN(Dimensions output_dims,
                       GetOutputDimensions(input, output_size, kernel_size,
                                           dilation, padding, stride));
-  TT_ASSIGN_OR_RETURN(const int64_t col_h,
-                      ComputeOutputSize(output_size[0], padding[0], dilation[0],
-                                        kernel_size[0], stride[0]));
-  TT_ASSIGN_OR_RETURN(const int64_t col_w,
-                      ComputeOutputSize(output_size[1], padding[1], dilation[1],
-                                        kernel_size[1], stride[1]));
-  SmallInt64Vector col_size = {col_h, col_w};
+
+  TT_ASSIGN_OR_RETURN(
+      const auto col_size,
+      ComputeOutputSize(output_size, padding, dilation, kernel_size, stride));
 
   auto op_builder =
       [output_size = CopyIntVector(output_size), col_size = std::move(col_size),

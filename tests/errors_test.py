@@ -3967,7 +3967,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       torch.ops.aten.col2im(img, (5, 5), (0, 2), (1, 1), (0, 0), (1, 1))
 
   def test_col2im_channels_divisibility(self):
-    img = torch.randn(1, 5, 16, device=et.device())
+    img = torch.randn(1, 5, 15, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
@@ -3981,6 +3981,46 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         ),
     ):
       torch.ops.aten.col2im(img, (5, 5), (2, 2), (1, 1), (0, 0), (1, 1))
+
+  def test_col2im_invalid_stride(self):
+    img = torch.randn(1, 4, 16, device=et.device())
+
+    output_size = (5, 5)
+    kernel_size = (2, 2)
+    dilation = (1, 1)
+    padding = (0, 0)
+
+    # Check 0 stride.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="col2im(): expected all stride elements to be positive, got [0, 1]",
+        cpu=(
+            "stride should be greater than zero, but got stride_height:"
+            " 0 stride_width: 1"
+        ),
+        message_reviewed_by="wan",
+    ):
+      stride = (0, 1)
+      torch.ops.aten.col2im(
+          img, output_size, kernel_size, dilation, padding, stride
+      )
+
+    # Check negative stride.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "col2im(): expected all stride elements to be positive, got [1, -1]"
+        ),
+        cpu=(
+            "stride should be greater than zero, but got stride_height:"
+            " 1 stride_width: -1"
+        ),
+        message_reviewed_by="wan",
+    ):
+      stride = (1, -1)
+      torch.ops.aten.col2im(
+          img, output_size, kernel_size, dilation, padding, stride
+      )
 
   def test_col2im_length_mismatch(self):
     # output=(5,5), k=(2,2), stride=(1,1), pad=(0,0)

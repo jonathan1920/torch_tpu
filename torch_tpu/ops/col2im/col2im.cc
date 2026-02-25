@@ -21,6 +21,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -72,7 +73,9 @@ absl::StatusOr<mlir::MlirOp> BuildCol2ImShlo(
   // Input: (N, C * kH * kW, L)
   const auto input_type = GetTensorTypeOrDie(input);
   const auto input_shape = input_type.getShape();
-  TT_RET_CHECK(input_shape.size() == 3, error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error is caught before this function is
+                 // called.
+      input_shape.size() == 3, error::kInvalidArgument)
       << "input must be 3D, got " << input_shape.size() << "D";
 
   // N
