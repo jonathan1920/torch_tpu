@@ -34,7 +34,6 @@ interchangeability of benchmark functions. The arguments are:
 """
 
 import functools
-import time
 from typing import Any, Callable, Mapping
 import torch
 from torch.nn import attention
@@ -164,11 +163,6 @@ def meta_llama_forward_pass(
   # We don't do that right now to match the existing benchmark implementation.
   with torch.no_grad():
     result = model(tokens, start_pos)
-
-  # TODO(b/478299938): Remove the fake regression introduced to test alerting.
-  # Currently, the meta llama forward pass is stable ~50ms. Adding 1s to
-  # simulate a regression.
-  time.sleep(1)
   return result
 
 
