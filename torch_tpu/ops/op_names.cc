@@ -344,6 +344,32 @@ std::string_view ToString(OpName op_name) {
       return "_foreach_ceil";
     case OpName::kForeachCeil_:
       return "_foreach_ceil_";
+    case OpName::kForeachClampMaxList:
+      return "_foreach_clamp_max.List";
+    case OpName::kForeachClampMaxScalar:
+      return "_foreach_clamp_max.Scalar";
+    case OpName::kForeachClampMaxScalarList:
+      return "_foreach_clamp_max.ScalarList";
+    case OpName::kForeachClampMax_List:
+      return "_foreach_clamp_max_.List";
+    case OpName::kForeachClampMax_Scalar:
+      return "_foreach_clamp_max_.Scalar";
+    case OpName::kForeachClampMax_ScalarList:
+      return "_foreach_clamp_max_.ScalarList";
+    case OpName::kForeachClampMinList:
+      return "_foreach_clamp_min.List";
+    case OpName::kForeachClampMinScalar:
+      return "_foreach_clamp_min.Scalar";
+    case OpName::kForeachClampMinScalarList:
+      return "_foreach_clamp_min.ScalarList";
+    case OpName::kForeachClampMin_List:
+      return "_foreach_clamp_min_.List";
+    case OpName::kForeachClampMin_Scalar:
+      return "_foreach_clamp_min_.Scalar";
+    case OpName::kForeachClampMin_ScalarList:
+      return "_foreach_clamp_min_.ScalarList";
+    case OpName::kForeachCopy_:
+      return "_foreach_copy_";
     case OpName::kForeachCos:
       return "_foreach_cos";
     case OpName::kForeachCos_:
@@ -424,6 +450,30 @@ std::string_view ToString(OpName op_name) {
       return "_foreach_log";
     case OpName::kForeachLog_:
       return "_foreach_log_";
+    case OpName::kForeachMaximumList:
+      return "_foreach_maximum.List";
+    case OpName::kForeachMaximumScalar:
+      return "_foreach_maximum.Scalar";
+    case OpName::kForeachMaximumScalarList:
+      return "_foreach_maximum.ScalarList";
+    case OpName::kForeachMaximum_List:
+      return "_foreach_maximum_.List";
+    case OpName::kForeachMaximum_Scalar:
+      return "_foreach_maximum_.Scalar";
+    case OpName::kForeachMaximum_ScalarList:
+      return "_foreach_maximum_.ScalarList";
+    case OpName::kForeachMinimumList:
+      return "_foreach_minimum.List";
+    case OpName::kForeachMinimumScalar:
+      return "_foreach_minimum.Scalar";
+    case OpName::kForeachMinimumScalarList:
+      return "_foreach_minimum.ScalarList";
+    case OpName::kForeachMinimum_List:
+      return "_foreach_minimum_.List";
+    case OpName::kForeachMinimum_Scalar:
+      return "_foreach_minimum_.Scalar";
+    case OpName::kForeachMinimum_ScalarList:
+      return "_foreach_minimum_.ScalarList";
     case OpName::kForeachMulList:
       return "_foreach_mul.List";
     case OpName::kForeachMulScalar:
@@ -444,6 +494,20 @@ std::string_view ToString(OpName op_name) {
       return "_foreach_neg";
     case OpName::kForeachNeg_:
       return "_foreach_neg_";
+    case OpName::kForeachPowList:
+      return "_foreach_pow.List";
+    case OpName::kForeachPowScalar:
+      return "_foreach_pow.Scalar";
+    case OpName::kForeachPowScalarAndTensor:
+      return "_foreach_pow.ScalarAndTensor";
+    case OpName::kForeachPowScalarList:
+      return "_foreach_pow.ScalarList";
+    case OpName::kForeachPow_List:
+      return "_foreach_pow_.List";
+    case OpName::kForeachPow_Scalar:
+      return "_foreach_pow_.Scalar";
+    case OpName::kForeachPow_ScalarList:
+      return "_foreach_pow_.ScalarList";
     case OpName::kForeachReciprocal:
       return "_foreach_reciprocal";
     case OpName::kForeachReciprocal_:

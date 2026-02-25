@@ -235,6 +235,66 @@ void AtenForeachSub_Scalar(at::TensorList self, const at::Scalar& scalar);
 void AtenForeachSub_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> scalars);
 
+std::vector<at::Tensor> AtenForeachClampMaxScalar(at::TensorList self,
+                                                  const at::Scalar& scalar);
+std::vector<at::Tensor> AtenForeachClampMaxList(at::TensorList self,
+                                                at::TensorList other);
+std::vector<at::Tensor> AtenForeachClampMaxScalarList(
+    at::TensorList self, at::ArrayRef<at::Scalar> scalars);
+void AtenForeachClampMax_Scalar(at::TensorList self, const at::Scalar& scalar);
+void AtenForeachClampMax_List(at::TensorList self, at::TensorList other);
+void AtenForeachClampMax_ScalarList(at::TensorList self,
+                                    at::ArrayRef<at::Scalar> scalars);
+
+std::vector<at::Tensor> AtenForeachClampMinScalar(at::TensorList self,
+                                                  const at::Scalar& scalar);
+std::vector<at::Tensor> AtenForeachClampMinList(at::TensorList self,
+                                                at::TensorList other);
+std::vector<at::Tensor> AtenForeachClampMinScalarList(
+    at::TensorList self, at::ArrayRef<at::Scalar> scalars);
+void AtenForeachClampMin_Scalar(at::TensorList self, const at::Scalar& scalar);
+void AtenForeachClampMin_List(at::TensorList self, at::TensorList other);
+void AtenForeachClampMin_ScalarList(at::TensorList self,
+                                    at::ArrayRef<at::Scalar> scalars);
+
+void AtenForeachCopy_(at::TensorList self, at::TensorList src,
+                      bool non_blocking);
+
+std::vector<at::Tensor> AtenForeachMaximumScalar(at::TensorList self,
+                                                 const at::Scalar& scalar);
+std::vector<at::Tensor> AtenForeachMaximumList(at::TensorList self,
+                                               at::TensorList other);
+std::vector<at::Tensor> AtenForeachMaximumScalarList(
+    at::TensorList self, at::ArrayRef<at::Scalar> scalars);
+void AtenForeachMaximum_Scalar(at::TensorList self, const at::Scalar& scalar);
+void AtenForeachMaximum_List(at::TensorList self, at::TensorList other);
+void AtenForeachMaximum_ScalarList(at::TensorList self,
+                                   at::ArrayRef<at::Scalar> scalars);
+
+std::vector<at::Tensor> AtenForeachMinimumScalar(at::TensorList self,
+                                                 const at::Scalar& scalar);
+std::vector<at::Tensor> AtenForeachMinimumList(at::TensorList self,
+                                               at::TensorList other);
+std::vector<at::Tensor> AtenForeachMinimumScalarList(
+    at::TensorList self, at::ArrayRef<at::Scalar> scalars);
+void AtenForeachMinimum_Scalar(at::TensorList self, const at::Scalar& scalar);
+void AtenForeachMinimum_List(at::TensorList self, at::TensorList other);
+void AtenForeachMinimum_ScalarList(at::TensorList self,
+                                   at::ArrayRef<at::Scalar> scalars);
+
+std::vector<at::Tensor> AtenForeachPowList(at::TensorList self,
+                                           at::TensorList exponent);
+std::vector<at::Tensor> AtenForeachPowScalar(at::TensorList self,
+                                             const at::Scalar& exponent);
+std::vector<at::Tensor> AtenForeachPowScalarList(
+    at::TensorList self, at::ArrayRef<at::Scalar> exponent);
+std::vector<at::Tensor> AtenForeachPowScalarAndTensor(const at::Scalar& self,
+                                                      at::TensorList exponent);
+void AtenForeachPow_List(at::TensorList self, at::TensorList exponent);
+void AtenForeachPow_Scalar(at::TensorList self, const at::Scalar& exponent);
+void AtenForeachPow_ScalarList(at::TensorList self,
+                               at::ArrayRef<at::Scalar> exponent);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_FOREACH_ATEN_KERNELS_H_

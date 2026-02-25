@@ -312,6 +312,8 @@ torch_tpu_cc_library(
         "foreach_aten_kernels.h",
     ],
     deps = [
+        ":binary_aten_kernels",
+        ":nullary_aten_kernels",
         ":op_builder_utils",
         ":op_names",
         ":unary",
@@ -324,6 +326,8 @@ torch_tpu_cc_library(
         "//torch_tpu/common:error_utils",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:op_dispatcher",
+        "//torch_tpu/ops/clamp:clamp_aten_kernels",
+        "//torch_tpu/ops/copy_from:copy_from_aten_kernels",
         "//torch_tpu/ops/macros:kernel",
         "//torch_tpu/ops/round",
         "//torch_tpu/ops/sigmoid:sigmoid_aten_kernels",
