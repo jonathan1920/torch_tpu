@@ -20,15 +20,13 @@
 
 #include "absl/status/statusor.h"
 #include "ATen/core/ATen_fwd.h"
-#include "ATen/ops/result_type.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/dot/dot.h"
+#include "torch_tpu/ops/dot/dot_checks.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -37,15 +35,11 @@ namespace torch_tpu {
 
 at::Tensor AtenDot(const at::Tensor& lhs, const at::Tensor& rhs) {
   TT_KERNEL(OpName::kDot, _, (lhs, rhs), {
-    TT_CHECK_THROW(lhs.dim() == 1, error::kInvalidArgument)
-        << "lhs must be 1D, got dim: " << lhs.dim();
-    TT_CHECK_THROW(rhs.dim() == 1, error::kInvalidArgument)
-        << "rhs must be 1D, got dim: " << rhs.dim();
+    TT_THROW_IF_ERROR(CheckIsVector(lhs, "first"));
+    TT_THROW_IF_ERROR(CheckIsVector(rhs, "second"));
+
     TT_ASSIGN_OR_THROW(auto result_scalar_type,
-                       ConvertTo<mlir::ElementType>(at::result_type(lhs, rhs)));
-    TT_CHECK_THROW(result_scalar_type != mlir::ElementType::PRED,
-                   error::kInvalidArgument)
-        << "bool dtype is not supported";
+                       CheckedGetDotOutputType(lhs, rhs));
 
     // TODO: XLA doesn't support matmuls with i64, so we convert them to f64.
     auto op_builder = [](FixedSizeSpan<mlir::MlirOp, 2> inputs)

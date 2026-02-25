@@ -16,17 +16,17 @@
 
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "ATen/core/ATen_fwd.h"
-#include "ATen/ops/result_type.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/dot/dot.h"
+#include "torch_tpu/ops/dot/dot_checks.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/unary.h"
@@ -34,28 +34,31 @@
 namespace torch_tpu {
 
 namespace {
+
 absl::StatusOr<mlir::MlirOp> BuildVdotShlo(mlir::MlirOp lhs, mlir::MlirOp rhs) {
   TT_ASSIGN_OR_RETURN(mlir::MlirOp conjugated_lhs, BuildConjPhysicalShlo(lhs));
-
   return BuildDotShlo(conjugated_lhs, rhs);
 }
+
+absl::Status CheckInputs(const at::Tensor& lhs, const at::Tensor& rhs) {
+  TT_RETURN_IF_ERROR(CheckIsVector(lhs, "first"));
+  TT_RETURN_IF_ERROR(CheckIsVector(rhs, "second"));
+
+  TT_RET_CHECK(lhs.size(0) == rhs.size(0), error::kInvalidArgument)
+      << "expected inputs to have the same shape, got " << ToString(lhs.sizes())
+      << " vs " << ToString(rhs.sizes());
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 at::Tensor AtenVdot(const at::Tensor& lhs, const at::Tensor& rhs) {
   TT_KERNEL(OpName::kVdot, _, (lhs, rhs), {
-    TT_CHECK_THROW(lhs.dim() == 1, error::kInvalidArgument)
-        << "lhs must be 1D, got dim: " << lhs.dim();
-    TT_CHECK_THROW(rhs.dim() == 1, error::kInvalidArgument)
-        << "rhs must be 1D, got dim: " << rhs.dim();
-    TT_CHECK_THROW(lhs.size(0) == rhs.size(0), error::kInvalidArgument)
-        << "inputs should have the same size, got: " << lhs.sym_size(0)
-        << " and " << rhs.sym_size(0);
+    TT_THROW_IF_ERROR(CheckInputs(lhs, rhs));
 
     TT_ASSIGN_OR_THROW(auto result_scalar_type,
-                       ConvertTo<mlir::ElementType>(at::result_type(lhs, rhs)));
-    TT_CHECK_THROW(result_scalar_type != mlir::ElementType::PRED,
-                   error::kInvalidArgument)
-        << "bool dtype is not supported";
+                       CheckedGetDotOutputType(lhs, rhs));
 
     // TODO: XLA doesn't support matmuls with i64, so we convert them to f64.
     auto op_builder = [](FixedSizeSpan<mlir::MlirOp, 2> inputs)

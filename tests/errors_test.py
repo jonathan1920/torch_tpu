@@ -5231,6 +5231,68 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.ops.aten.index.Tensor(t, [None])
 
+  @parameterized.named_parameters(
+      {"testcase_name": "dot", "op": torch.dot, "op_name": "dot"},
+      {"testcase_name": "vdot", "op": torch.vdot, "op_name": "vdot"},
+  )
+  def test_dot_not_a_vector(self, op, op_name: str):
+    lhs = torch.ones(2, device=et.device())
+    rhs = torch.ones(2, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            f"{op_name}(): expected the first argument to be a 1D tensor,"
+            " got 2D of shape [1, 2]"
+        ),
+        cpu="1D tensors expected, but got 2D and 1D tensors",
+        message_reviewed_by="wan",
+    ):
+      op(lhs.unsqueeze(0), rhs)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            f"{op_name}(): expected the second argument to be a 1D tensor,"
+            " got 2D of shape [1, 2]"
+        ),
+        cpu="1D tensors expected, but got 1D and 2D tensors",
+        message_reviewed_by="wan",
+    ):
+      op(lhs, rhs.unsqueeze(0))
+
+  @parameterized.named_parameters(
+      {"testcase_name": "dot", "op": torch.dot, "op_name": "dot"},
+      {"testcase_name": "vdot", "op": torch.vdot, "op_name": "vdot"},
+  )
+  def test_dot_bool(self, op, op_name: str):
+    lhs = torch.ones(2, device=et.device(), dtype=torch.bool)
+    rhs = torch.ones(2, device=et.device(), dtype=torch.bool)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=f"{op_name}(): the input dtypes cannot be bool",
+        cpu="\"dot\" not implemented for 'Bool'",
+        message_reviewed_by="wan",
+    ):
+      op(lhs, rhs)
+
+  def test_vdot_size_mismatch(self):
+    lhs = torch.ones(2, device=et.device())
+    rhs = torch.ones(3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="vdot(): expected inputs to have the same shape, got [2] vs [3]",
+        cpu=(
+            "inconsistent tensor size, expected tensor [2] and src [3] to have"
+            " the same number of elements, but got 2 and 3 elements"
+            " respectively"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.vdot(lhs, rhs)
+
 
 if __name__ == "__main__":
   absltest.main()
