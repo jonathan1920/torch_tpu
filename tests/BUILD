@@ -752,6 +752,20 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "compilation_cache_stress_test",
+    srcs = ["compilation_cache_stress_test.py"],
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile:tpu_torch_compile",
+        "//torch_tpu/api",
+    ],
+)
+
+torch_tpu_py_test(
     name = "dynamism_model_test",
     srcs = ["dynamism_model_test.py"],
     main = "dynamism_model_test.py",
