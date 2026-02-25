@@ -357,19 +357,20 @@ absl::Status AtomicWriteToCacheFile(const std::string& cache_entry_path,
     });
 
     std::unique_ptr<tsl::WritableFile> file;
-    TT_RETURN_IF_ERROR(env->NewWritableFile(temp_file_path, &file))
-        << "failed to create writable file " << temp_file_path;
-    TT_RETURN_IF_ERROR(file->Append(serialized_data))
-        << "failed to write to file " << temp_file_path;
-    TT_RETURN_IF_ERROR(file->Close())
-        << "failed to close file " << temp_file_path;
+    TT_RETURN_IF_ERROR(env->NewWritableFile(temp_file_path, &file)).SetPrepend()
+        << "failed to create writable file " << temp_file_path << ": ";
+    TT_RETURN_IF_ERROR(file->Append(serialized_data)).SetPrepend()
+        << "failed to write to file " << temp_file_path << ": ";
+    TT_RETURN_IF_ERROR(file->Close()).SetPrepend()
+        << "failed to close file " << temp_file_path << ": ";
 
     // Atomically rename the temp file to the final cache file path.
     // If the target file already exists, RenameFile() will replace it,
     // which is what we want (last writer wins).
     TT_RETURN_IF_ERROR(env->RenameFile(temp_file_path, cache_entry_path))
+            .SetPrepend()
         << "failed to rename file " << temp_file_path << " to "
-        << cache_entry_path;
+        << cache_entry_path << ": ";
 
     success = true;
   }
