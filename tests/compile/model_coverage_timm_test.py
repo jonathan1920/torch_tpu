@@ -139,6 +139,13 @@ class ModelCoverageTimmTest(parameterized.TestCase):
           atol=1e-3,
       ),
       dict(
+          testcase_name="timm/resnet50d",
+          provider="timm",
+          module_name="resnet50d",
+          rtol=1e-3,
+          atol=1e-3,
+      ),
+      dict(
           testcase_name="timm/vit_small_patch8_224",
           provider="timm",
           module_name="vit_small_patch8_224",

@@ -46,6 +46,14 @@ namespace torch_tpu {
 namespace stablehlo = mlir::stablehlo;
 
 namespace {
+struct GroupedWeightParams {
+  mlir::MlirOp input;
+  mlir::MlirOp grad_output;
+  int64_t input_batch_dim;
+  int64_t input_feature_dim;
+  int64_t kernel_in_feat_dim;
+  int64_t kernel_out_feat_dim;
+};
 
 absl::StatusOr<mlir::MlirOp> BuildTransposedConvolution(
     mlir::MlirOp input, mlir::MlirOp weight, std::optional<mlir::MlirOp> bias,
@@ -288,6 +296,104 @@ absl::StatusOr<mlir::MlirOp> BuildConvolution(
   mlir::MlirOp shaped_bias = stablehlo::BroadcastInDim(
       result_type, bias.value(), /*broadcast_dimensions=*/{1});
   return stablehlo::Add(conv_op, shaped_bias);
+}
+
+// Helper function to prepare grouped convolution inputs for convolution
+// backward when groups > 1.
+GroupedWeightParams PrepareGroupedWeightInputs(
+    mlir::MlirOp input, mlir::MlirOp grad_output, int64_t groups,
+    int64_t input_batch_dimension, int64_t input_feature_dimension,
+    int64_t kernel_input_feature_dimension,
+    int64_t kernel_output_feature_dimension) {
+  const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
+  const mlir::RankedTensorType grad_type = GetTensorTypeOrDie(grad_output);
+  auto input_shape = input_type.getShape();
+  auto grad_shape = grad_type.getShape();
+
+  int64_t c_in = input_type.getDimSize(1);
+  int64_t c_in_g = c_in / groups;
+
+  // 1. Prepare Input (LHS)
+
+  Dimensions input_reshape_dims;
+  input_reshape_dims.push_back(input_shape[0]);  // N
+  input_reshape_dims.push_back(groups);
+  input_reshape_dims.push_back(c_in_g);
+  for (size_t i = 2; i < input_shape.size(); ++i) {
+    input_reshape_dims.push_back(input_shape[i]);
+  }
+
+  input =
+      stablehlo::Reshape(mlir::RankedTensorType::get(
+                             input_reshape_dims, input_type.getElementType()),
+                         input);
+
+  Dimensions input_transpose_perm;
+  input_transpose_perm.push_back(2);  // C_in/G
+  input_transpose_perm.push_back(1);  // G
+  input_transpose_perm.push_back(0);  // N
+  for (size_t i = 3; i < input_reshape_dims.size(); ++i) {
+    input_transpose_perm.push_back(i);
+  }
+
+  input = stablehlo::Transpose(input, input_transpose_perm);
+
+  Dimensions input_flat_dims;
+  input_flat_dims.push_back(c_in_g);
+  input_flat_dims.push_back(groups * input_shape[0]);  // G*N
+  for (size_t i = 2; i < input_shape.size(); ++i) {
+    input_flat_dims.push_back(input_shape[i]);
+  }
+  input = stablehlo::Reshape(
+      mlir::RankedTensorType::get(input_flat_dims, input_type.getElementType()),
+      input);
+
+  // 2. Prepare GradOutput (RHS)
+  int64_t c_out = grad_type.getDimSize(1);
+  int64_t c_out_g = c_out / groups;
+
+  Dimensions grad_reshape_dims;
+  grad_reshape_dims.push_back(grad_shape[0]);  // N
+  grad_reshape_dims.push_back(groups);
+  grad_reshape_dims.push_back(c_out_g);
+  for (size_t i = 2; i < grad_shape.size(); ++i) {
+    grad_reshape_dims.push_back(grad_shape[i]);
+  }
+  grad_output =
+      stablehlo::Reshape(mlir::RankedTensorType::get(
+                             grad_reshape_dims, grad_type.getElementType()),
+                         grad_output);
+
+  Dimensions grad_transpose_perm;
+  grad_transpose_perm.push_back(1);  // G
+  grad_transpose_perm.push_back(2);  // C_out/G
+  grad_transpose_perm.push_back(0);  // N
+  for (size_t i = 3; i < grad_reshape_dims.size(); ++i) {
+    grad_transpose_perm.push_back(i);
+  }
+
+  grad_output = stablehlo::Transpose(grad_output, grad_transpose_perm);
+
+  Dimensions grad_flat_dims;
+  grad_flat_dims.push_back(groups * c_out_g);  // G*C_out/G
+  grad_flat_dims.push_back(grad_shape[0]);     // N
+  for (size_t i = 2; i < grad_shape.size(); ++i) {
+    grad_flat_dims.push_back(grad_shape[i]);
+  }
+
+  grad_output = stablehlo::Reshape(
+      mlir::RankedTensorType::get(grad_flat_dims, grad_type.getElementType()),
+      grad_output);
+
+  std::swap(input_batch_dimension, input_feature_dimension);
+  std::swap(kernel_input_feature_dimension, kernel_output_feature_dimension);
+
+  return {input,
+          grad_output,
+          input_batch_dimension,
+          input_feature_dimension,
+          kernel_input_feature_dimension,
+          kernel_output_feature_dimension};
 }
 
 }  // namespace
@@ -564,90 +670,16 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardWeight(
     // RHS OutFeature (G*C_out/G) is split into G groups of C_out/G.
     //
     // Result: (C_in/G, G*C_out/G, ...) -> (C_out, C_in/G, ...) via transpose.
-
-    mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
-    int64_t c_in = input_type.getDimSize(1);
-    int64_t c_in_g = c_in / groups;
-    auto input_shape = input_type.getShape();
-
-    // 1. Prepare Input (LHS)
-
-    Dimensions input_reshape_dims;
-    input_reshape_dims.push_back(input_shape[0]);  // N
-    input_reshape_dims.push_back(groups);
-    input_reshape_dims.push_back(c_in_g);
-    for (size_t i = 2; i < input_shape.size(); ++i) {
-      input_reshape_dims.push_back(input_shape[i]);
-    }
-
-    input =
-        stablehlo::Reshape(mlir::RankedTensorType::get(
-                               input_reshape_dims, input_type.getElementType()),
-                           input);
-
-    Dimensions input_transpose_perm;
-    input_transpose_perm.push_back(2);  // C_in/G
-    input_transpose_perm.push_back(1);  // G
-    input_transpose_perm.push_back(0);  // N
-    for (size_t i = 3; i < input_reshape_dims.size(); ++i) {
-      input_transpose_perm.push_back(i);
-    }
-
-    input = stablehlo::Transpose(input, input_transpose_perm);
-
-    Dimensions input_flat_dims;
-    input_flat_dims.push_back(c_in_g);
-    input_flat_dims.push_back(groups * input_shape[0]);  // G*N
-    for (size_t i = 2; i < input_shape.size(); ++i) {
-      input_flat_dims.push_back(input_shape[i]);
-    }
-    input =
-        stablehlo::Reshape(mlir::RankedTensorType::get(
-                               input_flat_dims, input_type.getElementType()),
-                           input);
-
-    // 2. Prepare GradOutput (RHS)
-
-    mlir::RankedTensorType grad_type = GetTensorTypeOrDie(grad_output);
-    int64_t c_out = grad_type.getDimSize(1);
-    int64_t c_out_g = c_out / groups;
-    auto grad_shape = grad_type.getShape();
-
-    Dimensions grad_reshape_dims;
-    grad_reshape_dims.push_back(grad_shape[0]);  // N
-    grad_reshape_dims.push_back(groups);
-    grad_reshape_dims.push_back(c_out_g);
-    for (size_t i = 2; i < grad_shape.size(); ++i) {
-      grad_reshape_dims.push_back(grad_shape[i]);
-    }
-    grad_output =
-        stablehlo::Reshape(mlir::RankedTensorType::get(
-                               grad_reshape_dims, grad_type.getElementType()),
-                           grad_output);
-
-    Dimensions grad_transpose_perm;
-    grad_transpose_perm.push_back(1);  // G
-    grad_transpose_perm.push_back(2);  // C_out/G
-    grad_transpose_perm.push_back(0);  // N
-    for (size_t i = 3; i < grad_reshape_dims.size(); ++i) {
-      grad_transpose_perm.push_back(i);
-    }
-
-    grad_output = stablehlo::Transpose(grad_output, grad_transpose_perm);
-
-    Dimensions grad_flat_dims;
-    grad_flat_dims.push_back(groups * c_out_g);  // G*C_out/G
-    grad_flat_dims.push_back(grad_shape[0]);     // N
-    for (size_t i = 2; i < grad_shape.size(); ++i) {
-      grad_flat_dims.push_back(grad_shape[i]);
-    }
-
-    grad_output = stablehlo::Reshape(
-        mlir::RankedTensorType::get(grad_flat_dims, grad_type.getElementType()),
-        grad_output);
-
-    std::swap(input_batch_dimension, input_feature_dimension);
-    std::swap(kernel_input_feature_dimension, kernel_output_feature_dimension);
+    auto params = PrepareGroupedWeightInputs(
+        input, grad_output, groups, input_batch_dimension,
+        input_feature_dimension, kernel_input_feature_dimension,
+        kernel_output_feature_dimension);
+    input = params.input;
+    grad_output = params.grad_output;
+    input_batch_dimension = params.input_batch_dim;
+    input_feature_dimension = params.input_feature_dim;
+    kernel_input_feature_dimension = params.kernel_in_feat_dim;
+    kernel_output_feature_dimension = params.kernel_out_feat_dim;
   }
 
   // 3. Convolution
@@ -675,11 +707,43 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardWeight(
   const auto window_reversal =
       mlir::DenseBoolArrayAttr::get(&ctx, window_reversal_vec);
 
+  mlir::RankedTensorType grad_type = GetTensorTypeOrDie(grad_output);
+  auto grad_shape = grad_type.getShape();
+
+  mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
+  auto input_shape = input_type.getShape();
+
   Dimensions symmetric_padding_dims;
   symmetric_padding_dims.reserve(num_spatial_dims * 2);
-  for (int64_t p : padding) {
-    symmetric_padding_dims.push_back(p);
-    symmetric_padding_dims.push_back(p);
+
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    int64_t p = padding[i];
+    int64_t s = stride[i];
+    int64_t d = dilation[i];
+    int64_t k = weight_dims[2 + i];
+    int64_t in_dim = input_shape[2 + i];
+    int64_t out_dim = grad_shape[2 + i];
+
+    int64_t k_eff = (k - 1) * d + 1;
+
+    // In a strided convolution (stride > 1), the windows might not perfectly
+    // align with the end of the padded input.
+    // 'last_window_end' tracks the last pixel index during the forward pass.
+    int64_t last_window_end = (out_dim - 1) * s + k_eff;
+
+    // 'overhang' represents the trailing pixels in the padded input that were
+    // ignored during the forward pass.
+    // If we use symmetric padding in backward, these 'dead pixels' contribute
+    // to the weight gradient calculation, causing the inferred gradient shape
+    // to be larger than the original weight shape (e.g., 4x4 vs 3x3).
+    int64_t overhang = (in_dim + 2 * p) - last_window_end;
+
+    // Add asymmetric padding to cancel out the overhang in the backward pass
+    int64_t pad_lo = p;
+    int64_t pad_hi = p - overhang;
+
+    symmetric_padding_dims.push_back(pad_lo);
+    symmetric_padding_dims.push_back(pad_hi);
   }
 
   const mlir::RankedTensorType padding_type = mlir::RankedTensorType::get(

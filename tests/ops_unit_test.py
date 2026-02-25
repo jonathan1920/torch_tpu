@@ -4519,6 +4519,67 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
 
   @parameterized.product(
+      kernel_size=[3],
+      stride=[2],
+      padding=[1],
+      input_size=[28],
+  )
+  def test_convolution_backward_weight_overhang(
+      self,
+      kernel_size: int | tuple[int, int],
+      stride: int | tuple[int, int],
+      padding: int | tuple[int, int],
+      input_size: int | tuple[int, int],
+  ) -> None:
+    """Tests convolution backward where stride causes an overhang."""
+
+    # Explanation of the failure in symmetric padding case:
+    # 1. Forward Pass:
+    #    - Input 28 with Padding 1 becomes 30.
+    #    - Output Size = floor((30 - 3) / 2) + 1 = 14.
+    #    - The last window starts at index (13 * 2 - 1) = 25 and ends at 27.
+    #    - Index 28 (the rightmost padding) is NOT reached by any window. This
+    #      is called 'Overhang'.
+
+    # 2. Backward Weight Gradient:
+    #    - Effective Kernel Size (K_eff) = 2 * (14 - 1) + 1 = 27.
+    #    - If we use SYMMETRIC padding (lo=1, hi=1):
+    #      Result Size = (28 + 1 + 1 - 27) / 1 + 1 = 4.
+    #    - This results in a 4x4 gradient, but the original weight is 3x3.
+
+    # 3. Fix:
+    #    - Use asymmetric padding (lo=0, hi=1) to make the output size 13.
+    #    - Then, the weight gradient size is (28 + 0 + 1 - 26) / 1 + 1 = 3.
+    batch = 1
+    in_channels = 1
+    out_channels = 1
+
+    input_ = torch.randn(
+        batch, in_channels, input_size, input_size, requires_grad=True
+    )
+    weight = torch.randn(
+        out_channels, in_channels, kernel_size, kernel_size, requires_grad=True
+    )
+    bias = torch.randn(out_channels, requires_grad=True)
+
+    def test_fn(
+        device: torch.device,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+      out = torch.nn.functional.conv2d(
+          input_.to(device),
+          weight.to(device),
+          bias=bias.to(device),
+          stride=stride,
+          padding=padding,
+      )
+      grad_output = torch.randn_like(out, device=device)
+      out.backward(grad_output)
+
+      return input_.grad, weight.grad, bias.grad
+
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
+
+  @parameterized.product(
       groups=[1, 2, 4],
       in_channels_per_group=[1, 2],
       out_channels_per_group=[1, 2],
