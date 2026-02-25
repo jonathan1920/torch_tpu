@@ -1,0 +1,183 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Base class for quality benchmark models."""
+
+import abc
+import dataclasses
+import hashlib
+from typing import Any, Iterable, final
+
+from absl import logging
+import torch
+
+
+class MetricProducer(abc.ABC):
+  """Abstract base class for quality benchmark metrics."""
+
+  @abc.abstractmethod
+  def get_name(self) -> str:
+    """Returns the name of the metric."""
+    raise NotImplementedError
+
+  @abc.abstractmethod
+  def assess(
+      self,
+      model_input: str,
+      benchmark_model: "QualityBenchmarkModel",
+  ) -> torch.Tensor:
+    """Assess the quality of the model on a given input.
+
+    Args:
+      model_input: The input string to assess.
+      benchmark_model: The benchmark model object.
+
+    Returns:
+      The score of the metric.
+    """
+    raise NotImplementedError
+
+
+@dataclasses.dataclass
+class FormattedInput:
+  """Formatted input for the model."""
+
+  # The formatted input tensor.
+  input: torch.Tensor
+
+  # The length of the unpadded tokens. This is important to ensure metrics do n
+  # not process padding tokens.
+  unpadded_length: int
+
+
+class QualityBenchmarkModel(abc.ABC):
+  """Abstract base class for quality benchmark models.
+
+  The class stores a torch.nn.Module model and any other necessary information
+  for the methods to be called. It is expected that the model is loaded from a
+  pre-trained checkpoint before any other methods are called. The model can be
+  compiled before the model is returned or after the model is returned. The
+  compile_model method can be used to compile the model before it is used.
+
+  Some sudo code for expected usage of this class is as follows:
+
+  qbm = QualityBenchmarkModel(init_args)
+  if flag.compile_model:
+    qbm.compile_model()
+
+  for sample in data_loader():
+    benchmark_function(input, qbm)
+  """
+
+  def __init__(self):
+    self._model_compiled = False
+
+  @abc.abstractmethod
+  def initialize(self) -> None:
+    """Initializes the model.
+
+    This method is called once per worker to initialize the model. It assumes
+    that any necessary environment variables or flags have already been set.
+    """
+    raise NotImplementedError
+
+  @abc.abstractmethod
+  def get_model(self) -> torch.nn.Module:
+    """Gets the model from a pre-trained checkpoint.
+
+    get_model is called once per worker to retrieve the model from a
+    pre-trained checkpoint. It assumes the model has already been loaded from
+    the checkpoint and any other initialization has been done.
+
+    Returns:
+      The model from a pre-trained checkpoint.
+    """
+    raise NotImplementedError
+
+  @final
+  def compile_model(self) -> None:
+    """Compiles model used by the interface.
+
+    This method is called to compile the model used by the interface. It
+    changes the state of the model such that "get_model" returns the compiled
+    model. This method is idempotent - calling it multiple times has the same
+    effect as calling it once.
+    """
+
+    if self._model_compiled:
+      logging.info("Model already compiled. Skipping compilation.")
+      return
+    self._model_compiled = True
+    self._compile_model_once()
+
+  @abc.abstractmethod
+  def _compile_model_once(self) -> None:
+    """Compiles model used by the interface.
+
+    This method implements the compilation of the model. It's guaranteed to be
+    called only once.
+    """
+    raise NotImplementedError
+
+  @abc.abstractmethod
+  def format(self, raw_input: Any) -> FormattedInput:
+    """Formats the input for the model.
+
+    Args:
+      raw_input: The raw input to format for the model.
+
+    Returns:
+      A tuple containing the formatted tensor and the length of the unpadded
+      tokens.
+    """
+    raise NotImplementedError
+
+
+def run_quality_benchmark(
+    benchmark_model: QualityBenchmarkModel,
+    model_compile: bool,
+    dataset_iterator: Iterable[Any],
+    benchmark_metric: MetricProducer,
+) -> torch.Tensor:
+  """Runs quality benchmark for a given model on a dataset.
+
+  Args:
+    benchmark_model: The benchmark model object.
+    model_compile: Whether to compile the model.
+    dataset_iterator: An iterable of strings representing the dataset.
+    benchmark_metric: A function that runs the benchmark metric. Returns the
+      metric score for the given input.
+
+  Returns:
+    The average score of the benchmark runs for the given dataset.
+  """
+  if model_compile:
+    benchmark_model.compile_model()
+
+  score_list = []
+  run_id = 0
+
+  for model_input in dataset_iterator:
+    score = benchmark_metric.assess(model_input, benchmark_model)
+    h = hashlib.sha256(model_input.encode("utf-8")).hexdigest()
+    logging.info("Score for run %d (HASH: %s): %f", run_id, h, score)
+
+    run_id += 1
+    score_list.append(score)
+
+  if not score_list:
+    return 0.0
+
+  score_avg = sum(score_list) / len(score_list)
+  return score_avg

@@ -1,0 +1,57 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Utility functions for benchmarks."""
+
+from absl.testing import parameterized
+from torch_tpu.examples.benchmarks.e2e import benchmark_utils
+from torch_tpu.examples.benchmarks.e2e import performance_utils
+
+
+class BenchmarkTest(parameterized.TestCase):
+  """Tests for end-to-end performance benchmarks."""
+
+  def run_performance_benchmark_test(
+      self,
+      config: performance_utils.PerformanceBenchmarkConfig,
+      benchmark_name: str,
+      microbenchmark_name: str | None = None,
+  ) -> None:
+    """Runs a benchmark test.
+
+    Args:
+      config: The benchmark config.
+      benchmark_name: The name of the benchmark. This should match the last part
+        of target in the MLCompass config file. See
+        go/torchtpu-mlcompass#configuration-structure for more details.
+      microbenchmark_name: This is used to export microbenchmark results to
+        MLCompass. If a benchmark test is composed of multiple microbenchmarks,
+        this should be set to the name of the microbenchmark. For example, when
+        testing a linear layer with different tensor shapes, each one should be
+        exported to MLCompass as a microbenchmark. See
+        go/mlcompass-microbenchmark-guide for more details.
+    """
+
+    platform = benchmark_utils.PLATFORM.value
+    if platform not in config.supported_platforms:
+      self.skipTest(
+          f"Platform {benchmark_utils.PLATFORM.value} not in"
+          f" {config.supported_platforms}"
+      )
+    performance_utils.run_benchmark(
+        config=config,
+        test_method_name=self._testMethodName,
+        benchmark_name=benchmark_name,
+        microbenchmark_name=microbenchmark_name,
+    )

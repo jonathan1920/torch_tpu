@@ -65,6 +65,8 @@ pytype_strict_library(
         "//torch_tpu/_internal/export",
         "//torch_tpu/_internal/pallas",
         "//torch_tpu/_internal/profiler",
+        "//torch_tpu/_internal/shims/mlcompass:benchmark_data",
+        "//torch_tpu/_internal/shims/mlcompass:export_lib_borg",
         "//torch_tpu/_internal/shims/xprof:traceme",
         "//torch_tpu/_internal/shims/xprof:xprof_session",
         "//torch_tpu/_internal/sync",
