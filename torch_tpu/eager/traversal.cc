@@ -52,7 +52,13 @@
 #include "torch_tpu/_internal/dynamism/dynamism_ops.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_cache.h"
+#include "torch_tpu/common/dtype.h"
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fingerprint_utils.h"
+#include "torch_tpu/common/utils.h"
+#include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -60,12 +66,6 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "torch_tpu/common/compilation_cache.h"
-#include "torch_tpu/common/dtype.h"
-#include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/utils.h"
-#include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
 

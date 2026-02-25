@@ -40,8 +40,8 @@
 #include "mlir/Support/LLVM.h"
 #include "torch/csrc/profiler/combined_traceback.h"
 #include "torch/csrc/profiler/unwind/unwind.h"
-#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch_tpu/ops/op_names.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 ABSL_FLAG(std::optional<bool>, torch_tpu_internal_mlir_tracebacks, std::nullopt,
           "If set, MLIR location tracebacks will be globally enabled or "

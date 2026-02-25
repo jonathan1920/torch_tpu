@@ -37,6 +37,12 @@
 #include "c10/core/DeviceType.h"
 #include "c10/core/TensorImpl.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/dtype.h"
+#include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/eager/device.h"
+#include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/pjrt/pjrt_init.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -44,12 +50,6 @@
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
-#include "torch_tpu/common/compilation.h"
-#include "torch_tpu/common/dtype.h"
-#include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/eager/device.h"
-#include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
 
 namespace torch_tpu {
 

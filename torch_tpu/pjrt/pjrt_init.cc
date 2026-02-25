@@ -32,16 +32,16 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "torch_tpu/common/env_vars.h"
-#include "xla/pjrt/pjrt_api.h"
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/plugin/plugin_names.h"
-#include "xla/tsl/framework/allocator.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
 #include "torch_tpu/eager/device.h"
 #include "torch_tpu/common/environment.h"
 #include "torch_tpu/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_api.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/plugin/plugin_names.h"
+#include "xla/tsl/framework/allocator.h"
 
 namespace torch_tpu {
 namespace {

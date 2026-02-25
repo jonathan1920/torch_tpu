@@ -33,11 +33,11 @@
 #include "ATen/core/ATen_fwd.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
-#include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/shape.h"
 
 namespace torch_tpu {
 

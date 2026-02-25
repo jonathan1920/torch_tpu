@@ -24,14 +24,14 @@
 #include "ATen/core/TensorBody.h"
 #include "torch/csrc/autograd/python_variable.h"
 #include "torch/extension.h"  // IWYU pragma: keep for aten::Tensor pybind type
-#include "torch_tpu/ops/op_names.h"
-#include "torch_tpu/ops/python_context.h"
-#include "pybind11/pybind11.h"
 #include "torch_tpu/_internal/sync/sync.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/materialize.h"
+#include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/python_context.h"
+#include "pybind11/pybind11.h"
 
 namespace torch_tpu {
 namespace py = pybind11;

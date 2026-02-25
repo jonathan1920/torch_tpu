@@ -81,6 +81,7 @@ torch_tpu_cc_library(
         ":dot_checks",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
+        "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:fixed_size_span",
         "//torch_tpu/common:utils",

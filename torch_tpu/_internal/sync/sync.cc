@@ -29,11 +29,11 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "ATen/core/TensorBody.h"
-#include "xla/hlo/translate/register.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/traversal.h"
+#include "xla/hlo/translate/register.h"
 
 namespace torch_tpu {
 

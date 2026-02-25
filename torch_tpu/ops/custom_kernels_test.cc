@@ -29,13 +29,13 @@
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
+#include "torch_tpu/common/absl_test_shim.h"
+#include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/FuncBuilder.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "torch_tpu/common/absl_test_shim.h"
-#include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
 namespace {

@@ -21,8 +21,8 @@
 
 #include "absl/functional/bind_front.h"
 #include "ATen/core/TensorBody.h"
-#include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/triangular/triangular.h"
 #include "torch_tpu/ops/unary_aten_kernels.h"

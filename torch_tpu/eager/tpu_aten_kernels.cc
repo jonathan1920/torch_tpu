@@ -39,9 +39,6 @@
 #include "ATen/ops/sum.h"
 #include "c10/core/TensorImpl.h"
 #include "torch/library.h"
-#include "torch_tpu/ops/fmax/fmax_aten_kernels.h"
-#include "torch_tpu/ops/fmin/fmin_aten_kernels.h"
-#include "xla/xla_data.pb.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/a_min_max/a_min_max_aten_kernels.h"
@@ -60,7 +57,6 @@
 #include "torch_tpu/ops/col2im/col2im_aten_kernels.h"
 #include "torch_tpu/ops/convolution/convolution_aten_kernels.h"
 #include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
-#include "torch_tpu/ops/cummax/cummax_aten_kernels.h"
 #include "torch_tpu/ops/cumprod/cumprod_aten_kernels.h"
 #include "torch_tpu/ops/cumsum/cumsum_aten_kernels.h"
 #include "torch_tpu/ops/distance/dist_aten_kernels.h"
@@ -76,6 +72,8 @@
 #include "torch_tpu/ops/fft/fft_aten_kernels.h"
 #include "torch_tpu/ops/fill/fill_aten_kernels.h"
 #include "torch_tpu/ops/flip/flip_aten_kernels.h"
+#include "torch_tpu/ops/fmax/fmax_aten_kernels.h"
+#include "torch_tpu/ops/fmin/fmin_aten_kernels.h"
 #include "torch_tpu/ops/foreach_aten_kernels.h"
 #include "torch_tpu/ops/gather/gather_aten_kernels.h"
 #include "torch_tpu/ops/gelu/gelu_aten_kernels.h"
@@ -144,6 +142,8 @@
 #include "torch_tpu/ops/upsample/upsample_aten_kernels.h"
 #include "torch_tpu/ops/view/view_aten_kernels.h"
 #include "torch_tpu/ops/where/where_aten_kernels.h"
+#include "xla/xla_data.pb.h"
+#include "torch_tpu/ops/cummax/cummax_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {

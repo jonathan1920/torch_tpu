@@ -41,6 +41,9 @@
 #include "ATen/ops/ones.h"
 #include "c10/core/DefaultDtype.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/absl_test_shim.h"
+#include "torch_tpu/common/dtype.h"
+#include "torch_tpu/common/error_utils.h"
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -49,9 +52,6 @@
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "stablehlo/transforms/StablehloBroadcastLowering.h"
 #include "xla/xla_data.pb.h"
-#include "torch_tpu/common/absl_test_shim.h"
-#include "torch_tpu/common/dtype.h"
-#include "torch_tpu/common/error_utils.h"
 
 namespace torch_tpu {
 namespace {

@@ -24,9 +24,9 @@
 #include "absl/status/statusor.h"
 #include "mlir/IR/Types.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/error_utils.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/xla_data.pb.h"
-#include "torch_tpu/common/error_utils.h"
 
 // This library holds utilities for working with various representations of
 // tensor element types. These include:

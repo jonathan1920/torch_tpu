@@ -22,9 +22,9 @@
 #include <string>
 
 #include "absl/time/time.h"
-#include "torch_tpu/distributed/slicebuilder/discovery.h"
 #include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/distributed/slicebuilder/discovery.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/tpu_hooks.h"

@@ -25,8 +25,6 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "torch_tpu/ops/view_decomposition/unfold_primitive.h"
-#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
 #include "torch_tpu/ops/view_decomposition/broadcast_primitive.h"
 #include "torch_tpu/ops/view_decomposition/conj_primitive.h"
@@ -35,6 +33,8 @@
 #include "torch_tpu/ops/view_decomposition/slice_primitive.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/ops/view_decomposition/transpose_primitive.h"
+#include "torch_tpu/ops/view_decomposition/unfold_primitive.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 // A ViewSequence is a sequence of view primitives that can be applied to a
 // contiguous base tensor to produce a strided tensor.

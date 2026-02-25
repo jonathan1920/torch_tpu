@@ -20,9 +20,9 @@
 #include <ostream>
 
 #include "absl/status/statusor.h"
-#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 // Reshape (also called "torch.view" in PyTorch) is a view primitive. It
 // reinterprets a tensor shape as another tensor shape with the same number of

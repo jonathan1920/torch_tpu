@@ -40,16 +40,16 @@
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
+#include "torch_tpu/ops/custom_kernels.h"
+#include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/scaled_dot_product_attention/kernels/scaled_dot_product_attention_backward_mlir_embed.h"
+#include "torch_tpu/ops/scaled_dot_product_attention/kernels/scaled_dot_product_attention_forward_mlir_embed.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "xla/pjrt/mlir_to_hlo.h"
-#include "torch_tpu/ops/custom_kernels.h"
-#include "torch_tpu/ops/macros/kernel.h"
-#include "torch_tpu/ops/op_names.h"
-#include "torch_tpu/ops/scaled_dot_product_attention/kernels/scaled_dot_product_attention_backward_mlir_embed.h"
-#include "torch_tpu/ops/scaled_dot_product_attention/kernels/scaled_dot_product_attention_forward_mlir_embed.h"
 
 ABSL_FLAG(bool, torch_tpu_internal_sdpa_use_custom_kernel, false,
           "Use a custom kernel for scaled dot product attention.");

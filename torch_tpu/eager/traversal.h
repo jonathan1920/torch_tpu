@@ -33,8 +33,8 @@
 #include "mlir/IR/OwningOpRef.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
-#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 // Creates a core abstraction for the process of traversing a graph of deferred
 // ops, preparing them for compilation and execution.

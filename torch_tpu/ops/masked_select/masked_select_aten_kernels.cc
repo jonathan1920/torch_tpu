@@ -26,7 +26,6 @@
 #include "ATen/ops/broadcast_tensors.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device.h"
@@ -39,6 +38,7 @@
 #include "torch_tpu/ops/reductions/reductions.h"
 #include "torch_tpu/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/ops/sort/sort_aten_kernels.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 
 namespace torch_tpu {
 

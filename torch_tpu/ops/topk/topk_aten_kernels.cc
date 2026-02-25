@@ -24,9 +24,6 @@
 #include "absl/strings/str_cat.h"
 #include "ATen/core/TensorBase.h"
 #include "torch/csrc/autograd/generated/variable_factories.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
-#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "xla/xla_data.pb.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
@@ -35,6 +32,9 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/topk/topk.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
 std::tuple<at::Tensor&, at::Tensor&> AtenTopKValues(

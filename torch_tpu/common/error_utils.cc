@@ -41,10 +41,10 @@
 #include "c10/util/Optional.h"
 #include "c10/util/StringUtil.h"
 #include "torch_tpu/common/env_vars.h"
-#include "xla/xla_data.pb.h"
 #include "torch_tpu/common/status_builder.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device.h"
+#include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
 

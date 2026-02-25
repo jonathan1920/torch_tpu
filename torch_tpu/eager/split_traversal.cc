@@ -39,8 +39,6 @@
 #include "absl/types/span.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
-#include "xla/xla_data.pb.h"
-#include "tsl/profiler/lib/traceme.h"
 #include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
@@ -52,6 +50,8 @@
 #include "torch_tpu/eager/reexecution_heuristic.h"
 #include "torch_tpu/eager/repeated_subsequence_heuristic.h"
 #include "torch_tpu/eager/traversal.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/profiler/lib/traceme.h"
 
 ABSL_FLAG(int, torch_tpu_internal_prevent_graph_splits, 0,
           "Prevent graph spilts for repeated graphs (disabled if < 1).");

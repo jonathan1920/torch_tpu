@@ -34,7 +34,6 @@
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "torch_tpu/common/cache_key.h"
-#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/thread_pool.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"

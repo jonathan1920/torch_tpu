@@ -28,10 +28,6 @@
 #include "c10/core/DefaultDtype.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "stablehlo/dialect/StablehloOps.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
-#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"  // IWYU pragma: keep
-#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/macro_utils.h"  // IWYU pragma: keep
@@ -42,6 +38,10 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/unary.h"
+#include "stablehlo/dialect/StablehloOps.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"  // IWYU pragma: keep
+#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 
 // A "Simple Unary" op is an Aten op that:
 // - takes 1 input and produces 1 output

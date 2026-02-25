@@ -24,9 +24,6 @@
 #include "absl/status/statusor.h"
 #include "ATen/core/TensorBase.h"
 #include "torch/csrc/autograd/generated/variable_factories.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
-#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "xla/xla_data.pb.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -36,6 +33,9 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/sort/sort.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
 

@@ -153,7 +153,6 @@ torch_tpu_cc_test(
         ":op_names",
         ":python_context",
         "//shims/torch:torch_headers",
-        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

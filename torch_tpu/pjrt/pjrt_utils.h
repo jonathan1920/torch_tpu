@@ -26,9 +26,9 @@
 #include "absl/types/span.h"
 #include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/eager/device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/xla_data.pb.h"
-#include "torch_tpu/eager/device_buffer.h"
 
 namespace torch_tpu {
 

@@ -40,8 +40,13 @@
 #include "ATen/core/TensorBody.h"
 #include "torch/extension.h"  // IWYU pragma: keep for aten::Tensor pybind type
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/_internal/compile/compiled_mode.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
+#include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/python_context.h"
 #include "torch_tpu/pjrt/pjrt_init.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/hlo/translate/register.h"
@@ -50,11 +55,6 @@
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "torch_tpu/_internal/compile/compiled_mode.h"
-#include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/ops/op_builder_utils.h"
-#include "torch_tpu/ops/op_names.h"
-#include "torch_tpu/ops/python_context.h"
 
 namespace torch_tpu {
 namespace py = pybind11;

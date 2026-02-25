@@ -22,12 +22,12 @@
 
 #include "ATen/core/TensorBody.h"
 #include "torch/extension.h"  // IWYU pragma: keep for aten::Tensor pybind type
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
 #include "torch_tpu/_internal/dynamism/dynamism.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device.h"
 #include "torch_tpu/ops/op_builder_utils.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 
 namespace torch_tpu {
 namespace py = pybind11;

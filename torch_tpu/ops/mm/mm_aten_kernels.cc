@@ -25,7 +25,6 @@
 #include "absl/types/span.h"
 #include "ATen/core/TensorBody.h"
 #include "ATen/native/Resize.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
@@ -35,6 +34,7 @@
 #include "torch_tpu/ops/mm/mm.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 
 namespace torch_tpu {
 namespace {

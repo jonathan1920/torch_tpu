@@ -27,8 +27,8 @@
 #include "c10/core/ScalarType.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
-#include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/linalg/lu/linalg_lu_kernels.h"
+#include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 

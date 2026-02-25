@@ -18,9 +18,9 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "torch_tpu/common/absl_test_shim.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
-#include "torch_tpu/common/absl_test_shim.h"
 
 namespace torch_tpu {
 namespace {

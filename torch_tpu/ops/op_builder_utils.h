@@ -52,6 +52,9 @@
 #include "c10/util/Exception.h"
 #include "c10/util/Optional.h"
 #include "torch/csrc/distributed/c10d/Types.hpp"
+#include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/python_context.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/ChloBuilder.h"
@@ -61,9 +64,6 @@
 #include "xla/mlir/utils/error_util.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
-#include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/fixed_size_span.h"
-#include "torch_tpu/common/shape.h"
 
 namespace torch_tpu {
 

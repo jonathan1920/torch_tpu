@@ -23,8 +23,8 @@
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 // Broadcast (full name: stablehlo::BroadcastInDim) is a view primitive. It
 // inserts dimensions into a tensor, reorders them, and/or increases dimensions

@@ -32,8 +32,6 @@
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"
 #include "torch_tpu/pjrt/pjrt_init.h"
-#include "torch_tpu/common/cache_key.h"
-
 namespace torch_tpu {
 
 absl::Status AtomicWriteToCacheFile(const std::string& cache_entry_path,
