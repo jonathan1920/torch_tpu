@@ -108,6 +108,11 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+def _validate_test_tags(tags):
+    """Validates the test tags."""
+
+    pass
+
 def torch_tpu_cc_test(
         name,
         copts = None,
@@ -116,6 +121,7 @@ def torch_tpu_cc_test(
         linkstatic = True,
         shuffle_tests = True,
         fail_if_no_test_linked = True,
+        tags = None,
         **kwargs):
     """Creates a cc_test for torch_tpu.
 
@@ -130,13 +136,13 @@ def torch_tpu_cc_test(
             definitions and increase accelerator utilization by reducing test run time.
         shuffle_tests: Whether to shuffle the test cases.
         fail_if_no_test_linked: Whether to fail if no tests are linked.
+        tags: The tags to add to the test.
         **kwargs: Any additional arguments.
     """
 
     copts, features = adjust_cc_options(copts, features)
 
-    if args == None:
-        args = []
+    args = args or []
     if shuffle_tests:
         # Shuffle tests to avoid test ordering dependencies.
         args = args + ["--gunit_shuffle"]
@@ -144,12 +150,15 @@ def torch_tpu_cc_test(
         # Fail if no tests are linked. This is to avoid having a test target that does not run any
         # tests. This can happen if the test's link options are not set correctly.
         args = args + ["--gunit_fail_if_no_test_linked"]
+    tags = tags or []
+    _validate_test_tags(tags)
     cc_test(
         name = name,
         copts = copts,
         args = args,
         features = features,
         linkstatic = linkstatic,
+        tags = tags,
         **kwargs
     )
 
@@ -165,6 +174,7 @@ def torch_tpu_py_test(
         shuffle_tests = True,
         extra_pywrap_deps = ["//torch_tpu/common:pywrap_torch_tpu"],
         strict = False,
+        tags = None,
         **kwargs):
     """Creates a py_test for torch_tpu.
 
@@ -176,6 +186,7 @@ def torch_tpu_py_test(
         shuffle_tests: Whether to shuffle the test cases.
         extra_pywrap_deps: Additional pywrap dependencies to add to the test.
         strict: Whether to use pytype.
+        tags: The tags to add to the test.
         **kwargs: Any additional arguments.
     """
 
@@ -183,6 +194,9 @@ def torch_tpu_py_test(
     if shuffle_tests:
         # Shuffle test cases to avoid test ordering dependencies.
         args = args + ["--test_randomize_ordering_seed=random"]
+
+    tags = tags or []
+    _validate_test_tags(tags)
 
     # Remove internal-only attributes
     kwargs.pop("linking_mode", None)
@@ -234,6 +248,7 @@ def torch_tpu_py_test(
         args = args,
         deps = all_deps,
         env = test_env,
+        tags = tags,
         **kwargs
     )
 

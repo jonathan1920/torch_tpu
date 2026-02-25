@@ -35,7 +35,10 @@ torch_tpu_py_test(
     srcs = ["singlehost_wrapper_test.py"],
     main = "singlehost_wrapper_test.py",
     strict = True,
-    tags = ["requires-tpu-v7x:4"],
+    tags = [
+        "nofastbuild",
+        "requires-tpu-v7x:4",  # Must use for testing v7x.
+    ],
     deps = [
         ":singlehost_wrapper",
         "//shims/absl_py/testing:absltest",

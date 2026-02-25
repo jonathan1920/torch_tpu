@@ -199,7 +199,7 @@ torch_tpu_py_test(
     shard_count = 6,
     tags = [
         "requires-net:external",
-        "requires-tpu-v5lite",
+        "requires-tpu-v5lite",  #
     ],
     deps = [
         "//shims/absl_py/testing:absltest",
