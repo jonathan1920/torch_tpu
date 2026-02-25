@@ -305,7 +305,7 @@ torch_tpu_py_test(
         "--max_samples_per_op_dtype=1",  # No need to test many samples to catch dynamism bugs.
     ],
     main = "ops_test.py",
-    shard_count = 16,
+    shard_count = 32,
     tags = ["requires-tpu-v5lite"],
     deps = [
         ":dynamism_test_utils",
