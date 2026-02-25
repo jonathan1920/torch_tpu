@@ -15,6 +15,7 @@
 """Tests inference and training with torch.compile across Pytorch Image models."""
 
 import copy
+import random
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -70,6 +71,11 @@ class ModelCoverageTimmTest(parameterized.TestCase):
     super().setUpClass()
     cls.tpu_device = api.tpu_device()
     cls.module_registry = module_registry.ModuleRegistry()
+
+  def setUp(self):
+    super().setUp()
+    random.seed(42)
+    torch.manual_seed(42)
 
   def _create_model_and_inputs(
       self, provider: str, module_name: str, *, is_training=False
