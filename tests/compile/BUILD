@@ -176,6 +176,7 @@ torch_tpu_py_test(
     tags = [
         "cpu:4",
         "nofastbuild",  # Run in postsubmit only to avoid long Forge queues.
+        "requires-accel-hbm",
         "requires-net:external",
         "requires-tpu-v7x:4",
     ],

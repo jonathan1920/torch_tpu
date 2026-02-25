@@ -176,6 +176,14 @@ class ModelCoverageHFTest(parameterized.TestCase):
           atol=2e-4,
       ),
       dict(
+          testcase_name="transformers/Qwen/Qwen-4B",
+          provider="transformers",
+          module_name="Qwen/Qwen3-4B",
+          model_size=ModelSize.MEDIUM,
+          rtol=8e-3,
+          atol=2e-2,
+      ),
+      dict(
           testcase_name="transformers/meta-llama/Llama-3.2-1B",
           provider="transformers",
           module_name="meta-llama/Llama-3.2-1B",
@@ -233,11 +241,27 @@ class ModelCoverageHFTest(parameterized.TestCase):
           atol=3e-1,
       ),
       dict(
+          testcase_name="transformers/google/gemma-3-4b-pt",
+          provider="transformers",
+          module_name="google/gemma-3-4b-pt",
+          model_size=ModelSize.MEDIUM,
+          rtol=6e-4,
+          atol=1e-2,
+      ),
+      dict(
           testcase_name="transformers/Qwen/Qwen3-0.6B",
           provider="transformers",
           module_name="Qwen/Qwen3-0.6B",
           model_size=ModelSize.SMALL,
           rtol=1e-3,
+          atol=6e-2,
+      ),
+      dict(
+          testcase_name="transformers/Qwen/Qwen-4B",
+          provider="transformers",
+          module_name="Qwen/Qwen3-4B",
+          model_size=ModelSize.MEDIUM,
+          rtol=2e-3,
           atol=6e-2,
       ),
       dict(
