@@ -46,6 +46,12 @@ dependencies = [
     "tensorboard",
     "frozendict",
     "flax",
+]
+
+[project.optional-dependencies]
+benchmark = [
     "fairscale",
+    "grain",
     "llama-models",
+    "tensorflow-datasets",
 ]
