@@ -28,21 +28,19 @@ namespace torch_tpu {
 
 absl::Status InitializeDistributedEnvironment(
     const DistributedWorkerConfiguration& config) {
-  if (!GetEnvOnce<kTpuProcessAddressesEnvVar>().has_value()) {
-    if (config.sb_addrs.empty()) {
-      return absl::OkStatus();
-    }
-    SetEnv(kCloudTpuTaskIdEnvVar, absl::StrCat(config.rank));
-    SetEnv(kTpuVisibleChipsEnvVar, absl::StrCat(config.local_rank));
-    SetEnv(kTpuHostBoundsEnvVar, config.topology);
-    SetEnv(kTpuChipsPerHostBoundsEnvVar, "1,1,1");
+  SetEnv(kCloudTpuTaskIdEnvVar, absl::StrCat(config.rank));
+  SetEnv(kTpuVisibleChipsEnvVar, absl::StrCat(config.local_rank));
+  SetEnv(kTpuHostBoundsEnvVar, config.topology);
+  SetEnv(kTpuChipsPerHostBoundsEnvVar, "1,1,1,1");
 
-    // The free slicebuilder port of this process.
-    SetEnv(kTpuProcessPortEnvVar, absl::StrCat(config.sb_port));
+  // The free slicebuilder port of this process.
+  SetEnv(kTpuProcessPortEnvVar, absl::StrCat(config.sb_port));
 
-    // The addresses of all other workers in the slice.
-    SetEnv(kTpuProcessAddressesEnvVar, config.sb_addrs);
-  }
+  // The addresses of all other workers in the slice.
+  SetEnv(kTpuProcessAddressesEnvVar, config.sb_addrs);
+
+  // Avoid multi-process libtpu lock in GCP init, see b/487769788.
+  SetEnv(kAllowMultipleLibtpuLoadEnvVar, "1");
 
   std::string libtpu_init_args_str =
       GetEnvOnce<kLibtpuInitArgsEnvVar>().value_or("");

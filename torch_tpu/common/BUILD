@@ -568,6 +568,18 @@ torch_tpu_cc_library(
     ],
 )
 
+torch_tpu_cc_test(
+    name = "environment_test",
+    srcs = ["environment_test.cc"],
+    deps = [
+        ":absl_test_shim",
+        ":env_vars",
+        ":environment",
+        "//torch_tpu/distributed/slicebuilder:discovery",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 torch_tpu_cc_library(
     name = "thread_pool",
     srcs = ["thread_pool.cc"],

@@ -36,6 +36,8 @@ namespace torch_tpu {
 // go/keep-sorted start
 inline constexpr char kAcceleratorTypeEnvVar[] =
     "ACCELERATOR_TYPE";  // Set by Google Cloud.
+inline constexpr char kAllowMultipleLibtpuLoadEnvVar[] =
+    "ALLOW_MULTIPLE_LIBTPU_LOAD";  // Read by libtpu.
 inline constexpr char kCloudTpuTaskIdEnvVar[] =
     "CLOUD_TPU_TASK_ID";  // Read by Google Cloud.
 inline constexpr char kLibtpuInitArgsEnvVar[] =
