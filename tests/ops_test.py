@@ -655,6 +655,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"rtol": 3.1, "atol": 3.9e-1},
         torch.float16: {"rtol": 1, "atol": 1},
         torch.float32: {"rtol": 1, "atol": 1},
+        torch.float64: {"rtol": 5.5e-7, "atol": 4.5e-7},
     },
     "cos": {
         torch.complex64: {"rtol": 1e-5, "atol": 1e-5},
@@ -693,6 +694,9 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float32: {"atol": _expm1_atol},
         torch.complex64: {"rtol": 1e-5, "atol": 1e-5},
     },
+    "fft.rfft": {
+        torch.int16: {"rtol": 3.2e-6, "atol": 6.3e-5},
+    },
     "fmod": {
         torch.float32: {"rtol": 3.5e-5, "atol": 4.8e-7},
     },
@@ -704,6 +708,21 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.int16: {"rtol": 1.3e-4, "atol": 2.3e-4},
         torch.int32: {"rtol": 1.3e-4, "atol": 2.3e-4},
         torch.int64: {"rtol": 1.3e-4, "atol": 2.3e-4},
+    },
+    "linalg.lu": {
+        torch.float64: {"rtol": 1.5e-5, "atol": 2.5e-6},
+        # Greatest relative error: inf
+        #   expected: 0j
+        #   actual: 1 + 0j
+        torch.complex64: {"rtol": 6.3, "atol": 31.0},
+    },
+    "linalg.lu_factor_ex": {
+        torch.float32: {"rtol": 1.4e-4, "atol": 2.0e-5},
+        torch.float64: {"rtol": 9.0e-6, "atol": 5.8e-6},
+        torch.complex64: {"rtol": 20.0, "atol": 39.0},
+    },
+    "linalg.solve_ex": {
+        torch.float64: {"rtol": 3.7e-6, "atol": 9.1e-7},
     },
     "linalg.vector_norm": {
         torch.complex64: {"rtol": 5.3e-6, "atol": 5.1e-4},
@@ -774,6 +793,21 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"rtol": 2e-2, "atol": 6e-3},
         torch.float16: {"rtol": 2e-3, "atol": 5e-4},
     },
+    "nn.functional.adaptive_avg_pool2d": {
+        torch.float16: {"rtol": 1.8e-2, "atol": 4e-3},
+        torch.bfloat16: {"rtol": 9.1e-2, "atol": 1.6e-2},
+    },
+    "nn.functional.adaptive_avg_pool3d": {
+        torch.float16: {"rtol": 9.0, "atol": 4e-3},
+        # Greatest relative error: 1.0
+        #   expected: -0.0005
+        #   actual: 0.0
+        torch.bfloat16: {"rtol": 1.0, "atol": 2.4e-2},
+    },
+    "nn.functional.avg_pool3d": {
+        torch.float32: {"rtol": 4.1e-1, "atol": 2.3e-1},
+        torch.float64: {"rtol": 4.1e-1, "atol": 4.5e-1},
+    },
     "nn.functional.batch_norm": {
         torch.bfloat16: {"rtol": 1e-2, "atol": 1e-1},
         torch.float16: {"rtol": 5e-3, "atol": 5e-2},
@@ -786,6 +820,19 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"rtol": 1.0, "atol": 5e-2},
         torch.float16: {"rtol": 1e-1, "atol": 5.1e-1},
         torch.float32: {"rtol": 1e-2, "atol": 6.6e-1},
+    },
+    "nn.functional.conv_transpose1d": {
+        torch.bfloat16: {"rtol": 3.1e-2, "atol": 6.9e-3},
+        torch.float16: {"rtol": 3.2e-1, "atol": 3.5e-1},
+        torch.float32: {"rtol": 3.7e-2, "atol": 4.4e-1},
+    },
+    "nn.functional.conv_transpose2d": {
+        # Greatest relative error: inf
+        #   expected: 0.0
+        #   actual: 0.0234
+        torch.bfloat16: {"rtol": 0.0, "atol": 1.1},
+        torch.float16: {"rtol": 78, "atol": 8.8e-1},
+        torch.float32: {"rtol": 9.4, "atol": 1.1},
     },
     "nn.functional.embedding": {
         torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
@@ -951,7 +998,7 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
 # Ref: https://github.com/pytorch/pytorch/issues/173110
 #
 # TODO: b/478321000 remove when PyTorch#173110 is fixed.
-def _inplace_clamp_input_has_negative_values_uint8_cuda(
+def _inplace_clamp_input_has_negative_values_uint8_gpu(
     golden_device_type: str,
     variant: OpVariant,
     op_input: OpInput,
@@ -984,6 +1031,20 @@ def _inplace_clamp_input_has_negative_values_uint8_cuda(
       # There should be at least one tensor argument (min or max) that holds a
       # negative value. This will cause overflow on dtype conversion.
       and any(is_tensor_and_has_negative_values(arg) for arg in op_input.args)
+  )
+
+
+# Returns true for test cases that set `pivot=False`.
+# TODO: support `linalg.lu_factor_ex(pivot=False)` on TorchTPU.
+# TODO: support `linalg.lu(pivot=False)` on TorchTPU.
+def _linalg_lu_without_pivot_gpu(
+    golden_device_type: str, unused_variant: OpVariant, op_input: OpInput
+) -> bool:
+  return (
+      # Only GPU supports `pivot=False`.
+      golden_device_type == "gpu"
+      # The `pivot` keyword argument is set to False.
+      and not op_input.kwargs.get("pivot", True)
   )
 
 
@@ -1045,6 +1106,10 @@ class TestOps(TorchTpuTestBase):
         "nn.functional.adaptive_avg_pool3d",
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
+        # TODO: GPU golden pairs' dtypes are not yet supported on TPU.
+        exclude_dtypes={
+            "gpu": INTEGRAL_DTYPES + COMPLEX_DTYPES,
+        },
     )
 
   def test_add(self):
@@ -1196,7 +1261,18 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_avg_pool3d(self):
-    self.do_test_op("nn.functional.avg_pool3d")
+    self.do_test_op(
+        "nn.functional.avg_pool3d",
+        # TODO: GPU does not support integral, complex, `bfloat16` and `float16`
+        # dtypes.
+        exclude_dtypes={
+            "gpu": (
+                INTEGRAL_DTYPES
+                + COMPLEX_DTYPES
+                + (torch.bfloat16, torch.float16)
+            )
+        },
+    )
 
   def test_bincount(self):
     self.do_test_op(
@@ -1274,7 +1350,7 @@ class TestOps(TorchTpuTestBase):
         exclude_dtypes=(torch.bool,),
         exclude_inplace_dtypes=(torch.bool,),
         # TODO: b/478321000 remove when PyTorch#173110 is fixed.
-        skip_if=_inplace_clamp_input_has_negative_values_uint8_cuda,
+        skip_if=_inplace_clamp_input_has_negative_values_uint8_gpu,
         # TODO: fix clamp() returning enormous errors or nans when dynamism is
         # enabled.
         check_dynamism=False,
@@ -1289,7 +1365,7 @@ class TestOps(TorchTpuTestBase):
         # xla_cuda: https://github.com/openxla/stablehlo/issues/560
         exclude_inplace_dtypes=(torch.complex64,),
         # TODO: b/478321000 remove when PyTorch#173110 is fixed.
-        skip_if=_inplace_clamp_input_has_negative_values_uint8_cuda,
+        skip_if=_inplace_clamp_input_has_negative_values_uint8_gpu,
     )
 
   def test_clamp_max(self):
@@ -1301,7 +1377,7 @@ class TestOps(TorchTpuTestBase):
         # xla_cuda: https://github.com/openxla/stablehlo/issues/560
         exclude_inplace_dtypes=(torch.complex64,),
         # TODO: b/478321000 remove when PyTorch#173110 is fixed.
-        skip_if=_inplace_clamp_input_has_negative_values_uint8_cuda,
+        skip_if=_inplace_clamp_input_has_negative_values_uint8_gpu,
     )
 
   def test_clone(self):
@@ -1406,7 +1482,13 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_native_dropout_backward(self):
-    self.do_test_op("native_dropout_backward")
+    self.do_test_op(
+        "native_dropout_backward",
+        # TODO: GPU does not support integral and complex dtypes.
+        exclude_dtypes={
+            "gpu": INTEGRAL_DTYPES + COMPLEX_DTYPES,
+        },
+    )
 
   def test_embedding(self):
     self.do_test_op(
@@ -1489,8 +1571,8 @@ class TestOps(TorchTpuTestBase):
         "fft.rfft",
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
-        # TODO: float64 is not supported for fft.rfft on TPU.
-        exclude_dtypes=(torch.float64,),
+        # TODO: float16 and float64 are not supported for fft.rfft on TPU.
+        exclude_dtypes=(torch.float16, torch.float64),
     )
 
   def test_fill(self):
@@ -1885,15 +1967,22 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("gt")
 
   def test_histc(self):
+    # TODO: b/487653210 - skipping `int8` and `uint8` dtypes due to incorrect
+    # results. Test those dtypes once the bug is fixed.
+
     self.do_test_op(
         "histc",
         # NOTE: Exclude integral dtypes on CPU, because histc() is not
         # implemented in the PyTorch CPU backend.
         # Additionally, exclude float16 and bfloat16 because (expected)
         # precision variations can lead to binning errors.
+        # TODO: GPU does not support `bool`, `bfloat16`, and `float16` dtypes.
         exclude_dtypes={
             "cpu": INTEGRAL_DTYPES + (torch.bfloat16, torch.float16),
             "gpu": (
+                torch.bool,
+                torch.int8,
+                torch.uint8,
                 torch.bfloat16,
                 torch.float16,
             ),
@@ -1904,8 +1993,16 @@ class TestOps(TorchTpuTestBase):
     # lead to binning errors due to precision variations.
     self.do_test_op(
         "histc",
+        # TODO: GPU does not support `bool`, `bfloat16`, and `float16` dtypes.
         exclude_dtypes={
             "cpu": INTEGRAL_DTYPES,
+            "gpu": (
+                torch.bool,
+                torch.int8,
+                torch.uint8,
+                torch.bfloat16,
+                torch.float16,
+            ),
         },
         check_value=CheckValueMode.SKIP,
     )
@@ -2008,6 +2105,7 @@ class TestOps(TorchTpuTestBase):
         "linalg.lu_factor_ex",
         check_grad=False,
         check_value=CheckValueMode.LOOSE,
+        skip_if=_linalg_lu_without_pivot_gpu,
     )
 
   def test_linalg_triangular_solve(self):
@@ -2059,6 +2157,7 @@ class TestOps(TorchTpuTestBase):
         check_grad=False,
         exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
         check_value=CheckValueMode.LOOSE,
+        skip_if=_linalg_lu_without_pivot_gpu,
     )
 
   def test_linalg_inv_ex_out(self):
@@ -2678,6 +2777,10 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op(
         "nn.functional.pad",
         variant_test_name="reflect",
+        # TODO: bool dtype is not yet supported on TPU.
+        exclude_dtypes={
+            "gpu": (torch.bool,),
+        },
     )
 
   def test_remainder(self):
@@ -2702,6 +2805,10 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op(
         "nn.functional.pad",
         variant_test_name="replicate",
+        # TODO: bool dtype is not yet supported on TPU.
+        exclude_dtypes={
+            "gpu": (torch.bool,),
+        },
     )
 
   def test_reshape(self):
