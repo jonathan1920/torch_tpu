@@ -49,6 +49,7 @@
 #include "torch_tpu/eager/materialization_heuristics.h"
 #include "torch_tpu/eager/reexecution_heuristic.h"
 #include "torch_tpu/eager/repeated_subsequence_heuristic.h"
+#include "torch_tpu/eager/stale_heuristic.h"
 #include "torch_tpu/eager/traversal.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -194,6 +195,7 @@ ApplyAllMaterializationHeuristicsOn(const Traversal& traversal) {
           new DynamicOpSplitHeuristic(),
           new FanoutHeuristic(),
           new RepeatedSubsequenceHeuristic(),
+          new StaleHeuristic(),
       });
 
   absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
@@ -205,6 +207,13 @@ ApplyAllMaterializationHeuristicsOn(const Traversal& traversal) {
       nodes_to_materialize.insert(new_nodes.begin(), new_nodes.end());
     }
   }
+
+  // If an output is also a live boundary node, we don't need to redundantly
+  // return it as a materialization node.
+  for (const auto& output : traversal.outputs()) {
+    nodes_to_materialize.erase(output.device_buffer_list().get());
+  }
+
   return nodes_to_materialize;
 }
 
