@@ -27,7 +27,6 @@
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "torch_tpu/common/absl_test_shim.h"
 
 namespace torch_tpu {
 namespace {
@@ -182,7 +181,7 @@ TEST(RetCheckTest, DoesNotCrashIfEmptyMessageOnSuccess) {
     TT_RET_CHECK(true, error::kInvalidArgument) << "";
     return absl::OkStatus();
   };
-  TT_EXPECT_OK(test());
+  EXPECT_EQ(test(), absl::OkStatus());
 }
 
 TEST(RetCheckDeathTest, CrashesIfEmptyMessageOnFailure) {
@@ -203,7 +202,7 @@ TEST(AssignOrReturn, AssignsToExistingVariableOnOk) {
     EXPECT_EQ(y, 1);
     return absl::OkStatus();
   };
-  TT_EXPECT_OK(test());
+  EXPECT_EQ(test(), absl::OkStatus());
 }
 
 TEST(AssignOrReturn, AssignsToNewVariableOnOk) {
@@ -213,7 +212,7 @@ TEST(AssignOrReturn, AssignsToNewVariableOnOk) {
     EXPECT_EQ(y, 1);
     return absl::OkStatus();
   };
-  TT_EXPECT_OK(test());
+  EXPECT_EQ(test(), absl::OkStatus());
 }
 
 TEST(AssignOrReturn, AssignsFromConstToExistingVariableOnOk) {
@@ -224,7 +223,7 @@ TEST(AssignOrReturn, AssignsFromConstToExistingVariableOnOk) {
     EXPECT_EQ(y, 1);
     return absl::OkStatus();
   };
-  TT_EXPECT_OK(test());
+  EXPECT_EQ(test(), absl::OkStatus());
 }
 
 TEST(AssignOrReturn, AssignsFromConstToNewVariableOnOk) {
@@ -234,7 +233,7 @@ TEST(AssignOrReturn, AssignsFromConstToNewVariableOnOk) {
     EXPECT_EQ(y, 1);
     return absl::OkStatus();
   };
-  TT_EXPECT_OK(test());
+  EXPECT_EQ(test(), absl::OkStatus());
 }
 
 TEST(AssignOrReturn, AssignsToNewConstVariableOnOk) {
@@ -244,7 +243,7 @@ TEST(AssignOrReturn, AssignsToNewConstVariableOnOk) {
     EXPECT_EQ(y, 1);
     return absl::OkStatus();
   };
-  TT_EXPECT_OK(test());
+  EXPECT_EQ(test(), absl::OkStatus());
 }
 
 TEST(AssignOrReturn, AssignsToExistingMoveOnlyVariableOnOk) {
@@ -255,7 +254,7 @@ TEST(AssignOrReturn, AssignsToExistingMoveOnlyVariableOnOk) {
     EXPECT_THAT(y, Pointee(1));
     return absl::OkStatus();
   };
-  TT_EXPECT_OK(test());
+  EXPECT_EQ(test(), absl::OkStatus());
 }
 
 TEST(AssignOrReturn, AssignsToNewMoveOnlyVariableOnOk) {
@@ -398,7 +397,7 @@ TEST(AssignOrReturn, SkipsEvaluatingErrorExpressionOnOk) {
     static_cast<void>(y);
     return absl::OkStatus();
   };
-  TT_EXPECT_OK(test());
+  EXPECT_EQ(test(), absl::OkStatus());
   EXPECT_EQ(count, 0);
 }
 
@@ -425,7 +424,7 @@ TEST(AssignOrReturn, CanAssignToStructuredBindings) {
     EXPECT_EQ(second, 2);
     return absl::OkStatus();
   };
-  TT_EXPECT_OK(test());
+  EXPECT_EQ(test(), absl::OkStatus());
 }
 
 TEST(AssignOrReturn, EvaluatesExpressionOnceOnOk) {

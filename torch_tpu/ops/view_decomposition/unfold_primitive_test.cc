@@ -18,7 +18,8 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "torch_tpu/common/absl_test_shim.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 
@@ -39,7 +40,7 @@ TEST(UpdateLayoutUnfold, TensorNoOp) {
                             .window_stride = 999,
                             .window_size = 5};
   auto modified = UpdateLayout(layout, unfold);
-  TT_ASSERT_OK(modified);
+  ASSERT_EQ(modified.status(), absl::OkStatus());
   EXPECT_FALSE(modified.value());
 }
 
@@ -53,7 +54,7 @@ TEST(UpdateLayoutUnfold, TensorValidUnfold) {
   UnfoldPrimitive unfold = {
       .start_index = 1, .limit_index = 6, .window_stride = 2, .window_size = 3};
   auto modified = UpdateLayout(layout, unfold);
-  TT_ASSERT_OK(modified);
+  ASSERT_EQ(modified.status(), absl::OkStatus());
   EXPECT_TRUE(modified.value());
   StridedLayout expected = {
       .strided_dims = {{.size = 2, .stride = 7},
@@ -74,7 +75,7 @@ TEST(UpdateLayoutUnfold, UnfoldWithStrideOnLastDimension) {
   UnfoldPrimitive unfold = {
       .start_index = 1, .limit_index = 6, .window_stride = 2, .window_size = 3};
   auto modified = UpdateLayout(layout, unfold);
-  TT_ASSERT_OK(modified);
+  ASSERT_EQ(modified.status(), absl::OkStatus());
   EXPECT_TRUE(modified.value());
   StridedLayout expected = {
       .strided_dims = {{.size = 2, .stride = 14},

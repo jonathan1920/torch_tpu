@@ -21,15 +21,12 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Types.h"
-#include "mlir/Support/LLVM.h"
-#include "torch_tpu/common/absl_test_shim.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/dialect/Register.h"
@@ -39,6 +36,9 @@
 
 namespace torch_tpu {
 namespace {
+
+using absl_testing::StatusIs;
+using testing::HasSubstr;
 
 constexpr std::string_view kUnrefinedRank1AddMlirKernel = R"(
 module @kernel_add {
@@ -80,7 +80,7 @@ TEST(CustomKernelRegistry, RegisterAndCallMlirKernel) {
   mlir::MlirOp op1 = mlir::func::Argument(fb, arg_type);
   mlir::MlirOp op2 = mlir::func::Argument(fb, arg_type);
   auto results_status = CallCustomKernel(fb, {op1, op2}, "kernel_add", "");
-  TT_ASSERT_OK(results_status);
+  ASSERT_EQ(results_status.status(), absl::OkStatus());
   auto results = results_status.value();
   mlir::func::Return(fb, results);
 
@@ -89,16 +89,15 @@ TEST(CustomKernelRegistry, RegisterAndCallMlirKernel) {
   auto debug_string = DebugString(module.get());
 
   // Check that we have both the loaded kernel and the main function.
-  EXPECT_THAT(debug_string,
-              testing::HasSubstr("func.func private @kernel_add_0x"));
-  EXPECT_THAT(debug_string, testing::HasSubstr("func.func @main"));
+  EXPECT_THAT(debug_string, HasSubstr("func.func private @kernel_add_0x"));
+  EXPECT_THAT(debug_string, HasSubstr("func.func @main"));
 
   // Check that the loaded kernel is called.
-  EXPECT_THAT(debug_string, testing::HasSubstr("call @kernel_add_0x"));
+  EXPECT_THAT(debug_string, HasSubstr("call @kernel_add_0x"));
 
   // Check that module is refined to the shapes of the concrete arguments.
-  EXPECT_THAT(debug_string, testing::HasSubstr(
-                                "stablehlo.add %arg0, %arg1 : tensor<10xf32>"));
+  EXPECT_THAT(debug_string,
+              HasSubstr("stablehlo.add %arg0, %arg1 : tensor<10xf32>"));
 }
 
 TEST(CustomKernelRegistry, RegistrationIsIdempotent) {
@@ -144,9 +143,8 @@ TEST(CustomKernelRegistry, CannotLoadNonexistentKernel) {
       CallCustomKernel(fb, {op1, op2}, "does_not_exist", "");
 
   // Check that we get a not found error
-  EXPECT_THAT(
-      kernel_add_func_status,
-      absl_testing::StatusIs(absl::StatusCode::kNotFound));  // STATUS_CODE_OK
+  EXPECT_THAT(kernel_add_func_status,
+              StatusIs(absl::StatusCode::kNotFound));  // STATUS_CODE_OK
 }
 
 TEST(CustomKernelRegistry, RegisterAndCallMlirKernel_InvalidShape) {
@@ -171,14 +169,14 @@ TEST(CustomKernelRegistry, RegisterAndCallMlirKernel_InvalidShape) {
   mlir::MlirOp op1 = mlir::func::Argument(fb, arg_type);
   mlir::MlirOp op2 = mlir::func::Argument(fb, arg_type);
   auto status = CallCustomKernel(fb, {op1, op2}, "kernel_add", "");
-  EXPECT_THAT(status, absl_testing::StatusIs(error::kInternal));
+  EXPECT_THAT(status, StatusIs(error::kInternal));
 
   // Check for TorchTPU error wrapper
   EXPECT_THAT(status.status().message(),
-              testing::HasSubstr("failed to validate shape assertions"));
+              HasSubstr("failed to validate shape assertions"));
   EXPECT_THAT(
       status.status().message(),
-      testing::HasSubstr(
+      HasSubstr(
           "Input shapes do not match the polymorphic shapes specification"));
 }
 
@@ -202,16 +200,16 @@ TEST(CustomKernelRegistry, RegisterAndCallMlirKernel_InvalidArgumentCount) {
       mlir::makeTensorType(fb.getContext(), {10}, mlir::ElementType::F32);
   mlir::MlirOp op = mlir::func::Argument(fb, arg_type);
   auto status = CallCustomKernel(fb, {op}, "kernel_add", "");
-  EXPECT_THAT(status, absl_testing::StatusIs(error::kInternal));
+  EXPECT_THAT(status, StatusIs(error::kInternal));
 
   // Check for TorchTPU error wrapper
   EXPECT_THAT(status.status().message(),
-              testing::HasSubstr("failed to specialize custom kernel"));
+              HasSubstr("failed to specialize custom kernel"));
 
   // Check for MLIR error message (controlled by the string in IR above)
   EXPECT_THAT(
       status.status().message(),
-      testing::HasSubstr(
+      HasSubstr(
           "number of refinements must match number of op operands 1 vs 2"));
 }
 

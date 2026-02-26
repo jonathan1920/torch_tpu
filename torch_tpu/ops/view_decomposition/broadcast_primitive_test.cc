@@ -18,9 +18,9 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
-#include "torch_tpu/common/absl_test_shim.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 
@@ -33,7 +33,7 @@ TEST(UpdateLayoutBroadcast, ScalarNoOp) {
   StridedLayout layout = MakeContiguousBaseLayout({});
   BroadcastPrimitive broadcast = {.new_sizes = {}, .broadcast_dimensions = {}};
   auto modified = UpdateLayout(layout, broadcast);
-  TT_EXPECT_OK(modified);
+  EXPECT_EQ(modified.status(), absl::OkStatus());
   EXPECT_FALSE(modified.value());
 }
 
@@ -47,7 +47,7 @@ TEST(UpdateLayoutBroadcast, TensorNoOp) {
   BroadcastPrimitive broadcast = {.new_sizes = {6, 4, 2},
                                   .broadcast_dimensions = {0, 1, 2}};
   auto modified = UpdateLayout(layout, broadcast);
-  TT_EXPECT_OK(modified);
+  EXPECT_EQ(modified.status(), absl::OkStatus());
   EXPECT_FALSE(modified.value());
 }
 
@@ -56,7 +56,7 @@ TEST(UpdateLayoutBroadcast, ScalarToTensor) {
   BroadcastPrimitive broadcast = {.new_sizes = {2, 3, 4},
                                   .broadcast_dimensions = {}};
   auto modified = UpdateLayout(layout, broadcast);
-  TT_EXPECT_OK(modified);
+  EXPECT_EQ(modified.status(), absl::OkStatus());
   EXPECT_TRUE(modified.value());
   StridedLayout expected = {
       .strided_dims = {{.size = 2, .stride = 0},
@@ -77,7 +77,7 @@ TEST(UpdateLayoutBroadcast, TensorToTensor) {
   BroadcastPrimitive broadcast = {.new_sizes = {6, 3, 4, 2},
                                   .broadcast_dimensions = {0, 3, 1}};
   auto modified = UpdateLayout(layout, broadcast);
-  TT_EXPECT_OK(modified);
+  EXPECT_EQ(modified.status(), absl::OkStatus());
   EXPECT_TRUE(modified.value());
   StridedLayout expected = {
       .strided_dims = {{.size = 6, .stride = 0},   // expanded

@@ -20,9 +20,9 @@
 #include <utility>
 
 #include "gtest/gtest.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "torch_tpu/common/absl_test_shim.h"
-#include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
 #include "torch_tpu/ops/view_decomposition/broadcast_primitive.h"
 #include "torch_tpu/ops/view_decomposition/conj_primitive.h"
@@ -46,19 +46,19 @@ void SimplifyTest(absl::Span<const int64_t> contiguous_base_shape,
   // The simplified sequence should return the same final layout as the
   // original un-simplified sequence.
   auto expected_layout = MakeContiguousBaseLayout(contiguous_base_shape);
-  TT_EXPECT_OK(UpdateLayout(expected_layout, sequence));
+  EXPECT_EQ(UpdateLayout(expected_layout, sequence).status(), absl::OkStatus());
 
   // If the simplified sequence is empty, then the simplified sequence should
   // not update the layout; otherwise, there should be a meaningful update.
   const bool expected_updated = !expected.empty();
 
-  TT_EXPECT_OK(Simplify(sequence, contiguous_base_shape));
+  EXPECT_EQ(Simplify(sequence, contiguous_base_shape), absl::OkStatus());
 
   EXPECT_EQ(sequence, expected);
 
   auto actual_layout = MakeContiguousBaseLayout(contiguous_base_shape);
   auto updated_status = UpdateLayout(actual_layout, sequence);
-  TT_EXPECT_OK(updated_status);
+  EXPECT_EQ(updated_status.status(), absl::OkStatus());
   EXPECT_EQ(updated_status.value(), expected_updated);
   EXPECT_EQ(actual_layout, expected_layout);
 
@@ -160,19 +160,19 @@ TEST(Simplify, DoNotRemoveSameSizeBitcast) {
       MakeContiguousBaseLayout(contiguous_base_shape);
 
   auto expected_layout = MakeContiguousBaseLayout(contiguous_base_shape);
-  TT_EXPECT_OK(UpdateLayout(expected_layout, sequence));
+  EXPECT_EQ(UpdateLayout(expected_layout, sequence).status(), absl::OkStatus());
 
   // Same-size bitcasts to a new type are not no-ops. They should not be
   // removed by Simplify.
   const bool expected_updated = true;
-  TT_EXPECT_OK(Simplify(sequence, contiguous_base_shape));
+  EXPECT_EQ(Simplify(sequence, contiguous_base_shape), absl::OkStatus());
   EXPECT_EQ(sequence, expected);
 
   // There is no layout change, even though the sequence is not a no-op,
   // because the values would be reinterpreted.
   auto actual_layout = MakeContiguousBaseLayout(contiguous_base_shape);
   auto updated_status = UpdateLayout(actual_layout, sequence);
-  TT_EXPECT_OK(updated_status);
+  EXPECT_EQ(updated_status.status(), absl::OkStatus());
   EXPECT_EQ(updated_status.value(), expected_updated);
   EXPECT_EQ(actual_layout, unmodified_layout);
 }

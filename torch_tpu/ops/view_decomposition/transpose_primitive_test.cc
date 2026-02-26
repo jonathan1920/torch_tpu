@@ -18,9 +18,10 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "torch_tpu/common/absl_test_shim.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 
@@ -33,7 +34,7 @@ TEST(UpdateLayoutPermute, ScalarNoOp) {
   StridedLayout layout = MakeContiguousBaseLayout({});
   TransposePrimitive transpose = {.permutation = {}};
   auto modified = UpdateLayout(layout, transpose);
-  TT_EXPECT_OK(modified);
+  EXPECT_EQ(modified.status(), absl::OkStatus());
   EXPECT_FALSE(modified.value());
 }
 
@@ -46,7 +47,7 @@ TEST(UpdateLayoutPermute, TensorNoOp) {
   };
   TransposePrimitive transpose = {.permutation = {0, 1, 2}};
   auto modified = UpdateLayout(layout, transpose);
-  TT_EXPECT_OK(modified);
+  EXPECT_EQ(modified.status(), absl::OkStatus());
   EXPECT_FALSE(modified.value());
 }
 
@@ -59,7 +60,7 @@ TEST(UpdateLayoutPermute, TensorToTensor) {
   };
   TransposePrimitive transpose = {.permutation = {1, 2, 0}};
   auto modified = UpdateLayout(layout, transpose);
-  TT_EXPECT_OK(modified);
+  EXPECT_EQ(modified.status(), absl::OkStatus());
   EXPECT_TRUE(modified.value());
   StridedLayout expected = {
       .strided_dims = {{.size = 4, .stride = 2},

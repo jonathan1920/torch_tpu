@@ -24,6 +24,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
@@ -41,9 +42,9 @@
 #include "ATen/ops/ones.h"
 #include "c10/core/DefaultDtype.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/absl_test_shim.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -78,7 +79,7 @@ class OpBuilderUtilsBuilder {
 mlir::ElementType GetDefaultMlirDType() {
   auto default_dtype =
       ConvertTo<mlir::ElementType>(c10::get_default_dtype_as_scalartype());
-  TT_EXPECT_OK(default_dtype);
+  EXPECT_EQ(default_dtype.status(), absl::OkStatus());
   return default_dtype.value();
 }
 
@@ -88,7 +89,7 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Int) {
   // Default dtype is captured at dispatch time.
   auto default_dtype = at::ScalarType::Float;
   auto default_mlir_element_type = ConvertTo<mlir::ElementType>(default_dtype);
-  TT_ASSERT_OK(default_mlir_element_type);
+  ASSERT_EQ(default_mlir_element_type.status(), absl::OkStatus());
   auto default_mlir_type = default_mlir_element_type.value();
 
   // Then we convert to it at compile time.
@@ -110,7 +111,7 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Float) {
   // Default dtype is captured at dispatch time.
   auto default_dtype = at::ScalarType::Float;
   auto default_mlir_element_type = ConvertTo<mlir::ElementType>(default_dtype);
-  TT_ASSERT_OK(default_mlir_element_type);
+  ASSERT_EQ(default_mlir_element_type.status(), absl::OkStatus());
   auto default_mlir_type = default_mlir_element_type.value();
 
   // Then we convert to it at compile time.
@@ -132,7 +133,7 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Int_Float) {
   // Default dtype is captured at dispatch time.
   auto default_dtype = at::ScalarType::Float;
   auto default_mlir_element_type = ConvertTo<mlir::ElementType>(default_dtype);
-  TT_ASSERT_OK(default_mlir_element_type);
+  ASSERT_EQ(default_mlir_element_type.status(), absl::OkStatus());
   auto default_mlir_type = default_mlir_element_type.value();
 
   // Then we convert to it at compile time.
@@ -157,7 +158,7 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoOperands_Float_Int) {
   // Default dtype is captured at dispatch time.
   auto default_dtype = at::ScalarType::Float;
   auto default_mlir_element_type = ConvertTo<mlir::ElementType>(default_dtype);
-  TT_ASSERT_OK(default_mlir_element_type);
+  ASSERT_EQ(default_mlir_element_type.status(), absl::OkStatus());
   auto default_mlir_type = default_mlir_element_type.value();
 
   // Then we convert to it at compile time.
@@ -182,7 +183,7 @@ TEST(OpBuilderUtils, ConvertIfIntegers_TwoIntegerOperands) {
   // Default dtype is captured at dispatch time.
   auto default_dtype = at::ScalarType::Float;
   auto default_mlir_element_type = ConvertTo<mlir::ElementType>(default_dtype);
-  TT_ASSERT_OK(default_mlir_element_type);
+  ASSERT_EQ(default_mlir_element_type.status(), absl::OkStatus());
   auto default_mlir_type = default_mlir_element_type.value();
 
   // Then we convert to it at compile time.
@@ -206,7 +207,7 @@ TEST(OpBuilderUtils, ConvertIfInteger_OneOperand_Int) {
   // Default dtype is captured at dispatch time.
   auto default_dtype = at::ScalarType::Float;
   auto default_mlir_element_type = ConvertTo<mlir::ElementType>(default_dtype);
-  TT_ASSERT_OK(default_mlir_element_type);
+  ASSERT_EQ(default_mlir_element_type.status(), absl::OkStatus());
   auto default_mlir_type = default_mlir_element_type.value();
 
   // Then we convert to it at compile time.
@@ -229,7 +230,7 @@ TEST(OpBuilderUtils, ConvertIfInteger_OneOperand_Float) {
   // Default dtype is captured at dispatch time.
   auto default_dtype = at::ScalarType::Float;
   auto default_mlir_element_type = ConvertTo<mlir::ElementType>(default_dtype);
-  TT_ASSERT_OK(default_mlir_element_type);
+  ASSERT_EQ(default_mlir_element_type.status(), absl::OkStatus());
   auto default_mlir_type = default_mlir_element_type.value();
 
   // Then we convert to it at compile time.

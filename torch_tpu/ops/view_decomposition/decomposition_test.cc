@@ -21,12 +21,12 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "torch_tpu/common/absl_test_shim.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/utils.h"
-#include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/ops/view_decomposition/view_sequence.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -73,15 +73,18 @@ void DecompositionTest(
 
   // Un-simplified sequence should be valid.
   EXPECT_TRUE(sequence.ok());
-  TT_EXPECT_OK(ValidateViewSequence(sequence.value(), contiguous_base_shape,
-                                    view_layout));
+  EXPECT_EQ(ValidateViewSequence(sequence.value(), contiguous_base_shape,
+                                 view_layout),
+            absl::OkStatus());
 
   // Sequence should be simplifiable.
-  TT_EXPECT_OK(Simplify(sequence.value(), contiguous_base_shape));
+  EXPECT_EQ(Simplify(sequence.value(), contiguous_base_shape),
+            absl::OkStatus());
 
   // Simplified sequence should be also valid.
-  TT_EXPECT_OK(ValidateViewSequence(sequence.value(), contiguous_base_shape,
-                                    view_layout));
+  EXPECT_EQ(ValidateViewSequence(sequence.value(), contiguous_base_shape,
+                                 view_layout),
+            absl::OkStatus());
 }
 
 TEST(DecomposeIntoViewSequence, ScalarNoOp) {

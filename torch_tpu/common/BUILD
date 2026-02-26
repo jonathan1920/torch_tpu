@@ -121,7 +121,6 @@ torch_tpu_cc_test(
         "oss_ready_cpu",
     ],
     deps = [
-        ":absl_test_shim",
         ":error_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -546,17 +545,6 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
-    name = "absl_test_shim",
-    testonly = True,
-    srcs = [],
-    hdrs = ["absl_test_shim.h"],
-    deps = [
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-torch_tpu_cc_library(
     name = "environment",
     srcs = ["environment.cc"],
     hdrs = ["environment.h"],
@@ -572,10 +560,10 @@ torch_tpu_cc_test(
     name = "environment_test",
     srcs = ["environment_test.cc"],
     deps = [
-        ":absl_test_shim",
         ":env_vars",
         ":environment",
         "//torch_tpu/distributed/slicebuilder:discovery",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )

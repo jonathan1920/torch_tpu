@@ -20,7 +20,7 @@
 #include <string>
 
 #include "gtest/gtest.h"
-#include "torch_tpu/common/absl_test_shim.h"
+#include "absl/status/status.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
 
@@ -38,7 +38,7 @@ TEST(EnvironmentTest,
   config.sb_addrs = "localhost:1234";
   config.topology = "1,1,1";
 
-  TT_EXPECT_OK(InitializeDistributedEnvironment(config));
+  EXPECT_EQ(InitializeDistributedEnvironment(config), absl::OkStatus());
 
   const char* env_val = std::getenv(kAllowMultipleLibtpuLoadEnvVar);
   ASSERT_NE(env_val, nullptr);
@@ -58,7 +58,7 @@ TEST(EnvironmentTest, InitializeDistributedEnvironmentUnsetsAddressesFirst) {
   config.sb_addrs = "new_address";
   config.topology = "1,1,1";
 
-  TT_EXPECT_OK(InitializeDistributedEnvironment(config));
+  EXPECT_EQ(InitializeDistributedEnvironment(config), absl::OkStatus());
 
   const char* addr_val = std::getenv(kTpuProcessAddressesEnvVar);
   ASSERT_NE(addr_val, nullptr);
