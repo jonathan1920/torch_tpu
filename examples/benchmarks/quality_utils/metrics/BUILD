@@ -13,15 +13,30 @@
 # limitations under the License.
 
 load("//build_files:build_defs.bzl", "define_cpp_filegroup")
+load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
     default_applicable_licenses = ["//:license"],
     default_visibility = ["//:__subpackages__"],
 )
 
-filegroup(
-    name = "model_configs_data",
-    srcs = glob(["model_configs/**/config.json"]),
+pytype_strict_library(
+    name = "perplexity_metric",
+    srcs = ["perplexity_metric.py"],
+    deps = [
+        "//examples/benchmarks/quality_utils:quality_benchmark_model",
+        "//shims/torch:pytorch",
+    ],
+)
+
+pytype_strict_library(
+    name = "data_loader",
+    srcs = ["data_loader.py"],
+    deps = [
+        "//shims/absl_py/logging",
+        "@pypi//grain",
+        "@pypi//tensorflow_datasets",
+    ],
 )
 
 define_cpp_filegroup(name = "all_cpp_files_recursive")

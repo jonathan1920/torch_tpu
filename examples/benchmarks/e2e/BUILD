@@ -68,6 +68,21 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
+    name = "quality_utils",
+    testonly = 1,
+    srcs = ["quality_utils.py"],
+    deps = [
+        ":benchmark_utils",
+        ":mlcompass_utils",
+        "//examples/benchmarks/quality_utils:quality_benchmark_model",
+        "//examples/benchmarks/quality_utils/metrics:data_loader",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/distributed:gpu_env",
+        "//torch_tpu/_internal/distributed:tpu_env",
+    ],
+)
+
+pytype_strict_library(
     name = "test_utils",
     testonly = 1,
     srcs = ["test_utils.py"],
@@ -102,6 +117,38 @@ torch_tpu_py_test(
         ":benchmark_utils",
         ":performance_utils",
         ":test_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/shims/g3_multiprocessing",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "model_quality_benchmarks",
+    timeout = "long",
+    srcs = ["model_quality_benchmarks.py"],
+    # This allows us to use a single .par file for remote cluster execution.
+    linking_mode = "static",
+    main = "model_quality_benchmarks.py",
+    shard_count = 4,
+    strict = True,
+    tags = [
+        "manual",  # Skip slow tests from local runs by default.
+        "cpu:4",
+        "notap",  # NOTAP_OK=Tested on guitar workflow.
+        # This makes sure that we have enough host RAM to load weights from host to device HBM.
+        "requires-accel-hbm",
+        "requires-tpu-v7x",
+        "nofastbuild",
+        # Needed for getting xprof links
+        "requires-net:external",
+    ],
+    deps = [
+        ":benchmark_utils",
+        ":quality_utils",
+        "//examples/benchmarks/quality_utils/metrics:data_loader",
+        "//examples/benchmarks/quality_utils/metrics:perplexity_metric",
+        "//examples/llama3/distributed_meta_llama3:meta_llama3_quality_benchmark",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu/shims/g3_multiprocessing",

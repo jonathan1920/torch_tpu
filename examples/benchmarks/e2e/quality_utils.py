@@ -1,0 +1,157 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Utilities for running end-to-end quality benchmarks."""
+
+import dataclasses
+import logging
+from typing import Sequence
+
+from torch.google import distributed as gdist
+from torch_tpu._internal.distributed import gpu_env
+from torch_tpu._internal.distributed import tpu_env
+from torch_tpu.examples.benchmarks.e2e import benchmark_utils
+from torch_tpu.examples.benchmarks.e2e import mlcompass_utils
+from torch_tpu.examples.benchmarks.quality_utils import quality_benchmark_model
+from torch_tpu.examples.benchmarks.quality_utils.metrics import data_loader
+
+N_PROC_MAP = {
+    benchmark_utils.Platform.B200_4: 4,
+    benchmark_utils.Platform.B200_8: 8,
+}
+
+
+@dataclasses.dataclass
+class QualityBenchmarkConfig:
+  """The config for a quality benchmark.
+
+  Attributes:
+    supported_platforms: The platforms the benchmark supports as defined in
+      benchmark_utils.Platform. If the current platform is not in this Sequence,
+      the test will be skipped.
+    benchmark_category: The category of the benchmark as defined by
+      benchmark_utils.BenchmarkCategory. This defines how to get the model and
+      example inputs and the benchmark function to run.
+    run_mode: The mode to run the benchmark in as defined by
+      benchmark_utils.RunMode. This is used to set environment variables like
+      `TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE` or use torch compile.
+    benchmark_model: The quality benchmark model to use.
+    metrics: The Sequence of metrics to use.
+    dataset_type: The dataset type to use as defined by data_loader.DatasetType.
+  """
+
+  supported_platforms: Sequence[benchmark_utils.Platform]
+  benchmark_category: benchmark_utils.BenchmarkCategory
+  run_mode: benchmark_utils.RunMode
+  benchmark_model: quality_benchmark_model.QualityBenchmarkModel
+  # LINT.IfChange
+  metrics: Sequence[quality_benchmark_model.MetricProducer]
+  # LINT.ThenChange(../../../g3doc/benchmarking.md)
+  dataset_type: data_loader.DatasetType
+
+
+def _run_single_process_benchmark(
+    rank: int,
+    world_size: int,
+    config: QualityBenchmarkConfig,
+    test_method_name: str,
+    benchmark_name: str,
+) -> None:
+  platform = benchmark_utils.PLATFORM.value
+  device = benchmark_utils.get_torch_device(platform)
+  data_iterator = data_loader.get_dataset_loader(config.dataset_type)
+
+  result = benchmark_utils.run_quality_benchmark(
+      config.benchmark_model,
+      benchmark_utils.is_torch_compile(config.run_mode),
+      data_iterator,
+      config.metrics,
+      device,
+  )
+
+  logging.info(
+      "Test: %s, benchmark: %s, platform: %s, rank(0-indexed): %s, world_size:"
+      " %s, metrics: %s",
+      test_method_name,
+      benchmark_name,
+      platform,
+      rank,
+      world_size,
+      result.metrics,
+  )
+
+  # Only export results from the rank 0 process to avoid duplicate entries in
+  # MLCompass.
+  if benchmark_utils.MLCOMPASS_TRACKING_ID.value and rank == 0:
+    mlcompass_utils.export_to_mlcompass(
+        platform,
+        result,
+        benchmark_utils.BASE_CL.value,
+        benchmark_utils.MLCOMPASS_TRACKING_ID.value,
+        benchmark_utils.MLCOMPASS_EXECUTION_MODE.value,
+        test_method_name=test_method_name,
+        benchmark_name=benchmark_name,
+    )
+
+
+def _run_distributed_benchmark(
+    config: QualityBenchmarkConfig,
+    *,
+    test_method_name: str,
+    benchmark_name: str,
+) -> None:
+  """Runs the benchmark for the given config."""
+  if benchmark_utils.PLATFORM.value == benchmark_utils.Platform.GFC_2X2X1:
+    tpu_env.run_in_workers(
+        8,
+        _run_single_process_benchmark,
+        worker_args=(config, test_method_name, benchmark_name),
+    )
+  elif (
+      benchmark_utils.PLATFORM_DEVICE_MAP[benchmark_utils.PLATFORM.value]
+      == "cuda"
+  ):
+    gdist.torchrun(
+        gpu_env.run_in_workers,
+        nproc_per_node=N_PROC_MAP[benchmark_utils.PLATFORM.value],
+    )(
+        _run_single_process_benchmark,
+        config,
+        test_method_name,
+        benchmark_name,
+    )
+
+
+def run_benchmark(
+    config: QualityBenchmarkConfig,
+    *,
+    test_method_name: str,
+    benchmark_name: str,
+    distributed: bool,
+) -> None:
+  """Runs the benchmark for the given config."""
+  if distributed:
+    _run_distributed_benchmark(
+        config,
+        test_method_name=test_method_name,
+        benchmark_name=benchmark_name,
+    )
+  else:
+    _run_single_process_benchmark(
+        0,
+        1,
+        config,
+        test_method_name=test_method_name,
+        benchmark_name=benchmark_name,
+    )
