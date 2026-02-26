@@ -23,6 +23,7 @@ underlying providers (Torchvision, TIMM, and Transformers). It ensures that:
 """
 
 from absl.testing import absltest
+import torch
 from tests import module_registry
 
 
@@ -35,7 +36,8 @@ class ModuleRegistryTest(absltest.TestCase):
   def test_list_all_modules(self):
     modules = self.module_registry.list_all_modules()
 
-    self.assertIn("timm/resnest50d", modules)
+    self.assertIn("timm/convnext_small", modules)
+    self.assertIn("timm/resnet50d", modules)
     self.assertIn("transformers/google/gemma-3-270m", modules)
 
   def test_torchvision_list_modules(self):
@@ -46,7 +48,8 @@ class ModuleRegistryTest(absltest.TestCase):
   def test_timm_list_modules(self):
     modules = self.module_registry.list_modules("timm")
 
-    self.assertIn("resnest50d", modules)
+    self.assertIn("convnext_small", modules)
+    self.assertIn("resnet50d", modules)
 
   def test_transformers_list_modules(self):
     modules = self.module_registry.list_modules("transformers")
@@ -78,6 +81,39 @@ class ModuleRegistryTest(absltest.TestCase):
     out = model(*args)
 
     self.assertEqual(out.shape, expected_output_shape)
+
+  def test_timm_get_module_spec_pretrained(self):
+    module_spec = self.module_registry.get_module_spec(
+        "timm", "convnext_small.in12k_ft_in1k", load_weights=True
+    )
+    model = module_spec.module_factory()
+    args, _ = module_spec.sample_inputs_factory()
+    expected_output_shape = (args[0].shape[0], 1000)
+    model.eval()
+
+    out = model(*args)
+
+    self.assertEqual(out.shape, expected_output_shape)
+
+  def test_timm_get_module_spec_pretrained_is_deterministic(self):
+    model_name = "convnext_small.in12k_ft_in1k"
+
+    module_spec_1 = self.module_registry.get_module_spec(
+        "timm", model_name, load_weights=True
+    )
+    model_1 = module_spec_1.module_factory()
+
+    module_spec_2 = self.module_registry.get_module_spec(
+        "timm", model_name, load_weights=True
+    )
+    model_2 = module_spec_2.module_factory()
+
+    # Compare the first layer of weights from two pretrained models.
+    # They should be equal.
+    weight_p = next(model_1.parameters())
+    weight_r = next(model_2.parameters())
+
+    self.assertTrue(torch.equal(weight_p, weight_r))
 
   def test_transformers_get_module_spec(self):
     module_spec = self.module_registry.get_module_spec(

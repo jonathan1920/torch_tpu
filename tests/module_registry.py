@@ -49,6 +49,12 @@ _HF_TRANSFORMERS_WEIGHTS_DIR = flags.DEFINE_string(
     "Location of weights and config files for HuggingFace Transformers models.",
 )
 
+_HF_TIMM_WEIGHTS_DIR = flags.DEFINE_string(
+    "hf_timm_weights_dir",
+    "",
+    "Location of weights and config files for HuggingFace TIMM models.",
+)
+
 
 class ModuleSpec:
   """A specification container for a PyTorch model and its inputs.
@@ -136,6 +142,10 @@ class TorchvisionProvider(BaseProvider):
 class TimmProvider(BaseProvider):
   """Provider for TIMM (PyTorch Image Models)."""
 
+  def __init__(self):
+    weights_dir = _HF_TIMM_WEIGHTS_DIR.value
+    self._weights_dir = epath.Path(weights_dir) if weights_dir else None
+
   def list_modules(self) -> list[str]:
     return timm.list_models()
 
@@ -155,12 +165,23 @@ class TimmProvider(BaseProvider):
     Returns:
       A ModuleSpec containing the model factory and input factory.
     """
-    if load_weights:
-      raise NotImplementedError(
-          "Loading pretrained weights not yet implemented."
-      )
 
     def _module_factory():
+      if load_weights and self._weights_dir:
+        local_checkpoint = self._weights_dir / f"{name}.pth"
+
+        if local_checkpoint.exists():
+          model = timm.create_model(name, pretrained=False)
+          #  local checkpoint can't be loaded by timm.create_model directly.
+          with local_checkpoint.open("rb") as f:
+            state_dict = torch.load(f)
+          model.load_state_dict(state_dict)
+          return model
+        else:
+          logging.warning(
+              "Checkpoint %s not found. Using random init.", local_checkpoint
+          )
+
       return timm.create_model(name, pretrained=False)
 
     def _input_factory(shape=None, device="cpu"):
