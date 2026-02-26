@@ -322,6 +322,12 @@ class DeviceBufferRef {
 [[nodiscard]] c10::DataPtr MakeDataPtr(DeviceBufferRef buffer_ref,
                                        int device_idx);
 
+// Delegate responsibility for deleting the DeviceBufferRef to the
+// c10::DataPtr.
+// The DeviceBufferRef* is used as both the "data" and "context" of the
+// c10::DataPtr; this mirrors the semantics of a std::unique_ptr.
+void DeleteDeviceBufferRef(void* ctx_ptr);
+
 // A deferred operation, used to back a DeviceBufferList.
 //
 // When aten ops are dispatched through op_dispatcher.h, they may return one or
@@ -806,6 +812,12 @@ class DeviceBufferList {
   // Returns the representative ID of the subgraph this node belongs to.
   [[nodiscard]] std::shared_ptr<Subgraph> subgraph() const { return subgraph_; }
 
+  // If the DeviceBufferList has no live data pointers, it is "stale", meaning
+  // that it will never be directly materialized and will never have any new
+  // DeferredOps appended to it. This allows for more optimal materialization
+  // patterns in some cases.
+  [[nodiscard]] bool is_stale() const { return live_data_ptrs_ == 0; }
+
  private:
   // Private constructor for a DeviceBufferList wrapping a single materialized
   // PjRtBuffer.
@@ -880,6 +892,13 @@ class DeviceBufferList {
   std::vector<Shape> shapes_;
   // The subgraph this node belongs to. Only valid for deferred nodes.
   std::shared_ptr<Subgraph> subgraph_;
+
+  // The number of live c10::DataPtrs to this DeviceBufferList.
+  // This is incremented by MakeDataPtr and decremented by
+  // DeleteDeviceBufferRef, and nowhere else.
+  std::atomic_int64_t live_data_ptrs_ = 0;
+  friend c10::DataPtr MakeDataPtr(DeviceBufferRef buffer_ref, int device_idx);
+  friend void DeleteDeviceBufferRef(void* ctx_ptr);
 };
 
 // Returns the C10 allocator singleton for TPU.

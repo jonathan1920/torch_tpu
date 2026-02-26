@@ -416,16 +416,20 @@ absl::StatusOr<xla::PjRtBuffer&> DeviceBufferList::buffer(int64_t index) const {
 // c10::DataPtr.
 // The DeviceBufferRef* is used as both the "data" and "context" of the
 // c10::DataPtr; this mirrors the semantics of a std::unique_ptr.
-static void DeleteDeviceBufferRef(void* ctx_ptr) {
+void DeleteDeviceBufferRef(void* ctx_ptr) {
   DeviceBufferRef* const ref_ptr = static_cast<DeviceBufferRef*>(ctx_ptr);
-  ABSL_VLOG(3) << "[c10::DataPtr deleter] deleting "
-               << (ref_ptr ? ref_ptr->DebugString() : "null");
+  if (ref_ptr) {
+    ABSL_VLOG(3) << "[c10::DataPtr deleter] deleting "
+                 << ref_ptr->DebugString();
+    ref_ptr->device_buffer_list()->live_data_ptrs_--;
+  }
   delete ref_ptr;
 }
 
 c10::DataPtr MakeDataPtr(DeviceBufferRef buffer_ref, const int device_idx) {
   auto* absl_nonnull const raw_ref_ptr =
       new DeviceBufferRef(std::move(buffer_ref));
+  raw_ref_ptr->device_buffer_list()->live_data_ptrs_++;
   return c10::DataPtr(raw_ref_ptr, raw_ref_ptr, DeleteDeviceBufferRef,
                       c10::Device(GetPrivateUse1DeviceType(), device_idx));
 }
