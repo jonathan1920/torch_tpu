@@ -24,10 +24,11 @@
 #include "absl/status/statusor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/layer_norm/layer_norm.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/reductions/reductions.h"
@@ -55,14 +56,15 @@ absl::StatusOr<LayerNormShloResults> BuildRmsNormShlo(
   }
 
   mlir::MlirBuilder& builder = input_op.getBuilder();
-  mlir::FloatType element_type =
-      mlir::dyn_cast<mlir::FloatType>(input_type.getElementType());
-  TT_RET_CHECK(element_type, error::kInvalidArgument)
-      << "input must be a floating-point type, but got "
-      << mlir::debugString(element_type);
+  mlir::Type element_type = input_type.getElementType();
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error caught by unique caller:
+                 // AtenFusedRmsNorm.
+      element_type.isFloat(), error::kInvalidArgument)
+      << "expected the input dtype to be floating point, got "
+      << ToString(element_type);
 
   // Perform computation in float32 to avoid overflow/underflow for f16/bf16.
-  bool need_cast = element_type.getWidth() < 32;
+  bool need_cast = element_type.getIntOrFloatBitWidth() < 32;
   mlir::MlirOp compute_input = input_op;
   mlir::Type compute_type = element_type;
   if (need_cast) {

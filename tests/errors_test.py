@@ -5600,6 +5600,21 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.linalg.inv_ex(a, out=out)
 
+  def test_rms_norm_int(self):
+    inp = torch.ones(5, 5, device=et.device(), dtype=torch.int32)
+    normalized_shape = (5,)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "fused_rms_norm(): expected the input dtype to be floating point,"
+            " got int32"
+        ),
+        cpu="\"rms_norm\" not implemented for 'Int'",
+        message_reviewed_by="wan",
+    ):
+      torch.nn.functional.rms_norm(inp, normalized_shape)
+
 
 if __name__ == "__main__":
   absltest.main()

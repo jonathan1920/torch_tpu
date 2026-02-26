@@ -17,21 +17,22 @@
 #include "torch_tpu/ops/rms_norm/rms_norm_aten_kernels.h"
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBase.h"
-#include "c10/core/ScalarType.h"
-#include "torch/csrc/autograd/custom_function.h"
-#include "torch/csrc/autograd/function.h"
-#include "torch/csrc/autograd/variable.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/layer_norm/layer_norm.h"
@@ -44,6 +45,30 @@
 
 namespace torch_tpu {
 
+namespace {
+
+absl::Status CheckFusedRmsNormInputs(const at::Tensor& input,
+                                     at::IntArrayRef normalized_shape) {
+  TT_RET_CHECK(IsFloatingPoint(input), error::kInvalidArgument)
+      << "expected the input dtype to be floating point, got "
+      << ToString(input.scalar_type());
+
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch catches this error in
+                 // the caller op `rms_norm()`.
+      !normalized_shape.empty(), error::kInvalidArgument)
+      << "the normalized shape must have >= 1 dimensions";
+
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch catches this error in
+                 // the caller op `rms_norm()`.
+      normalized_shape.size() <= input.dim(), error::kInvalidArgument)
+      << "expected the normalized shape to have <= " << input.dim()
+      << " dimensions, got " << normalized_shape.size() << ".";
+
+  return absl::OkStatus();
+}
+
+}  // namespace
+
 std::tuple<at::Tensor, at::Tensor> AtenFusedRmsNorm(
     const at::Tensor& input, const at::IntArrayRef normalized_shape,
     const std::optional<at::Tensor>& weight, const std::optional<double> eps) {
@@ -53,25 +78,18 @@ std::tuple<at::Tensor, at::Tensor> AtenFusedRmsNorm(
   TT_KERNEL(
       OpName::kFusedRmsNorm, param_keys,
       (input, normalized_shape, weight, epsilon), {
-        TT_CHECK_THROW(c10::isFloatingType(input.scalar_type()),
-                       error::kInvalidArgument)
-            << "input dtype must be floating point, but got "
-            << input.scalar_type();
-        const int normalized_num_dims = normalized_shape.size();
-        TT_CHECK_THROW(normalized_num_dims > 0, error::kInvalidArgument)
-            << "normalized shape cannot be empty.";
+        TT_THROW_IF_ERROR(CheckFusedRmsNormInputs(input, normalized_shape));
 
-        const int input_num_dims = input.dim();
-        TT_CHECK_THROW(normalized_num_dims <= input_num_dims,
-                       error::kInvalidArgument)
-            << "expected normalized_shape to have <= " << input_num_dims
-            << " dimensions, got " << normalized_num_dims << ".";
+        const size_t normalized_shape_dims = normalized_shape.size();
 
-        auto op_builder = [normalized_num_dims, epsilon](
+        auto op_builder = [normalized_shape_dims, epsilon](
                               absl::Span<const mlir::MlirOp> inputs,
                               mlir::MlirBuilder& builder)
             -> absl::StatusOr<MlirOpResults<2>> {
-          TT_RET_CHECK(!inputs.empty() && inputs.size() <= 2, error::kInternal)
+          TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=The inputs vector is always
+                         // constructed with this op input, possibly followed by
+                         // the weights.
+              !inputs.empty() && inputs.size() <= 2, error::kInternal)
               << "expected 1 or 2 inputs, got " << inputs.size();
 
           mlir::MlirOp input_op = inputs[0];
@@ -82,7 +100,7 @@ std::tuple<at::Tensor, at::Tensor> AtenFusedRmsNorm(
 
           TT_ASSIGN_OR_RETURN(LayerNormShloResults results,
                               BuildRmsNormShlo(input_op, weight_op,
-                                               normalized_num_dims, epsilon));
+                                               normalized_shape_dims, epsilon));
           return MlirOpResults<2>{results.normalized_values,
                                   results.reciprocal_std};
         };
@@ -106,15 +124,16 @@ std::tuple<at::Tensor, at::Tensor> AtenFusedRmsNorm(
         const auto elem_dtype = output_dtype;
         const auto rstd_elem_dtype = rstd_dtype;
 
+        const int64_t input_dims = input.dim();
+
         // The StableHLO reduction op will remove all normalized dimensions, but
         // PyTorch expects the dimensions to be retained as size 1. Return rstd
         // with these singleton dimensions.
         Dimensions rstd_buffer_shape;
-        for (int i = 0; i < input_num_dims - normalized_num_dims; ++i) {
+        for (int i = 0; i < input_dims - normalized_shape_dims; ++i) {
           rstd_buffer_shape.push_back(input_sizes[i]);
         }
-        for (int i = input_num_dims - normalized_num_dims; i < input_num_dims;
-             ++i) {
+        for (int i = input_dims - normalized_shape_dims; i < input_dims; ++i) {
           rstd_buffer_shape.push_back(1);
         }
 
@@ -158,8 +177,11 @@ std::tuple<at::Tensor, at::Tensor> AtenFusedRmsNormBackward(
                               absl::Span<const mlir::MlirOp> inputs,
                               mlir::MlirBuilder& builder)
             -> absl::StatusOr<MlirOpResults<2>> {
-          TT_RET_CHECK(inputs.size() >= 3 && inputs.size() <= 4,
-                       error::kInternal)
+          TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=The inputs sequence is always
+                         // constructed with the output grad, this op's input,
+                         // the rstd tensor, and possibly followed by the
+                         // weights.
+              inputs.size() >= 3 && inputs.size() <= 4, error::kInternal)
               << "expected 3 or 4 inputs, got " << inputs.size();
 
           mlir::MlirOp grad_out_op = inputs[0];
