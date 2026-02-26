@@ -32,7 +32,7 @@ torch_tpu_cc_library(
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/eager:device",
+        "//torch_tpu/eager:device_types",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops/macros:kernel",
         "//torch_tpu/ops/resize:resize_aten_kernels",

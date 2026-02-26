@@ -49,7 +49,7 @@ torch_tpu_cc_library(
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/eager:device",
+        "//torch_tpu/eager:device_types",
         "//torch_tpu/ops:op_builder_utils",
     ],
 )
@@ -92,6 +92,7 @@ pybind_extension(
         "//shims/torch:torch_headers",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/eager:device",
+        "//torch_tpu/eager:device_types",
         "//torch_tpu/ops:op_builder_utils",
     ],
 )

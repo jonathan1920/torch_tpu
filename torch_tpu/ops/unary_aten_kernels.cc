@@ -31,8 +31,8 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/macro_utils.h"  // IWYU pragma: keep
-#include "torch_tpu/eager/device.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"

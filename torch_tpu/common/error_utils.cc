@@ -43,7 +43,7 @@
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/status_builder.h"
 #include "torch_tpu/common/utils.h"
-#include "torch_tpu/eager/device.h"
+#include "torch_tpu/eager/device_types.h"
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {

@@ -26,7 +26,7 @@
 #include "c10/core/TensorOptions.h"
 #include "c10/util/Optional.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/eager/device.h"
+#include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/ops/copy_from/cpu_to_tpu.h"
 #include "torch_tpu/ops/copy_from/tpu_to_cpu.h"
 #include "torch_tpu/ops/copy_from/tpu_to_tpu.h"

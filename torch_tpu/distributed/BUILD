@@ -41,6 +41,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:utils",
         "//torch_tpu/eager:device",
         "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:device_types",
         "//torch_tpu/eager:materialize",
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/ops:op_builder_utils",

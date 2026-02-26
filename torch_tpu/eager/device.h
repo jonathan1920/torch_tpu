@@ -17,10 +17,8 @@
 #ifndef TORCH_TPU_EAGER_DEVICE_H_
 #define TORCH_TPU_EAGER_DEVICE_H_
 
-#include <string>
 
 #include "absl/base/nullability.h"
-#include "c10/core/DeviceType.h"
 #include "xla/pjrt/pjrt_client.h"
 
 namespace torch_tpu {
@@ -47,19 +45,6 @@ void SetPjRtDevice(xla::PjRtDevice* absl_nullable device,
 
 // Returns the physical PjRt device type for the PjRtDevice singleton.
 [[nodiscard]] PjRtDeviceType GetPjRtDeviceType();
-
-// Returns the device type for TPU.
-[[nodiscard]] inline constexpr c10::DeviceType GetPrivateUse1DeviceType() {
-  return c10::DeviceType::PrivateUse1;
-}
-
-// Returns a user-friendly name for the PrivateUse1 device. Mainly useful for
-// constructing user-facing error messages. Instead of hard-coding "tpu", call
-// this function to get the device type to use in error messages so that we have
-// the flexibility to support other hardware types in the future if we want to.
-[[nodiscard]] inline std::string GetPrivateUse1DeviceDebugName() {
-  return "tpu";
-}
 
 }  // namespace torch_tpu
 

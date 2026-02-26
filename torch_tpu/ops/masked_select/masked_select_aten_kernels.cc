@@ -28,7 +28,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/eager/device.h"
+#include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
 #include "torch_tpu/ops/gather/gather_aten_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"

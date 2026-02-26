@@ -40,10 +40,17 @@ torch_tpu_cc_library(
     srcs = ["device.cc"],
     hdrs = ["device.h"],
     deps = [
-        "//shims/torch:torch_headers",
-        "//shims/torch/c10/core:base_headers",
         "@com_google_absl//absl/base:nullability",
         "@xla//xla/pjrt:pjrt_client",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "device_types",
+    hdrs = ["device_types.h"],
+    deps = [
+        "//shims/torch:torch_headers",
+        "//shims/torch/torch/headeronly:torch_headeronly",
     ],
 )
 
@@ -491,6 +498,7 @@ torch_tpu_cc_library(
         ":device",
         ":device_buffer",
         ":device_gen_impl",
+        ":device_types",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",

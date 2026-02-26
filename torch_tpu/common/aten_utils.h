@@ -25,7 +25,7 @@
 #include "ATen/core/TensorBody.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/eager/device.h"
+#include "torch_tpu/eager/device_types.h"
 
 namespace torch_tpu {
 
