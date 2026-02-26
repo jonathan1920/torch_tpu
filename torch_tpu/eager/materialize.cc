@@ -606,10 +606,10 @@ class MaterializationWorker {
       // Mark all outputs of the split as scheduled/materialized.
       absl::flat_hash_set<const DeviceBufferList*> marked_materialized;
       for (const auto& output : split_traversal.outputs()) {
-        if (marked_materialized.contains(output.device_buffer_list().get())) {
+        if (!marked_materialized.insert(output.device_buffer_list().get())
+                 .second) {
           continue;
         }
-        marked_materialized.insert(output.device_buffer_list().get());
 
         ABSL_VLOG(1)
             << "[MaterializationWorker] Marking output as materialized: "
