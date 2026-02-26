@@ -48,6 +48,7 @@
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -305,14 +306,15 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLuUnpackOut(
               << "lu_pivots must have at least 1 dimension, got "
               << lu_pivots.dim();
           // TODO: b/483972819 resize outputs instead of raising errors.
-          TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
-                           // resizes the output, instead of raising an error.
-              p.dim() == lu_pivots.dim() + 1, error::kInvalidArgument)
-              << "p must have one more dimension than lu_pivots, got "
-              << p.dim() << " and " << lu_pivots.dim();
+          TT_CHECK_THROW(p.dim() == lu_pivots.dim() + 1,
+                         error::kInvalidArgument)
+              << "expected the first output tensor to be a "
+              << lu_pivots.dim() + 1 << "D tensor (pivots dimension + 1), got "
+              << p.dim() << "D of shape " << ToString(p.sizes());
           // TODO: b/483972819 resize outputs instead of raising errors.
           TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch implementation
-                           // resizes the output, instead of raising an error.
+                           // resizes the output, instead of raising an
+                           // error.
               p.size(-1) == lu_data.size(-2) && p.size(-2) == lu_data.size(-2),
               error::kInvalidArgument)
               << "p must be square and of size equal to number of (non-batch) "

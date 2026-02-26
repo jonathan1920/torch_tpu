@@ -62,8 +62,10 @@ at::Tensor AtenAsStrided(const at::Tensor& self, c10::SymIntArrayRef size_sym,
 
   TT_KERNEL(OpName::kAsStrided, _, (self, new_sizes, new_strides, new_offset), {
     // Get the base buffer so we can check that the view is valid
-    const auto* self_impl = self.unsafeGetTensorImpl();
-    TT_CHECK_THROW(self_impl, error::kInvalidArgument) << "tensor is undefined";
+    TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Cannot directly create an undefined
+                     // tensor on Python.
+        self.defined(), error::kInvalidArgument)
+        << "the input tensor cannot be undefined";
     TT_ASSIGN_OR_THROW(DeviceBufferRef base_buffer_ref,
                        GetBaseBufferFromAtTensor(*self.unsafeGetTensorImpl()));
 

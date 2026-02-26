@@ -835,8 +835,8 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "lu_unpack(): p must have one more dimension than lu_pivots, got 1"
-            " and 2"
+            "lu_unpack(): expected the first output tensor to be a 3D tensor"
+            " (pivots dimension + 1), got 1D of shape [4]"
         ),
     ):
       pivots = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
@@ -888,6 +888,26 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu="linalg_lu_solve(): pivots must have at least 1 dimension, got 0",
+    ):
+      torch.linalg.lu_solve(lu, pivots, b, out=out)
+
+  # Why do we run this test only on TPU (and not on CPU)?
+  # CPU kernel runs successfully, broadcasting the inputs.
+  # BUG: TPU kernels should mimic native devices behavior, including bugs.
+  def test_lu_solve_rank_mismatch(self):
+    lu = torch.ones(4, 4, device=et.device())
+    pivots = torch.ones(4, device=et.device(), dtype=torch.int32)
+    b = torch.ones(4, 4, 4, device=et.device())
+
+    # Call the out-of-place variant of linalg.lu_solve() op.
+    out = torch.empty(4, 4, 4, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "linalg_lu_solve(): the rank of b must be equal to the rank of lu,"
+            " got rank(b) = 3 and rank(lu) = 2"
+        ),
     ):
       torch.linalg.lu_solve(lu, pivots, b, out=out)
 

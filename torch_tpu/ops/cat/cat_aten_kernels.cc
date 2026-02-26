@@ -64,7 +64,8 @@ struct CatShapeInfo {
 
 absl::StatusOr<CatShapeInfo> ValidateCatTensors(
     const at::ITensorListRef& tensors, const int64_t dim) {
-  TT_RET_CHECK(!tensors.empty(), error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch catches this error first.
+      !tensors.empty(), error::kInvalidArgument)
       << "expect a non-empty list of Tensors.";
 
   // Reject scalars.
