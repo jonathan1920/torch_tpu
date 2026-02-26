@@ -32,7 +32,6 @@ torch_tpu_cc_library(
         "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/eager:device",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/ops:nullary_aten_kernels",
