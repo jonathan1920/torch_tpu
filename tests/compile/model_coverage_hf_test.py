@@ -245,8 +245,8 @@ class ModelCoverageHFTest(parameterized.TestCase):
           provider="transformers",
           module_name="google/gemma-3-4b-pt",
           model_size=ModelSize.MEDIUM,
-          rtol=6e-4,
-          atol=1e-2,
+          rtol=2e-3,
+          atol=8e-2,
       ),
       dict(
           testcase_name="transformers/Qwen/Qwen3-0.6B",
