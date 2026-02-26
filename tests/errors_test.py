@@ -5519,6 +5519,20 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       _run_native_layer_norm_backward(inp, normalized_shape)
 
+  def test_random_invalid_range(self):
+    t = torch.ones(5, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="random_(): expected 'from' to be < 'to', got 20 vs 10",
+        cpu=(
+            "random_ expects 'from' to be less than 'to', but got from=20 >="
+            " to=10"
+        ),
+        message_reviewed_by="wan",
+    ):
+      t.random_(20, 10)
+
 
 if __name__ == "__main__":
   absltest.main()

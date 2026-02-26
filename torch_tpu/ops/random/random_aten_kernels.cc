@@ -30,7 +30,6 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/Generator.h"
 #include "ATen/native/DistributionTemplates.h"
-#include "ATen/native/TensorFactories.h"
 #include "c10/core/ScalarType.h"
 #include "c10/core/ScalarTypeToTypeMeta.h"
 #include "c10/util/Optional.h"
@@ -39,6 +38,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -97,7 +97,7 @@ absl::StatusOr<int64_t> ComputeToValue(at::ScalarType dtype) {
 
 absl::Status FromToInRange(int64_t from, int64_t to, at::ScalarType dtype) {
   TT_RET_CHECK(from < to, error::kInvalidArgument)
-      << "from must be less than to, got from=" << from << ", to=" << to;
+      << "expected 'from' to be < 'to', got " << from << " vs " << to;
   at::native::templates::check_from_to_in_range(
       from, to - 1, c10::scalarTypeToTypeMeta(dtype));
   return absl::OkStatus();

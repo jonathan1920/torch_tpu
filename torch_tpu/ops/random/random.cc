@@ -26,6 +26,7 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -56,14 +57,19 @@ absl::StatusOr<mlir::MlirOp> BitsToRandomIntegersInRange(
   const mlir::RankedTensorType random_bits_type =
       GetTensorTypeOrDie(random_bits);
   const mlir::RankedTensorType diff_type = GetTensorTypeOrDie(diff);
-  TT_RET_CHECK(random_bits_type.getElementType() == diff_type.getElementType(),
-               error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Caller makes sure `random_bits` is
+                 // of the same type as `diff`.
+      random_bits_type.getElementType() == diff_type.getElementType(),
+      error::kInvalidArgument)
       << "random bits and diff must be the same type, got "
       << mlir::debugString(random_bits_type) << " vs "
       << mlir::debugString(diff_type);
-  TT_RET_CHECK(diff_type.getRank() == 0, error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Caller makes sure `diff` is a constant.
+      diff_type.getRank() == 0, error::kInvalidArgument)
       << "diff must be a scalar, got " << mlir::debugString(diff_type);
-  TT_RET_CHECK(diff_type.getElementType().isInteger(), error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Python API function signature
+                 // mismatches (it explicitly allows only integers) before.
+      diff_type.getElementType().isInteger(), error::kInvalidArgument)
       << "diff must be an integer type, got " << mlir::debugString(diff_type);
   // Broadcast the difference and use it to mod the random u64s.
   diff = mlir::stablehlo::BroadcastInDim(random_bits_type, diff, {});
@@ -106,7 +112,8 @@ absl::StatusOr<MlirOpResults<2>> BuildRandomShlo(mlir::MlirOp state,
   auto& ctx = state.getContext();
   auto& builder = state.getBuilder();
   auto& op_builder = builder.getOpBuilder();
-  TT_RET_CHECK(to > from, error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error already caught in caller.
+      to > from, error::kInvalidArgument)
       << "to must be greater than from, got to=" << to << ", from=" << from;
   // Cast _before_ computing the difference to avoid overflow.
   // Note that computations in uint64 are done (mod 2^64), so
@@ -140,9 +147,11 @@ absl::StatusOr<MlirOpResults<2>> BuildRandomShlo(mlir::MlirOp state,
       mlir::MlirOp(builder, rng_op.getOutputState());
   mlir::MlirOp rng_output_op = mlir::MlirOp(builder, rng_op.getOutput());
   auto output_tensor_type = mlir::makeTensorType(ctx, dims, output_dtype);
-  TT_RET_CHECK(output_tensor_type.getElementType().isInteger() ||
-                   output_tensor_type.getElementType().isFloat(),
-               error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch `check_from_to_in_range()`
+                 // function already catches this error.
+      output_tensor_type.getElementType().isInteger() ||
+          output_tensor_type.getElementType().isFloat(),
+      error::kInvalidArgument)
       << "output type must be an integer or float, got "
       << mlir::debugString(output_tensor_type);
   mlir::MlirOp from_op =
