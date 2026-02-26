@@ -186,6 +186,9 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "tier2_compilation_cache_test",
     srcs = ["tier2_compilation_cache_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
     ],
@@ -215,6 +218,9 @@ torch_tpu_cc_test(
         "--expected_tier2_cache_name=",
         "--world_size=1",
     ],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
     ],
@@ -239,6 +245,9 @@ torch_tpu_cc_test(
     env = {
         # This should force enable tier-2.
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/cache",
+    },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
     },
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
@@ -283,6 +292,9 @@ torch_tpu_cc_test(
     ],
     env = {
         "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "disabled",
+    },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
     },
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
@@ -329,6 +341,9 @@ torch_tpu_cc_test(
     ],
     env = {
         "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "my_cache",
+    },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
     },
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
@@ -770,6 +785,9 @@ torch_tpu_cc_test(
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
     },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -797,6 +815,9 @@ torch_tpu_cc_test(
         # TODO(wan): make this work on OSS.
         "",
     },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     tags = [
         "requires-net:external",  # Requires remote file access.
         "requires-tpu-v5lite",
@@ -823,6 +844,9 @@ torch_tpu_cc_test(
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
         # TODO(wan): make this work on OSS.
         "",
+    },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
     },
     tags = [
         "requires-net:external",  # Requires remote file access.
