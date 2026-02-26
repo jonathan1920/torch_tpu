@@ -16,9 +16,11 @@ from absl import logging
 from absl.testing import absltest
 import torch
 from torch_tpu import api
+from torch_tpu.examples import paths
 import transformers
 
-MODEL_PATH = "Qwen/Qwen3-0.6B"
+
+MODEL_PATH = f"{paths.XM_HOME}weights/huggingface/Qwen/Qwen3-0.6B"
 INPUT_TEXT = "Hello, I am a"
 
 
