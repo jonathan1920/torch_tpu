@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: Build Wheels
+name: Build and Test Wheels
 
 on:
-  # Enable remote connections.
-  # Step 1: Add a workflow dispatch to enable halting.
+  # Enable remote connections for workflow dispatch to enable halting.
   # See go/ml-github-actions:connect#enable-workflow-dispatch.
   workflow_dispatch:
     inputs:
@@ -102,14 +101,41 @@ jobs:
 
           python3 -m twine upload --repository-url https://us-python.pkg.dev/ml-oss-artifacts-transient/torch-tpu-testing-registry $WHEEL_DIR/torch_tpu-*.whl
 
-  test-wheel-workflow:
+  test_wheels:
+    name: Test wheel on ${{ matrix.runner }}
     if: github.event_name != 'schedule'
     needs: build_wheels
-    uses: ./.github/workflows/wheel_tests.yml
+    strategy:
+      matrix:
+        include:
+          - name: CPU
+            runner: linux-x86-n2-16
+            tag: oss_ready_cpu
+            extra_flags: "--config=wheel_test_cpu"
+          - name: TPU
+            runner: linux-x86-ct5lp-224-8tpu
+            tag: oss_ready_tpu
+            extra_flags: '--config=wheel_test_tpu --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"'
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest
+      options: --privileged
     permissions:
       contents: read
       pull-requests: read
       issues: read
-    with:
-      gcs-path: ${{ needs.build_wheels.outputs.gcs-path }}
-      halt-for-connection: ${{ inputs.halt-for-connection }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download Wheel from GCS
+        run: |
+          mkdir dist
+          gcloud storage cp "${{ needs.build_wheels.outputs.gcs-path }}/*.whl" dist/
+      - name: Wait For Connection
+        uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
+        with:
+          halt-dispatch-input: ${{ inputs.halt-for-connection }}
+      - name: Run tests
+        shell: bash
+        run: |
+          bazel test ${{ matrix.extra_flags }} \
+            -- $(bazel query 'kind("(py_test|torch_tpu_py_test) rule", attr(tags, "${{ matrix.tag }}", //...))')
