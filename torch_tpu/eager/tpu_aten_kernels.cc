@@ -144,6 +144,7 @@
 #include "torch_tpu/ops/where/where_aten_kernels.h"
 #include "xla/xla_data.pb.h"
 #include "torch_tpu/ops/cummax/cummax_aten_kernels.h"
+#include "torch_tpu/ops/cummin/cummin_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -285,6 +286,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kCosOut, AtenCosOut);
   Impl(m, OpName::kCoshOut, AtenCoshOut);
   Impl(m, OpName::kCummaxHelper, AtenCummaxHelper);
+  Impl(m, OpName::kCumminHelper, AtenCumminHelper);
   Impl(m, OpName::kCumprodOut, AtenCumprodOut);
   Impl(m, OpName::kCumsumOut, AtenCumsumOut);
   Impl(m, OpName::kDivOut, AtenDivOut);

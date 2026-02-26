@@ -151,6 +151,7 @@ def verify_op_supports_dynamism(
       "bincount",
       "cdist",
       "constant_pad_nd",
+      "cummin",
       "cummax",
       "cumprod",
       "cumsum",

@@ -180,6 +180,8 @@ std::string_view ToString(OpName op_name) {
       return "cosh.out";
     case OpName::kCummaxHelper:
       return "_cummax_helper";
+    case OpName::kCumminHelper:
+      return "_cummin_helper";
     case OpName::kCumprodOut:
       return "cumprod.out";
     case OpName::kCumsumOut:

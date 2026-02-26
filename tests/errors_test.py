@@ -693,6 +693,27 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
       y, _ = torch.cummax(t, dim=0)
       y.cpu()
 
+  def test_cummin_dimension_size_limit(self):
+    """Tests cummin fails if dimension size has > 2^31-1 elements."""
+    # Create an empty tensor with shape 2**31
+    t = torch.empty(2**31, dtype=torch.float32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        "cummin_helper(): expected dimension size to be less than or equal to"
+        " 2147483647, got 2147483648",
+    ):
+      y, _ = torch.cummin(t, dim=0)
+      y.cpu()
+
+  def test_cummin_with_unsupported_complex_dtype(self):
+    """Tests cummin fails with unsupported complex dtypes."""
+    with et.assert_raises_message(
+        RuntimeError,
+        "cummin_helper(): expected supported element type, got ComplexFloat",
+    ):
+      t = torch.ones(2, 2, device="tpu", dtype=torch.complex64)
+      torch.cummin(t, dim=1)
+
   def test_index_add_with_assign_buffer_to_at_tensor_failure(self):
     """Tests that index_add() bubbles up the error from AssignBufferToAtTensor.
 
