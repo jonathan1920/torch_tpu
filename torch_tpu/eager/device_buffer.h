@@ -222,7 +222,7 @@ class DeviceBufferRef {
 
   // The logical size of the referenced buffer or placeholder, as a function of
   // its shape and XLA element type.
-  size_t size_bytes() const;
+  [[nodiscard]] size_t size_bytes() const;
 
   // The number of physical bytes backing this buffer, if it can be determined.
   absl::StatusOr<size_t> pjrt_buffer_size() const;
@@ -231,10 +231,10 @@ class DeviceBufferRef {
   // This is verbose and should only be used for debugging, such as with
   // logging, crashing, or error::kInternal status messages.
   // It should never be used in user-facing error messages.
-  std::string DebugString() const;
+  [[nodiscard]] std::string DebugString() const;
 
   // The current state of the referenced buffer, as an enum.
-  DeviceBufferRefState state() const;
+  [[nodiscard]] DeviceBufferRefState state() const;
 
   // The logical dimensions of the referenced buffer.
   [[nodiscard]] absl::Span<const int64_t> dimensions() const;
@@ -270,7 +270,8 @@ class DeviceBufferRef {
 
   // The dynamic dimensions of the given DeviceBufferRef.
   // May be empty if the DeviceBufferRef is not dynamic.
-  absl::Span<const BoundedDynamicDimension> dynamic_dimensions() const;
+  [[nodiscard]] absl::Span<const BoundedDynamicDimension> dynamic_dimensions()
+      const;
 
   [[nodiscard]] bool operator==(const DeviceBufferRef& other) const {
     // std::shared_ptr equality is a pointer equality check, not a value
@@ -737,7 +738,7 @@ class DeviceBufferList {
                            int64_t lower_bound, int64_t upper_bound);
   // Returns the dynamic dimensions of the indexed buffer. This may be empty if
   // the indexed buffer has no dynamic dimensions.
-  absl::Span<const BoundedDynamicDimension> dynamic_dimensions(
+  [[nodiscard]] absl::Span<const BoundedDynamicDimension> dynamic_dimensions(
       int64_t index) const;
 
   // DeviceBufferList is copyable and movable. Per "rule of five"
@@ -754,7 +755,7 @@ class DeviceBufferList {
   DeviceBufferList& operator=(DeviceBufferList&& other) = default;
 
   // Returns the number of buffers in the DeviceBufferList.
-  int64_t size() const { return shapes_.size(); }
+  [[nodiscard]] int64_t size() const { return shapes_.size(); }
 
   // Returns a span of all of the buffer shapes in the DeviceBufferList.
   [[nodiscard]] absl::Span<const Shape> shapes() const { return shapes_; }
@@ -763,16 +764,16 @@ class DeviceBufferList {
 
   // The logical size of the indexed buffer or placeholder, as a function of
   // its shape and XLA element type.
-  size_t size_bytes(int64_t index) const;
+  [[nodiscard]] size_t size_bytes(int64_t index) const;
 
   // The number of physical bytes backing the indexed buffer, if it can be
   // determined.
   absl::StatusOr<size_t> pjrt_buffer_size(int64_t index) const;
 
   // The current state of the indexed buffer, as an enum.
-  DeviceBufferRefState state(int64_t index) const;
+  [[nodiscard]] DeviceBufferRefState state(int64_t index) const;
 
-  bool IsMaterializedOrZeroState() const {
+  [[nodiscard]] bool IsMaterializedOrZeroState() const {
     for (auto i = 0; i < size(); ++i) {
       auto s = state(i);
       if (s != DeviceBufferRefState::kMaterialized &&
@@ -784,13 +785,13 @@ class DeviceBufferList {
   }
 
   // The logical dimensions of the indexed buffer.
-  absl::Span<const int64_t> dimensions(int64_t index) const;
+  [[nodiscard]] absl::Span<const int64_t> dimensions(int64_t index) const;
 
   // The number of elements in the indexed buffer.
-  int64_t num_elements(int64_t index) const;
+  [[nodiscard]] int64_t num_elements(int64_t index) const;
 
   // The element type of the referenced buffer.
-  mlir::ElementType element_type(int64_t index) const;
+  [[nodiscard]] mlir::ElementType element_type(int64_t index) const;
 
   // If the DeviceBufferList has a DeferredOp, returns a non-null pointer to
   // it. Otherwise, return a nullptr.
