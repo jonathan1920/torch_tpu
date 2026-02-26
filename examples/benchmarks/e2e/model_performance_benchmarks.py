@@ -229,6 +229,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=8,
             custom_kwargs={"dist_strat": "ddp"},
         ),
+        grad_accumulation_steps=10,
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
 
@@ -248,6 +249,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=16,
             custom_kwargs={"dist_strat": "fsdp"},
         ),
+        grad_accumulation_steps=10,
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
 
