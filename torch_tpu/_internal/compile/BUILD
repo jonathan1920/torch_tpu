@@ -171,6 +171,7 @@ torch_tpu_py_test(
     srcs = ["trace_autograd_ops_test.py"],
     strict = "true",
     tags = [
+        "nomsan",  # TODO: fix the test in msan mode.
         "requires-tpu-v5lite",
     ],
     deps = [

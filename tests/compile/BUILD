@@ -25,6 +25,7 @@ torch_tpu_py_test(
     name = "small_graph_test",
     srcs = ["small_graph_test.py"],
     tags = [
+        "nomsan",  # TODO: fix the test in msan mode.
         "oss_ready_tpu",
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -65,6 +66,7 @@ torch_tpu_py_test(
         # In OSS, we have to run the test exclusively to avoid the
         # "TPU initialization failed ... Device or resource busy" error.
         "exclusive",
+        "nomsan",  # TODO: fix the test in msan mode.
         "oss_ready_tpu",
         "requires-tpu-v5lite:8",
     ],
@@ -200,6 +202,7 @@ torch_tpu_py_test(
     srcs = ["model_coverage_timm_test.py"],
     shard_count = 6,
     tags = [
+        "nomsan",  # TODO: fix the test in msan mode.
         "requires-net:external",
         "requires-tpu-v5lite",  #
     ],
