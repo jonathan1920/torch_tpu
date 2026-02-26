@@ -935,6 +935,30 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.ops.aten.index(inp, indices)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # TorchTPU behaves differently from CPU/GPU kernels. Instead of resizing the
+  # given output, TorchTPU raises an error.
+  #
+  # TODO: b/487653209 remove this test when the divergence is resolved.
+  def test_linalg_inv_ex_output_rank_mismatch(self):
+    a = torch.ones(4, 4, device=et.device())
+
+    # Call the out-of-place variant of linalg.inv_ex() op.
+    out = (
+        torch.ones(4, 4, 4, device=et.device()),
+        torch.ones(4, 4, 4, device=et.device()),
+    )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "linalg_inv_ex(): expected the inverse output shape to match the"
+            " input tensor of shape [4, 4], got [4, 4, 4]"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.linalg.inv_ex(a, out=out)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
@@ -5532,6 +5556,49 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         message_reviewed_by="wan",
     ):
       t.random_(20, 10)
+
+  def test_linalg_inv_ex_1d(self):
+    a = torch.ones(5, device=et.device())
+
+    # Call the out-of-place variant of linalg.inv_ex() op.
+    out = (
+        torch.ones(4, 4, 4, device=et.device()),
+        torch.ones(4, 4, 4, device=et.device()),
+    )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "linalg_inv_ex(): expected the input tensor to have at least 2"
+            " dimensions, got 1 dimensions of shape [5]"
+        ),
+        cpu="linalg.inv: The input tensor A must have at least 2 dimensions.",
+        message_reviewed_by="wan",
+    ):
+      torch.linalg.inv_ex(a, out=out)
+
+  def test_linalg_inv_ex_non_square(self):
+    a = torch.ones(3, 5, device=et.device())
+
+    # Call the out-of-place variant of linalg.inv_ex() op.
+    out = (
+        torch.ones(4, 4, 4, device=et.device()),
+        torch.ones(4, 4, 4, device=et.device()),
+    )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "linalg_inv_ex(): expected the input tensor's last 2 dimensions to"
+            " be equal, got [3, 5]"
+        ),
+        cpu=(
+            "linalg_inv_ex(): expected input tensor to have equal last two"
+            " dimensions, got 5 and 3"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.linalg.inv_ex(a, out=out)
 
 
 if __name__ == "__main__":

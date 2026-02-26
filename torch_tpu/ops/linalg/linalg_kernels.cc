@@ -26,6 +26,7 @@
 #include "ATen/ops/ones.h"
 #include "c10/core/ScalarType.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/linalg/lu/linalg_lu_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -72,14 +73,15 @@ std::tuple<at::Tensor&, at::Tensor&> AtenLinalgInvExOut(const at::Tensor& a,
                                                         at::Tensor& info) {
   TT_KERNEL(OpName::kLinalgInvExOut, _, (a, check_errors, inverse, info), {
     TT_CHECK_THROW(a.dim() >= 2, error::kInvalidArgument)
-        << "expected input tensor to have at least 2 dimensions, got "
-        << a.dim();
+        << "expected the input tensor to have at least 2 dimensions, got "
+        << a.dim() << " dimensions of shape " << ToString(a.sizes());
     TT_CHECK_THROW(a.size(-1) == a.size(-2), error::kInvalidArgument)
-        << "expected input tensor to have equal last two dimensions, got "
-        << a.size(-1) << " and " << a.size(-2);
+        << "expected the input tensor's last 2 dimensions to be equal, got "
+        << ToString(a.sizes());
     TT_CHECK_THROW(a.sizes() == inverse.sizes(), error::kInvalidArgument)
-        << "expected inverse to have the same shape as input, got "
-        << ToString(a.sizes()) << " and " << ToString(inverse.sizes());
+        << "expected the inverse output shape to match the input tensor of "
+           "shape "
+        << ToString(a.sizes()) << ", got " << ToString(inverse.sizes());
     at::Tensor lu = at::empty_like(a);
     Dimensions pivot_dims = CopyIntVector(a.sizes());
     pivot_dims.pop_back();
