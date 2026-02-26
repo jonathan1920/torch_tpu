@@ -1391,6 +1391,221 @@ class MlLayersTest(parameterized.TestCase):
     )
 
   # ############################################################################
+  # Scaled dot product attention tests
+  # ############################################################################
+
+  @dataclass(frozen=True)
+  class _SdpaConfig:
+    batch_size: int
+    seq_len: int
+    num_heads: int
+    head_dim: int
+    dtype: torch.dtype
+
+  _sdpa_configs = (
+      # Default config for smoke test.
+      _SdpaConfig(
+          batch_size=1,
+          seq_len=128,
+          num_heads=8,
+          head_dim=64,
+          dtype=torch.bfloat16,
+      ),
+      # Configs for Llama3 70B attention layers
+      _SdpaConfig(
+          batch_size=1,
+          seq_len=2048,
+          num_heads=64,
+          head_dim=128,
+          dtype=torch.bfloat16,
+      ),
+      _SdpaConfig(
+          batch_size=4,
+          seq_len=2048,
+          num_heads=64,
+          head_dim=128,
+          dtype=torch.bfloat16,
+      ),
+      # Configs for Qwen3 480B attention layers
+      _SdpaConfig(
+          batch_size=1,
+          seq_len=2048,
+          num_heads=96,
+          head_dim=128,
+          dtype=torch.bfloat16,
+      ),
+      _SdpaConfig(
+          batch_size=4,
+          seq_len=2048,
+          num_heads=96,
+          head_dim=128,
+          dtype=torch.bfloat16,
+      ),
+      # Configs for Gemma3 27B attention layers
+      _SdpaConfig(
+          batch_size=1,
+          seq_len=2048,
+          num_heads=32,
+          head_dim=128,
+          dtype=torch.bfloat16,
+      ),
+      _SdpaConfig(
+          batch_size=4,
+          seq_len=2048,
+          num_heads=32,
+          head_dim=128,
+          dtype=torch.bfloat16,
+      ),
+  )
+
+  @parameterized.named_parameters(
+      generate_configs_for_parameterized(_sdpa_configs)
+  )
+  def test_nn_Sdpa(self, config):
+    """Benchmark torch.nn.functional.scaled_dot_product_attention."""
+    if not is_pytorch_framework():
+      self.skipTest("PyTorch not enabled")
+
+    class AttentionLayer(torch.nn.Module):
+
+      def __init__(self, c: MlLayersTest._SdpaConfig):
+        super().__init__()
+        self.num_heads = c.num_heads
+        self.head_dim = c.head_dim
+        self.embed_dim = c.num_heads * c.head_dim
+        self.q_proj = torch.nn.Linear(
+            self.embed_dim, self.embed_dim, bias=False, dtype=c.dtype
+        )
+        self.k_proj = torch.nn.Linear(
+            self.embed_dim, self.embed_dim, bias=False, dtype=c.dtype
+        )
+        self.v_proj = torch.nn.Linear(
+            self.embed_dim, self.embed_dim, bias=False, dtype=c.dtype
+        )
+        self.out_proj = torch.nn.Linear(
+            self.embed_dim, self.embed_dim, bias=False, dtype=c.dtype
+        )
+
+      def forward(self, x) -> torch.Tensor:
+        bsz, q_len, _ = x.size()
+        q = (
+            self.q_proj(x)
+            .view(bsz, q_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+        k = (
+            self.k_proj(x)
+            .view(bsz, q_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+        v = (
+            self.v_proj(x)
+            .view(bsz, q_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+
+        attn_output = torch.nn.functional.scaled_dot_product_attention(q, k, v)
+        attn_output = attn_output.transpose(1, 2).reshape(
+            bsz, q_len, self.embed_dim
+        )
+        return self.out_proj(attn_output)
+
+    self._run_model_tests(
+        "nn.f.scaled_dot_product_attention",
+        config,
+        lambda c: AttentionLayer(c),
+        lambda c: torch.randn(
+            (c.batch_size, c.seq_len, c.num_heads * c.head_dim),
+            dtype=c.dtype,
+            device=get_torch_device(),
+        ),
+        skip_bw_pass=(
+            is_pytorch_framework() and _DEVICE.value == "cuda"
+        ),  # The BW pass fails on PT/CUDA
+    )
+
+  @parameterized.named_parameters(
+      generate_configs_for_parameterized(_sdpa_configs)
+  )
+  def test_nnx_Sdpa(self, config):
+    """Benchmark jax.nn.dot_product_attention."""
+    if not is_jax_framework():
+      self.skipTest("JAX not enabled")
+
+    class AttentionLayer(flax.nnx.Module):
+
+      def __init__(self, c: MlLayersTest._SdpaConfig, rngs):
+        super().__init__()
+        self.num_heads = c.num_heads
+        self.head_dim = c.head_dim
+        self.embed_dim = c.num_heads * c.head_dim
+        dtype = pt2jax_dtype(c.dtype)
+        self.q_proj = flax.nnx.Linear(
+            self.embed_dim,
+            self.embed_dim,
+            use_bias=False,
+            dtype=dtype,
+            rngs=rngs,
+        )
+        self.k_proj = flax.nnx.Linear(
+            self.embed_dim,
+            self.embed_dim,
+            use_bias=False,
+            dtype=dtype,
+            rngs=rngs,
+        )
+        self.v_proj = flax.nnx.Linear(
+            self.embed_dim,
+            self.embed_dim,
+            use_bias=False,
+            dtype=dtype,
+            rngs=rngs,
+        )
+        self.out_proj = flax.nnx.Linear(
+            self.embed_dim,
+            self.embed_dim,
+            use_bias=False,
+            dtype=dtype,
+            rngs=rngs,
+        )
+
+      def __call__(self, x) -> jax.Array:
+        bsz, q_len, _ = x.shape
+        q = (
+            self.q_proj(x)
+            .reshape(bsz, q_len, self.num_heads, self.head_dim)
+            .transpose(0, 2, 1, 3)
+        )
+        k = (
+            self.k_proj(x)
+            .reshape(bsz, q_len, self.num_heads, self.head_dim)
+            .transpose(0, 2, 1, 3)
+        )
+        v = (
+            self.v_proj(x)
+            .reshape(bsz, q_len, self.num_heads, self.head_dim)
+            .transpose(0, 2, 1, 3)
+        )
+
+        attn_output = jax.nn.dot_product_attention(q, k, v)
+        attn_output = attn_output.transpose(0, 2, 1, 3).reshape(
+            bsz, q_len, self.embed_dim
+        )
+        return self.out_proj(attn_output)
+
+    self._run_model_tests(
+        "nnx.f.dot_product_attention",
+        config,
+        lambda c: AttentionLayer(c, flax.nnx.Rngs(0)),
+        lambda c, key: jax.random.normal(
+            key,
+            (c.batch_size, c.seq_len, c.num_heads * c.head_dim),
+            dtype=pt2jax_dtype(c.dtype),
+        ),
+        is_jax=True,
+    )
+
+  # ############################################################################
   # Nonzero operator tests
   # ############################################################################
 
