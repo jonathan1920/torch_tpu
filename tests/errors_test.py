@@ -5646,6 +5646,20 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.nn.functional.rms_norm(inp, normalized_shape)
 
+  def test_bincount_rank_too_high(self):
+    t = torch.ones(2, 2, 2, device=et.device(), dtype=torch.int32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "bincount(): Unexpected dimension of input tensor: [2, 2, 2] -"
+            " TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
+            " have a PjRtBuffer to copy from."
+        ),
+        cpu="bincount only supports 1-d non-negative integral inputs.",
+    ):
+      torch.bincount(t).cpu()
+
 
 if __name__ == "__main__":
   absltest.main()
