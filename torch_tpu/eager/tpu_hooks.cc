@@ -44,7 +44,7 @@
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 
 namespace torch_tpu {

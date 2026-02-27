@@ -42,7 +42,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 #include "torch_tpu/pjrt/pjrt_utils.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"

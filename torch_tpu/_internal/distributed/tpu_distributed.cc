@@ -26,8 +26,7 @@
 #include "torch/csrc/utils/pybind.h"  // IWYU pragma: keep or multi_tpu_test fails
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/distributed/process_group_tpu.h"
-#include "torch_tpu/eager/device.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 #include "pybind11/chrono.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"

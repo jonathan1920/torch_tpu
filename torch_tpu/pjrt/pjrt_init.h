@@ -19,10 +19,7 @@
 
 #include <string>
 
-#include "absl/base/nullability.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/pjrt/pjrt_client.h"
 
 namespace torch_tpu {
 
@@ -47,23 +44,8 @@ struct PjRtInitializationOptions {
 //   - "xla/pjrt/xla_tpu:xla_tpu_pjrt_client" for "tpu"
 //   - "xla/pjrt/xla_gpu:xla_gpu_pjrt_client" for "xla_cuda"
 //   - "xla/pjrt/xla_cpu:xla_cpu_pjrt_client" for "xla_cpu"
-// TODO(mvoz): make RAII.
 absl::StatusOr<PjRtInitializationResult> InitializePjRt(
     const PjRtInitializationOptions& options);
-
-// Returns the PjRtClient singleton if it has been initialized. Otherwise,
-// returns nullptr.
-[[nodiscard]] xla::PjRtClient* absl_nullable GetPjRtClient();
-
-// Returns the global device count. Returns an error if the global device count
-// is not set. Thread-safe.
-absl::StatusOr<int> GetGlobalDeviceCount();
-
-// Returns allocator stats for the current PjRt device.
-absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats();
-
-// Clears allocator stats for the current PjRt device.
-absl::Status ResetPeakMemoryStats();
 
 }  // namespace torch_tpu
 
