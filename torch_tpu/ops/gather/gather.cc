@@ -17,11 +17,14 @@
 #include "torch_tpu/ops/gather/gather.h"
 
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/absl_log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -29,6 +32,8 @@
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -39,40 +44,75 @@ namespace torch_tpu {
 
 namespace stablehlo = mlir::stablehlo;
 
+absl::Status CheckGatherInputs(absl::Span<const int64_t> self, int64_t dim,
+                               absl::Span<const int64_t> index,
+                               bool sparse_grad) {
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error is caught by caller `Gather`
+                 // function.
+      sparse_grad == false, error::kUnimplemented)
+      << "sparse_grad is not yet supported";
+
+  const int64_t self_rank = self.size();
+  const int64_t index_rank = index.size();
+
+  // self and index should have the same rank, except when one of them is a
+  // scalar and the other is a vector.
+  if (self_rank == 0 || index_rank == 0) {
+    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=SafeWrapDim function (called before
+                   // this one) catches this error first.
+        dim == 0, error::kInvalidArgument)
+        << "expected the dim argument to be 0 when either the input or the "
+           "index tensors are scalars, got "
+        << dim;
+    TT_RET_CHECK(self_rank <= 1, error::kInvalidArgument)
+        << "expected the input to be a scalar or a 1D tensor when the index "
+           "tensor is a scalar, got "
+        << self_rank << "D of shape " << ToString(self);
+    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=SafeWrapDim function (called before
+                   // this one) catches 0-dimensional self tensor cases.
+        index_rank <= 1, error::kInvalidArgument)
+        << "expected the index tensor to be a scalar or a 1D tensor when the "
+           "input tensor is a scalar, got "
+        << index_rank << "D of shape " << ToString(index);
+  } else {
+    TT_RET_CHECK(self_rank == index_rank, error::kInvalidArgument)
+        << "expected the input and the index tensor to have the same number of "
+           "dimensions, got "
+        << ToString(self) << " vs " << ToString(index);
+
+    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=SafeWrapDim function (called before
+                   // this one) catches this error first.
+        dim >= 0 && dim < self_rank, error::kInvalidArgument)
+        << "expected the dim argument to be in the range [0, " << self_rank
+        << "), got " << dim;
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
     mlir::MlirOp self, int64_t dim, mlir::MlirOp index, bool sparse_grad,
     mlir::ElementType computation_element_type) {
   const mlir::RankedTensorType self_type = GetTensorTypeOrDie(self);
   const mlir::RankedTensorType index_type = GetTensorTypeOrDie(index);
+
   ABSL_VLOG(2) << "BuildGatherShlo:"
                << ", dim: " << dim
                << ", self_type: " << mlir::debugString(self_type)
                << ", index_type: " << mlir::debugString(index_type)
                << ", sparse_grad: " << (sparse_grad ? "true" : "false");
-  TT_RET_CHECK(sparse_grad == false, error::kUnimplemented)
-      << "sparse_grad is not yet supported";
+
+  TT_RETURN_IF_ERROR(CheckGatherInputs(self_type.getShape(), dim,
+                                       index_type.getShape(), sparse_grad));
 
   // self and index should have the same rank, except when one of them is a
   // scalar and the other is a vector.
-  if (index_type.getRank() == 0 || self_type.getRank() == 0) {
-    TT_RET_CHECK(dim == 0, error::kInvalidArgument)
-        << "dim must be 0 when either self or index are scalars";
-    TT_RET_CHECK(self_type.getRank() <= 1, error::kInvalidArgument)
-        << "self must be a scalar or a vector when index is a scalar";
-    TT_RET_CHECK(index_type.getRank() <= 1, error::kInvalidArgument)
-        << "index must be a scalar or a vector when self is a scalar";
+  if (self_type.getRank() == 0 || index_type.getRank() == 0) {
     if (self_type.getRank() != index_type.getRank()) {
       self = mlir::stablehlo::Reshape(self, index_type.getShape());
     }
     return self;
   }
-
-  TT_RET_CHECK(self_type.getRank() == index_type.getRank(),
-               error::kInvalidArgument)
-      << "self and index must have the same rank";
-
-  TT_RET_CHECK(dim >= 0 && dim < self_type.getRank(), error::kInvalidArgument)
-      << "dim must be in the range [0, self.getRank())";
 
   // Convert arguments to the computation type if necessary.
   mlir::Type computation_type =

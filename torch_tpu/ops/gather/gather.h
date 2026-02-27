@@ -19,11 +19,17 @@
 
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {
+
+absl::Status CheckGatherInputs(absl::Span<const int64_t> self, int64_t dim,
+                               absl::Span<const int64_t> index,
+                               bool sparse_grad);
 
 absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
     mlir::MlirOp self, int64_t dim, mlir::MlirOp index, bool sparse_grad,

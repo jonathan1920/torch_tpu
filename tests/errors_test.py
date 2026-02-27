@@ -980,6 +980,20 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.linalg.inv_ex(a, out=out)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # TorchTPU doesn't support setting the `sparse_grad` parameter.
+  def test_gather_with_sparse_grad(self):
+    inp = torch.ones(2, 3, 4, device=et.device())
+    dim = 0
+    index = torch.ones(2, 3, 4, device=et.device(), dtype=torch.int64)
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="gather(): sparse_grad is not yet supported",
+        message_reviewed_by="wan",
+    ):
+      torch.gather(inp, dim, index, sparse_grad=True)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
@@ -5624,8 +5638,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
             " be equal, got [3, 5]"
         ),
         cpu=(
-            "linalg_inv_ex(): expected input tensor to have equal last two"
-            " dimensions, got 5 and 3"
+            "linalg.inv: A must be batches of square matrices, but they are 3"
+            " by 5 matrices"
         ),
         message_reviewed_by="wan",
     ):
@@ -5649,6 +5663,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_bincount_rank_too_high(self):
     t = torch.ones(2, 2, 2, device=et.device(), dtype=torch.int32)
 
+    # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
@@ -5659,6 +5674,56 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         cpu="bincount only supports 1-d non-negative integral inputs.",
     ):
       torch.bincount(t).cpu()
+
+  def test_gather_2d_input_on_scalar_index(self):
+    inp = torch.ones(2, 2, device=et.device())
+    dim = 0
+    index = torch.tensor(0, device=et.device(), dtype=torch.int64)
+
+    # Call the out-of-place overload.
+    out = torch.empty(1, 1, device=et.device())
+
+    # TODO: Error eagerly, i.e. without having to call the op builder.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "gather(): expected the input to be a scalar or a 1D tensor when"
+            " the index tensor is a scalar, got 2D of shape [2, 2] -"
+            " TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
+            " have a PjRtBuffer to copy from."
+        ),
+        cpu=(
+            "Index tensor must have the same number of dimensions as input"
+            " tensor"
+        ),
+    ):
+      # cpu() is needed because the error is triggered inside the op builder.
+      torch.gather(inp, dim, index, out=out).cpu()
+
+  def test_gather_rank_mismatch(self):
+    inp = torch.ones(2, 2, device=et.device())
+    dim = 0
+    index = torch.ones(1, 1, 1, device=et.device(), dtype=torch.int64)
+
+    # Call the out-of-place overload.
+    out = torch.empty(1, 1, device=et.device())
+
+    # TODO: Error eagerly, i.e. without having to call the op builder.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "gather(): expected the input and the index tensor to have the same"
+            " number of dimensions, got [2, 2] vs [1, 1, 1] - TpuMemcpyDtoH:"
+            " DeviceBufferRef has nonzero size, but does not have a PjRtBuffer"
+            " to copy from."
+        ),
+        cpu=(
+            "Index tensor must have the same number of dimensions as input"
+            " tensor"
+        ),
+    ):
+      # cpu() is needed because the error is triggered inside the op builder.
+      torch.gather(inp, dim, index, out=out).cpu()
 
 
 if __name__ == "__main__":

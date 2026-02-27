@@ -26,6 +26,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/gather/gather.h"
@@ -41,6 +42,9 @@ namespace {
 absl::StatusOr<DeviceBufferRef> Gather(const at::Tensor& self, int64_t dim,
                                        const at::Tensor& index,
                                        bool sparse_grad) {
+  TT_RET_CHECK(sparse_grad == false, error::kUnimplemented)
+      << "sparse_grad is not yet supported";
+
   TT_ASSIGN_OR_RETURN(dim, SafeWrapDim(dim, self.dim()));
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
