@@ -184,7 +184,7 @@ torch_tpu_py_test(
         "nofastbuild",  # Run in postsubmit only to avoid long Forge queues.
         "requires-accel-hbm",
         "requires-net:external",
-        "requires-tpu-v7x:4",
+        "requires-tpu-v7x",
     ],
     deps = [
         "//shims/absl_py/flags",
