@@ -170,8 +170,8 @@ class Traversal {
   absl::StatusOr<SharedLoadedExecutableFuture> Compile(
       GraphCompilationMode compilation_mode) const;
 
-  // Apply dynamism information to the Traversal, returning a list of
-  // padding traversals, and modifying the current traversal in place.
+  // Apply dynamism information to the Traversal, returning a single padding
+  // traversal, and modifying the current traversal in place.
   // For each input i with a dynamic dimension we create
   // i <- pad <-----------------┐
   //    dimension_size <------set_dimension_size
@@ -180,7 +180,7 @@ class Traversal {
   //  - inputs: we replace i with pad and dimension_size.
   //  - execution_order: we prepend set_dimension_size.
   //  - dynamic_redirection: we add a mapping from i to set_dimension_size.
-  absl::StatusOr<std::vector<Traversal>> ApplyDynamism();
+  absl::StatusOr<Traversal> ApplyDynamism();
 
   // Returns true if any input to the traversal has bounded dynamic dimensions
   // marked.
@@ -237,7 +237,8 @@ class Traversal {
         outputs_(std::move(outputs)) {}
 
   CompilationCacheKey BuildCacheKey() const;
-  ShapeDynamismMetadata BuildShapeDynamismMetadata() const;
+  ShapeDynamismMetadata BuildShapeDynamismMetadata(
+      bool apply_dynamism = true) const;
 
   // Validates that the traversal is sound.
   absl::Status Validate() const;
@@ -303,7 +304,7 @@ bool IsSimpleNodeTraversal(const Traversal& traversal);
 absl::StatusOr<std::string> GetGraphviz(
     const Traversal& traversal,
     const absl::flat_hash_map<DeviceBufferRef, std::string>&
-        buffer_ref_to_python_var);
+        buffer_ref_to_python_var = {});
 
 }  // namespace torch_tpu
 

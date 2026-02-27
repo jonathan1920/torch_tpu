@@ -20,7 +20,6 @@
 #include <chrono>
 #include <cstdint>
 #include <future>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -729,13 +728,8 @@ absl::StatusOr<std::vector<Traversal>> ApplyDynamism(
   resulting_traversals.reserve(traversals.size());
   for (auto& traversal : traversals) {
     if (traversal.is_bounded_dynamic()) {
-      TT_ASSIGN_OR_RETURN(auto padding_traversals, traversal.ApplyDynamism());
-      TT_RET_CHECK(!padding_traversals.empty(), error::kInternal)
-          << "expected at least one padding traversal for dynamism.";
-      resulting_traversals.insert(
-          resulting_traversals.end(),
-          std::make_move_iterator(padding_traversals.begin()),
-          std::make_move_iterator(padding_traversals.end()));
+      TT_ASSIGN_OR_RETURN(auto padding_traversal, traversal.ApplyDynamism());
+      resulting_traversals.push_back(std::move(padding_traversal));
     }
     resulting_traversals.push_back(std::move(traversal));
   }

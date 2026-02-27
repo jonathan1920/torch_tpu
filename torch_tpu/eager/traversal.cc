@@ -29,7 +29,6 @@
 #include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -56,6 +55,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fingerprint_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -295,7 +295,8 @@ struct GraphSignature {
 
 }  // namespace
 
-ShapeDynamismMetadata Traversal::BuildShapeDynamismMetadata() const {
+ShapeDynamismMetadata Traversal::BuildShapeDynamismMetadata(
+    bool apply_dynamism) const {
   ShapeDynamismMetadata metadata;
   for (const DeviceBufferRef& input : inputs()) {
     // Initially assume that all dimensions are static and set the upper and
@@ -304,7 +305,9 @@ ShapeDynamismMetadata Traversal::BuildShapeDynamismMetadata() const {
     for (int64_t dim : input.dimensions()) {
       metadata.input_dimension_bounds.push_back({dim, dim});
     }
-
+    if (!apply_dynamism) {
+      continue;
+    }
     // Then modify the bounds for any dynamic dimensions.
     for (const auto& dynamic_dim : input.dynamic_dimensions()) {
       const int64_t dynamic_dim_index =
@@ -395,6 +398,8 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
 
   for (const SharedDeviceBufferList& node : execution_order()) {
     const DeferredOp* absl_nullable maybe_deferred_op = node->deferred_op();
+    ABSL_VLOG(1) << "[Traversal::BuildCacheKey] node: " << node.get()
+                 << " maybe_deferred_op: " << maybe_deferred_op;
     ABSL_CHECK(maybe_deferred_op != nullptr);  // CRASH_OK
     const DeferredOp& deferred_op = *maybe_deferred_op;
     if (deferred_op.op_name() == OpName::kSetDimensionSize) {
@@ -680,7 +685,7 @@ absl::StatusOr<SharedLoadedExecutableFuture> Traversal::Compile(
       std::move(compile_options));
 }
 
-absl::StatusOr<std::vector<Traversal>> Traversal::ApplyDynamism() {
+absl::StatusOr<Traversal> Traversal::ApplyDynamism() {
   // Ensure that the Traversal has its cache key and ShapeDynamismMetadata
   // recorded.
   if (!cache_key_) {
@@ -690,11 +695,13 @@ absl::StatusOr<std::vector<Traversal>> Traversal::ApplyDynamism() {
     shape_dynamism_metadata_ = BuildShapeDynamismMetadata();
   }
 
-  // The padding traversals are the ones that are created to pad the buffers
-  // to the upper bound.
-  std::vector<Traversal> padding_traversals;
-  // We will replace inputs marked as dynamic with padded inputs + a dimension
-  // size buffer ref.
+  // Keep track of padded inputs to create a padding traversal.
+  std::vector<DeviceBufferRef> padded_inputs;
+  padded_inputs.reserve(inputs_.size());
+  absl::flat_hash_set<const DeviceBufferList*> nodes_to_stop_at;
+  nodes_to_stop_at.reserve(inputs_.size());
+  // This includes non padded inputs, padded inputs, and their respective
+  // dimension sizes.
   std::vector<DeviceBufferRef> new_inputs;
   new_inputs.reserve(2 * inputs_.size());
   // The set_dimension_size will be prepended to the execution order of this
@@ -725,6 +732,8 @@ absl::StatusOr<std::vector<Traversal>> Traversal::ApplyDynamism() {
     TT_ASSIGN_OR_RETURN(
         DeviceBufferRef padded_input,
         PadDynamicDimension(input, dimension_index, upper_bound));
+    padded_inputs.push_back(padded_input);
+    nodes_to_stop_at.insert(input.device_buffer_list().get());
     for (int64_t dim : padded_input.dimensions()) {
       input_upper_bounds.push_back(dim);
     }
@@ -740,20 +749,6 @@ absl::StatusOr<std::vector<Traversal>> Traversal::ApplyDynamism() {
                                           padded_input, dimension_index,
                                           input.dimensions()[dimension_index]));
     auto [set_dimension_size_buffer_ref, dimension_size_buffer_ref] = results;
-    TT_ASSIGN_OR_RETURN(
-        auto padding_traversal,
-        Traversal::Create({padded_input}, {input.device_buffer_list().get()}));
-    // The padding traversal is static-shaped always, even though it technically
-    // still has dynamic annotations on its inputs.
-    padding_traversal.shape_dynamism_metadata_ = ShapeDynamismMetadata();
-    padding_traversal.shape_dynamism_metadata_->input_dimension_bounds.reserve(
-        input.dimensions().size());
-    for (int64_t dim : input.dimensions()) {
-      padding_traversal.shape_dynamism_metadata_->input_dimension_bounds
-          .push_back({dim, dim});
-    }
-
-    padding_traversals.push_back(std::move(padding_traversal));
 
     new_inputs.push_back(padded_input);
     new_inputs.push_back(dimension_size_buffer_ref);
@@ -763,6 +758,13 @@ absl::StatusOr<std::vector<Traversal>> Traversal::ApplyDynamism() {
     dynamic_redirection_.insert({input, set_dimension_size_buffer_ref});
   }
 
+  TT_ASSIGN_OR_RETURN(auto padding_traversal,
+                      Traversal::Create(padded_inputs, nodes_to_stop_at));
+  // The padding traversal is static-shaped always, even though it technically
+  // still has dynamic annotations on its inputs.
+  padding_traversal.shape_dynamism_metadata_ =
+      padding_traversal.BuildShapeDynamismMetadata(/*apply_dynamism=*/false);
+
   inputs_ = std::move(new_inputs);
   new_execution_order.insert(new_execution_order.end(),
                              execution_order_.begin(), execution_order_.end());
@@ -771,7 +773,7 @@ absl::StatusOr<std::vector<Traversal>> Traversal::ApplyDynamism() {
   // of a dynamic graph, rather than the actual static sizes.
   cache_key_->dimensions_key =
       DimensionsKey(input_upper_bounds, /*is_shape_dynamic=*/true);
-  return padding_traversals;
+  return padding_traversal;
 }
 
 bool IsSimpleNodeTraversal(const Traversal& traversal) {
