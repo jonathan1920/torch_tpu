@@ -31,7 +31,9 @@ struct DistributedWorkerConfiguration {
   int local_rank;
   int world_size;
   std::string sb_addrs;
-  int sb_port;
+  // This is also contained in `sb_addrs` (at index `rank`), but we keep it
+  // here for convenience.
+  std::string sb_port;
   std::string topology;
 };
 

@@ -16,10 +16,6 @@
 
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
 
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
 #include <string>
 #include <vector>
 
@@ -80,6 +76,7 @@ GetDistributedWorkerConfiguration() {
   // Get the slice builder addresses from the environment variables.
   TT_ASSIGN_OR_RETURN(std::string sb_addrs,
                       GetRequiredEnvOnce<kTpuSlicebuilderAddressesEnvVar>());
+
   std::vector<std::string> addresses = absl::StrSplit(sb_addrs, ',');
   if (rank < 0 || rank >= addresses.size()) {
     return TT_ERROR(error::kFailedPrecondition)
@@ -87,19 +84,16 @@ GetDistributedWorkerConfiguration() {
            << kTpuSlicebuilderAddressesEnvVar << " (size " << addresses.size()
            << ")";
   }
+
+  // Get the local port.
   std::string my_addr = addresses[rank];
-  std::vector<std::string> parts = absl::StrSplit(my_addr, ':');
-  if (parts.size() != 2) {
+  std::vector<std::string> my_parts = absl::StrSplit(my_addr, ':');
+  if (my_parts.size() != 2) {
     return TT_ERROR(error::kFailedPrecondition)
            << "Invalid address format in " << kTpuSlicebuilderAddressesEnvVar
-           << ": " << my_addr;
+           << " for current rank: " << my_addr;
   }
-  int sb_port = -1;
-  if (!absl::SimpleAtoi(parts[1], &sb_port)) {
-    return TT_ERROR(error::kFailedPrecondition)
-           << "Failed to parse port from " << kTpuSlicebuilderAddressesEnvVar
-           << ": " << my_addr;
-  }
+  std::string sb_port = my_parts[1];
 
   // Get the topology from the environment variables.
   TT_ASSIGN_OR_RETURN(std::string topology,

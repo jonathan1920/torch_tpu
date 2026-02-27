@@ -16,7 +16,7 @@
 # This is a workaround to avoid depending on internal components
 # directly from the main torch_tpu library.
 
-load("//build_files:build_defs.bzl", "define_cpp_filegroup", "torch_tpu_cc_library")
+load("//build_files:build_defs.bzl", "define_cpp_filegroup", "torch_tpu_cc_library", "torch_tpu_cc_test")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -36,6 +36,17 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "discovery_test",
+    srcs = ["discovery_test.cc"],
+    deps = [
+        ":discovery",
+        "//torch_tpu/common:env_vars",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

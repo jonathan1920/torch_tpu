@@ -34,7 +34,7 @@ TEST(EnvironmentTest,
   DistributedWorkerConfiguration config;
   config.rank = 0;
   config.local_rank = 0;
-  config.sb_port = 1234;
+  config.sb_port = "1234";
   config.sb_addrs = "localhost:1234";
   config.topology = "1,1,1";
 
@@ -54,7 +54,7 @@ TEST(EnvironmentTest, InitializeDistributedEnvironmentUnsetsAddressesFirst) {
   DistributedWorkerConfiguration config;
   config.rank = 0;
   config.local_rank = 0;
-  config.sb_port = 1234;
+  config.sb_port = "1234";
   config.sb_addrs = "new_address";
   config.topology = "1,1,1";
 

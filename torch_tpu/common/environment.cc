@@ -34,7 +34,7 @@ absl::Status InitializeDistributedEnvironment(
   SetEnv(kTpuChipsPerHostBoundsEnvVar, "1,1,1,1");
 
   // The free slicebuilder port of this process.
-  SetEnv(kTpuProcessPortEnvVar, absl::StrCat(config.sb_port));
+  SetEnv(kTpuProcessPortEnvVar, config.sb_port);
 
   // The addresses of all other workers in the slice.
   SetEnv(kTpuProcessAddressesEnvVar, config.sb_addrs);
