@@ -166,7 +166,6 @@ pybind_extension(
         "//torch_tpu/eager:tpu_hooks",
         "//torch_tpu/pjrt:pjrt_init",
         "//torch_tpu/pjrt:pjrt_shutdown",
-        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/time",
     ],
 )

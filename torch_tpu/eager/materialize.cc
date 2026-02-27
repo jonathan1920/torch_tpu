@@ -56,7 +56,7 @@
 #include "torch_tpu/eager/split_traversal.h"
 #include "torch_tpu/eager/traversal.h"
 #include "torch_tpu/ops/op_builder_utils.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/pjrt/pjrt_init.h"
 #include "torch_tpu/pjrt/pjrt_utils.h"
 #include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"

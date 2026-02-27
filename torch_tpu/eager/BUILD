@@ -36,6 +36,16 @@ torch_tpu_cc_test(
 )
 
 torch_tpu_cc_library(
+    name = "device",
+    srcs = ["device.cc"],
+    hdrs = ["device.h"],
+    deps = [
+        "@com_google_absl//absl/base:nullability",
+        "@xla//xla/pjrt:pjrt_client",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "device_types",
     hdrs = ["device_types.h"],
     deps = [
@@ -53,6 +63,7 @@ torch_tpu_cc_library(
         "device_buffer.h",
     ],
     deps = [
+        ":device",
         "//shims/torch:aten_headers",
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
@@ -72,7 +83,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/view_decomposition:inversion",
         "//torch_tpu/ops/view_decomposition:strided_layout",
         "//torch_tpu/ops/view_decomposition:view_sequence",
-        "//torch_tpu/pjrt:pjrt_state",
+        "//torch_tpu/pjrt:pjrt_init",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
@@ -247,7 +258,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:utils",
         "//torch_tpu/ops:op_builder_utils",
-        "//torch_tpu/pjrt:pjrt_state",
+        "//torch_tpu/pjrt:pjrt_init",
         "//torch_tpu/pjrt:pjrt_utils",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
@@ -362,6 +373,7 @@ torch_tpu_cc_library(
     srcs = ["tpu_aten_kernels.cc"],
     hdrs = ["tpu_aten_kernels.h"],
     deps = [
+        ":device",
         ":device_buffer",
         ":op_dispatcher",
         "//shims/torch:aten_headers",
@@ -480,7 +492,6 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/upsample:upsample_aten_kernels",
         "//torch_tpu/ops/view:view_aten_kernels",
         "//torch_tpu/ops/where:where_aten_kernels",
-        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
@@ -503,6 +514,7 @@ torch_tpu_cc_library(
     srcs = ["tpu_hooks.cc"],
     hdrs = ["tpu_hooks.h"],
     deps = [
+        ":device",
         ":device_buffer",
         ":device_gen_impl",
         ":device_types",
@@ -517,7 +529,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops/macros:kernel",
-        "//torch_tpu/pjrt:pjrt_state",
+        "//torch_tpu/pjrt:pjrt_init",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",

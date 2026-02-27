@@ -48,7 +48,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/unique_file_descriptor.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
+#include "torch_tpu/pjrt/pjrt_init.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/tsl/platform/env.h"
