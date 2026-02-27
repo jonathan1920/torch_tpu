@@ -22,9 +22,6 @@ package(
 torch_tpu_cc_test(
     name = "device_buffer_test",
     srcs = ["device_buffer_test.cc"],
-    exec_properties = {
-        "cpp_link.mem": "16g",  # Needed for asan.
-    },
     deps = [
         ":device_buffer",
         "//torch_tpu/ops:op_builder_utils",

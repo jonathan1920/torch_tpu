@@ -122,9 +122,6 @@ torch_tpu_py_test(
     args = [
         "--enable_tensorboard_logging=False",
     ],
-    exec_properties = {
-        "cpp_link.mem": "20g",  # Needed for asan.
-    },
     linking_mode = "static",
     main = "stablehlo_compile_test.py",
     tags = [

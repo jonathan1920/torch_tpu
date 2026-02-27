@@ -32,9 +32,6 @@ pytype_strict_library(
 pytype_strict_binary(
     name = "scaled_dot_product_attention_generate",
     srcs = ["scaled_dot_product_attention_generate.py"],
-    exec_properties = {
-        "cpp_link.mem": "16g",  # Needed for asan.
-    },
     deps = [
         ":scaled_dot_product_attention_kernels",
         "//shims/absl_py:app",
