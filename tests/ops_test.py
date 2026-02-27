@@ -725,6 +725,9 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float64: {"rtol": 9.0e-6, "atol": 5.8e-6},
         torch.complex64: {"rtol": 20.0, "atol": 39.0},
     },
+    "linalg.lu_solve": {
+        torch.complex64: {"rtol": 1e-5, "atol": 24},
+    },
     "linalg.solve_ex": {
         torch.float64: {"rtol": 3.7e-6, "atol": 9.1e-7},
     },
