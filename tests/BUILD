@@ -263,6 +263,7 @@ torch_tpu_py_test(
     tags = [
         # "oss_ready_tpu",  # Will re-enable this slow test until we have a proper way to speed it up.
         "requires-tpu-v5lite",
+        "nomsan",  # This test times out in msan mode.
     ],
     deps = [
         ":dynamism_test_utils",
