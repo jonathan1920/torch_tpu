@@ -22,7 +22,7 @@ from torch.distributed import fsdp
 import torch.distributed.tensor as dt
 from torch.nn import parallel
 from torch_tpu._internal.model_runner_hf import modeling_hf
-from torch_tpu._internal.torchbenchmark import device_utils
+from torch_tpu._internal.utils import device_utils
 
 
 @dataclasses.dataclass

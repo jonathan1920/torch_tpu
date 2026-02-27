@@ -30,7 +30,7 @@ pytype_strict_library(
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
         "//torch_tpu/_internal/shims/xprof:xprof_session",
-        "//torch_tpu/_internal/torchbenchmark:device_utils",
+        "//torch_tpu/_internal/utils:device_utils",
         "//torch_tpu/api",
         "@pypi//numpy",
     ],
@@ -63,7 +63,7 @@ pytype_strict_library(
         "//torch_tpu/_internal/distributed:gpu_env",
         "//torch_tpu/_internal/distributed:tpu_env",
         "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
-        "//torch_tpu/_internal/torchbenchmark:device_utils",
+        "//torch_tpu/_internal/utils:device_utils",
     ],
 )
 
@@ -277,7 +277,7 @@ pytype_strict_library(
     srcs = ["benchmark_function_db.py"],
     deps = [
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/torchbenchmark:device_utils",
+        "//torch_tpu/_internal/utils:device_utils",
     ],
 )
 
@@ -287,7 +287,7 @@ pytype_strict_library(
     deps = [
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/model_runner_hf:modeling_hf",
-        "//torch_tpu/_internal/torchbenchmark:device_utils",
+        "//torch_tpu/_internal/utils:device_utils",
         "@pypi//fairscale",
         "@pypi//llama_models",
     ],

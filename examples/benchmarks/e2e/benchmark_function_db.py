@@ -36,7 +36,7 @@ interchangeability of benchmark functions. The arguments are:
 import functools
 from typing import Any, Callable, Mapping
 import torch
-from torch_tpu._internal.torchbenchmark import device_utils
+from torch_tpu._internal.utils import device_utils
 
 
 def huggingface_llm_forward_pass(

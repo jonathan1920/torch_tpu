@@ -25,7 +25,7 @@ from absl import flags
 from absl import logging
 import numpy as np
 import torch
-from torch_tpu._internal.torchbenchmark import device_utils
+from torch_tpu._internal.utils import device_utils
 import torch_tpu.api as xla_api
 from torch_tpu.examples.benchmarks.quality_utils import quality_benchmark_model
 

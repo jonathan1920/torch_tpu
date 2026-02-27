@@ -26,7 +26,7 @@ import torch
 from torch.google import distributed as gdist
 from torch_tpu._internal.distributed import gpu_env
 from torch_tpu._internal.distributed import tpu_env
-from torch_tpu._internal.torchbenchmark import device_utils
+from torch_tpu._internal.utils import device_utils
 from torch_tpu.examples.benchmarks.e2e import benchmark_function_db
 from torch_tpu.examples.benchmarks.e2e import benchmark_utils
 from torch_tpu.examples.benchmarks.e2e import mlcompass_utils
