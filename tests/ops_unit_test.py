@@ -3175,6 +3175,19 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(test_fn)
 
+  def test_randint_reproducible(self):
+    low, high = 10, 20
+    torch.manual_seed(1234)
+    z = torch.randint(low=low, high=high, size=(3, 3), device=api.tpu_device())
+    w = torch.randint(low=low, high=high, size=(3, 3), device=api.tpu_device())
+    # with probability 1 - (1/2)^(100)
+    self.assertNotEqual(z.to("cpu"), w.to("cpu"))
+    torch.manual_seed(1234)
+    z_again = torch.randint(
+        low=low, high=high, size=(3, 3), device=api.tpu_device()
+    )
+    self.assertEqual(z.to("cpu"), z_again.to("cpu"))
+
   def test_randint_range_u32_pow2(self):
     low, high = 0, 2**16
     x = torch.randint(
