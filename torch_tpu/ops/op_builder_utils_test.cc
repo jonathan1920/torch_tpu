@@ -694,7 +694,14 @@ INSTANTIATE_TEST_SUITE_P(
           /*static_input_shape=*/{1, 8, 1, 5, 1},
           /*static_output_shape=*/{40},
           /*expected_bounded_output_shape=*/{80},
-          /*expected_output_bounded=*/{true}}}),
+          /*expected_output_bounded=*/{true}},
+         {"Unflatten",
+          /*bounded_input_shape=*/{1, 1024},
+          /*bound_dims=*/{1},
+          /*static_input_shape=*/{1, 10},
+          /*static_output_shape=*/{1, 1, 10, 1},
+          /*expected_bounded_output_shape=*/{1, 1, 1024, 1},
+          /*expected_output_bounded=*/{false, false, true, false}}}),
     [](const testing::TestParamInfo<
         DynamicReshapeFromStaticDimensionsTest::ParamType>& info) {
       return info.param.test_name;
@@ -741,7 +748,7 @@ TEST(DynamicReshapeFromStaticDimensions, ErrorExpandDynamicToMultiple) {
   ASSERT_FALSE(result.reshaped_op.ok());
   EXPECT_EQ(result.reshaped_op.status().code(), error::kInvalidArgument);
   EXPECT_THAT(result.reshaped_op.status().message(),
-              testing::HasSubstr("expands to multiple output dims"));
+              testing::HasSubstr("expands to multiple non one output dims"));
 }
 
 namespace {

@@ -20,6 +20,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <iterator>
 #include <limits>
 #include <numeric>
 #include <optional>
@@ -1139,6 +1140,10 @@ absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
             });
         output_bound_dim = outputIdx;
         output_dyn_bound = current_group_bound;
+
+        ABSL_VLOG(3) << "[ReshapeFromStaticDimensions] output_bound_dim: "
+                     << output_bound_dim
+                     << " output_dyn_bound: " << output_dyn_bound;
       }
     }
   } else {
@@ -1160,16 +1165,32 @@ absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
 
     const auto& outputGroup = (*reassociation)[input_bound_dim];
 
-    TT_RET_CHECK(outputGroup.size() == 1, error::kInvalidArgument)
-        << "unflattens of bounded dynamic dimensions are not supported, see "
-           "error: input bound dim "
-        << input_bound_dim << " expands to multiple output dims"
-        << absl::StrJoin(outputGroup, ",") << " for reassociation "
-        << ShapeTransitionToString(static_shape_before, static_shape_after);
-
-    output_bound_dim = outputGroup[0];
-    output_dyn_bound =
-        op_dims[input_bound_dim].size;  // Bound is directly transferred
+    if (outputGroup.size() == 1) {
+      output_bound_dim = outputGroup[0];
+      output_dyn_bound =
+          op_dims[input_bound_dim].size;  // Bound is directly transferred
+    } else {
+      Dimensions non_one_output_dims;
+      absl::c_copy_if(
+          outputGroup, std::back_inserter(non_one_output_dims),
+          [&](int64_t dim) { return static_shape_after[dim] != 1; });
+      if (non_one_output_dims.size() == 1) {
+        output_bound_dim = non_one_output_dims[0];
+        output_dyn_bound =
+            op_dims[input_bound_dim].size;  // Bound is directly transferred
+      } else {
+        return TT_ERROR(error::kInvalidArgument)
+               << "unflatten ambiguous as input bound dim " << input_bound_dim
+               << " expands to multiple non one output dims "
+               << absl::StrJoin(non_one_output_dims, ",")
+               << " for reassociation "
+               << ShapeTransitionToString(static_shape_before,
+                                          static_shape_after);
+      }
+    }
+    ABSL_VLOG(3) << "[ReshapeFromStaticDimensions] output_bound_dim: "
+                 << output_bound_dim
+                 << " output_dyn_bound: " << output_dyn_bound;
   }
 
   ABSL_CHECK(  // CRASH_OK=if reassociation is valid, then we either error out
