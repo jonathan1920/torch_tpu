@@ -61,13 +61,6 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
                            double dropout_p, bool is_causal,
                            std::optional<double> scale, bool enable_gqa);
 
-// aten::_scaled_dot_product_fused_attention_overrideable(
-//   Tensor query, Tensor key, Tensor value, Tensor? attn_bias=None,
-//   float dropout_p=0.0, bool is_causal=False, bool return_debug_mask=False,
-//   *, float? scale=None
-// ) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k,
-//       SymInt max_q, SymInt max_k, Tensor philox_seed, Tensor philox_offset,
-//       Tensor debug_attn_mask)
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, c10::SymInt,
            c10::SymInt, at::Tensor, at::Tensor, at::Tensor>
 AtenScaledDotProductFusedAttentionOverrideable(
@@ -75,14 +68,6 @@ AtenScaledDotProductFusedAttentionOverrideable(
     const std::optional<at::Tensor>& attn_bias, double dropout_p,
     bool is_causal, bool return_debug_mask, std::optional<double> scale);
 
-// aten::_scaled_dot_product_fused_attention_overrideable_backward(
-//   Tensor grad_out, Tensor query, Tensor key, Tensor value, Tensor attn_bias,
-//   bool[4] grad_input_mask, Tensor out, Tensor logsumexp, Tensor cum_seq_q,
-//   Tensor cum_seq_k, SymInt max_q, SymInt max_k, float dropout_p,
-//   bool is_causal, Tensor philox_seed, Tensor philox_offset, *,
-//   float? scale=None
-// ) -> (Tensor grad_query, Tensor grad_key,
-//       Tensor grad_value, Tensor grad_attn_bias)
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>
 AtenScaledDotProductFusedAttentionOverrideableBackward(
     const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
@@ -92,6 +77,20 @@ AtenScaledDotProductFusedAttentionOverrideableBackward(
     const at::Tensor& cum_seq_k, at::SymInt max_q, at::SymInt max_k,
     double dropout_p, bool is_causal, const at::Tensor& philox_seed,
     const at::Tensor& philox_offset, std::optional<double> scale);
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>
+AtenScaledDotProductEfficientAttention(
+    const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
+    const std::optional<at::Tensor>& attn_bias, bool compute_log_sumexp,
+    double dropout_p, bool is_causal, std::optional<double> scale);
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, c10::SymInt,
+           c10::SymInt, at::Tensor, at::Tensor, at::Tensor>
+AtenScaledDotProductFlashAttention(const at::Tensor& query,
+                                   const at::Tensor& key,
+                                   const at::Tensor& value, double dropout_p,
+                                   bool is_causal, bool return_debug_mask,
+                                   std::optional<double> scale);
 
 }  // namespace torch_tpu
 

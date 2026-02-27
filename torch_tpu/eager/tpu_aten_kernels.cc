@@ -566,6 +566,10 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kRoundOut, AtenRoundOut);
   Impl(m, OpName::kRshiftScalar, AtenRshiftScalar);
   Impl(m, OpName::kRshiftTensor, AtenRshiftTensor);
+  Impl(m, OpName::kScaledDotProductEfficientAttention,
+       AtenScaledDotProductEfficientAttention);
+  Impl(m, OpName::kScaledDotProductFlashAttention,
+       AtenScaledDotProductFlashAttention);
   Impl(m, OpName::kScaledDotProductFusedAttentionOverrideable,
        AtenScaledDotProductFusedAttentionOverrideable);
   Impl(m, OpName::kScaledDotProductFusedAttentionOverrideableBackward,

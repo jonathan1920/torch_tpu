@@ -2671,9 +2671,9 @@ class TestOps(TorchTpuTestBase):
           "nn.functional.scaled_dot_product_attention",
           # TODO: look into making this STRICT.
           check_value=CheckValueMode.LOOSE,
-          # TODO: sdpa calles bmm(), on cpu it fails with integral dtypes.
+          # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
           # but on tpu it succeeds. Remove this once we fix bmm on tpu.
-          exclude_dtypes=INTEGRAL_DTYPES,
+          exclude_dtypes=INTEGRAL_DTYPES + (torch.int64,),
       )
 
   # TODO: b/476147793 association of (inputs, outputs) pairs with the op name
@@ -2693,10 +2693,46 @@ class TestOps(TorchTpuTestBase):
           "nn.functional.scaled_dot_product_attention",
           # TODO: look into making this STRICT.
           check_value=CheckValueMode.LOOSE,
-          # TODO: sdpa calles bmm(), on cpu it fails with integral dtypes.
+          # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
           # but on tpu it succeeds. Remove this once we fix bmm on tpu.
-          exclude_dtypes=INTEGRAL_DTYPES,
+          exclude_dtypes=(torch.int64,),
           check_grad=True,
+      )
+
+  # TODO: b/476147793 association of (inputs, outputs) pairs with the op name
+  # and dtype only causes comparison of outputs of different tests.
+  @op_testing.skip_if_torch_tpu_vs_gpu_mode
+  def test_nn_functional_scaled_dot_product_attention_efficient(self):
+    # Use EFFICIENT_ATTENTION backend for TPU, and MATH for CPU.
+    with attention.sdpa_kernel(
+        [attention.SDPBackend.EFFICIENT_ATTENTION, attention.SDPBackend.MATH],
+        set_priority=True,
+    ):
+      self.do_test_op(
+          "nn.functional.scaled_dot_product_attention",
+          check_value=CheckValueMode.LOOSE,
+          # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
+          # but on tpu it succeeds. Remove this once we fix bmm on tpu.
+          exclude_dtypes=(torch.int64,),
+          check_grad=False,
+      )
+
+  # TODO: b/476147793 association of (inputs, outputs) pairs with the op name
+  # and dtype only causes comparison of outputs of different tests.
+  @op_testing.skip_if_torch_tpu_vs_gpu_mode
+  def test_nn_functional_scaled_dot_product_attention_flash(self):
+    # Use FLASH_ATTENTION backend for TPU, and MATH for CPU.
+    with attention.sdpa_kernel(
+        [attention.SDPBackend.FLASH_ATTENTION, attention.SDPBackend.MATH],
+        set_priority=True,
+    ):
+      self.do_test_op(
+          "nn.functional.scaled_dot_product_attention",
+          check_value=CheckValueMode.LOOSE,
+          # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
+          # but on tpu it succeeds. Remove this once we fix bmm on tpu.
+          exclude_dtypes=(torch.int64,),
+          check_grad=False,
       )
 
   def test_nn_functional_batch_norm(self):

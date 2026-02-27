@@ -472,6 +472,8 @@ enum class OpName {
   kRsqrOut,
   kRsub,
   kScalarTensor,
+  kScaledDotProductEfficientAttention,
+  kScaledDotProductFlashAttention,
   kScaledDotProductFusedAttentionOverrideable,
   kScaledDotProductFusedAttentionOverrideableBackward,
   kScatterAddOut,

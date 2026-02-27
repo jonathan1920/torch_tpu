@@ -922,6 +922,10 @@ std::string_view ToString(OpName op_name) {
       return "rsub";
     case OpName::kScalarTensor:
       return "scalar_tensor";
+    case OpName::kScaledDotProductEfficientAttention:
+      return "_scaled_dot_product_efficient_attention";
+    case OpName::kScaledDotProductFlashAttention:
+      return "_scaled_dot_product_flash_attention";
     case OpName::kScaledDotProductFusedAttentionOverrideable:
       return "_scaled_dot_product_fused_attention_overrideable";
     case OpName::kScaledDotProductFusedAttentionOverrideableBackward:

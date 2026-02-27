@@ -24,7 +24,6 @@
 #include <utility>
 
 #include "absl/flags/flag.h"
-#include "absl/log/absl_log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -35,9 +34,11 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBase.h"
 #include "c10/util/Exception.h"
+#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/custom_kernels.h"
@@ -238,29 +239,27 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
       (query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa), {
         const auto& ctx = at::globalContext();
 
-        // The first 2 branches check for overrideable SDP and other kernel
-        // options, falling through to the next set of specific kernel
-        // implementation checks. Otherwise the else immediately falls back to
-        // the math backed.
-        if (ctx.userEnabledOverrideableSDP()) {
-          // No warning needed. Fall through to can_use_overrideable check.
-        } else if (ctx.userEnabledFlashSDP() ||
-                   ctx.userEnabledMemEfficientSDP() ||
-                   ctx.userEnabledCuDNNSDP()) {
+        // The first 2 branches check for SDP kernel options, falling through
+        // to the next set of specific kernel implementation checks.
+        // Otherwise the else immediately falls back to the MATH backend.
+        if (ctx.userEnabledOverrideableSDP() || ctx.userEnabledFlashSDP() ||
+            ctx.userEnabledMemEfficientSDP()) {
+          // No warning needed. Fall through to can_use_custom_kernel check.
+        } else if (ctx.userEnabledCuDNNSDP()) {
           TORCH_WARN_ONCE(
-              "TorchTPU only supports OVERRIDEABLE and MATH SDPBackends. All "
-              "other backends will use OVERRIDEABLE if possible, or MATH for "
-              "unsupported arguments.");
+              "TorchTPU only supports FLASH, EFFICIENT, OVERRIDEABLE, and MATH "
+              "SDPBackends. All other backends will use FLASH if "
+              "possible, or MATH for unsupported arguments.");
         } else {
           TT_CHECK_THROW(ctx.userEnabledMathSDP(), error::kFailedPrecondition)
               << "cannot use scaled_dot_product_attention with no SDPBackends "
-                 "enabled. Please enable either OVERRIDEABLE or MATH for "
-                 "torch_tpu";
+                 "enabled. Please enable at least one of FLASH, EFFICIENT, "
+                 "OVERRIDEABLE, or MATH for torch_tpu";
           return static_cast<int64_t>(at::SDPBackend::math);
         }
 
         // TODO(elliotenglish): Add support for attn_mask and attributes.
-        const bool can_use_overrideable =
+        const bool can_use_custom_kernel =
             absl::GetFlag(FLAGS_torch_tpu_internal_sdpa_use_custom_kernel) &&
             (!attn_mask.has_value() && is_causal && !scale.has_value() &&
              query.scalar_type() == at::ScalarType::Float &&
@@ -268,13 +267,21 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
              query.ndimension() == value.ndimension() &&
              query.ndimension() >= 3);
 
-        if (can_use_overrideable) {
-          return static_cast<int64_t>(at::SDPBackend::overrideable);
+        if (can_use_custom_kernel) {
+          if (ctx.userEnabledFlashSDP()) {
+            return static_cast<int64_t>(at::SDPBackend::flash_attention);
+          } else if (ctx.userEnabledMemEfficientSDP()) {
+            return static_cast<int64_t>(at::SDPBackend::efficient_attention);
+          } else if (ctx.userEnabledOverrideableSDP()) {
+            return static_cast<int64_t>(at::SDPBackend::overrideable);
+          } else {
+            return static_cast<int64_t>(at::SDPBackend::flash_attention);
+          }
         }
 
         TORCH_WARN_ONCE(
-            "TorchTPU only supports OVERRIDEABLE SDPBackend for "
-            "scaled_dot_product_attention when these conditions are met:\n"
+            "TorchTPU only supports FLASH, EFFICIENT, OVERRIDEABLE SDPBackend "
+            "for scaled_dot_product_attention when these conditions are met:\n"
             "attn_mask is None\nis_causal is True\nscale is None\nquery "
             "uses float32\nquery, key, and value have the same rank.\n"
             "Falling back to MATH backend.");
@@ -288,7 +295,6 @@ AtenScaledDotProductFusedAttentionOverrideable(
     const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
     const std::optional<at::Tensor>& attn_bias, double dropout_p,
     bool is_causal, bool return_debug_mask, std::optional<double> scale) {
-  ABSL_LOG(INFO) << "AtenScaledDotProductFusedAttentionOverrideable";
   TT_KERNEL(OpName::kScaledDotProductFusedAttentionOverrideable, _,
             (query, key, value, attn_bias, dropout_p, is_causal,
              return_debug_mask, scale),
@@ -314,7 +320,6 @@ AtenScaledDotProductFusedAttentionOverrideableBackward(
     const at::Tensor& cum_seq_k, at::SymInt max_q, at::SymInt max_k,
     double dropout_p, bool is_causal, const at::Tensor& philox_seed,
     const at::Tensor& philox_offset, std::optional<double> scale) {
-  ABSL_LOG(INFO) << "AtenScaledDotProductFusedAttentionOverrideableBackward";
   TT_KERNEL(OpName::kScaledDotProductFusedAttentionOverrideableBackward, _,
             (grad_out, query, key, value, attn_bias, grad_input_mask, out,
              logsumexp, cum_seq_q, cum_seq_k, max_q, max_k, dropout_p,
@@ -330,6 +335,49 @@ AtenScaledDotProductFusedAttentionOverrideableBackward(
               return std::make_tuple(std::get<0>(out), std::get<1>(out),
                                      std::get<2>(out), at::Tensor());
             });
+}
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>
+AtenScaledDotProductEfficientAttention(
+    const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
+    const std::optional<at::Tensor>& attn_bias, bool compute_log_sumexp,
+    double dropout_p, bool is_causal, std::optional<double> scale) {
+  TT_KERNEL(
+      OpName::kScaledDotProductEfficientAttention, _,
+      (query, key, value, attn_bias, compute_log_sumexp, dropout_p, is_causal,
+       scale),
+      {
+        // Unused arguments: attn_bias, compute_log_sumexp, dropout_p,
+        // is_causal, scale.
+        TT_ASSIGN_OR_THROW(
+            auto out, ScaledDotProductFusedAttentionImpl(query, key, value));
+
+        // Unused return values: logsumexp, philox_seed, philox_offset.
+        return std::make_tuple(out, at::Tensor(), at::Tensor(), at::Tensor());
+      });
+}
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, c10::SymInt,
+           c10::SymInt, at::Tensor, at::Tensor, at::Tensor>
+AtenScaledDotProductFlashAttention(const at::Tensor& query,
+                                   const at::Tensor& key,
+                                   const at::Tensor& value, double dropout_p,
+                                   bool is_causal, bool return_debug_mask,
+                                   std::optional<double> scale) {
+  TT_KERNEL(
+      OpName::kScaledDotProductFlashAttention, _,
+      (query, key, value, dropout_p, is_causal, return_debug_mask, scale), {
+        // Unused arguments: dropout_p, is_causal, return_debug_mask,
+        // scale.
+        TT_ASSIGN_OR_THROW(
+            auto out, ScaledDotProductFusedAttentionImpl(query, key, value));
+
+        // Unused return values: logsumexp, cum_seq_q, cum_seq_k, max_q,
+        // max_k, rng_state, unused, debug_attn_mask.
+        return std::make_tuple(out, at::Tensor(), at::Tensor(), at::Tensor(),
+                               c10::SymInt(0), c10::SymInt(0), at::Tensor(),
+                               at::Tensor(), at::Tensor());
+      });
 }
 
 }  // namespace torch_tpu
