@@ -44,6 +44,7 @@
 #include "torch_tpu/ops/clamp/clamp_aten_kernels.h"
 #include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"
+#include "torch_tpu/ops/min_max/min_max_aten_kernels.h"
 #include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -2045,6 +2046,18 @@ void AtenForeachCopy_(at::TensorList self, at::TensorList src,
     for (size_t i = 0; i < self.size(); ++i) {
       AtenCopy_(const_cast<at::Tensor&>(self[i]), src[i], non_blocking);
     }
+  });
+}
+
+std::vector<at::Tensor> AtenForeachMax(at::TensorList self) {
+  TT_KERNEL(OpName::kForeachMax, _, (self), {
+    std::vector<at::Tensor> result;
+    result.reserve(self.size());
+    for (const auto& tensor : self) {
+      auto out = AtenMax(tensor);
+      result.push_back(out);
+    }
+    return result;
   });
 }
 

@@ -238,6 +238,7 @@ enum class OpName {
   kForeachLog2,
   kForeachLog2_,
   kForeachLog_,
+  kForeachMax,
   kForeachMaximumList,
   kForeachMaximumScalar,
   kForeachMaximumScalarList,

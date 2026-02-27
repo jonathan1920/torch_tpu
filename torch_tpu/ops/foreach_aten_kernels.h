@@ -260,6 +260,8 @@ void AtenForeachClampMin_ScalarList(at::TensorList self,
 void AtenForeachCopy_(at::TensorList self, at::TensorList src,
                       bool non_blocking);
 
+std::vector<at::Tensor> AtenForeachMax(at::TensorList self);
+
 std::vector<at::Tensor> AtenForeachMaximumScalar(at::TensorList self,
                                                  const at::Scalar& scalar);
 std::vector<at::Tensor> AtenForeachMaximumList(at::TensorList self,

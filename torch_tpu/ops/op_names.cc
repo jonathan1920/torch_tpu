@@ -454,6 +454,8 @@ std::string_view ToString(OpName op_name) {
       return "_foreach_log";
     case OpName::kForeachLog_:
       return "_foreach_log_";
+    case OpName::kForeachMax:
+      return "_foreach_max";
     case OpName::kForeachMaximumList:
       return "_foreach_maximum.List";
     case OpName::kForeachMaximumScalar:

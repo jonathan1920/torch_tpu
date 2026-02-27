@@ -1838,8 +1838,8 @@ class TestOps(TorchTpuTestBase):
     self.skipTest("_foreach_log2 is not ready yet: accuracy issues.")
 
   def test_foreach_max(self):
-    # TODO: enable when crash is resolved.
-    self.skipTest("_foreach_log2 is not ready yet: crashing on complex inputs.")
+    # TODO(b/485291373): fix _foreach_max() failing with complex dtypes.
+    self.do_test_op("_foreach_max", exclude_dtypes=COMPLEX_DTYPES)
 
   def test_foreach_maximum(self):
     self.do_test_op(

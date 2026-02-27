@@ -393,6 +393,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kForeachLog2, AtenForeachLog2);
   Impl(m, OpName::kForeachLog2_, AtenForeachLog2_);
   Impl(m, OpName::kForeachLog_, AtenForeachLog_);
+  Impl(m, OpName::kForeachMax, AtenForeachMax);
   Impl(m, OpName::kForeachMaximumList, AtenForeachMaximumList);
   Impl(m, OpName::kForeachMaximumScalar, AtenForeachMaximumScalar);
   Impl(m, OpName::kForeachMaximumScalarList, AtenForeachMaximumScalarList);
