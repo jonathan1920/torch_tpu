@@ -1330,10 +1330,6 @@ class TestOps(TorchTpuTestBase):
         "bmm",
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
-        exclude_dtypes={
-            # TODO: make bmm fail for integral dtypes to match GPU.
-            "gpu": INTEGRAL_DTYPES,
-        },
     )
 
   def test_cat(self):
