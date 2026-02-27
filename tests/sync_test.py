@@ -184,71 +184,75 @@ digraph {
     expected_before = """Graphviz string: (try pasting in http://graphviz/ to see the graph)
 digraph {
   // Vertices:
-  0 [shape="box", label=" float32[]"];
-  1 [shape="box", label=" float32[]"];
-  2 [shape="box", label=" float32[]"];
-  3 [label="fill_.Scalar"];
-  4 [shape="box", label=" float32[2, 4]"];
-  5 [label="mul"];
-  6 [shape="box", label=" float32[2, 4]"];
-  7 [label="fill_.Scalar"];
-  8 [shape="box", label=" float32[3, 4]"];
-  9 [label="mul"];
-  10 [shape="box", label="y: float32[3, 4]"];
-  11 [label="fill_.Scalar"];
-  12 [shape="box", label=" float32[2, 3]"];
-  13 [label="mul"];
-  14 [shape="box", label="x: float32[2, 3]"];
-  15 [label="matmul"];
-  16 [shape="box", label=" float32[2, 4]"];
-  17 [label="add.out"];
-  18 [shape="box", label="z: float32[2, 4]"];
+  0 [shape="box", label="z_ones: float32[2, 4] (materialized)"];
+  1 [shape="box", label="four: int64[] (materialized)"];
+  2 [shape="box", label="y_ones: float32[3, 4] (materialized)"];
+  3 [shape="box", label="three: int64[] (materialized)"];
+  4 [shape="box", label="x_ones: float32[2, 3] (materialized)"];
+  5 [shape="box", label="two: int64[] (materialized)"];
+  6 [label="mul"];
+  7 [shape="box", label="z: float32[2, 4]"];
+  8 [label="mul"];
+  9 [shape="box", label="y: float32[3, 4]"];
+  10 [label="mul"];
+  11 [shape="box", label="x: float32[2, 3]"];
+  12 [label="mm.out"];
+  13 [shape="box", label="x_times_y: float32[2, 4]"];
+  14 [label="add.out"];
+  15 [shape="box", label="w: float32[2, 4]"];
 
   // Edges:
-  3 -> 4
-  4 -> 5
-  0 -> 5
-  5 -> 6
-  7 -> 8
+  0 -> 6
+  1 -> 6
+  6 -> 7
+  2 -> 8
+  3 -> 8
   8 -> 9
-  1 -> 9
-  9 -> 10
+  4 -> 10
+  5 -> 10
+  10 -> 11
   11 -> 12
+  9 -> 12
   12 -> 13
-  2 -> 13
   13 -> 14
+  7 -> 14
   14 -> 15
-  10 -> 15
-  15 -> 16
-  16 -> 17
-  6 -> 17
-  17 -> 18
 }
 """
 
     expected_after = """Graphviz string: (try pasting in http://graphviz/ to see the graph)
 digraph {
   // Vertices:
-  0 [shape="box", label="z: float32[2, 4] (materialized)"];
-  1 [shape="box", label=" int64[]"];
-  2 [label="fill_.Scalar"];
-  3 [shape="box", label=" float32[3, 4]"];
-  4 [label="mul"];
-  5 [shape="box", label="y: float32[3, 4]"];
+  0 [shape="box", label="w: float32[2, 4] (materialized)"];
+  1 [shape="box", label="y_ones: float32[3, 4] (materialized)"];
+  2 [shape="box", label="three: int64[] (materialized)"];
+  3 [label="mul"];
+  4 [shape="box", label="y: float32[3, 4]"];
 
   // Edges:
+  1 -> 3
   2 -> 3
   3 -> 4
-  1 -> 4
-  4 -> 5
 }
 """
-    x = torch.ones(2, 3, device=api.tpu_device()) * 2
-    y = torch.ones(3, 4, device=api.tpu_device()) * 3
-    z = x @ y + torch.ones(2, 4, device=api.tpu_device()) * 4
+    # Keep all tensors alive to prevent stale heuristic from materializing them.
+    # Create materialized leaf inputs by doing a host to device copy.
+    x_ones = torch.ones(2, 3, device="cpu").to(api.tpu_device())
+    y_ones = torch.ones(3, 4, device="cpu").to(api.tpu_device())
+    z_ones = torch.ones(2, 4, device="cpu").to(api.tpu_device())
+    two = torch.tensor(2, device="cpu").to(api.tpu_device())
+    three = torch.tensor(3, device="cpu").to(api.tpu_device())
+    four = torch.tensor(4, device="cpu").to(api.tpu_device())
+
+    # Create a graph of deferred operations.
+    x = x_ones * two
+    y = y_ones * three
+    z = z_ones * four
+    x_times_y = x @ y
+    w = x_times_y + z
 
     node_params, num_lines = self.extract_graphviz_invariants(expected_before)
-    s = sync.computation_graphviz(y, z)
+    s = sync.computation_graphviz(y, w)
     for node_param in node_params:
       self.assertRegex(s, node_param)
     self.assertLen(s.split("\n"), num_lines)
@@ -256,7 +260,7 @@ digraph {
     print(x.cpu())
 
     node_params, num_lines = self.extract_graphviz_invariants(expected_after)
-    s = sync.computation_graphviz(y, z)
+    s = sync.computation_graphviz(y, w)
 
     for node_param in node_params:
       self.assertRegex(s, node_param)

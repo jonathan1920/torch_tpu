@@ -952,6 +952,8 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.float16: {"rtol": 2e-3, "atol": 1e-4},
             },
             "erfinv": {
+                # TODO(b/488121035)
+                torch.bfloat16: {"rtol": 2e-2, "atol": 5e-1},
                 torch.float16: {"rtol": 2e-3, "atol": 4e-2},
             },
             "mm": {
@@ -1673,6 +1675,7 @@ class TestOps(TorchTpuTestBase):
         # TODO(b/485291373): fix _foreach_addcdiv_() failing with complex
         # dtypes.
         exclude_inplace_dtypes=COMPLEX_DTYPES,
+        check_dynamism=False,  # TODO(b/488338235): dynamism is flaky
     )
 
   def test_foreach_addcmul(self):

@@ -24,7 +24,7 @@
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/traversal.h"
 
-ABSL_FLAG(bool, torch_tpu_internal_stale_heuristic, false,
+ABSL_FLAG(bool, torch_tpu_internal_stale_heuristic, true,
           "Use a materialization heuristic that materializes around the stale "
           "regions of a graph.");
 
