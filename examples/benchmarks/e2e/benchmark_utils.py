@@ -15,9 +15,9 @@
 """Utilities for running end-to-end benchmarks."""
 
 import abc
-from collections.abc import Set
 import dataclasses
 import enum
+import random
 import time
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
@@ -33,8 +33,9 @@ from torch_tpu._internal.shims.xprof import xprof_analysis_client
 from torch_tpu._internal.shims.xprof import xprof_session
 
 
-MAX_WARMUP_STEPS = 10
-POST_WARMUP_STEPS = 10
+_MAX_WARMUP_STEPS = 10
+_POST_WARMUP_STEPS = 10
+_RANDOM_SEED = 0
 
 
 class Platform(enum.Enum):
@@ -90,6 +91,12 @@ PLATFORM_DEVICE_MAP = {
     Platform.B200_4: "cuda",
     Platform.B200_8: "cuda",
 }
+
+
+def seed_rngs() -> None:
+  """Seeds the Python and PyTorch RNGs with the given seed."""
+  random.seed(_RANDOM_SEED)
+  torch.manual_seed(_RANDOM_SEED)
 
 
 @dataclasses.dataclass
@@ -287,7 +294,7 @@ def _get_warmup_overhead(timings: np.ndarray, num_warmup_steps: int) -> float:
   if not num_warmup_steps:
     raise RuntimeError(
         "Benchmark function compilations have not stabilized after"
-        f" {MAX_WARMUP_STEPS} warmup runs. num_warmup_steps was"
+        f" {_MAX_WARMUP_STEPS} warmup runs. num_warmup_steps was"
         f" {num_warmup_steps}. Consider increasing the number of warmup steps."
     )
 
@@ -327,14 +334,14 @@ def _warmup_run(
   """
   # TODO(bbahl): Decide the number of warmup steps dynamically, possibly based
   # on cache miss count.
-  timings = np.zeros(MAX_WARMUP_STEPS, dtype=np.float64)
+  timings = np.zeros(_MAX_WARMUP_STEPS, dtype=np.float64)
   # cache misses is always 0 for CUDA. In this case,
   # we just use the first run as the preheat overhead.
-  cache_misses = np.zeros(MAX_WARMUP_STEPS, dtype=np.int64)
+  cache_misses = np.zeros(_MAX_WARMUP_STEPS, dtype=np.int64)
   num_warmup_steps = None
   device_name = _get_device_name(device)
 
-  for step in range(MAX_WARMUP_STEPS):
+  for step in range(_MAX_WARMUP_STEPS):
     start_time = time.perf_counter()
     out = benchmark_function(model, example_inputs, optimizer)
     if isinstance(out, torch.Tensor):
@@ -386,7 +393,7 @@ def _post_warmup_run(
     device memory usage.
   """
 
-  timings = np.zeros(POST_WARMUP_STEPS, dtype=np.float64)
+  timings = np.zeros(_POST_WARMUP_STEPS, dtype=np.float64)
   device_utils.reset_peak_memory_stats(_get_device_name(device))
   num_cache_misses = None
   device_name = _get_device_name(device)
@@ -394,7 +401,7 @@ def _post_warmup_run(
   # TODO(bbahl): Calculate the number of post warmup steps based on timing
   # information.
   with XprofContext("post_warmup_run", enable_xprof) as xprof_context:
-    for step in range(POST_WARMUP_STEPS):
+    for step in range(_POST_WARMUP_STEPS):
       start_time = time.perf_counter()
       out = benchmark_function(model, example_inputs, optimizer)
       if isinstance(out, torch.Tensor):
@@ -409,7 +416,7 @@ def _post_warmup_run(
         raise RuntimeError(
             "Cache misses are not consistent across steps; expected"
             f" {num_cache_misses}, got {step_cache_misses}. This means that the"
-            f" model is not fully warmed up after {MAX_WARMUP_STEPS} warmup"
+            f" model is not fully warmed up after {_MAX_WARMUP_STEPS} warmup"
             " steps. Consider increasing the number of warmup steps."
         )
 

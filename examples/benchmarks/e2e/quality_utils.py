@@ -70,6 +70,9 @@ def _run_single_process_benchmark(
 ) -> None:
   platform = benchmark_utils.PLATFORM.value
   device = benchmark_utils.get_torch_device(platform)
+  # Seed random number generators for reproducibility. This should be done after
+  # initializing the device.
+  benchmark_utils.seed_rngs()
   data_iterator = data_loader.get_dataset_loader(config.dataset_type)
 
   result = benchmark_utils.run_quality_benchmark(

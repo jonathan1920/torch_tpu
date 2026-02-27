@@ -164,6 +164,9 @@ def _run_single_process_benchmark(
   """
   platform = benchmark_utils.PLATFORM.value
   device = benchmark_utils.get_torch_device(platform)
+  # Seed random number generators for reproducibility. This should be done after
+  # initializing the device.
+  benchmark_utils.seed_rngs()
   weights_dtype = _get_torch_dtype(WEIGHTS_DTYPE.value)
   func = _get_benchmark_function(config, device)
   model_and_input = _get_model_and_input(
