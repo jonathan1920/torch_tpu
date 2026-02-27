@@ -20,7 +20,6 @@ import llama_models.llama3.model as m
 import torch
 from torch.distributed import fsdp
 import torch.distributed.tensor as dt
-from torch.nn import attention
 from torch.nn import parallel
 from torch_tpu._internal.model_runner_hf import modeling_hf
 from torch_tpu._internal.torchbenchmark import device_utils
@@ -174,10 +173,7 @@ def get_huggingface_llm_model(
     model.eval()
 
   if use_torch_compile:
-    # Make sure that the model doesn't use any custom attention kernels to
-    # ensure that we are measuring pure pytorch performance.
-    with attention.sdpa_kernel([attention.SDPBackend.MATH]):
-      model = device_utils.torch_compile(model, device.type)
+    model = device_utils.torch_compile(model, device.type)
   return ModelAndInput(model=model, example_inputs=example_inputs)
 
 
@@ -276,10 +272,7 @@ def get_meta_llama_model(
     model.apply(_init_model_weights)
 
   if use_torch_compile:
-    # Make sure that the model doesn't use any custom attention kernels to
-    # ensure that we are measuring pure pytorch performance.
-    with attention.sdpa_kernel([attention.SDPBackend.MATH]):
-      model = device_utils.torch_compile(model, device.type)
+    model = device_utils.torch_compile(model, device.type)
 
   input_ids = torch.randint(
       0, args.vocab_size, (batch_size, sequence_length), device=device

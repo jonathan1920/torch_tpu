@@ -36,7 +36,6 @@ interchangeability of benchmark functions. The arguments are:
 import functools
 from typing import Any, Callable, Mapping
 import torch
-from torch.nn import attention
 from torch_tpu._internal.torchbenchmark import device_utils
 
 
@@ -60,8 +59,7 @@ def huggingface_llm_forward_pass(
   # torch.inference_mode(). Currently it raises: RuntimeError: Cannot set
   # version_counter for inference tensor in torch.embedding.
   with torch.no_grad():
-    with attention.sdpa_kernel([attention.SDPBackend.MATH]):
-      result = model(**inputs)
+    result = model(**inputs)
     if hasattr(result, "logits"):
       result = result.logits
     return result
@@ -95,12 +93,9 @@ def _huggingface_llm_train_1_step(
   accumulated_losses = []
   optimizer.zero_grad()
   for _ in range(grad_accumulation_steps):
-    # Make sure that the model doesn't use any custom attention kernels to
-    # ensure that we are measuring pure pytorch performance.
-    with attention.sdpa_kernel([attention.SDPBackend.MATH]):
-      output = model(**inputs)
-      output.loss.backward()
-      accumulated_losses.append(output.loss.detach())
+    output = model(**inputs)
+    output.loss.backward()
+    accumulated_losses.append(output.loss.detach())
   optimizer_step_fn(optimizer)
   step_loss = torch.sum(torch.stack(accumulated_losses)).item()
   return step_loss
@@ -158,9 +153,6 @@ def meta_llama_forward_pass(
     The output tensor from the model.
   """
   tokens, start_pos = inputs
-  # TODO: b/476152243 - Make sure that the model doesn't use any custom
-  # attention kernels to ensure that we are measuring pure pytorch performance.
-  # We don't do that right now to match the existing benchmark implementation.
   with torch.no_grad():
     result = model(tokens, start_pos)
   return result
