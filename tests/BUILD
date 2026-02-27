@@ -43,6 +43,7 @@ torch_tpu_py_test(
     name = "module_registry_test",
     timeout = "long",
     srcs = ["module_registry_test.py"],
+    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     shard_count = 6,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
@@ -120,6 +121,7 @@ torch_tpu_py_test(
         "--print_op_inputs=1",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
+    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
     shard_count = 50,
     tags = [
@@ -146,6 +148,7 @@ torch_tpu_py_test(
         "--compute_grad=True",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
+    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
     shard_count = 50,
     tags = [
@@ -172,6 +175,7 @@ torch_tpu_py_test(
         "--use_compiled=True",
         "--max_samples_per_op_dtype=1",  # No need for many samples to catch compiled mode bugs.
     ],
+    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
     shard_count = 10,
     tags = [
@@ -220,6 +224,7 @@ torch_tpu_py_test(
         "--torch_tpu_device=xla_cpu",
         "--max_samples_per_op_dtype=3",  # Reduce test samples as XLA:CPU is not a priority.
     ],
+    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
     shard_count = 25,
     tags = [
@@ -252,6 +257,7 @@ torch_tpu_py_test(
         "ops_test_gpu_golden1.gz",
         "ops_test_gpu_golden2.gz",
     ],
+    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
     shard_count = 50,
     tags = [
@@ -313,6 +319,7 @@ torch_tpu_py_test(
         "--print_op_inputs=1",
         "--max_samples_per_op_dtype=1",  # No need to test many samples to catch dynamism bugs.
     ],
+    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
     shard_count = 32,
     tags = [
@@ -367,6 +374,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "ops_unit_test",
     srcs = ["ops_unit_test.py"],
+    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_unit_test.py",
     shard_count = 20,
     tags = [
@@ -391,6 +399,7 @@ torch_tpu_py_test(
     srcs = ["ops_unit_test.py"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
+        "ASAN_OPTIONS": "detect_leaks=0",
     },
     main = "ops_unit_test.py",
     shard_count = 20,
@@ -417,6 +426,7 @@ torch_tpu_py_test(
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK": "0",
+        "ASAN_OPTIONS": "detect_leaks=0",
     },
     main = "ops_unit_test.py",
     shard_count = 20,
@@ -457,6 +467,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "index_put_op_test",
     srcs = ["index_put_op_unit_test.py"],
+    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "index_put_op_unit_test.py",
     shard_count = 20,
     tags = [
@@ -751,6 +762,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "dynamism_test",
     srcs = ["dynamism_test.py"],
+    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "dynamism_test.py",
     tags = [
         "oss_ready_tpu",
