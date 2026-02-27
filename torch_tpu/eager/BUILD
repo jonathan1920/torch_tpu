@@ -35,6 +35,28 @@ torch_tpu_cc_test(
     ],
 )
 
+torch_tpu_cc_test(
+    name = "materialize_test",
+    srcs = ["materialize_test.cc"],
+    deps = [
+        ":device_buffer",
+        ":materialize",
+        ":tpu_hooks",
+        "//torch_tpu/common:compilation_cache",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:python_context",
+        "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+    ],
+)
+
 torch_tpu_cc_library(
     name = "device",
     srcs = ["device.cc"],

@@ -1,0 +1,134 @@
+/*
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "torch_tpu/eager/materialize.h"
+
+#include <string>
+#include <vector>
+
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "torch_tpu/common/compilation_cache.h"
+#include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/tpu_hooks.h"
+#include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/python_context.h"
+#include "torch_tpu/pjrt/pjrt_init.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+
+namespace torch_tpu {
+namespace {
+
+class MaterializeTest : public testing::Test {
+ protected:
+  static void SetUpTestSuite() {
+    const std::string device_type = "xla_cpu";
+    const int world_size = 1;
+    ASSERT_OK(
+        InitializePjRt({.device_type = device_type, .world_size = world_size})
+            .status());
+    ASSERT_OK(AddTpuHooks());
+    RegisterTpuAllocator();
+    CompilationCache::Initialize(/*options=*/{});
+  }
+};
+
+TEST_F(MaterializeTest, EmptyListNoOpSuccess) {
+  EXPECT_EQ(Materialize(absl::Span<const SharedDeviceBufferList>()),
+            absl::OkStatus());
+  EXPECT_EQ(Materialize(absl::Span<const DeviceBufferRef>()), absl::OkStatus());
+}
+
+TEST_F(MaterializeTest, MaterializedBufferNoOpSuccess) {
+  const mlir::ElementType dtype = mlir::ElementType::F32;
+  ASSERT_OK_AND_ASSIGN(DeviceBufferRef ref,
+                       DeviceBufferList::CreateZeroSize({0}, dtype));
+  EXPECT_EQ(ref.state(), DeviceBufferRefState::kZeroSize);
+  EXPECT_EQ(Materialize(ref), absl::OkStatus());
+  EXPECT_EQ(ref.state(), DeviceBufferRefState::kZeroSize);
+}
+
+TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
+  ScopedPythonContextCapturer capturer(OpName::kEmpty);
+  const Shape shape = {.dimensions = {8}, .dtype = mlir::ElementType::F32};
+
+  auto builder = [shape](mlir::MlirBuilder& builder,
+                         absl::Span<mlir::MlirOp> inputs)
+      -> absl::StatusOr<DynamicMlirOpResults> {
+    if (!inputs.empty()) return DynamicMlirOpResults{inputs[0]};
+    return DynamicMlirOpResults{
+        BuildFillUninitialized(builder, shape.dtype, shape.dimensions)};
+  };
+
+  // Create a graph: a -> b, a -> c, b -> d.
+  // d and c are leaf nodes in the connected subgraph.
+  // a and b are internal nodes, but a has fanout, so
+  // it will be materialized.
+
+  // Node a
+  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> refs_a,
+                       DeviceBufferList::CreateDeferred(OpName::kEmpty, builder,
+                                                        {}, {}, {shape}));
+  DeviceBufferRef ref_a = refs_a[0];
+
+  // Node b (depends on a)
+  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> refs_b,
+                       DeviceBufferList::CreateDeferred(OpName::kAdd, builder,
+                                                        {ref_a}, {}, {shape}));
+  DeviceBufferRef ref_b = refs_b[0];
+
+  // Node c (depends on a)
+  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> refs_c,
+                       DeviceBufferList::CreateDeferred(OpName::kAdd, builder,
+                                                        {ref_a}, {}, {shape}));
+  DeviceBufferRef ref_c = refs_c[0];
+
+  // Node d (depends on b)
+  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> refs_d,
+                       DeviceBufferList::CreateDeferred(OpName::kAdd, builder,
+                                                        {ref_b}, {}, {shape}));
+  DeviceBufferRef ref_d = refs_d[0];
+
+  EXPECT_EQ(ref_a.state(), DeviceBufferRefState::kDeferred);
+  EXPECT_EQ(ref_b.state(), DeviceBufferRefState::kDeferred);
+  EXPECT_EQ(ref_c.state(), DeviceBufferRefState::kDeferred);
+  EXPECT_EQ(ref_d.state(), DeviceBufferRefState::kDeferred);
+
+  // Materializing d should materialize d (requested) and c (leaf).
+  // Intermediate nodes a and b should remain deferred.
+  EXPECT_EQ(Materialize(ref_d), absl::OkStatus());
+
+  // a is materialized as it has fanout > 1.
+  EXPECT_EQ(ref_a.state(), DeviceBufferRefState::kMaterialized);
+
+  // b remains deferred as it is an internal node not requested for
+  // materialization.
+  EXPECT_EQ(ref_b.state(), DeviceBufferRefState::kDeferred);
+
+  // c and d are materialized: d is the requested target, and c is a leaf in the
+  // subgraph discovered during the traversal from d.
+  EXPECT_EQ(ref_c.state(), DeviceBufferRefState::kMaterialized);
+  EXPECT_EQ(ref_d.state(), DeviceBufferRefState::kMaterialized);
+}
+
+}  // namespace
+}  // namespace torch_tpu
