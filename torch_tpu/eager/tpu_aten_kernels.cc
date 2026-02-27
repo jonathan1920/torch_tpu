@@ -49,6 +49,7 @@
 #include "torch_tpu/ops/all_any/all_any_aten_kernels.h"
 #include "torch_tpu/ops/arange/arange_aten_kernels.h"
 #include "torch_tpu/ops/as_strided/as_strided_aten_kernels.h"
+#include "torch_tpu/ops/bernoulli/bernoulli_aten_kernels.h"
 #include "torch_tpu/ops/binary_aten_kernels.h"  // IWYU pragma: keep for AtenMulTensor, etc
 #include "torch_tpu/ops/bincount/bincount_aten_kernels.h"
 #include "torch_tpu/ops/bmm/bmm_aten_kernels.h"
@@ -260,6 +261,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kAvgPool2dOut, AtenAvgPool2dOut);
   Impl(m, OpName::kAvgPool3dBackwardGradInput, AtenAvgPool3dBackwardGradInput);
   Impl(m, OpName::kAvgPool3dOut, AtenAvgPool3dOut);
+  Impl(m, OpName::kBernoulli_Float, AtenBernoulli_Float);
   Impl(m, OpName::kBitwiseLeftShiftTensorOut, AtenBitwiseLeftShiftTensorOut);
   Impl(m, OpName::kBitwiseRightShiftTensorOut, AtenBitwiseRightShiftTensorOut);
   Impl(m, OpName::kCatOut, AtenCatOut);

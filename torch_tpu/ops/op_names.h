@@ -65,6 +65,7 @@ enum class OpName {
   kAvgPool2dOut,
   kAvgPool3dBackwardGradInput,
   kAvgPool3dOut,
+  kBernoulli_Float,
   kBinCount,
   kBitwiseAnd,
   kBitwiseAndOut,

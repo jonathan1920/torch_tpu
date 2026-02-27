@@ -3265,6 +3265,16 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       t_complex.exponential_()
 
+  def test_bernoulli_invalid_p(self):
+    device = et.device()
+    t = torch.ones((2, 2), device=device, dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="bernoulli_(): expected p to be in the range [0, 1], got 1.5",
+        cpu="bernoulli_ expects p to be in [0, 1], but got p=1.5",
+    ):
+      t.bernoulli(p=1.5)
+
   def test_add_smaller_out_alias(self):
     """Tests that add fails when the out tensor is a smaller alias of an input."""
     a = torch.ones(4, device=et.device())

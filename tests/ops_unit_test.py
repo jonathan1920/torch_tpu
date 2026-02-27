@@ -517,6 +517,24 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(run_op)
 
+  def test_bernoulli_distribution(self):
+    """Tests bernoulli to produce the correct distribution."""
+    n = 1000
+    tpu_device = api.tpu_device()
+
+    torch.manual_seed(123)
+    p = 0.7
+    t = torch.empty(n, n, dtype=torch.float32, device=tpu_device)
+    t = torch.bernoulli(t, p)
+    mean_value = t.mean()
+    expected_mean = p
+    self.assert_close(
+        golden_result=torch.tensor(expected_mean),
+        torch_tpu_result=mean_value.to("cpu"),
+        atol=1e-2,
+        rtol=1e-2,
+    )
+
   def test_binary_op_dtype_mismatch(self):
     """Test that binary ops properly promote all dtypes in binary ops."""
     # All dtypes except C128, no TPU support for C128
