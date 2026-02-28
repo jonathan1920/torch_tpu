@@ -16,8 +16,7 @@
 
 #include "absl/log/absl_log.h"
 #include "torch_tpu/common/compilation_cache.h"
-#include "torch_tpu/eager/device.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 
 namespace torch_tpu {
 
@@ -31,7 +30,7 @@ void ShutdownPjRt() {
   }
   // TODO(mvoz): Teardown order issue, will be resolved w/ RAII
   // client->reset();
-  SetPjRtDevice(nullptr, PjRtDeviceType::kUnknown);
+  SetPjRtDevice(nullptr);
   ABSL_VLOG(1) << "PjRt shut down.";
 }
 }  // namespace torch_tpu

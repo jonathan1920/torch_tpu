@@ -16,7 +16,7 @@
 # This is a workaround to avoid depending on internal components
 # directly from the main torch_tpu library.
 
-load("//build_files:build_defs.bzl", "define_cpp_filegroup", "torch_tpu_cc_library")
+load("//build_files:build_defs.bzl", "define_cpp_filegroup", "torch_tpu_cc_library", "torch_tpu_cc_test")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -47,29 +47,52 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "pjrt_state",
+    srcs = ["pjrt_state.cc"],
+    hdrs = ["pjrt_state.h"],
+    deps = [
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:utils",
+        "//torch_tpu/eager:device_types",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/tsl/framework:allocator",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "pjrt_init",
     srcs = ["pjrt_init.cc"],
     hdrs = ["pjrt_init.h"],
     deps = [
         ":pjrt",
+        ":pjrt_state",
         "//torch_tpu/common:env_vars",
         "//torch_tpu/common:environment",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:utils",
         "//torch_tpu/distributed/slicebuilder:discovery",
-        "//torch_tpu/eager:device",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/base:nullability",
+        "//torch_tpu/eager:device_types",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
         "@xla//xla/pjrt:pjrt_api",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt/plugin:plugin_names",
         "@xla//xla/tsl/framework:allocator",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "pjrt_init_test",
+    srcs = ["pjrt_init_test.cc"],
+    deps = [
+        ":pjrt_init",
+        ":pjrt_shutdown",
+        ":pjrt_state",
+        "//torch_tpu/eager:device_types",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -78,9 +101,9 @@ torch_tpu_cc_library(
     srcs = ["pjrt_shutdown.cc"],
     hdrs = ["pjrt_shutdown.h"],
     deps = [
-        ":pjrt_init",
+        ":pjrt_state",
         "//torch_tpu/common:compilation_cache",
-        "//torch_tpu/eager:device",
+        "//torch_tpu/eager:device_types",
         "@com_google_absl//absl/log:absl_log",
     ],
 )
@@ -95,6 +118,7 @@ torch_tpu_cc_library(
     ],
     deps = [
         ":pjrt_init",
+        ":pjrt_state",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
@@ -103,7 +127,6 @@ torch_tpu_cc_library(
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:utils",
-        "//torch_tpu/eager:device",
         "//torch_tpu/eager:device_buffer",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",

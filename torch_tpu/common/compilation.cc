@@ -38,7 +38,7 @@
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/translate/register.h"
 #include "xla/pjrt/pjrt_client.h"
