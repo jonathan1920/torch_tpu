@@ -22,7 +22,7 @@ The torchrun command is called on a wrapper around user logic:
 
 ```
 dist.torchrun(
-    tpu_env_wrapper(user_logic, world_size=N, arg1, arg2),
+    tpu_env_wrapper(user_logic, arg1, arg2),
     nproc_per_node=N,
 )()
 ```
@@ -46,13 +46,10 @@ import portpicker
 from torch_tpu._internal.distributed import tpu_topology
 
 
-def prepare_tpu_environment(world_size: int) -> None:
+def prepare_tpu_environment() -> None:
   """Prepares the environment variables required for TPU distributed execution.
 
   To be called in the main process before spawning workers.
-
-  Args:
-    world_size: The number of worker processes.
   """
   xprof_session_id = os.environ.get("TORCH_TPU_XPROF_SESSION_ID", None)
   if xprof_session_id is None:
@@ -60,15 +57,16 @@ def prepare_tpu_environment(world_size: int) -> None:
     os.environ["TORCH_TPU_XPROF_SESSION_ID"] = xprof_session_id
   logging.info("TORCH_TPU_XPROF_SESSION_ID: %s", xprof_session_id)
 
+  topology, count = tpu_topology.get_tpu_topology()
+
   # Get open ports on this host for slicebuilder.
   if "TORCH_TPU_SLICEBUILDER_ADDRESSES" not in os.environ:
-    sb_ports = [portpicker.pick_unused_port() for _ in range(world_size)]
+    sb_ports = [portpicker.pick_unused_port() for _ in range(count)]
     sb_addresses = ",".join([f"localhost:{p}" for p in sb_ports])
     os.environ["TORCH_TPU_SLICEBUILDER_ADDRESSES"] = sb_addresses
 
   # Detect TPU topology.
   if "TORCH_TPU_TOPOLOGY" not in os.environ:
-    topology = tpu_topology.get_tpu_topology(world_size)
     if topology is None:
       raise ValueError("No TPU devices found.")
     os.environ["TORCH_TPU_TOPOLOGY"] = topology
@@ -91,8 +89,14 @@ class WorkerWrapper:
 
 
 def tpu_env_wrapper(
-    func: Callable[..., Any], world_size: int, *args: Any, **kwargs: Any
+    func: Callable[..., Any],
+    world_size: int | None = None,
+    *args: Any,
+    **kwargs: Any,
 ) -> Any:
   """Internal wrapper to initialize worker and run user function."""
-  prepare_tpu_environment(world_size)
+  if world_size is not None:
+    logging.warning("world_size is deprecated and will be ignored.")
+
+  prepare_tpu_environment()
   return WorkerWrapper(func, *args, **kwargs)

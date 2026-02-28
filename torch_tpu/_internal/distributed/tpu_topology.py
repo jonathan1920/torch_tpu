@@ -51,14 +51,9 @@ _TPU_PCI_DEVICE_IDS_TO_TOPOLOGY = {
 }
 
 
-def get_tpu_topology(world_size: Optional[int] = None):
-  """Returns the TPU topology string for an attached TPU device, or None.
-
-  Args:
-    world_size: The number of TPU devices expected. If None, it will be inferred
-      from the number of TPU devices found.
-  """
-  count = 0
+def get_tpu_topology() -> tuple[Optional[str], int]:
+  """Returns the count and topology string for attached TPU devices."""
+  unique_chips = set()
   topology_map = None
 
   for vendor_path in glob.glob("/sys/bus/pci/devices/*/vendor"):
@@ -70,11 +65,20 @@ def get_tpu_topology(world_size: Optional[int] = None):
     device_id = pathlib.Path(device_path).read_text().strip()
 
     if device_id in _TPU_PCI_DEVICE_IDS_TO_TOPOLOGY:
-      count += 1
+      pci_addr = os.path.basename(os.path.dirname(vendor_path))
+      # Group by PCI Bus (Domain:Bus) to avoid over-counting chips that
+      # expose multiple PCI slots or functions.
+      pci_bus = ":".join(pci_addr.split(":")[:2])
+      unique_chips.add(pci_bus)
       topology_map = _TPU_PCI_DEVICE_IDS_TO_TOPOLOGY[device_id]
 
-  if topology_map:
-    target_size = world_size if world_size else count
-    return topology_map.get(target_size)
+  count = len(unique_chips)
+  if count == 0:
+    return None, 0
 
-  return None
+  if topology_map:
+    if count not in topology_map:
+      raise RuntimeError("No TPU topology found for count: %d" % count)
+    return topology_map[count], count
+
+  return None, 0
