@@ -945,13 +945,19 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.multinomial(inp, num_samples=1, generator=gen)
 
-  def test_index_bool_indices(self):
-    inp = torch.ones(2, device=et.device())
-    indices = [torch.tensor([True, True], device=et.device())]
+  def test_index_multiple_bool_indices(self):
+    inp = torch.ones(2, 2, device=et.device())
+    indices = [
+        torch.tensor([True, False], device=et.device()),
+        torch.tensor([False, True], device=et.device()),
+    ]
 
     with et.assert_raises_message(
         NotImplementedError,
-        tpu="index(): bool index tensors are not yet supported",
+        tpu=(
+            "index(): indexing with more than one bool tensor is not yet"
+            " supported"
+        ),
         message_reviewed_by="wan",
     ):
       torch.ops.aten.index(inp, indices)

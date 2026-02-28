@@ -2097,6 +2097,36 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         ],
     )
 
+  def test_boolean_indexing(self):
+    """Test boolean indexing."""
+
+    def single_tensor_bool_indexing_with(device):
+      # Create sample tensors
+      y = torch.tensor(
+          [0, 1, 2, 5, 10, -1, 3, 255], dtype=torch.long, device=device
+      )
+      y_pred = torch.tensor(
+          [0, 1, 2, 4, 8, 2, 3, 200], dtype=torch.long, device=device
+      )
+
+      num_classes = 10
+
+      print(f"Original y: {y}")
+      print(f"Original y_pred: {y_pred}")
+
+      target_mask = (y >= 0) & (y < num_classes)
+      print(f"\nBoolean mask: {target_mask}")
+
+      y_filtered = y[target_mask]
+      y_pred_filtered = y_pred[target_mask]
+
+      print(f"\nFiltered y: {y_filtered}")
+      print(f"Filtered y_pred: {y_pred_filtered}")
+      print("\nSUCCESS: Boolean indexing works!")
+      return y_filtered, y_pred_filtered
+
+    self.assert_close_tpu_vs_cpu(single_tensor_bool_indexing_with)
+
   def test_is_nonzero(self):
     def assert_is_nonzero_equal_on_cpu_vs_tpu(tensor: torch.Tensor):
       cpu_result = torch.is_nonzero(tensor.to("cpu"))

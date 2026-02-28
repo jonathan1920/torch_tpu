@@ -26,6 +26,7 @@
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "c10/core/ScalarType.h"
 #include "c10/util/Optional.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
@@ -36,6 +37,7 @@
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/index/index.h"
 #include "torch_tpu/ops/macros/kernel.h"
+#include "torch_tpu/ops/masked_select/masked_select_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -69,9 +71,10 @@ absl::StatusOr<IndicesInfo> CheckedGetIndicesInfo(
     const auto& tensor = indices_list_opt[i];
 
     if (tensor.has_value() && tensor->defined()) {
-      // TODO(unda): Add support for bool index tensors.
-      TT_RET_CHECK(!IsBool(*tensor), error::kUnimplemented)
-          << "bool index tensors are not yet supported";
+      // TODO(unda): Add support for more than one bool index tensor.
+      TT_RET_CHECK(!IsBool(*tensor) || info.indices.empty(),
+                   error::kUnimplemented)
+          << "indexing with more than one bool tensor is not yet supported";
 
       info.dimensions.push_back(i);
       info.indices.push_back(*tensor);
@@ -144,6 +147,12 @@ at::Tensor& AtenIndexTensorOut(
 
     TT_ASSIGN_OR_THROW(IndicesInfo info,
                        CheckedGetIndicesInfo(indices_list_opt));
+
+    // If the indices are a single boolean tensor, use masked_select.
+    if (info.indices.size() == 1 &&
+        info.indices[0].scalar_type() == at::kBool) {
+      return AtenMaskedSelectOut(self, info.indices[0], out);
+    }
 
     TT_ASSIGN_OR_THROW(Dimensions output_dims, GetOutputDims(self, info));
     // The indices_list_opt gets ignored in the cache key, but we still
