@@ -803,7 +803,10 @@ class MlLayersTest(parameterized.TestCase):
       def __init__(self, num_features: int, dtype: jnp.dtype, rngs):
         super().__init__()
         self.batchnorm = flax.nnx.BatchNorm(
-            num_features=num_features, dtype=dtype, rngs=rngs
+            num_features=num_features,
+            use_running_average=False,
+            dtype=dtype,
+            rngs=rngs,
         )
 
       def __call__(self, x) -> jax.Array:
