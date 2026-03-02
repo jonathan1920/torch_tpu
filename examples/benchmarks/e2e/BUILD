@@ -286,8 +286,8 @@ pytype_strict_library(
     srcs = ["model_utils.py"],
     deps = [
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/model_runner_hf:modeling_hf",
         "//torch_tpu/_internal/utils:device_utils",
+        "//torch_tpu/_internal/utils:modeling_hf",
         "@pypi//fairscale",
         "@pypi//llama_models",
     ],

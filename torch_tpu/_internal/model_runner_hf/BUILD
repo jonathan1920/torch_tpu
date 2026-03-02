@@ -13,24 +13,10 @@
 # limitations under the License.
 
 load("//build_files:build_defs.bzl", "define_cpp_filegroup")
-load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
     default_applicable_licenses = ["//:license"],
     default_visibility = ["//:__subpackages__"],
-)
-
-pytype_strict_library(
-    name = "modeling_hf",
-    srcs = ["modeling_hf.py"],
-    data = [
-        "//examples/huggingface_transformers:model_configs_data",
-    ],
-    deps = [
-        "//shims/torch:pytorch",
-        "@pypi//transformers",
-        "@rules_python//python/runfiles",
-    ],
 )
 
 define_cpp_filegroup(name = "all_cpp_files_recursive")

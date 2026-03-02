@@ -21,8 +21,8 @@ import torch
 from torch.distributed import fsdp
 import torch.distributed.tensor as dt
 from torch.nn import parallel
-from torch_tpu._internal.model_runner_hf import modeling_hf
 from torch_tpu._internal.utils import device_utils
+from torch_tpu._internal.utils import modeling_hf
 
 
 @dataclasses.dataclass
@@ -100,7 +100,7 @@ def get_huggingface_llm_model(
 ) -> ModelAndInput:
   """Returns the huggingface LLM model.
 
-  See `get_model` in //torch_tpu/_internal/model_runner_hf/modeling_hf.py for
+  See `get_model` in //torch_tpu/_internal/utils/modeling_hf.py for
   the list of supported models.
 
   Args:

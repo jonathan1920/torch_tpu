@@ -74,6 +74,7 @@ pytype_strict_library(
         "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:benchmarking",
         "//torch_tpu/_internal/utils:device_utils",
+        "//torch_tpu/_internal/utils:modeling_hf",
         "//torch_tpu/_internal/utils:tracer_utils",
         "//torch_tpu/api",
         "//torch_tpu/api:_device_module",
