@@ -133,6 +133,11 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     "_foreach_reciprocal": {
         torch.float32: {"rtol": 1.9e-7, "atol": 1.3e-4},
     },
+    "_foreach_sigmoid": {
+        torch.complex64: {"rtol": 1e-7, "atol": 1e-4},
+        torch.float32: {"rtol": 1e-7, "atol": 1e-3},
+        torch.float16: {"rtol": 1e-7, "atol": 1e-3},
+    },
     "_log_softmax_backward_data": {
         torch.bfloat16: {"rtol": 2e-3, "atol": 2e-1},
         torch.float16: {"rtol": 6e-3, "atol": 2e-2},
@@ -1934,8 +1939,10 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_sigmoid(self):
-    # TODO: enable when accuracy issues are resolved.
-    self.skipTest("_foreach_sigmoid is not ready yet: accuracy issues.")
+    self.do_test_op(
+        "_foreach_sigmoid",
+        check_value=CheckValueMode.LOOSE,
+    )
 
   def test_foreach_sign(self):
     self.do_test_op("_foreach_sign")
