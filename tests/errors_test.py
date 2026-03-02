@@ -1000,6 +1000,17 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.gather(inp, dim, index, sparse_grad=True)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # PyTorch runs successfully.
+  def test_lerp_complex_double(self):
+    t = torch.tensor([1.0], dtype=torch.complex128, device=et.device())
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="lerp(): complex128 dtype is not yet supported",
+    ):
+      torch.lerp(t, t, t)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
@@ -5750,6 +5761,19 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       # cpu() is needed because the error is triggered inside the op builder.
       torch.gather(inp, dim, index, out=out).cpu()
+
+  def test_lerp_int(self):
+    t = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "lerp(): expected the first argument's dtype to be non-integral,"
+            " got int32"
+        ),
+        cpu="\"lerp_kernel_tensor\" not implemented for 'Int'",
+    ):
+      torch.lerp(t, t, t)
 
 
 if __name__ == "__main__":

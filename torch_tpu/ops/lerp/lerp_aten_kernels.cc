@@ -18,12 +18,13 @@
 
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
@@ -39,6 +40,18 @@
 namespace torch_tpu {
 
 namespace {
+
+absl::Status CheckLerpSelfInput(const at::Tensor& self) {
+  TT_RET_CHECK(!IsIntegral(self), error::kInvalidArgument)
+      << "expected the first argument's dtype to be non-integral, got "
+      << ToString(self.scalar_type());
+
+  TT_RET_CHECK(self.scalar_type() != at::ScalarType::ComplexDouble,
+               error::kUnimplemented)
+      << "complex128 dtype is not yet supported";
+
+  return absl::OkStatus();
+}
 
 absl::StatusOr<MlirOpResults<1>> BuildLerpShlo(mlir::MlirOp self,
                                                mlir::MlirOp end,
@@ -81,13 +94,9 @@ at::Tensor& AtenLerpTensorOut(const at::Tensor& self, const at::Tensor& end,
     promoted_dtype = c10::promoteTypes(promoted_dtype, weight.scalar_type());
     TT_ASSIGN_OR_THROW(mlir::ElementType common_type,
                        ConvertTo<mlir::ElementType>(promoted_dtype));
-    TT_CHECK_THROW(
-        !c10::isIntegralType(self.scalar_type(), /*include_bool=*/true),
-        error::kInvalidArgument)
-        << "integral types are not supported for lerp.";
-    TT_CHECK_THROW(self.scalar_type() != at::ScalarType::ComplexDouble,
-                   error::kUnimplemented)
-        << "convert fails with 64-bit complex types.";
+
+    TT_THROW_IF_ERROR(CheckLerpSelfInput(self));
+
     TT_ASSIGN_OR_THROW(
         auto result,
         (DispatchOp<3>(OpName::kLerpTensorOut,
