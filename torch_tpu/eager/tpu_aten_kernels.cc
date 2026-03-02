@@ -417,6 +417,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kForeachMul_Tensor, AtenForeachMul_Tensor);
   Impl(m, OpName::kForeachNeg, AtenForeachNeg);
   Impl(m, OpName::kForeachNeg_, AtenForeachNeg_);
+  Impl(m, OpName::kForeachNormScalar, AtenForeachNormScalar);
   Impl(m, OpName::kForeachPowList, AtenForeachPowList);
   Impl(m, OpName::kForeachPowScalar, AtenForeachPowScalar);
   Impl(m, OpName::kForeachPowScalarAndTensor, AtenForeachPowScalarAndTensor);

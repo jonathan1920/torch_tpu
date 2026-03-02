@@ -105,6 +105,12 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 1e-2, "atol": 4e-2},
         torch.complex64: {"rtol": 1.2, "atol": 1.6},
     },
+    "_foreach_norm": {
+        torch.bfloat16: {"rtol": 5e-4, "atol": 5e-3},
+        torch.float16: {"rtol": 1e-4, "atol": 5e-4},
+        torch.float32: {"rtol": 1e-7, "atol": 5e-7},
+        torch.float64: {"rtol": 1e-7, "atol": 5e-7},
+    },
     "_foreach_reciprocal": {
         torch.float32: {"rtol": 1.9e-7, "atol": 1.3e-4},
     },
@@ -1886,8 +1892,13 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("_foreach_neg")
 
   def test_foreach_norm(self):
-    # TODO: enable when crash is resolved.
-    self.skipTest("_foreach_norm is not ready yet: crashing on complex inputs.")
+    self.do_test_op(
+        "_foreach_norm",
+        # TODO(b/488385491): Enable grad check when the timeout issue is fixed.
+        check_grad=False,
+        # TODO(b/485291373): fix _foreach_norm() failing with complex dtypes.
+        exclude_dtypes=COMPLEX_DTYPES,
+    )
 
   def test_foreach_pow(self):
     # TODO: fix _foreach_pow_() failing when exponent is bool dtype.

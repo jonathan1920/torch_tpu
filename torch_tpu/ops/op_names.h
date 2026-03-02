@@ -261,6 +261,7 @@ enum class OpName {
   kForeachMul_Tensor,
   kForeachNeg,
   kForeachNeg_,
+  kForeachNormScalar,
   kForeachPowList,
   kForeachPowScalar,
   kForeachPowScalarAndTensor,

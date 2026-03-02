@@ -21,6 +21,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -43,6 +44,7 @@
 #include "torch_tpu/ops/binary_aten_kernels.h"
 #include "torch_tpu/ops/clamp/clamp_aten_kernels.h"
 #include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
+#include "torch_tpu/ops/linalg/vector_norm/aten_vector_norm_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/min_max/min_max_aten_kernels.h"
 #include "torch_tpu/ops/nullary_aten_kernels.h"
@@ -2046,6 +2048,34 @@ void AtenForeachCopy_(at::TensorList self, at::TensorList src,
     for (size_t i = 0; i < self.size(); ++i) {
       AtenCopy_(const_cast<at::Tensor&>(self[i]), src[i], non_blocking);
     }
+  });
+}
+
+std::vector<at::Tensor> AtenForeachNormScalar(
+    at::TensorList self, const at::Scalar& ord,
+    const std::optional<c10::ScalarType> dtype) {
+  TT_KERNEL(OpName::kForeachNormScalar, _, (self, ord, dtype), {
+    TT_THROW_IF_ERROR(EnsureNotIntegral(self));
+    std::vector<at::Tensor> result;
+    result.reserve(self.size());
+    for (const auto& tensor : self) {
+      auto out_dtype =
+          at::toRealValueType(dtype.value_or(tensor.scalar_type()));
+      auto out = MakeEmptyTensor({}, out_dtype, tensor.device());
+      // If the tensor is empty, return zero scalar.
+      // If ord < 0, to avoid inf caused by pow(0, ord), check for 0s in the
+      // tensor and return zero directly, which is the correct result.
+      if (tensor.numel() == 0 ||
+          (ord.to<double>() < 0 && tensor.eq(0).any().item<bool>())) {
+        out.fill_(0);
+        result.push_back(out);
+        continue;
+      }
+      AtenLinalgVectorNormOut(tensor.to(out_dtype), ord, /*dim=*/{},
+                              /*keepdim=*/false, dtype, out);
+      result.push_back(out);
+    }
+    return result;
   });
 }
 

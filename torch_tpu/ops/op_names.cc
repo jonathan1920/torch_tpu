@@ -500,6 +500,8 @@ std::string_view ToString(OpName op_name) {
       return "_foreach_neg";
     case OpName::kForeachNeg_:
       return "_foreach_neg_";
+    case OpName::kForeachNormScalar:
+      return "_foreach_norm.Scalar";
     case OpName::kForeachPowList:
       return "_foreach_pow.List";
     case OpName::kForeachPowScalar:

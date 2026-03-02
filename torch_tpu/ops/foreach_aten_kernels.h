@@ -17,9 +17,11 @@
 #ifndef TORCH_TPU_OPS_FOREACH_ATEN_KERNELS_H_
 #define TORCH_TPU_OPS_FOREACH_ATEN_KERNELS_H_
 
+#include <optional>
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
+#include "torch/headeronly/core/ScalarType.h"
 
 namespace torch_tpu {
 
@@ -259,6 +261,10 @@ void AtenForeachClampMin_ScalarList(at::TensorList self,
 
 void AtenForeachCopy_(at::TensorList self, at::TensorList src,
                       bool non_blocking);
+
+std::vector<at::Tensor> AtenForeachNormScalar(
+    at::TensorList self, const at::Scalar& ord,
+    const std::optional<c10::ScalarType> dtype);
 
 std::vector<at::Tensor> AtenForeachMax(at::TensorList self);
 
