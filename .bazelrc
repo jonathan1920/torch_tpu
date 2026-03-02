@@ -169,6 +169,14 @@ common:remote_execution_readwrite --config=remote_execution_readonly
 common:remote_execution_readwrite --remote_upload_local_results=true
 common:remote_execution_readwrite --bes_instance_name="ml-oss-rbe-testing"
 
+# Configs for Bazel public caching.
+common:public_caching_readonly --remote_upload_local_results=false
+common:public_caching_readonly --remote_cache="https://storage.googleapis.com/torchtpu-bazel-cache/"
+
+common:public_caching_readwrite --config=public_caching_readonly
+common:public_caching_readwrite --remote_upload_local_results=true
+common:public_caching_readwrite --google_default_credentials
+
 # Settings specific to CI runs.
 common:ci --build_tests_only
 common:ci --config=remote_execution_readwrite
