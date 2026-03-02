@@ -5737,7 +5737,11 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(
         RuntimeError,
-        "hardswish(): expected the input dtype to be floating point, got int32",
+        tpu=(
+            "hardswish(): expected the input dtype to be floating point, got"
+            " int32"
+        ),
+        cpu="\"hardswish_cpu\" not implemented for 'Int'",
     ):
       torch.nn.functional.hardswish(t)
 
@@ -5746,10 +5750,11 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     self_val = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(
         RuntimeError,
-        (
+        tpu=(
             "hardswish_backward(): expected the input dtype to be floating"
             " point, got int32"
         ),
+        cpu="\"hardswish_backward_cpu\" not implemented for 'Int'",
     ):
       torch.ops.aten.hardswish_backward(grad, self_val)
 
