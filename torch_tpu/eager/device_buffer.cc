@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -123,17 +124,75 @@ void Subgraph::Merge(std::shared_ptr<Subgraph> s1,
   auto r2 = s2->Find();
   if (r1 == r2) return;
 
-  std::shared_ptr<Subgraph> first = r1;
-  std::shared_ptr<Subgraph> second = r2;
-  if (first.get() > second.get()) std::swap(first, second);
-
-  TT_MUTEX_LOCK(lock1, first->mu_);
-  TT_MUTEX_LOCK(lock2, second->mu_);
-
   // Merge queues.
-  r1->queue_.insert(r1->queue_.end(),
-                    std::make_move_iterator(r2->queue_.begin()),
-                    std::make_move_iterator(r2->queue_.end()));
+  std::deque<std::weak_ptr<DeviceBufferList>> merged_queue;
+  TT_MUTEX_LOCK(lock1, r1->mu_);
+  TT_MUTEX_LOCK(lock2, r2->mu_);
+
+  // Retain the relative order of nodes within each queue, dropping any
+  // irrelevant nodes and merging based on creation_index ascending.
+  auto r1_it = r1->queue_.begin();
+  auto r2_it = r2->queue_.begin();
+  while (r1_it != r1->queue_.end() && r2_it != r2->queue_.end()) {
+    // Skip any expired or already-materialized nodes.
+    std::shared_ptr<DeviceBufferList> r1_node = r1_it->lock();
+    if (!r1_node) {
+      ++r1_it;
+      continue;
+    }
+    const auto* r1_deferred_op = r1_node->deferred_op();
+    if (!r1_deferred_op) {
+      ++r1_it;
+      continue;
+    }
+    std::shared_ptr<DeviceBufferList> r2_node = r2_it->lock();
+    if (!r2_node) {
+      ++r2_it;
+      continue;
+    }
+    const auto* r2_deferred_op = r2_node->deferred_op();
+    if (!r2_deferred_op) {
+      ++r2_it;
+      continue;
+    }
+
+    if (r1_deferred_op->creation_index() < r2_deferred_op->creation_index()) {
+      merged_queue.push_back(std::move(r1_node));
+      ++r1_it;
+    } else {
+      merged_queue.push_back(std::move(r2_node));
+      ++r2_it;
+    }
+  }
+  while (r1_it != r1->queue_.end()) {
+    std::shared_ptr<DeviceBufferList> r1_node = r1_it->lock();
+    if (!r1_node) {
+      ++r1_it;
+      continue;
+    }
+    const auto* r1_deferred_op = r1_node->deferred_op();
+    if (!r1_deferred_op) {
+      ++r1_it;
+      continue;
+    }
+    merged_queue.push_back(std::move(r1_node));
+    ++r1_it;
+  }
+  while (r2_it != r2->queue_.end()) {
+    std::shared_ptr<DeviceBufferList> r2_node = r2_it->lock();
+    if (!r2_node) {
+      ++r2_it;
+      continue;
+    }
+    const auto* r2_deferred_op = r2_node->deferred_op();
+    if (!r2_deferred_op) {
+      ++r2_it;
+      continue;
+    }
+    merged_queue.push_back(std::move(r2_node));
+    ++r2_it;
+  }
+  std::swap(r1->queue_, merged_queue);
   r2->queue_.clear();
   r2->parent_ = r1;
 }
