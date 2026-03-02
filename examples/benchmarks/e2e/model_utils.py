@@ -25,6 +25,8 @@ from torch_tpu._internal.utils import device_utils
 from torch_tpu._internal.utils import modeling_hf
 from transformers import activations
 from transformers.models.bert import modeling_bert
+from transformers.models.qwen3 import configuration_qwen3
+from transformers.models.qwen3 import modeling_qwen3
 
 
 def _get_base_bert_config():
@@ -40,6 +42,40 @@ def _get_base_bert_config():
   )
   cfg._attn_implementation = "eager"  # pylint: disable=protected-access
   return cfg
+
+
+def _get_base_qwen3_config():
+  # https://huggingface.co/Qwen/Qwen3-8B/blob/main/config.json
+  config = configuration_qwen3.Qwen3Config.from_dict({
+      "architectures": ["Qwen3ForCausalLM"],
+      "attention_bias": False,
+      "attention_dropout": 0.0,
+      "bos_token_id": 151643,
+      "eos_token_id": 151645,
+      "head_dim": 128,
+      "hidden_act": "silu",
+      "hidden_size": 4096,
+      "initializer_range": 0.02,
+      "intermediate_size": 12288,
+      "max_position_embeddings": 40960,
+      "max_window_layers": 36,
+      "model_type": "qwen3",
+      "num_attention_heads": 32,
+      "num_hidden_layers": 36,
+      "num_key_value_heads": 8,
+      "rms_norm_eps": 1e-06,
+      "rope_scaling": None,
+      "rope_theta": 1000000,
+      "sliding_window": None,
+      "tie_word_embeddings": False,
+      "torch_dtype": "bfloat16",
+      "transformers_version": "4.51.0",
+      "use_cache": True,
+      "use_sliding_window": False,
+      "vocab_size": 151936,
+  })
+  config._attn_implementation = "eager"  # pylint: disable=protected-access
+  return config
 
 
 @dataclasses.dataclass
@@ -664,6 +700,120 @@ def get_ml_layer_model(
         device=device,
     )
     example_inputs = input_ids
+  elif model_name == "Qwen3Attention":
+    config = _get_base_qwen3_config()
+    model = modeling_qwen3.Qwen3Attention(config, layer_idx=0)
+
+    head_dim = config.hidden_size // config.num_attention_heads
+
+    cos = torch.randn(
+        1, sequence_length, head_dim, device=device, dtype=weights_dtype
+    )
+    sin = torch.randn(
+        1, sequence_length, head_dim, device=device, dtype=weights_dtype
+    )
+
+    example_inputs = (
+        torch.randn(
+            batch_size,
+            sequence_length,
+            config.hidden_size,
+            dtype=weights_dtype,
+            device=device,
+        ),
+        (cos, sin),
+        None,
+    )
+
+    class Qwen3AttentionWrapper(torch.nn.Module):
+
+      def __init__(self, m):
+        super().__init__()
+        self.m = m
+
+      def forward(self, hidden_states, position_embeddings, attention_mask):
+        return self.m(
+            hidden_states=hidden_states,
+            position_embeddings=position_embeddings,
+            attention_mask=attention_mask,
+        )[0]
+
+    model = Qwen3AttentionWrapper(model)
+    model = model.to(dtype=weights_dtype)
+
+  elif model_name == "Qwen3RMSNorm":
+    hidden_size = kwargs["hidden_size"]
+    model = modeling_qwen3.Qwen3RMSNorm(hidden_size=hidden_size)
+    model = model.to(dtype=weights_dtype)
+    example_inputs = torch.randn(
+        batch_size,
+        sequence_length,
+        hidden_size,
+        dtype=weights_dtype,
+        device=device,
+    )
+
+  elif model_name == "Qwen3MLP":
+    config = configuration_qwen3.Qwen3Config(
+        hidden_size=kwargs["hidden_size"],
+        intermediate_size=kwargs["intermediate_size"],
+        hidden_act="silu",
+    )
+    model = modeling_qwen3.Qwen3MLP(config)
+    model = model.to(dtype=weights_dtype)
+    example_inputs = torch.randn(
+        batch_size,
+        sequence_length,
+        config.hidden_size,
+        dtype=weights_dtype,
+        device=device,
+    )
+
+  elif model_name == "SiLUActivation":
+    model = activations.SiLUActivation()
+    input_shape = kwargs["shape"]
+    example_inputs = torch.randn(
+        input_shape,
+        dtype=weights_dtype,
+        device=device,
+    )
+
+  elif model_name == "Qwen3RotaryEmbedding":
+    config = configuration_qwen3.Qwen3Config(
+        max_position_embeddings=kwargs["max_position_embeddings"],
+        rope_theta=kwargs["rope_theta"],
+    )
+    model = modeling_qwen3.Qwen3RotaryEmbedding(config)
+    head_dim = kwargs["head_dim"]
+
+    position_ids = (
+        torch.arange(0, sequence_length, dtype=torch.long, device=device)
+        .unsqueeze(0)
+        .expand(batch_size, -1)
+    )
+
+    example_inputs = (
+        torch.randn(
+            batch_size,
+            sequence_length,
+            head_dim,
+            dtype=weights_dtype,
+            device=device,
+        ),
+        position_ids,
+    )
+
+    class Qwen3RotaryEmbeddingWrapper(torch.nn.Module):
+
+      def __init__(self, m):
+        super().__init__()
+        self.m = m
+
+      def forward(self, x, position_ids):
+        return self.m(x, position_ids)  # returns cos, sin
+
+    model = Qwen3RotaryEmbeddingWrapper(model)
+
   else:
     raise ValueError(f"Unknown ML layer model: {model_name}")
 

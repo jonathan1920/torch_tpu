@@ -842,6 +842,118 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
           config, _RMSNORM_LAYER_BENCHMARK_NAME, microbenchmark_name
       )
 
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(True, False)
+      )
+  )
+  def test_qwen3_attention(self, run_mode, is_training):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="Qwen3Attention",
+            batch_size=1,
+            sequence_length=128,
+            custom_kwargs={},
+        ),
+    )
+    self.run_performance_benchmark_test(config, f"Qwen3Attention")
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(True, False)
+      )
+  )
+  def test_qwen3_rms_norm(self, run_mode, is_training):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="Qwen3RMSNorm",
+            batch_size=1,
+            sequence_length=128,
+            custom_kwargs={"hidden_size": 128},
+        ),
+    )
+    self.run_performance_benchmark_test(config, f"Qwen3RMSNorm")
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(True, False)
+      )
+  )
+  def test_qwen3_mlp(self, run_mode, is_training):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="Qwen3MLP",
+            batch_size=1,
+            sequence_length=128,
+            custom_kwargs={"hidden_size": 128, "intermediate_size": 512},
+        ),
+    )
+    self.run_performance_benchmark_test(config, f"Qwen3MLP")
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+  )
+  def test_silu_activation(self, run_mode, is_training):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="SiLUActivation",
+            batch_size=1,
+            sequence_length=128,
+            custom_kwargs={"shape": (1, 128, 512)},
+        ),
+    )
+    self.run_performance_benchmark_test(config, f"SiLUActivation")
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+  )
+  def test_qwen3_rotary_embedding(self, run_mode, is_training):
+    self.skipTest("TODO(b/484415655): Investigate cache miss.")
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="Qwen3RotaryEmbedding",
+            batch_size=1,
+            sequence_length=128,
+            custom_kwargs={"head_dim": 128},
+        ),
+    )
+    self.run_performance_benchmark_test(config, f"Qwen3RotaryEmbedding")
+
 
 if __name__ == "__main__":
   mp.set_start_method("spawn")
