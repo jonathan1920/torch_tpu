@@ -150,15 +150,14 @@ def assert_close(
       "expected and actual values for comparison must be both tensors, got"
       f" {type(actual)} and {type(expected)}"
   )
-  if isinstance(actual, torch.Tensor) and isinstance(expected, torch.Tensor):
-    _assert_tensor_close(
-        actual=actual,
-        expected=expected,
-        rtol=rtol,
-        atol=atol,
-        preamble=preamble,
-        check_value=check_value,
-    )
+  _assert_tensor_close(
+      actual=actual,
+      expected=expected,
+      rtol=rtol,
+      atol=atol,
+      preamble=preamble,
+      check_value=check_value,
+  )
 
 
 def _lookup_tolerances(
