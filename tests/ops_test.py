@@ -96,6 +96,9 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 1, "atol": 7e-2},
         torch.float16: {"rtol": 3e-1, "atol": 4e-3},
     },
+    "_foreach_erfc": {
+        torch.float32: {"rtol": 3e-6, "atol": 2e-4},
+    },
     "_foreach_expm1": {
         torch.complex64: {"rtol": 2e-5, "atol": 3e-2},
         torch.float16: {"rtol": 2e-3, "atol": 4.0},
@@ -1792,8 +1795,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_erfc(self):
-    # TODO: enable when erfc op is implemented.
-    self.skipTest("_foreach_erfc is not ready yet: base op not implemented.")
+    self.do_test_op("_foreach_erfc")
 
   def test_foreach_exp(self):
     self.do_test_op(
