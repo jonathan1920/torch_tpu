@@ -29,7 +29,7 @@ from typing import Optional
 _GOOGLE_PCI_VENDOR_ID = "0x1ae0"
 _TPU_PCI_DEVICE_IDS_TO_TOPOLOGY = {
     # tpu v5p
-    "0x005e": {
+    "0x0062": {
         4: "2,2,1",
         8: "2,2,2",
     },
@@ -53,7 +53,7 @@ _TPU_PCI_DEVICE_IDS_TO_TOPOLOGY = {
 
 def get_tpu_topology() -> tuple[Optional[str], int]:
   """Returns the count and topology string for attached TPU devices."""
-  unique_chips = set()
+  count = 0
   topology_map = None
 
   for vendor_path in glob.glob("/sys/bus/pci/devices/*/vendor"):
@@ -61,18 +61,23 @@ def get_tpu_topology() -> tuple[Optional[str], int]:
     if vendor_id != _GOOGLE_PCI_VENDOR_ID:
       continue
 
-    device_path = os.path.join(os.path.dirname(vendor_path), "device")
-    device_id = pathlib.Path(device_path).read_text().strip()
+    device_dir = os.path.dirname(vendor_path)
+    device_id = (
+        pathlib.Path(os.path.join(device_dir, "device")).read_text().strip()
+    )
 
     if device_id in _TPU_PCI_DEVICE_IDS_TO_TOPOLOGY:
-      pci_addr = os.path.basename(os.path.dirname(vendor_path))
-      # Group by PCI Bus (Domain:Bus) to avoid over-counting chips that
-      # expose multiple PCI slots or functions.
-      pci_bus = ":".join(pci_addr.split(":")[:2])
-      unique_chips.add(pci_bus)
+      # Some devices have multiple tensorcores sharing the same bus.
+      # We count only those that are exposed via VFIO.
+      iommu_group_path = os.path.join(device_dir, "iommu_group")
+      if os.path.exists(iommu_group_path):
+        group_id = os.path.basename(os.readlink(iommu_group_path))
+        if not os.path.exists(f"/dev/vfio/{group_id}"):
+          continue
+
+      count += 1
       topology_map = _TPU_PCI_DEVICE_IDS_TO_TOPOLOGY[device_id]
 
-  count = len(unique_chips)
   if count == 0:
     return None, 0
 
