@@ -96,6 +96,10 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 1, "atol": 7e-2},
         torch.float16: {"rtol": 3e-1, "atol": 4e-3},
     },
+    "_foreach_expm1": {
+        torch.complex64: {"rtol": 2e-5, "atol": 3e-2},
+        torch.float16: {"rtol": 2e-3, "atol": 4.0},
+    },
     "_foreach_frac": {
         torch.bfloat16: {"rtol": 1e-4, "atol": 2.0},
         torch.float16: {"rtol": 1e-4, "atol": 2.0},
@@ -1799,8 +1803,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_expm1(self):
-    # TODO: enable when accuracy issues are resolved.
-    self.skipTest("_foreach_expm1 is not ready yet: accuracy issues.")
+    self.do_test_op("_foreach_expm1")
 
   def test_foreach_floor(self):
     self.do_test_op(
