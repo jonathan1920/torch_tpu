@@ -96,6 +96,12 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 1, "atol": 7e-2},
         torch.float16: {"rtol": 3e-1, "atol": 4e-3},
     },
+    "_foreach_frac": {
+        torch.bfloat16: {"rtol": 1e-4, "atol": 2.0},
+        torch.float16: {"rtol": 1e-4, "atol": 2.0},
+        torch.float32: {"rtol": 1e-4, "atol": 2.0},
+        torch.float64: {"rtol": 1e-4, "atol": 2.0},
+    },
     "_foreach_lerp": {
         torch.bfloat16: {"rtol": 25, "atol": 3e-2},
         torch.float16: {"rtol": 2e-1, "atol": 4e-3},
@@ -1800,8 +1806,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_frac(self):
-    # TODO: enable when frac op is implemented.
-    self.skipTest("_foreach_frac is not ready yet: base op not implemented.")
+    self.do_test_op("_foreach_frac", check_value=CheckValueMode.LOOSE)
 
   def test_foreach_lerp(self):
     self.do_test_op(

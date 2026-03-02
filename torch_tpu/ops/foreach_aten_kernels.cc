@@ -886,6 +886,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> ForeachFrac(
 
 std::vector<at::Tensor> AtenForeachFrac(at::TensorList self) {
   TT_KERNEL(OpName::kForeachFrac, _, (self), {
+    TT_THROW_IF_ERROR(EnsureNotIntegral(self));
     TT_ASSIGN_OR_THROW(auto out_dtypes,
                        GetOutputDtypes(self, /*cast_integral_to_float=*/true));
     TT_ASSIGN_OR_THROW(auto result_buffers,
