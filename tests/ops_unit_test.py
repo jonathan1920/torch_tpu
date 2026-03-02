@@ -1727,9 +1727,9 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
 
   def test_roll(self):
-    # Both dims and shifts are default values.
+    # 0-shift.
     self.assert_close_tpu_vs_cpu(
-        lambda device: torch.roll(torch.arange(10).to(device))
+        lambda device: torch.roll(torch.arange(10).to(device), shifts=0)
     )
     # Flattened tensor.
     self.assert_close_tpu_vs_cpu(
