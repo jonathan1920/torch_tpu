@@ -106,6 +106,12 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 25, "atol": 3e-2},
         torch.float16: {"rtol": 2e-1, "atol": 4e-3},
     },
+    "_foreach_log2": {
+        torch.bfloat16: {"rtol": 8e-3, "atol": 2e-2},
+        torch.complex64: {"rtol": 2e-4, "atol": 2e-4},
+        torch.float16: {"rtol": 1e-2, "atol": 4e-2},
+        torch.float32: {"rtol": 3e-4, "atol": 2e-4},
+    },
     "_foreach_mul": {
         torch.bfloat16: {"rtol": 1e-2, "atol": 4e-2},
         torch.float16: {"rtol": 1e-2, "atol": 4e-2},
@@ -1845,8 +1851,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_log2(self):
-    # TODO: enable when accuracy issues are resolved.
-    self.skipTest("_foreach_log2 is not ready yet: accuracy issues.")
+    self.do_test_op("_foreach_log2")
 
   def test_foreach_max(self):
     # TODO(b/485291373): fix _foreach_max() failing with complex dtypes.
