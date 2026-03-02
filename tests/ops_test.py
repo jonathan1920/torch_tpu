@@ -424,6 +424,10 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float32: {"rtol": 1e-4, "atol": 1e-4},
         torch.float16: {"rtol": 1e-4, "atol": 1e-2},
     },
+    "nn.functional.grid_sample": {
+        torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
+        torch.float16: {"rtol": 1e-2, "atol": 1e-2},
+    },
     "nn.functional.group_norm": {
         torch.bfloat16: {"rtol": 2e-1, "atol": 2e-2},
         torch.float16: {"rtol": 2e-1, "atol": 2e-2},
@@ -2023,6 +2027,21 @@ class TestOps(TorchTpuTestBase):
 
   def test_gt(self):
     self.do_test_op("gt")
+
+  def test_grid_sampler(self):
+    self.do_test_op(
+        "nn.functional.grid_sample",
+        check_grad=False,
+        check_value=CheckValueMode.LOOSE,
+        exclude_dtypes={
+            # CPU implementation has precision issues leading to incorrect
+            # addressing for float16 and bfloat16
+            "cpu": (torch.bfloat16, torch.float16),
+        },
+        # TODO: b/487653164 fix grid_sampler() returning incorrect values when
+        # dynamism is enabled
+        check_dynamism=False,
+    )
 
   def test_histc(self):
     # TODO: b/487653210 - skipping `int8` and `uint8` dtypes due to incorrect

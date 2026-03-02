@@ -147,6 +147,7 @@
 #include "xla/xla_data.pb.h"
 #include "torch_tpu/ops/cummax/cummax_aten_kernels.h"
 #include "torch_tpu/ops/cummin/cummin_aten_kernels.h"
+#include "torch_tpu/ops/grid_sampler/grid_sampler_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -680,6 +681,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   m.impl("floor_divide_.Tensor", AtenFloorDivide_Tensor);
   m.impl("ge.Scalar_out", AtenGeScalarOut);
   m.impl("ge.Tensor_out", AtenGeTensorOut);
+  m.impl("grid_sampler_2d", AtenGridSampler2d);
+  m.impl("grid_sampler_3d", AtenGridSampler3d);
   m.impl("gt.Scalar_out", AtenGtScalarOut);
   m.impl("gt.Tensor_out", AtenGtTensorOut);
   m.impl("isin.Scalar_Tensor_out", AtenIsInScalarTensorOut);
