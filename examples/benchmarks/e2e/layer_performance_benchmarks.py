@@ -148,6 +148,25 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
           in_features=36864,
           out_features=4608,
       ),
+      # Configs for BERT
+      _LinearConfig(
+          batch_size=32,
+          seq_len=128,
+          in_features=768,
+          out_features=768,
+      ),
+      _LinearConfig(
+          batch_size=32,
+          seq_len=128,
+          in_features=768,
+          out_features=3072,
+      ),
+      _LinearConfig(
+          batch_size=32,
+          seq_len=128,
+          in_features=3072,
+          out_features=768,
+      ),
   )
 
   @parameterized.named_parameters(
@@ -278,6 +297,12 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
           num_features=8192,
           num_normalized_dims=2,
       ),
+      # BERT configs
+      _LayerNormConfig(
+          batch_size=32,
+          seq_len=128,
+          num_features=768,
+      ),
   )
 
   @parameterized.named_parameters(
@@ -387,6 +412,353 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       self.run_performance_benchmark_test(
           config, _CONV2D_LAYER_BENCHMARK_NAME, microbenchmark_name
       )
+
+  @dataclasses.dataclass
+  class _EmbeddingConfig:
+    batch_size: int
+    seq_len: int
+    num_embeddings: int
+    embedding_dim: int
+
+  _embedding_configs = (
+      # Default config for smoke test.
+      _EmbeddingConfig(
+          batch_size=1,
+          seq_len=128,
+          num_embeddings=128,
+          embedding_dim=128,
+      ),
+      # Configs for BERT
+      _EmbeddingConfig(
+          batch_size=32,
+          seq_len=128,
+          num_embeddings=30522,
+          embedding_dim=768,
+      ),
+      _EmbeddingConfig(
+          batch_size=1,
+          seq_len=128,
+          num_embeddings=512,
+          embedding_dim=768,
+      ),
+      _EmbeddingConfig(
+          batch_size=32,
+          seq_len=128,
+          num_embeddings=2,
+          embedding_dim=768,
+      ),
+  )
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(True, False)
+      )
+  )
+  def test_embedding(self, run_mode, is_training):
+    for layer_config in self._embedding_configs:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="nn.Embedding",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+              custom_kwargs={
+                  "num_embeddings": layer_config.num_embeddings,
+                  "embedding_dim": layer_config.embedding_dim,
+              },
+          ),
+      )
+      config_dict = dataclasses.asdict(layer_config)
+      name_parts = [
+          f"{k}_{str(v).replace('torch.', '')}" if k == "dtype" else f"{k}_{v}"
+          for k, v in config_dict.items()
+      ]
+      benchmark_name = "_".join(name_parts)
+      self.run_performance_benchmark_test(config, benchmark_name)
+
+  @dataclasses.dataclass
+  class _DropoutConfig:
+    p: float
+    shape: tuple[int, ...]
+
+  _dropout_configs = (
+      # BERT configs
+      _DropoutConfig(
+          p=0.1,
+          shape=(32, 128, 768),
+      ),
+  )
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(True, False)
+      )
+  )
+  def test_dropout(self, run_mode, is_training):
+    for layer_config in self._dropout_configs:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="nn.Dropout",
+              custom_kwargs={
+                  "p": layer_config.p,
+                  "shape": layer_config.shape,
+              },
+          ),
+      )
+      # Extracting details from shape config for name building
+      custom_name_parts = []
+      custom_name_parts.append(f"p_{layer_config.p}")
+      custom_name_parts.append(
+          f"shape_{'x'.join((str(x) for x in layer_config.shape))}"
+      )
+      benchmark_name = "_".join(custom_name_parts)
+      self.run_performance_benchmark_test(config, benchmark_name)
+
+  @dataclasses.dataclass
+  class _TanhConfig:
+    shape: tuple[int, ...]
+
+  _tanh_configs = (
+      # BERT configs
+      _TanhConfig(
+          shape=(32, 768),
+      ),
+  )
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(True, False)
+      )
+  )
+  def test_tanh(self, run_mode, is_training):
+    for layer_config in self._tanh_configs:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="nn.Tanh",
+              custom_kwargs={
+                  "shape": layer_config.shape,
+              },
+          ),
+      )
+      # Extracting details from shape config for name building
+      custom_name_parts = []
+      custom_name_parts.append(
+          f"shape_{'x'.join((str(x) for x in layer_config.shape))}"
+      )
+      benchmark_name = "_".join(custom_name_parts)
+      self.run_performance_benchmark_test(config, benchmark_name)
+
+  @dataclasses.dataclass
+  class _BertLayerConfig:
+    batch_size: int
+    seq_len: int
+
+  _bert_layer_configs = (_BertLayerConfig(batch_size=32, seq_len=128),)
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(False, True)
+      )
+  )
+  def test_gelu_activation(self, run_mode, is_training):
+    for layer_config in self._bert_layer_configs:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="GELUActivation",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+          ),
+      )
+      custom_name_parts = [
+          f"batch_size_{layer_config.batch_size}",
+          f"seq_len_{layer_config.seq_len}",
+      ]
+      benchmark_name = "_".join(custom_name_parts)
+      self.run_performance_benchmark_test(config, benchmark_name)
+
+  # TODO(b/484415655): Known bert training issue.
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+  )
+  def test_bert_layer(self, run_mode, is_training):
+    for layer_config in self._bert_layer_configs:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="BertLayer",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+          ),
+      )
+      custom_name_parts = [
+          f"batch_size_{layer_config.batch_size}",
+          f"seq_len_{layer_config.seq_len}",
+      ]
+      benchmark_name = "_".join(custom_name_parts)
+      self.run_performance_benchmark_test(config, benchmark_name)
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+  )
+  def test_bert_self_output(self, run_mode, is_training):
+    for layer_config in self._bert_layer_configs:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="BertSelfOutput",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+          ),
+      )
+      custom_name_parts = [
+          f"batch_size_{layer_config.batch_size}",
+          f"seq_len_{layer_config.seq_len}",
+      ]
+      benchmark_name = "_".join(custom_name_parts)
+      self.run_performance_benchmark_test(config, benchmark_name)
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+  )
+  def test_bert_intermediate(self, run_mode, is_training):
+    for layer_config in self._bert_layer_configs:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="BertIntermediate",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+          ),
+      )
+      custom_name_parts = [
+          f"batch_size_{layer_config.batch_size}",
+          f"seq_len_{layer_config.seq_len}",
+      ]
+      benchmark_name = "_".join(custom_name_parts)
+      self.run_performance_benchmark_test(config, benchmark_name)
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+  )
+  def test_bert_output(self, run_mode, is_training):
+    for layer_config in self._bert_layer_configs:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="BertOutput",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+          ),
+      )
+      custom_name_parts = [
+          f"batch_size_{layer_config.batch_size}",
+          f"seq_len_{layer_config.seq_len}",
+      ]
+      benchmark_name = "_".join(custom_name_parts)
+      self.run_performance_benchmark_test(config, benchmark_name)
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+  )
+  def test_bert_pooler(self, run_mode, is_training):
+    for layer_config in self._bert_layer_configs:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="BertPooler",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+          ),
+      )
+      custom_name_parts = [
+          f"batch_size_{layer_config.batch_size}",
+          f"seq_len_{layer_config.seq_len}",
+      ]
+      benchmark_name = "_".join(custom_name_parts)
+      self.run_performance_benchmark_test(config, benchmark_name)
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+  )
+  def test_bert_embeddings(self, run_mode, is_training):
+    for layer_config in self._bert_layer_configs:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="BertEmbeddings",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+          ),
+      )
+      custom_name_parts = [
+          f"batch_size_{layer_config.batch_size}",
+          f"seq_len_{layer_config.seq_len}",
+      ]
+      benchmark_name = "_".join(custom_name_parts)
+      self.run_performance_benchmark_test(config, benchmark_name)
 
   @dataclasses.dataclass
   class _RmsNormConfig:

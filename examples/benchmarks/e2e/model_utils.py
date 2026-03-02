@@ -23,6 +23,23 @@ import torch.distributed.tensor as dt
 from torch.nn import parallel
 from torch_tpu._internal.utils import device_utils
 from torch_tpu._internal.utils import modeling_hf
+from transformers import activations
+from transformers.models.bert import modeling_bert
+
+
+def _get_base_bert_config():
+  cfg = modeling_bert.BertConfig(
+      vocab_size=30522,
+      hidden_size=768,
+      num_hidden_layers=12,
+      num_attention_heads=12,
+      intermediate_size=3072,
+      hidden_dropout_prob=0.1,
+      attention_probs_dropout_prob=0.1,
+      max_position_embeddings=512,
+  )
+  cfg._attn_implementation = "eager"  # pylint: disable=protected-access
+  return cfg
 
 
 @dataclasses.dataclass
@@ -334,6 +351,66 @@ def get_ml_layer_model(
         dtype=weights_dtype,
         device=device,
     )
+  elif model_name == "nn.Embedding":
+    num_embeddings = kwargs["num_embeddings"]
+    embedding_dim = kwargs["embedding_dim"]
+
+    class EmbeddingModel(torch.nn.Module):
+
+      def __init__(self, num_embeddings, embedding_dim, dtype):
+        super().__init__()
+        self.embedding = torch.nn.Embedding(
+            num_embeddings, embedding_dim, dtype=dtype
+        )
+
+      def forward(self, x):
+        return self.embedding(x)
+
+    model = EmbeddingModel(num_embeddings, embedding_dim, dtype=weights_dtype)
+    example_inputs = torch.randint(
+        0,
+        num_embeddings,
+        (batch_size, sequence_length),
+        dtype=torch.int32,  # Using int32 as per the reference
+        device=device,
+    )
+  elif model_name == "nn.Dropout":
+    p = kwargs["p"]
+    input_shape = kwargs["shape"]
+
+    class DropoutModel(torch.nn.Module):
+
+      def __init__(self, p):
+        super().__init__()
+        self.dropout = torch.nn.Dropout(p=p)
+
+      def forward(self, x):
+        return self.dropout(x)
+
+    model = DropoutModel(p)
+    example_inputs = torch.randn(
+        input_shape,
+        dtype=weights_dtype,
+        device=device,
+    )
+  elif model_name == "nn.Tanh":
+    input_shape = kwargs["shape"]
+
+    class TanhModel(torch.nn.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.tanh = torch.nn.Tanh()
+
+      def forward(self, x):
+        return self.tanh(x)
+
+    model = TanhModel()
+    example_inputs = torch.randn(
+        input_shape,
+        dtype=weights_dtype,
+        device=device,
+    )
   elif model_name == "nn.BatchNorm1d":
     num_features = kwargs["num_features"]
 
@@ -436,6 +513,157 @@ def get_ml_layer_model(
         dtype=weights_dtype,
         device=device,
     )
+
+  elif model_name == "BertLayer":
+    cfg = _get_base_bert_config()
+    model = modeling_bert.BertLayer(cfg)
+    example_inputs = (
+        torch.randn(
+            batch_size,
+            sequence_length,
+            cfg.hidden_size,
+            dtype=weights_dtype,
+            device=device,
+        ),
+        None,
+    )
+
+    class BertLayerWrapper(torch.nn.Module):
+
+      def __init__(self, m):
+        super().__init__()
+        self.m = m
+
+      def forward(self, hidden_states, attention_mask):
+        return self.m(
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            head_mask=None,
+            encoder_hidden_states=None,
+            encoder_attention_mask=None,
+            past_key_values=None,
+            output_attentions=False,
+            cache_position=None,
+        )[0]
+
+    model = BertLayerWrapper(model).to(dtype=weights_dtype)
+
+  elif model_name == "BertSelfOutput":
+    cfg = _get_base_bert_config()
+    model = modeling_bert.BertSelfOutput(cfg)
+    example_inputs = (
+        torch.randn(
+            batch_size,
+            sequence_length,
+            cfg.hidden_size,
+            dtype=weights_dtype,
+            device=device,
+        ),
+        torch.randn(
+            batch_size,
+            sequence_length,
+            cfg.hidden_size,
+            dtype=weights_dtype,
+            device=device,
+        ),
+    )
+
+    class BertSelfOutputWrapper(torch.nn.Module):
+
+      def __init__(self, m):
+        super().__init__()
+        self.m = m
+
+      def forward(self, hidden_states, input_tensor):
+        return self.m(hidden_states=hidden_states, input_tensor=input_tensor)
+
+    model = BertSelfOutputWrapper(model).to(dtype=weights_dtype)
+
+  elif model_name == "BertIntermediate":
+    cfg = _get_base_bert_config()
+    model = modeling_bert.BertIntermediate(cfg)
+    example_inputs = torch.randn(
+        batch_size,
+        sequence_length,
+        cfg.hidden_size,
+        dtype=weights_dtype,
+        device=device,
+    )
+
+    class BertIntermediateWrapper(torch.nn.Module):
+
+      def __init__(self, m):
+        super().__init__()
+        self.m = m
+
+      def forward(self, hidden_states):
+        return self.m(hidden_states)
+
+    model = BertIntermediateWrapper(model).to(dtype=weights_dtype)
+
+  elif model_name == "BertOutput":
+    cfg = _get_base_bert_config()
+    model = modeling_bert.BertOutput(cfg)
+    example_inputs = (
+        torch.randn(
+            batch_size,
+            sequence_length,
+            cfg.intermediate_size,
+            dtype=weights_dtype,
+            device=device,
+        ),
+        torch.randn(
+            batch_size,
+            sequence_length,
+            cfg.hidden_size,
+            dtype=weights_dtype,
+            device=device,
+        ),
+    )
+
+    class BertOutputWrapper(torch.nn.Module):
+
+      def __init__(self, m):
+        super().__init__()
+        self.m = m
+
+      def forward(self, hidden_states, input_tensor):
+        return self.m(hidden_states=hidden_states, input_tensor=input_tensor)
+
+    model = BertOutputWrapper(model).to(dtype=weights_dtype)
+
+  elif model_name == "GELUActivation":
+    cfg = _get_base_bert_config()
+    model = activations.GELUActivation(use_gelu_python=False)
+    example_inputs = torch.randn(
+        batch_size,
+        sequence_length,
+        cfg.intermediate_size,
+        dtype=weights_dtype,
+        device=device,
+    )
+  elif model_name == "BertPooler":
+    cfg = _get_base_bert_config()
+    model = modeling_bert.BertPooler(cfg).to(dtype=weights_dtype)
+    example_inputs = torch.randn(
+        batch_size,
+        sequence_length,
+        cfg.hidden_size,
+        dtype=weights_dtype,
+        device=device,
+    )
+
+  elif model_name == "BertEmbeddings":
+    cfg = _get_base_bert_config()
+    model = modeling_bert.BertEmbeddings(cfg).to(dtype=weights_dtype)
+    input_ids = torch.randint(
+        0,
+        cfg.vocab_size,
+        (batch_size, sequence_length),
+        dtype=torch.long,
+        device=device,
+    )
+    example_inputs = input_ids
   else:
     raise ValueError(f"Unknown ML layer model: {model_name}")
 

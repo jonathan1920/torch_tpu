@@ -175,6 +175,8 @@ def ml_layer_forward_pass(
   """
   del optimizer  # Unused
   with torch.inference_mode():
+    if isinstance(inputs, tuple):
+      return model(*inputs)
     return model(inputs)
 
 
@@ -217,7 +219,12 @@ def get_ml_layer_train_step_function(
 
   def get_model_train_fn():
     def step_fn(model, inputs):
-      y_pred = model(inputs)
+      if isinstance(inputs, tuple):
+        y_pred = model(*inputs)
+      else:
+        y_pred = model(inputs)
+      if isinstance(y_pred, tuple):
+        y_pred = y_pred[0]
       loss = torch.mean(y_pred)
       loss.backward()
       return loss.detach()

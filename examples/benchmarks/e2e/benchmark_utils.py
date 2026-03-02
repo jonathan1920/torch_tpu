@@ -33,7 +33,9 @@ from torch_tpu._internal.shims.xprof import xprof_analysis_client
 from torch_tpu._internal.shims.xprof import xprof_session
 
 
-_MAX_WARMUP_STEPS = 10
+# TODO: Make this configurable
+_MAX_WARMUP_STEPS = 20
+_MIN_WARMUP_STEPS = 10
 _POST_WARMUP_STEPS = 10
 _RANDOM_SEED = 0
 
@@ -350,7 +352,10 @@ def _warmup_run(
     timings[step] = time.perf_counter() - start_time
     cache_misses[step] = device_utils.cache_miss_count(device_name)
 
-    if step > 0 and cache_misses[step] == cache_misses[step - 1]:
+    if (
+        step >= _MIN_WARMUP_STEPS
+        and cache_misses[step] == cache_misses[step - 1]
+    ):
       num_warmup_steps = step
       break
 
