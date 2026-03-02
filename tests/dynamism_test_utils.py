@@ -195,6 +195,7 @@ def verify_op_supports_dynamism(
       "nn.functional.leaky_relu",  # binop LHS / RHS mismatch
       "nn.functional.max_pool2d",
       "nn.functional.max_pool3d",
+      "nn.functional.mse_loss",  # binop LHS / RHS mismatch
       "nn.functional.nll_loss",
       "nn.functional.pad",
       "nn.functional.pdist",  # inlined vector size fail (likely using bound)

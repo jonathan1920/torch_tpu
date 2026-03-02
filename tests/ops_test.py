@@ -432,6 +432,12 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 2e-1, "atol": 2e-2},
         torch.float16: {"rtol": 2e-1, "atol": 2e-2},
     },
+    "nn.functional.mse_loss": {
+        torch.bfloat16: {"rtol": 9.1e-3, "atol": 1.0},
+        torch.float16: {"rtol": 3e-3, "atol": 1.3e-1},
+        torch.float32: {"rtol": 1.2e-6, "atol": 7.7e-5},
+        torch.float64: {"rtol": 2.8e-9, "atol": 1.8e-7},
+    },
     "nn.functional.nll_loss": {
         torch.float16: {"rtol": 2e-3, "atol": 1e-2},
     },
@@ -2836,6 +2842,9 @@ class TestOps(TorchTpuTestBase):
         # TODO: fix nn.functional.silu_() failing with complex dtypes.
         exclude_inplace_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
     )
+
+  def test_nn_functional_mse_loss(self):
+    self.do_test_op("nn.functional.mse_loss")
 
   def test_pdist_forward(self):
     self.do_test_op(

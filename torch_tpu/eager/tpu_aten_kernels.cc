@@ -16,30 +16,17 @@
 
 #include "torch_tpu/eager/tpu_aten_kernels.h"
 
-#include <cstdint>
 #include <string>
 
 #include "absl/base/no_destructor.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
-#include "ATen/core/ATen_fwd.h"
-#include "ATen/core/LegacyTypeDispatch.h"
-#include "ATen/core/Reduction.h"
 #include "ATen/core/dispatch/Dispatcher.h"
 #include "ATen/core/stack.h"
 #include "ATen/native/CPUFallback.h"
 #include "ATen/native/DispatchStub.h"
-#include "ATen/native/Resize.h"
 #include "ATen/native/transformers/attention.h"
-#include "ATen/ops/div.h"
-#include "ATen/ops/mean.h"
-#include "ATen/ops/mul.h"
-#include "ATen/ops/pow.h"
-#include "ATen/ops/sub.h"
-#include "ATen/ops/sum.h"
-#include "c10/core/TensorImpl.h"
 #include "torch/library.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/a_min_max/a_min_max_aten_kernels.h"
 #include "torch_tpu/ops/addcdiv/addcdiv_aten_kernels.h"
@@ -97,12 +84,12 @@
 #include "torch_tpu/ops/linalg/solve_triangular/linalg_solve_triangular_kernels.h"
 #include "torch_tpu/ops/linalg/vector_norm/aten_vector_norm_kernels.h"
 #include "torch_tpu/ops/logical/logical_aten_kernels.h"
-#include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/masked_fill/masked_fill_aten_kernels.h"  // IWYU pragma: keep for AtenMaskedFill
 #include "torch_tpu/ops/masked_scatter/masked_scatter_aten_kernels.h"
 #include "torch_tpu/ops/masked_select/masked_select_aten_kernels.h"
 #include "torch_tpu/ops/min_max/min_max_aten_kernels.h"
 #include "torch_tpu/ops/mm/mm_aten_kernels.h"
+#include "torch_tpu/ops/mse_loss/mse_loss_aten_kernels.h"
 #include "torch_tpu/ops/multinomial/multinomial_aten_kernels.h"
 #include "torch_tpu/ops/native_batch_norm/native_batch_norm_aten_kernels.h"
 #include "torch_tpu/ops/nll_loss/nll_loss_aten_kernels.h"
@@ -151,73 +138,6 @@
 
 namespace torch_tpu {
 namespace {
-
-at::Tensor& tpu_aten_mse_loss_out(const at::Tensor& self,
-                                  const at::Tensor& target, int64_t reduction,
-                                  at::Tensor& out) {
-  TT_KERNEL(OpName::kMseLossOut, _, (self, target, reduction, out), {
-    TT_CHECK_THROW(self.scalar_type() == target.scalar_type(),
-                   error::kInvalidArgument)
-        << "input and target must have the same dtype";
-
-    {
-      // All compositional ATen calls must be within a guard to prevent
-      // re-dispatching to the Autograd layer, which would cause infinite
-      // recursion. This ensures we are calling the primitive PrivateUse1
-      // kernels.
-      at::AutoDispatchBelowAutograd guard;
-
-      at::Tensor squared_error = at::pow(at::sub(self, target), 2);
-      at::Tensor result;  // UNINITIALIZED_TENSOR_OK=initialized in the if-else
-      if (reduction == at::Reduction::None) {
-        result = squared_error;
-      } else if (reduction == at::Reduction::Mean) {
-        result = at::mean(squared_error);
-      } else if (reduction == at::Reduction::Sum) {
-        result = at::sum(squared_error);
-      } else {
-        TT_CHECK_THROW(false, error::kInvalidArgument)
-            << "unrecognized reduction mode " << reduction;
-      }
-
-      // Resize the output tensor and copy the result into it.
-      // This is the standard way to handle `out=` variants.
-      at::native::resize_output(out, result.sizes());
-      out.copy_(result);
-    }
-
-    ABSL_VLOG(1)
-        << "[C++ KERNEL tpu_aten_mse_loss_out (Compositional)] out(final): "
-        << ToString(out);
-    return out;
-  });
-}
-
-at::Tensor tpu_aten_mse_loss_backward(const at::Tensor& grad_output,
-                                      const at::Tensor& self,
-                                      const at::Tensor& target,
-                                      int64_t reduction) {
-  TT_KERNEL(
-      OpName::kMseLossBackward, _, (grad_output, self, target, reduction), {
-        at::Tensor grad_input;  // UNINITIALIZED_TENSOR_OK=initialized below
-        {
-          at::AutoDispatchBelowAutograd guard;
-          at::Tensor grad_raw = at::mul(at::sub(self, target), 2);
-          if (reduction == at::Reduction::None) {
-            grad_input = at::mul(grad_raw, grad_output);
-          } else {
-            grad_input = at::mul(grad_raw, grad_output);
-            if (reduction == at::Reduction::Mean) {
-              grad_input = at::div(grad_input, self.numel());
-            }
-          }
-        }
-        ABSL_VLOG(1)
-            << "[C++ KERNEL tpu_aten_mse_loss_backward (Compositional)] "
-            << "Result grad_input: " << ToString(grad_input);
-        return grad_input;
-      });
-}
 
 // Registers the kernel function for the given op name in the given library.
 template <typename KernelFn>
@@ -511,6 +431,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kMeanOut, AtenMeanOut);
   Impl(m, OpName::kMinimumOut, AtenMinimumOut);
   Impl(m, OpName::kMmOut, AtenMmOut);
+  Impl(m, OpName::kMseLossBackward, AtenMseLossBackward);
+  Impl(m, OpName::kMseLossOut, AtenMseLossOut);
   Impl(m, OpName::kMulOut, AtenMulOut);
   Impl(m, OpName::kNativeBatchNorm, AtenNativeBatchNorm);
   Impl(m, OpName::kNativeBatchNormBackward, AtenNativeBatchNormBackward);
@@ -712,8 +634,6 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   m.impl("min", AtenMin);
   m.impl("min.dim_min", AtenMinDimMin);
   m.impl("min.unary_out", AtenMinUnaryOut);
-  m.impl("mse_loss.out", tpu_aten_mse_loss_out);
-  m.impl("mse_loss_backward", tpu_aten_mse_loss_backward);
   m.impl("multinomial", AtenMultinomial);
   m.impl("multinomial.out", AtenMultinomialOut);
   m.impl("native_dropout", AtenDropout);

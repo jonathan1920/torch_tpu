@@ -5836,6 +5836,80 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.lerp(t, t, t)
 
+  def test_mse_loss_invalid_dtypes(self):
+    uint8 = torch.ones(2, 2, device=et.device(), dtype=torch.uint8)
+    int8 = torch.ones(2, 2, device=et.device(), dtype=torch.int8)
+    int16 = torch.ones(2, 2, device=et.device(), dtype=torch.int16)
+    int32 = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
+    int64 = torch.ones(2, 2, device=et.device(), dtype=torch.int64)
+    complex64 = torch.ones(2, 2, device=et.device(), dtype=torch.complex64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes"
+            " are not supported, got: uint8"
+        ),
+        cpu="\"mse_cpu\" not implemented for 'Byte'",
+        message_reviewed_by="yilingyuan",
+    ):
+      torch.nn.functional.mse_loss(uint8, uint8, reduction="sum")
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes"
+            " are not supported, got: int8"
+        ),
+        cpu="\"mse_cpu\" not implemented for 'Char'",
+        message_reviewed_by="yilingyuan",
+    ):
+      torch.nn.functional.mse_loss(int8, int8, reduction="sum")
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes"
+            " are not supported, got: int16"
+        ),
+        cpu="\"mse_cpu\" not implemented for 'Short'",
+        message_reviewed_by="yilingyuan",
+    ):
+      torch.nn.functional.mse_loss(int16, int16, reduction="sum")
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes"
+            " are not supported, got: int32"
+        ),
+        cpu="\"mse_cpu\" not implemented for 'Int'",
+        message_reviewed_by="yilingyuan",
+    ):
+      torch.nn.functional.mse_loss(int32, int32, reduction="sum")
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes"
+            " are not supported, got: int64"
+        ),
+        cpu="\"mse_cpu\" not implemented for 'Long'",
+        message_reviewed_by="yilingyuan",
+    ):
+      torch.nn.functional.mse_loss(int64, int64, reduction="sum")
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes"
+            " are not supported, got: complex64"
+        ),
+        cpu="\"mse_cpu\" not implemented for 'ComplexFloat'",
+        message_reviewed_by="yilingyuan",
+    ):
+      torch.nn.functional.mse_loss(complex64, complex64, reduction="sum")
+
 
 if __name__ == "__main__":
   absltest.main()
