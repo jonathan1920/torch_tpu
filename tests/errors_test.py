@@ -1011,6 +1011,44 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.lerp(t, t, t)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # The machine that runs the CPU test has no other device other than the CPU
+  # itself for testing this.
+  def test_copy_from_other_device_inputs(self):
+    dk = torch._C._parse_dispatch_key("PrivateUse1")
+    t_src = torch.ones(5, device="cpu")
+    t_tgt = torch.zeros(5, device="cpu")
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "copy_from(): expected at least one of the inputs to be on 'tpu'"
+            " device, got 'cpu' (source) and 'cpu' (destination)"
+        ),
+        message_reviewed_by="wan",
+    ):
+      # Dispatch to `_copy_from()` TPU kernel with CPU inputs.
+      # Otherwise, can't reach the error.
+      torch.ops.aten._copy_from.default.redispatch(
+          torch._C.DispatchKeySet(dk), t_src, t_tgt
+      )
+
+  # Why do we run this test only on TPU (and not on CPU)?
+  # PyTorch runs successfully.
+  # BUG: TorchTPU should have similar behavior w.r.t. PyTorch native devices.
+  def test_local_scalar_dense_too_many_elements(self):
+    inp = torch.ones(2, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "local_scalar_dense(): expected the input tensor to have 1 element,"
+            " got 2"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten._local_scalar_dense(inp)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""

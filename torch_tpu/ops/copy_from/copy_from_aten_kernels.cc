@@ -16,15 +16,18 @@
 
 #include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
 
+#include <string>
+
 #include "absl/status/statusor.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "c10/core/Device.h"
-#include "c10/core/DeviceType.h"
-#include "c10/core/MemoryFormat.h"
 #include "c10/core/TensorImpl.h"
 #include "c10/core/TensorOptions.h"
 #include "c10/util/Optional.h"
+#include "torch/headeronly/core/DeviceType.h"
+#include "torch/headeronly/core/MemoryFormat.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/ops/copy_from/cpu_to_tpu.h"
@@ -44,25 +47,28 @@ enum class CopyType {
   kTpuToCpu,
 };
 
-absl::StatusOr<CopyType> GetCopyType(const at::Tensor& self,
-                                     c10::Device target_device) {
-  c10::DeviceType self_device_type = self.device().type();
-  c10::DeviceType target_device_type = target_device.type();
-  c10::DeviceType private_use1_device_type = GetPrivateUse1DeviceType();
-
-  if (self_device_type == private_use1_device_type &&
-      target_device_type == private_use1_device_type) {
-    return CopyType::kTpuToTpu;
-  } else if (self_device_type == private_use1_device_type &&
-             target_device_type == c10::DeviceType::CPU) {
-    return CopyType::kTpuToCpu;
-  } else if (self_device_type == c10::DeviceType::CPU &&
-             target_device_type == private_use1_device_type) {
+absl::StatusOr<CopyType> GetCopyType(const at::Tensor& src,
+                                     const at::Tensor& dest) {
+  if (IsPrivateUse1Device(src)) {
+    // Copy is from TPU device.
+    if (IsPrivateUse1Device(dest)) {
+      return CopyType::kTpuToTpu;
+    } else if (IsCpuDevice(dest)) {
+      return CopyType::kTpuToCpu;
+    }
+  } else if (IsCpuDevice(src) && IsPrivateUse1Device(dest)) {
     return CopyType::kCpuToTpu;
   }
-  return TT_ERROR(error::kUnimplemented)
-         << "copying from device type " << self_device_type
-         << " is not implemented";
+
+  const std::string& device_name = GetPrivateUse1DeviceDebugName();
+
+  return TT_ERROR(  // ERROR_COV_INFEASIBLE=Can't test with TPU and another
+                    // device except for CPU.
+             error::kUnimplemented)
+         << "expected copy of either (i) '" << device_name << "' to '"
+         << device_name << "'; (ii) '" << device_name
+         << "' to 'cpu'; or (iii) 'cpu' to '" << device_name << "', got '"
+         << src.device().type() << "' to '" << dest.device().type() << "'";
 }
 
 }  // namespace
@@ -70,11 +76,13 @@ absl::StatusOr<CopyType> GetCopyType(const at::Tensor& self,
 at::Tensor AtenCopyFrom(const at::Tensor& src, const at::Tensor& self_dest,
                         bool non_blocking) {
   TT_KERNEL(OpName::kCopyFrom, _, (src, self_dest, non_blocking), {
-    TT_CHECK_THROW(src.device().type() == GetPrivateUse1DeviceType() ||
-                       self_dest.device().type() == GetPrivateUse1DeviceType(),
+    TT_CHECK_THROW(IsPrivateUse1Device(src) || IsPrivateUse1Device(self_dest),
                    error::kInvalidArgument)
-        << "at least one of the source and destination tensors must "
-           "have the TPU device type.";
+        << "expected at least one of the inputs to be on '"
+        << GetPrivateUse1DeviceDebugName() << "' device, got '"
+        << src.device().type() << "' (source) and '"
+        << self_dest.device().type() << "' (destination)";
+
     if (src.is_same(self_dest)) {
       // Self-to-self copy is a no-op.
       return self_dest;
@@ -93,8 +101,8 @@ at::Tensor AtenCopyFrom(const at::Tensor& src, const at::Tensor& self_dest,
     // Perform a CPU-to-TPU, TPU-to-TPU, or TPU-to-CPU copy; in any case,
     // self_dest will be updated with a new c10::StorageImpl containing the
     // same values as exist in src's c10::DataPtr.
-    TT_ASSIGN_OR_THROW(CopyType to_copy_type,
-                       GetCopyType(src, self_dest.device()));
+    TT_ASSIGN_OR_THROW(CopyType to_copy_type, GetCopyType(src, self_dest));
+
     switch (to_copy_type) {
       case CopyType::kCpuToTpu:
         TT_THROW_IF_ERROR(CopyCpuToTpu(broadcasted_src, self_dest));
@@ -135,11 +143,11 @@ at::Tensor AtenCopyFromAndResize(const at::Tensor& self,
 at::Scalar AtenLocalScalarDense(const at::Tensor& self) {
   TT_KERNEL(OpName::kLocalScalarDense, _, (self), {
     TT_CHECK_THROW(self.numel() == 1, error::kInvalidArgument)
-        << "expected input to be a 1-element tensor, got " << self.numel()
-        << " elements.";
+        << "expected the input tensor to have 1 element, got " << self.numel();
     at::Tensor cpu_tensor =
         self.to(at::TensorOptions().device(c10::kCPU).memory_format(
             at::MemoryFormat::Contiguous));
+
     return cpu_tensor.item();
   });
 }

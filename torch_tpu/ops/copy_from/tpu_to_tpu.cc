@@ -39,12 +39,14 @@ namespace torch_tpu {
 absl::Status CopyTpuToTpu(const at::Tensor& src, const at::Tensor& dest) {
   ABSL_VLOG(1) << "[AtenCopyFrom] TPU -> TPU copy path for "
                << ToString(src, "src");
-  TT_RET_CHECK(src.device().index() == dest.device().index(),
-               error::kUnimplemented)
-      << "Copying between different TPU devices is not yet supported. Source "
-         "device: "
-      << src.device() << ", Destination device: " << dest.device();
-  TT_RET_CHECK(src.sizes() == dest.sizes(), error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Can't use 2 TPUs in one host.
+      src.device().index() == dest.device().index(), error::kUnimplemented)
+      << "expected source and destination device indices to match, got source "
+         "device '"
+      << src.device() << "' vs destination device '" << dest.device() << "'";
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=AtenCopyFrom (sole caller) catches this
+                 // error when trying to broadcast the inputs.
+      src.sizes() == dest.sizes(), error::kInvalidArgument)
       << "_copy_from does not support resizing. Please use "
          "_copy_from_and_resize instead.";
 

@@ -24,6 +24,7 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "c10/core/ScalarType.h"
+#include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/eager/device_types.h"
 
@@ -109,6 +110,11 @@ inline bool IsXlaSupportedComplex(const at::Tensor& tensor) {
 // Returns whether `tensor` device is PrivateUse1.
 inline bool IsPrivateUse1Device(const at::Tensor& tensor) {
   return tensor.device().type() == GetPrivateUse1DeviceType();
+}
+
+// Returns whether `tensor` device is CPU.
+inline bool IsCpuDevice(const at::Tensor& tensor) {
+  return tensor.device().type() == c10::DeviceType::CPU;
 }
 
 // Unfortunately, the PyTorch dispatcher can call us by passing an optional
