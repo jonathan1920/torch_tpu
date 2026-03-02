@@ -959,6 +959,15 @@ class DeferredOpQueue {
   // Registers a new subgraph.
   void RegisterSubgraph(std::shared_ptr<Subgraph> subgraph) {
     TT_MUTEX_LOCK(lock, mu_);
+    // Try to reuse an existing slot in the active subgraphs if one of the old
+    // ones has expired.
+    for (auto& maybe_subgraph : active_subgraphs_) {
+      if (maybe_subgraph.expired()) {
+        maybe_subgraph = std::move(subgraph);
+        return;
+      }
+    }
+    // Otherwise, add a new slot (possibly causing a dynamic allocation).
     active_subgraphs_.push_back(std::move(subgraph));
   }
 
