@@ -34,12 +34,16 @@ namespace py = pybind11;
 
 namespace {
 
-void PyMarkDynamic(const at::Tensor& tensor, int64_t dimension,
-                   int64_t lower_bound, int64_t upper_bound) {
+at::Tensor PyMarkDynamic(const at::Tensor& tensor, int64_t dimension,
+                         int64_t lower_bound, int64_t upper_bound) {
   TT_CHECK_THROW(tensor.device().type() == GetPrivateUse1DeviceType(),
                  error::kInvalidArgument)
       << "tensor is not on the PrivateUse1 device";
-  TT_THROW_IF_ERROR(MarkDynamic(tensor, dimension, lower_bound, upper_bound));
+  TT_ASSIGN_OR_THROW(auto base_or_view_tensor,
+                     // if tensor is a base, then return value is the same as
+                     // the input tensor, otherwise returns a new view tensor.
+                     MarkDynamic(tensor, dimension, lower_bound, upper_bound));
+  return base_or_view_tensor;
 }
 
 std::vector<BoundedDynamicDimension> PyGetDynamismInfo(
@@ -65,7 +69,8 @@ PYBIND11_MODULE(_tpu_torch_dynamism, m) {
 
   m.def("mark_dynamic", &PyMarkDynamic, py::arg("tensor"), py::arg("dimension"),
         py::arg("lower_bound"), py::arg("upper_bound"),
-        py::doc("Marks a tensor's dimensions as dynamic."));
+        py::doc("Marks a tensor's dimensions as dynamic and returns the "
+                "original input tensor or a new view tensor."));
   m.def("get_dynamism_info", &PyGetDynamismInfo, py::arg("tensor"),
         py::doc(
             "Returns a dictionary with dynamism hints for the given tensor."));

@@ -29,17 +29,29 @@
 
 namespace torch_tpu {
 
-absl::Status MarkDynamic(const at::Tensor& tensor, int64_t dimension,
-                         int64_t lower_bound, int64_t upper_bound) {
+absl::StatusOr<at::Tensor> MarkDynamic(const at::Tensor& tensor,
+                                       int64_t dimension, int64_t lower_bound,
+                                       int64_t upper_bound) {
   ABSL_VLOG(1) << "[MarkDynamic] Marking dynamic tensor with dim sizes "
                << tensor.sizes() << " on dimension " << dimension
                << " lower_bound " << lower_bound << " upper_bound "
                << upper_bound;
-  TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref,
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef base_buffer_ref,
                       GetBaseBufferFromAtTensor(tensor));
+
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref,
+                      GetBufferFromAtTensor(tensor));
   TT_RETURN_IF_ERROR(
       buffer_ref.MarkDynamic(dimension, lower_bound, upper_bound));
-  return absl::OkStatus();
+
+  if (base_buffer_ref == buffer_ref) {
+    // The input tensor is not a view tensor, so we can return the input tensor.
+    return tensor;
+  }
+  // The tensor is a view tensor. Create a new tensor holding the new
+  // DeviceBufferRef.
+  at::Tensor view_tensor = MakeTensor(buffer_ref);
+  return view_tensor;
 }
 
 absl::StatusOr<absl::Span<const BoundedDynamicDimension>> GetDynamismInfo(

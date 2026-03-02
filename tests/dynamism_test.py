@@ -131,6 +131,24 @@ class DynamismApiTest(absltest.TestCase):
     self.assertLen(x_dynamism_info, 1)
     self.assertEqual(x_dynamism_info[0].lower_bound, 5)
 
+  def test_mark_dynamic_view_tensor(self):
+    x = torch.ones(10, device=self.device)
+    y = x.view(5, 2)
+    y = dynamism.mark_dynamic(y, 0, 2, 10)
+    y_dynamism_info = dynamism.get_dynamism_info(y)
+    self.assertLen(y_dynamism_info, 1)
+    self.assertEqual(y_dynamism_info[0].lower_bound, 2)
+    self.assertEqual(y_dynamism_info[0].upper_bound, 10)
+
+  def test_mark_dynamic_view_tensor_using_reshape(self):
+    x = torch.ones(1, 1024, device=self.device)
+    y = x.reshape(1, 1, 1, 1024)
+    y_dynamic = dynamism.mark_dynamic(y, 3, 2, 2048)
+    y_dynamism_info = dynamism.get_dynamism_info(y_dynamic)
+    self.assertLen(y_dynamism_info, 1)
+    self.assertEqual(y_dynamism_info[0].lower_bound, 2)
+    self.assertEqual(y_dynamism_info[0].upper_bound, 2048)
+
 
 class DynamismTest(parameterized.TestCase):
   """Unit tests for bounded dynamism support."""

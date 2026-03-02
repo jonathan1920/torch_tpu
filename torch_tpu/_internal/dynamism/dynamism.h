@@ -19,7 +19,6 @@
 
 #include <cstdint>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "ATen/core/TensorBody.h"
@@ -30,17 +29,13 @@ namespace torch_tpu {
 // Marks a dimension of the given tensor as dynamic.
 // The dimension must be in bounds for the tensor.
 // The lower and upper bounds must be in bounds for the dimension as well.
-// This operation, if successful, adds the following operations
-// to the computation graph:
-//   0. Extract the DeviceBufferRef associated to the tensor.
-//   1. Pads it to the upper bound in the dynamic dimension.
-//   2. Builds the original size of the dynamic dimension as a DeviceBufferRef.
-//   3. Call set_dimension_size on the padded tensor with the runtime size.
-//   4. Reassign the tensor with the result of step 3.
-// We also materialize step 1, so that the inputs to step 3 are oblivious to
-// the runtime size of the dynamic dimension.
-absl::Status MarkDynamic(const at::Tensor& tensor, int64_t dimension,
-                         int64_t lower_bound, int64_t upper_bound);
+//
+// If the input tensor is a view tensor, then the operation creates a
+// DeferredOp for the view and returns a new tensor holding the DeferredOp,
+// otherwise it returns the input tensor.
+absl::StatusOr<at::Tensor> MarkDynamic(const at::Tensor& tensor,
+                                       int64_t dimension, int64_t lower_bound,
+                                       int64_t upper_bound);
 
 absl::StatusOr<absl::Span<const BoundedDynamicDimension>> GetDynamismInfo(
     const at::Tensor& tensor);
