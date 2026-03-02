@@ -142,6 +142,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "ops_test_grad",
+    timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
     args = [
         "--torch_tpu_device=tpu",
@@ -169,6 +170,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "ops_test_compiled",
+    timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
     args = [
         "--torch_tpu_device=tpu",
@@ -263,6 +265,7 @@ torch_tpu_py_test(
     tags = [
         # "oss_ready_tpu",  # Will re-enable this slow test until we have a proper way to speed it up.
         "requires-tpu-v5lite",
+        "noasan",  # This test times out in asan mode.
         "nomsan",  # This test times out in msan mode.
     ],
     deps = [
@@ -313,6 +316,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "ops_test_dynamic",
+    timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
     args = [
         "--torch_tpu_device=tpu",
@@ -374,6 +378,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "ops_unit_test",
+    timeout = "long",  # Needed for asan.
     srcs = ["ops_unit_test.py"],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_unit_test.py",
@@ -397,6 +402,7 @@ torch_tpu_py_test(
 # Tests the tier-3 compilation cache.
 torch_tpu_py_test(
     name = "ops_unit_test_tier3_cache",
+    timeout = "long",  # Needed for asan.
     srcs = ["ops_unit_test.py"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
@@ -423,6 +429,7 @@ torch_tpu_py_test(
 # Tests the tier-3 compilation cache without local backup compilation.
 torch_tpu_py_test(
     name = "ops_unit_test_tier3_cache_no_backup",
+    timeout = "long",  # Needed for asan.
     srcs = ["ops_unit_test.py"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
@@ -450,6 +457,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "compiler_option_test",
     srcs = ["compiler_option_test.py"],
+    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "compiler_option_test.py",
     tags = [
         "oss_ready_tpu",

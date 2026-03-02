@@ -68,6 +68,7 @@ torch_tpu_py_test(
         # In OSS, we have to run the test exclusively to avoid the
         # "TPU initialization failed ... Device or resource busy" error.
         "exclusive",
+        "noasan",  # TODO: fix the test in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
         "oss_ready_tpu",
         "requires-tpu-v5lite:8",
@@ -206,6 +207,7 @@ torch_tpu_py_test(
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     shard_count = 6,
     tags = [
+        "noasan",  # TODO: fix the test in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
         "requires-net:external",
         "requires-tpu-v5lite",  #

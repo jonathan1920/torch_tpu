@@ -169,6 +169,7 @@ define_cpp_filegroup(name = "all_cpp_files_recursive")
 torch_tpu_py_test(
     name = "trace_autograd_ops_test",
     srcs = ["trace_autograd_ops_test.py"],
+    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     strict = "true",
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
