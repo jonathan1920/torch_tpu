@@ -25,6 +25,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -126,10 +127,10 @@ absl::StatusOr<mlir::MlirOp> BuildCumprodShlo(
   // Respect the dtype if provided, otherwise always convert to int64 for
   // boolean and integer types for accumulation.
   if (scalar_type.has_value()) {
+    TT_RET_CHECK(!IsBool(scalar_type.value()), error::kUnimplemented)
+        << "the dtype argument cannot be bool";
     TT_ASSIGN_OR_RETURN(mlir::ElementType dtype,
                         ConvertTo<mlir::ElementType>(scalar_type.value()));
-    TT_RET_CHECK(!IsBoolean(dtype), error::kUnimplemented)
-        << "boolean dtypes are not supported.";
     element_type = getElementType(builder.getContext(), dtype);
   } else if (input_type.getElementType().isInteger()) {
     element_type = builder.getOpBuilder().getI64Type();

@@ -42,6 +42,7 @@ torch_tpu_cc_library(
     hdrs = ["cumprod.h"],
     deps = [
         "//shims/torch/torch/headeronly:torch_headeronly",
+        "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_builder_utils",

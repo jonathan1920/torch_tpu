@@ -1049,6 +1049,24 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.ops.aten._local_scalar_dense(inp)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # CPU kernel runs successfully.
+  # BUG: TPU kernels should mimic native devices behavior, including bugs.
+  def test_cumprod_bool_dtype(self):
+    inp = torch.ones(2, 2, device=et.device(), dtype=torch.bool)
+
+    # TODO: Error eagerly, i.e. without having to call the op builder.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "cumprod(): the dtype argument cannot be bool -"
+            " TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
+            " have a PjRtBuffer to copy from."
+        ),
+    ):
+      # cpu() is needed because the error is triggered inside the op builder.
+      torch.cumprod(inp, dim=0, dtype=torch.bool).cpu()
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
