@@ -151,10 +151,14 @@ absl::StatusOr<DeviceBufferRef> MakeBuffer(
 
     // See if we've already created a DeviceBufferRef for this scalar; if we
     // have, don't recreate it.
-    static absl::NoDestructor<
-        absl::flat_hash_map<HashableScalar, DeviceBufferRef>>
+    //
+    // We make this thread_local to avoid synchronization overhead. This means
+    // that we may miss some opportunities to reuse scalars across threads,
+    // but it might be a net win overall given that scalar buffers are cheap
+    // to create.
+    static thread_local absl::flat_hash_map<HashableScalar, DeviceBufferRef>
         scalar_map;
-    if (auto it = scalar_map->find(hashable_scalar); it != scalar_map->end()) {
+    if (auto it = scalar_map.find(hashable_scalar); it != scalar_map.end()) {
       return it->second;
     }
 
@@ -174,7 +178,7 @@ absl::StatusOr<DeviceBufferRef> MakeBuffer(
     // Then copy it to device as a materialized DeviceBufferRef.
     TT_ASSIGN_OR_RETURN(DeviceBufferRef buf_ref,
                         CopyCpuToTpuBuffer(scalar_tensor));
-    scalar_map->insert({hashable_scalar, buf_ref});
+    scalar_map.insert({hashable_scalar, buf_ref});
     return buf_ref;
   }
 
@@ -424,12 +428,15 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
     // Note that view operations (like reshapes and transposes) don't go through
     // the op_dispatcher sequence. So the heuristic below considers only
     // non-view ops.
-    static absl::NoDestructor<OpWindow> op_window_(
-        kMinRepeatedSubsequenceLength, kMaxRepeatedSubsequenceLength);
+    //
+    // We make this thread_local to avoid op sequences from different threads
+    // to interfere with each other.
+    static thread_local OpWindow op_window(kMinRepeatedSubsequenceLength,
+                                           kMaxRepeatedSubsequenceLength);
     const DeferredOp* absl_nullable op = results[0].deferred_op();
     ABSL_CHECK(op != nullptr);  // CRASH_OK
-    op_window_->Append(*op);
-    if (op_window_->FindRepeatedSequence()) {
+    op_window.Append(*op);
+    if (op_window.FindRepeatedSequence()) {
       auto materialization_mode = (detect_repeated_ops == "aggressive")
                                       ? MaterializationMode::kFullGraph
                                       : MaterializationMode::kSplitGraph;
