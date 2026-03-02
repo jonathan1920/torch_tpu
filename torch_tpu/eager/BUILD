@@ -441,6 +441,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/gather:gather_aten_kernels",
         "//torch_tpu/ops/gelu:gelu_aten_kernels",
         "//torch_tpu/ops/group_norm:group_norm_aten_kernels",
+        "//torch_tpu/ops/hardswish:hardswish_aten_kernels",
         "//torch_tpu/ops/hardtanh:hardtanh_aten_kernels",
         "//torch_tpu/ops/histc:histc_aten_kernels",
         "//torch_tpu/ops/index:index_aten_kernels",

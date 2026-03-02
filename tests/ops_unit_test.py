@@ -2678,6 +2678,71 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         # the default dtype was float32.
         res.to("cpu")
 
+  @parameterized.product(dtype=[torch.float32, torch.bfloat16])
+  def test_hardswish(self, dtype):
+    # Scale by 5 to have coverage of the x < -3 and x >= 3 piecewise branches
+    input_value = torch.randn(4, 4, dtype=dtype) * 5
+
+    def compute(device):
+      x = input_value.clone().detach().to(device).requires_grad_(True)
+      y = torch.nn.functional.hardswish(x)
+      y.sum().backward()
+      return y, x.grad
+
+    if dtype == torch.bfloat16:
+      self.assert_close_tpu_vs_cpu(
+          compute, atol=2e-2, rtol=1e-2, check_value=CheckValueMode.LOOSE
+      )
+    else:
+      self.assert_close_tpu_vs_cpu(compute)
+
+  @parameterized.product(dtype=[torch.float32, torch.bfloat16])
+  def test_hardswish_inplace(self, dtype):
+    # Scale by 5 to have coverage of the x < -3 and x >= 3 piecewise branches
+    input_value = torch.randn(4, 4, dtype=dtype) * 5
+
+    def compute(device):
+      x = input_value.clone().detach().to(device)
+      y = torch.nn.functional.hardswish(x, inplace=True)
+      return y, x
+
+    if dtype == torch.bfloat16:
+      self.assert_close_tpu_vs_cpu(
+          compute, atol=2e-2, rtol=1e-2, check_value=CheckValueMode.LOOSE
+      )
+    else:
+      self.assert_close_tpu_vs_cpu(compute)
+
+  @parameterized.product(dtype=[torch.float32, torch.bfloat16])
+  def test_hardswish_out(self, dtype):
+    # Scale by 5 to have coverage of the x < -3 and x >= 3 piecewise branches
+    input_value = torch.randn(4, 4, dtype=dtype) * 5
+
+    def compute(device):
+      x = input_value.clone().detach().to(device)
+      out = torch.empty(4, 4, dtype=dtype, device=device)
+      # Call the ATen out variant directly
+      torch.ops.aten.hardswish.out(x, out=out)
+      return out
+
+    if dtype == torch.bfloat16:
+      self.assert_close_tpu_vs_cpu(
+          compute, atol=2e-2, rtol=1e-2, check_value=CheckValueMode.LOOSE
+      )
+    else:
+      self.assert_close_tpu_vs_cpu(compute)
+
+  def test_hardswish_backward_boundary(self):
+    """Tests hardswish backward at the boundaries x = -3.0 / x = 3.0."""
+
+    def compute(device):
+      x = torch.tensor([-3.0, 3.0], device=device, requires_grad=True)
+      y = torch.nn.functional.hardswish(x)
+      y.backward()
+      return x.grad
+
+    self.assert_close_tpu_vs_cpu(compute)
+
   def test_default_dtype_consistent(self):
     """Tests the torch_tpu respects the default dtype."""
     with set_default_dtype(torch.float32):

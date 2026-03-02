@@ -596,6 +596,14 @@ std::string_view ToString(OpName op_name) {
       return "gt";
     case OpName::kGtOut:
       return "gt.out";
+    case OpName::kHardswish:
+      return "hardswish";
+    case OpName::kHardswishBackward:
+      return "hardswish_backward";
+    case OpName::kHardswishOut:
+      return "hardswish.out";
+    case OpName::kHardswish_:
+      return "hardswish_";
     case OpName::kHardtanh:
       return "hardtanh";
     case OpName::kHardtanhOut:
