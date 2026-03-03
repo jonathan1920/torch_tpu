@@ -5758,6 +5758,31 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.ops.aten.hardswish_backward(grad, self_val)
 
+  def test_hardsigmoid_unsupported_dtype(self):
+    t = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "hardsigmoid(): expected the input dtype to be floating point, got"
+            " int32"
+        ),
+        cpu="\"hardsigmoid_cpu\" not implemented for 'Int'",
+    ):
+      torch.nn.functional.hardsigmoid(t)
+
+  def test_hardsigmoid_backward_unsupported_dtype(self):
+    grad = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
+    self_val = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "hardsigmoid_backward(): expected the input dtype to be floating"
+            " point, got int32"
+        ),
+        cpu="\"hardsigmoid_backward\" not implemented for 'Int'",
+    ):
+      torch.ops.aten.hardsigmoid_backward(grad, self_val)
+
   def test_bincount_rank_too_high(self):
     t = torch.ones(2, 2, 2, device=et.device(), dtype=torch.int32)
 

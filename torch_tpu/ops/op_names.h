@@ -312,6 +312,8 @@ enum class OpName {
   kGridSampler3d,
   kGt,
   kGtOut,
+  kHardsigmoidBackwardGradInput,
+  kHardsigmoidOut,
   kHardswish,
   kHardswishBackward,
   kHardswishOut,

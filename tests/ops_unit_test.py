@@ -2679,6 +2679,71 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         res.to("cpu")
 
   @parameterized.product(dtype=[torch.float32, torch.bfloat16])
+  def test_hardsigmoid(self, dtype):
+    # Generate deterministic inputs spanning the boundaries (-3 and 3)
+    input_value = torch.linspace(-6, 6, 16, dtype=dtype).reshape(4, 4)
+
+    def compute(device):
+      x = input_value.clone().detach().to(device).requires_grad_(True)
+      y = torch.nn.functional.hardsigmoid(x)
+      y.sum().backward()
+      return y, x.grad
+
+    if dtype == torch.bfloat16:
+      self.assert_close_tpu_vs_cpu(
+          compute, atol=2e-2, rtol=1e-2, check_value=CheckValueMode.LOOSE
+      )
+    else:
+      self.assert_close_tpu_vs_cpu(compute)
+
+  @parameterized.product(dtype=[torch.float32, torch.bfloat16])
+  def test_hardsigmoid_inplace(self, dtype):
+    # Generate deterministic inputs spanning the boundaries (-3 and 3)
+    input_value = torch.linspace(-6, 6, 16, dtype=dtype).reshape(4, 4)
+
+    def compute(device):
+      x = input_value.clone().detach().to(device)
+      y = torch.nn.functional.hardsigmoid(x, inplace=True)
+      return y, x
+
+    if dtype == torch.bfloat16:
+      self.assert_close_tpu_vs_cpu(
+          compute, atol=2e-2, rtol=1e-2, check_value=CheckValueMode.LOOSE
+      )
+    else:
+      self.assert_close_tpu_vs_cpu(compute)
+
+  @parameterized.product(dtype=[torch.float32, torch.bfloat16])
+  def test_hardsigmoid_out(self, dtype):
+    # Generate deterministic inputs spanning the boundaries (-3 and 3)
+    input_value = torch.linspace(-6, 6, 16, dtype=dtype).reshape(4, 4)
+
+    def compute(device):
+      x = input_value.clone().detach().to(device)
+      out = torch.empty(4, 4, dtype=dtype, device=device)
+      # Call the ATen out variant directly
+      torch.ops.aten.hardsigmoid.out(x, out=out)
+      return out
+
+    if dtype == torch.bfloat16:
+      self.assert_close_tpu_vs_cpu(
+          compute, atol=2e-2, rtol=1e-2, check_value=CheckValueMode.LOOSE
+      )
+    else:
+      self.assert_close_tpu_vs_cpu(compute)
+
+  def test_hardsigmoid_backward_boundary(self):
+    """Tests hardsigmoid backward at the boundary x = -3.0 and x = 3.0."""
+
+    def compute(device):
+      x = torch.tensor([-3.0, 3.0], device=device, requires_grad=True)
+      y = torch.nn.functional.hardsigmoid(x)
+      y.sum().backward()
+      return x.grad
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  @parameterized.product(dtype=[torch.float32, torch.bfloat16])
   def test_hardswish(self, dtype):
     # Scale by 5 to have coverage of the x < -3 and x >= 3 piecewise branches
     input_value = torch.randn(4, 4, dtype=dtype) * 5

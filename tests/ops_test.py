@@ -432,6 +432,10 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 2e-1, "atol": 2e-2},
         torch.float16: {"rtol": 2e-1, "atol": 2e-2},
     },
+    "nn.functional.hardsigmoid": {
+        torch.float16: {"rtol": 1e-3, "atol": 1e-3},
+        torch.bfloat16: {"rtol": 1.3e-1, "atol": 4e-3},
+    },
     "nn.functional.mse_loss": {
         torch.bfloat16: {"rtol": 9.1e-3, "atol": 1.0},
         torch.float16: {"rtol": 3e-3, "atol": 1.3e-1},
@@ -2819,6 +2823,13 @@ class TestOps(TorchTpuTestBase):
         # TODO: fix nn.functional.gelu() failing with float64 input and nan
         # output.
         exclude_dtypes=COMPLEX_DTYPES + (torch.float64,),
+    )
+
+  def test_nn_functional_hardsigmoid(self):
+    self.do_test_op(
+        "nn.functional.hardsigmoid",
+        check_value=CheckValueMode.STRICT,
+        exclude_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
     )
 
   def test_nn_functional_hardtanh(self):

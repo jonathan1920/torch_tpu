@@ -602,6 +602,10 @@ std::string_view ToString(OpName op_name) {
       return "gt";
     case OpName::kGtOut:
       return "gt.out";
+    case OpName::kHardsigmoidBackwardGradInput:
+      return "hardsigmoid_backward.grad_input";
+    case OpName::kHardsigmoidOut:
+      return "hardsigmoid.out";
     case OpName::kHardswish:
       return "hardswish";
     case OpName::kHardswishBackward:
