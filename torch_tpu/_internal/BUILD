@@ -142,8 +142,8 @@ build_test(
         "oss_ready_cpu",
     ],
     targets = [
-        ":execution_mode_impl",
         ":compiler_options_impl",
+        ":execution_mode_impl",
         ":testing",
     ],
 )

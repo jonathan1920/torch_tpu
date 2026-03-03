@@ -226,8 +226,9 @@ torch_tpu_py_test(
 define_cpp_filegroup(name = "all_cpp_files_recursive")
 
 build_test(
-    name = "notap_build_test",
+    name = "build_test",
     targets = [
+        ":model_coverage_hf_guitar_test",
         ":stablehlo_compile_test",
     ],
 )

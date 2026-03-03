@@ -117,10 +117,8 @@ torch_tpu_cc_library(
     ],
 )
 
-# Ensures that :tpu_torch_compile builds. Without this, TAP
-# won't build it as there's no test depending on it.
 build_test(
-    name = "tpu_torch_compile_build_test",
+    name = "build_test",
     tags = [
         "oss_ready_cpu",
     ],

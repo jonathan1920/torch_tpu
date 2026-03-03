@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//build_files:build_defs.bzl", "define_cpp_filegroup", "torch_tpu_py_test")
 
 package(
@@ -129,3 +130,11 @@ torch_tpu_py_test(
 )
 
 define_cpp_filegroup(name = "all_cpp_files_recursive")
+
+build_test(
+    name = "build_test",
+    targets = [
+        ":ml_layers_test_cuda",
+        ":ml_layers_test_xla_cuda",
+    ],
+)

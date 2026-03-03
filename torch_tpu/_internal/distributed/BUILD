@@ -67,10 +67,8 @@ torch_tpu_cc_library(
     ],
 )
 
-# Ensures that :tpu_distributed_lib builds. Without this, TAP
-# won't build it as there's no test depending on it.
 build_test(
-    name = "tpu_distributed_lib_build_test",
+    name = "build_test",
     tags = [
         "oss_ready_cpu",
     ],
