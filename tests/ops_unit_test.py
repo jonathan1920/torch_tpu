@@ -2738,7 +2738,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     def compute(device):
       x = torch.tensor([-3.0, 3.0], device=device, requires_grad=True)
       y = torch.nn.functional.hardswish(x)
-      y.backward()
+      y.sum().backward()
       return x.grad
 
     self.assert_close_tpu_vs_cpu(compute)
