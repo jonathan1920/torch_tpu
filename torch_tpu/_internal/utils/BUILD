@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "define_cpp_filegroup", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 load("//shims/py_rules:strict.bzl", "py_strict_test")
 
@@ -166,4 +166,4 @@ py_strict_test(
     ],
 )
 
-define_cpp_filegroup(name = "all_cpp_files_recursive")
+torch_tpu_package_end()

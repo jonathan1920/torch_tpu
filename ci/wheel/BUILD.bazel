@@ -85,7 +85,7 @@ pytype_strict_library(
 )
 
 py_package(
-    name = "torch_tpu_package",
+    name = "torch_tpu_package_end",
     packages = ["torch_tpu"],
     visibility = ["//visibility:public"],
     deps = [
@@ -126,6 +126,6 @@ py_wheel(
     visibility = ["//visibility:public"],
     deps = [
         ":remapped_pywrap_binaries",
-        ":torch_tpu_package",
+        ":torch_tpu_package_end",
     ],
 )

@@ -258,13 +258,13 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def get_subpackage_targets_named(name):
+def _get_subpackage_targets_named(name):
     """Gets targets with the given name from all direct subpackages.
 
     Example:
         If the current package is `foo` and it has subpackages `foo/bar`,
         `foo/baz`, and `foo/bar/qux`, calling
-        `get_subpackage_targets_named("my_target")` from the BUILD file in `foo`
+        `_get_subpackage_targets_named("my_target")` from the BUILD file in `foo`
         will return:
         `["//foo/bar:my_target", "//foo/baz:my_target"]`, but not
         `//foo/bar/qux:my_target` since it is not a direct subpackage.
@@ -287,7 +287,49 @@ def get_subpackage_targets_named(name):
         targets.append(target_path)
     return targets
 
-def define_cpp_filegroup(name):
+def _define_test_suite(name):
+    """Collectors all tests in the current package and subpackages recursively.
+
+    Args:
+        name: The name of the test suite.
+    """
+
+    test_targets = []
+
+    # IMPORTANT: existing_rules() only returns rules in the current package
+    # that have been seen SO FAR. Therefore, to collect all existing tests,
+    # torch_tpu_package_end() must be called at the END of the BUILD file.
+    for rule_name, info in native.existing_rules().items():
+        if info["kind"].endswith("_test"):
+            test_targets.append(":" + rule_name)
+
+    native.test_suite(
+        name = name + "_in_this_lib_",
+        tests = test_targets,
+        tags = [
+            # Exclude the test suite from both local and TAP runs, as it's
+            # only meant for collecting test targets for the notap coverage
+            # test.
+            "manual",
+            "notap",  # NOTAP_OK=for collecting test targets only
+        ],
+    )
+
+    native.test_suite(
+        name = name,
+        tests = ([":" + name + "_in_this_lib_"] +
+                 _get_subpackage_targets_named(name = name)),
+        tags = [
+            # Exclude the test suite from both local and TAP runs, as it's
+            # only meant for collecting test targets for the notap coverage
+            # test.
+            "manual",
+            "notap",  # NOTAP_OK=for collecting test targets only
+        ],
+        visibility = ["//:__subpackages__"],
+    )
+
+def _define_cpp_filegroup(name):
     """Defines filegroups for all C++ files in the current package and subpackages.
 
     The filegroups created are:
@@ -311,8 +353,22 @@ def define_cpp_filegroup(name):
     )
     native.filegroup(
         name = name,
-        srcs = [":all_cpp_files"] + get_subpackage_targets_named(
+        srcs = [":all_cpp_files"] + _get_subpackage_targets_named(
             name = name,
         ),
         visibility = ["//:__subpackages__"],
     )
+
+# buildifier: disable=unnamed-macro
+def torch_tpu_package_end():
+    """Marks the end of a standard package for torch_tpu.
+
+    This macro defines a recursive test suite named "all_tests" and
+    a recursive C++ filegroup named "all_cpp_files_recursive"
+    for the current package and all subpackages. It MUST be used at the END
+    of every BUILD file in torch_tpu (or the "all_tests" group may not
+    collect all tests in the package).
+    """
+
+    _define_cpp_filegroup(name = "all_cpp_files_recursive")
+    _define_test_suite(name = "all_tests")

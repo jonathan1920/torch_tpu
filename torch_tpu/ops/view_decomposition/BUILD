@@ -14,9 +14,9 @@
 
 load(
     "//build_files:build_defs.bzl",
-    "define_cpp_filegroup",
     "torch_tpu_cc_library",
     "torch_tpu_cc_test",
+    "torch_tpu_package_end",
 )
 
 package(
@@ -470,4 +470,4 @@ torch_tpu_cc_test(
     ],
 )
 
-define_cpp_filegroup(name = "all_cpp_files_recursive")
+torch_tpu_package_end()

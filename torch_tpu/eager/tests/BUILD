@@ -12,14 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "define_cpp_filegroup", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
 
 package(
     default_applicable_licenses = ["//:license"],
     default_visibility = ["//:__subpackages__"],
 )
-
-define_cpp_filegroup(name = "all_cpp_files_recursive")
 
 torch_tpu_py_test(
     name = "strictly_ordering",
@@ -33,3 +31,5 @@ torch_tpu_py_test(
         "//torch_tpu/api",
     ],
 )
+
+torch_tpu_package_end()

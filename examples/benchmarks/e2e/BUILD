@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//build_files:build_defs.bzl", "define_cpp_filegroup", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
@@ -295,8 +295,6 @@ pytype_strict_library(
     ],
 )
 
-define_cpp_filegroup(name = "all_cpp_files_recursive")
-
 build_test(
     name = "build_test",
     targets = [
@@ -308,3 +306,5 @@ build_test(
         ":model_quality_benchmarks",
     ],
 )
+
+torch_tpu_package_end()

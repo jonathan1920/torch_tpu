@@ -14,7 +14,7 @@
 
 """Utilities for building torch_tpu."""
 
-load("//build_files:build_defs.bzl", "define_cpp_filegroup")
+load("//build_files:build_defs.bzl", "torch_tpu_package_end")
 load("//shims/build_defs_testing:bzl_library.bzl", "bzl_library")
 
 package(
@@ -35,4 +35,4 @@ bzl_library(
     ],
 )
 
-define_cpp_filegroup(name = "all_cpp_files_recursive")
+torch_tpu_package_end()

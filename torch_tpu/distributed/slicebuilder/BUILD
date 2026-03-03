@@ -16,7 +16,7 @@
 # This is a workaround to avoid depending on internal components
 # directly from the main torch_tpu library.
 
-load("//build_files:build_defs.bzl", "define_cpp_filegroup", "torch_tpu_cc_library", "torch_tpu_cc_test")
+load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_cc_test", "torch_tpu_package_end")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -50,4 +50,4 @@ torch_tpu_cc_test(
     ],
 )
 
-define_cpp_filegroup(name = "all_cpp_files_recursive")
+torch_tpu_package_end()

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//build_files:build_defs.bzl", "define_cpp_filegroup")
+load("//build_files:build_defs.bzl", "torch_tpu_package_end")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -25,8 +25,6 @@ filegroup(
     srcs = glob(["model_configs/**/config.json"]),
 )
 
-define_cpp_filegroup(name = "all_cpp_files_recursive")
-
 build_test(
     name = "build_test",
     targets = [
@@ -34,3 +32,5 @@ build_test(
         ":single_accelerator_smoke_test_tpu",
     ],
 )
+
+torch_tpu_package_end()

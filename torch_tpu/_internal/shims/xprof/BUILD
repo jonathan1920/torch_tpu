@@ -14,7 +14,7 @@
 
 """Shim for xprof modules."""
 
-load("//build_files:build_defs.bzl", "define_cpp_filegroup")
+load("//build_files:build_defs.bzl", "torch_tpu_package_end")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
@@ -39,4 +39,4 @@ pytype_strict_library(
     srcs = ["xprof_session.py"],
 )
 
-define_cpp_filegroup(name = "all_cpp_files_recursive")
+torch_tpu_package_end()
