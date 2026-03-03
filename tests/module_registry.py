@@ -165,6 +165,14 @@ class TimmProvider(BaseProvider):
     Returns:
       A ModuleSpec containing the model factory and input factory.
     """
+    try:
+      config = timm.models.get_pretrained_cfg(name)
+    except RuntimeError:
+      config = None
+      logging.warning(
+          "Couldn't find config for %s.",
+          name,
+      )
 
     def _module_factory():
       if load_weights and self._weights_dir:
@@ -185,19 +193,22 @@ class TimmProvider(BaseProvider):
       return timm.create_model(name, pretrained=False)
 
     def _input_factory(shape=None, device="cpu"):
-      try:
-        cfg = timm.models.get_pretrained_cfg(name)
-        input_size = cfg.input_size
-      except RuntimeError:
-        logging.warning(
-            "Couldn't find config for %s, falling back to default input shape.",
-            name,
-        )
-        input_size = (3, 224, 224)
+      input_size = config.input_size if config else (3, 224, 224)
       final_shape = shape if shape else (1, *input_size)
       return ((torch.randn(final_shape, device=device),), {})
 
-    return ModuleSpec(_module_factory, _input_factory)
+    def _preprocessor_factory():
+      if config:
+        data_config = timm.data.resolve_data_config(
+            {}, pretrained_cfg=config.to_dict()
+        )
+        transform = timm.data.create_transform(**data_config)
+        return lambda img: transform(img).unsqueeze(0)
+      return None
+
+    return ModuleSpec(
+        _module_factory, _input_factory, _preprocessor_factory, config
+    )
 
 
 def _get_max_seq_len(

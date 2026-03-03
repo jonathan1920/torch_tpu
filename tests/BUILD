@@ -43,6 +43,7 @@ torch_tpu_py_test(
     name = "module_registry_test",
     timeout = "long",
     srcs = ["module_registry_test.py"],
+    data = ["//tests/compile:data/goldfish.jpg"],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     shard_count = 6,
     tags = [
@@ -52,7 +53,9 @@ torch_tpu_py_test(
     deps = [
         ":module_registry",
         "//shims/absl_py/testing:absltest",
+        "//shims/etils/epath",
         "//shims/torch:pytorch",
+        "@pypi//pillow",
     ],
 )
 

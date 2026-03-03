@@ -21,6 +21,8 @@ package(
     default_visibility = ["//:__subpackages__"],
 )
 
+exports_files(["data/goldfish.jpg"])
+
 torch_tpu_py_test(
     name = "small_graph_test",
     srcs = ["small_graph_test.py"],
