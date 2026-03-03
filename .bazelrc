@@ -160,14 +160,13 @@ common:remote_caching_readonly --google_default_credentials
 common:resultstore_base --bes_backend=buildeventservice.googleapis.com
 common:resultstore_base --bes_timeout=600s
 common:resultstore_base --bes_results_url="https://source.cloud.google.com/results/invocations"
-
+common:resultstore_base --bes_instance_name="ml-oss-rbe-testing"
 
 common:remote_caching_readwrite --config=remote_caching_readonly
 common:remote_caching_readwrite --remote_upload_local_results=true
 
 common:remote_execution_readwrite --config=remote_execution_readonly
 common:remote_execution_readwrite --remote_upload_local_results=true
-common:remote_execution_readwrite --bes_instance_name="ml-oss-rbe-testing"
 
 # Configs for Bazel public caching.
 common:public_caching_readonly --remote_upload_local_results=false
