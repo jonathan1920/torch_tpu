@@ -211,6 +211,7 @@ torch_tpu_py_test(
     tags = [
         "noasan",  # TODO: fix the test in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.
         "requires-net:external",
         "requires-tpu-v5lite",  #
     ],

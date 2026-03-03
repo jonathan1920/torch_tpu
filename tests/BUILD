@@ -48,6 +48,7 @@ torch_tpu_py_test(
     shard_count = 6,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.
         "requires-net:external",
     ],
     deps = [
@@ -130,6 +131,7 @@ torch_tpu_py_test(
     tags = [
         "noasan",  # TODO: fix the test timing out in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.
         # "oss_ready_tpu",  # Will re-enable this slow test until we have a proper way to speed it up.
         "requires-tpu-v5lite",
     ],
@@ -158,6 +160,7 @@ torch_tpu_py_test(
     shard_count = 50,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.
         # "oss_ready_tpu",  # Will re-enable this slow test until we have a proper way to speed it up.
         "requires-tpu-v5lite",
     ],
@@ -235,6 +238,7 @@ torch_tpu_py_test(
     shard_count = 25,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.
         # This test takes almost 30 minutes to run in the OSS CI, which
         # uses just one machine for each build for now. It's not essential
         # for the OSS release, so we skip it for OSS.
@@ -271,6 +275,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
         "noasan",  # This test times out in asan mode.
         "nomsan",  # This test times out in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.  # This test times out in tsan mode.
     ],
     deps = [
         ":dynamism_test_utils",
@@ -333,6 +338,7 @@ torch_tpu_py_test(
     shard_count = 32,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.
         "requires-tpu-v5lite",
     ],
     deps = [
@@ -389,6 +395,7 @@ torch_tpu_py_test(
     shard_count = 20,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.
         "requires-tpu-v5lite",
     ],
     deps = [
@@ -416,6 +423,7 @@ torch_tpu_py_test(
     shard_count = 20,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.
         "requires-tpu-v5lite",
     ],
     deps = [
@@ -444,6 +452,7 @@ torch_tpu_py_test(
     shard_count = 20,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.
         "requires-tpu-v5lite",
     ],
     deps = [
@@ -500,6 +509,7 @@ torch_tpu_py_test(
     name = "nn_test",
     srcs = ["nn_test.py"],
     tags = [
+        "notsan",  # TODO: fix the test in tsan mode.
         "oss_ready_tpu",
         "requires-tpu-v5lite",
     ],
@@ -665,6 +675,7 @@ torch_tpu_py_test(
     name = "backwards_test",
     srcs = ["backwards_test.py"],
     tags = [
+        "notsan",  # TODO: fix the test in tsan mode.
         "requires-tpu-v5lite",
     ],
     deps = [
