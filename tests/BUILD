@@ -128,6 +128,7 @@ torch_tpu_py_test(
     main = "ops_test.py",
     shard_count = 50,
     tags = [
+        "noasan",  # TODO: fix the test timing out in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
         # "oss_ready_tpu",  # Will re-enable this slow test until we have a proper way to speed it up.
         "requires-tpu-v5lite",
