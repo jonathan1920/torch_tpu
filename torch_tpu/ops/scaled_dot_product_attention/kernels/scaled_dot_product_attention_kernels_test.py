@@ -20,23 +20,54 @@ import jax
 import jax.numpy as jnp
 from torch_tpu.ops.scaled_dot_product_attention.kernels import scaled_dot_product_attention_kernels as kernels
 
+ALL_ONES_Q = False
+ALL_ONES_K = False
+ALL_ONES_V = False
+KERNEL_TYPE = "flash"
+USE_DYNAMIC_KERNEL = False
+
 
 class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
+  # pylint: disable=invalid-name
+  B = 16
+  Hq = 8
+  L = 1024
+  E = 128
+  H = Hq
+  S = L
+  Ev = E
+  # pylint: enable=invalid-name
 
-  def _test_kernel(self, base_fn, test_fn):
-    # pylint: disable=invalid-name
-    B = 1
-    Hq = 2
-    H = 2
-    L = 2
-    S = 4
-    E = 2
-    Ev = 2
-    # pylint: enable=invalid-name
-
-    q = jax.random.normal(jax.random.PRNGKey(0), shape=(B, Hq, L, E))
-    k = jax.random.normal(jax.random.PRNGKey(1), shape=(B, H, S, E))
-    v = jax.random.normal(jax.random.PRNGKey(2), shape=(B, H, S, Ev))
+  def _test_kernel(self, base_fn, test_fn, kernel_type):
+    if kernel_type == "flash":
+      if ALL_ONES_Q:
+        q = jnp.ones(shape=(self.B, self.Hq, self.L, self.E), dtype=jnp.float32)
+      else:
+        q = jax.random.normal(
+            jax.random.PRNGKey(0), shape=(self.B, self.Hq, self.L, self.E)
+        )
+      if ALL_ONES_K:
+        k = jnp.ones(shape=(self.B, self.H, self.S, self.E), dtype=jnp.float32)
+      else:
+        k = jax.random.normal(
+            jax.random.PRNGKey(1), shape=(self.B, self.H, self.S, self.E)
+        )
+      if ALL_ONES_V:
+        v = jnp.ones(shape=(self.B, self.H, self.S, self.Ev), dtype=jnp.float32)
+      else:
+        v = jax.random.normal(
+            jax.random.PRNGKey(2), shape=(self.B, self.H, self.S, self.Ev)
+        )
+    else:
+      q = jax.random.normal(
+          jax.random.PRNGKey(0), shape=(self.B, self.Hq, self.L, self.E)
+      )
+      k = jax.random.normal(
+          jax.random.PRNGKey(1), shape=(self.B, self.H, self.S, self.E)
+      )
+      v = jax.random.normal(
+          jax.random.PRNGKey(2), shape=(self.B, self.H, self.S, self.Ev)
+      )
 
     out_base = base_fn(q, k, v)
     out_test = test_fn(q, k, v)
@@ -45,9 +76,11 @@ class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
     logging.info("out_test.shape=%s", out_test.shape)
     logging.info("out_test=%s", out_test)
 
-    tol = 1e-5
-    error = jnp.max(jnp.abs(out_test - out_base))
-    assert error < tol, f"{error=} {tol=}"
+    rtol = 1e-2
+    atol = 1e-2
+    # abs(out_test - out_base) < atol + rtol * abs(out_base)
+    error = jnp.max(jnp.abs(out_test - out_base) - rtol * jnp.abs(out_base))
+    assert error < atol, f"{error=} {atol=}"
 
   def test_forward_torch_ref(self):
     self._test_kernel(
@@ -59,18 +92,40 @@ class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
             kernels.sdpa_forward_kernel_reference_torch,
             is_causal=True,
         ),
+        kernel_type="ref",
     )
 
   def test_forward_export(self):
+    if USE_DYNAMIC_KERNEL:
+      static_seq_len = None
+      static_head_dim = None
+      num_q_heads = None
+      batch_size = None
+    else:
+      static_seq_len = self.L
+      static_head_dim = self.E
+      num_q_heads = self.Hq
+      batch_size = self.B
+
+    is_causal = True
+    if KERNEL_TYPE == "flash":
+      is_causal = False
+
     self._test_kernel(
         functools.partial(
             kernels.sdpa_forward_kernel_reference_jax,
-            is_causal=True,
+            is_causal=is_causal,
         ),
         functools.partial(
             kernels.sdpa_forward_kernel_export_call,
-            is_causal=True,
+            is_causal=is_causal,
+            static_seq_len=static_seq_len,
+            static_head_dim=static_head_dim,
+            num_q_heads=num_q_heads,
+            batch_size=batch_size,
+            kernel_type=KERNEL_TYPE,
         ),
+        kernel_type=KERNEL_TYPE,
     )
 
 

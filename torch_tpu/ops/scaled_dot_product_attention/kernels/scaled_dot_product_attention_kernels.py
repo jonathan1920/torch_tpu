@@ -15,14 +15,28 @@
 """JAX/Pallas kernels scaled dot product attention."""
 
 import functools
+
 import jax
-# import jax.experimental.pallas as pl
 import jax.nn as jnn
 import jax.numpy as jnp
 import torch_tpu._internal.pallas.pallas_kernel_generate_utils as generate_utils
 
-DEFAULT_MASKED_VALUE = -1e30
+from . import flash_attention
 
+try:
+  # Works whenever we have an updated jaxlib, i.e. g3 and when oss goes out.
+  import jax.experimental.pallas  # pylint: disable=g-import-not-at-top
+
+  pallas_export_experimental = (
+      jax.experimental.pallas.pallas_export_experimental
+  )
+except AttributeError:
+  # Works in oss because we don't dependency check
+  import jax._src.pallas.core as pallas_core  # pylint: disable=g-import-not-at-top
+
+  pallas_export_experimental = pallas_core.pallas_export_experimental
+
+DEFAULT_MASKED_VALUE = -1e30
 
 ######################################################################
 # def sdpa_kernel_reference(q, k, v):
@@ -116,6 +130,7 @@ def sdpa_forward_kernel_reference_torch(
 
 #######################################################################
 def forward_kernel():
+  """Returns a kernel function for scaled dot product attention forward pass."""
   dropout_p = 0.0
   attn_mask = None
   is_causal = True
@@ -144,8 +159,25 @@ def backward_kernel():
 
 
 #######################################################################
-def export_sdpa_forward_kernel():
+def export_sdpa_forward_kernel(
+    static_seq_len,
+    static_head_dim,
+    num_q_heads,
+    batch_size,
+    kernel_type,
+    is_causal,
+    dtype,
+):
   """Exports a dynamic sdpa kernel."""
+  if kernel_type == "flash":
+    return export_flash_attention_forward_kernel(
+        batch_size=batch_size,
+        num_of_heads=num_q_heads,
+        seq_len=static_seq_len,
+        head_dim=static_head_dim,
+        causal=is_causal,
+        dtype=dtype,
+    )
 
   kernel_fn = forward_kernel()
 
@@ -226,6 +258,7 @@ def export_sdpa_backward_kernel():
 
 
 #######################################################################
+# For testing purposes only.
 def sdpa_forward_kernel_export_call(
     q,
     k,
@@ -235,12 +268,94 @@ def sdpa_forward_kernel_export_call(
     is_causal=False,
     scale=None,
     enable_gqa=False,
+    static_seq_len=None,
+    static_head_dim=None,
+    num_q_heads=None,
+    batch_size=None,
+    kernel_type="flash",
 ):
   """Exports a dynamic kernel and calls it."""
   assert attn_mask is None
   assert dropout_p == 0.0
-  assert is_causal
+  if kernel_type != "flash":
+    assert is_causal
   assert scale is None
   del enable_gqa
-  exported = export_sdpa_forward_kernel()
+  exported = export_sdpa_forward_kernel(
+      static_seq_len=static_seq_len,
+      static_head_dim=static_head_dim,
+      num_q_heads=num_q_heads,
+      batch_size=batch_size,
+      kernel_type=kernel_type,
+      is_causal=is_causal,
+      dtype=q.dtype,
+  )
+
   return exported.call(q, k, v)
+
+
+########################################################################
+## Flash Attention Kernels ##
+########################################################################
+def flash_attention_forward_kernel_wrapper(q, k, v, **kwargs):
+  """Wrapper for Flash Attention kernel."""
+  _, _, _, head_dim_qk = q.shape
+  q = q / jnp.sqrt(head_dim_qk)
+  block_size = 512
+  out = flash_attention.flash_attention(
+      q=q,
+      k=k,
+      v=v,
+      block_sizes=flash_attention.BlockSizes(
+          block_q=block_size,
+          block_k=block_size,
+          block_k_major=block_size,
+          block_b=4,
+      ),
+      **kwargs,
+  )
+  return out
+
+
+def export_flash_attention_forward_kernel(
+    batch_size, num_of_heads, seq_len, head_dim, dtype, **kwargs
+):
+  """Exports a Flash Attention kernel as an MLIR module."""
+
+  if batch_size is None:
+    # Use symbolic shapes
+    # This set of symbolic shapes set the constraint explicitly and implicitly.:
+    # 1. batch_size >= 4
+    # 2. q_seq_len and kv_seq_len are multiples of 512.
+    # 3. head_dim is a multiple of 128.
+    # 4. All qkv have the same heads, head dimension and batch size.
+    (
+        batch_size_sym,
+        num_of_heads_sym,
+        q_seq_len_sym,
+        kv_seq_len_sym,
+        head_dim_sym,
+    ) = jax.export.symbolic_shape(
+        "batch_size,num_of_heads,512*q_seq_len,512*kv_seq_len,head_dim",
+        constraints=("batch_size >= 4",),
+    )
+
+    q_shape = (batch_size_sym, num_of_heads_sym, q_seq_len_sym, head_dim_sym)
+    k_shape = (batch_size_sym, num_of_heads_sym, kv_seq_len_sym, head_dim_sym)
+    v_shape = (batch_size_sym, num_of_heads_sym, kv_seq_len_sym, head_dim_sym)
+  else:
+    # Defaults if not symbolic
+    q_shape = (batch_size, num_of_heads, seq_len, head_dim)
+    k_shape = (batch_size, num_of_heads, seq_len, head_dim)
+    v_shape = (batch_size, num_of_heads, seq_len, head_dim)
+
+  q_dtype = jax.ShapeDtypeStruct(q_shape, dtype)
+  k_dtype = jax.ShapeDtypeStruct(k_shape, dtype)
+  v_dtype = jax.ShapeDtypeStruct(v_shape, dtype)
+
+  f_p = functools.partial(flash_attention_forward_kernel_wrapper, **kwargs)
+  f_j = jax.jit(f_p)
+  f_e = jax.export.export(f_j, platforms=["tpu"])
+  with pallas_export_experimental(dynamic_shapes=True):
+    f_k = f_e(q_dtype, k_dtype, v_dtype)
+  return f_k

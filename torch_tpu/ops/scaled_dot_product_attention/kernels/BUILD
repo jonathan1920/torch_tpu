@@ -22,10 +22,18 @@ package(
 
 pytype_strict_library(
     name = "scaled_dot_product_attention_kernels",
-    srcs = ["scaled_dot_product_attention_kernels.py"],
+    srcs = [
+        "flash_attention.py",
+        "scaled_dot_product_attention_kernels.py",
+    ],
+    tags = [
+        "ignore_for_dep=third_party.py.jax._src.pallas.core",
+    ],
     deps = [
-        "//torch_tpu/_internal/pallas:pallas_kernel_generate_utils",
         "@pypi//jax",
+        # copybara: jax/experimental:pallas
+        # copybara: jax/experimental:pallas_tpu
+        "//torch_tpu/_internal/pallas:pallas_kernel_generate_utils",
     ],
 )
 
@@ -37,6 +45,7 @@ pytype_strict_binary(
         "//shims/absl_py:app",
         "//shims/absl_py/flags",
         "//torch_tpu/_internal/pallas:pallas_kernel_generate_utils",
+        "@pypi//numpy",
     ],
 )
 

@@ -52,14 +52,14 @@
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 
-ABSL_FLAG(bool, torch_tpu_internal_sdpa_use_custom_kernel, false,
+ABSL_FLAG(bool, torch_tpu_internal_sdpa_use_custom_kernel, true,
           "Use a custom kernel for scaled dot product attention.");
 
 namespace torch_tpu {
 
 namespace {
 
-mlir::MlirOp flatten_batch_dims(const mlir::MlirOp& mlir_op, int batch_size,
+mlir::MlirOp flatten_batch_dims(mlir::MlirOp mlir_op, int batch_size,
                                 int num_batch_dims) {
   const mlir::RankedTensorType type = GetTensorTypeOrDie(mlir_op);
   int rank = type.getRank();
@@ -72,14 +72,14 @@ mlir::MlirOp flatten_batch_dims(const mlir::MlirOp& mlir_op, int batch_size,
   return mlir::stablehlo::Reshape(mlir_op, new_dims);
 }
 
-mlir::MlirOp unflatten_batch_dims(const mlir::MlirOp& mlir_op,
+mlir::MlirOp unflatten_batch_dims(mlir::MlirOp mlir_op,
                                   const Dimensions& shape) {
   Dimensions shape_vec(shape.begin(), shape.end());
   return mlir::stablehlo::Reshape(mlir_op, shape_vec);
 }
 
-mlir::MlirOp unflatten_batch_dims(
-    const mlir::MlirOp& mlir_op, const mlir::MlirOp& mlir_op_with_target_dims) {
+mlir::MlirOp unflatten_batch_dims(mlir::MlirOp mlir_op,
+                                  mlir::MlirOp mlir_op_with_target_dims) {
   const mlir::RankedTensorType type =
       GetTensorTypeOrDie(mlir_op_with_target_dims);
   return mlir::stablehlo::Reshape(mlir_op, type.getShape());
@@ -90,15 +90,16 @@ absl::StatusOr<at::Tensor> ScaledDotProductFusedAttentionImpl(
   int rank = query.ndimension();
   int batch_size = 1;
   for (int i = 0; i < rank - 3; i++) batch_size *= query.size(i);
-  Dimensions output_dims(query.sizes().begin(), query.sizes().end());
-  output_dims[rank - 1] = value.size(rank - 1);
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(query.scalar_type()));
 
+  Dimensions out_dims(query.sizes().begin(), query.sizes().end());
+  out_dims[rank - 1] = value.size(rank - 1);
+
   auto op_builder = [rank, batch_size,
-                     output_dims](FixedSizeSpan<mlir::MlirOp, 3> inputs)
+                     out_dims](FixedSizeSpan<mlir::MlirOp, 3> inputs)
       -> absl::StatusOr<mlir::MlirOp> {
-    auto& [query_mlir, key_mlir, value_mlir] = inputs;
+    auto [query_mlir, key_mlir, value_mlir] = inputs;
 
     mlir::MlirBuilder& builder = query_mlir.getBuilder();
 
@@ -111,34 +112,30 @@ absl::StatusOr<at::Tensor> ScaledDotProductFusedAttentionImpl(
         xla::ParseMlirModuleString(kernel_mlir, builder.getContext()));
 
     // Flatten batch dimensions of inputs.
-    mlir::MlirOp query_batch =
+    mlir::MlirOp query_4d =
         flatten_batch_dims(query_mlir, batch_size, rank - 3);
-    mlir::MlirOp key_batch = flatten_batch_dims(key_mlir, batch_size, rank - 3);
-    mlir::MlirOp value_batch =
+    mlir::MlirOp key_4d = flatten_batch_dims(key_mlir, batch_size, rank - 3);
+    mlir::MlirOp value_4d =
         flatten_batch_dims(value_mlir, batch_size, rank - 3);
 
     // Specialize the kernel given the inputs.
-    std::array<mlir::MlirOp, 3> input_array = {query_batch, key_batch,
-                                               value_batch};
-
+    std::array<mlir::MlirOp, 3> input_array = {query_4d, key_4d, value_4d};
     TT_ASSIGN_OR_RETURN(
         auto results, BuildSpecializedMlirKernel(builder, imported_kernel.get(),
                                                  absl::MakeSpan(input_array)));
 
-    mlir::MlirOp& out_batch = results[0];
-
     // Unflatten batch dimensions of output.
-    mlir::MlirOp out = unflatten_batch_dims(out_batch, output_dims);
+    mlir::MlirOp out_batch = results[0];
+    mlir::MlirOp out = unflatten_batch_dims(out_batch, out_dims);
 
     return out;
   };
 
   TT_ASSIGN_OR_RETURN(
       auto results,
-      (DispatchOp<3>(
-          OpName::kScaledDotProductFusedAttentionOverrideable,
-          std::move(op_builder), {query, key, value},
-          {.out_dtype = out_dtype, .out_dims = absl::MakeSpan(output_dims)})));
+      (DispatchOp<3>(OpName::kScaledDotProductFusedAttentionOverrideable,
+                     std::move(op_builder), {query, key, value},
+                     {.out_dtype = out_dtype, .out_dims = out_dims})));
   return MakeTensor(std::move(results));
 }
 
@@ -156,7 +153,7 @@ ScaledDotProductFusedAttentionBackwardImpl(const at::Tensor& grad_out,
 
   auto op_builder = [rank, batch_size](FixedSizeSpan<mlir::MlirOp, 4> inputs)
       -> absl::StatusOr<MlirOpResults<3>> {
-    auto& [grad_out_mlir, query_mlir, key_mlir, value_mlir] = inputs;
+    auto [grad_out_mlir, query_mlir, key_mlir, value_mlir] = inputs;
 
     mlir::MlirBuilder& builder = grad_out_mlir.getBuilder();
 
@@ -178,7 +175,6 @@ ScaledDotProductFusedAttentionBackwardImpl(const at::Tensor& grad_out,
 
     std::array<mlir::MlirOp, 4> input_array = {grad_out_batch, query_batch,
                                                key_batch, value_batch};
-
     TT_ASSIGN_OR_RETURN(
         auto results, BuildSpecializedMlirKernel(builder, imported_kernel.get(),
                                                  absl::MakeSpan(input_array)));
@@ -259,15 +255,29 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
         }
 
         // TODO(elliotenglish): Add support for attn_mask and attributes.
-        const bool can_use_custom_kernel =
+        constexpr int min_block_size = 128;
+        constexpr int config_block_size = 512;
+
+        // TODO(b/483131156): Support all shapes.
+        // We don't support all shapes because the kernel is specialized to
+        // block_size 512 and we don't want to generate a new kernel for every
+        // possible sequence length and head dim.
+        const bool is_supported_flash_attention_shape =
+            query.size(query.ndimension() - 2) % config_block_size == 0 &&
+            key.size(key.ndimension() - 2) % config_block_size == 0 &&
+            value.size(value.ndimension() - 2) % config_block_size == 0 &&
+            (query.size(query.ndimension() - 1) < min_block_size ||
+             query.size(query.ndimension() - 1) % min_block_size == 0);
+
+        const bool can_use_overrideable =
             absl::GetFlag(FLAGS_torch_tpu_internal_sdpa_use_custom_kernel) &&
             (!attn_mask.has_value() && is_causal && !scale.has_value() &&
              query.scalar_type() == at::ScalarType::Float &&
              query.ndimension() == key.ndimension() &&
              query.ndimension() == value.ndimension() &&
-             query.ndimension() >= 3);
+             query.ndimension() >= 3 && is_supported_flash_attention_shape);
 
-        if (can_use_custom_kernel) {
+        if (can_use_overrideable) {
           if (ctx.userEnabledFlashSDP()) {
             return static_cast<int64_t>(at::SDPBackend::flash_attention);
           } else if (ctx.userEnabledMemEfficientSDP()) {
