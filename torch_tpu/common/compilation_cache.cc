@@ -405,10 +405,12 @@ absl::StatusOr<SharedLoadedExecutableFuture> CompilationCache::GetOrCompile(
                                       DebugStringOptions::kEnableDebugInfo)));
   }
   LoadedExecutableBuilder builder =
-      [contexted_module = std::move(contexted_module)](
-          xla::PjRtClient& client, UniqueCompileOptions options)
+      [contexted_module = *std::move(contexted_module)](
+          xla::PjRtClient& client, UniqueCompileOptions options) mutable
       -> absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> {
-    return client.CompileAndLoad(contexted_module->get(), std::move(*options));
+    return client.CompileAndLoad(
+        std::move(contexted_module).ToMaybeOwningMlirModule(),
+        std::move(*options));
   };
 
   compilation_pool_->Schedule(

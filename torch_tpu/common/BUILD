@@ -149,6 +149,7 @@ torch_tpu_cc_library(
         "@xla//xla:xla_proto_cc",
         "@xla//xla/client:executable_build_options",
         "@xla//xla/hlo/translate:register",
+        "@xla//xla/pjrt:maybe_owning_mlir_module",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_compiler",
         "@xla//xla/service:computation_placer_hdr",

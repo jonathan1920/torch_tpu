@@ -23,6 +23,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
@@ -31,6 +32,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "torch_tpu/ops/op_builder_utils.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 
 namespace torch_tpu {
@@ -48,11 +50,18 @@ using SharedLoadedExecutableFuture =
 using UniqueCompileOptions = absl_nonnull std::unique_ptr<xla::CompileOptions>;
 
 // Builder function for a loaded executable.
+// It transfers ownership of the underlying MLIR module and context to the
+// `PjRtClient` during compilation, and thus can only be invoked once. The `&&`
+// qualifier enforces this constraint: it ensures that the builder's call
+// operator may only be invoked when the builder is an rvalue, thus consuming
+// the builder function and preventing it from being called more than once.
 using LoadedExecutableBuilder = absl::AnyInvocable<
     absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>>(
-        xla::PjRtClient& client, UniqueCompileOptions compile_options) const>;
+        xla::PjRtClient& client, UniqueCompileOptions compile_options) &&>;
 
 // An MLIR module, with the MLIR context it requires.
+// TODO(b/487928705): Remove this class and use `MaybeOwningMlirModule`
+// directly.
 class ContextedModule {
  public:
   // This class is move-only.
@@ -66,20 +75,27 @@ class ContextedModule {
       const MlirComputationBuilder& computation_builder);
 
   // Returns the underlying MLIR module.
-  [[nodiscard]] mlir::ModuleOp get() const { return **module_; }
+  [[nodiscard]] mlir::ModuleOp get() const { return *module_; }
 
   // Returns the underlying MLIR context.
   [[nodiscard]] mlir::MLIRContext& context() { return *context_; }
 
+  // Destructively converts this ContextedModule into a MaybeOwningMlirModule.
+  [[nodiscard]] xla::MaybeOwningMlirModule ToMaybeOwningMlirModule() && {
+    return xla::MaybeOwningMlirModule(std::move(context_), std::move(module_));
+  }
+
  private:
-  ContextedModule();
+  ContextedModule() = delete;
+  ContextedModule(std::unique_ptr<mlir::MLIRContext> context,
+                  mlir::OwningOpRef<mlir::ModuleOp> module);
 
   // The MLIR context for the module. This must outlive the module.
   // We use a unique_ptr to allow for moving, as MLIRContext is not
   // movable.
   absl_nonnull std::unique_ptr<mlir::MLIRContext> context_;
   // The module. If the context is dropped, the module will be invalidated.
-  absl_nonnull std::unique_ptr<mlir::OwningOpRef<mlir::ModuleOp>> module_;
+  mlir::OwningOpRef<mlir::ModuleOp> module_;
 };
 
 // Mode for compiling a program in eager mode.

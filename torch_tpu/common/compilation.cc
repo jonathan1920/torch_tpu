@@ -25,6 +25,7 @@
 #include <utility>
 
 #include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
@@ -53,30 +54,34 @@ constexpr std::string_view kOptimizationLevelOption = "xla_optimization_level";
 constexpr std::string_view kMemoryFittingLevelOption =
     "xla_memory_fitting_level";
 
-ContextedModule::ContextedModule()
-    : context_(std::make_unique<mlir::MLIRContext>()) {
+namespace {
+absl_nonnull std::unique_ptr<mlir::MLIRContext> MakeMlirContext() {
+  auto context = std::make_unique<mlir::MLIRContext>();
   mlir::DialectRegistry registry;
   xla::RegisterMlirToHloDependentDialects(registry);
-  context_->appendDialectRegistry(registry);
-  context_->loadAllAvailableDialects();
-}  // NOLINT - module_ will be set in the Make() factory.
+  context->appendDialectRegistry(registry);
+  context->loadAllAvailableDialects();
+  return context;
+}
+}  // namespace
+
+ContextedModule::ContextedModule(std::unique_ptr<mlir::MLIRContext> context,
+                                 mlir::OwningOpRef<mlir::ModuleOp> module)
+    : context_(std::move(context)), module_(std::move(module)) {}
 
 absl::StatusOr<ContextedModule> ContextedModule::Make(
     const MlirComputationBuilder& computation_builder) {
-  ContextedModule contexted_module;
-  TT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> computation,
-                      computation_builder(*contexted_module.context_));
-  contexted_module.module_ =
-      std::make_unique<mlir::OwningOpRef<mlir::ModuleOp>>(
-          std::move(computation));
-  return std::move(contexted_module);
+  auto context = MakeMlirContext();
+  TT_ASSIGN_OR_RETURN(auto module, computation_builder(*context));
+  return ContextedModule(std::move(context), std::move(module));
 }
 
 absl::StatusOr<SharedLoadedExecutable> Compile(
     xla::PjRtClient& client, LoadedExecutableBuilder executable_builder,
     UniqueCompileOptions compile_options) {
-  TT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
-                      executable_builder(client, std::move(compile_options)));
+  TT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+      std::move(executable_builder)(client, std::move(compile_options)));
   TT_RET_CHECK(executable, error::kInternal)
       << "compilation succeeded but returned a null executable.";
   return executable;
@@ -88,9 +93,11 @@ MlirComputationBuilderToExecutableBuilder(
   TT_ASSIGN_OR_RETURN(ContextedModule contexted_module,
                       ContextedModule::Make(computation_builder));
   return [contexted_module = std::move(contexted_module)](
-             xla::PjRtClient& client, UniqueCompileOptions options)
+             xla::PjRtClient& client, UniqueCompileOptions options) mutable
              -> absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> {
-    return client.CompileAndLoad(contexted_module.get(), std::move(*options));
+    return client.CompileAndLoad(
+        std::move(contexted_module).ToMaybeOwningMlirModule(),
+        std::move(*options));
   };
 }
 
