@@ -32,6 +32,7 @@ The `torch.compile()` function has the following relevant arguments:
 """
 
 import logging
+import operator
 from typing import Any, Callable, List, Sequence, TypeAlias
 import torch
 from torch._dynamo.backends.common import aot_autograd
@@ -260,7 +261,8 @@ class TpuBackend:
 
     return aot_autograd(
         fw_compiler=self._compile_graph_module,
-        # This is to avoid inplace generating graph modules that contains inplace update.
+        # This is to avoid inplace generating graph modules that contains
+        # inplace update.
         keep_inference_input_mutations=False,
     )(graph_module, example_inputs)
 
@@ -336,11 +338,14 @@ class TpuBackend:
     # If there are non-tensor inputs (e.g. concrete ints from dynamic shapes),
     # wrap the executable to filter them out at call time since
     # tpu_torch_compile.execute() only accepts tensors.
-    has_non_tensor_inputs = any(
-        not isinstance(arg, torch.Tensor) for arg in example_inputs
+    # Pre-compute indices for _TensorFilterExecutable for performance
+    tensor_indices = tuple(
+        i
+        for i, arg in enumerate(example_inputs)
+        if isinstance(arg, torch.Tensor)
     )
-    if has_non_tensor_inputs:
-      return _TensorFilterExecutable(executable)
+    if len(tensor_indices) < len(example_inputs):
+      return _TensorFilterExecutable(executable, tensor_indices)
 
     return executable
 
@@ -352,12 +357,23 @@ class _TensorFilterExecutable:
   Implemented as a class (not a closure) to support pickling.
   """
 
-  def __init__(self, executable: _TorchTpuCompiledExecutable):
+  def __init__(
+      self,
+      executable: _TorchTpuCompiledExecutable,
+      tensor_indices: tuple[int, ...] = (),
+  ):
     self._executable = executable
+    self._tensor_indices = tensor_indices
+    # Precompute an itemgetter that does all index lookups in C.
+    # itemgetter returns a scalar for 1 key, so wrap it to always return a
+    # tuple.
+    _getter = operator.itemgetter(*tensor_indices)
+    self._itemgetter = (
+        (lambda args: (_getter(args),)) if len(tensor_indices) == 1 else _getter
+    )
 
   def __call__(self, *args):
-    tensor_args = tuple(a for a in args if isinstance(a, torch.Tensor))
-    return self._executable(*tensor_args)
+    return self._executable(*self._itemgetter(args))
 
   def __reduce__(self):
-    return (type(self), (self._executable,))
+    return (type(self), (self._executable, self._tensor_indices))
