@@ -31,7 +31,7 @@ dependencies = [
     "accelerate",
     # TODO: b/431034055 - JAX is a dev dependency; move this
     # to dev deps and update bazel config to understand
-    "jax",
+    "jax >= 0.9.1",
     "libtpu",
     # TODO: b/431034055 - portpicker is a dev dependency; move this
     # to dev deps and update bazel config to understand
