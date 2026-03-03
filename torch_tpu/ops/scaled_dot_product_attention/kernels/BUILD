@@ -33,6 +33,8 @@ pytype_strict_library(
         "@pypi//jax",
         # copybara: jax/experimental:pallas
         # copybara: jax/experimental:pallas_tpu
+        "@pypi//numpy",
+        "//shims/torch:pytorch",
         "//torch_tpu/_internal/pallas:pallas_kernel_generate_utils",
     ],
 )

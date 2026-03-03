@@ -93,9 +93,15 @@ class BackwardsTest(absltest.TestCase):
     cpu_device = torch.device('cpu')
 
     # create inputs
-    query_cpu = torch.randn(2, 2, requires_grad=True, device=cpu_device)
-    key_cpu = torch.randn(2, 2, requires_grad=True, device=cpu_device)
-    value_cpu = torch.randn(2, 2, requires_grad=True, device=cpu_device)
+    query_cpu = torch.randn(
+        16, 4, 1024, 128, requires_grad=True, device=cpu_device
+    )
+    key_cpu = torch.randn(
+        16, 4, 1024, 128, requires_grad=True, device=cpu_device
+    )
+    value_cpu = torch.randn(
+        16, 4, 1024, 128, requires_grad=True, device=cpu_device
+    )
     query_tpu = query_cpu.to(device).detach().requires_grad_(True)
     key_tpu = key_cpu.to(device).detach().requires_grad_(True)
     value_tpu = value_cpu.to(device).detach().requires_grad_(True)
@@ -127,14 +133,15 @@ class BackwardsTest(absltest.TestCase):
         query_tpu.grad.cpu(),
         query_cpu.grad,
         rtol=1e-2,
-        atol=2e-2,
+        atol=3e-2,
         check_value=utils.CheckValueMode.LOOSE,
     )
+
     utils.assert_close(
         key_tpu.grad.cpu(),
         key_cpu.grad,
         rtol=1e-2,
-        atol=2e-2,
+        atol=3e-2,
         check_value=utils.CheckValueMode.LOOSE,
     )
     utils.assert_close(

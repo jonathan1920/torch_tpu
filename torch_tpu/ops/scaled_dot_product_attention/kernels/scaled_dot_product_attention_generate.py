@@ -91,8 +91,25 @@ def export_forward_kernel(header_path, implementation_path):
 
 
 def export_backward_kernel(header_path, implementation_path):
-  # TODO(elliotenglish): Implement this.
-  exported = kernels.export_sdpa_backward_kernel()
+  """Export a dynamic backward kernel."""
+
+  if _DTYPE.value == "float32":
+    dtype = np.float32
+  elif _DTYPE.value == "bfloat16":
+    dtype = np.bfloat16
+  else:
+    raise ValueError(f"Unsupported dtype: {_DTYPE.value}")
+
+  exported = kernels.export_sdpa_backward_kernel(
+      static_seq_len=None,
+      static_head_dim=None,
+      num_q_heads=None,
+      batch_size=None,
+      kernel_type=_KERNEL_TYPE.value,
+      is_causal=True,
+      dtype=dtype,
+  )
+
   if header_path is not None and implementation_path is not None:
     kernel_utils.generate_embedded_file(
         header_path,
