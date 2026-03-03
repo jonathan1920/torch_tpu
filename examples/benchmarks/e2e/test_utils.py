@@ -15,8 +15,8 @@
 """Utility functions for benchmarks."""
 
 from absl.testing import parameterized
-from torch_tpu.examples.benchmarks.e2e import benchmark_utils
-from torch_tpu.examples.benchmarks.e2e import performance_utils
+from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import performance_utils
 
 
 class BenchmarkTest(parameterized.TestCase):

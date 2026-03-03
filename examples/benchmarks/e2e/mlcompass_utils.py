@@ -15,7 +15,7 @@
 """Utilities for exporting benchmark results to MLCompass."""
 
 from absl import logging
-from torch_tpu.examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import benchmark_utils
 from torch_tpu._internal.shims.mlcompass import benchmark_data as benchmark_data_lib
 from torch_tpu._internal.shims.mlcompass import export_lib_borg
 

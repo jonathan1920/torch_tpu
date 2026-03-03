@@ -16,11 +16,11 @@
 
 from absl.testing import absltest
 import torch.multiprocessing as mp
-from torch_tpu.examples.benchmarks.e2e import benchmark_utils
-from torch_tpu.examples.benchmarks.e2e import quality_utils
-from torch_tpu.examples.benchmarks.quality_utils.metrics import data_loader
-from torch_tpu.examples.benchmarks.quality_utils.metrics import perplexity_metric
-from torch_tpu.examples.llama3.distributed_meta_llama3 import meta_llama3_quality_benchmark
+from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import quality_utils
+from examples.benchmarks.quality_utils.metrics import data_loader
+from examples.benchmarks.quality_utils.metrics import perplexity_metric
+from examples.llama3.distributed_meta_llama3 import meta_llama3_quality_benchmark
 
 from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
 

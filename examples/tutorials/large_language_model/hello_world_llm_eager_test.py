@@ -16,7 +16,7 @@ from absl import logging
 from absl.testing import absltest
 import torch
 from torch_tpu import api
-from torch_tpu.examples import paths
+from examples import paths
 import transformers
 
 

@@ -21,10 +21,10 @@ from typing import Sequence
 from torch.google import distributed as gdist
 from torch_tpu._internal.distributed import gpu_env
 from torch_tpu._internal.distributed import tpu_env
-from torch_tpu.examples.benchmarks.e2e import benchmark_utils
-from torch_tpu.examples.benchmarks.e2e import mlcompass_utils
-from torch_tpu.examples.benchmarks.quality_utils import quality_benchmark_model
-from torch_tpu.examples.benchmarks.quality_utils.metrics import data_loader
+from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import mlcompass_utils
+from examples.benchmarks.quality_utils import quality_benchmark_model
+from examples.benchmarks.quality_utils.metrics import data_loader
 
 N_PROC_MAP = {
     benchmark_utils.Platform.B200_4: 4,

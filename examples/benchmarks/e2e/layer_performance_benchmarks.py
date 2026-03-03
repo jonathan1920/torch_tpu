@@ -19,9 +19,9 @@ from typing import Any, Sequence
 from absl.testing import absltest
 from absl.testing import parameterized
 import torch.multiprocessing as mp
-from torch_tpu.examples.benchmarks.e2e import benchmark_utils
-from torch_tpu.examples.benchmarks.e2e import performance_utils
-from torch_tpu.examples.benchmarks.e2e import test_utils
+from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import performance_utils
+from examples.benchmarks.e2e import test_utils
 from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
 
 _ALL_RUN_MODES = (

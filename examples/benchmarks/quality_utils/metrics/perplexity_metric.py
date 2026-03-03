@@ -19,7 +19,7 @@
 
 import torch
 import torch.nn.functional as F
-from torch_tpu.examples.benchmarks.quality_utils import quality_benchmark_model
+from examples.benchmarks.quality_utils import quality_benchmark_model
 
 
 def _get_text_chunks(text, max_text_chunk_size: int) -> list[str]:

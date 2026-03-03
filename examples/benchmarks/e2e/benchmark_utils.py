@@ -27,7 +27,7 @@ import numpy as np
 import torch
 from torch_tpu._internal.utils import device_utils
 import torch_tpu.api as xla_api
-from torch_tpu.examples.benchmarks.quality_utils import quality_benchmark_model
+from examples.benchmarks.quality_utils import quality_benchmark_model
 
 from torch_tpu._internal.shims.xprof import xprof_analysis_client
 from torch_tpu._internal.shims.xprof import xprof_session
