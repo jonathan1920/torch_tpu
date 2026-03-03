@@ -261,7 +261,9 @@ class JaxCallable:
       jax_args = jax_placeholders(args)
       lowered = self.exported(*jax_args, **kwargs)
       tpu_torch_pallas.register_custom_kernel(
-          self.name, kernel_key, lowered.mlir_module_serialized
+          self.name,
+          kernel_key,
+          serialized_mlir_module=lowered.mlir_module_serialized,
       )
       # Use out_tree to format the outputs shapes - i.e. pack in tuple, nested
       # tuple, etc.
@@ -276,11 +278,11 @@ class JaxCallable:
     ]
 
     results = tpu_torch_pallas.call_custom_kernel(
-        tensor_args,
-        output_shapes,
         self.name,
         kernel_key,
-        self.input_output_aliases,
+        inputs=tensor_args,
+        output_shapes=output_shapes,
+        input_output_aliases=self.input_output_aliases,
     )
     return out_tree.unflatten(results)
 
