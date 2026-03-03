@@ -338,6 +338,7 @@ def fx_to_mlir(
     module: torch.fx.GraphModule,
     args: List[torch.Tensor | Any],
     print_config: MlirPrintConfig = MlirPrintConfig.MLIR_PRETTY,
+    donate_args: Sequence[int] | None = None,
 ) -> Tuple[
     bytes,
     List[torch.Tensor],
@@ -383,6 +384,7 @@ def fx_to_mlir(
           a for a in _to_list(args) if isinstance(a, torch.Tensor)
       ],
       print_config=print_config.value,
+      donate_args=donate_args if donate_args else [],
   )
 
   return (

@@ -17,7 +17,7 @@
 import logging
 import os
 import pickle
-from typing import List
+from typing import List, Optional
 
 from absl.testing import absltest
 import torch
@@ -36,13 +36,19 @@ class FunctionTest(absltest.TestCase):
     os.environ["TORCH_LOGS"] = "+dynamo"
 
   def _run_and_compare(
-      self, func, inputs: List[torch.Tensor], debug: bool = True
+      self,
+      func,
+      inputs: List[torch.Tensor],
+      donate_args: Optional[List[int]] = None,
+      debug: bool = True,
   ) -> compile.TpuBackend:
     """Runs the given function on CPU, TPU eager mode, and TPU compiled mode and compares the results.
 
     Args:
       func: The function to test.
       inputs: A list of tensor inputs for the function.
+      donate_args: A list of indices of the input tensors that should be donated
+        to the TPU backend.
       debug: Whether to enable debug mode for the TPU backend.
 
     Returns:
@@ -70,7 +76,8 @@ class FunctionTest(absltest.TestCase):
 
     # TPU compiled
     tpu_backend = compile.TpuBackend(debug=debug)
-    compiled = torch.compile(func, backend=tpu_backend)
+    options = {"donate_args": donate_args} if donate_args else {}
+    compiled = torch.compile(func, backend=tpu_backend, options=options)
     tpu_compiled_result = _backend.to_device(compiled(*inputs_tpu), "cpu")
     if isinstance(result_cpu, torch.Tensor):
       assert isinstance(tpu_compiled_result, torch.Tensor)
@@ -98,6 +105,22 @@ class FunctionTest(absltest.TestCase):
         torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6]),
     ]
     self._run_and_compare(simple, input)
+
+  def test_super_simple_donate(self):
+    # Check that the buffer is correctly donated and can't be used after the
+    # compiled function is executed.
+    def simple(x, y):
+      a = 0.3 * x + 0.5 * y
+      return a
+
+    x = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]).to(api.tpu_device())
+    y = torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6]).to(api.tpu_device())
+    self._run_and_compare(simple, [x, y], donate_args=[1])
+    x.cpu()
+    with self.assertRaisesRegex(
+        RuntimeError, "INVALID_ARGUMENT: Buffer has been deleted or donated"
+    ):
+      y.cpu()
 
   def test_simple_handle_input_flip(self):
     # Without CL/794139909, the eager model will follow the invoke order and flip
@@ -453,7 +476,7 @@ class FunctionTest(absltest.TestCase):
     backend = compile.TpuBackend()
     gm = torch.fx.symbolic_trace(model)
     # Get the raw executable
-    compiled_fn = backend._compile_graph_module(gm, [x])
+    compiled_fn = backend._compile_graph_module(gm, [x], donate_args=[])
 
     # Run before pickle
     result_before = compiled_fn(x)  # pylint: disable=unused-variable

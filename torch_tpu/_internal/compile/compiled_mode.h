@@ -71,7 +71,8 @@ absl::StatusOr<at::Tensor> MakePlaceholder(absl::Span<const int64_t> sizes,
 // If the tensors are already materialized, will return status.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
     mlir::MLIRContext& mlir_context, const std::vector<at::Tensor>& arg_tensors,
-    const std::vector<at::Tensor>& result_tensors);
+    const std::vector<at::Tensor>& result_tensors,
+    absl::Span<const int64_t> donate_args);
 
 // torch.compile integration: this is called by torch.compile() to compile the
 // FX graph, after it has generated the graph and its input/output tensors. This

@@ -136,13 +136,15 @@ at::Tensor PyMakePlaceholderLike(const at::Tensor& arg_tensor) {
 // and taking argument_tensors as inputs.
 //
 // Supports `MlirPrintConfig` options.
-py::bytes PyExtractMlirModule(const std::vector<at::Tensor>& result_tensors,
-                              const std::vector<at::Tensor>& argument_tensors,
-                              const std::string& print_config) {
+py::bytes PyExtractMlirModule(
+    const std::vector<at::Tensor>& result_tensors,
+    const std::vector<at::Tensor>& argument_tensors,
+    const std::string& print_config,
+    const std::vector<int64_t>& donate_args) {  // INT_VEC_OK
   TT_ASSIGN_OR_THROW(ContextedModule module,
                      ContextedModule::Make([&](mlir::MLIRContext& context) {
                        return ExtractMlirFromGraph(context, argument_tensors,
-                                                   result_tensors);
+                                                   result_tensors, donate_args);
                      }));
 
   mlir::BaseScopedDiagnosticHandler diag_handler(&module.context());
@@ -289,7 +291,8 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         py::arg("requires_grad"));
   m.def("placeholder_like", PyMakePlaceholderLike, py::arg("arg_tensor"));
   m.def("build_mlir", PyExtractMlirModule, py::arg("result_tensors"),
-        py::arg("argument_tensors"), py::arg("print_config") = "MlirPretty");
+        py::arg("argument_tensors"), py::arg("print_config") = "MlirPretty",
+        py::arg("donate_args") = std::vector<int64_t>());  // INT_VEC_OK
   // Returns: PjRtLoadedExecutable
   m.def("compile_mlir", PyCompileMlir, py::arg("mlir_module_bytecode"),
         py::arg("eager") = false);

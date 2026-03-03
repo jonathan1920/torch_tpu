@@ -29,9 +29,16 @@ class CompileApiTest(absltest.TestCase):
     z = x + y
     result_tensors = [z]
     argument_tensors = [x, y]
-    mlir = tpu_torch_compile.build_mlir(result_tensors, argument_tensors)
+    donate_args = (1,)
+    mlir = tpu_torch_compile.build_mlir(
+        result_tensors, argument_tensors, donate_args=donate_args
+    )
     mlir_str = str(mlir)
-    self.assertIn('func @main', mlir_str)
+    self.assertIn(
+        'func.func @main(%arg0: tensor<10xf32>, %arg1: tensor<10xf32>'
+        ' {jax.buffer_donor = true})',
+        mlir_str,
+    )
     self.assertIn('stablehlo.add', mlir_str)
 
   def test_extra_input_to_build_mlir(self):
