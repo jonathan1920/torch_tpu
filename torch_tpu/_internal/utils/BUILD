@@ -14,7 +14,6 @@
 
 load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
-load("//shims/py_rules:strict.bzl", "py_strict_test")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -116,11 +115,13 @@ pytype_strict_library(
     deps = ["//shims/torch:pytorch"],
 )
 
-py_strict_test(
+torch_tpu_py_test(
     name = "tracer_utils_test",
     srcs = ["tracer_utils_test.py"],
+    strict = True,
     tags = [
         "oss_ready_cpu",
+        "wheel_test_excluded",
     ],
     deps = [
         ":test_fixtures",
@@ -133,10 +134,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+torch_tpu_py_test(
     name = "tracer_utils_tpu_test",
     srcs = ["tracer_utils_tpu_test.py"],
     main = "tracer_utils_tpu_test.py",
+    strict = True,
     tags = [
         "oss_ready_tpu",
         "requires-tpu-v5lite",
@@ -153,11 +155,13 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+torch_tpu_py_test(
     name = "test_fixtures_test",
     srcs = ["test_fixtures_test.py"],
+    strict = True,
     tags = [
         "oss_ready_cpu",
+        "wheel_test_excluded",
     ],
     deps = [
         ":test_fixtures",

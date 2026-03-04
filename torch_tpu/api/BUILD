@@ -14,9 +14,8 @@
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@xla//third_party/py/rules_pywrap:pywrap.default.bzl", "pybind_extension")
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end")
+load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end", "torch_tpu_py_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
-load("//shims/py_rules:strict.bzl", "py_strict_test")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -59,9 +58,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+torch_tpu_py_test(
     name = "device_module_test",
     srcs = ["device_module_test.py"],
+    strict = True,
     tags = [
         "oss_ready_cpu",
     ],
@@ -73,9 +73,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+torch_tpu_py_test(
     name = "tpu_module_test",
     srcs = ["tpu_module_test.py"],
+    strict = True,
     tags = [
         "oss_ready_tpu",
         "requires-tpu-v5lite",
@@ -90,9 +91,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+torch_tpu_py_test(
     name = "xla_cuda_module_test",
     srcs = ["xla_cuda_module_test.py"],
+    strict = True,
     tags = ["requires-gpu-sm60-only"],
     deps = [
         ":_device_module",
@@ -103,9 +105,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+torch_tpu_py_test(
     name = "xla_cpu_module_test",
     srcs = ["xla_cpu_module_test.py"],
+    strict = True,
     tags = [
         "oss_ready_cpu",
     ],
