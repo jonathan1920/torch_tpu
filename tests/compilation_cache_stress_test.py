@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Stress test for the compilation cache to ensure no crashes during eviction."""
+"""Stress test for compilation cache eviction."""
 
 import concurrent.futures
 import time
@@ -30,8 +30,8 @@ class CompilationCacheStressTest(absltest.TestCase):
     # Initialize the TPU device to register torch.tpu.
     api.tpu_device()
 
-  def test_concurrent_eviction_and_compilation_does_not_crash(self):
-    """Concurrent eviction and compilation should not crash."""
+  def test_eviction_does_not_affect_inflight_compilation(self):
+    """Eviction should not affect in-flight compilations."""
 
     # Use many threads to increase the chance of triggering the race.
     num_compile_threads = 20
@@ -74,14 +74,9 @@ module {{
           compilation_futures.append(executor.submit(trigger_compilation, i))
         time.sleep(0.05)
 
-      # Wait for all compilations to complete (or fail).
+      # Wait for all compilations to complete successfully.
       for future in compilation_futures:
-        try:
-          future.result()
-        except Exception:  # pylint: disable=broad-except
-          # If compilation fails due to eviction, it's fine for this test.
-          # We only care about ensuring it doesn't CRASH the process.
-          pass
+        future.result()
 
       eviction_future.result()
 

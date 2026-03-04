@@ -138,8 +138,8 @@ class CompilationCache {
   // Shuts down the cache and its thread pool, evicting all entries.
   static void Shutdown();
 
-  // Evicts all executables from the cache. The function returns only after all
-  // entries in the cache have been cleared.
+  // Evicts all existing executables from the cache. The function waits for all
+  // in-flight compilations to complete.
   void EvictAll() ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Sets the cache to allow caching or not. On initialization, the cache is

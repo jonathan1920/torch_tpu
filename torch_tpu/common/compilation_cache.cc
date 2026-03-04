@@ -33,6 +33,7 @@
 
 #include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/absl_check.h"
@@ -231,18 +232,52 @@ static void TrySetExecutablePromise(
 }
 
 void CompilationCache::EvictAll() {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
-  for (const auto& [key, cache_entry] : executable_cache_) {
-    ABSL_VLOG(1) << "Evicting compilation future for key: " << key;
-    // Wait with timeout at zero seconds to allow for immediate eviction if the
-    // compilation is still in progress.
-    if (!IsFutureReady(cache_entry.executable_future())) {
-      TrySetExecutablePromise(key, *cache_entry.executable_promise(),
-                              TT_ERROR(error::kCancelled)
-                                  << "Compilation cache evicted.");
+  // Get all existing keys from the cache - these are the entries we need to
+  // evict. We cannot promise to evict new entries created during the eviction
+  // process, as that work may never end.
+  absl::flat_hash_set<CompilationCacheKey, CompilationCacheKey::Hash>
+      keys_to_evict;
+  {
+    TT_MUTEX_LOCK(lock, cache_mutex_);
+    for (const auto& [key, cache_entry] : executable_cache_) {
+      keys_to_evict.insert(key);
     }
   }
-  executable_cache_.clear();
+
+  // Keep evicting compiled keys until there are no more keys to evict,
+  // waiting 1 second between iterations to give in-flight compilations a
+  // chance to complete and update the cache.
+  //
+  // We chose a busy-wait loop as the alternative is much more complex.
+  for (; !keys_to_evict.empty(); absl::SleepFor(absl::Seconds(1))) {
+    TT_MUTEX_LOCK(lock, cache_mutex_);
+    const auto keys = keys_to_evict;
+    // Loop over a copy of keys_to_evict, as we will modify it during
+    // the loop and invalidate its iterator.
+    for (const auto key : keys) {
+      const auto it = executable_cache_.find(key);
+      if (it == executable_cache_.end()) {
+        ABSL_VLOG(1) << "Key already evicted by another thread: " << key;
+        continue;
+      }
+
+      const auto& cache_entry = it->second;
+      ABSL_VLOG_EVERY_N(1, 100)
+          << "Evicting compilation future for key: " << key;
+      if (IsFutureReady(cache_entry.executable_future())) {
+        // The compilation is completed, so we can evict it immediately.
+        executable_cache_.erase(it);
+        keys_to_evict.erase(key);
+        ABSL_VLOG(1) << "Evicted compilation future for key: " << key;
+      } else {
+        ABSL_VLOG_EVERY_N(1, 100)
+            << "Waiting for compilation to complete for key: " << key;
+      }
+    }
+    // Release the lock here to give in-flight compilations a chance to
+    // complete and update the cache.
+  }
+
   ABSL_LOG(INFO) << "Compilation cache evicted.";
 }
 

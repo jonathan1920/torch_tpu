@@ -102,8 +102,8 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       "Get compilation cache misses.");
   m.def(
       "_clear_cache", []() { CompilationCache::GetInstance().EvictAll(); },
-      "Evict all entries in the compilation cache. The function returns when "
-      "the cache has been cleared");
+      "Evict all existing entries in the compilation cache. The function "
+      "waits for all in-flight compilations to complete.");
 
   m.def(
       "_hbm_usage_summary",
