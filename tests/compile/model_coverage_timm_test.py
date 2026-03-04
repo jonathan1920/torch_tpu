@@ -312,8 +312,19 @@ class ModelCoverageTimmTest(parameterized.TestCase):
           rmse_tol=1.1e-2,
           conf_tol=3e-3,
       ),
+      dict(
+          testcase_name="resnet50d_e2e",
+          provider="timm",
+          module_name="resnet50d.ra2_in1k",
+          expected_class=1,  # Goldfish
+          img_path=_GOLDFISH_IMG_PATH,
+          rtol=1e-3,
+          atol=1.3e-02,
+          rmse_tol=4e-3,
+          conf_tol=2e-3,
+      ),
   )
-  def test_timm_inference_e2e(
+  def test_timm_classification_inference_e2e(
       self,
       provider: str,
       module_name: str,
@@ -321,7 +332,7 @@ class ModelCoverageTimmTest(parameterized.TestCase):
       img_path: epath.Path | None = None,
       rtol: float | None = None,
       atol: float | None = None,
-      rmse_tol: float | None = None,
+      rmse_tol: float | None = 1e-3,
       conf_tol: float | None = None,
   ) -> None:
     model_and_inputs = self._create_model_and_inputs(
