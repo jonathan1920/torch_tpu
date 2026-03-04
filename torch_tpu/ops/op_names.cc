@@ -798,8 +798,6 @@ std::string_view ToString(OpName op_name) {
       return "native_batch_norm.out";
     case OpName::kNativeDropoutBackward:
       return "native_dropout_backward";
-    case OpName::kNativeGroupNorm:
-      return "native_group_norm";
     case OpName::kNativeGroupNormBackward:
       return "native_group_norm_backward";
     case OpName::kNativeLayerNorm:
