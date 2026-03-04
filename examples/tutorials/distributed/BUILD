@@ -33,8 +33,8 @@ pytype_strict_library(
 )
 
 torch_tpu_py_test(
-    name = "hello_world_distributed_run_script",
-    srcs = ["hello_world_distributed_run_script.py"],
+    name = "run_hello_world_distributed",
+    srcs = ["run_hello_world_distributed.py"],
     env = {
         "WORLD_SIZE": "8",
     },
@@ -53,8 +53,8 @@ torch_tpu_py_test(
 )
 
 build_test(
-    name = "hello_world_distributed_run_script_build_test",
-    targets = [":hello_world_distributed_run_script"],
+    name = "run_hello_world_distributed_build_test",
+    targets = [":run_hello_world_distributed"],
 )
 
 torch_tpu_package_end()

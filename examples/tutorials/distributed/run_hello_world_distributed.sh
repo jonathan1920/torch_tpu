@@ -19,4 +19,4 @@ export TORCH_TPU_TOPOLOGY="2,4,1"
 export MASTER_ADDR="localhost"
 export MASTER_PORT=12355
 
-torchrun --nproc_per_node=8 ./examples/tutorials/distributed/hello_world_distributed_test.py
+torchrun --nproc_per_node=8 ./examples/tutorials/distributed/hello_world_distributed.py
