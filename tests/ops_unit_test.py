@@ -2829,8 +2829,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       y.sum().backward()
       return x.grad
 
-    # TODO(b/489136147): Fix test case & disable allow_failure
-    self.assert_close_tpu_vs_cpu(compute, allow_failure=True)
+    self.assert_close_tpu_vs_cpu(compute)
 
   def test_default_dtype_consistent(self):
     """Tests the torch_tpu respects the default dtype."""
