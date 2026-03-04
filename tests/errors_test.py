@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import torch
 from torch_tpu._internal import env
 from torch_tpu._internal import testing as tt_testing
+from torch_tpu._internal.pallas import tpu_torch_pallas
 from tests import error_testing as et
 
 _TEST_MODE = et.TEST_MODE
@@ -1066,6 +1067,33 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       # cpu() is needed because the error is triggered inside the op builder.
       torch.cumprod(inp, dim=0, dtype=torch.bool).cpu()
+
+  # Why do we run this test only on TPU (and not on CPU)?
+  # CustomKernel exists only on TorchTPU.
+  def test_custom_kernel_not_registered(self):
+    name = "not_registered_kernel_name"
+    kernel_key = "not_registered_kernel_name-(f32[2]):(f32[2])"
+
+    inputs = [torch.ones(2, device=et.device())]
+    output_shapes = [torch.ones(2, device=et.device())]
+
+    # TODO: Error eagerly, i.e. without having to call the op builder.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "custom_kernel(): unknown custom kernel; call"
+            f' torch_tpu._internal.pallas.tpu_torch_pallas.register_custom_kernel("{name}",'
+            f' "{kernel_key}", ...) to register the kernel before calling it -'
+            " TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
+            " have a PjRtBuffer to copy from."
+        ),
+    ):
+      outputs = tpu_torch_pallas.call_custom_kernel(
+          name, kernel_key, inputs=inputs, output_shapes=output_shapes
+      )
+
+      # cpu() is needed because the error is triggered inside the op builder.
+      outputs[0].cpu()
 
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):

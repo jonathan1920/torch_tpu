@@ -77,7 +77,9 @@ absl::Status ValidateAndEraseShapeAssertions(mlir::ModuleOp module) {
   mlir::PassManager pm(module.getContext());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createStablehloCheckShapeAssertionsPass());
-  TT_RET_CHECK(mlir::succeeded(pm.run(module)), error::kInternal)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=MLIR pass error not reachable by user
+                 // input.
+      mlir::succeeded(pm.run(module)), error::kInternal)
       << "failed to validate shape assertions, with MLIR error: "
       << diag_handler.ConsumeStatus().message();
 
@@ -165,7 +167,9 @@ absl::Status SpecializeCustomMlirKernel(
   mlir::PassManager pm(custom_kernel.getContext());
   pm.addPass(mlir::createInlinerPass());
   mlir::stablehlo::createStablehloRemoveDynamismPipeline(pm, input_types);
-  TT_RET_CHECK(mlir::succeeded(pm.run(custom_kernel)), error::kInternal)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=MLIR pass error not reachable by user
+                 // input.
+      mlir::succeeded(pm.run(custom_kernel)), error::kInternal)
       << "failed to specialize custom kernel, with MLIR error: "
       << diag_handler.ConsumeStatus().message();
 
@@ -288,7 +292,9 @@ class CustomKernelRegistry {
   // kwargs.
   absl::StatusOr<mlir::func::FuncOp> LoadCustomKernel(
       mlir::MlirBuilder& builder, std::string_view name,
-      std::string_view kwargs,
+      // TODO: `kwargs` parameter was renamed to `kernel_key` in cl/878060892.
+      // This change should be applied to the entire file.
+      std::string_view kernel_key,
       absl::Span<const absl::Span<const int64_t>> input_dims,
       absl::Span<const mlir::ElementType> input_dtypes) {
     // Lock the registry while we retrieve the MLIR module string.
@@ -296,10 +302,14 @@ class CustomKernelRegistry {
     {
       TT_MUTEX_LOCK(lock, mutex_);
       auto it =
-          registry_.find(CustomKernelIdRef{.name = name, .kwargs = kwargs});
+          registry_.find(CustomKernelIdRef{.name = name, .kwargs = kernel_key});
       TT_RET_CHECK(it != registry_.end(), error::kNotFound)
-          << "custom kernel with name " << name << " and kwargs " << kwargs
-          << " not found";
+          << "unknown custom kernel; call torch_tpu._internal.pallas."
+             "tpu_torch_pallas.register_custom_kernel"
+             "(\""
+          << name << "\", \"" << kernel_key
+          << "\", ...)"
+             " to register the kernel before calling it";
       mlir_module_string = it->second;
     }
 
@@ -310,7 +320,7 @@ class CustomKernelRegistry {
 
     // Get the name we want to give the custom kernel.
     std::string kernel_id_str =
-        GetUniqueCustomKernelName(name, kwargs, input_dims, input_dtypes);
+        GetUniqueCustomKernelName(name, kernel_key, input_dims, input_dtypes);
 
     // Build mlir::Types for each input shape.
     mlir::SmallVector<mlir::Type> input_types;

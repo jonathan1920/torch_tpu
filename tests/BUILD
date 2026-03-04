@@ -584,6 +584,7 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu/_internal:env",
         "//torch_tpu/_internal:testing",
+        "//torch_tpu/_internal/pallas",
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
@@ -613,6 +614,7 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu/_internal:env",
         "//torch_tpu/_internal:testing",
+        "//torch_tpu/_internal/pallas",
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
@@ -636,6 +638,7 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu/_internal:env",
         "//torch_tpu/_internal:testing",
+        "//torch_tpu/_internal/pallas",
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
