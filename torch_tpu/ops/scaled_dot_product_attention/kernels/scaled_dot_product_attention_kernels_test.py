@@ -114,26 +114,26 @@ class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
       num_q_heads = self.Hq
       batch_size = self.B
 
-    is_causal = True
-    if KERNEL_TYPE == "flash":
-      is_causal = False
+    is_causal_list = [True, False]
 
-    self._test_kernel(
-        functools.partial(
-            kernels.sdpa_forward_kernel_reference_jax,
-            is_causal=is_causal,
-        ),
-        functools.partial(
-            kernels.sdpa_forward_kernel_export_call,
-            is_causal=is_causal,
-            static_seq_len=static_seq_len,
-            static_head_dim=static_head_dim,
-            num_q_heads=num_q_heads,
-            batch_size=batch_size,
-            kernel_type=KERNEL_TYPE,
-        ),
-        kernel_type=KERNEL_TYPE,
-    )
+    for is_causal in is_causal_list:
+      logging.info("Running test_forward_export with is_causal=%s", is_causal)
+      self._test_kernel(
+          functools.partial(
+              kernels.sdpa_forward_kernel_reference_jax,
+              is_causal=is_causal,
+          ),
+          functools.partial(
+              kernels.sdpa_forward_kernel_export_call,
+              is_causal=is_causal,
+              static_seq_len=static_seq_len,
+              static_head_dim=static_head_dim,
+              num_q_heads=num_q_heads,
+              batch_size=batch_size,
+              kernel_type=KERNEL_TYPE,
+          ),
+          kernel_type=KERNEL_TYPE,
+      )
 
   def test_backward_torch_ref(self):
     grad_out = jax.random.normal(
@@ -165,30 +165,32 @@ class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
       num_q_heads = self.Hq
       batch_size = self.B
 
-    is_causal = True
+    is_causal_list = [True, False]
 
     grad_out = jax.random.normal(
         jax.random.PRNGKey(42), shape=(self.B, self.Hq, self.L, self.Ev)
     )
 
-    self._test_kernel(
-        functools.partial(
-            kernels.sdpa_backward_kernel_reference_jax,
-            grad_out,
-            is_causal=is_causal,
-        ),
-        functools.partial(
-            kernels.sdpa_backward_kernel_export_call,
-            grad_out,
-            is_causal=is_causal,
-            static_seq_len=static_seq_len,
-            static_head_dim=static_head_dim,
-            num_q_heads=num_q_heads,
-            batch_size=batch_size,
-            kernel_type=KERNEL_TYPE,
-        ),
-        kernel_type=KERNEL_TYPE,
-    )
+    for is_causal in is_causal_list:
+      logging.info("Running test_backward_export with is_causal=%s", is_causal)
+      self._test_kernel(
+          functools.partial(
+              kernels.sdpa_backward_kernel_reference_jax,
+              grad_out,
+              is_causal=is_causal,
+          ),
+          functools.partial(
+              kernels.sdpa_backward_kernel_export_call,
+              grad_out,
+              is_causal=is_causal,
+              static_seq_len=static_seq_len,
+              static_head_dim=static_head_dim,
+              num_q_heads=num_q_heads,
+              batch_size=batch_size,
+              kernel_type=KERNEL_TYPE,
+          ),
+          kernel_type=KERNEL_TYPE,
+      )
 
 
 if __name__ == "__main__":

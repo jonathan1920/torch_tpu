@@ -216,11 +216,10 @@ def sdpa_backward_kernel_reference_torch(
 
 
 #######################################################################
-def forward_kernel():
+def forward_kernel(is_causal=True):
   """Returns a kernel function for scaled dot product attention forward pass."""
   dropout_p = 0.0
   attn_mask = None
-  is_causal = True
   scale = None
   enable_gqa = True
 
@@ -236,8 +235,8 @@ def forward_kernel():
   return kernel_fn
 
 
-def backward_kernel():
-  kernel_fn = forward_kernel()
+def backward_kernel(is_causal=True):
+  kernel_fn = forward_kernel(is_causal=is_causal)
 
   def backward_kernel_fn(grad_out, q, k, v):
     return jax.vjp(kernel_fn, q, k, v)[1](grad_out)
@@ -266,7 +265,7 @@ def export_sdpa_forward_kernel(
         dtype=dtype,
     )
 
-  kernel_fn = forward_kernel()
+  kernel_fn = forward_kernel(is_causal=is_causal)
 
   (
       # pylint: disable=invalid-name
@@ -289,9 +288,9 @@ def export_sdpa_forward_kernel(
       ),
   )
 
-  q_shape = jax.ShapeDtypeStruct((B_sym, Hq_sym, L_sym, E_sym), jnp.float32)
-  k_shape = jax.ShapeDtypeStruct((B_sym, H_sym, S_sym, E_sym), jnp.float32)
-  v_shape = jax.ShapeDtypeStruct((B_sym, H_sym, S_sym, Ey_sym), jnp.float32)
+  q_shape = jax.ShapeDtypeStruct((B_sym, Hq_sym, L_sym, E_sym), dtype)
+  k_shape = jax.ShapeDtypeStruct((B_sym, H_sym, S_sym, E_sym), dtype)
+  v_shape = jax.ShapeDtypeStruct((B_sym, H_sym, S_sym, Ey_sym), dtype)
 
   f_export = generate_utils.export(kernel_fn)
 
@@ -322,7 +321,7 @@ def export_sdpa_backward_kernel(
         dtype=dtype,
     )
 
-  backward_kernel_fn = backward_kernel()
+  backward_kernel_fn = backward_kernel(is_causal=is_causal)
 
   (
       # pylint: disable=invalid-name
@@ -345,11 +344,11 @@ def export_sdpa_backward_kernel(
       ),
   )
 
-  q_shape = jax.ShapeDtypeStruct((B_sym, Hq_sym, L_sym, E_sym), jnp.float32)
-  k_shape = jax.ShapeDtypeStruct((B_sym, H_sym, S_sym, E_sym), jnp.float32)
-  v_shape = jax.ShapeDtypeStruct((B_sym, H_sym, S_sym, Ey_sym), jnp.float32)
+  q_shape = jax.ShapeDtypeStruct((B_sym, Hq_sym, L_sym, E_sym), dtype)
+  k_shape = jax.ShapeDtypeStruct((B_sym, H_sym, S_sym, E_sym), dtype)
+  v_shape = jax.ShapeDtypeStruct((B_sym, H_sym, S_sym, Ey_sym), dtype)
 
-  out_shape = jax.ShapeDtypeStruct((B_sym, Hq_sym, L_sym, Ey_sym), jnp.float32)
+  out_shape = jax.ShapeDtypeStruct((B_sym, Hq_sym, L_sym, Ey_sym), dtype)
 
   f_export = generate_utils.export(backward_kernel_fn)
 

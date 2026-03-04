@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_binary", "pytype_strict_library")
+load(":defs.bzl", "define_sdpa_kernel")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -47,6 +48,7 @@ pytype_strict_binary(
         "//shims/absl_py:app",
         "//shims/absl_py/flags",
         "//torch_tpu/_internal/pallas:pallas_kernel_generate_utils",
+        "@pypi//jax",
         "@pypi//numpy",
     ],
 )
@@ -62,60 +64,62 @@ torch_tpu_py_test(
     ],
 )
 
-genrule(
-    name = "scaled_dot_product_attention_forward_mlir",
-    outs = [
-        "scaled_dot_product_attention_forward_mlir_embed.h",
-        "scaled_dot_product_attention_forward_mlir_embed.cc",
-    ],
-    cmd = """
-        set -e
-        read -ra out_files <<< "$(OUTS)"
-        h_path=$${out_files[0]}
-        cc_path=$${out_files[1]}
-        $(location :scaled_dot_product_attention_generate) --forward \
-            --header $$h_path \
-            --implementation $$cc_path
-    """,
-    tools = [":scaled_dot_product_attention_generate"],
+# Forward Kernels
+define_sdpa_kernel(
+    name = "sdpa_fwd_f32_non_causal_mlir",
+    dtype = "float32",
+    forward = True,
+    is_causal = False,
 )
 
-torch_tpu_cc_library(
-    name = "scaled_dot_product_attention_forward_mlir_embed",
-    srcs = [
-        "scaled_dot_product_attention_forward_mlir_embed.cc",
-    ],
-    hdrs = [
-        "scaled_dot_product_attention_forward_mlir_embed.h",
-    ],
+define_sdpa_kernel(
+    name = "sdpa_fwd_f32_causal_mlir",
+    dtype = "float32",
+    forward = True,
+    is_causal = True,
 )
 
-genrule(
-    name = "scaled_dot_product_attention_backward_mlir",
-    outs = [
-        "scaled_dot_product_attention_backward_mlir_embed.h",
-        "scaled_dot_product_attention_backward_mlir_embed.cc",
-    ],
-    cmd = """
-        set -e
-        read -ra out_files <<< "$(OUTS)"
-        h_path=$${out_files[0]}
-        cc_path=$${out_files[1]}
-        $(location :scaled_dot_product_attention_generate) --backward \
-            --header $$h_path \
-            --implementation $$cc_path
-    """,
-    tools = [":scaled_dot_product_attention_generate"],
+define_sdpa_kernel(
+    name = "sdpa_fwd_bf16_non_causal_mlir",
+    dtype = "bfloat16",
+    forward = True,
+    is_causal = False,
 )
 
-torch_tpu_cc_library(
-    name = "scaled_dot_product_attention_backward_mlir_embed",
-    srcs = [
-        "scaled_dot_product_attention_backward_mlir_embed.cc",
-    ],
-    hdrs = [
-        "scaled_dot_product_attention_backward_mlir_embed.h",
-    ],
+define_sdpa_kernel(
+    name = "sdpa_fwd_bf16_causal_mlir",
+    dtype = "bfloat16",
+    forward = True,
+    is_causal = True,
+)
+
+# Backward Kernels
+define_sdpa_kernel(
+    name = "sdpa_bwd_f32_non_causal_mlir",
+    dtype = "float32",
+    forward = False,
+    is_causal = False,
+)
+
+define_sdpa_kernel(
+    name = "sdpa_bwd_f32_causal_mlir",
+    dtype = "float32",
+    forward = False,
+    is_causal = True,
+)
+
+define_sdpa_kernel(
+    name = "sdpa_bwd_bf16_non_causal_mlir",
+    dtype = "bfloat16",
+    forward = False,
+    is_causal = False,
+)
+
+define_sdpa_kernel(
+    name = "sdpa_bwd_bf16_causal_mlir",
+    dtype = "bfloat16",
+    forward = False,
+    is_causal = True,
 )
 
 torch_tpu_package_end()

@@ -14,6 +14,7 @@
 
 from absl import flags  # pylint: disable=unused-import  # required for VLOG
 from absl.testing import absltest
+from absl.testing import parameterized
 import torch
 from torch.nn import attention
 from torch_tpu import api
@@ -22,7 +23,7 @@ from torch_tpu._internal.utils import utils
 tpu_device = api.tpu_device
 
 
-class BackwardsTest(absltest.TestCase):
+class BackwardsTest(parameterized.TestCase):
 
   def test_sdpa_backward_math(self):
     torch.manual_seed(42)
@@ -88,19 +89,22 @@ class BackwardsTest(absltest.TestCase):
         atol=2.2e-3,
     )
 
-  def test_sdpa_backward_overrideable(self):
+  @parameterized.product(
+      dtype=[torch.float32, torch.bfloat16], is_causal=[True, False]
+  )
+  def test_sdpa_backward_overrideable(self, dtype, is_causal):
     device = api.tpu_device()
     cpu_device = torch.device('cpu')
 
     # create inputs
     query_cpu = torch.randn(
-        16, 4, 1024, 128, requires_grad=True, device=cpu_device
+        16, 4, 1024, 128, requires_grad=True, device=cpu_device, dtype=dtype
     )
     key_cpu = torch.randn(
-        16, 4, 1024, 128, requires_grad=True, device=cpu_device
+        16, 4, 1024, 128, requires_grad=True, device=cpu_device, dtype=dtype
     )
     value_cpu = torch.randn(
-        16, 4, 1024, 128, requires_grad=True, device=cpu_device
+        16, 4, 1024, 128, requires_grad=True, device=cpu_device, dtype=dtype
     )
     query_tpu = query_cpu.to(device).detach().requires_grad_(True)
     key_tpu = key_cpu.to(device).detach().requires_grad_(True)
@@ -110,13 +114,13 @@ class BackwardsTest(absltest.TestCase):
     # cpu (using math backend)
     with attention.sdpa_kernel(attention.SDPBackend.MATH):
       sdpa_cpu = torch.nn.functional.scaled_dot_product_attention(
-          query_cpu, key_cpu, value_cpu, is_causal=True
+          query_cpu, key_cpu, value_cpu, is_causal=is_causal
       )
 
     # tpu (using overrideable backend)
     with attention.sdpa_kernel(attention.SDPBackend.OVERRIDEABLE):
       sdpa_tpu = torch.nn.functional.scaled_dot_product_attention(
-          query_tpu, key_tpu, value_tpu, is_causal=True
+          query_tpu, key_tpu, value_tpu, is_causal=is_causal
       )
 
     # Create fake gradients

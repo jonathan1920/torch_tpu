@@ -18,6 +18,7 @@ from collections.abc import Sequence
 
 from absl import app
 from absl import flags
+import jax.numpy as jnp
 import numpy as np
 from torch_tpu._internal.pallas import pallas_kernel_generate_utils as kernel_utils
 from torch_tpu.ops.scaled_dot_product_attention.kernels import scaled_dot_product_attention_kernels as kernels
@@ -46,6 +47,13 @@ _IMPLEMENTATION = flags.DEFINE_string(
     "Implementation file to include in the generated kernel string.",
 )
 
+_KERNEL_NAME = flags.DEFINE_string(
+    "kernel_name",
+    None,
+    "Name of the kernel to generate. This will be used as the prefix for the"
+    " generated C++ variable.",
+)
+
 _KERNEL_TYPE = flags.DEFINE_string(
     "kernel_type",
     "flash",
@@ -58,6 +66,12 @@ _DTYPE = flags.DEFINE_string(
     "Dtype of the inputs/outputs.",
 )
 
+_IS_CAUSAL = flags.DEFINE_boolean(
+    "is_causal",
+    False,
+    "Whether the kernel is causal.",
+)
+
 
 #######################################################################
 def export_forward_kernel(header_path, implementation_path):
@@ -65,7 +79,7 @@ def export_forward_kernel(header_path, implementation_path):
   if _DTYPE.value == "float32":
     dtype = np.float32
   elif _DTYPE.value == "bfloat16":
-    dtype = np.bfloat16
+    dtype = jnp.bfloat16
   else:
     raise ValueError(f"Unsupported dtype: {_DTYPE.value}")
 
@@ -75,7 +89,7 @@ def export_forward_kernel(header_path, implementation_path):
       num_q_heads=None,
       batch_size=None,
       kernel_type=_KERNEL_TYPE.value,
-      is_causal=True,
+      is_causal=_IS_CAUSAL.value,
       dtype=dtype,
   )
   if header_path is not None and implementation_path is not None:
@@ -83,7 +97,7 @@ def export_forward_kernel(header_path, implementation_path):
         header_path,
         implementation_path,
         [(
-            "scaled_dot_product_attention_forward_mlir",
+            _KERNEL_NAME.value,
             # TODO(elliotenglish): change this to use mlir bytecode
             exported.mlir_module().encode(),
         )],
@@ -92,11 +106,10 @@ def export_forward_kernel(header_path, implementation_path):
 
 def export_backward_kernel(header_path, implementation_path):
   """Export a dynamic backward kernel."""
-
   if _DTYPE.value == "float32":
     dtype = np.float32
   elif _DTYPE.value == "bfloat16":
-    dtype = np.bfloat16
+    dtype = jnp.bfloat16
   else:
     raise ValueError(f"Unsupported dtype: {_DTYPE.value}")
 
@@ -106,7 +119,7 @@ def export_backward_kernel(header_path, implementation_path):
       num_q_heads=None,
       batch_size=None,
       kernel_type=_KERNEL_TYPE.value,
-      is_causal=True,
+      is_causal=_IS_CAUSAL.value,
       dtype=dtype,
   )
 
@@ -115,7 +128,7 @@ def export_backward_kernel(header_path, implementation_path):
         header_path,
         implementation_path,
         [(
-            "scaled_dot_product_attention_backward_mlir",
+            _KERNEL_NAME.value,
             # TODO(elliotenglish): change this to use mlir bytecode
             exported.mlir_module().encode(),
         )],
