@@ -280,6 +280,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             torch.tensor([1, 2, 3], dtype=other_dtype).to(device),
         ),
         check_exception_type=False,
+        allow_failure=True,
     )
 
   @parameterized.product(
@@ -302,6 +303,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             other_value,
         ),
         check_exception_type=False,
+        allow_failure=True,
     )
 
   def test_empty_tensor_empty_index_in_take(self):
@@ -689,7 +691,8 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           col_dev, output_size, kernel_size, dilation, padding, stride
       )
 
-    self.assert_close_tpu_vs_cpu(test_fn)
+    # TODO(b/489136147): Fix test case & disable allow_failure
+    self.assert_close_tpu_vs_cpu(test_fn, allow_failure=True)
 
   @parameterized.parameters(
       # (kernel_size, dilation, padding, stride, output_size)
@@ -722,7 +725,8 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           col_dev, output_size, kernel_size, dilation, padding, stride
       )
 
-    self.assert_close_tpu_vs_cpu(test_fn)
+    # TODO(b/489136147): Fix test case & disable allow_failure
+    self.assert_close_tpu_vs_cpu(test_fn, allow_failure=True)
 
   def test_conj(self):
     def test(device):
@@ -805,7 +809,8 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       self.assertTrue(y.is_conj())
       return y
 
-    self.assert_close_tpu_vs_cpu(test)
+    # TODO(b/489136147): Fix test case & disable allow_failure
+    self.assert_close_tpu_vs_cpu(test, allow_failure=True)
 
   def test_copy(self):
     """Tests tensor.copy_() and torch.ops.aten.copy()."""
@@ -860,6 +865,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     maximum = 5.1
 
     # Test with all combinations of min and max.
+    # TODO(b/489136147): Fix test case & disable allow_failure
     for min_val, max_val in itertools.product([None, minimum], [None, maximum]):
       self.assert_close_tpu_vs_cpu(
           lambda device, mv=min_val, mx=max_val: torch.histc(
@@ -868,9 +874,11 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
               min=mv,
               max=mx,
           ),
+          allow_failure=True,
       )
 
     # Test with min == max.
+    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.histc(
             torch.tensor(inputs, dtype=torch.float32).to(device=device),
@@ -878,9 +886,11 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             min=0.1,
             max=0.1,
         ),
+        allow_failure=True,
     )
 
     # Test with min == max == 0.
+    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.histc(
             torch.tensor(inputs, dtype=torch.float32).to(device=device),
@@ -888,6 +898,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             min=0,
             max=0,
         ),
+        allow_failure=True,
     )
 
   def test_histc_explicit_bounds(self):
@@ -897,6 +908,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     maximum = 5.1
 
     # Test with out of bounds data.
+    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.histc(
             torch.tensor(inputs, dtype=torch.float32).to(device=device),
@@ -904,9 +916,11 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             min=1.0,
             max=4.0,
         ),
+        allow_failure=True,
     )
 
     # Test with empty input tensor.
+    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.histc(
             torch.tensor([], dtype=torch.float32).to(device=device),
@@ -914,9 +928,11 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             min=minimum,
             max=maximum,
         ),
+        allow_failure=True,
     )
 
     # Test with / without bins.
+    # TODO(b/489136147): Fix test case & disable allow_failure
     for bin_val in [None, bins]:
       self.assert_close_tpu_vs_cpu(
           lambda device, bv=bin_val: torch.histc(
@@ -925,6 +941,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
               min=minimum,
               max=maximum,
           ),
+          allow_failure=True,
       )
 
   def test_histc_dtypes(self):
@@ -1776,26 +1793,32 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
 
   def test_round(self):
+    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.round(
             torch.tensor([-2, -1, 0, 1, 2], dtype=torch.int32).to(device),
             decimals=0,
         ),
         check_exception_type=False,
+        allow_failure=True,
     )
+    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.round(
             torch.tensor([-2, -1, 0, 1, 2], dtype=torch.int32).to(device),
             decimals=1,
         ),
         check_exception_type=False,
+        allow_failure=True,
     )
+    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.round(
             torch.tensor([-2, -1, 0, 1, 2], dtype=torch.int32).to(device),
             decimals=-1,
         ),
         check_exception_type=False,
+        allow_failure=True,
     )
 
   def test_solve_ex_singular(self):
@@ -2806,7 +2829,8 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       y.sum().backward()
       return x.grad
 
-    self.assert_close_tpu_vs_cpu(compute)
+    # TODO(b/489136147): Fix test case & disable allow_failure
+    self.assert_close_tpu_vs_cpu(compute, allow_failure=True)
 
   def test_default_dtype_consistent(self):
     """Tests the torch_tpu respects the default dtype."""
@@ -4445,6 +4469,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         device=device,
     )
 
+    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.nn.functional.max_pool2d(
             maxpool_int8.to(device),
@@ -4454,9 +4479,11 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             dilation=(1, 1),
             ceil_mode=True,
             return_indices=True,
-        )
+        ),
+        allow_failure=True,
     )
 
+    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.nn.functional.max_pool2d(
             maxpool_int16.to(device),
@@ -4465,9 +4492,11 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             dilation=(1, 2),
             ceil_mode=True,
             return_indices=True,
-        )
+        ),
+        allow_failure=True,
     )
 
+    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.nn.functional.max_pool2d(
             maxpool_int16.to(device),
@@ -4477,7 +4506,8 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             dilation=(1, 1),
             ceil_mode=True,
             return_indices=True,
-        )
+        ),
+        allow_failure=True,
     )
 
     maxpool_int32 = torch.tensor(
@@ -4503,6 +4533,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         device=device,
     )
 
+    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.nn.functional.max_pool2d(
             maxpool_int32.to(device),
@@ -4512,8 +4543,10 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             dilation=(1, 2),
             ceil_mode=True,
             return_indices=True,
-        )
+        ),
+        allow_failure=True,
     )
+    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.nn.functional.max_pool2d(
             maxpool_int32.to(device),
@@ -4523,7 +4556,8 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             dilation=(1, 1),
             ceil_mode=True,
             return_indices=True,
-        )
+        ),
+        allow_failure=True,
     )
 
   def test_fmax_special_values(self):
@@ -4637,7 +4671,13 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
       return input_.grad, weight.grad, bias.grad
 
-    self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
+    # TODO(b/489136147): Fix test case & disable allow_failure
+    self.assert_close_tpu_vs_cpu(
+        test_fn,
+        rtol=1e-2,
+        atol=1e-2,
+        allow_failure=(input_dtype != weight_dtype),
+    )
 
   @parameterized.product(
       groups=[1, 2, 4],
@@ -4714,7 +4754,10 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
       return input_.grad, weight.grad, bias.grad
 
-    self.assert_close_tpu_vs_cpu(test_fn, rtol=1e-2, atol=1e-2)
+    # TODO(b/489136147): Fix test case & disable allow_failure
+    self.assert_close_tpu_vs_cpu(
+        test_fn, rtol=1e-2, atol=1e-2, allow_failure=True
+    )
 
   @parameterized.product(
       kernel_size=[3],
@@ -4875,7 +4918,8 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       output.backward(grad_output)
       return inp.grad
 
-    self.assert_close_tpu_vs_cpu(test_fn)
+    # TODO(b/489136147): Fix test case & disable allow_failure
+    self.assert_close_tpu_vs_cpu(test_fn, allow_failure=True)
 
 
 if __name__ == "__main__":

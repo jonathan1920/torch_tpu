@@ -1302,6 +1302,8 @@ class TorchTpuTestBase(TestCase):
         preamble="Comparing TorchTPU to golden result",
     )
 
+  # TODO: Move the failure-handling logic to util.assert_close to avoid
+  # duplication.
   def assert_close_tpu_vs_cpu(
       self,
       tensor_from_device: Callable[[torch.device], torch.Tensor],
@@ -1309,6 +1311,7 @@ class TorchTpuTestBase(TestCase):
       check_value: CheckValueMode = CheckValueMode.STRICT,
       check_dtype: bool = True,
       check_exception_type: bool = True,
+      allow_failure: bool = False,
       rtol: float | None = None,
       atol: Tolerance | None = None,
   ) -> None:
@@ -1324,6 +1327,7 @@ class TorchTpuTestBase(TestCase):
       check_dtype: Check if the dtypes are the same.
       check_exception_type: If True, check that the exception type is the same
         on both devices.
+      allow_failure: If True, allow the CPU to throw an exception.
       rtol: The relative tolerance for checking the values.
       atol: The absolute tolerance for checking the values.
     """
@@ -1336,6 +1340,13 @@ class TorchTpuTestBase(TestCase):
       cpu_result = tensor_from_device("cpu")
     except Exception as e:  # pylint: disable=broad-except
       cpu_thrown = e
+    if cpu_thrown and not allow_failure:
+      self.fail(
+          "CPU threw an exception but allow_failure=False.\n"
+          f"Exception type: {cpu_thrown.__class__.__name__}\n"
+          f"Exception message: {cpu_thrown}"
+      )
+
     try:
       torch_tpu_result = to(tensor_from_device(torch_tpu_device()), "cpu")
     except Exception as e:  # pylint: disable=broad-except
