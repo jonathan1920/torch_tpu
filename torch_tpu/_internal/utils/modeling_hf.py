@@ -26,7 +26,7 @@ from transformers.models.qwen3_moe import modeling_qwen3_moe
 
 from rules_python.python.runfiles import runfiles
 
-BASE_MODEL_CONFIG_PATH = "examples/huggingface_transformers/model_configs"
+BASE_MODEL_CONFIG_PATH = "__main__/examples/huggingface_transformers/model_configs"
 
 
 @dataclasses.dataclass
