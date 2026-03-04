@@ -12,22 +12,60 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests inference and training with torch.compile across Pytorch Image models."""
+"""Tests with torch.compile across PyTorch Image Models."""
 
 import copy
+import dataclasses
 import random
+from typing import Any, Callable
 
 from absl.testing import absltest
 from absl.testing import parameterized
+from etils import epath
+from PIL import Image
 import torch
 from torch_tpu import api
 from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal.utils import utils
 from tests import module_registry
 
+_GOLDFISH_IMG_PATH = (
+    epath.resource_path("torch_tpu") / "tests/compile/data/goldfish.jpg"
+)
+
+
+@dataclasses.dataclass
+class ModelAndInputs:
+  cpu_model: torch.nn.Module
+  tpu_model: torch.nn.Module
+  compiled_tpu_model: torch.nn.Module
+  cpu_inputs: torch.Tensor
+  tpu_inputs: torch.Tensor
+  cpu_target: torch.Tensor | None
+  tpu_target: torch.Tensor | None
+
 
 def _get_logits(outputs):
   return outputs[0] if isinstance(outputs, (list, tuple)) else outputs
+
+
+def _calculate_rmse(
+    actual: torch.Tensor,
+    expected: torch.Tensor,
+) -> float:
+  """Calculates Root Mean Square Error."""
+  return torch.sqrt(torch.mean((actual - expected) ** 2)).item()
+
+
+def _load_real_image(
+    img_path: epath.Path,
+    transform: Callable[[Any], torch.Tensor],
+    device: torch.device,
+) -> torch.Tensor:
+  """Load and preprocess test image for timm model."""
+  with img_path.open("rb") as f:
+    img = Image.open(f).convert("RGB")
+    return transform(img).to(device)
 
 
 def _train_step(
@@ -78,12 +116,23 @@ class ModelCoverageTimmTest(parameterized.TestCase):
     torch.manual_seed(42)
 
   def _create_model_and_inputs(
-      self, provider: str, module_name: str, *, is_training=False
-  ):
+      self,
+      provider: str,
+      module_name: str,
+      *,
+      is_training: bool = False,
+      load_weights: bool = False,
+      use_real_image: bool = False,
+      img_path: epath.Path | None = None,
+  ) -> ModelAndInputs:
+    if use_real_image and img_path is None:
+      raise ValueError("img_path must be provided when use_real_image is True.")
+
     module_spec = self.module_registry.get_module_spec(
-        provider, module_name, load_weights=False
+        provider, module_name, load_weights=load_weights
     )
     cpu_model = module_spec.module_factory()
+
     if is_training:
       cpu_model.train()
     else:
@@ -91,8 +140,17 @@ class ModelCoverageTimmTest(parameterized.TestCase):
 
     tpu_model = copy.deepcopy(cpu_model).to(self.tpu_device)
 
-    args, _ = module_spec.sample_inputs_factory()
-    cpu_inputs = args[0]
+    preprocessor = module_spec.preprocessor_factory()
+    if use_real_image:
+      if not preprocessor:
+        raise ValueError(
+            f"No preprocessor available for {module_name} to use real image."
+        )
+      cpu_inputs = _load_real_image(img_path, preprocessor, device="cpu")
+    else:  # Default to random inputs
+      args, _ = module_spec.sample_inputs_factory()
+      cpu_inputs = args[0]
+
     tpu_inputs = cpu_inputs.to(self.tpu_device)
 
     cpu_target = None
@@ -120,14 +178,14 @@ class ModelCoverageTimmTest(parameterized.TestCase):
         backend=torch_tpu_compile.TpuBackend(),
     )
 
-    return (
-        cpu_model,
-        tpu_model,
-        compiled_tpu_model,
-        cpu_inputs,
-        tpu_inputs,
-        cpu_target,
-        tpu_target,
+    return ModelAndInputs(
+        cpu_model=cpu_model,
+        tpu_model=tpu_model,
+        compiled_tpu_model=compiled_tpu_model,
+        cpu_inputs=cpu_inputs,
+        tpu_inputs=tpu_inputs,
+        cpu_target=cpu_target,
+        tpu_target=tpu_target,
     )
 
   @parameterized.named_parameters(
@@ -160,23 +218,29 @@ class ModelCoverageTimmTest(parameterized.TestCase):
       rtol: float | None = None,
       atol: float | None = None,
   ) -> None:
-    (
-        cpu_model,
-        tpu_model,
-        compiled_tpu_model,
-        cpu_inputs,
-        tpu_inputs,
-        cpu_target,
-        tpu_target,
-    ) = self._create_model_and_inputs(provider, module_name, is_training=True)
+    model_and_inputs = self._create_model_and_inputs(
+        provider, module_name, is_training=True
+    )
 
-    cpu_optimizer = torch.optim.SGD(cpu_model.parameters(), lr=0.01)
-    tpu_optimizer = torch.optim.SGD(tpu_model.parameters(), lr=0.01)
+    cpu_optimizer = torch.optim.SGD(
+        model_and_inputs.cpu_model.parameters(), lr=0.01
+    )
+    tpu_optimizer = torch.optim.SGD(
+        model_and_inputs.tpu_model.parameters(), lr=0.01
+    )
 
     tpu_loss = _train_step(
-        compiled_tpu_model, tpu_optimizer, tpu_inputs, tpu_target
+        model_and_inputs.compiled_tpu_model,
+        tpu_optimizer,
+        model_and_inputs.tpu_inputs,
+        model_and_inputs.tpu_target,
     )
-    cpu_loss = _train_step(cpu_model, cpu_optimizer, cpu_inputs, cpu_target)
+    cpu_loss = _train_step(
+        model_and_inputs.cpu_model,
+        cpu_optimizer,
+        model_and_inputs.cpu_inputs,
+        model_and_inputs.cpu_target,
+    )
 
     utils.assert_close(
         actual=tpu_loss,
@@ -217,12 +281,12 @@ class ModelCoverageTimmTest(parameterized.TestCase):
       rtol: float | None = None,
       atol: float | None = None,
   ) -> None:
-    cpu_model, _, compiled_tpu_model, cpu_inputs, tpu_inputs, _, _ = (
-        self._create_model_and_inputs(provider, module_name, is_training=False)
+    model_and_inputs = self._create_model_and_inputs(
+        provider, module_name, is_training=False
     )
 
-    cpu_out = cpu_model(cpu_inputs)
-    tpu_out = compiled_tpu_model(tpu_inputs)
+    cpu_out = model_and_inputs.cpu_model(model_and_inputs.cpu_inputs)
+    tpu_out = model_and_inputs.compiled_tpu_model(model_and_inputs.tpu_inputs)
 
     cpu_logits = _get_logits(cpu_out)
     tpu_logits = _get_logits(tpu_out)
@@ -235,6 +299,93 @@ class ModelCoverageTimmTest(parameterized.TestCase):
         preamble=f"Timm Model {module_name} TPU vs CPU Inference Logits",
         check_value=utils.CheckValueMode.LOOSE,
     )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="convnext_small_e2e",
+          provider="timm",
+          module_name="convnext_small.in12k_ft_in1k",
+          expected_class=1,  # Goldfish
+          img_path=_GOLDFISH_IMG_PATH,
+          rtol=1e-3,
+          atol=4e-2,
+          rmse_tol=1.1e-2,
+          conf_tol=3e-3,
+      ),
+  )
+  def test_timm_inference_e2e(
+      self,
+      provider: str,
+      module_name: str,
+      expected_class: int | None = None,
+      img_path: epath.Path | None = None,
+      rtol: float | None = None,
+      atol: float | None = None,
+      rmse_tol: float | None = None,
+      conf_tol: float | None = None,
+  ) -> None:
+    model_and_inputs = self._create_model_and_inputs(
+        provider,
+        module_name,
+        is_training=False,
+        load_weights=True,
+        use_real_image=True,
+        img_path=img_path,
+    )
+
+    cpu_out = model_and_inputs.cpu_model(model_and_inputs.cpu_inputs)
+    tpu_out = model_and_inputs.compiled_tpu_model(model_and_inputs.tpu_inputs)
+
+    cpu_logits = _get_logits(cpu_out)
+    tpu_logits = _get_logits(tpu_out)
+
+    with self.subTest("logits_check"):
+      utils.assert_close(
+          actual=tpu_logits,
+          expected=cpu_logits,
+          rtol=rtol,
+          atol=atol,
+          preamble=f"Model {module_name}: Logits Mismatch",
+          check_value=utils.CheckValueMode.LOOSE,
+      )
+
+    with self.subTest("rmse_check"):
+      rmse = _calculate_rmse(tpu_logits.cpu(), cpu_logits)
+      self.assertLess(
+          rmse,
+          rmse_tol,
+          f"Model {module_name}: RMSE={rmse:.6f} exceeded tolerance {rmse_tol}",
+      )
+
+    with self.subTest("prediction_accuracy_check"):
+      cpu_pred = cpu_logits.argmax(dim=-1).item()
+      tpu_pred = tpu_logits.argmax(dim=-1).item()
+      self.assertEqual(
+          cpu_pred,
+          tpu_pred,
+          f"Model {module_name}: TPU prediction ({tpu_pred}) does not match"
+          f" CPU prediction ({cpu_pred}).",
+      )
+      if expected_class is not None:
+        self.assertEqual(
+            tpu_pred,
+            expected_class,
+            f"Model {module_name}: Expected class {expected_class},"
+            f" got TPU predicted class {tpu_pred}",
+        )
+
+    with self.subTest("confidence_score_check"):
+      cpu_conf = torch.nn.functional.softmax(cpu_logits, dim=-1).max().item()
+      tpu_conf = torch.nn.functional.softmax(tpu_logits, dim=-1).max().item()
+      self.assertAlmostEqual(
+          tpu_conf,
+          cpu_conf,
+          delta=conf_tol,
+          msg=(
+              f"Model {module_name}: CPU confidence={cpu_conf:.6f},"
+              f" TPU confidence={tpu_conf:.6f}"
+          ),
+      )
 
 
 if __name__ == "__main__":

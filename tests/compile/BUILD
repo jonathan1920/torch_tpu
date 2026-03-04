@@ -206,6 +206,7 @@ torch_tpu_py_test(
     name = "model_coverage_timm_test",
     timeout = "long",
     srcs = ["model_coverage_timm_test.py"],
+    data = ["data/goldfish.jpg"],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     shard_count = 6,
     tags = [
@@ -218,11 +219,13 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
+        "//shims/etils/epath",
         "//shims/torch:pytorch",
         "//tests:module_registry",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
+        "@pypi//pillow",
     ],
 )
 

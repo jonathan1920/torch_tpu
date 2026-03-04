@@ -22,8 +22,6 @@ underlying providers (Torchvision, TIMM, and Transformers). It ensures that:
     successfully with their generated sample inputs.
 """
 
-import io
-
 from absl.testing import absltest
 from etils import epath
 from PIL import Image
@@ -128,7 +126,8 @@ class ModuleRegistryTest(absltest.TestCase):
         "timm", "convnext_small.in12k_ft_in1k"
     )
     preprocessor = module_spec.preprocessor_factory()
-    img = Image.open(io.BytesIO(_GOLDFISH_IMG_PATH.read_bytes())).convert("RGB")
+    with _GOLDFISH_IMG_PATH.open("rb") as f:
+      img = Image.open(f).convert("RGB")
     image_tensor = preprocessor(img)
     self.assertEqual(image_tensor.shape, (1, 3, 224, 224))
 
