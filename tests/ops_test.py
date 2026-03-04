@@ -436,6 +436,11 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 1e-3, "atol": 1e-3},
         torch.bfloat16: {"rtol": 1.3e-1, "atol": 4e-3},
     },
+    "nn.functional.hardswish": {
+        torch.float32: {"rtol": 1e-4, "atol": 1e-4},
+        torch.float16: {"rtol": 1e-3, "atol": 1e-2},
+        torch.bfloat16: {"rtol": 1e-2, "atol": 5e-2},
+    },
     "nn.functional.mse_loss": {
         torch.bfloat16: {"rtol": 9.1e-3, "atol": 1.0},
         torch.float16: {"rtol": 3e-3, "atol": 1.3e-1},
@@ -1015,6 +1020,10 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.bfloat16: {"rtol": 6e-1, "atol": 3e-2},
                 torch.float32: {"rtol": 1.7, "atol": 3e-1},
                 torch.float64: {"rtol": 1.7, "atol": 5e-2},
+            },
+            "nn.functional.hardswish": {
+                torch.bfloat16: {"rtol": 2e-2, "atol": 1e-2},
+                torch.float16: {"rtol": 6e-3, "atol": 1e-3},
             },
             "reciprocal": {
                 torch.float32: {"rtol": 1.9e-7, "atol": 1.3e-4},
@@ -2830,6 +2839,12 @@ class TestOps(TorchTpuTestBase):
         "nn.functional.hardsigmoid",
         check_value=CheckValueMode.STRICT,
         exclude_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
+    )
+
+  def test_nn_functional_hardswish(self):
+    self.do_test_op(
+        "nn.functional.hardswish",
+        exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
     )
 
   def test_nn_functional_hardtanh(self):
