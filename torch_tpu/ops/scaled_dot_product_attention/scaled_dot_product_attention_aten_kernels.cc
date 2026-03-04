@@ -62,7 +62,7 @@
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_fwd_f32_causal_mlir_embed.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_fwd_f32_non_causal_mlir_embed.h"
 
-ABSL_FLAG(bool, torch_tpu_internal_sdpa_use_custom_kernel, true,
+ABSL_FLAG(bool, torch_tpu_internal_sdpa_use_custom_kernel, false,
           "Use a custom kernel for scaled dot product attention.");
 
 namespace torch_tpu {
@@ -93,6 +93,13 @@ mlir::MlirOp unflatten_batch_dims(mlir::MlirOp mlir_op,
   const mlir::RankedTensorType type =
       GetTensorTypeOrDie(mlir_op_with_target_dims);
   return mlir::stablehlo::Reshape(mlir_op, type.getShape());
+}
+
+int get_batch_size(const at::Tensor& tensor) {
+  int batch_size = 1;
+  for (int i = 0; i < tensor.ndimension() - 3; i++)
+    batch_size *= tensor.size(i);
+  return batch_size;
 }
 
 absl::StatusOr<std::string_view> GetSdpaForwardKernel(at::ScalarType dtype,
@@ -347,6 +354,7 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
         // block_size 512 and we don't want to generate a new kernel for every
         // possible sequence length and head dim.
         const bool is_supported_flash_attention_shape =
+            query.ndimension() >= 4 && get_batch_size(query) >= 4 &&
             query.size(query.ndimension() - 2) % config_block_size == 0 &&
             key.size(key.ndimension() - 2) % config_block_size == 0 &&
             value.size(value.ndimension() - 2) % config_block_size == 0 &&
@@ -360,17 +368,15 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
               query.scalar_type() == at::ScalarType::BFloat16) &&
              query.ndimension() == key.ndimension() &&
              query.ndimension() == value.ndimension() &&
-             query.ndimension() >= 3 && is_supported_flash_attention_shape);
+             is_supported_flash_attention_shape);
 
         if (can_use_overrideable) {
-          if (ctx.userEnabledFlashSDP()) {
+          if (ctx.userEnabledOverrideableSDP()) {
+            return static_cast<int64_t>(at::SDPBackend::overrideable);
+          } else if (ctx.userEnabledFlashSDP()) {
             return static_cast<int64_t>(at::SDPBackend::flash_attention);
           } else if (ctx.userEnabledMemEfficientSDP()) {
             return static_cast<int64_t>(at::SDPBackend::efficient_attention);
-          } else if (ctx.userEnabledOverrideableSDP()) {
-            return static_cast<int64_t>(at::SDPBackend::overrideable);
-          } else {
-            return static_cast<int64_t>(at::SDPBackend::flash_attention);
           }
         }
 
@@ -459,19 +465,19 @@ AtenScaledDotProductFlashAttention(const at::Tensor& query,
                                    const at::Tensor& value, double dropout_p,
                                    bool is_causal, bool return_debug_mask,
                                    std::optional<double> scale) {
-  TT_KERNEL(
-      OpName::kScaledDotProductFlashAttention, _,
-      (query, key, value, dropout_p, is_causal, return_debug_mask, scale), {
-        // Unused arguments: dropout_p, return_debug_mask, scale.
-        TT_ASSIGN_OR_THROW(auto out, ScaledDotProductFusedAttentionImpl(
-                                         query, key, value, is_causal));
+  TT_KERNEL(OpName::kScaledDotProductFlashAttention, _,
+            (query, key, value, dropout_p, is_causal, return_debug_mask, scale),
+            {
+              // Unused arguments: dropout_p, return_debug_mask, scale.
+              TT_ASSIGN_OR_THROW(auto out, ScaledDotProductFusedAttentionImpl(
+                                               query, key, value, is_causal));
 
-        // Unused return values: logsumexp, cum_seq_q, cum_seq_k, max_q,
-        // max_k, rng_state, unused, debug_attn_mask.
-        return std::make_tuple(out, at::Tensor(), at::Tensor(), at::Tensor(),
-                               c10::SymInt(0), c10::SymInt(0), at::Tensor(),
-                               at::Tensor(), at::Tensor());
-      });
+              // Unused return values: logsumexp, cum_seq_q, cum_seq_k, max_q,
+              // max_k, rng_state, unused, debug_attn_mask.
+              return std::make_tuple(
+                  out, at::Tensor(), at::Tensor(), at::Tensor(), c10::SymInt(0),
+                  c10::SymInt(0), at::Tensor(), at::Tensor(), at::Tensor());
+            });
 }
 
 }  // namespace torch_tpu
