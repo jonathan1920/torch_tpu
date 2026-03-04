@@ -14,18 +14,16 @@
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
     default_applicable_licenses = ["//:license"],
     default_visibility = ["//:__subpackages__"],
 )
 
-torch_tpu_py_test(
-    name = "hello_world_distributed_test",
-    srcs = ["hello_world_distributed_test.py"],
-    tags = [
-        "notap",  # NOTAP_OK=this is a manual test
-    ],
+pytype_strict_library(
+    name = "hello_world_distributed",
+    srcs = ["hello_world_distributed.py"],
     deps = [
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
@@ -34,31 +32,29 @@ torch_tpu_py_test(
     ],
 )
 
-build_test(
-    name = "build_test",
-    targets = [
-        ":hello_world_distributed_test",
-        ":run_script",
-    ],
-)
-
 torch_tpu_py_test(
-    name = "run_script",
-    srcs = ["run_script.py"],
+    name = "hello_world_distributed_run_script",
+    srcs = ["hello_world_distributed_run_script.py"],
     env = {
         "WORLD_SIZE": "8",
     },
     tags = [
+        "manual",
         "notap",  # NOTAP_OK=this is a manual test
         "requires-net:external",
         "requires-tpu-v5lite:8",
     ],
     deps = [
-        ":hello_world_distributed_test",
+        ":hello_world_distributed",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/shims/g3_multiprocessing",
     ],
+)
+
+build_test(
+    name = "hello_world_distributed_run_script_build_test",
+    targets = [":hello_world_distributed_run_script"],
 )
 
 torch_tpu_package_end()

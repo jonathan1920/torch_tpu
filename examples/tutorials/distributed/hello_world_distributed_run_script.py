@@ -12,19 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A wrapper to run the tensor parallel worker via g3_distributed.torchrun.
-
-Command to run:
-```
-bazel test //examples/tutorials/distributed:run_script
-```
-"""
+"""A wrapper to run the tensor parallel worker via g3_distributed.torchrun."""
 
 import os
 # from torch.google import distributed as g3_distributed
 import torch.multiprocessing as mp
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
-from examples.tutorials.distributed import hello_world_distributed_test
+from examples.tutorials.distributed import hello_world_distributed
 from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
 
 
@@ -32,7 +26,7 @@ def main(_):
   singlehost_wrapper.prepare_tpu_environment()
   world_size = int(os.environ["WORLD_SIZE"])
   dist.torchrun(
-      hello_world_distributed_test.run_all_reduce,
+      hello_world_distributed.run_all_reduce,
       nproc_per_node=world_size,
   )()
 
