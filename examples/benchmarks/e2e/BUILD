@@ -149,7 +149,7 @@ torch_tpu_py_test(
         ":quality_utils",
         "//examples/benchmarks/quality_utils/metrics:data_loader",
         "//examples/benchmarks/quality_utils/metrics:perplexity_metric",
-        "//examples/llama3/distributed_meta_llama3:meta_llama3_quality_benchmark",
+        "//examples/benchmarks/quality_utils/models:meta_llama3_quality_benchmark",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu/shims/g3_multiprocessing",

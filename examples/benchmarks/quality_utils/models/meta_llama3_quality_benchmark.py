@@ -1,0 +1,126 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Llama3 quality benchmark model."""
+
+from fairscale.nn.model_parallel import initialize as fairscale_init
+from llama_models.llama3 import generation
+import torch
+from torch_tpu._internal.utils import device_utils
+from examples.benchmarks.quality_utils import quality_benchmark_model
+from examples.benchmarks.quality_utils.models import configs
+
+
+RANDOM_SEED = 4242
+
+
+class DistributedMetaLlama3QualityBenchmarkModel(
+    quality_benchmark_model.QualityBenchmarkModel
+):
+  """Llama3 quality benchmark model.
+
+  This model requires a minimum of 8 devices to run.
+
+  Attributes:
+    _generator: The Llama generator.
+    _model: The Llama model.
+  """
+
+  _generator: generation.Llama
+  _model: torch.nn.Module
+
+  def __init__(
+      self, device: str, world_size: int, model_config: str, max_seq_len: int
+  ):
+    """Creates a QualityBenchmarkModel to enable future model initialization.
+
+    Args:
+      device: The device to initialize the model on.
+      world_size: The world size of the model. Must be 8.
+      model_config: The config of the model to initialize.
+      max_seq_len: The maximum sequence length of the model.
+    """
+    if world_size != 8:
+      raise ValueError(
+          "World size must be exactly 8 given checkpoints used. Got"
+          f" {world_size}."
+      )
+
+    super().__init__()
+    self._device = device
+    self._world_size = world_size
+    self._model_config = model_config
+    self._max_seq_len = max_seq_len
+
+  def initialize(self) -> None:
+    """Initializes the model.
+
+    The model is loaded from a pre-trained checkpoint based on the model
+    config.
+    """
+    with torch.device(self._device):
+      torch.manual_seed(RANDOM_SEED)
+      if not fairscale_init.model_parallel_is_initialized():
+        fairscale_init.initialize_model_parallel(self._world_size)
+
+      torch.set_default_dtype(torch.bfloat16)
+
+    with torch.inference_mode():
+      self._generator = generation.Llama.build(
+          ckpt_dir=configs.checkpoint_dir[self._model_config],
+          max_seq_len=self._max_seq_len,
+          max_batch_size=1,
+          world_size=self._world_size,
+          device=self._device,
+      )
+    self._model = self._generator.model
+
+  def get_model(self) -> torch.nn.Module:
+    """Gets the model from a pre-trained checkpoint."""
+    return self._model
+
+  def _compile_model_once(self) -> None:
+    """Compiles the model for the target device."""
+    self._model = device_utils.torch_compile(self._model, self._device)
+
+  def format(self, text: str) -> quality_benchmark_model.FormattedInput:
+    """Encodes text for meta llama3 model.
+
+    Based on the implementation in llama3/generation.py to generate text.
+
+    Args:
+      text: The text to encode.
+
+    Returns:
+      The encoded text as a tokens tensor with padding and the length of the
+      unpadded tokens.
+    """
+    # Encode text to prompt_tokens.
+    raw_tokens = self._generator.formatter.encode_content(text).tokens
+    raw_token_length = len(raw_tokens)
+
+    # Create buffer for pad for model interaction.
+    total_len = self._generator.model.params.max_seq_len + 1
+
+    # Model expects a batch dimension, but we only have one sample.
+    tokens = torch.full(
+        (1, total_len), self._generator.tokenizer.pad_id, dtype=torch.long
+    )
+
+    tokens_len = min(raw_token_length, total_len)
+    tokens[0, :tokens_len] = torch.tensor(
+        raw_tokens[:tokens_len], dtype=torch.long
+    )
+
+    return quality_benchmark_model.FormattedInput(tokens, tokens_len)
