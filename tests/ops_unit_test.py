@@ -4902,13 +4902,13 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     padding = 1
 
     def test_fn(device):
-      inp = input_val.to(device).requires_grad_(True)
+      inp = input_val.clone().to(device).requires_grad_(True)
       output = torch.nn.functional.avg_pool3d(
           inp,
           kernel_size=kernel_size,
           stride=stride,
           padding=padding,
-          divisor_override=8.0,
+          divisor_override=8,
       )
 
       self.assertEqual(output.shape, (1, 1, 1, 1, 1))
@@ -4917,8 +4917,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       output.backward(grad_output)
       return inp.grad
 
-    # TODO(b/489136147): Fix test case & disable allow_failure
-    self.assert_close_tpu_vs_cpu(test_fn, allow_failure=True)
+    self.assert_close_tpu_vs_cpu(test_fn)
 
 
 if __name__ == "__main__":
