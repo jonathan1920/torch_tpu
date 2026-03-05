@@ -398,6 +398,77 @@ class ModelCoverageTimmTest(parameterized.TestCase):
           ),
       )
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="vit_small_patch8_224_e2e",
+          provider="timm",
+          module_name="vit_small_patch8_224.dino",
+          img_path=_GOLDFISH_IMG_PATH,
+          rtol=1e-3,
+          atol=9e-2,
+          rmse_tol=1.7e-2,
+          similarity_threshold=0.999992,
+      ),
+  )
+  def test_timm_feature_extraction_inference_e2e(
+      self,
+      provider: str,
+      module_name: str,
+      img_path: epath.Path | None = None,
+      rtol: float | None = None,
+      atol: float | None = None,
+      rmse_tol: float | None = 1e-3,
+      similarity_threshold: float | None = 0.99,
+  ) -> None:
+    model_and_inputs = self._create_model_and_inputs(
+        provider,
+        module_name,
+        is_training=False,
+        load_weights=True,
+        use_real_image=True,
+        img_path=img_path,
+    )
+
+    cpu_out = model_and_inputs.cpu_model(model_and_inputs.cpu_inputs)
+    tpu_out = model_and_inputs.compiled_tpu_model(model_and_inputs.tpu_inputs)
+
+    cpu_logits = _get_logits(cpu_out)
+    tpu_logits = _get_logits(tpu_out)
+
+    with self.subTest("logits_check"):
+      utils.assert_close(
+          actual=tpu_logits,
+          expected=cpu_logits,
+          rtol=rtol,
+          atol=atol,
+          preamble=f"Model {module_name}: Logits Mismatch",
+          check_value=utils.CheckValueMode.LOOSE,
+      )
+
+    with self.subTest("rmse_check"):
+      rmse = _calculate_rmse(tpu_logits.cpu(), cpu_logits)
+      self.assertLess(
+          rmse,
+          rmse_tol,
+          f"Model {module_name}: RMSE={rmse:.6f} exceeded tolerance {rmse_tol}",
+      )
+
+    with self.subTest("shape_check"):
+      self.assertEqual(tpu_logits.shape, cpu_logits.shape)
+
+    with self.subTest(name="semantic_similarity"):
+      tpu_feat = tpu_logits.cpu()
+      cpu_feat = cpu_logits
+
+      cos_sim = torch.nn.functional.cosine_similarity(tpu_feat, cpu_feat).item()
+      print(f"[{module_name}] TPU vs CPU Cosine Similarity: {cos_sim:.6f}")
+      self.assertGreater(
+          cos_sim,
+          similarity_threshold,
+          f"Model {module_name}: Cosine similarity {cos_sim:.6f} below"
+          f" threshold {similarity_threshold}",
+      )
+
 
 if __name__ == "__main__":
   absltest.main()
