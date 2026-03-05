@@ -109,11 +109,13 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def _check_and_adjust_test_tags(name, notap, nopresubmit, nolocal, tags):
+def _check_and_adjust_test_tags(name, size, timeout, notap, nopresubmit, nolocal, tags):
     """Validates the test tags.
 
     Args:
         name: The name of the test.
+        size: The size of the test.
+        timeout: The timeout of the test.
         notap: If given as a string, the test will be excluded from TAP, the string will be used
             as the reason, and a build_test named `<name>_build_test` will be added for the test
             to ensure it is buildable.
@@ -142,6 +144,9 @@ def _check_and_adjust_test_tags(name, notap, nopresubmit, nolocal, tags):
 
         # Skip in local runs as it's unreasonable to ask people to keep a notap test green.
         skip_local = True
+    if (size == "enormous" or timeout == "eternal") and not notap:
+        fail("Tests with size 'enormous' or timeout 'eternal' are always skipped by TAP. " +
+             "Please add a 'notap' argument to torch_tpu_*_test() to make the fact explicit.")
 
     # Add a build_test for notap test.
     if "notap" in tags:  # NOTAP_OK=for implementing notap logic
@@ -184,6 +189,8 @@ def _check_and_adjust_test_tags(name, notap, nopresubmit, nolocal, tags):
 
 def torch_tpu_cc_test(
         name,
+        size = None,
+        timeout = None,
         copts = None,
         features = None,
         args = None,
@@ -201,6 +208,8 @@ def torch_tpu_cc_test(
 
     Args:
         name: The name of the test.
+        size: The size of the test.
+        timeout: The timeout of the test.
         copts: The C/C++ compiler options to use.
         features: The blaze features to enable/disable.
         args: The arguments to pass to the test.
@@ -236,6 +245,8 @@ def torch_tpu_cc_test(
 
     _check_and_adjust_test_tags(
         name = name,
+        size = size,
+        timeout = timeout,
         notap = notap,
         nopresubmit = nopresubmit,
         nolocal = nolocal,
@@ -243,6 +254,8 @@ def torch_tpu_cc_test(
     )
     cc_test(
         name = name,
+        size = size,
+        timeout = timeout,
         copts = copts,
         args = args,
         features = features,
@@ -263,6 +276,8 @@ def torch_tpu_py_test(
         shuffle_tests = True,
         extra_pywrap_deps = ["//torch_tpu/common:pywrap_torch_tpu"],
         strict = False,
+        size = None,
+        timeout = None,
         notap = None,
         nopresubmit = None,
         nolocal = None,
@@ -278,6 +293,8 @@ def torch_tpu_py_test(
         shuffle_tests: Whether to shuffle the test cases.
         extra_pywrap_deps: Additional pywrap dependencies to add to the test.
         strict: Whether to use pytype.
+        size: The size of the test.
+        timeout: The timeout of the test.
         notap: If given as a string, the test will be excluded from TAP, the string will be used
             as the reason, and a build_test named `<name>_build_test` will be added for the test
             to ensure it is buildable.
@@ -300,6 +317,8 @@ def torch_tpu_py_test(
     tags = tags or []
     _check_and_adjust_test_tags(
         name = name,
+        size = size,
+        timeout = timeout,
         notap = notap,
         nopresubmit = nopresubmit,
         nolocal = nolocal,
@@ -354,6 +373,8 @@ def torch_tpu_py_test(
     rule(
         name = name,
         args = args,
+        size = size,
+        timeout = timeout,
         deps = all_deps,
         env = test_env,
         tags = tags,
