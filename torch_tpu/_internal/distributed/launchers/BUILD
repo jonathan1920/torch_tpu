@@ -34,9 +34,9 @@ torch_tpu_py_test(
     name = "singlehost_wrapper_v7x_test",
     srcs = ["singlehost_wrapper_test.py"],
     main = "singlehost_wrapper_test.py",
+    nopresubmit = "long Forge queue",
     strict = True,
     tags = [
-        "nofastbuild",
         "requires-tpu-v7x:4",  # Must use for testing v7x.
     ],
     deps = [

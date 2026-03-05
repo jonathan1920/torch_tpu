@@ -109,7 +109,7 @@ torch_tpu_py_test(
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
         "requires-tpu-v7x",
-        "nofastbuild",
+        "nofastbuild",  # Benchmark.
         # Needed for getting xprof links
         "requires-net:external",
     ],
@@ -139,7 +139,6 @@ torch_tpu_py_test(
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
         "requires-tpu-v7x",
-        "nofastbuild",
         # Needed for getting xprof links
         "requires-net:external",
     ],
@@ -169,7 +168,6 @@ torch_tpu_py_test(
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
         "requires-tpu-v7x",
-        "nofastbuild",
         # Needed for getting xprof links
         "requires-net:external",
     ],
@@ -199,7 +197,6 @@ torch_tpu_py_test(
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
         "requires-gpu-sm100-full-only",
-        "nofastbuild",
         # Needed for getting xprof links
         "requires-net:external",
     ],
@@ -231,7 +228,6 @@ torch_tpu_py_test(
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
         "requires-tpu-v7x:4",
-        "nofastbuild",
         # Needed for getting xprof links
         "requires-net:external",
     ],
@@ -256,7 +252,7 @@ torch_tpu_py_test(
     tags = [
         "cpu:4",  # For CUDA, the only choices are 1 or 4.
         "manual",  # Run only manually since it needs --config=cuda
-        "nofastbuild",
+        "nofastbuild",  # Benchmark.
         "requires-accel-hbm",
         "requires-gpu-sm100-full-only",
         "requires-net:external",

@@ -23,9 +23,9 @@ package(
 torch_tpu_py_test(
     name = "simple_ops_nn_example",
     srcs = ["simple_ops_nn_example.py"],
+    nopresubmit = "slow example",
     shuffle_tests = False,
     tags = [
-        "nofastbuild",
         "oss_ready_tpu",
         "requires-tpu-v5lite",
     ],

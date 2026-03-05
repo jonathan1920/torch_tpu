@@ -130,7 +130,7 @@ torch_tpu_py_test(
     tags = [
         "cpu:1",  # Ensure reproducible performance on Forge.
         "manual",  # Exclude from wildcard test patterns. Still runs on TAP.
-        "nofastbuild",  # Run this in opt build mode only.
+        "nofastbuild",  # Measures performance.
         "oss_ready_tpu",
         "requires-tpu-v6e",
     ],
@@ -180,10 +180,10 @@ torch_tpu_py_test(
     name = "model_coverage_hf_test",
     timeout = "long",
     srcs = ["model_coverage_hf_test.py"],
+    nopresubmit = "slow example",
     shard_count = 6,
     tags = [
         "cpu:4",
-        "nofastbuild",  # Run in postsubmit only to avoid long Forge queues.
         "requires-accel-hbm",
         "requires-net:external",
         "requires-tpu-v7x",

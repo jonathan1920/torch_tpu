@@ -109,7 +109,7 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def _check_and_adjust_test_tags(name, notap, tags):
+def _check_and_adjust_test_tags(name, notap, nopresubmit, tags):
     """Validates the test tags."""
 
     # Adjust tags for notap.
@@ -129,6 +129,17 @@ def _check_and_adjust_test_tags(name, notap, tags):
             targets = [":" + name],
         )
 
+    # Adjust tags for nopresubmit.
+    if nopresubmit != None:
+        # Enforce that nopresubmit is a non-empty string.
+        if type(nopresubmit) != "string" or not nopresubmit:
+            fail("nopresubmit must be a non-empty string documenting why the test " +
+                 "should be skipped in presubmit.")
+        if "nofastbuild" not in tags:
+            # This tag causes the test to be skipped in presubmit, as we only run
+            # fastbuild tests in presubmit.
+            tags.append("nofastbuild")
+
 def torch_tpu_cc_test(
         name,
         copts = None,
@@ -138,6 +149,7 @@ def torch_tpu_cc_test(
         shuffle_tests = True,
         fail_if_no_test_linked = True,
         notap = None,
+        nopresubmit = None,
         tags = None,
         **kwargs):
     """Creates a cc_test for torch_tpu.
@@ -156,6 +168,8 @@ def torch_tpu_cc_test(
         notap: If given as a string, the test will be excluded from TAP, the string will be used
             as the reason, and a build_test named `<name>_build_test` will be added for the test
             to ensure it is buildable.
+        nopresubmit: If given as a string, the test will be excluded from presubmit, and the
+            string will be used as the reason.
         tags: The tags to add to the test.
         **kwargs: Any additional arguments.
     """
@@ -172,7 +186,12 @@ def torch_tpu_cc_test(
         args = args + ["--gunit_fail_if_no_test_linked"]
     tags = tags or []
 
-    _check_and_adjust_test_tags(name = name, notap = notap, tags = tags)
+    _check_and_adjust_test_tags(
+        name = name,
+        notap = notap,
+        nopresubmit = nopresubmit,
+        tags = tags,
+    )
     cc_test(
         name = name,
         copts = copts,
@@ -196,6 +215,7 @@ def torch_tpu_py_test(
         extra_pywrap_deps = ["//torch_tpu/common:pywrap_torch_tpu"],
         strict = False,
         notap = None,
+        nopresubmit = None,
         tags = None,
         **kwargs):
     """Creates a py_test for torch_tpu.
@@ -211,6 +231,8 @@ def torch_tpu_py_test(
         notap: If given as a string, the test will be excluded from TAP, the string will be used
             as the reason, and a build_test named `<name>_build_test` will be added for the test
             to ensure it is buildable.
+        nopresubmit: If given as a string, the test will be excluded from presubmit, and the
+            string will be used as the reason.
         tags: The tags to add to the test.
         **kwargs: Any additional arguments.
     """
@@ -221,7 +243,12 @@ def torch_tpu_py_test(
         args = args + ["--test_randomize_ordering_seed=random"]
 
     tags = tags or []
-    _check_and_adjust_test_tags(name = name, notap = notap, tags = tags)
+    _check_and_adjust_test_tags(
+        name = name,
+        notap = notap,
+        nopresubmit = nopresubmit,
+        tags = tags,
+    )
 
     # Remove internal-only attributes
     kwargs.pop("linking_mode", None)

@@ -307,7 +307,7 @@ torch_tpu_py_test(
     tags = [
         "cpu:8",  # Specify the number of CPUs for reproducible results.
         "manual",  # Exclude from wildcard test patterns as it's slow.
-        "nofastbuild",  # Run this in opt build mode only.
+        "nofastbuild",  # Measures performance.
         "requires-net:external",  # For writing remote files.
         "requires-tpu-v5lite",
     ],
