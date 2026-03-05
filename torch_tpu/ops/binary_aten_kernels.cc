@@ -585,7 +585,9 @@ at::Tensor& AtenDivOut(const at::Tensor& self, const at::Tensor& other,
     TT_ASSIGN_OR_THROW((auto [op_builder, op_param_cache_keys, _]),
                        GetDivOpBuilder(self, other));
     TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kDivOut, self, other, out, std::move(op_builder)));
+        BinaryOpOut(OpName::kDivOut, self, other, out, std::move(op_builder),
+                    BinaryOpOptions{.op_param_cache_keys =
+                                        std::move(op_param_cache_keys)}));
     return out;
   });
 }
@@ -597,7 +599,9 @@ at::Tensor& AtenDivOutMode(const at::Tensor& self, const at::Tensor& other,
     TT_ASSIGN_OR_THROW((auto [op_builder, op_param_cache_keys, _]),
                        GetDivOpBuilder(self, other, mode));
     TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kDivOut, self, other, out, std::move(op_builder)));
+        BinaryOpOut(OpName::kDivOut, self, other, out, std::move(op_builder),
+                    BinaryOpOptions{.op_param_cache_keys =
+                                        std::move(op_param_cache_keys)}));
     return out;
   });
 }
