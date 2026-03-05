@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_python//python:py_library.bzl", "py_library")
 load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
@@ -570,9 +569,9 @@ torch_tpu_py_test(
         "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "1",
     },
     main = "errors_test.py",
+    notap = "TODO(wan): Re-enable after the March 2026 TorchTPU release.",
     shard_count = 4,
     tags = [
-        "notap",  # NOTAP_OK=TODO(wan): Re-enable after the March 2026 TorchTPU release.
         "oss_ready_tpu",
         "requires-tpu-v5lite",
         "wheel_test_excluded",
@@ -600,9 +599,9 @@ torch_tpu_py_test(
         "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "1",
     },
     main = "errors_test.py",
+    notap = "TODO(wan): Re-enable after the March 2026 TorchTPU release.",
     shard_count = 4,
     tags = [
-        "notap",  # NOTAP_OK=TODO(wan): Re-enable after the March 2026 TorchTPU release.
         "oss_ready_tpu",
         "requires-tpu-v5lite",
     ],
@@ -625,9 +624,9 @@ torch_tpu_py_test(
     args = ["--test_mode=cpu"],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
     main = "errors_test.py",
+    notap = "TODO(wan): Re-enable after the March 2026 TorchTPU release.",
     shard_count = 4,
     tags = [
-        "notap",  # NOTAP_OK=TODO(wan): Re-enable after the March 2026 TorchTPU release.
         "oss_ready_cpu",
         "wheel_test_excluded",
     ],
@@ -836,15 +835,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
-    ],
-)
-
-build_test(
-    name = "build_test",
-    targets = [
-        ":errors_test_cov",
-        ":errors_test_cpu",
-        ":errors_test_tpu",
     ],
 )
 

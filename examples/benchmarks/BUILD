@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
 
 package(
@@ -29,12 +28,12 @@ torch_tpu_py_test(
         "--framework=pytorch",
     ],
     main = "ml_layers_test.py",
+    notap = "this is a manual test",
     shard_count = 4,
     strict = True,
     tags = [
         "cpu:4",  # For CUDA, the only choices are 1 or 4.
         "manual",  # Run this test only manually, since it needs --config=cuda
-        "notap",  # NOTAP_OK=this is a manual test
         "requires-gpu-sm100-full-only",
         "requires-net:external",
     ],
@@ -101,12 +100,12 @@ torch_tpu_py_test(
         "--framework=pytorch",
     ],
     main = "ml_layers_test.py",
+    notap = "this is a manual test",
     shard_count = 4,
     strict = True,
     tags = [
         "cpu:4",  # For CUDA, the only choices are 1 or 4.
         "manual",  # Run this test only manually, since it needs --config=cuda
-        "notap",  # NOTAP_OK=this is a manual test
         "requires-gpu-sm100-full-only",
         "requires-net:external",
     ],
@@ -126,14 +125,6 @@ torch_tpu_py_test(
         "@pypi//flax",
         "@pypi//jax",
         "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
-    ],
-)
-
-build_test(
-    name = "build_test",
-    targets = [
-        ":ml_layers_test_cuda",
-        ":ml_layers_test_xla_cuda",
     ],
 )
 

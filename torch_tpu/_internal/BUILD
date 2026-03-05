@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@xla//third_party/py/rules_pywrap:pywrap.default.bzl", "pybind_extension")
 load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end")
 
@@ -133,18 +132,6 @@ pybind_extension(
         "//shims/torch:torch_headers",
         "//torch_tpu/eager:op_dispatcher",
         "@com_google_absl//absl/flags:flag",
-    ],
-)
-
-build_test(
-    name = "build_test",
-    tags = [
-        "oss_ready_cpu",
-    ],
-    targets = [
-        ":compiler_options_impl",
-        ":execution_mode_impl",
-        ":testing",
     ],
 )
 

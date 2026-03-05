@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@xla//third_party/py/rules_pywrap:pywrap.default.bzl", "pybind_extension")
 load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end", "torch_tpu_py_test")
 load("//shims/py_rules:pytype.bzl", "pytype_library")
@@ -115,14 +114,6 @@ torch_tpu_cc_library(
         "@xla//xla/pjrt:mlir_to_hlo",
         "@xla//xla/pjrt:pjrt_client",
     ],
-)
-
-build_test(
-    name = "build_test",
-    tags = [
-        "oss_ready_cpu",
-    ],
-    targets = [":tpu_torch_compile"],
 )
 
 pybind_extension(

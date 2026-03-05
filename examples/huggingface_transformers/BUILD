@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//build_files:build_defs.bzl", "torch_tpu_package_end")
 
 package(
@@ -23,14 +22,6 @@ package(
 filegroup(
     name = "model_configs_data",
     srcs = glob(["model_configs/**/config.json"]),
-)
-
-build_test(
-    name = "build_test",
-    targets = [
-        ":single_accelerator_smoke_test_cuda",
-        ":single_accelerator_smoke_test_tpu",
-    ],
 )
 
 torch_tpu_package_end()

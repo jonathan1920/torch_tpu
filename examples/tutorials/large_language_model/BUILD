@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
 
 package(
@@ -23,9 +22,9 @@ package(
 torch_tpu_py_test(
     name = "hello_world_llm_eager_test",
     srcs = ["hello_world_llm_eager_test.py"],
+    notap = "this is a manual test",
     tags = [
         "no-sandbox",  # Bazel's linux-sandbox restricts write access to your home directory for downloading weights.
-        "notap",  # NOTAP_OK=this is a manual test
         "requires-net:external",
         "requires-tpu-v5lite",
     ],
@@ -38,18 +37,6 @@ torch_tpu_py_test(
         "@pypi//accelerate",  # buildcleaner: keep
         "@pypi//transformers",
     ],
-)
-
-build_test(
-    name = "notap_build_test",
-    targets = [
-        ":hello_world_llm_eager_test",
-    ],
-)
-
-build_test(
-    name = "build_test",
-    targets = [":hello_world_llm_eager_test"],
 )
 
 torch_tpu_package_end()

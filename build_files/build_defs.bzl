@@ -14,6 +14,7 @@
 
 """Common build definitions for torch_tpu."""
 
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_python//python:py_test.bzl", "py_test")
@@ -108,10 +109,25 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def _validate_test_tags(tags):
+def _check_and_adjust_test_tags(name, notap, tags):
     """Validates the test tags."""
 
-    pass
+    # Adjust tags for notap.
+    if "notap" in tags:  # NOTAP_OK=for implementing notap logic
+        fail("notap must be passed as an argument to torch_tpu_cc_test, not as a tag.")
+    if notap != None:
+        # Enforce that notap is a non-empty string.
+        if type(notap) != "string" or not notap:
+            fail("notap must be a non-empty string documenting why the test " +
+                 "should be skipped on TAP.")
+        tags.append("notap")  # NOTAP_OK=for implementing notap logic
+
+    # Add a build_test for notap test.
+    if "notap" in tags:  # NOTAP_OK=for implementing notap logic
+        build_test(
+            name = name + "_build_test",
+            targets = [":" + name],
+        )
 
 def torch_tpu_cc_test(
         name,
@@ -121,6 +137,7 @@ def torch_tpu_cc_test(
         linkstatic = True,
         shuffle_tests = True,
         fail_if_no_test_linked = True,
+        notap = None,
         tags = None,
         **kwargs):
     """Creates a cc_test for torch_tpu.
@@ -136,6 +153,9 @@ def torch_tpu_cc_test(
             definitions and increase accelerator utilization by reducing test run time.
         shuffle_tests: Whether to shuffle the test cases.
         fail_if_no_test_linked: Whether to fail if no tests are linked.
+        notap: If given as a string, the test will be excluded from TAP, the string will be used
+            as the reason, and a build_test named `<name>_build_test` will be added for the test
+            to ensure it is buildable.
         tags: The tags to add to the test.
         **kwargs: Any additional arguments.
     """
@@ -151,7 +171,8 @@ def torch_tpu_cc_test(
         # tests. This can happen if the test's link options are not set correctly.
         args = args + ["--gunit_fail_if_no_test_linked"]
     tags = tags or []
-    _validate_test_tags(tags)
+
+    _check_and_adjust_test_tags(name = name, notap = notap, tags = tags)
     cc_test(
         name = name,
         copts = copts,
@@ -174,6 +195,7 @@ def torch_tpu_py_test(
         shuffle_tests = True,
         extra_pywrap_deps = ["//torch_tpu/common:pywrap_torch_tpu"],
         strict = False,
+        notap = None,
         tags = None,
         **kwargs):
     """Creates a py_test for torch_tpu.
@@ -186,6 +208,9 @@ def torch_tpu_py_test(
         shuffle_tests: Whether to shuffle the test cases.
         extra_pywrap_deps: Additional pywrap dependencies to add to the test.
         strict: Whether to use pytype.
+        notap: If given as a string, the test will be excluded from TAP, the string will be used
+            as the reason, and a build_test named `<name>_build_test` will be added for the test
+            to ensure it is buildable.
         tags: The tags to add to the test.
         **kwargs: Any additional arguments.
     """
@@ -196,7 +221,7 @@ def torch_tpu_py_test(
         args = args + ["--test_randomize_ordering_seed=random"]
 
     tags = tags or []
-    _validate_test_tags(tags)
+    _check_and_adjust_test_tags(name = name, notap = notap, tags = tags)
 
     # Remove internal-only attributes
     kwargs.pop("linking_mode", None)

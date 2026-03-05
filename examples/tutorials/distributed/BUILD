@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
@@ -38,9 +37,9 @@ torch_tpu_py_test(
     env = {
         "WORLD_SIZE": "8",
     },
+    notap = "this is a manual test",
     tags = [
         "manual",
-        "notap",  # NOTAP_OK=this is a manual test
         "requires-net:external",
         "requires-tpu-v5lite:8",
     ],
@@ -50,11 +49,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/shims/g3_multiprocessing",
     ],
-)
-
-build_test(
-    name = "run_hello_world_distributed_build_test",
-    targets = [":run_hello_world_distributed"],
 )
 
 torch_tpu_package_end()

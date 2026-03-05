@@ -29,6 +29,7 @@ bzl_library(
     deps = [
         "//shims/build_cleaner:build_defs_lib",
         "//shims/py_rules:pytype_bzl",
+        "//tools/build_defs/build_test",
         "@rules_cc//cc:core_rules",
         "@rules_python//python:py_test_bzl",
         "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",

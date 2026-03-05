@@ -1,4 +1,3 @@
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
 
 # Copyright 2025 Google LLC
@@ -127,11 +126,11 @@ torch_tpu_py_test(
     ],
     linking_mode = "static",
     main = "stablehlo_compile_test.py",
+    notap = "Disable on TAP until we can get faster performance or reduce number of runs. Currently runs ~1h.",
     tags = [
         "cpu:1",  # Ensure reproducible performance on Forge.
         "manual",  # Exclude from wildcard test patterns. Still runs on TAP.
         "nofastbuild",  # Run this in opt build mode only.
-        "notap",  # # NOTAP_OK=Disable on TAP until we can get faster performance or reduce number of runs. Currently runs ~1h.
         "oss_ready_tpu",
         "requires-tpu-v6e",
     ],
@@ -226,14 +225,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
         "@pypi//pillow",
-    ],
-)
-
-build_test(
-    name = "build_test",
-    targets = [
-        ":model_coverage_hf_guitar_test",
-        ":stablehlo_compile_test",
     ],
 )
 

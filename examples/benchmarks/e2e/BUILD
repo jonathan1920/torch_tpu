@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
@@ -101,12 +100,12 @@ torch_tpu_py_test(
     # This allows us to use a single .par file for remote cluster execution.
     linking_mode = "static",
     main = "model_performance_benchmarks.py",
+    notap = "Tested on guitar workflow.",
     shard_count = 4,
     strict = True,
     tags = [
         "manual",  # Skip slow tests from local runs by default.
         "cpu:4",
-        "notap",  # NOTAP_OK=Tested on guitar workflow.
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
         "requires-tpu-v7x",
@@ -131,12 +130,12 @@ torch_tpu_py_test(
     # This allows us to use a single .par file for remote cluster execution.
     linking_mode = "static",
     main = "model_quality_benchmarks.py",
+    notap = "Tested on guitar workflow.",
     shard_count = 4,
     strict = True,
     tags = [
         "manual",  # Skip slow tests from local runs by default.
         "cpu:4",
-        "notap",  # NOTAP_OK=Tested on guitar workflow.
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
         "requires-tpu-v7x",
@@ -161,12 +160,12 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["layer_performance_benchmarks.py"],
     main = "layer_performance_benchmarks.py",
+    notap = "Tested on guitar workflow.",
     shard_count = 2,
     strict = True,
     tags = [
         "manual",  # Skip slow tests from local runs by default.
         "cpu:4",
-        "notap",  # NOTAP_OK=Tested on guitar workflow.
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
         "requires-tpu-v7x",
@@ -191,12 +190,12 @@ torch_tpu_py_test(
     srcs = ["layer_performance_benchmarks.py"],
     args = ["--platform=b200_1"],
     main = "layer_performance_benchmarks.py",
+    notap = "Tested on guitar workflow.",
     shard_count = 2,
     strict = True,
     tags = [
         "manual",  # Skip slow tests from local runs by default.
         "cpu:4",
-        "notap",  # NOTAP_OK=Tested on guitar workflow.
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
         "requires-gpu-sm100-full-only",
@@ -225,10 +224,10 @@ torch_tpu_py_test(
     # This allows us to use a single .par file for remote cluster execution.
     linking_mode = "static",
     main = "model_performance_benchmarks.py",
+    notap = "Tested on guitar workflow.",
     tags = [
         "manual",  # Skip slow tests from local runs by default.
         "cpu:4",
-        "notap",  # NOTAP_OK=Tested on guitar workflow.
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
         "requires-tpu-v7x:4",
@@ -252,12 +251,12 @@ torch_tpu_py_test(
     srcs = ["model_performance_benchmarks.py"],
     args = ["--platform=b200_1"],
     main = "model_performance_benchmarks.py",
+    notap = "Frequently causes Forge OOM.",
     shard_count = 2,
     tags = [
         "cpu:4",  # For CUDA, the only choices are 1 or 4.
         "manual",  # Run only manually since it needs --config=cuda
         "nofastbuild",
-        "notap",  # NOTAP_OK=frequently causes Forge OOM.
         "requires-accel-hbm",
         "requires-gpu-sm100-full-only",
         "requires-net:external",
@@ -292,18 +291,6 @@ pytype_strict_library(
         "@pypi//fairscale",
         "@pypi//llama_models",
         "@pypi//transformers",
-    ],
-)
-
-build_test(
-    name = "build_test",
-    targets = [
-        ":distributed_benchmark_tests",
-        ":layer_performance_benchmarks",
-        ":layer_performance_benchmarks_cuda",
-        ":model_benchmark_cuda_tests",
-        ":model_performance_benchmarks",
-        ":model_quality_benchmarks",
     ],
 )
 
