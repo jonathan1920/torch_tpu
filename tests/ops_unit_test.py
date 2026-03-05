@@ -806,11 +806,10 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       self.assertFalse(x.is_conj())
       y = torch.zeros_like(x).to(device=device)
       torch._conj_copy(x, out=y)
-      self.assertTrue(y.is_conj())
+      self.assertFalse(y.is_conj())
       return y
 
-    # TODO(b/489136147): Fix test case & disable allow_failure
-    self.assert_close_tpu_vs_cpu(test, allow_failure=True)
+    self.assert_close_tpu_vs_cpu(test)
 
   def test_copy(self):
     """Tests tensor.copy_() and torch.ops.aten.copy()."""
