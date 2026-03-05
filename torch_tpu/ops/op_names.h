@@ -140,6 +140,8 @@ enum class OpName {
   kExpM1Out,
   kExpOut,
   kExponential_,
+  kEyeMOut,
+  kEyeOut,
   kFakeQuantizePerTensorAffineCachemask,
   kFftR2c,
   kFftR2cOut,

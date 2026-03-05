@@ -56,6 +56,7 @@
 #include "torch_tpu/ops/equal/equal_aten_kernels.h"
 #include "torch_tpu/ops/experimental/ragged_dot_aten_kernels.h"
 #include "torch_tpu/ops/exponential/exponential_aten_kernels.h"
+#include "torch_tpu/ops/eye/eye_aten_kernels.h"
 #include "torch_tpu/ops/fake_quantize/fake_quantize_aten_kernels.h"
 #include "torch_tpu/ops/fft/fft_aten_kernels.h"
 #include "torch_tpu/ops/fill/fill_aten_kernels.h"
@@ -226,6 +227,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kErfInvOut, AtenErfInvOut);
   Impl(m, OpName::kExpOut, AtenExpOut);
   Impl(m, OpName::kExponential_, AtenExponential_);
+  Impl(m, OpName::kEyeMOut, AtenEyeMOut);
+  Impl(m, OpName::kEyeOut, AtenEyeOut);
   Impl(m, OpName::kFftR2c, AtenFftR2c);
   Impl(m, OpName::kFftR2cOut, AtenFftR2cOut);
   Impl(m, OpName::kFloorDivide, AtenFloorDivide);

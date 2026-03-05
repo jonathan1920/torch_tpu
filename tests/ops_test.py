@@ -1643,6 +1643,9 @@ class TestOps(TorchTpuTestBase):
         check_value=CheckValueMode.SKIP,
     )
 
+  def test_eye(self):
+    self.do_test_op("eye")
+
   def test_fft_rfft(self):
     self.do_test_op(
         "fft.rfft",
