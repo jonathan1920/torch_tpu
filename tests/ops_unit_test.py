@@ -4467,7 +4467,6 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         device=device,
     )
 
-    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.nn.functional.max_pool2d(
             maxpool_int8.to(device),
@@ -4477,11 +4476,9 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             dilation=(1, 1),
             ceil_mode=True,
             return_indices=True,
-        ),
-        allow_failure=True,
+        )
     )
 
-    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.nn.functional.max_pool2d(
             maxpool_int16.to(device),
@@ -4490,11 +4487,9 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             dilation=(1, 2),
             ceil_mode=True,
             return_indices=True,
-        ),
-        allow_failure=True,
+        )
     )
 
-    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.nn.functional.max_pool2d(
             maxpool_int16.to(device),
@@ -4504,34 +4499,32 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             dilation=(1, 1),
             ceil_mode=True,
             return_indices=True,
-        ),
-        allow_failure=True,
+        )
     )
 
     maxpool_int32 = torch.tensor(
-        [[
-            [[
+        [
+            [
                 [-7, -3, 2, -7, -4, -7],
                 [-4, 9, 1, 7, 8, -9],
                 [9, -1, -8, 1, -6, 0],
                 [-5, 7, 1, 9, 4, 9],
                 [-2, -4, 2, 1, 2, 0],
                 [-6, 0, 1, 0, -3, 6],
-            ]],
-            [[
+            ],
+            [
                 [8, 5, 2, 1, 5, 3],
                 [4, -2, -2, -5, -8, -4],
                 [-6, 2, 0, -8, -9, -2],
                 [-8, -1, 4, 6, -8, 4],
                 [-7, -3, 6, 8, 6, -7],
                 [-3, -9, 7, 0, 4, -4],
-            ]],
-        ]],
+            ],
+        ],
         dtype=torch.int32,
         device=device,
     )
 
-    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.nn.functional.max_pool2d(
             maxpool_int32.to(device),
@@ -4541,10 +4534,8 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             dilation=(1, 2),
             ceil_mode=True,
             return_indices=True,
-        ),
-        allow_failure=True,
+        )
     )
-    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.nn.functional.max_pool2d(
             maxpool_int32.to(device),
@@ -4554,8 +4545,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             dilation=(1, 1),
             ceil_mode=True,
             return_indices=True,
-        ),
-        allow_failure=True,
+        )
     )
 
   def test_fmax_special_values(self):
