@@ -109,10 +109,28 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def _check_and_adjust_test_tags(name, notap, nopresubmit, tags):
-    """Validates the test tags."""
+def _check_and_adjust_test_tags(name, notap, nopresubmit, nolocal, tags):
+    """Validates the test tags.
+
+    Args:
+        name: The name of the test.
+        notap: If given as a string, the test will be excluded from TAP, the string will be used
+            as the reason, and a build_test named `<name>_build_test` will be added for the test
+            to ensure it is buildable.
+        nopresubmit: If given as a string, the test will be excluded from presubmit, and the
+            string will be used as the reason.
+        nolocal: By default, we tag a test as "manual" if either notap or nopresubmit is
+            set, so that it is excluded from local `blaze test //torch_tpu/...`
+            runs. This behavior can be overridden by setting nolocal to a non-empty
+            string - that will add a "manual" tag to the test regardless of notap or nopresubmit,
+            and the string will be used as the reason.
+        tags: The tags to add to the test.
+    """
 
     # Adjust tags for notap.
+    #
+    # Whether to skip the test in local `blaze test //torch_tpu/...` runs.
+    skip_local = False
     if "notap" in tags:  # NOTAP_OK=for implementing notap logic
         fail("notap must be passed as an argument to torch_tpu_cc_test, not as a tag.")
     if notap != None:
@@ -121,6 +139,9 @@ def _check_and_adjust_test_tags(name, notap, nopresubmit, tags):
             fail("notap must be a non-empty string documenting why the test " +
                  "should be skipped on TAP.")
         tags.append("notap")  # NOTAP_OK=for implementing notap logic
+
+        # Skip in local runs as it's unreasonable to ask people to keep a notap test green.
+        skip_local = True
 
     # Add a build_test for notap test.
     if "notap" in tags:  # NOTAP_OK=for implementing notap logic
@@ -140,6 +161,27 @@ def _check_and_adjust_test_tags(name, notap, nopresubmit, tags):
             # fastbuild tests in presubmit.
             tags.append("nofastbuild")
 
+            # Skip in local runs as it's unreasonable to ask people to keep a
+            # nopresubmit test green.
+            skip_local = True
+
+    # Adjust tags for nolocal.
+    if "manual" in tags:
+        fail("Do not use the 'manual' tag to exclude the test from matching pattern " +
+             "wildcards like //torch_tpu/... - notap or nopresubmit already " +
+             "implies 'manual'. If you want to force the test to be manual, add a " +
+             "'nolocal = \"<reason>\",' argument to torch_tpu_*_test() instead.")
+    if nolocal != None:
+        # Enforce that nolocal is a non-empty string.
+        if type(nolocal) != "string" or not nolocal:
+            fail("nolocal must be a non-empty string documenting why the test " +
+                 "should be skipped in local runs.")
+        skip_local = True
+    if skip_local:
+        # This tag causes the test to be skipped when a user runs
+        # `blaze test //torch_tpu/...`.
+        tags.append("manual")
+
 def torch_tpu_cc_test(
         name,
         copts = None,
@@ -150,6 +192,7 @@ def torch_tpu_cc_test(
         fail_if_no_test_linked = True,
         notap = None,
         nopresubmit = None,
+        nolocal = None,
         tags = None,
         **kwargs):
     """Creates a cc_test for torch_tpu.
@@ -170,6 +213,11 @@ def torch_tpu_cc_test(
             to ensure it is buildable.
         nopresubmit: If given as a string, the test will be excluded from presubmit, and the
             string will be used as the reason.
+        nolocal: By default, we tag a test as "manual" if either notap or nopresubmit is
+            set, so that it is excluded from local `blaze test //torch_tpu/...`
+            runs. This behavior can be overridden by setting nolocal to a non-empty
+            string - that will add a "manual" tag to the test regardless of notap or nopresubmit,
+            and the string will be used as the reason.
         tags: The tags to add to the test.
         **kwargs: Any additional arguments.
     """
@@ -190,6 +238,7 @@ def torch_tpu_cc_test(
         name = name,
         notap = notap,
         nopresubmit = nopresubmit,
+        nolocal = nolocal,
         tags = tags,
     )
     cc_test(
@@ -216,6 +265,7 @@ def torch_tpu_py_test(
         strict = False,
         notap = None,
         nopresubmit = None,
+        nolocal = None,
         tags = None,
         **kwargs):
     """Creates a py_test for torch_tpu.
@@ -233,6 +283,11 @@ def torch_tpu_py_test(
             to ensure it is buildable.
         nopresubmit: If given as a string, the test will be excluded from presubmit, and the
             string will be used as the reason.
+        nolocal: By default, we tag a test as "manual" if either notap or nopresubmit is
+            set, so that it is excluded from local `blaze test //torch_tpu/...`
+            runs. This behavior can be overridden by setting nolocal to a non-empty
+            string - that will add a "manual" tag to the test regardless of notap or nopresubmit,
+            and the string will be used as the reason.
         tags: The tags to add to the test.
         **kwargs: Any additional arguments.
     """
@@ -247,6 +302,7 @@ def torch_tpu_py_test(
         name = name,
         notap = notap,
         nopresubmit = nopresubmit,
+        nolocal = nolocal,
         tags = tags,
     )
 

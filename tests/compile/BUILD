@@ -130,7 +130,6 @@ torch_tpu_py_test(
     notap = "Disable on TAP until we can get faster performance or reduce number of runs. Currently runs ~1h.",
     tags = [
         "cpu:1",  # Ensure reproducible performance on Forge.
-        "manual",  # Exclude from wildcard test patterns. Still runs on TAP.
         "nofastbuild",  # Measures performance.
         "oss_ready_tpu",
         "requires-tpu-v6e",

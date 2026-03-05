@@ -104,7 +104,6 @@ torch_tpu_py_test(
     shard_count = 4,
     strict = True,
     tags = [
-        "manual",  # Skip slow tests from local runs by default.
         "cpu:4",
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
@@ -134,8 +133,6 @@ torch_tpu_py_test(
     shard_count = 4,
     strict = True,
     tags = [
-        "manual",  # Skip slow tests from local runs by default.
-        "cpu:4",
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
         "requires-tpu-v7x",
@@ -163,7 +160,6 @@ torch_tpu_py_test(
     shard_count = 2,
     strict = True,
     tags = [
-        "manual",  # Skip slow tests from local runs by default.
         "cpu:4",
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
@@ -192,7 +188,6 @@ torch_tpu_py_test(
     shard_count = 2,
     strict = True,
     tags = [
-        "manual",  # Skip slow tests from local runs by default.
         "cpu:4",
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
@@ -223,7 +218,6 @@ torch_tpu_py_test(
     main = "model_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
     tags = [
-        "manual",  # Skip slow tests from local runs by default.
         "cpu:4",
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
@@ -251,7 +245,6 @@ torch_tpu_py_test(
     shard_count = 2,
     tags = [
         "cpu:4",  # For CUDA, the only choices are 1 or 4.
-        "manual",  # Run only manually since it needs --config=cuda
         "nofastbuild",  # Benchmark.
         "requires-accel-hbm",
         "requires-gpu-sm100-full-only",

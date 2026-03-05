@@ -39,7 +39,6 @@ torch_tpu_py_test(
     },
     notap = "this is a manual test",
     tags = [
-        "manual",
         "requires-net:external",
         "requires-tpu-v5lite:8",
     ],

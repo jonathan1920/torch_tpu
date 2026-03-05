@@ -33,7 +33,6 @@ torch_tpu_py_test(
     strict = True,
     tags = [
         "cpu:4",  # For CUDA, the only choices are 1 or 4.
-        "manual",  # Run this test only manually, since it needs --config=cuda
         "requires-gpu-sm100-full-only",
         "requires-net:external",
     ],
@@ -105,7 +104,6 @@ torch_tpu_py_test(
     strict = True,
     tags = [
         "cpu:4",  # For CUDA, the only choices are 1 or 4.
-        "manual",  # Run this test only manually, since it needs --config=cuda
         "requires-gpu-sm100-full-only",
         "requires-net:external",
     ],

@@ -303,10 +303,10 @@ torch_tpu_py_test(
         # go/keep-sorted end
     ],
     main = "ops_test.py",
+    nolocal = "slow test",
     shard_count = 50,
     tags = [
         "cpu:8",  # Specify the number of CPUs for reproducible results.
-        "manual",  # Exclude from wildcard test patterns as it's slow.
         "nofastbuild",  # Measures performance.
         "requires-net:external",  # For writing remote files.
         "requires-tpu-v5lite",
@@ -358,6 +358,7 @@ torch_tpu_py_test(
         "--test_mode=gen_gpu_golden",
     ],
     main = "ops_test.py",
+    nolocal = "slow test",
     # Each shard generates one golden file that contains one slice of the
     # golden data. Therefore the smaller the count, the bigger each file
     # will be.
@@ -371,7 +372,6 @@ torch_tpu_py_test(
     # ops_test_vs_gpu target.
     shard_count = 3,
     tags = [
-        "manual",  # Skip slow test locally.
         "requires-gpu-sm80",
     ],
     deps = [
