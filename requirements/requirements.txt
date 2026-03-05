@@ -496,13 +496,13 @@ jinja2==3.1.6 \
     # via
     #   llama-models
     #   torch
-libtpu==0.0.35 \
-    --hash=sha256:4973ea331c3ad2913d8d305876de6d7604a41c8c16fa855d27746fd49c31e8b9 \
-    --hash=sha256:4fd14c89622b29a15dd7873540d549113968906ad3c6aceceb3d3423747e3450 \
-    --hash=sha256:824398ba96c55d2de7afe7fdb8b74f36648f2b65d71906cebde483b86590611c \
-    --hash=sha256:9e6b359b65e2d62ef6a64cbced6bae7dd21c9d80993249649592aae0daae525c \
-    --hash=sha256:cd6c5105a059ac1e78df1d72abe3a19a0cde20133d85a34c216efb5149da92d9 \
-    --hash=sha256:f70573603c47fa641dd9b2dc42d17113105c1d6709edffda2cc9ccfabd82109c
+libtpu==0.0.37 \
+    --hash=sha256:1eeba282e09a7932b953ac14395447bcd4fea9239604aee2c73f4730ad84d38d \
+    --hash=sha256:2ca215b45e9e62b7029dbfe64ff65c237640a197e6bbd786f47693e2348adca9 \
+    --hash=sha256:476850afbfb014c473e91295bea29752cfd038e94c13c3f339a5956680beccf7 \
+    --hash=sha256:4d61b54e2c9a6be86a86436f55dffd89a47a299b46b20919a201e957b702b2ad \
+    --hash=sha256:7121cdb47cb4b421e718c32a2ba4cdb4abf9719cab377090e6b2565b7fb039da \
+    --hash=sha256:e82bcaf46a2311dffaa52a5ffe240b08d9bd8ceef11cb464225d1798d4470db9
     # via torch-tpu (pyproject.toml)
 llama-models==0.3.0 \
     --hash=sha256:6b30bc025ea69021778bc5b5acba1e4b05b47baf4235be284d26b9ea06911f79 \
