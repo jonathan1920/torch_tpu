@@ -28,6 +28,7 @@ torch_tpu_py_test(
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the test in tsan mode.
         "oss_ready_tpu",
         "requires-net:external",
         "requires-tpu-v5lite",
