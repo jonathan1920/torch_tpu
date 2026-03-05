@@ -23,7 +23,7 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 from absl import flags
 from absl import logging
 import torch
-from torch.google import distributed as gdist
+# from torch.google import distributed as g3_distributed
 from torch_tpu._internal.distributed import gpu_env
 from torch_tpu._internal.distributed import tpu_env
 from torch_tpu._internal.utils import device_utils
@@ -259,7 +259,7 @@ def _run_distributed_benchmark(
     config.model_and_input_args.batch_size = (
         config.model_and_input_args.batch_size * 2
     )
-    gdist.torchrun(gpu_env.run_in_workers, nproc_per_node=4)(
+    dist.torchrun(gpu_env.run_in_workers, nproc_per_node=4)(
         _run_single_process_benchmark,
         config,
         test_method_name,
