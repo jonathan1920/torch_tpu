@@ -25,6 +25,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "c10/core/TensorImpl.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
 #include "torch_tpu/ops/view_decomposition/broadcast_primitive.h"
 #include "torch_tpu/ops/view_decomposition/conj_primitive.h"
@@ -98,6 +100,14 @@ absl::Status Simplify(ViewSequence& view_sequence,
 // An MlirOpBuilder to apply the given view sequence to the input.
 absl::StatusOr<mlir::MlirOp> ViewSequenceShlo(mlir::MlirOp input,
                                               ViewSequenceSpan view_sequence);
+
+// Returns the cache key for the given view sequence and tensor.
+// ViewSequenec cache keys aim to use generic cache keys whenever possible,
+// instead of embedding static tensor shapes into the cache key.
+// Ex: Basic reshape of [5] -> [5,1] will be stored as [A] -> [A, 1],
+// the cache uses input parameter shapes to avoid false cache hits.
+absl::StatusOr<OpParamCacheKeys> ViewSequenceCacheKey(
+    ViewSequenceSpan view_sequence, const c10::TensorImpl& tensor);
 
 }  // namespace torch_tpu
 

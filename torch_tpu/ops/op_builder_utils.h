@@ -34,6 +34,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -725,6 +726,58 @@ Dimensions GetAllDimensions(mlir::MlirOp op);
 absl::StatusOr<mlir::MlirOp> PromoteFloatDtype(
     mlir::MlirOp op, mlir::ElementType min_precision = mlir::ElementType::F32);
 
+// Builds an MLIR op that updates the RNG state (Philox offset) based on the
+// number of elements generated and their bit width.
+// This is used for decoupling the state update from the actual random number
+// generation, making the state update resilient to failures in the generation.
+absl::StatusOr<mlir::MlirOp> BuildRngStateUpdateShlo(mlir::MlirOp state,
+                                                     int64_t num_elements,
+                                                     int64_t bit_width);
+
+////
+// Reshape Utilities
+
+// The type of reshape operation, currently only handling reshapes that can be
+// represented abstractly, either as a collapse or expand shape.
+//
+// Currently only affine reshapes are supported, meaning that the input and
+// output shapes must be contiguous:
+//  - Collapse: [AxBxC] -> [A*BxC]
+//  - Flatten: [AxBxC] -> [A*B*C] (special case of collapse, full collapse)
+//  - Expand:   [A*B] -> [AxB]
+//
+// This list may expand as support is added for other reshape types, such as:
+//   - [AxB] -> [AxB] no-op
+//   - [AxB] -> [AxBx1] unsqueeze
+//   - [AxBx1] -> [AxB] squeeze
+//   - [Ax1] -> [1xA] transpose
+//   - [AxB] -> [BxA] dim-flipping
+//   - [AxBxC] -> [BxA*C] non-affine collapses
+enum class ReshapeType {
+  kCollapse,
+  kFlatten,
+  kExpand,
+  kUnknown,
+};
+
+// Helper struct to hold reshape reassociation information.
+// See ReshapeFromStaticDimensions for more details on reassociation storage.
+// See ReshapeType for more details on supported reshape types.
+struct ReshapeReassociation {
+  ReshapeType type;
+  llvm::SmallVector<mlir::ReassociationIndices> reassociation;
+};
+
+// String representation of the reshape reassociation.
+std::string ReassociationToString(const ReshapeReassociation& reassociation);
+
+// Returns the reassociation indices for the given input and output shapes.
+// See ReshapeFromStaticDimensions for more details on reassociation storage.
+// See ReshapeType for more details on supported reshape types.
+absl::StatusOr<ReshapeReassociation> GetReshapeReassociation(
+    const Dimensions& static_shape_before,
+    const Dimensions& static_shape_after);
+
 // Reshapes the input op to the output shape.
 //
 // For static input op:
@@ -749,14 +802,6 @@ absl::StatusOr<mlir::MlirOp> PromoteFloatDtype(
 absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
     mlir::MlirOp op, const Dimensions& static_shape_before,
     const Dimensions& static_shape_after);
-
-// Builds an MLIR op that updates the RNG state (Philox offset) based on the
-// number of elements generated and their bit width.
-// This is used for decoupling the state update from the actual random number
-// generation, making the state update resilient to failures in the generation.
-absl::StatusOr<mlir::MlirOp> BuildRngStateUpdateShlo(mlir::MlirOp state,
-                                                     int64_t num_elements,
-                                                     int64_t bit_width);
 
 }  // namespace torch_tpu
 

@@ -323,6 +323,51 @@ class DynamismTest(parameterized.TestCase):
       print(w_res.cpu())
     self.assertEqual(counter.num_cache_hits(), 0)
 
+  def test_executable_is_reused_with_view_ops(self):
+
+    def dyn_view_pow(x, do_mark=True):
+      if do_mark:
+        dynamism.mark_dynamic(x, 0, 2, 20)
+      x = x.transpose(1, 0)
+      x = x.reshape(x.shape[0] * x.shape[1])
+      # Bug in bitcast lowering to fix separately:
+      # x = x.view(torch.int32)  # ComplexToRealBitcast
+      # x = x + 1
+      # x = x.view(torch.float32)  # RealToRealBitcast
+      return x**2
+
+    # Compile for x**2 where x.shape[0] < 20.
+    # This should be a cache miss as we haven't compiled it yet.
+    x = torch.rand(6, 2, dtype=torch.float32, device="cpu").to(self.device)
+    x_res = dyn_view_pow(x)
+    with CompilationCounter(self.device) as counter:
+      print(x_res.cpu())
+    self.assertEqual(counter.num_cache_hits(), 0)
+
+    # Call the same function with compatible bounds but different static shape.
+    # This should be a cache hit.
+    y = torch.rand(18, 2, dtype=torch.float32, device="cpu").to(self.device)
+    y_res = dyn_view_pow(y)
+    with CompilationCounter(self.device) as counter:
+      print(y_res.cpu())
+    self.assertEqual(counter.num_cache_hits(), 1)
+
+    # Call the same function with a compatible static shape, but not marked.
+    # This should be a cache hit that uses the dynamic executable.
+    z = torch.rand(10, 2, dtype=torch.float32, device="cpu").to(self.device)
+    z_res = dyn_view_pow(z, do_mark=False)
+    with CompilationCounter(self.device) as counter:
+      print(z_res.cpu())
+    self.assertEqual(counter.num_cache_hits(), 1)
+
+    # Call the same function with an incompatible static shape.
+    # This should be a cache miss.
+    w = torch.rand(21, 2, dtype=torch.float32, device="cpu").to(self.device)
+    w_res = dyn_view_pow(w, do_mark=False)
+    with CompilationCounter(self.device) as counter:
+      print(w_res.cpu())
+    self.assertEqual(counter.num_cache_hits(), 0)
+
   @absltest.skip("This fails depending on the exact shape. b/478357255")
   @parameterized.product(
       first_dim=[1, 2, 3, 4, 5, 6, 7, 8], last_dim=[1, 2, 3, 4, 5, 6, 7, 8]

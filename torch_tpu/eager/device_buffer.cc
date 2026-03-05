@@ -1073,6 +1073,10 @@ absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(
       << ToString(view_sequence) << " to achieve target view layout "
       << view_layout << " (is_conj=" << tensor.is_conj() << ")";
 
+  // Create cache key for the view sequence before moving into builder
+  TT_ASSIGN_OR_RETURN(OpParamCacheKeys param_keys,
+                      ViewSequenceCacheKey(view_sequence, tensor));
+
   // Build the values to construct an ephemeral DeferredOp.
   const auto op_name = OpName::kAsStrided;
   ScopedPythonContextCapturer capturer(op_name);
@@ -1089,11 +1093,6 @@ absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(
   };
 
   std::vector<DeviceBufferRef> inputs = {std::move(base_buffer_ref)};
-
-  TT_ASSIGN_OR_RETURN(
-      OpParamCacheKeys param_keys,
-      *OpParamCacheKeys::SetParam("strides", tensor.strides())
-           .SetParam("storage_offset", tensor.storage_offset()));
 
   std::vector<Shape> output_shapes = {
       {.dimensions = CopyIntVector(tensor.sizes()),

@@ -110,34 +110,6 @@ std::string GetBasename(std::string_view filename) {
   return std::string(filename);
 }
 
-// Returns a string representation of the reassociation indices for debugging.
-std::string ReassociationToString(
-    const llvm::SmallVector<mlir::ReassociationIndices>& reassociation,
-    bool is_collapse) {
-  std::string result;
-  llvm::raw_string_ostream os(result);
-  os << (is_collapse ? "Collapse" : "Expansion") << " reassociation:\n";
-  for (int i = 0; i < reassociation.size(); ++i) {
-    os << "  ";
-    if (is_collapse) {
-      os << "output " << i << " <- input {";
-    } else {
-      os << "input " << i << " -> output {";
-    }
-    llvm::interleave(reassociation[i], os, ", ");
-    os << "}\n";
-  }
-  return result;
-}
-
-// Returns a debug string for shape transitions of form: `from [1,2] to [3,4]`.
-inline std::string ShapeTransitionToString(
-    absl::Span<const int64_t> shape_before,
-    absl::Span<const int64_t> shape_after) {
-  return absl::StrCat("from ", ToString(shape_before), " to ",
-                      ToString(shape_after));
-}
-
 }  // namespace
 
 mlir::stablehlo::Dimensions GetDimensions(mlir::MlirOp input) {
@@ -1042,6 +1014,126 @@ absl::StatusOr<mlir::MlirOp> PromoteFloatDtype(
   return CastIfNeeded(op, min_precision);
 }
 
+absl::StatusOr<mlir::MlirOp> BuildRngStateUpdateShlo(mlir::MlirOp state,
+                                                     int64_t num_elements,
+                                                     int64_t bit_width) {
+  auto& builder = state.getBuilder();
+
+  // seed: output_state[0] = initial_state[0]
+  mlir::MlirOp state_seed = mlir::stablehlo::Slice(state, {0}, {1}, {1});
+  // offset: output_state[1] = initial_state[1] + ceil(num_bits / 128)
+  // Note that num_bits = num_elements * bit_width.
+  // Each Philox step consumes 128 bits of randomness and increments the offset
+  // by 1.
+  int64_t increment_val = (num_elements * bit_width + 127) / 128;
+
+  mlir::MlirOp state_offset = mlir::stablehlo::Slice(state, {1}, {2}, {1});
+  mlir::MlirOp increment =
+      MakeConstant(builder, increment_val, mlir::ElementType::UI64, {1});
+  mlir::MlirOp new_offset = mlir::stablehlo::Add(state_offset, increment);
+
+  return mlir::stablehlo::Concatenate(builder, {state_seed, new_offset}, 0);
+}
+
+//////
+// Reshape Utilities
+
+namespace {
+std::string ReshapeTypeToString(ReshapeType type) {
+  switch (type) {
+    case ReshapeType::kCollapse:
+      return "collapse";
+    case ReshapeType::kFlatten:
+      return "flatten";
+    case ReshapeType::kExpand:
+      return "expand";
+    case ReshapeType::kUnknown:
+      return "unknown";
+  }
+}
+
+// Returns a debug string for shape transitions of form: `from [1,2] to [3,4]`.
+std::string ShapeTransitionToString(absl::Span<const int64_t> shape_before,
+                                    absl::Span<const int64_t> shape_after) {
+  return absl::StrCat("from ", ToString(shape_before), " to ",
+                      ToString(shape_after));
+}
+
+}  // namespace
+
+// Returns a string representation of the reassociation indices for debugging.
+std::string ReassociationToString(const ReshapeReassociation& reassociation) {
+  ReshapeType type = reassociation.type;
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  std::string type_str = ReshapeTypeToString(type);
+  os << type_str << " reassociation:\n";
+  for (int i = 0; i < reassociation.reassociation.size(); ++i) {
+    os << "  ";
+    if (type == ReshapeType::kCollapse || type == ReshapeType::kFlatten) {
+      os << "output " << i << " <- input {";
+    } else {
+      os << "input " << i << " -> output {";
+    }
+    llvm::interleave(reassociation.reassociation[i], os, ", ");
+    os << "}\n";
+  }
+  return result;
+}
+
+// Determines the reshape type for the given input and output shapes.
+// Basic function for now, but room to grow into other reshape types.
+ReshapeType GetReshapeType(const Dimensions& static_shape_before,
+                           const Dimensions& static_shape_after) {
+  if (static_shape_after.size() == 1) {
+    return ReshapeType::kFlatten;
+  }
+  return static_shape_before.size() > static_shape_after.size()
+             ? ReshapeType::kCollapse
+             : ReshapeType::kExpand;
+}
+
+// Returns the reassociation indices for the given input and output shapes.
+// See ReshapeFromStaticDimensions for more details on reassociation storage.
+// See ReshapeType for more details on supported reshape types.
+absl::StatusOr<ReshapeReassociation> GetReshapeReassociation(
+    const Dimensions& static_shape_before,
+    const Dimensions& static_shape_after) {
+  ReshapeType reshape_type =
+      GetReshapeType(static_shape_before, static_shape_after);
+  if (reshape_type == ReshapeType::kFlatten) {
+    // No need to reassociation for flattening.
+    return ReshapeReassociation{reshape_type, {}};
+  }
+
+  // Create a temporary context to create ranked tensor types.
+  // Objects do not need to exist beyond the function, as the mapping only holds
+  // integer indices. Datatype doesn't matter here, so we use float32.
+  mlir::MLIRContext tmp_context;
+  mlir::Type float_type = mlir::Float32Type::get(&tmp_context);
+  mlir::RankedTensorType static_shape_before_type =
+      mlir::RankedTensorType::get(static_shape_before, float_type);
+  mlir::RankedTensorType static_shape_after_type =
+      mlir::RankedTensorType::get(static_shape_after, float_type);
+
+  // Below is a restriction of the MLIR getReassociationIndicesForReshape
+  TT_RET_CHECK(static_shape_before.size() != static_shape_after.size(),
+               error::kInvalidArgument)
+      << "reshape reassociation not supported for same sized reshapes: "
+      << ShapeTransitionToString(static_shape_before, static_shape_after);
+
+  // Determine the reassociation indices from the static shapes.
+  // This is used to determine the output dimension that needs to be bounded
+  // and the bound value.
+  auto reassociation = mlir::getReassociationIndicesForReshape(
+      static_shape_before_type, static_shape_after_type);
+
+  TT_RET_CHECK(reassociation.has_value(), error::kInvalidArgument)
+      << "unable to determine reassociation indices "
+      << ShapeTransitionToString(static_shape_before, static_shape_after);
+  return ReshapeReassociation{reshape_type, std::move(reassociation.value())};
+}
+
 absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
     mlir::MlirOp op, const Dimensions& static_shape_before,
     const Dimensions& static_shape_after) {
@@ -1058,29 +1150,12 @@ absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
     return mlir::stablehlo::Reshape(op, static_shape_after);
   }
 
-  // Special case for when reshape flattens the input
-  if (static_shape_after.size() == 1) {
-    ABSL_VLOG(3) << "[ReshapeFromStaticDimensions] Flattening op: "
-                 << mlir::debugString(type);
-    return Flatten(op);
-  }
-
-  // Below is a restriction of the MLIR getReassociationIndicesForReshape
-  ABSL_CHECK(  // CRASH_OK=input op and static shape before should have the same
-               // rank
+  ABSL_CHECK(  // CRASH_OK=input op rank must match static shape
       static_shape_before.size() == type.getRank())
       << "input op and static shape before should have the same rank, got "
       << type.getRank() << " for op " << mlir::debugString(type) << " and "
       << static_shape_before.size()
       << " for static_shape_before: " << ToString(static_shape_before);
-
-  ABSL_CHECK(  // CRASH_OK=reshape should not be called with
-               // the same shapes
-      static_shape_before.size() != static_shape_after.size())
-      << "reshape should not be called with shapes of same rank: "
-      << ShapeTransitionToString(static_shape_before, static_shape_after);
-
-  mlir::stablehlo::Dimensions op_dims = GetDimensions(op);
 
   // TODO: Explore making this work with multiple dynamic dimensions
   TT_RET_CHECK(type.getNumDynamicDims() == 1, error::kUnimplemented)
@@ -1088,33 +1163,32 @@ absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
          "dimension: "
       << mlir::debugString(type);
 
+  // Determine the reassociation indices from the static shapes.
+  // This is used to determine the output dimension that needs to be bounded
+  // and the bound value.
+  TT_ASSIGN_OR_RETURN(
+      ReshapeReassociation reassociation,
+      GetReshapeReassociation(static_shape_before, static_shape_after));
+
+  // Special case for when reshape fully flattens the input
+  if (reassociation.type == ReshapeType::kFlatten) {
+    ABSL_VLOG(3) << "[ReshapeFromStaticDimensions] Flattening op: "
+                 << mlir::debugString(type);
+    return Flatten(op);
+  }
+
+  mlir::stablehlo::Dimensions op_dims = GetDimensions(op);
   auto it = absl::c_find_if(
       op_dims, [](const auto& dim) { return dim.boundOp.has_value(); });
   size_t input_bound_dim = it - op_dims.begin();
 
-  mlir::RankedTensorType static_shape_before_type =
-      mlir::RankedTensorType::get(static_shape_before, type.getElementType());
-  mlir::RankedTensorType static_shape_after_type =
-      mlir::RankedTensorType::get(static_shape_after, type.getElementType());
-
-  // Determine the reassociation indices from the static shapes.
-  // This is used to determine the output dimension that needs to be bounded
-  // and the bound value.
-  auto reassociation = mlir::getReassociationIndicesForReshape(
-      static_shape_before_type, static_shape_after_type);
-  TT_RET_CHECK(reassociation, error::kInvalidArgument)
-      << "unable to determine reassociation indices "
-      << ShapeTransitionToString(static_shape_before, static_shape_after);
-
-  const bool is_collapse =
-      static_shape_before.size() > static_shape_after.size();
   ABSL_VLOG(3) << "[ReshapeFromStaticDimensions] "
-               << ReassociationToString(*reassociation, is_collapse);
+               << ReassociationToString(reassociation);
 
-  int output_bound_dim = -1;
+  int64_t output_bound_dim = -1;
   int64_t output_dyn_bound = -1;
 
-  if (is_collapse) {
+  if (reassociation.type == ReshapeType::kCollapse) {
     // Collapse: reassociation[output_idx] gives {input_idx, ...}
     // Ex: [1, 2, 3, 4] -> [1, 2, 12]
     // reassociation[outputIdx = 0] = inputIdx 0
@@ -1123,28 +1197,28 @@ absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
     // if input_bound_dim = 1, then output_bound_dim = 1
     // if input_bound_dim = 2 or 3, then output_bound_dim = 2, output_dyn_bound
     // = product of bounds of input dims 2 and 3
-    for (int outputIdx = 0; outputIdx < static_shape_after.size();
+    for (int outputIdx = 0; outputIdx < reassociation.reassociation.size();
          ++outputIdx) {
-      const auto& group = (*reassociation)[outputIdx];
+      const auto& group = reassociation.reassociation[outputIdx];
       bool contains_input_dyn = absl::c_linear_search(group, input_bound_dim);
-      if (contains_input_dyn) {
-        ABSL_CHECK(output_bound_dim == -1)  // CRASH_OK=would imply a bug in
-                                            // getReassociationIndicesForReshape
-            << "multiple valid bound propagations found for input bound dim "
-            << input_bound_dim << " for reassociation "
-            << ShapeTransitionToString(static_shape_before, static_shape_after);
+      if (!contains_input_dyn) continue;
 
-        const size_t current_group_bound = std::accumulate(
-            group.begin(), group.end(), 1L, [&](size_t acc, size_t inputIdx) {
-              return acc * op_dims[inputIdx].size;
-            });
-        output_bound_dim = outputIdx;
-        output_dyn_bound = current_group_bound;
+      ABSL_CHECK(output_bound_dim == -1)  // CRASH_OK=would imply a bug in
+                                          // getReassociationIndicesForReshape
+          << "multiple valid bound propagations found for input bound dim "
+          << input_bound_dim << " for reassociation "
+          << ReassociationToString(reassociation);
 
-        ABSL_VLOG(3) << "[ReshapeFromStaticDimensions] output_bound_dim: "
-                     << output_bound_dim
-                     << " output_dyn_bound: " << output_dyn_bound;
-      }
+      const size_t output_group_bounded_size = std::accumulate(
+          group.begin(), group.end(), 1L, [&](size_t acc, size_t inputIdx) {
+            return acc * op_dims[inputIdx].size;
+          });
+      output_bound_dim = outputIdx;
+      output_dyn_bound = output_group_bounded_size;
+
+      ABSL_VLOG(3) << "[ReshapeFromStaticDimensions] output_bound_dim: "
+                   << output_bound_dim
+                   << " output_dyn_bound: " << output_dyn_bound;
     }
   } else {
     // Expansion: reassociation[input_idx] gives {output_idx, ...}
@@ -1158,12 +1232,12 @@ absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
     // bound from one input dim to multiple output dims)
     ABSL_CHECK(  // CRASH_OK=would imply a bug in
                  // getReassociationIndicesForReshape
-        input_bound_dim < reassociation->size())
+        input_bound_dim < reassociation.reassociation.size())
         << "invalid reassociation map, input bound dim " << input_bound_dim
         << " is out of bounds for reassociation "
         << ShapeTransitionToString(static_shape_before, static_shape_after);
 
-    const auto& outputGroup = (*reassociation)[input_bound_dim];
+    const auto& outputGroup = (reassociation.reassociation)[input_bound_dim];
 
     if (outputGroup.size() == 1) {
       output_bound_dim = outputGroup[0];
@@ -1218,27 +1292,6 @@ absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
   mlir::RankedTensorType dynamic_shape_after =
       mlir::stablehlo::getRankedTensorType(output_dims, type.getElementType());
   return mlir::stablehlo::Reshape(dynamic_shape_after, op);
-}
-
-absl::StatusOr<mlir::MlirOp> BuildRngStateUpdateShlo(mlir::MlirOp state,
-                                                     int64_t num_elements,
-                                                     int64_t bit_width) {
-  auto& builder = state.getBuilder();
-
-  // seed: output_state[0] = initial_state[0]
-  mlir::MlirOp state_seed = mlir::stablehlo::Slice(state, {0}, {1}, {1});
-  // offset: output_state[1] = initial_state[1] + ceil(num_bits / 128)
-  // Note that num_bits = num_elements * bit_width.
-  // Each Philox step consumes 128 bits of randomness and increments the offset
-  // by 1.
-  int64_t increment_val = (num_elements * bit_width + 127) / 128;
-
-  mlir::MlirOp state_offset = mlir::stablehlo::Slice(state, {1}, {2}, {1});
-  mlir::MlirOp increment =
-      MakeConstant(builder, increment_val, mlir::ElementType::UI64, {1});
-  mlir::MlirOp new_offset = mlir::stablehlo::Add(state_offset, increment);
-
-  return mlir::stablehlo::Concatenate(builder, {state_seed, new_offset}, 0);
 }
 
 }  // namespace torch_tpu

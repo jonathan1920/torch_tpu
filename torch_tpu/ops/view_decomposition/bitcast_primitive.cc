@@ -380,6 +380,9 @@ absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
   const int64_t from_bitwidth = TorchEquivalentBitwidth(bitcast.from_type);
   const int64_t to_bitwidth = TorchEquivalentBitwidth(bitcast.to_type);
+  // Need to propagate dynamic bound to output shape for bitcast.
+  TT_RET_CHECK(input_type.hasStaticShape(), error::kInvalidArgument)
+      << "lowering for bitcast with dynamic shapes is currently not supported";
   TT_ASSIGN_OR_RETURN(Dimensions result_shape,
                       GetShapeAfterRealToRealBitcast(from_bitwidth, to_bitwidth,
                                                      input_type.getShape()));

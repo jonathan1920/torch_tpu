@@ -20,6 +20,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <ostream>
+#include <sstream>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -29,9 +31,14 @@
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
+#include "c10/core/TensorImpl.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
+#include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/unary.h"
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
 #include "torch_tpu/ops/view_decomposition/broadcast_primitive.h"
@@ -345,6 +352,90 @@ absl::StatusOr<mlir::MlirOp> ViewSequenceShlo(mlir::MlirOp input,
     TT_ASSIGN_OR_RETURN(current, ViewPrimitiveShlo(current, primitive));
   }
   return current;
+}
+
+namespace {
+
+struct ViewCacheKeyVisitor {
+  // Special handling for reshape primitive since we only support affine
+  // reshapes currently.
+  // TODO: Enhance this to support squeeze/unsqueeze.
+  absl::StatusOr<std::string> operator()(
+      const ReshapePrimitive& primitive) const {
+    TT_ASSIGN_OR_RETURN(
+        const ReshapeReassociation reassociation,
+        GetReshapeReassociation(primitive.base_sizes, primitive.new_sizes));
+    return absl::StrCat("reshape_", ReassociationToString(reassociation));
+  }
+
+  // Fallback for all other view primitives.
+  // Currently unsupported:
+  //  - BroadcastPrimitive relies on static shape information for output.
+  //  - UnfoldPrimitive relies on static shape information for output.
+  //  - SlicePrimitive relies on static shape information for output.
+  template <typename T>
+  absl::StatusOr<std::string> operator()(const T& primitive) const {
+    if constexpr (std::is_same_v<T, TransposePrimitive> ||
+                  std::is_same_v<T, PadPrimitive> ||
+                  std::is_same_v<T, ConjPrimitive> ||
+                  std::is_same_v<T, RealToRealBitcast> ||
+                  std::is_same_v<T, ComplexToRealBitcast> ||
+                  std::is_same_v<T, ViewAsComplex>) {
+      std::ostringstream os;
+      os << primitive;
+      return os.str();
+    }
+    return TT_ERROR(error::kUnimplemented) << "View primitive does not support "
+                                              "dynamic cache keys for type: "
+                                           << typeid(T).name();
+  }
+};
+
+absl::StatusOr<std::string> ViewToCacheKey(OpParamCacheKeys& param_keys,
+                                           const ViewPrimitive& primitive) {
+  ViewCacheKeyVisitor visitor{};
+  return std::visit(visitor, primitive);
+}
+
+absl::StatusOr<OpParamCacheKeys> SymbolicViewCacheKey(
+    ViewSequenceSpan view_sequence) {
+  // FIXME: How should we iteratively add to a builder?
+  // Add method to return empty builder or return a built OpParamCacheKeys
+  // on each iteration?
+  ABSL_VLOG(3) << "[SymbolicViewCacheKey] View sequence: "
+               << ToString(view_sequence);
+  OpParamCacheKeys param_keys;
+  OpParamCacheKeys::Builder builder = param_keys.SetParam("A", "B");
+  for (auto [index, primitive] : llvm::enumerate(view_sequence)) {
+    TT_ASSIGN_OR_RETURN(std::string view_cache_key,
+                        ViewToCacheKey(param_keys, primitive));
+    ABSL_VLOG(3) << "[SymbolicViewCacheKey] Symbolic reshape key: "
+                 << view_cache_key;
+    builder = param_keys.SetParam(absl::StrCat("view_", index), view_cache_key);
+  }
+  return *builder;
+}
+
+}  // namespace
+
+absl::StatusOr<OpParamCacheKeys> ViewSequenceCacheKey(
+    ViewSequenceSpan view_sequence, const c10::TensorImpl& tensor) {
+  // First try to create a symbolic cache key that represents view ops as
+  // mappings from input to output tensor shapes, i.e. Reshape[A,B]->[A*B]
+  // or transpose[A,B]{0,1}, instead of embedding static input and output shapes
+  // into the cache key.
+  absl::StatusOr<OpParamCacheKeys> symbolic_key =
+      SymbolicViewCacheKey(view_sequence);
+  if (symbolic_key.ok()) {
+    ABSL_VLOG(3) << "[ViewSequenceCacheKey] Built symbolic cache key";
+    return symbolic_key;
+  }
+
+  // Fall back to using static tensor shapes for the cache key.
+  ABSL_VLOG(3) << "[ViewSequenceCacheKey] Failed to create symbolic cache key: "
+               << symbolic_key.status().message();
+  return *OpParamCacheKeys::SetParam("strides", tensor.strides())
+              .SetParam("storage_offset", tensor.storage_offset());
 }
 
 }  // namespace torch_tpu
