@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/log/absl_check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
@@ -30,8 +31,8 @@
 #include "ATen/ops/_unsafe_index_put.h"
 #include "ATen/ops/div.h"
 #include "ATen/ops/ones_like.h"
-#include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
@@ -78,6 +79,20 @@ at::Tensor UnsqueezeToDim(const at::Tensor& x, int dim) {
   return result;
 }
 
+absl::Status CheckWeightType(const at::Tensor& weight) {
+  auto scalar_type = weight.scalar_type();
+
+  TT_RET_CHECK(scalar_type == at::ScalarType::Half ||
+                   scalar_type == at::ScalarType::BFloat16 ||
+                   scalar_type == at::ScalarType::Float ||
+                   scalar_type == at::ScalarType::Double,
+               error::kInvalidArgument)
+      << "expected the weight dtype to be either float16, bfloat16, float32,"
+      << " or float64, got " << ToString(scalar_type);
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> AtenEmbeddingBag(
@@ -90,13 +105,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> AtenEmbeddingBag(
       (weight, indices, offsets, scale_grad_by_freq, mode, sparse,
        per_sample_weights, include_last_offset, padding_idx),
       {
-        TT_CHECK_THROW(weight.scalar_type() == at::ScalarType::Half ||
-                           weight.scalar_type() == at::ScalarType::BFloat16 ||
-                           weight.scalar_type() == at::ScalarType::Float ||
-                           weight.scalar_type() == at::ScalarType::Double,
-                       error::kInvalidArgument)
-            << "expected weight dtype to be float16, bfloat16, float32,"
-            << " or float64, got " << torch_tpu::ToString(weight.scalar_type());
+        TT_THROW_IF_ERROR(CheckWeightType(weight));
 
         TT_ASSIGN_OR_THROW(const auto weight_dtype,
                            ConvertTo<mlir::ElementType>(weight.scalar_type()));
@@ -180,13 +189,11 @@ at::Tensor& AtenEmbeddingRenorm_(at::Tensor& self, const at::Tensor& indices,
   TT_KERNEL(
       OpName::kEmbeddingRenorm_, op_cache_keys,
       (self, indices, max_norm, norm_type), {
-        auto scalar_type = self.scalar_type();
-        bool is_float_or_complex =
-            c10::isFloatingType(scalar_type) || c10::isComplexType(scalar_type);
-
-        TT_CHECK_THROW(is_float_or_complex, error::kInvalidArgument)
-            << "input dtype should be either floating point or complex. Got "
-            << scalar_type << " instead.";
+        TT_CHECK_THROW(IsFloatingPoint(self) || IsComplex(self),
+                       error::kInvalidArgument)
+            << "expected the input dtype to be either floating point or "
+               "complex, got "
+            << ToString(self.scalar_type());
 
         Dimensions output_dims(indices.sizes().begin(), indices.sizes().end());
         output_dims.push_back(self.size(1));

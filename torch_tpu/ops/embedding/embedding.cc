@@ -18,11 +18,17 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -131,7 +137,9 @@ absl::StatusOr<mlir::MlirOp> BuildEmbeddingGather(mlir::MlirBuilder& builder,
                                                   mlir::MlirOp weight,
                                                   mlir::MlirOp indices) {
   const int64_t emb_dim = GetTensorTypeOrDie(weight).getDimSize(1);
-  TT_RET_CHECK(!mlir::ShapedType::isDynamic(emb_dim), error::kUnimplemented)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=BuildEmbeddingBagShlo() function (sole
+                 // caller) catches this error first.
+      !mlir::ShapedType::isDynamic(emb_dim), error::kUnimplemented)
       << "expected static embedding dimension, got dynamic";
 
   const int64_t indices_dim = GetTensorTypeOrDie(indices).getRank();
@@ -239,6 +247,49 @@ absl::StatusOr<mlir::MlirOp> BuildRenormRow(mlir::MlirBuilder& builder,
 
   return renorm_row;
 }
+
+// Return a string representation of the shape of `type`.
+//
+// This is similar to calling `ToString(type.getShape())`, with the difference
+// that it will replace every dynamic dimension by the word 'dyn'.
+//
+// For example, given the input tensor:
+//
+//   ```py
+//   tensor = torch.rand(2, 3, 4, 5)
+//   dynamism.mark_dynamic(tensor, 0, 1, 10)
+//   dynamism.mark_dynamic(tensor, 2, 1, 10)
+//   ```
+//
+// This function will return the string below:
+//
+//   [dyn, 3, dyn, 5]
+//
+std::string GetShapeStringWithDynamicDimensions(mlir::RankedTensorType type) {
+  std::vector<std::string> str(type.getRank());
+
+  // This string will be displayed wherever there are dynamic dimensions.
+  const std::string dyn = "dyn";
+
+  absl::c_transform(type.getShape(), str.begin(), [&dyn](const int64_t size) {
+    return mlir::ShapedType::isDynamic(size) ? dyn : std::to_string(size);
+  });
+
+  return absl::StrCat("[", absl::StrJoin(str, /* separator= */ ", "), "]");
+}
+
+const char* GetPluralS(const int64_t value) { return value == 1 ? "" : "s"; }
+
+absl::Status CheckStaticShapes(mlir::RankedTensorType type,
+                               const std::string_view name) {
+  TT_RET_CHECK(type.hasStaticShape(), error::kInvalidArgument)
+      << "expected the " << name << " tensor shape to be static, got "
+      << type.getNumDynamicDims() << " dynamic dimension"
+      << GetPluralS(type.getNumDynamicDims()) << " within shape "
+      << GetShapeStringWithDynamicDimensions(type);
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::StatusOr<MlirOpResults<4>> BuildEmbeddingBagShlo(
@@ -256,18 +307,18 @@ absl::StatusOr<MlirOpResults<4>> BuildEmbeddingBagShlo(
 
   // Notice: This currently uses static shape indices, more work is needed
   // to determine how this op supports bounded dynamic values.
-  TT_RET_CHECK(weight_type.hasStaticShape() && indices_type.hasStaticShape() &&
-                   offsets_type.hasStaticShape(),
-               error::kUnimplemented)
-      << "expected static shapes for weight, indices and offsets, got dynamic";
+  TT_RETURN_IF_ERROR(CheckStaticShapes(weight_type, "weight"));
+  TT_RETURN_IF_ERROR(CheckStaticShapes(indices_type, "indices"));
+  TT_RETURN_IF_ERROR(CheckStaticShapes(offsets_type, "offsets"));
 
   const int64_t emb_dim = weight_type.getDimSize(1);
-  TT_RET_CHECK(!mlir::ShapedType::isDynamic(emb_dim), error::kUnimplemented)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Previous check catches this first.
+      !mlir::ShapedType::isDynamic(emb_dim), error::kUnimplemented)
       << "expected static embedding dimension, got dynamic";
 
   const int64_t offsets_size = offsets_type.getDimSize(0);
-  TT_RET_CHECK(!mlir::ShapedType::isDynamic(offsets_size),
-               error::kUnimplemented)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Previous check catches this first.
+      !mlir::ShapedType::isDynamic(offsets_size), error::kUnimplemented)
       << "expected static offsets size, got dynamic";
 
   const int64_t batch_size =
@@ -501,4 +552,5 @@ absl::StatusOr<mlir::MlirOp> BuildEmbeddingRenormShlo(mlir::MlirOp weight,
     return BuildRenormRow(builder, rows, max_norm, norm_type);
   }
 }
+
 }  // namespace torch_tpu

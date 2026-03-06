@@ -20,6 +20,7 @@ import unittest
 from absl.testing import absltest
 from absl.testing import parameterized
 import torch
+from torch_tpu._internal import dynamism
 from torch_tpu._internal import env
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.pallas import tpu_torch_pallas
@@ -1094,6 +1095,73 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
 
       # cpu() is needed because the error is triggered inside the op builder.
       outputs[0].cpu()
+
+  # Why do we run this test only on TPU (and not on CPU)?
+  # The notion of 'dynamic dimensions' does not exist in eager PyTorch.
+  def test_embedding_bag_dynamic_shape_arg(self):
+    indices = torch.ones(10, 10, device=et.device())
+    weight = torch.ones(10, 10, device=et.device())
+
+    with self.subTest(arg="indices"):
+      indices_ = indices.clone()
+
+      # Mark dimension 1 of `indices` as dynamic.
+      dynamism.mark_dynamic(indices_, 1, 5, 20)
+
+      # TODO: Error eagerly, i.e. without having to call the op builder.
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu=(
+              "embedding_bag_forward_only(): expected the indices tensor"
+              " shape to be static, got 1 dynamic dimension within shape [dyn]"
+              " - TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
+              " have a PjRtBuffer to copy from."
+          ),
+      ):
+        out = torch.nn.functional.embedding_bag(indices_, weight)
+        # cpu() is needed because the error is triggered inside the op builder.
+        out.cpu()
+
+    with self.subTest(arg="weight"):
+      weight_ = weight.clone()
+
+      # Mark the dimension 1 of `weight` as dynamic.
+      dynamism.mark_dynamic(weight_, 1, 5, 20)
+
+      # TODO: Error eagerly, i.e. without having to call the op builder.
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu=(
+              "embedding_bag_forward_only(): expected the weight tensor shape"
+              " to be static, got 1 dynamic dimension within shape [10, dyn] -"
+              " TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
+              " have a PjRtBuffer to copy from."
+          ),
+      ):
+        out = torch.nn.functional.embedding_bag(indices, weight_)
+        # cpu() is needed because the error is triggered inside the op builder.
+        out.cpu()
+
+    with self.subTest(arg="offsets"):
+      offsets_ = torch.arange(0, 100, 10, device=et.device(), dtype=torch.int64)
+      indices_ = indices.flatten()
+
+      # Mark the dimension 1 of `offsets` as dynamic.
+      dynamism.mark_dynamic(offsets_, 0, 5, 20)
+
+      # TODO: Error eagerly, i.e. without having to call the op builder.
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu=(
+              "embedding_bag_forward_only(): expected the offsets tensor"
+              " shape to be static, got 1 dynamic dimension within shape [dyn]"
+              " - TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
+              " have a PjRtBuffer to copy from."
+          ),
+      ):
+        out = torch.nn.functional.embedding_bag(indices_, weight, offsets_)
+        # cpu() is needed because the error is triggered inside the op builder.
+        out.cpu()
 
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
@@ -5572,8 +5640,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "embedding_bag_forward_only(): expected weight dtype to be float16,"
-            " bfloat16, float32, or float64, got int64"
+            "embedding_bag_forward_only(): expected the weight dtype to be"
+            " either float16, bfloat16, float32, or float64, got int64"
         ),
         cpu=(
             "Expected tensor for argument #1 'weight' to have one of the"
@@ -5581,6 +5649,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
             " torch.LongTensor instead (while checking arguments for"
             " embedding_bag)"
         ),
+        message_reviewed_by="wan",
     ):
       torch.nn.functional.embedding_bag(
           torch.tensor([0, 1], dtype=torch.int64, device=et.device()),
@@ -5962,6 +6031,26 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         message_reviewed_by="yilingyuan",
     ):
       torch.nn.functional.mse_loss(complex64, complex64, reduction="sum")
+
+  def test_embedding_renorm_float(self):
+    inp = torch.ones(3, 2, device=et.device(), dtype=torch.int64)
+    indices = torch.ones(10, 2, device=et.device(), dtype=torch.int64)
+    max_norm = 1
+    norm_type = 2
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "embedding_renorm_(): expected the input dtype to be either"
+            " floating point or complex, got int64"
+        ),
+        cpu=(
+            "norm(): input dtype should be either floating point or complex."
+            " Got Long instead."
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.embedding_renorm_(inp, indices, max_norm, norm_type)
 
 
 if __name__ == "__main__":
