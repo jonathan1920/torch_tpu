@@ -1163,6 +1163,58 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
         # cpu() is needed because the error is triggered inside the op builder.
         out.cpu()
 
+  @parameterized.named_parameters(
+      {"testcase_name": "2d", "op": torch.grid_sampler_2d, "dims": 2},
+      {"testcase_name": "3d", "op": torch.grid_sampler_3d, "dims": 3},
+  )
+  def test_grid_sampler_invalid_padding_mode(self, op, dims: int):
+    inp_shape = [1, 1] + [2] * dims
+    inp = torch.ones(inp_shape, device=et.device(), dtype=torch.complex64)
+
+    grid_shape = [1] + [2] * dims + [dims]
+    grid = torch.zeros(grid_shape, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            f"grid_sampler_{dims}d(): expected the padding mode to be 0"
+            " (zeros), 1 (border), or 2 (reflection), got 3"
+        ),
+        message_reviewed_by="wan",
+    ):
+      padding_mode = 3
+      op(inp, grid, 0, padding_mode, False)
+
+  def test_grid_sampler_2d_invalid_interpolation_mode(self):
+    inp = torch.ones(1, 1, 2, 2, device=et.device())
+    grid = torch.zeros(1, 2, 2, 2, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "grid_sampler_2d(): expected the interpolation mode to be 0"
+            " (bilinear), 1 (nearest), or 2 (bicubic), got 3"
+        ),
+        message_reviewed_by="wan",
+    ):
+      interpolation_mode = 3
+      torch.grid_sampler(inp, grid, interpolation_mode, 0, False)
+
+  def test_grid_sampler_3d_invalid_interpolation_mode(self):
+    inp = torch.ones(1, 1, 2, 2, 2, device=et.device())
+    grid = torch.zeros(1, 2, 2, 2, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "grid_sampler_3d(): expected the interpolation mode to be 0"
+            " (bilinear) or 1 (nearest), got 2"
+        ),
+        message_reviewed_by="wan",
+    ):
+      interpolation_mode = 2
+      torch.grid_sampler(inp, grid, interpolation_mode, 0, False)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
@@ -6051,6 +6103,39 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         message_reviewed_by="wan",
     ):
       torch.ops.aten.embedding_renorm_(inp, indices, max_norm, norm_type)
+
+  def test_grid_sampler_2d_complex(self):
+    inp = torch.ones(1, 1, 2, 2, device=et.device(), dtype=torch.complex64)
+    grid = torch.zeros(1, 1, 2, 2, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "grid_sampler_2d(): expected the input dtype to be floating"
+            " point, got complex64"
+        ),
+        cpu=(
+            '"grid_sampler_2d_cpu_kernel_impl" not implemented for'
+            " 'ComplexFloat'"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.grid_sampler(inp, grid, 0, 0, False)
+
+  def test_grid_sampler_3d_complex(self):
+    inp = torch.ones(1, 1, 2, 2, 2, device=et.device(), dtype=torch.complex64)
+    grid = torch.zeros(1, 1, 2, 2, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "grid_sampler_3d(): expected the input dtype to be floating"
+            " point, got complex64"
+        ),
+        cpu="\"grid_sampler3d_cpu\" not implemented for 'ComplexFloat'",
+        message_reviewed_by="wan",
+    ):
+      torch.grid_sampler(inp, grid, 0, 0, False)
 
 
 if __name__ == "__main__":

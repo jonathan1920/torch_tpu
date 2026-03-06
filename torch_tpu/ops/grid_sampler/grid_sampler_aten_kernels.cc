@@ -29,7 +29,6 @@
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
-#include "c10/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -911,6 +910,46 @@ absl::StatusOr<mlir::MlirOp> BuildGridSamplerNearestShlo(
   return gathered;
 }
 
+// Checks for the `input` and `padding_mode` arguments.
+// These are common for both 2D and 3D grid sampler implementations.
+absl::Status CheckInputAndPaddingMode(const at::Tensor& input,
+                                      const int64_t padding_mode) {
+  TT_RET_CHECK(padding_mode == 0 || padding_mode == 1 || padding_mode == 2,
+               error::kUnimplemented)
+      << "expected the padding mode to be 0 (zeros), 1 (border), or 2 "
+         "(reflection), got "
+      << padding_mode;
+
+  TT_RET_CHECK(IsFloatingPoint(input), error::kInvalidArgument)
+      << "expected the input dtype to be floating point, got "
+      << torch_tpu::ToString(input.scalar_type());
+
+  return absl::OkStatus();
+}
+
+// Checks for the `interpolation_mode` argument for 2D grid sampler.
+absl::Status Check2DInterpolationMode(const int64_t interpolation_mode) {
+  TT_RET_CHECK(interpolation_mode == 0 || interpolation_mode == 1 ||
+                   interpolation_mode == 2,
+               error::kUnimplemented)
+      << "expected the interpolation mode to be 0 (bilinear), 1 (nearest), or "
+         "2 (bicubic), got "
+      << interpolation_mode;
+
+  return absl::OkStatus();
+}
+
+// Checks for the `interpolation_mode` argument for 3D grid sampler.
+absl::Status Check3DInterpolationMode(const int64_t interpolation_mode) {
+  TT_RET_CHECK(interpolation_mode == 0 || interpolation_mode == 1,
+               error::kUnimplemented)
+      << "expected the interpolation mode to be 0 (bilinear) or 1 (nearest), "
+         "got "
+      << interpolation_mode;
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 at::Tensor AtenGridSampler2d(const at::Tensor& input, const at::Tensor& grid,
@@ -919,22 +958,8 @@ at::Tensor AtenGridSampler2d(const at::Tensor& input, const at::Tensor& grid,
   TT_KERNEL(
       OpName::kGridSampler2d, param_keys,
       (input, grid, interpolation_mode, padding_mode, align_corners), {
-        TT_CHECK_THROW(
-            padding_mode == 0 || padding_mode == 1 || padding_mode == 2,
-            error::kUnimplemented)
-            << "expected padding_mode to be 0 (zeros), 1 (border), or 2 "
-               "(reflection), got "
-            << padding_mode;
-        TT_CHECK_THROW(interpolation_mode == 0 || interpolation_mode == 1 ||
-                           interpolation_mode == 2,
-                       error::kUnimplemented)
-            << "expected interpolation_mode to be 0 (bilinear), 1 (nearest), "
-               "or 2 (bicubic), got "
-            << interpolation_mode;
-        TT_CHECK_THROW(!IsComplex(input) && !IsIntegral(input),
-                       error::kInvalidArgument)
-            << "expected the input dtype to be floating point, got "
-            << torch_tpu::ToString(input.scalar_type());
+        TT_THROW_IF_ERROR(CheckInputAndPaddingMode(input, padding_mode));
+        TT_THROW_IF_ERROR(Check2DInterpolationMode(interpolation_mode));
 
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(input.scalar_type()));
@@ -984,23 +1009,8 @@ at::Tensor AtenGridSampler3d(const at::Tensor& input, const at::Tensor& grid,
   TT_KERNEL(
       OpName::kGridSampler3d, param_keys,
       (input, grid, interpolation_mode, padding_mode, align_corners), {
-        TT_CHECK_THROW(
-            padding_mode == 0 || padding_mode == 1 || padding_mode == 2,
-            error::kUnimplemented)
-            << "expected padding_mode to be 0 (zeros), 1 (border), or 2 "
-               "(reflection), got "
-            << padding_mode;
-        TT_CHECK_THROW(interpolation_mode == 0 || interpolation_mode == 1,
-                       error::kUnimplemented)
-            << "expected interpolation_mode to be 0 (bilinear) or 1 (nearest), "
-               "got "
-            << interpolation_mode;
-        TT_CHECK_THROW(
-            !isComplexType(input.scalar_type()) &&
-                !isIntegralType(input.scalar_type(), /*includeBool=*/true),
-            error::kInvalidArgument)
-            << "expected the input dtype to be floating point, got "
-            << torch_tpu::ToString(input.scalar_type());
+        TT_THROW_IF_ERROR(CheckInputAndPaddingMode(input, padding_mode));
+        TT_THROW_IF_ERROR(Check3DInterpolationMode(interpolation_mode));
 
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(input.scalar_type()));
