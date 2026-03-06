@@ -18,14 +18,23 @@ This file contains model initializations, inference loop, and result validation.
 For the model itself, including the tensor-parallelism logic, see model.py.
 """
 
+import logging
 import os
-from absl import logging
+import sys
+
 import torch
 from torch import distributed as dist
 from torch_tpu import api
 from torch_tpu._internal.utils import utils
 from examples.distributed.tensor_parallel import model
 
+# Direct all logs to stdout so kubectl logs can see them
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stdout,
+)
+logger = logging.getLogger(__name__)
 
 WORLD_SIZE = 8
 BATCH_SIZE = 64
@@ -45,6 +54,7 @@ def worker_fn() -> None:
   initializations, so that we get the same outputs in both cases.
   """
   rank = int(os.environ["RANK"])
+  logger.info("Worker function started, rank: %d", rank)
 
   _ = api.tpu_device()
   dist.init_process_group(backend="tpu_dist")
@@ -58,7 +68,7 @@ def worker_fn() -> None:
     with torch.no_grad():
       data = fake_dataloader_read()
       reference_output = mymodel(data)
-    logging.info("rank: %d, reference_output: %s", rank, reference_output)
+    logger.info("rank: %d, reference_output: %s", rank, reference_output)
 
   # Run on multiple TPUs using Tensor Parallelism.
   torch.manual_seed(RANDOM_SEED)
@@ -69,7 +79,7 @@ def worker_fn() -> None:
     data = fake_dataloader_read().to(device="tpu")
     tpu_tp_output = mymodel_tp(data)
     tpu_tp_output = tpu_tp_output.cpu()
-  logging.info("rank: %d, tpu_tp_output: %s", rank, tpu_tp_output)
+  logger.info("rank: %d, tpu_tp_output: %s", rank, tpu_tp_output)
 
   # Assert TPU outputs on rank=0 match the reference outputs.
   if rank == 0:
