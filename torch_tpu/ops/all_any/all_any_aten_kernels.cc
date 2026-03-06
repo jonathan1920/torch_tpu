@@ -27,6 +27,7 @@
 #include "ATen/core/TensorBody.h"
 #include "c10/core/ScalarType.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/all_any/all_any.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -96,13 +97,14 @@ at::Tensor& MaybeCastToByte(const at::Tensor& self, at::Tensor& result) {
 
 at::Tensor& AtenAllOut(const at::Tensor& self, int64_t dim, bool keep_dim,
                        at::Tensor& out) {
-  TT_KERNEL(OpName::kAllOut, _, (self, dim, keep_dim, out), {
+  TT_KERNEL(OpName::kAllOut, param_keys, (self, dim, keep_dim, out), {
     TT_ASSIGN_OR_THROW(auto params,
                        GetAllAnyReductionParams(self, {dim}, keep_dim));
     TT_THROW_IF_ERROR(UnaryOpOut(
         self, out, OpName::kAllOut,
         GetAllBuilder(std::move(params.dims_to_reduce), params.reduction_mode),
-        {.out_dims = std::move(params.reduced_shape)}));
+        {.op_param_cache_keys = std::move(param_keys),
+         .out_dims = std::move(params.reduced_shape)}));
     return MaybeCastToByte(self, out);
   });
 }
@@ -123,13 +125,14 @@ at::Tensor& AtenAllAllOut(const at::Tensor& self, at::Tensor& out) {
 
 at::Tensor& AtenAnyOut(const at::Tensor& self, int64_t dim, bool keep_dim,
                        at::Tensor& out) {
-  TT_KERNEL(OpName::kAnyOut, _, (self, dim, keep_dim, out), {
+  TT_KERNEL(OpName::kAnyOut, param_keys, (self, dim, keep_dim, out), {
     TT_ASSIGN_OR_THROW(auto params,
                        GetAllAnyReductionParams(self, {dim}, keep_dim));
     TT_THROW_IF_ERROR(UnaryOpOut(
         self, out, OpName::kAnyOut,
         GetAnyBuilder(std::move(params.dims_to_reduce), params.reduction_mode),
-        {.out_dims = std::move(params.reduced_shape)}));
+        {.op_param_cache_keys = std::move(param_keys),
+         .out_dims = std::move(params.reduced_shape)}));
     return MaybeCastToByte(self, out);
   });
 }

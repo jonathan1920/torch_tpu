@@ -1341,11 +1341,12 @@ class TorchTpuTestBase(TestCase):
     except Exception as e:  # pylint: disable=broad-except
       cpu_thrown = e
     if cpu_thrown and not allow_failure:
-      self.fail(
+      message = (
           "CPU threw an exception but allow_failure=False.\n"
           f"Exception type: {cpu_thrown.__class__.__name__}\n"
           f"Exception message: {cpu_thrown}"
       )
+      self.fail(message)
 
     try:
       torch_tpu_result = to(tensor_from_device(torch_tpu_device()), "cpu")

@@ -3230,6 +3230,36 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close(golden_result=v_cpu, torch_tpu_result=v_tpu.cpu())
     self.assert_close(golden_result=i_cpu, torch_tpu_result=i_tpu.cpu())
 
+  def test_all(self):
+    def compute(dim, keep_dim, device):
+      x = torch.tensor(
+          [[True, True], [True, False], [True, True], [True, True]],
+          dtype=torch.bool,
+          device=device,
+      )
+      out = torch.empty(0, dtype=torch.bool, device=device)
+      torch.all(x, dim=dim, keepdim=keep_dim, out=out)
+      return out
+
+    self.assert_close_tpu_vs_cpu(functools.partial(compute, 0, False))
+    self.assert_close_tpu_vs_cpu(functools.partial(compute, 0, True))
+    self.assert_close_tpu_vs_cpu(functools.partial(compute, 1, False))
+    self.assert_close_tpu_vs_cpu(functools.partial(compute, 1, True))
+
+  def test_any(self):
+    def compute(dim, keep_dim, device):
+      x = torch.tensor(
+          [[False, False], [True, True]], dtype=torch.bool, device=device
+      )
+      out = torch.empty(0, dtype=torch.bool, device=device)
+      torch.any(x, dim=dim, keepdim=keep_dim, out=out)
+      return out
+
+    self.assert_close_tpu_vs_cpu(functools.partial(compute, 0, False))
+    self.assert_close_tpu_vs_cpu(functools.partial(compute, 0, True))
+    self.assert_close_tpu_vs_cpu(functools.partial(compute, 1, False))
+    self.assert_close_tpu_vs_cpu(functools.partial(compute, 1, True))
+
   def test_multinomial_output_properties(self):
     device = api.tpu_device()
 
