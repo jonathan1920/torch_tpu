@@ -18,8 +18,10 @@
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -28,11 +30,12 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/TensorBody.h"
-#include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/index_select/index_select.h"
@@ -205,25 +208,43 @@ absl::StatusOr<mlir::MlirOp> BuildPdistForwardHlo(mlir::MlirOp input_op,
     return BuildPNormShlo(diff_op, p, {1}, ReductionMode::kDropDims, out_type);
   }
 }
+
+bool IsBFloatOrHalf(const at::Tensor& tensor) {
+  return tensor.scalar_type() == at::ScalarType::BFloat16 ||
+         tensor.scalar_type() == at::ScalarType::Half;
+}
+
+absl::Status CheckIsFloatingPoint(const at::Tensor& tensor,
+                                  const std::string_view name) {
+  TT_RET_CHECK(IsFloatingPoint(tensor), error::kInvalidArgument)
+      << "expected the " << name << " dtype to be floating point, got "
+      << ToString(tensor.scalar_type());
+  return absl::OkStatus();
+}
+
+absl::Status CheckNotBFloatOrHalf(const at::Tensor& tensor,
+                                  const std::string_view name) {
+  TT_RET_CHECK(!IsBFloatOrHalf(tensor), error::kInvalidArgument)
+      << "expected the " << name << " dtype not to be bfloat16 or float16, got "
+      << ToString(tensor.scalar_type());
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 at::Tensor AtenCdistForward(const at::Tensor& x1, const at::Tensor& x2,
                             double p, std::optional<int64_t> compute_mode) {
   TT_KERNEL(OpName::kCdistForward, param_keys, (x1, x2, p, compute_mode), {
-    const c10::ScalarType x1_dtype = x1.scalar_type();
-    const c10::ScalarType x2_dtype = x2.scalar_type();
-    TT_ASSIGN_OR_THROW(auto out_dtype, ConvertTo<mlir::ElementType>(x1_dtype));
+    TT_ASSIGN_OR_THROW(auto out_dtype,
+                       ConvertTo<mlir::ElementType>(x1.scalar_type()));
 
-    TT_CHECK_THROW(c10::isFloatingType(x1_dtype), error::kInvalidArgument)
-        << "expected floating-point dtypes, got x1 dtype "
-        << torch_tpu::ToString(x1_dtype);
-    TT_CHECK_THROW(c10::isFloatingType(x2_dtype), error::kInvalidArgument)
-        << "expected floating-point dtypes, got x2 dtype "
-        << torch_tpu::ToString(x2_dtype);
+    TT_THROW_IF_ERROR(CheckIsFloatingPoint(x1, "first argument's"));
+    TT_THROW_IF_ERROR(CheckIsFloatingPoint(x2, "second argument's"));
+
     TT_CHECK_THROW(p >= 0, error::kInvalidArgument)
-        << "expected p value to be >= 0, got " << p;
+        << "expected the p value to be >= 0, got " << p;
 
-    int64_t mode = compute_mode.value_or(0);
+    const int64_t mode = compute_mode.value_or(0);
     const int64_t c = x1.size(-1);
     const int64_t r1 = x1.size(-2);
     const int64_t r2 = x2.size(-2);
@@ -246,14 +267,8 @@ at::Tensor AtenCdistForward(const at::Tensor& x1, const at::Tensor& x2,
 
     // Add check for bf16 and float16 after the empty dimension check,
     // because they are supported for empty tensors but not for non-empty ones.
-    TT_CHECK_THROW(x1.scalar_type() != at::ScalarType::BFloat16 &&
-                       x1.scalar_type() != at::ScalarType::Half &&
-                       x2.scalar_type() != at::ScalarType::BFloat16 &&
-                       x2.scalar_type() != at::ScalarType::Half,
-                   error::kInvalidArgument)
-        << "bfloat16 and float16 dtypes are not supported, got x1 dtype "
-        << torch_tpu::ToString(x1_dtype) << " and x2 dtype "
-        << torch_tpu::ToString(x2_dtype);
+    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(x1, "first argument's"));
+    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(x2, "second argument's"));
 
     auto op_builder = [p, mode, common_batch_shape, r1, r2,
                        c](FixedSizeSpan<mlir::MlirOp, 2> inputs)
@@ -276,9 +291,8 @@ at::Tensor AtenCdistForward(const at::Tensor& x1, const at::Tensor& x2,
 
 at::Tensor AtenPdistForward(const at::Tensor& self, double p) {
   TT_KERNEL(OpName::kPdistForward, param_keys, (self, p), {
-    const c10::ScalarType self_dtype = self.scalar_type();
     TT_ASSIGN_OR_THROW(auto out_dtype,
-                       ConvertTo<mlir::ElementType>(self_dtype));
+                       ConvertTo<mlir::ElementType>(self.scalar_type()));
 
     // If input has shape (n, m), output will have shape n(n-1)/2.
     const int64_t n = self.size(0);
@@ -292,11 +306,7 @@ at::Tensor AtenPdistForward(const at::Tensor& self, double p) {
 
     // Add check for bfloat16 and float16 after the empty dimension check,
     // because empty tensors are supported for these dtypes
-    TT_CHECK_THROW(self_dtype != at::ScalarType::BFloat16 &&
-                       self_dtype != at::ScalarType::Half,
-                   error::kInvalidArgument)
-        << "bfloat16 and float16 dtypes are not supported, got self dtype "
-        << torch_tpu::ToString(self_dtype);
+    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(self, /* name= */ "input"));
 
     auto op_builder = [p](mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
       return BuildPdistForwardHlo(input, p);

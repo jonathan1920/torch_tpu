@@ -3422,50 +3422,85 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.nn.functional.max_pool3d(t_bool, kernel_size=3)
 
-  def test_cdist_forward_unsupported_dtypes(self):
-    x1_bf16 = torch.randn(2, 2, device=et.device(), dtype=torch.bfloat16)
-    x1_f16 = torch.randn(2, 2, device=et.device(), dtype=torch.float16)
-    x1_int32 = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
-    x2_bf16 = torch.randn(2, 2, device=et.device(), dtype=torch.bfloat16)
-    x2_f16 = torch.randn(2, 2, device=et.device(), dtype=torch.float16)
-    x2_int32 = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
+  @parameterized.named_parameters(
+      ("bfloat16", torch.bfloat16, "bfloat16", "BFloat16"),
+      ("float16", torch.float16, "float16", "Half"),
+  )
+  def test_cdist_forward_unsupported_floating_point_dtypes(
+      self, dtype: torch.dtype, tpu_dtype_str: str, cpu_dtype_str: str
+  ):
+    # Starting with 2 `float32` tensors, this test runs `cdist()` twice for each
+    # unsupported dtype:
+    #
+    #   1. Casting the first argument
+    #   2. Casting the second argument
+    #
+    # Note that the CPU error message is different for the both cases mentioned
+    # above.
+
+    x1 = torch.randn(2, 2, device=et.device())
+    x2 = torch.randn(2, 2, device=et.device())
 
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "cdist_forward(): expected floating-point dtypes,"
-            " got x1 dtype int32"
+            "cdist_forward(): expected the first argument's dtype not to be"
+            f" bfloat16 or float16, got {tpu_dtype_str}"
+        ),
+        cpu=f"\"cdist\" not implemented for '{cpu_dtype_str}'",
+        message_reviewed_by="wan",
+    ):
+      torch.cdist(x1.to(dtype), x2, p=1.0)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "cdist_forward(): expected the second argument's dtype not to be"
+            f" bfloat16 or float16, got {tpu_dtype_str}"
+        ),
+        cpu=f"expected scalar type Float but found {cpu_dtype_str}",
+        message_reviewed_by="wan",
+    ):
+      torch.cdist(x1, x2.to(dtype), p=1.0)
+
+  def test_cdist_forward_int32(self):
+    # Starting with 2 `float32` tensors, this test runs `cdist()` twice:
+    #
+    #   1. Casting the first argument
+    #   2. Casting the second argument
+
+    x1 = torch.randn(2, 2, device=et.device())
+    x2 = torch.randn(2, 2, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "cdist_forward(): expected the first argument's dtype to be"
+            " floating point, got int32"
         ),
         cpu="cdist only supports floating-point dtypes, X1 got: Int",
+        message_reviewed_by="wan",
     ):
-      torch.cdist(x1_int32, x2_int32, p=1.0)
+      torch.cdist(x1.to(torch.int32), x2, p=1.0)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "cdist_forward(): bfloat16 and float16 dtypes are not supported,"
-            " got x1 dtype bfloat16 and x2 dtype bfloat16"
+            "cdist_forward(): expected the second argument's dtype to be"
+            " floating point, got int32"
         ),
-        cpu="\"cdist\" not implemented for 'BFloat16'",
+        cpu="cdist only supports floating-point dtypes, X2 got: Int",
+        message_reviewed_by="wan",
     ):
-      torch.cdist(x1_bf16, x2_bf16, p=1.0)
-
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu=(
-            "cdist_forward(): bfloat16 and float16 dtypes are not supported,"
-            " got x1 dtype float16 and x2 dtype float16"
-        ),
-        cpu="\"cdist\" not implemented for 'Half'",
-    ):
-      torch.cdist(x1_f16, x2_f16, p=1.0)
+      torch.cdist(x1, x2.to(torch.int32), p=1.0)
 
   def test_cdist_forward_unsupported_p(self):
     x1 = torch.randn(2, 2, device=et.device(), dtype=torch.float32)
     x2 = torch.randn(2, 2, device=et.device(), dtype=torch.float32)
+
     with et.assert_raises_message(
         RuntimeError,
-        tpu="cdist_forward(): expected p value to be >= 0, got -1",
+        tpu="cdist_forward(): expected the p value to be >= 0, got -1",
         cpu="cdist only supports non-negative p values",
     ):
       torch.cdist(x1, x2, p=-1.0)
@@ -3689,29 +3724,25 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.nn.functional.avg_pool3d(t_int32, kernel_size=3)
 
-  def test_pdist_forward_unsupported_dtypes(self):
-    t_bf16 = torch.randn(2, 2, device=et.device(), dtype=torch.bfloat16)
-    t_f16 = torch.randn(2, 2, device=et.device(), dtype=torch.float16)
+  @parameterized.named_parameters(
+      ("bfloat16", torch.bfloat16, "bfloat16", "BFloat16"),
+      ("float16", torch.float16, "float16", "Half"),
+  )
+  def test_pdist_forward_unsupported_dtypes(
+      self, dtype: torch.dtype, tpu_dtype_str: str, cpu_dtype_str: str
+  ):
+    inp = torch.randn(2, 2, device=et.device(), dtype=dtype)
 
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "pdist_forward(): bfloat16 and float16 dtypes are not supported,"
-            " got self dtype bfloat16"
+            "pdist_forward(): expected the input dtype not to be bfloat16 or"
+            f" float16, got {tpu_dtype_str}"
         ),
-        cpu="\"pdist\" not implemented for 'BFloat16'",
+        cpu=f"\"pdist\" not implemented for '{cpu_dtype_str}'",
+        message_reviewed_by="wan",
     ):
-      torch.nn.functional.pdist(t_bf16, p=2.0)
-
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu=(
-            "pdist_forward(): bfloat16 and float16 dtypes are not supported,"
-            " got self dtype float16"
-        ),
-        cpu="\"pdist\" not implemented for 'Half'",
-    ):
-      torch.nn.functional.pdist(t_f16, p=2.0)
+      torch.nn.functional.pdist(inp, p=2.0)
 
   # TODO(lwh): fix this test once G3 pytorch version is updated
   @unittest.skip("Disabled due to pytorch version mismatch")
