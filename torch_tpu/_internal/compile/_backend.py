@@ -14,7 +14,6 @@
 
 """TPU backend for `torch.compile()` integration.
 
-TODO(wzz): These notes are for internal development
 The `torch.compile()` function has the following relevant arguments:
   fullgraph (bool):
     We let `torch.compile()` handle graph breaks. We would likely not care.
@@ -255,7 +254,7 @@ class TpuBackend:
     # consider compiling lazily on each function invocation, but this will have
     # performance impact.
     #
-    # TODO(wzz): Figure out how to remove symint from the graph and recompile
+    # TODO: Figure out how to remove symint from the graph and recompile
     # without dynamism.
     _raise_on_symint(example_inputs)
 

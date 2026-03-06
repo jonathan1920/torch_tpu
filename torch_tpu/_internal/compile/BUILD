@@ -122,7 +122,7 @@ pybind_extension(
     common_lib_packages = [
         "torch_tpu/common",
     ],
-    # TODO(wzz): Re-enable import test once I figure out the pybind requirements.
+    # TODO: Re-enable import test once we figure out the pybind requirements.
     wrap_py_init = True,
     deps = [
         ":compiled_mode",

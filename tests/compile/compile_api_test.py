@@ -20,7 +20,7 @@ from torch_tpu import api
 from torch_tpu._internal.compile import tpu_torch_compile
 
 
-# TODO(wzz): add more test coverage for the direct compile API.
+# TODO: add more test coverage for the direct compile API.
 class CompileApiTest(absltest.TestCase):
 
   def test_build_mlir(self):
