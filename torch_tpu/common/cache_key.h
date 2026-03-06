@@ -50,6 +50,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/utils.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/xla_data.pb.h"
 
@@ -79,6 +80,10 @@ absl::StatusOr<std::string> FormatParamCacheKey(at::Scalar value);
 [[nodiscard]] inline std::string FormatParamCacheKey(
     const mlir::ElementType value) {
   return std::string(ToShortName(value));
+}
+[[nodiscard]] inline std::string FormatParamCacheKey(
+    const mlir::stablehlo::Precision value) {
+  return std::string(mlir::stablehlo::stringifyPrecision(value));
 }
 [[nodiscard]] inline std::string FormatParamCacheKey(const double value) {
   return LosslessToString(value);

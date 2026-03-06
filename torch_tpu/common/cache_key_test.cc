@@ -35,6 +35,7 @@
 #include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/shape.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/xla_data.pb.h"
 
@@ -97,6 +98,25 @@ TEST(OpParamCacheKeys, SetParamMlirElementType) {
   auto params_or = *OpParamCacheKeys::SetParam("foo", mlir::ElementType::F32);
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "f32")));
+}
+
+TEST(OpParamCacheKeys, SetParamStablehloPrecision) {
+  auto params_or =
+      *OpParamCacheKeys::SetParam("foo", mlir::stablehlo::Precision::DEFAULT);
+  ASSERT_TRUE(params_or.ok());
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "DEFAULT")));
+
+  auto params2_or = *OpParamCacheKeys::SetParam(
+      "foo", mlir::stablehlo::Precision::HIGH);  // PRECISION_HIGH_OK=unit
+                                                 // test okay
+  ASSERT_TRUE(params2_or.ok());
+  EXPECT_THAT(params2_or.value(), ElementsAre(Pair("foo", "HIGH")));
+
+  auto params3_or = *OpParamCacheKeys::SetParam(
+      "foo", mlir::stablehlo::Precision::HIGHEST);  // PRECISION_HIGH_OK=unit
+                                                    // test okay
+  ASSERT_TRUE(params3_or.ok());
+  EXPECT_THAT(params3_or.value(), ElementsAre(Pair("foo", "HIGHEST")));
 }
 
 TEST(OpParamCacheKeys, SetParamInteger) {

@@ -611,6 +611,7 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:stablehlo_ops",
         "@xla//xla:xla_data_proto_cc",
     ],
 )
@@ -631,6 +632,7 @@ torch_tpu_cc_test(
         "//shims/torch/torch/headeronly:torch_headeronly",
         "@com_google_googletest//:gtest_main",
         "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:stablehlo_ops",
         "@xla//xla:xla_data_proto_cc",
     ],
 )
