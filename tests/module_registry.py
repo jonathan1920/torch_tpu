@@ -30,11 +30,11 @@ import abc
 from collections.abc import Callable, Sequence
 from importlib import resources
 from importlib.resources import abc as resources_abc
-import logging
 import pathlib
 from typing import Any, Iterator
 
 from absl import flags
+from absl import logging
 from etils import epath
 import timm
 import torch

@@ -14,10 +14,10 @@
 
 """Ensure we error out at torch.compile() when "dynamic" is applyed"""
 
-import logging
 import os
 from typing import Callable, List, Tuple
 
+from absl import logging
 from absl.testing import absltest
 import torch
 from torch._dynamo.backends.common import aot_autograd

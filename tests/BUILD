@@ -29,6 +29,7 @@ pytype_strict_library(
     visibility = ["//:__subpackages__"],
     deps = [
         "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
         "//shims/etils/epath",
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
@@ -85,6 +86,7 @@ py_library(
     testonly = True,
     srcs = ["dynamism_test_utils.py"],
     deps = [
+        "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//shims/torch:testing_internal",
         "//torch_tpu/_internal/dynamism",

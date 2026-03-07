@@ -20,13 +20,11 @@ of these APIs requires that your environment also has JAX/Pallas installed.
 
 from collections.abc import Mapping
 import functools
-import logging
 from typing import Any, Callable, Sequence
+from absl import logging
 import frozendict
 import torch
 from torch_tpu._internal.pallas import tpu_torch_pallas
-
-logger = logging.getLogger(__name__)
 
 try:
   # TODO: TorchXLA hit issues when workin with both JAX and PT in the same
@@ -99,7 +97,7 @@ def jax_placeholder(tensor: torch.Tensor) -> jax.ShapeDtypeStruct:
     return tensor
 
   jax_dtype = TORCH_TO_JAX_DTYPE_MAP.get(tensor.dtype, None)
-  logger.debug("[jax_placeholder] dtype: %s -> %s", tensor.dtype, jax_dtype)
+  logging.debug("[jax_placeholder] dtype: %s -> %s", tensor.dtype, jax_dtype)
   if jax_dtype is None:
     raise NotImplementedError(
         f"Unsupported dtype for pallas kernels: {tensor.dtype}"
@@ -127,7 +125,9 @@ def torch_placeholder(
     return tensor
 
   torch_dtype = JAX_TO_TORCH_DTYPE_MAP.get(tensor.dtype, None)
-  logger.debug("[torch_placeholder] dtype: %s -> %s", tensor.dtype, torch_dtype)
+  logging.debug(
+      "[torch_placeholder] dtype: %s -> %s", tensor.dtype, torch_dtype
+  )
   if torch_dtype is None:
     raise NotImplementedError(
         f"Unsupported dtype for pallas kernels: {tensor.dtype}"
@@ -224,7 +224,7 @@ class JaxCallable:
         dict(input_output_aliases) if input_output_aliases is not None else {}
     )
 
-    logger.debug("Creating JAX callable: %s", self)
+    logging.debug("Creating JAX callable: %s", self)
 
   def __repr__(self):
     return (

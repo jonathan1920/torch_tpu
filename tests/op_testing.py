@@ -22,7 +22,7 @@ import copy
 import enum
 import functools
 import gzip
-import logging
+import logging  # PYTHON_LOGGING_OK=Setting module log level for compile testing
 import os
 import pathlib
 import plistlib
@@ -1560,7 +1560,6 @@ class TorchTpuTestBase(TestCase):
     if use_compiled:
       if not _compiled_supports_op(op, device_op_input, variant):
         self.skipTest(f"TpuBackend does not support {op_name} currently.")
-
       logging.getLogger(tt_compile.TpuBackend.__module__).setLevel(
           logging.DEBUG
       )

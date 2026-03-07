@@ -34,6 +34,7 @@ pytype_library(
         ":tpu_torch_compile",
         "//shims/absl_py:app",
         "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/export",
         "//torch_tpu/_internal/utils",

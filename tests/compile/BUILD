@@ -108,6 +108,7 @@ pytype_strict_library(
     srcs = ["stablehlo_compile_testing.py"],
     deps = [
         "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//shims/torch:tensorboard_support",  # buildcleaner: keep
@@ -152,6 +153,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compile:tpu_backend",

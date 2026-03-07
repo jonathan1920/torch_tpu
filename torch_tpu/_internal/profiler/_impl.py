@@ -17,7 +17,6 @@
 from contextlib import contextmanager
 import dataclasses
 import datetime
-import logging
 import os
 import socket
 import threading
@@ -30,8 +29,6 @@ from torch_tpu._internal.profiler._profiler_backend import stop_trace as stop_tr
 
 
 _profiler_server = None
-
-logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass

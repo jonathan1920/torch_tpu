@@ -14,12 +14,12 @@
 
 """Utilities for testing StableHLO compilation speed."""
 
-import logging
 import os
 import time
 from typing import Callable
 
 from absl import flags
+from absl import logging
 from absl.testing import absltest
 from torch.utils import tensorboard
 from torch_tpu._internal.compile import tpu_torch_compile

@@ -29,6 +29,7 @@ pytype_strict_library(
     ],
     deps = [
         ":tpu_torch_pallas",
+        "//shims/absl_py/logging",
         "@pypi//frozendict",
         "@pypi//jax",  # buildcleaner: keep
         # copybara: jax/experimental:pallas  # buildcleaner: keep

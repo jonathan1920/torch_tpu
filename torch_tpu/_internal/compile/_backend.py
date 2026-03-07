@@ -31,9 +31,9 @@ The `torch.compile()` function has the following relevant arguments:
 """
 
 import functools
-import logging
 import operator
 from typing import Any, Callable, List, Sequence, TypeAlias
+from absl import logging
 import torch
 from torch._dynamo.backends.common import aot_autograd
 from torch.utils import _pytree
@@ -43,8 +43,6 @@ from torch_tpu._internal.utils import utils
 
 
 _ExpectedTypes: TypeAlias = torch.Tensor | torch.nn.Module | torch.SymInt
-
-logger = logging.getLogger(__name__)
 
 
 def to_device(
@@ -124,12 +122,12 @@ class _DisableFakeTensorMode:
       # In fake mode, but it is not actively enabled, do nothing.
       self.fake_mode = None
     if self.fake_mode:
-      logger.debug("[DisableFakeTensorMode] In fake mode, exiting to compile")
+      logging.debug("[DisableFakeTensorMode] In fake mode, exiting to compile")
       self.fake_mode.__exit__(None, None, None)
 
   def __exit__(self, exc_type, exc_val, exc_tb):
     if self.fake_mode:
-      logger.debug("[DisableFakeTensorMode] Reentering fake mode")
+      logging.debug("[DisableFakeTensorMode] Reentering fake mode")
       self.fake_mode.__enter__()
 
 
@@ -167,7 +165,7 @@ class _TorchTpuCompiledExecutable:
   @property
   def graph_module_debug_str(self) -> str | None:
     if self._graph_module_debug_str is None:
-      logger.info(UNSET_GRAPH_HELPER_STR)
+      logging.info(UNSET_GRAPH_HELPER_STR)
     return self._graph_module_debug_str
 
   @graph_module_debug_str.setter
@@ -177,7 +175,7 @@ class _TorchTpuCompiledExecutable:
   @property
   def mlir_graph(self) -> str | None:
     if self._mlir_graph is None:
-      logger.info(UNSET_GRAPH_HELPER_STR)
+      logging.info(UNSET_GRAPH_HELPER_STR)
     return self._mlir_graph
 
   @mlir_graph.setter
@@ -230,7 +228,7 @@ class TpuBackend:
     # Organized by order of compilation (index 0 is the first compilation, etc.)
     self._compiled_executables: list[_TorchTpuCompiledExecutable] = []
     if self._debug:
-      logger.setLevel(logging.DEBUG)
+      logging.set_verbosity(logging.DEBUG)
 
   def __call__(
       self,
@@ -258,7 +256,7 @@ class TpuBackend:
     # without dynamism.
     _raise_on_symint(example_inputs)
 
-    logger.info("[TpuBackend] Compiling FX Graph")
+    logging.info("[TpuBackend] Compiling FX Graph")
 
     donate_args = list()
     # "options" is part of the torch.compile API but it is not tied to any
@@ -298,12 +296,12 @@ class TpuBackend:
     Returns:
       A function that executes the compiled graph on the TPU.
     """
-    if logger.isEnabledFor(logging.DEBUG):
-      logger.debug(
+    if logging.vlog_is_on(logging.DEBUG):
+      logging.debug(
           "[TpuBackend.compile_graph_module] Graph:\n%s",
           graph_module.print_readable(print_output=False),
       )
-      logger.debug(
+      logging.debug(
           "[TpuBackend.compile_graph_module] Sample Inputs (len = %d): \n%s",
           len(example_inputs),
           utils.InputMetadata(example_inputs),

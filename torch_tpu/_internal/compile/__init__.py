@@ -11,15 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import logging
 from absl import app
 from absl import flags
+from absl import logging
 import torch
 from torch._dynamo import decorators
 from torch._dynamo.backends import registry
 from ._backend import TpuBackend
-
-logger = logging.getLogger(__name__)
 
 # Register "tpu" backend
 registry.register_backend(compiler_fn=TpuBackend(), name="tpu")
@@ -43,7 +41,7 @@ def _disallow_collective_ops_in_graph():
   ):
     return
 
-  logger.info("[TpuBackend] Force graph break for collective ops enabled.")
+  logging.info("[TpuBackend] Force graph break for collective ops enabled.")
   decorators.disallow_in_graph(torch.ops._c10d_functional.all_reduce)
   decorators.disallow_in_graph(torch.ops._c10d_functional.wait_tensor)
 

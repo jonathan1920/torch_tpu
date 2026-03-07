@@ -13,8 +13,7 @@
 # limitations under the License.
 
 import functools
-import logging
-
+from absl import logging
 from absl.testing import absltest
 import jax
 import jax.numpy as jnp

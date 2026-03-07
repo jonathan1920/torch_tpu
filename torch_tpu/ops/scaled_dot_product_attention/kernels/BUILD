@@ -59,6 +59,7 @@ torch_tpu_py_test(
     tags = ["requires-tpu-v5lite"],
     deps = [
         ":scaled_dot_product_attention_kernels",
+        "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "@pypi//jax",
     ],

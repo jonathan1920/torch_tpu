@@ -30,7 +30,9 @@ pytype_strict_library(
         "_impl.py",
         "profiler_api.py",
     ],
-    deps = [":_profiler_backend"],
+    deps = [
+        ":_profiler_backend",
+    ],
 )
 
 pybind_extension(

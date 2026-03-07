@@ -15,7 +15,7 @@
 """Small graph test for TPU backend."""
 
 import functools
-import logging
+from absl import logging
 from absl.testing import absltest
 import jax
 from jax.experimental import pallas as pl
@@ -459,7 +459,7 @@ class TestJaxWrappedPallasKernels(absltest.TestCase):
   def setUp(self):
     super().setUp()
     self.device = api.tpu_device()
-    logging.basicConfig(level=logging.DEBUG, force=True)
+    logging.set_verbosity(logging.DEBUG)
 
   def test_jax_kernel_wrapper_simple(self):
     """Test a kernel wrapper that is a simple passthrough to a JAX kernel."""

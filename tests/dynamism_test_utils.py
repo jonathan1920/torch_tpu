@@ -21,18 +21,15 @@ Handles the following details for per-op unit testing:
   - Mark dependent args as dynamic.
 """
 
-import logging
 import random
 from typing import Any
 
+from absl import logging
 import torch
 from torch.testing._internal import common_methods_invocations
 from torch.testing._internal.opinfo import core
 from torch_tpu._internal import dynamism
 from torch_tpu._internal.utils import utils
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 # Static variables for op classification.
 foreach_binops = frozenset(
@@ -304,7 +301,7 @@ def _mark_numpy_broadcastable_arg_dynamic(
     ub: The upper bound of the dynamic dimension.
   """
 
-  logger.debug(
+  logging.debug(
       "[_mark_numpy_broadcastable_arg_dynamic] arg=%s, like=%s, idx=%d, ub=%d",
       arg.shape,
       like.shape,
@@ -358,7 +355,7 @@ class DynamicOpInfo:
   ):
     """Mark the op as dynamic."""
 
-    logger.debug(
+    logging.debug(
         "[DynamicOpInfo] mark_dynamic(%s, %s, %s)",
         self.op_info.name,
         utils.InputMetadata(input_value),
@@ -391,7 +388,7 @@ class DynamicOpInfo:
     """Marks dependent dims of a bounded dimension as dynamic."""
     # No dependent args to mark.
     del like, idx, ub
-    logger.debug(
+    logging.debug(
         "[DynamicOpInfo] _mark_dependent_arg_dynamic %s %s",
         self.op_info.name,
         utils.InputMetadata(args),
@@ -482,7 +479,7 @@ class ForEachDynamicOpInfo(DynamicOpInfo):
     #   - foreach_add(list, [scalar|tensor])
     #   - foreach_add(list, [[arg0s], [args1s], ...])
 
-    logger.debug(
+    logging.debug(
         "[ForEachDynamicOpInfo] mark_dynamic(%s, %s, %s)",
         self.op_info.name,
         utils.InputMetadata(input_value),
@@ -531,7 +528,7 @@ class ForEachDynamicOpInfo(DynamicOpInfo):
 
       # Not binary or ternary, no dependent args.
       super().mark_dynamic(seed, value, [])
-      logger.debug(
+      logging.debug(
           "[ForEachDynamicOpInfo] no dependent args %s",
           utils.InputMetadata(args),
       )

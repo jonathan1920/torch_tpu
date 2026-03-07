@@ -27,6 +27,7 @@ torch_tpu_py_test(
         "requires-tpu-v5lite",
     ],
     deps = [
+        "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "@pypi//jax",
         # copybara: jax/experimental:pallas

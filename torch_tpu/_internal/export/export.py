@@ -18,9 +18,9 @@ import contextlib
 import copy
 import enum
 from functools import partial
-import logging
 from typing import Any, Callable, List, Sequence, Tuple
 
+from absl import logging
 import torch
 import torch.export
 from torch.fx import node
@@ -28,8 +28,6 @@ from torch.utils import _pytree
 from torch_tpu._internal import device_utils
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.compile import tpu_torch_compile
-
-logger = logging.getLogger(__name__)
 
 
 def _extract_states_from_exported_program(exported_model):
@@ -154,7 +152,7 @@ class EagerLikeFxInterpreter(torch.fx.Interpreter):
       args: tuple[node.Argument, ...],
       kwargs: dict[str, Any],
   ) -> Any:
-    logger.debug(
+    logging.debug(
         "[EagerLikeFxInterpreter::get_attr] target: %s, args: %s, kwargs: %s",
         target,
         args,
