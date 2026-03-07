@@ -303,6 +303,17 @@ digraph {
       self.assertRegex(s, node_param)
     self.assertLen(s.split("\n"), num_lines)
 
+  def test_computation_mlir_pytree(self):
+    x = torch.ones(2, 3, device=api.tpu_device())
+    y = x + 1.0
+
+    # Passing a complex pytree (dict, list, tuple) to computation_mlir
+    pytree_input = {"x": x, "y": [y], "both": (x, y)}
+    mlir_str = sync.computation_mlir(pytree_input)
+
+    # Verify that the MLIR string contains the expected operations
+    self.assertIn("stablehlo.add", mlir_str)
+
 
 if __name__ == "__main__":
   absltest.main()

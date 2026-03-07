@@ -17,6 +17,7 @@ import inspect
 import os
 import torch
 import torch.distributed.tensor as dt
+from torch.utils import _pytree
 from torch_tpu._internal.sync import _tpu_torch_sync
 
 
@@ -74,14 +75,19 @@ def dump_computation_mlir(tensors: list[torch.Tensor], file_name: str):
   _dump_computation(computation_mlir(*tensors), file_name)
 
 
-def computation_graphviz(*tensors: list[torch.Tensor]) -> str:
+def computation_graphviz(
+    *tensors: list[torch.Tensor] | tuple[torch.Tensor, ...]
+) -> str:
   """Returns a graphviz compatible representation of the aten traversal of the given tensors."""
   caller_frame = inspect.stack()[1]  # get the caller's frame
   caller_locals = dict(caller_frame[0].f_locals)
-  return _tpu_torch_sync._get_computation_graphviz(tensors, caller_locals)  # pylint: disable=protected-access
+  flat_tensors, _ = _pytree.tree_flatten(tensors)
+  return _tpu_torch_sync._get_computation_graphviz(flat_tensors, caller_locals)  # pylint: disable=protected-access
 
 
-def computation_mlir(*tensors: list[torch.Tensor]) -> str:
+def computation_mlir(
+    *tensors: list[torch.Tensor] | tuple[torch.Tensor, ...]
+) -> str:
   """Returns a MLIR representation of the aten traversal of the given tensors."""
-
-  return _tpu_torch_sync._get_computation_mlir(tensors)  # pylint: disable=protected-access
+  flat_tensors, _ = _pytree.tree_flatten(tensors)
+  return _tpu_torch_sync._get_computation_mlir(flat_tensors)  # pylint: disable=protected-access
