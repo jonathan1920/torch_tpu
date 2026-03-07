@@ -70,4 +70,15 @@ py_library(
     ],
 )
 
+py_library(
+    # PY_LIBRARY_OK=used in OSS only.
+    name = "compilation_cache",
+    srcs = ["compilation_cache.py"],
+    deps = [
+        "//shims/torch:pytorch",
+        "//torch_tpu/api",
+        "//torch_tpu/api:_device_module",
+    ],
+)
+
 torch_tpu_package_end()

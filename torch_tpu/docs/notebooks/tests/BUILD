@@ -50,6 +50,15 @@ py_library(
 
 py_library(
     # PY_LIBRARY_OK=used in OSS only.
+    name = "test_compilation_cache",
+    srcs = ["test_compilation_cache.py"],
+    deps = [
+        "//shims/torch:pytorch",
+    ],
+)
+
+py_library(
+    # PY_LIBRARY_OK=used in OSS only.
     name = "test_error_glossary",
     srcs = ["test_error_glossary.py"],
     deps = [
