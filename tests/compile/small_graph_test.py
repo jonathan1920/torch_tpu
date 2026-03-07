@@ -14,7 +14,6 @@
 
 """Small graph test for TPU backend."""
 
-import logging
 import os
 import pickle
 from typing import List, Optional

@@ -103,7 +103,6 @@ torch_tpu_cc_library(
     deps = [
         ":pjrt_state",
         "//torch_tpu/common:compilation_cache",
-        "//torch_tpu/eager:device_types",
         "@com_google_absl//absl/log:absl_log",
     ],
 )
