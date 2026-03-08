@@ -26,8 +26,6 @@
 #include <utility>
 #include <vector>
 
-#include "ATen/core/ATen_fwd.h"
-#include "ATen/core/TensorBody.h"
 #include "absl/log/absl_check.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
@@ -37,6 +35,8 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
+#include "ATen/core/ATen_fwd.h"
+#include "ATen/core/TensorBody.h"
 #include "ATen/ops/empty.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"

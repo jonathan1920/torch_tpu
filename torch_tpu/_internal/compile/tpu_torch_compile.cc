@@ -14,9 +14,6 @@
  * limitations under the License.
  */
 
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
-
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -48,6 +45,8 @@
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/hlo/translate/register.h"
 #include "xla/mlir/utils/error_util.h"

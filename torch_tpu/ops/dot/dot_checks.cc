@@ -25,9 +25,9 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 
 namespace torch_tpu {
 

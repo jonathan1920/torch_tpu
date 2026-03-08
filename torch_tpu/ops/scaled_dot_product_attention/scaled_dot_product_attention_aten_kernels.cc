@@ -49,10 +49,6 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
-#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "xla/pjrt/mlir_to_hlo.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_bwd_bf16_causal_mlir_embed.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_bwd_bf16_non_causal_mlir_embed.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_bwd_f32_causal_mlir_embed.h"
@@ -61,6 +57,10 @@
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_fwd_bf16_non_causal_mlir_embed.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_fwd_f32_causal_mlir_embed.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_fwd_f32_non_causal_mlir_embed.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 
 ABSL_FLAG(bool, torch_tpu_internal_sdpa_use_custom_kernel, false,
           "Use a custom kernel for scaled dot product attention.");

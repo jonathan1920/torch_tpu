@@ -13,11 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
-
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tpu_aten_kernels.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 
 namespace torch_tpu {
 namespace py = pybind11;

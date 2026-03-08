@@ -21,12 +21,11 @@
 #include <optional>
 #include <utility>
 
-#include "ATen/core/ATen_fwd.h"
-#include "ATen/core/TensorBody.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
+#include "ATen/core/TensorBody.h"
 #include "ATen/ops/empty.h"
 #include "c10/core/SymIntArrayRef.h"
 #include "torch/headeronly/core/ScalarType.h"

@@ -14,10 +14,6 @@
  * limitations under the License.
  */
 
-#include <pybind11/chrono.h>
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
-
 #include <cstdint>
 #include <string>
 
@@ -30,6 +26,9 @@
 #include "torch_tpu/eager/tpu_hooks.h"
 #include "torch_tpu/pjrt/pjrt_init.h"
 #include "torch_tpu/pjrt/pjrt_shutdown.h"
+#include "pybind11/chrono.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 
 namespace torch_tpu {
 

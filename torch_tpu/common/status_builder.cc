@@ -156,7 +156,7 @@ std::string GetRootOpNamePayload(const absl::Status& status) {
 
 // Translates paths like
 // blaze-out/k8-fastbuild/bin/third_party/torch_tpu/ops/_virtual_includes/op_builder_utils/torch_tpu/ops/op_builder_utils.h
-// to third_party/torch_tpu/ops/op_builder_utils.h.
+// to torch_tpu/ops/op_builder_utils.h.
 //
 // Usually paths in #include "..." are relative to the g3 root. However,
 // torch_tpu uses header paths relative to the third_party/ directory. For

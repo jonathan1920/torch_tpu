@@ -17,9 +17,9 @@
 #ifndef TORCH_TPU_INTERNAL_PROFILER_PROFILER_H_
 #define TORCH_TPU_INTERNAL_PROFILER_PROFILER_H_
 
-#include <pybind11/pybind11.h>
-
 #include <string>
+
+#include "pybind11/pybind11.h"
 
 namespace py = pybind11;
 

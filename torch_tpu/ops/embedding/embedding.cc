@@ -38,7 +38,9 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/utils.h"
+#include "torch_tpu/ops/cumsum/cumsum.h"
 #include "torch_tpu/ops/linalg/vector_norm/pnorm.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/reductions/reductions.h"
@@ -46,8 +48,6 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch_tpu/common/shape.h"
-#include "torch_tpu/ops/cumsum/cumsum.h"
 
 namespace torch_tpu {
 

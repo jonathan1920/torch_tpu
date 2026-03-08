@@ -14,9 +14,6 @@
  * limitations under the License.
  */
 
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
-
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -41,6 +38,8 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 

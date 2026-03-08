@@ -20,11 +20,10 @@
 #include <optional>
 #include <utility>
 
-#include "ATen/core/ATen_fwd.h"
-#include "ATen/core/TensorBody.h"
 #include "absl/status/statusor.h"
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
+#include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"

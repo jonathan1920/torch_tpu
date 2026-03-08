@@ -14,9 +14,6 @@
  * limitations under the License.
  */
 
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
-
 #include <cstdint>
 #include <vector>
 
@@ -28,6 +25,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
+#include "pybind11/stl.h"
 
 namespace torch_tpu {
 namespace py = pybind11;

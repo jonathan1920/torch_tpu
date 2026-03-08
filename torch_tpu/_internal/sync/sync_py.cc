@@ -13,9 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
-
 #include <string>
 #include <vector>
 
@@ -32,6 +29,7 @@
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
 #include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 
 namespace torch_tpu {
 namespace py = pybind11;

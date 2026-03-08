@@ -45,6 +45,8 @@
 #include "torch_tpu/ops/col2im/col2im_aten_kernels.h"
 #include "torch_tpu/ops/convolution/convolution_aten_kernels.h"
 #include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
+#include "torch_tpu/ops/cummax/cummax_aten_kernels.h"
+#include "torch_tpu/ops/cummin/cummin_aten_kernels.h"
 #include "torch_tpu/ops/cumprod/cumprod_aten_kernels.h"
 #include "torch_tpu/ops/cumsum/cumsum_aten_kernels.h"
 #include "torch_tpu/ops/distance/dist_aten_kernels.h"
@@ -66,6 +68,7 @@
 #include "torch_tpu/ops/foreach_aten_kernels.h"
 #include "torch_tpu/ops/gather/gather_aten_kernels.h"
 #include "torch_tpu/ops/gelu/gelu_aten_kernels.h"
+#include "torch_tpu/ops/grid_sampler/grid_sampler_aten_kernels.h"
 #include "torch_tpu/ops/group_norm/group_norm_aten_kernels.h"
 #include "torch_tpu/ops/hardsigmoid/hardsigmoid_aten_kernels.h"
 #include "torch_tpu/ops/hardswish/hardswish_aten_kernels.h"
@@ -134,9 +137,6 @@
 #include "torch_tpu/ops/view/view_aten_kernels.h"
 #include "torch_tpu/ops/where/where_aten_kernels.h"
 #include "xla/xla_data.pb.h"
-#include "torch_tpu/ops/cummax/cummax_aten_kernels.h"
-#include "torch_tpu/ops/cummin/cummin_aten_kernels.h"
-#include "torch_tpu/ops/grid_sampler/grid_sampler_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
