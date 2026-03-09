@@ -125,6 +125,7 @@ torch_tpu_cc_library(
     name = "device_rt",
     srcs = ["device_rt.cc"],
     deps = [
+        "//shims/pybind11",
         "//shims/torch",
         "//shims/torch:aten",
         "//shims/torch:torch_headers",

@@ -28,6 +28,7 @@ torch_tpu_cc_library(
     name = "execution_mode_impl_build",
     srcs = ["execution_mode_impl.cc"],
     deps = [
+        "//shims/pybind11",
         "//shims/torch",
         "//shims/torch:aten",
         "//shims/torch:torch_headers",
@@ -59,6 +60,7 @@ torch_tpu_cc_library(
     name = "compiler_options_impl_build",
     srcs = ["compiler_options_impl.cc"],
     deps = [
+        "//shims/pybind11",
         "//shims/torch",
         "//shims/torch:aten",
         "//shims/torch:torch_headers",
@@ -87,6 +89,7 @@ torch_tpu_cc_library(
     name = "env_build",
     srcs = ["env.cc"],
     deps = [
+        "//shims/pybind11",
         "//torch_tpu/common:utils",
     ],
 )
@@ -110,6 +113,7 @@ torch_tpu_cc_library(
     name = "testing_build",
     srcs = ["testing.cc"],
     deps = [
+        "//shims/pybind11",
         "//shims/torch",
         "//shims/torch:aten",
         "//shims/torch:torch_headers",

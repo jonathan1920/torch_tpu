@@ -42,6 +42,7 @@ torch_tpu_cc_library(
     name = "pallas_py_cc",
     srcs = ["pallas_py.cc"],
     deps = [
+        "//shims/pybind11",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/util:base_headers",

@@ -52,6 +52,7 @@ torch_tpu_cc_library(
     srcs = ["sync_py.cc"],
     deps = [
         ":sync_cc",
+        "//shims/pybind11",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//torch_tpu/common:error_utils",

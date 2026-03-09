@@ -90,6 +90,7 @@ torch_tpu_cc_library(
     srcs = ["tpu_torch_compile.cc"],
     deps = [
         ":compiled_mode",
+        "//shims/pybind11",
         "//shims/torch",
         "//shims/torch:aten",
         "//shims/torch:aten_headers",

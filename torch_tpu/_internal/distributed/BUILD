@@ -57,6 +57,7 @@ torch_tpu_cc_library(
     name = "tpu_distributed_lib",
     srcs = ["tpu_distributed.cc"],
     deps = [
+        "//shims/pybind11",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/util:base_headers",
         "//torch_tpu/common:error_utils",
