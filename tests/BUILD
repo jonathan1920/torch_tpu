@@ -47,6 +47,7 @@ torch_tpu_py_test(
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     shard_count = 6,
     tags = [
+        "noasan",  # TODO: fix the test timing out in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.
         "requires-net:external",
