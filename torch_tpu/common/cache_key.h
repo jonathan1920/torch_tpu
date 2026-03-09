@@ -50,6 +50,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/utils.h"
+#include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/xla_data.pb.h"
@@ -540,12 +541,30 @@ struct DimensionBounds {
   int64_t upper = -1;
 };
 
-// The metadata necessary to compare two graphs when they have a shape-dynamic
-// hash collision and determine if they are compatible in terms of bounded
-// dynamism.
-struct ShapeDynamismMetadata {
+// The metadata necessary to check if a static graph is compatible with a
+// BoundedDynamicCacheEntry.
+class ShapeDynamismMetadata {
+ public:
+  // Create ShapeDynamismMetadata using the given input shapes and its dynamic
+  // dimension annotations.
+  explicit ShapeDynamismMetadata(const std::vector<Shape>& input_shapes);
+
+  // Check if the given shapes are compatible with these shape dynamism bounds.
+  bool IsCompatible(const std::vector<Shape>& input_shapes) const;
+
+  [[nodiscard]] const std::vector<DimensionBounds>& input_dimension_bounds()
+      const {
+    return input_dimension_bounds_;
+  }
+
+  // Returns a list of shapes just like input_shapes, but with dynamic
+  // annotations replaced with the upper bounds from the shape dynamism bounds.
+  std::vector<Shape> GetPaddingShapes(
+      const std::vector<Shape>& input_shapes) const;
+
+ private:
   // The lower and upper bounds of each dimension in the graph's inputs.
-  std::vector<DimensionBounds> input_dimension_bounds;
+  std::vector<DimensionBounds> input_dimension_bounds_;
 };
 
 }  // namespace torch_tpu

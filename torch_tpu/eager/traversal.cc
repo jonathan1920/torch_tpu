@@ -297,26 +297,19 @@ struct GraphSignature {
 
 ShapeDynamismMetadata Traversal::BuildShapeDynamismMetadata(
     bool apply_dynamism) const {
-  ShapeDynamismMetadata metadata;
+  std::vector<Shape> input_shapes;
+  input_shapes.reserve(inputs().size());
   for (const DeviceBufferRef& input : inputs()) {
-    // Initially assume that all dimensions are static and set the upper and
-    // lower bounds equal to the dimension value.
-    const int64_t tensor_start_dim = metadata.input_dimension_bounds.size();
-    for (int64_t dim : input.dimensions()) {
-      metadata.input_dimension_bounds.push_back({dim, dim});
+    Shape input_shape{.dimensions = CopyIntVector(input.dimensions()),
+                      .dtype = input.element_type()};
+    if (apply_dynamism) {
+      for (const auto& dynamic_dim : input.dynamic_dimensions()) {
+        input_shape.dynamic_dimensions.push_back(dynamic_dim);
+      }
     }
-    if (!apply_dynamism) {
-      continue;
-    }
-    // Then modify the bounds for any dynamic dimensions.
-    for (const auto& dynamic_dim : input.dynamic_dimensions()) {
-      const int64_t dynamic_dim_index =
-          tensor_start_dim + dynamic_dim.dimension;
-      metadata.input_dimension_bounds[dynamic_dim_index] = {
-          dynamic_dim.lower_bound, dynamic_dim.upper_bound};
-    }
+    input_shapes.push_back(std::move(input_shape));
   }
-  return metadata;
+  return ShapeDynamismMetadata(input_shapes);
 }
 
 CompilationCacheKey Traversal::BuildCacheKey() const {
@@ -1085,35 +1078,7 @@ bool Traversal::is_bounded_dynamic() const {
 
 namespace {
 
-// Returns true if the traversal's inputs match the metadata's expectations
-// for bounded dynamism. This means that all non-dynamic dimensions match size
-// exactly, and all dynamic dimensions are in the expected bounds.
-bool IsCompatibleBoundedDynamic(const Traversal& traversal,
-                                const ShapeDynamismMetadata& metadata) {
-  // Metadata is recorded in terms of a flat sequence of dimensions, so we
-  // need to "unroll" the dimension index across multiple inputs.
-  int flat_dim_index = 0;
-
-  // Iterate over inputs, and then over the dimensions of each input.
-  for (const auto& input : traversal.inputs()) {
-    for (int64_t input_dim : input.dimensions()) {
-      auto [lower_bound, upper_bound] =
-          metadata.input_dimension_bounds[flat_dim_index];
-
-      if (input_dim < lower_bound || input_dim > upper_bound) {
-        // Dimension is not in bounds, incompatible.
-        return false;
-      }
-      flat_dim_index++;
-    }
-  }
-  // If we made it here, then all dimension in input match either statically
-  // or in bounds dynamically. Make sure that we found as many input
-  // dimensions as the metadata expects, and if so, return true (compatible).
-  return flat_dim_index == metadata.input_dimension_bounds.size();
-}
-
-// PRECONDITION: IsCompatibleBoundedDynamic(traversal, metadata) == true
+// PRECONDITION: metadata.IsCompatible(traversal.inputs()) == true
 // Uses DeviceBufferRef::MarkDynamic to mark the appropriate input dimensions
 // with the appropriate bounds.
 absl::Status MarkBoundedDynamic(const Traversal& traversal,
@@ -1123,7 +1088,7 @@ absl::Status MarkBoundedDynamic(const Traversal& traversal,
     for (int64_t input_dim_index = 0;
          input_dim_index < input.dimensions().size(); ++input_dim_index) {
       auto [lower_bound, upper_bound] =
-          metadata.input_dimension_bounds[flat_dim_index];
+          metadata.input_dimension_bounds()[flat_dim_index];
       if (lower_bound != upper_bound) {
         TT_RETURN_IF_ERROR(
             input.MarkDynamic(input_dim_index, lower_bound, upper_bound));
@@ -1149,15 +1114,38 @@ absl::Status Traversal::ApplyBoundedDynamismAnnotations(
   // We iterate backwards through the metadata because we expect the last
   // metadata entry to be the most recent compilation attempt, which is most
   // likely to already be a compatible bounded-dynamic compilation.
+
+  std::vector<Shape> input_shapes;
+  input_shapes.reserve(inputs().size());
+  for (const auto& input : inputs()) {
+    input_shapes.push_back({
+        .dimensions = CopyIntVector(input.dimensions()),
+        .dtype = input.element_type(),
+    });
+  }
+
   for (int i = shape_dynamism_metadata.size() - 1; i >= 0; --i) {
     const ShapeDynamismMetadata& metadata = shape_dynamism_metadata[i];
-    if (IsCompatibleBoundedDynamic(*this, metadata)) {
+    ABSL_VLOG(2) << "[ApplyBoundedDynamismAnnotations] Checking metadata " << i
+                 << ": "
+                 << absl::StrJoin(
+                        metadata.input_dimension_bounds(), ",",
+                        [](std::string* out, const DimensionBounds& bounds) {
+                          absl::StrAppend(out, "[", bounds.lower, ",",
+                                          bounds.upper, "]");
+                        });
+
+    if (metadata.IsCompatible(input_shapes)) {
+      ABSL_VLOG(2)
+          << "[ApplyBoundedDynamismAnnotations] Found compatible metadata";
       // TODO: maybe try to select the "best" metadata instead of just the
       // first compatible one?
       TT_RETURN_IF_ERROR(MarkBoundedDynamic(*this, metadata));
       shape_dynamism_metadata_.reset();
       return absl::OkStatus();
     }
+    ABSL_VLOG(2)
+        << "[ApplyBoundedDynamismAnnotations] Metadata is not compatible";
   }
   // We didn't find a compatible bounded-dynamic compilation.
   // TODO: implement auto-dynamism to infer bounds from current and previous

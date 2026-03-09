@@ -23,6 +23,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -44,6 +45,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
+#include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
 
@@ -193,6 +195,107 @@ std::ostream& operator<<(std::ostream& os, CompilationCacheKey key) {
      << key.shapeless_key.key << ", dimensions_key=" << key.dimensions_key.key
      << std::dec << "}";
   return os;
+}
+
+ShapeDynamismMetadata::ShapeDynamismMetadata(
+    const std::vector<Shape>& input_shapes) {
+  for (const Shape& shape : input_shapes) {
+    const int64_t tensor_start_dim = input_dimension_bounds_.size();
+    for (int64_t dim : shape.dimensions) {
+      input_dimension_bounds_.push_back({dim, dim});
+    }
+    for (const auto& dynamic_dim : shape.dynamic_dimensions) {
+      const int64_t dynamic_dim_index =
+          tensor_start_dim + dynamic_dim.dimension;
+      input_dimension_bounds_[dynamic_dim_index] = {dynamic_dim.lower_bound,
+                                                    dynamic_dim.upper_bound};
+    }
+  }
+}
+
+namespace {
+bool IsShapeCompatibleWithBounds(const Shape& shape,
+                                 absl::Span<const DimensionBounds> bounds) {
+  TT_CHECK_THROW(shape.dimensions.size() == bounds.size(), error::kInternal)
+      << "Shape and bounds spans must have the same size.";
+  for (int i = 0; i < shape.dimensions.size(); ++i) {
+    const int64_t dim = shape.dimensions[i];
+    if (dim < bounds[i].lower || dim > bounds[i].upper) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::string GetIncompatibilityErrorMsg(
+    int64_t index, const Shape& shape,
+    absl::Span<const DimensionBounds> bounds) {
+  return absl::StrCat(
+      "Input shape is incompatible with dynamism metadata at index ", index,
+      ". ", "input shapes: ", ToString(shape.dimensions), " dynamism bounds: ",
+      absl::StrJoin(
+          bounds, ",", [](std::string* out, const DimensionBounds& bounds) {
+            absl::StrAppend(out, "[", bounds.lower, ",", bounds.upper, "]");
+          }));
+}
+
+Shape GetPaddingShape(const Shape& shape,
+                      absl::Span<const DimensionBounds> bounds) {
+  TT_CHECK_THROW(shape.dimensions.size() == bounds.size(), error::kInternal)
+      << "Shape and bounds spans must have the same size.";
+  Shape padding_shape{.dimensions = shape.dimensions, .dtype = shape.dtype};
+  for (int i = 0; i < shape.dimensions.size(); ++i) {
+    TT_CHECK_THROW(padding_shape.dimensions[i] >= bounds[i].lower &&
+                       padding_shape.dimensions[i] <= bounds[i].upper,
+                   error::kInternal)
+        << GetIncompatibilityErrorMsg(i, {shape}, bounds);
+    if (bounds[i].lower != bounds[i].upper) {
+      padding_shape.dynamic_dimensions.push_back(
+          {.dimension = i,
+           .lower_bound = bounds[i].lower,
+           .upper_bound = bounds[i].upper});
+    }
+  }
+  return padding_shape;
+}
+}  // namespace
+
+bool ShapeDynamismMetadata::IsCompatible(
+    const std::vector<Shape>& input_shapes) const {
+  int64_t flattened_size = 0;
+  for (const Shape& shape : input_shapes) {
+    flattened_size += shape.dimensions.size();
+  }
+  if (flattened_size != input_dimension_bounds_.size()) {
+    return false;
+  }
+  int64_t index = 0;
+  absl::Span<const DimensionBounds> bounds = input_dimension_bounds_;
+  for (const Shape& shape : input_shapes) {
+    int64_t span_size = shape.dimensions.size();
+    if (!IsShapeCompatibleWithBounds(shape, bounds.subspan(index, span_size))) {
+      return false;
+    }
+    index += span_size;
+  }
+  return true;
+}
+
+std::vector<Shape> ShapeDynamismMetadata::GetPaddingShapes(
+    const std::vector<Shape>& input_shapes) const {
+  TT_CHECK_THROW(IsCompatible(input_shapes), error::kInternal)
+      << "Input shapes are incompatible with dynamism metadata.";
+  std::vector<Shape> padding_shapes;
+  padding_shapes.reserve(input_shapes.size());
+  int index = 0;
+  absl::Span<const DimensionBounds> bounds = input_dimension_bounds_;
+  for (const Shape& shape : input_shapes) {
+    int64_t span_size = shape.dimensions.size();
+    padding_shapes.push_back(
+        GetPaddingShape(shape, bounds.subspan(index, span_size)));
+    index += span_size;
+  }
+  return padding_shapes;
 }
 
 }  // namespace torch_tpu
