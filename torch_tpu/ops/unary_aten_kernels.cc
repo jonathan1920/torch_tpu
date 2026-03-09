@@ -48,11 +48,9 @@
 // - the dtype and shape of the output is the same as the input
 // - doesn't have any parameters
 // TODO(b/442660800): minimize the number of kernels implemented by macros
-#define TT_DEFINE_ATEN_UNARY_OUT(op_name, func_name, op_builder,        \
-                                 the_out_dtype)                         \
+#define TT_DEFINE_ATEN_UNARY_OUT(op_name, func_name, op_builder)        \
   at::Tensor& func_name##Out(const at::Tensor& self, at::Tensor& out) { \
-    const std::optional<c10::ScalarType> out_dtype = (the_out_dtype);   \
-    TT_KERNEL(op_name, _, (self, out, out_dtype), {                     \
+    TT_KERNEL(op_name, _, (self, out), {                                \
       TT_THROW_IF_ERROR(                                                \
           ::torch_tpu::UnaryOpOut(self, out, op_name, op_builder));     \
       return out;                                                       \
@@ -68,8 +66,7 @@
 // TODO(b/440585584): parameterize by explicit output dtype, not by default
 // dtype, and remove the cache to avoid unnecessary cache misses when unused.
 // TODO(b/442660800): minimize the number of kernels implemented by macros
-#define TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(op_name, func_name, op_builder, \
-                                         out_dtype_val)                  \
+#define TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(op_name, func_name, op_builder) \
   at::Tensor& func_name##Out(const at::Tensor& self, at::Tensor& out) {  \
     const at::ScalarType default_dtype =                                 \
         c10::get_default_dtype_as_scalartype();                          \
@@ -85,7 +82,7 @@
       TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(                         \
           self, out, op_name, std::move(op_builder_with_default_dtype),  \
           {.op_param_cache_keys = std::move(param_keys),                 \
-           .out_dtype = out_dtype_val}));                                \
+           .out_dtype = ::torch_tpu::InferOutputDtype(self)}));          \
       return out;                                                        \
     });                                                                  \
   }                                                                      \
@@ -172,54 +169,33 @@ absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out, OpName op_name,
 }
 
 // go/keep-sorted start
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAcosOut, AtenAcos, BuildAcosShlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAcoshOut, AtenAcosh, BuildAcoshShlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAsinOut, AtenAsin, BuildAsinShlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAsinhOut, AtenAsinh, BuildAsinhShlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAtanOut, AtenAtan, BuildAtanShlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAtanhOut, AtenAtanh, BuildAtanhShlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kCosOut, AtenCos, BuildCosShlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kCoshOut, AtenCosh, BuildCoshShlo,
-                                 InferOutputDtype(self));
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAcosOut, AtenAcos, BuildAcosShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAcoshOut, AtenAcosh, BuildAcoshShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAsinOut, AtenAsin, BuildAsinShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAsinhOut, AtenAsinh, BuildAsinhShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAtanOut, AtenAtan, BuildAtanShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAtanhOut, AtenAtanh, BuildAtanhShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kCosOut, AtenCos, BuildCosShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kCoshOut, AtenCosh, BuildCoshShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kErfInvOut, AtenErfInv,
-                                 BuildErfInvShlo, InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kErfOut, AtenErf, BuildErfShlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kExpM1Out, AtenExpm1, BuildExpm1Shlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kExpOut, AtenExp, BuildExpShlo,
-                                 InferOutputDtype(self));
+                                 BuildErfInvShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kErfOut, AtenErf, BuildErfShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kExpM1Out, AtenExpm1, BuildExpm1Shlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kExpOut, AtenExp, BuildExpShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kLgammaOut, AtenLgamma,
-                                 BuildLgammaShlo, InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kLog10Out, AtenLog10, BuildLog10Shlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kLog1pOut, AtenLog1p, BuildLog1pShlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kLog2Out, AtenLog2, BuildLog2Shlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kLogOut, AtenLog, BuildLogShlo,
-                                 InferOutputDtype(self));
+                                 BuildLgammaShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kLog10Out, AtenLog10, BuildLog10Shlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kLog1pOut, AtenLog1p, BuildLog1pShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kLog2Out, AtenLog2, BuildLog2Shlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kLogOut, AtenLog, BuildLogShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kReciprocalOut, AtenReciprocal,
-                                 BuildReciprocalShlo, InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kRsqrOut, AtenRsqrt, BuildRsqrtShlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kSinOut, AtenSin, BuildSinShlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kSinhOut, AtenSinh, BuildSinhShlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kSqrOut, AtenSqrt, BuildSqrtShlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kTanOut, AtenTan, BuildTanShlo,
-                                 InferOutputDtype(self));
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kTanhOut, AtenTanh, BuildTanhShlo,
-                                 InferOutputDtype(self));
+                                 BuildReciprocalShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kRsqrOut, AtenRsqrt, BuildRsqrtShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kSinOut, AtenSin, BuildSinShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kSinhOut, AtenSinh, BuildSinhShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kSqrOut, AtenSqrt, BuildSqrtShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kTanOut, AtenTan, BuildTanShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kTanhOut, AtenTanh, BuildTanhShlo);
 // go/keep-sorted end
 
 at::Tensor& AtenAbsOut(const at ::Tensor& self, at ::Tensor& out) {
@@ -313,22 +289,15 @@ at::Tensor& AtenTruncOut(const at::Tensor& self, at::Tensor& out) {
 }
 
 // go/keep-sorted start
-TT_DEFINE_ATEN_UNARY_OUT(OpName::kCeilOut, AtenCeil, BuildCeilShlo,
-                         /*out_dtype=*/std::nullopt);
+TT_DEFINE_ATEN_UNARY_OUT(OpName::kCeilOut, AtenCeil, BuildCeilShlo);
 TT_DEFINE_ATEN_UNARY_OUT(OpName::kConjPhysicalOut, AtenConjPhysical,
-                         BuildConjPhysicalShlo,
-                         /*out_dtype=*/std::nullopt);
-TT_DEFINE_ATEN_UNARY_OUT(OpName::kFloorOut, AtenFloor, BuildFloorShlo,
-                         /*out_dtype=*/std::nullopt);
+                         BuildConjPhysicalShlo);
+TT_DEFINE_ATEN_UNARY_OUT(OpName::kFloorOut, AtenFloor, BuildFloorShlo);
 TT_DEFINE_ATEN_UNARY_OUT(OpName::kLiftFreshOut, AtenLiftFresh,
-                         BuildLiftFreshShlo,
-                         /*out_dtype=*/std::nullopt);
-TT_DEFINE_ATEN_UNARY_OUT(OpName::kNotOut, AtenNot, BuildNotShlo,
-                         /*out_dtype=*/std::nullopt);
-TT_DEFINE_ATEN_UNARY_OUT(OpName::kSgnOut, AtenSgn, BuildSgnShlo,
-                         /*out_dtype=*/std::nullopt);
-TT_DEFINE_ATEN_UNARY_OUT(OpName::kSiluOut, AtenSilu, BuildSiluShlo,
-                         /*out_dtype=*/std::nullopt);
+                         BuildLiftFreshShlo);
+TT_DEFINE_ATEN_UNARY_OUT(OpName::kNotOut, AtenNot, BuildNotShlo);
+TT_DEFINE_ATEN_UNARY_OUT(OpName::kSgnOut, AtenSgn, BuildSgnShlo);
+TT_DEFINE_ATEN_UNARY_OUT(OpName::kSiluOut, AtenSilu, BuildSiluShlo);
 // go/keep-sorted end
 
 }  // namespace torch_tpu
