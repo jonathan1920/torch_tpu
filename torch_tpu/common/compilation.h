@@ -152,7 +152,7 @@ absl::StatusOr<SharedLoadedExecutable> Compile(
 // key=value pairs, e.g. "xla_optimization_level=O1
 // xla_tpu_enable_deduplicated_calls=AUTO".
 // Valid options for TORCH_TPU_INTERNAL_XLA_OPTIONS are documented on
-// https://openxla.org/xla/flags_guidance.
+// https://openxla.org/xla/flags_guidance
 absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(
     GraphCompilationMode mode);
 

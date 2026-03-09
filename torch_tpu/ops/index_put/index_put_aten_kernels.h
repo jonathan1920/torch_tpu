@@ -74,7 +74,7 @@ namespace torch_tpu {
 //   bool unsafe:
 //     -   unsafe mode is used by CUDA kernel to not assert on OOB indexing
 //         assuming that the indexing is done correctly.
-//         see: third_party/py/torch/aten/src/ATen/native/cuda/Indexing.cu,
+//         see: ATen/native/cuda/Indexing.cu,
 //         method wrapIndexOnce. StableHLO/XLA clamps in case of OOB indexing,
 //         hence unsafe mode is ignored.
 //

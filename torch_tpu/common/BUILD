@@ -375,7 +375,8 @@ torch_tpu_cc_library(
         ":env_vars",
         ":error_utils",
         ":tier2_compilation_cache",
-        # TODO(wan): make this work on OSS.
+        # TODO: b/490440118 - Remove this once the bug is fixed.
+        # TODO: b/490441343 - Remove this once the bug is fixed.
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
@@ -798,7 +799,8 @@ torch_tpu_cc_test(
     srcs = ["tier3_compilation_cache_test.cc"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
-        # TODO(wan): make this work on OSS.
+        # TODO: b/490440118 - Remove this once the bug is fixed.
+# "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/remote_tier3_compilation_cache_test"
         "",
     },
     tags = [
@@ -825,7 +827,8 @@ torch_tpu_cc_test(
     srcs = ["compilation_cache_remote_filesystem_test.cc"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
-        # TODO(wan): make this work on OSS.
+        # TODO: b/490440118 - Remove this once the bug is fixed.
+# "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/compilation_cache_remote_filesystem_test"
         "",
     },
     tags = [

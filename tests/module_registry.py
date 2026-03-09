@@ -45,12 +45,14 @@ _MAX_SEQ_LEN_HEURISTIC_CAP = 100_000
 
 _HF_TRANSFORMERS_WEIGHTS_DIR = flags.DEFINE_string(
     "hf_transformers_weights_dir",
+# "$DATA_ROOT/$WEIGHTS_SUBDIR/huggingface"
     "",
     "Location of weights and config files for HuggingFace Transformers models.",
 )
 
 _HF_TIMM_WEIGHTS_DIR = flags.DEFINE_string(
     "hf_timm_weights_dir",
+# "$DATA_ROOT/$WEIGHTS_SUBDIR/huggingface/timm"
     "",
     "Location of weights and config files for HuggingFace TIMM models.",
 )
