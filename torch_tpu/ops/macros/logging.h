@@ -51,7 +51,7 @@ namespace torch_tpu {
 //   at::Tensor AtenFoo(const at::Tensor& lhs, const at::Tensor& rhs,
 //                      const t::Scalar& value, absl::Span<const int64_t> dims,
 //                      bool predicate) {
-//     TT_LOG_KERNEL_START("foo", lhs, rhs, value, dims, predicate);
+//     TT_LOG_KERNEL_START_("foo", lhs, rhs, value, dims, predicate);
 //     ...
 //   }
 //  When enabled with absl logging verbosity level 1, the following is logged:
@@ -67,30 +67,32 @@ namespace torch_tpu {
 //   - All argument types are "loggable". See the comments for FormatKernelArg()
 //     for details.
 //
-// Implementation note: __VA_OPT__(,) expands to nothing if the variadic
-// argument list is empty, and expands to a comma otherwise.
-#define TT_LOG_KERNEL_START(op_name, ...) \
-  TT_LOG_KERNEL_START_IMPL_(op_name __VA_OPT__(, ) __VA_ARGS__)
-
-// Implements TT_LOG_KERNEL_START. The redirection is needed to allow
-// TT_LOG_KERNEL_START() to be used in a macro (e.g. TT_KERNEL).
+// Do not use this macro directly. It's an implementation detail of TT_KERNEL().
 //
 // Implementation note: __VA_OPT__(,) expands to nothing if the variadic
 // argument list is empty, and expands to a comma otherwise.
-#define TT_LOG_KERNEL_START_IMPL_(op_name, ...)                               \
-  do {                                                                        \
-    static_assert(::torch_tpu::internal::ArgsAreIdentifiers(#__VA_ARGS__),    \
-                  "All arguments for TT_LOG_KERNEL_START() except the first " \
-                  "must be identifier names.");                               \
-    if (ABSL_VLOG_IS_ON(1)) {                                                 \
-      std::ostringstream ss;                                                  \
-      ::torch_tpu::internal::LogKernelName(ss, op_name);                      \
-      const std::vector<std::string_view> arg_names =                         \
-          TT_ARGS_AS_STRINGS_(__VA_ARGS__);                                   \
-      ::torch_tpu::internal::LogKernelArgs(                                   \
-          ss, arg_names __VA_OPT__(, ) __VA_ARGS__);                          \
-      ABSL_LOG(INFO) << ss.str();                                             \
-    }                                                                         \
+#define TT_LOG_KERNEL_START_(op_name, ...) \
+  TT_LOG_KERNEL_START_IMPL_(op_name __VA_OPT__(, ) __VA_ARGS__)
+
+// Implements TT_LOG_KERNEL_START_. The redirection is needed to allow
+// TT_LOG_KERNEL_START_() to be used in a macro (e.g. TT_KERNEL).
+//
+// Implementation note: __VA_OPT__(,) expands to nothing if the variadic
+// argument list is empty, and expands to a comma otherwise.
+#define TT_LOG_KERNEL_START_IMPL_(op_name, ...)                                \
+  do {                                                                         \
+    static_assert(::torch_tpu::internal::ArgsAreIdentifiers(#__VA_ARGS__),     \
+                  "All arguments for TT_LOG_KERNEL_START_() except the first " \
+                  "must be identifier names.");                                \
+    if (ABSL_VLOG_IS_ON(1)) {                                                  \
+      std::ostringstream ss;                                                   \
+      ::torch_tpu::internal::LogKernelName(ss, op_name);                       \
+      const std::vector<std::string_view> arg_names =                          \
+          TT_ARGS_AS_STRINGS_(__VA_ARGS__);                                    \
+      ::torch_tpu::internal::LogKernelArgs(                                    \
+          ss, arg_names __VA_OPT__(, ) __VA_ARGS__);                           \
+      ABSL_LOG(INFO) << ss.str();                                              \
+    }                                                                          \
   } while (false)
 
 namespace internal {
