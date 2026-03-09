@@ -36,8 +36,10 @@ absl::StatusOr<MlirOpResults<3>> BuildDropoutTrainShlo(
     mlir::MlirOp rng_input_state, mlir::MlirOp input, double p) {
   ABSL_VLOG(1) << "[BuildDropoutTrainShlo] input: "
                << mlir::debugString(input.getValue()) << ", p: " << p;
-  TT_RET_CHECK(p > 0 && p < 1.0, error::kInvalidArgument)
-      << "p must be between 0 and 1 exclusive, got " << p;
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error is caught in `AtenDropout()`
+                 // function (caller).
+      p > 0 && p < 1.0, error::kInvalidArgument)
+      << "expected p to be in the exclusive range (0, 1), got " << p;
   mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
   const auto rng_input_state_type = GetTensorTypeOrDie(rng_input_state);
   mlir::MlirBuilder& builder = input.getBuilder();

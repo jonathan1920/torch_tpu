@@ -32,6 +32,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -61,7 +62,10 @@ std::tuple<at::Tensor, at::Tensor> AtenDropout(const at::Tensor& input,
                                                double p,
                                                c10::optional<bool> train) {
   TT_KERNEL(OpName::kDropout, param_keys, (input, p, train), {
-    // https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.dropout.html#torch-nn-functional-dropout
+    TT_CHECK_THROW(p > 0 && p < 1.0, error::kInvalidArgument)
+        << "expected p to be in the exclusive range (0, 1), got " << p;
+
+    // https://docs.pytorch.org/docs/stable/generated/torch.nn.functionelu_aten_kernelsal.dropout.html#torch-nn-functional-dropout
     // at::dropout returns a scaled tensor, and a boolean mask of retained
     // values. In inference mode or with nonpositive drop rate p, we don't scale
     // the tensor, and return an all-true mask as a no-op.
@@ -82,12 +86,14 @@ std::tuple<at::Tensor, at::Tensor> AtenDropout(const at::Tensor& input,
     auto gen = at::get_generator_or_default<DeviceGeneratorImpl>(
         std::nullopt, GetDefaultDeviceGenerator());
     auto rng_input_state = at::Tensor(gen->get_state());
-    TT_CHECK_THROW(rng_input_state.dim() == 1, error::kFailedPrecondition)
-        << "Expected rng_input_state to be a 1D tensor, got "
-        << rng_input_state.dim();
-    TT_CHECK_THROW(rng_input_state.size(0) == 2, error::kFailedPrecondition)
-        << "Expected the rng_input_state vector to be of size 2, got "
-        << rng_input_state.size(0);
+    TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=This error is caught before, when
+                     // we try to set the generator state.
+        rng_input_state.dim() == 1 && rng_input_state.size(0) == 2,
+        error::kFailedPrecondition)
+        << "expected the inner state of the generator for the '"
+        << gen->device() << "' device to be a 1D tensor of shape [2], got "
+        << rng_input_state.dim() << "D of shape "
+        << ToString(rng_input_state.sizes());
 
     TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
                        ConvertTo<mlir::ElementType>(input.scalar_type()));

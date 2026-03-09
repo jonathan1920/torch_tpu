@@ -6168,6 +6168,25 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.grid_sampler(inp, grid, 0, 0, False)
 
+  def test_native_dropout_invalid_p(self):
+    inp = torch.ones(5, 3, device=et.device())
+
+    def check(p: float) -> None:
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu=(
+              "dropout(): expected p to be in the exclusive range (0, 1), got"
+              f" {p}"
+          ),
+          cpu=f"bernoulli_ expects p to be in [0, 1], but got p={1 - p}",
+          message_reviewed_by="wan",
+      ):
+        torch.native_dropout(inp, p=p, train=True)
+
+    for p in (-1.5, 1.5):
+      with self.subTest(p=p):
+        check(p)
+
 
 if __name__ == "__main__":
   absltest.main()
