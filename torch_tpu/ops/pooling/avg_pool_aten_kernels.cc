@@ -16,6 +16,7 @@
 
 #include "torch_tpu/ops/pooling/avg_pool_aten_kernels.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <numeric>
@@ -79,13 +80,86 @@ absl::StatusOr<mlir::MlirOp> ComputeAvgPoolDivisor(
   }
 
   // Case B: Count includes padding, so divisor is the product of window
-  // dimensions
+  // dimensions, EXCEPT when ceil_mode adds implicit padding.
   if (count_include_pad) {
-    int64_t window_size = std::accumulate(
-        reduce_window_attributes.window_dimensions.asArrayRef().begin(),
-        reduce_window_attributes.window_dimensions.asArrayRef().end(),
-        int64_t{1}, std::multiplies<int64_t>());
-    return MakeConstant(builder, window_size, element_type, sum_shape);
+    auto padding_attr = reduce_window_attributes.padding.getValues<int64_t>();
+    llvm::SmallVector<int64_t> padding_vals(padding_attr.begin(),
+                                            padding_attr.end());
+    bool has_extra_padding = false;
+
+    // Check for asymmetric padding (extra padding on the right added by
+    // ceil_mode)
+    for (size_t i = 0; i < padding_vals.size(); i += 2) {
+      if (padding_vals[i] != padding_vals[i + 1]) {
+        has_extra_padding = true;
+        break;
+      }
+    }
+
+    if (!has_extra_padding) {
+      // Fast path: Symmetric padding, window size is constant.
+      int64_t window_size = std::accumulate(
+          reduce_window_attributes.window_dimensions.asArrayRef().begin(),
+          reduce_window_attributes.window_dimensions.asArrayRef().end(),
+          int64_t{1}, std::multiplies<int64_t>());
+      return MakeConstant(builder, window_size, element_type, sum_shape);
+    }
+
+    // Dynamically compute divisor: explicitly padded regions count as 1s,
+    // but the extra out-of-bounds padding created by ceil_mode counts as 0s.
+    mlir::MlirOp ones =
+        MakeConstant(builder, 1, element_type, input_type.getShape());
+    mlir::MlirOp one_scalar = MakeScalarConstant(builder, 1, element_type);
+    mlir::MlirOp zero_scalar = MakeScalarConstant(builder, 0, element_type);
+
+    const int64_t rank = input_type.getRank();
+    Dimensions edge_padding_low(rank, 0);
+    Dimensions edge_padding_high(rank, 0);
+    Dimensions interior_padding(rank, 0);
+
+    llvm::SmallVector<int64_t> reduce_padding;
+    reduce_padding.reserve(rank * 2);
+
+    for (int i = 0; i < rank; ++i) {
+      const int64_t pad_low = padding_vals[2 * i];
+      const int64_t pad_high = padding_vals[2 * i + 1];
+      TT_RET_CHECK(pad_high >= pad_low, error::kInvalidArgument)
+          << "expected pad_high >= pad_low for implicit ceil_mode padding, "
+             "got "
+          << pad_high << " vs " << pad_low;
+      const int64_t extra_pad = pad_high - pad_low;
+
+      edge_padding_low[i] = pad_low;
+      edge_padding_high[i] =
+          pad_low;  // Pad both sides symmetrically with explicit padding
+
+      reduce_padding.push_back(0);
+      reduce_padding.push_back(
+          extra_pad);  // ReduceWindow handles the extra implicit padding
+    }
+
+    mlir::MlirOp padded_ones =
+        mlir::stablehlo::Pad(ones, one_scalar, edge_padding_low,
+                             edge_padding_high, interior_padding);
+
+    auto add_reduce_builder = [element_type](mlir::RegionBuilder& rb) {
+      mlir::stablehlo::buildReduceBody<mlir::stablehlo::AddOp>(
+          element_type, rb.getRegion(), rb.getOpBuilder());
+    };
+
+    auto reduce_padding_attr = mlir::DenseIntElementsAttr::get(
+        mlir::makeTensorType(builder.getContext(), {rank, 2},
+                             builder.getOpBuilder().getI64Type()),
+        reduce_padding);
+
+    return mlir::stablehlo::ReduceWindow(
+        builder,
+        /*inputs=*/{padded_ones},
+        /*init_values=*/{zero_scalar},
+        /*body=*/add_reduce_builder, reduce_window_attributes.window_dimensions,
+        reduce_window_attributes.window_strides,
+        reduce_window_attributes.base_dilations,
+        reduce_window_attributes.window_dilations, reduce_padding_attr)[0];
   }
 
   // Case C: Count does not include padding, so divisor is the number of the

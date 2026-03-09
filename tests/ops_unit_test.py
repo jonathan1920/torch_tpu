@@ -4938,6 +4938,45 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(test_fn)
 
+  def test_avg_pool2d_ceil_mode_count_include_pad(self):
+    """Tests avg_pool2d with ceil_mode=True and count_include_pad=True.
+
+    Demonstrates the bug where the TPU implementation divides by the full
+    window size even when `ceil_mode=True` pushes the window out of the
+    explicit padding bounds.
+    """
+    # - PyTorch sums them (400) and divides by the valid area (4) -> 100.0
+    # - Buggy TPU sums them (400) and divides by k*k (16) -> 25.0
+    input_value = torch.full((1, 1, 5, 5), 100.0, dtype=torch.float32)
+
+    def compute(device):
+      return torch.nn.functional.avg_pool2d(
+          input_value.to(device),
+          kernel_size=4,
+          stride=3,
+          padding=0,
+          ceil_mode=True,
+          count_include_pad=True,
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  def test_avg_pool3d_ceil_mode_count_include_pad(self):
+    """Tests avg_pool3d with ceil_mode=True and count_include_pad=True."""
+    input_value = torch.full((1, 1, 5, 5, 5), 100.0, dtype=torch.float32)
+
+    def compute(device):
+      return torch.nn.functional.avg_pool3d(
+          input_value.to(device),
+          kernel_size=4,
+          stride=3,
+          padding=1,
+          ceil_mode=True,
+          count_include_pad=True,
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
 
 if __name__ == "__main__":
   absltest.main()
