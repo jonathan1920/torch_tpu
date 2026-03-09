@@ -1215,6 +1215,36 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
       interpolation_mode = 2
       torch.grid_sampler(inp, grid, interpolation_mode, 0, False)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # PyTorch `elu_backward` implementation doesn't error on this check.
+  # BUG: TorchTPU should have similar behavior w.r.t. PyTorch native devices.
+  @parameterized.named_parameters(
+      ("bool", torch.bool, "bool"),
+      ("int64", torch.int64, "int64"),
+  )
+  def test_elu_backward_unsupported_dtypes(
+      self, dtype: torch.dtype, tpu_dtype_str: str
+  ):
+    grad_output = torch.ones(4, device=et.device(), dtype=dtype)
+
+    alpha = 1.0
+    scale = 1.0
+    input_scale = 1.0
+    is_result = False
+    self_or_result = torch.ones(4, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "elu_backward(): expected the grad output dtype to be floating"
+            f" point, got {tpu_dtype_str}"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.elu_backward(
+          grad_output, alpha, scale, input_scale, is_result, self_or_result
+      )
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
@@ -3040,22 +3070,24 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.trunc(t)
 
-  def test_elu_unsupported_dtypes(self):
-    t_bool = torch.tensor([True, False], device=et.device(), dtype=torch.bool)
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="elu(): only float dtypes are supported",
-        cpu="\"elu_cpu\" not implemented for 'Bool'",
-    ):
-      torch.nn.functional.elu(t_bool)
+  @parameterized.named_parameters(
+      ("bool", torch.bool, "bool", "Bool"),
+      ("int64", torch.int64, "int64", "Long"),
+  )
+  def test_elu_unsupported_dtypes(
+      self, dtype: torch.dtype, tpu_dtype_str: str, cpu_dtype_str: str
+  ):
+    inp = torch.ones(4, device=et.device(), dtype=dtype)
 
-    t_long = torch.tensor([0, 0], device=et.device(), dtype=torch.long)
     with et.assert_raises_message(
         RuntimeError,
-        tpu="elu(): only float dtypes are supported",
-        cpu="\"elu_cpu\" not implemented for 'Long'",
+        tpu=(
+            "elu(): expected the input dtype to be floating point, got"
+            f" {tpu_dtype_str}"
+        ),
+        cpu=f"\"elu_cpu\" not implemented for '{cpu_dtype_str}'",
     ):
-      torch.nn.functional.elu(t_long)
+      torch.nn.functional.elu(inp)
 
   def test_gelu_unsupported_approximation_type(self):
     t = torch.randn(2, 3, device=et.device(), dtype=torch.float32)

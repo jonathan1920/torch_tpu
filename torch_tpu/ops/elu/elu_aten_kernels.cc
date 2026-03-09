@@ -17,12 +17,13 @@
 #include "torch_tpu/ops/elu/elu_aten_kernels.h"
 
 #include <functional>
+#include <string_view>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "ATen/core/ATen_fwd.h"
-#include "c10/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
@@ -121,6 +122,15 @@ MlirUnaryOpBuilder GetEluFunctional(const at::Scalar& alpha,
   return std::bind(&BuildEluShlo, std::placeholders::_1, alpha, scale,
                    input_scale);
 };
+
+absl::Status CheckIsFloatingPoint(const at::Tensor& tensor,
+                                  const std::string_view name) {
+  TT_RET_CHECK(IsFloatingPoint(tensor), error::kInvalidArgument)
+      << "expected the " << name << " dtype to be floating point, got "
+      << ToString(tensor.scalar_type());
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 at::Tensor& AtenEluOut(const at::Tensor& input, const at::Scalar& alpha,
@@ -128,10 +138,8 @@ at::Tensor& AtenEluOut(const at::Tensor& input, const at::Scalar& alpha,
                        at::Tensor& out) {
   TT_KERNEL(OpName::kEluOut, param_keys,
             (input, alpha, scale, input_scale, out), {
-              TT_CHECK_THROW(c10::isFloatingType(input.scalar_type()),
-                             error::kInvalidArgument)
-                  << "only float dtypes are supported";
-
+              TT_THROW_IF_ERROR(
+                  CheckIsFloatingPoint(input, /* name= */ "input"));
               TT_THROW_IF_ERROR(
                   UnaryOpOut(input, out, OpName::kEluOut,
                              GetEluFunctional(alpha, scale, input_scale),
@@ -149,9 +157,8 @@ at::Tensor& AtenEluBackwardGradInput(
       (grad_output, alpha, scale, input_scale, is_result, self_or_result,
        grad_input),
       {
-        TT_CHECK_THROW(c10::isFloatingType(grad_output.scalar_type()),
-                       error::kInvalidArgument)
-            << "only float dtypes are supported";
+        TT_THROW_IF_ERROR(
+            CheckIsFloatingPoint(grad_output, /* name= */ "grad output"));
 
         auto op_builder = [alpha, scale, input_scale,
                            is_result](FixedSizeSpan<mlir::MlirOp, 2> inputs)
