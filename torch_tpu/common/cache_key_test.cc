@@ -65,6 +65,12 @@ TEST(OpParamCacheKeys, SetParamScalarType) {
   EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "Float")));
 }
 
+TEST(OpParamCacheKeysDeathTest, SetSameParamTwiceCrashes) {
+  OpParamCacheKeys::Builder builder;
+  builder.SetParam("foo", 1).SetParam("bar", 3);
+  EXPECT_DEATH(builder.SetParam("foo", 2), "Duplicate parameter name 'foo'");
+}
+
 TEST(OpParamCacheKeys, SetParamScalarArray) {
   at::Scalar s1(123);
   at::Scalar s2(4.5);
@@ -174,17 +180,9 @@ TEST(OpParamCacheKeys, SetParamNullopt) {
   EXPECT_THAT(params3_or.value(), IsEmpty());
 }
 
-TEST(OpParamCacheKeys, SetParamNewOverwritesOld) {
-  auto params_or = *OpParamCacheKeys::SetParam("foo", at::Scalar(123))
-                        .SetParam("foo", at::Scalar(456));
-  ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "456:Long")));
-}
-
-TEST(OpParamCacheKeys, SetParamNewNulloptRemovesOld) {
+TEST(OpParamCacheKeys, SetParamNewNulloptIsNoOp) {
   const std::optional<at::Scalar> no_scalar = std::nullopt;
-  auto params_or = *OpParamCacheKeys::SetParam("foo", at::Scalar(123))
-                        .SetParam("foo", no_scalar);
+  auto params_or = *OpParamCacheKeys::SetParam("foo", no_scalar);
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(), IsEmpty());
 }

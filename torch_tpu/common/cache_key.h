@@ -29,6 +29,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/log/absl_check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -323,10 +324,15 @@ class OpParamCacheKeys::Builder {
     absl::StatusOr<std::string> str_or = FormatParamCacheKey(value);
     if (str_or.ok()) {
       std::string str = std::move(str_or).value();
+      std::string name_str(name);
+      const auto it = name_to_value_.find(name_str);
+      ABSL_CHECK(it == name_to_value_.end())  // CRASH_OK
+          << "Duplicate parameter name '" << name
+          << "' when computing param cache keys. This is a TorchTPU bug.";
       if (str.empty()) {
-        name_to_value_.erase(std::string(name));
+        // No need to add an empty string to the cache keys.
       } else {
-        name_to_value_[std::string(name)] = std::move(str);
+        name_to_value_[std::move(name_str)] = std::move(str);
       }
     } else {
       first_error_ = std::move(str_or).status();
