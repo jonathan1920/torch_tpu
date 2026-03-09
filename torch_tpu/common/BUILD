@@ -857,4 +857,54 @@ torch_tpu_cc_test(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "dynamism_utils",
+    srcs = ["dynamism_utils.cc"],
+    hdrs = ["dynamism_utils.h"],
+    deps = [
+        ":error_utils",
+        ":shape",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:python_context",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:func_builder",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_broadcast_lowering",
+        "@stablehlo//:stablehlo_builder",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "dynamism_utils_test",
+    srcs = ["dynamism_utils_test.cc"],
+    deps = [
+        ":dynamism_utils",
+        ":error_utils",
+        ":shape",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:traversal",
+        "//torch_tpu/ops:binary",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:python_context",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:register",
+    ],
+)
+
 torch_tpu_package_end()
