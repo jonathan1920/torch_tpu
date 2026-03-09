@@ -56,7 +56,11 @@ pytype_strict_binary(
 torch_tpu_py_test(
     name = "scaled_dot_product_attention_kernels_test",
     srcs = ["scaled_dot_product_attention_kernels_test.py"],
-    tags = ["requires-tpu-v5lite"],
+    tags = [
+        # Disabling tsan for this test, see details in b/491065267.
+        "notsan",
+        "requires-tpu-v5lite",
+    ],
     deps = [
         ":scaled_dot_product_attention_kernels",
         "//shims/absl_py/logging",
