@@ -25,6 +25,10 @@ load(
     "torch_tpu_cc_test",
     "torch_tpu_package_end",
 )
+load(
+    "//shims/build_files:build_defs.bzl",
+    "add_filesystem_dependencies",
+)
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -377,8 +381,7 @@ torch_tpu_cc_library(
         ":env_vars",
         ":error_utils",
         ":tier2_compilation_cache",
-        # TODO: b/490440118 - Remove this once the bug is fixed.
-        # TODO: b/490441343 - Remove this once the bug is fixed.
+    ] + add_filesystem_dependencies() + [
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",

@@ -110,6 +110,7 @@ pytype_strict_library(
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
+        "//shims/minipyspy:minipyspy_enable",
         "//shims/torch:pytorch",
         "//shims/torch:tensorboard_support",  # buildcleaner: keep
         "//torch_tpu/_internal/compile:tpu_torch_compile",
@@ -139,6 +140,7 @@ torch_tpu_py_test(
         ":stablehlo_compile_testing",
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
+        "//shims/minipyspy:minipyspy_enable",
         "//shims/torch:tensorboard_support",  # buildcleaner: keep
     ],
 )
