@@ -1627,7 +1627,7 @@ toolz==1.1.0 \
     --hash=sha256:15ccc861ac51c53696de0a5d6d4607f99c210739caf987b5d2054f3efed429d8 \
     --hash=sha256:27a5c770d068c110d9ed9323f24f1543e83b2f300a687b7891c1a6d56b697b5b
     # via chex
-torch==2.10.0 ; (platform_machine != 'aarch64' and platform_machine != 'x86_64') or sys_platform != 'linux' \
+torch==2.10.0+cpu ; (platform_machine == 'aarch64' or platform_machine == 'x86_64') and sys_platform == 'linux' \
     --hash=sha256:13ec4add8c3faaed8d13e0574f5cd4a323c11655546f91fbe6afa77b57423574 \
     --hash=sha256:233aed0659a2503b831d8a67e9da66a62c996204c0bba4f4c442ccc0c68a3f60 \
     --hash=sha256:29b7009dba4b7a1c960260fc8ac85022c784250af43af9fb0ebafc9883782ebd \
@@ -1664,15 +1664,9 @@ torch==2.10.0 ; (platform_machine != 'aarch64' and platform_machine != 'x86_64')
     #   torch-tpu (pyproject.toml)
     #   accelerate
     #   fairscale
-torch @ https://download.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl ; platform_machine == 'aarch64' and sys_platform == 'linux' \
-    --hash=sha256:179451716487f8cb09b56459667fa1f5c4c0946c1e75fbeae77cfc40a5768d87
-    # via
-    #   torch-tpu (pyproject.toml)
-    #   accelerate
-    #   fairscale
-torch @ https://download.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp312-cp312-manylinux_2_28_x86_64.whl ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+torch==2.10.0+cpu ; (platform_machine == 'aarch64' or platform_machine == 'x86_64') and sys_platform == 'linux' \
+    --hash=sha256:179451716487f8cb09b56459667fa1f5c4c0946c1e75fbeae77cfc40a5768d87 \
     --hash=sha256:ee40b8a4b4b2cf0670c6fd4f35a7ef23871af956fecb238fbf5da15a72650b1d
-    # via
     #   torch-tpu (pyproject.toml)
     #   accelerate
     #   fairscale

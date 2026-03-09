@@ -25,6 +25,7 @@ First use python 3.12 virtual environment
 ```bash
 mkdir wheel; cd wheel
 python3.12 -m venv venv; source venv/bin/activate
+```
 
 ### Install via pip
 
@@ -62,7 +63,8 @@ Install wheel via:
 cd <path_to_repo>
 mkdir wheel; cd wheel
 python3.12 -m venv venv; source venv/bin/activate
-pip install ../bazel-bin/ci/wheel/*.whl
+# The index-url includes the CPU version of torch at higher priority than the CUDA version.
+pip install ../bazel-bin/ci/wheel/*.whl --index-url "https://oauth2accesstoken:$(gcloud auth print-access-token)@us-python.pkg.dev/ml-oss-artifacts-transient/torch-tpu-virtual-registry/simple/"
 ```
 
 Note that this command will install the CUDA version of `torch`; to get the
