@@ -53,6 +53,7 @@ app.call_after_init(_disallow_collective_ops_in_graph)
 # New Dynamo flag that enables tracing through the `backward` function call.
 # This enables the possibility of generating of a single fx graph containing
 # both forward and backward subgraphs, rather than a discrete fx graph for each.
+# See b/480979694 for details.
 # pylint: disable=protected-access
 if hasattr(torch._dynamo.config, "trace_autograd_ops"):
   torch._dynamo.config.trace_autograd_ops = True

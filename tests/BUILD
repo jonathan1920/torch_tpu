@@ -65,6 +65,9 @@ py_library(
     name = "op_testing",
     testonly = True,
     srcs = ["op_testing.py"],
+    # copybara:uncomment_begin(internal-only attribute)
+    # strict_deps = False,
+    # copybara:uncomment_end
     deps = [
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
@@ -289,6 +292,7 @@ torch_tpu_py_test(
     ],
 )
 
+# TODO: Document how to update the perf data in OSS.
 torch_tpu_py_test(
     name = "ops_test_perf",
     timeout = "long",  # 15 minutes. The test finishes in ~5 minutes, which is the default limit.

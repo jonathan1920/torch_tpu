@@ -60,6 +60,8 @@ def get_qwen3_model(default_config, torch_dtype: torch.dtype):
 def get_qwen3_moe_model(default_config, torch_dtype: torch.dtype):
   """Returns the Qwen3-Coder-30B-A3B-Instruct model."""
   # pylint: disable=protected-access
+  # TODO: b/491105062 - Remove this once performance issue on TPU is resolved.
+  # Currently, Run goes OOM and crashes after 31 minutes.
   # By default, the model has 48 hidden layers.
   default_config.num_hidden_layers = 2
   model = modeling_qwen3_moe.Qwen3MoeForCausalLM(default_config).to(torch_dtype)

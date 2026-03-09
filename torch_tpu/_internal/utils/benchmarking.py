@@ -224,6 +224,9 @@ def record_tensorboard_metrics(
   (Mean, Median, percentiles) based on a metric's profile. It can
   optionally log the raw "step metrics" as well.
 
+  How to View Metrics:
+    Metrics can be viewed using TensorBoard by pointing it to the experiment's log directory.
+
   Args:
       writer: A TensorBoard SummaryWriter used to record metrics.
       metric_profile: A ProfileData dict containing the metric's name and unit.

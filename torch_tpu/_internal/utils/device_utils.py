@@ -77,6 +77,9 @@ def _get_peak_hbm_memory_mb(
 
   try:
     profile = json.loads(data.decode('utf-8'))
+    # See
+    # https://github.com/openxla/xprof/blob/master/plugin/xprof/protobuf/memory_profile.proto
+    # for the output schema.
     # The key '0' corresponds to the allocator for device 0.
     allocator_stats = profile['memoryProfilePerAllocator']['0']
     peak_bytes = allocator_stats['profileSummary']['peakStats'][

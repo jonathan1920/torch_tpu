@@ -91,6 +91,7 @@ def torch_tpu_cc_library(name, copts = None, features = None, **kwargs):
 
     copts, features = adjust_cc_options(copts, features)
 
+    # TODO: strip_include_prefix default
     if "includes" not in kwargs:
         include_dir = _get_relative_torch_tpu_root(native.package_name())
         if include_dir:

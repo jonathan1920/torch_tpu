@@ -49,6 +49,7 @@ class ModuleRegistryTest(absltest.TestCase):
   def test_torchvision_list_modules(self):
     # torchvision doesn't return a stable set of models when running in Forge so
     # we can't assert on existence of a specific model name.
+    # TODO: torchvision link
     self.assertNotEmpty(self.module_registry.list_modules("torchvision"))
 
   def test_timm_list_modules(self):
