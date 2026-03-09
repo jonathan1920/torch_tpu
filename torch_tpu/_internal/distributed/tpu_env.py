@@ -50,12 +50,7 @@ class WorldSpec:
     self.sb_addresses = ",".join([f"localhost:{p}" for p in self.sb_ports])
 
     # Detect TPU topology.
-    self.topology, discovered_world_size = tpu_topology.get_tpu_topology()
-    if discovered_world_size != world_size:
-      raise ValueError(
-          "World size does not match discovered world size. World size: "
-          f"{world_size}, discovered world size: {discovered_world_size}"
-      )
+    self.topology, _ = tpu_topology.get_tpu_topology(world_size)
 
 
 def init_worker(

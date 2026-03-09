@@ -22,7 +22,7 @@ The torchrun command is called on a wrapper around user logic:
 
 ```
 dist.torchrun(
-    tpu_env_wrapper(user_logic, arg1, arg2),
+    tpu_env_wrapper(user_logic, arg1, arg2, world_size=N),
     nproc_per_node=N,
 )()
 ```
@@ -46,10 +46,15 @@ import portpicker
 from torch_tpu._internal.distributed import tpu_topology
 
 
-def prepare_tpu_environment() -> None:
+def prepare_tpu_environment(world_size: int | None = None) -> None:
   """Prepares the environment variables required for TPU distributed execution.
 
   To be called in the main process before spawning workers.
+
+  Args:
+    world_size: If provided, use this as the target device count instead of
+      auto-detecting from hardware. Allows sub-slicing only on single-host, in
+      supported topologies.
   """
   xprof_session_id = os.environ.get("TORCH_TPU_XPROF_SESSION_ID", None)
   if xprof_session_id is None:
@@ -57,7 +62,7 @@ def prepare_tpu_environment() -> None:
     os.environ["TORCH_TPU_XPROF_SESSION_ID"] = xprof_session_id
   logging.info("TORCH_TPU_XPROF_SESSION_ID: %s", xprof_session_id)
 
-  topology, count = tpu_topology.get_tpu_topology()
+  topology, count = tpu_topology.get_tpu_topology(world_size)
 
   # Get open ports on this host for slicebuilder.
   if "TORCH_TPU_SLICEBUILDER_ADDRESSES" not in os.environ:
@@ -90,13 +95,21 @@ class WorkerWrapper:
 
 def tpu_env_wrapper(
     func: Callable[..., Any],
-    world_size: int | None = None,
     *args: Any,
+    world_size: int | None = None,
     **kwargs: Any,
 ) -> Any:
-  """Internal wrapper to initialize worker and run user function."""
-  if world_size is not None:
-    logging.warning("world_size is deprecated and will be ignored.")
+  """Internal wrapper to initialize worker and run user function.
 
-  prepare_tpu_environment()
+  Args:
+    func: The user's callable to be executed by each distributed worker.
+    *args: Positional arguments to pass to `func`.
+    world_size: The number of TPU devices to use. If None, auto-detects based on
+      available hardware.
+    **kwargs: Keyword arguments to pass to `func`.
+
+  Returns:
+    A WorkerWrapper instance that can be called by torchrun.
+  """
+  prepare_tpu_environment(world_size)
   return WorkerWrapper(func, *args, **kwargs)

@@ -84,9 +84,7 @@ class MultiTpuTorchCompileTest(absltest.TestCase):
   @expected_to_fail_in_oss
   def test_all_reduce_with_torch_compile(self):
     dist.torchrun(
-        singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce_with_torch_compile, 8
-        ),
+        singlehost_wrapper.tpu_env_wrapper(run_all_reduce_with_torch_compile),
         nproc_per_node=8,
     )()
 

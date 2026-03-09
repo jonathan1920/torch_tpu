@@ -24,7 +24,9 @@ device and the world size.
 import glob
 import os
 import pathlib
-from typing import Optional
+
+from absl import logging
+
 
 _GOOGLE_PCI_VENDOR_ID = "0x1ae0"
 _TPU_PCI_DEVICE_IDS_TO_TOPOLOGY = {
@@ -52,9 +54,21 @@ _TPU_PCI_DEVICE_IDS_TO_TOPOLOGY = {
 }
 
 
-def get_tpu_topology() -> tuple[Optional[str], int]:
-  """Returns the count and topology string for attached TPU devices."""
-  count = 0
+def get_tpu_topology(
+    world_size: int | None = None,
+) -> tuple[str | None, int]:
+  """Returns the topology string and device count for attached TPU devices.
+
+  Args:
+    world_size: If provided, use this as the target device count for topology
+      lookup instead of the auto-detected count. Allows sub-slicing only on
+      single-host, in supported topologies.
+
+  Raises:
+    RuntimeError: If a TPU device is detected but no topology is found for the
+      `target_count` (either `world_size` or the auto-detected count).
+  """
+  detected_count = 0
   topology_map = None
 
   for vendor_path in glob.glob("/sys/bus/pci/devices/*/vendor"):
@@ -76,15 +90,30 @@ def get_tpu_topology() -> tuple[Optional[str], int]:
         if not os.path.exists(f"/dev/vfio/{group_id}"):
           continue
 
-      count += 1
+      detected_count += 1
       topology_map = _TPU_PCI_DEVICE_IDS_TO_TOPOLOGY[device_id]
 
-  if count == 0:
+  if world_size is not None:
+    if world_size > detected_count:
+      raise ValueError(
+          "expected world_size to be less than or equal to detected TPUs"
+          f" {detected_count}, got {world_size}"
+      )
+    elif world_size < detected_count:
+      logging.warning(
+          "using world_size: %d instead of detected count: %d",
+          world_size,
+          detected_count,
+      )
+
+  target_count = world_size if world_size is not None else detected_count
+
+  if target_count == 0:
     return None, 0
 
   if topology_map:
-    if count not in topology_map:
-      raise RuntimeError("No TPU topology found for count: %d" % count)
-    return topology_map[count], count
+    if target_count not in topology_map:
+      raise RuntimeError(f"No TPU topology found for count: {target_count}")
+    return topology_map[target_count], target_count
 
   return None, 0
