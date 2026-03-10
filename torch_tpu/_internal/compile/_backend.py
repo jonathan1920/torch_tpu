@@ -227,8 +227,6 @@ class TpuBackend:
     # Stores information about each compiled executable.
     # Organized by order of compilation (index 0 is the first compilation, etc.)
     self._compiled_executables: list[_TorchTpuCompiledExecutable] = []
-    if self._debug:
-      logging.set_verbosity(logging.DEBUG)
 
   def __call__(
       self,
