@@ -68,6 +68,7 @@ genrule(
         "//shims/torch:pytorch",
         "//shims/torch:tensorboard_support",
         "//shims/torch:testing_internal",
+        "//torch_tpu/_internal/utils:test_fixtures",
     ],
     outs = ["wheel_extra_test_deps.zip"],
     cmd = "$(location @bazel_tools//tools/zip:zipper) c $@ $(SRCS)",

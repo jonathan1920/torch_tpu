@@ -76,7 +76,6 @@ torch_tpu_py_test(
     srcs = ["utils_test.py"],
     tags = [
         "oss_ready_cpu",
-        "wheel_test_excluded",
     ],
     deps = [
         ":test_fixtures",
@@ -121,7 +120,6 @@ torch_tpu_py_test(
     strict = True,
     tags = [
         "oss_ready_cpu",
-        "wheel_test_excluded",
     ],
     deps = [
         ":test_fixtures",
@@ -142,7 +140,6 @@ torch_tpu_py_test(
     tags = [
         "oss_ready_tpu",
         "requires-tpu-v5lite",
-        "wheel_test_excluded",
     ],
     deps = [
         ":test_fixtures",
@@ -161,7 +158,6 @@ torch_tpu_py_test(
     strict = True,
     tags = [
         "oss_ready_cpu",
-        "wheel_test_excluded",
     ],
     deps = [
         ":test_fixtures",

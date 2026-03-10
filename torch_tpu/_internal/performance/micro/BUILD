@@ -36,7 +36,6 @@ torch_tpu_py_test(
     tags = [
         "oss_ready_tpu",
         "requires-tpu-v5lite",
-        "wheel_test_excluded",
     ],
     deps = [
         ":utils",

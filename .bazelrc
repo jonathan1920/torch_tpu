@@ -235,6 +235,8 @@ test:wheel_config --test_wheel=true
 test:wheel_config --config=remote_caching_readonly
 test:wheel_config --config=remote_execution_readonly
 test:wheel_config --test_tag_filters=-wheel_test_excluded
+test:wheel_config --@rules_python//python/config_settings:bootstrap_impl=script
+test:wheel_config --@rules_python//python/config_settings:venvs_site_packages=yes
 
 # Config for testing CPU wheel test.
 test:wheel_test_cpu --config=ci_cpu
