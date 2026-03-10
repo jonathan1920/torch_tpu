@@ -58,6 +58,18 @@ py_library(
 
 py_library(
     # PY_LIBRARY_OK=used in OSS only.
+    name = "numerical_parity",
+    srcs = ["numerical_parity.py"],
+    deps = [
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/api",
+        "//torch_tpu/api:_device_module",
+    ],
+)
+
+py_library(
+    # PY_LIBRARY_OK=used in OSS only.
     name = "error_glossary",
     srcs = ["error_glossary.py"],
     deps = [

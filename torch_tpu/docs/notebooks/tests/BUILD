@@ -50,6 +50,16 @@ py_library(
 
 py_library(
     # PY_LIBRARY_OK=used in OSS only.
+    name = "test_numerical_parity",
+    srcs = ["test_numerical_parity.py"],
+    deps = [
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/utils",
+    ],
+)
+
+py_library(
+    # PY_LIBRARY_OK=used in OSS only.
     name = "test_compilation_cache",
     srcs = ["test_compilation_cache.py"],
     deps = [
