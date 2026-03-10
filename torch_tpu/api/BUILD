@@ -46,6 +46,7 @@ pytype_strict_library(
         ":streams",
         "//shims/torch:pytorch",
         "//torch_tpu",  # buildcleaner: keep
+        "//torch_tpu/_internal/precision",
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )

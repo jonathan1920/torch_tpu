@@ -162,6 +162,13 @@ torch_tpu_cc_test(
 )
 
 torch_tpu_cc_library(
+    name = "precision_context",
+    srcs = ["precision_context.cc"],
+    hdrs = ["precision_context.h"],
+    deps = ["@stablehlo//:stablehlo_ops"],
+)
+
+torch_tpu_cc_library(
     name = "unary",
     srcs = ["unary.cc"],
     hdrs = ["unary.h"],

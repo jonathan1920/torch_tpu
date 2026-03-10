@@ -848,4 +848,20 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "precision_test",
+    srcs = ["precision_test.py"],
+    main = "precision_test.py",
+    tags = [
+        "oss_ready_tpu",
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/precision",
+        "//torch_tpu/api",
+    ],
+)
+
 torch_tpu_package_end()

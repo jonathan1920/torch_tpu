@@ -22,6 +22,7 @@ import atexit
 from typing import Any, List
 
 import torch
+import torch_tpu._internal.precision as _precision_module
 from torch_tpu.api import _device_ops_backend
 from torch_tpu.api import streams
 
@@ -74,6 +75,9 @@ class _DeviceModule:
   _autocast_enabled: bool = False
   _autocast_dtype: torch.dtype | None = torch.float16
 
+  Precision = _precision_module.Precision  # pylint: disable=invalid-name
+  precision = _precision_module.precision
+
   @classmethod
   def current_device(cls) -> int:  # This is in torch/cuda/__init__.py.
     """Returns the index of the currently selected device."""
@@ -122,7 +126,7 @@ class _DeviceModule:
   ):
     """Initializes the TPU runtime."""
     if not cls._is_initialized:
-      init_result = _device_ops_backend._init_runtime(device_type)
+      init_result = _device_ops_backend._init_runtime(device_type)  # pylint: disable=protected-access
       cls._is_initialized = True
       cls._device_count = init_result.device_count
       cls._current_device = init_result.device_id
@@ -219,40 +223,40 @@ class _DeviceModule:
 
   @classmethod
   def _set_allow_cache(cls, allow: bool = True):
-    _device_ops_backend._set_allow_cache(allow)
+    _device_ops_backend._set_allow_cache(allow)  # pylint: disable=protected-access
 
   @classmethod
   def _set_cache_only(cls, cache_only: bool = True):
-    _device_ops_backend._set_cache_only(cache_only)
+    _device_ops_backend._set_cache_only(cache_only)  # pylint: disable=protected-access
 
   @classmethod
   def _get_cache_requests(cls):
-    return _device_ops_backend._get_cache_requests()
+    return _device_ops_backend._get_cache_requests()  # pylint: disable=protected-access
 
   @classmethod
   def _get_cache_hits(cls):
-    return _device_ops_backend._get_cache_hits()
+    return _device_ops_backend._get_cache_hits()  # pylint: disable=protected-access
 
   @classmethod
   def _get_cache_misses(cls):
-    return _device_ops_backend._get_cache_misses()
+    return _device_ops_backend._get_cache_misses()  # pylint: disable=protected-access
 
   @classmethod
   def _clear_cache(cls):
-    _device_ops_backend._clear_cache()
+    _device_ops_backend._clear_cache()  # pylint: disable=protected-access
 
   @classmethod
   def _hbm_usage_summary(cls):
-    return _device_ops_backend._hbm_usage_summary()
+    return _device_ops_backend._hbm_usage_summary()  # pylint: disable=protected-access
 
   @classmethod
   def _get_cache_stats(cls):
-    return _device_ops_backend._get_cache_stats()
+    return _device_ops_backend._get_cache_stats()  # pylint: disable=protected-access
 
   @classmethod
   def _shutdown_runtime(cls):
     if cls._is_initialized:
-      _device_ops_backend._shutdown_runtime()
+      _device_ops_backend._shutdown_runtime()  # pylint: disable=protected-access
       cls._is_initialized = False
 
 
