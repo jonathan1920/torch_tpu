@@ -28,6 +28,7 @@ from absl.testing import parameterized
 from scipy import stats
 import torch
 from torch_tpu import api
+from torch_tpu._internal import sync
 from torch_tpu._internal.utils import utils
 from tests import op_testing
 
@@ -3988,6 +3989,11 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
     self.assertTrue(torch.all(output_max[0] == 0))
     self.assertTrue(torch.all(max_indices[0] == 0))
+
+  def test_zero_sized_to_device(self):
+    tensor = torch.ones(2, 0, 3, dtype=torch.int32, device="cpu")
+    tensor_tpu = tensor.to(api.tpu_device())
+    self.assertTrue(sync.is_bufferless_zero_size(tensor_tpu))
 
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):

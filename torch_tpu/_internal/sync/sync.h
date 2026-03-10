@@ -68,6 +68,9 @@ absl::StatusOr<bool> IsMaterialized(const at::Tensor& tensor);
 // device-to-host transfer.
 absl::StatusOr<bool> IsReady(const at::Tensor& tensor);
 
+// Checks that the tensor has no PjRtBuffer and is zero-sized.
+absl::StatusOr<bool> IsBufferlessZeroSize(const at::Tensor& tensor);
+
 // Returns a graphviz compatible representation of the computation graph of the
 // given buffer refs. This traverses backwards from the given buffers through
 // the graph of Aten operations that produced them.

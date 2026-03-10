@@ -54,6 +54,7 @@ dump_computation_graphviz = sync.dump_computation_graphviz
 synchronize = sync.synchronize
 is_materialized = sync.is_materialized
 is_ready = sync.is_ready
+is_bufferless_zero_size = sync.is_bufferless_zero_size
 
 # PEP 8 requires this to be a list of strings, not a tuple or a list of objects.
 __all__ = [
@@ -61,6 +62,7 @@ __all__ = [
     "computation_graphviz",
     "computation_mlir",
     "dump_computation_graphviz",
+    "is_bufferless_zero_size",
     "is_materialized",
     "is_ready",
     "synchronize",

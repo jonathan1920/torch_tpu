@@ -39,17 +39,21 @@ def synchronize(tensors: torch.Tensor | list[torch.Tensor], wait: bool = False):
       function will also wait for the results to be ready.
   """
   if isinstance(tensors, list):
-    _tpu_torch_sync._synchronize_list([_maybe_unwrap(t) for t in tensors], wait)
+    _tpu_torch_sync._synchronize_list([_maybe_unwrap(t) for t in tensors], wait)  # pylint: disable=protected-access
   else:
-    _tpu_torch_sync._synchronize_tensor(_maybe_unwrap(tensors), wait)
+    _tpu_torch_sync._synchronize_tensor(_maybe_unwrap(tensors), wait)  # pylint: disable=protected-access
 
 
 def is_materialized(tensor: torch.Tensor) -> bool:
-  return _tpu_torch_sync._is_materialized(_maybe_unwrap(tensor))
+  return _tpu_torch_sync._is_materialized(_maybe_unwrap(tensor))  # pylint: disable=protected-access
 
 
 def is_ready(tensor: torch.Tensor) -> bool:
-  return _tpu_torch_sync._is_ready(_maybe_unwrap(tensor))
+  return _tpu_torch_sync._is_ready(_maybe_unwrap(tensor))  # pylint: disable=protected-access
+
+
+def is_bufferless_zero_size(tensor: torch.Tensor) -> bool:
+  return _tpu_torch_sync._is_bufferless_zero_size(_maybe_unwrap(tensor))  # pylint: disable=protected-access
 
 
 def _dump_computation(

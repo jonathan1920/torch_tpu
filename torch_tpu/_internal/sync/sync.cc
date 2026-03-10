@@ -81,6 +81,13 @@ absl::StatusOr<bool> IsReady(const at::Tensor& tensor) {
   return maybe_pjrt_buffer.GetReadyFuture().IsReady();
 }
 
+absl::StatusOr<bool> IsBufferlessZeroSize(const at::Tensor& tensor) {
+  TT_ASSIGN_OR_RETURN(auto buffer_ref, GetBaseBufferFromAtTensor(tensor));
+  return (buffer_ref.num_elements() == 0 &&
+          buffer_ref.state() == DeviceBufferRefState::kZeroSize &&
+          !buffer_ref.buffer().ok() && buffer_ref.size_bytes() == 0);
+}
+
 namespace {
 
 absl::StatusOr<Traversal> GetTraversal(

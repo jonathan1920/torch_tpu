@@ -88,6 +88,15 @@ bool PyIsReady(const at::Tensor& tensor) {
   return is_ready;
 }
 
+bool PyIsBufferlessZeroSize(const at::Tensor& tensor) {
+  TT_CHECK_THROW(tensor.device().type() == GetPrivateUse1DeviceType(),
+                 error::kInvalidArgument)
+      << "tensor is not on the PrivateUse1 device";
+  TT_ASSIGN_OR_THROW(bool is_bufferless_zero_size,
+                     IsBufferlessZeroSize(tensor));
+  return is_bufferless_zero_size;
+}
+
 std::vector<DeviceBufferRef> GetComputationBuffers(
     const std::vector<at::Tensor>& tensors) {
   std::vector<DeviceBufferRef> buffer_refs;
@@ -161,6 +170,9 @@ PYBIND11_MODULE(_tpu_torch_sync, m) {
       "_is_ready", &PyIsReady, py::arg("tensor"),
       py::doc("Checks if the tensor has completed execution and is ready to be "
               "copied to CPU."));
+
+  m.def("_is_bufferless_zero_size", &PyIsBufferlessZeroSize, py::arg("tensor"),
+        py::doc("Checks if the tensor has no PjRtBuffer and is zero-sized."));
 
   m.def("_get_computation_graphviz", &PyGetComputationGraphviz,
         py::arg("tensors"), py::arg("capture_names_from"),
