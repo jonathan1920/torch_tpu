@@ -61,9 +61,10 @@ pytype_strict_library(
         "//shims/torch",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/distributed:gpu_env",
-        "//torch_tpu/_internal/distributed:tpu_env",
+        "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
         "//torch_tpu/_internal/utils:device_utils",
+        "//torch_tpu/api",
     ],
 )
 
@@ -78,7 +79,8 @@ pytype_strict_library(
         "//examples/benchmarks/quality_utils/metrics:data_loader",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/distributed:gpu_env",
-        "//torch_tpu/_internal/distributed:tpu_env",
+        "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/api",
     ],
 )
 

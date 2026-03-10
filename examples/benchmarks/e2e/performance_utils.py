@@ -23,9 +23,11 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 from absl import flags
 from absl import logging
 import torch
+from torch import distributed as dist
 # from torch.google import distributed as g3_distributed
+from torch_tpu import api
 from torch_tpu._internal.distributed import gpu_env
-from torch_tpu._internal.distributed import tpu_env
+from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import device_utils
 from examples.benchmarks.e2e import benchmark_function_db
 from examples.benchmarks.e2e import benchmark_utils
@@ -33,6 +35,7 @@ from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import model_utils
 
 from torch_tpu._internal.shims.xprof import xprof_analysis_client
+
 
 WEIGHTS_DTYPE = flags.DEFINE_string(
     "weights_dtype",
@@ -234,6 +237,27 @@ def _run_single_process_benchmark(
     )
 
 
+def _run_torch_tpu_worker(
+    config: PerformanceBenchmarkConfig,
+    test_method_name: str,
+    benchmark_name: str,
+    microbenchmark_name: str | None = None,
+):
+  _ = api.tpu_device()
+  dist.init_process_group(backend="tpu_dist")
+  rank = dist.get_rank()
+  world_size = dist.get_world_size()
+  _run_single_process_benchmark(
+      rank,
+      world_size,
+      config,
+      test_method_name,
+      benchmark_name,
+      microbenchmark_name,
+  )
+  dist.destroy_process_group()
+
+
 def _run_distributed_benchmark(
     config: PerformanceBenchmarkConfig,
     *,
@@ -243,15 +267,19 @@ def _run_distributed_benchmark(
 ) -> None:
   """Runs the benchmark for the given config."""
   if benchmark_utils.PLATFORM.value == benchmark_utils.Platform.GFC_2X2X1:
-    tpu_env.run_in_workers(
+    singlehost_wrapper.prepare_tpu_environment()
+    run_worker = singlehost_wrapper.tpu_env_wrapper(
+        _run_torch_tpu_worker,
         8,
-        _run_single_process_benchmark,
-        worker_args=(
-            config,
-            test_method_name,
-            benchmark_name,
-            microbenchmark_name,
-        ),
+    )
+    dist.torchrun(
+        run_worker,
+        nproc_per_node=8,
+    )(
+        config,
+        test_method_name,
+        benchmark_name,
+        microbenchmark_name,
     )
   elif benchmark_utils.PLATFORM.value == benchmark_utils.Platform.B200_4:
     # A single B200 device is roughly equivalent to two GFC devices,
@@ -259,7 +287,10 @@ def _run_distributed_benchmark(
     config.model_and_input_args.batch_size = (
         config.model_and_input_args.batch_size * 2
     )
-    dist.torchrun(gpu_env.run_in_workers, nproc_per_node=4)(
+    dist.torchrun(
+        gpu_env.run_in_workers,
+        nproc_per_node=4,
+    )(
         _run_single_process_benchmark,
         config,
         test_method_name,
