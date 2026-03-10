@@ -29,13 +29,13 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
-        "@pypi//jax",
-        # copybara: jax/experimental:pallas
+        "//shims/jax:pallas",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/pallas",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
+        "@pypi//jax",
     ],
 )
 

@@ -31,12 +31,12 @@ pytype_strict_library(
         "ignore_for_dep=third_party.py.jax._src.pallas.core",
     ],
     deps = [
-        "@pypi//jax",
-        # copybara: jax/experimental:pallas
-        # copybara: jax/experimental:pallas_tpu
-        "@pypi//numpy",
+        "//shims/jax:pallas",
+        "//shims/jax:pallas_tpu",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/pallas:pallas_kernel_generate_utils",
+        "@pypi//jax",
+        "@pypi//numpy",
     ],
 )
 
