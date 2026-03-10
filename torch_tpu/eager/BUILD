@@ -511,7 +511,7 @@ torch_tpu_cc_library(
         ":device_gen_impl",
         ":device_types",
         "//shims/torch:aten_headers",
-        "//shims/torch:torch_headers",
+        "//shims/torch:torch_headers",  # TODO: keep macros
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/macros",
         "//shims/torch/c10/util:base_headers",
