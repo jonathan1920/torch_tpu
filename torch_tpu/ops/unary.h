@@ -38,15 +38,15 @@ namespace torch_tpu {
 
 // This simple macro is used to construct functions that call the
 // proper StableHLO or CHLO builder function for a given MlirOp code
-// for ops that require floating-point inputs.
-#define TT_UNARY_BUILDER_FP_ONLY_(FctName, FctCall)                         \
-  inline absl::StatusOr<mlir::MlirOp> FctName(                              \
-      mlir::MlirOp input_op, mlir::ElementType default_mlir_type) {         \
-    TT_ASSIGN_OR_RETURN(/* ERROR_COV_INFEASIBLE=in a macro definition. */   \
-                        mlir::MlirOp op, ::torch_tpu::ConvertIfInteger(     \
-                                             input_op, default_mlir_type)); \
-    return FctCall(op);                                                     \
-  }                                                                         \
+// for ops that require floating-point outputs.
+#define TT_UNARY_BUILDER_FP_ONLY_(FctName, FctCall)                       \
+  inline absl::StatusOr<mlir::MlirOp> FctName(                            \
+      mlir::MlirOp input_op, mlir::ElementType out_mlir_type) {           \
+    TT_ASSIGN_OR_RETURN(/* ERROR_COV_INFEASIBLE=in a macro definition. */ \
+                        mlir::MlirOp op, ::torch_tpu::ConvertIfInteger(   \
+                                             input_op, out_mlir_type));   \
+    return FctCall(op);                                                   \
+  }                                                                       \
   TT_REQUIRE_SEMICOLON_
 
 // Keep the following functions definitions in sync with the entries

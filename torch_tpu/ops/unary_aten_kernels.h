@@ -52,10 +52,9 @@ struct UnaryOpOptions {
 //    options: See ApplyOpOptions.
 // Returns:
 //   A new tensor with the result of the operation.
-[[nodiscard]] absl::StatusOr<at::Tensor> UnaryOp(const at::Tensor& self,
-                                                 OpName op_name,
-                                                 MlirUnaryOpBuilder op_builder,
-                                                 UnaryOpOptions options = {});
+absl::StatusOr<at::Tensor> UnaryOp(const at::Tensor& self, OpName op_name,
+                                   MlirUnaryOpBuilder op_builder,
+                                   UnaryOpOptions options = {});
 
 // Like UnaryOpCallback, but the result overwrites the input.
 // Because of this overwrite, the output must have the shape and dtype of self.
