@@ -582,12 +582,9 @@ at::Tensor& AtenComplexOut(const at::Tensor& real, const at::Tensor& imag,
 at::Tensor& AtenDivOut(const at::Tensor& self, const at::Tensor& other,
                        at::Tensor& out) {
   TT_KERNEL(OpName::kDiv, _, (self, other, out), {
-    TT_ASSIGN_OR_THROW((auto [op_builder, op_param_cache_keys, _]),
-                       GetDivOpBuilder(self, other));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kDivOut, self, other, out, std::move(op_builder),
-                    BinaryOpOptions{.op_param_cache_keys =
-                                        std::move(op_param_cache_keys)}));
+    TT_ASSIGN_OR_THROW(auto div_op_options, GetDivOpBuilder(self, other));
+    TT_THROW_IF_ERROR(BinaryOpOut(OpName::kDivOut, self, other, out,
+                                  std::move(div_op_options.op_builder)));
     return out;
   });
 }
