@@ -19,8 +19,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <deque>
-#include <iterator>
 #include <limits>
 #include <memory>
 #include <ostream>
@@ -32,14 +30,11 @@
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
@@ -83,8 +78,49 @@
 
 namespace torch_tpu {
 
+void Subgraph::Prune() {
+  queue_.erase(std::remove_if(
+                   queue_.begin(), queue_.end(),
+                   [](std::weak_ptr<DeviceBufferList>& weak_node) {
+                     std::shared_ptr<DeviceBufferList> node = weak_node.lock();
+                     if (!node) {
+                       return true;
+                     }
+                     const auto* deferred_op = node->deferred_op();
+                     if (!deferred_op || deferred_op->num_child_ops() > 0) {
+                       return true;
+                     }
+                     return false;
+                   }),
+               queue_.end());
+}
+
+void Subgraph::PruneAndReturnLeafNodes(
+    std::vector<SharedDeviceBufferList>& leaf_nodes_out) {
+  queue_.erase(
+      std::remove_if(
+          queue_.begin(), queue_.end(),
+          [&leaf_nodes_out](std::weak_ptr<DeviceBufferList>& weak_node) {
+            std::shared_ptr<DeviceBufferList> node = weak_node.lock();
+            if (!node) {
+              return true;
+            }
+            const auto* deferred_op = node->deferred_op();
+            if (!deferred_op || deferred_op->num_child_ops() > 0) {
+              return true;
+            }
+            leaf_nodes_out.push_back(std::move(node));
+            return false;
+          }),
+      queue_.end());
+}
+
 void Subgraph::push(std::weak_ptr<DeviceBufferList> device_buffer) {
   TT_MUTEX_LOCK(lock, mu_);
+  if (queue_.size() >= queue_.capacity()) {
+    // Try to free up capacity by pruning down to just the live leaf nodes.
+    Prune();
+  }
   queue_.push_back(std::move(device_buffer));
 }
 
@@ -124,174 +160,31 @@ void Subgraph::Merge(std::shared_ptr<Subgraph> s1,
   auto r2 = s2->Find();
   if (r1 == r2) return;
 
-  // Merge queues.
-  std::deque<std::weak_ptr<DeviceBufferList>> merged_queue;
   TT_MUTEX_LOCK(lock1, r1->mu_);
   TT_MUTEX_LOCK(lock2, r2->mu_);
 
-  // Retain the relative order of nodes within each queue, dropping any
-  // irrelevant nodes and merging based on creation_index ascending.
-  auto r1_it = r1->queue_.begin();
-  auto r2_it = r2->queue_.begin();
-  while (r1_it != r1->queue_.end() && r2_it != r2->queue_.end()) {
-    // Skip any expired or already-materialized nodes.
-    std::shared_ptr<DeviceBufferList> r1_node = r1_it->lock();
-    if (!r1_node) {
-      ++r1_it;
-      continue;
-    }
-    const auto* r1_deferred_op = r1_node->deferred_op();
-    if (!r1_deferred_op) {
-      ++r1_it;
-      continue;
-    }
-    std::shared_ptr<DeviceBufferList> r2_node = r2_it->lock();
-    if (!r2_node) {
-      ++r2_it;
-      continue;
-    }
-    const auto* r2_deferred_op = r2_node->deferred_op();
-    if (!r2_deferred_op) {
-      ++r2_it;
-      continue;
-    }
+  // Prune r1's queue to avoid reallocation if possible.
+  r1->Prune();
 
-    if (r1_deferred_op->creation_index() < r2_deferred_op->creation_index()) {
-      merged_queue.push_back(std::move(r1_node));
-      ++r1_it;
-    } else {
-      merged_queue.push_back(std::move(r2_node));
-      ++r2_it;
+  // Push r2's live, leaf nodes onto r1's queue.
+  for (auto& weak_node : r2->queue_) {
+    if (auto node = weak_node.lock()) {
+      const auto* deferred_op = node->deferred_op();
+      if (deferred_op && deferred_op->num_child_ops() == 0) {
+        r1->queue_.push_back(std::move(weak_node));
+      }
     }
   }
-  while (r1_it != r1->queue_.end()) {
-    std::shared_ptr<DeviceBufferList> r1_node = r1_it->lock();
-    if (!r1_node) {
-      ++r1_it;
-      continue;
-    }
-    const auto* r1_deferred_op = r1_node->deferred_op();
-    if (!r1_deferred_op) {
-      ++r1_it;
-      continue;
-    }
-    merged_queue.push_back(std::move(r1_node));
-    ++r1_it;
-  }
-  while (r2_it != r2->queue_.end()) {
-    std::shared_ptr<DeviceBufferList> r2_node = r2_it->lock();
-    if (!r2_node) {
-      ++r2_it;
-      continue;
-    }
-    const auto* r2_deferred_op = r2_node->deferred_op();
-    if (!r2_deferred_op) {
-      ++r2_it;
-      continue;
-    }
-    merged_queue.push_back(std::move(r2_node));
-    ++r2_it;
-  }
-  std::swap(r1->queue_, merged_queue);
   r2->queue_.clear();
   r2->parent_ = r1;
 }
 
-std::vector<SharedDeviceBufferList> Subgraph::GetLeafNodes(
-    absl::Span<const SharedDeviceBufferList> device_buffer_lists) {
+std::vector<SharedDeviceBufferList> Subgraph::GetLeafNodes() {
   TT_MUTEX_LOCK(lock, mu_);
-
-  // Pop all invalid nodes from the front.
-  while (!queue_.empty()) {
-    std::shared_ptr<DeviceBufferList> node = queue_.front().lock();
-    if (!node) {
-      queue_.pop_front();
-    } else if (!node->deferred_op()) {
-      queue_.pop_front();
-    } else {
-      break;
-    }
-  }
-
+  // Simultaneously prune the queue and write leaf nodes to the output.
   std::vector<SharedDeviceBufferList> leaf_nodes;
-  absl::flat_hash_set<DeviceBufferList*> targets;
-  targets.reserve(device_buffer_lists.size());
-  for (const auto& node : device_buffer_lists) {
-    targets.insert(node.get());
-  }
-
-  for (auto& weak_node : queue_) {
-    std::shared_ptr<DeviceBufferList> node = weak_node.lock();
-    if (!node || !node->deferred_op()) continue;
-
-    // If we are materializing this subgraph (either materialize_all is true
-    // or it's one of the targeted subgraphs), then we should include all
-    // leaf nodes.
-    if (targets.contains(node.get())) {
-      targets.erase(node.get());
-      leaf_nodes.push_back(std::move(node));
-      continue;
-    }
-
-    if (node->deferred_op()->num_child_ops() == 0) {
-      leaf_nodes.push_back(std::move(node));
-    }
-  }
-  TT_CHECK_THROW(targets.empty(), error::kInternal)
-      << "Some targets not found in subgraph: "
-      << absl::StrJoin(targets, ", ",
-                       [](std::string* out, const DeviceBufferList* node) {
-                         absl::StrAppend(out, absl::StrFormat("%p", node));
-                       });
-
+  PruneAndReturnLeafNodes(leaf_nodes);
   return leaf_nodes;
-}
-
-std::vector<SharedDeviceBufferList> DeferredOpQueue::GetLeafNodes(
-    absl::Span<const SharedDeviceBufferList> device_buffer_lists) {
-  absl::flat_hash_map<std::shared_ptr<Subgraph>,
-                      std::vector<SharedDeviceBufferList>>
-      subgraph_targets;
-  std::vector<std::shared_ptr<Subgraph>> ordered_roots;
-
-  if (device_buffer_lists.empty()) {
-    ABSL_LOG(INFO) << "[DeferredOpQueue::GetLeafNodes] No device buffer lists "
-                      "provided.";
-    return {};
-  }
-
-  for (const auto& node : device_buffer_lists) {
-    if (!node->deferred_op()) {
-      ABSL_LOG(INFO) << absl::StrFormat(
-          "[DeferredOpQueue::GetLeafNodes] Node is not deferred: %p",
-          node.get());
-    }
-
-    if (node->subgraph()) {
-      auto root = node->subgraph()->Find();
-      if (!subgraph_targets.contains(root)) {
-        subgraph_targets[root] = {};
-        ordered_roots.push_back(root);
-      }
-
-      subgraph_targets[root].push_back(node);
-    }
-  }
-
-  std::vector<SharedDeviceBufferList> all_leaf_nodes;
-  for (auto& root : ordered_roots) {
-    auto leaves = root->GetLeafNodes(subgraph_targets[root]);
-    all_leaf_nodes.insert(all_leaf_nodes.end(),
-                          std::make_move_iterator(leaves.begin()),
-                          std::make_move_iterator(leaves.end()));
-  }
-
-  return all_leaf_nodes;
-}
-
-DeferredOpQueue& GetDeferredOpQueue() {
-  static absl::NoDestructor<DeferredOpQueue> deferred_op_queue;
-  return *deferred_op_queue;
 }
 
 size_t DeviceBufferList::size_bytes(int64_t index) const {
@@ -645,7 +538,6 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
   }
   int64_t num_outputs = output_shapes.size();
 
-  auto& queue = GetDeferredOpQueue();
   std::shared_ptr<Subgraph> subgraph = nullptr;
   for (const auto& input : inputs) {
     if (input.state() == DeviceBufferRefState::kDeferred) {
@@ -656,7 +548,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
       if (!subgraph) {
         subgraph = input_rep;
       } else if (subgraph != input_rep) {
-        queue.MergeSubgraphs(subgraph, input_rep);
+        Subgraph::Merge(subgraph, input_rep);
         subgraph = subgraph->Find();
       }
     }
@@ -664,7 +556,6 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
 
   if (!subgraph) {
     subgraph = std::make_shared<Subgraph>();
-    queue.RegisterSubgraph(subgraph);
   }
 
   // Create the DeferredOp.

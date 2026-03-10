@@ -67,6 +67,53 @@ TEST_F(MaterializeTest, MaterializedBufferNoOpSuccess) {
   EXPECT_EQ(ref.state(), DeviceBufferRefState::kZeroSize);
 }
 
+TEST_F(MaterializeTest, AddLeafNodes) {
+  ScopedPythonContextCapturer capturer(OpName::kEmpty);
+  // Create a graph of:
+  // ```
+  //               / -> leaf_a
+  // arg -> target
+  //               \ -> leaf_b
+  // ```
+  ASSERT_OK_AND_ASSIGN(DeviceBufferRef arg, DeviceBufferList::CreateZeroSize(
+                                                {0}, mlir::ElementType::F32));
+
+  const Shape shape = {.dimensions = {8}, .dtype = mlir::ElementType::F32};
+
+  auto builder = [shape](mlir::MlirBuilder& builder,
+                         absl::Span<mlir::MlirOp> inputs)
+      -> absl::StatusOr<DynamicMlirOpResults> {
+    if (!inputs.empty()) return DynamicMlirOpResults{inputs[0]};
+    return DynamicMlirOpResults{
+        BuildFillUninitialized(builder, shape.dtype, shape.dimensions)};
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> target_refs,
+                       DeviceBufferList::CreateDeferred(OpName::kAdd, builder,
+                                                        {arg}, {}, {shape}));
+  DeviceBufferRef target_ref = target_refs[0];
+
+  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> leaf_a_refs,
+                       DeviceBufferList::CreateDeferred(
+                           OpName::kAdd, builder, {target_ref}, {}, {shape}));
+  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> leaf_b_refs,
+                       DeviceBufferList::CreateDeferred(
+                           OpName::kAdd, builder, {target_ref}, {}, {shape}));
+
+  // Call AddLeafNodes on the target list.
+  std::vector<SharedDeviceBufferList> actual_nodes = {
+      target_ref.device_buffer_list()};
+  AddLeafNodes(actual_nodes);
+
+  // The modified list should still have the target node, plus the two leaf
+  // node.
+  EXPECT_EQ(actual_nodes.size(), 3);
+  EXPECT_THAT(actual_nodes, testing::UnorderedElementsAre(
+                                target_ref.device_buffer_list(),
+                                leaf_a_refs[0].device_buffer_list(),
+                                leaf_b_refs[0].device_buffer_list()));
+}
+
 TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   const Shape shape = {.dimensions = {8}, .dtype = mlir::ElementType::F32};

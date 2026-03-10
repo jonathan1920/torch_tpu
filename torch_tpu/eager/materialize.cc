@@ -20,6 +20,7 @@
 #include <chrono>
 #include <cstdint>
 #include <future>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -522,7 +523,8 @@ class MaterializationWorker {
 
     ABSL_VLOG(1) << "[MaterializationWorker] Getting leaf nodes";
     std::vector<SharedDeviceBufferList> all_nodes =
-        GetDeferredOpQueue().GetLeafNodes(task.nodes_to_materialize);
+        std::move(task.nodes_to_materialize);
+    AddLeafNodes(all_nodes);
     ABSL_VLOG(1) << "[MaterializationWorker] Found " << all_nodes.size()
                  << " leaf nodes";
     if (ABSL_VLOG_IS_ON(1)) {
@@ -907,6 +909,44 @@ absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
     absl::Span<const Shape> output_shapes, std::string_view task_name) {
   return GetMaterializationWorker().EnqueueExecutable(
       std::move(executable), std::move(inputs), output_shapes, task_name);
+}
+
+void AddLeafNodes(std::vector<SharedDeviceBufferList>& nodes) {
+  std::vector<SharedDeviceBufferList> leaf_nodes;
+
+  // Each root subgraph only needs to be processed once.
+  absl::flat_hash_set<Subgraph*> unique_roots;
+  // If a task's output is also a leaf node, we don't need to include it
+  // twice. We'll retain the original nodes in order, and append the leaf nodes
+  // to the end.
+  absl::flat_hash_set<const DeviceBufferList*> all_nodes_set;
+  for (const auto& node : nodes) {
+    all_nodes_set.insert(node.get());
+  }
+
+  for (const auto& node : nodes) {
+    // Get the root of the deferred op and check that we haven't processed it
+    // yet. Skip if there's no op, no subgraph, or a non-unique root.
+    const auto* deferred_op = node->deferred_op();
+    if (!deferred_op) continue;
+
+    std::shared_ptr<Subgraph> subgraph = deferred_op->subgraph();
+    if (!subgraph) continue;
+
+    std::shared_ptr<Subgraph> root = subgraph->Find();
+    if (!unique_roots.insert(root.get()).second) continue;
+
+    std::vector<SharedDeviceBufferList> subgraph_leaf_nodes =
+        root->GetLeafNodes();
+    for (auto& leaf_node : subgraph_leaf_nodes) {
+      if (all_nodes_set.insert(leaf_node.get()).second) {
+        leaf_nodes.push_back(std::move(leaf_node));
+      }
+    }
+  }
+
+  nodes.insert(nodes.end(), std::make_move_iterator(leaf_nodes.begin()),
+               std::make_move_iterator(leaf_nodes.end()));
 }
 
 }  // namespace torch_tpu

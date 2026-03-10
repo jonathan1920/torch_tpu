@@ -120,6 +120,10 @@ void SetOutputNodesAsError(absl::Span<const DeviceBufferRef> outputs,
 void SetOutputNodesAsError(absl::Span<const SharedDeviceBufferList> outputs,
                            absl::Status status);
 
+// Given a list of target DeviceBufferLists, adds all leaf nodes of their
+// subgraphs to the list.
+void AddLeafNodes(std::vector<SharedDeviceBufferList>& nodes);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_EAGER_MATERIALIZE_H_

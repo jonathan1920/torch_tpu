@@ -21,7 +21,6 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -159,16 +158,20 @@ class Subgraph : public std::enable_shared_from_this<Subgraph> {
   static void Merge(std::shared_ptr<Subgraph> s1, std::shared_ptr<Subgraph> s2);
 
   // Returns the leaf nodes of the subgraph.
-  // This implements the specific popping logic:
-  // 1. Pop all invalid nodes from the front.
-  // 2. Stop popping once a valid node is reached.
-  std::vector<SharedDeviceBufferList> GetLeafNodes(
-      absl::Span<const SharedDeviceBufferList> device_buffer_lists);
+  std::vector<SharedDeviceBufferList> GetLeafNodes();
 
  private:
+  // Prunes the queue to remove expired, materialized, and non-leaf nodes.
+  void Prune() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Prunes the queue, and writes the leaf nodes to the output vector.
+  void PruneAndReturnLeafNodes(
+      std::vector<SharedDeviceBufferList>& leaf_nodes_out)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   absl::Mutex mu_;
   std::shared_ptr<Subgraph> parent_ ABSL_GUARDED_BY(mu_);
-  std::deque<std::weak_ptr<DeviceBufferList>> queue_ ABSL_GUARDED_BY(mu_);
+  std::vector<std::weak_ptr<DeviceBufferList>> queue_ ABSL_GUARDED_BY(mu_);
 };
 
 // A DeviceBufferRef is a reference to an element in a DeviceBufferList.
@@ -938,50 +941,6 @@ at::Tensor MakeTensor(DeviceBufferRef device_buffer_ref);
 //    result_buf and tensor must have the same shape and dtype.
 absl::Status AssignBufferToAtTensor(DeviceBufferRef result_buf,
                                     const at::Tensor& tensor);
-
-// DeferredOpQueue manages the deferred operations that are enqueued by user
-// actions. This queue serves as a central point for tracking ops that are not
-// yet materialized.
-//
-// The queue is primarily processed and consumed by the materialization
-// process, which executes the deferred ops to produce concrete results.
-//
-// Separately, the eager dispatch logic runs ahead and iterates over this queue
-// to determine the next operations to execute.
-class DeferredOpQueue {
- public:
-  // Merges two subgraphs.
-  void MergeSubgraphs(std::shared_ptr<Subgraph> s1,
-                      std::shared_ptr<Subgraph> s2) {
-    Subgraph::Merge(std::move(s1), std::move(s2));
-  }
-
-  // Registers a new subgraph.
-  void RegisterSubgraph(std::shared_ptr<Subgraph> subgraph) {
-    TT_MUTEX_LOCK(lock, mu_);
-    // Try to reuse an existing slot in the active subgraphs if one of the old
-    // ones has expired.
-    for (auto& maybe_subgraph : active_subgraphs_) {
-      if (maybe_subgraph.expired()) {
-        maybe_subgraph = std::move(subgraph);
-        return;
-      }
-    }
-    // Otherwise, add a new slot (possibly causing a dynamic allocation).
-    active_subgraphs_.push_back(std::move(subgraph));
-  }
-
-  // Returns all of the leaf nodes on the subgraphs corresponding to
-  // the provided device_buffer_lists.
-  std::vector<SharedDeviceBufferList> GetLeafNodes(
-      absl::Span<const SharedDeviceBufferList> device_buffer_lists);
-
- private:
-  absl::Mutex mu_;
-  std::vector<std::weak_ptr<Subgraph>> active_subgraphs_ ABSL_GUARDED_BY(mu_);
-};
-
-DeferredOpQueue& GetDeferredOpQueue();
 
 }  // namespace torch_tpu
 

@@ -97,7 +97,7 @@ TEST(DeviceBufferTest, GetLeafNodesInvalidPopping) {
   }
   // node1 is now out of scope and should be invalid in the queue.
 
-  auto leaves = subgraph->GetLeafNodes({});
+  auto leaves = subgraph->GetLeafNodes();
   // node1 was invalid at the front, so it should have been popped.
   // node2 is valid, so it should be returned as a leaf.
   EXPECT_THAT(leaves, SizeIs(1));
@@ -134,7 +134,7 @@ TEST(DeviceBufferTest, GetLeafNodesStopPopping) {
   // node2 is now out of scope and should be invalid in the queue.
   // node1 and node3 are still valid.
 
-  auto leaves = subgraph->GetLeafNodes({});
+  auto leaves = subgraph->GetLeafNodes();
   // node1 is valid at the front, so it should STOP popping there.
   // node2 (invalid) and node3 (valid) should remain in the queue.
   // Both node1 and node3 should be returned as leaves if they have no child
@@ -149,7 +149,7 @@ TEST(DeviceBufferTest, GetLeafNodesStopPopping) {
   leaves.clear();  // Clear references held by leaves.
   EXPECT_EQ(node1.use_count(), 1);
   node1.reset();
-  leaves = subgraph->GetLeafNodes({});
+  leaves = subgraph->GetLeafNodes();
   // Now node2 is at the front, it should be popped. node3 is next and returned.
   EXPECT_THAT(leaves, SizeIs(1));
   EXPECT_EQ(leaves[0], node3);
