@@ -24,4 +24,6 @@ filegroup(
     srcs = glob(["model_configs/**/config.json"]),
 )
 
+# TODO: targets call
+
 torch_tpu_package_end()
