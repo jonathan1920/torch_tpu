@@ -323,6 +323,28 @@ class ModelCoverageTimmTest(parameterized.TestCase):
           rmse_tol=4e-3,
           conf_tol=2e-3,
       ),
+      dict(
+          testcase_name="resnet50_e2e",
+          provider="timm",
+          module_name="resnet50",
+          expected_class=1,  # Goldfish
+          img_path=_GOLDFISH_IMG_PATH,
+          rtol=2.1e-2,
+          atol=1e-3,
+          rmse_tol=4.5e-2,
+          conf_tol=3e-3,
+      ),
+      dict(
+          testcase_name="vgg16.tv_in1k_e2e",
+          provider="timm",
+          module_name="vgg16.tv_in1k",
+          expected_class=1,  # Goldfish
+          img_path=_GOLDFISH_IMG_PATH,
+          rtol=1e-3,
+          atol=5.4e-2,
+          rmse_tol=1.3e-2,
+          conf_tol=3e-3,
+      ),
   )
   def test_timm_classification_inference_e2e(
       self,
