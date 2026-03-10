@@ -178,7 +178,7 @@ at::Tensor& AtenArgmaxOut(const at::Tensor& self, c10::optional<int64_t> dim,
     // keep_dim does not affect the SHLO and therefore does not need to be
     // included in the cache key.
     TT_ASSIGN_OR_THROW(auto param_keys,
-                       *OpParamCacheKeys::SetParam("dim", dim));
+                       *OpParamCacheKeysBuilder().SetParam("dim", dim));
 
     TT_ASSIGN_OR_THROW(
         out, ArgMinMax(OpName::kArgMaxOut, self, dim, keep_dim, MinMaxOp::kMax,
@@ -193,7 +193,7 @@ at::Tensor& AtenArgminOut(const at::Tensor& self, c10::optional<int64_t> dim,
     // keep_dim does not affect the SHLO and therefore does not need to be
     // included in the cache key.
     TT_ASSIGN_OR_THROW(auto param_keys,
-                       *OpParamCacheKeys::SetParam("dim", dim));
+                       *OpParamCacheKeysBuilder().SetParam("dim", dim));
 
     TT_ASSIGN_OR_THROW(
         out, ArgMinMax(OpName::kArgMinOut, self, dim, keep_dim, MinMaxOp::kMin,

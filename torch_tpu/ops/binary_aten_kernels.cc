@@ -203,7 +203,7 @@ absl::StatusOr<DivOpOptions> GetDivOpOptionsNoMode(const at::Tensor& self,
 absl::StatusOr<DivOpOptions> GetDivOpOptionsTruncMode() {
   ABSL_VLOG(1) << "[GetDivOpOptionsTruncMode]";
   TT_ASSIGN_OR_RETURN(auto param_keys,
-                      *OpParamCacheKeys::SetParam("mode", "trunc"));
+                      *OpParamCacheKeysBuilder().SetParam("mode", "trunc"));
   auto op_builder = [](mlir::MlirOp self_op,
                        mlir::MlirOp other_op) -> absl::StatusOr<mlir::MlirOp> {
     TT_ASSIGN_OR_RETURN(mlir::MlirOp div_op, BuildDivShlo(self_op, other_op));
@@ -231,7 +231,7 @@ absl::StatusOr<DivOpOptions> GetDivOpOptionsTruncMode() {
 absl::StatusOr<DivOpOptions> GetDivOpOptionsFloorMode() {
   ABSL_VLOG(1) << "[GetDivOpOptionsFloorMode]";
   TT_ASSIGN_OR_RETURN(auto param_keys,
-                      *OpParamCacheKeys::SetParam("mode", "floor"));
+                      *OpParamCacheKeysBuilder().SetParam("mode", "floor"));
   auto op_builder = [](mlir::MlirOp self_op,
                        mlir::MlirOp other_op) -> absl::StatusOr<mlir::MlirOp> {
     TT_ASSIGN_OR_RETURN(mlir::MlirOp div_op, BuildDivShlo(self_op, other_op));

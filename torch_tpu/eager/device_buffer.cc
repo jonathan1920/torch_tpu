@@ -1230,7 +1230,8 @@ absl::Status AssignBufferToAtTensor(DeviceBufferRef result_buf,
 
     TT_ASSIGN_OR_RETURN(
         OpParamCacheKeys param_keys,
-        *OpParamCacheKeys::SetParam("strides", tensor.strides())
+        *OpParamCacheKeysBuilder()
+             .SetParam("strides", tensor.strides())
              .SetParam("storage_offset", tensor.storage_offset()));
 
     // Create the deferred DeviceBufferRef.

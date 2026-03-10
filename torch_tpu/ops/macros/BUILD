@@ -69,6 +69,7 @@ torch_tpu_cc_library(
         "//shims/torch:torch_headers",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:error_utils",
+        "@com_google_absl//absl/status",
     ],
 )
 

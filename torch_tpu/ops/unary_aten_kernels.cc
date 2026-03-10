@@ -66,26 +66,27 @@
 // TODO(b/440585584): parameterize by explicit output dtype, not by default
 // dtype, and remove the cache to avoid unnecessary cache misses when unused.
 // TODO(b/442660800): minimize the number of kernels implemented by macros
-#define TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(op_name, func_name, op_builder) \
-  at::Tensor& func_name##Out(const at::Tensor& self, at::Tensor& out) {  \
-    const at::ScalarType default_dtype =                                 \
-        c10::get_default_dtype_as_scalartype();                          \
-    TT_KERNEL(op_name, param_keys, (self, out, default_dtype), {         \
-      TT_ASSIGN_OR_THROW(                                                \
-          const auto default_mlir_type,                                  \
-          ::torch_tpu::ConvertTo<mlir::ElementType>(default_dtype));     \
-      ::torch_tpu::MlirUnaryOpBuilder op_builder_with_default_dtype =    \
-          [default_mlir_type](                                           \
-              mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {      \
-        return op_builder(input, default_mlir_type);                     \
-      };                                                                 \
-      TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(                         \
-          self, out, op_name, std::move(op_builder_with_default_dtype),  \
-          {.op_param_cache_keys = std::move(param_keys),                 \
-           .out_dtype = ::torch_tpu::InferOutputDtype(self)}));          \
-      return out;                                                        \
-    });                                                                  \
-  }                                                                      \
+#define TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(op_name, func_name, op_builder)      \
+  at::Tensor& func_name##Out(const at::Tensor& self, at::Tensor& out) {       \
+    const at::ScalarType default_dtype =                                      \
+        c10::get_default_dtype_as_scalartype();                               \
+    TT_KERNEL(op_name, param_keys, (self, out), {                             \
+      TT_THROW_IF_ERROR(param_keys.SetParam("default_dtype", default_dtype)); \
+      TT_ASSIGN_OR_THROW(                                                     \
+          const auto default_mlir_type,                                       \
+          ::torch_tpu::ConvertTo<mlir::ElementType>(default_dtype));          \
+      ::torch_tpu::MlirUnaryOpBuilder op_builder_with_default_dtype =         \
+          [default_mlir_type](                                                \
+              mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {           \
+        return op_builder(input, default_mlir_type);                          \
+      };                                                                      \
+      TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(                              \
+          self, out, op_name, std::move(op_builder_with_default_dtype),       \
+          {.op_param_cache_keys = std::move(param_keys),                      \
+           .out_dtype = ::torch_tpu::InferOutputDtype(self)}));               \
+      return out;                                                             \
+    });                                                                       \
+  }                                                                           \
   TT_REQUIRE_SEMICOLON_
 
 namespace torch_tpu {

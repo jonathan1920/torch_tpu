@@ -259,10 +259,33 @@ class [[nodiscard]] OpParamCacheKeys {
   // Returns a copy of the OpParamCacheKeys.
   OpParamCacheKeys Clone() const { return OpParamCacheKeys(name_to_value_); }
 
-  // Shorthand for making a builder with the given parameter name and
-  // value.
+  // Sets a parameter in the OpParamCacheKeys.
+  //
+  // If the formatting of the value fails, returns the error.
+  // Crashes if the parameter is already in the OpParamCacheKeys as it indicates
+  // a programmer error.
   template <typename T>
-  [[nodiscard]] static Builder SetParam(std::string_view name, const T& value);
+  absl::Status SetParam(std::string_view name, const T& value) {
+    using internal::FormatParamCacheKey;
+
+    // Rely on ADL to find the appropriate FormatParamCacheKey() overload for
+    // the given value type. Some overloads return StatusOr<std::string>,
+    // while others return std::string. We assign the result to a
+    // StatusOr<std::string> so that we can handle both the same way.
+    absl::StatusOr<std::string> str_or = FormatParamCacheKey(value);
+    TT_ASSIGN_OR_RETURN(std::string str, std::move(str_or));
+    std::string name_str(name);
+    const auto it = name_to_value_.find(name_str);
+    ABSL_CHECK(it == name_to_value_.end())  // CRASH_OK
+        << "Duplicate parameter name '" << name
+        << "' when computing param cache keys. This is a TorchTPU bug.";
+    if (str.empty()) {
+      // No need to add an empty string to the cache keys.
+    } else {
+      name_to_value_[std::move(name_str)] = std::move(str);
+    }
+    return absl::OkStatus();
+  }
 
   [[nodiscard]] const_iterator begin() const { return name_to_value_.cbegin(); }
   [[nodiscard]] const_iterator end() const { return name_to_value_.cend(); }
@@ -278,9 +301,11 @@ class [[nodiscard]] OpParamCacheKeys {
   Map name_to_value_;
 };
 
+using OpParamCacheKeysBuilder = OpParamCacheKeys::Builder;
+
 // Builder class for OpParamCacheKeys. Supports method-chaining syntax:
 //   TT_ASSIGN_OR_RETURN(auto params,
-//                       *OpParamCacheKeys::SetParam(...)
+//                       *OpParamCacheKeysBuilder().SetParam(...)
 //                           .SetParam(...));
 class OpParamCacheKeys::Builder {
  public:
@@ -295,7 +320,7 @@ class OpParamCacheKeys::Builder {
 
   // Creates a builder that contains the given parameters.
   explicit Builder(OpParamCacheKeys op_param_cache_keys)
-      : name_to_value_(std::move(op_param_cache_keys).name_to_value_) {}
+      : param_keys_(std::move(op_param_cache_keys)) {}
 
   // If the builder is in an error state, does nothing. Otherwise, formats
   // the value as a string and:
@@ -313,29 +338,8 @@ class OpParamCacheKeys::Builder {
   // overload in the torch_tpu::internal namespace in this file.
   template <typename T>
   Builder& SetParam(std::string_view name, const T& value) {
-    if (!first_error_.ok()) {
-      return *this;
-    }
-
-    using internal::FormatParamCacheKey;
-
-    // Rely on ADL to find the appropriate FormatParamCacheKey() overload for
-    // the given value type.
-    absl::StatusOr<std::string> str_or = FormatParamCacheKey(value);
-    if (str_or.ok()) {
-      std::string str = std::move(str_or).value();
-      std::string name_str(name);
-      const auto it = name_to_value_.find(name_str);
-      ABSL_CHECK(it == name_to_value_.end())  // CRASH_OK
-          << "Duplicate parameter name '" << name
-          << "' when computing param cache keys. This is a TorchTPU bug.";
-      if (str.empty()) {
-        // No need to add an empty string to the cache keys.
-      } else {
-        name_to_value_[std::move(name_str)] = std::move(str);
-      }
-    } else {
-      first_error_ = std::move(str_or).status();
+    if (first_error_.ok()) {
+      first_error_.Update(param_keys_.SetParam(name, value));
     }
     return *this;
   }
@@ -343,7 +347,7 @@ class OpParamCacheKeys::Builder {
   // If the builder is in an error state, returns the first error encountered.
   // Otherwise returns the cache keys accumulated so far.
   //
-  // After this method is called, the builder is put into the default
+  // After this method is called, the builder is put into the default (empty)
   // state.
   absl::StatusOr<OpParamCacheKeys> operator*();
 
@@ -354,14 +358,8 @@ class OpParamCacheKeys::Builder {
   // The first error encountered during the construction of the parameter
   // cache keys, or OK if no errors were encountered.
   absl::Status first_error_ = absl::OkStatus();
-  Map name_to_value_;
+  OpParamCacheKeys param_keys_;
 };
-
-template <typename T>
-[[nodiscard]] OpParamCacheKeys::Builder OpParamCacheKeys::SetParam(
-    std::string_view name, const T& value) {
-  return std::move(Builder().SetParam(name, value));
-}
 
 namespace internal {
 
@@ -370,7 +368,7 @@ template <typename Arg>
 inline absl::Status SetParamCacheKey(OpParamCacheKeys::Builder& builder,
                                      const std::string_view arg_name,
                                      const Arg& arg) {
-  return builder.SetParam(std::string(arg_name), arg).status();
+  return builder.SetParam(arg_name, arg).status();
 }
 
 // These overloads ensure that we don't add at::Tensor arguments to the

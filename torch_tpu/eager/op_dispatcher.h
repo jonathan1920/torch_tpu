@@ -71,7 +71,8 @@ namespace torch_tpu {
 // Example of a parameterized ATEN op:
 //
 //   TT_ASSIGN_OR_THROW(auto param_keys,
-//                      *OpParamCacheKeys::SetParam("aprx", approximate));
+//                      *OpParamCacheKeysBuilder().SetParam("aprx",
+//                      approximate));
 //   auto op_builder =
 //             [approximate = std::string(approximate)](mlir::MlirOp input_op) {
 //     // return a SHLO graph corresponding to gelu with the provided

@@ -17,6 +17,9 @@
 #ifndef TORCH_TPU_OPS_MACROS_KERNEL_H_
 #define TORCH_TPU_OPS_MACROS_KERNEL_H_
 
+#include <string_view>
+
+#include "absl/status/status.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/macros/logging.h"
@@ -128,6 +131,8 @@ class InvalidOpParamCacheKeys {
   //   ...
   // Since the constexpr condition is false, block A is inactive, and thus
   // the code for InvalidOpParamCacheKeys doesn't need to be linked.
+  template <typename T>
+  absl::Status SetParam(std::string_view, const T&);
   operator OpParamCacheKeys&() &;    // NOLINT
   operator OpParamCacheKeys&&() &&;  // NOLINT
 };

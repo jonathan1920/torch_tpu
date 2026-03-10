@@ -211,8 +211,8 @@ absl::StatusOr<at::Tensor> ScaledDotProductFusedAttentionImpl(
     return out;
   };
 
-  TT_ASSIGN_OR_RETURN(auto param_keys,
-                      *OpParamCacheKeys::SetParam("is_causal", is_causal));
+  TT_ASSIGN_OR_RETURN(auto param_keys, *OpParamCacheKeysBuilder().SetParam(
+                                           "is_causal", is_causal));
 
   TT_ASSIGN_OR_RETURN(
       auto results,
@@ -279,8 +279,8 @@ ScaledDotProductFusedAttentionBackwardImpl(const at::Tensor& grad_out,
     return {{grad_query, grad_key, grad_value}};
   };
 
-  TT_ASSIGN_OR_RETURN(auto param_keys,
-                      *OpParamCacheKeys::SetParam("is_causal", is_causal));
+  TT_ASSIGN_OR_RETURN(auto param_keys, *OpParamCacheKeysBuilder().SetParam(
+                                           "is_causal", is_causal));
 
   TT_ASSIGN_OR_RETURN(
       auto results,

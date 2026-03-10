@@ -391,27 +391,23 @@ struct ViewCacheKeyVisitor {
   }
 };
 
-absl::StatusOr<std::string> ViewToCacheKey(OpParamCacheKeys& param_keys,
-                                           const ViewPrimitive& primitive) {
+absl::StatusOr<std::string> ViewToCacheKey(const ViewPrimitive& primitive) {
   ViewCacheKeyVisitor visitor{};
   return std::visit(visitor, primitive);
 }
 
+// TODO: unit tests.
 absl::StatusOr<OpParamCacheKeys> SymbolicViewCacheKey(
     ViewSequenceSpan view_sequence) {
-  // FIXME: How should we iteratively add to a builder?
-  // Add method to return empty builder or return a built OpParamCacheKeys
-  // on each iteration?
   ABSL_VLOG(3) << "[SymbolicViewCacheKey] View sequence: "
                << ToString(view_sequence);
-  OpParamCacheKeys param_keys;
-  OpParamCacheKeys::Builder builder = param_keys.SetParam("A", "B");
+  OpParamCacheKeys::Builder builder;
+  builder.SetParam("A", "B");
   for (auto [index, primitive] : llvm::enumerate(view_sequence)) {
-    TT_ASSIGN_OR_RETURN(std::string view_cache_key,
-                        ViewToCacheKey(param_keys, primitive));
+    TT_ASSIGN_OR_RETURN(std::string view_cache_key, ViewToCacheKey(primitive));
     ABSL_VLOG(3) << "[SymbolicViewCacheKey] Symbolic reshape key: "
                  << view_cache_key;
-    builder = param_keys.SetParam(absl::StrCat("view_", index), view_cache_key);
+    builder.SetParam(absl::StrCat("view_", index), view_cache_key);
   }
   return *builder;
 }
@@ -434,7 +430,8 @@ absl::StatusOr<OpParamCacheKeys> ViewSequenceCacheKey(
   // Fall back to using static tensor shapes for the cache key.
   ABSL_VLOG(3) << "[ViewSequenceCacheKey] Failed to create symbolic cache key: "
                << symbolic_key.status().message();
-  return *OpParamCacheKeys::SetParam("strides", tensor.strides())
+  return *OpParamCacheKeysBuilder()
+              .SetParam("strides", tensor.strides())
               .SetParam("storage_offset", tensor.storage_offset());
 }
 

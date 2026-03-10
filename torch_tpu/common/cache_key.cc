@@ -177,12 +177,12 @@ std::string_view ParseNextArgName(std::string_view& args_str) {
 
 absl::StatusOr<OpParamCacheKeys> OpParamCacheKeys::Builder::operator*() {
   if (first_error_.ok()) {
-    return OpParamCacheKeys(std::move(name_to_value_));
+    return std::move(param_keys_);
   }
   // Clear the builder state before returning the error.
   auto result = first_error_;
   first_error_ = absl::OkStatus();
-  name_to_value_.clear();
+  param_keys_.name_to_value_.clear();
   return std::move(result);
 }
 
