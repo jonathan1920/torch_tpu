@@ -46,10 +46,12 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/IR/MLIRContext.h"
 #include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_cache.h"
+#include "torch_tpu/common/dynamism_utils.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
@@ -58,7 +60,9 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "torch_tpu/pjrt/pjrt_utils.h"
+#include "stablehlo/transforms/StablehloBroadcastLowering.h"
 #include "xla/future.h"
+#include "xla/hlo/translate/register.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla_data.pb.h"
@@ -76,6 +80,15 @@ ABSL_FLAG(std::optional<float>, torch_tpu_internal_throttle_limit_rate,
 
 namespace torch_tpu {
 namespace {
+
+absl_nonnull std::unique_ptr<mlir::MLIRContext> MakeMlirContext() {
+  auto context = std::make_unique<mlir::MLIRContext>();
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  context->appendDialectRegistry(registry);
+  context->loadAllAvailableDialects();
+  return context;
+}
 
 absl::Status SetOutputNodesAsMaterialized(std::vector<DeviceBufferRef>& outputs,
                                           PjRtBufferPointers results) {
@@ -344,6 +357,7 @@ int64_t ApplyMemoryThrottling(const int64_t throttle_limit_bytes,
 }
 
 absl::Status DetectAndAnnotateBoundedDynamism(absl::Span<Traversal> traversals);
+absl::Status PropagateBoundedDynamism(absl::Span<Traversal> traversals);
 
 absl::StatusOr<std::vector<Traversal>> ApplyDynamism(
     std::vector<Traversal>& traversals);
@@ -554,6 +568,8 @@ class MaterializationWorker {
     ABSL_VLOG(1) << "[MaterializationWorker] Creating traversal";
     auto traversal_or = Traversal::Create(std::move(refs));
     if (!traversal_or.ok()) {
+      ABSL_VLOG(1) << "[MaterializationWorker] Failed to create traversal: "
+                   << traversal_or.status();
       SetOutputNodesAsError(all_nodes, traversal_or.status());
       return {};
     }
@@ -564,6 +580,8 @@ class MaterializationWorker {
       ABSL_VLOG(1) << "[MaterializationWorker] Splitting traversal";
       auto traversals_or = SplitTraversal(std::move(*traversal_or));
       if (!traversals_or.ok()) {
+        ABSL_VLOG(1) << "[MaterializationWorker] Failed to split traversal: "
+                     << traversals_or.status();
         SetOutputNodesAsError(all_nodes, traversals_or.status());
         return {};
       }
@@ -577,6 +595,18 @@ class MaterializationWorker {
     if (auto status =
             DetectAndAnnotateBoundedDynamism(absl::MakeSpan(traversals));
         !status.ok()) {
+      ABSL_VLOG(1) << "[MaterializationWorker] Failed to detect and annotate "
+                      "bounded dynamism: "
+                   << status;
+      SetOutputNodesAsError(all_nodes, status);
+      return {};
+    }
+
+    if (auto status = PropagateBoundedDynamism(absl::MakeSpan(traversals));
+        !status.ok()) {
+      ABSL_VLOG(1) << "[MaterializationWorker] Failed to propagate bounded "
+                      "dynamism: "
+                   << status;
       SetOutputNodesAsError(all_nodes, status);
       return {};
     }
@@ -584,6 +614,8 @@ class MaterializationWorker {
     ABSL_VLOG(1) << "[MaterializationWorker] Applying dynamism";
     auto resulting_traversals_or = ApplyDynamism(traversals);
     if (!resulting_traversals_or.ok()) {
+      ABSL_VLOG(1) << "[MaterializationWorker] Failed to apply dynamism: "
+                   << resulting_traversals_or.status();
       SetOutputNodesAsError(all_nodes, resulting_traversals_or.status());
       return {};
     }
@@ -617,6 +649,9 @@ class MaterializationWorker {
             << output.device_buffer_list();
         if (auto status = output.device_buffer_list()->SetAsMaterialized();
             !status.ok()) {
+          ABSL_VLOG(1) << "[MaterializationWorker] Failed to mark output as "
+                          "materialized: "
+                       << status;
           SetOutputNodesAsError(all_nodes, status);
           return {};
         }
@@ -718,6 +753,39 @@ absl::Status DetectAndAnnotateBoundedDynamism(
       if (!traversals[i].is_bounded_dynamic() && !dynamism_results[i].empty()) {
         TT_RETURN_IF_ERROR(
             traversals[i].ApplyBoundedDynamismAnnotations(dynamism_results[i]));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status PropagateBoundedDynamism(absl::Span<Traversal> traversals) {
+  // Initialize context outside of loop to avoid the cost of reinitializing
+  // dialects used in each iteration.
+  auto context = MakeMlirContext();
+  for (auto& traversal : traversals) {
+    if (!traversal.is_bounded_dynamic()) {
+      continue;
+    }
+    ABSL_VLOG(1) << "[PropagateBoundedDynamism] Traversal: "
+                 << traversal.DebugString();
+    TT_ASSIGN_OR_RETURN(
+        std::vector<DeviceRefDimensions> output_dimensions,
+        GetTraversalOutputDimensions(*context, traversal.GetPythonContext(),
+                                     traversal.inputs(), traversal.outputs(),
+                                     traversal.execution_order()));
+    for (const auto& output_dimension : output_dimensions) {
+      const DeviceBufferRef& ref = output_dimension.ref;
+      const auto& dims = output_dimension.dims;
+      for (const mlir::stablehlo::DimensionInfo& dim : dims) {
+        if (dim.boundOp.has_value()) {
+          TT_RETURN_IF_ERROR(ref.MarkDynamic(dim.boundOpDim, 2, dim.size));
+          ABSL_VLOG(1) << "[PropagateBoundedDynamism] Marked dynamic: "
+                       << ref.DebugString() << " dimension: " << dim.boundOpDim
+                       << " upper bound: " << dim.size;
+          // Multiple dynamic dimension for a tensor is currently not supported.
+          break;
+        }
       }
     }
   }

@@ -527,6 +527,16 @@ absl::StatusOr<mlir::MlirOp> Traversal::GetMlirOpForProcessedBuffer(
   return dynamic_input_it->second;
 }
 
+const PythonContext* absl_nullable Traversal::GetPythonContext() const {
+  if (!execution_order().empty() && execution_order().back()->deferred_op()) {
+    // Use the python context of the last op in the execution order as the
+    // module name. This will include the op that triggered materialization or
+    // traversal split in the module name.
+    return &execution_order().back()->deferred_op()->op_context();
+  }
+  return nullptr;
+}
+
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
     mlir::MLIRContext& mlir_context) const {
   // Read the traversal's values.
@@ -536,13 +546,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
   absl::Span<const DeviceBufferRef> outputs = this->outputs();
 
   // Initialize the module builder and main function builder.
-  const PythonContext* absl_nullable python_context = nullptr;
-  if (!execution_order.empty() && execution_order.back()->deferred_op()) {
-    // Use the python context of the last op in the execution order as the
-    // module name. This will include the op that triggered materialization or
-    // traversal split in the module name.
-    python_context = &execution_order.back()->deferred_op()->op_context();
-  }
+  const PythonContext* absl_nullable python_context = GetPythonContext();
   std::string module_name =
       BuildModuleNameFromPyContext(mlir_context, python_context);
   mlir::ModuleBuilder mb(mlir_context, module_name);

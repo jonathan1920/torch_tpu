@@ -34,6 +34,7 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/ops/python_context.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 // Creates a core abstraction for the process of traversing a graph of deferred
@@ -206,6 +207,9 @@ class Traversal {
     return {std::move(inputs_), std::move(execution_order_),
             std::move(outputs_)};
   }
+
+  // Returns the Python context for the Traversal.
+  const PythonContext* absl_nullable GetPythonContext() const;
 
  private:
   // Private constructor, only called by Traversal::Create().
