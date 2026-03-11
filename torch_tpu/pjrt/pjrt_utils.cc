@@ -27,6 +27,7 @@
 #include "absl/base/nullability.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/notification.h"
@@ -44,6 +45,7 @@
 #include "torch_tpu/pjrt/pjrt_init.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "xla/future.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -55,7 +57,15 @@ namespace torch_tpu {
 
 absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
     const void* host_data, mlir::ElementType element_type,
-    absl::Span<const int64_t> dimensions) {
+    absl::Span<const int64_t> dimensions,
+    std::optional<at::Tensor> backing_tensor) {
+  if (backing_tensor.has_value() && backing_tensor->data_ptr() != host_data) {
+    return TT_ERROR(error::kInvalidArgument)
+           << "Backing tensor that was given is not matching the received "
+              "host_data "
+              "pointer.";
+  }
+
   const xla::PrimitiveType type = ConvertTo<xla::PrimitiveType>(element_type);
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL ENTRY] host_data_is_null: "
                << (host_data == nullptr) << ", type: "
@@ -77,7 +87,6 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
     TT_ASSIGN_OR_RETURN(num_elements, NumElements(dimensions));
   }
 
-  absl::Notification host_buffer_transfer_done;
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] Getting default memory "
                   "space for device: "
                << device->DebugString();
@@ -120,32 +129,49 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
                << ", dimensions: [" << absl::StrJoin(dimensions, ",") << "]"
                << ", semantics: " << static_cast<int>(semantics);
 
-  TT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> buffer,
-                      client->BufferFromHostBuffer(
-                          effective_host_data,
+  auto promise_pair = xla::MakePromise();
+  xla::Promise<> promise = std::move(promise_pair.first);
+  xla::Future<> future = std::move(promise_pair.second);
 
-                          type, dimensions, std::nullopt, semantics,
-                          [&host_buffer_transfer_done]() {
-                            host_buffer_transfer_done.Notify();
-                          },
-                          memory_space, nullptr));
+  bool keep_host_data_alive = backing_tensor.has_value();
+
+  TT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          effective_host_data,
+
+          type, dimensions, std::nullopt, semantics,
+          [promise = std::move(promise),
+           backing_tensor = std::move(backing_tensor)]() mutable {
+            promise.Set(absl::OkStatus());
+          },
+          memory_space, nullptr));
 
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] "
                   "client->BufferFromHostBuffer SUCCEEDED.";
 
-  host_buffer_transfer_done.WaitForNotification();
-  ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] Host buffer transfer "
-                  "notification received.";
+  std::unique_ptr<DeviceBufferRef> buffer_ref = nullptr;
+  if (!keep_host_data_alive) {
+    ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] No backing tensor, "
+                    "blocking on future.";
+    TT_RETURN_IF_ERROR(future.Await());
+    TT_ASSIGN_OR_RETURN(
+        auto tmp_buffer_ref,
+        DeviceBufferList::CreateMaterialized(std::move(buffer)));
+    buffer_ref = std::make_unique<DeviceBufferRef>(std::move(tmp_buffer_ref));
+  } else {
+    ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] Backing tensor present, "
+                    "creating non-available DeviceBufferRef.";
+    TT_ASSIGN_OR_RETURN(auto tmp_buffer_ref,
+                        DeviceBufferList::CreateMaterializedNonAvailable(
+                            std::move(buffer), std::move(future)));
+    buffer_ref = std::make_unique<DeviceBufferRef>(std::move(tmp_buffer_ref));
+  }
 
-  TT_ASSIGN_OR_RETURN(auto buffer_ref,
-                      DeviceBufferList::CreateMaterialized(std::move(buffer)));
-  TT_RETURN_IF_ERROR(buffer_ref.buffer().status())
-      << "[TpuMallocAndMemcpyHtoD] DeviceBufferRef was copied "
-         "H2D, but does not have a valid PjRtBuffer.";
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL EXIT] Created "
                   "DeviceBufferRef. Dims: ["
-               << absl::StrJoin(buffer_ref.dimensions(), ",") << "]";
-  return buffer_ref;
+               << absl::StrJoin(buffer_ref->dimensions(), ",") << "]";
+  return std::move(*buffer_ref);
 }
 
 absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref) {

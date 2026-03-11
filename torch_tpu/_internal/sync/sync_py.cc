@@ -60,6 +60,27 @@ void PySync(const std::vector<at::Tensor>& tensors, bool wait) {
   }
 
   if (wait) {
+    // To achieve non blocking H2D copies torch_tpu has to ensure the host data
+    // is alive during the duration of the transfer.
+    // To do this we hold onto the at::Tensor object backing the memory.
+    // If `torch_tpu` holds the last reference to said at::Tensor it will need
+    // access to the GIL in order to release the memory.
+
+    // Deadlock Example:
+    // Main/Python thread (executing this code)
+    //   - blocks until tensors are ready
+    //   - holds GIL
+    // H2D thread
+    //   - holds (last) reference to at::Tensor
+    //   - performs H2D copy
+    //   - attempts to acquire GIL to cleanup at::Tensor
+
+    // H2D thread would wait forever for the GIL since the main thread would
+    // hold onto it.
+    // Thus we must release the GIL here before waiting for the H2D copy to
+    // complete.
+
+    py::gil_scoped_release release;
     // SynchronizeTensors is GetMaterialized + wait
     TT_THROW_IF_ERROR(SynchronizeTensors(tensors_span));
   } else {

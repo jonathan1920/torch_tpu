@@ -176,8 +176,9 @@ absl::StatusOr<DeviceBufferRef> MakeBuffer(
     }
 
     // Then copy it to device as a materialized DeviceBufferRef.
-    TT_ASSIGN_OR_RETURN(DeviceBufferRef buf_ref,
-                        CopyCpuToTpuBuffer(scalar_tensor));
+    TT_ASSIGN_OR_RETURN(
+        DeviceBufferRef buf_ref,
+        CopyCpuToTpuBuffer(scalar_tensor, /*non_blocking=*/true));
     scalar_map.insert({hashable_scalar, buf_ref});
     return buf_ref;
   }

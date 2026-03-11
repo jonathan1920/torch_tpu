@@ -16,6 +16,7 @@
 
 #include "torch_tpu/ops/copy_from/cpu_to_tpu.h"
 
+#include <optional>
 #include <utility>
 
 #include "absl/log/absl_log.h"
@@ -34,7 +35,8 @@
 
 namespace torch_tpu {
 
-absl::StatusOr<DeviceBufferRef> CopyCpuToTpuBuffer(const at::Tensor& src) {
+absl::StatusOr<DeviceBufferRef> CopyCpuToTpuBuffer(const at::Tensor& src,
+                                                   bool non_blocking) {
   at::Tensor contiguous_src_for_tpu = src.contiguous();
   ABSL_VLOG(1) << "[AtenCopyFrom] CPU -> TPU: Ensured CPU tensor is "
                   "contiguous with dtype "
@@ -54,11 +56,13 @@ absl::StatusOr<DeviceBufferRef> CopyCpuToTpuBuffer(const at::Tensor& src) {
                                             dtype);
   }
 
-  return TpuMallocAndMemcpyHtoD(contiguous_src_for_tpu.data_ptr(), dtype,
-                                contiguous_src_for_tpu.sizes());
+  return TpuMallocAndMemcpyHtoD(
+      contiguous_src_for_tpu.data_ptr(), dtype, contiguous_src_for_tpu.sizes(),
+      non_blocking ? std::make_optional(contiguous_src_for_tpu) : std::nullopt);
 }
 
-absl::Status CopyCpuToTpu(const at::Tensor& src, const at::Tensor& dest) {
+absl::Status CopyCpuToTpu(const at::Tensor& src, const at::Tensor& dest,
+                          bool non_blocking) {
   ABSL_VLOG(1) << "[AtenCopyFrom] CPU -> TPU copy path for "
                << ToString(src, "src");
   at::Tensor src_with_dest_dtype = src;
@@ -72,7 +76,7 @@ absl::Status CopyCpuToTpu(const at::Tensor& src, const at::Tensor& dest) {
   }
 
   TT_ASSIGN_OR_RETURN(DeviceBufferRef tpu_buf,
-                      CopyCpuToTpuBuffer(src_with_dest_dtype));
+                      CopyCpuToTpuBuffer(src_with_dest_dtype, non_blocking));
   TT_RETURN_IF_ERROR(AssignBufferToAtTensor(tpu_buf, dest));
   return absl::OkStatus();
 }

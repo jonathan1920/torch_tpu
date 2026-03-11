@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -566,6 +567,13 @@ class MaterializedBuffers {
     std::move(promise_).Set(absl::OkStatus());
   }
 
+  // Creates an unavailable MaterializedBuffers object. The Future object will
+  // be used to determine when the buffers become available.
+  MaterializedBuffers(
+      std::vector<absl_nonnull std::unique_ptr<xla::PjRtBuffer>> buffers,
+      xla::Future<> future)
+      : future_(std::move(future)), buffers_(std::move(buffers)) {}
+
   bool IsAvailable() const { return future_.IsReady(); }
 
   // Wait for the buffers to be materialized.
@@ -690,6 +698,13 @@ class DeviceBufferList {
   // PjRtBuffer::on_device_shape().
   static absl::StatusOr<DeviceBufferRef> CreateMaterialized(
       absl_nonnull std::unique_ptr<xla::PjRtBuffer> buffer);
+
+  // Creates a single output DeviceBufferList with a non-available materialized
+  // PjRtBuffer, and returns a DeviceBufferRef to it.
+  // The future is used to determine when the buffer will become available.
+  static absl::StatusOr<DeviceBufferRef> CreateMaterializedNonAvailable(
+      absl_nonnull std::unique_ptr<xla::PjRtBuffer> buffer,
+      xla::Future<> future);
 
   // Creates a deferred DeviceBufferList containing a DeferredOp, and returns as
   // many DeviceBufferRefs as there are outputs in the list.
@@ -829,8 +844,11 @@ class DeviceBufferList {
   // is returned by the Create* functions.
   // The shape will be inferred from the PjRtBuffer; the element type will be
   // the type specified by the argument.
+  // If the future is provided, it is used to determine when the buffer will
+  // become available.
   DeviceBufferList(absl_nonnull std::unique_ptr<xla::PjRtBuffer> buffer,
-                   const mlir::ElementType element_type)
+                   const mlir::ElementType element_type,
+                   std::optional<xla::Future<>> future = std::nullopt)
       : subgraph_(nullptr) {
     const xla::Shape& on_device_shape = buffer->on_device_shape();
     Shape shape =
@@ -841,11 +859,16 @@ class DeviceBufferList {
     auto buffer_address = buffer.get();
     std::vector<std::unique_ptr<xla::PjRtBuffer>> buffers;
     buffers.push_back(std::move(buffer));
-    data_ = MaterializedBuffers(std::move(buffers));
+    if (future.has_value()) {
+      data_ = MaterializedBuffers(std::move(buffers), *std::move(future));
+    } else {
+      data_ = MaterializedBuffers(std::move(buffers));
+    }
     ABSL_VLOG(3) << "[DeviceBuffer CONSTRUCTOR (materialized)] Created. Dims: "
                  << ToString(shapes_[0].dimensions)
                  << ", Type: " << ToDTypeName(shapes_[0].dtype)
-                 << ", PjRtBuffer: " << buffer_address;
+                 << ", PjRtBuffer: " << buffer_address
+                 << ", Should await: " << future.has_value();
   }
 
   // Private constructor for a deferred DeviceBufferList.

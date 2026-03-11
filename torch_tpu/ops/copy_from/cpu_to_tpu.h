@@ -26,11 +26,13 @@ namespace torch_tpu {
 
 // Copies the value out of the source CPU tensor to a materialized
 // DeviceBufferRef.
-absl::StatusOr<DeviceBufferRef> CopyCpuToTpuBuffer(const at::Tensor& src);
+absl::StatusOr<DeviceBufferRef> CopyCpuToTpuBuffer(const at::Tensor& src,
+                                                   bool non_blocking);
 
 // Copies the value out of the source CPU tensor and assigns it to the
 // destination TPU tensor.
-absl::Status CopyCpuToTpu(const at::Tensor& src, const at::Tensor& dest);
+absl::Status CopyCpuToTpu(const at::Tensor& src, const at::Tensor& dest,
+                          bool non_blocking);
 
 }  // namespace torch_tpu
 

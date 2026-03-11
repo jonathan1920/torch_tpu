@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -32,9 +33,12 @@
 
 namespace torch_tpu {
 
+// If backing tensor is present we keep it alive until the transfer completes,
+// otherwise we block on the transfer to complete.
 absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
     const void* host_data, mlir::ElementType element_type,
-    absl::Span<const int64_t> dimensions);
+    absl::Span<const int64_t> dimensions,
+    std::optional<at::Tensor> backing_tensor = std::nullopt);
 
 absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref);
 

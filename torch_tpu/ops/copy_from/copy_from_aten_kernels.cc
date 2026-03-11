@@ -105,7 +105,8 @@ at::Tensor AtenCopyFrom(const at::Tensor& src, const at::Tensor& self_dest,
 
     switch (to_copy_type) {
       case CopyType::kCpuToTpu:
-        TT_THROW_IF_ERROR(CopyCpuToTpu(broadcasted_src, self_dest));
+        TT_THROW_IF_ERROR(
+            CopyCpuToTpu(broadcasted_src, self_dest, non_blocking));
         break;
       case CopyType::kTpuToTpu:
         TT_THROW_IF_ERROR(CopyTpuToTpu(broadcasted_src, self_dest));

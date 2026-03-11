@@ -70,6 +70,7 @@
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
@@ -523,6 +524,22 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateMaterialized(
   // Can't use make_shared because the constructor is private.
   auto device_buffer_list = std::shared_ptr<DeviceBufferList>(
       new DeviceBufferList(std::move(buffer), element_type));
+  return DeviceBufferRef(std::move(device_buffer_list), 0);
+}
+
+absl::StatusOr<DeviceBufferRef>
+DeviceBufferList::CreateMaterializedNonAvailable(
+    absl_nonnull std::unique_ptr<xla::PjRtBuffer> buffer,
+    xla::Future<> future) {
+  Dimensions dimensions = CopyIntVector(buffer->on_device_shape().dimensions());
+  TT_ASSIGN_OR_RETURN(
+      const auto element_type,
+      ConvertTo<mlir::ElementType>(buffer->on_device_shape().element_type()));
+  TT_RETURN_IF_ERROR(ValidateTensorByteSize(dimensions, element_type));
+
+  // Can't use make_shared because the constructor is private.
+  auto device_buffer_list = std::shared_ptr<DeviceBufferList>(
+      new DeviceBufferList(std::move(buffer), element_type, std::move(future)));
   return DeviceBufferRef(std::move(device_buffer_list), 0);
 }
 
