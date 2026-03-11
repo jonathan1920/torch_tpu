@@ -1436,6 +1436,34 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         torch_tpu_result=torch.cat([t1x0x3, t2x0x3]),
     )
 
+  def test_cat_out_invalid_cast(self):
+    """Tests that an invalid cast during torch.cat throws an error."""
+
+    def test_fn(device):
+      t_f32 = torch.tensor([1.0, 2.0], dtype=torch.float32, device=device)
+      out_int32 = torch.zeros(2, dtype=torch.int32, device=device)
+      return torch.cat([t_f32], out=out_int32)
+
+    self.assert_close_tpu_vs_cpu(
+        test_fn,
+        check_exception_type=False,
+        allow_failure=True,
+    )
+
+  def test_cat_out_mismatched_dtypes(self):
+    t_f32 = torch.tensor([1.0, 2.0], dtype=torch.float32)
+    t_f16 = torch.tensor([3.0, 4.0], dtype=torch.bfloat16)
+
+    def test_fn(device):
+      out_f16 = torch.zeros(4, dtype=torch.bfloat16, device=device)
+      torch.cat([t_f32.to(device), t_f16.to(device)], out=out_f16)
+
+      out_f32 = torch.zeros(4, dtype=torch.float32, device=device)
+      torch.cat([t_f32.to(device), t_f16.to(device)], out=out_f32)
+      return out_f16, out_f32
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
   def test_arange_start_step_float32(self):
     golden_result = torch.arange(
         0, 10, 2, dtype=torch.float32, device=self.golden_device

@@ -4597,6 +4597,25 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch._foreach_addcdiv(self_list, tensor1_list, tensor2_list)
 
+  def test_cat_out_invalid_cast(self):
+    """Tests that cat fails when the out tensor has an incompatible dtype."""
+    t_f32 = torch.tensor([1.0, 2.0], device=et.device(), dtype=torch.float32)
+    out_int32 = torch.zeros(2, device=et.device(), dtype=torch.int32)
+    err_type = RuntimeError if et.device().type == "tpu" else TypeError
+    with et.assert_raises_message(
+        err_type,
+        tpu=(
+            "cat(): expected the input to be castable to the desired dtype "
+            "int32, got float32"
+        ),
+        cpu=(
+            "torch.cat(): input types can't be cast to the desired "
+            "output type Int"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.cat([t_f32], out=out_int32)
+
   def test_sub_bool(self):
     lhs = torch.tensor([1.0, 1.0], device=et.device())
     rhs = torch.tensor([1.0, 1.0], device=et.device())

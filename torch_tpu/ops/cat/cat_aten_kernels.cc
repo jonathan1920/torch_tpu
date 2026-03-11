@@ -17,6 +17,7 @@
 #include "torch_tpu/ops/cat/cat_aten_kernels.h"
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -117,7 +118,8 @@ absl::StatusOr<CatShapeInfo> ValidateCatTensors(
 
 absl::StatusOr<CatComputationResult> CatHelper(
     OpName op_name, const at::ITensorListRef& tensors, const int64_t dim,
-    OpParamCacheKeys param_keys) {
+    OpParamCacheKeys param_keys,
+    std::optional<at::ScalarType> output_dtype_override = std::nullopt) {
   ABSL_VLOG(1) << "====== [C++ KERNEL AtenCat] ======";
   TT_ASSIGN_OR_RETURN(CatShapeInfo shape_info,
                       ValidateCatTensors(tensors, dim));
@@ -129,10 +131,17 @@ absl::StatusOr<CatComputationResult> CatHelper(
   const at::Tensor& first_tensor = *tensors.begin();
 
   // Iterative type promotion using a range-based for loop.
-  at::ScalarType promoted_dtype = first_tensor.scalar_type();
+  at::ScalarType target_dtype = first_tensor.scalar_type();
   for (const at::Tensor& tensor : tensors) {
-    // The first promotion is redundant but harmless and keeps the code simple.
-    promoted_dtype = c10::promoteTypes(promoted_dtype, tensor.scalar_type());
+    target_dtype = c10::promoteTypes(target_dtype, tensor.scalar_type());
+  }
+  if (output_dtype_override.has_value()) {
+    TT_RET_CHECK(at::canCast(target_dtype, *output_dtype_override),
+                 error::kInvalidArgument)
+        << "expected the input to be castable to the desired dtype "
+        << ToString(*output_dtype_override) << ", got "
+        << ToString(target_dtype);
+    target_dtype = *output_dtype_override;
   }
 
   std::vector<at::Tensor> promoted_tensors;
@@ -141,7 +150,7 @@ absl::StatusOr<CatComputationResult> CatHelper(
     // Skip 1D tensors with size (0,). They don't contribute to the output.
     // They will cause mlir::stablehlo::ConcatenateOp() to crash.
     if (tensor.dim() == 1 && tensor.size(0) == 0) continue;
-    promoted_tensors.push_back(tensor.toType(promoted_dtype));
+    promoted_tensors.push_back(tensor.toType(target_dtype));
   }
 
   ABSL_VLOG(1) << "[AtenCat] Inferred output shape: ["
@@ -153,7 +162,7 @@ absl::StatusOr<CatComputationResult> CatHelper(
   };
 
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
-                      ConvertTo<mlir::ElementType>(promoted_dtype));
+                      ConvertTo<mlir::ElementType>(target_dtype));
 
   TT_ASSIGN_OR_RETURN(auto result_buf,
                       DispatchOp<kDynamicSize>(
@@ -163,7 +172,7 @@ absl::StatusOr<CatComputationResult> CatHelper(
                            .op_param_cache_keys = std::move(param_keys)}));
   return CatComputationResult{
       .result_buf = std::move(result_buf),
-      .promoted_dtype = promoted_dtype,
+      .promoted_dtype = target_dtype,
       .num_dims = num_dims,
       .output_dims = std::move(output_dims),
   };
@@ -174,9 +183,9 @@ absl::StatusOr<CatComputationResult> CatHelper(
 at::Tensor& AtenCatOut(const at::ITensorListRef& tensors, int64_t dim,
                        at::Tensor& out) {
   TT_KERNEL(OpName::kCatOut, param_keys, (tensors, dim, out), {
-    TT_ASSIGN_OR_THROW(
-        CatComputationResult cat_result,
-        CatHelper(OpName::kCatOut, tensors, dim, std::move(param_keys)));
+    TT_ASSIGN_OR_THROW(CatComputationResult cat_result,
+                       CatHelper(OpName::kCatOut, tensors, dim,
+                                 std::move(param_keys), out.scalar_type()));
     TT_THROW_IF_ERROR(
         AssignBufferToAtTensor(std::move(cat_result.result_buf), out));
     ABSL_VLOG(1) << "[C++ KERNEL tpu_aten_cat_out] out(final): "
