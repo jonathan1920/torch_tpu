@@ -45,6 +45,7 @@ py_library(
     deps = [
         "//shims/torch:pytorch",
         "@pypi//numpy",
+        "@pypi//scikit-learn:pkg",
     ],
 )
 

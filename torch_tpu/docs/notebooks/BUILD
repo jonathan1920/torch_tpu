@@ -52,7 +52,9 @@ py_library(
     srcs = ["porting_vit_mnist.py"],
     deps = [
         "//shims/torch:pytorch",
+        "@pypi//matplotlib:pkg",
         "@pypi//numpy",
+        "@pypi//scikit-learn:pkg",
     ],
 )
 
