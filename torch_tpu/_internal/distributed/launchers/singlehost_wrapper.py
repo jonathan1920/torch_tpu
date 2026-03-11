@@ -113,3 +113,13 @@ def tpu_env_wrapper(
   """
   prepare_tpu_environment(world_size)
   return WorkerWrapper(func, *args, **kwargs)
+
+
+if __name__ == "__main__":
+  host_topology, host_count = tpu_topology.get_tpu_topology()
+  host_sb_ports = [portpicker.pick_unused_port() for _ in range(host_count)]
+  host_sb_addresses = ",".join([f"localhost:{p}" for p in host_sb_ports])
+
+  print(f'TORCH_TPU_TOPOLOGY="{host_topology or ""}"')
+  print(f'TORCH_TPU_SLICEBUILDER_ADDRESSES="{host_sb_addresses}"')
+  print(f"WORLD_SIZE={host_count}")
