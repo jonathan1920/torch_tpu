@@ -129,4 +129,75 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "sched_overhead_test_cuda",
+    timeout = "long",
+    srcs = ["sched_overhead_test.py"],
+    args = [
+        "--device=cuda",
+    ],
+    main = "sched_overhead_test.py",
+    notap = "this is a manual test",
+    shard_count = 1,
+    strict = True,
+    tags = [
+        "cpu:4",  # For CUDA, the only choices are 1 or 4.
+        "requires-gpu-sm100-full-only",
+        "requires-net:external",
+    ],
+    deps = [
+        "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/flax_nnx",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/execution_mode",
+        "//torch_tpu/_internal/shims/xprof:traceme",
+        "//torch_tpu/_internal/shims/xprof:xprof_session",
+        "//torch_tpu/_internal/sync",
+        "//torch_tpu/_internal/utils:benchmarking",
+        "//torch_tpu/api",
+        "@pypi//flax",
+        "@pypi//jax",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "sched_overhead_test_tpu",
+    timeout = "long",
+    srcs = ["sched_overhead_test.py"],
+    args = [
+        "--device=tpu",
+    ],
+    main = "sched_overhead_test.py",
+    nopresubmit = "slow test",
+    shard_count = 1,
+    strict = True,
+    tags = [
+        "cpu:4",  # Matches the CUDA version of the test for a fair comparison.
+        "oss_ready_tpu",
+        "requires-net:external",
+        "requires-tpu-v7x",
+    ],
+    deps = [
+        "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/flax_nnx",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/execution_mode",
+        "//torch_tpu/_internal/shims/xprof:traceme",
+        "//torch_tpu/_internal/shims/xprof:xprof_session",
+        "//torch_tpu/_internal/sync",
+        "//torch_tpu/_internal/utils:benchmarking",
+        "//torch_tpu/api",
+        "@pypi//flax",
+        "@pypi//jax",
+    ],
+)
+
 torch_tpu_package_end()
