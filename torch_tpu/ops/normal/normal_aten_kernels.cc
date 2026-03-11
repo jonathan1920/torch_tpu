@@ -21,6 +21,9 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/APFloat.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/ops/scalar_tensor.h"
 #include "torch_tpu/common/dtype.h"
@@ -54,9 +57,14 @@ absl::StatusOr<MlirOpResults<2>> BuildStandardNormalShloLike(
 
   // Use chlo::erfcinv to generate a standard normal distribution from a uniform
   // distribution.
+  // Compute nextafter(-1, 0) in the target type to prevent erfinv(-1) = -inf.
+  auto float_type = mlir::cast<mlir::FloatType>(self_type.getElementType());
+  llvm::APFloat from_ap(float_type.getFloatSemantics(), "-1.0");
+  from_ap.next(/*nextDown=*/false);
+  double from = from_ap.convertToDouble();
   TT_ASSIGN_OR_RETURN(
       (auto [rng_output_state, uniform_op]),
-      BuildUniformShlo(rng_state, -1.0, 1.0, self_type.getShape(), mlir_type));
+      BuildUniformShlo(rng_state, from, 1.0, self_type.getShape(), mlir_type));
   auto erf_inv_op = mlir::chlo::ErfInv(uniform_op);
   auto two = MakeConstantLike(erf_inv_op, 2.0, mlir_type);
   auto sqrt_two = mlir::stablehlo::Sqrt(two);
