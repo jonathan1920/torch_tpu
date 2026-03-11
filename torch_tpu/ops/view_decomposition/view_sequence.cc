@@ -32,10 +32,12 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "c10/core/TensorImpl.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -359,13 +361,64 @@ namespace {
 struct ViewCacheKeyVisitor {
   // Special handling for reshape primitive since we only support affine
   // reshapes currently.
-  // TODO: Enhance this to support squeeze/unsqueeze.
+  // TODO: Enhance this to support squeeze/unsqueeze/expand.
   absl::StatusOr<std::string> operator()(
       const ReshapePrimitive& primitive) const {
     TT_ASSIGN_OR_RETURN(
         const ReshapeReassociation reassociation,
         GetReshapeReassociation(primitive.base_sizes, primitive.new_sizes));
-    return absl::StrCat("reshape_", ReassociationToString(reassociation));
+    if (reassociation.type == ReshapeType::kExpand) {
+      // For expands, the output shapes that are non-expanded can be symbolic
+      // expanded dims must be static. We don't support bounded variables being
+      // expanded so this is safe:
+      //   {2,3,4} -> {6,4} -> {2,3,4} ==> A,B -> AB,C -> 2,3,C
+      //   {2,4,4} -> {8,4} -> {2,4,4} ==> A,B -> AB,C -> 2,3,C
+      // Otherwise we risk false cache hits on different factorizations:
+      //   {12} => {3,4} or {4,3}
+      return TT_ERROR(error::kUnimplemented)
+             << "Expand reshape is not supported for cache keys.";
+    }
+    return absl::StrCat("reshape:", ReassociationToString(reassociation));
+  }
+
+  absl::StatusOr<std::string> operator()(
+      const TransposePrimitive& primitive) const {
+    return absl::StrCat("transpose:", "[",
+                        absl::StrJoin(primitive.permutation, ","), "]");
+  }
+
+  absl::StatusOr<std::string> operator()(const ConjPrimitive& primitive) const {
+    return absl::StrCat("conj:", primitive.is_set);
+  }
+
+  absl::StatusOr<std::string> operator()(
+      const RealToRealBitcast& primitive) const {
+    return absl::StrCat(
+        "real_to_real_bitcast:", ToDTypeName(primitive.from_type), "->",
+        ToDTypeName(primitive.to_type));
+  }
+  absl::StatusOr<std::string> operator()(
+      const ComplexToRealBitcast& primitive) const {
+    return absl::StrCat(
+        "complex_to_real_bitcast:", ToString(primitive.complex_element_type),
+        ":", ToString(primitive.bitcast_type));
+  }
+
+  absl::StatusOr<std::string> operator()(const ViewAsComplex& primitive) const {
+    return absl::StrCat("view_as_complex:",
+                        ToString(primitive.complex_element_type));
+  }
+
+  absl::StatusOr<std::string> operator()(const PadPrimitive& primitive) const {
+    return absl::StrCat(
+        "pad:[",
+        absl::StrJoin(primitive.pad_dims, ",",
+                      [](std::string* out, const PadDimension& pad_dim) {
+                        absl::StrAppend(out, "{l", pad_dim.low_padding, ",h",
+                                        pad_dim.high_padding, ",i",
+                                        pad_dim.interior_padding, "}");
+                      }),
+        "]");
   }
 
   // Fallback for all other view primitives.
@@ -375,16 +428,6 @@ struct ViewCacheKeyVisitor {
   //  - SlicePrimitive relies on static shape information for output.
   template <typename T>
   absl::StatusOr<std::string> operator()(const T& primitive) const {
-    if constexpr (std::is_same_v<T, TransposePrimitive> ||
-                  std::is_same_v<T, PadPrimitive> ||
-                  std::is_same_v<T, ConjPrimitive> ||
-                  std::is_same_v<T, RealToRealBitcast> ||
-                  std::is_same_v<T, ComplexToRealBitcast> ||
-                  std::is_same_v<T, ViewAsComplex>) {
-      std::ostringstream os;
-      os << primitive;
-      return os.str();
-    }
     return TT_ERROR(error::kUnimplemented) << "View primitive does not support "
                                               "dynamic cache keys for type: "
                                            << typeid(T).name();
@@ -396,20 +439,21 @@ absl::StatusOr<std::string> ViewToCacheKey(const ViewPrimitive& primitive) {
   return std::visit(visitor, primitive);
 }
 
-// TODO: unit tests.
-absl::StatusOr<OpParamCacheKeys> SymbolicViewCacheKey(
+absl::StatusOr<std::string> SymbolicViewCacheKey(
     ViewSequenceSpan view_sequence) {
   ABSL_VLOG(3) << "[SymbolicViewCacheKey] View sequence: "
                << ToString(view_sequence);
-  OpParamCacheKeys::Builder builder;
-  builder.SetParam("A", "B");
+  std::string view_sequence_cache_key;
   for (auto [index, primitive] : llvm::enumerate(view_sequence)) {
     TT_ASSIGN_OR_RETURN(std::string view_cache_key, ViewToCacheKey(primitive));
     ABSL_VLOG(3) << "[SymbolicViewCacheKey] Symbolic reshape key: "
                  << view_cache_key;
-    builder.SetParam(absl::StrCat("view_", index), view_cache_key);
+    if (index > 0) {
+      absl::StrAppend(&view_sequence_cache_key, ";");
+    }
+    absl::StrAppend(&view_sequence_cache_key, view_cache_key);
   }
-  return *builder;
+  return view_sequence_cache_key;
 }
 
 }  // namespace
@@ -420,11 +464,11 @@ absl::StatusOr<OpParamCacheKeys> ViewSequenceCacheKey(
   // mappings from input to output tensor shapes, i.e. Reshape[A,B]->[A*B]
   // or transpose[A,B]{0,1}, instead of embedding static input and output shapes
   // into the cache key.
-  absl::StatusOr<OpParamCacheKeys> symbolic_key =
+  absl::StatusOr<std::string> symbolic_key =
       SymbolicViewCacheKey(view_sequence);
   if (symbolic_key.ok()) {
     ABSL_VLOG(3) << "[ViewSequenceCacheKey] Built symbolic cache key";
-    return symbolic_key;
+    return *OpParamCacheKeysBuilder().SetParam("view", *symbolic_key);
   }
 
   // Fall back to using static tensor shapes for the cache key.

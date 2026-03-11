@@ -40,6 +40,7 @@
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -1064,21 +1065,20 @@ std::string ShapeTransitionToString(absl::Span<const int64_t> shape_before,
 // Returns a string representation of the reassociation indices for debugging.
 std::string ReassociationToString(const ReshapeReassociation& reassociation) {
   ReshapeType type = reassociation.type;
-  std::string result;
-  llvm::raw_string_ostream os(result);
-  std::string type_str = ReshapeTypeToString(type);
-  os << type_str << " reassociation:\n";
-  for (int i = 0; i < reassociation.reassociation.size(); ++i) {
-    os << "  ";
-    if (type == ReshapeType::kCollapse || type == ReshapeType::kFlatten) {
-      os << "output " << i << " <- input {";
-    } else {
-      os << "input " << i << " -> output {";
-    }
-    llvm::interleave(reassociation.reassociation[i], os, ", ");
-    os << "}\n";
+  std::string result = ReshapeTypeToString(type);
+  if (reassociation.reassociation.empty()) {
+    return result;
   }
-  return result;
+  // Collapse{[2,2,4]->[4,4]}: [0,1,2] -> {0,1}, {2}
+  // Expand{[4,4]->[2,2,4]}: [0,1] -> {0}, {0}, {1}
+  return absl::StrCat(
+      result, "[",
+      absl::StrJoin(llvm::seq(reassociation.reassociation.size()), ","), "]->",
+      absl::StrJoin(
+          reassociation.reassociation, ",",
+          [](std::string* out, const mlir::ReassociationIndices& group) {
+            absl::StrAppend(out, "{", absl::StrJoin(group, ","), "}");
+          }));
 }
 
 // Determines the reshape type for the given input and output shapes.

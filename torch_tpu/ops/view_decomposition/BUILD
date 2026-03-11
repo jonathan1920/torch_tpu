@@ -323,6 +323,7 @@ torch_tpu_cc_library(
         ":unfold_primitive",
         "//shims/torch/c10/core:base_headers",
         "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:utils",
         "//torch_tpu/ops:op_builder_utils",
@@ -343,7 +344,7 @@ torch_tpu_cc_test(
     name = "view_sequence_test",
     srcs = ["view_sequence_test.cc"],
     tags = [
-        "oss_ready_cpu",
+        # "oss_ready_cpu", # TODO: b/491622189 - ASSERT_OK_AND_ASSIGN fails in OSS.
     ],
     deps = [
         ":bitcast_primitive",
@@ -356,8 +357,11 @@ torch_tpu_cc_test(
         ":transpose_primitive",
         ":unfold_primitive",
         ":view_sequence",
+        "//shims/torch:aten_headers",
+        "//torch_tpu/common:cache_key",
         "//torch_tpu/common:shape",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@stablehlo//:attr_type_builder_util",

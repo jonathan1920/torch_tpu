@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <ostream>
+#include <string>
 
 #include "absl/status/statusor.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
@@ -112,6 +113,7 @@ enum class ComplexToRealBitcastType {
   // only the imaginary component.
   kImag,
 };
+std::string ToString(ComplexToRealBitcastType bitcast);
 std::ostream& operator<<(std::ostream& os, ComplexToRealBitcastType bitcast);
 
 // The number type of a complex number. This is restricts the cases of
@@ -127,6 +129,7 @@ enum class ComplexElementType {
   // This is equivalent to StableHLO's complex64, or torch.complex128/cdouble.
   kComplexDouble,
 };
+std::string ToString(ComplexElementType bitcast);
 std::ostream& operator<<(std::ostream& os,
                          ComplexElementType complex_element_type);
 

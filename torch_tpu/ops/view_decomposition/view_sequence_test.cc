@@ -17,11 +17,17 @@
 #include "torch_tpu/ops/view_decomposition/view_sequence.h"
 
 #include <cstdint>
+#include <string>
 #include <utility>
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "ATen/core/TensorBody.h"
+#include "ATen/ops/empty.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
 #include "torch_tpu/ops/view_decomposition/broadcast_primitive.h"
@@ -36,6 +42,9 @@
 
 namespace torch_tpu {
 namespace {
+
+using testing::ElementsAre;
+using testing::Pair;
 
 void SimplifyTest(absl::Span<const int64_t> contiguous_base_shape,
                   ViewSequence sequence, ViewSequenceSpan expected,
@@ -282,6 +291,141 @@ TEST(ViewPrimitiveEquality, ConjPrimitive) {
 
   EXPECT_EQ(c1, c2);
   EXPECT_NE(c1, c3);
+}
+
+TEST(SymbolicViewPrimitive, ReshapeViewCacheKeys) {
+  // Create a fallback tensor which is only used when symbolic keygen fails
+  at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
+
+  OpParamCacheKeys param_keys;
+  ViewSequence flatten = {
+      ReshapePrimitive{.base_sizes = {2, 2}, .new_sizes = {4}}};
+  ASSERT_OK_AND_ASSIGN(
+      param_keys, ViewSequenceCacheKey(flatten, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys, ElementsAre(Pair("view", "reshape:flatten")));
+
+  ViewSequence collapse = {
+      ReshapePrimitive{.base_sizes = {2, 3, 4}, .new_sizes = {6, 4}}};
+  ASSERT_OK_AND_ASSIGN(
+      param_keys,
+      ViewSequenceCacheKey(collapse, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys,
+              ElementsAre(Pair("view", "reshape:collapse[0,1]->{0,1},{2}")));
+}
+
+TEST(SymbolicViewPrimitive, TransposeViewCacheKeys) {
+  // Create a fallback tensor which is only used when symbolic keygen fails
+  at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
+  std::string no_sym_key = "cache_key{storage_offset:0, strides:[4,1]}";
+
+  OpParamCacheKeys param_keys;
+  ViewSequence transpose = {TransposePrimitive{.permutation = {1, 0}}};
+  ASSERT_OK_AND_ASSIGN(
+      param_keys,
+      ViewSequenceCacheKey(transpose, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys, ElementsAre(Pair("view", "transpose:[1,0]")));
+}
+
+TEST(SymbolicViewPrimitive, CastingViewCacheKeys) {
+  // Create a fallback tensor which is only used when symbolic keygen fails
+  at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
+
+  OpParamCacheKeys param_keys;
+  ViewSequence conj = {ConjPrimitive{true}};
+  ASSERT_OK_AND_ASSIGN(
+      param_keys, ViewSequenceCacheKey(conj, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys, ElementsAre(Pair("view", "conj:1")));
+
+  ViewSequence view_as_complex = {
+      ViewAsComplex{ComplexElementType::kComplexFloat}};
+  ASSERT_OK_AND_ASSIGN(
+      param_keys,
+      ViewSequenceCacheKey(view_as_complex, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys, ElementsAre(Pair("view", "view_as_complex:cfloat")));
+
+  ViewSequence real_to_real_bitcast = {RealToRealBitcast{
+      .from_type = mlir::ElementType::F32, .to_type = mlir::ElementType::UI32}};
+  ASSERT_OK_AND_ASSIGN(param_keys,
+                       ViewSequenceCacheKey(real_to_real_bitcast,
+                                            *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys, ElementsAre(Pair(
+                              "view", "real_to_real_bitcast:float32->uint32")));
+
+  ViewSequence complex_to_real_bitcast = {ComplexToRealBitcast{
+      .complex_element_type = ComplexElementType::kComplexFloat,
+      .bitcast_type = ComplexToRealBitcastType::kViewAsReal}};
+  ASSERT_OK_AND_ASSIGN(param_keys,
+                       ViewSequenceCacheKey(complex_to_real_bitcast,
+                                            *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(
+      param_keys,
+      ElementsAre(Pair("view", "complex_to_real_bitcast:cfloat:view_as_real")));
+}
+
+TEST(SymbolicViewPrimitive, PadViewCacheKeys) {
+  // Create a fallback tensor which is only used when symbolic keygen fails
+  at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
+
+  OpParamCacheKeys param_keys;
+  ViewSequence pad = {PadPrimitive{
+      .pad_dims = {
+          {.low_padding = 0, .high_padding = 0, .interior_padding = 0}}}};
+  ASSERT_OK_AND_ASSIGN(
+      param_keys, ViewSequenceCacheKey(pad, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys, ElementsAre(Pair("view", "pad:[{l0,h0,i0}]")));
+}
+
+TEST(SymbolicViewPrimitive, MultipleViewCacheKeys) {
+  // Create a fallback tensor which is only used when symbolic keygen fails
+  at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
+
+  OpParamCacheKeys param_keys;
+  ViewSequence reshape_transpose = {
+      ReshapePrimitive{.base_sizes = {2, 2, 2}, .new_sizes = {4, 2}},
+      TransposePrimitive{.permutation = {1, 0}},
+  };
+  ASSERT_OK_AND_ASSIGN(
+      param_keys,
+      ViewSequenceCacheKey(reshape_transpose, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys,
+              ElementsAre(Pair(
+                  "view", "reshape:collapse[0,1]->{0,1},{2};transpose:[1,0]")));
+
+  ViewSequence transpose_transpose = {
+      TransposePrimitive{{1, 0}},
+      TransposePrimitive{{1, 0}},
+  };
+  ASSERT_OK_AND_ASSIGN(
+      param_keys,
+      ViewSequenceCacheKey(transpose_transpose, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys,
+              ElementsAre(Pair("view", "transpose:[1,0];transpose:[1,0]")));
+}
+
+TEST(SymbolicViewPrimitive, UnsupportedViewCacheKeys) {
+  // Create a fallback tensor which is only used when symbolic keygen fails
+  at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
+
+  OpParamCacheKeys param_keys;
+
+  // Unflatten not supported yet, uses fallback keygen.
+  ViewSequence unflatten = {
+      ReshapePrimitive{.base_sizes = {6, 4}, .new_sizes = {2, 3, 4}}};
+  ASSERT_OK_AND_ASSIGN(
+      param_keys,
+      ViewSequenceCacheKey(unflatten, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys, ElementsAre(Pair("storage_offset", "0"),
+                                      Pair("strides", "[4,1]")));
+
+  // Unfolds are mostly static shape, symbolic keygen not very useful.
+  ViewSequence unfold = {UnfoldPrimitive{.start_index = 0,
+                                         .limit_index = 9,
+                                         .window_stride = 999,
+                                         .window_size = 9}};
+  ASSERT_OK_AND_ASSIGN(
+      param_keys, ViewSequenceCacheKey(unfold, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys, ElementsAre(Pair("storage_offset", "0"),
+                                      Pair("strides", "[4,1]")));
 }
 
 }  // namespace

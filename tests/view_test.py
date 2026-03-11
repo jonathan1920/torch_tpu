@@ -1279,6 +1279,50 @@ class UnfoldTest(LayoutTest):
       view.add_(1.0)
 
 
+class SymbolicViewsTest(LayoutTest):
+  """Tests to ensure no false cache hits for symbolic views."""
+
+  def test_transpose(self):
+    self._assert_same_mutation_from_base(
+        (2, 3),
+        lambda tensor: tensor.transpose(1, 0),
+    )
+    self._assert_same_mutation_from_base(
+        (2, 4),
+        lambda tensor: tensor.transpose(1, 0),
+    )
+
+  def test_reshape(self):
+    self._assert_same_mutation_from_base(
+        (2, 3, 4),
+        lambda tensor: tensor.reshape(6, 4),
+    )
+    self._assert_same_mutation_from_base(
+        (2, 4, 4),
+        lambda tensor: tensor.reshape(8, 4),
+    )
+
+  def test_multiple_view_ops(self):
+    self._assert_same_mutation_from_base(
+        (2, 3, 4),
+        lambda tensor: tensor.transpose(1, 0).reshape(6, 4),
+    )
+    self._assert_same_mutation_from_base(
+        (2, 4, 4),
+        lambda tensor: tensor.transpose(1, 0).reshape(8, 4),
+    )
+
+  def test_multiple_view_ops_different_chain(self):
+    self._assert_same_mutation_from_base(
+        (2, 3, 4),
+        lambda tensor: tensor.transpose(2, 0).reshape(12, 2).transpose(1, 0),
+    )
+    self._assert_same_mutation_from_base(
+        (2, 3, 4),
+        lambda tensor: tensor.transpose(1, 0).reshape(6, 4).transpose(1, 0),
+    )
+
+
 if __name__ == "__main__":
   # Initialize seed with the current system time
   torch.manual_seed(time.time())

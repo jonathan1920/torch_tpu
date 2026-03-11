@@ -180,20 +180,20 @@ std::ostream& operator<<(std::ostream& os, const RealToRealBitcast& bitcast) {
   return os;
 }
 
-std::ostream& operator<<(std::ostream& os,
-                         const ComplexToRealBitcastType bitcast) {
+std::string ToString(ComplexToRealBitcastType bitcast) {
   switch (bitcast) {
     case ComplexToRealBitcastType::kViewAsReal:
-      os << "view_as_real";
-      break;
+      return "view_as_real";
     case ComplexToRealBitcastType::kReal:
-      os << "real";
-      break;
+      return "real";
     case ComplexToRealBitcastType::kImag:
-      os << "imag";
-      break;
+      return "imag";
   }
-  return os;
+}
+
+std::ostream& operator<<(std::ostream& os,
+                         const ComplexToRealBitcastType bitcast) {
+  return os << ToString(bitcast);
 }
 
 std::ostream& operator<<(std::ostream& os,
@@ -202,17 +202,18 @@ std::ostream& operator<<(std::ostream& os,
   return os;
 }
 
-std::ostream& operator<<(std::ostream& os,
-                         const ComplexElementType complex_element_type) {
+std::string ToString(ComplexElementType complex_element_type) {
   switch (complex_element_type) {
     case ComplexElementType::kComplexFloat:
-      os << "cfloat";
-      break;
+      return "cfloat";
     case ComplexElementType::kComplexDouble:
-      os << "cdouble";
-      break;
+      return "cdouble";
   }
-  return os;
+}
+
+std::ostream& operator<<(std::ostream& os,
+                         const ComplexElementType complex_element_type) {
+  return os << ToString(complex_element_type);
 }
 
 std::ostream& operator<<(std::ostream& os, const ViewAsComplex& bitcast) {
