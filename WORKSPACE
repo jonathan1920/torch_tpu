@@ -136,7 +136,7 @@ register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
 load("//bazel:torch_local_repo.bzl", "torch_local_repo")
 
 # Define the local torch repository.
-# It will check for the TORCH_LOCATION env var.
+# It will check for the TORCH_SOURCE env var.
 # If set, it uses that path. If not, it creates a dummy stub to prevent crashes.
 torch_local_repo(
     name = "local_torch",
