@@ -21,29 +21,26 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "ATen/core/ATen_fwd.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
+#include "torch_tpu/ops/bmm/bmm.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
-#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 
 namespace torch_tpu {
 
 namespace {
-
-namespace stablehlo = mlir::stablehlo;
 
 absl::Status CheckBmmOut(const at::Tensor& out) {
   TT_RET_CHECK(!IsBool(out), error::kInvalidArgument)
@@ -80,37 +77,6 @@ absl::Status CheckBmmInputs(const at::Tensor& self, const at::Tensor& mat2) {
       << mat2.size(1);
 
   return absl::OkStatus();
-}
-
-absl::StatusOr<mlir::MlirOp> BuildBmmShlo(mlir::MlirOp self_op,
-                                          mlir::MlirOp mat2_op,
-                                          mlir::ElementType out_dtype) {
-  const mlir::RankedTensorType self_type = GetTensorTypeOrDie(self_op);
-  const mlir::RankedTensorType mat2_type = GetTensorTypeOrDie(mat2_op);
-
-  // TODO: XLA doesn't support matmul with i64, so we convert them to f64.
-  bool is_any_i64 = self_type.getElementType().isInteger(64) ||
-                    mat2_type.getElementType().isInteger(64);
-  if (is_any_i64) {
-    self_op = stablehlo::ConvertElementType(self_op, mlir::ElementType::F64);
-    mat2_op = stablehlo::ConvertElementType(mat2_op, mlir::ElementType::F64);
-  }
-
-  auto precision = mlir::stablehlo::PrecisionConfigAttr::get(
-      &self_op.getContext(), {mlir::stablehlo::Precision::DEFAULT,
-                              mlir::stablehlo::Precision::DEFAULT});
-  auto dot_dimension_numbers = stablehlo::DotDimensionNumbersAttr::get(
-      &self_op.getContext(),
-      /*lhs_batch_dimensions=*/{0},
-      /*rhs_batch_dimensions=*/{0},
-      /*lhs_contracting_dimensions=*/{2},
-      /*rhs_contracting_dimensions=*/{1});
-  mlir::MlirOp dot_result =
-      stablehlo::DotGeneral(self_op, mat2_op, dot_dimension_numbers, precision);
-  if (is_any_i64) {
-    return stablehlo::ConvertElementType(dot_result, out_dtype);
-  }
-  return dot_result;
 }
 
 absl::StatusOr<DeviceBufferRef> Bmm(const at::Tensor& self,

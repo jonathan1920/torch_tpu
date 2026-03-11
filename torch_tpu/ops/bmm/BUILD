@@ -20,10 +20,26 @@ package(
 )
 
 torch_tpu_cc_library(
+    name = "bmm",
+    srcs = ["bmm.cc"],
+    hdrs = ["bmm.h"],
+    deps = [
+        "//torch_tpu/ops:op_builder_utils",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_builder",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "bmm_aten_kernels",
     srcs = ["bmm_aten_kernels.cc"],
     hdrs = ["bmm_aten_kernels.h"],
     deps = [
+        ":bmm",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
@@ -31,6 +47,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:fixed_size_span",
+        "//torch_tpu/common:shape",
         "//torch_tpu/common:utils",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:op_dispatcher",
@@ -40,11 +57,8 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:IR",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
-        "@stablehlo//:stablehlo_builder",
-        "@stablehlo//:stablehlo_ops",
     ],
 )
 
