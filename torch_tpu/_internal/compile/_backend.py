@@ -36,10 +36,14 @@ from typing import Any, Callable, List, Sequence, TypeAlias
 from absl import logging
 import torch
 from torch._dynamo.backends.common import aot_autograd
+from torch._inductor.fx_passes import post_grad
+from torch.fx.passes import graph_transform_observer
 from torch.utils import _pytree
 from torch_tpu._internal import export as torch_tpu_export
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.utils import utils
+
+GraphTransformObserver = graph_transform_observer.GraphTransformObserver
 
 
 _ExpectedTypes: TypeAlias = torch.Tensor | torch.nn.Module | torch.SymInt
@@ -304,6 +308,15 @@ class TpuBackend:
           len(example_inputs),
           utils.InputMetadata(example_inputs),
       )
+
+    # Decompose auto functionalized ops, we need to explicitly do this because
+    # the default behaviour inserts flatten and unflatten ops at the boundaries
+    # which then blocks buffer donation.
+    # This should be replaced with our own fork, see b/491716758.
+    GraphTransformObserver(
+        graph_module, "decompose_auto_functionalized"
+    ).apply_graph_pass(post_grad.decompose_auto_functionalized)
+    graph_module.recompile()
 
     # Exit fake mode to trace, see _DisableFakeTensorMode docstring for details.
     with _DisableFakeTensorMode():

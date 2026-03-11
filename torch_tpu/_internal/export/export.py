@@ -372,7 +372,14 @@ def fx_to_mlir(
   with execution_mode.defer_mode(
       execution_mode.DeferMode.ALL
   ), enable_tracebacks():
-    tpu_outputs = EagerLikeFxInterpreter(module).run(*args)
+    # We clone the args so that inplace updates do not overwrite the placeholder
+    # args, these copies will be removed in the compiled code so there is no
+    # performance impact.
+    # Remove once b/491716758 is implemented.
+    cloned_args = (
+        x.clone() if isinstance(x, torch.Tensor) else x for x in args
+    )
+    tpu_outputs = EagerLikeFxInterpreter(module).run(*cloned_args)
 
   tpu_outputs, output_map = _create_filtered_output_map(tpu_outputs)
   output_none_map_fn = partial(_map_output, output_map=output_map)

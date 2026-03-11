@@ -386,18 +386,29 @@ class TestPallasKernels(absltest.TestCase):
     )
     torch_aliasing_add_vectors.register_fake(lambda x, _: torch.empty_like(x))
 
-    x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
-    y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
+    # These tensors are intentionally 2D as it triggers the flatten -> unflatten
+    # behaviour (b/479542146).
+    x = torch.tensor([[0.1, 0.2, 0.3]], dtype=torch.float32, device=self.device)
+    y = torch.tensor([[0.4, 0.5, 0.6]], dtype=torch.float32, device=self.device)
 
     # Create a deferred op that depends on the pre-donation value of x.
     pre_x_sum = x.sum()
 
+    tpu_backend = compile.TpuBackend(debug=True)
+
     # Run an aliasing compiled operation.
-    @torch.compile(fullgraph=True, dynamic=False, backend=compile.TpuBackend())
+    @torch.compile(fullgraph=True, dynamic=False, backend=tpu_backend)
     def aliased_add_vectors_sum(x, y):
       return torch_aliasing_add_vectors(x, y).sum()
 
     _ = aliased_add_vectors_sum(x, y)
+
+    executables = tpu_backend._compiled_executables
+    self.assertLen(executables, 1)
+    self.assertIn(
+        "jax.buffer_donor",
+        str(executables[0].mlir_graph),
+    )
 
     # The pre-donation value of x can no longer be used.
     with self.assertRaisesRegex(
