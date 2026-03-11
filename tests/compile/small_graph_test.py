@@ -121,6 +121,26 @@ class FunctionTest(absltest.TestCase):
     ):
       y.cpu()
 
+  @absltest.skip("compile_mlir fails with incorrect input order error")
+  def test_to_copy(self):
+    """Test that we can handle to_copy ops in compiled mode.
+
+    Unclear why this is inserting a new op in the deferred graph, but generally
+    ops that take in explicit devices have caused problems in compile.
+    _to_copy should be a no-op in this case is both args are on the same device.
+
+    Note: The test requires both (1) embedded constant and (2) to_copy op to
+    exercise the issue.
+    """
+
+    def simple(x):
+      c = torch.tensor([1, 2, 3, 4, 5], device=x.device)
+      c_copy: "f32[64]" = torch.ops.aten._to_copy.default(c, device=x.device)
+      return c_copy + x
+
+    x = torch.tensor([1, 2, 3, 4, 5], device=api.tpu_device())
+    self._run_and_compare(simple, [x], debug=True)
+
   def test_simple_handle_input_flip(self):
     # Without CL/794139909, the eager model will follow the invoke order and flip
     # the input from x, y to y, x. See this doc for more details:
