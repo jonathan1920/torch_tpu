@@ -4023,6 +4023,43 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     tensor_tpu = tensor.to(api.tpu_device())
     self.assertTrue(sync.is_bufferless_zero_size(tensor_tpu))
 
+  @parameterized.product(
+      dtype=[
+          torch.float32,
+          torch.float64,
+          torch.float16,
+          torch.bfloat16,
+      ],
+      dim=[0, 3],
+  )
+  def test_weight_norm_interface_dim(self, dtype, dim):
+    """Tests torch.ops.aten._weight_norm_interface with various dims."""
+    v = torch.randn(2, 3, 4, 5, dtype=dtype)
+    g = torch.randn(v.shape[dim], dtype=dtype)
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ops.aten._weight_norm_interface(
+            v.to(device), g.to(device), dim
+        ),
+    )
+
+  @parameterized.product(
+      dtype=[
+          torch.float32,
+          torch.float64,
+          torch.float16,
+          torch.bfloat16,
+      ],
+  )
+  def test_weight_norm_interface_scalar_g(self, dtype):
+    """Tests torch.ops.aten._weight_norm_interface with scalar g."""
+    v = torch.randn(1, 3, 4, dtype=dtype)
+    g = torch.randn((), dtype=dtype)
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ops.aten._weight_norm_interface(
+            v.to(device), g.to(device), 0
+        ),
+    )
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""

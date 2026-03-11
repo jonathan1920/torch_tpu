@@ -1092,6 +1092,8 @@ std::string_view ToString(OpName op_name) {
       return "view_as_complex";
     case OpName::kViewAsReal:
       return "view_as_real";
+    case OpName::kWeightNormInterface:
+      return "_weight_norm_interface";
     case OpName::kWhereSelf:
       return "where.self";
     case OpName::kWhereSelfOut:

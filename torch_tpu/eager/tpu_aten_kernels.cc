@@ -135,6 +135,7 @@
 #include "torch_tpu/ops/uniform/uniform_aten_kernels.h"
 #include "torch_tpu/ops/upsample/upsample_aten_kernels.h"
 #include "torch_tpu/ops/view/view_aten_kernels.h"
+#include "torch_tpu/ops/weight_norm/weight_norm_aten_kernels.h"
 #include "torch_tpu/ops/where/where_aten_kernels.h"
 #include "xla/xla_data.pb.h"
 
@@ -569,6 +570,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kUpsampleNearestExact3dOut, AtenUpsampleNearestExact3dOut);
   Impl(m, OpName::kVdot, AtenVdot);
   Impl(m, OpName::kViewAsReal, AtenViewAsReal);
+  Impl(m, OpName::kWeightNormInterface, AtenWeightNormInterface);
   Impl(m, OpName::kWhereSelf, AtenWhereSelf);
   Impl(m, OpName::kWhereSelfOut, AtenWhereSelfOut);
   m.impl("_copy_from", AtenCopyFrom);

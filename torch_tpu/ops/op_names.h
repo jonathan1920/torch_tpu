@@ -557,6 +557,7 @@ enum class OpName {
   kView,
   kViewAsComplex,
   kViewAsReal,
+  kWeightNormInterface,
   kWhereSelf,
   kWhereSelfOut,
   kZero_,

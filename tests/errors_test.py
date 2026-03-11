@@ -6238,6 +6238,53 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       with self.subTest(p=p):
         check(p)
 
+  def test_weight_norm_interface_dim(self):
+    v = torch.ones(2, 3, 4, 5, device=et.device(), dtype=torch.float32)
+    g = torch.ones(3, device=et.device(), dtype=torch.float32)
+    dim = 1
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "weight_norm_interface(): expected dim to be 0 or the last"
+            " dimension of v, got 1"
+        ),
+        cpu=(
+            "dim == 0 || dim == v.dim() - 1 INTERNAL ASSERT FAILED at"
+            ' "blaze-out/k8-fastbuild/bin/third_party/py/torch/aten/src/ATen/native/cpu/WeightNormKernel.AVX2.cpp":409,'
+            " please report a bug to PyTorch. fused kernels can only be applied"
+            " for first or last dim"
+        ),
+    ):
+      torch.ops.aten._weight_norm_interface(v, g, dim)
+
+  def test_weight_norm_interface_unsupported_dtype(self):
+    v = torch.ones(2, 3, device=et.device(), dtype=torch.int32)
+    g = torch.ones(2, device=et.device(), dtype=torch.float32)
+    dim = 0
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "weight_norm_interface(): expected the input dtype to be floating"
+            " point, got Int"
+        ),
+        cpu="\"weight_norm_kernel\" not implemented for 'Int'",
+    ):
+      torch.ops.aten._weight_norm_interface(v, g, dim)
+
+  def test_weight_norm_interface_v_dim_error(self):
+    """Tests error message for weight_norm when v.dim() == 0."""
+    v = torch.randn((), device=et.device(), dtype=torch.float32)
+    g = torch.randn((), device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        IndexError,
+        tpu=(
+            "weight_norm_interface(): expected v to have at least 1 dimension,"
+            " got 0"
+        ),
+        cpu="Dimension specified as 0 but tensor has no dimensions",
+    ):
+      torch.ops.aten._weight_norm_interface(v, g, 0)
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -496,6 +496,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/uniform:uniform_aten_kernels",
         "//torch_tpu/ops/upsample:upsample_aten_kernels",
         "//torch_tpu/ops/view:view_aten_kernels",
+        "//torch_tpu/ops/weight_norm:weight_norm_aten_kernels",
         "//torch_tpu/ops/where:where_aten_kernels",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log",
