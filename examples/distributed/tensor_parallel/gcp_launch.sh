@@ -19,4 +19,4 @@
 eval $(python3 -m torch_tpu._internal.distributed.launchers.singlehost_wrapper)
 export TORCH_TPU_TOPOLOGY TORCH_TPU_SLICEBUILDER_ADDRESSES WORLD_SIZE
 
-python3 -m torch.distributed.run --nproc_per_node=8 ./tp_worker.py
+python3 -m torch.distributed.run --nproc_per_node=$WORLD_SIZE ./tp_worker.py
