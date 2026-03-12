@@ -310,7 +310,50 @@ TEST(SymbolicViewPrimitive, ReshapeViewCacheKeys) {
       param_keys,
       ViewSequenceCacheKey(collapse, *tensor.unsafeGetTensorImpl()));
   EXPECT_THAT(param_keys,
-              ElementsAre(Pair("view", "reshape:collapse[0,1]->{0,1},{2}")));
+              ElementsAre(Pair("view", "reshape:collapse{0,1},{2}")));
+
+  ViewSequence squeeze = {
+      ReshapePrimitive{.base_sizes = {1, 4, 1, 4, 1}, .new_sizes = {4, 4}}};
+  ASSERT_OK_AND_ASSIGN(
+      param_keys, ViewSequenceCacheKey(squeeze, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys,
+              ElementsAre(Pair("view", "reshape:collapse{0,1},{2,3,4}")));
+
+  ViewSequence unsqueeze = {
+      ReshapePrimitive{.base_sizes = {4, 4}, .new_sizes = {1, 4, 1, 4, 1}}};
+  ASSERT_OK_AND_ASSIGN(
+      param_keys,
+      ViewSequenceCacheKey(unsqueeze, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(
+      param_keys,
+      ElementsAre(Pair("view", "reshape:expand{0,1},{2,3,4}d0=1,d2=1,d4=1")));
+
+  ViewSequence scalar_unsqueeze = {
+      ReshapePrimitive{.base_sizes = {}, .new_sizes = {1}}};
+  ASSERT_OK_AND_ASSIGN(
+      param_keys,
+      ViewSequenceCacheKey(scalar_unsqueeze, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys,
+              ElementsAre(Pair("view", "reshape:expand:scalar_unsqueeze(1)")));
+
+  ViewSequence scalar_squeeze = {
+      ReshapePrimitive{.base_sizes = {1}, .new_sizes = {}}};
+  ASSERT_OK_AND_ASSIGN(
+      param_keys,
+      ViewSequenceCacheKey(scalar_squeeze, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys,
+              ElementsAre(Pair("view", "reshape:collapse:scalar_squeeze")));
+
+  // Unflatten encodes static dimensions when reassociation is has ambiguous
+  // factorizations.
+  //  {6} => {2,3} or {3,2}, use suffix `d0=2,d1=3`
+  ViewSequence unflatten = {
+      ReshapePrimitive{.base_sizes = {6, 4}, .new_sizes = {2, 3, 4}}};
+  ASSERT_OK_AND_ASSIGN(
+      param_keys,
+      ViewSequenceCacheKey(unflatten, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys,
+              ElementsAre(Pair("view", "reshape:expand{0,1},{2}d0=2,d1=3")));
 }
 
 TEST(SymbolicViewPrimitive, TransposeViewCacheKeys) {
@@ -387,9 +430,9 @@ TEST(SymbolicViewPrimitive, MultipleViewCacheKeys) {
   ASSERT_OK_AND_ASSIGN(
       param_keys,
       ViewSequenceCacheKey(reshape_transpose, *tensor.unsafeGetTensorImpl()));
-  EXPECT_THAT(param_keys,
-              ElementsAre(Pair(
-                  "view", "reshape:collapse[0,1]->{0,1},{2};transpose:[1,0]")));
+  EXPECT_THAT(
+      param_keys,
+      ElementsAre(Pair("view", "reshape:collapse{0,1},{2};transpose:[1,0]")));
 
   ViewSequence transpose_transpose = {
       TransposePrimitive{{1, 0}},
@@ -407,15 +450,6 @@ TEST(SymbolicViewPrimitive, UnsupportedViewCacheKeys) {
   at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
 
   OpParamCacheKeys param_keys;
-
-  // Unflatten not supported yet, uses fallback keygen.
-  ViewSequence unflatten = {
-      ReshapePrimitive{.base_sizes = {6, 4}, .new_sizes = {2, 3, 4}}};
-  ASSERT_OK_AND_ASSIGN(
-      param_keys,
-      ViewSequenceCacheKey(unflatten, *tensor.unsafeGetTensorImpl()));
-  EXPECT_THAT(param_keys, ElementsAre(Pair("storage_offset", "0"),
-                                      Pair("strides", "[4,1]")));
 
   // Unfolds are mostly static shape, symbolic keygen not very useful.
   ViewSequence unfold = {UnfoldPrimitive{.start_index = 0,

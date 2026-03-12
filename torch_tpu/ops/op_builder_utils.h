@@ -761,6 +761,14 @@ enum class ReshapeType {
 // Helper struct to hold reshape reassociation information.
 // See ReshapeFromStaticDimensions for more details on reassociation storage.
 // See ReshapeType for more details on supported reshape types.
+//
+// Examples:
+// - Squeeze{[4,1]->[4]}: [0,1]->{0}
+// - Unsqueeze{[4,2]->[4,1,2]}: [0,1]->{0}{-1}{1}
+// - Flatten{[4,4]->[16]}: []->{} // empty map, no reassociation needed.
+// - Collapse{[2,2,4]->[4,4]}: [0,1,2]->{0,1},{2}
+// - Expand{[4,4]->[2,2,4]}: [0,1]->{0},{0},{1}
+
 struct ReshapeReassociation {
   ReshapeType type;
   llvm::SmallVector<mlir::ReassociationIndices> reassociation;

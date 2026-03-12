@@ -241,28 +241,23 @@ absl::StatusOr<ReshapePrimitive> Merge(ReshapePrimitive first,
 absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(
     mlir::MlirOp input, const ReshapePrimitive& reshape) {
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
-  ABSL_VLOG(3) << "[ReshapePrimitiveShlo]: Module: "
-               << DebugString(GetModuleOp(input.getBuilder()));
-
   auto result =
       ReshapeFromStaticDimensions(input, reshape.base_sizes, reshape.new_sizes);
-  if (result.ok()) {
-    if (input_type.hasStaticShape()) {
-      const mlir::RankedTensorType output_type = GetTensorTypeOrDie(*result);
-      // Verify that static shaped reshapes are exactly what PT dictates them to
-      // be.
-      ABSL_CHECK(  // CRASH_OK: For static input, the input/output shape must
-                   // match static base_sizes/new_sizes.
-          input_type.getShape().equals(reshape.base_sizes) &&
-          output_type.getShape().equals(reshape.new_sizes))
-          << "input/output shape must match static base_sizes/new_sizes "
-             "respectively, got "
-             "input: "
-          << ToString(input_type.getShape())
-          << " base sizes: " << ToString(reshape.base_sizes)
-          << " output: " << ToString(output_type.getShape())
-          << " new sizes: " << ToString(reshape.new_sizes);
-    }
+  if (result.ok() && input_type.hasStaticShape()) {
+    const mlir::RankedTensorType output_type = GetTensorTypeOrDie(*result);
+    // Verify that static shaped reshapes are exactly what PT dictates them to
+    // be.
+    ABSL_CHECK(  // CRASH_OK: For static input, the input/output shape must
+                 // match static base_sizes/new_sizes.
+        input_type.getShape().equals(reshape.base_sizes) &&
+        output_type.getShape().equals(reshape.new_sizes))
+        << "input/output shape must match static base_sizes/new_sizes "
+           "respectively, got "
+           "input: "
+        << ToString(input_type.getShape())
+        << " base sizes: " << ToString(reshape.base_sizes)
+        << " output: " << ToString(output_type.getShape())
+        << " new sizes: " << ToString(reshape.new_sizes);
   }
   return result;
 }

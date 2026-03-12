@@ -104,7 +104,7 @@ std::string GetBasename(std::string_view filename) {
 
   // Parse extension - TSL tools don't support optional extension parsing.
   const auto ext_dot = filename.rfind('.');
-  if (ext_dot != mlir::StringRef::npos) {
+  if (ext_dot != std::string_view::npos) {
     filename = filename.substr(0, ext_dot);
   }
   return std::string(filename);
@@ -1030,6 +1030,18 @@ std::string ShapeTransitionToString(absl::Span<const int64_t> shape_before,
                       ToString(shape_after));
 }
 
+std::optional<llvm::SmallVector<mlir::ReassociationIndices>>
+GetReassociationIndicesForReshape(const Dimensions& static_shape_before,
+                                  const Dimensions& static_shape_after) {
+  if (static_shape_before.size() > static_shape_after.size())
+    return mlir::getReassociationIndicesForCollapse(static_shape_before,
+                                                    static_shape_after);
+  if (static_shape_before.size() < static_shape_after.size())
+    return mlir::getReassociationIndicesForCollapse(static_shape_after,
+                                                    static_shape_before);
+  return std::nullopt;
+}
+
 }  // namespace
 
 // Returns a string representation of the reassociation indices for debugging.
@@ -1042,8 +1054,7 @@ std::string ReassociationToString(const ReshapeReassociation& reassociation) {
   // Collapse{[2,2,4]->[4,4]}: [0,1,2] -> {0,1}, {2}
   // Expand{[4,4]->[2,2,4]}: [0,1] -> {0}, {0}, {1}
   return absl::StrCat(
-      result, "[",
-      absl::StrJoin(llvm::seq(reassociation.reassociation.size()), ","), "]->",
+      result,
       absl::StrJoin(
           reassociation.reassociation, ",",
           [](std::string* out, const mlir::ReassociationIndices& group) {
@@ -1055,12 +1066,13 @@ std::string ReassociationToString(const ReshapeReassociation& reassociation) {
 // Basic function for now, but room to grow into other reshape types.
 ReshapeType GetReshapeType(const Dimensions& static_shape_before,
                            const Dimensions& static_shape_after) {
+  if (static_shape_after.size() > static_shape_before.size()) {
+    return ReshapeType::kExpand;
+  }
   if (static_shape_after.size() == 1) {
     return ReshapeType::kFlatten;
   }
-  return static_shape_before.size() > static_shape_after.size()
-             ? ReshapeType::kCollapse
-             : ReshapeType::kExpand;
+  return ReshapeType::kCollapse;
 }
 
 // Returns the reassociation indices for the given input and output shapes.
@@ -1076,16 +1088,6 @@ absl::StatusOr<ReshapeReassociation> GetReshapeReassociation(
     return ReshapeReassociation{reshape_type, {}};
   }
 
-  // Create a temporary context to create ranked tensor types.
-  // Objects do not need to exist beyond the function, as the mapping only holds
-  // integer indices. Datatype doesn't matter here, so we use float32.
-  mlir::MLIRContext tmp_context;
-  mlir::Type float_type = mlir::Float32Type::get(&tmp_context);
-  mlir::RankedTensorType static_shape_before_type =
-      mlir::RankedTensorType::get(static_shape_before, float_type);
-  mlir::RankedTensorType static_shape_after_type =
-      mlir::RankedTensorType::get(static_shape_after, float_type);
-
   // Below is a restriction of the MLIR getReassociationIndicesForReshape
   TT_RET_CHECK(static_shape_before.size() != static_shape_after.size(),
                error::kInvalidArgument)
@@ -1095,8 +1097,8 @@ absl::StatusOr<ReshapeReassociation> GetReshapeReassociation(
   // Determine the reassociation indices from the static shapes.
   // This is used to determine the output dimension that needs to be bounded
   // and the bound value.
-  auto reassociation = mlir::getReassociationIndicesForReshape(
-      static_shape_before_type, static_shape_after_type);
+  auto reassociation = GetReassociationIndicesForReshape(static_shape_before,
+                                                         static_shape_after);
 
   TT_RET_CHECK(reassociation.has_value(), error::kInvalidArgument)
       << "unable to determine reassociation indices "
@@ -1165,8 +1167,8 @@ absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
     // reassociation[outputIdx = 1] = inputIdx 1
     // reassociation[outputIdx = 2] = inputIdx 2, 3
     // if input_bound_dim = 1, then output_bound_dim = 1
-    // if input_bound_dim = 2 or 3, then output_bound_dim = 2, output_dyn_bound
-    // = product of bounds of input dims 2 and 3
+    // if input_bound_dim = 2 or 3, then output_bound_dim = 2,
+    // output_dyn_bound = product of bounds of input dims 2 and 3
     for (int outputIdx = 0; outputIdx < reassociation.reassociation.size();
          ++outputIdx) {
       const auto& group = reassociation.reassociation[outputIdx];
@@ -1198,8 +1200,8 @@ absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
     // reassociation[inputIdx = 2] = outputIdx 2, 3
     // if input_bound_dim = 0, then output_bound_dim = 0
     // if input_bound_dim = 1, then output_bound_dim = 1
-    // if input_bound_dim = 2, ambiguous, not supported (cannot transfer output
-    // bound from one input dim to multiple output dims)
+    // if input_bound_dim = 2, ambiguous, not supported (cannot transfer
+    // output bound from one input dim to multiple output dims)
     ABSL_CHECK(  // CRASH_OK=would imply a bug in
                  // getReassociationIndicesForReshape
         input_bound_dim < reassociation.reassociation.size())
