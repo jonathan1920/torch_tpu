@@ -17,10 +17,10 @@
 #include "torch_tpu/common/to_string.h"
 
 #include <cstdint>
-#include <sstream>
 #include <string>
 #include <string_view>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "llvm/Support/raw_ostream.h"
@@ -62,27 +62,30 @@ std::string ToString(c10d::ReduceOp::RedOpType reduce_op_type) {
 }
 
 std::string ToString(const at::Tensor& tensor, const std::string& name) {
-  std::stringstream ss;
+  std::string result;
   if (!name.empty()) {
-    ss << name << ": ";
+    absl::StrAppend(&result, name, ": ");
   }
   if (!tensor.defined()) {
-    ss << "undefined";
-    return ss.str();
+    absl::StrAppend(&result, "undefined");
+    return result;
   }
-  ss << "shape=[" << absl::StrJoin(tensor.sizes(), ",") << "], ";
-  ss << "strides=[" << absl::StrJoin(tensor.strides(), ",") << "], ";
-  ss << "numel=" << tensor.numel() << ", ";
-  ss << "dtype=" << tensor.scalar_type() << ", ";
-  ss << "device=" << tensor.device() << ", ";
-  ss << "is_contiguous=" << tensor.is_contiguous() << ", ";
-  ss << "is_cpu=" << tensor.is_cpu() << ", ";
-  ss << "is_cuda=" << tensor.is_cuda() << ", ";
-  ss << "is_meta=" << tensor.is_meta() << ", ";
-  ss << "storage_offset=" << tensor.storage_offset() << ", ";
+  absl::StrAppend(                                               //
+      &result,                                                   //
+      "shape=[", absl::StrJoin(tensor.sizes(), ","), "], ",      //
+      "strides=[", absl::StrJoin(tensor.strides(), ","), "], ",  //
+      "numel=", tensor.numel(), ", ",                            //
+      "dtype=", tensor.scalar_type(), ", ",                      //
+      "device=", ToString(tensor.device()), ", ",                //
+      "is_contiguous=", tensor.is_contiguous(), ", ",            //
+      "is_cpu=", tensor.is_cpu(), ", ",                          //
+      "is_cuda=", tensor.is_cuda(), ", ",                        //
+      "is_meta=", tensor.is_meta(), ", ",                        //
+      "storage_offset=", tensor.storage_offset(), ", ");
 
   if (tensor.defined() && tensor.storage().unsafeGetStorageImpl() != nullptr) {
-    ss << "storage_use_count=" << tensor.storage().use_count() << ", ";
+    absl::StrAppend(&result, "storage_use_count=", tensor.storage().use_count(),
+                    ", ");
     if (tensor.storage().data_ptr().get_context() != nullptr) {
       // FIXME: The following code is commented out because it causes ASAN
       // violations on ops_test.py.
@@ -96,31 +99,32 @@ std::string ToString(const at::Tensor& tensor, const std::string& name) {
       //   ss << "buffer_ref_dims=null";
       // }
     } else {
-      ss << "context=null (but storage is defined)";
+      absl::StrAppend(&result, "context=null (but storage is defined)");
     }
   } else {
-    ss << "storage_is_null(undefined)";
+    absl::StrAppend(&result, "storage_is_null(undefined)");
   }
-  return ss.str();
+  return result;
 }
 
 std::string ToString(const at::Scalar& scalar, const std::string& name) {
-  std::stringstream os;
+  std::string result;
   if (!name.empty()) {
-    os << name << ": ";
+    absl::StrAppend(&result, name, ": ");
   }
   if (scalar.isFloatingPoint()) {
-    os << scalar.toDouble();
+    absl::StrAppend(&result, scalar.toDouble());
   } else if (scalar.isIntegral(/*include_bool=*/false)) {
-    os << scalar.toLong();
+    absl::StrAppend(&result, scalar.toLong());
   } else if (scalar.isBoolean()) {
-    os << (scalar.toBool() ? 1 : 0);
+    absl::StrAppend(&result, scalar.toBool() ? "true" : "false");
   } else if (scalar.isComplex()) {
-    os << scalar.toComplexDouble();
+    absl::StrAppend(&result, ToString(scalar.toComplexDouble()));
   } else {
-    os << "(type: " << static_cast<int32_t>(scalar.type()) << ", value: ?)";
+    absl::StrAppend(&result, "(type: ", static_cast<int32_t>(scalar.type()),
+                    ", value: ?)");
   }
-  return os.str();
+  return result;
 }
 
 std::string_view ToString(const at::ScalarType scalar_type) {

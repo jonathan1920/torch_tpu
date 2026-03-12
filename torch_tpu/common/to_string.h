@@ -28,6 +28,7 @@
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
@@ -64,18 +65,14 @@ std::string ToString(const T& x);
 // Returns a string representation of the given span. Requires the element type
 // to support ToString().
 template <typename T>
-[[nodiscard]] std::string ToString(absl::Span<T> vec) {
-  // TODO: switch to absl::StrCat() and absl::StrJoin().
-  std::stringstream ss;
-  ss << "[";
-  for (size_t i = 0; i < vec.size(); ++i) {
-    ss << ToString(vec[i]);
-    if (i < vec.size() - 1) {
-      ss << ", ";
-    }
-  }
-  ss << "]";
-  return ss.str();
+[[nodiscard]] std::string ToString(absl::Span<T> span) {
+  std::string result = "[";
+  absl::StrAppend(
+      &result, absl::StrJoin(span, ", ", [](std::string* out, const T& elem) {
+        absl::StrAppend(out, ToString(elem));
+      }));
+  absl::StrAppend(&result, "]");
+  return result;
 }
 
 template <typename T, size_t N>
@@ -83,22 +80,12 @@ template <typename T, size_t N>
   return ToString(absl::MakeSpan(vec));
 }
 
-// Returns a string representation of the given span of pairs.
+// Returns a string representation of the given pair.
 // Both element types in the pair must support ToString().
 template <typename T1, typename T2>
-[[nodiscard]] std::string ToString(absl::Span<const std::pair<T1, T2>> vec) {
-  // TODO: switch to absl::StrCat() and absl::StrJoin().
-  std::stringstream ss;
-  ss << "[";
-  for (size_t i = 0; i < vec.size(); ++i) {
-    const auto& [first, second] = vec[i];
-    ss << "(" << ToString(first) << ", " << ToString(second) << ")";
-    if (i < vec.size() - 1) {
-      ss << ", ";
-    }
-  }
-  ss << "]";
-  return ss.str();
+[[nodiscard]] std::string ToString(const std::pair<T1, T2>& pair) {
+  return absl::StrCat("(", ToString(pair.first), ", ", ToString(pair.second),
+                      ")");
 }
 
 // Returns a string representation of the given vector. Requires the element
