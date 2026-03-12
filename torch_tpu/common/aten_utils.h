@@ -26,15 +26,14 @@
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_types.h"
 
 namespace torch_tpu {
 
 // Use these functions only for debugging purposes.
-std::string ToString(const at::Tensor& tensor, const std::string& name = "");
-std::string ToString(const at::Scalar& scalar, const std::string& name = "");
-std::string ToString(const at::ScalarType& scalar_type,
-                     const std::string& name);
+[[nodiscard]] std::string ToString(const at::ScalarType& scalar_type,
+                                   const std::string& name);
 
 // Returns the scalar type of the given tensor.
 inline at::ScalarType GetScalarType(const at::Tensor& tensor) {

@@ -20,17 +20,12 @@
 // Generic utilities for torch_tpu.
 
 #include <cstddef>
-#include <sstream>
+#include <functional>
 #include <string>
 #include <string_view>
-#include <utility>
-#include <vector>
 
-#include "absl/container/inlined_vector.h"
-#include "absl/types/span.h"
-#include "mlir/Support/LLVM.h"
-#include "c10/util/ArrayRef.h"
 #include "torch/headeronly/util/complex.h"
+#include "torch_tpu/common/to_string.h"
 
 // 1 if this is a Google-internal version of torch_tpu. Otherwise 0.
 #define TT_IS_INTERNAL_TORCH_TPU /* Comment for forcing a line break. */ \
@@ -42,62 +37,6 @@
 #define TT_READER_MUTEX_LOCK(lock, mu) absl::ReaderMutexLock lock(&(mu))
 
 namespace torch_tpu {
-
-// Returns a string representation of the given span. Requires the element type
-// to be streamable.
-template <typename T>
-[[nodiscard]] std::string ToString(absl::Span<T> vec) {
-  std::stringstream ss;
-  ss << "[";
-  for (size_t i = 0; i < vec.size(); ++i) {
-    ss << vec[i];
-    if (i < vec.size() - 1) {
-      ss << ", ";
-    }
-  }
-  ss << "]";
-  return ss.str();
-}
-
-template <typename T, size_t N>
-[[nodiscard]] std::string ToString(const absl::InlinedVector<T, N>& vec) {
-  return ToString(absl::MakeSpan(vec));
-}
-
-// Returns a string representation of the given span of pairs.
-// Both element types in the pair must be streamable.
-template <typename T1, typename T2>
-[[nodiscard]] std::string ToString(absl::Span<const std::pair<T1, T2>> vec) {
-  std::stringstream ss;
-  ss << "[";
-  for (size_t i = 0; i < vec.size(); ++i) {
-    ss << "(" << vec[i].first << ", " << vec[i].second << ")";
-    if (i < vec.size() - 1) {
-      ss << ", ";
-    }
-  }
-  ss << "]";
-  return ss.str();
-}
-
-// Returns a string representation of the given vector. Requires the element
-// type to be streamable.
-template <typename T>
-[[nodiscard]] std::string ToString(const std::vector<T>& vec) {
-  return ToString(absl::MakeSpan(vec));
-}
-
-// Returns a string representation of the given vector. Requires the element
-// type to be streamable.
-template <typename T>
-[[nodiscard]] std::string ToString(mlir::ArrayRef<T> vec) {
-  return ToString(absl::MakeSpan(vec));
-}
-
-template <typename T>
-[[nodiscard]] std::string ToString(c10::ArrayRef<T> vec) {
-  return ToString(absl::MakeSpan(vec));
-}
 
 // Returns a string representation of the given value that can be losslessly
 // converted back to the original value. Use this when computing the computation

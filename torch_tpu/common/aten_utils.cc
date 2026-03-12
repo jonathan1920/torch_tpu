@@ -20,75 +20,10 @@
 #include <sstream>
 #include <string>
 
-#include "absl/strings/str_join.h"
 #include "ATen/core/ATen_fwd.h"
-#include "ATen/core/TensorBody.h"
-#include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
 
 namespace torch_tpu {
-
-std::string ToString(const at::Tensor& tensor, const std::string& name) {
-  std::stringstream ss;
-  if (!name.empty()) {
-    ss << name << ": ";
-  }
-  if (!tensor.defined()) {
-    ss << "undefined";
-    return ss.str();
-  }
-  ss << "shape=[" << absl::StrJoin(tensor.sizes(), ",") << "], ";
-  ss << "strides=[" << absl::StrJoin(tensor.strides(), ",") << "], ";
-  ss << "numel=" << tensor.numel() << ", ";
-  ss << "dtype=" << tensor.scalar_type() << ", ";
-  ss << "device=" << tensor.device() << ", ";
-  ss << "is_contiguous=" << tensor.is_contiguous() << ", ";
-  ss << "is_cpu=" << tensor.is_cpu() << ", ";
-  ss << "is_cuda=" << tensor.is_cuda() << ", ";
-  ss << "is_meta=" << tensor.is_meta() << ", ";
-  ss << "storage_offset=" << tensor.storage_offset() << ", ";
-
-  if (tensor.defined() && tensor.storage().unsafeGetStorageImpl() != nullptr) {
-    ss << "storage_use_count=" << tensor.storage().use_count() << ", ";
-    if (tensor.storage().data_ptr().get_context() != nullptr) {
-      // FIXME: The following code is commented out because it causes ASAN
-      // violations on ops_test.py.
-      //
-      // DeviceBufferRef* buffer_ref = static_cast<DeviceBufferRef*>(
-      //     tensor.storage().data_ptr().get_context());
-      // if (buffer_ref != nullptr && !buffer_ref->dimensions.empty()) {
-      //   ss << "buffer_ref_dims= not null [" << buffer_ref->dimensions.size()
-      //      << "],\n";
-      // } else {
-      //   ss << "buffer_ref_dims=null";
-      // }
-    } else {
-      ss << "context=null (but storage is defined)";
-    }
-  } else {
-    ss << "storage_is_null(undefined)";
-  }
-  return ss.str();
-}
-
-std::string ToString(const at::Scalar& scalar, const std::string& name) {
-  std::stringstream os;
-  if (!name.empty()) {
-    os << name << ": ";
-  }
-  if (scalar.isFloatingPoint()) {
-    os << scalar.toDouble();
-  } else if (scalar.isIntegral(/*include_bool=*/false)) {
-    os << scalar.toLong();
-  } else if (scalar.isBoolean()) {
-    os << (scalar.toBool() ? 1 : 0);
-  } else if (scalar.isComplex()) {
-    os << scalar.toComplexDouble();
-  } else {
-    os << "(type: " << static_cast<int32_t>(scalar.type()) << ", value: ?)";
-  }
-  return os.str();
-}
 
 std::string ToString(const at::ScalarType& scalar_type,
                      const std::string& name) {

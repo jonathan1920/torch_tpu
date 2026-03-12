@@ -26,7 +26,6 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/TypeSwitch.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/DebugStringHelper.h"
@@ -35,6 +34,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/utils.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -496,131 +496,8 @@ at::ScalarType ToScalarType(mlir::Type type) {
 
 }  // namespace internal
 
-std::string_view ToString(const at::ScalarType scalar_type) {
-  // See https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch-dtype
-  // for the list of supported PyTorch dtype names. When there are aliases (e.g.
-  // complex64 -> cfloat), we prefer the name with the explicit width (e.g.
-  // complex64).
-  switch (scalar_type) {
-    // Unsigned ints.
-    case at::ScalarType::UInt1:
-      return "uint1";
-    case at::ScalarType::UInt2:
-      return "uint2";
-    case at::ScalarType::UInt3:
-      return "uint3";
-    case at::ScalarType::UInt4:
-      return "uint4";
-    case at::ScalarType::UInt5:
-      return "uint5";
-    case at::ScalarType::UInt6:
-      return "uint6";
-    case at::ScalarType::UInt7:
-      return "uint7";
-    case at::ScalarType::Byte:
-      return "uint8";
-    case at::ScalarType::UInt16:
-      return "uint16";
-    case at::ScalarType::UInt32:
-      return "uint32";
-    case at::ScalarType::UInt64:
-      return "uint64";
-    // Signed ints.
-    case at::ScalarType::Int1:
-      return "int1";
-    case at::ScalarType::Int2:
-      return "int2";
-    case at::ScalarType::Int3:
-      return "int3";
-    case at::ScalarType::Int4:
-      return "int4";
-    case at::ScalarType::Int5:
-      return "int5";
-    case at::ScalarType::Int6:
-      return "int6";
-    case at::ScalarType::Int7:
-      return "int7";
-    case at::ScalarType::Char:
-      return "int8";
-    case at::ScalarType::Short:
-      return "int16";
-    case at::ScalarType::Int:
-      return "int32";
-    case at::ScalarType::Long:
-      return "int64";
-    // Quantized signed ints.
-    case at::ScalarType::QInt8:
-      return "qint8";
-    case at::ScalarType::QInt32:
-      return "qint32";
-    // Quantized unsigned ints.
-    case at::ScalarType::QUInt2x4:
-      return "quint2x4";
-    case at::ScalarType::QUInt4x2:
-      return "quint4x2";
-    case at::ScalarType::QUInt8:
-      return "quint8";
-    // Uninterpreted bits.
-    case at::ScalarType::Bits1x8:
-      return "bits1x8";
-    case at::ScalarType::Bits2x4:
-      return "bits2x4";
-    case at::ScalarType::Bits4x2:
-      return "bits4x2";
-    case at::ScalarType::Bits8:
-      return "bits8";
-    case at::ScalarType::Bits16:
-      return "bits16";
-    // Floating points.
-    case at::ScalarType::Half:
-      return "float16";
-    case at::ScalarType::BFloat16:
-      return "bfloat16";
-    case at::ScalarType::Float:
-      return "float32";
-    case at::ScalarType::Double:
-      return "float64";
-    // Complex types.
-    case at::ScalarType::ComplexFloat:
-      return "complex64";
-    case at::ScalarType::ComplexDouble:
-      return "complex128";
-    case at::ScalarType::ComplexHalf:
-      return "complex32";  // Boolean.
-    case at::ScalarType::Bool:
-      return "bool";
-    // FP8 types: https://docs.pytorch.org/docs/stable/tensor_attributes.html
-    case at::ScalarType::Float8_e4m3fn:
-      return "float8_e4m3fn";
-    case at::ScalarType::Float8_e5m2:
-      return "float8_e5m2";
-    case at::ScalarType::Float8_e4m3fnuz:
-      return "float8_e4m3fnuz";
-    case at::ScalarType::Float8_e5m2fnuz:
-      return "float8_e5m2fnuz";
-    case at::ScalarType::Float8_e8m0fnu:
-      return "float8_e8m0fnu";
-    case at::ScalarType::Float4_e2m1fn_x2:
-      return "float4_e2m1fn_x2";
-    // These cases are listed for completeness but should never be reached.
-    case at::ScalarType::Undefined:
-      return "<undefined>";
-    case at::ScalarType::NumOptions:
-      return "<num_options>";
-      // Deliberately omitting the default case. We want the compiler to
-      // force us to handle all cases explicitly.
-  }
-}
-
 std::string_view ToDTypeName(const mlir::ElementType element_type) {
   return ToString(internal::ToScalarType(element_type));
-}
-
-std::string ToString(const mlir::Type type) {
-  std::string str;
-  llvm::raw_string_ostream os(str);
-  os << type;
-  return str;
 }
 
 std::string_view ToShortName(const mlir::ElementType element_type) {

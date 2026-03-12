@@ -48,6 +48,8 @@ torch_tpu_cc_library(
     deps = [
         ":error_utils",
         ":shape",
+        ":to_string",
+        ":utils",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
@@ -478,19 +480,35 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
-    name = "utils",
-    srcs = ["utils.cc"],
-    hdrs = ["utils.h"],
+    name = "to_string",
+    srcs = ["to_string.cc"],
+    hdrs = ["to_string.h"],
     deps = [
+        "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/util:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        ":to_string",
+        "//shims/torch:torch_headers",
+        "//shims/torch/torch/headeronly:torch_headeronly",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -517,13 +535,13 @@ torch_tpu_cc_library(
     srcs = ["aten_utils.cc"],
     hdrs = ["aten_utils.h"],
     deps = [
+        ":to_string",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/eager:device_types",
         "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <ostream>
 #include <string>
+#include <string_view>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -25,6 +26,7 @@
 #include "mlir/IR/Types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -180,7 +182,7 @@ std::ostream& operator<<(std::ostream& os, const RealToRealBitcast& bitcast) {
   return os;
 }
 
-std::string ToString(ComplexToRealBitcastType bitcast) {
+std::string_view ToString(ComplexToRealBitcastType bitcast) {
   switch (bitcast) {
     case ComplexToRealBitcastType::kViewAsReal:
       return "view_as_real";
@@ -202,7 +204,7 @@ std::ostream& operator<<(std::ostream& os,
   return os;
 }
 
-std::string ToString(ComplexElementType complex_element_type) {
+std::string_view ToString(ComplexElementType complex_element_type) {
   switch (complex_element_type) {
     case ComplexElementType::kComplexFloat:
       return "cfloat";

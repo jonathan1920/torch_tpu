@@ -36,7 +36,6 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -688,35 +687,6 @@ absl::StatusOr<mlir::MlirOp> CastIfNeeded(
                << "Current and expected types are the same: "
                << ToDTypeName(actual_element_type);
   return op;
-}
-
-std::string ToString(c10d::ReduceOp::RedOpType reduce_op_type) {
-  switch (reduce_op_type) {
-    // go/keep-sorted start
-    case c10d::ReduceOp::AVG:
-      return "avg";
-    case c10d::ReduceOp::BAND:
-      return "band";
-    case c10d::ReduceOp::BOR:
-      return "bor";
-    case c10d::ReduceOp::BXOR:
-      return "bxor";
-    case c10d::ReduceOp::MAX:
-      return "max";
-    case c10d::ReduceOp::MIN:
-      return "min";
-    case c10d::ReduceOp::PREMUL_SUM:
-      return "premul_sum";
-    case c10d::ReduceOp::PRODUCT:
-      return "product";
-    case c10d::ReduceOp::SUM:
-      return "sum";
-    case c10d::ReduceOp::UNUSED:
-      return "unused";
-      // default case not needed, since the switch is exhaustive.
-      // go/keep-sorted end
-  };
-  return absl::StrFormat("enum%d", reduce_op_type);
 }
 
 absl::Status BuildReduceBody(mlir::RegionBuilder& rb, mlir::Type element_type,

@@ -17,14 +17,16 @@
 #ifndef TORCH_TPU_COMMON_DTYPE_H_
 #define TORCH_TPU_COMMON_DTYPE_H_
 
-#include <string>
+#include <cstdint>
 #include <string_view>
 #include <type_traits>
 
 #include "absl/status/statusor.h"
 #include "mlir/IR/Types.h"
+#include "ATen/core/ATen_fwd.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/xla_data.pb.h"
 
@@ -40,13 +42,6 @@
 // when interacting with XLA and PjRt.
 
 namespace torch_tpu {
-
-// Returns a string representation of the given MLIR type.
-[[nodiscard]] std::string ToString(mlir::Type type);
-
-// Returns a string representation of the given type as a PyTorch dtype name
-// (e.g. "float32", "int8"). This is suitable for use in user messages.
-[[nodiscard]] std::string_view ToString(at::ScalarType scalar_type);
 
 // Returns a string representation of the given type as a PyTorch
 // dtype name (e.g. "float32", "int8"). This is suitable for use in user

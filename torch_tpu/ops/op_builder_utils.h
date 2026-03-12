@@ -56,6 +56,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/python_context.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/ChloBuilder.h"
@@ -693,9 +694,6 @@ void AnnotateBufferDonations(mlir::ModuleOp module,
 // `expected_output_type`.
 absl::StatusOr<mlir::MlirOp> CastIfNeeded(
     mlir::MlirOp op, mlir::ElementType expected_output_type);
-
-// Converts a c10d::ReduceOp::RedOpType to a string.
-[[nodiscard]] std::string ToString(c10d::ReduceOp::RedOpType reduce_op_type);
 
 // Generates the body of a reduce operation for a given reduce type.
 absl::Status BuildReduceBody(mlir::RegionBuilder& rb, mlir::Type element_type,
