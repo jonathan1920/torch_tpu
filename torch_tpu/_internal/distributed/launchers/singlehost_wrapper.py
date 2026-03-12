@@ -93,19 +93,14 @@ class WorkerWrapper:
     self.func(*(self.args + args), **self.kwargs)
 
 
-def tpu_env_wrapper(
-    func: Callable[..., Any],
-    *args: Any,
-    world_size: int | None = None,
-    **kwargs: Any,
-) -> Any:
+def tpu_env_wrapper(func, args, *, world_size=None, **kwargs) -> Any:
   """Internal wrapper to initialize worker and run user function.
 
   Args:
     func: The user's callable to be executed by each distributed worker.
-    *args: Positional arguments to pass to `func`.
+    args: Positional arguments to pass to `func`.
     world_size: The number of TPU devices to use. If None, auto-detects based on
-      available hardware.
+      available hardware. This MUST be passed as a keyword argument.
     **kwargs: Keyword arguments to pass to `func`.
 
   Returns:

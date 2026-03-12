@@ -73,6 +73,14 @@ def worker_func(rank, world_size):
     raise ValueError("TORCH_TPU_SLICEBUILDER_ADDRESSES is empty")
 
 
+def dummy_worker_func():
+  pass
+
+
+def dummy_worker_func_with_arg(arg1):  # pylint: disable=unused-argument
+  pass
+
+
 class SingleHostTestLauncherTest(absltest.TestCase):
 
   def test_mandatory_variables(self):
@@ -82,8 +90,18 @@ class SingleHostTestLauncherTest(absltest.TestCase):
       )
 
     dist.torchrun(
-        singlehost_wrapper.tpu_env_wrapper(worker_func, world_size=WORLD_SIZE),
+        singlehost_wrapper.tpu_env_wrapper(
+            worker_func, (), world_size=WORLD_SIZE
+        ),
         nproc_per_node=8,
+    )
+
+  def test_tpu_env_wrapper_no_args(self):
+    singlehost_wrapper.tpu_env_wrapper(dummy_worker_func, (), world_size=8)
+
+  def test_tpu_env_wrapper_accepts_args_for_func(self):
+    singlehost_wrapper.tpu_env_wrapper(
+        dummy_worker_func_with_arg, (1,), world_size=8
     )
 
 

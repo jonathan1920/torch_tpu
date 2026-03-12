@@ -135,6 +135,7 @@ def _run_distributed_benchmark(
     singlehost_wrapper.prepare_tpu_environment()
     run_worker = singlehost_wrapper.tpu_env_wrapper(
         _run_torch_tpu_worker,
+        (),
         world_size=8,
     )
     dist.torchrun(
