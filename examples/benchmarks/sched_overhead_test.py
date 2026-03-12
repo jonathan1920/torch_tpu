@@ -169,7 +169,7 @@ class SchedOverheadTest(parameterized.TestCase):
     xprof_url = session.end_session_and_get_url()
 
     logging.info(
-        f"No H2D: Runfor sz={sz} took {time_per_step * 1000} ms per step,"
+        f"No H2D: Run for sz={sz} took {time_per_step * 1000} ms per step,"
         f" tracing time: {cpu_total_time * 1000} ms, XProf URL: {xprof_url}"
     )
 
