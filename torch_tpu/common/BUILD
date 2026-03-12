@@ -27,7 +27,7 @@ load(
 )
 load(
     "//shims/build_files:build_defs.bzl",
-    "add_filesystem_dependencies",
+    "add_internal_filesystem_dependencies",
 )
 
 package(
@@ -383,7 +383,6 @@ torch_tpu_cc_library(
         ":env_vars",
         ":error_utils",
         ":tier2_compilation_cache",
-    ] + add_filesystem_dependencies() + [
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
@@ -391,7 +390,9 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:env",
-    ],
+        # Keep this for GCS support.
+        "@xla//xla/tsl/platform/cloud:gcs_file_system",
+    ] + add_internal_filesystem_dependencies(),
 )
 
 torch_tpu_cc_test(

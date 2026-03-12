@@ -14,5 +14,5 @@
 
 """Shim for build_defs."""
 
-def add_filesystem_dependencies():
+def add_internal_filesystem_dependencies():
     return []
