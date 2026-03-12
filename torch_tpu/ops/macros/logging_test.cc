@@ -22,12 +22,11 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "absl/strings/str_cat.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/ops/ones.h"
 #include "c10/core/Device.h"
-#include "c10/core/Layout.h"
-#include "c10/core/MemoryFormat.h"
+#include "torch/headeronly/core/Layout.h"
+#include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
 
 namespace torch_tpu {
@@ -80,7 +79,7 @@ TEST(LogKernelArgs, LogsScalarType) {
 TEST(LogKernelArgs, LogsOptionalArrayRef) {
   std::ostringstream ss;
   LogKernelArgs(ss, {"arg1"}, c10::OptionalArrayRef<int64_t>({1, 2, 3}));
-  EXPECT_EQ(ss.str(), "arg1: [1, 2, 3]\n");
+  EXPECT_EQ(ss.str(), "arg1: <[1, 2, 3]>\n");
 }
 
 TEST(LogKernelArgs, LogsNullOptionalArrayRef) {
@@ -92,15 +91,15 @@ TEST(LogKernelArgs, LogsNullOptionalArrayRef) {
 TEST(LogKernelArgs, LogsOptionalTensor) {
   std::ostringstream ss;
   LogKernelArgs(ss, {"arg1"}, std::optional<at::Tensor>(at::ones(3)));
-  EXPECT_THAT(ss.str(), StartsWith("arg1: shape=[3]"));
+  EXPECT_THAT(ss.str(), StartsWith("arg1: <shape=[3]"));
 }
 
 TEST(LogKernelArgs, LogsVectorOfTensors) {
   std::ostringstream ss;
   LogKernelArgs(ss, {"arg1"},
                 std::vector<at::Tensor>({at::ones(3), at::ones(4)}));
-  EXPECT_THAT(ss.str(), AllOf(StartsWith("arg1: [\n  shape=[3]"),
-                              HasSubstr("\n  shape=[4]"), EndsWith("]\n")));
+  EXPECT_THAT(ss.str(), AllOf(StartsWith("arg1: [shape=[3]"),
+                              HasSubstr(", shape=[4]"), EndsWith("]\n")));
 }
 
 TEST(LogKernelArgs, LogsVectorOfInts) {
@@ -140,28 +139,6 @@ TEST(LogKernelArgs, LogsMemoryFormat) {
   std::ostringstream ss;
   LogKernelArgs(ss, {"arg1"}, at::MemoryFormat::Preserve);
   EXPECT_EQ(ss.str(), "arg1: Preserve\n");
-}
-
-class CachableInt {
- public:
-  CachableInt(int value) : value_(value) {}
-
-  [[nodiscard]] int value() const { return value_; }
-
- private:
-  int value_;
-};
-
-[[nodiscard]] std::string FormatParamCacheKey(const CachableInt& arg) {
-  return absl::StrCat(arg.value());
-}
-
-TEST(LogKernelArgs, LogsTypeWithFormatParamCacheKey) {
-  std::ostringstream ss;
-  // Even though CachableInt doesn't have operator<<() or FormatKernelArg(), it
-  // should still be loggable via FormatParamCacheKey().
-  LogKernelArgs(ss, {"arg1"}, CachableInt(123));
-  EXPECT_EQ(ss.str(), "arg1: 123\n");
 }
 
 TEST(LogKernelArgs, LogsVariadicArgs) {

@@ -51,8 +51,7 @@
 //      all argument types. If you get a compiler error that
 //      FormatParamCacheKey() cannot be resolved, add an overload of
 //      FormatParamCacheKey() for that type.
-//    - All argument types are "loggable". See the comments for
-//      FormatKernelArg() in logging.h for details.
+//    - All argument types are printable via ToString().
 //
 // See go/torch-tpu-op-easy for more details.
 //

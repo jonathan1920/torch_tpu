@@ -32,6 +32,35 @@
 
 namespace torch_tpu {
 
+std::string ToString(const c10d::AllgatherOptions& options) {
+  return absl::StrCat("{asyncOp=", options.asyncOp, "}");
+}
+
+std::string ToString(const c10d::BroadcastOptions& options) {
+  return absl::StrCat("{rootRank=", options.rootRank,
+                      ", rootTensor=", options.rootTensor,
+                      ", asyncOp=", options.asyncOp, "}");
+}
+
+std::string ToString(const c10d::ScatterOptions& options) {
+  return absl::StrCat("{rootRank=", options.rootRank,
+                      ", asyncOp=", options.asyncOp, "}");
+}
+
+std::string ToString(const c10d::ReduceScatterOptions& options) {
+  return absl::StrCat("{reduceOp=", ToString(options.reduceOp),
+                      ", asyncOp=", options.asyncOp, "}");
+}
+
+std::string ToString(const c10d::AllToAllOptions& options) {
+  return absl::StrCat("{asyncOp=", options.asyncOp, "}");
+}
+
+std::string ToString(const c10d::BarrierOptions& options) {
+  return absl::StrCat("{device_ids=[", absl::StrJoin(options.device_ids, ", "),
+                      "], asyncOp=", options.asyncOp, "}");
+}
+
 std::string ToString(c10d::ReduceOp::RedOpType reduce_op_type) {
   switch (reduce_op_type) {
     // go/keep-sorted start
@@ -70,17 +99,17 @@ std::string ToString(const at::Tensor& tensor, const std::string& name) {
     absl::StrAppend(&result, "undefined");
     return result;
   }
-  absl::StrAppend(                                               //
-      &result,                                                   //
-      "shape=[", absl::StrJoin(tensor.sizes(), ","), "], ",      //
-      "strides=[", absl::StrJoin(tensor.strides(), ","), "], ",  //
-      "numel=", tensor.numel(), ", ",                            //
-      "dtype=", tensor.scalar_type(), ", ",                      //
-      "device=", ToString(tensor.device()), ", ",                //
-      "is_contiguous=", tensor.is_contiguous(), ", ",            //
-      "is_cpu=", tensor.is_cpu(), ", ",                          //
-      "is_cuda=", tensor.is_cuda(), ", ",                        //
-      "is_meta=", tensor.is_meta(), ", ",                        //
+  absl::StrAppend(                                                //
+      &result,                                                    //
+      "shape=[", absl::StrJoin(tensor.sizes(), ", "), "], ",      //
+      "strides=[", absl::StrJoin(tensor.strides(), ", "), "], ",  //
+      "numel=", tensor.numel(), ", ",                             //
+      "dtype=", tensor.scalar_type(), ", ",                       //
+      "device=", ToString(tensor.device()), ", ",                 //
+      "is_contiguous=", tensor.is_contiguous(), ", ",             //
+      "is_cpu=", tensor.is_cpu(), ", ",                           //
+      "is_cuda=", tensor.is_cuda(), ", ",                         //
+      "is_meta=", tensor.is_meta(), ", ",                         //
       "storage_offset=", tensor.storage_offset(), ", ");
 
   if (tensor.defined() && tensor.storage().unsafeGetStorageImpl() != nullptr) {
