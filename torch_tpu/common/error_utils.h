@@ -815,15 +815,13 @@ class AnythingCompatibleWithThrow {
 //
 // Implementation note: we don't capture the caller's source location here
 // because TT_THROW_TT_ERROR_ already does that.
-#define TT_ASSIGN_OR_THROW_IMPL_2_(statusor, lhs, rexpr)                       \
-  TT_REMOVE_PARENS_(lhs) = [&] {                                               \
-    auto statusor = (rexpr);                                                   \
-    if (ABSL_PREDICT_FALSE(!statusor.ok())) {                                  \
-      TT_THROW_TT_ERROR_(statusor.status(),                                    \
-                         c10::SourceLocation({__func__, __FILE__, __LINE__})); \
-    }                                                                          \
-    return *std::move(statusor);                                               \
-  }()
+#define TT_ASSIGN_OR_THROW_IMPL_2_(statusor, lhs, rexpr)                     \
+  auto statusor = (rexpr);                                                   \
+  if (ABSL_PREDICT_FALSE(!statusor.ok())) {                                  \
+    TT_THROW_TT_ERROR_(statusor.status(),                                    \
+                       c10::SourceLocation({__func__, __FILE__, __LINE__})); \
+  }                                                                          \
+  TT_REMOVE_PARENS_(lhs) = (*std::move(statusor))
 
 // Implements TT_ASSIGN_OR_THROW(lhs, rexpr, error_expr).
 //
@@ -844,17 +842,15 @@ class AnythingCompatibleWithThrow {
 // Since error_expr doesn't have to reference the `_` variable, we include
 // a static_cast<void>(_) to avoid a "unused variable" warning from the C++
 // compiler.
-#define TT_ASSIGN_OR_THROW_IMPL_3_(statusor, lhs, rexpr, error_expr)           \
-  TT_REMOVE_PARENS_(lhs) = [&] {                                               \
-    auto statusor = (rexpr);                                                   \
-    if (ABSL_PREDICT_FALSE(!statusor.ok())) {                                  \
-      ::torch_tpu::StatusBuilderWithMessage _(std::move(statusor).status());   \
-      static_cast<void>(_);                                                    \
-      TT_THROW_TT_ERROR_(absl::Status((error_expr)),                           \
-                         c10::SourceLocation({__func__, __FILE__, __LINE__})); \
-    }                                                                          \
-    return *std::move(statusor);                                               \
-  }()
+#define TT_ASSIGN_OR_THROW_IMPL_3_(statusor, lhs, rexpr, error_expr)         \
+  auto statusor = (rexpr);                                                   \
+  if (ABSL_PREDICT_FALSE(!statusor.ok())) {                                  \
+    ::torch_tpu::StatusBuilderWithMessage _(std::move(statusor).status());   \
+    static_cast<void>(_);                                                    \
+    TT_THROW_TT_ERROR_(absl::Status((error_expr)),                           \
+                       c10::SourceLocation({__func__, __FILE__, __LINE__})); \
+  }                                                                          \
+  TT_REMOVE_PARENS_(lhs) = (*std::move(statusor))
 
 // If the input is parenthesized, removes the parentheses. Otherwise expands to
 // the input unchanged.

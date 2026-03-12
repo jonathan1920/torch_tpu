@@ -628,11 +628,11 @@ TEST(AssignOrThrow, EvaluatesExpressionOnceOnOk) {
 
 void AssignOrThrowExpression(int& count) {
   const absl::StatusOr<int> x = TT_ERROR(error::kInternal) << "my error";
-    TT_ASSIGN_OR_THROW((const int y), [&] {
-      ++count;
-      return x;
-    }());
-    static_cast<void>(y);
+  TT_ASSIGN_OR_THROW((const int y), [&] {
+    ++count;
+    return x;
+  }());
+  static_cast<void>(y);
 }
 
 TEST(AssignOrThrow, EvaluatesExpressionOnceOnError) {
@@ -640,6 +640,29 @@ TEST(AssignOrThrow, EvaluatesExpressionOnceOnError) {
   const auto test = [&] { AssignOrThrowExpression(count); };
   EXPECT_THAT(test, ThrowsTtError("my error"));
   EXPECT_EQ(count, 1);  // Incremented once.
+}
+
+class IntWrapper {
+ public:
+  explicit IntWrapper(int value) : value_(value) {}
+  absl::StatusOr<int&> value() { return value_; }
+
+ private:
+  int value_;
+};
+
+TEST(AssignOrThrow, AssigningToReferenceSucceeds) {
+  IntWrapper x(1);
+  TT_ASSIGN_OR_THROW(int& y, x.value());
+  EXPECT_EQ(y, 1);
+  EXPECT_EQ(&y, &x.value().value());
+}
+
+TEST(AssignOrThrow, AssigningToReferenceWithOverrideSucceeds) {
+  IntWrapper x(1);
+  TT_ASSIGN_OR_THROW(int& y, x.value(), _.SetOverride() << "error");
+  EXPECT_EQ(y, 1);
+  EXPECT_EQ(&y, &x.value().value());
 }
 
 // Tests for TT_RETURN_IF_ERROR.
