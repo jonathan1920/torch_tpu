@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end")
+load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
@@ -33,6 +33,34 @@ pytype_strict_library(
     ],
     deps = [
         ":_profiler_backend",
+        "//shims/absl_py/logging",
+    ],
+)
+
+# This library is not used directly, but is needed for go/cclean and Clangd.
+# Without this rule, cclean complains that profiler.cc has no rule depending on it.
+torch_tpu_cc_library(
+    name = "profiler_cc",
+    srcs = [
+        "profiler.cc",
+    ],
+    hdrs = [
+        "profiler.h",
+    ],
+    deps = [
+        "//shims/pybind11",
+        "//torch_tpu/common:error_utils",
+        "@com_google_absl//absl/log:absl_log",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/lib:profiler_session",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@xla//xla/backends/profiler/cpu:host_tracer",
+        "@xla//xla/backends/profiler/cpu:python_tracer",
+        "@xla//xla/backends/profiler/tpu:tpu_tracer",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform/cloud:gcs_file_system",
+        "@xla//xla/tsl/profiler/rpc:profiler_server_impl",
     ],
 )
 
@@ -50,12 +78,18 @@ pybind_extension(
     ],
     wrap_py_init = True,
     deps = [
+        "//torch_tpu/common:error_utils",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@tsl//tsl/platform:path",
         "@tsl//tsl/profiler/lib:profiler_session",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@xla//xla/backends/profiler/cpu:host_tracer",
         "@xla//xla/backends/profiler/cpu:python_tracer",
         "@xla//xla/backends/profiler/tpu:tpu_tracer",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform/cloud:gcs_file_system",
         "@xla//xla/tsl/profiler/rpc:profiler_server_impl",
     ],
 )

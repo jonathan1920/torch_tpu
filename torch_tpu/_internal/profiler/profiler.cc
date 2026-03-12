@@ -16,14 +16,15 @@
 
 #include "torch_tpu/_internal/profiler/profiler.h"
 
-#include <fstream>
-#include <ios>
-#include <iostream>
 #include <memory>
 #include <string>
 
-#include "pybind11/pybind11.h"
+#include "absl/log/absl_log.h"
+#include "torch_tpu/common/error_utils.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/profiler/rpc/profiler_server.h"
+#include "tsl/platform/path.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -72,25 +73,48 @@ void StartTrace(const std::string& logdir, py::object options_obj) {
   if (!logdir.empty()) {
     opts.set_repository_path(logdir);
   }
-
+  ABSL_LOG(INFO) << "Starting trace, logdir: " << logdir;
   // If a session is already running, delete it before starting a new one.
   delete global_session;
   // Create returns a unique_ptr, we release it to get the raw pointer.
   global_session = tsl::ProfilerSession::Create(opts).release();
+  if (global_session) {
+    TT_THROW_IF_ERROR(global_session->Status())
+        << "failed to start profiler session";
+  }
 }
 
 void StopTrace(const std::string& filename) {
   if (global_session) {
     tensorflow::profiler::XSpace xspace;
+    TT_THROW_IF_ERROR(global_session->CollectData(&xspace))
+        << "failed to collect trace data";
+    ABSL_LOG(INFO) << "Collected " << xspace.planes_size() << " planes.";
+    tsl::Env* env = tsl::Env::Default();
 
-    // (void) casts away the nodiscard warning
-    (void)global_session->CollectData(&xspace);
-
-    std::ofstream outfile(filename, std::ios::out | std::ios::binary);
-    if (outfile.good()) {
-      xspace.SerializeToOstream(&outfile);
-      outfile.close();
+    // Ensure the parent directory exists
+    std::string dirname = std::string(tsl::io::Dirname(filename));
+    if (!dirname.empty()) {
+      TT_THROW_IF_ERROR(env->RecursivelyCreateDir(dirname))
+          << "failed to create directory: " << dirname;
     }
+
+    std::unique_ptr<tsl::WritableFile> outfile;
+    TT_THROW_IF_ERROR(env->NewWritableFile(filename, &outfile))
+        << "failed to create file: " << filename;
+
+    // Serialize the collected XSpace data to a string.
+    std::string serialized_proto;
+    TT_CHECK_THROW(xspace.SerializeToString(&serialized_proto),
+                   error::kInternal)
+        << "failed to serialize profile data";
+    ABSL_LOG(INFO) << "Writing " << serialized_proto.size() << " bytes to "
+                   << filename;
+
+    // Write the serialized XSpace to the file.
+    TT_THROW_IF_ERROR(outfile->Append(serialized_proto))
+        << "failed to write data to " << filename;
+    TT_THROW_IF_ERROR(outfile->Close()) << "failed to close file: " << filename;
     delete global_session;
     global_session = nullptr;
   }

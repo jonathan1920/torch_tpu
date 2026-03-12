@@ -22,6 +22,7 @@ import socket
 import threading
 from typing import Optional
 
+from absl import logging
 from torch_tpu._internal.profiler._profiler_backend import start_profiler_server
 from torch_tpu._internal.profiler._profiler_backend import start_trace as start_trace_backend
 from torch_tpu._internal.profiler._profiler_backend import stop_profiler_server
@@ -162,12 +163,14 @@ def stop_trace() -> None:
     plugin_dir = os.path.join(
         _profile_state.log_dir, 'plugins', 'profile', timestamp
     )
-    os.makedirs(plugin_dir, exist_ok=True)
     hostname = socket.gethostname() or 'localhost'
     final_file = os.path.join(plugin_dir, f'{hostname}.xplane.pb')
 
-    stop_trace_backend(final_file)
-    _profile_state.reset()
+    try:
+      stop_trace_backend(final_file)
+      logging.info('profiler saved in %s', final_file)
+    finally:
+      _profile_state.reset()
 
 
 @contextmanager
