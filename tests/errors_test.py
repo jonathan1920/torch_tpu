@@ -1112,11 +1112,11 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
       with et.assert_raises_message(
           RuntimeError,
           tpu=(
-              "embedding_bag_forward_only(): expected the indices tensor"
-              " shape to be static, got 1 dynamic dimension within shape [dyn]"
-              " - TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
-              " have a PjRtBuffer to copy from."
+              "embedding_bag_forward_only(): expected all dimensions of the"
+              " indices tensor to be static, got 1 dynamic dimension in the"
+              " underlying tensor behind a view of shape [100]"
           ),
+          message_reviewed_by="wan",
       ):
         out = torch.nn.functional.embedding_bag(indices_, weight)
         # cpu() is needed because the error is triggered inside the op builder.
@@ -1128,15 +1128,14 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
       # Mark the dimension 1 of `weight` as dynamic.
       dynamism.mark_dynamic(weight_, 1, 5, 20)
 
-      # TODO: Error eagerly, i.e. without having to call the op builder.
       with et.assert_raises_message(
           RuntimeError,
           tpu=(
-              "embedding_bag_forward_only(): expected the weight tensor shape"
-              " to be static, got 1 dynamic dimension within shape [10, dyn] -"
-              " TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
-              " have a PjRtBuffer to copy from."
+              "embedding_bag_forward_only(): expected all dimensions of the"
+              " weight tensor to be static, got 1 dynamic dimension within"
+              " shape [10, 10 (up to 20)]"
           ),
+          message_reviewed_by="wan",
       ):
         out = torch.nn.functional.embedding_bag(indices, weight_)
         # cpu() is needed because the error is triggered inside the op builder.
@@ -1149,15 +1148,14 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
       # Mark the dimension 1 of `offsets` as dynamic.
       dynamism.mark_dynamic(offsets_, 0, 5, 20)
 
-      # TODO: Error eagerly, i.e. without having to call the op builder.
       with et.assert_raises_message(
           RuntimeError,
           tpu=(
-              "embedding_bag_forward_only(): expected the offsets tensor"
-              " shape to be static, got 1 dynamic dimension within shape [dyn]"
-              " - TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
-              " have a PjRtBuffer to copy from."
+              "embedding_bag_forward_only(): expected all dimensions of the"
+              " offsets tensor to be static, got 1 dynamic dimension within"
+              " shape [10 (up to 20)]"
           ),
+          message_reviewed_by="wan",
       ):
         out = torch.nn.functional.embedding_bag(indices_, weight, offsets_)
         # cpu() is needed because the error is triggered inside the op builder.
@@ -1244,6 +1242,24 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
       torch.ops.aten.elu_backward(
           grad_output, alpha, scale, input_scale, is_result, self_or_result
       )
+
+  # Why do we run this test only on TPU (and not on CPU)?
+  # The notion of 'dynamic dimensions' does not exist in eager PyTorch.
+  def test_fft_r2c_dynamic_shape(self):
+    inp = torch.ones(10, device=et.device(), dtype=torch.float32)
+
+    # Mark the dimension 0 as dynamic.
+    dynamism.mark_dynamic(inp, 0, 5, 20)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "fft_r2c(): expected all dimensions of the input tensor to be"
+            " static, got 1 dynamic dimension within shape [10 (up to 20)]"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.fft.rfftn(inp)
 
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):

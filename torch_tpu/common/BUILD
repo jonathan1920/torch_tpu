@@ -120,6 +120,24 @@ torch_tpu_cc_library(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "static_shape_check",
+    srcs = ["static_shape_check.cc"],
+    hdrs = ["static_shape_check.h"],
+    deps = [
+        ":error_utils",
+        ":utils",
+        "//shims/torch:aten_headers",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/ops:op_builder_utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 torch_tpu_cc_test(
     name = "error_utils_test",
     srcs = ["error_utils_test.cc"],

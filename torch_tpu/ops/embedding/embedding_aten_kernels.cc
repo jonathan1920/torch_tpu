@@ -37,6 +37,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/static_shape_check.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/embedding/embedding.h"
@@ -106,6 +107,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> AtenEmbeddingBag(
        per_sample_weights, include_last_offset, padding_idx),
       {
         TT_THROW_IF_ERROR(CheckWeightType(weight));
+        TT_THROW_IF_ERROR(CheckStaticShape(weight, "weight"));
+        TT_THROW_IF_ERROR(CheckStaticShape(indices, "indices"));
+        TT_THROW_IF_ERROR(CheckStaticShape(offsets, "offsets"));
 
         TT_ASSIGN_OR_THROW(const auto weight_dtype,
                            ConvertTo<mlir::ElementType>(weight.scalar_type()));

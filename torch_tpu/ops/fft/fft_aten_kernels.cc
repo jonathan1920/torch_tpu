@@ -34,6 +34,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/static_shape_check.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -81,8 +82,7 @@ absl::StatusOr<mlir::MlirOp> BuildFftR2cShlo(mlir::MlirOp input,
   // NOTE: This implementation is not dynamism safe. It currently uses static
   // shape indices, more work is needed to determine how this op supports
   // bounded dynamic values.
-  TT_RET_CHECK(input_type.hasStaticShape(), error::kUnimplemented)
-      << "FFT does not support bounded dynamism";
+  TT_RETURN_IF_ERROR(CheckStaticShape(input_type, "input"));
   auto input_shape = input_type.getShape();
   const int64_t num_dims = input_type.getRank();
   const auto float_type = input_type.getElementType();
@@ -166,6 +166,8 @@ absl::StatusOr<mlir::MlirOp> BuildFftR2cShlo(mlir::MlirOp input,
 at::Tensor AtenFftR2c(const at::Tensor& self, at::IntArrayRef dim,
                       int64_t normalization, bool onesided) {
   TT_KERNEL(OpName::kFftR2c, _, (self, dim, normalization, onesided), {
+    TT_THROW_IF_ERROR(CheckStaticShape(self, "input"));
+
     auto normalized_dims = GetNormalizedDims(self, dim);
     auto out_sizes = CopyIntVector(self.sizes());
     if (onesided) {
