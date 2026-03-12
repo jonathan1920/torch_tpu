@@ -12,21 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
-load("//shims/build_defs_testing:bzl_library.bzl", "bzl_library")
+"""Stub for the pybind11 extension."""
 
-package(default_visibility = PACKAGE_DEFAULT_VISIBILITY)
+load("@xla//third_party/py/rules_pywrap:pywrap.default.bzl", _pybind_extension = "pybind_extension")
 
-cc_library(
-    name = "pybind11",
-)
-
-bzl_library(
-    name = "pybind_bzl",
-    srcs = ["pybind.bzl"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",
-    ],
-)
+def pybind_extension(name, **kwargs):
+    # On OSS we have not needed any python dependencies for these. If that
+    # changes we will need to incorporate these dependencies.
+    kwargs.pop("py_deps", None)
+    _pybind_extension(name = name, **kwargs)

@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@xla//third_party/py/rules_pywrap:pywrap.default.bzl", "pybind_extension")
 load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
+load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -71,8 +71,9 @@ pybind_extension(
     common_lib_packages = [
         "torch_tpu/common",
     ],
-    # The pybind import test doesn't work with "third_party/py/torch/torch/extension.h"
-    # for some reason; complains about missing symbol pybind1::detail::type_caster::at::Tensor[...]
+    py_deps = [
+        "//shims/torch:pytorch",
+    ],
     wrap_py_init = True,
     deps = [
         "//shims/torch:aten_headers",
