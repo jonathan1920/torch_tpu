@@ -763,10 +763,13 @@ absl::Status DetectAndAnnotateBoundedDynamism(
 absl::Status PropagateBoundedDynamism(absl::Span<Traversal> traversals) {
   // Initialize context outside of loop to avoid the cost of reinitializing
   // dialects used in each iteration.
-  auto context = MakeMlirContext();
+  std::unique_ptr<mlir::MLIRContext> context;
   for (auto& traversal : traversals) {
     if (!traversal.is_bounded_dynamic()) {
       continue;
+    }
+    if (!context) {
+      context = MakeMlirContext();
     }
     ABSL_VLOG(1) << "[PropagateBoundedDynamism] Traversal: "
                  << traversal.DebugString();
