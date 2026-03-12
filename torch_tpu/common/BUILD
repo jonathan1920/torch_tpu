@@ -415,7 +415,10 @@ torch_tpu_cc_library(
 
 torch_tpu_cc_test(
     name = "error_utils_cpp_context_test",
-    srcs = ["error_utils_cpp_context_test.cc"],
+    srcs = [
+        "error_utils_cpp_context_test.cc",
+        "error_utils_test_helper.h",
+    ],
     tags = [
         "oss_ready_cpu",
     ],

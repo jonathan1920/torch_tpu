@@ -155,35 +155,28 @@ std::string GetRootOpNamePayload(const absl::Status& status) {
 }
 
 // Translates paths like
-// blaze-out/k8-fastbuild/bin/third_party/torch_tpu/ops/_virtual_includes/op_builder_utils/torch_tpu/ops/op_builder_utils.h
+// bazel-out/k8-fastbuild/bin/torch_tpu/ops/_virtual_includes/op_builder_utils/torch_tpu/ops/op_builder_utils.h
 // to torch_tpu/ops/op_builder_utils.h.
 //
-// Usually paths in #include "..." are relative to the g3 root. However,
-// torch_tpu uses header paths relative to the third_party/ directory. For
-// this to work, the build system creates symlinks in blaze-out/ that
-// look like the above path and passes -I flags to the C++ compiler. In this
-// set-up, the __FILE__ macro inside a header will expand to a path in the
-// above format.
+// In some situations the build system uses a combination of -I and symlinks to
+// allow the use of shorter paths to header files. In these cases, the __FILE__
+// macro inside a header will expand to a path similar to the above format.
 //
-// We normalize the path to be relative to the g3 root so that it's easier for
-// developers to find the file.
-static std::string NormalizeFilePath(std::string_view file) {
-  // After _virtual_includes/<lib_name>/, we have the path relative to
-  // third_party/.
-  const std::string_view kVirtualIncludes = "/_virtual_includes/";
-  const auto pos = file.find(kVirtualIncludes);
-  if (pos == std::string::npos) {  // Doesn't need normalization.
+// To make it easier for developers to find the file in different build
+// environments, we normalize the header location to be relative to the repo
+// root instead.
+std::string NormalizeRepoFilePath(std::string_view file) {
+  // We assume that the last instance of torch_tpu is the repo root; this will
+  // fail if there is ever a torch_tpu subdirectory nested within the repo root,
+  // but this assumption is less likely than the possibility that the repo will
+  // exist in a directory that has torch_tpu somewhere else (e.g. when the
+  // header is somewhere under bazel-out/ or bazel-gen/).
+  const std::string_view kTorchTpuDir = "/torch_tpu/";
+  const auto pos = file.rfind(kTorchTpuDir);
+  if (pos == std::string::npos) {
     return std::string(file);
   }
-  // E.g. op_builder_utils/torch_tpu/ops/op_builder_utils.h
-  const auto virtual_path = file.substr(pos + kVirtualIncludes.size());
-  const auto first_slash = virtual_path.find('/');
-  if (first_slash == std::string::npos) {  // No slash, return the original.
-    return std::string(file);
-  }
-  // E.g. torch_tpu/ops/op_builder_utils.h
-  const auto relative_path = virtual_path.substr(first_slash + 1);
-  return absl::StrCat("third_party/", relative_path);
+  return std::string(file.substr(pos + 1));
 }
 
 absl::Status MaybeAddCppSourceLoc(absl::Status status,
@@ -191,7 +184,7 @@ absl::Status MaybeAddCppSourceLoc(absl::Status status,
                                   const std::string_view function) {
   if (!CppStackTracesEnabled() || status.ok()) return status;
 
-  const std::string normalized_path = NormalizeFilePath(file);
+  const std::string normalized_path = NormalizeRepoFilePath(file);
   auto old_context = status.GetPayload(kCppErrorTraceUrl);
   absl::Cord new_context(
       absl::StrCat(normalized_path, ":", line, ": ", function, "()\n"));

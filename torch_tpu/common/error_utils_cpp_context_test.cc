@@ -22,6 +22,7 @@
 
 #include <string_view>
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -30,11 +31,13 @@
 #include "absl/types/optional.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/status_builder.h"
+#include "torch_tpu/common/error_utils_test_helper.h"
 
 namespace torch_tpu {
 namespace {
 
 using internal::kCppErrorTraceUrl;
+using internal::NormalizeRepoFilePath;
 
 // Per
 // https://docs.pytorch.org/docs/stable/debugging_environment_variables.html,
@@ -49,6 +52,46 @@ absl::Status MakeTtError(absl::StatusCode code, std::string_view message) {
 // The line number of the call to TT_ERROR() above.
 const int kTtErrorLine = __LINE__ - 3;
 
+TEST(NormalizeRepoFilePath, StripsPrefix) {
+  EXPECT_EQ(NormalizeRepoFilePath("torch_tpu/foo.cc"), "torch_tpu/foo.cc");
+  EXPECT_EQ(
+      NormalizeRepoFilePath("bazel-out/k8-fastbuild/bin/torch_tpu/foo.cc"),
+      "torch_tpu/foo.cc");
+  EXPECT_EQ(NormalizeRepoFilePath("bazel-out/k8-fastbuild/bin/"
+                                  "torch_tpu/ops/_virtual_includes/"
+                                  "op_builder_utils/torch_tpu/ops/"
+                                  "op_builder_utils.h"),
+            "torch_tpu/ops/op_builder_utils.h");
+}
+
+TEST(TtError, HeaderPathNormalization) {
+  const absl::Status error = MakeErrorFromHeader();
+  const absl::optional<absl::Cord> cpp_context =
+      error.GetPayload(kCppErrorTraceUrl);
+  ASSERT_TRUE(cpp_context.has_value());
+
+  std::string trace = std::string(cpp_context.value());
+
+  // Verify it contains the normalized path to the header.
+  EXPECT_THAT(trace,
+              testing::HasSubstr("torch_tpu/common/error_utils_test_helper.h"));
+
+  // Parse the path from the trace.
+  // Trace format: path:line: function()\n...
+  size_t colon_pos = trace.find(':');
+  ASSERT_NE(colon_pos, std::string::npos);
+  std::string path = trace.substr(0, colon_pos);
+
+  // Verify first segment does not end with -out.
+  size_t slash_pos = path.find('/');
+  std::string first_segment =
+      (slash_pos == std::string::npos) ? path : path.substr(0, slash_pos);
+  EXPECT_THAT(first_segment, testing::Not(testing::EndsWith("-out")));
+
+  // Verify no virtual includes.
+  EXPECT_THAT(trace, testing::Not(testing::HasSubstr("_virtual_includes")));
+}
+
 TEST(TtError, ReturnsErrorWithCppContext) {
   const absl::Status error = MakeTtError(error::kInternal, "message 42");
   EXPECT_EQ(error.code(), error::kInternal);
@@ -56,8 +99,8 @@ TEST(TtError, ReturnsErrorWithCppContext) {
   const absl::optional<absl::Cord> cpp_context =
       error.GetPayload(kCppErrorTraceUrl);
   ASSERT_TRUE(cpp_context.has_value());
-  const auto expected_context =
-      absl::StrCat(__FILE__, ":", kTtErrorLine, ": MakeTtError()\n");
+  const auto expected_context = absl::StrCat(
+      NormalizeRepoFilePath(__FILE__), ":", kTtErrorLine, ": MakeTtError()\n");
   EXPECT_EQ(cpp_context.value(), expected_context);
 }
 
@@ -76,7 +119,8 @@ TEST(TtRetCheck, ReturnsErrorWithCppContext) {
       error.GetPayload(kCppErrorTraceUrl);
   ASSERT_TRUE(cpp_context.has_value());
   const auto expected_context =
-      absl::StrCat(__FILE__, ":", kTtRetCheckLine, ": TtRetCheckFail()\n");
+      absl::StrCat(NormalizeRepoFilePath(__FILE__), ":", kTtRetCheckLine,
+                   ": TtRetCheckFail()\n");
   EXPECT_EQ(cpp_context.value(), expected_context);
 }
 
@@ -106,8 +150,9 @@ TEST(TtAssignOrReturnTwoArgs, AppendsToCppContext) {
       error.GetPayload(kCppErrorTraceUrl);
   ASSERT_TRUE(cpp_context.has_value());
   const auto expected_context = absl::StrCat(
-      __FILE__, ":", kTtRetCheckStatusOrLine, ": TtRetCheckFailStatusOr()\n",
-      __FILE__, ":", kTtAssignOrReturnLine, ": TtAssignOrReturnFail()\n");
+      NormalizeRepoFilePath(__FILE__), ":", kTtRetCheckStatusOrLine,
+      ": TtRetCheckFailStatusOr()\n", NormalizeRepoFilePath(__FILE__), ":",
+      kTtAssignOrReturnLine, ": TtAssignOrReturnFail()\n");
   EXPECT_EQ(cpp_context.value(), expected_context);
 }
 
@@ -130,8 +175,9 @@ TEST(TtAssignOrReturnThreeArgs, AppendsToCppContext) {
       error.GetPayload(kCppErrorTraceUrl);
   ASSERT_TRUE(cpp_context.has_value());
   const auto expected_context = absl::StrCat(
-      __FILE__, ":", kTtRetCheckStatusOrLine, ": TtRetCheckFailStatusOr()\n",
-      __FILE__, ":", kTtAssignOrReturnLine3, ": TtAssignOrReturnFail3()\n");
+      NormalizeRepoFilePath(__FILE__), ":", kTtRetCheckStatusOrLine,
+      ": TtRetCheckFailStatusOr()\n", NormalizeRepoFilePath(__FILE__), ":",
+      kTtAssignOrReturnLine3, ": TtAssignOrReturnFail3()\n");
   EXPECT_EQ(cpp_context.value(), expected_context);
 }
 
@@ -151,9 +197,11 @@ TEST(TtReturnIfError, AppendsToCppContext) {
   const absl::optional<absl::Cord> cpp_context =
       error.GetPayload(kCppErrorTraceUrl);
   ASSERT_TRUE(cpp_context.has_value());
-  const auto expected_context = absl::StrCat(
-      __FILE__, ":", kTtRetCheckLine, ": TtRetCheckFail()\n",  //
-      __FILE__, ":", kTtReturnIfErrorLine, ": TtReturnIfErrorFail()\n");
+  const auto expected_context =
+      absl::StrCat(NormalizeRepoFilePath(__FILE__), ":", kTtRetCheckLine,
+                   ": TtRetCheckFail()\n",  //
+                   NormalizeRepoFilePath(__FILE__), ":", kTtReturnIfErrorLine,
+                   ": TtReturnIfErrorFail()\n");
   EXPECT_EQ(cpp_context.value(), expected_context);
 }
 
