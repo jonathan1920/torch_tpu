@@ -14,32 +14,18 @@
 
 """Micro benchmarks for measuring TorchTPU scheduling overheads."""
 
-from collections.abc import Callable, Sequence
-from dataclasses import asdict, dataclass
-import json
-import os
-import pprint
+from collections.abc import Sequence
 import sys
 import time
-from typing import Any, TypeAlias
 
 from absl import flags
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
-import flax
-from flax import nnx
-import jax
-import jax.numpy as jnp
 import torch
 import torch._inductor.config as inductor_config
-from torch.nn import attention
-from torch.utils import tensorboard
 from torch_tpu import api
-from torch_tpu._internal import compile as torch_tpu_compile
-from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
-from torch_tpu._internal.utils import benchmarking
 
 from torch_tpu._internal.shims.xprof import traceme
 from torch_tpu._internal.shims.xprof import xprof_session
@@ -89,8 +75,11 @@ def sync_device(
 
 class SchedOverheadTest(parameterized.TestCase):
 
-  def setUp(self):
-    super().setUp()
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+
+    cls.logs = []
 
     if _DEVICE.value in ("cuda", "xla_cuda") and not torch.cuda.is_available():
       print(
@@ -114,32 +103,35 @@ class SchedOverheadTest(parameterized.TestCase):
     torch.manual_seed(seed)
     logging.info("Using absltest.FLAGS.test_random_seed: %d", seed)
 
-  def tearDown(self):
-    super().tearDown()
+  @classmethod
+  def tearDownClass(cls):
+    super().tearDownClass()
+    for log in cls.logs:
+      logging.info(log)
 
   @parameterized.parameters((1), (256), (8192))
   def test_matmul_with_h2d(self, sz):
     device = get_torch_device()
     x = torch.randn([sz, sz], device=device)
     w = torch.randn([sz, sz], device=device)
-    for i in range(_NUM_WARMUP_STEPS.value):
+    for _ in range(_NUM_WARMUP_STEPS.value):
       y = x @ w
-      y_cpu = y.to("cpu")
+      unused_y_cpu = y.to("cpu")
 
     session = xprof_session.XprofSession()
     session.start_session(host_trace_level=3, enable_python_tracer=True)
     cpu_total_time = 0
     loop_start_time = time.time()
-    for i in range(_NUM_STEPS.value):
+    for _ in range(_NUM_STEPS.value):
       with traceme.TraceMe("Eval"):
         cpu_start_time = time.time()
         y = x @ w
         cpu_total_time = time.time() - cpu_start_time
-        y_cpu = y.to("cpu")
+        unused_y_cpu = y.to("cpu")
     time_per_step = (time.time() - loop_start_time) / _NUM_STEPS.value
     xprof_url = session.end_session_and_get_url()
 
-    logging.info(
+    self.logs.append(
         f"H2D: Run for sz={sz} took {time_per_step * 1000} ms per step, tracing"
         f" time: {cpu_total_time * 1000} ms, XProf URL: {xprof_url}"
     )
@@ -149,7 +141,7 @@ class SchedOverheadTest(parameterized.TestCase):
     device = get_torch_device()
     x = torch.randn([sz, sz], device=device)
     w = torch.randn([sz, sz], device=device)
-    for i in range(_NUM_WARMUP_STEPS.value):
+    for _ in range(_NUM_WARMUP_STEPS.value):
       y = x @ w
       sync_device(y, wait=False)
     sync_device(y, wait=True)
@@ -158,7 +150,7 @@ class SchedOverheadTest(parameterized.TestCase):
     session.start_session(host_trace_level=3, enable_python_tracer=True)
     cpu_total_time = 0
     loop_start_time = time.time()
-    for i in range(_NUM_STEPS.value):
+    for _ in range(_NUM_STEPS.value):
       with traceme.TraceMe("Eval"):
         cpu_start_time = time.time()
         y = x @ w
@@ -168,7 +160,7 @@ class SchedOverheadTest(parameterized.TestCase):
     time_per_step = (time.time() - loop_start_time) / _NUM_STEPS.value
     xprof_url = session.end_session_and_get_url()
 
-    logging.info(
+    self.logs.append(
         f"No H2D: Run for sz={sz} took {time_per_step * 1000} ms per step,"
         f" tracing time: {cpu_total_time * 1000} ms, XProf URL: {xprof_url}"
     )
