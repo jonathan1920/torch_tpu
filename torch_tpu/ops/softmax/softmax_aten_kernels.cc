@@ -99,6 +99,40 @@ absl::StatusOr<at::Tensor&> SoftmaxInternalOut(const at::Tensor& self,
   return out;
 }
 
+absl::StatusOr<DeviceBufferRef> SoftmaxBackwardDataInternalOut(
+    const at::Tensor& grad_output, const at::Tensor& output, int64_t dim,
+    at::ScalarType input_dtype, SoftmaxMode softmax_mode,
+    OpParamCacheKeys param_keys) {
+  const auto precision = PrecisionContext::GetPrecision();
+  TT_ASSIGN_OR_RETURN(param_keys,
+                      *OpParamCacheKeys::Builder(std::move(param_keys))
+                           .SetParam("precision", precision));
+
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=input checked during forward
+                 // pass. It is guaranteed to be floating point in the
+                 // backward pass.
+      c10::isFloatingType(input_dtype), error::kUnimplemented)
+      << "not implemented for input type " << ToString(input_dtype);
+  TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=all dtypes are supported.
+      const auto input_mlir_type, ConvertTo<mlir::ElementType>(input_dtype));
+
+  auto op_name = softmax_mode == SoftmaxMode::kSoftmax
+                     ? OpName::kSoftmaxBackwardDataOut
+                     : OpName::kLogSoftmaxBackwardDataOut;
+
+  TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=errors should be covered
+                        // inside.
+      auto result,
+      (DispatchOp<2>(
+          op_name,
+          GetSoftmaxBackwardDataFunctional(dim, softmax_mode, precision),
+          {grad_output, output},
+          {.out_dtype = input_mlir_type,
+           .out_dims = output.sizes(),
+           .op_param_cache_keys = std::move(param_keys)})));
+  return result;
+}
+
 }  // namespace
 
 at::Tensor& AtenSoftmaxOut(const at::Tensor& self, int64_t dim,
@@ -126,77 +160,36 @@ at::Tensor& AtenSoftmaxBackwardDataOut(const at::Tensor& grad_output,
                                        const at::Tensor& output, int64_t dim,
                                        at::ScalarType input_dtype,
                                        at::Tensor& grad_input) {
-  TT_KERNEL(
-      OpName::kSoftmaxBackwardDataOut, param_keys,
-      (grad_output, output, dim, input_dtype, grad_input), {
-        const auto precision = PrecisionContext::GetPrecision();
-        auto param_keys_or = *OpParamCacheKeys::Builder(std::move(param_keys))
-                                  .SetParam("precision", precision);
-        TT_THROW_IF_ERROR(param_keys_or.status());
-        auto param_keys = std::move(param_keys_or).value();
-
-        TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=input checked during forward
-                         // pass. It is guaranteed to be floating point in the
-                         // backward pass.
-            c10::isFloatingType(input_dtype), error::kUnimplemented)
-            << "not implemented for input type" << ToString(input_dtype);
-        TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=all dtypes are supported.
-            const auto input_mlir_type,
-            ConvertTo<mlir::ElementType>(input_dtype));
-        TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=errors should be covered
-                             // inside.
-            auto result,
-            (DispatchOp<2>(OpName::kSoftmaxBackwardDataOut,
-                           GetSoftmaxBackwardDataFunctional(
-                               dim, SoftmaxMode::kSoftmax, precision),
-                           {grad_output, output},
-                           {.out_dtype = input_mlir_type,
-                            .out_dims = output.sizes(),
-                            .op_param_cache_keys = std::move(param_keys)})));
-        TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=errors should be covered
-                            // inside.
-            AssignBufferToAtTensor(std::move(result), grad_input));
-        return grad_input;
-      });
+  TT_KERNEL(OpName::kSoftmaxBackwardDataOut, param_keys,
+            (grad_output, output, dim, input_dtype, grad_input), {
+              TT_ASSIGN_OR_THROW(
+                  DeviceBufferRef result,
+                  SoftmaxBackwardDataInternalOut(
+                      grad_output, output, dim, input_dtype,
+                      SoftmaxMode::kSoftmax, std::move(param_keys)));
+              TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=errors should be
+                                  // covered inside.
+                  AssignBufferToAtTensor(std::move(result), grad_input));
+              return grad_input;
+            });
 }
 
 at::Tensor& AtenLogSoftmaxBackwardDataOut(const at::Tensor& grad_output,
                                           const at::Tensor& output, int64_t dim,
                                           at::ScalarType input_dtype,
                                           at::Tensor& grad_input) {
-  TT_KERNEL(
-      OpName::kLogSoftmaxBackwardDataOut, param_keys,
-      (grad_output, output, dim, input_dtype, grad_input), {
-        const auto precision = PrecisionContext::GetPrecision();
-        auto param_keys_or = *OpParamCacheKeys::Builder(std::move(param_keys))
-                                  .SetParam("precision", precision);
-        TT_THROW_IF_ERROR(param_keys_or.status());
-        auto param_keys = std::move(param_keys_or).value();
-
-        TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=input checked during forward
-                         // pass. It is guaranteed to be floating point in the
-                         // backward pass.
-            c10::isFloatingType(input_dtype), error::kUnimplemented)
-            << "not implemented for input type " << ToString(input_dtype);
-        TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=all dtypes are supported.
-            const auto input_mlir_type,
-            ConvertTo<mlir::ElementType>(input_dtype));
-        TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=errors should be covered
-                             // inside.
-            auto result,
-            (DispatchOp<2>(OpName::kLogSoftmaxBackwardDataOut,
-                           GetSoftmaxBackwardDataFunctional(
-                               dim, SoftmaxMode::kLogSoftmax, precision),
-                           {grad_output, output},
-                           {.out_dtype = input_mlir_type,
-                            .out_dims = output.sizes(),
-                            .op_param_cache_keys = std::move(param_keys)})));
-
-        TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=errors should be covered
-                            // inside.
-            AssignBufferToAtTensor(std::move(result), grad_input));
-        return grad_input;
-      });
+  TT_KERNEL(OpName::kLogSoftmaxBackwardDataOut, param_keys,
+            (grad_output, output, dim, input_dtype, grad_input), {
+              TT_ASSIGN_OR_THROW(
+                  DeviceBufferRef result,
+                  SoftmaxBackwardDataInternalOut(
+                      grad_output, output, dim, input_dtype,
+                      SoftmaxMode::kLogSoftmax, std::move(param_keys)));
+              TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=errors should be
+                                  // covered inside.
+                  AssignBufferToAtTensor(std::move(result), grad_input));
+              return grad_input;
+            });
 }
 
 }  // namespace torch_tpu

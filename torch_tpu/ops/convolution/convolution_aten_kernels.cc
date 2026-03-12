@@ -321,6 +321,115 @@ absl::StatusOr<at::ScalarType> GetPromotedTypeBackward(
       grad_output.scalar_type());
 }
 
+absl::StatusOr<DeviceBufferRefArray<3>> ConvolutionBackward(
+    const at::Tensor& grad_output, const at::Tensor& input,
+    const at::Tensor& weight, at::OptionalIntArrayRef bias_sizes,
+    at::IntArrayRef stride, at::IntArrayRef padding, at::IntArrayRef dilation,
+    bool transposed, at::IntArrayRef output_padding, int64_t groups,
+    std::array<bool, 3> output_mask, OpParamCacheKeys param_keys) {
+  const int num_spatial_dims = input.dim() - 2;
+  Dimensions expanded_stride = ExpandIfNecessary(stride, num_spatial_dims);
+  Dimensions expanded_padding = ExpandIfNecessary(padding, num_spatial_dims);
+  Dimensions expanded_dilation = ExpandIfNecessary(dilation, num_spatial_dims);
+  Dimensions expanded_output_padding =
+      ExpandIfNecessary(output_padding, num_spatial_dims);
+
+  const auto current_precision = PrecisionContext::GetPrecision();
+  TT_ASSIGN_OR_RETURN(param_keys,
+                      (*OpParamCacheKeys::Builder(std::move(param_keys))
+                            .SetParam("precision", current_precision)));
+
+  // A non-empty `bias_dimensions` will trigger a bias dimensions check.
+  // This should only be run if we are computing the backwards w.r.t. the
+  // bias tensor. Otherwise, do not check it.
+  auto bias_dimensions = (output_mask[2] && bias_sizes.has_value())
+                             ? bias_sizes.value()
+                             : at::IntArrayRef();
+
+  TT_RETURN_IF_ERROR(CheckConvolutionInputs(
+      input, weight, bias_dimensions, expanded_stride, expanded_padding,
+      expanded_dilation, transposed, expanded_output_padding, groups));
+  TT_ASSIGN_OR_RETURN(at::ScalarType promoted_dtype,
+                      GetPromotedTypeBackward(grad_output, input, weight));
+  TT_ASSIGN_OR_RETURN(const auto output_dtype,
+                      ConvertTo<mlir::ElementType>(promoted_dtype));
+
+  auto input_sizes = input.sizes();
+  auto weight_sizes = weight.sizes();
+
+  auto op_builder =
+      [stride = expanded_stride, padding = expanded_padding,
+       dilation = expanded_dilation, output_padding = expanded_output_padding,
+       groups, transposed, output_mask,
+       input_dims = Dimensions(input_sizes.begin(), input_sizes.end()),
+       weight_dims = Dimensions(weight_sizes.begin(), weight_sizes.end()),
+       output_dtype, current_precision](FixedSizeSpan<mlir::MlirOp, 3> inputs)
+      -> absl::StatusOr<MlirOpResults<3>> {
+    auto& [grad_out, in, w] = inputs;
+    mlir::MlirOp grad_in, grad_w, grad_b;
+
+    auto make_undefined = [&grad_out, output_dtype]() {
+      return MakeZeroSizedTensor(
+          grad_out.getBuilder(),
+          mlir::getElementType(grad_out.getContext(), output_dtype));
+    };
+
+    if (output_mask[0]) {
+      TT_ASSIGN_OR_RETURN(
+          grad_in,
+          BuildConvolutionBackwardInput(
+              grad_out, w, input_dims, stride, padding, dilation, groups,
+              transposed, output_padding, output_dtype, current_precision));
+    } else {
+      grad_in = make_undefined();
+    }
+
+    if (output_mask[1]) {
+      TT_ASSIGN_OR_RETURN(
+          grad_w,
+          BuildConvolutionBackwardWeight(
+              in, grad_out, weight_dims, stride, padding, dilation, groups,
+              transposed, output_padding, output_dtype, current_precision));
+    } else {
+      grad_w = make_undefined();
+    }
+
+    if (output_mask[2]) {
+      TT_ASSIGN_OR_RETURN(grad_b, BuildConvolutionBackwardBias(
+                                      grad_out, output_padding, output_dtype));
+    } else {
+      grad_b = make_undefined();
+    }
+
+    return MlirOpResults<3>{grad_in, grad_w, grad_b};
+  };
+
+  std::array<mlir::ElementType, 3> out_dtypes = {output_dtype, output_dtype,
+                                                 output_dtype};
+  Dimensions bias_dims = {transposed ? groups * weight.size(1)
+                                     : weight.size(0)};
+  Dimensions empty_dims = {0};
+
+  std::array<absl::Span<const int64_t>, 3> out_dims_list = {
+      output_mask[0] ? absl::Span<const int64_t>(input_sizes)
+                     : absl::Span<const int64_t>(empty_dims),
+      output_mask[1] ? absl::Span<const int64_t>(weight_sizes)
+                     : absl::Span<const int64_t>(empty_dims),
+      output_mask[2] ? absl::Span<const int64_t>(bias_dims)
+                     : absl::Span<const int64_t>(empty_dims)};
+
+  TT_ASSIGN_OR_RETURN(
+      auto results,
+      (DispatchOp<3, 3>(
+          OpName::kConvolutionBackward, std::move(op_builder),
+          {grad_output, input, weight},
+          {.out_dtypes = FixedSizeSpan<const mlir::ElementType, 3>(out_dtypes),
+           .out_dims_list =
+               FixedSizeSpan<const absl::Span<const int64_t>, 3>(out_dims_list),
+           .op_param_cache_keys = std::move(param_keys)})));
+  return results;
+}
+
 }  // namespace
 
 at::Tensor AtenConvolution(const at::Tensor& input, const at::Tensor& weight,
@@ -374,116 +483,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenConvolutionBackward(
       (grad_output, input, weight, stride, padding, dilation, transposed,
        output_padding, groups, output_mask),
       {
-        const int num_spatial_dims = input.dim() - 2;
-        Dimensions expanded_stride =
-            ExpandIfNecessary(stride, num_spatial_dims);
-        Dimensions expanded_padding =
-            ExpandIfNecessary(padding, num_spatial_dims);
-        Dimensions expanded_dilation =
-            ExpandIfNecessary(dilation, num_spatial_dims);
-        Dimensions expanded_output_padding =
-            ExpandIfNecessary(output_padding, num_spatial_dims);
-
-        const auto current_precision = PrecisionContext::GetPrecision();
-        auto param_keys_or = (*OpParamCacheKeys::Builder(std::move(param_keys))
-                                   .SetParam("precision", current_precision));
-        TT_THROW_IF_ERROR(param_keys_or.status());
-        auto param_keys = std::move(param_keys_or).value();
-
-        // A non-empty `bias_dimensions` will trigger a bias dimensions check.
-        // This should only be run if we are computing the backwards w.r.t. the
-        // bias tensor. Otherwise, do not check it.
-        auto bias_dimensions = (output_mask[2] && bias_sizes.has_value())
-                                   ? bias_sizes.value()
-                                   : at::IntArrayRef();
-
-        TT_THROW_IF_ERROR(CheckConvolutionInputs(
-            input, weight, bias_dimensions, expanded_stride, expanded_padding,
-            expanded_dilation, transposed, expanded_output_padding, groups));
-        TT_ASSIGN_OR_THROW(at::ScalarType promoted_dtype,
-                           GetPromotedTypeBackward(grad_output, input, weight));
-        TT_ASSIGN_OR_THROW(const auto output_dtype,
-                           ConvertTo<mlir::ElementType>(promoted_dtype));
-
-        auto input_sizes = input.sizes();
-        auto weight_sizes = weight.sizes();
-
-        auto op_builder =
-            [stride = expanded_stride, padding = expanded_padding,
-             dilation = expanded_dilation,
-             output_padding = expanded_output_padding, groups, transposed,
-             output_mask,
-             input_dims = Dimensions(input_sizes.begin(), input_sizes.end()),
-             weight_dims = Dimensions(weight_sizes.begin(), weight_sizes.end()),
-             output_dtype,
-             current_precision](FixedSizeSpan<mlir::MlirOp, 3> inputs)
-            -> absl::StatusOr<MlirOpResults<3>> {
-          auto& [grad_out, in, w] = inputs;
-          mlir::MlirOp grad_in, grad_w, grad_b;
-
-          auto make_undefined = [&grad_out, output_dtype]() {
-            return MakeZeroSizedTensor(
-                grad_out.getBuilder(),
-                mlir::getElementType(grad_out.getContext(), output_dtype));
-          };
-
-          if (output_mask[0]) {
-            TT_ASSIGN_OR_RETURN(
-                grad_in, BuildConvolutionBackwardInput(
-                             grad_out, w, input_dims, stride, padding, dilation,
-                             groups, transposed, output_padding, output_dtype,
-                             current_precision));
-          } else {
-            grad_in = make_undefined();
-          }
-
-          if (output_mask[1]) {
-            TT_ASSIGN_OR_RETURN(
-                grad_w, BuildConvolutionBackwardWeight(
-                            in, grad_out, weight_dims, stride, padding,
-                            dilation, groups, transposed, output_padding,
-                            output_dtype, current_precision));
-          } else {
-            grad_w = make_undefined();
-          }
-
-          if (output_mask[2]) {
-            TT_ASSIGN_OR_RETURN(
-                grad_b, BuildConvolutionBackwardBias(grad_out, output_padding,
-                                                     output_dtype));
-          } else {
-            grad_b = make_undefined();
-          }
-
-          return MlirOpResults<3>{grad_in, grad_w, grad_b};
-        };
-
-        std::array<mlir::ElementType, 3> out_dtypes = {
-            output_dtype, output_dtype, output_dtype};
-        Dimensions bias_dims = {transposed ? groups * weight.size(1)
-                                           : weight.size(0)};
-        Dimensions empty_dims = {0};
-
-        std::array<absl::Span<const int64_t>, 3> out_dims_list = {
-            output_mask[0] ? absl::Span<const int64_t>(input_sizes)
-                           : absl::Span<const int64_t>(empty_dims),
-            output_mask[1] ? absl::Span<const int64_t>(weight_sizes)
-                           : absl::Span<const int64_t>(empty_dims),
-            output_mask[2] ? absl::Span<const int64_t>(bias_dims)
-                           : absl::Span<const int64_t>(empty_dims)};
-
         TT_ASSIGN_OR_THROW(
             auto results,
-            (DispatchOp<3, 3>(
-                OpName::kConvolutionBackward, std::move(op_builder),
-                {grad_output, input, weight},
-                {.out_dtypes =
-                     FixedSizeSpan<const mlir::ElementType, 3>(out_dtypes),
-                 .out_dims_list =
-                     FixedSizeSpan<const absl::Span<const int64_t>, 3>(
-                         out_dims_list),
-                 .op_param_cache_keys = std::move(param_keys)})));
-
+            ConvolutionBackward(grad_output, input, weight, bias_sizes, stride,
+                                padding, dilation, transposed, output_padding,
+                                groups, output_mask, std::move(param_keys)));
         auto to_tensor = [&](int idx) -> at::Tensor {
           if (!output_mask[idx]) return at::Tensor();
           return MakeTensor(std::move(results[idx]));

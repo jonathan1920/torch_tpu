@@ -35,32 +35,42 @@
 
 namespace torch_tpu {
 
+namespace {
+
+absl::StatusOr<DeviceBufferRef> Dot(const at::Tensor& lhs,
+                                    const at::Tensor& rhs,
+                                    OpParamCacheKeys param_keys) {
+  TT_RETURN_IF_ERROR(CheckIsVector(lhs, "first"));
+  TT_RETURN_IF_ERROR(CheckIsVector(rhs, "second"));
+
+  TT_ASSIGN_OR_RETURN(auto result_scalar_type,
+                      CheckedGetDotOutputType(lhs, rhs));
+
+  const auto current_precision = PrecisionContext::GetPrecision();
+  TT_ASSIGN_OR_RETURN(param_keys,
+                      *OpParamCacheKeys::Builder(std::move(param_keys))
+                           .SetParam("precision", current_precision));
+
+  // TODO: XLA doesn't support matmuls with i64, so we convert them to f64.
+  auto op_builder = [current_precision](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+      -> absl::StatusOr<mlir::MlirOp> {
+    auto& [lhs_op, rhs_op] = inputs;
+    return BuildDotShlo(lhs_op, rhs_op, current_precision);
+  };
+  TT_ASSIGN_OR_RETURN(
+      auto result,
+      DispatchOp<2>(OpName::kDot, std::move(op_builder), {lhs, rhs},
+                    {.out_dtype = result_scalar_type,
+                     .out_dims = {},
+                     .op_param_cache_keys = std::move(param_keys)}));
+  return result;
+}
+
+}  // namespace
+
 at::Tensor AtenDot(const at::Tensor& lhs, const at::Tensor& rhs) {
   TT_KERNEL(OpName::kDot, param_keys, (lhs, rhs), {
-    TT_THROW_IF_ERROR(CheckIsVector(lhs, "first"));
-    TT_THROW_IF_ERROR(CheckIsVector(rhs, "second"));
-
-    TT_ASSIGN_OR_THROW(auto result_scalar_type,
-                       CheckedGetDotOutputType(lhs, rhs));
-
-    const auto current_precision = PrecisionContext::GetPrecision();
-    auto param_keys_or = *OpParamCacheKeys::Builder(std::move(param_keys))
-                              .SetParam("precision", current_precision);
-    TT_THROW_IF_ERROR(param_keys_or.status());
-    auto param_keys = std::move(param_keys_or).value();
-
-    // TODO: XLA doesn't support matmuls with i64, so we convert them to f64.
-    auto op_builder = [current_precision](FixedSizeSpan<mlir::MlirOp, 2> inputs)
-        -> absl::StatusOr<mlir::MlirOp> {
-      auto& [lhs_op, rhs_op] = inputs;
-      return BuildDotShlo(lhs_op, rhs_op, current_precision);
-    };
-    TT_ASSIGN_OR_THROW(
-        auto result,
-        DispatchOp<2>(OpName::kDot, std::move(op_builder), {lhs, rhs},
-                      {.out_dtype = result_scalar_type,
-                       .out_dims = {},
-                       .op_param_cache_keys = std::move(param_keys)}));
+    TT_ASSIGN_OR_THROW(auto result, Dot(lhs, rhs, std::move(param_keys)));
     return MakeTensor(std::move(result));
   });
 }
