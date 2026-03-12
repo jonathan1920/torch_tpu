@@ -18,13 +18,16 @@
 #define TORCH_TPU_COMMON_TO_STRING_H_
 
 #include <cstddef>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
@@ -36,12 +39,15 @@
 
 namespace torch_tpu {
 
-// This library defines a ToString() function template that can convert an
-// arbitrary type used in TorchTPU to a human-readable string useful for
-// logging and error messages. Depending on the input type, ToString() may
+// This library defines the ToString() function template and overloads that can
+// convert an arbitrary type used in TorchTPU to a human-readable string useful
+// for logging and error messages. Depending on the input type, ToString() may
 // return either a std::string or a std::string_view.
 
-// Converts a c10d::ReduceOp::RedOpType to a string.
+// The primary template is for types where ToString(const T&) is not defined.
+template <typename T>
+std::string ToString(const T& x);
+
 [[nodiscard]] std::string ToString(c10d::ReduceOp::RedOpType reduce_op_type);
 
 [[nodiscard]] std::string ToString(const at::Tensor& tensor,
@@ -49,7 +55,6 @@ namespace torch_tpu {
 [[nodiscard]] std::string ToString(const at::Scalar& scalar,
                                    const std::string& name = "");
 
-// Returns a string representation of the given MLIR type.
 [[nodiscard]] std::string ToString(mlir::Type type);
 
 // Returns a string representation of the given type as a PyTorch dtype name
@@ -57,15 +62,14 @@ namespace torch_tpu {
 [[nodiscard]] std::string_view ToString(at::ScalarType scalar_type);
 
 // Returns a string representation of the given span. Requires the element type
-// to be streamable.
+// to support ToString().
 template <typename T>
 [[nodiscard]] std::string ToString(absl::Span<T> vec) {
   // TODO: switch to absl::StrCat() and absl::StrJoin().
   std::stringstream ss;
   ss << "[";
   for (size_t i = 0; i < vec.size(); ++i) {
-    // TODO: switch to ToString() for each element.
-    ss << vec[i];
+    ss << ToString(vec[i]);
     if (i < vec.size() - 1) {
       ss << ", ";
     }
@@ -80,16 +84,15 @@ template <typename T, size_t N>
 }
 
 // Returns a string representation of the given span of pairs.
-// Both element types in the pair must be streamable.
+// Both element types in the pair must support ToString().
 template <typename T1, typename T2>
 [[nodiscard]] std::string ToString(absl::Span<const std::pair<T1, T2>> vec) {
   // TODO: switch to absl::StrCat() and absl::StrJoin().
   std::stringstream ss;
   ss << "[";
   for (size_t i = 0; i < vec.size(); ++i) {
-    // TODO: switch to ToString() for each element.
     const auto& [first, second] = vec[i];
-    ss << "(" << first << ", " << second << ")";
+    ss << "(" << ToString(first) << ", " << ToString(second) << ")";
     if (i < vec.size() - 1) {
       ss << ", ";
     }
@@ -99,22 +102,70 @@ template <typename T1, typename T2>
 }
 
 // Returns a string representation of the given vector. Requires the element
-// type to be streamable.
+// type to support ToString().
 template <typename T>
 [[nodiscard]] std::string ToString(const std::vector<T>& vec) {
   return ToString(absl::MakeSpan(vec));
 }
 
-// Returns a string representation of the given vector. Requires the element
-// type to be streamable.
+// Returns a string representation of the given array. Requires the element
+// type to support ToString().
 template <typename T>
 [[nodiscard]] std::string ToString(mlir::ArrayRef<T> vec) {
   return ToString(absl::MakeSpan(vec));
 }
-
 template <typename T>
 [[nodiscard]] std::string ToString(c10::ArrayRef<T> vec) {
   return ToString(absl::MakeSpan(vec));
+}
+
+// Trait: does T support absl::StrCat()?
+template <typename T, typename = void>
+struct supports_absl_strcat : std::false_type {};
+template <typename T>
+struct supports_absl_strcat<
+    T, std::void_t<decltype(absl::StrCat(std::declval<const T&>()))>>
+    : std::true_type {};
+
+// Trait: does T support operator<<()?
+template <typename T, typename = void>
+struct supports_ostream : std::false_type {};
+template <typename T>
+struct supports_ostream<T, std::void_t<decltype(std::declval<std::ostream&>()
+                                                << std::declval<const T&>())>>
+    : std::true_type {};
+
+// Trait: does T support .ToString()?
+template <typename T, typename = void>
+struct supports_tostring_method : std::false_type {};
+template <typename T>
+struct supports_tostring_method<
+    T, std::void_t<decltype(std::declval<const T&>().ToString())>>
+    : std::true_type {};
+
+template <typename T>
+inline constexpr bool always_false_v = false;
+
+// The primary ToString() template. It delegates to absl::StrCat(), the
+// .ToString() method, or operator<< depending on which is supported by T.
+template <typename T>
+std::string ToString(const T& x) {
+  if constexpr (supports_absl_strcat<T>::value) {
+    // Prefer absl::StrCat() as it's generally more efficient.
+    return absl::StrCat(x);
+  } else if constexpr (supports_tostring_method<T>::value) {
+    // Next, prefer .ToString() as it's generally more efficient than
+    // operator<<.
+    return x.ToString();
+  } else if constexpr (supports_ostream<T>::value) {
+    std::ostringstream os;
+    os << x;
+    return os.str();
+  } else {
+    static_assert(always_false_v<T>,
+                  "ToString() requires the type to support absl::StrCat, "
+                  "operator<<, or x.ToString().");
+  }
 }
 
 }  // namespace torch_tpu
