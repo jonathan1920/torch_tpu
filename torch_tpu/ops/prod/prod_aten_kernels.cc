@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "absl/functional/bind_front.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/ScalarType.h"
@@ -27,6 +28,7 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -103,14 +105,14 @@ absl::StatusOr<at::Tensor> AtenProdHelper(OpName op_name,
   return result;
 }
 
-absl::StatusOr<at::Tensor&> AtenProdOutHelper(
-    OpName op_name, const at::Tensor& self, std::optional<int64_t> dim,
-    bool keep_dim, std::optional<at::ScalarType> dtype, at::Tensor& out,
-    OpParamCacheKeys param_keys) {
+absl::Status AtenProdOutHelper(OpName op_name, const at::Tensor& self,
+                               std::optional<int64_t> dim, bool keep_dim,
+                               std::optional<at::ScalarType> dtype,
+                               at::Tensor& out, OpParamCacheKeys param_keys) {
   at::ScalarType inferred_dtype = InferProdDtype(self.scalar_type(), dtype);
   if (self.dim() == 0) {
     out = self.to(inferred_dtype);
-    return out;
+    return absl::OkStatus();
   }
   std::optional<mlir::ElementType> dtype_element_type = std::nullopt;
   if (dtype.has_value()) {
@@ -121,13 +123,12 @@ absl::StatusOr<at::Tensor&> AtenProdOutHelper(
   Dimensions output_dims = GetSizesAfterProd(self.sizes(), dim, keep_dim);
   ReductionMode mode =
       keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
-  TT_RETURN_IF_ERROR(
-      UnaryOpOut(self, out, op_name,
-                 absl::bind_front(BuildProdShlo, dim, mode, dtype_element_type),
-                 {.op_param_cache_keys = std::move(param_keys),
-                  .out_dtype = inferred_dtype,
-                  .out_dims = std::move(output_dims)}));
-  return out;
+  return UnaryOpOut(
+      self, out, op_name,
+      absl::bind_front(BuildProdShlo, dim, mode, dtype_element_type),
+      {.op_param_cache_keys = std::move(param_keys),
+       .out_dtype = inferred_dtype,
+       .out_dims = std::move(output_dims)});
 }
 
 }  // namespace
@@ -146,12 +147,12 @@ at::Tensor AtenProd(const at::Tensor& self,
 at::Tensor& AtenProdDimOut(const at::Tensor& self, int64_t dim, bool keep_dim,
                            std::optional<at::ScalarType> dtype,
                            at::Tensor& out) {
-  TT_KERNEL(
-      OpName::kProdDimOut, param_keys, (self, dim, keep_dim, dtype, out), {
-        TT_ASSIGN_OR_THROW(
-            out, AtenProdOutHelper(OpName::kProdDimOut, self, dim, keep_dim,
-                                   dtype, out, std::move(param_keys)));
-        return out;
-      });
+  TT_KERNEL(OpName::kProdDimOut, param_keys, (self, dim, keep_dim, dtype, out),
+            {
+              TT_THROW_IF_ERROR(AtenProdOutHelper(OpName::kProdDimOut, self,
+                                                  dim, keep_dim, dtype, out,
+                                                  std::move(param_keys)));
+              return out;
+            });
 }
 }  // namespace torch_tpu

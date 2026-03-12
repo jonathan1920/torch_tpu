@@ -270,7 +270,7 @@ absl::StatusOr<mlir::MlirOp> BuildReflectionPadBackwardShlo(
   return result;
 }
 
-absl::StatusOr<at::Tensor&> ReflectionPadHelper(
+absl::Status ReflectionPadHelper(
     absl::AnyInvocable<absl::StatusOr<mlir::MlirOp>(
         mlir::MlirOp input, Dimensions padding, Dimensions output_shape,
         int num_pad_dimensions) const>
@@ -307,8 +307,7 @@ absl::StatusOr<at::Tensor&> ReflectionPadHelper(
                       .out_dims = CopyIntVector(out.sizes()),
                       .op_param_cache_keys = std::move(param_keys)})));
 
-  TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(out_buf), out));
-  return out;
+  return AssignBufferToAtTensor(std::move(out_buf), out);
 }
 
 }  // namespace
@@ -316,8 +315,7 @@ absl::StatusOr<at::Tensor&> ReflectionPadHelper(
 at::Tensor& AtenReflectionPad1dOut(const at::Tensor& self,
                                    at::IntArrayRef padding, at::Tensor& out) {
   TT_KERNEL(OpName::kReflectionPad1dOut, param_keys, (self, padding, out), {
-    TT_ASSIGN_OR_THROW(
-        out,
+    TT_THROW_IF_ERROR(
         ReflectionPadHelper(BuildReflectionPadShlo, OpName::kReflectionPad1dOut,
                             std::move(param_keys), self, padding, out,
                             /*num_pad_dimensions=*/1));
@@ -342,8 +340,7 @@ at::Tensor AtenReflectionPad2d(const at::Tensor& self,
 at::Tensor& AtenReflectionPad2dOut(const at::Tensor& self,
                                    at::IntArrayRef padding, at::Tensor& out) {
   TT_KERNEL(OpName::kReflectionPad2dOut, param_keys, (self, padding, out), {
-    TT_ASSIGN_OR_THROW(
-        out,
+    TT_THROW_IF_ERROR(
         ReflectionPadHelper(BuildReflectionPadShlo, OpName::kReflectionPad2dOut,
                             std::move(param_keys), self, padding, out,
                             /*num_pad_dimensions=*/2));
@@ -355,8 +352,7 @@ at::Tensor& AtenReflectionPad2dOut(const at::Tensor& self,
 at::Tensor& AtenReflectionPad3dOut(const at::Tensor& self,
                                    at::IntArrayRef padding, at::Tensor& out) {
   TT_KERNEL(OpName::kReflectionPad3dOut, param_keys, (self, padding, out), {
-    TT_ASSIGN_OR_THROW(
-        out,
+    TT_THROW_IF_ERROR(
         ReflectionPadHelper(BuildReflectionPadShlo, OpName::kReflectionPad3dOut,
                             std::move(param_keys), self, padding, out,
                             /*num_pad_dimensions=*/3));
@@ -370,13 +366,11 @@ at::Tensor& AtenReflectionPad1dBackwardGradInput(const at::Tensor& grad_output,
                                                  at::Tensor& grad_input) {
   TT_KERNEL(OpName::kReflectionPad1dBackwardGradInput, param_keys,
             (grad_output, self, padding, grad_input), {
-              TT_ASSIGN_OR_THROW(
-                  grad_input,
-                  ReflectionPadHelper(BuildReflectionPadBackwardShlo,
-                                      OpName::kReflectionPad1dBackwardGradInput,
-                                      std::move(param_keys), grad_output,
-                                      padding, grad_input,
-                                      /*num_pad_dimensions=*/1));
+              TT_THROW_IF_ERROR(ReflectionPadHelper(
+                  BuildReflectionPadBackwardShlo,
+                  OpName::kReflectionPad1dBackwardGradInput,
+                  std::move(param_keys), grad_output, padding, grad_input,
+                  /*num_pad_dimensions=*/1));
 
               return grad_input;
             });
@@ -388,13 +382,11 @@ at::Tensor& AtenReflectionPad2dBackwardGradInput(const at::Tensor& grad_output,
                                                  at::Tensor& grad_input) {
   TT_KERNEL(OpName::kReflectionPad2dBackwardGradInput, param_keys,
             (grad_output, self, padding, grad_input), {
-              TT_ASSIGN_OR_THROW(
-                  grad_input,
-                  ReflectionPadHelper(BuildReflectionPadBackwardShlo,
-                                      OpName::kReflectionPad2dBackwardGradInput,
-                                      std::move(param_keys), grad_output,
-                                      padding, grad_input,
-                                      /*num_pad_dimensions=*/2));
+              TT_THROW_IF_ERROR(ReflectionPadHelper(
+                  BuildReflectionPadBackwardShlo,
+                  OpName::kReflectionPad2dBackwardGradInput,
+                  std::move(param_keys), grad_output, padding, grad_input,
+                  /*num_pad_dimensions=*/2));
 
               return grad_input;
             });
@@ -405,13 +397,11 @@ at::Tensor& AtenReflectionPad3dBackwardGradInput(const at::Tensor& grad_output,
                                                  at::Tensor& grad_input) {
   TT_KERNEL(OpName::kReflectionPad3dBackwardGradInput, param_keys,
             (grad_output, self, padding, grad_input), {
-              TT_ASSIGN_OR_THROW(
-                  grad_input,
-                  ReflectionPadHelper(BuildReflectionPadBackwardShlo,
-                                      OpName::kReflectionPad2dBackwardGradInput,
-                                      std::move(param_keys), grad_output,
-                                      padding, grad_input,
-                                      /*num_pad_dimensions=*/3));
+              TT_THROW_IF_ERROR(ReflectionPadHelper(
+                  BuildReflectionPadBackwardShlo,
+                  OpName::kReflectionPad2dBackwardGradInput,
+                  std::move(param_keys), grad_output, padding, grad_input,
+                  /*num_pad_dimensions=*/3));
 
               return grad_input;
             });

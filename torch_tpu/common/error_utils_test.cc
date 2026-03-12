@@ -642,29 +642,6 @@ TEST(AssignOrThrow, EvaluatesExpressionOnceOnError) {
   EXPECT_EQ(count, 1);  // Incremented once.
 }
 
-class IntWrapper {
- public:
-  explicit IntWrapper(int value) : value_(value) {}
-  absl::StatusOr<int&> value() { return value_; }
-
- private:
-  int value_;
-};
-
-TEST(AssignOrThrow, AssigningToReferenceSucceeds) {
-  IntWrapper x(1);
-  TT_ASSIGN_OR_THROW(int& y, x.value());
-  EXPECT_EQ(y, 1);
-  EXPECT_EQ(&y, &x.value().value());
-}
-
-TEST(AssignOrThrow, AssigningToReferenceWithOverrideSucceeds) {
-  IntWrapper x(1);
-  TT_ASSIGN_OR_THROW(int& y, x.value(), _.SetOverride() << "error");
-  EXPECT_EQ(y, 1);
-  EXPECT_EQ(&y, &x.value().value());
-}
-
 // Tests for TT_RETURN_IF_ERROR.
 
 TEST(ReturnIfError, ProceedsOnOkStatus) {

@@ -817,6 +817,7 @@ class AnythingCompatibleWithThrow {
 // because TT_THROW_TT_ERROR_ already does that.
 #define TT_ASSIGN_OR_THROW_IMPL_2_(statusor, lhs, rexpr)                     \
   auto statusor = (rexpr);                                                   \
+  TT_STATIC_ASSERT_NOT_STATUS_OR_REF_(statusor);                             \
   if (ABSL_PREDICT_FALSE(!statusor.ok())) {                                  \
     TT_THROW_TT_ERROR_(statusor.status(),                                    \
                        c10::SourceLocation({__func__, __FILE__, __LINE__})); \
@@ -844,6 +845,7 @@ class AnythingCompatibleWithThrow {
 // compiler.
 #define TT_ASSIGN_OR_THROW_IMPL_3_(statusor, lhs, rexpr, error_expr)         \
   auto statusor = (rexpr);                                                   \
+  TT_STATIC_ASSERT_NOT_STATUS_OR_REF_(statusor);                             \
   if (ABSL_PREDICT_FALSE(!statusor.ok())) {                                  \
     ::torch_tpu::StatusBuilderWithMessage _(std::move(statusor).status());   \
     static_cast<void>(_);                                                    \
@@ -851,6 +853,22 @@ class AnythingCompatibleWithThrow {
                        c10::SourceLocation({__func__, __FILE__, __LINE__})); \
   }                                                                          \
   TT_REMOVE_PARENS_(lhs) = (*std::move(statusor))
+
+// Trait: is the type a StatusOr<T&>?
+template <typename T>
+struct is_status_or_ref : std::false_type {};
+template <typename T>
+struct is_status_or_ref<absl::StatusOr<T&>> : std::true_type {};
+
+// Statically asserts that the type of `statusor` is not a StatusOr<T&>.
+#define TT_STATIC_ASSERT_NOT_STATUS_OR_REF_(statusor)                       \
+  static_assert(                                                            \
+      !is_status_or_ref<std::remove_cv_t<                                   \
+          std::remove_reference_t<decltype(statusor)>>>::value,             \
+      "TorchTPU doesn't allow returning StatusOr<T&> as it's error-prone (" \
+      "it's easy to bind the value to a T object, creating a new copy). "   \
+      "Try returning StatusOr<std::unique_ptr<T>> or StatusOr<T* "          \
+      "absl_nonnull> instead.")
 
 // If the input is parenthesized, removes the parentheses. Otherwise expands to
 // the input unchanged.

@@ -217,7 +217,7 @@ absl::StatusOr<mlir::MlirOp> BuildReplicationPadBackwardShlo(
   return result;
 }
 
-absl::StatusOr<at::Tensor&> ReplicationPadHelper(
+absl::Status ReplicationPadHelper(
     absl::AnyInvocable<absl::StatusOr<mlir::MlirOp>(
         mlir::MlirOp input, Dimensions padding, Dimensions output_shape,
         int num_pad_dimensions) const>
@@ -254,8 +254,7 @@ absl::StatusOr<at::Tensor&> ReplicationPadHelper(
                       .out_dims = CopyIntVector(out.sizes()),
                       .op_param_cache_keys = std::move(param_keys)})));
 
-  TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(out_buf), out));
-  return out;
+  return AssignBufferToAtTensor(std::move(out_buf), out);
 }
 
 }  // namespace
@@ -263,11 +262,10 @@ absl::StatusOr<at::Tensor&> ReplicationPadHelper(
 at::Tensor& AtenReplicationPad1dOut(const at::Tensor& self,
                                     at::IntArrayRef padding, at::Tensor& out) {
   TT_KERNEL(OpName::kReplicationPad1dOut, param_keys, (self, padding, out), {
-    TT_ASSIGN_OR_THROW(
-        out, ReplicationPadHelper(BuildReplicationPadShlo,
-                                  OpName::kReplicationPad1dOut,
-                                  std::move(param_keys), self, padding, out,
-                                  /*num_pad_dimensions=*/1));
+    TT_THROW_IF_ERROR(ReplicationPadHelper(
+        BuildReplicationPadShlo, OpName::kReplicationPad1dOut,
+        std::move(param_keys), self, padding, out,
+        /*num_pad_dimensions=*/1));
 
     return out;
   });
@@ -276,11 +274,10 @@ at::Tensor& AtenReplicationPad1dOut(const at::Tensor& self,
 at::Tensor& AtenReplicationPad2dOut(const at::Tensor& self,
                                     at::IntArrayRef padding, at::Tensor& out) {
   TT_KERNEL(OpName::kReplicationPad2dOut, param_keys, (self, padding, out), {
-    TT_ASSIGN_OR_THROW(
-        out, ReplicationPadHelper(BuildReplicationPadShlo,
-                                  OpName::kReplicationPad2dOut,
-                                  std::move(param_keys), self, padding, out,
-                                  /*num_pad_dimensions=*/2));
+    TT_THROW_IF_ERROR(ReplicationPadHelper(
+        BuildReplicationPadShlo, OpName::kReplicationPad2dOut,
+        std::move(param_keys), self, padding, out,
+        /*num_pad_dimensions=*/2));
 
     return out;
   });
@@ -289,11 +286,10 @@ at::Tensor& AtenReplicationPad2dOut(const at::Tensor& self,
 at::Tensor& AtenReplicationPad3dOut(const at::Tensor& self,
                                     at::IntArrayRef padding, at::Tensor& out) {
   TT_KERNEL(OpName::kReplicationPad3dOut, param_keys, (self, padding, out), {
-    TT_ASSIGN_OR_THROW(
-        out, ReplicationPadHelper(BuildReplicationPadShlo,
-                                  OpName::kReplicationPad3dOut,
-                                  std::move(param_keys), self, padding, out,
-                                  /*num_pad_dimensions=*/3));
+    TT_THROW_IF_ERROR(ReplicationPadHelper(
+        BuildReplicationPadShlo, OpName::kReplicationPad3dOut,
+        std::move(param_keys), self, padding, out,
+        /*num_pad_dimensions=*/3));
     return out;
   });
 }
@@ -304,13 +300,11 @@ at::Tensor& AtenReplicationPad1dBackwardGradInput(const at::Tensor& grad_output,
                                                   at::Tensor& grad_input) {
   TT_KERNEL(OpName::kReplicationPad1dBackwardGradInput, param_keys,
             (grad_output, self, padding, grad_input), {
-              TT_ASSIGN_OR_THROW(
-                  grad_input,
-                  ReplicationPadHelper(
-                      BuildReplicationPadBackwardShlo,
-                      OpName::kReplicationPad1dBackwardGradInput,
-                      std::move(param_keys), grad_output, padding, grad_input,
-                      /*num_pad_dimensions=*/1));
+              TT_THROW_IF_ERROR(ReplicationPadHelper(
+                  BuildReplicationPadBackwardShlo,
+                  OpName::kReplicationPad1dBackwardGradInput,
+                  std::move(param_keys), grad_output, padding, grad_input,
+                  /*num_pad_dimensions=*/1));
 
               return grad_input;
             });
@@ -321,13 +315,11 @@ at::Tensor& AtenReplicationPad2dBackwardGradInput(const at::Tensor& grad_output,
                                                   at::Tensor& grad_input) {
   TT_KERNEL(OpName::kReplicationPad2dBackwardGradInput, param_keys,
             (grad_output, self, padding, grad_input), {
-              TT_ASSIGN_OR_THROW(
-                  grad_input,
-                  ReplicationPadHelper(
-                      BuildReplicationPadBackwardShlo,
-                      OpName::kReplicationPad2dBackwardGradInput,
-                      std::move(param_keys), grad_output, padding, grad_input,
-                      /*num_pad_dimensions=*/2));
+              TT_THROW_IF_ERROR(ReplicationPadHelper(
+                  BuildReplicationPadBackwardShlo,
+                  OpName::kReplicationPad2dBackwardGradInput,
+                  std::move(param_keys), grad_output, padding, grad_input,
+                  /*num_pad_dimensions=*/2));
 
               return grad_input;
             });
@@ -338,13 +330,11 @@ at::Tensor& AtenReplicationPad3dBackwardGradInput(const at::Tensor& grad_output,
                                                   at::Tensor& grad_input) {
   TT_KERNEL(OpName::kReplicationPad3dBackwardGradInput, param_keys,
             (grad_output, self, padding, grad_input), {
-              TT_ASSIGN_OR_THROW(
-                  grad_input,
-                  ReplicationPadHelper(
-                      BuildReplicationPadBackwardShlo,
-                      OpName::kReplicationPad2dBackwardGradInput,
-                      std::move(param_keys), grad_output, padding, grad_input,
-                      /*num_pad_dimensions=*/3));
+              TT_THROW_IF_ERROR(ReplicationPadHelper(
+                  BuildReplicationPadBackwardShlo,
+                  OpName::kReplicationPad2dBackwardGradInput,
+                  std::move(param_keys), grad_output, padding, grad_input,
+                  /*num_pad_dimensions=*/3));
 
               return grad_input;
             });

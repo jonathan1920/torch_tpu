@@ -455,14 +455,11 @@ absl::StatusOr<mlir::MlirOp> BuildMaxPoolWithIndicesBackwardShlo(
 }
 
 // Helper function to build and dispatch N-dimensional max_pool operations.
-absl::StatusOr<std::tuple<at::Tensor&, at::Tensor&>>
-BuildMaxPoolWithIndicesOutNd(const at::Tensor& self,
-                             at::IntArrayRef kernel_size,
-                             at::IntArrayRef stride, at::IntArrayRef padding,
-                             at::IntArrayRef dilation, bool ceil_mode,
-                             at::Tensor& out, at::Tensor& indices,
-                             int64_t spatial_dim_count, OpName op_name,
-                             OpParamCacheKeys param_keys) {
+absl::Status BuildMaxPoolWithIndicesOutNd(
+    const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,
+    at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode,
+    at::Tensor& out, at::Tensor& indices, int64_t spatial_dim_count,
+    OpName op_name, OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(auto element_type,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   TT_ASSIGN_OR_RETURN(auto indices_type,
@@ -491,12 +488,11 @@ BuildMaxPoolWithIndicesOutNd(const at::Tensor& self,
                          .op_param_cache_keys = std::move(param_keys)})));
 
   TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
-  TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(indices_buf), indices));
-  return std::forward_as_tuple(out, indices);
+  return AssignBufferToAtTensor(std::move(indices_buf), indices);
 }
 
 // Helper function to build and dispatch N-dimensional max_pool backward ops.
-absl::StatusOr<at::Tensor&> BuildMaxPoolWithIndicesBackwardGradInputNd(
+absl::Status BuildMaxPoolWithIndicesBackwardGradInputNd(
     const at::Tensor& grad_output, const at::Tensor& self,
     at::IntArrayRef kernel_size, at::IntArrayRef stride,
     at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode,
@@ -524,8 +520,7 @@ absl::StatusOr<at::Tensor&> BuildMaxPoolWithIndicesBackwardGradInputNd(
                       .out_dims = CopyIntVector(grad_input.sizes()),
                       .op_param_cache_keys = std::move(param_keys)})));
 
-  TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(result), grad_input));
-  return grad_input;
+  return AssignBufferToAtTensor(std::move(result), grad_input);
 }
 
 }  // namespace
@@ -542,13 +537,11 @@ std::tuple<at::Tensor&, at::Tensor&> AtenMaxPool2dWithIndicesOut(
             << "bool dtype is not supported";
 
         const int64_t spatial_dim_count = 2;
-        TT_ASSIGN_OR_THROW(
-            auto result,
-            BuildMaxPoolWithIndicesOutNd(
-                self, kernel_size, stride, padding, dilation, ceil_mode, out,
-                indices, spatial_dim_count, OpName::kMaxPool2dWithIndicesOut,
-                std::move(param_keys)));
-        return result;
+        TT_THROW_IF_ERROR(BuildMaxPoolWithIndicesOutNd(
+            self, kernel_size, stride, padding, dilation, ceil_mode, out,
+            indices, spatial_dim_count, OpName::kMaxPool2dWithIndicesOut,
+            std::move(param_keys)));
+        return {out, indices};
       });
 }
 
@@ -564,13 +557,11 @@ std::tuple<at::Tensor&, at::Tensor&> AtenMaxPool3dWithIndicesOut(
             << "bool dtype is not supported";
 
         const int64_t spatial_dim_count = 3;
-        TT_ASSIGN_OR_THROW(
-            auto result,
-            BuildMaxPoolWithIndicesOutNd(
-                self, kernel_size, stride, padding, dilation, ceil_mode, out,
-                indices, spatial_dim_count, OpName::kMaxPool3dWithIndicesOut,
-                std::move(param_keys)));
-        return result;
+        TT_THROW_IF_ERROR(BuildMaxPoolWithIndicesOutNd(
+            self, kernel_size, stride, padding, dilation, ceil_mode, out,
+            indices, spatial_dim_count, OpName::kMaxPool3dWithIndicesOut,
+            std::move(param_keys)));
+        return {out, indices};
       });
 }
 

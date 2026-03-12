@@ -70,14 +70,12 @@ absl::StatusOr<mlir::ElementType> GetComputationDType(const at::Tensor& self,
   return computation_element_type;
 }
 
-absl::StatusOr<at::Tensor&> SoftmaxInternalOut(const at::Tensor& self,
-                                               int64_t dim, bool half_to_float,
-                                               SoftmaxMode softmax_mode,
-                                               at::Tensor& out,
-                                               OpParamCacheKeys param_keys) {
+absl::Status SoftmaxInternalOut(const at::Tensor& self, int64_t dim,
+                                bool half_to_float, SoftmaxMode softmax_mode,
+                                at::Tensor& out, OpParamCacheKeys param_keys) {
   if (self.numel() == 0) {
     out = self;
-    return out;
+    return absl::OkStatus();
   }
 
   // As Pytorch's input and output must be the same type, and softmax does not
@@ -92,11 +90,9 @@ absl::StatusOr<at::Tensor&> SoftmaxInternalOut(const at::Tensor& self,
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=all dtypes are supported.
       const mlir::ElementType computation_dtype,
       GetComputationDType(self, half_to_float));
-  TT_RETURN_IF_ERROR(  // ERROR_COV_INFEASIBLE=errors inside are covered.
-      UnaryOpOut(self, out, op_name, GetSoftmaxFunctional(dim, softmax_mode),
-                 {.op_param_cache_keys = std::move(param_keys),
-                  .computation_dtype = computation_dtype}));
-  return out;
+  return UnaryOpOut(self, out, op_name, GetSoftmaxFunctional(dim, softmax_mode),
+                    {.op_param_cache_keys = std::move(param_keys),
+                     .computation_dtype = computation_dtype});
 }
 
 absl::StatusOr<DeviceBufferRef> SoftmaxBackwardDataInternalOut(
@@ -138,22 +134,22 @@ absl::StatusOr<DeviceBufferRef> SoftmaxBackwardDataInternalOut(
 at::Tensor& AtenSoftmaxOut(const at::Tensor& self, int64_t dim,
                            bool half_to_float, at::Tensor& out) {
   TT_KERNEL(OpName::kSoftmaxOut, param_keys, (self, dim, half_to_float, out), {
-    TT_ASSIGN_OR_THROW(
-        out, SoftmaxInternalOut(self, dim, half_to_float, SoftmaxMode::kSoftmax,
-                                out, std::move(param_keys)));
+    TT_THROW_IF_ERROR(SoftmaxInternalOut(self, dim, half_to_float,
+                                         SoftmaxMode::kSoftmax, out,
+                                         std::move(param_keys)));
     return out;
   });
 }
 
 at::Tensor& AtenLogSoftmaxOut(const at::Tensor& self, int64_t dim,
                               bool half_to_float, at::Tensor& out) {
-  TT_KERNEL(
-      OpName::kLogSoftmaxOut, param_keys, (self, dim, half_to_float, out), {
-        TT_ASSIGN_OR_THROW(out, SoftmaxInternalOut(self, dim, half_to_float,
+  TT_KERNEL(OpName::kLogSoftmaxOut, param_keys, (self, dim, half_to_float, out),
+            {
+              TT_THROW_IF_ERROR(SoftmaxInternalOut(self, dim, half_to_float,
                                                    SoftmaxMode::kLogSoftmax,
                                                    out, std::move(param_keys)));
-        return out;
-      });
+              return out;
+            });
 }
 
 at::Tensor& AtenSoftmaxBackwardDataOut(const at::Tensor& grad_output,

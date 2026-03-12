@@ -19,12 +19,14 @@
 
 #include "absl/functional/bind_front.h"
 #include "absl/log/absl_log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/ScalarType.h"
 #include "ATen/core/TensorBody.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/nonzero/nonzero.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -63,21 +65,18 @@ absl::StatusOr<at::Tensor> Nonzero(const at::Tensor& self,
   return result;
 }
 
-absl::StatusOr<at::Tensor&> NonzeroOut(const at::Tensor& self, at::Tensor& out,
-                                       const int64_t num_non_zero_elements) {
+absl::Status NonzeroOut(const at::Tensor& self, at::Tensor& out,
+                        const int64_t num_non_zero_elements) {
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=the op creates cache keys
                         // successfully.
       auto param_keys, TT_MAKE_OP_PARAM_CACHE_KEYS(num_non_zero_elements));
 
   Dimensions out_dims = {num_non_zero_elements, self.dim()};
-
-  TT_RETURN_IF_ERROR(
-      UnaryOpOut(self, out, OpName::kNonzeroOut,
-                 absl::bind_front(BuildNonzeroShlo, num_non_zero_elements),
-                 {.op_param_cache_keys = std::move(param_keys),
-                  .out_dtype = c10::ScalarType::Long,
-                  .out_dims = std::move(out_dims)}));
-  return out;
+  return UnaryOpOut(self, out, OpName::kNonzeroOut,
+                    absl::bind_front(BuildNonzeroShlo, num_non_zero_elements),
+                    {.op_param_cache_keys = std::move(param_keys),
+                     .out_dtype = c10::ScalarType::Long,
+                     .out_dims = std::move(out_dims)});
 }
 
 absl::StatusOr<at::Tensor> AtenNonzeroHelper(const at::Tensor& self) {
@@ -96,8 +95,7 @@ absl::StatusOr<at::Tensor> AtenNonzeroHelper(const at::Tensor& self) {
   return result;
 }
 
-absl::StatusOr<at::Tensor&> AtenNonzeroOutHelper(const at::Tensor& self,
-                                                 at::Tensor& out) {
+absl::Status AtenNonzeroOutHelper(const at::Tensor& self, at::Tensor& out) {
   // Get number of non-zero elements in the tensor as a tensor of size 1.
   TT_ASSIGN_OR_RETURN(auto num_non_zero_elements, GetNumNonZeroElements(self));
   // Move `num_non_zero_elements` to the CPU. This transition is necessary to
@@ -123,7 +121,7 @@ at::Tensor AtenNonzero(const at::Tensor& self) {
 
 at::Tensor& AtenNonzeroOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kNonzeroOut, _, (self, out), {
-    TT_ASSIGN_OR_THROW(out, AtenNonzeroOutHelper(self, out));
+    TT_THROW_IF_ERROR(AtenNonzeroOutHelper(self, out));
     return out;
   });
 }
