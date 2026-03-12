@@ -23,7 +23,7 @@ torch_tpu_py_test(
     srcs = ["profiler_impl_test.py"],
     main = "profiler_impl_test.py",
     tags = ["requires-tpu-v5lite"],
-    target_compatible_with = ["@platforms//:incompatible"],
+    target_compatible_with = ["@platforms//:incompatible"],  # copybara:comment(oss-only)
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -40,7 +40,7 @@ torch_tpu_py_test(
     srcs = ["profiler_api_test.py"],
     main = "profiler_api_test.py",
     tags = ["requires-tpu-v5lite"],
-    target_compatible_with = ["@platforms//:incompatible"],
+    target_compatible_with = ["@platforms//:incompatible"],  # copybara:comment(oss-only)
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",

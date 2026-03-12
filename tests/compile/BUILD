@@ -69,7 +69,7 @@ torch_tpu_py_test(
     tags = [
         # In OSS, we have to run the test exclusively to avoid the
         # "TPU initialization failed ... Device or resource busy" error.
-        "exclusive",
+        "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO: fix the test in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
         "oss_ready_tpu",

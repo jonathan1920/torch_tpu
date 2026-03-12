@@ -764,6 +764,10 @@ torch_tpu_cc_test(
     ],
 )
 
+# TODO: b/479574836 - Using this test as a hack to run compilation_test.cc in TPU CI.
+# This test should be removed once either an equivalent C++ libtpu API is available or
+# compilation_test.cc is converted to a Python test.
+# copybara:comment_begin(oss-only)
 sh_test(
     name = "oss_compilation_test",
     srcs = ["oss_compilation_test.sh"],
@@ -775,6 +779,7 @@ sh_test(
         "oss_ready_tpu",
     ],
 )
+# copybara:comment_end
 
 torch_tpu_cc_test(
     name = "compilation_parse_xla_options_test",
