@@ -14,9 +14,8 @@
  * limitations under the License.
  */
 
-#include <pybind11/pybind11.h>
-
 #include "torch_tpu/ops/precision_context.h"
+#include "pybind11/pybind11.h"
 #include "stablehlo/dialect/StablehloOps.h"
 
 namespace torch_tpu {
