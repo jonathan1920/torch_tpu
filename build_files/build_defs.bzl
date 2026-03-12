@@ -327,7 +327,7 @@ def torch_tpu_py_test(
     )
 
     # Remove internal-only attributes
-    kwargs.pop("linking_mode", None)
+    kwargs.pop("linking_mode", None)  # copybara:comment(oss-only)
 
     # Add env and LD_LIBRARY_PATH for wheel based testing.
     # Define the necessary library paths
@@ -351,10 +351,13 @@ def torch_tpu_py_test(
         env_with_wheel["LD_LIBRARY_PATH"] = new_paths_str
 
     # 4. Use select to swap between the wheel and non-wheel envs
+    # copybara:uncomment test_env = existing_env
+    # copybara:comment_begin(oss-only)
     test_env = select({
         "//:wheel_test_enabled": env_with_wheel,
         "//conditions:default": existing_env,
     })
+    # copybara:comment_end
 
     deps_to_add = []
     if use_pywrap_rules():
@@ -362,10 +365,13 @@ def torch_tpu_py_test(
 
     current_deps = kwargs.pop("deps", [])
 
+    # copybara:uncomment all_deps = current_deps + deps_to_add
+    # copybara:comment_begin(oss-only)
     all_deps = select({
         "//:wheel_test_enabled": ["//:torch_tpu_py_import"],
         "//conditions:default": current_deps + deps_to_add,
     })
+    # copybara:comment_end
 
     if strict:
         rule = pytype_strict_contrib_test
