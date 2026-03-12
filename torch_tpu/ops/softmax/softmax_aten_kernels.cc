@@ -33,8 +33,10 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/precision_context.h"
 #include "torch_tpu/ops/softmax/softmax.h"
 #include "torch_tpu/ops/unary_aten_kernels.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
@@ -46,12 +48,13 @@ MlirUnaryOpBuilder GetSoftmaxFunctional(int64_t dim, SoftmaxMode softmax_mode) {
 }
 
 NAryMlirOpBuilder<2> GetSoftmaxBackwardDataFunctional(
-    int64_t dim, SoftmaxMode softmax_mode) {
-  return [dim, softmax_mode](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+    int64_t dim, SoftmaxMode softmax_mode,
+    mlir::stablehlo::Precision precision) {
+  return [dim, softmax_mode, precision](FixedSizeSpan<mlir::MlirOp, 2> inputs)
              -> absl::StatusOr<MlirOpResults<1>> {
     auto& [grad_output_op, output_op] = inputs;
     return BuildSoftmaxBackwardDataShlo(grad_output_op, output_op, dim,
-                                        softmax_mode);
+                                        precision, softmax_mode);
   };
 }
 
@@ -126,6 +129,12 @@ at::Tensor& AtenSoftmaxBackwardDataOut(const at::Tensor& grad_output,
   TT_KERNEL(
       OpName::kSoftmaxBackwardDataOut, param_keys,
       (grad_output, output, dim, input_dtype, grad_input), {
+        const auto precision = PrecisionContext::GetPrecision();
+        auto param_keys_or = *OpParamCacheKeys::Builder(std::move(param_keys))
+                                  .SetParam("precision", precision);
+        TT_THROW_IF_ERROR(param_keys_or.status());
+        auto param_keys = std::move(param_keys_or).value();
+
         TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=input checked during forward
                          // pass. It is guaranteed to be floating point in the
                          // backward pass.
@@ -137,13 +146,13 @@ at::Tensor& AtenSoftmaxBackwardDataOut(const at::Tensor& grad_output,
         TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=errors should be covered
                              // inside.
             auto result,
-            (DispatchOp<2>(
-                OpName::kSoftmaxBackwardDataOut,
-                GetSoftmaxBackwardDataFunctional(dim, SoftmaxMode::kSoftmax),
-                {grad_output, output},
-                {.out_dtype = input_mlir_type,
-                 .out_dims = output.sizes(),
-                 .op_param_cache_keys = std::move(param_keys)})));
+            (DispatchOp<2>(OpName::kSoftmaxBackwardDataOut,
+                           GetSoftmaxBackwardDataFunctional(
+                               dim, SoftmaxMode::kSoftmax, precision),
+                           {grad_output, output},
+                           {.out_dtype = input_mlir_type,
+                            .out_dims = output.sizes(),
+                            .op_param_cache_keys = std::move(param_keys)})));
         TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=errors should be covered
                             // inside.
             AssignBufferToAtTensor(std::move(result), grad_input));
@@ -158,6 +167,12 @@ at::Tensor& AtenLogSoftmaxBackwardDataOut(const at::Tensor& grad_output,
   TT_KERNEL(
       OpName::kLogSoftmaxBackwardDataOut, param_keys,
       (grad_output, output, dim, input_dtype, grad_input), {
+        const auto precision = PrecisionContext::GetPrecision();
+        auto param_keys_or = *OpParamCacheKeys::Builder(std::move(param_keys))
+                                  .SetParam("precision", precision);
+        TT_THROW_IF_ERROR(param_keys_or.status());
+        auto param_keys = std::move(param_keys_or).value();
+
         TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=input checked during forward
                          // pass. It is guaranteed to be floating point in the
                          // backward pass.
@@ -169,13 +184,14 @@ at::Tensor& AtenLogSoftmaxBackwardDataOut(const at::Tensor& grad_output,
         TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=errors should be covered
                              // inside.
             auto result,
-            (DispatchOp<2>(
-                OpName::kLogSoftmaxBackwardDataOut,
-                GetSoftmaxBackwardDataFunctional(dim, SoftmaxMode::kLogSoftmax),
-                {grad_output, output},
-                {.out_dtype = input_mlir_type,
-                 .out_dims = output.sizes(),
-                 .op_param_cache_keys = std::move(param_keys)})));
+            (DispatchOp<2>(OpName::kLogSoftmaxBackwardDataOut,
+                           GetSoftmaxBackwardDataFunctional(
+                               dim, SoftmaxMode::kLogSoftmax, precision),
+                           {grad_output, output},
+                           {.out_dtype = input_mlir_type,
+                            .out_dims = output.sizes(),
+                            .op_param_cache_keys = std::move(param_keys)})));
+
         TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=errors should be covered
                             // inside.
             AssignBufferToAtTensor(std::move(result), grad_input));

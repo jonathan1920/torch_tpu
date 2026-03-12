@@ -37,11 +37,13 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:precision_context",
         "//torch_tpu/ops:unary_aten_kernels",
         "//torch_tpu/ops/macros:kernel",
         "@com_google_absl//absl/status:statusor",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -51,6 +53,7 @@ torch_tpu_cc_library(
     hdrs = ["softmax.h"],
     deps = [
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops/reductions:sum",
         "@com_google_absl//absl/log:absl_log",

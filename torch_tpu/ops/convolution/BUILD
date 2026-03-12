@@ -78,6 +78,7 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:precision_context",
         "//torch_tpu/ops:python_context",
         "//torch_tpu/ops:xla_utils",
         "//torch_tpu/ops/macros:kernel",

@@ -18,11 +18,13 @@
 #define TORCH_TPU_OPS_DOT_DOT_H_
 
 #include "absl/status/statusor.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {
 
-absl::StatusOr<mlir::MlirOp> BuildDotShlo(mlir::MlirOp lhs, mlir::MlirOp rhs);
+absl::StatusOr<mlir::MlirOp> BuildDotShlo(mlir::MlirOp lhs, mlir::MlirOp rhs,
+                                          mlir::stablehlo::Precision precision);
 
 }  // namespace torch_tpu
 

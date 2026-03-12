@@ -44,6 +44,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/precision_context.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "xla/xla_data.pb.h"
@@ -199,6 +200,11 @@ absl::StatusOr<DeviceBufferRef> ConvolutionBinary(
   Dimensions expanded_output_padding =
       ExpandIfNecessary(output_padding, num_spatial_dims);
 
+  const auto current_precision = PrecisionContext::GetPrecision();
+  TT_ASSIGN_OR_RETURN(param_keys,
+                      *OpParamCacheKeys::Builder(std::move(param_keys))
+                           .SetParam("precision", current_precision));
+
   TT_RETURN_IF_ERROR(CheckConvolutionInputs(
       input, weight, std::nullopt, expanded_stride, expanded_padding,
       expanded_dilation, transposed, expanded_output_padding, groups));
@@ -221,11 +227,11 @@ absl::StatusOr<DeviceBufferRef> ConvolutionBinary(
        output_padding = Dimensions(expanded_output_padding.begin(),
                                    expanded_output_padding.end()),
        groups, output_dims = Dimensions(output_dims.begin(), output_dims.end()),
-       mlir_dtype](FixedSizeSpan<mlir::MlirOp, 2> inputs) {
+       mlir_dtype, current_precision](FixedSizeSpan<mlir::MlirOp, 2> inputs) {
         auto& [input, weight] = inputs;
         return BuildConvolution(input, weight, std::nullopt, stride, padding,
                                 dilation, transposed, output_padding, groups,
-                                output_dims, mlir_dtype);
+                                output_dims, mlir_dtype, current_precision);
       };
   const auto elem_type = mlir_dtype;
   return DispatchOp<2>(op_name, std::move(op_builder), {input, weight},
@@ -245,6 +251,11 @@ absl::StatusOr<DeviceBufferRef> ConvolutionTernary(
   Dimensions expanded_dilation = ExpandIfNecessary(dilation, num_spatial_dims);
   Dimensions expanded_output_padding =
       ExpandIfNecessary(output_padding, num_spatial_dims);
+
+  const auto current_precision = PrecisionContext::GetPrecision();
+  TT_ASSIGN_OR_RETURN(param_keys,
+                      *OpParamCacheKeys::Builder(std::move(param_keys))
+                           .SetParam("precision", current_precision));
 
   TT_RETURN_IF_ERROR(CheckConvolutionInputs(
       input, weight, bias, expanded_stride, expanded_padding, expanded_dilation,
@@ -268,11 +279,11 @@ absl::StatusOr<DeviceBufferRef> ConvolutionTernary(
        output_padding = Dimensions(expanded_output_padding.begin(),
                                    expanded_output_padding.end()),
        groups, output_dims = Dimensions(output_dims.begin(), output_dims.end()),
-       mlir_dtype](FixedSizeSpan<mlir::MlirOp, 3> inputs) {
+       mlir_dtype, current_precision](FixedSizeSpan<mlir::MlirOp, 3> inputs) {
         auto& [input, weight, bias] = inputs;
         return BuildConvolution(input, weight, bias, stride, padding, dilation,
                                 transposed, output_padding, groups, output_dims,
-                                mlir_dtype);
+                                mlir_dtype, current_precision);
       };
   const auto elem_type = mlir_dtype;
   return DispatchOp<3>(op_name, std::move(op_builder), {input, weight, bias},
@@ -373,6 +384,12 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenConvolutionBackward(
         Dimensions expanded_output_padding =
             ExpandIfNecessary(output_padding, num_spatial_dims);
 
+        const auto current_precision = PrecisionContext::GetPrecision();
+        auto param_keys_or = (*OpParamCacheKeys::Builder(std::move(param_keys))
+                                   .SetParam("precision", current_precision));
+        TT_THROW_IF_ERROR(param_keys_or.status());
+        auto param_keys = std::move(param_keys_or).value();
+
         // A non-empty `bias_dimensions` will trigger a bias dimensions check.
         // This should only be run if we are computing the backwards w.r.t. the
         // bias tensor. Otherwise, do not check it.
@@ -398,7 +415,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenConvolutionBackward(
              output_mask,
              input_dims = Dimensions(input_sizes.begin(), input_sizes.end()),
              weight_dims = Dimensions(weight_sizes.begin(), weight_sizes.end()),
-             output_dtype](FixedSizeSpan<mlir::MlirOp, 3> inputs)
+             output_dtype,
+             current_precision](FixedSizeSpan<mlir::MlirOp, 3> inputs)
             -> absl::StatusOr<MlirOpResults<3>> {
           auto& [grad_out, in, w] = inputs;
           mlir::MlirOp grad_in, grad_w, grad_b;
@@ -413,17 +431,18 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenConvolutionBackward(
             TT_ASSIGN_OR_RETURN(
                 grad_in, BuildConvolutionBackwardInput(
                              grad_out, w, input_dims, stride, padding, dilation,
-                             groups, transposed, output_padding, output_dtype));
+                             groups, transposed, output_padding, output_dtype,
+                             current_precision));
           } else {
             grad_in = make_undefined();
           }
 
           if (output_mask[1]) {
             TT_ASSIGN_OR_RETURN(
-                grad_w,
-                BuildConvolutionBackwardWeight(
-                    in, grad_out, weight_dims, stride, padding, dilation,
-                    groups, transposed, output_padding, output_dtype));
+                grad_w, BuildConvolutionBackwardWeight(
+                            in, grad_out, weight_dims, stride, padding,
+                            dilation, groups, transposed, output_padding,
+                            output_dtype, current_precision));
           } else {
             grad_w = make_undefined();
           }

@@ -18,6 +18,8 @@ from absl.testing import absltest
 import torch
 from torch_tpu import api
 import torch_tpu._internal.precision as p
+from torch_tpu._internal.utils import utils
+
 
 precision = p.precision
 Precision = p.Precision
@@ -81,6 +83,100 @@ class PrecisionTest(absltest.TestCase):
     with precision(Precision.HIGHEST):
       e = torch.matmul(a, b)
       self.assertEqual(e.shape, (10, 10))
+
+  def test_precision_in_shlo(self):
+    device = api.tpu_device()
+    a = torch.randn(10, 10, device=device)
+    b = torch.randn(10, 10, device=device)
+
+    def model(a, b):
+      return torch.matmul(a, b)
+
+    with precision(Precision.DEFAULT):
+      self.assertIn(
+          "precision = [DEFAULT, DEFAULT]",
+          utils.format_model(model, a, b, shlo=True),
+      )
+      self.assertEqual(model(a, b).shape, (10, 10))
+
+    with precision(Precision.HIGH):
+      self.assertIn(
+          "precision = [HIGH, HIGH]",
+          utils.format_model(model, a, b, shlo=True),
+      )
+      self.assertEqual(model(a, b).shape, (10, 10))
+
+    with precision(Precision.HIGHEST):
+      self.assertIn(
+          "precision = [HIGHEST, HIGHEST]",
+          utils.format_model(model, a, b, shlo=True),
+      )
+      self.assertEqual(model(a, b).shape, (10, 10))
+
+  def test_nested_precision_in_shlo(self):
+    device = api.tpu_device()
+    a = torch.randn(10, 10, device=device)
+    b = torch.randn(10, 10, device=device)
+
+    def model(a, b):
+      return torch.matmul(a, b)
+
+    self.assertIn(
+        "precision = [DEFAULT, DEFAULT]",
+        utils.format_model(model, a, b, shlo=True),
+    )
+
+    with precision(Precision.HIGH):
+      d = torch.matmul(a, b)
+      self.assertIn(
+          "precision = [HIGH, HIGH]",
+          utils.format_model(model, a, b, shlo=True),
+      )
+      self.assertEqual(d.shape, (10, 10))
+      with precision(Precision.HIGHEST):
+        e = torch.matmul(a, b)
+        self.assertIn(
+            "precision = [HIGHEST, HIGHEST]",
+            utils.format_model(model, a, b, shlo=True),
+        )
+        self.assertEqual(e.shape, (10, 10))
+      f = torch.matmul(a, b)
+      self.assertIn(
+          "precision = [HIGH, HIGH]",
+          utils.format_model(model, a, b, shlo=True),
+      )
+      self.assertEqual(f.shape, (10, 10))
+
+  def test_nested_precision_layer_in_shlo(self):
+    device = api.tpu_device()
+    a = torch.randn(10, 10, device=device)
+    b = torch.randn(10, 10, device=device)
+
+    class Model(torch.nn.Module):
+
+      def forward(self, a, b):
+        self.matmul_default = torch.matmul(a, b)
+        with precision(Precision.HIGH):
+          self.matmul_high = torch.matmul(self.matmul_default, b)
+        with precision(Precision.HIGHEST):
+          self.matmul_highest = torch.matmul(self.matmul_high, b)
+        self.matmul_default_2 = torch.matmul(self.matmul_highest, b)
+        return [
+            self.matmul_default,
+            self.matmul_high,
+            self.matmul_highest,
+            self.matmul_default_2,
+        ]
+
+    model = Model()
+    model_str = utils.format_model(model, a, b, shlo=True)
+    self.assertRegex(
+        model_str,
+        r"(?s).*precision = \[DEFAULT, DEFAULT\]"
+        r".*precision = \[HIGH, HIGH\]"
+        r".*precision = \[HIGHEST, HIGHEST\]"
+        r".*precision = \[DEFAULT, DEFAULT\]",
+    )
 
   def test_thread_local(self):
     # Set precision in main thread

@@ -60,7 +60,8 @@ absl::StatusOr<mlir::MlirOp> BuildTransposedConvolution(
     absl::Span<const int64_t> stride, absl::Span<const int64_t> padding,
     absl::Span<const int64_t> dilation,
     absl::Span<const int64_t> output_padding, int64_t groups,
-    absl::Span<const int64_t> output_dims, mlir::ElementType output_dtype) {
+    absl::Span<const int64_t> output_dims, mlir::ElementType output_dtype,
+    mlir::stablehlo::Precision precision) {
   mlir::MlirBuilder& builder = input.getBuilder();
   mlir::MLIRContext& ctx = builder.getContext();
   const int num_spatial_dims = stride.size();
@@ -167,8 +168,7 @@ absl::StatusOr<mlir::MlirOp> BuildTransposedConvolution(
   const auto dims_padding = mlir::DenseIntElementsAttr::get(
       padding_type, mlir::ArrayRef<int64_t>(symmetric_padding_dims));
 
-  const stablehlo::Precision precisions[2] = {stablehlo::Precision::DEFAULT,
-                                              stablehlo::Precision::DEFAULT};
+  const stablehlo::Precision precisions[2] = {precision, precision};
   const auto precision_config =
       stablehlo::PrecisionConfigAttr::get(&ctx, precisions);
 
@@ -198,7 +198,8 @@ absl::StatusOr<mlir::MlirOp> BuildConvolution(
     mlir::MlirOp input, mlir::MlirOp weight, std::optional<mlir::MlirOp> bias,
     absl::Span<const int64_t> stride, absl::Span<const int64_t> padding,
     absl::Span<const int64_t> dilation, int64_t groups,
-    absl::Span<const int64_t> output_dims, mlir::ElementType output_dtype) {
+    absl::Span<const int64_t> output_dims, mlir::ElementType output_dtype,
+    mlir::stablehlo::Precision precision) {
   mlir::MlirBuilder& builder = input.getBuilder();
   mlir::MLIRContext& ctx = builder.getContext();
   const int num_spatial_dims = stride.size();
@@ -265,8 +266,7 @@ absl::StatusOr<mlir::MlirOp> BuildConvolution(
   // Torch does not support window reversal.
   const mlir::DenseBoolArrayAttr window_reversal = {};
 
-  const stablehlo::Precision precisions[2] = {stablehlo::Precision::DEFAULT,
-                                              stablehlo::Precision::DEFAULT};
+  const stablehlo::Precision precisions[2] = {precision, precision};
   const auto precision_config =
       stablehlo::PrecisionConfigAttr::get(&ctx, precisions);
 
@@ -403,11 +403,12 @@ absl::StatusOr<mlir::MlirOp> BuildConvolution(
     absl::Span<const int64_t> stride, absl::Span<const int64_t> padding,
     absl::Span<const int64_t> dilation, bool transposed,
     absl::Span<const int64_t> output_padding, int64_t groups,
-    absl::Span<const int64_t> output_dims, mlir::ElementType output_dtype) {
+    absl::Span<const int64_t> output_dims, mlir::ElementType output_dtype,
+    mlir::stablehlo::Precision precision) {
   if (transposed) {
     return BuildTransposedConvolution(input, weight, bias, stride, padding,
                                       dilation, output_padding, groups,
-                                      output_dims, output_dtype);
+                                      output_dims, output_dtype, precision);
   }
 
   // Torch pads symmetrically (above and below) on each spatial dimension,
@@ -421,7 +422,8 @@ absl::StatusOr<mlir::MlirOp> BuildConvolution(
     symmetric_padding_dims.push_back(p);
   }
   return BuildConvolution(input, weight, bias, stride, symmetric_padding_dims,
-                          dilation, groups, output_dims, output_dtype);
+                          dilation, groups, output_dims, output_dtype,
+                          precision);
 }
 
 // From the chain The gradient of loss function L w.r.t. input x equals dL/y *
@@ -432,7 +434,7 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardInput(
     absl::Span<const int64_t> input_dims, absl::Span<const int64_t> stride,
     absl::Span<const int64_t> padding, absl::Span<const int64_t> dilation,
     int64_t groups, bool transposed, absl::Span<const int64_t> output_padding,
-    mlir::ElementType output_dtype) {
+    mlir::ElementType output_dtype, mlir::stablehlo::Precision precision) {
   if (transposed) {
     // When computing the gradient w.r.t. input for a transposed convolution,
     // we perform a standard convolution.
@@ -458,7 +460,7 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardInput(
     }
     return BuildConvolution(grad_output, weight, std::nullopt, stride,
                             asymmetric_padding, dilation, groups, input_dims,
-                            output_dtype);
+                            output_dtype, precision);
   }
 
   mlir::MlirBuilder& builder = grad_output.getBuilder();
@@ -612,8 +614,7 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardInput(
   const auto dims_padding = mlir::DenseIntElementsAttr::get(
       padding_type, mlir::ArrayRef<int64_t>(symmetric_padding_dims));
 
-  const stablehlo::Precision precisions[2] = {stablehlo::Precision::DEFAULT,
-                                              stablehlo::Precision::DEFAULT};
+  const stablehlo::Precision precisions[2] = {precision, precision};
   const auto precision_config =
       stablehlo::PrecisionConfigAttr::get(&ctx, precisions);
 
@@ -635,7 +636,7 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardWeight(
     absl::Span<const int64_t> weight_dims, absl::Span<const int64_t> stride,
     absl::Span<const int64_t> padding, absl::Span<const int64_t> dilation,
     int64_t groups, bool transposed, absl::Span<const int64_t> output_padding,
-    mlir::ElementType output_dtype) {
+    mlir::ElementType output_dtype, mlir::stablehlo::Precision precision) {
   if (transposed) {
     std::swap(input, grad_output);
   }
@@ -751,8 +752,7 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardWeight(
   const auto dims_padding = mlir::DenseIntElementsAttr::get(
       padding_type, mlir::ArrayRef<int64_t>(symmetric_padding_dims));
 
-  const stablehlo::Precision precisions[2] = {stablehlo::Precision::DEFAULT,
-                                              stablehlo::Precision::DEFAULT};
+  const stablehlo::Precision precisions[2] = {precision, precision};
   const auto precision_config =
       stablehlo::PrecisionConfigAttr::get(&ctx, precisions);
 

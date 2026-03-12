@@ -28,9 +28,9 @@ namespace torch_tpu {
 
 namespace stablehlo = mlir::stablehlo;
 
-absl::StatusOr<mlir::MlirOp> BuildBmmShlo(mlir::MlirOp self_op,
-                                          mlir::MlirOp mat2_op,
-                                          mlir::ElementType out_dtype) {
+absl::StatusOr<mlir::MlirOp> BuildBmmShlo(
+    mlir::MlirOp self_op, mlir::MlirOp mat2_op, mlir::ElementType out_dtype,
+    mlir::stablehlo::Precision precision) {
   const mlir::RankedTensorType self_type = GetTensorTypeOrDie(self_op);
   const mlir::RankedTensorType mat2_type = GetTensorTypeOrDie(mat2_op);
 
@@ -42,17 +42,16 @@ absl::StatusOr<mlir::MlirOp> BuildBmmShlo(mlir::MlirOp self_op,
     mat2_op = stablehlo::ConvertElementType(mat2_op, mlir::ElementType::F64);
   }
 
-  auto precision = mlir::stablehlo::PrecisionConfigAttr::get(
-      &self_op.getContext(), {mlir::stablehlo::Precision::DEFAULT,
-                              mlir::stablehlo::Precision::DEFAULT});
+  const auto precision_config = mlir::stablehlo::PrecisionConfigAttr::get(
+      &self_op.getContext(), {precision, precision});
   auto dot_dimension_numbers = stablehlo::DotDimensionNumbersAttr::get(
       &self_op.getContext(),
       /*lhs_batch_dimensions=*/{0},
       /*rhs_batch_dimensions=*/{0},
       /*lhs_contracting_dimensions=*/{2},
       /*rhs_contracting_dimensions=*/{1});
-  mlir::MlirOp dot_result =
-      stablehlo::DotGeneral(self_op, mat2_op, dot_dimension_numbers, precision);
+  mlir::MlirOp dot_result = stablehlo::DotGeneral(
+      self_op, mat2_op, dot_dimension_numbers, precision_config);
   if (is_any_i64) {
     return stablehlo::ConvertElementType(dot_result, out_dtype);
   }

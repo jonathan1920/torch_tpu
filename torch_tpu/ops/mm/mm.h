@@ -19,10 +19,12 @@
 
 #include "absl/status/statusor.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 namespace torch_tpu {
 
-absl::StatusOr<mlir::MlirOp> BuildMmShlo(FixedSizeSpan<mlir::MlirOp, 2> inputs);
+absl::StatusOr<mlir::MlirOp> BuildMmShlo(FixedSizeSpan<mlir::MlirOp, 2> inputs,
+                                         mlir::stablehlo::Precision precision);
 
 }  // namespace torch_tpu
 

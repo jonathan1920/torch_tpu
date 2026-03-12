@@ -26,6 +26,7 @@
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/reductions/sum.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -108,7 +109,7 @@ absl::StatusOr<mlir::MlirOp> BuildSoftmaxShlo(mlir::MlirOp input_op,
 
 absl::StatusOr<MlirOpResults<1>> BuildSoftmaxBackwardDataShlo(
     mlir::MlirOp grad_output_op, mlir::MlirOp output_op, int64_t dim,
-    SoftmaxMode softmax_mode) {
+    mlir::stablehlo::Precision precision, SoftmaxMode softmax_mode) {
   const mlir::RankedTensorType grad_output_type =
       GetTensorTypeOrDie(grad_output_op);
   const mlir::RankedTensorType output_type = GetTensorTypeOrDie(output_op);
@@ -139,14 +140,13 @@ absl::StatusOr<MlirOpResults<1>> BuildSoftmaxBackwardDataShlo(
     auto& ctx = output_op.getContext();
 
     // Start by computing the dot.
-    auto precision = mlir::stablehlo::PrecisionConfigAttr::get(
-        &ctx, {mlir::stablehlo::Precision::DEFAULT,
-               mlir::stablehlo::Precision::DEFAULT});
+    auto precision_attr =
+        mlir::stablehlo::PrecisionConfigAttr::get(&ctx, {precision, precision});
 
     auto dot_dimension_numbers = mlir::stablehlo::DotDimensionNumbersAttr::get(
         &ctx, all_but_dim, all_but_dim, {dim}, {dim});
-    auto dot_op = mlir::stablehlo::DotGeneral(output_op, grad_output_op,
-                                              dot_dimension_numbers, precision);
+    auto dot_op = mlir::stablehlo::DotGeneral(
+        output_op, grad_output_op, dot_dimension_numbers, precision_attr);
     const mlir::RankedTensorType dot_op_type = GetTensorTypeOrDie(dot_op);
     ABSL_VLOG(3) << "BuildSoftmaxBackwardDataShlo: dot_op_type: "
                  << mlir::debugString(dot_op_type);

@@ -30,11 +30,13 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/precision_context.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -47,7 +49,8 @@ namespace stablehlo = mlir::stablehlo;
 
 // Matrix-vector dot product helper.
 mlir::MlirOp MatVecDot(mlir::MlirOp mat_op, mlir::MlirOp vec_op, double alpha,
-                       mlir::ElementType out_dtype) {
+                       mlir::ElementType out_dtype,
+                       mlir::stablehlo::Precision precision) {
   const mlir::RankedTensorType mat_type = GetTensorTypeOrDie(mat_op);
   const mlir::RankedTensorType vec_type = GetTensorTypeOrDie(vec_op);
 
@@ -69,9 +72,8 @@ mlir::MlirOp MatVecDot(mlir::MlirOp mat_op, mlir::MlirOp vec_op, double alpha,
           /*rhs_batch_dimensions=*/{}, /*lhs_contracting_dimensions=*/{1},
           /*rhs_contracting_dimensions=*/{0}),
       /*precisionConfig=*/
-      stablehlo::PrecisionConfigAttr::get(
-          &mat_op.getContext(),
-          {stablehlo::Precision::DEFAULT, stablehlo::Precision::DEFAULT}));
+      stablehlo::PrecisionConfigAttr::get(&mat_op.getContext(),
+                                          {precision, precision}));
 
   // Cast the matmul result back to the original type right away. CPU behavior
   // expects the computation to be lossy not precise.
@@ -83,18 +85,17 @@ mlir::MlirOp MatVecDot(mlir::MlirOp mat_op, mlir::MlirOp vec_op, double alpha,
 
 absl::StatusOr<mlir::MlirOp> BuildAddmvShloBetaZero(
     mlir::MlirOp mat_op, mlir::MlirOp vec_op, double alpha,
-    mlir::ElementType out_dtype) {
-  auto mv_op = MatVecDot(mat_op, vec_op, alpha, out_dtype);
+    mlir::ElementType out_dtype, mlir::stablehlo::Precision precision) {
+  auto mv_op = MatVecDot(mat_op, vec_op, alpha, out_dtype, precision);
   mlir::MlirOp alpha_op = MakeConstantLike(mv_op, alpha);
   return stablehlo::Mul(alpha_op, mv_op);
 }
 
-absl::StatusOr<mlir::MlirOp> BuildAddmvShlo(mlir::MlirOp self_op,
-                                            mlir::MlirOp mat_op,
-                                            mlir::MlirOp vec_op, double beta,
-                                            double alpha,
-                                            mlir::ElementType out_dtype) {
-  auto mv_op = MatVecDot(mat_op, vec_op, alpha, out_dtype);
+absl::StatusOr<mlir::MlirOp> BuildAddmvShlo(
+    mlir::MlirOp self_op, mlir::MlirOp mat_op, mlir::MlirOp vec_op, double beta,
+    double alpha, mlir::ElementType out_dtype,
+    mlir::stablehlo::Precision precision) {
+  auto mv_op = MatVecDot(mat_op, vec_op, alpha, out_dtype, precision);
 
   mlir::MlirOp alpha_op = MakeConstantLike(mv_op, alpha);
   mlir::MlirOp beta_op = MakeConstantLike(self_op, beta);
@@ -113,6 +114,11 @@ absl::StatusOr<DeviceBufferRef> Addmv(const at::Tensor& self,
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(out.scalar_type()));
 
+  const auto current_precision = PrecisionContext::GetPrecision();
+  TT_ASSIGN_OR_RETURN(param_keys,
+                      *OpParamCacheKeys::Builder(std::move(param_keys))
+                           .SetParam("precision", current_precision));
+
   Dimensions result_shape = {mat.size(0)};
   DispatchOpOptions<1> options = {.out_dtype = out_dtype,
                                   .out_dims = result_shape,
@@ -124,11 +130,12 @@ absl::StatusOr<DeviceBufferRef> Addmv(const at::Tensor& self,
   // reading from uninitialized tensors (at::empty) at the moment, so instead of
   // dispatching to ternary op, we dispatch to binary op without self.
   if (beta.toDouble() == 0.0) {
-    auto op_builder = [alpha, out_dtype](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+    auto op_builder = [alpha, out_dtype,
+                       current_precision](FixedSizeSpan<mlir::MlirOp, 2> inputs)
         -> absl::StatusOr<mlir::MlirOp> {
       auto& [mat_op, vec_op] = inputs;
-      return BuildAddmvShloBetaZero(mat_op, vec_op, alpha.toDouble(),
-                                    out_dtype);
+      return BuildAddmvShloBetaZero(mat_op, vec_op, alpha.toDouble(), out_dtype,
+                                    current_precision);
     };
     TT_ASSIGN_OR_RETURN(auto result_buf,
                         DispatchOp<2>(OpName::kAddmvOut, std::move(op_builder),
@@ -136,12 +143,12 @@ absl::StatusOr<DeviceBufferRef> Addmv(const at::Tensor& self,
     return result_buf;
   }
 
-  auto op_builder = [beta, alpha, out_dtype,
-                     result_shape](FixedSizeSpan<mlir::MlirOp, 3> inputs)
+  auto op_builder = [beta, alpha, out_dtype, result_shape,
+                     current_precision](FixedSizeSpan<mlir::MlirOp, 3> inputs)
       -> absl::StatusOr<mlir::MlirOp> {
     auto& [self_op, mat_op, vec_op] = inputs;
     return BuildAddmvShlo(self_op, mat_op, vec_op, beta.toDouble(),
-                          alpha.toDouble(), out_dtype);
+                          alpha.toDouble(), out_dtype, current_precision);
   };
   TT_ASSIGN_OR_RETURN(auto result_buf,
                       DispatchOp<3>(OpName::kAddmvOut, std::move(op_builder),

@@ -33,8 +33,8 @@ namespace torch_tpu {
 
 namespace stablehlo = mlir::stablehlo;
 
-absl::StatusOr<mlir::MlirOp> BuildMmShlo(
-    FixedSizeSpan<mlir::MlirOp, 2> inputs) {
+absl::StatusOr<mlir::MlirOp> BuildMmShlo(FixedSizeSpan<mlir::MlirOp, 2> inputs,
+                                         mlir::stablehlo::Precision precision) {
   auto& [lhs, rhs] = inputs;
   mlir::MlirBuilder& builder = lhs.getBuilder();
   mlir::MLIRContext& ctx = builder.getContext();
@@ -80,8 +80,8 @@ absl::StatusOr<mlir::MlirOp> BuildMmShlo(
           lhs_contracting_dimensions, rhs_contracting_dimensions);
 
   // TODO(bawilson): Enable precision config once StableHLO lowering is fixed.
-  stablehlo::Precision precisions[2] = {stablehlo::Precision::DEFAULT,
-                                        stablehlo::Precision::DEFAULT};
+  // Update: Enabling precision config via context manager.
+  stablehlo::Precision precisions[2] = {precision, precision};
   auto precision_config_attr =
       stablehlo::PrecisionConfigAttr::get(&ctx, precisions);
 

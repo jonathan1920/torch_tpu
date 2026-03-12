@@ -21,6 +21,7 @@
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {
@@ -44,6 +45,7 @@ absl::StatusOr<mlir::MlirOp> BuildSoftmaxShlo(
 
 absl::StatusOr<mlir::MlirOp> BuildSoftmaxBackwardDataShlo(
     mlir::MlirOp grad_output_op, mlir::MlirOp output_op, int64_t dim,
+    mlir::stablehlo::Precision precision,
     SoftmaxMode softmax_mode = SoftmaxMode::kSoftmax);
 
 }  // namespace torch_tpu

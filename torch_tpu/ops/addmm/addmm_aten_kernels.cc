@@ -33,11 +33,13 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/precision_context.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -49,12 +51,10 @@ namespace {
 
 namespace stablehlo = mlir::stablehlo;
 
-absl::StatusOr<mlir::MlirOp> BuildAddmmShlo(mlir::MlirOp self_op,
-                                            mlir::MlirOp mat1_op,
-                                            mlir::MlirOp mat2_op,
-                                            const at::Scalar& beta,
-                                            const at::Scalar& alpha,
-                                            mlir::ElementType out_dtype) {
+absl::StatusOr<mlir::MlirOp> BuildAddmmShlo(
+    mlir::MlirOp self_op, mlir::MlirOp mat1_op, mlir::MlirOp mat2_op,
+    const at::Scalar& beta, const at::Scalar& alpha,
+    mlir::ElementType out_dtype, mlir::stablehlo::Precision precision) {
   const mlir::RankedTensorType mat1_type = GetTensorTypeOrDie(mat1_op);
   const mlir::RankedTensorType mat2_type = GetTensorTypeOrDie(mat2_op);
 
@@ -66,11 +66,10 @@ absl::StatusOr<mlir::MlirOp> BuildAddmmShlo(mlir::MlirOp self_op,
     mat2_op = stablehlo::ConvertElementType(mat2_op, mlir::ElementType::F64);
   }
 
-  auto precision = mlir::stablehlo::PrecisionConfigAttr::get(
-      &self_op.getContext(), {mlir::stablehlo::Precision::DEFAULT,
-                              mlir::stablehlo::Precision::DEFAULT});
+  const auto precision_config = mlir::stablehlo::PrecisionConfigAttr::get(
+      &self_op.getContext(), {precision, precision});
 
-  mlir::MlirOp dot_result = stablehlo::Dot(mat1_op, mat2_op, precision);
+  mlir::MlirOp dot_result = stablehlo::Dot(mat1_op, mat2_op, precision_config);
   if (is_any_i64) {
     dot_result = stablehlo::ConvertElementType(dot_result, out_dtype);
   }
@@ -145,13 +144,18 @@ absl::StatusOr<DeviceBufferRef> AddMm(
                       _.SetOverride()
                           << "TorchTPU does not yet support the output dtype "
                           << ToString(out_scalar_type));
-  auto op_builder = [beta, alpha, output_dtype_mlir,
-                     output_dims_vec](FixedSizeSpan<mlir::MlirOp, 3> inputs)
+  const auto current_precision = PrecisionContext::GetPrecision();
+  TT_ASSIGN_OR_RETURN(param_keys,
+                      *OpParamCacheKeys::Builder(std::move(param_keys))
+                           .SetParam("precision", current_precision));
+
+  auto op_builder = [beta, alpha, output_dtype_mlir, output_dims_vec,
+                     current_precision](FixedSizeSpan<mlir::MlirOp, 3> inputs)
       -> absl::StatusOr<mlir::MlirOp> {
     auto& [self_op, mat1_op, mat2_op] = inputs;
     TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=No user triggerable errors.
         auto result, BuildAddmmShlo(self_op, mat1_op, mat2_op, beta, alpha,
-                                    output_dtype_mlir));
+                                    output_dtype_mlir, current_precision));
     return result;
   };
 

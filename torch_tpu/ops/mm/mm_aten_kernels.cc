@@ -25,8 +25,10 @@
 #include "absl/types/span.h"
 #include "ATen/core/TensorBody.h"
 #include "ATen/native/Resize.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -34,7 +36,9 @@
 #include "torch_tpu/ops/mm/mm.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/precision_context.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {
 namespace {
@@ -74,15 +78,28 @@ absl::Status CheckMmOutInputs(const at::Tensor& lhs, const at::Tensor& rhs,
 
 at::Tensor& AtenMmOut(const at::Tensor& lhs, const at::Tensor& rhs,
                       at::Tensor& out) {
-  TT_KERNEL(OpName::kMmOut, _, (lhs, rhs, out), {
+  TT_KERNEL(OpName::kMmOut, param_keys, (lhs, rhs, out), {
     TT_THROW_IF_ERROR(CheckMmOutInputs(lhs, rhs, out));
     int64_t output_dims[2] = {lhs.size(0), rhs.size(1)};
     mlir::ElementType dtype =
         ConvertTo<mlir::ElementType>(lhs.scalar_type()).value();
+
+    const auto current_precision = PrecisionContext::GetPrecision();
+    auto param_keys_or = *OpParamCacheKeys::Builder(std::move(param_keys))
+                              .SetParam("precision", current_precision);
+    TT_THROW_IF_ERROR(param_keys_or.status());
+    auto param_keys = std::move(param_keys_or).value();
+    auto op_builder =
+        [current_precision](FixedSizeSpan<mlir::MlirOp, 2> inputs) {
+          return BuildMmShlo(inputs, current_precision);
+        };
+
     TT_ASSIGN_OR_THROW(
         auto result_buf,
-        DispatchOp<2>(OpName::kMmOut, BuildMmShlo, {lhs, rhs},
-                      {.out_dtype = dtype, .out_dims = output_dims}));
+        DispatchOp<2>(OpName::kMmOut, std::move(op_builder), {lhs, rhs},
+                      {.out_dtype = dtype,
+                       .out_dims = output_dims,
+                       .op_param_cache_keys = std::move(param_keys)}));
     at::native::resize_output(out, output_dims);
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;

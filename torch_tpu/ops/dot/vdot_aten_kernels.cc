@@ -19,7 +19,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "ATen/core/ATen_fwd.h"
-#include "torch_tpu/common/dtype.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/utils.h"
@@ -29,16 +29,19 @@
 #include "torch_tpu/ops/dot/dot_checks.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/precision_context.h"
 #include "torch_tpu/ops/unary.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {
 
 namespace {
 
-absl::StatusOr<mlir::MlirOp> BuildVdotShlo(mlir::MlirOp lhs, mlir::MlirOp rhs) {
+absl::StatusOr<mlir::MlirOp> BuildVdotShlo(
+    mlir::MlirOp lhs, mlir::MlirOp rhs, mlir::stablehlo::Precision precision) {
   TT_ASSIGN_OR_RETURN(mlir::MlirOp conjugated_lhs, BuildConjPhysicalShlo(lhs));
-  return BuildDotShlo(conjugated_lhs, rhs);
+  return BuildDotShlo(conjugated_lhs, rhs, precision);
 }
 
 absl::Status CheckInputs(const at::Tensor& lhs, const at::Tensor& rhs) {
@@ -55,22 +58,31 @@ absl::Status CheckInputs(const at::Tensor& lhs, const at::Tensor& rhs) {
 }  // namespace
 
 at::Tensor AtenVdot(const at::Tensor& lhs, const at::Tensor& rhs) {
-  TT_KERNEL(OpName::kVdot, _, (lhs, rhs), {
+  TT_KERNEL(OpName::kVdot, param_keys, (lhs, rhs), {
     TT_THROW_IF_ERROR(CheckInputs(lhs, rhs));
 
     TT_ASSIGN_OR_THROW(auto result_scalar_type,
                        CheckedGetDotOutputType(lhs, rhs));
 
     // TODO: XLA doesn't support matmuls with i64, so we convert them to f64.
-    auto op_builder = [](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+    const auto precision = PrecisionContext::GetPrecision();
+    auto param_keys_or = *OpParamCacheKeys::Builder(std::move(param_keys))
+                              .SetParam("precision", precision);
+    TT_THROW_IF_ERROR(param_keys_or.status());
+    auto param_keys = std::move(param_keys_or).value();
+
+    auto op_builder = [precision](FixedSizeSpan<mlir::MlirOp, 2> inputs)
         -> absl::StatusOr<mlir::MlirOp> {
       auto& [lhs_op, rhs_op] = inputs;
-      return BuildVdotShlo(lhs_op, rhs_op);
+      return BuildVdotShlo(lhs_op, rhs_op, precision);
     };
+
     TT_ASSIGN_OR_THROW(
         auto result,
         DispatchOp<2>(OpName::kVdot, std::move(op_builder), {lhs, rhs},
-                      {.out_dtype = result_scalar_type, .out_dims = {}}));
+                      {.out_dtype = result_scalar_type,
+                       .out_dims = {},
+                       .op_param_cache_keys = std::move(param_keys)}));
     return MakeTensor(std::move(result));
   });
 }
