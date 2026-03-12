@@ -28,8 +28,7 @@
 #include "torch_tpu/common/to_string.h"
 
 // 1 if this is a Google-internal version of torch_tpu. Otherwise 0.
-#define TT_IS_INTERNAL_TORCH_TPU /* Comment for forcing a line break. */ \
-  0
+#define TT_IS_INTERNAL_TORCH_TPU 0
 
 // TODO: b/442629517 - Passing by explicit reference is deprecated, but external
 // builds use an older absl version that doesn't have implicit reference APIs.

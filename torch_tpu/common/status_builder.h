@@ -125,7 +125,7 @@ class [[nodiscard]] StatusBuilder {
         ".SetOverride(). E.g.\n\n"
         "  return TT_ERROR(error::kInternal) << \"message\";\n\n"
         "See the compiler notes below for where you need to make the change."
-    );
+        " See http://go/enforce-tt-error if you need more details.");
     return absl::OkStatus();
   }
 
