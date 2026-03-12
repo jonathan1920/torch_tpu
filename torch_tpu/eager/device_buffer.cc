@@ -207,11 +207,12 @@ size_t DeviceBufferList::size_bytes(int64_t index) const {
 }
 
 absl::StatusOr<size_t> DeviceBufferList::pjrt_buffer_size(int64_t index) const {
-  TT_ASSIGN_OR_RETURN(xla::PjRtBuffer & pjrt_buffer, buffer(index));
+  TT_ASSIGN_OR_RETURN(xla::PjRtBuffer* const pjrt_buffer,
+                      GetOrMaterializeBuffer(index));
 
-  TT_RET_CHECK(!pjrt_buffer.IsDeleted(), error::kFailedPrecondition)
+  TT_RET_CHECK(!pjrt_buffer->IsDeleted(), error::kFailedPrecondition)
       << "DeviceBufferRef has a PjRtBuffer, but it is deleted";
-  auto on_device_size_in_bytes = pjrt_buffer.GetOnDeviceSizeInBytes();
+  auto on_device_size_in_bytes = pjrt_buffer->GetOnDeviceSizeInBytes();
   if (on_device_size_in_bytes.ok()) {
     return on_device_size_in_bytes.value();
   }
@@ -222,7 +223,7 @@ absl::StatusOr<size_t> DeviceBufferList::pjrt_buffer_size(int64_t index) const {
       << ". Inferring from PjRtBuffer shape and DeviceBufferRef elementtype.";
   xla::Shape physical_buffer_shape_estimate = xla::ShapeUtil::MakeShape(
       ConvertTo<xla::PrimitiveType>(shapes_[index].dtype),
-      pjrt_buffer.on_device_shape().dimensions());
+      pjrt_buffer->on_device_shape().dimensions());
   return xla::ShapeUtil::ByteSizeOf(physical_buffer_shape_estimate);
 }
 
@@ -347,7 +348,8 @@ int64_t DeviceBufferList::num_elements(int64_t index) const {
   return c10::multiply_integers(shapes_[index].dimensions);
 }
 
-absl::StatusOr<xla::PjRtBuffer&> DeviceBufferList::buffer(int64_t index) const {
+absl::StatusOr<xla::PjRtBuffer* absl_nonnull>
+DeviceBufferList::GetOrMaterializeBuffer(int64_t index) const {
   if (std::holds_alternative<MaterializedBuffers>(data_)) {
     const auto& buffers = std::get<MaterializedBuffers>(data_);
     TT_RETURN_IF_ERROR(buffers.Await());
@@ -357,7 +359,7 @@ absl::StatusOr<xla::PjRtBuffer&> DeviceBufferList::buffer(int64_t index) const {
     xla::PjRtBuffer* maybe_buffer = buffers[index];
     TT_RET_CHECK(maybe_buffer, error::kFailedPrecondition)
         << "MaterializedBuffers has no/null PjRtBuffer at index " << index;
-    return *maybe_buffer;
+    return maybe_buffer;
   }
   return TT_ERROR(error::kFailedPrecondition)
          << "DeviceBufferList does not have a PjRtBuffer at index " << index
@@ -821,8 +823,9 @@ DeviceBufferRefState DeviceBufferRef::state() const {
   return device_buffer_list_->deferred_op();
 }
 
-absl::StatusOr<xla::PjRtBuffer&> DeviceBufferRef::buffer() const {
-  return device_buffer_list_->buffer(index_);
+absl::StatusOr<xla::PjRtBuffer* absl_nonnull>
+DeviceBufferRef::GetOrMaterializeBuffer() const {
+  return device_buffer_list_->GetOrMaterializeBuffer(index_);
 }
 
 absl::Status DeviceBufferRef::MarkDynamic(int64_t dimension,

@@ -196,15 +196,15 @@ absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref) {
   }
 
   TT_ASSIGN_OR_RETURN(
-      auto& buffer, buffer_ref.buffer(),
+      auto* buffer, buffer_ref.GetOrMaterializeBuffer(),
       _ << " - TpuMemcpyDtoH: DeviceBufferRef has nonzero size, "
            "but does not have a PjRtBuffer to copy from.");
 
   ABSL_VLOG(1) << "[TpuMemcpyDtoH] PjRtBuffer Details - OnDeviceSizeInBytes: "
-               << buffer.GetOnDeviceSizeInBytes()
-               << ", IsDeleted: " << buffer.IsDeleted()
-               << ", IsOnCpu: " << buffer.IsOnCpu()
-               << ", Shape: " << buffer.on_device_shape().ToString(true);
+               << buffer->GetOnDeviceSizeInBytes()
+               << ", IsDeleted: " << buffer->IsDeleted()
+               << ", IsOnCpu: " << buffer->IsOnCpu()
+               << ", Shape: " << buffer->on_device_shape().ToString(true);
 
   ABSL_VLOG(1) << "[TpuMemcpyDtoH] Calling PjRtBuffer::ToLiteralSync()...";
   std::vector<char> host_data_vec(buffer_expected_bytes);
@@ -215,7 +215,7 @@ absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref) {
       buffer_expected_type, buffer_expected_dims);
   auto literal = std::make_unique<xla::MutableBorrowingLiteral>(
       static_cast<char*>(cpu_tensor_receiver.data_ptr()), xla_shape);
-  auto future = buffer.ToLiteral(literal.get());
+  auto future = buffer->ToLiteral(literal.get());
   TT_RETURN_IF_ERROR(future.Await());
   return cpu_tensor_receiver;
 }

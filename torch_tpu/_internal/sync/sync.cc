@@ -50,8 +50,8 @@ absl::Status SynchronizeTensors(absl::Span<const at::Tensor> tensors) {
     // GetMaterialized() should always return a materialized or zero-sized
     // buffer ref.
     // If a buffer ref is zero-sized, we might not have anything to wait for.
-    TT_ASSIGN_OR_RETURN(auto& pjrt_buffer, buffer_ref.buffer());
-    auto future = pjrt_buffer.GetReadyFuture();
+    TT_ASSIGN_OR_RETURN(auto* pjrt_buffer, buffer_ref.GetOrMaterializeBuffer());
+    auto future = pjrt_buffer->GetReadyFuture();
     TT_RETURN_IF_ERROR(future.Await());
   }
 
@@ -77,15 +77,16 @@ absl::StatusOr<bool> IsReady(const at::Tensor& tensor) {
     // A zero-sized buffer is considered ready.
     return true;
   }
-  TT_ASSIGN_OR_RETURN(auto& maybe_pjrt_buffer, buffer_ref.buffer());
-  return maybe_pjrt_buffer.GetReadyFuture().IsReady();
+  TT_ASSIGN_OR_RETURN(auto* pjrt_buffer, buffer_ref.GetOrMaterializeBuffer());
+  return pjrt_buffer->GetReadyFuture().IsReady();
 }
 
 absl::StatusOr<bool> IsBufferlessZeroSize(const at::Tensor& tensor) {
   TT_ASSIGN_OR_RETURN(auto buffer_ref, GetBaseBufferFromAtTensor(tensor));
   return (buffer_ref.num_elements() == 0 &&
           buffer_ref.state() == DeviceBufferRefState::kZeroSize &&
-          !buffer_ref.buffer().ok() && buffer_ref.size_bytes() == 0);
+          !buffer_ref.GetOrMaterializeBuffer().ok() &&
+          buffer_ref.size_bytes() == 0);
 }
 
 namespace {

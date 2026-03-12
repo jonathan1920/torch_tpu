@@ -254,9 +254,9 @@ class DeviceBufferRef {
   [[nodiscard]] const DeferredOp* absl_nullable deferred_op() const;
 
   // Awaits the PjRtBuffer to be materialized, and then returns either the
-  // error encountered during materialization, or a reference to the
+  // error encountered during materialization, or a pointer to the
   // PjRtBuffer.
-  absl::StatusOr<xla::PjRtBuffer&> buffer() const;
+  absl::StatusOr<xla::PjRtBuffer* absl_nonnull> GetOrMaterializeBuffer() const;
 
   // The DeviceBufferList that holds the referenced buffer.
   [[nodiscard]] const SharedDeviceBufferList& device_buffer_list() const {
@@ -818,9 +818,10 @@ class DeviceBufferList {
   }
 
   // Awaits the PjRtBuffer to be materialized, and then returns either the
-  // error encountered during materialization, or a reference to the
+  // error encountered during materialization, or a pointer to the
   // PjRtBuffer.
-  absl::StatusOr<xla::PjRtBuffer&> buffer(int64_t index) const;
+  absl::StatusOr<xla::PjRtBuffer* absl_nonnull> GetOrMaterializeBuffer(
+      int64_t index) const;
 
   // If the DeviceBufferList is materialized, returns a non-null pointer to
   // the MaterializedBuffers. Otherwise, returns a nullptr.

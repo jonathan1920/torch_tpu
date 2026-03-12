@@ -162,8 +162,9 @@ absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>> GetRootArgs(
     switch (input.state()) {
       case DeviceBufferRefState::kMaterialized: {
         ABSL_VLOG(1) << "kMaterialized DeviceBufferRef index: " << index;
-        TT_ASSIGN_OR_RETURN(xla::PjRtBuffer & pjrt_buffer, input.buffer());
-        root_args.push_back(&pjrt_buffer);
+        TT_ASSIGN_OR_RETURN(xla::PjRtBuffer * pjrt_buffer,
+                            input.GetOrMaterializeBuffer());
+        root_args.push_back(pjrt_buffer);
         break;
       }
       case DeviceBufferRefState::kZeroSize:

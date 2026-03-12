@@ -773,6 +773,7 @@ class AnythingCompatibleWithThrow {
 // variable that will contain the result of the expression.
 #define TT_ASSIGN_OR_RETURN_IMPL_2_(statusor, lhs, rexpr)            \
   auto statusor = (rexpr);                                           \
+  TT_STATIC_ASSERT_NOT_STATUS_OR_REF_(statusor);                     \
   if (ABSL_PREDICT_FALSE(!statusor.ok())) {                          \
     return ::torch_tpu::internal::MaybeAddCppSourceLoc(              \
         std::move(statusor).status(), __FILE__, __LINE__, __func__); \
@@ -797,6 +798,7 @@ class AnythingCompatibleWithThrow {
 // compiler.
 #define TT_ASSIGN_OR_RETURN_IMPL_3_(statusor, lhs, rexpr, error_expr)     \
   auto statusor = (rexpr);                                                \
+  TT_STATIC_ASSERT_NOT_STATUS_OR_REF_(statusor);                          \
   if (ABSL_PREDICT_FALSE(!statusor.ok())) {                               \
     ::torch_tpu::StatusBuilderWithMessage _(                              \
         ::torch_tpu::internal::MaybeAddCppSourceLoc(                      \
