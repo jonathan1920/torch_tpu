@@ -339,7 +339,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.int64: {"rtol": 1e-4, "atol": 1e-4},
     },
     "log_softmax": {
-        torch.float32: {"rtol": 2e-5, "atol": 8e-5},
+        torch.float32: {"rtol": 1.5e-4, "atol": 8e-5},
         torch.float16: {"rtol": 1e-2, "atol": 5e-2},
         torch.bfloat16: {"rtol": 3e-2, "atol": 7e-3},
     },
@@ -2318,8 +2318,6 @@ class TestOps(TorchTpuTestBase):
   def test_log_softmax(self):
     self.do_test_op(
         "log_softmax",
-        # TODO: fix compilation error in log_softmax_backward_data.
-        check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
     )

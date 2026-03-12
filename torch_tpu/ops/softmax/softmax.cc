@@ -118,6 +118,11 @@ absl::StatusOr<MlirOpResults<1>> BuildSoftmaxBackwardDataShlo(
   ABSL_VLOG(3) << "BuildSoftmaxBackwardDataShlo: output_type: "
                << mlir::debugString(output_type);
 
+  if (output_type.getRank() == 0) {
+    mlir::MlirBuilder& builder = grad_output_op.getBuilder();
+    return MakeScalarConstant(builder, 0.0, output_type.getElementType());
+  }
+
   TT_RET_CHECK(output_type.getShape() == grad_output_type.getShape(),
                error::kInvalidArgument)
       << "grad_output and output must have the same shape.";
