@@ -30,10 +30,10 @@ USE_DYNAMIC_KERNEL = True
 class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
   # pylint: disable=invalid-name
   B = 16
-  Hq = 8
+  Hq = 16
   L = 1024
   E = 128
-  H = 8
+  H = 2
   S = L
   Ev = E
   # pylint: enable=invalid-name

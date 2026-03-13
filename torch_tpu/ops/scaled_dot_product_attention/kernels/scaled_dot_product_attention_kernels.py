@@ -39,7 +39,7 @@ except AttributeError:
   pallas_export_experimental = pallas_core.pallas_export_experimental
 
 DEFAULT_MASKED_VALUE = -1e30
-_BLOCK_SIZE = 512
+_BLOCK_SIZE = 128
 
 
 @dataclasses.dataclass
@@ -351,6 +351,53 @@ class SDPAKernelReferenceTorch:
 ########################################################################
 ## Flash Attention Kernels ##
 ########################################################################
+def flash_attention_gqa(q, k, v, causal, block_sizes=None):
+  """Flash Attention wrapper that adds GQA using vmap."""
+  q_heads = q.shape[-3]
+  kv_heads = k.shape[-3]
+  qk_head_dim = q.shape[-1]
+  v_head_dim = v.shape[-1]
+
+  q_seq_len = q.shape[-2]
+  kv_seq_len = k.shape[-2]
+
+  groups = kv_heads
+  batch_size = q.shape[0]
+
+  q_grouped = q.reshape(
+      batch_size, groups, q_heads // groups, q_seq_len, qk_head_dim
+  )
+  k_grouped = k.reshape(
+      batch_size, groups, kv_heads // groups, kv_seq_len, qk_head_dim
+  )
+  v_grouped = v.reshape(
+      batch_size, kv_heads, kv_heads // groups, kv_seq_len, v_head_dim
+  )
+
+  def process_group(q, k, v):
+
+    def process_head(q, k, v):
+      return flash_attention.flash_attention(
+          q, k, v, causal=causal, block_sizes=block_sizes
+      )
+
+    return jax.vmap(process_head, in_axes=(1, None, None), out_axes=1)(
+        q.reshape(batch_size, q_heads // groups, 1, q_seq_len, qk_head_dim),
+        k,
+        v,
+    ).reshape(batch_size, q_heads // groups, q_seq_len, v_head_dim)
+
+  return jax.vmap(
+      process_group,
+      in_axes=1,
+      out_axes=1,
+  )(
+      q_grouped,
+      k_grouped,
+      v_grouped,
+  ).reshape(batch_size, q_heads, q_seq_len, v_head_dim)
+
+
 class SDPAKernelFlashAttention:
   """Flash Attention implementation of SDPA."""
 
@@ -372,7 +419,7 @@ class SDPAKernelFlashAttention:
     q, k, v = query, key, value
     _, _, _, head_dim_qk = q.shape
     q = q / jnp.sqrt(head_dim_qk)
-    out = flash_attention.flash_attention(
+    out = flash_attention_gqa(
         q=q,
         k=k,
         v=v,
@@ -470,7 +517,7 @@ class SDPAKernelFlashAttention:
               f"mod(kv_seq_len, {block_size}) == 0",
               # TODO(elliotenglish): Add support for GQA.
               # "mod(num_q_heads, num_kv_heads) == 0",
-              "num_q_heads == num_kv_heads",
+              # "num_q_heads == num_kv_heads",
               "qk_head_dim == v_head_dim",
           ),
       )
