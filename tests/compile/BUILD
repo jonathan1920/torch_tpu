@@ -98,7 +98,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/compile:tpu_torch_compile",
+        "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/api",
     ],
 )
