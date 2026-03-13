@@ -13,6 +13,7 @@
 # limitations under the License.
 
 load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load("//shims/mpm:genmpm.bzl", "genmpm")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
@@ -153,6 +154,22 @@ torch_tpu_py_test(
     ],
 )
 
+# Using a temporal MPM instead of a durable MPM as these are only used for testing. It also allows
+# testing changes from a local workspace.
+genmpm(
+    name = "model_performance_benchmarks_mpm",
+    testonly = 1,
+    temporal = True,
+    deps = [":model_performance_benchmarks_with_runfiles"],
+)
+
+genmpm(
+    name = "model_quality_benchmarks_mpm",
+    testonly = 1,
+    temporal = True,
+    deps = [":model_quality_benchmarks_with_runfiles"],
+)
+
 torch_tpu_py_test(
     name = "layer_performance_benchmarks",
     timeout = "long",
@@ -178,6 +195,15 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu/shims/g3_multiprocessing",
     ],
+)
+
+# Using a temporal MPM instead of a durable MPM as these are only used for testing. It also allows
+# testing changes from a local workspace.
+genmpm(
+    name = "layer_performance_benchmarks_mpm",
+    testonly = 1,
+    temporal = True,
+    deps = [":layer_performance_benchmarks_with_runfiles"],
 )
 
 torch_tpu_py_test(
