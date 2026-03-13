@@ -51,7 +51,7 @@ using ViewPrimitive =
                  ComplexToRealBitcast, ViewAsComplex, UnfoldPrimitive,
                  ConjPrimitive>;
 static_assert(alignof(ViewPrimitive) == 8, "");
-static_assert(sizeof(ViewPrimitive) == 120, "");
+static_assert(sizeof(ViewPrimitive) == 176, "");
 
 bool operator==(const ViewPrimitive& lhs, const ViewPrimitive& rhs);
 bool operator!=(const ViewPrimitive& lhs, const ViewPrimitive& rhs);

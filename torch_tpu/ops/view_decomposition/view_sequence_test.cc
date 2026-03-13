@@ -96,7 +96,8 @@ TEST(Simplify, NothingToSimplify) {
                          {.start_index = 1, .limit_index = 9, .stride = 1}}},
       ReshapePrimitive{.base_sizes = {6, 8}, .new_sizes = {6, 4, 2, 1}},
       TransposePrimitive{.permutation = {0, 3, 2, 1}},
-      BroadcastPrimitive{.new_sizes = {6, 999, 2, 4},
+      BroadcastPrimitive{.base_shape = {6, 1, 2, 4},
+                         .new_sizes = {6, 999, 2, 4},
                          .broadcast_dimensions = {0, 1, 2, 3}}};
   ViewSequence expected = sequence;  // Should not be modified
 
@@ -116,7 +117,8 @@ TEST(Simplify, RemoveNoOpPermute) {
 
 TEST(Simplify, RemoveNoOpBroadcast) {
   SimplifyTest({6, 2, 4},
-               {BroadcastPrimitive{.new_sizes = {6, 2, 4},
+               {BroadcastPrimitive{.base_shape = {6, 2, 4},
+                                   .new_sizes = {6, 2, 4},
                                    .broadcast_dimensions = {0, 1, 2}}},
                {});
 }
@@ -293,6 +295,21 @@ TEST(ViewPrimitiveEquality, ConjPrimitive) {
   EXPECT_NE(c1, c3);
 }
 
+TEST(ViewPrimitiveEquality, BroadcastPrimitive) {
+  ViewPrimitive b1 = BroadcastPrimitive{.base_shape = {1, 2},
+                                        .new_sizes = {2, 2},
+                                        .broadcast_dimensions = {0, 1}};
+  ViewPrimitive b2 = BroadcastPrimitive{.base_shape = {1, 2},
+                                        .new_sizes = {2, 2},
+                                        .broadcast_dimensions = {0, 1}};
+  ViewPrimitive b3 = BroadcastPrimitive{.base_shape = {2, 2},
+                                        .new_sizes = {2, 2},
+                                        .broadcast_dimensions = {0, 1}};
+
+  EXPECT_EQ(b1, b2);
+  EXPECT_NE(b1, b3);
+}
+
 TEST(SymbolicViewPrimitive, ReshapeViewCacheKeys) {
   // Create a fallback tensor which is only used when symbolic keygen fails
   at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
@@ -416,6 +433,26 @@ TEST(SymbolicViewPrimitive, PadViewCacheKeys) {
   ASSERT_OK_AND_ASSIGN(
       param_keys, ViewSequenceCacheKey(pad, *tensor.unsafeGetTensorImpl()));
   EXPECT_THAT(param_keys, ElementsAre(Pair("view", "pad:[{l0,h0,i0}]")));
+}
+
+TEST(SymbolicViewPrimitive, BroadcastViewCacheKeys) {
+  // Create a fallback tensor which is only used when symbolic keygen fails
+  at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
+
+  OpParamCacheKeys param_keys;
+  ViewSequence bcast_size_one = {BroadcastPrimitive{
+      .base_shape{1, 1}, .new_sizes = {2, 2}, .broadcast_dimensions = {0, 1}}};
+  ASSERT_OK_AND_ASSIGN(
+      param_keys,
+      ViewSequenceCacheKey(bcast_size_one, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys, ElementsAre(Pair("view", "broadcast:[2,2]")));
+
+  ViewSequence bcast_expand_replicate = {BroadcastPrimitive{
+      .base_shape{4}, .new_sizes = {4, 2, 1}, .broadcast_dimensions = {0}}};
+  ASSERT_OK_AND_ASSIGN(param_keys,
+                       ViewSequenceCacheKey(bcast_expand_replicate,
+                                            *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys, ElementsAre(Pair("view", "broadcast:[in0,2,1]")));
 }
 
 TEST(SymbolicViewPrimitive, MultipleViewCacheKeys) {

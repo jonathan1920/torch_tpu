@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
@@ -49,16 +50,18 @@ namespace torch_tpu {
 // non-expanded dimension j will have the same stride as the corresponding
 // input dimension.
 struct BroadcastPrimitive {
+  // The shape of the input tensor.
+  Dimensions base_shape;
   // The shape of the output tensor.
-  std::vector<int64_t> new_sizes;  // INT_VEC_OK=cache line alignment
+  Dimensions new_sizes;
   // A mapping from input dimensions to output dimensions.
   // broadcast_dimensions[i] == j means that input dimension i is mapped to
   // output dimension j.
-  std::vector<int64_t> broadcast_dimensions;  // INT_VEC_OK=cache line alignment
+  Dimensions broadcast_dimensions;
 };
-// Using vectors instead of Dimensions + Indices to keep the struct size below
-// 56 bytes, so that the ViewPrimitive variant fits in 64 bytes (one cache line)
-static_assert(sizeof(BroadcastPrimitive) == 48);
+// We use Dimensions instead of std::vector to avoid heap allocations for
+// small ranks.
+static_assert(sizeof(BroadcastPrimitive) == 168);
 
 // Formats the broadcast like "broadcast(new_sizes=[1, 2, 3],
 // broadcast_dimensions=[1, 2])".

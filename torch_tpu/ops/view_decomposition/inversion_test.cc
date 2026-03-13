@@ -25,6 +25,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
 #include "torch_tpu/ops/view_decomposition/broadcast_primitive.h"
@@ -402,8 +403,10 @@ TEST(InvertViewSequence, InvalidExpandTensor) {
   Dimensions contiguous_base_shape = {1024, 1, 128};
   StridedLayout contiguous_base_layout =
       MakeContiguousBaseLayout(contiguous_base_shape);
-  ViewSequence view_sequence_forward = {BroadcastPrimitive{
-      .new_sizes = {1024, 512, 128}, .broadcast_dimensions = {0, 1, 2}}};
+  ViewSequence view_sequence_forward = {
+      BroadcastPrimitive{.base_shape = {1024, 1, 128},
+                         .new_sizes = {1024, 512, 128},
+                         .broadcast_dimensions = {0, 1, 2}}};
   EXPECT_THAT(InvertViewSequence(contiguous_base_layout, view_sequence_forward)
                   .status(),
               StatusIs(error::kFailedPrecondition,

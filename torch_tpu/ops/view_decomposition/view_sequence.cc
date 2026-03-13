@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -26,6 +27,7 @@
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -210,7 +212,8 @@ bool operator==(const ViewPrimitive& lhs, const ViewPrimitive& rhs) {
   }
   if (auto* lhs_broadcast = std::get_if<BroadcastPrimitive>(&lhs)) {
     const auto& rhs_broadcast = std::get<BroadcastPrimitive>(rhs);
-    return lhs_broadcast->new_sizes == rhs_broadcast.new_sizes &&
+    return lhs_broadcast->base_shape == rhs_broadcast.base_shape &&
+           lhs_broadcast->new_sizes == rhs_broadcast.new_sizes &&
            lhs_broadcast->broadcast_dimensions ==
                rhs_broadcast.broadcast_dimensions;
   }
@@ -449,11 +452,28 @@ struct ViewCacheKeyVisitor {
         "]");
   }
 
+  absl::StatusOr<std::string> operator()(
+      const BroadcastPrimitive& primitive) const {
+    std::string dims;
+    for (int64_t i = 0; i < primitive.new_sizes.size(); ++i) {
+      auto& bcast_dims = primitive.broadcast_dimensions;
+      auto it = absl::c_find(bcast_dims, i);
+      auto index = std::distance(bcast_dims.begin(), it);
+      std::string comma = i > 0 ? "," : "";
+      if (it != bcast_dims.end() && primitive.base_shape[index] > 1) {
+        absl::StrAppend(&dims, comma, "in", index);
+        continue;
+      }
+      absl::StrAppend(&dims, comma, primitive.new_sizes[i]);
+    }
+    return absl::StrCat("broadcast:[", dims, "]");
+  }
+
   // Fallback for all other view primitives.
   // Currently unsupported:
-  //  - BroadcastPrimitive relies on static shape information for output.
   //  - UnfoldPrimitive relies on static shape information for output.
-  //  - SlicePrimitive relies on static shape information for output.
+  //  - SlicePrimitive is often used for masking, and slicing along a dynamic
+  //    dimension is a cache miss, not worth a partially symbolic key.
   template <typename T>
   absl::StatusOr<std::string> operator()(const T& primitive) const {
     return TT_ERROR(error::kUnimplemented) << "View primitive does not support "
@@ -474,7 +494,7 @@ absl::StatusOr<std::string> SymbolicViewCacheKey(
   std::string view_sequence_cache_key;
   for (auto [index, primitive] : llvm::enumerate(view_sequence)) {
     TT_ASSIGN_OR_RETURN(std::string view_cache_key, ViewToCacheKey(primitive));
-    ABSL_VLOG(3) << "[SymbolicViewCacheKey] Symbolic reshape key: "
+    ABSL_VLOG(3) << "[SymbolicViewCacheKey] Symbolic cache key: "
                  << view_cache_key;
     if (index > 0) {
       absl::StrAppend(&view_sequence_cache_key, ";");

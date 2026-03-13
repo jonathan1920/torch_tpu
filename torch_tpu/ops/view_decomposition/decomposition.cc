@@ -31,6 +31,7 @@
 #include "absl/types/span.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
@@ -141,10 +142,10 @@ BroadcastPrimitive BuildTailBroadcast(
     StridedLayout& tail_layout,
     absl::Span<const IndexedStridedDimension> sorted_dimensions) {
   // The broadcast will create the sizes in the correct locations.
-  std::vector<int64_t> new_sizes(sorted_dimensions.size(), -1);  // INT_VEC_OK
+  Dimensions new_sizes(sorted_dimensions.size(), -1);
 
   // Extract the non-broadcasted prefix and set up the broadcast map
-  std::vector<int64_t> broadcast_dimensions;  // INT_VEC_OK
+  Dimensions broadcast_dimensions;
 
   // Update tail_layout to be the shape before the broadcast.
   tail_layout.strided_dims.clear();  // existing capacity is sufficient
@@ -160,7 +161,14 @@ BroadcastPrimitive BuildTailBroadcast(
     broadcast_dimensions.push_back(dim.index);
   }
 
+  Dimensions base_shape;
+  base_shape.reserve(tail_layout.strided_dims.size());
+  for (const auto& dim : tail_layout.strided_dims) {
+    base_shape.push_back(dim.size);
+  }
+
   return BroadcastPrimitive{
+      .base_shape = std::move(base_shape),
       .new_sizes = std::move(new_sizes),
       .broadcast_dimensions = std::move(broadcast_dimensions)};
 }
@@ -1194,6 +1202,7 @@ absl::Status RemoveExtraDim(StridedLayout& head_layout,
   // The extra dimension will be broadcasted to this.
   // new_sizes is unchanged.
   broadcast.broadcast_dimensions.push_back(first_inserted_dim);
+  broadcast.base_shape.push_back(head_layout.strided_dims.back().size);
 
   return absl::OkStatus();
 }

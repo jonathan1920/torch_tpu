@@ -92,7 +92,8 @@ absl::Status ValidateBroadcast(const BroadcastPrimitive& broadcast,
 
 std::ostream& operator<<(std::ostream& os,
                          const BroadcastPrimitive& broadcast) {
-  os << "broadcast(new_sizes=" << ToString(broadcast.new_sizes)
+  os << "broadcast(base_shape=" << ToString(broadcast.base_shape)
+     << ", new_sizes=" << ToString(broadcast.new_sizes)
      << ", broadcast_dimensions=" << ToString(broadcast.broadcast_dimensions)
      << ")";
   return os;
