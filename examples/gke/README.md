@@ -79,3 +79,16 @@ xpk workload create \
   --command="cd /workspace/examples/distributed/tensor_parallel/ && ./gcp_launch.sh"
 ```
 
+If the example contains a requirements file, you will need to install them:
+
+```bash
+xpk workload create
+  --workload=unique-worker-name-1
+  --cluster=${CLUSTER}
+  --zone=${ZONE_NAME}
+  --project=${PROJECT}
+  --tpu-type=tpu7x-8
+  --docker-image=${ARTIFACT_REGISTRY_URL}/${DOCKER_IMAGE}
+  --command="cd /workspace/examples/distributed/fsdp/lora/ && pip install -r requirements.txt && ./gcp_launch.sh"
+```
+

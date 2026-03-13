@@ -1,0 +1,52 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
+
+package(
+    default_applicable_licenses = ["//:license"],
+    default_visibility = ["//:__subpackages__"],
+)
+
+torch_tpu_py_test(
+    name = "launch",
+    srcs = ["launch.py"],
+    main = "launch.py",
+    tags = [
+        "noasan",
+        "requires-tpu-v5lite:8",
+    ],
+    deps = [
+        ":fsdp_lora_worker",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/shims/g3_multiprocessing",
+    ],
+)
+
+pytype_strict_library(
+    name = "fsdp_lora_worker",
+    srcs = ["fsdp_lora_worker.py"],
+    deps = [
+        "//examples/distributed/fsdp:fsdp_worker",
+        "//examples/distributed/fsdp:model",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/api",
+        "@pypi//peft",
+    ],
+)
+
+torch_tpu_package_end()
