@@ -868,4 +868,18 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "defer_never_test",
+    srcs = ["defer_never_test.py"],
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/execution_mode",
+        "//torch_tpu/api",
+    ],
+)
+
 torch_tpu_package_end()
