@@ -41,6 +41,7 @@
 #include "ATen/core/ivalue_inl.h"
 #include "ATen/core/jit_type.h"
 #include "ATen/ops/cat.h"
+#include "ATen/ops/empty.h"
 #include "ATen/ops/flatten.h"
 #include "ATen/ops/ones.h"
 #include "ATen/ops/stack.h"
@@ -412,6 +413,13 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::broadcast(
       // See https://github.com/pytorch/pytorch/issues/159686 for details.
       // This is why we need to copy_ here, and cannot simply re-assign.
       tensor.copy_(at::zeros(tensor.sizes(), tensor.options()));
+    } else {
+      // Rank 0 (root rank): We must push the exact same sequence of operations
+      // to the dispatcher to keep the thread-local `detect_repeated_ops`
+      // heuristic synchronized across all ranks. We execute the same ops on a
+      // discarded dummy tensor so we don't corrupt the actual broadcast data.
+      auto dummy = at::empty(tensor.sizes(), tensor.options());
+      dummy.copy_(at::zeros(tensor.sizes(), tensor.options()));
     }
     ABSL_VLOG(1) << OpDebugString("broadcast")
                  << "DeviceBufferRef: " << DeviceBufferRefDebugString(tensor);
