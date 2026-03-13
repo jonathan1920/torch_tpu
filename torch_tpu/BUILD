@@ -36,7 +36,7 @@ pytype_strict_library(
         "__init__.py",
     ],
     deps = [
-        "//shims/libtpu",
+        "//shims/libtpu",  # copybara:comment(oss-only)
         "//torch_tpu/_internal:testing",  # buildcleaner: keep
     ],
 )
