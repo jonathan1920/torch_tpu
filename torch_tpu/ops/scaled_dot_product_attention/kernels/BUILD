@@ -34,9 +34,9 @@ pytype_strict_library(
         "//shims/jax:pallas",
         "//shims/jax:pallas_tpu",
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/pallas:pallas_kernel_generate_utils",
         "@pypi//jax",
         "@pypi//numpy",
+        "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
     ],
 )
 
@@ -66,6 +66,7 @@ torch_tpu_py_test(
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "@pypi//jax",
+        "@pypi//numpy",
     ],
 )
 

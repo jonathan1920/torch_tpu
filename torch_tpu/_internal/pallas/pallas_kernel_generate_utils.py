@@ -14,24 +14,6 @@
 
 """Utility functions for generating dynamic kernels exports from Pallas."""
 
-from typing import Callable
-import jax
-import jax.export
-
-
-def export(f) -> Callable[..., jax.export.Exported]:
-  """Exports a dynamic kernel."""
-  # TODO(elliotenglish): Determine if there's a case that needs to use
-  # pl.lower_as_mlir directly.
-  # device = get_topology_desc("vlp:1x1").devices[0]
-  # exported = pl.lower_as_mlir(
-  #     f, *args, dynamic_shapes=True, return_exported=True,
-  #     device=device, **kwargs
-  # )
-  # assert isinstance(exported, jax.export.Exported)
-  exported = jax.export.export(jax.jit(f), platforms=["tpu"])
-  return exported
-
 
 def generate_embedded_file(
     header_path: str, implementation_path: str, data: list[tuple[str, bytes]]

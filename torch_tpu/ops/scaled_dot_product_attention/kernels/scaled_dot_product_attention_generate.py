@@ -73,24 +73,33 @@ _IS_CAUSAL = flags.DEFINE_boolean(
 )
 
 
-#######################################################################
-def export_forward_kernel(header_path, implementation_path):
-  """Export and print a dynamic forward kernel."""
+def get_kernel():
+  if _KERNEL_TYPE.value == "flash":
+    return kernels.SDPAKernelFlashAttention
+  elif _KERNEL_TYPE.value == "jax":
+    return kernels.SDPAKernelReferenceJax
+  else:
+    raise ValueError(f"Unsupported kernel type: {_KERNEL_TYPE.value}")
+
+
+def get_dtype():
   if _DTYPE.value == "float32":
-    dtype = np.float32
+    return np.float32
   elif _DTYPE.value == "bfloat16":
-    dtype = jnp.bfloat16
+    return jnp.bfloat16
   else:
     raise ValueError(f"Unsupported dtype: {_DTYPE.value}")
 
-  exported = kernels.export_sdpa_forward_kernel(
-      static_seq_len=None,
-      static_head_dim=None,
-      num_q_heads=None,
-      batch_size=None,
-      kernel_type=_KERNEL_TYPE.value,
+
+#######################################################################
+def export_forward_kernel(header_path, implementation_path):
+  """Export and print a dynamic forward kernel."""
+  kernel = get_kernel()
+
+  exported = kernel.export_forward(
+      dtype=get_dtype(),
       is_causal=_IS_CAUSAL.value,
-      dtype=dtype,
+      input_sizes=None,
   )
   if header_path is not None and implementation_path is not None:
     kernel_utils.generate_embedded_file(
@@ -106,21 +115,12 @@ def export_forward_kernel(header_path, implementation_path):
 
 def export_backward_kernel(header_path, implementation_path):
   """Export a dynamic backward kernel."""
-  if _DTYPE.value == "float32":
-    dtype = np.float32
-  elif _DTYPE.value == "bfloat16":
-    dtype = jnp.bfloat16
-  else:
-    raise ValueError(f"Unsupported dtype: {_DTYPE.value}")
+  kernel = get_kernel()
 
-  exported = kernels.export_sdpa_backward_kernel(
-      static_seq_len=None,
-      static_head_dim=None,
-      num_q_heads=None,
-      batch_size=None,
-      kernel_type=_KERNEL_TYPE.value,
+  exported = kernel.export_backward(
+      dtype=get_dtype(),
       is_causal=_IS_CAUSAL.value,
-      dtype=dtype,
+      input_sizes=None,
   )
 
   if header_path is not None and implementation_path is not None:

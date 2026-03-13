@@ -101,10 +101,7 @@ pybind_extension(
 pytype_strict_library(
     name = "pallas_kernel_generate_utils",
     srcs = ["pallas_kernel_generate_utils.py"],
-    deps = [
-        "@pypi//jax",
-        "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
-    ],
+    deps = [],
 )
 
 torch_tpu_package_end()

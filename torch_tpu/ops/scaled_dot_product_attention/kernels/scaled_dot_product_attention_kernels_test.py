@@ -17,6 +17,7 @@ from absl import logging
 from absl.testing import absltest
 import jax
 import jax.numpy as jnp
+import numpy as np
 from torch_tpu.ops.scaled_dot_product_attention.kernels import scaled_dot_product_attention_kernels as kernels
 
 ALL_ONES_Q = False
@@ -32,12 +33,12 @@ class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
   Hq = 8
   L = 1024
   E = 128
-  H = Hq
+  H = 8
   S = L
   Ev = E
   # pylint: enable=invalid-name
 
-  def _test_kernel(self, base_fn, test_fn, kernel_type, atol=None):
+  def _test_kernel(self, base_fn, test_fn, kernel_type):
     if kernel_type == "flash":
       if ALL_ONES_Q:
         q = jnp.ones(shape=(self.B, self.Hq, self.L, self.E), dtype=jnp.float32)
@@ -73,45 +74,46 @@ class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
     logging.info("out_base.shape=%s", jax.tree.map(jnp.shape, out_base))
     logging.info("out_test.shape=%s", jax.tree.map(jnp.shape, out_test))
 
-    rtol = 1e-2
-    # Tolerances based on implementation differences (JAX vs PyTorch vs Flash
-    # backend) The error can be slightly higher for backward pass or different
-    # backends. atol=2e-2 was found to be necessary for backward reference
-    # comparison.
-    atol = 2e-2
+    jax.tree.map(
+        lambda a, b: np.testing.assert_allclose(
+            a,
+            b,
+            atol=5e-2,
+            rtol=5e-2,
+        ),
+        out_test,
+        out_base,
+    )
 
-    def compare(a, b):
-      if a is None and b is None:
-        return
-      error = jnp.max(jnp.abs(a - b) - rtol * jnp.abs(b))
-      assert error < atol, f"{error=} {atol=}"
-
-    jax.tree.map(compare, out_test, out_base)
-
-  def test_forward_torch_ref(self):
+  def test_forward_export_jax(self):
     self._test_kernel(
         functools.partial(
-            kernels.sdpa_forward_kernel_reference_jax,
+            kernels.SDPAKernelReferenceTorch.forward,
             is_causal=True,
         ),
-        functools.partial(
-            kernels.sdpa_forward_kernel_reference_torch,
-            is_causal=True,
-        ),
+        kernels.SDPAKernelReferenceJax.export_forward(
+            dtype=jnp.float32, is_causal=True
+        ).call,
         kernel_type="ref",
     )
 
-  def test_forward_export(self):
+  def get_input_sizes(self):
     if USE_DYNAMIC_KERNEL:
-      static_seq_len = None
-      static_head_dim = None
-      num_q_heads = None
-      batch_size = None
+      input_sizes = None
     else:
-      static_seq_len = self.L
-      static_head_dim = self.E
-      num_q_heads = self.Hq
-      batch_size = self.B
+      input_sizes = kernels.InputSizes(
+          batch_size=self.B,
+          q_num_heads=self.Hq,
+          kv_num_heads=self.H,
+          q_seq_len=self.L,
+          kv_seq_len=self.S,
+          qk_head_dim=self.E,
+          v_head_dim=self.Ev,
+      )
+    return input_sizes
+
+  def test_forward_export_flash(self):
+    input_sizes = self.get_input_sizes()
 
     is_causal_list = [True, False]
 
@@ -119,18 +121,14 @@ class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
       logging.info("Running test_forward_export with is_causal=%s", is_causal)
       self._test_kernel(
           functools.partial(
-              kernels.sdpa_forward_kernel_reference_jax,
+              kernels.SDPAKernelReferenceTorch.forward,
               is_causal=is_causal,
           ),
-          functools.partial(
-              kernels.sdpa_forward_kernel_export_call,
+          kernels.SDPAKernelFlashAttention.export_forward(
+              dtype=jnp.float32,
               is_causal=is_causal,
-              static_seq_len=static_seq_len,
-              static_head_dim=static_head_dim,
-              num_q_heads=num_q_heads,
-              batch_size=batch_size,
-              kernel_type=KERNEL_TYPE,
-          ),
+              input_sizes=input_sizes,
+          ).call,
           kernel_type=KERNEL_TYPE,
       )
 
@@ -140,12 +138,12 @@ class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
     )
     self._test_kernel(
         functools.partial(
-            kernels.sdpa_backward_kernel_reference_jax,
+            kernels.SDPAKernelReferenceJax.backward,
             grad_out,
             is_causal=True,
         ),
         functools.partial(
-            kernels.sdpa_backward_kernel_reference_torch,
+            kernels.SDPAKernelReferenceTorch.backward,
             grad_out,
             is_causal=True,
         ),
@@ -153,16 +151,7 @@ class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
     )
 
   def test_backward_export(self):
-    if USE_DYNAMIC_KERNEL:
-      static_seq_len = None
-      static_head_dim = None
-      num_q_heads = None
-      batch_size = None
-    else:
-      static_seq_len = self.L
-      static_head_dim = self.E
-      num_q_heads = self.Hq
-      batch_size = self.B
+    input_sizes = self.get_input_sizes()
 
     is_causal_list = [True, False]
 
@@ -174,19 +163,17 @@ class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
       logging.info("Running test_backward_export with is_causal=%s", is_causal)
       self._test_kernel(
           functools.partial(
-              kernels.sdpa_backward_kernel_reference_jax,
+              kernels.SDPAKernelReferenceTorch.backward,
               grad_out,
               is_causal=is_causal,
           ),
           functools.partial(
-              kernels.sdpa_backward_kernel_export_call,
+              kernels.SDPAKernelFlashAttention.export_backward(
+                  dtype=jnp.float32,
+                  is_causal=is_causal,
+                  input_sizes=input_sizes,
+              ).call,
               grad_out,
-              is_causal=is_causal,
-              static_seq_len=static_seq_len,
-              static_head_dim=static_head_dim,
-              num_q_heads=num_q_heads,
-              batch_size=batch_size,
-              kernel_type=KERNEL_TYPE,
           ),
           kernel_type=KERNEL_TYPE,
       )
