@@ -57,6 +57,8 @@ torch_tpu_py_test(
     name = "scaled_dot_product_attention_kernels_test",
     srcs = ["scaled_dot_product_attention_kernels_test.py"],
     tags = [
+        # TODO(b/493270350): Investigate if the test should be enabled for asan.
+        "noasan",
         # Disabling tsan for this test, see details in b/491065267.
         "notsan",
         "requires-tpu-v5lite",
