@@ -210,12 +210,11 @@ def exported_to_mlir(
     The MLIR representation of the graph as a bytes string.
   """
 
-  args = [
-      tpu_torch_compile.placeholder_like(arg)
-      for arg in _extract_sample_arguments(exported)
-  ]
+  sample_args = _extract_sample_arguments(exported)
   _, state = _extract_states_from_exported_program(exported)
-  args = state + args
+
+  args = state + sample_args
+  args = [tpu_torch_compile.placeholder_like(arg) for arg in args]
 
   device = device_utils.available_xla_device()
   if device is None:
