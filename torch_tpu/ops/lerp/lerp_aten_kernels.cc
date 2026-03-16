@@ -92,6 +92,10 @@ at::Tensor& AtenLerpTensorOut(const at::Tensor& self, const at::Tensor& end,
     auto promoted_dtype =
         c10::promoteTypes(self.scalar_type(), end.scalar_type());
     promoted_dtype = c10::promoteTypes(promoted_dtype, weight.scalar_type());
+
+    // Use at least F32 for the inputs following the torch impl.
+    promoted_dtype = c10::promoteTypes(promoted_dtype, at::ScalarType::Float);
+
     TT_ASSIGN_OR_THROW(mlir::ElementType common_type,
                        ConvertTo<mlir::ElementType>(promoted_dtype));
 
