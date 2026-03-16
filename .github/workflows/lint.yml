@@ -78,3 +78,26 @@ jobs:
         shell: "bash"
         run: |
           go run github.com/google/addlicense@v1.1.1 -check -s=only .
+      - name: "Validate Commit Messages"
+        if: (success() || failure()) && github.event_name == 'pull_request'
+        shell: "bash"
+        run: |
+          # Fix dubious ownership issue in Actions containers
+          git config --global --add safe.directory '*'
+
+          # Get the exact number of commits in the PR to minimize git fetch depth
+          PR_COMMITS="${{ github.event.pull_request.commits }}"
+          PR_COMMITS="${PR_COMMITS:-0}"
+
+          # Fetch the PR branch head and the base commit to establish the commit range
+          git fetch --no-tags --depth=$((PR_COMMITS + 1)) origin "${{ github.event.pull_request.head.sha }}"
+          git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
+
+          # Get commit messages between base and head of the pull request
+          commit_msgs=$(git log "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" --format=%B)
+
+          if echo "$commit_msgs" | grep -qF "[NO DESCRIPTION SET]"; then
+            echo "::error::Found '[NO DESCRIPTION SET]' in one or more commit messages."
+            exit 1
+          fi
+          echo "Commit messages look good."
