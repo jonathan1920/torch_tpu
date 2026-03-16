@@ -76,7 +76,7 @@ xpk workload create \
   --project=${PROJECT} \
   --tpu-type=tpu7x-8 \
   --docker-image=${ARTIFACT_REGISTRY_URL}/${DOCKER_IMAGE} \
-  --command="cd /workspace/examples/distributed/tensor_parallel/ && ./gcp_launch.sh"
+  --command="cd /workspace/examples/distributed/tensor_parallel/ && ./launch.sh"
 ```
 
 If the example contains a requirements file, you will need to install them:
@@ -89,6 +89,6 @@ xpk workload create
   --project=${PROJECT}
   --tpu-type=tpu7x-8
   --docker-image=${ARTIFACT_REGISTRY_URL}/${DOCKER_IMAGE}
-  --command="cd /workspace/examples/distributed/fsdp/lora/ && pip install -r requirements.txt && ./gcp_launch.sh"
+  --command="cd /workspace/examples/distributed/fsdp/lora/ && pip install -r requirements.txt && ./launch.sh"
 ```
 
