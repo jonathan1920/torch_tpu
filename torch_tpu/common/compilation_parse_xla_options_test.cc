@@ -53,7 +53,7 @@ TEST_F(MakeCompilerOptionsTest, ParsesXlaOptions) {
          " xla_optimization_level=O3  xla_tpu_enable_deduplicated_calls=AUTO ",
          1);
   absl::Cleanup cleanup = [&]() { unsetenv("TORCH_TPU_INTERNAL_XLA_OPTIONS"); };
-  const auto options_or = MakeCompilerOptions(GraphCompilationMode::kEager);
+  const auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
   ASSERT_EQ(options_or.status(), absl::OkStatus());
   const auto& options = options_or.value();
   EXPECT_EQ(options->executable_build_options.optimization_level(),

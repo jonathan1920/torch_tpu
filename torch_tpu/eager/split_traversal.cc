@@ -126,9 +126,8 @@ absl::StatusOr<bool> MustSplit(const Traversal& traversal) {
       if (!ongoing_compilation &&
           v2.compilation_status ==
               Level2RepetitionMap::CompilationStatus::kNotStarted) {
-        TT_ASSIGN_OR_RETURN(
-            auto compile_result,
-            traversal.Compile(GraphCompilationMode::kTorchCompile));
+        TT_ASSIGN_OR_RETURN(auto compile_result,
+                            traversal.Compile(CompilationMode::kFastRuntime));
         ongoing_compilation = true;
         v2.compilation_status =
             Level2RepetitionMap::CompilationStatus::kStarted;

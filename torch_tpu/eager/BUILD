@@ -257,6 +257,7 @@ torch_tpu_cc_library(
     ],
     deps = [
         ":device_buffer",
+        ":eager_mode",
         ":split_traversal",
         ":traversal",
         "//shims/torch:aten_headers",
@@ -297,6 +298,19 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "eager_mode",
+    srcs = [
+        "eager_mode.cc",
+    ],
+    hdrs = [
+        "eager_mode.h",
+    ],
+    deps = [
+        "@com_google_absl//absl/log:absl_log",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "op_dispatcher",
     srcs = [
         "op_dispatcher.cc",
@@ -306,6 +320,7 @@ torch_tpu_cc_library(
     ],
     deps = [
         ":device_buffer",
+        ":eager_mode",
         ":materialize",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",

@@ -53,6 +53,7 @@
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/ops/copy_from/cpu_to_tpu.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -140,7 +141,7 @@ absl::StatusOr<DeviceBufferRef> MakeBuffer(
     // TPU does not support complex128. Use complex64 instead.
     scalar_type = at::ScalarType::ComplexFloat;
   }
-  if (GetDeferMode() != DeferMode::kAll) {
+  if (GetEagerMode() != EagerMode::kDeferAll) {
     // Variable execution mode: materialize the scalar to a DeviceBufferRef.
     // This treats the scalar as an argument rather than a constant, which
     // decreases compiler specialization and improves code reuse.
@@ -425,7 +426,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
   if (!detect_repeated_ops.empty() &&
       // We can't materialize if we are asked to defer all ops (e.g., in the
       // context of a torch.compile call).
-      GetDeferMode() != DeferMode::kAll) {
+      GetEagerMode() != EagerMode::kDeferAll) {
     // Note that view operations (like reshapes and transposes) don't go through
     // the op_dispatcher sequence. So the heuristic below considers only
     // non-view ops.
@@ -447,23 +448,13 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
     }
   }
 
-  if (GetDeferMode() == DeferMode::kNever) {
+  if (GetEagerMode() == EagerMode::kDeferNever) {
     TT_RETURN_IF_ERROR(Materialize(results[0].device_buffer_list()));
   }
   return results;
 }
 
 }  // namespace internal
-
-// Returns the defer mode for the current thread.
-static DeferMode& GetMutableDeferMode() {
-  static thread_local DeferMode defer_mode = DeferMode::kDefault;
-  return defer_mode;
-}
-
-DeferMode GetDeferMode() { return GetMutableDeferMode(); }
-
-void SetDeferMode(const DeferMode mode) { GetMutableDeferMode() = mode; }
 
 absl::StatusOr<at::Tensor> MakeTensor(
     const at::Scalar& scalar, c10::optional<at::ScalarType> scalar_type_opt) {

@@ -53,7 +53,7 @@ module {{
       # Serialize to bytecode as required by PyCompileMlir.
       bytecode = tpu_torch_compile.serialize_mlir_text(mlir_text)
       # Trigger background compilation.
-      tpu_torch_compile.compile_mlir(bytecode, eager=False)
+      tpu_torch_compile.compile_mlir(bytecode, fast_compile=False)
 
     def evict_cache():
       for _ in range(num_iterations * 2):

@@ -204,7 +204,8 @@ py::bytes PySerializeMlirTextModule(const std::string& mlir_text) {
 //          otherwise, use the profile optimized for torch.compile.
 // Returns:
 //   The compiled executable.
-SharedLoadedExecutable PyCompileMlir(py::bytes& mlir_module, const bool eager) {
+SharedLoadedExecutable PyCompileMlir(py::bytes& mlir_module,
+                                     const bool fast_compile) {
   const auto module_bytecode = py::cast<std::string_view>(mlir_module);
   ScopedPythonContextCapturer capturer(OpName::kCompileMlir);
   // Provide the current python context to the compilation function so that
@@ -214,8 +215,8 @@ SharedLoadedExecutable PyCompileMlir(py::bytes& mlir_module, const bool eager) {
   TT_ASSIGN_OR_THROW(
       auto executable,
       CompileMlirExecutable(module_bytecode,
-                            eager ? GraphCompilationMode::kEager
-                                  : GraphCompilationMode::kTorchCompile));
+                            fast_compile ? CompilationMode::kFastCompile
+                                         : CompilationMode::kFastRuntime));
   return executable;
 }
 
@@ -294,7 +295,7 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         py::arg("donate_args") = std::vector<int64_t>());  // INT_VEC_OK
   // Returns: PjRtLoadedExecutable
   m.def("compile_mlir", PyCompileMlir, py::arg("mlir_module_bytecode"),
-        py::arg("eager") = false);
+        py::arg("fast_compile") = false);
   m.def("serialize_mlir_text", PySerializeMlirTextModule, py::arg("mlir_text"),
         "Parses a StableHLO MLIR text string and returns its serialized "
         "bytecode.");

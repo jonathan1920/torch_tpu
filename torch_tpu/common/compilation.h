@@ -98,24 +98,12 @@ class ContextedModule {
   mlir::OwningOpRef<mlir::ModuleOp> module_;
 };
 
-// Mode for compiling a program in eager mode.
-enum class EagerCompilationMode {
-  kFastCompile,  // Reduces compile time, but may result in slower execution.
-  kOptimized,  // Produces more optimized executables, but with longer compile.
-};
-
 // Mode for compiling a computation graph.
-enum class GraphCompilationMode {
-  kEager,         // The default mode.
-  kTorchCompile,  // The torch.compile mode.
+enum class CompilationMode {
+  kFastCompile,  // Reduces compile time, but may result in slower execution.
+  kFastRuntime,  // Produces more optimized executables, but with longer
+                 // compile.
 };
-
-// Returns the current process's eager compilation mode, as determined by the
-// value of the environment variable TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE:
-// "optimized" means optimized eager; anything else means the original
-// (fast-compile) eager. This function is memoized so that the environment
-// variable is only read once.
-[[nodiscard]] EagerCompilationMode GetEagerCompilationMode();
 
 // Maps an XLA compiler option name to its string value. We pick this
 // representation for easy interop with Python.
@@ -153,8 +141,7 @@ absl::StatusOr<SharedLoadedExecutable> Compile(
 // xla_tpu_enable_deduplicated_calls=AUTO".
 // Valid options for TORCH_TPU_INTERNAL_XLA_OPTIONS are documented on
 // https://openxla.org/xla/flags_guidance
-absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(
-    GraphCompilationMode mode);
+absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(CompilationMode mode);
 
 // Pushes the compile option overrides for the current thread on to the
 // custom compiler option stack. Thread-safe.

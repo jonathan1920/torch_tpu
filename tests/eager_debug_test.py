@@ -29,7 +29,7 @@ class DeferNeverTest(absltest.TestCase):
     """Test that failing ops are not deferred."""
     # Act
     _ = api.tpu_device()
-    execution_mode.set_defer_mode(execution_mode.DeferMode.NEVER)
+    execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_NEVER)
 
     # Arrange
     a = torch.rand((1_000_000_000, 1), device="tpu")

@@ -35,6 +35,7 @@
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -228,25 +229,6 @@ struct OpInputsTraits<kDynamicSize> {
 };
 
 }  // namespace internal
-
-// The op defer mode.
-enum class DeferMode {
-  // kDefault defers all ops except those that cannot be deferred. This is used
-  // in eager mode (normal operation, not torch.compile).
-  kDefault,
-  // kAll attempts to defer all ops. If an op cannot be deferred, it will
-  // raise a runtime exception. This is used in torch.compile mode.
-  kAll,
-  // kNever marks all ops to be executed immediately. This is primarily used
-  // for debugging, as it has suboptimal compile and execution performance.
-  kNever,
-};
-
-// Sets the defer mode for the current thread. Thread-safe.
-void SetDeferMode(DeferMode mode);
-
-// Returns the defer mode for the current thread. Thread-safe.
-[[nodiscard]] DeferMode GetDeferMode();
 
 template <int kArity>
 using OpInputs = internal::OpInputsTraits<kArity>::type;

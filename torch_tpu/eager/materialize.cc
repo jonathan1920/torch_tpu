@@ -55,6 +55,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/split_traversal.h"
 #include "torch_tpu/eager/traversal.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -626,8 +627,10 @@ class MaterializationWorker {
     std::vector<ExecutionTask> execution_tasks;
     for (auto& split_traversal : resulting_traversals) {
       ABSL_VLOG(1) << "[MaterializationWorker] Compiling traversal";
-      auto compile_result_or =
-          split_traversal.Compile(GraphCompilationMode::kEager);
+      auto compilation_mode = (GetEagerMode() == EagerMode::kOptimized)
+                                  ? CompilationMode::kFastRuntime
+                                  : CompilationMode::kFastCompile;
+      auto compile_result_or = split_traversal.Compile(compilation_mode);
       if (!compile_result_or.ok()) {
         ABSL_VLOG(1) << "[MaterializationWorker] Failed to compile "
                         "split_traversal: "

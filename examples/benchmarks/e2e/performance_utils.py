@@ -26,6 +26,7 @@ import torch
 from torch import distributed as dist
 # from torch.google import distributed as g3_distributed
 from torch_tpu import api
+from torch_tpu._internal import execution_mode
 from torch_tpu._internal.distributed import gpu_env
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import device_utils
@@ -93,8 +94,7 @@ class PerformanceBenchmarkConfig:
     benchmark_category: The category of the benchmark. This defines how to get
       the model and example inputs and the benchmark function to run.
     run_mode: The mode to run the benchmark in. This is used to set environment
-      variables like `TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE` or use torch
-      compile.
+      variables.
     is_training: Whether the benchmark is for training. If True, the benchmark
       will use the training mode of the model and will run the optimizer.
     model_and_input_args: The args to get the model and example inputs.
@@ -113,8 +113,8 @@ class PerformanceBenchmarkConfig:
 def _run_mode_context(run_mode: benchmark_utils.RunMode, device: torch.device):
   """Context manager to configure the environment for different run modes.
 
-  This includes adjusting environment variables like
-  `TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE` and performing necessary cleanups
+  This includes adjusting environment variables and performing necessary
+  cleanups
   like clearing caches and resetting torch.dynamo.
 
   Args:
@@ -124,18 +124,14 @@ def _run_mode_context(run_mode: benchmark_utils.RunMode, device: torch.device):
   Yields:
     None
   """
-  original_env_var_value = os.environ.get(
-      "TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE", ""
-  )
+  original_eager_mode = execution_mode.get_eager_mode()
   if run_mode == benchmark_utils.RunMode.OPTIMIZED_EAGER:
-    os.environ["TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE"] = "optimized"
+    execution_mode.set_eager_mode(execution_mode.EagerMode.OPTIMIZED)
   try:
     yield
   finally:
     # Change back to the original value.
-    os.environ["TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE"] = (
-        original_env_var_value
-    )
+    execution_mode.set_eager_mode(original_eager_mode)
     # pylint: disable=protected-access
     device_utils.clear_cache(device.type)
     if benchmark_utils.is_torch_compile(run_mode):

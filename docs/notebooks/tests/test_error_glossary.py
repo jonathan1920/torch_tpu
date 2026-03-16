@@ -118,11 +118,11 @@ def test_optracer_diagnostic(device):
   assert output is not None and output != ""
 
 
-def test_defer_mode_never(device):
-  """Cell: run operations in DeferMode.NEVER (eager mode)."""
+def test_eager_mode_never(device):
+  """Cell: run operations in EagerMode.DEFER_NEVER (eager mode)."""
   from torch_tpu._internal import execution_mode as em
 
-  with em.defer_mode(em.DeferMode.NEVER):
+  with em.eager_mode(em.EagerMode.DEFER_NEVER):
     p = torch.randn(4, 4, device=device, dtype=torch.bfloat16)
     q = torch.randn(4, 4, device=device, dtype=torch.bfloat16)
     r = p + q

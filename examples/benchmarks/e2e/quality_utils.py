@@ -47,8 +47,7 @@ class QualityBenchmarkConfig:
       benchmark_utils.BenchmarkCategory. This defines how to get the model and
       example inputs and the benchmark function to run.
     run_mode: The mode to run the benchmark in as defined by
-      benchmark_utils.RunMode. This is used to set environment variables like
-      `TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE` or use torch compile.
+      benchmark_utils.RunMode. This is used to set environment variables.
     benchmark_model: The quality benchmark model to use.
     metrics: The Sequence of metrics to use.
     dataset_type: The dataset type to use as defined by data_loader.DatasetType.

@@ -666,7 +666,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
 }
 
 absl::StatusOr<SharedLoadedExecutableFuture> Traversal::Compile(
-    GraphCompilationMode compilation_mode) const {
+    CompilationMode compilation_mode) const {
   // Prepare a computation builder closure to be called on a cache miss.  Okay
   // to capture this here since CompilationCache::GetOrCompile() will call this
   // builder before the function returns and in the same thread it is invoked.

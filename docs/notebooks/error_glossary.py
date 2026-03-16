@@ -271,9 +271,9 @@ def _(mo):
   mo.md(r"""
     ---
 
-    ### **4b. `DeferMode.NEVER` — Pinpoint the Exact Failing Line**
+    ### **4b. `EagerMode.DEFER_NEVER` — Pinpoint the Exact Failing Line**
 
-    In normal deferred mode, errors surface at the *materialization point* (`.cpu()`), not the line that caused them. `DeferMode.NEVER` forces immediate execution so the error appears on the exact culprit line.
+    In normal deferred mode, errors surface at the *materialization point* (`.cpu()`), not the line that caused them. `EagerMode.DEFER_NEVER` forces immediate execution so the error appears on the exact culprit line.
     """)
   return
 
@@ -282,10 +282,10 @@ def _(mo):
 def _(device, torch):
   from torch_tpu._internal import execution_mode as em
 
-  print("Running with DeferMode.NEVER (eager mode)...")
+  print("Running with EagerMode.DEFER_NEVER (eager mode)...")
   print("Each operation materializes immediately.\n")
 
-  with em.defer_mode(em.DeferMode.NEVER):
+  with em.eager_mode(em.EagerMode.DEFER_NEVER):
     p = torch.randn(4, 4, device=device, dtype=torch.bfloat16)
     q = torch.randn(4, 4, device=device, dtype=torch.bfloat16)
     r = p + q  # Executes immediately in NEVER mode
@@ -296,8 +296,8 @@ def _(device, torch):
     print(f"r @ q completed eagerly: shape={s.shape}")
 
   print(
-      "\n✅ DeferMode.NEVER forces immediate execution — useful for NaN/Inf"
-      " debugging."
+      "\n✅ EagerMode.DEFER_NEVER forces immediate execution — useful for"
+      " NaN/Inf debugging."
   )
   print("⚠️  Much slower than deferred mode. Use only for debugging.")
   return em, p, q, r, s
@@ -313,7 +313,7 @@ def _(mo):
     | Rich C++ traces | `TORCH_SHOW_CPP_STACKTRACES=1` | Full C++ backtrace in `RuntimeError` |
     | Find graph breaks | `torch._dynamo.explain(model)(input)` | Human-readable explanation |
     | Graph break debugging | `TORCH_LOGS="+dynamo"` | Detailed trace (run from terminal) |
-    | OOM line attribution | `DeferMode.NEVER` context | OOM on exact culprit line |
+    | OOM line attribution | `EagerMode.DEFER_NEVER` context | OOM on exact culprit line |
     | Fallback detection | `OpTracer` | High `aten.copy` counts = CPU fallbacks |
     | HLO inspection | `XLA_FLAGS="--xla_dump_hlo_as_text ..."` | Post-optimization graph as text |
 
@@ -326,7 +326,7 @@ def _(mo):
     Level 2: + C++ Stack Traces       → Set TORCH_SHOW_CPP_STACKTRACES=1
     Level 3: + ATen Op Audit          → Use OpTracer or utils.format_model
     Level 4: + HLO/LLO Dump          → Set XLA_FLAGS and LIBTPU_INIT_ARGS
-    Level 5: + Eager Mode Pinpoint    → Use DeferMode.NEVER context
+    Level 5: + Eager Mode Pinpoint    → Use EagerMode.DEFER_NEVER context
     ```
 
     > [!NOTE]

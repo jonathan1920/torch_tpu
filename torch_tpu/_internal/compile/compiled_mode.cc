@@ -129,7 +129,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
 
 absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
     const std::string_view mlir_module_bytecode,
-    const GraphCompilationMode compilation_mode) {
+    const CompilationMode compilation_mode) {
   MlirComputationBuilder computation_builder =
       [&](mlir::MLIRContext& mlir_context) {
         return mlir::stablehlo::deserializePortableArtifact(

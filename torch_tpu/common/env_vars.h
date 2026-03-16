@@ -54,11 +54,6 @@ inline constexpr char kRankEnvVar[] = "RANK";  // Set by launchers.
 // https://docs.pytorch.org/docs/stable/debugging_environment_variables.html#pytorch-debug-environment-variables
 inline constexpr char kTorchShowCppStacktracesEnvVar[] =
     "TORCH_SHOW_CPP_STACKTRACES";
-// If set to "optimized", eager compilation is slower but produces more
-// optimized code. Otherwise, eager compilation is faster but produces less
-// optimized code.
-inline constexpr char kTorchTpuInternalEagerCompilationModeEnvVar[] =
-    "TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE";
 // If set to "1", enable expensive debug checks in TorchTPU. This catches
 // more bugs in user code, but comes at a significant performance cost for
 // some ops.

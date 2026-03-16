@@ -217,18 +217,6 @@ static const CompilerOptionOverrides& GetCompilerOptionOverridesFromEnvVar() {
   return *overrides;
 }
 
-EagerCompilationMode GetEagerCompilationMode() {
-  static const absl::NoDestructor<EagerCompilationMode> mode([] {
-    const auto& env_var =
-        GetEnvOnce<kTorchTpuInternalEagerCompilationModeEnvVar>();
-    if (env_var.has_value() && *env_var == "optimized") {
-      return EagerCompilationMode::kOptimized;
-    }
-    return EagerCompilationMode::kFastCompile;
-  }());
-  return *mode;
-}
-
 static absl::Status SetDefaultDeviceAssignment(
     xla::ExecutableBuildOptions& options) {
   TT_ASSIGN_OR_RETURN(const int num_devices, GetGlobalDeviceCount());
@@ -280,9 +268,9 @@ static absl::StatusOr<bool> SetTpuOptions(xla::CompileOptions& options) {
 }
 
 static CompilerOptionOverrides MakeCompilerOptionOverrides(
-    const bool is_tpu, const GraphCompilationMode mode) {
+    const bool is_tpu, const CompilationMode mode) {
   CompilerOptionOverrides overrides;
-  if (is_tpu && mode == GraphCompilationMode::kEager) {
+  if (is_tpu && mode == CompilationMode::kFastCompile) {
     // Use O1 for the eager mode and the default optimization level (O2) for
     // the torch.compile mode.
     overrides[std::string(kOptimizationLevelOption)] = "O1";
@@ -366,12 +354,7 @@ absl::Status ApplyCompilerOptionOverrides(
   return absl::OkStatus();
 }
 
-absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(
-    GraphCompilationMode mode) {
-  if (GetEagerCompilationMode() == EagerCompilationMode::kOptimized) {
-    mode = GraphCompilationMode::kTorchCompile;
-  }
-
+absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(CompilationMode mode) {
   auto compile_options = std::make_unique<xla::CompileOptions>();
   // Call mutable_debug_options to parse XLA_FLAGS into compile options.
   compile_options->executable_build_options.mutable_debug_options();

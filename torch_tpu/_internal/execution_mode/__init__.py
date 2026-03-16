@@ -17,20 +17,21 @@ from typing import Set, TypeAlias
 
 import torch
 from torch_tpu._internal import execution_mode_impl
-from torch_tpu._internal.execution_mode_impl import set_defer_mode
+from torch_tpu._internal.execution_mode_impl import get_eager_mode
+from torch_tpu._internal.execution_mode_impl import set_eager_mode
 
-DeferMode: TypeAlias = execution_mode_impl.DeferMode
+EagerMode: TypeAlias = execution_mode_impl.EagerMode
 
 
 @contextmanager
-def defer_mode(mode: DeferMode):
+def eager_mode(mode: EagerMode):
   """Context manager for setting the execution mode."""
-  old_defer_mode = execution_mode_impl.get_defer_mode()
+  old_eager_mode = execution_mode_impl.get_eager_mode()
   try:
-    execution_mode_impl.set_defer_mode(mode)
+    execution_mode_impl.set_eager_mode(mode)
     yield
   finally:
-    execution_mode_impl.set_defer_mode(old_defer_mode)
+    execution_mode_impl.set_eager_mode(old_eager_mode)
 
 
 @contextmanager
@@ -47,9 +48,10 @@ def cpu_fallback_mode(enabled: bool):
 # PEP 8 requires this to be a list of strings, not a tuple or a list of objects.
 __all__ = [
     # go/keep-sorted start
-    "DeferMode",
+    "EagerMode",
     "cpu_fallback_mode",
-    "defer_mode",
-    "set_defer_mode",
+    "eager_mode",
+    "get_eager_mode",
+    "set_eager_mode",
     # go/keep-sorted end
 ]

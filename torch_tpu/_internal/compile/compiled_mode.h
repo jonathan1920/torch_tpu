@@ -95,8 +95,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
 // fail or the materialized tensors might be wrong.
 absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
     std::string_view mlir_module_bytecode,
-    GraphCompilationMode compilation_mode =
-        GraphCompilationMode::kTorchCompile);
+    CompilationMode compilation_mode = CompilationMode::kFastRuntime);
 
 // torch.compile integration: this is called to invoke the compiled executable
 // returned by CompileMlirExecutable, and return new Tensors with the results.

@@ -137,7 +137,7 @@ class StableHloCompileTimeTestBase(absltest.TestCase):
       # compile_mlir() is synchronous, so the elapsed time includes the
       # compilation time.
       executable = tpu_torch_compile.compile_mlir(
-          stablehlo_bytecode, eager=eager
+          stablehlo_bytecode, fast_compile=eager
       )
       elapsed_time = time.monotonic() - start_time
     except RuntimeError as e:

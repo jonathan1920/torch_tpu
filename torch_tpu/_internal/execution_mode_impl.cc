@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tpu_aten_kernels.h"
 #include "pybind11/pybind11.h"
@@ -28,14 +29,15 @@ enum class FallbackMode { kNoFallback, kAllowFallback };
 }  // namespace
 
 PYBIND11_MODULE(execution_mode_impl, m) {
-  py::enum_<DeferMode>(m, "DeferMode")
-      .value("DEFAULT", DeferMode::kDefault)
-      .value("ALL", DeferMode::kAll)
-      .value("NEVER", DeferMode::kNever)
+  py::enum_<EagerMode>(m, "EagerMode")
+      .value("DEFAULT", EagerMode::kDefault)
+      .value("OPTIMIZED", EagerMode::kOptimized)
+      .value("DEFER_ALL", EagerMode::kDeferAll)
+      .value("DEFER_NEVER", EagerMode::kDeferNever)
       .export_values();
 
-  m.def("set_defer_mode", SetDeferMode, py::arg("defer_mode"));
-  m.def("get_defer_mode", GetDeferMode);
+  m.def("get_eager_mode", GetEagerMode);
+  m.def("set_eager_mode", SetEagerMode, py::arg("eager_mode"));
 
   m.def("enable_cpu_fallback", EnableCpuFallback, py::arg("enabled"));
   m.def("is_cpu_fallback_enabled", IsCpuFallbackEnabled);

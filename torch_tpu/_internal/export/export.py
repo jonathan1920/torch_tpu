@@ -344,7 +344,8 @@ def fx_to_mlir(
   """Converts an FX graph module to MLIR using TorchTPU's defer mode.
 
   This function traces the given FX graph module by running it with an
-  EagerLikeFxInterpreter in full defer mode (`execution_mode.DeferMode.ALL`).
+  EagerLikeFxInterpreter in full defer mode
+  (`execution_mode.EagerMode.DEFER_ALL`).
   The
   resulting deferred graph is then converted to MLIR bytes.
 
@@ -368,8 +369,8 @@ def fx_to_mlir(
   """
   # Run the module through the EagerLikeFxInterpreter with MLIR location
   # tracebacks enabled so that the MLIR we generate has file location info.
-  with execution_mode.defer_mode(
-      execution_mode.DeferMode.ALL
+  with execution_mode.eager_mode(
+      execution_mode.EagerMode.DEFER_ALL
   ), enable_tracebacks():
     # We clone the args so that inplace updates do not overwrite the placeholder
     # args, these copies will be removed in the compiled code so there is no

@@ -29,21 +29,22 @@ class ExecutionModeTest(absltest.TestCase):
     super().setUp()
     self.tpu = api.tpu_device()
 
-  def test_defer_mode_in_threads(self):
+  def test_eager_mode_in_threads(self):
     """Tests setting compiler options in nested contexts concurrently."""
-    defer_modes = [
-        execution_mode.DeferMode.DEFAULT,
-        execution_mode.DeferMode.ALL,
-        execution_mode.DeferMode.NEVER,
+    eager_modes = [
+        execution_mode.EagerMode.DEFAULT,
+        execution_mode.EagerMode.OPTIMIZED,
+        execution_mode.EagerMode.DEFER_NEVER,
+        execution_mode.EagerMode.DEFER_ALL,
     ]
 
-    def _change_defer_mode(new_mode):
-      with execution_mode.defer_mode(new_mode):
-        self.assertEqual(execution_mode.get_defer_mode(), new_mode)
+    def _change_eager_mode(new_mode):
+      with execution_mode.eager_mode(new_mode):
+        self.assertEqual(execution_mode.get_eager_mode(), new_mode)
 
     # Start 100 threads
     with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
-      executor.submit(_change_defer_mode, random.choice(defer_modes))
+      executor.submit(_change_eager_mode, random.choice(eager_modes))
 
   def test_fallback_mode(self):
     fallback_modes = [True, False]

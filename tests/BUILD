@@ -869,8 +869,8 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "defer_never_test",
-    srcs = ["defer_never_test.py"],
+    name = "eager_debug_test",
+    srcs = ["eager_debug_test.py"],
     tags = [
         "requires-tpu-v5lite",
     ],

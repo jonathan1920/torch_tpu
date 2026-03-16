@@ -28,9 +28,6 @@
 namespace torch_tpu {
 namespace {
 
-const bool kOptimizedEager =
-    GetEnvOnce<kTorchTpuInternalEagerCompilationModeEnvVar>() == "optimized";
-
 class MakeCompilerOptionsTest : public testing::Test {
  protected:
   static void SetUpTestSuite() {
@@ -41,33 +38,15 @@ class MakeCompilerOptionsTest : public testing::Test {
 };
 
 TEST_F(MakeCompilerOptionsTest, DefaultToO1ForEagerMode) {
-  if (kOptimizedEager) {
-    GTEST_SKIP() << "Skipping test for optimized eager mode.";
-  }
-  const auto options_or = MakeCompilerOptions(GraphCompilationMode::kEager);
+  const auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
   ASSERT_EQ(options_or.status(), absl::OkStatus());
   const auto& options = options_or.value();
   EXPECT_EQ(options->executable_build_options.optimization_level(),
             xla::ExecutionOptions::EFFORT_O1);
 }
 
-TEST_F(MakeCompilerOptionsTest, UseO2ForOptimizedEagerMode) {
-  if (!kOptimizedEager) {
-    GTEST_SKIP() << "Skipping test for fast-compile eager mode.";
-  }
-  const auto options_or = MakeCompilerOptions(GraphCompilationMode::kEager);
-  ASSERT_EQ(options_or.status(), absl::OkStatus());
-  const auto& options = options_or.value();
-  EXPECT_EQ(options->executable_build_options.optimization_level(),
-            xla::ExecutionOptions::EFFORT_UNKNOWN);
-}
-
 TEST_F(MakeCompilerOptionsTest, DefaultToUnsetForTorchCompileMode) {
-  if (kOptimizedEager) {
-    GTEST_SKIP() << "Skipping test for optimized eager mode.";
-  }
-  const auto options_or =
-      MakeCompilerOptions(GraphCompilationMode::kTorchCompile);
+  const auto options_or = MakeCompilerOptions(CompilationMode::kFastRuntime);
   ASSERT_EQ(options_or.status(), absl::OkStatus());
   const auto& options = options_or.value();
   EXPECT_EQ(options->executable_build_options.optimization_level(),

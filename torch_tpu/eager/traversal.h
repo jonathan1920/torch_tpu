@@ -169,7 +169,7 @@ class Traversal {
       mlir::MLIRContext& mlir_context) const;
 
   absl::StatusOr<SharedLoadedExecutableFuture> Compile(
-      GraphCompilationMode compilation_mode) const;
+      CompilationMode compilation_mode) const;
 
   // Apply dynamism information to the Traversal, returning a single padding
   // traversal, and modifying the current traversal in place.

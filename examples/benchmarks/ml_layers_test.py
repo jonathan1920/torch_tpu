@@ -69,6 +69,13 @@ _COMPILE = flags.DEFINE_bool(
     "Whether to use compile the model.",
 )
 
+_EAGER_MODE = flags.DEFINE_enum(
+    "eager_mode",
+    "DEFAULT",
+    ["DEFAULT", "OPTIMIZED", "DEFER_NEVER"],
+    "Eager mode for the model.",
+)
+
 _FRAMEWORK = flags.DEFINE_enum(
     "framework",
     None,
@@ -101,15 +108,22 @@ _RUN_CONFIGS = flags.DEFINE_enum(
 )
 
 
+def get_eager_mode() -> execution_mode.EagerMode:
+  if _EAGER_MODE.value == "DEFAULT":
+    return execution_mode.EagerMode.DEFAULT
+  elif _EAGER_MODE.value == "OPTIMIZED":
+    return execution_mode.EagerMode.OPTIMIZED
+  elif _EAGER_MODE.value == "DEFER_NEVER":
+    return execution_mode.EagerMode.DEFER_NEVER
+  else:
+    raise ValueError(f"Unsupported defer mode: {_EAGER_MODE.value}")
+
+
 def get_mode() -> str:
   if _COMPILE.value:
     return "compiled"
-  eager_compilation_mode = os.environ.get(
-      "TORCH_TPU_INTERNAL_EAGER_COMPILATION_MODE", ""
-  )
-  if eager_compilation_mode == "optimized":
-    return "optimized_eager"
-  return "eager"
+  else:
+    return f"{execution_mode.get_eager_mode()}"
 
 
 def get_torch_device() -> torch.device:
@@ -384,6 +398,8 @@ class MlLayersTest(parameterized.TestCase):
       inductor_config.compile_threads = 1
     torch.manual_seed(seed)
     logging.info("Using absltest.FLAGS.test_random_seed: %d", seed)
+
+    execution_mode.set_eager_mode(get_eager_mode())
 
   def tearDown(self):
     super().tearDown()
