@@ -47,12 +47,7 @@ absl::Status SynchronizeTensors(absl::Span<const at::Tensor> tensors) {
 
   // Wait for all of the PjRtBuffers to be ready.
   for (const DeviceBufferRef& buffer_ref : buffer_refs) {
-    // GetMaterialized() should always return a materialized or zero-sized
-    // buffer ref.
-    // If a buffer ref is zero-sized, we might not have anything to wait for.
-    TT_ASSIGN_OR_RETURN(auto* pjrt_buffer, buffer_ref.GetOrMaterializeBuffer());
-    auto future = pjrt_buffer->GetReadyFuture();
-    TT_RETURN_IF_ERROR(future.Await());
+    TT_RETURN_IF_ERROR(buffer_ref.Synchronize());
   }
 
   return absl::OkStatus();

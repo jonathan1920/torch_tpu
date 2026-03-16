@@ -253,6 +253,10 @@ class DeviceBufferRef {
   // it. Otherwise, return a nullptr.
   [[nodiscard]] const DeferredOp* absl_nullable deferred_op() const;
 
+  // Awaits for the device buffer to be ready to read. If the buffer is the
+  // output of computation, then also waits for the computation to be done.
+  absl::Status Synchronize() const;
+
   // Awaits the PjRtBuffer to be materialized, and then returns either the
   // error encountered during materialization, or a pointer to the
   // PjRtBuffer.
@@ -816,6 +820,10 @@ class DeviceBufferList {
   [[nodiscard]] const DeferredOp* absl_nullable deferred_op() const {
     return std::get_if<DeferredOp>(&data_);
   }
+
+  // Awaits for the device buffer to be ready to read. If the buffer is the
+  // output of computation, then also waits for the computation to be done.
+  absl::Status Synchronize() const;
 
   // Awaits the PjRtBuffer to be materialized, and then returns either the
   // error encountered during materialization, or a pointer to the

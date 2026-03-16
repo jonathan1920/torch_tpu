@@ -421,36 +421,40 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
           std::move(options.op_param_cache_keys), std::move(output_shapes),
           options.split_mode, std::move(options.aliased_input_indices)));
 
-  const std::string& detect_repeated_ops =
-      absl::GetFlag(FLAGS_torch_tpu_internal_detect_repeated_ops);
-  if (!detect_repeated_ops.empty() &&
-      // We can't materialize if we are asked to defer all ops (e.g., in the
-      // context of a torch.compile call).
-      GetEagerMode() != EagerMode::kDeferAll) {
-    // Note that view operations (like reshapes and transposes) don't go through
-    // the op_dispatcher sequence. So the heuristic below considers only
-    // non-view ops.
-    //
-    // We make this thread_local to avoid op sequences from different threads
-    // to interfere with each other.
-    static thread_local OpWindow op_window(kMinRepeatedSubsequenceLength,
-                                           kMaxRepeatedSubsequenceLength);
-    const DeferredOp* absl_nullable op = results[0].deferred_op();
-    ABSL_CHECK(op != nullptr);  // CRASH_OK
-    op_window.Append(*op);
-    if (op_window.FindRepeatedSequence()) {
-      auto materialization_mode = (detect_repeated_ops == "aggressive")
-                                      ? MaterializationMode::kFullGraph
-                                      : MaterializationMode::kSplitGraph;
-      TT_RETURN_IF_ERROR(
-          Materialize(results[0].device_buffer_list(), materialization_mode));
-      return results;
+  auto eager_mode = GetEagerMode();
+  if ((eager_mode == EagerMode::kDeferNever) ||
+      (eager_mode == EagerMode::kDeferNeverAndLaunchBlocking)) {
+    auto& device_buffer_list = results[0].device_buffer_list();
+    TT_RETURN_IF_ERROR(Materialize(device_buffer_list));
+    if (eager_mode == EagerMode::kDeferNeverAndLaunchBlocking) {
+      TT_RETURN_IF_ERROR(device_buffer_list->Synchronize());
+    }
+
+  } else if (eager_mode != EagerMode::kDeferAll) {
+    const std::string& detect_repeated_ops =
+        absl::GetFlag(FLAGS_torch_tpu_internal_detect_repeated_ops);
+    if (!detect_repeated_ops.empty()) {
+      // Note that view operations (like reshapes and transposes) don't go
+      // through the op_dispatcher sequence. So the heuristic below considers
+      // only non-view ops.
+      //
+      // We make this thread_local to avoid op sequences from different threads
+      // to interfere with each other.
+      static thread_local OpWindow op_window(kMinRepeatedSubsequenceLength,
+                                             kMaxRepeatedSubsequenceLength);
+      const DeferredOp* absl_nullable op = results[0].deferred_op();
+      ABSL_CHECK(op != nullptr);  // CRASH_OK
+      op_window.Append(*op);
+      if (op_window.FindRepeatedSequence()) {
+        auto materialization_mode = (detect_repeated_ops == "aggressive")
+                                        ? MaterializationMode::kFullGraph
+                                        : MaterializationMode::kSplitGraph;
+        TT_RETURN_IF_ERROR(
+            Materialize(results[0].device_buffer_list(), materialization_mode));
+      }
     }
   }
 
-  if (GetEagerMode() == EagerMode::kDeferNever) {
-    TT_RETURN_IF_ERROR(Materialize(results[0].device_buffer_list()));
-  }
   return results;
 }
 

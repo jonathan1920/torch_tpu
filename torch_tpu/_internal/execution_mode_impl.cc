@@ -34,6 +34,8 @@ PYBIND11_MODULE(execution_mode_impl, m) {
       .value("OPTIMIZED", EagerMode::kOptimized)
       .value("DEFER_ALL", EagerMode::kDeferAll)
       .value("DEFER_NEVER", EagerMode::kDeferNever)
+      .value("DEFER_NEVER_AND_LAUNCH_BLOCKING",
+             EagerMode::kDeferNeverAndLaunchBlocking)
       .export_values();
 
   m.def("get_eager_mode", GetEagerMode);

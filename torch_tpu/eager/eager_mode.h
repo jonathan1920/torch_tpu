@@ -30,6 +30,11 @@ enum class EagerMode {
   // on CUDA eager mode. This is primarily used for debugging, as it has
   // suboptimal compile and execution performance.
   kDeferNever,
+  // kDeferNeverAndLaunchBlocking marks all ops to be executed immediately and
+  // waits for the complition of one op before dispatching the next one. This
+  // should be used only for debugging, as it has the worst execution
+  // performance.
+  kDeferNeverAndLaunchBlocking,
   // kDeferAll attempts to defer all ops. If an op cannot be deferred, it will
   // raise a runtime exception. This should be used only in torch.compile mode.
   kDeferAll,

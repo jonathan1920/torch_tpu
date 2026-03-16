@@ -348,6 +348,15 @@ int64_t DeviceBufferList::num_elements(int64_t index) const {
   return c10::multiply_integers(shapes_[index].dimensions);
 }
 
+absl::Status DeviceBufferList::Synchronize() const {
+  for (auto i = 0; i < size(); ++i) {
+    TT_ASSIGN_OR_RETURN(auto* pjrt_buffer, GetOrMaterializeBuffer(i));
+    auto future = pjrt_buffer->GetReadyFuture();
+    TT_RETURN_IF_ERROR(future.Await());
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<xla::PjRtBuffer* absl_nonnull>
 DeviceBufferList::GetOrMaterializeBuffer(int64_t index) const {
   if (std::holds_alternative<MaterializedBuffers>(data_)) {
@@ -821,6 +830,10 @@ DeviceBufferRefState DeviceBufferRef::state() const {
 [[nodiscard]] const DeferredOp* absl_nullable DeviceBufferRef::deferred_op()
     const {
   return device_buffer_list_->deferred_op();
+}
+
+absl::Status DeviceBufferRef::Synchronize() const {
+  return device_buffer_list_->Synchronize();
 }
 
 absl::StatusOr<xla::PjRtBuffer* absl_nonnull>
