@@ -18,7 +18,10 @@ load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
 package(
     default_applicable_licenses = ["//:license"],
-    default_visibility = ["//:__subpackages__"],
+    default_visibility = [
+        "//:__subpackages__",
+        "//shims/torchtitan:__subpackages__",
+    ],
 )
 
 pytype_strict_library(
