@@ -66,7 +66,7 @@ template <typename T>
 template <typename T>
 [[nodiscard]] std::string ToString(const c10::List<T>& list);
 template <typename T>
-[[nodiscard]] std::string_view ToString(const c10::IListRef<T>& list);
+[[nodiscard]] std::string ToString(const c10::IListRef<T>& list);
 template <typename T>
 [[nodiscard]] std::string ToString(mlir::ArrayRef<T> arr);
 template <typename T>
@@ -131,7 +131,7 @@ template <typename T>
 }
 
 template <typename T>
-[[nodiscard]] inline std::string_view ToString(const c10::IListRef<T>& list) {
+[[nodiscard]] inline std::string ToString(const c10::IListRef<T>& list) {
   // IListRef doesn't have contiguous storage, so we can't use absl::Span
   // directly.
   return ToString(list.begin(), list.end());
