@@ -29,12 +29,12 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/log/absl_check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/Dimname.h"
@@ -60,20 +60,47 @@ namespace torch_tpu {
 
 namespace internal {
 
-// Formatters for different types of parameter values.
+// Returns true if an op parameter of type T should be included in the parameter
+// cache key computation.
+//
+// Some parameters (e.g. Tensors) are not needed in the parameter cache key
+// computation as their information is already included in the cache key
+// automatically.
+template <typename T>
+constexpr bool IncludeInCacheKey() {
+  return !(
+      // TODO: remove c10::List<c10::optional<at::Tensor>> as the tensors'
+      // presence needs to be encoded in the cache key.
+      // go/keep-sorted start
+      std::is_same_v<T, at::Generator> ||
+      std::is_same_v<T, at::ITensorListRef> ||
+      std::is_same_v<T, at::Tensor> ||  //
+      std::is_same_v<T, c10::List<c10::optional<at::Tensor>>> ||
+      std::is_same_v<T, c10d::AllToAllOptions> ||
+      std::is_same_v<T, c10d::AllgatherOptions> ||
+      std::is_same_v<T, c10d::BarrierOptions> ||
+      std::is_same_v<T, std::vector<at::Tensor>> ||
+      std::is_same_v<T, std::vector<std::vector<at::Tensor>>> ||
+      // go/keep-sorted end
+      false);
+}
+
+// FormatParamCacheKey() is a family of function templates and overloads that
+// convert different op parameter types to strings, which will be used to
+// compute the op cache key. They may return either a string or a
+// StatusOr<std::string>.
+//
 // For each given value type, they must guarantee that different values
 // produce different strings.
+//
+// FormatParamCacheKey() should be defined only for types that need to be
+// included in the cache key computation.
 absl::StatusOr<std::string> FormatParamCacheKey(at::Scalar value);
 [[nodiscard]] std::string FormatParamCacheKey(const c10::SymInt& value);
 [[nodiscard]] std::string FormatParamCacheKey(c10::SymIntArrayRef value);
 [[nodiscard]] inline std::string FormatParamCacheKey(
     const at::ScalarType value) {
   return c10::toString(value);
-}
-[[nodiscard]] inline std::string FormatParamCacheKey(
-    const at::Generator& value) {
-  // We don't support random generator parameters yet.
-  return "";
 }
 [[nodiscard]] inline std::string FormatParamCacheKey(const at::Dimname value) {
   return std::string(value.symbol().toQualString());
@@ -95,7 +122,7 @@ template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
   return absl::StrCat(value);
 }
 [[nodiscard]] inline std::string FormatParamCacheKey(const bool value) {
-  return value ? "true" : "false";
+  return value ? "t" : "f";
 }
 [[nodiscard]] std::string FormatParamCacheKey(std::string_view value);
 [[nodiscard]] inline std::string FormatParamCacheKey(const char* const value) {
@@ -104,74 +131,98 @@ template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
 [[nodiscard]] inline std::string FormatParamCacheKey(const std::string& value) {
   return FormatParamCacheKey(std::string_view(value));
 }
-[[nodiscard]] std::string FormatParamCacheKey(absl::Span<const int64_t> value);
 [[nodiscard]] std::string FormatParamCacheKey(at::Layout value);
 [[nodiscard]] std::string FormatParamCacheKey(at::MemoryFormat value);
 [[nodiscard]] std::string FormatParamCacheKey(at::Device value);
-[[nodiscard]] std::string FormatParamCacheKey(const at::ITensorListRef& value);
+
+[[nodiscard]] inline std::string FormatParamCacheKey(
+    const c10::optional<at::Tensor>& value) {
+  return value.has_value() ? "t" : "";
+}
+
+[[nodiscard]] inline std::string FormatParamCacheKey(
+    const c10::optional<at::Generator>& value) {
+  return value.has_value() ? "g" : "";
+}
+
+// The return type of FormatParamCacheKey(const T&). Can be either std::string
+// or absl::StatusOr<std::string>.
+template <typename T>
+using FormattedKey = decltype(FormatParamCacheKey(std::declval<T>()));
 
 // To guarantee that the correct overload of FormatParamCacheKey() is found,
 // overloads that invoke other FormatParamCacheKey() overloads should be
 // declared first and their definitions should be put after all the other
 // overloads.
 template <typename T>
-absl::StatusOr<std::string> FormatParamCacheKey(const std::optional<T>& value);
+FormattedKey<T> FormatParamCacheKey(const std::optional<T>& value);
+template <typename T, std::size_t kSize>
+FormattedKey<T> FormatParamCacheKey(const std::array<T, kSize>& value);
 template <typename T>
-[[nodiscard]] std::string FormatParamCacheKey(c10::OptionalArrayRef<T> value);
-template <typename T, std::size_t N>
-[[nodiscard]] std::string FormatParamCacheKey(const std::array<T, N>& value);
+FormattedKey<T> FormatParamCacheKey(const std::vector<T>& value);
+template <typename T, size_t kSize, typename Allocator>
+FormattedKey<T> FormatParamCacheKey(
+    const absl::InlinedVector<T, kSize, Allocator>& value);
 template <typename T>
-absl::StatusOr<std::string> FormatParamCacheKey(const std::vector<T>& value);
+FormattedKey<T> FormatParamCacheKey(at::ArrayRef<T> value);
 template <typename T>
-absl::StatusOr<std::string> FormatParamCacheKey(at::ArrayRef<T> value);
+FormattedKey<T> FormatParamCacheKey(absl::Span<T> value);
+template <typename T>
+FormattedKey<T> FormatParamCacheKey(c10::OptionalArrayRef<T> value);
 
 template <typename T>
-absl::StatusOr<std::string> FormatParamCacheKey(const std::optional<T>& value) {
-  // Rely on ADL to find the appropriate FormatParamCacheKey() overload for
-  // the given value type.
+FormattedKey<T> FormatParamCacheKey(const std::optional<T>& value) {
+  // TODO: distinguish between an empty string and a nullopt.
   return value.has_value() ? FormatParamCacheKey(value.value()) : "";
 }
+
 template <typename T>
-std::string FormatParamCacheKey(absl::Span<const T> value) {
-  return absl::StrCat(
-      "[",
-      absl::StrJoin(
-          value, ",",
-          [](std::string* out, const T& elem) {
-            absl::StrAppend(
-                // Rely on ADL to find the appropriate FormatParamCacheKey()
-                // overload for the given element type.
-                out, FormatParamCacheKey(elem));
-          }),
-      "]");
+FormattedKey<T> FormatParamCacheKey(absl::Span<T> value) {
+  if (value.empty()) {
+    return "";
+  }
+  std::string result = "[";
+  bool first = true;
+  for (const auto& elem : value) {
+    if (first) {
+      first = false;
+    } else {
+      absl::StrAppend(&result, ",");
+    }
+    if constexpr (std::is_same_v<FormattedKey<T>, std::string>) {
+      absl::StrAppend(&result, FormatParamCacheKey(elem));
+    } else {
+      TT_ASSIGN_OR_RETURN(std::string str, FormatParamCacheKey(elem));
+      absl::StrAppend(&result, str);
+    }
+  }
+  absl::StrAppend(&result, "]");
+  return result;
 }
+
 template <typename T>
-std::string FormatParamCacheKey(const c10::OptionalArrayRef<T> value) {
+FormattedKey<T> FormatParamCacheKey(const c10::OptionalArrayRef<T> value) {
   if (!value.has_value()) {
     return "";
   }
   return FormatParamCacheKey(absl::MakeConstSpan(*value));
 }
 template <typename T, std::size_t N>
-std::string FormatParamCacheKey(const std::array<T, N>& value) {
+FormattedKey<T> FormatParamCacheKey(const std::array<T, N>& value) {
+  return FormatParamCacheKey(absl::MakeConstSpan(value));
+}
+template <typename T, size_t kSize, typename Allocator>
+FormattedKey<T> FormatParamCacheKey(
+    const absl::InlinedVector<T, kSize, Allocator>& value) {
   return FormatParamCacheKey(absl::MakeConstSpan(value));
 }
 template <typename T>
-absl::StatusOr<std::string> FormatParamCacheKey(const std::vector<T>& value) {
+FormattedKey<T> FormatParamCacheKey(const std::vector<T>& value) {
   return FormatParamCacheKey(absl::MakeConstSpan(value));
 }
 template <typename T>
-absl::StatusOr<std::string> FormatParamCacheKey(at::ArrayRef<T> value) {
-  std::vector<std::string> parts;
-  parts.reserve(value.size());
-  for (const T& item : value) {
-    absl::StatusOr<std::string> value_or = FormatParamCacheKey(item);
-    if (!value_or.ok()) {
-      return value_or.status();
-    }
-    parts.push_back(std::move(value_or).value());
-  }
-  return absl::StrCat("[", absl::StrJoin(parts, ","), "]");
+FormattedKey<T> FormatParamCacheKey(at::ArrayRef<T> value) {
+  return FormatParamCacheKey(absl::MakeConstSpan(value));
 }
 
 [[nodiscard]] inline std::string FormatParamCacheKey(
@@ -192,24 +243,6 @@ absl::StatusOr<std::string> FormatParamCacheKey(at::ArrayRef<T> value) {
 [[nodiscard]] inline std::string FormatParamCacheKey(
     const c10d::ScatterOptions& value) {
   return FormatParamCacheKey(value.rootRank);
-}
-
-[[nodiscard]] inline std::string FormatParamCacheKey(
-    const c10d::AllgatherOptions& value) {
-  // AllgatherOptions has no members that affect compilation.
-  return "";
-}
-
-[[nodiscard]] inline std::string FormatParamCacheKey(
-    const c10d::AllToAllOptions& value) {
-  // AllToAllOptions has no members that affect compilation.
-  return "";
-}
-
-[[nodiscard]] inline std::string FormatParamCacheKey(
-    const c10d::BarrierOptions& value) {
-  // BarrierOptions has no members that affect compilation.
-  return "";
 }
 
 }  // namespace internal
@@ -266,19 +299,19 @@ class [[nodiscard]] OpParamCacheKeys {
   // a programmer error.
   template <typename T>
   absl::Status SetParam(std::string_view name, const T& value) {
-    using internal::FormatParamCacheKey;
-
-    // Rely on ADL to find the appropriate FormatParamCacheKey() overload for
-    // the given value type. Some overloads return StatusOr<std::string>,
-    // while others return std::string. We assign the result to a
-    // StatusOr<std::string> so that we can handle both the same way.
-    absl::StatusOr<std::string> str_or = FormatParamCacheKey(value);
-    TT_ASSIGN_OR_RETURN(std::string str, std::move(str_or));
     std::string name_str(name);
     const auto it = name_to_value_.find(name_str);
     ABSL_CHECK(it == name_to_value_.end())  // CRASH_OK
         << "Duplicate parameter name '" << name
         << "' when computing param cache keys. This is a TorchTPU bug.";
+
+    // Rely on ADL to find the appropriate FormatParamCacheKey() overload for
+    // the given value type. Some overloads return StatusOr<std::string>,
+    // while others return std::string. We assign the result to a
+    // StatusOr<std::string> so that we can handle both the same way.
+    using internal::FormatParamCacheKey;
+    absl::StatusOr<std::string> str_or = FormatParamCacheKey(value);
+    TT_ASSIGN_OR_RETURN(std::string str, std::move(str_or));
     if (str.empty()) {
       // No need to add an empty string to the cache keys.
     } else {
@@ -338,8 +371,10 @@ class OpParamCacheKeys::Builder {
   // overload in the torch_tpu::internal namespace in this file.
   template <typename T>
   Builder& SetParam(std::string_view name, const T& value) {
-    if (first_error_.ok()) {
-      first_error_.Update(param_keys_.SetParam(name, value));
+    if constexpr (internal::IncludeInCacheKey<T>()) {
+      if (first_error_.ok()) {
+        first_error_.Update(param_keys_.SetParam(name, value));
+      }
     }
     return *this;
   }
@@ -363,55 +398,6 @@ class OpParamCacheKeys::Builder {
 
 namespace internal {
 
-// Adds one non-at::Tensor argument to the builder.
-template <typename Arg>
-inline absl::Status SetParamCacheKey(OpParamCacheKeys::Builder& builder,
-                                     const std::string_view arg_name,
-                                     const Arg& arg) {
-  return builder.SetParam(arg_name, arg).status();
-}
-
-// These overloads ensure that we don't add at::Tensor arguments to the
-// OpParamCacheKeys (as their dtypes and shapes are already encoded in the
-// cache key automatically.).
-inline absl::Status SetParamCacheKey(OpParamCacheKeys::Builder&,
-                                     const std::string_view,
-                                     const at::Tensor& arg) {
-  return absl::OkStatus();
-}
-
-inline absl::Status SetParamCacheKey(OpParamCacheKeys::Builder&,
-                                     const std::string_view,
-                                     const at::ITensorListRef& arg) {
-  return absl::OkStatus();
-}
-
-inline absl::Status SetParamCacheKey(OpParamCacheKeys::Builder&,
-                                     const std::string_view,
-                                     const std::vector<at::Tensor>& arg) {
-  return absl::OkStatus();
-}
-
-inline absl::Status SetParamCacheKey(
-    OpParamCacheKeys::Builder&, const std::string_view,
-    const std::vector<std::vector<at::Tensor>>& arg) {
-  return absl::OkStatus();
-}
-
-inline absl::Status SetParamCacheKey(
-    OpParamCacheKeys::Builder&, const std::string_view,
-    const c10::List<c10::optional<at::Tensor>>& arg) {
-  return absl::OkStatus();
-}
-
-inline absl::Status SetParamCacheKey(OpParamCacheKeys::Builder& builder,
-                                     const std::string_view arg_name,
-                                     const c10::optional<at::Tensor>& arg) {
-  // Encode arg_name and has_value to avoid a key clash for an op with multiple
-  // optional Tensor arguments, for example, op(None, t1) and op(t1, None).
-  return SetParamCacheKey(builder, arg_name, arg.has_value());
-}
-
 // Returns the name of the next argument in the given substring of a
 // comma-separated list of argument names, e.g. "a, b, c".
 // It also updates the substring to exclude the returned argument name.
@@ -433,31 +419,24 @@ inline absl::Status SetParamCacheKey(OpParamCacheKeys::Builder& builder,
 //       argument names in args_str.
 
 // The base case: no arguments.
-inline absl::Status MakeOpParamCacheKeysImpl(OpParamCacheKeys::Builder& builder,
-                                             const std::string_view args_str) {
-  return absl::OkStatus();
-}
+inline void MakeOpParamCacheKeysImpl(OpParamCacheKeys::Builder& builder,
+                                     const std::string_view args_str) {}
 
 // The recursive case: at least one argument.
 template <typename Arg, typename... Args>
-inline absl::Status MakeOpParamCacheKeysImpl(OpParamCacheKeys::Builder& builder,
-                                             std::string_view args_str,
-                                             const Arg& arg,
-                                             const Args&... args) {
+inline void MakeOpParamCacheKeysImpl(OpParamCacheKeys::Builder& builder,
+                                     std::string_view args_str, const Arg& arg,
+                                     const Args&... args) {
   std::string_view arg_name = ParseNextArgName(args_str);
-  TT_RETURN_IF_ERROR(  // ERROR_COV_INFEASIBLE=currently all ops can create
-                       // cache keys successfully.
-      SetParamCacheKey(builder, arg_name, arg));
-  return MakeOpParamCacheKeysImpl(builder, args_str, args...);
+  builder.SetParam(arg_name, arg);
+  MakeOpParamCacheKeysImpl(builder, args_str, args...);
 }
 
 template <typename... Args>
 absl::StatusOr<OpParamCacheKeys> MakeOpParamCacheKeys(
     const std::string_view args_str, const Args&... args) {
   OpParamCacheKeys::Builder builder;
-  TT_RETURN_IF_ERROR(  // ERROR_COV_INFEASIBLE=currently all ops can create
-                       // cache keys successfully.
-      MakeOpParamCacheKeysImpl(builder, args_str, args...));
+  MakeOpParamCacheKeysImpl(builder, args_str, args...);
   return *std::move(builder);
 }
 
@@ -553,7 +532,8 @@ class ShapeDynamismMetadata {
   // dimension annotations.
   explicit ShapeDynamismMetadata(const std::vector<Shape>& input_shapes);
 
-  // Check if the given shapes are compatible with these shape dynamism bounds.
+  // Check if the given shapes are compatible with these shape dynamism
+  // bounds.
   bool IsCompatible(const std::vector<Shape>& input_shapes) const;
 
   [[nodiscard]] const std::vector<DimensionBounds>& input_dimension_bounds()
@@ -562,7 +542,8 @@ class ShapeDynamismMetadata {
   }
 
   // Returns a list of shapes just like input_shapes, but with dynamic
-  // annotations replaced with the upper bounds from the shape dynamism bounds.
+  // annotations replaced with the upper bounds from the shape dynamism
+  // bounds.
   std::vector<Shape> GetPaddingShapes(
       const std::vector<Shape>& input_shapes) const;
 

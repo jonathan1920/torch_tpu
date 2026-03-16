@@ -770,11 +770,11 @@ at::Tensor& AtenUpsampleNearest1dBackwardGradInput(
     const at::Tensor& grad_output, at::IntArrayRef output_shape_in,
     at::IntArrayRef input_shape, std::optional<double> scale,
     at::Tensor& grad_input) {
-  auto output_shape = CopyIntVector(grad_output.sizes());
-
   TT_KERNEL(
       OpName::kUpsampleNearest1dBackwardGradInput, param_keys,
-      (grad_output, output_shape, input_shape, grad_input), {
+      (grad_output, output_shape_in, input_shape, grad_input), {
+        auto output_shape = CopyIntVector(grad_output.sizes());
+
         // TODO(lwh): Add check for output_shape and scaled version from
         // input_shape, and check that grad_input and grad_output shapes match
         // those.

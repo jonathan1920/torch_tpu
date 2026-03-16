@@ -29,6 +29,7 @@
 #include "c10/core/SymIntArrayRef.h"
 #include "c10/core/SymNodeImpl.h"
 #include "c10/util/ArrayRef.h"
+#include "c10/util/Optional.h"
 #include "c10/util/intrusive_ptr.h"
 #include "torch/csrc/distributed/c10d/Types.hpp"
 #include "torch/headeronly/core/Layout.h"
@@ -86,7 +87,7 @@ TEST(OpParamCacheKeys, SetParamScalarArray) {
   auto params2_or =
       *OpParamCacheKeysBuilder().SetParam("foo", at::ArrayRef<at::Scalar>());
   ASSERT_TRUE(params2_or.ok());
-  EXPECT_THAT(params2_or.value(), ElementsAre(Pair("foo", "[]")));
+  EXPECT_THAT(params2_or.value(), IsEmpty());
 }
 
 TEST(OpParamCacheKeys, SetParamReduceOp) {
@@ -136,11 +137,11 @@ TEST(OpParamCacheKeys, SetParamInteger) {
 TEST(OpParamCacheKeys, SetParamBool) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("bar", true);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("bar", "true")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("bar", "t")));
 
   auto params2_or = *OpParamCacheKeysBuilder().SetParam("bar", false);
   ASSERT_TRUE(params2_or.ok());
-  EXPECT_THAT(params2_or.value(), ElementsAre(Pair("bar", "false")));
+  EXPECT_THAT(params2_or.value(), ElementsAre(Pair("bar", "f")));
 }
 
 TEST(OpParamCacheKeys, SetParamString) {
@@ -197,6 +198,27 @@ TEST(OpParamCacheKeys, SetParamLayout) {
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(),
               ElementsAre(Pair("bar", "Sparse"), Pair("foo", "Strided")));
+}
+
+TEST(OpParamCacheKeys, SetParamOptionalTensor) {
+  c10::optional<at::Tensor> no_tensor = std::nullopt;
+  c10::optional<at::Tensor> tensor_opt = at::Tensor();
+  auto params_or = *OpParamCacheKeysBuilder()
+                        .SetParam("foo", no_tensor)
+                        .SetParam("bar", tensor_opt);
+  ASSERT_TRUE(params_or.ok());
+  // foo should be omitted from the cache keys.
+  // bar should be formatted as "t" to indicate the presence of a tensor.
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("bar", "t")));
+}
+
+TEST(OpParamCacheKeys, SetParamTensor) {
+  at::Tensor tensor;  // UNINITIALIZED_TENSOR_OK=for testing.
+  auto params_or = *OpParamCacheKeysBuilder().SetParam("bar", tensor);
+  ASSERT_TRUE(params_or.ok());
+  // bar should be omitted from the cache keys as we already include the
+  // tensor shape/dtype in the cache keys automatically.
+  EXPECT_THAT(params_or.value(), IsEmpty());
 }
 
 TEST(OpParamCacheKeys, SetParamMemoryFormat) {

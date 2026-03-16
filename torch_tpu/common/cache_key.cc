@@ -19,7 +19,6 @@
 #include <cstdint>
 #include <ios>
 #include <ostream>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -34,8 +33,6 @@
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
 #include "c10/core/Device.h"
-#include "c10/core/Layout.h"
-#include "c10/core/MemoryFormat.h"
 #include "c10/core/Scalar.h"  // IWYU pragma: keep for c10::Scalar
 #include "c10/core/SymInt.h"
 #include "c10/core/SymIntArrayRef.h"
@@ -44,6 +41,7 @@
 #include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 
@@ -69,51 +67,16 @@ absl::StatusOr<std::string> FormatParamCacheKey(const at::Scalar value) {
 }
 
 std::string FormatParamCacheKey(const c10::SymInt& value) {
-  std::ostringstream ss;
-  ss << value;
-  return ss.str();
+  return ToString(value);
 }
 
 std::string FormatParamCacheKey(c10::SymIntArrayRef value) {
-  if (value.empty()) {
-    return "";
-  }
-  return absl::StrCat(
-      "[",
-      absl::StrJoin(value, ",",
-                    [](std::string* out, const c10::SymInt& elem) {
-                      absl::StrAppend(out, FormatParamCacheKey(elem));
-                    }),
-      "]");
+  return FormatParamCacheKey(absl::MakeConstSpan(value));
 }
 
 std::string FormatParamCacheKey(const c10d::ReduceOp value) {
   const c10d::ReduceOp::RedOpType reduce_op_type = value;
-  switch (reduce_op_type) {
-    // go/keep-sorted start
-    case c10d::ReduceOp::AVG:
-      return "avg";
-    case c10d::ReduceOp::BAND:
-      return "band";
-    case c10d::ReduceOp::BOR:
-      return "bor";
-    case c10d::ReduceOp::BXOR:
-      return "bxor";
-    case c10d::ReduceOp::MAX:
-      return "max";
-    case c10d::ReduceOp::MIN:
-      return "min";
-    case c10d::ReduceOp::PREMUL_SUM:
-      return "premul_sum";
-    case c10d::ReduceOp::PRODUCT:
-      return "product";
-    case c10d::ReduceOp::SUM:
-      return "sum";
-    case c10d::ReduceOp::UNUSED:
-      return "unused";
-      // go/keep-sorted end
-  };
-  return absl::StrFormat("enum%d", reduce_op_type);
+  return ToString(reduce_op_type);
 }
 
 std::string FormatParamCacheKey(const std::string_view value) {
@@ -125,36 +88,17 @@ std::string FormatParamCacheKey(const absl::Span<const int64_t> value) {
 }
 
 std::string FormatParamCacheKey(const at::Layout value) {
-  std::ostringstream ss;
-  ss << value;
-  return ss.str();
+  return ToString(value);
 }
 
 std::string FormatParamCacheKey(const at::MemoryFormat value) {
-  std::ostringstream ss;
-  ss << value;
-  return ss.str();
+  return ToString(value);
 }
 
 std::string FormatParamCacheKey(const at::Device value) {
   // The device string may contain `:`, which may cause ambiguity when
   // parsing the cache key, so we quote it.
   return FormatParamCacheKey(value.str());
-}
-
-std::string FormatParamCacheKey(const at::ITensorListRef& value) {
-  if (value.empty()) {
-    return "";
-  }
-  return absl::StrCat(
-      "[",
-      absl::StrJoin(
-          value, ",",
-          [](std::string* out, const at::Tensor& tensor) {
-            absl::StrAppend(
-                out, FormatParamCacheKey(absl::MakeConstSpan(tensor.sizes())));
-          }),
-      "]");
 }
 
 std::string_view ParseNextArgName(std::string_view& args_str) {

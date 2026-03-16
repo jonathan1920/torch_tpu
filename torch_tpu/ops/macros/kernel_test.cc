@@ -112,8 +112,8 @@ TEST(TtKernel, ComputesCacheKeysWithTensorAndNonTensors) {
     // `seed` is nullopt and thus should be omitted from the cache keys.
     EXPECT_THAT(param_keys, ElementsAre(
                                 // go/keep-sorted start
-                                Pair("expand", "true"),  //
-                                Pair("ndim", "3")        //
+                                Pair("expand", "t"),  //
+                                Pair("ndim", "3")     //
                                 // go/keep-sorted end
                                 ));
   });
