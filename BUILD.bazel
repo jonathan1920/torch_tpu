@@ -60,6 +60,7 @@ genrule(
     name = "wheel_extra_test_deps",
     testonly = True,
     srcs = [
+        "//tests/distributed:distributed_utils",
         "//tests:error_testing",
         "//tests:op_testing",
         "//tests/compile:stablehlo_compile_testing",

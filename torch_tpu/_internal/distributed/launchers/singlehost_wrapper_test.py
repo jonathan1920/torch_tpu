@@ -17,7 +17,7 @@
 import os
 
 from absl.testing import absltest
-# from torch.google import distributed as g3_distributed
+from torch.google import distributed as g3_distributed
 import torch.multiprocessing as mp
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 
@@ -89,7 +89,7 @@ class SingleHostTestLauncherTest(absltest.TestCase):
           self.create_tempdir().full_path
       )
 
-    dist.torchrun(
+    g3_distributed.torchrun(
         singlehost_wrapper.tpu_env_wrapper(
             worker_func, (), world_size=WORLD_SIZE
         ),

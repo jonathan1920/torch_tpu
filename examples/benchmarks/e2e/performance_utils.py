@@ -24,7 +24,7 @@ from absl import flags
 from absl import logging
 import torch
 from torch import distributed as dist
-# from torch.google import distributed as g3_distributed
+from torch.google import distributed as g3_distributed
 from torch_tpu import api
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.distributed import gpu_env
@@ -269,7 +269,7 @@ def _run_distributed_benchmark(
         (),
         world_size=8,
     )
-    dist.torchrun(
+    g3_distributed.torchrun(
         run_worker,
         nproc_per_node=8,
     )(
@@ -284,7 +284,7 @@ def _run_distributed_benchmark(
     config.model_and_input_args.batch_size = (
         config.model_and_input_args.batch_size * 2
     )
-    dist.torchrun(
+    g3_distributed.torchrun(
         gpu_env.run_in_workers,
         nproc_per_node=4,
     )(

@@ -13,18 +13,21 @@
 # limitations under the License.
 
 """Tests PyTorch distributed ops with torch.compile()."""
+
 import os
 import unittest
+
 from absl.testing import absltest
 import torch
 from torch import distributed as dist
-# from torch.google import distributed as g3_distributed
 import torch.multiprocessing as mp
 from torch_tpu import api
 from torch_tpu._internal import env
 from torch_tpu._internal.compile import TpuBackend
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import utils
+from tests.distributed import distributed_utils
+
 from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
 
 
@@ -83,9 +86,9 @@ class MultiTpuTorchCompileTest(absltest.TestCase):
   # inputs" error in OSS.
   @expected_to_fail_in_oss
   def test_all_reduce_with_torch_compile(self):
-    dist.torchrun(
+    distributed_utils.dist_run(
         singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce_with_torch_compile, ()
+            run_all_reduce_with_torch_compile, (), world_size=8
         ),
         nproc_per_node=8,
     )()

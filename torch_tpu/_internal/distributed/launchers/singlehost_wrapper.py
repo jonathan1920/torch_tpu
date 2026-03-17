@@ -21,7 +21,7 @@ with torchrun as follows:
 The torchrun command is called on a wrapper around user logic:
 
 ```
-dist.torchrun(
+g3_distributed.torchrun(
     tpu_env_wrapper(user_logic, arg1, arg2, world_size=N),
     nproc_per_node=N,
 )()

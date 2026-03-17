@@ -19,7 +19,7 @@ import logging
 from typing import Sequence
 
 from torch import distributed as dist
-# from torch.google import distributed as g3_distributed
+from torch.google import distributed as g3_distributed
 from torch_tpu import api
 from torch_tpu._internal.distributed import gpu_env
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
@@ -137,7 +137,7 @@ def _run_distributed_benchmark(
         (),
         world_size=8,
     )
-    dist.torchrun(
+    g3_distributed.torchrun(
         run_worker,
         nproc_per_node=N_PROC_MAP[benchmark_utils.PLATFORM.value],
     )(
@@ -149,7 +149,7 @@ def _run_distributed_benchmark(
       benchmark_utils.PLATFORM_DEVICE_MAP[benchmark_utils.PLATFORM.value]
       == "cuda"
   ):
-    dist.torchrun(
+    g3_distributed.torchrun(
         gpu_env.run_in_workers,
         nproc_per_node=N_PROC_MAP[benchmark_utils.PLATFORM.value],
     )(
