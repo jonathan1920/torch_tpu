@@ -39,6 +39,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/macros:kernel",
         "//torch_tpu/ops/resize:resize_aten_kernels",
         "@com_google_absl//absl/status:statusor",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -117,6 +118,7 @@ torch_tpu_cc_library(
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
         "@stablehlo//:stablehlo_builder",
+        "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla/pjrt:pjrt_client",
     ],
 )

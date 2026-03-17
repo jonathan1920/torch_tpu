@@ -91,6 +91,7 @@ absl_nonnull std::unique_ptr<mlir::MLIRContext> MakeMlirContext() {
 
 absl::Status SetOutputNodesAsMaterialized(std::vector<DeviceBufferRef>& outputs,
                                           PjRtBufferPointers results) {
+  tsl::profiler::TraceMe trace("SetOutputNodesAsMaterialized");
   ABSL_VLOG(1) << "[SetOutputNodesAsMaterialized] Starting";
   PjRtBufferPointers buffers_to_assign;
   buffers_to_assign.reserve(outputs.size());
@@ -203,6 +204,7 @@ absl::Status ExecuteMaterializationJob(
     absl::Span<const DeviceBufferRef> outputs,
     std::vector<SharedLoadedExecutable> executables,
     std::string_view task_name = "anonymous") {
+  tsl::profiler::TraceMe trace("ExecuteMaterializationJob");
   ABSL_VLOG(1) << "[ExecuteMaterializationJob]: task_name=" << task_name
                << " input arg count: " << inputs.size()
                << " output arg count: " << outputs.size();
@@ -459,6 +461,7 @@ class MaterializationWorker {
       ExecutionTask task, const std::optional<int64_t>& throttle_limit_bytes,
       int64_t& in_flight_bytes,
       std::queue<InFlightExecution>& in_flight_executions) {
+    tsl::profiler::TraceMe trace("ProcessExecutionTask");
     std::string_view task_name = "anonymous";
     if (!task.task_name.empty()) {
       task_name = task.task_name;
@@ -578,7 +581,10 @@ class MaterializationWorker {
     ABSL_VLOG(1) << "[MaterializationWorker] Getting leaf nodes";
     std::vector<SharedDeviceBufferList> all_nodes =
         std::move(task.nodes_to_materialize);
-    AddLeafNodes(all_nodes);
+    {
+      tsl::profiler::TraceMe t("AddLeafNodes");
+      AddLeafNodes(all_nodes);
+    }
     ABSL_VLOG(1) << "[MaterializationWorker] Found " << all_nodes.size()
                  << " leaf nodes";
     if (ABSL_VLOG_IS_ON(1)) {
@@ -606,7 +612,11 @@ class MaterializationWorker {
     }
 
     ABSL_VLOG(1) << "[MaterializationWorker] Creating traversal";
-    auto traversal_or = Traversal::Create(std::move(refs));
+    absl::StatusOr<Traversal> traversal_or;
+    {
+      tsl::profiler::TraceMe t("Traversal::Create");
+      traversal_or = Traversal::Create(std::move(refs));
+    }
     if (!traversal_or.ok()) {
       ABSL_VLOG(1) << "[MaterializationWorker] Failed to create traversal: "
                    << traversal_or.status();
@@ -621,7 +631,11 @@ class MaterializationWorker {
     if (task.materialization_mode == MaterializationMode::kSplitGraph) {
       // Split the traversal while nodes are still in the deferred state.
       ABSL_VLOG(1) << "[MaterializationWorker] Splitting traversal";
-      auto traversals_or = SplitTraversal(std::move(*traversal_or));
+      absl::StatusOr<std::vector<Traversal>> traversals_or;
+      {
+        tsl::profiler::TraceMe t("SplitTraversal");
+        traversals_or = SplitTraversal(std::move(*traversal_or));
+      }
       if (!traversals_or.ok()) {
         ABSL_VLOG(1) << "[MaterializationWorker] Failed to split traversal: "
                      << traversals_or.status();
@@ -650,7 +664,11 @@ class MaterializationWorker {
       auto compilation_mode = (GetEagerMode() == EagerMode::kOptimized)
                                   ? CompilationMode::kFastRuntime
                                   : CompilationMode::kFastCompile;
-      auto compile_result_or = split_traversal.Compile(compilation_mode);
+      absl::StatusOr<CompiledKernel> compile_result_or;
+      {
+        tsl::profiler::TraceMe t("CompileTraversal");
+        compile_result_or = split_traversal.Compile(compilation_mode);
+      }
       if (!compile_result_or.ok()) {
         ABSL_VLOG(1) << "[MaterializationWorker] Failed to compile "
                         "split_traversal: "
@@ -888,6 +906,7 @@ absl::Status Materialize(absl::Span<const DeviceBufferRef> buffer_refs,
 }
 
 absl::StatusOr<DeviceBufferRef> GetMaterialized(const at::Tensor& tensor) {
+  tsl::profiler::TraceMe trace("GetMaterialized");
   // Make sure the base DeviceBufferRef is materialized
   const auto* tensor_impl = tensor.unsafeGetTensorImpl();
   TT_RET_CHECK(tensor_impl, error::kInvalidArgument) << "tensor is undefined";
@@ -905,6 +924,7 @@ absl::StatusOr<DeviceBufferRef> GetMaterialized(const at::Tensor& tensor) {
 
 absl::StatusOr<std::vector<DeviceBufferRef>> GetMaterialized(
     absl::Span<const at::Tensor> tensors) {
+  tsl::profiler::TraceMe trace("GetMaterialized (batch)");
   if (tensors.empty()) {
     return std::vector<DeviceBufferRef>();
   }

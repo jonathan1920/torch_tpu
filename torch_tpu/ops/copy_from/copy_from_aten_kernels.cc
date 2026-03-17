@@ -36,6 +36,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/resize/resize_aten_kernels.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace torch_tpu {
 
@@ -75,6 +76,7 @@ absl::StatusOr<CopyType> GetCopyType(const at::Tensor& src,
 
 at::Tensor AtenCopyFrom(const at::Tensor& src, const at::Tensor& self_dest,
                         bool non_blocking) {
+  tsl::profiler::TraceMe trace("AtenCopyFrom");
   TT_KERNEL(OpName::kCopyFrom, _, (src, self_dest, non_blocking), {
     TT_CHECK_THROW(IsPrivateUse1Device(src) || IsPrivateUse1Device(self_dest),
                    error::kInvalidArgument)
@@ -91,6 +93,7 @@ at::Tensor AtenCopyFrom(const at::Tensor& src, const at::Tensor& self_dest,
     // Broadcast if necessary (on the source device).
     at::Tensor broadcasted_src = src;
     if (src.sizes() != self_dest.sizes()) {
+      tsl::profiler::TraceMe trace_broadcast("AtenCopyFrom::Broadcast");
       while (broadcasted_src.dim() < self_dest.dim()) {
         broadcasted_src.unsqueeze_(0);
       }
@@ -142,6 +145,7 @@ at::Tensor AtenCopyFromAndResize(const at::Tensor& self,
 }
 
 at::Scalar AtenLocalScalarDense(const at::Tensor& self) {
+  tsl::profiler::TraceMe trace("AtenLocalScalarDense");
   TT_KERNEL(OpName::kLocalScalarDense, _, (self), {
     TT_CHECK_THROW(self.numel() == 1, error::kInvalidArgument)
         << "expected the input tensor to have 1 element, got " << self.numel();

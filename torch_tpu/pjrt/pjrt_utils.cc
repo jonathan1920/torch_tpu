@@ -52,6 +52,7 @@
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace torch_tpu {
 
@@ -59,6 +60,7 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
     const void* host_data, mlir::ElementType element_type,
     absl::Span<const int64_t> dimensions,
     std::optional<at::Tensor> backing_tensor) {
+  tsl::profiler::TraceMe trace("TpuMallocAndMemcpyHtoD");
   if (backing_tensor.has_value() && backing_tensor->data_ptr() != host_data) {
     return TT_ERROR(error::kInvalidArgument)
            << "Backing tensor that was given is not matching the received "
@@ -175,6 +177,7 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
 }
 
 absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref) {
+  tsl::profiler::TraceMe trace("TpuMemcpyDtoH");
   ABSL_VLOG(1) << "[TpuMemcpyDtoH ENTRY] buffer_ref: "
                << buffer_ref.DebugString();
 
@@ -216,13 +219,17 @@ absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref) {
   auto literal = std::make_unique<xla::MutableBorrowingLiteral>(
       static_cast<char*>(cpu_tensor_receiver.data_ptr()), xla_shape);
   auto future = buffer->ToLiteral(literal.get());
-  TT_RETURN_IF_ERROR(future.Await());
+  {
+    tsl::profiler::TraceMe trace_await("TpuMemcpyDtoH::Await");
+    TT_RETURN_IF_ERROR(future.Await());
+  }
   return cpu_tensor_receiver;
 }
 
 absl::StatusOr<PjRtBufferPointers> Execute(
     const SharedLoadedExecutable& executable,
     std::vector<xla::PjRtBuffer* absl_nullable> argument_buffers) {
+  tsl::profiler::TraceMe trace("Execute");
   xla::ExecuteOptions execute_options{.strict_shape_checking = true};
 
   std::vector<std::vector<xla::PjRtBuffer*>> execution_arguments;

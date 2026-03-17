@@ -138,6 +138,7 @@ torch_tpu_cc_library(
         "@llvm-project//llvm:Support",
         "@stablehlo//:attr_type_builder_util",
         "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla:future",
         "@xla//xla:literal",
         "@xla//xla:shape_util",

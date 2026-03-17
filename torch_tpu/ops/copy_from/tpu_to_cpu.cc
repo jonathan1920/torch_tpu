@@ -34,6 +34,7 @@
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/pjrt/pjrt_utils.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace torch_tpu {
 
@@ -62,14 +63,17 @@ static absl::Status TranslateXlaTensorOomError(const absl::Status& status,
 
 absl::Status CopyTpuToCpu(const at::Tensor& src, const at::Tensor& dest,
                           bool non_blocking) {
+  tsl::profiler::TraceMe trace("CopyTpuToCpu");
   ABSL_VLOG(1) << "[AtenCopyFrom] TPU -> CPU copy path for "
                << ToString(src, "src");
 
   // Materialize if deferred, no-op if already materialized.
   // If src is a view, this will materialize both the base buffer and the
   // ephemeral view buffer.
-  TT_ASSIGN_OR_RETURN(const DeviceBufferRef materialized_src_buf,
-                      GetMaterialized(src));
+  TT_ASSIGN_OR_RETURN(const DeviceBufferRef materialized_src_buf, [&]() {
+    tsl::profiler::TraceMe trace_mat("CopyTpuToCpu::GetMaterialized");
+    return GetMaterialized(src);
+  }());
 
   if (materialized_src_buf.state() == DeviceBufferRefState::kZeroSize) {
     // Shortcut: no data to move, just set dest's storage to an empty
@@ -88,7 +92,10 @@ absl::Status CopyTpuToCpu(const at::Tensor& src, const at::Tensor& dest,
 
   // Redispatch using copy_() on the CPU to do any type or layout conversions
   // needed.
-  dest.copy_(cpu_tensor_receiver, non_blocking);
+  {
+    tsl::profiler::TraceMe trace_copy("AtenCopy_ (Redispatch)");
+    dest.copy_(cpu_tensor_receiver, non_blocking);
+  }
   return absl::OkStatus();
 }
 
