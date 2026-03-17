@@ -48,7 +48,6 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
-#include "torch_tpu/_internal/dynamism/dynamism_ops.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_cache.h"
@@ -56,6 +55,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -64,6 +64,7 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/FuncBuilder.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -509,23 +510,45 @@ absl::Status Traversal::ValidateAndReorderInputs(
 absl::StatusOr<mlir::MlirOp> Traversal::GetMlirOpForProcessedBuffer(
     const absl::flat_hash_map<DeviceBufferRef, mlir::MlirOp>& ref_to_op_map,
     const DeviceBufferRef& buffer_ref) const {
-  if (auto it = ref_to_op_map.find(buffer_ref); it != ref_to_op_map.end()) {
-    return it->second;
-  }
-  auto dy_it = dynamic_redirection_.find(buffer_ref);
-  TT_RET_CHECK(dy_it != dynamic_redirection_.end(), error::kInternal)
-      << "DeviceBufferRef not found in ref_to_op_map, and is not "
-         "dynamically redirected: "
+  auto it = ref_to_op_map.find(buffer_ref);
+  TT_RET_CHECK(it != ref_to_op_map.end(), error::kInternal)
+      << "DeviceBufferRef not found in ref_to_op_map: "
       << buffer_ref.DebugString();
-  auto redirected_buffer_ref = dy_it->second;
-  auto dynamic_input_it = ref_to_op_map.find(redirected_buffer_ref);
-  TT_RET_CHECK(dynamic_input_it != ref_to_op_map.end(), error::kInternal)
-      << "DeviceBufferRef " << buffer_ref.DebugString()
-      << " was dynamically redirected to "
-      << redirected_buffer_ref.DebugString()
-      << " which was not found in the ref_to_op_map.";
-  return dynamic_input_it->second;
+  return it->second;
 }
+
+namespace {
+
+mlir::MlirOp BufferToArgument(mlir::func::FunctionBuilder& fb,
+                              const DeviceBufferRef& input) {
+  if (input.state() == DeviceBufferRefState::kZeroSize) {
+    auto type = makeTensorType(fb.getContext(), input.dimensions(),
+                               input.element_type());
+    // In compiled mode we can still have zero-sized tensors as explicit
+    // inputs and we handle those here.
+    return MakeConstant(fb, mlir::ArrayRef<int64_t>{}, type);
+  }
+  Dimensions dimensions = CopyIntVector(input.dimensions());
+  // If input has bounded dynamic dimensions, we assume we will receive an
+  // input padded to the upper bound, along with the dimension sizes.
+  // We use a set_dimension_size op to
+  // convert to a dynamic tensor and use that downstream.
+  for (const auto& dynamic_dim : input.dynamic_dimensions()) {
+    dimensions[dynamic_dim.dimension] = dynamic_dim.upper_bound;
+  }
+  auto type = makeTensorType(fb.getContext(), dimensions, input.element_type());
+  auto dimension_size_type =
+      makeTensorType(fb.getContext(), {}, mlir::ElementType::I32);
+  auto result = mlir::func::Argument(fb, type);
+  for (const auto& dynamic_dim : input.dynamic_dimensions()) {
+    mlir::MlirOp dimension_size = mlir::func::Argument(fb, dimension_size_type);
+    result = mlir::stablehlo::SetDimensionSize(result, dimension_size,
+                                               dynamic_dim.dimension);
+  }
+  return result;
+}
+
+}  // namespace
 
 const PythonContext* absl_nullable Traversal::GetPythonContext() const {
   if (!execution_order().empty() && execution_order().back()->deferred_op()) {
@@ -557,15 +580,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
   ABSL_VLOG(2) << "[Traversal::BuildMlirModule] building MLIR ops for "
                << inputs.size() << " inputs";
   for (const DeviceBufferRef& input : inputs) {
-    auto type =
-        makeTensorType(mlir_context, input.dimensions(), input.element_type());
-    // In compiled mode we can still have zero-sized tensors as explicit inputs
-    // and we handle those here.
-    if (input.state() == DeviceBufferRefState::kZeroSize) {
-      ref_to_op_map[input] = MakeConstant(fb, mlir::ArrayRef<int64_t>{}, type);
-      continue;
-    }
-    ref_to_op_map[input] = mlir::func::Argument(fb, type);
+    ref_to_op_map[input] = BufferToArgument(fb, input);
   }
 
   for (const DeviceBufferRef& zsc : non_input_zero_sized_consts()) {
@@ -665,7 +680,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
   return module;
 }
 
-absl::StatusOr<SharedLoadedExecutableFuture> Traversal::Compile(
+absl::StatusOr<CompiledKernel> Traversal::Compile(
     CompilationMode compilation_mode) const {
   // Prepare a computation builder closure to be called on a cache miss.  Okay
   // to capture this here since CompilationCache::GetOrCompile() will call this
@@ -675,102 +690,23 @@ absl::StatusOr<SharedLoadedExecutableFuture> Traversal::Compile(
         return BuildMlirModule(mlir_context);
       };
   ABSL_VLOG(1) << "[Compile] cache_key: " << cache_key();
+  std::vector<Shape> input_shapes;
+  input_shapes.reserve(inputs_.size());
+  for (const auto& input : inputs_) {
+    Shape input_shape{.dimensions = CopyIntVector(input.dimensions()),
+                      .dtype = input.element_type()};
+    for (const auto& dynamic_dim : input.dynamic_dimensions()) {
+      input_shape.dynamic_dimensions.push_back(dynamic_dim);
+    }
+    input_shapes.push_back(std::move(input_shape));
+  }
+
   TT_ASSIGN_OR_RETURN(UniqueCompileOptions compile_options,
                       MakeCompilerOptions(compilation_mode));
+
   return CompilationCache::GetInstance().GetOrCompile(
-      cache_key(), shape_dynamism_metadata(), std::move(final_op_builder),
+      cache_key(), input_shapes, std::move(final_op_builder),
       std::move(compile_options));
-}
-
-absl::StatusOr<Traversal> Traversal::ApplyDynamism() {
-  // Ensure that the Traversal has its cache key and ShapeDynamismMetadata
-  // recorded.
-  if (!cache_key_) {
-    cache_key_ = BuildCacheKey();
-  }
-  if (!shape_dynamism_metadata_) {
-    shape_dynamism_metadata_ = BuildShapeDynamismMetadata();
-  }
-
-  // Keep track of padded inputs to create a padding traversal.
-  std::vector<DeviceBufferRef> padded_inputs;
-  padded_inputs.reserve(inputs_.size());
-  absl::flat_hash_set<const DeviceBufferList*> nodes_to_stop_at;
-  nodes_to_stop_at.reserve(inputs_.size());
-  // This includes non padded inputs, padded inputs, and their respective
-  // dimension sizes.
-  std::vector<DeviceBufferRef> new_inputs;
-  new_inputs.reserve(2 * inputs_.size());
-  // The set_dimension_size will be prepended to the execution order of this
-  // traversal.
-  std::vector<SharedDeviceBufferList> new_execution_order;
-  new_execution_order.reserve(inputs_.size() + execution_order_.size());
-
-  // We need to modify the dimensions_key to reflect the upper bounds on the
-  // dynamic dimensions, rather than their original static size.
-  std::vector<int64_t> input_upper_bounds;  // INT_VEC_OK
-
-  for (const auto& input : inputs_) {
-    auto dynamism_info = input.dynamic_dimensions();
-    if (dynamism_info.empty()) {
-      for (int64_t dim : input.dimensions()) {
-        input_upper_bounds.push_back(dim);
-      }
-      new_inputs.push_back(input);
-      continue;
-    }
-    // Assume it's just one dimension for now.
-    TT_RET_CHECK(dynamism_info.size() == 1, error::kInvalidArgument)
-        << "only one dynamic dimension per tensor is supported, but got "
-        << dynamism_info.size();
-    int64_t dimension_index = dynamism_info[0].dimension;
-    int64_t upper_bound = dynamism_info[0].upper_bound;
-    // Create a deferred op that pads the buffer ref to upper_bound.
-    TT_ASSIGN_OR_RETURN(
-        DeviceBufferRef padded_input,
-        PadDynamicDimension(input, dimension_index, upper_bound));
-    padded_inputs.push_back(padded_input);
-    nodes_to_stop_at.insert(input.device_buffer_list().get());
-    for (int64_t dim : padded_input.dimensions()) {
-      input_upper_bounds.push_back(dim);
-    }
-    // Using the original dimension size, set the dynamic dimension size to
-    // the original size.
-    TT_RET_CHECK(
-        0 <= dimension_index && dimension_index < input.dimensions().size(),
-        error::kInvalidArgument)
-        << "dimension index " << dimension_index
-        << " is out of bounds for tensor " << input.dimensions().size()
-        << " dimensions";
-    TT_ASSIGN_OR_RETURN(auto results, SetDynamicDimensionSize(
-                                          padded_input, dimension_index,
-                                          input.dimensions()[dimension_index]));
-    auto [set_dimension_size_buffer_ref, dimension_size_buffer_ref] = results;
-
-    new_inputs.push_back(padded_input);
-    new_inputs.push_back(dimension_size_buffer_ref);
-    SharedDeviceBufferList set_dimension_size_node =
-        set_dimension_size_buffer_ref.device_buffer_list();
-    new_execution_order.push_back(set_dimension_size_node);
-    dynamic_redirection_.insert({input, set_dimension_size_buffer_ref});
-  }
-
-  TT_ASSIGN_OR_RETURN(auto padding_traversal,
-                      Traversal::Create(padded_inputs, nodes_to_stop_at));
-  // The padding traversal is static-shaped always, even though it technically
-  // still has dynamic annotations on its inputs.
-  padding_traversal.shape_dynamism_metadata_ =
-      padding_traversal.BuildShapeDynamismMetadata(/*apply_dynamism=*/false);
-
-  inputs_ = std::move(new_inputs);
-  new_execution_order.insert(new_execution_order.end(),
-                             execution_order_.begin(), execution_order_.end());
-  execution_order_ = std::move(new_execution_order);
-  // Update the cache key to reflect that the dimensions_key is the upper bound
-  // of a dynamic graph, rather than the actual static sizes.
-  cache_key_->dimensions_key =
-      DimensionsKey(input_upper_bounds, /*is_shape_dynamic=*/true);
-  return padding_traversal;
 }
 
 bool IsSimpleNodeTraversal(const Traversal& traversal) {
@@ -1071,90 +1007,13 @@ absl::Status Traversal::Validate() const {
   return absl::OkStatus();
 }
 
-bool Traversal::is_bounded_dynamic() const {
+bool Traversal::IsBoundedDynamic() const {
   for (const DeviceBufferRef& input : inputs_) {
     if (!input.dynamic_dimensions().empty()) {
       return true;
     }
   }
   return false;
-}
-
-namespace {
-
-// PRECONDITION: metadata.IsCompatible(traversal.inputs()) == true
-// Uses DeviceBufferRef::MarkDynamic to mark the appropriate input dimensions
-// with the appropriate bounds.
-absl::Status MarkBoundedDynamic(const Traversal& traversal,
-                                const ShapeDynamismMetadata& metadata) {
-  int flat_dim_index = 0;
-  for (const auto& input : traversal.inputs()) {
-    for (int64_t input_dim_index = 0;
-         input_dim_index < input.dimensions().size(); ++input_dim_index) {
-      auto [lower_bound, upper_bound] =
-          metadata.input_dimension_bounds()[flat_dim_index];
-      if (lower_bound != upper_bound) {
-        TT_RETURN_IF_ERROR(
-            input.MarkDynamic(input_dim_index, lower_bound, upper_bound));
-      }
-      flat_dim_index++;
-    }
-  }
-  return absl::OkStatus();
-}
-
-}  // namespace
-
-absl::Status Traversal::ApplyBoundedDynamismAnnotations(
-    absl::Span<const ShapeDynamismMetadata> shape_dynamism_metadata) {
-  TT_RET_CHECK(!is_bounded_dynamic(), error::kFailedPrecondition)
-      << "traversal is already bounded dynamic";
-
-  // Try to find a bounded-dynamic compilation that is compatible.
-  // Compatibility requires that, for each dimension in the input, either the
-  // dimension is static and matches size, or is dynamic and the static value
-  // is between the lower and upper bounds (inclusive)
-  //
-  // We iterate backwards through the metadata because we expect the last
-  // metadata entry to be the most recent compilation attempt, which is most
-  // likely to already be a compatible bounded-dynamic compilation.
-
-  std::vector<Shape> input_shapes;
-  input_shapes.reserve(inputs().size());
-  for (const auto& input : inputs()) {
-    input_shapes.push_back({
-        .dimensions = CopyIntVector(input.dimensions()),
-        .dtype = input.element_type(),
-    });
-  }
-
-  for (int i = shape_dynamism_metadata.size() - 1; i >= 0; --i) {
-    const ShapeDynamismMetadata& metadata = shape_dynamism_metadata[i];
-    ABSL_VLOG(2) << "[ApplyBoundedDynamismAnnotations] Checking metadata " << i
-                 << ": "
-                 << absl::StrJoin(
-                        metadata.input_dimension_bounds(), ",",
-                        [](std::string* out, const DimensionBounds& bounds) {
-                          absl::StrAppend(out, "[", bounds.lower, ",",
-                                          bounds.upper, "]");
-                        });
-
-    if (metadata.IsCompatible(input_shapes)) {
-      ABSL_VLOG(2)
-          << "[ApplyBoundedDynamismAnnotations] Found compatible metadata";
-      // TODO: maybe try to select the "best" metadata instead of just the
-      // first compatible one?
-      TT_RETURN_IF_ERROR(MarkBoundedDynamic(*this, metadata));
-      shape_dynamism_metadata_.reset();
-      return absl::OkStatus();
-    }
-    ABSL_VLOG(2)
-        << "[ApplyBoundedDynamismAnnotations] Metadata is not compatible";
-  }
-  // We didn't find a compatible bounded-dynamic compilation.
-  // TODO: implement auto-dynamism to infer bounds from current and previous
-  // static graphs
-  return absl::OkStatus();
 }
 
 absl::StatusOr<std::string> GetGraphviz(

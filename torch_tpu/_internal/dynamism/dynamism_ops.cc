@@ -16,11 +16,9 @@
 
 #include "torch_tpu/_internal/dynamism/dynamism_ops.h"
 
-#include <array>
 #include <cstdint>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/log/absl_log.h"
 #include "absl/status/statusor.h"
@@ -31,13 +29,8 @@
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Support/LLVM.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/shape.h"
-#include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
-#include "torch_tpu/ops/op_names.h"
-#include "torch_tpu/ops/python_context.h"
-#include "torch_tpu/pjrt/pjrt_utils.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/FuncBuilder.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -92,79 +85,7 @@ absl::StatusOr<MlirUnaryOpBuilder> GetPaddingOpBuilder(
   };
 }
 
-NAryMlirOpBuilder<2, 1> GetSetDimensionSizeOpBuilder(int64_t dimension) {
-  return [dimension](FixedSizeSpan<mlir::MlirOp, 2> input_ops)
-             -> absl::StatusOr<mlir::MlirOp> {
-    auto [input_op, dimension_size_op] = input_ops;
-    auto set_dimension_size_op = mlir::stablehlo::SetDimensionSize(
-        input_op, dimension_size_op, dimension);
-    return set_dimension_size_op;
-  };
-}
-
 }  // namespace
-
-absl::StatusOr<DeviceBufferRef> PadDynamicDimension(DeviceBufferRef input,
-                                                    int64_t dimension_index,
-                                                    int64_t upper_bound) {
-  ScopedPythonContextCapturer capturer(OpName::kSetDimensionSize);
-  TT_RET_CHECK(
-      dimension_index >= 0 && dimension_index < input.dimensions().size(),
-      error::kInvalidArgument)
-      << "dimension index " << dimension_index
-      << " is out of bounds for tensor " << input.dimensions().size()
-      << " dimensions";
-  TT_RET_CHECK(upper_bound >= input.dimensions()[dimension_index],
-               error::kInvalidArgument)
-      << "upper bound must be at least the current dimension size, but is "
-      << upper_bound;
-  TT_ASSIGN_OR_RETURN(auto op_builder,
-                      GetPaddingOpBuilder({dimension_index}, {upper_bound}));
-  Shape original_shape = input.device_buffer_list()->shapes()[input.index()];
-  Shape padded_shape = original_shape;
-  padded_shape.dimensions[dimension_index] = upper_bound;
-  TT_ASSIGN_OR_RETURN(std::vector<DeviceBufferRef> padded_inputs,
-                      DeviceBufferList::CreateDeferred(
-                          OpName::kPadUninitialized_,
-                          ToMlirOpBuilder<1, 1>(std::move(op_builder)), {input},
-                          {}, {padded_shape}));
-  TT_RET_CHECK(padded_inputs.size() == 1, error::kInternal)
-      << "outputs must have exactly one buffer.";
-  return padded_inputs[0];
-}
-
-absl::StatusOr<std::array<DeviceBufferRef, 2>> SetDynamicDimensionSize(
-    DeviceBufferRef input, int64_t dimension_index,
-    int64_t original_dimension_size) {
-  ScopedPythonContextCapturer capturer(OpName::kSetDimensionSize);
-  TT_RET_CHECK(
-      dimension_index >= 0 && dimension_index < input.dimensions().size(),
-      error::kInvalidArgument)
-      << "dimension index " << dimension_index
-      << " is out of bounds for tensor " << input.dimensions().size()
-      << " dimensions";
-  int32_t dimension_size = static_cast<int32_t>(original_dimension_size);
-  // Using TpuMallocAndMemcpyHtoD to avoid a circular dependency when using
-  // MakeBuffer.
-  TT_ASSIGN_OR_RETURN(
-      DeviceBufferRef size_buffer_ref,
-      TpuMallocAndMemcpyHtoD(&dimension_size, mlir::ElementType::I32, {}));
-  // Create a deferred op that sets the dynamic dimension size.
-  auto set_dimension_size_op_builder =
-      GetSetDimensionSizeOpBuilder(dimension_index);
-  Shape original_shape = input.device_buffer_list()->shapes()[input.index()];
-  original_shape.dimensions[dimension_index] = original_dimension_size;
-  TT_ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferRef> set_dimension_size_buffer_refs,
-      DeviceBufferList::CreateDeferred(
-          OpName::kSetDimensionSize,
-          ToMlirOpBuilder<2, 1>(std::move(set_dimension_size_op_builder)),
-          {input, size_buffer_ref}, {}, {original_shape}));
-  TT_RET_CHECK(set_dimension_size_buffer_refs.size() == 1, error::kInternal)
-      << "outputs must have exactly one buffer.";
-  return std::array<DeviceBufferRef, 2>{set_dimension_size_buffer_refs[0],
-                                        size_buffer_ref};
-}
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetPadModule(
     mlir::MLIRContext& mlir_context, absl::Span<const Shape> shapes) {
@@ -181,6 +102,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetPadModule(
   for (int i = 0; i < shapes.size(); ++i) {
     const Shape& shape = shapes[i];
     auto type = makeTensorType(mlir_context, shape.dimensions, shape.dtype);
+    // Zero-sized tensors are not passed to the executable.
+    if (type.getNumElements() == 0) {
+      continue;
+    }
     auto input_op = mlir::func::Argument(fb, type);
     if (shape.dynamic_dimensions.empty()) {
       results.push_back(input_op);

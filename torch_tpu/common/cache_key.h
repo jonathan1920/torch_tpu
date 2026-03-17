@@ -457,6 +457,13 @@ struct ShapelessKey {
 
   FingerprintType key;
 };
+
+// Formats a shapeless key as a human-readable string.
+template <typename Sink>
+void AbslStringify(Sink& sink, const ShapelessKey key) {
+  absl::Format(&sink, "%016x", key.key);
+}
+
 struct DimensionsKey {
   explicit DimensionsKey(absl::Span<const int64_t> dimensions,
                          bool is_shape_dynamic = false) {

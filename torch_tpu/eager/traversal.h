@@ -168,30 +168,15 @@ class Traversal {
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> BuildMlirModule(
       mlir::MLIRContext& mlir_context) const;
 
-  absl::StatusOr<SharedLoadedExecutableFuture> Compile(
+  // Compiles the Traversal into a CompiledKernel. For static graphs, this will
+  // be a single executable future. For bounded dynamic graphs, this will
+  // in addition contain futures for dynamic adapters.
+  absl::StatusOr<CompiledKernel> Compile(
       CompilationMode compilation_mode) const;
-
-  // Apply dynamism information to the Traversal, returning a single padding
-  // traversal, and modifying the current traversal in place.
-  // For each input i with a dynamic dimension we create
-  // i <- pad <-----------------┐
-  //    dimension_size <------set_dimension_size
-  // A new padding traversal is created from pad, and the current traversal gets
-  // modified in the following way:
-  //  - inputs: we replace i with pad and dimension_size.
-  //  - execution_order: we prepend set_dimension_size.
-  //  - dynamic_redirection: we add a mapping from i to set_dimension_size.
-  absl::StatusOr<Traversal> ApplyDynamism();
 
   // Returns true if any input to the traversal has bounded dynamic dimensions
   // marked.
-  [[nodiscard]] bool is_bounded_dynamic() const;
-
-  // Given a list of shape dynamism metadata, attempts to find a compatible
-  // bounded-dynamic pattern, and if found, adds these annotations to the
-  // input tensors.
-  absl::Status ApplyBoundedDynamismAnnotations(
-      absl::Span<const ShapeDynamismMetadata> shape_dynamism_metadata);
+  [[nodiscard]] bool IsBoundedDynamic() const;
 
   // The core components of a Traversal, returned by IntoParts().
   struct Parts {
@@ -285,10 +270,6 @@ class Traversal {
   absl::StatusOr<mlir::MlirOp> GetMlirOpForProcessedBuffer(
       const absl::flat_hash_map<DeviceBufferRef, mlir::MlirOp>& ref_to_op_map,
       const DeviceBufferRef& buffer_ref) const;
-
-  // This is only used to redirect original inputs to dynamic ones for deferred
-  // ops when building the MLIR module.
-  absl::flat_hash_map<DeviceBufferRef, DeviceBufferRef> dynamic_redirection_;
 };
 
 // A simple node traversal is one where the graph outputs are all the outputs of

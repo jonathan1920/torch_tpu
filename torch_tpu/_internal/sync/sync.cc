@@ -122,10 +122,6 @@ absl::StatusOr<Traversal> GetTraversal(
   TT_ASSIGN_OR_RETURN(Traversal traversal,
                       Traversal::Create(std::move(refs_to_traverse)));
   ABSL_VLOG(2) << "[GetTraversal] Traversal created";
-  if (traversal.is_bounded_dynamic()) {
-    TT_ASSIGN_OR_RETURN(auto unused_padding, traversal.ApplyDynamism());
-    ABSL_VLOG(2) << "[GetTraversal] Applied dynamism";
-  }
   return traversal;
 }
 
@@ -143,7 +139,6 @@ absl::StatusOr<std::string> GetComputationGraphviz(
 absl::StatusOr<std::string> GetComputationMlir(
     absl::Span<const DeviceBufferRef> buffer_refs) {
   TT_ASSIGN_OR_RETURN(Traversal traversal, GetTraversal(buffer_refs));
-  TT_ASSIGN_OR_RETURN(auto unused_padding, traversal.ApplyDynamism());
   mlir::DialectRegistry registry;
   xla::RegisterMlirToHloDependentDialects(registry);
   mlir::MLIRContext context(registry);

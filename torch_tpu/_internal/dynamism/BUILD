@@ -62,13 +62,8 @@ torch_tpu_cc_library(
     deps = [
         "//shims/torch:torch_headers",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:fixed_size_span",
         "//torch_tpu/common:shape",
-        "//torch_tpu/eager:device_buffer",
         "//torch_tpu/ops:op_builder_utils",
-        "//torch_tpu/ops:op_names",
-        "//torch_tpu/ops:python_context",
-        "//torch_tpu/pjrt:pjrt_utils",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",

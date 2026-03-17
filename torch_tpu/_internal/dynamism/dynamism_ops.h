@@ -17,43 +17,26 @@
 #ifndef TORCH_TPU__INTERNAL_DYNAMISM_DYNAMISM_OPS_H_
 #define TORCH_TPU__INTERNAL_DYNAMISM_DYNAMISM_OPS_H_
 
-#include <array>
-#include <cstdint>
-
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
 
-// Pads the dynamic dimension of the input buffer to the upper bound.
-absl::StatusOr<DeviceBufferRef> PadDynamicDimension(DeviceBufferRef input,
-                                                    int64_t dimension_index,
-                                                    int64_t upper_bound);
-
-// Sets the dynamic dimension size of the input buffer to the original size.
-// Returns a pair of DeviceBufferRefs, the first is the input buffer with the
-// dynamic dimension size set, the second is a buffer that contains the original
-// dimension size.
-// This has the effect of changing a statically shaped buffer to a dynamically
-// shaped buffer.
-absl::StatusOr<std::array<DeviceBufferRef, 2>> SetDynamicDimensionSize(
-    DeviceBufferRef input, int64_t dimension_index,
-    int64_t original_dimension_size);
-
 // Universal pad module. Given a list of shapes with dynamic dimensions, returns
-// a module with the same number of inputs. For each shape, we create an input
-// that has the same static dimensions as shape, mapped to an output where the
+// a module with as many inputs as the number of non-zero-sized shapes (Note
+// rank 0 shapes are not zero-sized). For each shape, we create an input that
+// has the same static dimensions as shape, mapped to an output where the
 // dynamic dimensions have been padded to the upper bound, and one extra output
-// for each dynamic dimension, specifying the original dimension size. E.g., for
-// input shapes
-//   {[3, 5 ;dim=0,<=10], [], [8, 2, 2 ; dim1,<=5, dim2,<=7]} we get a
-// module with the following signature:
-//   ([3, 5], [], [8, 2, 2]) -> ([10, 5], i32, [], [8, 5, 7], i32, i32)
+// for each dynamic dimension, specifying the original dimension size.
+// Zero-sized tensors are not padded. E.g., for input shapes
+//   {[3, 5 ;dim=0,<=10], [], [8, 2, 2 ; dim1,<=5, dim2,<=7], [6, 0 ; dim0,<=10]
+// we get a module with the following signature:
+//   ([3, 5], [], [8, 2, 2])
+//   -> ([10, 5], i32, [], [8, 5, 7], i32, i32)
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetPadModule(
     mlir::MLIRContext& mlir_context, absl::Span<const Shape> shapes);
 

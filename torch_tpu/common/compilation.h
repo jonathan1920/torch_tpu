@@ -22,6 +22,7 @@
 #include <future>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -44,6 +45,21 @@ using LoadedExecutablePromise =
     std::promise<absl::StatusOr<SharedLoadedExecutable>>;
 using SharedLoadedExecutableFuture =
     std::shared_future<absl::StatusOr<SharedLoadedExecutable>>;
+
+// Holds the futures for a dynamic kernel adapter. These are lightweight
+// executables, e.g. padding ops.
+// TODO(unda): Add postamble (i.e. slice / relayout).
+struct DynamicKernelAdapter {
+  SharedLoadedExecutableFuture preamble;
+};
+
+// Holds the futures for a compiled kernel. For static kernels, only the
+// fixed_shape_kernel future will be set. For bounded dynamic kernels, both the
+// fixed_shape_kernel and dynamic_kernel_adapter will be set.
+struct CompiledKernel {
+  SharedLoadedExecutableFuture fixed_shape_kernel;
+  std::optional<DynamicKernelAdapter> dynamic_kernel_adapter;
+};
 
 // CompileOptions is a complex object with many fields. Even moving it is
 // expensive. We wrap it in a unique_ptr to allow for cheap moving.

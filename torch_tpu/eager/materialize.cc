@@ -48,9 +48,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "ATen/core/TensorBody.h"
-#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
-#include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/common/dynamism_utils.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
@@ -131,7 +129,7 @@ absl::Status SetOutputNodesAsMaterialized(std::vector<DeviceBufferRef>& outputs,
 struct ExecutionTask {
   std::vector<DeviceBufferRef> inputs;
   std::vector<DeviceBufferRef> outputs;
-  SharedLoadedExecutableFuture executable_future;
+  CompiledKernel compiled_kernel;
   std::string task_name;
 };
 
@@ -143,8 +141,8 @@ struct MaterializationTask {
 
 using MaterializationJob = std::variant<ExecutionTask, MaterializationTask>;
 
-ExecutionTask CreateExecutionTask(
-    Traversal traversal, SharedLoadedExecutableFuture executable_future) {
+ExecutionTask CreateExecutionTask(Traversal traversal,
+                                  CompiledKernel compiled_kernel) {
   std::string task_name;
   if (ABSL_VLOG_IS_ON(1)) {
     task_name = absl::StrCat(traversal.cache_key());
@@ -152,7 +150,7 @@ ExecutionTask CreateExecutionTask(
   Traversal::Parts parts = traversal.IntoParts();
   return ExecutionTask{.inputs = std::move(parts.inputs),
                        .outputs = std::move(parts.outputs),
-                       .executable_future = std::move(executable_future),
+                       .compiled_kernel = std::move(compiled_kernel),
                        .task_name = std::move(task_name)};
 }
 
@@ -190,22 +188,25 @@ absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>> GetRootArgs(
   return root_args;
 }
 
-// PRECONDITION: the executable must return a complete set of outputs for each
-// node in sequential blocks. That is, either all outputs of a node appear
-// contiguously and in the same order as in results, or none of them do.
-// Furthermore, the order of nodes must be consistent between the execution and
-// results.
-// For example, if node A is size 3, node B is size 1, and node C is size 2,
-// then the output order must be [A0, A1, A2, B1, C0, C1]. This is established
-// by all Materialize() functions in this file.
+// PRECONDITION: executables must be a sequence that is compatible with the
+// inputs and composable, as they will be executed in order and the outputs of
+// an executable are the inputs to the next. The final execuatable returns a
+// complete set of outputs for each node in sequential blocks. That is, either
+// all outputs of a node appear contiguously and in the same order as in
+// results, or none of them do. Furthermore, the order of nodes must be
+// consistent between the execution and results. For example, if node A is size
+// 3, node B is size 1, and node C is size 2, then the output order must be [A0,
+// A1, A2, B1, C0, C1]. This is established by all Materialize() functions in
+// this file.
 absl::Status ExecuteMaterializationJob(
     absl::Span<const DeviceBufferRef> inputs,
     absl::Span<const DeviceBufferRef> outputs,
-    SharedLoadedExecutable executable,
+    std::vector<SharedLoadedExecutable> executables,
     std::string_view task_name = "anonymous") {
   ABSL_VLOG(1) << "[ExecuteMaterializationJob]: task_name=" << task_name
                << " input arg count: " << inputs.size()
                << " output arg count: " << outputs.size();
+  ABSL_CHECK(!executables.empty()) << "No executables to execute";  // CRASH_OK
 
   TT_ASSIGN_OR_RETURN(std::vector<xla::PjRtBuffer*> root_args,
                       GetRootArgs(inputs));
@@ -215,14 +216,24 @@ absl::Status ExecuteMaterializationJob(
          "for task name="
       << task_name << ", root_args size: " << root_args.size();
 
-  TT_ASSIGN_OR_RETURN(
-      PjRtBufferPointers results, Execute(executable, std::move(root_args)),
-      _.SetPrepend() << "failed to enqueue execution for task_name="
-                     << task_name << ": ");
+  std::vector<PjRtBufferPointers> intermediate_results;
+  for (auto& executable : executables) {
+    TT_ASSIGN_OR_RETURN(
+        PjRtBufferPointers results, Execute(executable, std::move(root_args)),
+        _.SetPrepend() << "failed to enqueue execution for task_name="
+                       << task_name << ": ");
+    root_args.clear();
+    root_args.reserve(results.size());
+    for (const auto& result : results) {
+      root_args.push_back(result.get());
+    }
+    intermediate_results.push_back(std::move(results));
+  }
+  PjRtBufferPointers final_results = std::move(intermediate_results.back());
 
   ABSL_VLOG(1)
       << "[ExecuteMaterializationJob]: Enqueued execution for task_name="
-      << task_name << ", results size: " << results.size();
+      << task_name << ", results size: " << final_results.size();
 
   ABSL_VLOG(1) << "[ExecuteMaterializationJob]: Materialization enqueue has "
                   "completed for task_name="
@@ -232,7 +243,7 @@ absl::Status ExecuteMaterializationJob(
   for (const auto& output : outputs) {
     output_refs.push_back(output);
   }
-  return SetOutputNodesAsMaterialized(output_refs, std::move(results));
+  return SetOutputNodesAsMaterialized(output_refs, std::move(final_results));
 }
 
 // An InFlightExecution is an execution that has started but may not yet be
@@ -358,11 +369,7 @@ int64_t ApplyMemoryThrottling(const int64_t throttle_limit_bytes,
   return execution_size_bytes;
 }
 
-absl::Status DetectAndAnnotateBoundedDynamism(absl::Span<Traversal> traversals);
 absl::Status PropagateBoundedDynamism(absl::Span<Traversal> traversals);
-
-absl::StatusOr<std::vector<Traversal>> ApplyDynamism(
-    std::vector<Traversal>& traversals);
 
 class MaterializationWorker {
  public:
@@ -405,7 +412,7 @@ class MaterializationWorker {
 
     // Create a promise/future that is already done using the executable.
     LoadedExecutablePromise promise;
-    SharedLoadedExecutableFuture executable_future = promise.get_future();
+    CompiledKernel compiled_kernel{.fixed_shape_kernel = promise.get_future()};
     promise.set_value(std::move(executable));
 
     ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing executable: task_name="
@@ -415,7 +422,7 @@ class MaterializationWorker {
 
     ExecutionTask task = {.inputs = std::move(inputs),
                           .outputs = outputs,  // intentional copy
-                          .executable_future = std::move(executable_future),
+                          .compiled_kernel = std::move(compiled_kernel),
                           .task_name = std::string(task_name)};
     TT_MUTEX_LOCK(lock, execute_mu_);
     execute_jobs_.push(std::move(task));
@@ -463,37 +470,68 @@ class MaterializationWorker {
 
     if (ABSL_VLOG_IS_ON(1)) {
       // Wait for the compilation to complete with a timeout.
-      while (task.executable_future.wait_for(std::chrono::seconds(5)) ==
-             std::future_status::timeout) {
+      while (task.compiled_kernel.fixed_shape_kernel.wait_for(
+                 std::chrono::seconds(5)) == std::future_status::timeout) {
         ABSL_VLOG(1) << "Still waiting for compilation of task_name="
                      << task_name;
       }
+      if (task.compiled_kernel.dynamic_kernel_adapter.has_value()) {
+        while (task.compiled_kernel.dynamic_kernel_adapter->preamble.wait_for(
+                   std::chrono::seconds(5)) == std::future_status::timeout) {
+          ABSL_VLOG(1) << "Still waiting for preamble compilation of task_name="
+                       << task_name;
+        }
+      }
+    }
+    ABSL_VLOG(1)
+        << "[MaterializationWorker] Compilation complete for task_name="
+        << task_name;
+
+    std::vector<SharedLoadedExecutable> cached_executables;
+
+    if (task.compiled_kernel.dynamic_kernel_adapter.has_value()) {
+      absl::StatusOr<SharedLoadedExecutable> preamble =
+          task.compiled_kernel.dynamic_kernel_adapter->preamble.get();
+      if (!preamble.ok()) {
+        ABSL_VLOG(1) << "[MaterializationWorker] Failed to compile "
+                        "task_name="
+                     << task_name << ": " << preamble.status();
+        SetOutputNodesAsError(task.outputs, preamble.status());
+        return;
+      }
+      cached_executables.push_back(std::move(*preamble));
     }
 
-    absl::StatusOr<SharedLoadedExecutable> cached_executable =
-        task.executable_future.get();
-    if (!cached_executable.ok()) {
+    absl::StatusOr<SharedLoadedExecutable> fixed_shape_kernel =
+        task.compiled_kernel.fixed_shape_kernel.get();
+    if (!fixed_shape_kernel.ok()) {
       ABSL_VLOG(1) << "[MaterializationWorker] Failed to compile "
                       "task_name="
-                   << task_name << ": " << cached_executable.status();
-      SetOutputNodesAsError(task.outputs, cached_executable.status());
+                   << task_name << ": " << fixed_shape_kernel.status();
+      SetOutputNodesAsError(task.outputs, fixed_shape_kernel.status());
       return;
     }
+    cached_executables.push_back(std::move(*fixed_shape_kernel));
+
+    ABSL_VLOG(1) << "[MaterializationWorker] Cached executables size: "
+                 << cached_executables.size();
 
     int64_t execution_size_bytes = 0;
-    if (throttle_limit_bytes.has_value()) {
-      ABSL_VLOG(1) << "[MaterializationWorker] Applying memory throttling "
-                      "for task_name="
-                   << task_name;
-      execution_size_bytes =
-          ApplyMemoryThrottling(*throttle_limit_bytes, in_flight_bytes,
-                                in_flight_executions, **cached_executable);
+    for (const auto& cached_executable : cached_executables) {
+      if (throttle_limit_bytes.has_value()) {
+        ABSL_VLOG(1) << "[MaterializationWorker] Applying memory throttling "
+                        "for task_name="
+                     << task_name;
+        execution_size_bytes +=
+            ApplyMemoryThrottling(*throttle_limit_bytes, in_flight_bytes,
+                                  in_flight_executions, *cached_executable);
+      }
     }
 
     ABSL_VLOG(1) << "[MaterializationWorker] Executing job for task_name="
                  << task_name;
     absl::Status status = ExecuteMaterializationJob(
-        task.inputs, task.outputs, std::move(*cached_executable), task_name);
+        task.inputs, task.outputs, std::move(cached_executables), task_name);
     if (!status.ok()) {
       ABSL_VLOG(1)
           << "[MaterializationWorker] ExecuteMaterializationJob failed "
@@ -576,6 +614,9 @@ class MaterializationWorker {
       return {};
     }
 
+    ABSL_VLOG(3) << "[MaterializationWorker] Traversal created: "
+                 << GetGraphviz(*traversal_or);
+
     std::vector<Traversal> traversals;
     if (task.materialization_mode == MaterializationMode::kSplitGraph) {
       // Split the traversal while nodes are still in the deferred state.
@@ -594,16 +635,6 @@ class MaterializationWorker {
       traversals.push_back(std::move(*traversal_or));
     }
 
-    if (auto status =
-            DetectAndAnnotateBoundedDynamism(absl::MakeSpan(traversals));
-        !status.ok()) {
-      ABSL_VLOG(1) << "[MaterializationWorker] Failed to detect and annotate "
-                      "bounded dynamism: "
-                   << status;
-      SetOutputNodesAsError(all_nodes, status);
-      return {};
-    }
-
     if (auto status = PropagateBoundedDynamism(absl::MakeSpan(traversals));
         !status.ok()) {
       ABSL_VLOG(1) << "[MaterializationWorker] Failed to propagate bounded "
@@ -613,19 +644,8 @@ class MaterializationWorker {
       return {};
     }
 
-    ABSL_VLOG(1) << "[MaterializationWorker] Applying dynamism";
-    auto resulting_traversals_or = ApplyDynamism(traversals);
-    if (!resulting_traversals_or.ok()) {
-      ABSL_VLOG(1) << "[MaterializationWorker] Failed to apply dynamism: "
-                   << resulting_traversals_or.status();
-      SetOutputNodesAsError(all_nodes, resulting_traversals_or.status());
-      return {};
-    }
-    std::vector<Traversal> resulting_traversals =
-        std::move(*resulting_traversals_or);
-
     std::vector<ExecutionTask> execution_tasks;
-    for (auto& split_traversal : resulting_traversals) {
+    for (auto& split_traversal : traversals) {
       ABSL_VLOG(1) << "[MaterializationWorker] Compiling traversal";
       auto compilation_mode = (GetEagerMode() == EagerMode::kOptimized)
                                   ? CompilationMode::kFastRuntime
@@ -735,40 +755,12 @@ MaterializationWorker& GetMaterializationWorker() {
   return *worker;
 }
 
-absl::Status DetectAndAnnotateBoundedDynamism(
-    absl::Span<Traversal> traversals) {
-  // Get shape dynamism information from the cache, and update the traversals
-  // with these annotations, unless everything is already bounded-dynamic.
-  bool all_bounded_dynamic = true;
-  std::vector<CompilationCacheKey> cache_keys;
-  cache_keys.reserve(traversals.size());
-  for (const auto& traversal : traversals) {
-    if (!traversal.is_bounded_dynamic()) {
-      all_bounded_dynamic = false;
-    }
-    cache_keys.push_back(traversal.cache_key());
-  }
-  if (!all_bounded_dynamic) {
-    auto dynamism_results =
-        CompilationCache::GetInstance().GetShapeDynamism(cache_keys);
-    TT_RET_CHECK(dynamism_results.size() == traversals.size(), error::kInternal)
-        << "expected same number of cache responses as traversals";
-    for (int i = 0; i < traversals.size(); ++i) {
-      if (!traversals[i].is_bounded_dynamic() && !dynamism_results[i].empty()) {
-        TT_RETURN_IF_ERROR(
-            traversals[i].ApplyBoundedDynamismAnnotations(dynamism_results[i]));
-      }
-    }
-  }
-  return absl::OkStatus();
-}
-
 absl::Status PropagateBoundedDynamism(absl::Span<Traversal> traversals) {
   // Initialize context outside of loop to avoid the cost of reinitializing
   // dialects used in each iteration.
   std::unique_ptr<mlir::MLIRContext> context;
   for (auto& traversal : traversals) {
-    if (!traversal.is_bounded_dynamic()) {
+    if (!traversal.IsBoundedDynamic()) {
       continue;
     }
     if (!context) {
@@ -797,20 +789,6 @@ absl::Status PropagateBoundedDynamism(absl::Span<Traversal> traversals) {
     }
   }
   return absl::OkStatus();
-}
-
-absl::StatusOr<std::vector<Traversal>> ApplyDynamism(
-    std::vector<Traversal>& traversals) {
-  std::vector<Traversal> resulting_traversals;
-  resulting_traversals.reserve(traversals.size());
-  for (auto& traversal : traversals) {
-    if (traversal.is_bounded_dynamic()) {
-      TT_ASSIGN_OR_RETURN(auto padding_traversal, traversal.ApplyDynamism());
-      resulting_traversals.push_back(std::move(padding_traversal));
-    }
-    resulting_traversals.push_back(std::move(traversal));
-  }
-  return resulting_traversals;
 }
 
 // Common pathway for all Materialize() overloads.

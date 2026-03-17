@@ -228,7 +228,7 @@ class KVCacheDynamismTest(parameterized.TestCase):
           current_cache_misses - prev_cache_misses,
           flush=True,
       )
-      self.assertGreater(current_cache_misses - prev_cache_misses, 2)
+      self.assertGreater(current_cache_misses - prev_cache_misses, 1)
 
   def test_kv_cache_mark_dynamic_in_multiple_steps(self):
     """Test setting bounded dynamism on same layer in multiple decode steps."""
