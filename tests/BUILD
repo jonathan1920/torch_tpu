@@ -84,8 +84,7 @@ py_library(
     ],
 )
 
-py_library(
-    # PY_LIBRARY_OK=type checking too slow for this
+pytype_strict_library(
     name = "dynamism_test_utils",
     testonly = True,
     srcs = ["dynamism_test_utils.py"],

@@ -21,6 +21,7 @@ Handles the following details for per-op unit testing:
   - Mark dependent args as dynamic.
 """
 
+from collections.abc import Sequence
 import random
 from typing import Any
 
@@ -40,7 +41,9 @@ foreach_ternary_ops = frozenset(
 )
 
 
-def _get_dynamic_dimension_candidates(input_value: torch.Tensor) -> list[int]:
+def _get_dynamic_dimension_candidates(
+    input_value: torch.Tensor,
+) -> Sequence[int]:
   """Returns a list of dynamic dimension candidates for the given tensor."""
   if isinstance(input_value, torch.Tensor):
     return [i for i, sz in enumerate(input_value.shape) if sz > 1]
@@ -49,7 +52,7 @@ def _get_dynamic_dimension_candidates(input_value: torch.Tensor) -> list[int]:
 
 def _get_canonical_input_value(
     op_info: core.OpInfo,
-    input_value: torch.Tensor | list[torch.Tensor],
+    input_value: torch.Tensor | Sequence[torch.Tensor],
 ) -> torch.Tensor:
   """Returns the canonical input value for the given input.
 
@@ -124,7 +127,9 @@ def _should_skip_input_marking(
 
 
 def verify_op_supports_dynamism(
-    op_info: core.OpInfo, input_value: torch.Tensor, args: tuple[Any, ...]
+    op_info: core.OpInfo,
+    input_value: torch.Tensor,
+    args: Sequence[Any],
 ) -> None | str:
   """Checks if an op+input is supported with dynamism.
 
@@ -351,7 +356,7 @@ class DynamicOpInfo:
     return DynamicOpInfo(op_info)
 
   def mark_dynamic(
-      self, seed: int, input_value: torch.Tensor, args: tuple[Any, ...]
+      self, seed: int, input_value: torch.Tensor, args: Sequence[Any]
   ):
     """Mark the op as dynamic."""
 
@@ -383,7 +388,7 @@ class DynamicOpInfo:
     self._mark_dependent_arg_dynamic(args, input_value, idx, ub)
 
   def _mark_dependent_arg_dynamic(
-      self, args: tuple[Any, ...], like: torch.Tensor, idx: int, ub: int
+      self, args: Sequence[Any], like: torch.Tensor, idx: int, ub: int
   ):
     """Marks dependent dims of a bounded dimension as dynamic."""
     # No dependent args to mark.
@@ -411,7 +416,7 @@ class BinaryElementwiseDynamicOpInfo(DynamicOpInfo):
 
   def _mark_dependent_arg_dynamic(
       self,
-      args: tuple[Any, ...],
+      args: Sequence[Any],
       like: torch.Tensor,
       idx: int,
       ub: int,
@@ -443,7 +448,7 @@ class TernaryElementwiseDynamicOpInfo(DynamicOpInfo):
 
   def _mark_dependent_arg_dynamic(
       self,
-      args: tuple[Any, ...],
+      args: Sequence[Any],
       like: torch.Tensor,
       idx: int,
       ub: int,
@@ -470,8 +475,8 @@ class ForEachDynamicOpInfo(DynamicOpInfo):
   def mark_dynamic(
       self,
       seed: int,
-      input_value: torch.Tensor | list[torch.Tensor],
-      args: tuple[Any, ...],
+      input_value: torch.Tensor | Sequence[torch.Tensor],
+      args: Sequence[Any],
   ):
     """Mark the op as dynamic, handling for list types."""
     # Split the inputs into their logical units for marking dynamic.
@@ -546,7 +551,7 @@ class MatmulDynamicOpInfo(DynamicOpInfo):
 
   def _mark_dependent_arg_dynamic(
       self,
-      args: tuple[Any, ...],
+      args: Sequence[Any],
       like: torch.Tensor,
       idx: int,
       ub: int,
@@ -578,8 +583,8 @@ class MatmulDynamicOpInfo(DynamicOpInfo):
 def mark_input_dynamic(
     seed: int,
     op_info: core.OpInfo,
-    input_value: torch.Tensor | list[torch.Tensor],
-    args: tuple[Any, ...],
+    input_value: torch.Tensor | Sequence[torch.Tensor],
+    args: Sequence[Any],
 ):
   """Mark an arg tensor as dynamic.
 
