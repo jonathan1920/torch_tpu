@@ -50,25 +50,22 @@ absl::Status CopyTpuToTpu(const at::Tensor& src, const at::Tensor& dest) {
       << "_copy_from does not support resizing. Please use "
          "_copy_from_and_resize instead.";
 
+  if (src.dtype() == dest.dtype()) {
+    // Shape and type match, can simply reuse the existing DeviceBufferRef
+    // from src for dest.
+    TT_ASSIGN_OR_RETURN(const DeviceBufferRef src_buf,
+                        GetBufferFromAtTensor(src));
+    return AssignBufferToAtTensor(src_buf, dest);
+  }
+
+  // If the dtype is different, then we need to dispatch a StableHLO
+  // ConvertElementType op to do the type conversion.
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(dest.scalar_type()));
-  NAryMlirOpBuilder<1, 1> unary_op_builder;
-  if (src.dtype() == dest.dtype()) {
-    // If the copy does not change the dtype, then add an identity DeferredOp.
-    // This allows for zero, one, or two physical buffers to be created,
-    // depending on whether one, both, or neither of the source and destination
-    // tensors are materialized.
-    unary_op_builder = [](mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
-      return input;
-    };
-  } else {
-    // If the dtype is different, then we need to dispatch a StableHLO
-    // ConvertElementType op to do the type conversion.
-    unary_op_builder =
-        [out_dtype](mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
-      return mlir::stablehlo::ConvertElementType(input, out_dtype);
-    };
-  }
+  auto unary_op_builder =
+      [out_dtype](mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
+    return mlir::stablehlo::ConvertElementType(input, out_dtype);
+  };
   TT_ASSIGN_OR_RETURN(
       auto new_buf,
       DispatchOp<1>(OpName::kCopyFrom, std::move(unary_op_builder), src,
