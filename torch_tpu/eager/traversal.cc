@@ -375,16 +375,6 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
     graph.tensor_dimensions_starts.push_back(graph.tensor_dimensions.size());
     graph.tensor_element_types.push_back(zsc.element_type());
   }
-  const size_t num_dimension_inputs = graph.tensor_dimensions.size();
-
-  // If a graph has had ApplyDynamism() applied to it, then we only want to
-  // consider the input shapes, which must match the padded upper bounds. The
-  // intermediate and output shapes are dynamic and need not match for cache
-  // hits.
-  // TODO(bawilson): remove this check and use the "is_applied_dynamic=true"
-  // logic unconditionally once all ops have proper op param cache key
-  // definitions to define output shape inference.
-  bool is_applied_dynamic = false;
 
   // Deduplicate which inputs to the graph are aliased.
   absl::flat_hash_set<size_t> aliased_input_indices_set;
@@ -396,13 +386,6 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
                  << " maybe_deferred_op: " << maybe_deferred_op;
     ABSL_CHECK(maybe_deferred_op != nullptr);  // CRASH_OK
     const DeferredOp& deferred_op = *maybe_deferred_op;
-    if (deferred_op.op_name() == OpName::kSetDimensionSize) {
-      if (!is_applied_dynamic) {
-        graph.tensor_dimensions_starts.resize(num_de_facto_inputs);
-        graph.tensor_dimensions.resize(num_dimension_inputs);
-      }
-      is_applied_dynamic = true;
-    }
 
     // Add all op-indexed properties: name, params, and input edges.
     graph.op_names.push_back(deferred_op.op_name());
@@ -429,13 +412,10 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
     // Add all op output tensors to tensor-indexed properties.
     for (int64_t i = 0; i < node->size(); ++i) {
       DeviceBufferRef output = DeviceBufferRef::Create(node, i).value();
-      if (!is_applied_dynamic) {
-        for (int64_t dim : output.dimensions()) {
-          graph.tensor_dimensions.push_back(dim);
-        }
-        graph.tensor_dimensions_starts.push_back(
-            graph.tensor_dimensions.size());
+      for (int64_t dim : output.dimensions()) {
+        graph.tensor_dimensions.push_back(dim);
       }
+      graph.tensor_dimensions_starts.push_back(graph.tensor_dimensions.size());
       graph.tensor_element_types.push_back(output.element_type());
       tensor_index_map[std::move(output)] = next_tensor_index++;
     }
