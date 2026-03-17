@@ -504,8 +504,8 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     t3 = torch.mm(t1, t2)
     with et.assert_raises_message(
         RuntimeError,
-        "copy_(): in _copy_from, the tensor shape float32[1048576, 1048576] is"
-        " too large to fit in memory",
+        "copy_(): the TPU ran out of memory while awaiting the materialization"
+        " of value float32[1048576, 1048576]:",
     ):
       t3.to("cpu")
 

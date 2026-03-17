@@ -28,7 +28,6 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/empty.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
@@ -38,24 +37,28 @@
 
 namespace torch_tpu {
 
+namespace {
+
 // Translates a low-level XLA OOM error to an error that is easier to understand
 // by a pytorch user. If the status is not an XLA OOM error, returns it as is.
 //
-// `expression` is the pytorch tensor expression that caused the XLA OOM error.
 // `elem_type` is the element type of the tensor that caused the XLA OOM error.
 // `dims` is the dimensions of the tensor that caused the XLA OOM error.
 static absl::Status TranslateXlaTensorOomError(const absl::Status& status,
-                                               std::string_view expression,
                                                at::ScalarType elem_type,
                                                absl::Span<const int64_t> dims) {
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=All PyTorch dtypes are supported
                         // by mlir::ElementType.
       const auto dtype, ConvertTo<mlir::ElementType>(elem_type));
   TT_RET_CHECK(!IsXlaOomError(status), error::kResourceExhausted)
-      << "in " << expression << ", the tensor shape " << ToDTypeName(dtype)
-      << "[" << absl::StrJoin(dims, ", ") << "] is too large to fit in memory";
+      << "the TPU ran out of memory while awaiting the materialization of "
+         "value "
+      << ToDTypeName(dtype) << "[" << absl::StrJoin(dims, ", ") << "]:\n"
+      << status.message();
   return status;
 }
+
+}  // namespace
 
 absl::Status CopyTpuToCpu(const at::Tensor& src, const at::Tensor& dest,
                           bool non_blocking) {
@@ -79,10 +82,9 @@ absl::Status CopyTpuToCpu(const at::Tensor& src, const at::Tensor& dest,
                 DeviceBufferRefState::kMaterialized)
       << "expected materialized buffer after GetMaterialized";
 
-  TT_ASSIGN_OR_RETURN(at::Tensor cpu_tensor_receiver,
-                      TpuMemcpyDtoH(materialized_src_buf),
-                      TranslateXlaTensorOomError(
-                          _, "_copy_from", dest.scalar_type(), src.sizes()));
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor cpu_tensor_receiver, TpuMemcpyDtoH(materialized_src_buf),
+      TranslateXlaTensorOomError(_, dest.scalar_type(), src.sizes()));
 
   // Redispatch using copy_() on the CPU to do any type or layout conversions
   // needed.

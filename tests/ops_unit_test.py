@@ -3864,7 +3864,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             min_val = t.min().item()
             self.assertEqual(min_val, 0, "Min value should be 0.")
           except RuntimeError as e:
-            if "too large" in str(e):
+            if "ran out of memory" in str(e):
               # Skip validation for large n due to host transfer limits
               print(
                   f"Warning: Skipping validation for n={n}"
