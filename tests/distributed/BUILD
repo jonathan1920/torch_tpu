@@ -101,7 +101,8 @@ torch_tpu_py_test(
     srcs = ["collective_ops_test.py"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
-        # TODO(wan): make this work on OSS.
+        # TODO: b/490440118 - Remove this once the bug is fixed.
+# "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/collective_ops_remote_cache_test"
         "",
     },
     main = "collective_ops_test.py",
