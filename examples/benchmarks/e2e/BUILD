@@ -322,6 +322,7 @@ pytype_strict_library(
     name = "model_utils",
     srcs = ["model_utils.py"],
     deps = [
+        "//examples/deepseek",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/utils:device_utils",
         "//torch_tpu/_internal/utils:modeling_hf",

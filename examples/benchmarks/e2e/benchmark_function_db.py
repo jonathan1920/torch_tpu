@@ -219,6 +219,7 @@ def get_ml_layer_train_step_function(
 
   def get_model_train_fn():
     def step_fn(model, inputs):
+
       if isinstance(inputs, tuple):
         y_pred = model(*inputs)
       else:
@@ -226,6 +227,7 @@ def get_ml_layer_train_step_function(
       if isinstance(y_pred, tuple):
         y_pred = y_pred[0]
       loss = torch.mean(y_pred)
+
       loss.backward()
       return loss.detach()
 

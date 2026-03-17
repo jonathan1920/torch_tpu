@@ -954,6 +954,114 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, f"Qwen3RotaryEmbedding")
 
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(True, False)
+      )
+  )
+  def test_deepseek_parallel_embedding(self, run_mode, is_training):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="DeepSeekParallelEmbedding",
+            batch_size=1,
+            sequence_length=128,
+            custom_kwargs={
+                "vocab_size": 1024,
+                "dim": 128,
+                "inter_dim": 512,
+                "moe_inter_dim": 64,
+                "n_layers": 1,
+                "n_dense_layers": 1,
+                "n_heads": 4,
+                "n_routed_experts": 4,
+                "n_shared_experts": 2,
+                "n_activated_experts": 2,
+                "in_features": 128,
+                "out_features": 128,
+            },
+        ),
+    )
+    self.run_performance_benchmark_test(config, f"DeepSeekParallelEmbedding")
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(True, False)
+      )
+  )
+  def test_deepseek_rms_norm(self, run_mode, is_training):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="DeepSeekRMSNorm",
+            batch_size=1,
+            sequence_length=128,
+            custom_kwargs={
+                "vocab_size": 1024,
+                "dim": 128,
+                "inter_dim": 512,
+                "moe_inter_dim": 64,
+                "n_layers": 1,
+                "n_dense_layers": 1,
+                "n_heads": 4,
+                "n_routed_experts": 4,
+                "n_shared_experts": 2,
+                "n_activated_experts": 2,
+                "in_features": 128,
+                "out_features": 128,
+            },
+        ),
+    )
+    self.run_performance_benchmark_test(config, f"DeepSeekRMSNorm")
+
+  @parameterized.named_parameters(
+      generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(True, False)
+      )
+  )
+  def test_deepseek_expert(self, run_mode, is_training):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="DeepSeekExpert",
+            batch_size=1,
+            sequence_length=128,
+            custom_kwargs={
+                "vocab_size": 1024,
+                "dim": 128,
+                "inter_dim": 512,
+                "moe_inter_dim": 64,
+                "n_layers": 1,
+                "n_dense_layers": 1,
+                "n_heads": 4,
+                "n_routed_experts": 4,
+                "n_shared_experts": 2,
+                "n_activated_experts": 2,
+                "in_features": 128,
+                "out_features": 128,
+            },
+        ),
+    )
+    self.run_performance_benchmark_test(config, f"DeepSeekExpert")
+
 
 if __name__ == "__main__":
   mp.set_start_method("spawn")
