@@ -12,33 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 from absl.testing import absltest
 import torch
 from torch_tpu import api
 from torch_tpu._internal import execution_mode
 
 
-class DeferNeverTest(absltest.TestCase):
-  """Test for defer-never feature."""
+class EagerDebugTest(absltest.TestCase):
+  """Test for eager debug feature."""
 
-  # TODO(b/492220506): remove this skip.
-  @unittest.skip("b/492220506")
-  def test_failing_op(self):
+  def test_failing_op_raises_in_correct_location(self):
     """Test that failing ops are not deferred."""
     # Act
     _ = api.tpu_device()
-    execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_NEVER)
+    execution_mode.set_eager_mode(
+        execution_mode.EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING
+    )
 
     # Arrange
     a = torch.rand((1_000_000_000, 1), device="tpu")
-    b = torch.rand((1, 1_000_000_000), device="tpu")
+    b = torch.rand((1, 1_000), device="tpu")
 
     # Assert
-    # The outerproduct of two tensors, each one billion elements,
-    # results in a matrix of one quintillion elements (10^18).
-    # In eager model, this should immediately OOM.
+    # The outerproduct of two tensors is 4 TB,
+    # enough to trigger an OOM but not so large as to hit
+    # int64 max value.
+
     # PyTorch on CPU gives this error:
     # ---------------------------------------------------------------------------
     # RuntimeError
@@ -54,10 +53,10 @@ class DeferNeverTest(absltest.TestCase):
     with self.assertRaises(RuntimeError):
       # Act
       c = a @ b
+      del c
 
     # If the outerproduct was deferred,
     # an OOM could be triggered by `c.sum().cpu()`.
-    del c
 
 
 if __name__ == "__main__":
