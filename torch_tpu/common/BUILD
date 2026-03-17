@@ -569,6 +569,33 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "discovery",
+    srcs = ["discovery.cc"],
+    hdrs = ["discovery.h"],
+    deps = [
+        ":env_vars",
+        ":error_utils",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "discovery_test",
+    srcs = ["discovery_test.cc"],
+    tags = [
+        "oss_ready_cpu",
+    ],
+    deps = [
+        ":discovery",
+        ":env_vars",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "environment",
     srcs = ["environment.cc"],
     hdrs = ["environment.h"],
