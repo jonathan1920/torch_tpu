@@ -161,13 +161,12 @@ def clear_compilation_cache() -> None:
 
 
 def torch_compile_model(model):
-  with attention.sdpa_kernel([attention.SDPBackend.MATH]):
-    if _DEVICE.value == "cuda":
-      model = torch.compile(model)
-    elif _DEVICE.value in ("tpu", "xla_cuda"):
-      model = torch.compile(
-          model, dynamic=False, backend=torch_tpu_compile.TpuBackend()
-      )
+  if _DEVICE.value == "cuda":
+    model = torch.compile(model)
+  elif _DEVICE.value in ("tpu", "xla_cuda"):
+    model = torch.compile(
+        model, dynamic=False, backend=torch_tpu_compile.TpuBackend()
+    )
   return model
 
 
