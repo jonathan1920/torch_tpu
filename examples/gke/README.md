@@ -1,3 +1,4 @@
+<!-- LINT.IfChange -->
 
 # GKE TPUv7 example
 
@@ -92,3 +93,4 @@ xpk workload create
   --command="cd /workspace/examples/distributed/fsdp/lora/ && pip install -r requirements.txt && ./launch.sh"
 ```
 
+<!-- LINT.ThenChange($INTERNAL_DOCS/gke.md) -->
