@@ -865,8 +865,9 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     maximum = 5.1
 
     # Test with all combinations of min and max.
-    # TODO(b/489136147): Fix test case & disable allow_failure
-    for min_val, max_val in itertools.product([None, minimum], [None, maximum]):
+    for min_val, max_val in itertools.product([0.0, minimum], [0.0, maximum]):
+      if min_val > max_val:
+        continue
       self.assert_close_tpu_vs_cpu(
           lambda device, mv=min_val, mx=max_val: torch.histc(
               torch.tensor(inputs, dtype=torch.float32).to(device=device),
@@ -874,11 +875,9 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
               min=mv,
               max=mx,
           ),
-          allow_failure=True,
       )
 
     # Test with min == max.
-    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.histc(
             torch.tensor(inputs, dtype=torch.float32).to(device=device),
@@ -886,11 +885,9 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             min=0.1,
             max=0.1,
         ),
-        allow_failure=True,
     )
 
     # Test with min == max == 0.
-    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.histc(
             torch.tensor(inputs, dtype=torch.float32).to(device=device),
@@ -898,7 +895,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             min=0,
             max=0,
         ),
-        allow_failure=True,
     )
 
   def test_histc_explicit_bounds(self):
@@ -908,7 +904,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     maximum = 5.1
 
     # Test with out of bounds data.
-    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.histc(
             torch.tensor(inputs, dtype=torch.float32).to(device=device),
@@ -916,11 +911,9 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             min=1.0,
             max=4.0,
         ),
-        allow_failure=True,
     )
 
     # Test with empty input tensor.
-    # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(
         lambda device: torch.histc(
             torch.tensor([], dtype=torch.float32).to(device=device),
@@ -928,21 +921,24 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             min=minimum,
             max=maximum,
         ),
-        allow_failure=True,
     )
 
     # Test with / without bins.
-    # TODO(b/489136147): Fix test case & disable allow_failure
-    for bin_val in [None, bins]:
-      self.assert_close_tpu_vs_cpu(
-          lambda device, bv=bin_val: torch.histc(
-              torch.tensor(inputs, dtype=torch.float32).to(device=device),
-              bins=bv,
-              min=minimum,
-              max=maximum,
-          ),
-          allow_failure=True,
-      )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.histc(
+            torch.tensor(inputs, dtype=torch.float32).to(device=device),
+            min=minimum,
+            max=maximum,
+        ),
+    )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.histc(
+            torch.tensor(inputs, dtype=torch.float32).to(device=device),
+            bins=bins,
+            min=minimum,
+            max=maximum,
+        ),
+    )
 
   def test_histc_dtypes(self):
     inputs = torch.tensor([0.1, 1.1, 3.1, 5.1, 1.1])
