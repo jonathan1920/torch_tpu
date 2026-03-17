@@ -15,7 +15,7 @@
 """Micro benchmarks for common ML layers."""
 
 from collections.abc import Callable, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import json
 import os
 import pprint
@@ -1415,67 +1415,136 @@ class MlLayersTest(parameterized.TestCase):
 
   @dataclass(frozen=True)
   class _SdpaConfig:
+    # TODO(elliotenglish): Use kv_seq_len to have different q and kv sequence
+    # lengths as is the case in inference or chunked processing.
     batch_size: int
-    seq_len: int
-    num_heads: int
-    head_dim: int
+    embed_dim: int
+    q_seq_len: int
+    # kv_seq_len: int
+    q_num_heads: int
+    kv_num_heads: int
+    qk_head_dim: int
+    v_head_dim: int
+    is_causal: bool
+    enable_gqa: bool
     dtype: torch.dtype
+    use_math_backend: bool = False
 
-  _sdpa_configs = (
-      # Default config for smoke test.
-      _SdpaConfig(
-          batch_size=1,
-          seq_len=128,
-          num_heads=8,
-          head_dim=64,
-          dtype=torch.bfloat16,
-      ),
-      # Configs for Llama3 70B attention layers
-      _SdpaConfig(
-          batch_size=1,
-          seq_len=2048,
-          num_heads=64,
-          head_dim=128,
-          dtype=torch.bfloat16,
-      ),
-      _SdpaConfig(
-          batch_size=4,
-          seq_len=2048,
-          num_heads=64,
-          head_dim=128,
-          dtype=torch.bfloat16,
-      ),
-      # Configs for Qwen3 480B attention layers
-      _SdpaConfig(
-          batch_size=1,
-          seq_len=2048,
-          num_heads=96,
-          head_dim=128,
-          dtype=torch.bfloat16,
-      ),
-      _SdpaConfig(
-          batch_size=4,
-          seq_len=2048,
-          num_heads=96,
-          head_dim=128,
-          dtype=torch.bfloat16,
-      ),
-      # Configs for Gemma3 27B attention layers
-      _SdpaConfig(
-          batch_size=1,
-          seq_len=2048,
-          num_heads=32,
-          head_dim=128,
-          dtype=torch.bfloat16,
-      ),
-      _SdpaConfig(
-          batch_size=4,
-          seq_len=2048,
-          num_heads=32,
-          head_dim=128,
-          dtype=torch.bfloat16,
-      ),
-  )
+  _sdpa_configs = [
+      replace(config, use_math_backend=use_math_backend)
+      for config in [
+          # Default config for smoke test.
+          _SdpaConfig(
+              batch_size=1,
+              embed_dim=4096,
+              q_seq_len=128,
+              # kv_seq_len=128,
+              q_num_heads=8,
+              kv_num_heads=8,
+              qk_head_dim=64,
+              v_head_dim=64,
+              is_causal=True,
+              enable_gqa=True,
+              dtype=torch.bfloat16,
+          ),
+          # Configs for Llama3 70B attention layers
+          _SdpaConfig(
+              batch_size=1,
+              embed_dim=4096,
+              q_seq_len=2048,
+              # kv_seq_len=2048,
+              q_num_heads=64,
+              kv_num_heads=64,
+              qk_head_dim=128,
+              v_head_dim=128,
+              is_causal=True,
+              enable_gqa=True,
+              dtype=torch.bfloat16,
+          ),
+          _SdpaConfig(
+              batch_size=4,
+              embed_dim=4096,
+              q_seq_len=2048,
+              # kv_seq_len=2048,
+              q_num_heads=64,
+              kv_num_heads=64,
+              qk_head_dim=128,
+              v_head_dim=128,
+              is_causal=True,
+              enable_gqa=True,
+              dtype=torch.bfloat16,
+          ),
+          # Configs for Qwen3 480B attention layers
+          _SdpaConfig(
+              batch_size=1,
+              embed_dim=4096,
+              q_seq_len=2048,
+              # kv_seq_len=2048,
+              q_num_heads=96,
+              kv_num_heads=96,
+              qk_head_dim=128,
+              v_head_dim=128,
+              is_causal=True,
+              enable_gqa=True,
+              dtype=torch.bfloat16,
+          ),
+          _SdpaConfig(
+              batch_size=4,
+              embed_dim=4096,
+              q_seq_len=2048,
+              # kv_seq_len=2048,
+              q_num_heads=96,
+              kv_num_heads=96,
+              qk_head_dim=128,
+              v_head_dim=128,
+              is_causal=True,
+              enable_gqa=True,
+              dtype=torch.bfloat16,
+          ),
+          # Configs for Gemma3 27B attention layers
+          _SdpaConfig(
+              batch_size=1,
+              embed_dim=4096,
+              q_seq_len=2048,
+              # kv_seq_len=2048,
+              q_num_heads=32,
+              kv_num_heads=32,
+              qk_head_dim=128,
+              v_head_dim=128,
+              is_causal=True,
+              enable_gqa=True,
+              dtype=torch.bfloat16,
+          ),
+          _SdpaConfig(
+              batch_size=4,
+              embed_dim=4096,
+              q_seq_len=2048,
+              # kv_seq_len=2048,
+              q_num_heads=32,
+              kv_num_heads=32,
+              qk_head_dim=128,
+              v_head_dim=128,
+              is_causal=True,
+              enable_gqa=True,
+              dtype=torch.bfloat16,
+          ),
+          # AFM v7 configs
+          _SdpaConfig(
+              batch_size=4,
+              embed_dim=2048,
+              q_seq_len=2048,
+              # kv_seq_len=2048,
+              q_num_heads=16,
+              kv_num_heads=2,
+              qk_head_dim=128,
+              v_head_dim=128,
+              is_causal=True,
+              enable_gqa=True,
+              dtype=torch.bfloat16,
+          ),
+      ]
+      for use_math_backend in [False, True]
+  ]
 
   @parameterized.named_parameters(
       generate_configs_for_parameterized(_sdpa_configs)
@@ -1489,43 +1558,60 @@ class MlLayersTest(parameterized.TestCase):
 
       def __init__(self, c: MlLayersTest._SdpaConfig):
         super().__init__()
-        self.num_heads = c.num_heads
-        self.head_dim = c.head_dim
-        self.embed_dim = c.num_heads * c.head_dim
+        self.c = c
         self.q_proj = torch.nn.Linear(
-            self.embed_dim, self.embed_dim, bias=False, dtype=c.dtype
+            self.c.embed_dim,
+            self.c.q_num_heads * self.c.qk_head_dim,
+            bias=False,
+            dtype=c.dtype,
         )
         self.k_proj = torch.nn.Linear(
-            self.embed_dim, self.embed_dim, bias=False, dtype=c.dtype
+            self.c.embed_dim,
+            self.c.kv_num_heads * self.c.qk_head_dim,
+            bias=False,
+            dtype=c.dtype,
         )
         self.v_proj = torch.nn.Linear(
-            self.embed_dim, self.embed_dim, bias=False, dtype=c.dtype
+            self.c.embed_dim,
+            self.c.kv_num_heads * self.c.v_head_dim,
+            bias=False,
+            dtype=c.dtype,
         )
         self.out_proj = torch.nn.Linear(
-            self.embed_dim, self.embed_dim, bias=False, dtype=c.dtype
+            self.c.q_num_heads * self.c.v_head_dim,
+            self.c.embed_dim,
+            bias=False,
+            dtype=c.dtype,
         )
 
       def forward(self, x) -> torch.Tensor:
         bsz, q_len, _ = x.size()
         q = (
             self.q_proj(x)
-            .view(bsz, q_len, self.num_heads, self.head_dim)
+            .view(bsz, q_len, self.c.q_num_heads, self.c.qk_head_dim)
             .transpose(1, 2)
         )
         k = (
             self.k_proj(x)
-            .view(bsz, q_len, self.num_heads, self.head_dim)
+            .view(bsz, q_len, self.c.kv_num_heads, self.c.qk_head_dim)
             .transpose(1, 2)
         )
         v = (
             self.v_proj(x)
-            .view(bsz, q_len, self.num_heads, self.head_dim)
+            .view(bsz, q_len, self.c.kv_num_heads, self.c.v_head_dim)
             .transpose(1, 2)
         )
 
-        attn_output = torch.nn.functional.scaled_dot_product_attention(q, k, v)
+        with attention.sdpa_kernel(
+            [attention.SDPBackend.MATH]
+            if self.c.use_math_backend
+            else [attention.SDPBackend.OVERRIDEABLE]
+        ):
+          attn_output = torch.nn.functional.scaled_dot_product_attention(
+              q, k, v, is_causal=self.c.is_causal, enable_gqa=self.c.enable_gqa
+          )
         attn_output = attn_output.transpose(1, 2).reshape(
-            bsz, q_len, self.embed_dim
+            bsz, q_len, self.c.q_num_heads * self.c.v_head_dim
         )
         return self.out_proj(attn_output)
 
@@ -1534,7 +1620,7 @@ class MlLayersTest(parameterized.TestCase):
         config,
         lambda c: AttentionLayer(c),
         lambda c: torch.randn(
-            (c.batch_size, c.seq_len, c.num_heads * c.head_dim),
+            (c.batch_size, c.q_seq_len, c.embed_dim),
             dtype=c.dtype,
             device=get_torch_device(),
         ),
@@ -1555,34 +1641,32 @@ class MlLayersTest(parameterized.TestCase):
 
       def __init__(self, c: MlLayersTest._SdpaConfig, rngs):
         super().__init__()
-        self.num_heads = c.num_heads
-        self.head_dim = c.head_dim
-        self.embed_dim = c.num_heads * c.head_dim
+        self.c = c
         dtype = pt2jax_dtype(c.dtype)
         self.q_proj = flax.nnx.Linear(
-            self.embed_dim,
-            self.embed_dim,
+            self.c.embed_dim,
+            self.c.q_num_heads * self.c.qk_head_dim,
             use_bias=False,
             dtype=dtype,
             rngs=rngs,
         )
         self.k_proj = flax.nnx.Linear(
-            self.embed_dim,
-            self.embed_dim,
+            self.c.embed_dim,
+            self.c.kv_num_heads * self.c.qk_head_dim,
             use_bias=False,
             dtype=dtype,
             rngs=rngs,
         )
         self.v_proj = flax.nnx.Linear(
-            self.embed_dim,
-            self.embed_dim,
+            self.c.embed_dim,
+            self.c.kv_num_heads * self.c.v_head_dim,
             use_bias=False,
             dtype=dtype,
             rngs=rngs,
         )
         self.out_proj = flax.nnx.Linear(
-            self.embed_dim,
-            self.embed_dim,
+            self.c.q_num_heads * self.c.v_head_dim,
+            self.c.embed_dim,
             use_bias=False,
             dtype=dtype,
             rngs=rngs,
@@ -1592,23 +1676,23 @@ class MlLayersTest(parameterized.TestCase):
         bsz, q_len, _ = x.shape
         q = (
             self.q_proj(x)
-            .reshape(bsz, q_len, self.num_heads, self.head_dim)
+            .reshape(bsz, q_len, self.c.q_num_heads, self.c.qk_head_dim)
             .transpose(0, 2, 1, 3)
         )
         k = (
             self.k_proj(x)
-            .reshape(bsz, q_len, self.num_heads, self.head_dim)
+            .reshape(bsz, q_len, self.c.kv_num_heads, self.c.qk_head_dim)
             .transpose(0, 2, 1, 3)
         )
         v = (
             self.v_proj(x)
-            .reshape(bsz, q_len, self.num_heads, self.head_dim)
+            .reshape(bsz, q_len, self.c.kv_num_heads, self.c.v_head_dim)
             .transpose(0, 2, 1, 3)
         )
 
         attn_output = jax.nn.dot_product_attention(q, k, v)
         attn_output = attn_output.transpose(0, 2, 1, 3).reshape(
-            bsz, q_len, self.embed_dim
+            bsz, q_len, self.c.q_num_heads * self.c.v_head_dim
         )
         return self.out_proj(attn_output)
 
@@ -1618,7 +1702,7 @@ class MlLayersTest(parameterized.TestCase):
         lambda c: AttentionLayer(c, flax.nnx.Rngs(0)),
         lambda c, key: jax.random.normal(
             key,
-            (c.batch_size, c.seq_len, c.num_heads * c.head_dim),
+            (c.batch_size, c.q_seq_len, c.embed_dim),
             dtype=pt2jax_dtype(c.dtype),
         ),
         is_jax=True,
