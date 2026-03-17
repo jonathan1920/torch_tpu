@@ -26,6 +26,8 @@ torch_tpu_py_test(
     main = "launch.py",
     tags = [
         "noasan",
+        "nomsan",
+        "notsan",
         "requires-tpu-v5lite:8",
     ],
     deps = [
