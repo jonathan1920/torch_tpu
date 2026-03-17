@@ -35,8 +35,8 @@ from torch_tpu._internal.shims.xprof import xprof_session
 
 # TODO: Make this configurable
 _MAX_WARMUP_STEPS = 20
-_MIN_WARMUP_STEPS = 10
-_POST_WARMUP_STEPS = 10
+MIN_WARMUP_STEPS = 10
+POST_WARMUP_STEPS = 10
 _RANDOM_SEED = 0
 
 
@@ -353,7 +353,7 @@ def _warmup_run(
     cache_misses[step] = device_utils.cache_miss_count(device_name)
 
     if (
-        step >= _MIN_WARMUP_STEPS
+        step >= MIN_WARMUP_STEPS
         and cache_misses[step] == cache_misses[step - 1]
     ):
       num_warmup_steps = step
@@ -398,7 +398,7 @@ def _post_warmup_run(
     device memory usage.
   """
 
-  timings = np.zeros(_POST_WARMUP_STEPS, dtype=np.float64)
+  timings = np.zeros(POST_WARMUP_STEPS, dtype=np.float64)
   device_utils.reset_peak_memory_stats(_get_device_name(device))
   num_cache_misses = None
   device_name = _get_device_name(device)
@@ -406,7 +406,7 @@ def _post_warmup_run(
   # TODO(bbahl): Calculate the number of post warmup steps based on timing
   # information.
   with XprofContext("post_warmup_run", enable_xprof) as xprof_context:
-    for step in range(_POST_WARMUP_STEPS):
+    for step in range(POST_WARMUP_STEPS):
       start_time = time.perf_counter()
       out = benchmark_function(model, example_inputs, optimizer)
       if isinstance(out, torch.Tensor):

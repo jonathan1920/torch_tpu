@@ -184,6 +184,12 @@ genmpm(
     deps = [":model_quality_benchmarks_with_runfiles"],
 )
 
+pytype_strict_library(
+    name = "layer_configs",
+    testonly = True,
+    srcs = ["layer_configs.py"],
+)
+
 torch_tpu_py_test(
     name = "layer_performance_benchmarks",
     timeout = "long",
@@ -202,6 +208,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":benchmark_utils",
+        ":layer_configs",
         ":performance_utils",
         ":test_utils",
         "//shims/absl_py/testing:absltest",
@@ -245,6 +252,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":benchmark_utils",
+        ":layer_configs",
         ":performance_utils",
         ":test_utils",
         "//shims/absl_py/testing:absltest",

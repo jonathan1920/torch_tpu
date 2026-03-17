@@ -15,13 +15,15 @@
 """Benchmarks for model performance."""
 
 import dataclasses
-from typing import Any, Sequence
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import torch.multiprocessing as mp
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import layer_configs
 from examples.benchmarks.e2e import performance_utils
 from examples.benchmarks.e2e import test_utils
+
 from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
 
 _ALL_RUN_MODES = (
@@ -37,145 +39,16 @@ _CONV2D_LAYER_BENCHMARK_NAME = "conv2d"
 _RMSNORM_LAYER_BENCHMARK_NAME = "rmsnorm"
 
 
-def generate_run_mode_and_train_configs(
-    run_modes: Sequence[Any],
-    is_training: Sequence[Any],
-):
-  """Generates test parameters from a list of run modes and training modes."""
-  for training_mode in is_training:
-    for run_mode in run_modes:
-      name_parts = []
-      name_parts.append(f"{run_mode.value}")
-      name_parts.append("train" if training_mode else "eval")
-      testcase_name = "_".join(name_parts)
-      yield dict(
-          testcase_name=testcase_name,
-          run_mode=run_mode,
-          is_training=training_mode,
-      )
-
-
 class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   """Tests for end-to-end performance benchmarks."""
 
-  @dataclasses.dataclass
-  class _LinearConfig:
-    batch_size: int
-    seq_len: int
-    in_features: int
-    out_features: int
-
-  _linear_configs = (
-      # Default config for smoke test.
-      _LinearConfig(
-          batch_size=1,
-          seq_len=128,
-          in_features=128,
-          out_features=128,
-      ),
-      # Configs for Llama3 70B for MLP layers
-      _LinearConfig(
-          batch_size=1,
-          seq_len=8192,
-          in_features=8192,
-          out_features=28672,
-      ),
-      _LinearConfig(
-          batch_size=1,
-          seq_len=8192,
-          in_features=28672,
-          out_features=8192,
-      ),
-      _LinearConfig(
-          batch_size=32,
-          seq_len=8192,
-          in_features=8192,
-          out_features=28672,
-      ),
-      _LinearConfig(
-          batch_size=32,
-          seq_len=8192,
-          in_features=28672,
-          out_features=8192,
-      ),
-      # Configs for Qwen3 480B MLP layers
-      _LinearConfig(
-          batch_size=1,
-          seq_len=8192,
-          in_features=6144,
-          out_features=2560,
-      ),
-      _LinearConfig(
-          batch_size=1,
-          seq_len=8192,
-          in_features=2560,
-          out_features=6144,
-      ),
-      _LinearConfig(
-          batch_size=32,
-          seq_len=8192,
-          in_features=6144,
-          out_features=2560,
-      ),
-      _LinearConfig(
-          batch_size=32,
-          seq_len=8192,
-          in_features=2560,
-          out_features=6144,
-      ),
-      # Configs for Gemma3 27B MLP layers
-      _LinearConfig(
-          batch_size=1,
-          seq_len=8192,
-          in_features=4608,
-          out_features=36864,
-      ),
-      _LinearConfig(
-          batch_size=1,
-          seq_len=8192,
-          in_features=36864,
-          out_features=4608,
-      ),
-      _LinearConfig(
-          batch_size=32,
-          seq_len=8192,
-          in_features=4608,
-          out_features=36864,
-      ),
-      _LinearConfig(
-          batch_size=32,
-          seq_len=8192,
-          in_features=36864,
-          out_features=4608,
-      ),
-      # Configs for BERT
-      _LinearConfig(
-          batch_size=32,
-          seq_len=128,
-          in_features=768,
-          out_features=768,
-      ),
-      _LinearConfig(
-          batch_size=32,
-          seq_len=128,
-          in_features=768,
-          out_features=3072,
-      ),
-      _LinearConfig(
-          batch_size=32,
-          seq_len=128,
-          in_features=3072,
-          out_features=768,
-      ),
-  )
-
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(True, False)
       )
   )
   def test_linear_layer(self, run_mode, is_training):
-    for layer_config in self._linear_configs:
+    for layer_config in layer_configs.LINEAR_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -204,35 +77,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
           config, _LINEAR_LAYER_BENCHMARK_NAME, microbenchmark_name
       )
 
-  @dataclasses.dataclass
-  class _BatchNormConfig:
-    batch_size: int
-    seq_len: int
-    num_features: int
-
-  _batch_norm_configs = (
-      # Default config for smoke test.
-      _BatchNormConfig(
-          batch_size=1,
-          seq_len=128,
-          num_features=128,
-      ),
-      # Larger configs.
-      _BatchNormConfig(
-          batch_size=32,
-          seq_len=8192,
-          num_features=8192,
-      ),
-      # High-batch, more TPU friendly shape.
-      _BatchNormConfig(
-          batch_size=2056,
-          seq_len=512,
-          num_features=1024,
-      ),
-  )
-
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(True, False)
       )
   )
@@ -243,7 +89,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
           "Batchnorm1d in compiled mode with training doesn't stablize in cache"
           " misses.."
       )
-    for layer_config in self._batch_norm_configs:
+    for layer_config in layer_configs.BATCH_NORM_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -271,47 +117,13 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
           config, _BATCHNORM1D_LAYER_BENCHMARK_NAME, microbenchmark_name
       )
 
-  @dataclasses.dataclass
-  class _LayerNormConfig:
-    batch_size: int
-    seq_len: int
-    num_features: int
-    num_normalized_dims: int = 1
-
-    @property
-    def shape(self):
-      return (self.batch_size, self.seq_len, self.num_features)
-
-    @property
-    def normalized_shape(self):
-      return self.shape[-self.num_normalized_dims :]
-
-  _layer_norm_configs = (
-      # Default config for smoke test.
-      _LayerNormConfig(batch_size=1, seq_len=128, num_features=128),
-      # Larger configs.
-      _LayerNormConfig(batch_size=32, seq_len=8192, num_features=8192),
-      _LayerNormConfig(
-          batch_size=32,
-          seq_len=8192,
-          num_features=8192,
-          num_normalized_dims=2,
-      ),
-      # BERT configs
-      _LayerNormConfig(
-          batch_size=32,
-          seq_len=128,
-          num_features=768,
-      ),
-  )
-
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(True, False)
       )
   )
   def test_layernorm(self, run_mode, is_training):
-    for layer_config in self._layer_norm_configs:
+    for layer_config in layer_configs.LAYER_NORM_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -338,49 +150,13 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
           config, _LAYERNORM_LAYER_BENCHMARK_NAME, microbenchmark_name
       )
 
-  @dataclasses.dataclass
-  class _Conv2dConfig:
-    batch_size: int
-    in_channels: int
-    out_channels: int
-    kernel_size: int
-    stride: int
-    padding: int
-    height: int
-    width: int
-
-  _conv2d_configs = (
-      # Default config for smoke test.
-      _Conv2dConfig(
-          batch_size=1,
-          in_channels=2,
-          out_channels=4,
-          kernel_size=3,
-          stride=1,
-          padding=1,
-          height=128,
-          width=128,
-      ),
-      # Larger configs.
-      _Conv2dConfig(
-          batch_size=128,
-          in_channels=32,
-          out_channels=64,
-          kernel_size=3,
-          stride=1,
-          padding=1,
-          height=256,
-          width=256,
-      ),
-  )
-
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(True, False)
       )
   )
   def test_conv2d(self, run_mode, is_training):
-    for layer_config in self._conv2d_configs:
+    for layer_config in layer_configs.CONV2D_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -450,7 +226,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   )
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(True, False)
       )
   )
@@ -496,7 +272,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   )
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(True, False)
       )
   )
@@ -539,7 +315,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   )
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(True, False)
       )
   )
@@ -576,7 +352,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   _bert_layer_configs = (_BertLayerConfig(batch_size=32, seq_len=128),)
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(False, True)
       )
   )
@@ -605,7 +381,9 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   # TODO(b/484415655): Known bert training issue.
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+      test_utils.generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(False,)
+      )
   )
   def test_bert_layer(self, run_mode, is_training):
     for layer_config in self._bert_layer_configs:
@@ -631,7 +409,9 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       self.run_performance_benchmark_test(config, benchmark_name)
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+      test_utils.generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(False,)
+      )
   )
   def test_bert_self_output(self, run_mode, is_training):
     for layer_config in self._bert_layer_configs:
@@ -657,7 +437,9 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       self.run_performance_benchmark_test(config, benchmark_name)
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+      test_utils.generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(False,)
+      )
   )
   def test_bert_intermediate(self, run_mode, is_training):
     for layer_config in self._bert_layer_configs:
@@ -683,7 +465,9 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       self.run_performance_benchmark_test(config, benchmark_name)
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+      test_utils.generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(False,)
+      )
   )
   def test_bert_output(self, run_mode, is_training):
     for layer_config in self._bert_layer_configs:
@@ -709,7 +493,9 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       self.run_performance_benchmark_test(config, benchmark_name)
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+      test_utils.generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(False,)
+      )
   )
   def test_bert_pooler(self, run_mode, is_training):
     for layer_config in self._bert_layer_configs:
@@ -735,7 +521,9 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       self.run_performance_benchmark_test(config, benchmark_name)
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+      test_utils.generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(False,)
+      )
   )
   def test_bert_embeddings(self, run_mode, is_training):
     for layer_config in self._bert_layer_configs:
@@ -760,61 +548,13 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       benchmark_name = "_".join(custom_name_parts)
       self.run_performance_benchmark_test(config, benchmark_name)
 
-  @dataclasses.dataclass
-  class _RmsNormConfig:
-    batch_size: int
-    seq_len: int
-    num_features: int
-
-  _rms_norm_configs = (
-      # Default config for smoke test.
-      _RmsNormConfig(
-          batch_size=1,
-          seq_len=128,
-          num_features=128,
-      ),
-      # Configs for Llama3 70B for MLP layers
-      _RmsNormConfig(
-          batch_size=1,
-          seq_len=8192,
-          num_features=8192,
-      ),
-      _RmsNormConfig(
-          batch_size=32,
-          seq_len=8192,
-          num_features=8192,
-      ),
-      # Configs for Qwen3 480B MLP layers
-      _RmsNormConfig(
-          batch_size=1,
-          seq_len=8192,
-          num_features=6144,
-      ),
-      _RmsNormConfig(
-          batch_size=32,
-          seq_len=8192,
-          num_features=6144,
-      ),
-      # Configs for Gemma3 27B MLP layers
-      _RmsNormConfig(
-          batch_size=1,
-          seq_len=8192,
-          num_features=4608,
-      ),
-      _RmsNormConfig(
-          batch_size=32,
-          seq_len=8192,
-          num_features=4608,
-      ),
-  )
-
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(True, False)
       )
   )
   def test_rmsnorm(self, run_mode, is_training):
-    for layer_config in self._rms_norm_configs:
+    for layer_config in layer_configs.RMS_NORM_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -843,7 +583,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(True, False)
       )
   )
@@ -866,7 +606,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     self.run_performance_benchmark_test(config, f"Qwen3Attention")
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(True, False)
       )
   )
@@ -889,7 +629,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     self.run_performance_benchmark_test(config, f"Qwen3RMSNorm")
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(True, False)
       )
   )
@@ -912,7 +652,9 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     self.run_performance_benchmark_test(config, f"Qwen3MLP")
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+      test_utils.generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(False,)
+      )
   )
   def test_silu_activation(self, run_mode, is_training):
     config = performance_utils.PerformanceBenchmarkConfig(
@@ -933,7 +675,9 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     self.run_performance_benchmark_test(config, f"SiLUActivation")
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(_ALL_RUN_MODES, is_training=(False,))
+      test_utils.generate_run_mode_and_train_configs(
+          _ALL_RUN_MODES, is_training=(False,)
+      )
   )
   def test_qwen3_rotary_embedding(self, run_mode, is_training):
     self.skipTest("TODO(b/484415655): Investigate cache miss.")
@@ -955,7 +699,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     self.run_performance_benchmark_test(config, f"Qwen3RotaryEmbedding")
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(True, False)
       )
   )
@@ -991,7 +735,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     self.run_performance_benchmark_test(config, f"DeepSeekParallelEmbedding")
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(True, False)
       )
   )
@@ -1027,7 +771,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     self.run_performance_benchmark_test(config, f"DeepSeekRMSNorm")
 
   @parameterized.named_parameters(
-      generate_run_mode_and_train_configs(
+      test_utils.generate_run_mode_and_train_configs(
           _ALL_RUN_MODES, is_training=(True, False)
       )
   )

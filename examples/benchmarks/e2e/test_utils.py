@@ -14,6 +14,8 @@
 
 """Utility functions for benchmarks."""
 
+from typing import Any, Sequence
+
 from absl.testing import parameterized
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import performance_utils
@@ -55,3 +57,29 @@ class BenchmarkTest(parameterized.TestCase):
         benchmark_name=benchmark_name,
         microbenchmark_name=microbenchmark_name,
     )
+
+
+def generate_run_mode_and_train_configs(
+    run_modes: Sequence[Any],
+    is_training: Sequence[Any],
+):
+  """Generates test parameters from a list of run modes and training modes.
+
+  Args:
+    run_modes: The run modes to generate test parameters for.
+    is_training: The training modes to generate test parameters for.
+
+  Yields:
+    A dictionary containing the test parameters.
+  """
+  for training_mode in is_training:
+    for run_mode in run_modes:
+      name_parts = []
+      name_parts.append(f"{run_mode.value}")
+      name_parts.append("train" if training_mode else "eval")
+      testcase_name = "_".join(name_parts)
+      yield dict(
+          testcase_name=testcase_name,
+          run_mode=run_mode,
+          is_training=training_mode,
+      )
