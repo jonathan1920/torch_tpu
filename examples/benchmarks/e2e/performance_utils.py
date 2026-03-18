@@ -125,8 +125,12 @@ def _run_mode_context(run_mode: benchmark_utils.RunMode, device: torch.device):
     None
   """
   original_eager_mode = execution_mode.get_eager_mode()
-  if run_mode == benchmark_utils.RunMode.OPTIMIZED_EAGER:
+  if run_mode == benchmark_utils.RunMode.EAGER_OPTIMIZED:
     execution_mode.set_eager_mode(execution_mode.EagerMode.OPTIMIZED)
+  elif run_mode == benchmark_utils.RunMode.DEFER_NEVER:
+    execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_NEVER)
+  elif run_mode == benchmark_utils.RunMode.EAGER:
+    execution_mode.set_eager_mode(execution_mode.EagerMode.DEFAULT)
   try:
     yield
   finally:

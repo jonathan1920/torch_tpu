@@ -83,3 +83,21 @@ def generate_run_mode_and_train_configs(
           run_mode=run_mode,
           is_training=training_mode,
       )
+
+
+def generate_run_mode_configs(
+    run_modes: Sequence[Any],
+):
+  """Generates test parameters from a list of run modes.
+
+  Args:
+    run_modes: The run modes to generate test parameters for.
+
+  Yields:
+    A dictionary containing the test parameters.
+  """
+  for run_mode in run_modes:
+    yield dict(
+        testcase_name=run_mode.value,
+        run_mode=run_mode,
+    )

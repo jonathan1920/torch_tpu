@@ -121,9 +121,10 @@ class RunMode(enum.Enum):
   """The mode to run the benchmark in."""
 
   EAGER = "eager"  # Run the model in eager mode with O1 XLA optimizations.
-  OPTIMIZED_EAGER = (  # Run the model in eager mode with O2 XLA optimizations.
-      "eager_plus"
+  EAGER_OPTIMIZED = (  # Run the model in eager mode with O2 XLA optimizations.
+      "eager_optimized"
   )
+  DEFER_NEVER = "defer_never"  # Run the model in eager mode with Defer_NEVER.
   COMPILED = "compiled"  # Run the model with torch.compile.
 
 

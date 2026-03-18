@@ -28,7 +28,7 @@ from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
 
 _ALL_RUN_MODES = (
     benchmark_utils.RunMode.EAGER,
-    benchmark_utils.RunMode.OPTIMIZED_EAGER,
+    benchmark_utils.RunMode.EAGER_OPTIMIZED,
     benchmark_utils.RunMode.COMPILED,
 )
 
