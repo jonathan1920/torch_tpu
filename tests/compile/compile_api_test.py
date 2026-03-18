@@ -17,7 +17,7 @@
 from absl.testing import absltest
 import torch
 from torch_tpu import api
-from torch_tpu._internal import compile as torch_tpu_compile
+from torch_tpu._internal import compile as tt_compile
 from torch_tpu._internal.compile import tpu_torch_compile
 
 
@@ -68,7 +68,7 @@ class CompileApiTest(absltest.TestCase):
     )
 
   def test_compile_backend_defaults_to_tpu(self):
-    tpu_backend = torch_tpu_compile.TpuBackend()
+    tpu_backend = tt_compile.TpuBackend()
     # Patch the backend registry to use a local tpu backend object so that we
     # can track the number of compiled executables.
     torch._dynamo.backends.registry._COMPILER_FNS['tpu'] = tpu_backend
@@ -79,7 +79,7 @@ class CompileApiTest(absltest.TestCase):
     self.assertLen(tpu_backend._compiled_executables, 1)
 
   def test_compile_explicit_backend_is_respected(self):
-    tpu_backend = torch_tpu_compile.TpuBackend()
+    tpu_backend = tt_compile.TpuBackend()
     torch._dynamo.backends.registry._COMPILER_FNS['tpu'] = tpu_backend
 
     x = torch.ones(10)

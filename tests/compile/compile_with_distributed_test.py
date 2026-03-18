@@ -22,8 +22,8 @@ import torch
 from torch import distributed as dist
 import torch.multiprocessing as mp
 from torch_tpu import api
+from torch_tpu._internal import compile as tt_compile
 from torch_tpu._internal import env
-from torch_tpu._internal.compile import TpuBackend
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import utils
 from tests.distributed import distributed_utils
@@ -56,7 +56,7 @@ def run_all_reduce_with_torch_compile() -> None:
   input_tpu = torch.tensor(
       [0.0, 1.0, float(rank), float(rank**2)], device="tpu"
   )
-  backend = TpuBackend(debug=True)
+  backend = tt_compile.TpuBackend(debug=True)
   compiled = torch.compile(func, backend=backend)
   output_compiled = compiled(input_tpu)
   output_compiled_cpu = output_compiled.to("cpu")
