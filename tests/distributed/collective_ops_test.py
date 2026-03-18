@@ -587,7 +587,7 @@ class CollectiveOpsTest(absltest.TestCase):
             run_all_gather_scalar, (), world_size=self._world_size
         ),
         nproc_per_node=self._world_size,
-    )
+    )()
 
   def test_all_gather_tensor_concat(self):
     distributed_utils.dist_run(
@@ -595,7 +595,7 @@ class CollectiveOpsTest(absltest.TestCase):
             run_all_gather_tensor_concat, (), world_size=self._world_size
         ),
         nproc_per_node=self._world_size,
-    )
+    )()
 
   def test_all_gather_tensor_scalar(self):
     distributed_utils.dist_run(
@@ -603,7 +603,7 @@ class CollectiveOpsTest(absltest.TestCase):
             run_all_gather_tensor_scalar, (), world_size=self._world_size
         ),
         nproc_per_node=self._world_size,
-    )
+    )()
 
   def test_all_gather_tensor_stack(self):
     distributed_utils.dist_run(
@@ -611,7 +611,7 @@ class CollectiveOpsTest(absltest.TestCase):
             run_all_gather_tensor_stack, (), world_size=self._world_size
         ),
         nproc_per_node=self._world_size,
-    )
+    )()
 
   def test_reduce_scatter(self):
     distributed_utils.dist_run(
@@ -619,7 +619,7 @@ class CollectiveOpsTest(absltest.TestCase):
             run_reduce_scatter, (), world_size=self._world_size
         ),
         nproc_per_node=self._world_size,
-    )
+    )()
 
   def test_reduce_scatter_tensor_stack(self):
     distributed_utils.dist_run(
@@ -627,7 +627,7 @@ class CollectiveOpsTest(absltest.TestCase):
             run_reduce_scatter_tensor_stack, (), world_size=self._world_size
         ),
         nproc_per_node=self._world_size,
-    )
+    )()
 
   def test_reduce_scatter_tensor_concat(self):
     distributed_utils.dist_run(
@@ -635,7 +635,7 @@ class CollectiveOpsTest(absltest.TestCase):
             run_reduce_scatter_tensor_concat, (), world_size=self._world_size
         ),
         nproc_per_node=self._world_size,
-    )
+    )()
 
   def test_reduce_scatter_tensor_avg(self):
     distributed_utils.dist_run(
@@ -643,7 +643,7 @@ class CollectiveOpsTest(absltest.TestCase):
             run_reduce_scatter_tensor_avg, (), world_size=self._world_size
         ),
         nproc_per_node=self._world_size,
-    )
+    )()
 
   def test_broadcast(self):
     distributed_utils.dist_run(
@@ -651,7 +651,7 @@ class CollectiveOpsTest(absltest.TestCase):
             run_broadcast, (), world_size=self._world_size
         ),
         nproc_per_node=self._world_size,
-    )
+    )()
 
   def test_collectives_with_non_uniform_deferred_ops(self):
     distributed_utils.dist_run(
@@ -661,7 +661,7 @@ class CollectiveOpsTest(absltest.TestCase):
             world_size=self._world_size,
         ),
         nproc_per_node=self._world_size,
-    )
+    )()
 
   def test_barrier(self):
     distributed_utils.dist_run(
