@@ -335,8 +335,9 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
         } else if (ctx.userEnabledCuDNNSDP()) {
           TORCH_WARN_ONCE(
               "TorchTPU only supports FLASH, EFFICIENT, OVERRIDEABLE, and MATH "
-              "SDPBackends. All other backends will use FLASH if "
-              "possible, or MATH for unsupported arguments.");
+              "SDPBackends for scaled_dot_product_attention. All other backends"
+              " will use FLASH if possible, or MATH for unsupported "
+              "arguments.");
         } else {
           TT_CHECK_THROW(ctx.userEnabledMathSDP(), error::kFailedPrecondition)
               << "cannot use scaled_dot_product_attention with no SDPBackends "
@@ -385,8 +386,34 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
         TORCH_WARN_ONCE(
             "TorchTPU only supports FLASH, EFFICIENT, OVERRIDEABLE SDPBackend "
             "for scaled_dot_product_attention when these conditions are met:\n"
-            "attn_mask is None\nscale is None\nquery "
-            "uses float32\nquery, key, and value have the same rank.\n"
+            "- attn_mask is None (current: ",
+            (attn_mask.has_value() ? "present" : "None"),
+            ")\n"
+            "- scale is None (current: ",
+            (scale.has_value() ? "present" : "None"),
+            ")\n"
+            "- inputs are float32 or bfloat16 (current: ",
+            query.scalar_type(),
+            ")\n"
+            "- inputs have the same rank (query: ",
+            query.ndimension(), ", key: ", key.ndimension(),
+            ", value: ", value.ndimension(),
+            ")\n"
+            "- query rank is at least 4 (current: ",
+            query.ndimension(),
+            ")\n"
+            "- batch size is at least 1 (current: ",
+            get_batch_size(query),
+            ")\n"
+            "- Sequence lengths (dim - 2) are divisible by 512 (query: ",
+            query.size(query.ndimension() - 2),
+            ", key: ", key.size(key.ndimension() - 2),
+            ", value: ", value.size(value.ndimension() - 2),
+            ")\n"
+            "- Head dimension (dim - 1) is less than 128 or divisible by 128 "
+            "(query: ",
+            query.size(query.ndimension() - 1),
+            ")\n"
             "Falling back to MATH backend.");
         return static_cast<int64_t>(at::SDPBackend::math);
       });
