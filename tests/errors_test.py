@@ -5031,6 +5031,92 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.bmm(a, b, out=out)
 
+  def test_baddbmm_unsupported_bool(self):
+    input_tensor = torch.ones(1, 2, 2, device=et.device())
+    batch1 = torch.ones(1, 2, 3, device=et.device())
+    batch2 = torch.ones(1, 3, 2, device=et.device())
+    out = torch.ones(1, 2, 2, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="baddbmm(): expected out tensor to have dtype float32, got bool",
+        cpu="Expected out tensor to have dtype float, but got bool instead",
+        message_reviewed_by="wan",
+    ):
+      torch.baddbmm(input_tensor, batch1, batch2, out=out.to(torch.bool))
+
+  def test_baddbmm_not_batch_of_matrices(self):
+    input_tensor = torch.ones(1, 1, 1, device=et.device())
+    batch1 = torch.ones(1, 2, 3, 4, device=et.device())
+    batch2 = torch.ones(1, 3, 2, device=et.device())
+
+    # Explicitly call `baddbmm.out` op.
+    # Otherwise, it will trigger the output tensor dtype check first.
+    out = torch.ones(1, 2, 2, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "baddbmm(): expected batch1 to be a 3D tensor (batch of"
+            " matrices), got 4D"
+        ),
+        cpu="batch1 must be a 3D tensor",
+        message_reviewed_by="wan",
+    ):
+      torch.baddbmm(input_tensor, batch1, batch2, out=out)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "baddbmm(): expected batch2 to be a 3D tensor (batch of"
+            " matrices), got 4D"
+        ),
+        cpu="batch2 must be a 3D tensor",
+        message_reviewed_by="wan",
+    ):
+      torch.baddbmm(input_tensor, batch2, batch1, out=out)
+
+  def test_baddbmm_mismatch_batch_dimensions(self):
+    input_tensor = torch.ones(1, 2, 2, device=et.device())
+    batch1 = torch.ones(1, 2, 3, device=et.device())
+    batch2 = torch.ones(2, 3, 2, device=et.device())
+    out = torch.ones(1, 2, 2, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "baddbmm(): expected the batch dimension of the first argument "
+            "(of shape [1, 2, 3]) to match the batch dimension of the second "
+            "argument (of shape [2, 3, 2]), got 1 vs 2"
+        ),
+        cpu=(
+            "Expected size for first two dimensions of batch2 tensor to be: "
+            "[1, 3] but got: [2, 3]."
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.baddbmm(input_tensor, batch1, batch2, out=out)
+
+  def test_baddbmm_mismatch_mm_contracting_dimension(self):
+    input_tensor = torch.ones(1, 2, 2, device=et.device())
+    batch1 = torch.ones(1, 2, 3, device=et.device())
+    batch2 = torch.ones(1, 4, 2, device=et.device())
+    out = torch.ones(1, 2, 2, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "baddbmm(): expected the last dimension of the first argument "
+            "(of shape [1, 2, 3]) to match the second dimension of the second "
+            "argument (of shape [1, 4, 2]), got 3 vs 4"
+        ),
+        cpu=(
+            "Expected size for first two dimensions of batch2 tensor to be: "
+            "[1, 3] but got: [1, 4]."
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.baddbmm(input_tensor, batch1, batch2, out=out)
+
   @_parameterize_convolution_fwd_bwd(
       forward={
           "tpu_fn": "convolution",

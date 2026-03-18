@@ -108,6 +108,12 @@ std::string_view ToString(OpName op_name) {
       return "avg_pool3d_backward.grad_input";
     case OpName::kAvgPool3dOut:
       return "avg_pool3d.out";
+    case OpName::kBaddbmmDtype:
+      return "baddbmm.dtype";
+    case OpName::kBaddbmmDtypeOut:
+      return "baddbmm.dtype_out";
+    case OpName::kBaddbmmOut:
+      return "baddbmm.out";
     case OpName::kBernoulli_Float:
       return "bernoulli_.float";
     case OpName::kBinCount:

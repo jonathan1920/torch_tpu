@@ -216,6 +216,12 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.int32: {"rtol": 1e-4, "atol": 1e-4},
         torch.int64: {"rtol": 1e-4, "atol": 1e-4},
     },
+    "baddbmm": {
+        torch.bfloat16: {"rtol": 6.3e-2, "atol": 1.5e-2},
+        torch.float16: {"rtol": 5.3e-2, "atol": 3.2e-1},
+        torch.float32: {"rtol": 3e-3, "atol": 7.4e-1},
+        torch.complex64: {"rtol": 3.6e-2, "atol": 9.1e-1},
+    },
     "bmm": {
         torch.float16: {"rtol": 1e-3, "atol": 1},
         torch.float32: {"rtol": 1.3e-6, "atol": 6e-1},
@@ -1334,6 +1340,13 @@ class TestOps(TorchTpuTestBase):
                 + (torch.bfloat16, torch.float16)
             )
         },
+    )
+
+  def test_baddbmm(self):
+    self.do_test_op(
+        "baddbmm",
+        # TODO: look into making this STRICT.
+        check_value=CheckValueMode.LOOSE,
     )
 
   def test_bernoulli(self):
