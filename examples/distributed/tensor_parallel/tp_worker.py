@@ -36,7 +36,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-WORLD_SIZE = 8
 BATCH_SIZE = 64
 MODEL_DIM = 128
 
