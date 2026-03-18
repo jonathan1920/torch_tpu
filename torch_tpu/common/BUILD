@@ -896,7 +896,7 @@ torch_tpu_cc_test(
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
         # TODO: b/490440118 - Remove this once the bug is fixed.
-# "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/remote_tier3_compilation_cache_test"
+        # "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/remote_tier3_compilation_cache_test"
         "",
     },
     exec_properties = {
@@ -927,7 +927,7 @@ torch_tpu_cc_test(
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
         # TODO: b/490440118 - Remove this once the bug is fixed.
-# "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/compilation_cache_remote_filesystem_test"
+        # "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/compilation_cache_remote_filesystem_test"
         "",
     },
     exec_properties = {

@@ -102,7 +102,7 @@ torch_tpu_py_test(
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
         # TODO: b/490440118 - Remove this once the bug is fixed.
-# "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/collective_ops_remote_cache_test"
+        # "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/collective_ops_remote_cache_test"
         "",
     },
     main = "collective_ops_test.py",
