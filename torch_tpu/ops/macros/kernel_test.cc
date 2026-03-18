@@ -94,13 +94,15 @@ TEST(TtKernel, PrependRootOpName) {
   EXPECT_TRUE(thrown_c10_error);
 }
 
-void Kernel3(int ndim, double alpha, std::optional<int> seed) {
-  TT_KERNEL(OpName::kAdd, param_keys, (ndim, alpha, seed), {
+void Kernel5(int ndim, double alpha, std::optional<int> seed,
+             std::optional<bool> cond, std::optional<std::string> name) {
+  TT_KERNEL(OpName::kAdd, param_keys, (ndim, alpha, seed, cond, name), {
     EXPECT_THAT(param_keys, ElementsAre(
                                 // go/keep-sorted start
                                 Pair("alpha", "2.5"),  //
+                                Pair("name", "<>"),    //
                                 Pair("ndim", "3"),     //
-                                Pair("seed", "42")     //
+                                Pair("seed", "<42>")   //
                                 // go/keep-sorted end
                                 ));
   });
@@ -110,7 +112,7 @@ TEST(TtKernel, ComputesCacheKeysWithNonTensors) {
   const int ndim = 3;
   const double alpha = 2.5;
   const std::optional<int> seed = 42;
-  Kernel3(ndim, alpha, seed);
+  Kernel5(ndim, alpha, seed, std::nullopt, "");
 }
 
 void Kernel4(const at::Tensor& self, int ndim, bool expand,

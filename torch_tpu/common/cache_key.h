@@ -175,8 +175,22 @@ FormattedKey<T> FormatParamCacheKey(c10::OptionalArrayRef<T> value);
 
 template <typename T>
 FormattedKey<T> FormatParamCacheKey(const std::optional<T>& value) {
-  // TODO: distinguish between an empty string and a nullopt.
-  return value.has_value() ? FormatParamCacheKey(value.value()) : "";
+  if (!value.has_value()) {
+    return "";
+  }
+
+  // Surround the formatted value with <> to distinguish between
+  // a nullopt and a value of T that happens to be an empty string.
+  std::string str;
+  if constexpr (std::is_same_v<FormattedKey<T>, std::string>) {
+    str = FormatParamCacheKey(value.value());
+  } else if constexpr (std::is_same_v<FormattedKey<T>,
+                                      absl::StatusOr<std::string>>) {
+    TT_ASSIGN_OR_RETURN(str, FormatParamCacheKey(value.value()));
+  } else {
+    static_assert(false, "Unsupported return type of FormatParamCacheKey(T).");
+  }
+  return absl::StrCat("<", str, ">");
 }
 
 template <typename T1, typename T2>
