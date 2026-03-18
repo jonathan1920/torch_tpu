@@ -14,7 +14,6 @@
 
 """Documentation for TorchTPU."""
 
-load("@rules_python//python:py_library.bzl", "py_library")
 load("//build_files:build_defs.bzl", "torch_tpu_package_end")
 
 package(
@@ -22,77 +21,13 @@ package(
     default_visibility = ["//torch_tpu/docs/notebooks:__subpackages__"],
 )
 
-py_library(
-    # PY_LIBRARY_OK=used in OSS only.
-    name = "index",
-    srcs = ["index.py"],
-)
-
-py_library(
-    # PY_LIBRARY_OK=used in OSS only.
-    name = "get_started_tpu",
-    srcs = ["get_started_tpu.py"],
-    deps = ["//shims/torch:pytorch"],
-)
-
-py_library(
-    # PY_LIBRARY_OK=used in OSS only.
-    name = "tpu_utils",
-    srcs = ["tpu_utils.py"],
-    deps = [
-        "//shims/torch:pytorch",
-        "//torch_tpu/api",
-        "//torch_tpu/api:_device_module",
-    ],
-)
-
-py_library(
-    # PY_LIBRARY_OK=used in OSS only.
-    name = "porting_vit_mnist",
-    srcs = ["porting_vit_mnist.py"],
-    deps = [
-        "//shims/torch:pytorch",
-        "@pypi//matplotlib:pkg",
-        "@pypi//numpy",
-        "@pypi//scikit-learn:pkg",
-    ],
-)
-
-py_library(
-    # PY_LIBRARY_OK=used in OSS only.
-    name = "numerical_parity",
-    srcs = ["numerical_parity.py"],
-    deps = [
-        "//shims/torch:pytorch",
-        "//torch_tpu/_internal/utils",
-        "//torch_tpu/api",
-        "//torch_tpu/api:_device_module",
-    ],
-)
-
-py_library(
-    # PY_LIBRARY_OK=used in OSS only.
-    name = "error_glossary",
-    srcs = ["error_glossary.py"],
-    deps = [
-        "//shims/torch:pytorch",
-        "//torch_tpu/_internal/execution_mode",
-        "//torch_tpu/_internal/sync",
-        "//torch_tpu/_internal/utils",
-        "//torch_tpu/api",
-        "//torch_tpu/api:_device_module",
-    ],
-)
-
-py_library(
-    # PY_LIBRARY_OK=used in OSS only.
-    name = "compilation_cache",
-    srcs = ["compilation_cache.py"],
-    deps = [
-        "//shims/torch:pytorch",
-        "//torch_tpu/api",
-        "//torch_tpu/api:_device_module",
-    ],
+# Make BUILD file maintenance tools ignore all *.py files as we don't
+# plan to run them as part of the build.
+filegroup(
+    name = "py_files",
+    srcs = glob(["**/*.py"]),
+    tags = ["ignore_srcs"],
+    visibility = ["//visibility:private"],
 )
 
 torch_tpu_package_end()
