@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@rules_python//python:py_library.bzl", "py_library")
 load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
@@ -61,14 +60,10 @@ torch_tpu_py_test(
     ],
 )
 
-py_library(
-    # PY_LIBRARY_OK=type checking too slow for this
+pytype_strict_library(
     name = "op_testing",
     testonly = True,
     srcs = ["op_testing.py"],
-    # copybara:uncomment_begin(internal-only attribute)
-    # strict_deps = False,
-    # copybara:uncomment_end
     deps = [
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",

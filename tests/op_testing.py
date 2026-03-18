@@ -18,6 +18,7 @@ See go/torch-tpu-op-test for more details.
 """
 
 import collections
+from collections.abc import Callable, Iterable, Mapping, MutableMapping, MutableSequence, Sequence
 import copy
 import enum
 import functools
@@ -32,7 +33,8 @@ import statistics
 import sys
 import time
 import traceback
-from typing import Any, Callable, Iterable, Optional, Sequence, Union
+import typing
+from typing import Any, Final, IO
 import unittest
 
 from absl import flags
@@ -67,9 +69,14 @@ SampleInput = core.SampleInput  # pylint: disable=protected-access
 CheckValueMode = utils.CheckValueMode
 Tolerance = utils.Tolerance
 
+AccuracyOverrides = Mapping[str, Mapping[torch.dtype, Mapping[str, Tolerance]]]
+
+FilterFn = Callable[[OpInfo, torch.Tensor, Sequence[Any]], str | None]
+MarkDynamicFn = Callable[[int, OpInfo, torch.Tensor, Sequence[Any]], None]
+
 # The seed for both Python and PyTorch RNGs. Set before the test program starts
 # and before each test method starts.
-_RANDOM_SEED: int = 0
+_RANDOM_SEED: Final[int] = 0
 
 
 def _seed_rngs(seed: int) -> None:
@@ -89,46 +96,46 @@ class TestMode(enum.Enum):
   PERF = "perf"  # Measure op performance.
 
 
-_TORCH_TPU_DEVICE = flags.DEFINE_string(
+_TORCH_TPU_DEVICE: Final[flags.FlagHolder[str]] = flags.DEFINE_string(
     "torch_tpu_device",
     "tpu",
     "TorchTPU device to test: [tpu, xla_cuda, xla_cpu]",
 )
 
-_TEST_MODE = flags.DEFINE_enum_class(
+_TEST_MODE: Final[flags.FlagHolder[TestMode]] = flags.DEFINE_enum_class(
     "test_mode", TestMode.TORCH_TPU_VS_CPU, TestMode, "Mode to run the test in."
 )
 
 # The --dtypes flag accepts a comma-separated list of dtypes. We define this
 # as a list of strings, where each string is either the name of a dtype or
 # "all".
-_DTYPES = flags.DEFINE_list(
+_DTYPES: Final[flags.FlagHolder[Sequence[str]]] = flags.DEFINE_list(
     "dtypes",
     ["all"],
     "dtypes to test. Can be a comma-separated list of dtype names (e.g. "
     " 'float32,bfloat16'), or a single 'all'.",
 )
 
-_MAX_SAMPLES_PER_OP_DTYPE = flags.DEFINE_integer(
+_MAX_SAMPLES_PER_OP_DTYPE: Final[flags.FlagHolder[int]] = flags.DEFINE_integer(
     "max_samples_per_op_dtype",
     -1,
     "Maximum number of samples to test for each (op variant, dtype) pair. "
     "Negative values mean no limit.",
 )
 
-_COMPUTE_GRAD = flags.DEFINE_bool(
+_COMPUTE_GRAD: Final[flags.FlagHolder[bool]] = flags.DEFINE_bool(
     "compute_grad",
     False,
     "Compute the gradient of the op instead of the normal op result.",
 )
 
-_USE_COMPILED = flags.DEFINE_bool(
+_USE_COMPILED: Final[flags.FlagHolder[bool]] = flags.DEFINE_bool(
     "use_compiled",
     False,
     "Use compiled torch_tpu backend.",
 )
 
-_CHECK_DYNAMISM_USING_SEED = flags.DEFINE_integer(
+_CHECK_DYNAMISM_USING_SEED: Final[flags.FlagHolder[int]] = flags.DEFINE_integer(
     "check_dynamism_using_seed",
     0,
     "If non-zero, marks a random dimension as bounded dynamic and runs the ops"
@@ -137,14 +144,14 @@ _CHECK_DYNAMISM_USING_SEED = flags.DEFINE_integer(
     " setting the seed value for reproducibility, or -1 for random seed.",
 )
 
-_OPT_LEVEL = flags.DEFINE_string(
+_OPT_LEVEL: Final[flags.FlagHolder[str]] = flags.DEFINE_string(
     "opt_level",
     "",
     "Optimization level to run the test with. Valid options are '' (default)ß,"
     " 'O0', 'O1', 'O2', 'O3', and 'O4'. Only used in the perf mode.",
 )
 
-_PRINT_OP_INPUTS = flags.DEFINE_integer(
+_PRINT_OP_INPUTS: Final[flags.FlagHolder[int]] = flags.DEFINE_integer(
     "print_op_inputs",
     0,
     "Print the inputs and reproducer function for the ops being tested. Useful"
@@ -153,19 +160,19 @@ _PRINT_OP_INPUTS = flags.DEFINE_integer(
     " reproducers.",
 )
 
-_UPDATE_PERF_DATA = flags.DEFINE_bool(
+_UPDATE_PERF_DATA: Final[flags.FlagHolder[bool]] = flags.DEFINE_bool(
     "update_perf_data",
     False,
     "Update the output perf data files. Currently only used in the perf mode.",
 )
 
-_ANALYZE = flags.DEFINE_bool(
+_ANALYZE: Final[flags.FlagHolder[bool]] = flags.DEFINE_bool(
     "analyze",
     False,
     "Analyze the performance results stored in `--perf_dir`.",
 )
 
-_PERF_DIR = flags.DEFINE_string(
+_PERF_DIR: Final[flags.FlagHolder[str]] = flags.DEFINE_string(
     "perf_dir",
     "",
     "Directory for storing the performance results. Must be a "
@@ -194,7 +201,7 @@ class OpVariant(enum.Enum):
 
 
 # Ops not included in the list of tested ops for pytorch.
-_ADDITIONAL_TORCH_TPU_OPS: list[OpInfo] = [
+_ADDITIONAL_TORCH_TPU_OPS: Final[Sequence[OpInfo]] = [
     OpInfo(
         "torch.ops.aten._unsafe_view",
         op=lambda x, shape: x.view(shape),
@@ -249,12 +256,13 @@ _ADDITIONAL_TORCH_TPU_OPS: list[OpInfo] = [
 #
 # We cannot use a defaultdict here because it contains a function object, which
 # cannot be pickled.
-_GOLDEN_GPU_DATA: dict[
-    str, dict[torch.dtype, list[tuple["OpInput", "OpOutput"]]]
+_GOLDEN_GPU_DATA: MutableMapping[
+    str,
+    MutableMapping[torch.dtype, MutableSequence[tuple["OpInput", "OpOutput"]]],
 ] = {}
 
 # The full list of known ops. We will test a subset of these.
-_KNOWN_OPS: list[OpInfo] = (
+_KNOWN_OPS: Final[Sequence[OpInfo]] = (
     _masked.op_db
     + autograd_function_db.autograd_function_db
     + common_methods_invocations.foreach_binary_op_db
@@ -267,21 +275,21 @@ _KNOWN_OPS: list[OpInfo] = (
     + fft.op_db
     + hop_db.hop_db
     + linalg.op_db
-    + _ADDITIONAL_TORCH_TPU_OPS
+    + typing.cast(list[OpInfo], _ADDITIONAL_TORCH_TPU_OPS)
 )
 
 
-COMPLEX_DTYPES = (
+COMPLEX_DTYPES: Final[Sequence[torch.dtype]] = (
     # TODO: add complex128.
     torch.complex64,
 )
-FLOAT_DTYPES = (
+FLOAT_DTYPES: Final[Sequence[torch.dtype]] = (
     torch.float64,
     torch.float32,
     torch.float16,
     torch.bfloat16,
 )
-INTEGRAL_DTYPES = (
+INTEGRAL_DTYPES: Final[Sequence[torch.dtype]] = (
     torch.uint8,
     torch.int8,
     torch.int16,
@@ -290,21 +298,27 @@ INTEGRAL_DTYPES = (
     torch.bool,
 )
 
-XLA_DEVICES = ("tpu", "xla_cpu", "xla_cuda")
+NUMERIC_DTYPES: Final[Sequence[torch.dtype]] = (
+    *COMPLEX_DTYPES,
+    *FLOAT_DTYPES,
+    *INTEGRAL_DTYPES,
+)
+
+XLA_DEVICES: Final[Sequence[str]] = ("tpu", "xla_cpu", "xla_cuda")
 
 
 @functools.lru_cache(maxsize=None)
-def _dtypes_to_test() -> list[torch.dtype]:
+def _dtypes_to_test() -> Sequence[torch.dtype]:
   """Returns the dtypes to test."""
 
   if "all" in _DTYPES.value:
-    return list(COMPLEX_DTYPES + FLOAT_DTYPES + INTEGRAL_DTYPES)
+    return NUMERIC_DTYPES
   else:
-    return [_parse_dtype(dtype_str) for dtype_str in _DTYPES.value]
+    return tuple(_parse_dtype(dtype_str) for dtype_str in _DTYPES.value)
 
 
 @functools.lru_cache(maxsize=1)
-def all_xla_supported_dtypes() -> list[torch.dtype]:
+def all_xla_supported_dtypes() -> Sequence[torch.dtype]:
   """Returns the dtypes supported by XLA."""
   dtypes = common_dtype.get_all_dtypes()
   dtypes = filter(lambda x: x != torch.complex128, dtypes)
@@ -312,11 +326,11 @@ def all_xla_supported_dtypes() -> list[torch.dtype]:
 
 
 # The number of slowest ops to print for each dtype.
-_TOP_N_SLOWEST_OPS = 100
+_TOP_N_SLOWEST_OPS: Final[int] = 100
 
 # Match a line in the perf result file. A perf result line looks like this:
 #   test shard 3, sample 5: add float32 0.05ms
-_PERF_RESULT_LINE_RE = re.compile(
+_PERF_RESULT_LINE_RE: Final[re.Pattern[str]] = re.compile(
     r"^test shard (\d+), sample (\d+): (\S+) (\S+) (.*)ms"
 )
 
@@ -331,7 +345,7 @@ class PerfResult:
       self, op_name: str, dtype: torch.dtype, duration_sec: float
   ) -> None:
     # Sponge uses 1-based shard indices.
-    self.test_shard = _get_test_shard() + 1
+    self.test_shard = _get_test_shard() + 1  # pytype: disable=name-error
     self.sequence_number = PerfResult.num_instances
     PerfResult.num_instances += 1
     self.op_name = op_name
@@ -380,7 +394,7 @@ class PerfResult:
     return result
 
 
-_PERF_RESULTS: list[PerfResult] = []
+_PERF_RESULTS: MutableSequence[PerfResult] = []
 
 
 def _format_dtype(dtype: torch.dtype) -> str:
@@ -388,9 +402,8 @@ def _format_dtype(dtype: torch.dtype) -> str:
   return str(dtype).removeprefix("torch.")
 
 
-_DTYPE_NAME_TO_DTYPE = {
-    _format_dtype(dtype): dtype
-    for dtype in COMPLEX_DTYPES + FLOAT_DTYPES + INTEGRAL_DTYPES
+_DTYPE_NAME_TO_DTYPE: Final[Mapping[str, torch.dtype]] = {
+    _format_dtype(dtype): dtype for dtype in NUMERIC_DTYPES
 }
 
 
@@ -524,13 +537,13 @@ P99: {sorted_durations_ms[99*num//100]:.2f}ms""",
       print(r, flush=True)
     print(flush=True)
 
-  for dtype in COMPLEX_DTYPES + FLOAT_DTYPES + INTEGRAL_DTYPES:
+  for dtype in NUMERIC_DTYPES:
     _analyze(dtype)
 
   _print_perf_debug_guide()
 
 
-def _get_op(op_name: str, *, variant_test_name: Optional[str] = None) -> OpInfo:
+def _get_op(op_name: str, *, variant_test_name: str | None = None) -> OpInfo:
   """Returns the op with the given name."""
   try:
     return next(
@@ -1042,7 +1055,7 @@ def _run_and_print_exception(func: Callable[[], None]) -> None:
 
 
 def _should_skip_dtype(
-    dtype: torch.dtype, *, exclude_dtypes: tuple[torch.dtype, ...]
+    dtype: torch.dtype, *, exclude_dtypes: Sequence[torch.dtype]
 ) -> bool:
   """Returns true if the dtype should be skipped for the test."""
   return dtype in exclude_dtypes or (
@@ -1078,7 +1091,7 @@ def _compiled_supports_op(
   ####
   # TODO: Fail to handle empty tensor views in compile mode
   #  This is likely because of our special handling of size zero tensors.
-  def has_empty(t: torch.Tensor | Sequence[Any] | dict[Any, Any]) -> bool:
+  def has_empty(t: torch.Tensor | Sequence[Any] | Mapping[Any, Any]) -> bool:
     """Returns true if `t` is (or contains) a size zero tensor."""
     if isinstance(t, (list, tuple)):
       return any(has_empty(i) for i in t)
@@ -1152,6 +1165,14 @@ def _compiled_supports_op(
 class TorchTpuTestBase(TestCase):
   """Base class for TorchTPU tests."""
 
+  dynamism_filter_fn: FilterFn
+  dynamism_mark_dynamic_fn: MarkDynamicFn
+
+  tpu_cpu_accuracy_overrides: AccuracyOverrides
+  xla_cpu_cpu_accuracy_overrides: AccuracyOverrides
+  tpu_gpu_accuracy_overrides: AccuracyOverrides
+  grad_accuracy_overrides: AccuracyOverrides
+
   def setUp(self) -> None:
     super().setUp()
     # Show long diffs in assertEqual.
@@ -1187,10 +1208,18 @@ class TorchTpuTestBase(TestCase):
   def set_accuracy_overrides(
       self,
       *,
-      tpu_cpu_overrides: dict[str, dict[torch.dtype, dict[str, Tolerance]]],
-      xla_cpu_cpu_overrides: dict[str, dict[torch.dtype, dict[str, Tolerance]]],
-      tpu_gpu_overrides: dict[str, dict[torch.dtype, dict[str, Tolerance]]],
-      grad_overrides: dict[str, dict[torch.dtype, dict[str, Tolerance]]],
+      tpu_cpu_overrides: Mapping[
+          str, Mapping[torch.dtype, Mapping[str, Tolerance]]
+      ],
+      xla_cpu_cpu_overrides: Mapping[
+          str, Mapping[torch.dtype, Mapping[str, Tolerance]]
+      ],
+      tpu_gpu_overrides: Mapping[
+          str, Mapping[torch.dtype, Mapping[str, Tolerance]]
+      ],
+      grad_overrides: Mapping[
+          str, Mapping[torch.dtype, Mapping[str, Tolerance]]
+      ],
   ) -> None:
     """Sets the accuracy overrides for the test.
 
@@ -1209,10 +1238,8 @@ class TorchTpuTestBase(TestCase):
 
   def set_dynamism_handlers(
       self,
-      filter_fn: Callable[[OpInfo, torch.Tensor, tuple[Any, ...]], str | None],
-      mark_dynamic_fn: Callable[
-          [int, OpInfo, torch.Tensor, tuple[Any, ...]], None
-      ],
+      filter_fn: FilterFn,
+      mark_dynamic_fn: MarkDynamicFn,
   ) -> None:
     """Sets the dynamism handler for bounded dynamism testing.
 
@@ -1384,10 +1411,10 @@ class TorchTpuTestBase(TestCase):
       dtype: torch.dtype,
       variant: OpVariant,
       *,
-      max_samples: Optional[int],
+      max_samples: int | None,
       compute_grad: bool = False,
       use_compiled: bool = False,
-  ) -> list[tuple[OpInput, OpOutput]]:
+  ) -> Sequence[tuple[OpInput, OpOutput]]:
     """Returns a list of (input, output) pairs for the op.
 
     In the gen_gpu_golden and torch_tpu_vs_cpu modes, the inputs are generated
@@ -1768,8 +1795,8 @@ class TorchTpuTestBase(TestCase):
       torch_tpu_printable_input: OpInput,
       check_value: CheckValueMode | Iterable[CheckValueMode],
       check_dtype: bool,
-      skip_output_indices: list[int],
-      accuracy_override: dict[str, Tolerance],
+      skip_output_indices: Sequence[int],
+      accuracy_override: Mapping[str, Tolerance],
   ) -> None:
     """Asserts that golden_result and torch_tpu_result, as tuples, are close."""
 
@@ -1815,7 +1842,7 @@ class TorchTpuTestBase(TestCase):
       check_dynamism: bool,
       check_value: CheckValueMode | Iterable[CheckValueMode],
       check_dtype: bool,
-      skip_output_indices: list[int],
+      skip_output_indices: Sequence[int],
       compute_grad: bool,
       use_compiled: bool,
   ) -> None:
@@ -1906,9 +1933,9 @@ class TorchTpuTestBase(TestCase):
       check_device: bool,
       check_dynamism: bool,
       check_op_failures: bool,
-      skip_output_indices: list[int],
-      skip_if: Optional[Callable[[str, OpVariant, OpInput], bool]],
-      max_samples_per_op_dtype: Optional[int],
+      skip_output_indices: Sequence[int],
+      skip_if: Callable[[str, OpVariant, OpInput], bool] | None,
+      max_samples_per_op_dtype: int | None,
   ) -> None:
     """Tests that the op produces similar results on TorchTPU and the golden device.
 
@@ -2015,9 +2042,9 @@ class TorchTpuTestBase(TestCase):
   def _resolve_exclude_dtypes(
       self,
       exclude_dtypes: (
-          Iterable[torch.dtype] | dict[str, Iterable[torch.dtype]] | None
+          Iterable[torch.dtype] | Mapping[str, Iterable[torch.dtype]] | None
       ),
-  ) -> tuple[torch.dtype, ...]:
+  ) -> Sequence[torch.dtype]:
     """Resolves the exclude_dtypes argument."""
     exclude_dtypes = exclude_dtypes or ()
     if isinstance(exclude_dtypes, dict):
@@ -2037,25 +2064,25 @@ class TorchTpuTestBase(TestCase):
       op_name: str,
       *,
       exclude_dtypes: (
-          Iterable[torch.dtype] | dict[str, Iterable[torch.dtype]] | None
+          Iterable[torch.dtype] | Mapping[str, Iterable[torch.dtype]] | None
       ) = None,
       exclude_inplace_dtypes: (
-          Iterable[torch.dtype] | dict[str, Iterable[torch.dtype]] | None
+          Iterable[torch.dtype] | Mapping[str, Iterable[torch.dtype]] | None
       ) = None,
       check_out_variant: bool = True,
       check_grad: bool = True,
       check_device: bool = True,
       check_dynamism: bool = True,
-      check_value: Union[
-          CheckValueMode, Iterable[CheckValueMode]
-      ] = CheckValueMode.STRICT,
+      check_value: (
+          CheckValueMode | Iterable[CheckValueMode]
+      ) = CheckValueMode.STRICT,
       check_dtype: bool = True,
       check_op_failures: bool = True,
       check_inplace_op_failures: bool = True,
-      skip_output_indices: Optional[list[int]] = None,
-      skip_if: Optional[Callable[[str, OpVariant, OpInput], bool]] = None,
-      max_samples_per_op_dtype: Optional[int] = None,
-      variant_test_name: Optional[str] = None,
+      skip_output_indices: Sequence[int] | None = None,
+      skip_if: Callable[[str, OpVariant, OpInput], bool] | None = None,
+      max_samples_per_op_dtype: int | None = None,
+      variant_test_name: str | None = None,
   ) -> None:
     """Does the standard suite of testing for the given op.
 
@@ -2123,7 +2150,7 @@ class TorchTpuTestBase(TestCase):
 
       # Test the base variant.
       print(f"Testing {op_name}().", flush=True)
-      for dtype in COMPLEX_DTYPES + FLOAT_DTYPES + INTEGRAL_DTYPES:
+      for dtype in NUMERIC_DTYPES:
         if _should_skip_dtype(dtype, exclude_dtypes=exclude_dtypes):
           continue
         self._test_torch_tpu_vs_golden(
@@ -2144,7 +2171,7 @@ class TorchTpuTestBase(TestCase):
 
       if check_out_variant:
         print(f"Testing {op_name}(out=...).", flush=True)
-        for dtype in COMPLEX_DTYPES + FLOAT_DTYPES + INTEGRAL_DTYPES:
+        for dtype in NUMERIC_DTYPES:
           if _should_skip_dtype(dtype, exclude_dtypes=exclude_dtypes):
             continue
           # TODO: cover more ways to specify the out arguments (e.g. correct
@@ -2172,7 +2199,7 @@ class TorchTpuTestBase(TestCase):
 
       # Test the inplace variant.
       print(f"Testing {op_name}_().", flush=True)
-      for dtype in COMPLEX_DTYPES + FLOAT_DTYPES + INTEGRAL_DTYPES:
+      for dtype in NUMERIC_DTYPES:
         if _should_skip_dtype(dtype, exclude_dtypes=exclude_inplace_dtypes):
           continue
         self._test_torch_tpu_vs_golden(
@@ -2229,8 +2256,12 @@ def _save_golden_file() -> None:
   )
 
   def to_plistlib_pytree(
-      golden_data: dict[str, dict[torch.dtype, list[tuple[OpInput, OpOutput]]]],
-  ) -> dict[str, dict[str, list[tuple[_pytree.PyTree, _pytree.PyTree]]]]:
+      golden_data: Mapping[
+          str, Mapping[torch.dtype, Sequence[tuple[OpInput, OpOutput]]]
+      ],
+  ) -> Mapping[
+      str, Mapping[str, Sequence[tuple[_pytree.PyTree, _pytree.PyTree]]]
+  ]:
     """Converts the golden data to a plistlib-compatible pytree."""
 
     def leaf_func(x: OpInput | OpOutput) -> _pytree.PyTree:
@@ -2256,7 +2287,10 @@ def _save_golden_file() -> None:
 
   encoded_data = to_plistlib_pytree(_GOLDEN_GPU_DATA)
   try:
-    bin_data = plistlib.dumps(encoded_data, fmt=plistlib.FMT_BINARY)
+    # pytype thinks `plistlib.FMT_BINARY` is `int` for whatever reason
+    bin_data = plistlib.dumps(
+        encoded_data, fmt=typing.cast(plistlib.PlistFormat, plistlib.FMT_BINARY)
+    )
   except Exception as e:
     print(
         f"Failed to dump golden data: {e}, where:\n{encoded_data=}",
@@ -2284,7 +2318,11 @@ def _load_golden_files() -> None:
         flush=True,
     )
     with gzip.open(golden_file, "rb") as f:
-      plist_ptree = plistlib.load(f, fmt=plistlib.FMT_BINARY)
+      # TODO(pganssle): Figure out why this is required
+      f = typing.cast(IO[bytes], f)
+      plist_ptree = plistlib.load(
+          f, fmt=typing.cast(plistlib.PlistFormat, plistlib.FMT_BINARY)
+      )
     for op, dt_to_encoded_samples in plist_ptree.items():
       if op not in _GOLDEN_GPU_DATA:
         _GOLDEN_GPU_DATA[op] = {}
