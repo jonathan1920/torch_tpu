@@ -87,6 +87,9 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "pjrt_init_test",
     srcs = ["pjrt_init_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     deps = [
         ":pjrt_init",
         ":pjrt_shutdown",

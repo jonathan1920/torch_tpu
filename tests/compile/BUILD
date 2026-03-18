@@ -129,6 +129,9 @@ torch_tpu_py_test(
     args = [
         "--enable_tensorboard_logging=False",
     ],
+    exec_properties = {
+        "cpp_link.mem": "20g",  # Needed for asan.
+    },
     linking_mode = "static",
     main = "stablehlo_compile_test.py",
     notap = "Disable on TAP until we can get faster performance or reduce number of runs. Currently runs ~1h.",

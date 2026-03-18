@@ -238,6 +238,10 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["layer_performance_benchmarks.py"],
     args = ["--platform=b200_1"],
+    # go/cppdebugflags#increasing-your-size-limits
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     main = "layer_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
     shard_count = 2,
@@ -296,6 +300,10 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["model_performance_benchmarks.py"],
     args = ["--platform=b200_1"],
+    # go/cppdebugflags#increasing-your-size-limits
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     main = "model_performance_benchmarks.py",
     notap = "Frequently causes Forge OOM.",
     shard_count = 2,

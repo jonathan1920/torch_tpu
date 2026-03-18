@@ -27,6 +27,10 @@ torch_tpu_py_test(
         "--device=cuda",
         "--framework=pytorch",
     ],
+    # go/cppdebugflags#increasing-your-size-limits
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Avoid Forge OOM in CppLink.
+    },
     main = "ml_layers_test.py",
     notap = "this is a manual test",
     shard_count = 4,
@@ -100,6 +104,10 @@ torch_tpu_py_test(
         "--device=xla_cuda",
         "--framework=pytorch",
     ],
+    # go/cppdebugflags#increasing-your-size-limits
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     main = "ml_layers_test.py",
     notap = "this is a manual test",
     shard_count = 4,
@@ -136,6 +144,10 @@ torch_tpu_py_test(
     args = [
         "--device=cuda",
     ],
+    # go/cppdebugflags#increasing-your-size-limits
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Avoid Forge OOM in CppLink.
+    },
     main = "sched_overhead_test.py",
     notap = "this is a manual test",
     shard_count = 1,

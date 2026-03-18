@@ -210,6 +210,9 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "tier2_compilation_cache_test",
     srcs = ["tier2_compilation_cache_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
     ],
@@ -239,6 +242,9 @@ torch_tpu_cc_test(
         "--expected_tier2_cache_name=",
         "--world_size=1",
     ],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
     ],
@@ -264,6 +270,9 @@ torch_tpu_cc_test(
         # This should force enable tier-2.
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/cache",
     },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
     ],
@@ -285,6 +294,9 @@ torch_tpu_cc_test(
         "--expected_tier2_cache_name=default",
         "--world_size=4",
     ],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     nopresubmit = "long Forge queue",
     tags = [
         "requires-v5p",  # Needs PjRt client and multiple devices.
@@ -309,6 +321,9 @@ torch_tpu_cc_test(
     env = {
         "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "disabled",
     },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
     ],
@@ -331,6 +346,9 @@ torch_tpu_cc_test(
     ],
     env = {
         "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "disabled",
+    },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
     },
     nopresubmit = "long Forge queue",
     tags = [
@@ -356,6 +374,9 @@ torch_tpu_cc_test(
     env = {
         "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "my_cache",
     },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
     ],
@@ -378,6 +399,9 @@ torch_tpu_cc_test(
     ],
     env = {
         "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "my_cache2",
+    },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
     },
     nopresubmit = "long Forge queue",
     tags = [
@@ -761,6 +785,8 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "compilation_test",
     srcs = ["compilation_test.cc"],
+    # go/cppdebugflags#increasing-your-size-limits
+    exec_properties = {"cpp_link.mem": "16g"},  # multiline select
     tags = [
         # Do not add tag "oss_ready_tpu" here. Instead, use "oss_compilation_test" below to
         # run tests in TPU CI.
@@ -785,6 +811,8 @@ torch_tpu_cc_test(
 torch_tpu_cc_test(
     name = "compilation_cache_test",
     srcs = ["compilation_cache_test.cc"],
+    # go/cppdebugflags#increasing-your-size-limits
+    exec_properties = {"cpp_link.mem": "16g"},  # multiline select
     deps = [
         ":compilation_cache",
         "//shims/torch:torch_headers",
@@ -815,6 +843,8 @@ sh_test(
 torch_tpu_cc_test(
     name = "compilation_parse_xla_options_test",
     srcs = ["compilation_parse_xla_options_test.cc"],
+    # go/cppdebugflags#increasing-your-size-limits
+    exec_properties = {"cpp_link.mem": "16g"},  # multiline select
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -837,6 +867,9 @@ torch_tpu_cc_test(
     srcs = ["tier3_compilation_cache_test.cc"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
+    },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
     },
     tags = [
         "requires-tpu-v5lite",
@@ -866,6 +899,9 @@ torch_tpu_cc_test(
 # "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/remote_tier3_compilation_cache_test"
         "",
     },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     tags = [
         "requires-net:external",  # Requires remote file access.
         "requires-tpu-v5lite",
@@ -893,6 +929,9 @@ torch_tpu_cc_test(
         # TODO: b/490440118 - Remove this once the bug is fixed.
 # "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/compilation_cache_remote_filesystem_test"
         "",
+    },
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
     },
     tags = [
         "requires-net:external",  # Requires remote file access.
@@ -944,6 +983,9 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "dynamism_utils_test",
     srcs = ["dynamism_utils_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     deps = [
         ":dynamism_utils",
         ":error_utils",
