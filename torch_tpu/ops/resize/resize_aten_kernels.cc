@@ -22,12 +22,11 @@
 #include "absl/log/absl_log.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
-#include "c10/core/Layout.h"
-#include "c10/core/MemoryFormat.h"
 #include "c10/core/SymIntArrayRef.h"
 #include "c10/util/ArrayRef.h"
 #include "c10/util/Optional.h"
 #include "c10/util/accumulate.h"
+#include "torch/headeronly/core/MemoryFormat.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
@@ -46,7 +45,7 @@ namespace torch_tpu {
 const at::Tensor& AtenResize_(
     const at::Tensor& self, c10::IntArrayRef size,
     c10::optional<at::MemoryFormat> memory_format_opt) {
-  TT_KERNEL(OpName::kResize_, _, (self), {
+  TT_KERNEL(OpName::kResize_, _, (self, size, memory_format_opt), {
     TT_CHECK_THROW(!memory_format_opt.has_value() ||
                        *memory_format_opt == at::MemoryFormat::Contiguous,
                    error::kUnimplemented)

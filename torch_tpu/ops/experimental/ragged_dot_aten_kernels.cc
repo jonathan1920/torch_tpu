@@ -107,7 +107,7 @@ at::Tensor AtenRaggedDot(const at::Tensor& lhs, const at::Tensor& rhs,
 
 at::Tensor& AtenRaggedDotOut(const at::Tensor& lhs, const at::Tensor& rhs,
                              const at::Tensor& group_sizes, at::Tensor& out) {
-  TT_KERNEL(OpName::kRaggedDot, param_keys, (lhs, rhs, group_sizes), {
+  TT_KERNEL(OpName::kRaggedDot, param_keys, (lhs, rhs, group_sizes, out), {
     TT_ASSIGN_OR_THROW(auto result,
                        RaggedDotCommon(lhs, rhs, group_sizes, param_keys));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));

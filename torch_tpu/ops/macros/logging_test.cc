@@ -14,17 +14,21 @@
 
 #include "torch_tpu/ops/macros/logging.h"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/log/absl_log.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/ops/ones.h"
 #include "c10/core/Device.h"
+#include "c10/util/Optional.h"
 #include "torch/headeronly/core/Layout.h"
 #include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
@@ -34,9 +38,21 @@ namespace {
 
 using internal::LogKernelArgs;
 using testing::AllOf;
+using testing::ElementsAre;
 using testing::EndsWith;
 using testing::HasSubstr;
+using testing::IsEmpty;
 using testing::StartsWith;
+
+void Kernel2(int x, const std::string& y) {
+  TT_CHECK_AND_LOG_KERNEL_ARGS_("my_op", x, y);
+}
+
+TEST(LogKernelStart, CompilesWhenArgsAreIdentifiers) {
+  int x = 1;
+  std::string y = "foo";
+  Kernel2(x, y);
+}
 
 TEST(LogKernelArgs, LogsNothingWithNoArgs) {
   std::ostringstream ss;
@@ -147,6 +163,50 @@ TEST(LogKernelArgs, LogsVariadicArgs) {
   EXPECT_THAT(ss.str(), StartsWith("arg1: 123\n"
                                    "arg2: foo\n"
                                    "arg3: shape=[3]"));
+}
+
+std::vector<std::string_view> NullaryFunc() {
+  ABSL_LOG(INFO) << __PRETTY_FUNCTION__;
+  return internal::ParseArgTypesOrEmpty(__PRETTY_FUNCTION__);
+}
+
+TEST(ParseArgTypesOrEmpty, NullaryFunc) {
+  EXPECT_THAT(NullaryFunc(), IsEmpty());
+}
+
+std::vector<std::string_view> UnaryFunc(const char* arg1) {
+  ABSL_LOG(INFO) << __PRETTY_FUNCTION__;
+  return internal::ParseArgTypesOrEmpty(__PRETTY_FUNCTION__);
+}
+
+TEST(ParseArgTypesOrEmpty, UnaryFunc) {
+  EXPECT_THAT(UnaryFunc("foo"), ElementsAre("const char *"));
+}
+
+std::vector<std::string_view> BinaryFunc(bool& arg1, const std::string& arg2) {
+  ABSL_LOG(INFO) << __PRETTY_FUNCTION__;
+  return internal::ParseArgTypesOrEmpty(__PRETTY_FUNCTION__);
+}
+
+TEST(ParseArgTypesOrEmpty, BinaryFunc) {
+  bool b = true;
+  EXPECT_THAT(BinaryFunc(b, "foo"),
+              ElementsAre("bool &", "const std::string &"));
+}
+
+std::vector<std::string_view> FuncWithComplexType(
+    const c10::List<c10::optional<at::Tensor>>& arg1,
+    // This type has a `,` in the name.
+    const std::array<bool, 3>& arg2) {
+  ABSL_LOG(INFO) << __PRETTY_FUNCTION__;
+  return internal::ParseArgTypesOrEmpty(__PRETTY_FUNCTION__);
+}
+
+TEST(ParseArgTypesOrEmpty, FuncWithComplexType) {
+  std::array<bool, 3> arr = {true, false, true};
+  EXPECT_THAT(FuncWithComplexType(c10::List<c10::optional<at::Tensor>>(), arr),
+              ElementsAre("const c10::List<c10::optional<at::Tensor>> &",
+                          "const std::array<bool, 3> &"));
 }
 
 }  // namespace

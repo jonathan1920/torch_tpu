@@ -33,9 +33,9 @@
 #include "c10/util/irange.h"
 #include "c10/util/typeid.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/utils.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/as_strided/as_strided_aten_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -139,13 +139,13 @@ absl::StatusOr<Dimensions> SymIntsToDimensions(const at::Tensor& self,
 at::Tensor AtenReshapeAlias(const at::Tensor& self,
                             c10::SymIntArrayRef size_sym,
                             c10::SymIntArrayRef stride_sym) {
-  TT_KERNEL(OpName::kReshapeAlias, _, (self), {
+  TT_KERNEL(OpName::kReshapeAlias, _, (self, size_sym, stride_sym), {
     return AtenAsStrided(self, size_sym, stride_sym, c10::nullopt);
   });
 }
 
 at::Tensor AtenView(const at::Tensor& self, c10::SymIntArrayRef size_sym) {
-  TT_KERNEL(OpName::kView, _, (self), {
+  TT_KERNEL(OpName::kView, _, (self, size_sym), {
     // view is allowed to have one dimension as "-1", which needs to be resolved
     // to a positive shape.
     TT_ASSIGN_OR_THROW(Dimensions new_size,

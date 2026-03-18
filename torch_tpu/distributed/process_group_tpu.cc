@@ -46,7 +46,6 @@
 #include "ATen/ops/ones.h"
 #include "ATen/ops/stack.h"
 #include "ATen/ops/zeros.h"
-#include "c10/core/DeviceType.h"
 #include "c10/core/ScalarType.h"
 #include "c10/core/TensorOptions.h"
 #include "c10/util/intrusive_ptr.h"
@@ -54,9 +53,11 @@
 #include "torch/csrc/distributed/c10d/Store.hpp"
 #include "torch/csrc/distributed/c10d/Types.hpp"
 #include "torch/csrc/distributed/c10d/Work.hpp"
+#include "torch/headeronly/core/DeviceType.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/utils.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/distributed/allgather.h"
 #include "torch_tpu/distributed/allreduce.h"
 #include "torch_tpu/distributed/alltoall.h"
@@ -341,61 +342,62 @@ ProcessGroupTpu::ProcessGroupTpu(c10::intrusive_ptr<c10d::Store> store,
                << ", all subgroups: " << ToString(subgroup_device_ids_);
 }
 
+// Sets the process group ID in the given param cache keys.
+#define TT_SET_PROCESS_GROUP_ID(param_keys) \
+  TT_THROW_IF_ERROR(param_keys.SetParam("pg_id", pg_id_))
+
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allreduce(
     std::vector<at::Tensor>& tensors, const c10d::AllreduceOptions& opts) {
-  TT_KERNEL(
-      OpName::kDistributedAllReduce, param_keys, (pg_id_, tensors, opts), {
-        // TODO(vladbelous): Implement support for multiple input/output
-        // tensors:
-        TT_CHECK_THROW(tensors.size() == 1, error::kUnimplemented)
-            << "does not yet support multiple tensors.";
+  TT_KERNEL(OpName::kDistributedAllReduce, param_keys, (tensors, opts), {
+    TT_SET_PROCESS_GROUP_ID(param_keys);
+    // TODO(vladbelous): Implement support for multiple input/output
+    // tensors:
+    TT_CHECK_THROW(tensors.size() == 1, error::kUnimplemented)
+        << "does not yet support multiple tensors.";
 
-        at::Tensor& tensor = tensors[0];
+    at::Tensor& tensor = tensors[0];
 
-        TT_THROW_IF_ERROR(
-            ValidateReductionOp(opts.reduceOp, tensor.scalar_type()));
+    TT_THROW_IF_ERROR(ValidateReductionOp(opts.reduceOp, tensor.scalar_type()));
 
-        ABSL_VLOG(1) << "[ProcessGroupTpu::allreduce] Rank: " << getRank()
-                     << ", DeviceBufferRef: "
-                     << DeviceBufferRefDebugString(tensor);
+    ABSL_VLOG(1) << "[ProcessGroupTpu::allreduce] Rank: " << getRank()
+                 << ", DeviceBufferRef: " << DeviceBufferRefDebugString(tensor);
 
-        auto& maybe_materialized_input_tensor = tensor;
+    auto& maybe_materialized_input_tensor = tensor;
 
-        auto op_builder = [subgroups = subgroup_device_ids_,
-                           reduce_op = opts.reduceOp](mlir::MlirOp input) {
-          return BuildDistributedAllReduceShlo(input, reduce_op, subgroups);
-        };
+    auto op_builder = [subgroups = subgroup_device_ids_,
+                       reduce_op = opts.reduceOp](mlir::MlirOp input) {
+      return BuildDistributedAllReduceShlo(input, reduce_op, subgroups);
+    };
 
-        TT_ASSIGN_OR_THROW(auto output_dtype,
-                           ConvertTo<mlir::ElementType>(tensor.scalar_type()));
+    TT_ASSIGN_OR_THROW(auto output_dtype,
+                       ConvertTo<mlir::ElementType>(tensor.scalar_type()));
 
-        TT_ASSIGN_OR_THROW(
-            auto result_buffer,
-            DispatchOp<1>(OpName::kDistributedAllReduce, std::move(op_builder),
-                          maybe_materialized_input_tensor,
-                          {.out_dtype = output_dtype,
-                           .out_dims = tensor.sizes(),
-                           .op_param_cache_keys = std::move(param_keys),
-                           .split_mode = GetCollectiveSplitMode()}));
-        // TODO: respect async.
+    TT_ASSIGN_OR_THROW(
+        auto result_buffer,
+        DispatchOp<1>(OpName::kDistributedAllReduce, std::move(op_builder),
+                      maybe_materialized_input_tensor,
+                      {.out_dtype = output_dtype,
+                       .out_dims = tensor.sizes(),
+                       .op_param_cache_keys = std::move(param_keys),
+                       .split_mode = GetCollectiveSplitMode()}));
+    // TODO: respect async.
 
-        // All-reduce is inplace, assign output buffer ref to input tensors.
-        TT_THROW_IF_ERROR(
-            AssignBufferToAtTensor(std::move(result_buffer), tensor));
+    // All-reduce is inplace, assign output buffer ref to input tensors.
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buffer), tensor));
 
-        // NOTE: from distributed/c10d/ProcessGroupNCCL.cpp;l=3604 in
-        // pytorch/pytorch if not async should return nullptr.
-        if (opts.asyncOp) {
-          return c10::make_intrusive<TpuWork>(tensors, getRank(),
-                                              c10d::OpType::ALLREDUCE);
-        }
-        return nullptr;
-      });
+    // NOTE: from distributed/c10d/ProcessGroupNCCL.cpp;l=3604 in
+    // pytorch/pytorch if not async should return nullptr.
+    if (opts.asyncOp) {
+      return c10::make_intrusive<TpuWork>(tensors, getRank(),
+                                          c10d::OpType::ALLREDUCE);
+    }
+    return nullptr;
+  });
 }
 
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::broadcast(
     std::vector<at::Tensor>& tensors, const c10d::BroadcastOptions& opts) {
-  TT_KERNEL(OpName::kDistributedBroadcast, _, (pg_id_, tensors, opts), {
+  TT_KERNEL(OpName::kDistributedBroadcast, _, (tensors, opts), {
     auto src_rank = opts.rootRank;
     auto src_dev_id = rank_to_device_id_[src_rank];
     auto cur_dev_id = addressable_device_id_;
@@ -445,7 +447,8 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather(
     const c10d::AllgatherOptions& opts) {
   TT_KERNEL(
       OpName::kDistributedAllGather, param_keys,
-      (pg_id_, output_tensors, input_tensors, opts), {
+      (output_tensors, input_tensors, opts), {
+        TT_SET_PROCESS_GROUP_ID(param_keys);
         TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch only ever passes
                          // single-element input lists.
             input_tensors.size() == 1 && output_tensors.size() == 1,
@@ -533,7 +536,8 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::_allgather_base(
     const c10d::AllgatherOptions& opts) {
   TT_KERNEL(
       OpName::kDistributedAllGatherIntoTensor, param_keys,
-      (pg_id_, output_tensor, input_tensor, opts), {
+      (output_tensor, input_tensor, opts), {
+        TT_SET_PROCESS_GROUP_ID(param_keys);
         const int64_t world_size = getSize();
         auto input_sizes = input_tensor.sizes();
         auto output_sizes = output_tensor.sizes();
@@ -642,8 +646,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather_into_tensor_coalesced(
     std::vector<at::Tensor>& outputs, std::vector<at::Tensor>& inputs,
     const c10d::AllgatherOptions& opts) {
   TT_KERNEL(
-      OpName::kDistributedAllGatherIntoTensor, _,
-      (pg_id_, outputs, inputs, opts), {
+      OpName::kDistributedAllGatherIntoTensor, _, (outputs, inputs, opts), {
         // NOTE: there's no such op in `torch.distributed` module, so it
         // is called indirectly.
         TT_CHECK_THROW(inputs.size() == outputs.size(), error::kInvalidArgument)
@@ -669,71 +672,65 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::scatter(
     std::vector<at::Tensor>& outputs,
     std::vector<std::vector<at::Tensor>>& inputs,
     const c10d::ScatterOptions& opts) {
-  const int64_t rank = getRank();
-  const int64_t root_rank = opts.rootRank;
-  const bool async = opts.asyncOp;
-  TT_KERNEL(
-      OpName::kDistributedScatter, _,
-      (pg_id_, rank, outputs, inputs, root_rank, async, opts), {
-        TT_CHECK_THROW(outputs.size() == 1, error::kInvalidArgument)
-            << "a single output tensor must be provided, got "
-            << outputs.size();
-        auto& output = outputs[0];
-        bool is_scalar = output.dim() == 0;
+  TT_KERNEL(OpName::kDistributedScatter, _, (outputs, inputs, opts), {
+    const int64_t rank = getRank();
+    const int64_t root_rank = opts.rootRank;
+    TT_CHECK_THROW(outputs.size() == 1, error::kInvalidArgument)
+        << "a single output tensor must be provided, got " << outputs.size();
+    auto& output = outputs[0];
+    bool is_scalar = output.dim() == 0;
 
-        at::Tensor scatter_input;  // UNINITIALIZED_TENSOR_OK
-        if (rank == root_rank) {
-          TT_CHECK_THROW(inputs.size() == 1, error::kInvalidArgument)
-              << "there must be a single list of input tensors on the root "
-                 "rank,"
-              << " got " << inputs.size();
-          const auto& input_tensors = inputs[0];
-          TT_CHECK_THROW(input_tensors.size() == getSize(),
-                         error::kInvalidArgument)
-              << "the number of input tensors on the root rank must be equal to"
-              << " the group size, got " << input_tensors.size()
-              << " tensors and " << getSize() << " processes";
+    at::Tensor scatter_input;  // UNINITIALIZED_TENSOR_OK
+    if (rank == root_rank) {
+      TT_CHECK_THROW(inputs.size() == 1, error::kInvalidArgument)
+          << "there must be a single list of input tensors on the root "
+             "rank, got "
+          << inputs.size();
+      const auto& input_tensors = inputs[0];
+      TT_CHECK_THROW(input_tensors.size() == getSize(), error::kInvalidArgument)
+          << "the number of input tensors on the root rank must be equal to"
+          << " the group size, got " << input_tensors.size() << " tensors and "
+          << getSize() << " processes";
 
-          TT_THROW_IF_ERROR(CheckTensorsUniformShape(input_tensors))
-                  .SetPrepend()
-              << "input tensors on the root rank: ";
-          TT_CHECK_THROW(output.sizes() == input_tensors[0].sizes(),
-                         error::kInvalidArgument)
-              << "output tensor shape must match input tensor shape, got "
-              << output.sizes() << " and " << input_tensors[0].sizes();
-          if (is_scalar) {
-            scatter_input = at::stack(input_tensors);
-          } else {
-            scatter_input = at::cat(input_tensors, 0);
-          }
-        } else {
-          TT_CHECK_THROW(inputs.empty(), error::kInvalidArgument)
-              << "on non-root rank " << rank
-              << " the list of input tensors must be empty";
+      TT_THROW_IF_ERROR(CheckTensorsUniformShape(input_tensors)).SetPrepend()
+          << "input tensors on the root rank: ";
+      TT_CHECK_THROW(output.sizes() == input_tensors[0].sizes(),
+                     error::kInvalidArgument)
+          << "output tensor shape must match input tensor shape, got "
+          << output.sizes() << " and " << input_tensors[0].sizes();
+      if (is_scalar) {
+        scatter_input = at::stack(input_tensors);
+      } else {
+        scatter_input = at::cat(input_tensors, 0);
+      }
+    } else {
+      TT_CHECK_THROW(inputs.empty(), error::kInvalidArgument)
+          << "on non-root rank " << rank
+          << " the list of input tensors must be empty";
 
-          if (is_scalar) {
-            scatter_input = at::zeros({getSize()}, output.options());
-          } else {
-            auto scatter_input_dims = CopyIntVector(output.sizes());
-            scatter_input_dims[0] *= getSize();
-            scatter_input = at::zeros(scatter_input_dims, output.options());
-          }
-        }
+      if (is_scalar) {
+        scatter_input = at::zeros({getSize()}, output.options());
+      } else {
+        auto scatter_input_dims = CopyIntVector(output.sizes());
+        scatter_input_dims[0] *= getSize();
+        scatter_input = at::zeros(scatter_input_dims, output.options());
+      }
+    }
 
-        c10d::ReduceScatterOptions reduce_scatter_opts;
-        reduce_scatter_opts.reduceOp = c10d::ReduceOp::SUM;
-        reduce_scatter_opts.timeout = opts.timeout;
-        reduce_scatter_opts.asyncOp = opts.asyncOp;
+    c10d::ReduceScatterOptions reduce_scatter_opts;
+    reduce_scatter_opts.reduceOp = c10d::ReduceOp::SUM;
+    reduce_scatter_opts.timeout = opts.timeout;
+    reduce_scatter_opts.asyncOp = opts.asyncOp;
 
-        c10::intrusive_ptr<c10d::Work> work_ptr =
-            _reduce_scatter_base(output, scatter_input, reduce_scatter_opts);
-        if (work_ptr != nullptr) {
-          // If async updates the Work object to have the correct op type.
-          dynamic_cast<TpuWork* absl_nonnull>(work_ptr.get())->opType_ =
-              c10d::OpType::SCATTER;
-        }
-        return work_ptr;
-      });
+    c10::intrusive_ptr<c10d::Work> work_ptr =
+        _reduce_scatter_base(output, scatter_input, reduce_scatter_opts);
+    if (work_ptr != nullptr) {
+      // If async updates the Work object to have the correct op type.
+      dynamic_cast<TpuWork* absl_nonnull>(work_ptr.get())->opType_ =
+          c10d::OpType::SCATTER;
+    }
+    return work_ptr;
+  });
 }
 
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter(
@@ -742,7 +739,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter(
     const c10d::ReduceScatterOptions& opts) {
   TT_KERNEL(
       OpName::kDistributedReduceScatter, _,
-      (pg_id_, output_tensors, input_tensors, opts), {
+      (output_tensors, input_tensors, opts), {
         // NOTE: Python side API only exposes single-element reduce_scatter op.
         // Same validation is done in NCCL backend.
         TT_CHECK_THROW(input_tensors.size() == 1, error::kUnimplemented)
@@ -786,7 +783,8 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::_reduce_scatter_base(
     const c10d::ReduceScatterOptions& opts) {
   TT_KERNEL(
       OpName::kDistributedReduceScatterTensor, param_keys,
-      (pg_id_, output, input, opts), {
+      (output, input, opts), {
+        TT_SET_PROCESS_GROUP_ID(param_keys);
         TT_THROW_IF_ERROR(
             ValidateReductionOp(opts.reduceOp, input.scalar_type()));
 
@@ -850,7 +848,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter_tensor_coalesced(
     const c10d::ReduceScatterOptions& opts) {
   TT_KERNEL(
       OpName::kDistributedReduceScatterTensorCoalesced, _,
-      (pg_id_, outputs, inputs, opts), {
+      (outputs, inputs, opts), {
         TT_CHECK_THROW(inputs.size() == outputs.size(), error::kInvalidArgument)
             << "inputs and outputs must have the same size, got "
             << inputs.size() << " inputs and " << outputs.size() << " outputs";
@@ -876,12 +874,10 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall_base(
     std::vector<int64_t>& output_split_sizes,  // INT_VEC_OK
     std::vector<int64_t>& input_split_sizes,   // INT_VEC_OK
     const c10d::AllToAllOptions& opts) {
-  const int64_t rank = getRank();
-  const bool async = opts.asyncOp;
   TT_KERNEL(OpName::kDistributedAllToAllSingle, _,
-            (pg_id_, rank, output, input, output_split_sizes, input_split_sizes,
-             async, opts),
-            {
+            (output, input, output_split_sizes, input_split_sizes, opts), {
+              const int64_t rank = getRank();
+              const bool async = opts.asyncOp;
               const int64_t group_size = subgroup_device_ids_[0].size();
 
               // Check on input and output dtypes already done in the PyTorch
@@ -909,13 +905,14 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall_base(
                 TT_THROW_IF_ERROR(
                     AssignBufferToAtTensor(std::move(result_buf), output));
               }
-            });
 
-  if (async) {
-    return c10::make_intrusive<TpuWork>(std::vector<at::Tensor>{output}, rank,
-                                        c10d::OpType::ALLTOALL_BASE);
-  }
-  return nullptr;
+              if (async) {
+                return c10::make_intrusive<TpuWork>(
+                    std::vector<at::Tensor>{output}, rank,
+                    c10d::OpType::ALLTOALL_BASE);
+              }
+              return nullptr;
+            });
 }
 
 absl::StatusOr<DeviceBufferRef> ProcessGroupTpu::AllToAllBaseEqualSplits(
@@ -959,11 +956,14 @@ absl::StatusOr<DeviceBufferRef> ProcessGroupTpu::AllToAllBaseUnevenSplits(
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall(
     std::vector<at::Tensor>& output_tensors,
     std::vector<at::Tensor>& input_tensors, const c10d::AllToAllOptions& opts) {
-  const int64_t rank = getRank();
-  const bool async = opts.asyncOp;
   TT_KERNEL(
       OpName::kDistributedAllToAll, param_keys,
-      (pg_id_, rank, output_tensors, input_tensors, async, opts), {
+      (output_tensors, input_tensors, opts), {
+        const int64_t rank = getRank();
+        const bool async = opts.asyncOp;
+        TT_THROW_IF_ERROR(param_keys.SetParam("rank", rank));
+        TT_THROW_IF_ERROR(param_keys.SetParam("async", async));
+        TT_SET_PROCESS_GROUP_ID(param_keys);
         TT_CHECK_THROW(output_tensors.size() == input_tensors.size(),
                        error::kInvalidArgument)
             << "output and input tensors must have the same number of tensors, "
@@ -1016,18 +1016,18 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall(
           TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buffers[i]),
                                                    output_tensors[i]));
         }
-      });
 
-  if (async) {
-    return c10::make_intrusive<TpuWork>(output_tensors, rank,
-                                        c10d::OpType::ALLTOALL);
-  }
-  return nullptr;
+        if (async) {
+          return c10::make_intrusive<TpuWork>(output_tensors, rank,
+                                              c10d::OpType::ALLTOALL);
+        }
+        return nullptr;
+      });
 }
 
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::barrier(
     const c10d::BarrierOptions& opts) {
-  TT_KERNEL(OpName::kDistributedBarrier, _, (pg_id_, opts), {
+  TT_KERNEL(OpName::kDistributedBarrier, _, (opts), {
     // Check for unsupported options.
     TT_CHECK_THROW(opts.device_ids.empty(), error::kUnimplemented)
         << "device_ids in barrier options is not supported.";
@@ -1065,76 +1065,73 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::barrier(
 }
 
 DeviceGroupList ProcessGroupTpu::GatherAllSubgroups() {
-  TT_KERNEL(
-      OpName::kTorchTpuInternalGatherAllSubgroups, param_keys,
-      (pg_id_, device_ids_), {
-        int64_t world_size =
-            device_ids_.size();  // All devices in the TPU slice
-        int64_t group_size =
-            getSize();  // Devices in this particular process group
+  TT_KERNEL(OpName::kTorchTpuInternalGatherAllSubgroups, param_keys, (), {
+    TT_SET_PROCESS_GROUP_ID(param_keys);
+    TT_THROW_IF_ERROR(param_keys.SetParam("device_ids", device_ids_));
+    int64_t world_size = device_ids_.size();  // All devices in the TPU slice
+    int64_t group_size = getSize();  // Devices in this particular process group
 
-        // We cannot use c10d::Store to exchange information between processes
-        // in different subgroups, so instead we use StableHLO collectives over
-        // the global TPU slice to do that.
-        //
-        // We do this by leveraging the existing DispatchOp machinery, hence
-        // create the data as torch tensors, and use existing all-reduce
-        // builder.
-        //
-        // NOTE: this tensor size is O(device_count^2). We can fix it later, if
-        // still needed after b/445283852 (or if latter cannot be done).
-        at::Tensor subgroups = at::zeros({world_size, group_size},
-                                         at::device(at::kCPU).dtype(at::kLong));
+    // We cannot use c10d::Store to exchange information between processes
+    // in different subgroups, so instead we use StableHLO collectives over
+    // the global TPU slice to do that.
+    //
+    // We do this by leveraging the existing DispatchOp machinery, hence
+    // create the data as torch tensors, and use existing all-reduce
+    // builder.
+    //
+    // NOTE: this tensor size is O(device_count^2). We can fix it later, if
+    // still needed after b/445283852 (or if latter cannot be done).
+    at::Tensor subgroups = at::zeros({world_size, group_size},
+                                     at::device(at::kCPU).dtype(at::kLong));
 
-        // This process knows the members of its own subgroup, thanks to
-        // c10d::Store.
-        ABSL_CHECK_EQ(group_size, rank_to_device_id_.size())  // CRASH_OK
-            << "Inconsisent device subgroup. This is a bug.";
-        for (int i = 0; i < group_size; ++i) {
-          subgroups.index({addressable_device_id_, i}) = rank_to_device_id_[i];
-        }
-        subgroups = subgroups.to(at::device(GetPrivateUse1DeviceType()));
+    // This process knows the members of its own subgroup, thanks to
+    // c10d::Store.
+    ABSL_CHECK_EQ(group_size, rank_to_device_id_.size())  // CRASH_OK
+        << "Inconsisent device subgroup. This is a bug.";
+    for (int i = 0; i < group_size; ++i) {
+      subgroups.index({addressable_device_id_, i}) = rank_to_device_id_[i];
+    }
+    subgroups = subgroups.to(at::device(GetPrivateUse1DeviceType()));
 
-        // Thanks to PJRT, we know all the devices in the TPU slice, so we can
-        // perform a collective, without having to know the "default" process
-        // group. We just need to reshape device list as [1, N] to use as
-        // subgroup list.
-        auto world_group = DeviceGroupList(1, device_ids_);
-        auto op_builder = [group = std::move(world_group)](mlir::MlirOp input) {
-          return BuildDistributedAllReduceShlo(input, c10d::ReduceOp::SUM,
-                                               group);
-        };
+    // Thanks to PJRT, we know all the devices in the TPU slice, so we can
+    // perform a collective, without having to know the "default" process
+    // group. We just need to reshape device list as [1, N] to use as
+    // subgroup list.
+    auto world_group = DeviceGroupList(1, device_ids_);
+    auto op_builder = [group = std::move(world_group)](mlir::MlirOp input) {
+      return BuildDistributedAllReduceShlo(input, c10d::ReduceOp::SUM, group);
+    };
 
-        TT_ASSIGN_OR_THROW(auto output_dtype, ConvertTo<mlir::ElementType>(
-                                                  subgroups.scalar_type()));
+    TT_ASSIGN_OR_THROW(auto output_dtype,
+                       ConvertTo<mlir::ElementType>(subgroups.scalar_type()));
 
-        TT_ASSIGN_OR_THROW(
-            auto result_buffer,
-            DispatchOp<1>(OpName::kTorchTpuInternalGatherAllSubgroups,
-                          std::move(op_builder), subgroups,
-                          {.out_dtype = output_dtype,
-                           .out_dims = subgroups.sizes(),
-                           .op_param_cache_keys = std::move(param_keys)}));
-        TT_THROW_IF_ERROR(
-            AssignBufferToAtTensor(std::move(result_buffer), subgroups));
-        subgroups = subgroups.cpu();
+    TT_ASSIGN_OR_THROW(
+        auto result_buffer,
+        DispatchOp<1>(OpName::kTorchTpuInternalGatherAllSubgroups,
+                      std::move(op_builder), subgroups,
+                      {.out_dtype = output_dtype,
+                       .out_dims = subgroups.sizes(),
+                       .op_param_cache_keys = std::move(param_keys)}));
+    TT_THROW_IF_ERROR(
+        AssignBufferToAtTensor(std::move(result_buffer), subgroups));
+    subgroups = subgroups.cpu();
 
-        ABSL_VLOG(1) << "[ProcessGroupTpu::GatherAllSubgroups] "
-                     << "rank: " << getRank() << ", size " << getSize()
-                     << ", subgroups: " << subgroups;
+    ABSL_VLOG(1) << "[ProcessGroupTpu::GatherAllSubgroups] "
+                 << "rank: " << getRank() << ", size " << getSize()
+                 << ", subgroups: " << subgroups;
 
-        // Convert from at::Tensor to a non-pytorch type.
-        auto result = DeviceGroupList(world_size, DeviceGroup(group_size));
-        for (int i = 0; i < world_size; ++i) {
-          for (int j = 0; j < group_size; ++j) {
-            result[i][j] = subgroups.index({i, j}).item().toLong();
-          }
-        }
+    // Convert from at::Tensor to a non-pytorch type.
+    auto result = DeviceGroupList(world_size, DeviceGroup(group_size));
+    for (int i = 0; i < world_size; ++i) {
+      for (int j = 0; j < group_size; ++j) {
+        result[i][j] = subgroups.index({i, j}).item().toLong();
+      }
+    }
 
-        // Sort (lexicographic order) and deduplicate the subgroups.
-        std::set<DeviceGroup> subgroups_set(result.cbegin(), result.cend());
-        return DeviceGroupList(subgroups_set.cbegin(), subgroups_set.cend());
-      });
+    // Sort (lexicographic order) and deduplicate the subgroups.
+    std::set<DeviceGroup> subgroups_set(result.cbegin(), result.cend());
+    return DeviceGroupList(subgroups_set.cbegin(), subgroups_set.cend());
+  });
 }
 
 }  // namespace torch_tpu

@@ -326,7 +326,7 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenNativeBatchNormOut(
   TT_KERNEL(
       OpName::kNativeBatchNormOut, param_keys,
       (input, weight, bias, running_mean, running_variance, training, momentum,
-       eps, out),
+       eps, out, save_mean, save_invstd),
       {
         TT_ASSIGN_OR_THROW(
             (auto [output, mean, variance_inverse]),
@@ -386,7 +386,7 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenNativeBatchNormLegitOut(
   TT_KERNEL(
       OpName::kNativeBatchNormLegitOut, param_keys,
       (input, weight, bias, running_mean, running_variance, training, momentum,
-       eps, out),
+       eps, out, save_mean, save_invstd),
       {
         TT_ASSIGN_OR_THROW(
             (auto [output, mean, variance_inverse]),
@@ -420,7 +420,9 @@ AtenNativeBatchNormLegitNoStatsOut(const at::Tensor& input,
                                    at::Tensor& save_invstd) {
   TT_KERNEL(
       OpName::kNativeBatchNormLegitNoStatsOut, param_keys,
-      (input, weight, bias, training, momentum, eps, out), {
+      (input, weight, bias, training, momentum, eps, out, save_mean,
+       save_invstd),
+      {
         TT_ASSIGN_OR_THROW(
             (auto [output, mean, variance_inverse]),
             TpuBatchNorm(input, SanitizeOptionalTensor(weight),

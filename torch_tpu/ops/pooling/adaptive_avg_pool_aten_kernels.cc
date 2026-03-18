@@ -32,6 +32,8 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -758,7 +760,7 @@ at::Tensor& AtenAdaptiveAvgPool3dBackwardGradInput(
     at::Tensor& grad_input) {
   TT_KERNEL(
       OpName::kAdaptiveAvgPool3dBackwardGradInput, param_keys,
-      (grad_output, self), {
+      (grad_output, self, grad_input), {
         TT_ASSIGN_OR_THROW(
             const auto output_dtype,
             ConvertTo<mlir::ElementType>(grad_input.scalar_type()));

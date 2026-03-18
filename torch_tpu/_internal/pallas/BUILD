@@ -49,7 +49,6 @@ torch_tpu_cc_library(
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/util:base_headers",
-        "//torch_tpu/common:cache_key",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:shape",

@@ -28,7 +28,6 @@
 #include "ATen/core/TensorBody.h"
 #include "c10/util/string_view.h"
 #include "torch/extension.h"  // IWYU pragma: keep for aten::Tensor pybind type
-#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
@@ -66,10 +65,13 @@ std::vector<at::Tensor> PyCallCustomKernel(
     const c10::string_view name, const c10::string_view kernel_key,
     const std::vector<at::Tensor>& inputs,
     const std::vector<at::Tensor>& output_shapes,
+    // Cannot use absl::flat_hash_map here because it is not supported by
+    // pybind11.
+    // NOLINTNEXTLINE(google3-runtime-unneeded-pointer-stability-check)
     const std::unordered_map<int64_t, int64_t>& input_output_aliases) {
   TT_KERNEL(
       OpName::kCustomKernel, op_param_cache_keys,
-      (name, kernel_key, inputs, output_shapes), {
+      (name, kernel_key, inputs, output_shapes, input_output_aliases), {
         Indices aliased_input_indices;
         absl::flat_hash_map<int64_t, int64_t> output_to_input_alias_map;
         for (const auto& [input_index, output_index] : input_output_aliases) {
@@ -146,12 +148,15 @@ PYBIND11_MODULE(tpu_torch_pallas, m) {
         py::arg("serialized_mlir_module"));
   m.def("lookup_custom_kernel", PyLookupCustomKernel,  //
         py::arg("name"), py::arg("kernel_key"));
-  m.def(
-      "call_custom_kernel", PyCallCustomKernel,  //
-      py::arg("name"), py::arg("kernel_key"),
-      py::kw_only(),  // Everything after this is keyword-only
-      py::arg("inputs"), py::arg("output_shapes"),
-      py::arg("input_output_aliases") = std::unordered_map<int64_t, int64_t>());
+  m.def("call_custom_kernel", PyCallCustomKernel,  //
+        py::arg("name"), py::arg("kernel_key"),
+        py::kw_only(),  // Everything after this is keyword-only
+        py::arg("inputs"), py::arg("output_shapes"),
+        py::arg("input_output_aliases")
+        // Cannot use absl::flat_hash_map here because it is not supported
+        // by pybind11.
+        // NOLINTNEXTLINE(google3-runtime-unneeded-pointer-stability-check)
+        = std::unordered_map<int64_t, int64_t>());
 }
 
 }  // namespace torch_tpu

@@ -68,6 +68,12 @@
 namespace torch_tpu {
 namespace internal {
 
+#ifdef NDEBUG
+inline constexpr bool kDebugMode = false;
+#else
+inline constexpr bool kDebugMode = true;
+#endif  // NDEBUG
+
 // Checks for whitespace at compile time.
 [[nodiscard]] inline constexpr bool IsWhitespace(char c) noexcept {
   switch (c) {

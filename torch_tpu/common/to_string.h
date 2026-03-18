@@ -26,6 +26,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -81,6 +82,8 @@ template <typename T>
 [[nodiscard]] std::string ToString(const std::vector<T>& vec);
 template <typename T, size_t kSize>
 [[nodiscard]] std::string ToString(const std::array<T, kSize>& arr);
+template <typename K, typename V>
+[[nodiscard]] std::string ToString(const std::unordered_map<K, V>& map);
 template <typename Iterator>
 [[nodiscard]] std::string ToString(Iterator begin, Iterator end);
 
@@ -208,6 +211,11 @@ template <typename T>
 template <typename T, size_t kSize>
 [[nodiscard]] std::string ToString(const std::array<T, kSize>& arr) {
   return ToString(absl::MakeConstSpan(arr));
+}
+
+template <typename K, typename V>
+[[nodiscard]] std::string ToString(const std::unordered_map<K, V>& map) {
+  return ToString(map.begin(), map.end());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

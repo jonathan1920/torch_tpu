@@ -26,6 +26,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -156,6 +157,8 @@ using FormattedKey = decltype(FormatParamCacheKey(std::declval<T>()));
 // overloads.
 template <typename T>
 FormattedKey<T> FormatParamCacheKey(const std::optional<T>& value);
+template <typename T1, typename T2>
+std::string FormatParamCacheKey(const std::pair<T1, T2>& value);
 template <typename T, std::size_t kSize>
 FormattedKey<T> FormatParamCacheKey(const std::array<T, kSize>& value);
 template <typename T>
@@ -167,6 +170,9 @@ template <typename T>
 FormattedKey<T> FormatParamCacheKey(at::ArrayRef<T> value);
 template <typename T>
 FormattedKey<T> FormatParamCacheKey(absl::Span<T> value);
+template <typename K, typename V, typename Hash, typename Eq, typename Alloc>
+std::string FormatParamCacheKey(
+    const std::unordered_map<K, V, Hash, Eq, Alloc>& value);
 template <typename T>
 FormattedKey<T> FormatParamCacheKey(c10::OptionalArrayRef<T> value);
 
@@ -176,28 +182,52 @@ FormattedKey<T> FormatParamCacheKey(const std::optional<T>& value) {
   return value.has_value() ? FormatParamCacheKey(value.value()) : "";
 }
 
-template <typename T>
-FormattedKey<T> FormatParamCacheKey(absl::Span<T> value) {
-  if (value.empty()) {
+template <typename T1, typename T2>
+std::string FormatParamCacheKey(const std::pair<T1, T2>& value) {
+  return absl::StrCat("(", FormatParamCacheKey(value.first), ",",
+                      FormatParamCacheKey(value.second), ")");
+}
+
+// Formats a range of values into a string to be used as a cache parameter key.
+template <typename T, typename Result, typename Iter>
+Result FormatParamCacheKeyForRange(const Iter begin, const Iter end) {
+  if (begin == end) {
     return "";
   }
   std::string result = "[";
   bool first = true;
-  for (const auto& elem : value) {
+  for (Iter it = begin; it != end; ++it) {
     if (first) {
       first = false;
     } else {
       absl::StrAppend(&result, ",");
     }
-    if constexpr (std::is_same_v<FormattedKey<T>, std::string>) {
-      absl::StrAppend(&result, FormatParamCacheKey(elem));
-    } else {
-      TT_ASSIGN_OR_RETURN(std::string str, FormatParamCacheKey(elem));
+    if constexpr (std::is_same_v<Result, std::string>) {
+      absl::StrAppend(&result, FormatParamCacheKey(*it));
+    } else if constexpr (std::is_same_v<Result, absl::StatusOr<std::string>>) {
+      TT_ASSIGN_OR_RETURN(std::string str, FormatParamCacheKey(*it));
       absl::StrAppend(&result, str);
+    } else {
+      static_assert(false, "Unsupported Result type.");
     }
   }
   absl::StrAppend(&result, "]");
   return result;
+}
+
+template <typename T>
+FormattedKey<T> FormatParamCacheKey(absl::Span<T> value) {
+  return FormatParamCacheKeyForRange<T, FormattedKey<T>>(value.begin(),
+                                                         value.end());
+}
+
+template <typename K, typename V, typename Hash, typename Eq, typename Alloc>
+std::string FormatParamCacheKey(
+    const std::unordered_map<K, V, Hash, Eq, Alloc>& value) {
+  using value_type =
+      typename std::unordered_map<K, V, Hash, Eq, Alloc>::value_type;
+  return FormatParamCacheKeyForRange<value_type, std::string>(value.begin(),
+                                                              value.end());
 }
 
 template <typename T>

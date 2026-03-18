@@ -21,6 +21,7 @@ package(
 
 torch_tpu_cc_library(
     name = "logging",
+    srcs = ["logging.cc"],
     hdrs = ["logging.h"],
     deps = [
         "//torch_tpu/common:aten_utils",
@@ -30,6 +31,7 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -44,6 +46,7 @@ torch_tpu_cc_test(
         ":logging",
         "//shims/torch:aten_headers",
         "//shims/torch/c10/core:base_headers",
+        "//shims/torch/c10/util:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:dtype",

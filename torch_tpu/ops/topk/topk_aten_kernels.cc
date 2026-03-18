@@ -26,6 +26,7 @@
 #include "torch/csrc/autograd/generated/variable_factories.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -41,45 +42,50 @@ std::tuple<at::Tensor&, at::Tensor&> AtenTopKValues(
     const at::Tensor& self, const int64_t k, const int64_t dim,
     const bool largest, const bool sorted, at::Tensor& values,
     at::Tensor& indices) {
-  TT_KERNEL(OpName::kTopkValues, param_keys, (self, k, dim, largest, sorted), {
-    if (self.dim() == 0) {
-      values = self.clone();
-      indices = torch::tensor(0);
-      return {values, indices};
-    }
-    const int64_t topk_dim = dim >= 0 ? dim : self.dim() + dim;
-    TT_CHECK_THROW(topk_dim >= 0, error::kInvalidArgument) << absl::StrCat(
-        "invalid argument dim: ", dim, " Input tensor rank: ", self.dim());
-    // TODO(b/435537869): Support sorted = false.
-    TT_CHECK_THROW(sorted, error::kInvalidArgument)
-        << absl::StrCat("sorted must be true. Got sorted = ", sorted);
+  TT_KERNEL(
+      OpName::kTopkValues, param_keys,
+      (self, k, dim, largest, sorted, values, indices), {
+        if (self.dim() == 0) {
+          values = self.clone();
+          indices = torch::tensor(0);
+          return {values, indices};
+        }
+        const int64_t topk_dim = dim >= 0 ? dim : self.dim() + dim;
+        TT_CHECK_THROW(topk_dim >= 0, error::kInvalidArgument) << absl::StrCat(
+            "invalid argument dim: ", dim, " Input tensor rank: ", self.dim());
+        // TODO(b/435537869): Support sorted = false.
+        TT_CHECK_THROW(sorted, error::kInvalidArgument)
+            << absl::StrCat("sorted must be true. Got sorted = ", sorted);
 
-    const auto self_sizes = self.sizes();
-    TT_ASSIGN_OR_THROW(const auto elem_type,
-                       ConvertTo<mlir::ElementType>(self.scalar_type()));
-    Dimensions output_dims = CopyIntVector(self_sizes);
-    output_dims[topk_dim] = k;
-    auto op_builder =
-        [topk_dim, k,
-         largest](mlir::MlirOp input) -> absl::StatusOr<MlirOpResults<2>> {
-      TT_ASSIGN_OR_RETURN(
-          auto topk_outputs,
-          BuildTopKShlo(input, k, topk_dim,
-                        largest ? TopKMode::kLargest : TopKMode::kSmallest,
-                        TopKStableMode::kUnstable));
-      return {{topk_outputs.values, topk_outputs.indices}};
-    };
-    TT_ASSIGN_OR_THROW(
-        (auto [values_buf, indices_buf]),
-        (DispatchOp<1, 2>(OpName::kTopkValues, std::move(op_builder), self,
-                          {.out_dtypes = {elem_type, mlir::ElementType::I64},
-                           .out_dims_list = {output_dims, output_dims},
-                           .op_param_cache_keys = std::move(param_keys)})));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(values_buf), values));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(indices_buf), indices));
+        const auto self_sizes = self.sizes();
+        TT_ASSIGN_OR_THROW(const auto elem_type,
+                           ConvertTo<mlir::ElementType>(self.scalar_type()));
+        Dimensions output_dims = CopyIntVector(self_sizes);
+        output_dims[topk_dim] = k;
+        auto op_builder =
+            [topk_dim, k,
+             largest](mlir::MlirOp input) -> absl::StatusOr<MlirOpResults<2>> {
+          TT_ASSIGN_OR_RETURN(
+              auto topk_outputs,
+              BuildTopKShlo(input, k, topk_dim,
+                            largest ? TopKMode::kLargest : TopKMode::kSmallest,
+                            TopKStableMode::kUnstable));
+          return {{topk_outputs.values, topk_outputs.indices}};
+        };
+        TT_ASSIGN_OR_THROW(
+            (auto [values_buf, indices_buf]),
+            (DispatchOp<1, 2>(
+                OpName::kTopkValues, std::move(op_builder), self,
+                {.out_dtypes = {elem_type, mlir::ElementType::I64},
+                 .out_dims_list = {output_dims, output_dims},
+                 .op_param_cache_keys = std::move(param_keys)})));
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(values_buf), values));
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(indices_buf), indices));
 
-    return {values, indices};
-  });
+        return {values, indices};
+      });
 }
 
 }  // namespace torch_tpu

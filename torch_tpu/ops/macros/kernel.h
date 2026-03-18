@@ -60,7 +60,7 @@
 
 #define TT_KERNEL(op_name, param_keys, args, ...)                             \
   do {                                                                        \
-    TT_LOG_KERNEL_START_(op_name, TT_REMOVE_PARENS_(args));                   \
+    TT_CHECK_AND_LOG_KERNEL_ARGS_(op_name, TT_REMOVE_PARENS_(args));          \
     ::torch_tpu::ScopedPythonContextCapturer _capturer(op_name);              \
     if constexpr (std::string_view(#param_keys) == "_") {                     \
       /* Use InvalidOpParamCacheKeys as the type of _, to prevent using it in \

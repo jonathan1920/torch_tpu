@@ -40,15 +40,18 @@ using testing::StartsWith;
 static const auto kInitShowCppContext =
     setenv("TORCH_SHOW_CPP_STACKTRACES", "0", /*overwrite=*/1);
 
+void Kernel1(int ndim) {
+  TT_KERNEL(OpName::kAdd, _, (ndim), {
+    throw  // For testing error API.
+        TtError(TT_ERROR(error::kInvalidArgument) << "test error",
+                c10::SourceLocation({"foo()", "bar.cc", 42}));
+  });
+}
+
 TEST(TtKernel, PrependOpName) {
-  const int ndim = 1;
   bool thrown_c10_error = false;
   try {
-    TT_KERNEL(OpName::kAdd, _, (ndim), {
-      throw  // For testing error API.
-          TtError(TT_ERROR(error::kInvalidArgument) << "test error",
-                  c10::SourceLocation({"foo()", "bar.cc", 42}));
-    });
+    Kernel1(1);
   } catch (const c10::Error& e) {
     thrown_c10_error = true;
     EXPECT_EQ(std::string(e.what_without_backtrace()), "add(): test error");
@@ -70,12 +73,16 @@ at::Tensor AtenOp2(bool cond) {
   });
 }
 
+void NewKernel1(int ndim) {
+  TT_KERNEL(OpName::kCatOut, _, (ndim), { AtenOp2(true); });
+}
+
 TEST(TtKernel, PrependRootOpName) {
   bool thrown_c10_error = false;
   const int ndim = 1;
   try {
     // op3 calls op2, which throws an error.
-    TT_KERNEL(OpName::kCatOut, _, (ndim), { AtenOp2(true); });
+    NewKernel1(ndim);
   } catch (const c10::Error& e) {
     thrown_c10_error = true;
     // The error thrown by op2 is associated with op3, the root op.
@@ -87,10 +94,7 @@ TEST(TtKernel, PrependRootOpName) {
   EXPECT_TRUE(thrown_c10_error);
 }
 
-TEST(TtKernel, ComputesCacheKeysWithNonTensors) {
-  const int ndim = 3;
-  const double alpha = 2.5;
-  const std::optional<int> seed = 42;
+void Kernel3(int ndim, double alpha, std::optional<int> seed) {
   TT_KERNEL(OpName::kAdd, param_keys, (ndim, alpha, seed), {
     EXPECT_THAT(param_keys, ElementsAre(
                                 // go/keep-sorted start
@@ -102,11 +106,15 @@ TEST(TtKernel, ComputesCacheKeysWithNonTensors) {
   });
 }
 
-TEST(TtKernel, ComputesCacheKeysWithTensorAndNonTensors) {
-  const at::Tensor self = at::ones(1);
+TEST(TtKernel, ComputesCacheKeysWithNonTensors) {
   const int ndim = 3;
-  const bool expand = true;
-  const std::optional<int> seed = std::nullopt;
+  const double alpha = 2.5;
+  const std::optional<int> seed = 42;
+  Kernel3(ndim, alpha, seed);
+}
+
+void Kernel4(const at::Tensor& self, int ndim, bool expand,
+             std::optional<int> seed) {
   TT_KERNEL(OpName::kAdd, param_keys, (self, ndim, expand, seed), {
     // `self` is a Tensor and thus shouldn't be in the cache keys.
     // `seed` is nullopt and thus should be omitted from the cache keys.
@@ -119,12 +127,22 @@ TEST(TtKernel, ComputesCacheKeysWithTensorAndNonTensors) {
   });
 }
 
-TEST(TtKernel, SupportsNullaryOps) {
+TEST(TtKernel, ComputesCacheKeysWithTensorAndNonTensors) {
+  const at::Tensor self = at::ones(1);
+  const int ndim = 3;
+  const bool expand = true;
+  const std::optional<int> seed = std::nullopt;
+  Kernel4(self, ndim, expand, seed);
+}
+
+void Kernel0() {
   TT_KERNEL(OpName::kAdd, _, (),
             {
                 // Do nothing.
             });
 }
+
+TEST(TtKernel, SupportsNullaryOps) { Kernel0(); }
 
 }  // namespace
 }  // namespace torch_tpu

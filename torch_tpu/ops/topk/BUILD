@@ -29,6 +29,7 @@ torch_tpu_cc_library(
         "//shims/torch:torch_headers",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/ops:op_builder_utils",

@@ -37,6 +37,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/convolution/convolution.h"
@@ -480,8 +481,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenConvolutionBackward(
     std::array<bool, 3> output_mask) {
   TT_KERNEL(
       OpName::kConvolutionBackward, param_keys,
-      (grad_output, input, weight, stride, padding, dilation, transposed,
-       output_padding, groups, output_mask),
+      (grad_output, input, weight, bias_sizes, stride, padding, dilation,
+       transposed, output_padding, groups, output_mask),
       {
         TT_ASSIGN_OR_THROW(
             auto results,

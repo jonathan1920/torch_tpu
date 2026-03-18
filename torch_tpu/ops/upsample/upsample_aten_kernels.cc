@@ -772,7 +772,7 @@ at::Tensor& AtenUpsampleNearest1dBackwardGradInput(
     at::Tensor& grad_input) {
   TT_KERNEL(
       OpName::kUpsampleNearest1dBackwardGradInput, param_keys,
-      (grad_output, output_shape_in, input_shape, grad_input), {
+      (grad_output, output_shape_in, input_shape, scale, grad_input), {
         auto output_shape = CopyIntVector(grad_output.sizes());
 
         // TODO(lwh): Add check for output_shape and scaled version from
@@ -816,11 +816,11 @@ at::Tensor& AtenUpsampleNearest2dBackwardGradInput(
     const at::Tensor& grad_output, at::IntArrayRef output_shape_in,
     at::IntArrayRef input_shape, std::optional<double> scale_h,
     std::optional<double> scale_w, at::Tensor& grad_input) {
-  auto output_shape = CopyIntVector(grad_output.sizes());
-
   TT_KERNEL(
       OpName::kUpsampleNearest2dBackwardGradInput, param_keys,
-      (grad_output, output_shape, input_shape, grad_input), {
+      (grad_output, output_shape_in, input_shape, scale_h, scale_w, grad_input),
+      {
+        auto output_shape = CopyIntVector(grad_output.sizes());
         // TODO(lwh): Add check for output_shape and scaled version from
         // input_shape, and check that grad_input and grad_output shapes match
         // those.
@@ -866,11 +866,12 @@ at::Tensor& AtenUpsampleNearest3dBackwardGradInput(
     at::IntArrayRef input_shape, std::optional<double> scale_h,
     std::optional<double> scale_w, std::optional<double> scale_d,
     at::Tensor& grad_input) {
-  auto output_shape = CopyIntVector(grad_output.sizes());
-
   TT_KERNEL(
       OpName::kUpsampleNearest3dBackwardGradInput, param_keys,
-      (grad_output, output_shape, input_shape, grad_input), {
+      (grad_output, output_shape_in, input_shape, scale_h, scale_w, scale_d,
+       grad_input),
+      {
+        auto output_shape = CopyIntVector(grad_output.sizes());
         // TODO(lwh): Add check for output_shape and scaled version from
         // input_shape, and check that grad_input and grad_output shapes match
         // those.
@@ -918,11 +919,10 @@ at::Tensor& AtenUpsampleNearestExact1dBackwardGradInput(
     const at::Tensor& grad_output, at::IntArrayRef output_shape_in,
     at::IntArrayRef input_shape, std::optional<double> scale,
     at::Tensor& grad_input) {
-  auto output_shape = CopyIntVector(grad_output.sizes());
-
   TT_KERNEL(
       OpName::kUpsampleNearestExact1dBackwardGradInput, param_keys,
-      (grad_output, output_shape, input_shape, grad_input), {
+      (grad_output, output_shape_in, input_shape, scale, grad_input), {
+        auto output_shape = CopyIntVector(grad_output.sizes());
         // TODO(lwh): Add check for output_shape and scaled version from
         // input_shape, and check that grad_input and grad_output shapes match
         // those.
@@ -965,11 +965,11 @@ at::Tensor& AtenUpsampleNearestExact2dBackwardGradInput(
     const at::Tensor& grad_output, at::IntArrayRef output_shape_in,
     at::IntArrayRef input_shape, std::optional<double> scale_h,
     std::optional<double> scale_w, at::Tensor& grad_input) {
-  auto output_shape = CopyIntVector(grad_output.sizes());
-
   TT_KERNEL(
       OpName::kUpsampleNearestExact2dBackwardGradInput, param_keys,
-      (grad_output, output_shape, input_shape, grad_input), {
+      (grad_output, output_shape_in, input_shape, scale_h, scale_w, grad_input),
+      {
+        auto output_shape = CopyIntVector(grad_output.sizes());
         // TODO(lwh): Add check for output_shape and scaled version from
         // input_shape, and check that grad_input and grad_output shapes match
         // those.
@@ -1016,11 +1016,12 @@ at::Tensor& AtenUpsampleNearestExact3dBackwardGradInput(
     at::IntArrayRef input_shape, std::optional<double> scale_h,
     std::optional<double> scale_w, std::optional<double> scale_d,
     at::Tensor& grad_input) {
-  auto output_shape = CopyIntVector(grad_output.sizes());
-
   TT_KERNEL(
       OpName::kUpsampleNearestExact3dBackwardGradInput, param_keys,
-      (grad_output, output_shape, input_shape, grad_input), {
+      (grad_output, output_shape_in, input_shape, scale_h, scale_w, scale_d,
+       grad_input),
+      {
+        auto output_shape = CopyIntVector(grad_output.sizes());
         // TODO(lwh): Add check for output_shape and scaled version from
         // input_shape, and check that grad_input and grad_output shapes match
         // those.
