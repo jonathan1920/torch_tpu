@@ -4496,6 +4496,26 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       ):
         torch.remainder(*args)
 
+  def test_foreach_abs_inplace_complex(self):
+    self_list = [
+        torch.tensor([1], device=et.device(), dtype=torch.int64),
+        torch.tensor([1 + 1j], device=et.device(), dtype=torch.complex64),
+        torch.tensor([1 + 1j], device=et.device(), dtype=torch.complex64),
+        torch.tensor([1.0], device=et.device(), dtype=torch.float64),
+    ]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "foreach_abs_(): expected all 4 tensors in the self list not to be"
+            " complex, got 2 complex tensors: complex64 at index 1, and"
+            " complex64 at index 2"
+        ),
+        cpu="In-place abs is not supported for complex tensors.",
+        message_reviewed_by="wan",
+    ):
+      torch._foreach_abs_(self_list)
+
   def test_foreach_add_int_tensors_float_alpha(self):
     self_list = [torch.tensor([1, 2], dtype=torch.int32, device=et.device())]
     other_list = [torch.tensor([3, 4], dtype=torch.int32, device=et.device())]
@@ -4527,7 +4547,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch._foreach_add(self_list, other_list, alpha=True)
 
-  def test_inplace_foreach_add_int_and_float(self):
+  def test_foreach_add_inplace_int_and_float(self):
     self_list = [torch.tensor([1, 2], dtype=torch.int32, device=et.device())]
     with et.assert_raises_message(
         RuntimeError,
@@ -4541,7 +4561,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch._foreach_add_(self_list, 1.5)
 
-  def test_inplace_foreach_add_bool_tensors_and_int_scalars(self):
+  def test_foreach_add_inplace_bool_tensors_and_int_scalars(self):
     self_list = [
         torch.tensor([True, True], dtype=torch.bool, device=et.device()),
         torch.tensor([True, True], dtype=torch.bool, device=et.device()),
@@ -4558,14 +4578,18 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch._foreach_add_(self_list, [1, 1])
 
-  def test_inplace_foreach_sub_bool(self):
+  def test_foreach_sub_bool(self):
     self_list = [
-        torch.tensor([True, True], dtype=torch.bool, device=et.device()),
+        torch.ones(5, device=et.device()),
         torch.tensor([True, True], dtype=torch.bool, device=et.device()),
     ]
+
     with et.assert_raises_message(
         RuntimeError,
-        tpu="foreach_sub(): bool dtype is not supported",
+        tpu=(
+            "foreach_sub(): expected all 2 tensors in the self list not to be"
+            " bool, got 1 bool tensor: bool at index 1"
+        ),
         cpu=(
             "Subtraction, the `-` operator, with a bool tensor is not"
             " supported. If you are trying to invert a mask, use the `~` or"
@@ -4575,30 +4599,90 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch._foreach_sub(self_list, [1, 1])
 
-  def test_inplace_foreach_sqrt_integral(self):
+  def test_foreach_sub_scalar_bool(self):
     self_list = [
         torch.tensor([1, 4], dtype=torch.int32, device=et.device()),
         torch.tensor([9, 16], dtype=torch.int32, device=et.device()),
     ]
+
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "foreach_sqrt_(): expected input tensor dtype to be non-integral,"
-            " got int32"
+            "foreach_sub(): expected the scalar argument not to be bool, got"
+            " true"
+        ),
+        cpu=(
+            "Subtraction, the `-` operator, with a bool tensor is not"
+            " supported. If you are trying to invert a mask, use the `~` or"
+            " `logical_not()` operator instead."
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._foreach_sub(self_list, True)
+
+  def test_foreach_sub_scalar_list_bool(self):
+    self_list = [
+        torch.tensor([1, 4], dtype=torch.int32, device=et.device()),
+        torch.tensor([9, 16], dtype=torch.int32, device=et.device()),
+    ]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "foreach_sub(): expected all 2 scalars in the scalars list not to"
+            " be bool, got 1 bool scalar: true at index 1"
+        ),
+        cpu=(
+            "Subtraction, the `-` operator, with a bool tensor is not"
+            " supported. If you are trying to invert a mask, use the `~` or"
+            " `logical_not()` operator instead."
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._foreach_sub(self_list, [1, True])
+
+  def test_foreach_sqrt_inplace_integral(self):
+    self_list = [
+        torch.tensor([1, 4], dtype=torch.int32, device=et.device()),
+        torch.tensor([1, 4], dtype=torch.float64, device=et.device()),
+        torch.tensor([9, 16], dtype=torch.int32, device=et.device()),
+        torch.tensor([9, 16], dtype=torch.float64, device=et.device()),
+    ]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "foreach_sqrt_(): expected all 4 tensors in the self list not to be"
+            " integral, got 2 integral tensors: int32 at index 0, and int32 at"
+            " index 2"
         ),
         cpu="result type Float can't be cast to the desired output type Int",
     ):
       torch._foreach_sqrt_(self_list)
 
   def test_foreach_addcdiv_integral(self):
-    self_list = [torch.tensor([1, 2], dtype=torch.int64, device=et.device())]
-    tensor1_list = [torch.tensor([3, 4], dtype=torch.int32, device=et.device())]
-    tensor2_list = [torch.tensor([5, 6], dtype=torch.uint8, device=et.device())]
+    self_list = [
+        torch.tensor([1, 2], dtype=torch.int64, device=et.device()),
+        torch.tensor([1, 2], dtype=torch.int64, device=et.device()),
+        torch.tensor([1, 2], dtype=torch.int64, device=et.device()),
+    ]
+    tensor1_list = [
+        torch.tensor([3, 4], dtype=torch.int32, device=et.device()),
+        torch.tensor([3, 4], dtype=torch.int32, device=et.device()),
+        torch.tensor([3, 4], dtype=torch.float32, device=et.device()),
+    ]
+    tensor2_list = [
+        torch.tensor([5, 6], dtype=torch.uint8, device=et.device()),
+        torch.tensor([5, 6], dtype=torch.uint8, device=et.device()),
+        torch.tensor([5, 6], dtype=torch.uint8, device=et.device()),
+    ]
+
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "foreach_addcdiv(): expected at least one of tensor1/tensor2 to be "
-            "non-integral, got int32 and uint8"
+            "foreach_addcdiv(): expected at least one non-integral tensor in"
+            " each of the 3 dividend (second tensor list) and divisor (third"
+            " tensor list) pairs, got 2 integral dividend-divisor tensor pairs:"
+            " (int32, uint8) at index 0, and (int32, uint8) at index 1"
         ),
         cpu=(
             "Integer division with addcdiv is no longer supported, and in a"
