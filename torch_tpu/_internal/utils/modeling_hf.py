@@ -79,6 +79,17 @@ def get_qwen3_coder_480b_a35b_instruct_fp8_dynamic_model(
   return model
 
 
+def get_qwen3_5_397b_a17b_model(default_config, torch_dtype: torch.dtype):
+  """Returns the Qwen3.5-397B-A17B model."""
+  # pylint: disable=protected-access
+  # By default, the model has 60 hidden layers.
+  # We set it to 4 to cover the attention pattern cycle:
+  # 3 linear attention layers followed by 1 full attention layer.
+  default_config.num_hidden_layers = 4
+  model = modeling_qwen3_moe.Qwen3MoeForCausalLM(default_config).to(torch_dtype)
+  return model
+
+
 def get_gpt_oss_20b_model(default_config, torch_dtype: torch.dtype):
   """Returns the GPT OSS 20B model."""
   # pylint: disable=protected-access
@@ -152,6 +163,8 @@ def get_model(
         model = get_qwen3_model(default_config, dtype)
       case "Qwen/Qwen3-Coder-30B-A3B-Instruct":
         model = get_qwen3_moe_model(default_config, dtype)
+      case "Qwen/Qwen3.5-397B-A17B":
+        model = get_qwen3_5_397b_a17b_model(default_config, dtype)
       case _:
         model = transformers.AutoModelForCausalLM.from_config(
             default_config, torch_dtype=dtype
