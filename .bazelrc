@@ -193,9 +193,9 @@ test:ci --test_output=errors
 
 # Settings specific to CPU CI runs.
 common:ci_cpu --config=ci
-common:ci_cpu --build_tag_filters=-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only
+common:ci_cpu --build_tag_filters=-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only,-requires-gpu-nvidia
 # We exclude tests tagged "notap" as it indicates that the test should be skipped from CI.
-common:ci_cpu --test_tag_filters=oss_ready_cpu,-notap,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only
+common:ci_cpu --test_tag_filters=oss_ready_cpu,-notap,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only,-requires-gpu-nvidia
 
 # Settings specific to TPU CI runs.
 common:ci_tpu --config=ci
