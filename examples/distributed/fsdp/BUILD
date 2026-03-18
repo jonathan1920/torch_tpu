@@ -25,9 +25,8 @@ torch_tpu_py_test(
     srcs = ["launch.py"],
     main = "launch.py",
     tags = [
-        "noasan",
-        "nomsan",
-        "notsan",
+        "noasan",  # OOMs even with the highest memory limit.
+        "requires-mem:28g",  # For the *san builds.
         "requires-tpu-v5lite:8",
     ],
     deps = [
