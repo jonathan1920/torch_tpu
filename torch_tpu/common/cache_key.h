@@ -70,13 +70,10 @@ namespace internal {
 template <typename T>
 constexpr bool IncludeInCacheKey() {
   return !(
-      // TODO: remove c10::List<c10::optional<at::Tensor>> as the tensors'
-      // presence needs to be encoded in the cache key.
       // go/keep-sorted start
       std::is_same_v<T, at::Generator> ||
       std::is_same_v<T, at::ITensorListRef> ||
       std::is_same_v<T, at::Tensor> ||  //
-      std::is_same_v<T, c10::List<c10::optional<at::Tensor>>> ||
       std::is_same_v<T, c10d::AllToAllOptions> ||
       std::is_same_v<T, c10d::AllgatherOptions> ||
       std::is_same_v<T, c10d::BarrierOptions> ||
