@@ -41,7 +41,9 @@ def define_sdpa_kernel(name, forward, dtype, is_causal):
             read -ra out_files <<< "$(OUTS)"
             h_path=$${out_files[0]}
             cc_path=$${out_files[1]}
-            $(location :scaled_dot_product_attention_generate) %s \
+            # Set JAX_PLATFORMS=cpu to cross-compile TPU kernels without needing
+            # access to physical TPU hardware or libtpu lockfiles during the build.
+            JAX_PLATFORMS=cpu $(location :scaled_dot_product_attention_generate) %s \
                 --dtype=%s \
                 --is_causal=%s \
                 --kernel_name=%s \
