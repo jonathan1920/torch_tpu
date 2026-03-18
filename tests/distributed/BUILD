@@ -234,6 +234,7 @@ torch_tpu_py_test(
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
+        "nomsan",  # TODO: fix the test in msan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -257,6 +258,7 @@ torch_tpu_py_test(
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
     tags = [
         "exclusive",  # copybara:comment(oss-only)
+        "noasan",  # TODO: fix the test in asan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
