@@ -299,7 +299,7 @@ torch_tpu_cc_test(
     },
     nopresubmit = "long Forge queue",
     tags = [
-        "requires-v5p",  # Needs PjRt client and multiple devices.
+        "requires-tpu-v5p:4",  # Needs PjRt client and multiple devices.
     ],
     deps = [
         ":tier2_compilation_cache",
@@ -352,7 +352,7 @@ torch_tpu_cc_test(
     },
     nopresubmit = "long Forge queue",
     tags = [
-        "requires-v5p",  # Needs PjRt client and multiple devices.
+        "requires-tpu-v5p:4",  # Needs PjRt client and multiple devices.
     ],
     deps = [
         ":tier2_compilation_cache",
@@ -405,7 +405,7 @@ torch_tpu_cc_test(
     },
     nopresubmit = "long Forge queue",
     tags = [
-        "requires-v5p",  # Needs PjRt client and multiple devices.
+        "requires-tpu-v5p:4",  # Needs PjRt client and multiple devices.
     ],
     deps = [
         ":tier2_compilation_cache",
