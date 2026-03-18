@@ -589,6 +589,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal:testing",
         "//torch_tpu/_internal/dynamism",
         "//torch_tpu/_internal/pallas",
+        "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
@@ -620,6 +621,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal:testing",
         "//torch_tpu/_internal/dynamism",
         "//torch_tpu/_internal/pallas",
+        "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
@@ -645,6 +647,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal:testing",
         "//torch_tpu/_internal/dynamism",
         "//torch_tpu/_internal/pallas",
+        "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
