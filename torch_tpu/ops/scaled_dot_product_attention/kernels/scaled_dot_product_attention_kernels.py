@@ -39,7 +39,7 @@ except AttributeError:
   pallas_export_experimental = pallas_core.pallas_export_experimental
 
 DEFAULT_MASKED_VALUE = -1e30
-_BLOCK_SIZE = 128
+_BLOCK_SIZE = 512
 
 
 @dataclasses.dataclass
@@ -427,7 +427,7 @@ class SDPAKernelFlashAttention:
             block_q=block_size,
             block_k=block_size,
             block_k_major=block_size,
-            block_b=4,
+            block_b=1,
             block_q_major_dkv=block_size,
             block_k_major_dkv=block_size,
             block_k_dkv=block_size,
@@ -485,11 +485,11 @@ class SDPAKernelFlashAttention:
       # Use symbolic shapes
       # This set of symbolic shapes set the constraint explicitly and
       # implicitly:
-      # 1. batch_size >= 4
-      # 2. q_seq_len and kv_seq_len are multiples of 512.
-      # 3. head_dim is a multiple of 128.
-      # 4. qk_head_dim == v_head_dim
-      # 5. num_q_heads == num_kv_heads
+      # - batch_size >= 1
+      # - q_seq_len and kv_seq_len are multiples of 512.
+      # - head_dim is a multiple of 128.
+      # - qk_head_dim == v_head_dim
+      # - mod(num_q_heads, num_kv_heads) == 0
 
       (
           # pylint: disable=invalid-name
@@ -510,14 +510,13 @@ class SDPAKernelFlashAttention:
               qk_head_dim,
               v_head_dim""",
           constraints=(
-              "batch_size >= 4",
+              "batch_size >= 1",
               f"q_seq_len >= {block_size}",
               f"kv_seq_len >= {block_size}",
               f"mod(q_seq_len, {block_size}) == 0",
               f"mod(kv_seq_len, {block_size}) == 0",
               # TODO(elliotenglish): Add support for GQA.
-              # "mod(num_q_heads, num_kv_heads) == 0",
-              # "num_q_heads == num_kv_heads",
+              "mod(num_q_heads, num_kv_heads) == 0",
               "qk_head_dim == v_head_dim",
           ),
       )

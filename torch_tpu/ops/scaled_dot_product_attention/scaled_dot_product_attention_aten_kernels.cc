@@ -62,7 +62,7 @@
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 
-ABSL_FLAG(bool, torch_tpu_internal_sdpa_use_custom_kernel, false,
+ABSL_FLAG(bool, torch_tpu_internal_sdpa_use_custom_kernel, true,
           "Use a custom kernel for scaled dot product attention.");
 
 namespace torch_tpu {
@@ -348,13 +348,15 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
         // TODO(elliotenglish): Add support for attn_mask and attributes.
         constexpr int min_block_size = 128;
         constexpr int config_block_size = 512;
+        constexpr int min_batch_size = 1;
 
         // TODO(b/483131156): Support all shapes.
         // We don't support all shapes because the kernel is specialized to
         // block_size 512 and we don't want to generate a new kernel for every
         // possible sequence length and head dim.
         const bool is_supported_flash_attention_shape =
-            query.ndimension() >= 4 && get_batch_size(query) >= 4 &&
+            query.ndimension() >= 4 &&
+            get_batch_size(query) >= min_batch_size &&
             query.size(query.ndimension() - 2) % config_block_size == 0 &&
             key.size(key.ndimension() - 2) % config_block_size == 0 &&
             value.size(value.ndimension() - 2) % config_block_size == 0 &&
@@ -383,7 +385,7 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
         TORCH_WARN_ONCE(
             "TorchTPU only supports FLASH, EFFICIENT, OVERRIDEABLE SDPBackend "
             "for scaled_dot_product_attention when these conditions are met:\n"
-            "attn_mask is None\nis_causal is True\nscale is None\nquery "
+            "attn_mask is None\nscale is None\nquery "
             "uses float32\nquery, key, and value have the same rank.\n"
             "Falling back to MATH backend.");
         return static_cast<int64_t>(at::SDPBackend::math);
