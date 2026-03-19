@@ -37,6 +37,8 @@ from absl import logging
 import torch
 from torch._dynamo.backends.common import aot_autograd
 from torch._inductor.fx_passes import post_grad
+from torch._logging import trace_structured
+from torch._logging._internal import trace_log
 from torch.fx.passes import graph_transform_observer
 from torch.utils import _pytree
 from torch_tpu._internal import export as torch_tpu_export
@@ -318,6 +320,19 @@ class TpuBackend:
     ).apply_graph_pass(post_grad.decompose_auto_functionalized)
     graph_module.recompile()
 
+    # Emit FX graph artifact for tlparse when TORCH_TRACE is set.
+    tracing_enabled = bool(trace_log.handlers)
+    if tracing_enabled:
+      trace_structured(
+          "artifact",
+          metadata_fn=lambda: {
+              "name": "torchtpu_fx_graph",
+              "encoding": "string",
+          },
+          payload_fn=lambda: graph_module.print_readable(print_output=False),
+          expect_trace_id=True,
+      )
+
     # Exit fake mode to trace, see _DisableFakeTensorMode docstring for details.
     with _DisableFakeTensorMode():
       # Convert example_inputs to placeholders. This is done to:
@@ -332,10 +347,10 @@ class TpuBackend:
           for arg in example_inputs
       ]
 
-      # Convert the ATen greph to StableHLO
-      # Use serialized format by default since it is much more compact.
+      # Use debug info format when TORCH_TRACE is set so the artifact has
+      # human-readable MLIR with source location annotations.
       print_config = torch_tpu_export.MlirPrintConfig.MLIR_SERIALIZED
-      if self._debug:
+      if self._debug or tracing_enabled:
         print_config = torch_tpu_export.MlirPrintConfig.MLIR_DEBUG_INFO
 
       mlir_graph, _, map_output_fn = torch_tpu_export.fx_to_mlir(
@@ -343,6 +358,23 @@ class TpuBackend:
           placeholder_args,
           print_config=print_config,
           donate_args=donate_args,
+      )
+
+    # Emit StableHLO artifact for tlparse when TORCH_TRACE is set.
+    if tracing_enabled:
+      mlir_str = (
+          mlir_graph.decode("utf-8")
+          if isinstance(mlir_graph, bytes)
+          else mlir_graph
+      )
+      trace_structured(
+          "artifact",
+          metadata_fn=lambda: {
+              "name": "torchtpu_stablehlo_graph",
+              "encoding": "string",
+          },
+          payload_fn=lambda: mlir_str,
+          expect_trace_id=True,
       )
 
     cached_executable = tpu_torch_compile.compile_mlir(mlir_graph)

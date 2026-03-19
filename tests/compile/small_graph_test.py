@@ -17,6 +17,7 @@
 import os
 import pickle
 from typing import List, Optional
+from unittest import mock
 
 from absl.testing import absltest
 import torch
@@ -93,6 +94,48 @@ class FunctionTest(absltest.TestCase):
       raise ValueError(f"Unsupported result type: {type(result_cpu)}")
 
     return tpu_backend._compiled_executables
+
+  @mock.patch.object(_backend, "trace_structured")
+  def test_trace_structured_called(self, mock_trace_structured):
+    def simple(x, y):
+      return x + y
+
+    inputs = [
+        torch.tensor([0.1, 0.2]),
+        torch.tensor([0.4, 0.5]),
+    ]
+    with mock.patch(
+        "torch._logging._internal.trace_log.handlers", [mock.Mock(level=0)]
+    ):
+      self._run_and_compare(simple, inputs)
+
+    # Check if trace_structured was called
+    self.assertTrue(mock_trace_structured.called)
+
+    names = [call.args[0] for call in mock_trace_structured.call_args_list]
+    self.assertTrue(all(name == "artifact" for name in names))
+
+    # Extract metadata and evaluate payloads to verify artifacts are actually
+    # created
+    payloads = {
+        call.kwargs["metadata_fn"]()["name"]: call.kwargs["payload_fn"]()
+        for call in mock_trace_structured.call_args_list
+    }
+
+    self.assertIn("torchtpu_fx_graph", payloads)
+    self.assertIn("torchtpu_stablehlo_graph", payloads)
+
+    # Verify the FX graph artifact
+    fx_payload = payloads["torchtpu_fx_graph"]
+    self.assertIsInstance(fx_payload, str)
+    self.assertNotEmpty(fx_payload)
+    self.assertIn("add", fx_payload)  # simple() does x + y
+
+    # Verify the StableHLO artifact
+    mlir_payload = payloads["torchtpu_stablehlo_graph"]
+    self.assertIsInstance(mlir_payload, str)
+    self.assertNotEmpty(mlir_payload)
+    self.assertIn("module", mlir_payload)
 
   def test_super_simple(self):
     def simple(x, y):
