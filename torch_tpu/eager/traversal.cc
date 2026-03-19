@@ -296,23 +296,6 @@ struct GraphSignature {
 
 }  // namespace
 
-ShapeDynamismMetadata Traversal::BuildShapeDynamismMetadata(
-    bool apply_dynamism) const {
-  std::vector<Shape> input_shapes;
-  input_shapes.reserve(inputs().size());
-  for (const DeviceBufferRef& input : inputs()) {
-    Shape input_shape{.dimensions = CopyIntVector(input.dimensions()),
-                      .dtype = input.element_type()};
-    if (apply_dynamism) {
-      for (const auto& dynamic_dim : input.dynamic_dimensions()) {
-        input_shape.dynamic_dimensions.push_back(dynamic_dim);
-      }
-    }
-    input_shapes.push_back(std::move(input_shape));
-  }
-  return ShapeDynamismMetadata(input_shapes);
-}
-
 CompilationCacheKey Traversal::BuildCacheKey() const {
   tsl::profiler::TraceMe t("Traversal::BuildCacheKey");
   // We will be building a GraphSignature object as a simplified

@@ -124,13 +124,6 @@ class Traversal {
     return *cache_key_;
   }
 
-  const ShapeDynamismMetadata& shape_dynamism_metadata() const {
-    if (!shape_dynamism_metadata_) {
-      shape_dynamism_metadata_ = BuildShapeDynamismMetadata();
-    }
-    return *shape_dynamism_metadata_;
-  }
-
   // Validates that the provided inputs are a valid reordering of the
   // Traversal's inputs, and if they are, overwrites the previous inputs_ with
   // these new inputs. This is used by compiled_mode.cc to align argument
@@ -226,8 +219,6 @@ class Traversal {
         outputs_(std::move(outputs)) {}
 
   CompilationCacheKey BuildCacheKey() const;
-  ShapeDynamismMetadata BuildShapeDynamismMetadata(
-      bool apply_dynamism = true) const;
 
   // Validates that the traversal is sound.
   absl::Status Validate() const;
