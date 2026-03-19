@@ -21,8 +21,7 @@ version = "0.0.0"
 # license = "LicenseRef-Proprietary"
 
 dependencies = [
-    "torch @ https://download.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp312-cp312-manylinux_2_28_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
-    "torch @ https://download.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64'",
+    "torch==2.10.0+cpu",
     "numpy",
     "scipy",
     "absl-py",
@@ -56,3 +55,11 @@ benchmark = [
     "llama-models",
     "tensorflow-datasets",
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
