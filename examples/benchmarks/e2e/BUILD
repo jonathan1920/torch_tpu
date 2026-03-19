@@ -68,6 +68,7 @@ pytype_strict_library(
         "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
         "//torch_tpu/_internal/utils:device_utils",
         "//torch_tpu/api",
+        "@pypi//tensorboardX",
     ],
 )
 

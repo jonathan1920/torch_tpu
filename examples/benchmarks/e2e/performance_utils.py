@@ -22,6 +22,7 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 
 from absl import flags
 from absl import logging
+from tensorboardX import writer
 import torch
 from torch import distributed as dist
 from torch.google import distributed as g3_distributed
@@ -235,6 +236,26 @@ def _run_single_process_benchmark(
         benchmark_name=benchmark_name,
         microbenchmark_name=microbenchmark_name,
     )
+
+  if benchmark_utils.ENABLE_TENSORBOARD_LOGGING.value and rank == 0:
+    tblog_dir = os.environ.get(benchmark_utils.TENSORBOARD_OUTPUT_ENV_VAR.value)
+    if tblog_dir:
+      try:
+        tb_writer = writer.SummaryWriter(log_dir=tblog_dir)
+        metric_tag = (
+            f"{mlcompass_utils.TEAM_NAME}/{platform.value}/{test_method_name}/"
+            f"{benchmark_name}"
+        )
+        if microbenchmark_name:
+          metric_tag = f"{metric_tag}/{microbenchmark_name}"
+
+        for metric_name, value in result.metric_map().items():
+          tb_writer.add_scalar(
+              f"{metric_tag}/{metric_name}", value, global_step=0
+          )
+        tb_writer.close()
+      except (OSError, IOError):
+        logging.exception("Error writing TensorBoard logs")
 
 
 def _run_torch_tpu_worker(

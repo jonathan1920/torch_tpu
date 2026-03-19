@@ -769,6 +769,7 @@ numpy==2.3.1 \
     #   orbax-export
     #   scipy
     #   tensorboard
+    #   tensorboardx
     #   tensorflow-datasets
     #   tensorstore
     #   transformers
@@ -799,6 +800,7 @@ packaging==25.0 \
     #   huggingface-hub
     #   marshmallow
     #   tensorboard
+    #   tensorboardx
     #   transformers
 pillow==11.3.0 \
     --hash=sha256:023f6d2d11784a465f09fd09a34b150ea4672e85fb3d05931d89f373ab14abb2 \
@@ -934,6 +936,7 @@ protobuf==6.32.1 \
     #   orbax-checkpoint
     #   orbax-export
     #   tensorboard
+    #   tensorboardx
     #   tensorflow-datasets
     #   tensorflow-metadata
 psutil==7.0.0 \
@@ -1501,6 +1504,10 @@ tensorboard-data-server==0.7.2 \
     --hash=sha256:9fe5d24221b29625dbc7328b0436ca7fc1c23de4acf4d272f1180856e32f9f60 \
     --hash=sha256:ef687163c24185ae9754ed5650eb5bc4d84ff257aabdc33f0cc6f74d8ba54530
     # via tensorboard
+tensorboardx==2.6.4 \
+    --hash=sha256:5970cf3a1f0a6a6e8b180ccf46f3fe832b8a25a70b86e5a237048a7c0beb18e2 \
+    --hash=sha256:b163ccb7798b31100b9f5fa4d6bc22dad362d7065c2f24b51e50731adde86828
+    # via torch-tpu (pyproject.toml)
 tensorflow-datasets==4.9.9 \
     --hash=sha256:9cb245cad97e7d227f0b8e006491cfef860ff8d4b9d84a3c68f8b96d6295355e \
     --hash=sha256:b94902d414cdc12a1014cda9ee5815c502c3d44215b780e06dacbd7949abd14e

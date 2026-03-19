@@ -59,6 +59,18 @@ BASE_CL = flags.DEFINE_string(
     " exported to MLCompass.",
 )
 
+TENSORBOARD_OUTPUT_ENV_VAR = flags.DEFINE_string(
+    "tensorboard_output_env_var",
+    "TENSORBOARD_OUTPUT_DIR",
+    "Environment variable to use to retrieve TensorBoard output directory.",
+)
+
+ENABLE_TENSORBOARD_LOGGING = flags.DEFINE_bool(
+    "enable_tensorboard_logging",
+    False,
+    "Whether to enable TensorBoard logging for the benchmark results.",
+)
+
 PLATFORM = flags.DEFINE_enum_class(
     "platform",
     Platform.GFC_1X1X1,

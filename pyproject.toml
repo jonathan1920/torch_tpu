@@ -54,6 +54,7 @@ benchmark = [
     "grain",
     "llama-models",
     "tensorflow-datasets",
+    "tensorboardX",
 ]
 
 [[tool.uv.index]]
