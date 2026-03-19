@@ -72,7 +72,7 @@ _COMPILE = flags.DEFINE_bool(
 _EAGER_MODE = flags.DEFINE_enum(
     "eager_mode",
     "DEFAULT",
-    ["DEFAULT", "OPTIMIZED", "DEFER_NEVER"],
+    ["DEFAULT", "OPTIMIZED", "DEFER_NEVER", "DEFER_NEVER_AND_LAUNCH_BLOCKING"],
     "Eager mode for the model.",
 )
 
@@ -115,6 +115,8 @@ def get_eager_mode() -> execution_mode.EagerMode:
     return execution_mode.EagerMode.OPTIMIZED
   elif _EAGER_MODE.value == "DEFER_NEVER":
     return execution_mode.EagerMode.DEFER_NEVER
+  elif _EAGER_MODE.value == "DEFER_NEVER_AND_LAUNCH_BLOCKING":
+    return execution_mode.EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING
   else:
     raise ValueError(f"Unsupported defer mode: {_EAGER_MODE.value}")
 

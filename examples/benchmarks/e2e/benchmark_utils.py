@@ -136,7 +136,10 @@ class RunMode(enum.Enum):
   EAGER_OPTIMIZED = (  # Run the model in eager mode with O2 XLA optimizations.
       "eager_optimized"
   )
-  DEFER_NEVER = "defer_never"  # Run the model in eager mode with Defer_NEVER.
+  DEFER_NEVER = "defer_never"  # Run the model in eager mode with DeferNever.
+  DEFER_NEVER_AND_LAUNCH_BLOCKING = (  # Run the model in eager mode with DeferNeverAndLaunchBlocking.
+      "defer_never_and_launch_blocking"
+  )
   COMPILED = "compiled"  # Run the model with torch.compile.
 
 

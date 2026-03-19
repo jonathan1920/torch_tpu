@@ -126,12 +126,20 @@ def _run_mode_context(run_mode: benchmark_utils.RunMode, device: torch.device):
     None
   """
   original_eager_mode = execution_mode.get_eager_mode()
-  if run_mode == benchmark_utils.RunMode.EAGER_OPTIMIZED:
-    execution_mode.set_eager_mode(execution_mode.EagerMode.OPTIMIZED)
+  new_eager_mode = execution_mode.EagerMode.DEFAULT
+  if run_mode == benchmark_utils.RunMode.EAGER:
+    new_eager_mode = execution_mode.EagerMode.DEFAULT
+  elif run_mode == benchmark_utils.RunMode.EAGER_OPTIMIZED:
+    new_eager_mode = execution_mode.EagerMode.OPTIMIZED
   elif run_mode == benchmark_utils.RunMode.DEFER_NEVER:
-    execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_NEVER)
-  elif run_mode == benchmark_utils.RunMode.EAGER:
-    execution_mode.set_eager_mode(execution_mode.EagerMode.DEFAULT)
+    new_eager_mode = execution_mode.EagerMode.DEFER_NEVER
+  elif run_mode == benchmark_utils.RunMode.DEFER_NEVER_AND_LAUNCH_BLOCKING:
+    new_eager_mode = execution_mode.EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING
+  elif run_mode == benchmark_utils.RunMode.COMPILED:
+    pass  # Nothing to do
+  else:
+    raise ValueError(f"Unexpected run mode: {run_mode}")
+  execution_mode.set_eager_mode(new_eager_mode)
   try:
     yield
   finally:
