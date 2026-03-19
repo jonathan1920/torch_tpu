@@ -36,6 +36,7 @@ from typing import Any, Callable, List, Sequence, TypeAlias
 from absl import logging
 import torch
 from torch._dynamo.backends.common import aot_autograd
+from torch._dynamo.utils import dynamo_timed
 from torch._inductor.fx_passes import post_grad
 from torch._logging import trace_structured
 from torch._logging._internal import trace_log
@@ -353,12 +354,13 @@ class TpuBackend:
       if self._debug or tracing_enabled:
         print_config = torch_tpu_export.MlirPrintConfig.MLIR_DEBUG_INFO
 
-      mlir_graph, _, map_output_fn = torch_tpu_export.fx_to_mlir(
-          graph_module,
-          placeholder_args,
-          print_config=print_config,
-          donate_args=donate_args,
-      )
+      with dynamo_timed("torchtpu_fx_to_mlir"):
+        mlir_graph, _, map_output_fn = torch_tpu_export.fx_to_mlir(
+            graph_module,
+            placeholder_args,
+            print_config=print_config,
+            donate_args=donate_args,
+        )
 
     # Emit StableHLO artifact for tlparse when TORCH_TRACE is set.
     if tracing_enabled:
@@ -377,7 +379,8 @@ class TpuBackend:
           expect_trace_id=True,
       )
 
-    cached_executable = tpu_torch_compile.compile_mlir(mlir_graph)
+    with dynamo_timed("torchtpu_pjrt_compile"):
+      cached_executable = tpu_torch_compile.compile_mlir(mlir_graph)
 
     executable = _TorchTpuCompiledExecutable(
         executable=cached_executable,
