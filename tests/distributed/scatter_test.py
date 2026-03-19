@@ -69,15 +69,15 @@ class ScatterTest(absltest.TestCase):
 
   def test_scatter_tensor(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(run_scatter, ()),
         nproc_per_node=8,
-    )()
+        fn=singlehost_wrapper.tpu_env_wrapper(run_scatter, ()),
+    )
 
   def test_scatter_scalar(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(run_scatter_scalar, ()),
         nproc_per_node=8,
-    )()
+        fn=singlehost_wrapper.tpu_env_wrapper(run_scatter_scalar, ()),
+    )
 
 
 if __name__ == "__main__":

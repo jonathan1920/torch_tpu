@@ -185,59 +185,59 @@ class DTensor1DimTest(absltest.TestCase):
 
   def test_apply_op(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_dtensor_1d_apply_op, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_dtensor_1d_distribute_from_src(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_dtensor_1d_distribute_from_src, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_shard_to_replicate(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_dtensor_1d_shard_to_replicate, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_replicate_to_shard(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_dtensor_1d_replicate_to_shard, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_shard_to_shard(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_dtensor_1d_shard_to_shard, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_partial_to_replicate(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_dtensor_1d_partial_to_replicate, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_partial_to_shard(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_dtensor_1d_partial_to_shard, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
 
 def run_dtensor_2d_shard_to_shard() -> None:
@@ -260,11 +260,11 @@ class DTensor2DimTest(absltest.TestCase):
 
   def test_shard_to_shard(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_dtensor_2d_shard_to_shard, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
 
 def run_sync_dtensor() -> None:
@@ -292,9 +292,11 @@ class DTensorSyncTest(absltest.TestCase):
 
   def test_sync_dtensor(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(run_sync_dtensor, (), world_size=8),
         nproc_per_node=8,
-    )()
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_sync_dtensor, (), world_size=8
+        ),
+    )
 
 
 if __name__ == "__main__":

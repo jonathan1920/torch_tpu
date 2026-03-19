@@ -41,25 +41,25 @@ def _worker_fn(
   fn(*args, **kwargs)
 
 
-def dist_run(fn: Callable[..., Any], nproc_per_node: int) -> Callable[..., Any]:
-  """A programmatic API to launch distributed tests using mp.spawn.
+def dist_run(
+    nproc_per_node: int, fn: Callable[..., Any], *args: Any, **kwargs: Any
+) -> None:
+  """Runs the given function in a distributed environment using mp.spawn.
+
+  Think of dist_run(n, foo, *args, **kwargs) as running
+  n copies of foo(*args, **kwargs) in parallel, each with a different rank.
 
   Args:
-    fn: The function to be executed by each distributed worker.
     nproc_per_node: The number of processes to spawn on the current node.
-
-  Returns:
-    A wrapped function that, when called, launches the distributed processes.
+    fn: The function to be executed by each distributed worker.
+    *args: Positional arguments to pass to the function.
+    **kwargs: Keyword arguments to pass to the function.
   """
 
-  def _run_distributed(*args: Any, **kwargs: Any) -> Any:
-    master_port = portpicker.pick_unused_port()
-    mp.spawn(
-        _worker_fn,
-        args=(nproc_per_node, master_port, fn, args, kwargs),
-        nprocs=nproc_per_node,
-        join=True,
-    )
-    return None
-
-  return _run_distributed
+  master_port = portpicker.pick_unused_port()
+  mp.spawn(
+      _worker_fn,
+      args=(nproc_per_node, master_port, fn, args, kwargs),
+      nprocs=nproc_per_node,
+      join=True,
+  )

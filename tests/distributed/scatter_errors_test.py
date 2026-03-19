@@ -97,11 +97,12 @@ class ScatterErrorsTest(absltest.TestCase):
         " must be equal to the group size, got 9 tensors and 8 processes",
     ):
       distributed_utils.dist_run(
-          singlehost_wrapper.tpu_env_wrapper(
+          nproc_per_node=8,
+          fn=singlehost_wrapper.tpu_env_wrapper(
               run_scatter_wrong_number_inputs, ()
           ),
-          nproc_per_node=8,
-      )(9)
+          num_inputs=9,
+      )
 
   def test_scatter_wrong_shape_output(self):
     input_shape = [2, 3]
@@ -112,11 +113,13 @@ class ScatterErrorsTest(absltest.TestCase):
         " shape, got [3, 3] and [2, 3]",
     ):
       distributed_utils.dist_run(
-          singlehost_wrapper.tpu_env_wrapper(
+          nproc_per_node=8,
+          fn=singlehost_wrapper.tpu_env_wrapper(
               run_scatter_wrong_shape_output, ()
           ),
-          nproc_per_node=8,
-      )(input_shape, output_shape)
+          input_shape=input_shape,
+          output_shape=output_shape,
+      )
 
   def test_scatter_mismatch_input_shapes(self):
     shape = [6, 2]
@@ -128,11 +131,13 @@ class ScatterErrorsTest(absltest.TestCase):
         " 2] at index 1",
     ):
       distributed_utils.dist_run(
-          singlehost_wrapper.tpu_env_wrapper(
+          nproc_per_node=8,
+          fn=singlehost_wrapper.tpu_env_wrapper(
               run_scatter_mismatch_input_shapes, ()
           ),
-          nproc_per_node=8,
-      )(shape, mismatch_shape)
+          shape=shape,
+          mismatch_shape=mismatch_shape,
+      )
 
 
 if __name__ == "__main__":

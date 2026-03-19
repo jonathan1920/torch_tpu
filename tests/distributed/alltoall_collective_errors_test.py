@@ -95,41 +95,41 @@ class AllToAllSingleCollectiveErrorsTest(absltest.TestCase):
 
   def test_invalid_dtype(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_single_dtype_error, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_invalid_tensor_size(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_single_invalid_tensor_size_error,
             (),
             world_size=self._world_size,
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_invalid_split_sizes_size(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_single_invalid_split_sizes_size_error,
             (),
             world_size=self._world_size,
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_invalid_split_sizes_sum(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_single_invalid_split_sizes_sum_error,
             (),
             world_size=self._world_size,
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
 
 def run_all_to_all_unequal_tensor_list_size_error() -> None:
@@ -220,43 +220,43 @@ class AllToAllCollectiveErrorsTest(absltest.TestCase):
 
   def test_unequal_tensor_list_size(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_unequal_tensor_list_size_error,
             (),
             world_size=self._world_size,
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_wrong_num_input_tensors(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_wrong_num_input_tensors_error,
             (),
             world_size=self._world_size,
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_unequal_input_tensor_shape(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_unequal_input_tensor_shape_error,
             (),
             world_size=self._world_size,
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_unequal_input_output_tensor_shape(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_unequal_input_output_tensor_shape_error,
             (),
             world_size=self._world_size,
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
 
 if __name__ == "__main__":

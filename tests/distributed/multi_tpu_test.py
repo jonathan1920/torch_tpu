@@ -55,9 +55,11 @@ class MultiTpuTest(absltest.TestCase):
 
   def test_device_count(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(run_device_count, (), world_size=8),
         nproc_per_node=8,
-    )()
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_device_count, (), world_size=8
+        ),
+    )
 
 
 if __name__ == "__main__":

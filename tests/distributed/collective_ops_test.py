@@ -453,225 +453,217 @@ class CollectiveOpsTest(absltest.TestCase):
 
   def test_all_reduce_sum(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_reduce, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(
-        _all_reduce_input_fn_rank,
-        torch.distributed.ReduceOp.SUM,
-        [0.0, 8.0, 28.0, 140.0],
-        torch.float32,
+        input_fn=_all_reduce_input_fn_rank,
+        reduce_op=torch.distributed.ReduceOp.SUM,
+        expected=[0.0, 8.0, 28.0, 140.0],
+        dtype=torch.float32,
     )
 
   def test_all_reduce_avg(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_reduce, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(
-        _all_reduce_input_fn_rank,
-        torch.distributed.ReduceOp.AVG,
-        [0.0, 1.0, 3.5, 17.5],
-        torch.float32,
+        input_fn=_all_reduce_input_fn_rank,
+        reduce_op=torch.distributed.ReduceOp.AVG,
+        expected=[0.0, 1.0, 3.5, 17.5],
+        dtype=torch.float32,
     )
 
   def test_all_reduce_product(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_reduce, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(
-        _all_reduce_input_fn_rank,
-        torch.distributed.ReduceOp.PRODUCT,
-        [0.0, 1.0, 0.0, 0.0],
-        torch.float32,
+        input_fn=_all_reduce_input_fn_rank,
+        reduce_op=torch.distributed.ReduceOp.PRODUCT,
+        expected=[0.0, 1.0, 0.0, 0.0],
+        dtype=torch.float32,
     )
 
   def test_all_reduce_min(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_reduce, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(
-        _all_reduce_input_fn_rank,
-        torch.distributed.ReduceOp.MIN,
-        [0.0, 1.0, 0.0, 0.0],
-        torch.float32,
+        input_fn=_all_reduce_input_fn_rank,
+        reduce_op=torch.distributed.ReduceOp.MIN,
+        expected=[0.0, 1.0, 0.0, 0.0],
+        dtype=torch.float32,
     )
 
   def test_all_reduce_max(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_reduce, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(
-        _all_reduce_input_fn_rank,
-        torch.distributed.ReduceOp.MAX,
-        [0.0, 1.0, 7.0, 49.0],
-        torch.float32,
+        input_fn=_all_reduce_input_fn_rank,
+        reduce_op=torch.distributed.ReduceOp.MAX,
+        expected=[0.0, 1.0, 7.0, 49.0],
+        dtype=torch.float32,
     )
 
   def test_all_reduce_band(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_reduce, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(
-        _all_reduce_bitwise_input_fn,
-        torch.distributed.ReduceOp.BAND,
-        [0, 0, 255],
-        torch.int32,
+        input_fn=_all_reduce_bitwise_input_fn,
+        reduce_op=torch.distributed.ReduceOp.BAND,
+        expected=[0, 0, 255],
+        dtype=torch.int32,
     )
 
   def test_all_reduce_bor(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_reduce, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(
-        _all_reduce_bitwise_input_fn,
-        torch.distributed.ReduceOp.BOR,
-        [255, 31, 255],
-        torch.int32,
+        input_fn=_all_reduce_bitwise_input_fn,
+        reduce_op=torch.distributed.ReduceOp.BOR,
+        expected=[255, 31, 255],
+        dtype=torch.int32,
     )
 
   def test_all_reduce_bxor(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_reduce, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(
-        _all_reduce_bitwise_input_fn,
-        torch.distributed.ReduceOp.BXOR,
-        [0, 8, 0],
-        torch.int32,
+        input_fn=_all_reduce_bitwise_input_fn,
+        reduce_op=torch.distributed.ReduceOp.BXOR,
+        expected=[0, 8, 0],
+        dtype=torch.int32,
     )
 
   def test_all_reduce_sum_fixed_values(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_reduce, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(
-        _all_reduce_input_fn_const,
-        torch.distributed.ReduceOp.SUM,
-        [8, 16, 24, 32],
-        torch.float32,
+        input_fn=_all_reduce_input_fn_const,
+        reduce_op=torch.distributed.ReduceOp.SUM,
+        expected=[8, 16, 24, 32],
+        dtype=torch.float32,
     )
 
   def test_all_reduce_product_fixed_values(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_reduce, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(
-        _all_reduce_input_fn_const,
-        torch.distributed.ReduceOp.PRODUCT,
-        [1.0, 256.0, 6561.0, 65536.0],
-        torch.float32,
+        input_fn=_all_reduce_input_fn_const,
+        reduce_op=torch.distributed.ReduceOp.PRODUCT,
+        expected=[1.0, 256.0, 6561.0, 65536.0],
+        dtype=torch.float32,
     )
 
   def test_all_gather_scalar(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_scalar, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_all_gather_tensor_concat(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_tensor_concat, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_all_gather_tensor_scalar(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_tensor_scalar, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_all_gather_tensor_stack(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_tensor_stack, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_reduce_scatter(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_reduce_scatter, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_reduce_scatter_tensor_stack(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_reduce_scatter_tensor_stack, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_reduce_scatter_tensor_concat(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_reduce_scatter_tensor_concat, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_reduce_scatter_tensor_avg(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_reduce_scatter_tensor_avg, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_broadcast(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_broadcast, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_collectives_with_non_uniform_deferred_ops(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_collectives_with_non_uniform_deferred_ops,
             (),
             world_size=self._world_size,
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_barrier(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(run_barrier, ()),
         nproc_per_node=self._world_size,
-    )(False)
+        fn=singlehost_wrapper.tpu_env_wrapper(run_barrier, ()),
+        async_op=False,
+    )
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(run_barrier, ()),
         nproc_per_node=self._world_size,
-    )(True)
+        fn=singlehost_wrapper.tpu_env_wrapper(run_barrier, ()),
+        async_op=True,
+    )
 
 
 if __name__ == "__main__":  # We are in the parent process.

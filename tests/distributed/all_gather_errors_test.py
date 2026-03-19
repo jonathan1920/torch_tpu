@@ -84,27 +84,27 @@ class AllGatherErrorsTest(et.TpuOnlyErrorTestBase):
 
   def test_invalid_dtype(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_dtype_error, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_wrong_num_of_tensors(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_wrong_num_tensors, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
   def test_dispatch_failure(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_dispatch_failure, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )()
+    )
 
 
 if __name__ == "__main__":

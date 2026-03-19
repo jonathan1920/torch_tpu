@@ -186,20 +186,22 @@ class AllToAllSingleCollectiveTest(absltest.TestCase):
   def test_no_split_sizes_1d(self):
     rank_data = AllToAllSingleTestData()
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_single, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(rank_data)
+        test_data=rank_data,
+    )
 
   def test_no_split_sizes_multi_dim(self):
     rank_data = AllToAllSingleTestData(md_shapes=True)
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_single, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(rank_data)
+        test_data=rank_data,
+    )
 
   def test_with_equal_splits(self):
     splits = [1, 1, 1, 1, 1, 1, 1, 1]
@@ -207,11 +209,12 @@ class AllToAllSingleCollectiveTest(absltest.TestCase):
         input_split_sizes=splits, output_split_sizes=splits
     )
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_single, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(rank_data)
+        test_data=rank_data,
+    )
 
 
 class AllToAllTestData:
@@ -326,20 +329,22 @@ class AllToAllCollectiveTest(absltest.TestCase):
   def test_uniform_tensors_1d(self):
     rank_data = AllToAllTestData()
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(rank_data)
+        test_data=rank_data,
+    )
 
   def test_uniform_tensors_multi_dim(self):
     rank_data = AllToAllTestData(md_shapes=True)
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all, (), world_size=self._world_size
         ),
-        nproc_per_node=self._world_size,
-    )(rank_data)
+        test_data=rank_data,
+    )
 
 
 if __name__ == "__main__":

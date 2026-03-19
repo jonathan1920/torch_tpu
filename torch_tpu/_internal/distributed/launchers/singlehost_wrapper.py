@@ -88,9 +88,9 @@ class WorkerWrapper:
     self.__name__ = getattr(func, "__name__", str(func))
     self.__qualname__ = getattr(func, "__qualname__", str(func))
 
-  def __call__(self, *args: Any) -> None:
+  def __call__(self, *args: Any, **kwargs: Any) -> None:
     # Execute user function with stored args and any new args.
-    self.func(*(self.args + args), **self.kwargs)
+    self.func(*(self.args + args), **{**self.kwargs, **kwargs})
 
 
 def tpu_env_wrapper(func, args, *, world_size=None, **kwargs) -> Any:

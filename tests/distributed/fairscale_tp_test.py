@@ -177,11 +177,11 @@ class FairscaleTest(absltest.TestCase):
   def test_forward_fairscale_tp_against_non_tp(self):
     logging.info("Running test on %d TPUs.", WORLD_SIZE)
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=WORLD_SIZE,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_forward_tp, (), world_size=WORLD_SIZE
         ),
-        nproc_per_node=WORLD_SIZE,
-    )()
+    )
 
 
 if __name__ == "__main__":

@@ -316,99 +316,99 @@ class CollectiveErrorsTest(et.TpuOnlyErrorTestBase):
 
   def test_all_gather(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(run_all_gather, (), world_size=8),
         nproc_per_node=8,
-    )()
+        fn=singlehost_wrapper.tpu_env_wrapper(run_all_gather, (), world_size=8),
+    )
 
   def test_all_gather_tensor_wrong_number_output_dimensions(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_tensor_wrong_number_output_dimensions,
             (),
             world_size=8,
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_all_gather_tensor_wrong_concat_dimension(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_tensor_wrong_concat_dimension, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_all_gather_tensor_wrong_stack_dimension(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_tensor_wrong_stack_dimension, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_all_gather_tensor_stack_mismatched_dim(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_tensor_stack_mismatched_dim, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_all_gather_tensor_concat_mismatched_dim(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_tensor_concat_mismatched_dim, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_all_gather_tensor_wrong_scalar_dimension(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_tensor_wrong_scalar_dimension, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_all_gather_uneven_output_sizes(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_uneven_output_sizes, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_all_gather_mismatch_input_size(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_mismatch_input_size, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_all_gather_mismatch_dtype(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_mismatch_dtype, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_reduce_scatter_errors(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_reduce_scatter_errors, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_reduce_scatter_tensor_errors(self):
     distributed_utils.dist_run(
-        singlehost_wrapper.tpu_env_wrapper(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
             run_reduce_scatter_tensor_errors, (), world_size=8
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_all_reduce_error(self):
     expected_msg = (
@@ -418,11 +418,11 @@ class CollectiveErrorsTest(et.TpuOnlyErrorTestBase):
     )
     with et.assert_subprocess_raises_message(RuntimeError, expected_msg):
       distributed_utils.dist_run(
-          singlehost_wrapper.tpu_env_wrapper(
+          nproc_per_node=8,
+          fn=singlehost_wrapper.tpu_env_wrapper(
               run_all_reduce_error, (), world_size=8
           ),
-          nproc_per_node=8,
-      )()
+      )
 
 
 if __name__ == "__main__":
