@@ -41,7 +41,6 @@
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
-#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
@@ -222,6 +221,35 @@ absl::Status CheckScalarType(mlir::ElementType out_dtype,
       << "expected the scalar dtype to be castable to the tensor dtype "
          "(e.g. bool to int or int to float), got "
       << ToString(scalar_type) << " and " << ToString(tensor_type);
+  return absl::OkStatus();
+}
+absl::Status CheckInplaceScalarType(at::TensorList self,
+                                    const at::Scalar& scalar) {
+  TT_ASSIGN_OR_RETURN(auto out_dtypes, GetOutputDtypes(self));
+  TT_ASSIGN_OR_RETURN(const auto result_out_dtypes,
+                      GetOutputDtypes(self, scalar));
+  const DtypeSpan out_dtypes_span = *out_dtypes;
+  const DtypeSpan result_out_dtypes_span = *result_out_dtypes;
+  for (size_t i = 0; i < self.size(); ++i) {
+    TT_RETURN_IF_ERROR(CheckScalarType(out_dtypes_span[i],
+                                       result_out_dtypes_span[i],
+                                       self[i].scalar_type(), scalar.type()));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CheckInplaceScalarType(at::TensorList self,
+                                    at::ArrayRef<at::Scalar> scalars) {
+  TT_ASSIGN_OR_RETURN(auto out_dtypes, GetOutputDtypes(self));
+  TT_ASSIGN_OR_RETURN(const auto result_out_dtypes,
+                      GetOutputDtypes(self, scalars));
+  const DtypeSpan out_dtypes_span = *out_dtypes;
+  const DtypeSpan result_out_dtypes_span = *result_out_dtypes;
+  for (size_t i = 0; i < self.size(); ++i) {
+    TT_RETURN_IF_ERROR(
+        CheckScalarType(out_dtypes_span[i], result_out_dtypes_span[i],
+                        self[i].scalar_type(), scalars[i].type()));
+  }
   return absl::OkStatus();
 }
 
@@ -410,61 +438,46 @@ absl::StatusOr<std::vector<DeviceBufferRef>> ForeachUnaryOp(
 std::vector<DeviceBufferRef> ForeachAddList(at::TensorList self,
                                             at::TensorList other,
                                             const at::Scalar& alpha,
-                                            UniqueDtypeVec out_dtypes,
-                                            OpParamCacheKeys param_keys) {
+                                            UniqueDtypeVec out_dtypes) {
   // self and other are guaranteed to have the same size.
   // The error is handled by the upstream torch.
   size_t num_tensors = self.size();
-
-  // Check for invalid input types.
-  for (size_t i = 0; i < num_tensors; ++i) {
-    TT_CHECK_THROW(!(c10::isIntegralType(self[i].scalar_type(), true) &&
-                     c10::isIntegralType(other[i].scalar_type(), true) &&
-                     !c10::isIntegralType(alpha.type(), true)),
-                   error::kInvalidArgument)
-        << "expected alpha to be integral for integral input tensors, got "
-        << ToString(alpha.type());
-    TT_CHECK_THROW(
-        !alpha.isBoolean() || (self[i].scalar_type() == at::ScalarType::Bool &&
-                               other[i].scalar_type() == at::ScalarType::Bool),
-        error::kInvalidArgument)
-        << "expected input tensor dtypes to be bool when alpha dtype is "
-           "bool, got "
-        << ToString(self[i].scalar_type()) << " and "
-        << ToString(other[i].scalar_type());
-  }
 
   // The op builder.
   const DtypeSpan out_dtypes_span = *out_dtypes;
   std::vector<at::Tensor> inputs(self.begin(), self.end());
   inputs.insert(inputs.end(), other.begin(), other.end());
-  auto op_builder = [alpha, num_tensors, out_dtypes = std::move(out_dtypes),
+  bool alpha_is_one = (alpha.isIntegral(true) && alpha.to<int64_t>() == 1) ||
+                      (alpha.isFloatingPoint() && alpha.to<double>() == 1.0);
+  if (!alpha_is_one) {
+    for (int i = 0; i < num_tensors; ++i) {
+      at::ScalarType scalar_type = ConvertTo<at::ScalarType>((*out_dtypes)[i]);
+      TT_ASSIGN_OR_THROW(at::Tensor alpha_tensor,
+                         MakeTensor(alpha, scalar_type));
+      inputs.push_back(alpha_tensor);
+    }
+  }
+
+  auto op_builder = [alpha_is_one, num_tensors,
+                     out_dtypes = std::move(out_dtypes),
                      out_dtypes_span](absl::Span<mlir::MlirOp> inputs,
                                       mlir::MlirBuilder& builder)
       -> absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> {
     absl::Span<mlir::MlirOp> self_ops = inputs.subspan(0, num_tensors);
     absl::Span<mlir::MlirOp> other_ops =
         inputs.subspan(num_tensors, num_tensors);
-    std::vector<mlir::MlirOp> alpha_ops;
-    alpha_ops.reserve(num_tensors);
-    mlir::SmallVector<mlir::MlirOp> results;
-    results.reserve(num_tensors);
 
     // If alpha is 1.0, do a simple addition without multiplying by alpha.
-    if ((alpha.isIntegral(true) && alpha.to<int64_t>() == 1) ||
-        (alpha.isFloatingPoint() && alpha.to<double>() == 1.0)) {
+    if (alpha_is_one) {
       return BuildForeachShlo(self_ops, other_ops, out_dtypes_span,
                               mlir::stablehlo::Add, builder);
     }
-    for (int i = 0; i < num_tensors; ++i) {
-      TT_ASSIGN_OR_RETURN(auto current_alpha_op,
-                          MakeConstant(builder, alpha, out_dtypes_span[i]));
-      alpha_ops.push_back(current_alpha_op);
-    }
-    TT_ASSIGN_OR_RETURN(
-        auto new_other_ops,
-        BuildForeachShlo(other_ops, absl::MakeSpan(alpha_ops), out_dtypes_span,
-                         mlir::stablehlo::Mul, builder));
+
+    absl::Span<mlir::MlirOp> alpha_ops =
+        inputs.subspan(2 * num_tensors, 3 * num_tensors);
+    TT_ASSIGN_OR_RETURN(auto new_other_ops,
+                        BuildForeachShlo(other_ops, alpha_ops, out_dtypes_span,
+                                         mlir::stablehlo::Mul, builder));
     return BuildForeachShlo(self_ops, absl::MakeSpan(new_other_ops),
                             out_dtypes_span, mlir::stablehlo::Add, builder);
   };
@@ -474,7 +487,6 @@ std::vector<DeviceBufferRef> ForeachAddList(at::TensorList self,
   DispatchOpOptions<kDynamicSize> options = {
       .out_dtypes = out_dtypes_span,
       .out_dims_list = absl::MakeConstSpan(out_dims_list),
-      .op_param_cache_keys = std::move(param_keys),
   };
   TT_ASSIGN_OR_THROW(auto result_buffers,
                      (DispatchOp<kDynamicSize, kDynamicSize>(
@@ -483,77 +495,9 @@ std::vector<DeviceBufferRef> ForeachAddList(at::TensorList self,
   return result_buffers;
 }
 
-std::vector<DeviceBufferRef> ForeachAddScalar(at::TensorList self,
-                                              const at::Scalar& scalar,
-                                              UniqueDtypeVec out_dtypes,
-                                              OpParamCacheKeys param_keys) {
-  const auto out_dims_list = GetDimsList(self);
-  const DtypeSpan out_dtypes_span = *out_dtypes;
-  DispatchOpOptions<kDynamicSize> options = {
-      .out_dtypes = out_dtypes_span,
-      .out_dims_list = absl::MakeConstSpan(out_dims_list),
-      .op_param_cache_keys = std::move(param_keys),
-  };
-  auto op_builder = [scalar, out_dtypes = std::move(out_dtypes),
-                     out_dtypes_span](absl::Span<mlir::MlirOp> inputs,
-                                      mlir::MlirBuilder& builder)
-      -> absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> {
-    std::vector<mlir::MlirOp> scalar_ops;
-    scalar_ops.reserve(inputs.size());
-    for (int i = 0; i < inputs.size(); ++i) {
-      TT_ASSIGN_OR_RETURN(mlir::MlirOp scalar_op,
-                          MakeConstant(builder, scalar, out_dtypes_span[i]));
-      scalar_ops.push_back(scalar_op);
-    }
-    return BuildForeachShlo(inputs, absl::MakeSpan(scalar_ops), out_dtypes_span,
-                            mlir::stablehlo::Add, builder);
-  };
-  std::vector<at::Tensor> inputs(self.begin(), self.end());
-  TT_ASSIGN_OR_THROW(auto result_buffers,
-                     (DispatchOp<kDynamicSize, kDynamicSize>(
-                         OpName::kForeachAddScalar, std::move(op_builder),
-                         inputs, std::move(options))));
-  return result_buffers;
-}
-
-std::vector<DeviceBufferRef> ForeachAddScalarList(
-    at::TensorList self, at::ArrayRef<at::Scalar> scalars,
-    UniqueDtypeVec out_dtypes, OpParamCacheKeys param_keys) {
-  const DtypeSpan out_dtypes_span = *out_dtypes;
-  const std::vector<at::Scalar> scalars_vec(scalars.begin(), scalars.end());
-  auto op_builder = [scalars_vec, out_dtypes = std::move(out_dtypes),
-                     out_dtypes_span](absl::Span<mlir::MlirOp> inputs,
-                                      mlir::MlirBuilder& builder)
-      -> absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> {
-    std::vector<mlir::MlirOp> scalar_ops;
-    scalar_ops.reserve(inputs.size());
-    for (int i = 0; i < inputs.size(); ++i) {
-      TT_ASSIGN_OR_RETURN(auto scalar_op, MakeConstant(builder, scalars_vec[i],
-                                                       out_dtypes_span[i]));
-      scalar_ops.push_back(scalar_op);
-    }
-    return BuildForeachShlo(inputs, absl::MakeSpan(scalar_ops), out_dtypes_span,
-                            mlir::stablehlo::Add, builder);
-  };
-
-  std::vector<at::Tensor> inputs(self.begin(), self.end());
-  const auto out_dims_list = GetDimsList(self);
-  DispatchOpOptions<kDynamicSize> options = {
-      .out_dtypes = out_dtypes_span,
-      .out_dims_list = absl::MakeConstSpan(out_dims_list),
-      .op_param_cache_keys = std::move(param_keys),
-  };
-  TT_ASSIGN_OR_THROW(auto result_buffers,
-                     (DispatchOp<kDynamicSize, kDynamicSize>(
-                         OpName::kForeachAddScalarList, std::move(op_builder),
-                         inputs, std::move(options))));
-  return result_buffers;
-}
-
 std::vector<DeviceBufferRef> ForeachMulList(at::TensorList self,
                                             at::TensorList other,
-                                            UniqueDtypeVec out_dtypes,
-                                            OpParamCacheKeys param_keys) {
+                                            UniqueDtypeVec out_dtypes) {
   const DtypeSpan out_dtypes_span = *out_dtypes;
   // self and other are guaranteed to have the same size.
   // The error is handled by the upstream torch.
@@ -575,7 +519,6 @@ std::vector<DeviceBufferRef> ForeachMulList(at::TensorList self,
   DispatchOpOptions<kDynamicSize> options = {
       .out_dtypes = out_dtypes_span,
       .out_dims_list = out_dims_list,
-      .op_param_cache_keys = std::move(param_keys),
   };
 
   // Dispatch the op and prepare results.
@@ -583,82 +526,6 @@ std::vector<DeviceBufferRef> ForeachMulList(at::TensorList self,
                      (DispatchOp<kDynamicSize, kDynamicSize>(
                          OpName::kForeachMulList, std::move(op_builder), inputs,
                          std::move(options))));
-  return result_buffers;
-}
-
-std::vector<DeviceBufferRef> ForeachMulScalar(at::TensorList self,
-                                              const at::Scalar& scalar,
-                                              UniqueDtypeVec out_dtypes,
-                                              OpParamCacheKeys param_keys) {
-  const DtypeSpan out_dtypes_span = *out_dtypes;
-  auto op_builder = [scalar, out_dtypes = std::move(out_dtypes),
-                     out_dtypes_span](absl::Span<mlir::MlirOp> inputs,
-                                      mlir::MlirBuilder& builder)
-      -> absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> {
-    std::vector<mlir::MlirOp> scalar_ops;
-    scalar_ops.reserve(inputs.size());
-    for (int i = 0; i < inputs.size(); ++i) {
-      absl::StatusOr<mlir::MlirOp> scalar_op_status =
-          MakeConstant(builder, scalar, out_dtypes_span[i]);
-      if (!scalar_op_status.ok()) {
-        return scalar_op_status.status();
-      }
-      mlir::MlirOp scalar_op = *scalar_op_status;
-      scalar_ops.push_back(scalar_op);
-    }
-    return BuildForeachShlo(inputs, absl::MakeSpan(scalar_ops), out_dtypes_span,
-                            mlir::stablehlo::Mul, builder);
-  };
-
-  std::vector<at::Tensor> inputs(self.begin(), self.end());
-  const auto out_dims_list = GetDimsList(self);
-  DispatchOpOptions<kDynamicSize> options = {
-      .out_dtypes = out_dtypes_span,
-      .out_dims_list = out_dims_list,
-      .op_param_cache_keys = std::move(param_keys),
-  };
-  TT_ASSIGN_OR_THROW(auto result_buffers,
-                     (DispatchOp<kDynamicSize, kDynamicSize>(
-                         OpName::kForeachMulScalar, std::move(op_builder),
-                         inputs, std::move(options))));
-  return result_buffers;
-}
-
-std::vector<DeviceBufferRef> ForeachMulScalarList(
-    at::TensorList self, at::ArrayRef<at::Scalar> scalars,
-    UniqueDtypeVec out_dtypes, OpParamCacheKeys param_keys) {
-  DtypeSpan out_dtypes_span = *out_dtypes;
-  const std::vector<at::Scalar> scalars_vec(scalars.begin(), scalars.end());
-  auto op_builder = [scalars_vec, out_dtypes = std::move(out_dtypes),
-                     out_dtypes_span](absl::Span<mlir::MlirOp> inputs,
-                                      mlir::MlirBuilder& builder)
-      -> absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> {
-    std::vector<mlir::MlirOp> scalar_ops;
-    scalar_ops.reserve(inputs.size());
-    for (int i = 0; i < inputs.size(); ++i) {
-      absl::StatusOr<mlir::MlirOp> scalar_op_status =
-          MakeConstant(builder, scalars_vec[i], out_dtypes_span[i]);
-      if (!scalar_op_status.ok()) {
-        return scalar_op_status.status();
-      }
-      mlir::MlirOp scalar_op = *scalar_op_status;
-      scalar_ops.push_back(scalar_op);
-    }
-    return BuildForeachShlo(inputs, absl::MakeSpan(scalar_ops), out_dtypes_span,
-                            mlir::stablehlo::Mul, builder);
-  };
-
-  std::vector<at::Tensor> inputs(self.begin(), self.end());
-  const auto out_dims_list = GetDimsList(self);
-  DispatchOpOptions<kDynamicSize> options = {
-      .out_dtypes = out_dtypes_span,
-      .out_dims_list = out_dims_list,
-      .op_param_cache_keys = std::move(param_keys),
-  };
-  TT_ASSIGN_OR_THROW(auto result_buffers,
-                     (DispatchOp<kDynamicSize, kDynamicSize>(
-                         OpName::kForeachMulScalarList, std::move(op_builder),
-                         inputs, std::move(options))));
   return result_buffers;
 }
 
@@ -1404,28 +1271,64 @@ void AtenForeachZero_(at::TensorList self) {
 std::vector<at::Tensor> AtenForeachAddList(at::TensorList self,
                                            at::TensorList other,
                                            const at::Scalar& alpha) {
-  TT_KERNEL(OpName::kForeachAddList, param_keys, (self, other, alpha), {
+  TT_KERNEL(OpName::kForeachAddList, _, (self, other, alpha), {
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, other));
-    return ForeachConvertToTensor(ForeachAddList(
-        self, other, alpha, std::move(out_dtypes), std::move(param_keys)));
+
+    // Check for invalid input types.
+    size_t num_tensors = self.size();
+    for (size_t i = 0; i < num_tensors; ++i) {
+      TT_CHECK_THROW(!(c10::isIntegralType(self[i].scalar_type(), true) &&
+                       c10::isIntegralType(other[i].scalar_type(), true) &&
+                       !c10::isIntegralType(alpha.type(), true)),
+                     error::kInvalidArgument)
+          << "expected alpha to be integral for integral input tensors, got "
+          << ToString(alpha.type());
+      TT_CHECK_THROW(!alpha.isBoolean() ||
+                         (self[i].scalar_type() == at::ScalarType::Bool &&
+                          other[i].scalar_type() == at::ScalarType::Bool),
+                     error::kInvalidArgument)
+          << "expected input tensor dtypes to be bool when alpha dtype is "
+             "bool, got "
+          << ToString(self[i].scalar_type()) << " and "
+          << ToString(other[i].scalar_type());
+    }
+
+    return ForeachConvertToTensor(
+        ForeachAddList(self, other, alpha, std::move(out_dtypes)));
   });
 }
 
 std::vector<at::Tensor> AtenForeachAddScalar(at::TensorList self,
                                              const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachAddScalar, param_keys, (self, scalar), {
+  TT_KERNEL(OpName::kForeachAddScalar, _, (self, scalar), {
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, scalar));
-    return ForeachConvertToTensor(ForeachAddScalar(
-        self, scalar, std::move(out_dtypes), std::move(param_keys)));
+    std::vector<at::Tensor> other;
+    other.reserve(self.size());
+    for (size_t i = 0; i < self.size(); ++i) {
+      at::ScalarType scalar_type = ConvertTo<at::ScalarType>((*out_dtypes)[i]);
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         MakeTensor(scalar, scalar_type));
+      other.push_back(scalar_tensor);
+    }
+    return ForeachConvertToTensor(
+        ForeachAddList(self, other, 1.0, std::move(out_dtypes)));
   });
 }
 
 std::vector<at::Tensor> AtenForeachAddScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachAddScalarList, param_keys, (self, scalars), {
+  TT_KERNEL(OpName::kForeachAddScalarList, _, (self, scalars), {
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, scalars));
-    return ForeachConvertToTensor(ForeachAddScalarList(
-        self, scalars, std::move(out_dtypes), std::move(param_keys)));
+    std::vector<at::Tensor> other;
+    other.reserve(self.size());
+    for (size_t i = 0; i < self.size(); ++i) {
+      at::ScalarType scalar_type = ConvertTo<at::ScalarType>((*out_dtypes)[i]);
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         MakeTensor(scalars[i], scalar_type));
+      other.push_back(scalar_tensor);
+    }
+    return ForeachConvertToTensor(
+        ForeachAddList(self, other, 1.0, std::move(out_dtypes)));
   });
 }
 
@@ -1434,58 +1337,51 @@ std::vector<at::Tensor> AtenForeachAddTensor(at::TensorList self,
                                              const at::Scalar& alpha) {
   TT_KERNEL(OpName::kForeachAddTensor, _, (self, other, alpha), {
     std::vector<at::Tensor> other_list(self.size(), other);
-    return AtenForeachAddList(self, other_list, alpha);
+    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, other_list));
+    return ForeachConvertToTensor(
+        ForeachAddList(self, other_list, alpha, std::move(out_dtypes)));
   });
 }
 
 void AtenForeachAdd_List(at::TensorList self, at::TensorList other,
                          const at::Scalar& alpha) {
-  TT_KERNEL(OpName::kForeachAdd_List, param_keys, (self, other, alpha), {
+  TT_KERNEL(OpName::kForeachAdd_List, _, (self, other, alpha), {
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
-        ForeachAddList(self, other, alpha, std::move(out_dtypes),
-                       std::move(param_keys)),
-        self));
+        ForeachAddList(self, other, alpha, std::move(out_dtypes)), self));
   });
 }
 
 void AtenForeachAdd_Scalar(at::TensorList self, const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachAdd_Scalar, param_keys, (self, scalar), {
+  TT_KERNEL(OpName::kForeachAdd_Scalar, _, (self, scalar), {
+    TT_THROW_IF_ERROR(CheckInplaceScalarType(self, scalar));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(const auto result_out_dtypes,
-                       GetOutputDtypes(self, scalar));
-    const DtypeSpan out_dtypes_span = *out_dtypes;
-    const DtypeSpan result_out_dtypes_span = *result_out_dtypes;
+    std::vector<at::Tensor> other;
+    other.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
-      TT_THROW_IF_ERROR(CheckScalarType(out_dtypes_span[i],
-                                        result_out_dtypes_span[i],
-                                        self[i].scalar_type(), scalar.type()));
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         MakeTensor(scalar, self[i].scalar_type()));
+      other.push_back(scalar_tensor);
     }
-
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
-        ForeachAddScalar(self, scalar, std::move(out_dtypes),
-                         std::move(param_keys)),
-        self));
+        ForeachAddList(self, other, 1.0, std::move(out_dtypes)), self));
   });
 }
 
 void AtenForeachAdd_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachAdd_ScalarList, param_keys, (self, scalars), {
+  TT_KERNEL(OpName::kForeachAdd_ScalarList, _, (self, scalars), {
+    TT_THROW_IF_ERROR(CheckInplaceScalarType(self, scalars));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(const auto result_out_dtypes,
-                       GetOutputDtypes(self, scalars));
-    const DtypeSpan out_dtypes_span = *out_dtypes;
-    const DtypeSpan result_out_dtypes_span = *result_out_dtypes;
+    std::vector<at::Tensor> other;
+    other.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
-      TT_THROW_IF_ERROR(
-          CheckScalarType(out_dtypes_span[i], result_out_dtypes_span[i],
-                          self[i].scalar_type(), scalars[i].type()));
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         MakeTensor(scalars[i], self[i].scalar_type()));
+      other.push_back(scalar_tensor);
     }
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
-        ForeachAddScalarList(self, scalars, std::move(out_dtypes),
-                             std::move(param_keys)),
-        self));
+        ForeachAddList(self, other, 1.0, std::move(out_dtypes)), self));
   });
 }
 
@@ -1493,7 +1389,9 @@ void AtenForeachAdd_Tensor(at::TensorList self, const at::Tensor& other,
                            const at::Scalar& alpha) {
   TT_KERNEL(OpName::kForeachAdd_Tensor, _, (self, other, alpha), {
     std::vector<at::Tensor> other_list(self.size(), other);
-    AtenForeachAdd_List(self, other_list, alpha);
+    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(
+        ForeachAddList(self, other_list, alpha, std::move(out_dtypes)), self));
   });
 }
 
@@ -1803,28 +1701,44 @@ void AtenForeachLerp_ScalarList(at::TensorList self, at::TensorList other,
 
 std::vector<at::Tensor> AtenForeachMulList(at::TensorList self,
                                            at::TensorList other) {
-  TT_KERNEL(OpName::kForeachMulList, param_keys, (self, other), {
+  TT_KERNEL(OpName::kForeachMulList, _, (self, other), {
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, other));
-    return ForeachConvertToTensor(ForeachMulList(
-        self, other, std::move(out_dtypes), std::move(param_keys)));
+    return ForeachConvertToTensor(
+        ForeachMulList(self, other, std::move(out_dtypes)));
   });
 }
 
 std::vector<at::Tensor> AtenForeachMulScalar(at::TensorList self,
                                              const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachMulScalar, param_keys, (self, scalar), {
+  TT_KERNEL(OpName::kForeachMulScalar, _, (self, scalar), {
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, scalar));
-    return ForeachConvertToTensor(ForeachMulScalar(
-        self, scalar, std::move(out_dtypes), std::move(param_keys)));
+    std::vector<at::Tensor> other;
+    other.reserve(self.size());
+    for (size_t i = 0; i < self.size(); ++i) {
+      at::ScalarType scalar_type = ConvertTo<at::ScalarType>((*out_dtypes)[i]);
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         MakeTensor(scalar, scalar_type));
+      other.push_back(scalar_tensor);
+    }
+    return ForeachConvertToTensor(
+        ForeachMulList(self, other, std::move(out_dtypes)));
   });
 }
 
 std::vector<at::Tensor> AtenForeachMulScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachMulScalarList, param_keys, (self, scalars), {
+  TT_KERNEL(OpName::kForeachMulScalarList, _, (self, scalars), {
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, scalars));
-    return ForeachConvertToTensor(ForeachMulScalarList(
-        self, scalars, std::move(out_dtypes), std::move(param_keys)));
+    std::vector<at::Tensor> other;
+    other.reserve(self.size());
+    for (size_t i = 0; i < self.size(); ++i) {
+      at::ScalarType scalar_type = ConvertTo<at::ScalarType>((*out_dtypes)[i]);
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         MakeTensor(scalars[i], scalar_type));
+      other.push_back(scalar_tensor);
+    }
+    return ForeachConvertToTensor(
+        ForeachMulList(self, other, std::move(out_dtypes)));
   });
 }
 
@@ -1832,65 +1746,59 @@ std::vector<at::Tensor> AtenForeachMulTensor(at::TensorList self,
                                              const at::Tensor& other) {
   TT_KERNEL(OpName::kForeachMulTensor, _, (self, other), {
     std::vector<at::Tensor> other_list(self.size(), other);
-    return AtenForeachMulList(self, other_list);
+    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, other_list));
+    return ForeachConvertToTensor(
+        ForeachMulList(self, other_list, std::move(out_dtypes)));
   });
 }
 
 void AtenForeachMul_List(at::TensorList self, at::TensorList other) {
-  TT_KERNEL(OpName::kForeachMul_List, param_keys, (self, other), {
+  TT_KERNEL(OpName::kForeachMul_List, _, (self, other), {
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_THROW_IF_ERROR(
-        ForeachAssignToTensor(ForeachMulList(self, other, std::move(out_dtypes),
-                                             std::move(param_keys)),
-                              self));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(
+        ForeachMulList(self, other, std::move(out_dtypes)), self));
   });
 }
 
 void AtenForeachMul_Scalar(at::TensorList self, const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachMul_Scalar, param_keys, (self, scalar), {
+  TT_KERNEL(OpName::kForeachMul_Scalar, _, (self, scalar), {
+    TT_THROW_IF_ERROR(CheckInplaceScalarType(self, scalar));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(const auto result_out_dtypes,
-                       GetOutputDtypes(self, scalar));
-    const DtypeSpan out_dtypes_span = *out_dtypes;
-    const DtypeSpan result_out_dtypes_span = *result_out_dtypes;
+    std::vector<at::Tensor> other;
+    other.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
-      TT_THROW_IF_ERROR(CheckScalarType(out_dtypes_span[i],
-                                        result_out_dtypes_span[i],
-                                        self[i].scalar_type(), scalar.type()));
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         MakeTensor(scalar, self[i].scalar_type()));
+      other.push_back(scalar_tensor);
     }
-
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
-        ForeachMulScalar(self, scalar, std::move(out_dtypes),
-                         std::move(param_keys)),
-        self));
+        ForeachMulList(self, other, std::move(out_dtypes)), self));
   });
 }
 
 void AtenForeachMul_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachMul_ScalarList, param_keys, (self, scalars), {
+  TT_KERNEL(OpName::kForeachMul_ScalarList, _, (self, scalars), {
+    TT_THROW_IF_ERROR(CheckInplaceScalarType(self, scalars));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(const auto result_out_dtypes,
-                       GetOutputDtypes(self, scalars));
-    const DtypeSpan out_dtypes_span = *out_dtypes;
-    const DtypeSpan result_out_dtypes_span = *result_out_dtypes;
+    std::vector<at::Tensor> other;
+    other.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
-      TT_THROW_IF_ERROR(
-          CheckScalarType(out_dtypes_span[i], result_out_dtypes_span[i],
-                          self[i].scalar_type(), scalars[i].type()));
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         MakeTensor(scalars[i], self[i].scalar_type()));
+      other.push_back(scalar_tensor);
     }
-
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
-        ForeachMulScalarList(self, scalars, std::move(out_dtypes),
-                             std::move(param_keys)),
-        self));
+        ForeachMulList(self, other, std::move(out_dtypes)), self));
   });
 }
 
 void AtenForeachMul_Tensor(at::TensorList self, const at::Tensor& other) {
   TT_KERNEL(OpName::kForeachMul_Tensor, _, (self, other), {
     std::vector<at::Tensor> other_list(self.size(), other);
-    AtenForeachMul_List(self, other_list);
+    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(
+        ForeachMulList(self, other_list, std::move(out_dtypes)), self));
   });
 }
 
