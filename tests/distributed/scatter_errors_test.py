@@ -99,7 +99,7 @@ class ScatterErrorsTest(absltest.TestCase):
       distributed_utils.dist_run(
           nproc_per_node=8,
           fn=singlehost_wrapper.tpu_env_wrapper(
-              run_scatter_wrong_number_inputs, ()
+              run_scatter_wrong_number_inputs
           ),
           num_inputs=9,
       )
@@ -114,9 +114,7 @@ class ScatterErrorsTest(absltest.TestCase):
     ):
       distributed_utils.dist_run(
           nproc_per_node=8,
-          fn=singlehost_wrapper.tpu_env_wrapper(
-              run_scatter_wrong_shape_output, ()
-          ),
+          fn=singlehost_wrapper.tpu_env_wrapper(run_scatter_wrong_shape_output),
           input_shape=input_shape,
           output_shape=output_shape,
       )
@@ -133,7 +131,7 @@ class ScatterErrorsTest(absltest.TestCase):
       distributed_utils.dist_run(
           nproc_per_node=8,
           fn=singlehost_wrapper.tpu_env_wrapper(
-              run_scatter_mismatch_input_shapes, ()
+              run_scatter_mismatch_input_shapes
           ),
           shape=shape,
           mismatch_shape=mismatch_shape,

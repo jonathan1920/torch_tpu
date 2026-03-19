@@ -190,20 +190,20 @@ class SubgroupCollectivesTest(absltest.TestCase):
   def test_manual_2d_mesh(self):
     distributed_utils.dist_run(
         nproc_per_node=8,
-        fn=singlehost_wrapper.tpu_env_wrapper(run_manual_2d_mesh, ()),
+        fn=singlehost_wrapper.tpu_env_wrapper(run_manual_2d_mesh),
     )
 
   def test_manual_1d_as_2d_mesh(self):
     distributed_utils.dist_run(
         nproc_per_node=8,
-        fn=singlehost_wrapper.tpu_env_wrapper(run_manual_1d_as_2d_mesh, ()),
+        fn=singlehost_wrapper.tpu_env_wrapper(run_manual_1d_as_2d_mesh),
     )
 
   def test_manual_2d_all_gather_reduce_scatter(self):
     distributed_utils.dist_run(
         nproc_per_node=8,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_manual_2d_all_gather_reduce_scatter, ()
+            run_manual_2d_all_gather_reduce_scatter
         ),
     )
 

@@ -97,7 +97,7 @@ class AllToAllSingleCollectiveErrorsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_to_all_single_dtype_error, (), world_size=self._world_size
+            run_all_to_all_single_dtype_error, world_size=self._world_size
         ),
     )
 
@@ -106,7 +106,6 @@ class AllToAllSingleCollectiveErrorsTest(absltest.TestCase):
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_single_invalid_tensor_size_error,
-            (),
             world_size=self._world_size,
         ),
     )
@@ -116,7 +115,6 @@ class AllToAllSingleCollectiveErrorsTest(absltest.TestCase):
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_single_invalid_split_sizes_size_error,
-            (),
             world_size=self._world_size,
         ),
     )
@@ -126,7 +124,6 @@ class AllToAllSingleCollectiveErrorsTest(absltest.TestCase):
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_single_invalid_split_sizes_sum_error,
-            (),
             world_size=self._world_size,
         ),
     )
@@ -223,7 +220,6 @@ class AllToAllCollectiveErrorsTest(absltest.TestCase):
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_unequal_tensor_list_size_error,
-            (),
             world_size=self._world_size,
         ),
     )
@@ -233,7 +229,6 @@ class AllToAllCollectiveErrorsTest(absltest.TestCase):
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_wrong_num_input_tensors_error,
-            (),
             world_size=self._world_size,
         ),
     )
@@ -243,7 +238,6 @@ class AllToAllCollectiveErrorsTest(absltest.TestCase):
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_unequal_input_tensor_shape_error,
-            (),
             world_size=self._world_size,
         ),
     )
@@ -253,7 +247,6 @@ class AllToAllCollectiveErrorsTest(absltest.TestCase):
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_to_all_unequal_input_output_tensor_shape_error,
-            (),
             world_size=self._world_size,
         ),
     )

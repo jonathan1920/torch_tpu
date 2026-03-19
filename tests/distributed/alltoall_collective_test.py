@@ -188,7 +188,7 @@ class AllToAllSingleCollectiveTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_to_all_single, (), world_size=self._world_size
+            run_all_to_all_single, world_size=self._world_size
         ),
         test_data=rank_data,
     )
@@ -198,7 +198,7 @@ class AllToAllSingleCollectiveTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_to_all_single, (), world_size=self._world_size
+            run_all_to_all_single, world_size=self._world_size
         ),
         test_data=rank_data,
     )
@@ -211,7 +211,7 @@ class AllToAllSingleCollectiveTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_to_all_single, (), world_size=self._world_size
+            run_all_to_all_single, world_size=self._world_size
         ),
         test_data=rank_data,
     )
@@ -331,7 +331,7 @@ class AllToAllCollectiveTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_to_all, (), world_size=self._world_size
+            run_all_to_all, world_size=self._world_size
         ),
         test_data=rank_data,
     )
@@ -341,7 +341,7 @@ class AllToAllCollectiveTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_to_all, (), world_size=self._world_size
+            run_all_to_all, world_size=self._world_size
         ),
         test_data=rank_data,
     )

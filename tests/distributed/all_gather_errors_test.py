@@ -86,7 +86,7 @@ class AllGatherErrorsTest(et.TpuOnlyErrorTestBase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_gather_dtype_error, (), world_size=self._world_size
+            run_all_gather_dtype_error, world_size=self._world_size
         ),
     )
 
@@ -94,7 +94,7 @@ class AllGatherErrorsTest(et.TpuOnlyErrorTestBase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_gather_wrong_num_tensors, (), world_size=self._world_size
+            run_all_gather_wrong_num_tensors, world_size=self._world_size
         ),
     )
 
@@ -102,7 +102,7 @@ class AllGatherErrorsTest(et.TpuOnlyErrorTestBase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_gather_dispatch_failure, (), world_size=self._world_size
+            run_all_gather_dispatch_failure, world_size=self._world_size
         ),
     )
 

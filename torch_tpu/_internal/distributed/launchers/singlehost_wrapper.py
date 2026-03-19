@@ -22,7 +22,7 @@ The torchrun command is called on a wrapper around user logic:
 
 ```
 g3_distributed.torchrun(
-    tpu_env_wrapper(user_logic, arg1, arg2, world_size=N),
+    tpu_env_wrapper(user_logic, world_size=N),
     nproc_per_node=N,
 )()
 ```
@@ -80,34 +80,30 @@ def prepare_tpu_environment(world_size: int | None = None) -> None:
 class WorkerWrapper:
   """A picklable wrapper around the user function for distributed execution."""
 
-  def __init__(self, func: Callable[..., Any], *args: Any, **kwargs: Any):
+  def __init__(self, func: Callable[..., Any]):
     self.func = func
-    self.args = args
-    self.kwargs = kwargs
     # torch.distributed requires entrypoint to have __name__ and __qualname__.
     self.__name__ = getattr(func, "__name__", str(func))
     self.__qualname__ = getattr(func, "__qualname__", str(func))
 
   def __call__(self, *args: Any, **kwargs: Any) -> None:
-    # Execute user function with stored args and any new args.
-    self.func(*(self.args + args), **{**self.kwargs, **kwargs})
+    # Execute user function with any positional and keyword args.
+    self.func(*args, **kwargs)
 
 
-def tpu_env_wrapper(func, args, *, world_size=None, **kwargs) -> Any:
+def tpu_env_wrapper(func, *, world_size=None) -> Any:
   """Internal wrapper to initialize worker and run user function.
 
   Args:
     func: The user's callable to be executed by each distributed worker.
-    args: Positional arguments to pass to `func`.
     world_size: The number of TPU devices to use. If None, auto-detects based on
       available hardware. This MUST be passed as a keyword argument.
-    **kwargs: Keyword arguments to pass to `func`.
 
   Returns:
     A WorkerWrapper instance that can be called by torchrun.
   """
   prepare_tpu_environment(world_size)
-  return WorkerWrapper(func, *args, **kwargs)
+  return WorkerWrapper(func)
 
 
 if __name__ == "__main__":

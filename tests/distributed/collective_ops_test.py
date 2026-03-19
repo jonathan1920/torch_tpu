@@ -455,7 +455,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, (), world_size=self._world_size
+            run_all_reduce, world_size=self._world_size
         ),
         input_fn=_all_reduce_input_fn_rank,
         reduce_op=torch.distributed.ReduceOp.SUM,
@@ -467,7 +467,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, (), world_size=self._world_size
+            run_all_reduce, world_size=self._world_size
         ),
         input_fn=_all_reduce_input_fn_rank,
         reduce_op=torch.distributed.ReduceOp.AVG,
@@ -479,7 +479,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, (), world_size=self._world_size
+            run_all_reduce, world_size=self._world_size
         ),
         input_fn=_all_reduce_input_fn_rank,
         reduce_op=torch.distributed.ReduceOp.PRODUCT,
@@ -491,7 +491,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, (), world_size=self._world_size
+            run_all_reduce, world_size=self._world_size
         ),
         input_fn=_all_reduce_input_fn_rank,
         reduce_op=torch.distributed.ReduceOp.MIN,
@@ -503,7 +503,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, (), world_size=self._world_size
+            run_all_reduce, world_size=self._world_size
         ),
         input_fn=_all_reduce_input_fn_rank,
         reduce_op=torch.distributed.ReduceOp.MAX,
@@ -515,7 +515,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, (), world_size=self._world_size
+            run_all_reduce, world_size=self._world_size
         ),
         input_fn=_all_reduce_bitwise_input_fn,
         reduce_op=torch.distributed.ReduceOp.BAND,
@@ -527,7 +527,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, (), world_size=self._world_size
+            run_all_reduce, world_size=self._world_size
         ),
         input_fn=_all_reduce_bitwise_input_fn,
         reduce_op=torch.distributed.ReduceOp.BOR,
@@ -539,7 +539,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, (), world_size=self._world_size
+            run_all_reduce, world_size=self._world_size
         ),
         input_fn=_all_reduce_bitwise_input_fn,
         reduce_op=torch.distributed.ReduceOp.BXOR,
@@ -551,7 +551,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, (), world_size=self._world_size
+            run_all_reduce, world_size=self._world_size
         ),
         input_fn=_all_reduce_input_fn_const,
         reduce_op=torch.distributed.ReduceOp.SUM,
@@ -563,7 +563,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, (), world_size=self._world_size
+            run_all_reduce, world_size=self._world_size
         ),
         input_fn=_all_reduce_input_fn_const,
         reduce_op=torch.distributed.ReduceOp.PRODUCT,
@@ -575,7 +575,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_gather_scalar, (), world_size=self._world_size
+            run_all_gather_scalar, world_size=self._world_size
         ),
     )
 
@@ -583,7 +583,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_gather_tensor_concat, (), world_size=self._world_size
+            run_all_gather_tensor_concat, world_size=self._world_size
         ),
     )
 
@@ -591,7 +591,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_gather_tensor_scalar, (), world_size=self._world_size
+            run_all_gather_tensor_scalar, world_size=self._world_size
         ),
     )
 
@@ -599,7 +599,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_gather_tensor_stack, (), world_size=self._world_size
+            run_all_gather_tensor_stack, world_size=self._world_size
         ),
     )
 
@@ -607,7 +607,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_reduce_scatter, (), world_size=self._world_size
+            run_reduce_scatter, world_size=self._world_size
         ),
     )
 
@@ -615,7 +615,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_reduce_scatter_tensor_stack, (), world_size=self._world_size
+            run_reduce_scatter_tensor_stack, world_size=self._world_size
         ),
     )
 
@@ -623,7 +623,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_reduce_scatter_tensor_concat, (), world_size=self._world_size
+            run_reduce_scatter_tensor_concat, world_size=self._world_size
         ),
     )
 
@@ -631,7 +631,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_reduce_scatter_tensor_avg, (), world_size=self._world_size
+            run_reduce_scatter_tensor_avg, world_size=self._world_size
         ),
     )
 
@@ -639,7 +639,7 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_broadcast, (), world_size=self._world_size
+            run_broadcast, world_size=self._world_size
         ),
     )
 
@@ -648,7 +648,6 @@ class CollectiveOpsTest(absltest.TestCase):
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
             run_collectives_with_non_uniform_deferred_ops,
-            (),
             world_size=self._world_size,
         ),
     )
@@ -656,12 +655,12 @@ class CollectiveOpsTest(absltest.TestCase):
   def test_barrier(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
-        fn=singlehost_wrapper.tpu_env_wrapper(run_barrier, ()),
+        fn=singlehost_wrapper.tpu_env_wrapper(run_barrier),
         async_op=False,
     )
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
-        fn=singlehost_wrapper.tpu_env_wrapper(run_barrier, ()),
+        fn=singlehost_wrapper.tpu_env_wrapper(run_barrier),
         async_op=True,
     )
 

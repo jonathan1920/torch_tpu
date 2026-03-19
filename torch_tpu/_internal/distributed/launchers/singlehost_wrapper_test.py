@@ -90,19 +90,12 @@ class SingleHostTestLauncherTest(absltest.TestCase):
       )
 
     g3_distributed.torchrun(
-        singlehost_wrapper.tpu_env_wrapper(
-            worker_func, (), world_size=WORLD_SIZE
-        ),
+        singlehost_wrapper.tpu_env_wrapper(worker_func, world_size=WORLD_SIZE),
         nproc_per_node=8,
     )
 
   def test_tpu_env_wrapper_no_args(self):
-    singlehost_wrapper.tpu_env_wrapper(dummy_worker_func, (), world_size=8)
-
-  def test_tpu_env_wrapper_accepts_args_for_func(self):
-    singlehost_wrapper.tpu_env_wrapper(
-        dummy_worker_func_with_arg, (1,), world_size=8
-    )
+    singlehost_wrapper.tpu_env_wrapper(dummy_worker_func, world_size=8)
 
 
 if __name__ == "__main__":

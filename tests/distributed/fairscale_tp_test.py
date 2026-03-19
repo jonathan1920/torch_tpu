@@ -179,7 +179,7 @@ class FairscaleTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=WORLD_SIZE,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_forward_tp, (), world_size=WORLD_SIZE
+            run_forward_tp, world_size=WORLD_SIZE
         ),
     )
 
