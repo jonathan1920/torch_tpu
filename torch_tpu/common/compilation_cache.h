@@ -220,7 +220,7 @@ class CompilationCache {
   //
   // Parameters:
   //  - executable_promise: The promise to set the executable in.
-  //  - computation_builder: A function that builds the MLIR computation.
+  //  - contexted_module: The MLIR computation to compile.
   //  - compile_options: The compile options to use for the compilation.
   //  - key: The key where this entry is stored in the cache, used for tiered
   //    cache lookups. If not provided, we will not perform any tiered cache
@@ -228,8 +228,7 @@ class CompilationCache {
   //    kernel in the flat executable cache.
   void EnqueueCompilation(
       absl_nonnull std::shared_ptr<LoadedExecutablePromise> executable_promise,
-      MlirComputationBuilder computation_builder,
-      UniqueCompileOptions compile_options,
+      ContextedModule contexted_module, UniqueCompileOptions compile_options,
       std::optional<CompilationCacheKey> key = std::nullopt)
       ABSL_LOCKS_EXCLUDED(cache_mutex_);
 

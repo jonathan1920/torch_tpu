@@ -213,6 +213,21 @@ CompilationCache& CompilationCache::GetInstance() {
 
 void CompilationCache::Shutdown() { GetInstance().~CompilationCache(); }
 
+// TODO(unda): Remove after bounded dynamic compilations have cache keys.
+static void TrySetExecutablePromise(
+    LoadedExecutablePromise& promise,
+    const absl::StatusOr<SharedLoadedExecutable>& executable) {
+  try {
+    promise.set_value(std::move(executable));
+  } catch (const std::future_error& e) {
+    // Check if it's the specific "already satisfied" error.
+    if (e.code() != std::future_errc::promise_already_satisfied) {
+      ABSL_LOG(FATAL)  // CRASH_OK=TorchTPU bug
+          << "Unexpected future_error: " << e.what();
+    }
+  }
+}
+
 // Sets the executable promise for the given key. If the promise is already
 // satisfied, this function will do nothing.
 static void TrySetExecutablePromise(
@@ -225,9 +240,14 @@ static void TrySetExecutablePromise(
     // Check if it's the specific "already satisfied" error.
     if (e.code() == std::future_errc::promise_already_satisfied) {
       // This is expected, as another thread may have already compiled the
-      // executable.
+      // executable. If we are trying to set a status, print it here so
+      // it's logged.
       ABSL_VLOG(1) << "Another thread already set the executable for key: "
                    << key;
+      if (!executable.ok()) {
+        ABSL_VLOG(1) << "Couldn't set " << key
+                     << " with status: " << executable.status();
+      }
     } else {
       ABSL_LOG(FATAL)  // CRASH_OK=TorchTPU bug
           << "Unexpected future_error: " << e.what();
@@ -375,7 +395,7 @@ CompilationCache::GetOrCreateCacheEntry(
   if (!allow_cache_mode_) {
     ABSL_LOG(WARNING) << "CompilationCache is disabled. key: " << key;
     return CacheLookupInternal{.cache_entry = std::monostate(),
-                               .needs_compilation = false};
+                               .needs_compilation = true};
   }
   perf_stats_.num_cache_reqs++;
 
@@ -486,34 +506,23 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
       shape_dynamism_metadata =
           (*bounded_dynamic_entry)->shape_dynamism_metadata();
     } else {
-      return TT_ERROR(error::kInternal)
-             << "Could not find or create a cache entry.";
+      // This means we didn't find or were allowed to create a cache entry.
+      // We insert it into the cache anyway so we can keep track of it and
+      // safely evict it later.
+      auto entry = &executable_cache_[key];
+      executable_promise = entry->executable_promise();
+      executable_future = entry->executable_future();
     }
   }
   // cache_mutex_ is released here.
   // Everything we are recovering from the cache is a shared pointer, so it
   // is safe to access them without the lock.
 
-  if (ABSL_VLOG_IS_ON(3)) {
-    TT_ASSIGN_OR_RETURN(ContextedModule contexted_module,
-                        ContextedModule::Make(computation_builder));
-    LogLines(absl::StrCat("Compiling Module for key: ", key, "\n",
-                          DebugString(contexted_module.get(),
-                                      DebugStringOptions::kEnableDebugInfo)));
-  }
-
   std::optional<DynamicKernelAdapter> dynamic_kernel_adapter;
-
-  if (!shape_dynamism_metadata.has_value()) {
-    if (needs_compilation) {
-      EnqueueCompilation(std::move(executable_promise),
-                         std::move(computation_builder),
-                         std::move(compile_options), key);
-      ABSL_VLOG(1) << "[TtPerf] Scheduled static compilation for key: " << key;
-    }
-  } else {
+  if (shape_dynamism_metadata.has_value()) {
     // TODO(unda): is it possible to reuse the compile options? We make a copy
     // for now.
+    // Do this first, before we move the compile options.
     auto padding_compile_options =
         std::make_unique<xla::CompileOptions>(*compile_options);
     SharedLoadedExecutableFuture padding_executable_future =
@@ -521,12 +530,33 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
                                   std::move(padding_compile_options));
     dynamic_kernel_adapter =
         DynamicKernelAdapter{.preamble = padding_executable_future};
-    if (needs_compilation) {
-      EnqueueCompilation(std::move(executable_promise),
-                         std::move(computation_builder),
-                         std::move(compile_options));
-      ABSL_VLOG(1) << "[TtPerf] Scheduled dynamic compilation for key: " << key;
+  }
+
+  if (needs_compilation) {
+    // Only create the contexted module if we need to compile.
+    auto contexted_module_or = ContextedModule::Make(computation_builder);
+    if (!contexted_module_or.ok()) {
+      TrySetExecutablePromise(key, *executable_promise,
+                              contexted_module_or.status());
+      return contexted_module_or.status();
     }
+    if (ABSL_VLOG_IS_ON(3)) {
+      LogLines(absl::StrCat("Compiling Module for key: ", key, "\n",
+                            DebugString(contexted_module_or->get(),
+                                        DebugStringOptions::kEnableDebugInfo)));
+    }
+    if (shape_dynamism_metadata.has_value()) {
+      // We don't store the dynamic kernel in the flat cache yet, so we
+      // don't pass the key.
+      EnqueueCompilation(std::move(executable_promise),
+                         std::move(contexted_module_or.value()),
+                         std::move(compile_options));
+    } else {
+      EnqueueCompilation(std::move(executable_promise),
+                         std::move(contexted_module_or.value()),
+                         std::move(compile_options), key);
+    }
+    ABSL_VLOG(1) << "[TtPerf] Scheduled compilation for key: " << key;
   }
 
   return CompiledKernel{
@@ -536,36 +566,38 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
 
 void CompilationCache::EnqueueCompilation(
     absl_nonnull std::shared_ptr<LoadedExecutablePromise> executable_promise,
-    MlirComputationBuilder computation_builder,
-    UniqueCompileOptions compile_options,
+    ContextedModule contexted_module, UniqueCompileOptions compile_options,
     std::optional<CompilationCacheKey> key) {
-  auto executable_builder_or =
-      MlirComputationBuilderToExecutableBuilder(std::move(computation_builder));
-  if (!executable_builder_or.ok()) {
-    executable_promise->set_value(executable_builder_or.status());
-    return;
-  }
+  auto executable_builder = [contexted_module = std::move(contexted_module)](
+                                xla::PjRtClient& client,
+                                UniqueCompileOptions options) mutable
+      -> absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> {
+    return client.CompileAndLoad(
+        std::move(contexted_module).ToMaybeOwningMlirModule(),
+        std::move(*options));
+  };
+
   compilation_pool_->Schedule([this, key, promise = executable_promise,
-                               builder = std::move(*executable_builder_or),
+                               builder = std::move(executable_builder),
                                compile_options =
                                    std::move(compile_options)]() mutable {
-    xla::PjRtClient* const client = GetPjRtClient();
-    if (client == nullptr) {
-      promise->set_value(TT_ERROR(error::kFailedPrecondition)
-                         << "PjRtClient must be initialized");
-      return;
-    }
-
     if (key.has_value()) {
       this->GetFromTier2OrCompile(std::move(key.value()), std::move(builder),
                                   std::move(compile_options));
     } else {
+      xla::PjRtClient* const client = GetPjRtClient();
+      if (client == nullptr) {
+        TrySetExecutablePromise(*promise,
+                                TT_ERROR(error::kFailedPrecondition)
+                                    << "PjRtClient must be initialized");
+        return;
+      }
       // We don't update stats for dynamic kernels for now.
       // TODO(unda): make sure we are updating stats() for the bounded dynamic
       // cache entry when we store it in the flat cache.
       auto executable_or = torch_tpu::Compile(*client, std::move(builder),
                                               std::move(compile_options));
-      promise->set_value(std::move(executable_or));
+      TrySetExecutablePromise(*promise, std::move(executable_or));
     }
     return;
   });
