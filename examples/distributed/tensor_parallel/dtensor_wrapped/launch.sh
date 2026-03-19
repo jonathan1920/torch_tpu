@@ -1,3 +1,4 @@
+#!/bin/bash
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,21 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A test runner for the tensor parallel example."""
+# A script to run the tensor parallel worker using standard torchrun.
 
-from torch.google import distributed as gdist
-import torch.multiprocessing as mp
-from torch_tpu._internal.distributed.launchers import singlehost_wrapper
-from examples.distributed.tensor_parallel import tp_worker
+# Detect and export TPU configuration dynamically.
+eval $(python3 -m torch_tpu._internal.distributed.launchers.singlehost_wrapper)
+export TORCH_TPU_TOPOLOGY TORCH_TPU_SLICEBUILDER_ADDRESSES WORLD_SIZE
 
-from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
-
-
-def main(_):
-  singlehost_wrapper.prepare_tpu_environment()
-  gdist.torchrun(tp_worker.worker_fn, nproc_per_node=8)()
-
-
-if __name__ == "__main__":
-  mp.set_start_method("spawn")
-  g3_multiprocessing.handle_main(main)
+python3 -m torch.distributed.run --nproc_per_node=$WORLD_SIZE ./dtp_worker.py
