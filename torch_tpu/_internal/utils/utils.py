@@ -63,13 +63,25 @@ class CheckValueMode(enum.Enum):
 
 
 _RE_INDEX_CAPTURE = re.compile(r"at index \((.*)\) \(up to .* allowed\)")
-_RE_GREATEST_ABS_DIFF = re.compile(
-    r"Greatest absolute difference: (\S*) at index"
+
+# Regex for extracting the actual absolute and relative differences for both
+# tensor and scalar outputs.
+_RE_TOLERANCE = re.compile(
+    r"\n("
+    # Tensor tolerance error message.
+    r"Greatest absolute difference: (?P<tensor_atol>\S*) at index.*\n"
+    r"Greatest relative difference: (?P<tensor_rtol>\S*) at index.*"
+    r"|"
+    # Scalar tolerance error message.
+    r"Absolute difference: (?P<scalar_atol>\S*) \(up to .*\).*\n"
+    r"Relative difference: (?P<scalar_rtol>\S*) \(up to .*\)"
+    r")"
 )
-_RE_GREATEST_REL_DIFF = re.compile(
-    r"Greatest relative difference: (\S*) at index"
-)
+
 _RE_STRICT_REL_FAILURE = re.compile(r"\(up to 1.*e-07 allowed\)")
+
+# Regex for identifying scalar outputs.
+_RE_SCALAR_COMP_FAILURE = re.compile(r"Scalars are not (equal|close)!")
 
 
 def assert_close(
@@ -338,19 +350,42 @@ def _assert_tensor_close(
     """Augments the error message with tolerance suggestions."""
     # We use regex to find the max absolute and relative differences reported by
     # torch.testing.assert_close.
-    # Example lines:
-    # Greatest absolute difference: 0.02114 at index (21, 36) (up to 1e-07 allowed)
-    # Greatest relative difference: 23.9766 at index (41, 104) (up to 0.1 allowed)
+    #
+    # Example lines (for tensor outputs):
+    # Greatest absolute difference: 0.02114 at index (21, 36) (up to 1e-07 ...)
+    # Greatest relative difference: 23.9766 at index (41, 104) (up to 0.1 ...)
+    #
+    # Example lines (for scalar outputs):
+    # Expected 0.5 but got 0.5029680728912354.
+    # Absolute difference: 0.0029680728912353516
+    # Relative difference: 0.005936145782470703
 
-    abs_match = _RE_GREATEST_ABS_DIFF.search(msg)
-    rel_match = _RE_GREATEST_REL_DIFF.search(msg)
+    # Try to find the actual tolerances.
+    tol_match = _RE_TOLERANCE.search(msg)
 
-    if not abs_match or not rel_match:
-      return msg
+    assert tol_match, (
+        "could not extract the tolerance from the error message given by"
+        " PyTorch `torch.testing.assert_close` function, using the"
+        " `_RE_TOLERANCE` regex. You need to update the regex to fix this"
+        " issue.\n"
+        " \n"
+        " Error message:\n"
+        + msg
+    )
+
+    def get_tol(tol: str) -> float:
+      """Returns the tolerance value from the tensor or scalar match."""
+      for ty in ("scalar", "tensor"):
+        val = tol_match.group(f"{ty}_{tol}")
+        if val is not None:
+          return float(val)
+      raise ValueError(
+          f"could not find tolerance '{tol}' in: {tol_match.groupdict()}"
+      )
 
     try:
-      max_abs = float(abs_match.group(1))
-      max_rel = float(rel_match.group(1))
+      max_abs = get_tol("atol")
+      max_rel = get_tol("rtol")
     except ValueError:
       return msg
 
@@ -371,7 +406,8 @@ def _assert_tensor_close(
     suggestion_lines = ["\n\nTolerance Suggestions:"]
 
     if check_mode == CheckValueMode.LOOSE:
-      suggestion_lines.append("\n  To pass in LOOSE mode:")
+      suggestion_lines.append("\n  Loose check failed.")
+      suggestion_lines.append("\n  To pass in LOOSE mode, you need either:")
       if np.isfinite(max_rel):
         suggestion_lines.append(
             f"\n    - rtol >= {max_rel} ({_format_sci_ceil(max_rel)}) (with"
@@ -392,7 +428,7 @@ def _assert_tensor_close(
 
     elif check_mode == CheckValueMode.STRICT:
       suggestion_lines.append("\n  Strict check failed.")
-      suggestion_lines.append("\n  To pass STRICT mode, you need BOTH:")
+      suggestion_lines.append("\n  To pass in STRICT mode, you need BOTH:")
 
       if np.isinf(max_rel):
         suggestion_lines.append(
@@ -433,7 +469,7 @@ def _assert_tensor_close(
     # We want to show the actual and expected tensor elements at the given
     # indices, so we need to parse the message and extract the indices.
     details = ""
-    if "Scalars are not equal" in msg:
+    if _RE_SCALAR_COMP_FAILURE.search(msg):
       details += f"\nAbsolute difference allowed: up to {atol:.3g}\n"
       details += f"Relative difference allowed: up to {rtol:.3g}\n"
     else:

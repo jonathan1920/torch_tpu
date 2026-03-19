@@ -111,7 +111,7 @@ tensor([[0., 1.],
 
 Tolerance Suggestions:
   Strict check failed.
-  To pass STRICT mode, you need BOTH:
+  To pass in STRICT mode, you need BOTH:
     - rtol >= 0.09090910851955414 (9.1e-02)
     - atol >= 0.10000002384185791 (1.1e-01)"""
     assert expected_msg in str(cm.exception)
@@ -146,7 +146,8 @@ tensor([[0., 1.],
         [6., 7.]])
 
 Tolerance Suggestions:
-  To pass in LOOSE mode:
+  Loose check failed.
+  To pass in LOOSE mode, you need either:
     - rtol >= 0.09090910851955414 (9.1e-02) (with atol=0)
     - OR atol >= 0.10000002384185791 (1.1e-01) (with rtol=0)
     - OR a combination such that atol + rtol * |expected| covers the diffs."""
