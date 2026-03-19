@@ -23,7 +23,6 @@
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -241,21 +240,20 @@ class CompilationCache {
   CompilationCache();
   ~CompilationCache();
 
-  // The internal variant type for LookupCacheEntry, which returns references
-  // to the cache instead, given a CompilationCacheKey. This is only to be used
-  // internally while the mutex is held.
-  // If the key matches something in executable_cache_, a CacheEntry will be
-  // returned - this is the best case scenario. If not, and the ShapelessKey
-  // component of the key matches something in bounded_dynamic_cache_, we will
-  // check if one of the existing BoundedDynamicCacheEntry matches the input
-  // shapes, and return one if so. Otherwise, monostate will be
-  // returned. Note that if there are both static and dynamic cache hits, the
-  // static cache hit will be returned. If a cache entry had to be created,
-  // needs_compilation will be true, otherwise it will be false.
+  // The internal variant type for GetOrCreateCacheEntry, which returns
+  // CacheEntry internal data that can be used outside of a lock, given a
+  // CompilationCacheKey. If the key directly matches an entry in the
+  // executable_cache_, we will return the executable_promise and
+  // executable_future from the CacheEntry. Otherwise, we will check if the
+  // ShapelessKey matches an entry in the bounded_dynamic_cache_. If so, we will
+  // check if the input shapes are compatible with any of the bounded dynamic
+  // entries, and return the internals of the middle executable cache entry
+  // and the shape dynamism metadata. If an entry was created or if
+  // allow_cache_mode_ is false, we will set needs_compilation to true.
   struct CacheLookupInternal {
-    std::variant<const CacheEntry* absl_nonnull,
-                 const BoundedDynamicCacheEntry* absl_nonnull, std::monostate>
-        cache_entry;
+    absl_nonnull std::shared_ptr<LoadedExecutablePromise> executable_promise;
+    SharedLoadedExecutableFuture executable_future;
+    std::optional<ShapeDynamismMetadata> shape_dynamism_metadata;
     bool needs_compilation = false;
   };
 
@@ -270,8 +268,7 @@ class CompilationCache {
   // dynamic cache entries, or to create metadata for a new one.
   //
   // Returns:
-  //   A pair containing the cache lookup result and a boolean indicating
-  //   whether the entry had to be created (true) or was found (false).
+  //   A `CacheLookupInternal` struct containing the cache lookup result.
   absl::StatusOr<CacheLookupInternal> GetOrCreateCacheEntry(
       CompilationCacheKey key, const std::vector<Shape>& input_shapes)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(cache_mutex_);

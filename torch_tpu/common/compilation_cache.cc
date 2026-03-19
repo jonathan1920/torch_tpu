@@ -29,7 +29,6 @@
 #include <string_view>
 #include <thread>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/const_init.h"
@@ -392,12 +391,18 @@ PerfStats CompilationCache::GetCacheStats() const {
 absl::StatusOr<CompilationCache::CacheLookupInternal>
 CompilationCache::GetOrCreateCacheEntry(
     CompilationCacheKey key, const std::vector<Shape>& input_shapes) {
+  perf_stats_.num_cache_reqs++;
+
   if (!allow_cache_mode_) {
     ABSL_LOG(WARNING) << "CompilationCache is disabled. key: " << key;
-    return CacheLookupInternal{.cache_entry = std::monostate(),
-                               .needs_compilation = true};
+    // We insert an entry into the cache anyway so we can keep track of it and
+    // safely evict it later.
+    auto entry = &executable_cache_[key];
+    return CacheLookupInternal{
+        .executable_promise = entry->executable_promise(),
+        .executable_future = entry->executable_future(),
+        .needs_compilation = true};
   }
-  perf_stats_.num_cache_reqs++;
 
   // 1. Try to find a static CacheEntry.
   if (const auto it = executable_cache_.find(key);
@@ -406,8 +411,10 @@ CompilationCache::GetOrCreateCacheEntry(
     it->second.stats().read_count++;
     it->second.stats().last_read = absl::Now();
     ABSL_VLOG(2) << "Compilation cache HIT for key: " << key;
-    return CacheLookupInternal{.cache_entry = &it->second,
-                               .needs_compilation = false};
+    return CacheLookupInternal{
+        .executable_promise = it->second.executable_promise(),
+        .executable_future = it->second.executable_future(),
+        .needs_compilation = false};
   }
 
   // 2. Try to find a dynamic cache entry. We hold on to the iterator to avoid
@@ -420,8 +427,11 @@ CompilationCache::GetOrCreateCacheEntry(
         entry.middle_cache_entry().stats().read_count++;
         entry.middle_cache_entry().stats().last_read = absl::Now();
         ABSL_VLOG(2) << "Compilation cache DYNAMIC HIT for key: " << key;
-        return CacheLookupInternal{.cache_entry = &entry,
-                                   .needs_compilation = false};
+        return CacheLookupInternal{
+            .executable_promise = entry.middle_executable_promise(),
+            .executable_future = entry.middle_executable_future(),
+            .shape_dynamism_metadata = entry.shape_dynamism_metadata(),
+            .needs_compilation = false};
       }
     }
   }
@@ -446,22 +456,25 @@ CompilationCache::GetOrCreateCacheEntry(
   if (is_dynamic) {
     auto dynamism_metadata = ShapeDynamismMetadata(input_shapes);
     ABSL_VLOG(2) << "Compilation cache DYNAMIC MISS for key: " << key;
+    std::vector<BoundedDynamicCacheEntry>* entries;
     if (dynamic_it != bounded_dynamic_cache_.end()) {
-      return CacheLookupInternal{
-          .cache_entry =
-              &dynamic_it->second.emplace_back(std::move(dynamism_metadata)),
-          .needs_compilation = true};
+      entries = &dynamic_it->second;
     } else {
-      return CacheLookupInternal{
-          .cache_entry =
-              &bounded_dynamic_cache_[key.shapeless_key].emplace_back(
-                  std::move(dynamism_metadata)),
-          .needs_compilation = true};
+      entries = &bounded_dynamic_cache_[key.shapeless_key];
     }
+    BoundedDynamicCacheEntry* entry =
+        &entries->emplace_back(std::move(dynamism_metadata));
+    return CacheLookupInternal{
+        .executable_promise = entry->middle_executable_promise(),
+        .executable_future = entry->middle_executable_future(),
+        .shape_dynamism_metadata = entry->shape_dynamism_metadata(),
+        .needs_compilation = true};
   }
 
   // 4. Lastly, we create a static cache entry.
-  return CacheLookupInternal{.cache_entry = &executable_cache_[key],
+  auto entry = &executable_cache_[key];
+  return CacheLookupInternal{.executable_promise = entry->executable_promise(),
+                             .executable_future = entry->executable_future(),
                              .needs_compilation = true};
 }
 
@@ -479,64 +492,34 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
     MlirComputationBuilder computation_builder,
     UniqueCompileOptions compile_options) {
   // Critical section for cache lookups and insertion.
-  std::shared_ptr<LoadedExecutablePromise> executable_promise;
-  SharedLoadedExecutableFuture executable_future;
-  std::optional<ShapeDynamismMetadata> shape_dynamism_metadata;
-  // In the case where we create a new CacheEntry inside the critical section,
-  // we need to know that we did so, to enqueue the compilation outside of the
-  // critical section.
-  bool needs_compilation = false;
-  {
-    TT_MUTEX_LOCK(lock, cache_mutex_);
-    // Check the cache first.
-    TT_ASSIGN_OR_RETURN(auto cache_lookup,
-                        GetOrCreateCacheEntry(key, input_shapes));
-    const auto& cache_entry = cache_lookup.cache_entry;
-    needs_compilation = cache_lookup.needs_compilation;
-    if (auto const* static_entry =
-            std::get_if<const CacheEntry* absl_nonnull>(&cache_entry)) {
-      executable_promise = (*static_entry)->executable_promise();
-      executable_future = (*static_entry)->executable_future();
-    } else if (auto const* bounded_dynamic_entry =
-                   std::get_if<const BoundedDynamicCacheEntry* absl_nonnull>(
-                       &cache_entry)) {
-      executable_promise =
-          (*bounded_dynamic_entry)->middle_executable_promise();
-      executable_future = (*bounded_dynamic_entry)->middle_executable_future();
-      shape_dynamism_metadata =
-          (*bounded_dynamic_entry)->shape_dynamism_metadata();
-    } else {
-      // This means we didn't find or were allowed to create a cache entry.
-      // We insert it into the cache anyway so we can keep track of it and
-      // safely evict it later.
-      auto entry = &executable_cache_[key];
-      executable_promise = entry->executable_promise();
-      executable_future = entry->executable_future();
-    }
-  }
-  // cache_mutex_ is released here.
+  TT_ASSIGN_OR_RETURN(auto cache_lookup,
+                      [&]() -> absl::StatusOr<CacheLookupInternal> {
+                        TT_MUTEX_LOCK(lock, cache_mutex_);
+                        return GetOrCreateCacheEntry(key, input_shapes);
+                      }());
   // Everything we are recovering from the cache is a shared pointer, so it
   // is safe to access them without the lock.
 
   std::optional<DynamicKernelAdapter> dynamic_kernel_adapter;
-  if (shape_dynamism_metadata.has_value()) {
+  if (cache_lookup.shape_dynamism_metadata.has_value()) {
     // TODO(unda): is it possible to reuse the compile options? We make a copy
     // for now.
     // Do this first, before we move the compile options.
     auto padding_compile_options =
         std::make_unique<xla::CompileOptions>(*compile_options);
     SharedLoadedExecutableFuture padding_executable_future =
-        EnqueuePaddingCompilation(shape_dynamism_metadata.value(), input_shapes,
+        EnqueuePaddingCompilation(*cache_lookup.shape_dynamism_metadata,
+                                  input_shapes,
                                   std::move(padding_compile_options));
     dynamic_kernel_adapter =
         DynamicKernelAdapter{.preamble = padding_executable_future};
   }
 
-  if (needs_compilation) {
+  if (cache_lookup.needs_compilation) {
     // Only create the contexted module if we need to compile.
     auto contexted_module_or = ContextedModule::Make(computation_builder);
     if (!contexted_module_or.ok()) {
-      TrySetExecutablePromise(key, *executable_promise,
+      TrySetExecutablePromise(key, *cache_lookup.executable_promise,
                               contexted_module_or.status());
       return contexted_module_or.status();
     }
@@ -545,22 +528,22 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
                             DebugString(contexted_module_or->get(),
                                         DebugStringOptions::kEnableDebugInfo)));
     }
-    if (shape_dynamism_metadata.has_value()) {
+    if (cache_lookup.shape_dynamism_metadata.has_value()) {
       // We don't store the dynamic kernel in the flat cache yet, so we
       // don't pass the key.
-      EnqueueCompilation(std::move(executable_promise),
-                         std::move(contexted_module_or.value()),
+      EnqueueCompilation(std::move(cache_lookup.executable_promise),
+                         *std::move(contexted_module_or),
                          std::move(compile_options));
     } else {
-      EnqueueCompilation(std::move(executable_promise),
-                         std::move(contexted_module_or.value()),
+      EnqueueCompilation(std::move(cache_lookup.executable_promise),
+                         *std::move(contexted_module_or),
                          std::move(compile_options), key);
     }
     ABSL_VLOG(1) << "[TtPerf] Scheduled compilation for key: " << key;
   }
 
   return CompiledKernel{
-      .fixed_shape_kernel = executable_future,
+      .fixed_shape_kernel = cache_lookup.executable_future,
       .dynamic_kernel_adapter = std::move(dynamic_kernel_adapter)};
 }
 
