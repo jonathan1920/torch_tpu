@@ -2500,9 +2500,8 @@ class TestOps(TorchTpuTestBase):
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
         # Due to a PyTorch output dtype inconsistency bw CPU and GPU, we skip
-        # checking of the output dtype since we match the dtype returned by
-        # PT/GPU while here we are comparing with CPU.
-        check_dtype=False,
+        # checking the output dtype against CPU.
+        check_dtype=self.golden_device_type == "gpu",
         # TODO: fix native_batch_norm(out=...) failing.
         check_out_variant=False,
         # TODO: fix native_batch_norm() return wrong dtypes for bfloat16
@@ -2526,9 +2525,8 @@ class TestOps(TorchTpuTestBase):
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
         # Due to a PyTorch output dtype inconsistency bw CPU and GPU, we skip
-        # checking of the output dtype since we match the dtype returned by
-        # PT/GPU while here we are comparing with CPU.
-        check_dtype=False,
+        # checking the output dtype against CPU.
+        check_dtype=self.golden_device_type == "gpu",
         # TODO: fix _native_batch_norm_legit(out=...) failing.
         check_out_variant=False,
         # TODO: fix _native_batch_norm_legit() returning wrong dtypes
