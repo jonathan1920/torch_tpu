@@ -57,6 +57,11 @@ benchmark = [
     "tensorboardX",
 ]
 
+examples = [
+    "datasets",
+    "tqdm",
+]
+
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"

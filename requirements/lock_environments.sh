@@ -34,7 +34,7 @@ cd "$working_dir"
 
 # See https://docs.astral.sh/uv/reference/cli/#uv-pip-compile for more details.
 uv pip compile pyproject.toml \
-  --extra benchmark \
+  --all-extras \
   --python-version 3.12 \
   --universal \
   --generate-hashes \
