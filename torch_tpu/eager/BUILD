@@ -154,7 +154,6 @@ torch_tpu_cc_library(
     deps = [
         ":device_buffer",
         ":materialization_heuristics",
-        ":traversal",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -167,12 +166,10 @@ torch_tpu_cc_library(
     deps = [
         ":device_buffer",
         ":materialization_heuristics",
-        ":traversal",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/log:absl_log",
     ],
 )
 
@@ -185,7 +182,6 @@ torch_tpu_cc_library(
         ":materialization_heuristics",
         ":traversal",
         "//torch_tpu/common:repeated_subsequence",
-        "//torch_tpu/common:utils",
         "//torch_tpu/ops:op_names",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -203,12 +199,10 @@ torch_tpu_cc_library(
     deps = [
         ":device_buffer",
         ":materialization_heuristics",
-        ":traversal",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/log:absl_log",
     ],
 )
 
@@ -234,6 +228,7 @@ torch_tpu_cc_library(
         ":traversal",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:absl_log",
     ],
 )
 
@@ -244,12 +239,10 @@ torch_tpu_cc_library(
     deps = [
         ":device_buffer",
         ":materialization_heuristics",
-        ":traversal",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/log:absl_log",
     ],
 )
 

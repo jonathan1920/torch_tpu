@@ -13,3 +13,23 @@
 // limitations under the License.
 
 #include "torch_tpu/eager/materialization_heuristics.h"
+
+#include "absl/base/nullability.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/absl_log.h"
+#include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/traversal.h"
+
+namespace torch_tpu {
+
+void MaterializationHeuristic::ApplyOn(
+    const Traversal& traversal,
+    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        materialization_nodes) {
+  ABSL_VLOG(1) << Name() << "::ApplyOn";
+  for (const auto& node : traversal.execution_order()) {
+    ApplyOnNode(*node, materialization_nodes);
+  }
+}
+
+}  // namespace torch_tpu

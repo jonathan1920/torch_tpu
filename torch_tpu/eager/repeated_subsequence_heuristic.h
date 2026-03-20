@@ -66,9 +66,12 @@ class RepeatedSubsequenceHeuristic : public MaterializationHeuristic {
     return "RepeatedSubsequenceHeuristic";
   }
   bool Enabled() const override;
+  void ApplyOnNode(const DeviceBufferList& node,
+                   absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+                       materialization_nodes) override;
   void ApplyOn(const Traversal& traversal,
                absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
-                   materialization_nodes) override;
+                   materialization_nodes);
 };
 
 }  // namespace torch_tpu

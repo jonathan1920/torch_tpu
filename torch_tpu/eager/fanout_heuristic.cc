@@ -18,9 +18,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
 #include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/traversal.h"
 
 ABSL_FLAG(bool, torch_tpu_internal_fanout_heuristic, true,
           "Use a materialization heuristic that looks at node fanout.");
@@ -31,20 +29,16 @@ bool FanoutHeuristic::Enabled() const {
   return absl::GetFlag(FLAGS_torch_tpu_internal_fanout_heuristic);
 }
 
-void FanoutHeuristic::ApplyOn(
-    const Traversal& traversal,
+void FanoutHeuristic::ApplyOnNode(
+    const DeviceBufferList& node,
     absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
         materialization_nodes) {
-  ABSL_VLOG(1) << Name() << "::ApplyOn";
-
-  for (const auto& node : traversal.execution_order()) {
-    const DeferredOp* const deferred_op = node->deferred_op();
-    ABSL_CHECK(deferred_op)  // CRASH_OK
-        << "Found traversal node that's not a deferred op. This is a torch_tpu "
-           "bug.";
-    if (deferred_op->num_child_ops() > 1) {
-      materialization_nodes.insert(node.get());
-    }
+  const DeferredOp* const deferred_op = node.deferred_op();
+  ABSL_CHECK(deferred_op)  // CRASH_OK
+      << "Found traversal node that's not a deferred op. This is a torch_tpu "
+         "bug.";
+  if (deferred_op->num_child_ops() > 1) {
+    materialization_nodes.insert(&node);
   }
 }
 

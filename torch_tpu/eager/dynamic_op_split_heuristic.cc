@@ -19,24 +19,17 @@
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/traversal.h"
 
 namespace torch_tpu {
 
-void DynamicOpSplitHeuristic::ApplyOn(
-    const Traversal& traversal,
+void DynamicOpSplitHeuristic::ApplyOnNode(
+    const DeviceBufferList& node,
     absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
         materialization_nodes) {
-  for (const auto& node : traversal.execution_order()) {
-    bool is_dynamic = false;
-    for (int i = 0; i < node->size(); ++i) {
-      if (!node->dynamic_dimensions(i).empty()) {
-        is_dynamic = true;
-        break;
-      }
-    }
-    if (is_dynamic) {
-      materialization_nodes.insert(node.get());
+  for (int i = 0; i < node.size(); ++i) {
+    if (!node.dynamic_dimensions(i).empty()) {
+      materialization_nodes.insert(&node);
+      return;
     }
   }
 }

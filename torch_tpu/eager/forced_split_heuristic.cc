@@ -35,25 +35,23 @@ bool ShouldSplitBefore(OpSplitMode mode) {
 
 }  // namespace
 
-void ForcedSplitHeuristic::ApplyOn(
-    const Traversal& traversal,
+void ForcedSplitHeuristic::ApplyOnNode(
+    const DeviceBufferList& node,
     absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
         materialization_nodes) {
-  for (const auto& node : traversal.execution_order()) {
-    const auto* deferred_op = node->deferred_op();
-    if (deferred_op == nullptr) {
-      continue;
-    }
+  const auto* deferred_op = node.deferred_op();
+  if (deferred_op == nullptr) {
+    return;
+  }
 
-    OpSplitMode split_mode = deferred_op->split_mode();
-    if (ShouldSplitAfter(split_mode)) {
-      materialization_nodes.insert(node.get());
-    }
-    if (ShouldSplitBefore(split_mode)) {
-      for (const auto& input : deferred_op->inputs()) {
-        if (input.state() == DeviceBufferRefState::kDeferred) {
-          materialization_nodes.insert(input.device_buffer_list().get());
-        }
+  OpSplitMode split_mode = deferred_op->split_mode();
+  if (ShouldSplitAfter(split_mode)) {
+    materialization_nodes.insert(&node);
+  }
+  if (ShouldSplitBefore(split_mode)) {
+    for (const auto& input : deferred_op->inputs()) {
+      if (input.state() == DeviceBufferRefState::kDeferred) {
+        materialization_nodes.insert(input.device_buffer_list().get());
       }
     }
   }

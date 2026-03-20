@@ -20,9 +20,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
 #include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/traversal.h"
 
 ABSL_FLAG(bool, torch_tpu_internal_stale_heuristic, true,
           "Use a materialization heuristic that materializes around the stale "
@@ -34,27 +32,23 @@ bool StaleHeuristic::Enabled() const {
   return absl::GetFlag(FLAGS_torch_tpu_internal_stale_heuristic);
 }
 
-void StaleHeuristic::ApplyOn(
-    const Traversal& traversal,
+void StaleHeuristic::ApplyOnNode(
+    const DeviceBufferList& node,
     absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
         materialization_nodes) {
-  ABSL_VLOG(1) << Name() << "::ApplyOn";
-
   // Nodes which are live, but depend directly on a stale node, must be
   // materialized so the stale node can be freed.
-  for (const auto& node : traversal.execution_order()) {
-    const DeferredOp* const deferred_op = node->deferred_op();
-    ABSL_CHECK(deferred_op)  // CRASH_OK
-        << "Found traversal node that's not a deferred op. This is a torch_tpu "
-           "bug.";
+  const DeferredOp* const deferred_op = node.deferred_op();
+  ABSL_CHECK(deferred_op)  // CRASH_OK
+      << "Found traversal node that's not a deferred op. This is a torch_tpu "
+         "bug.";
 
-    if (!node->is_stale() &&
-        (std::any_of(deferred_op->inputs().begin(), deferred_op->inputs().end(),
-                     [](const DeviceBufferRef& input) {
-                       return input.device_buffer_list()->is_stale();
-                     }))) {
-      materialization_nodes.insert(node.get());
-    }
+  if (!node.is_stale() &&
+      (std::any_of(deferred_op->inputs().begin(), deferred_op->inputs().end(),
+                   [](const DeviceBufferRef& input) {
+                     return input.device_buffer_list()->is_stale();
+                   }))) {
+    materialization_nodes.insert(&node);
   }
 }
 

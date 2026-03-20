@@ -23,7 +23,6 @@
 #include "absl/log/absl_log.h"
 #include "absl/types/span.h"
 #include "torch_tpu/common/repeated_subsequence.h"
-#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/traversal.h"
 #include "torch_tpu/ops/op_names.h"
@@ -41,12 +40,20 @@ bool RepeatedSubsequenceHeuristic::Enabled() const {
   return absl::GetFlag(FLAGS_torch_tpu_internal_repeated_subsequence_heuristic);
 }
 
+void RepeatedSubsequenceHeuristic::ApplyOnNode(
+    const DeviceBufferList& node,
+    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        materialization_nodes) {
+  ABSL_CHECK(false)  // CRASH_OK
+      << "RepeatedSubsequenceHeuristic::ApplyOnNode should not be "
+         "called. Use RepeatedSubsequenceHeuristic::ApplyOn "
+         "instead.";
+}
+
 void RepeatedSubsequenceHeuristic::ApplyOn(
     const Traversal& traversal,
     absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
         materialization_nodes) {
-  ABSL_VLOG(1) << Name() << "::ApplyOn";
-
   std::vector<OpName> op_names;
   op_names.reserve(traversal.execution_order().size());
   for (const auto& node : traversal.execution_order()) {

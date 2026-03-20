@@ -23,7 +23,6 @@
 #include "absl/container/flat_hash_set.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/materialization_heuristics.h"
-#include "torch_tpu/eager/traversal.h"
 
 namespace torch_tpu {
 
@@ -61,9 +60,9 @@ class ReexecutionHeuristic : public MaterializationHeuristic {
  protected:
   std::string_view Name() const override { return "ReexecutionHeuristic"; }
   bool Enabled() const override;
-  void ApplyOn(const Traversal& traversal,
-               absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
-                   materialization_nodes) override;
+  void ApplyOnNode(const DeviceBufferList& node,
+                   absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+                       materialization_nodes) override;
 };
 
 }  // namespace torch_tpu
