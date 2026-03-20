@@ -45,20 +45,6 @@ _TORCH_TPU_COPTS = [
     "-fexceptions",
 ]
 
-def _get_relative_torch_tpu_root(package_name):
-    """Gets the location of "torch_tpu"""
-    components = package_name.split("/")
-    for i, component in enumerate(reversed(components)):
-        if component == "torch_tpu":
-            # It's an error for the includes attribute to refer to the workspace
-            # root. See http://github.com/bazelbuild/bazel/issues/27390
-            # Luckily, the workspace root is already on the include search
-            # path, so we can omit it entirely in such a case.
-            if i + 1 == len(components):
-                return None
-            return "/".join([".."] * (i + 1))
-    fail("Package is not relative to torch_tpu")
-
 def adjust_cc_options(copts, features):
     """Adjusts the C/C++ build options for torch_tpu.
 
@@ -90,12 +76,6 @@ def torch_tpu_cc_library(name, copts = None, features = None, **kwargs):
     """
 
     copts, features = adjust_cc_options(copts, features)
-
-    # TODO: strip_include_prefix default
-    if "includes" not in kwargs:
-        include_dir = _get_relative_torch_tpu_root(native.package_name())
-        if include_dir:
-            kwargs["includes"] = [include_dir]
 
     cc_library(
         name = name,
