@@ -14,7 +14,7 @@
 
 # TODO: b/431034055 - add build-system when OSS build working
 [project]
-name = "torch-tpu"
+name = "torch_tpu"
 version = "0.0.0"
 # TODO: b/431034055 - Set license parameter. Can't be set currently
 # because piptools (used by bazel compile_pip_requirements) chokes on it
