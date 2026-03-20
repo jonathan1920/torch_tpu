@@ -43,12 +43,14 @@ class MaterializationHeuristic {
   // Returns whether this heuristic is enabled.
   [[nodiscard]] virtual bool Enabled() const = 0;
 
-  // Returns a set of deferred ops in `traversal` that this heuristic decides to
+  // Updates a set of deferred ops in `traversal` that this heuristic decides to
   // materialize. While it's harmless, there's no need to have any output nodes
   // in the set, as output nodes are always materialized, regardless of the
   // heuristics.
-  virtual absl::flat_hash_set<const DeviceBufferList* absl_nonnull> ApplyOn(
-      const Traversal& traversal) = 0;
+  virtual void ApplyOn(
+      const Traversal& traversal,
+      absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+          materialization_nodes) = 0;
 
  protected:
   MaterializationHeuristic() = default;

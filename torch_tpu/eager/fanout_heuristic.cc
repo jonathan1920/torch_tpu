@@ -31,12 +31,11 @@ bool FanoutHeuristic::Enabled() const {
   return absl::GetFlag(FLAGS_torch_tpu_internal_fanout_heuristic);
 }
 
-absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-FanoutHeuristic::ApplyOn(const Traversal& traversal) {
+void FanoutHeuristic::ApplyOn(
+    const Traversal& traversal,
+    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        materialization_nodes) {
   ABSL_VLOG(1) << Name() << "::ApplyOn";
-
-  absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-      materialization_nodes;
 
   for (const auto& node : traversal.execution_order()) {
     const DeferredOp* const deferred_op = node->deferred_op();
@@ -47,8 +46,6 @@ FanoutHeuristic::ApplyOn(const Traversal& traversal) {
       materialization_nodes.insert(node.get());
     }
   }
-
-  return materialization_nodes;
 }
 
 }  // namespace torch_tpu

@@ -202,8 +202,7 @@ ApplyAllMaterializationHeuristicsOn(const Traversal& traversal) {
   for (auto* h : *kMaterializationHeuristics) {
     if (h->Enabled()) {
       tsl::profiler::TraceMe t([name = h->Name()] { return name; });
-      const auto new_nodes = h->ApplyOn(traversal);
-      nodes_to_materialize.insert(new_nodes.begin(), new_nodes.end());
+      h->ApplyOn(traversal, nodes_to_materialize);
     }
   }
 

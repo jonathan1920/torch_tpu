@@ -41,8 +41,10 @@ bool RepeatedSubsequenceHeuristic::Enabled() const {
   return absl::GetFlag(FLAGS_torch_tpu_internal_repeated_subsequence_heuristic);
 }
 
-absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-RepeatedSubsequenceHeuristic::ApplyOn(const Traversal& traversal) {
+void RepeatedSubsequenceHeuristic::ApplyOn(
+    const Traversal& traversal,
+    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        materialization_nodes) {
   ABSL_VLOG(1) << Name() << "::ApplyOn";
 
   std::vector<OpName> op_names;
@@ -54,9 +56,6 @@ RepeatedSubsequenceHeuristic::ApplyOn(const Traversal& traversal) {
            "bug.";
     op_names.push_back(deferred_op->op_name());
   }
-
-  absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-      materialization_nodes;
 
   // Below we look for repeated subsequences in the original sequence of
   // ops. Note however that for simplicity (and speed) we look only at op names,
@@ -70,7 +69,7 @@ RepeatedSubsequenceHeuristic::ApplyOn(const Traversal& traversal) {
   const auto repeats =
       FindRepeatedSubsequences(absl::Span<OpName>(op_names), min_subseq_len);
   if (repeats.empty()) {
-    return materialization_nodes;
+    return;
   }
 
   const auto exec_order = traversal.execution_order();
@@ -85,8 +84,6 @@ RepeatedSubsequenceHeuristic::ApplyOn(const Traversal& traversal) {
           exec_order[offset + repeat.size() - 1].get());
     }
   }
-
-  return materialization_nodes;
 }
 
 }  // namespace torch_tpu

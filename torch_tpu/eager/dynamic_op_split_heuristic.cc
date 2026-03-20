@@ -23,10 +23,10 @@
 
 namespace torch_tpu {
 
-absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-DynamicOpSplitHeuristic::ApplyOn(const Traversal& traversal) {
-  absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-      materialization_nodes;
+void DynamicOpSplitHeuristic::ApplyOn(
+    const Traversal& traversal,
+    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        materialization_nodes) {
   for (const auto& node : traversal.execution_order()) {
     bool is_dynamic = false;
     for (int i = 0; i < node->size(); ++i) {
@@ -39,7 +39,6 @@ DynamicOpSplitHeuristic::ApplyOn(const Traversal& traversal) {
       materialization_nodes.insert(node.get());
     }
   }
-  return materialization_nodes;
 }
 
 }  // namespace torch_tpu

@@ -35,10 +35,10 @@ bool ShouldSplitBefore(OpSplitMode mode) {
 
 }  // namespace
 
-absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-ForcedSplitHeuristic::ApplyOn(const Traversal& traversal) {
-  absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-      materialization_nodes;
+void ForcedSplitHeuristic::ApplyOn(
+    const Traversal& traversal,
+    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        materialization_nodes) {
   for (const auto& node : traversal.execution_order()) {
     const auto* deferred_op = node->deferred_op();
     if (deferred_op == nullptr) {
@@ -57,7 +57,6 @@ ForcedSplitHeuristic::ApplyOn(const Traversal& traversal) {
       }
     }
   }
-  return materialization_nodes;
 }
 
 }  // namespace torch_tpu

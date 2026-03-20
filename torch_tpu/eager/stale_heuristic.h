@@ -59,8 +59,9 @@ class StaleHeuristic : public MaterializationHeuristic {
  protected:
   std::string_view Name() const override { return "StaleHeuristic"; }
   bool Enabled() const override;
-  absl::flat_hash_set<const DeviceBufferList* absl_nonnull> ApplyOn(
-      const Traversal& traversal) override;
+  void ApplyOn(const Traversal& traversal,
+               absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+                   materialization_nodes) override;
 };
 
 }  // namespace torch_tpu

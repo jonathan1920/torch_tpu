@@ -34,15 +34,14 @@ bool StaleHeuristic::Enabled() const {
   return absl::GetFlag(FLAGS_torch_tpu_internal_stale_heuristic);
 }
 
-absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-StaleHeuristic::ApplyOn(const Traversal& traversal) {
+void StaleHeuristic::ApplyOn(
+    const Traversal& traversal,
+    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        materialization_nodes) {
   ABSL_VLOG(1) << Name() << "::ApplyOn";
 
   // Nodes which are live, but depend directly on a stale node, must be
   // materialized so the stale node can be freed.
-  absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-      materialization_nodes;
-
   for (const auto& node : traversal.execution_order()) {
     const DeferredOp* const deferred_op = node->deferred_op();
     ABSL_CHECK(deferred_op)  // CRASH_OK
@@ -57,7 +56,6 @@ StaleHeuristic::ApplyOn(const Traversal& traversal) {
       materialization_nodes.insert(node.get());
     }
   }
-  return materialization_nodes;
 }
 
 }  // namespace torch_tpu

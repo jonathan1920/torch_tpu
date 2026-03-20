@@ -31,8 +31,10 @@ bool ReexecutionHeuristic::Enabled() const {
   return absl::GetFlag(FLAGS_torch_tpu_internal_reexecution_heuristic);
 }
 
-absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-ReexecutionHeuristic::ApplyOn(const Traversal& traversal) {
+void ReexecutionHeuristic::ApplyOn(
+    const Traversal& traversal,
+    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        materialization_nodes) {
   ABSL_VLOG(1) << Name() << "::ApplyOn";
 
   // Look for "boundary" nodes, where the input node has already been executed,
@@ -56,8 +58,6 @@ ReexecutionHeuristic::ApplyOn(const Traversal& traversal) {
   // `b` is the boundary of the previously-executed subgraph, so we materialize
   // it. But we don't materialize `a` since there are no direct dependencies
   // between `a` and `d`.
-  absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-      materialization_nodes;
   for (const auto& node : traversal.execution_order()) {
     const auto* child_deferred_op = node->deferred_op();
     ABSL_CHECK(child_deferred_op)  // CRASH_OK
@@ -75,7 +75,6 @@ ReexecutionHeuristic::ApplyOn(const Traversal& traversal) {
       }
     }
   }
-  return materialization_nodes;
 }
 
 }  // namespace torch_tpu
