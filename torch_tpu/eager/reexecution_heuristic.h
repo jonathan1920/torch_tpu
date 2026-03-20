@@ -55,7 +55,6 @@ class ReexecutionHeuristic : public MaterializationHeuristic {
  public:
   ReexecutionHeuristic() = default;
 
- protected:
   void ApplyOnNode(const DeviceBufferList& node,
                    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
                        materialization_nodes) override;

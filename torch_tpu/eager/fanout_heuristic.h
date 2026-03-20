@@ -70,10 +70,11 @@ class FanoutHeuristic : public MaterializationHeuristic {
   FanoutHeuristic(FanoutHeuristic&&) = delete;
   FanoutHeuristic& operator=(FanoutHeuristic&&) = delete;
 
- protected:
   void ApplyOnNode(const DeviceBufferList& node,
                    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
                        materialization_nodes) override;
+
+ protected:
 };
 
 }  // namespace torch_tpu

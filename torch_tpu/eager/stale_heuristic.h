@@ -53,7 +53,6 @@ class StaleHeuristic : public MaterializationHeuristic {
   StaleHeuristic(StaleHeuristic&&) = delete;
   StaleHeuristic& operator=(StaleHeuristic&&) = delete;
 
- protected:
   void ApplyOnNode(const DeviceBufferList& node,
                    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
                        materialization_nodes) override;
