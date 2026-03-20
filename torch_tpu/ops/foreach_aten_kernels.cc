@@ -41,6 +41,7 @@
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
@@ -449,6 +450,10 @@ std::vector<DeviceBufferRef> ForeachAddList(at::TensorList self,
   inputs.insert(inputs.end(), other.begin(), other.end());
   bool alpha_is_one = (alpha.isIntegral(true) && alpha.to<int64_t>() == 1) ||
                       (alpha.isFloatingPoint() && alpha.to<double>() == 1.0);
+  OpParamCacheKeys param_keys;
+  // We create different Shlo based on whether alpha is one or not.
+  // Alpha is not multiplied if equal to 1.0.
+  TT_THROW_IF_ERROR(param_keys.SetParam("alpha_is_one", alpha_is_one));
   if (!alpha_is_one) {
     for (int i = 0; i < num_tensors; ++i) {
       at::ScalarType scalar_type = ConvertTo<at::ScalarType>((*out_dtypes)[i]);
@@ -487,6 +492,7 @@ std::vector<DeviceBufferRef> ForeachAddList(at::TensorList self,
   DispatchOpOptions<kDynamicSize> options = {
       .out_dtypes = out_dtypes_span,
       .out_dims_list = absl::MakeConstSpan(out_dims_list),
+      .op_param_cache_keys = std::move(param_keys),
   };
   TT_ASSIGN_OR_THROW(auto result_buffers,
                      (DispatchOp<kDynamicSize, kDynamicSize>(
