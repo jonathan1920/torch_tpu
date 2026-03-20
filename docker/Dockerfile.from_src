@@ -62,14 +62,11 @@ RUN --mount=type=cache,id=torch-tpu-bazelisk,target=/root/.cache/bazelisk \
     --repository_cache=/root/.cache/bazel/repository_cache \
     --disk_cache=/root/.cache/bazel/disk_cache \
     //ci/wheel:torch_tpu_wheel --config=no_rbe && \
-    pip install bazel-bin/ci/wheel/*.whl --no-deps && \
-    rm -rf bazel-*
+    mkdir -p dist && mv bazel-bin/ci/wheel/* dist/ && \
+    pip install dist/*.whl --no-deps
 
 # Maintain hierarchy: Copy examples to /workspace/examples
 RUN cp -r /workspace/torch_tpu_src/examples /workspace/examples
-
-# Remove the package source directory so Python uses the installed wheel instead.
-RUN rm -rf /workspace/torch_tpu_src/torch_tpu
 
 # Ensure /workspace is in the Python path and output is unbuffered
 ENV PYTHONPATH="/workspace"
