@@ -46,7 +46,6 @@
 #include "torch_tpu/eager/dynamic_op_split_heuristic.h"
 #include "torch_tpu/eager/fanout_heuristic.h"
 #include "torch_tpu/eager/forced_split_heuristic.h"
-#include "torch_tpu/eager/materialization_heuristics.h"
 #include "torch_tpu/eager/reexecution_heuristic.h"
 #include "torch_tpu/eager/repeated_subsequence_heuristic.h"
 #include "torch_tpu/eager/stale_heuristic.h"
@@ -56,6 +55,17 @@
 
 ABSL_FLAG(int, torch_tpu_internal_prevent_graph_splits, 0,
           "Prevent graph spilts for repeated graphs (disabled if < 1).");
+
+ABSL_FLAG(bool, torch_tpu_internal_fanout_heuristic, true,
+          "Use a materialization heuristic that looks at node fanout.");
+ABSL_FLAG(bool, torch_tpu_internal_reexecution_heuristic, true,
+          "Use a materialization heuristic that materializes on reexecution.");
+ABSL_FLAG(bool, torch_tpu_internal_repeated_subsequence_heuristic, false,
+          "Use a heuristic that materializes endpoints of repeated "
+          "subsequences.");
+ABSL_FLAG(bool, torch_tpu_internal_stale_heuristic, true,
+          "Use a materialization heuristic that materializes around the stale "
+          "regions of a graph.");
 
 namespace torch_tpu {
 
@@ -179,31 +189,62 @@ absl::StatusOr<bool> MustSplit(const Traversal& traversal) {
   return must_split;
 }
 
+// Config struct indicating which materialization heuristics are enabled.
+struct EnabledHeuristics {
+  void Initialize() {
+    reexecution = absl::GetFlag(FLAGS_torch_tpu_internal_reexecution_heuristic);
+    fanout = absl::GetFlag(FLAGS_torch_tpu_internal_fanout_heuristic);
+    repeated_subsequence =
+        absl::GetFlag(FLAGS_torch_tpu_internal_repeated_subsequence_heuristic);
+    stale = absl::GetFlag(FLAGS_torch_tpu_internal_stale_heuristic);
+    initialized = true;
+  }
+
+  // Whether the heuristics have been initialized.
+  bool initialized = false;
+  bool reexecution = false;
+  bool forced_split = true;      // always enabled
+  bool dynamic_op_split = true;  // always enabled
+  bool fanout = false;
+  bool repeated_subsequence = false;
+  bool stale = false;
+};
+
 // Applies all enabled materialization heuristics on a given `traversal` and
 // return the set of nodes in `traversal` that at least one heuristic decides
 // to materialize.
 [[nodiscard]] absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
 ApplyAllMaterializationHeuristicsOn(const Traversal& traversal) {
-  // Add new materialization heuristics to this array. They will be executed in
-  // the order in which they appear below.
-  static const absl::NoDestructor<
-      std::vector<MaterializationHeuristic* absl_nonnull>>
-      kMaterializationHeuristics({
-          new ReexecutionHeuristic(),
-          new ForcedSplitHeuristic(),
-          new DynamicOpSplitHeuristic(),
-          new FanoutHeuristic(),
-          new RepeatedSubsequenceHeuristic(),
-          new StaleHeuristic(),
-      });
+  static EnabledHeuristics enabled_heuristics;
+  if (!enabled_heuristics.initialized) {
+    enabled_heuristics.Initialize();
+  }
 
   absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
       nodes_to_materialize;
-  for (auto* h : *kMaterializationHeuristics) {
-    if (h->Enabled()) {
-      tsl::profiler::TraceMe t([name = h->Name()] { return name; });
-      h->ApplyOn(traversal, nodes_to_materialize);
-    }
+  if (enabled_heuristics.reexecution) {
+    tsl::profiler::TraceMe t("ReexecutionHeuristic");
+    ReexecutionHeuristic().ApplyOn(traversal, nodes_to_materialize);
+  }
+  if (enabled_heuristics.forced_split) {
+    tsl::profiler::TraceMe t("ForcedSplitHeuristic");
+    ForcedSplitHeuristic().ApplyOn(traversal, nodes_to_materialize);
+  }
+  if (enabled_heuristics.dynamic_op_split) {
+    tsl::profiler::TraceMe t("DynamicOpSplitHeuristic");
+    DynamicOpSplitHeuristic().ApplyOn(traversal, nodes_to_materialize);
+  }
+  if (enabled_heuristics.fanout) {
+    tsl::profiler::TraceMe t("FanoutHeuristic");
+    FanoutHeuristic().ApplyOn(traversal, nodes_to_materialize);
+  }
+  if (enabled_heuristics.repeated_subsequence) {
+    tsl::profiler::TraceMe t("RepeatedSubsequenceHeuristic");
+    RepeatedSubsequenceHeuristic().ApplyOn(traversal, nodes_to_materialize);
+  }
+  if (enabled_heuristics.stale) {
+    tsl::profiler::TraceMe t("StaleHeuristic");
+    StaleHeuristic().ApplyOn(traversal, nodes_to_materialize);
   }
 
   // If an output is also a live boundary node, we don't need to redundantly

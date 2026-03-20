@@ -17,8 +17,6 @@
 #ifndef TORCH_TPU_EAGER_DYNAMIC_OP_SPLIT_HEURISTIC_H_
 #define TORCH_TPU_EAGER_DYNAMIC_OP_SPLIT_HEURISTIC_H_
 
-#include <string_view>
-
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "torch_tpu/eager/device_buffer.h"
@@ -29,8 +27,6 @@ namespace torch_tpu {
 // Materializes any node that has dynamic dimensions.
 class DynamicOpSplitHeuristic : public MaterializationHeuristic {
  protected:
-  std::string_view Name() const override { return "DynamicOpSplitHeuristic"; }
-  bool Enabled() const override { return true; }
   void ApplyOnNode(const DeviceBufferList& node,
                    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
                        materialization_nodes) override;

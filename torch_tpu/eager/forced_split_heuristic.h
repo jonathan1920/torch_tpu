@@ -29,8 +29,6 @@ namespace torch_tpu {
 // Materializes all nodes that are marked as split points.
 class ForcedSplitHeuristic : public MaterializationHeuristic {
  protected:
-  std::string_view Name() const override { return "ForcedSplitHeuristic"; }
-  bool Enabled() const override { return true; }
   void ApplyOnNode(const DeviceBufferList& node,
                    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
                        materialization_nodes) override;

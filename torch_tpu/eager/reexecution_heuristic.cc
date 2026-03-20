@@ -16,18 +16,10 @@
 
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/flags/flag.h"
 #include "absl/log/absl_check.h"
 #include "torch_tpu/eager/device_buffer.h"
 
-ABSL_FLAG(bool, torch_tpu_internal_reexecution_heuristic, true,
-          "Use a materialization heuristic that materializes on reexecution.");
-
 namespace torch_tpu {
-
-bool ReexecutionHeuristic::Enabled() const {
-  return absl::GetFlag(FLAGS_torch_tpu_internal_reexecution_heuristic);
-}
 
 void ReexecutionHeuristic::ApplyOnNode(
     const DeviceBufferList& node,

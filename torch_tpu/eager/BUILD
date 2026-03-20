@@ -168,7 +168,6 @@ torch_tpu_cc_library(
         ":materialization_heuristics",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
     ],
 )
@@ -201,7 +200,6 @@ torch_tpu_cc_library(
         ":materialization_heuristics",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
     ],
 )
@@ -241,7 +239,6 @@ torch_tpu_cc_library(
         ":materialization_heuristics",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
     ],
 )
@@ -366,7 +363,6 @@ torch_tpu_cc_library(
         ":dynamic_op_split_heuristic",
         ":fanout_heuristic",
         ":forced_split_heuristic",
-        ":materialization_heuristics",
         ":reexecution_heuristic",
         ":repeated_subsequence_heuristic",
         ":stale_heuristic",

@@ -26,7 +26,6 @@ void MaterializationHeuristic::ApplyOn(
     const Traversal& traversal,
     absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
         materialization_nodes) {
-  ABSL_VLOG(1) << Name() << "::ApplyOn";
   for (const auto& node : traversal.execution_order()) {
     ApplyOnNode(*node, materialization_nodes);
   }

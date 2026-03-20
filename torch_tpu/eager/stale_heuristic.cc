@@ -18,19 +18,10 @@
 
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/flags/flag.h"
 #include "absl/log/absl_check.h"
 #include "torch_tpu/eager/device_buffer.h"
 
-ABSL_FLAG(bool, torch_tpu_internal_stale_heuristic, true,
-          "Use a materialization heuristic that materializes around the stale "
-          "regions of a graph.");
-
 namespace torch_tpu {
-
-bool StaleHeuristic::Enabled() const {
-  return absl::GetFlag(FLAGS_torch_tpu_internal_stale_heuristic);
-}
 
 void StaleHeuristic::ApplyOnNode(
     const DeviceBufferList& node,

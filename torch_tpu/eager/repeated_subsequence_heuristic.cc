@@ -27,18 +27,11 @@
 #include "torch_tpu/eager/traversal.h"
 #include "torch_tpu/ops/op_names.h"
 
-ABSL_FLAG(bool, torch_tpu_internal_repeated_subsequence_heuristic, false,
-          "Use a heuristic that materializes endpoints of repeated "
-          "subsequences.");
 ABSL_FLAG(int, torch_tpu_internal_repeated_subsequence_heuristic_min_length, 10,
           "Minimal length for a subsequence to be considered by the repeated "
           "subsequence heuristic.");
 
 namespace torch_tpu {
-
-bool RepeatedSubsequenceHeuristic::Enabled() const {
-  return absl::GetFlag(FLAGS_torch_tpu_internal_repeated_subsequence_heuristic);
-}
 
 void RepeatedSubsequenceHeuristic::ApplyOnNode(
     const DeviceBufferList& node,

@@ -17,8 +17,6 @@
 #ifndef TORCH_TPU_EAGER_FANOUT_HEURISTIC_H_
 #define TORCH_TPU_EAGER_FANOUT_HEURISTIC_H_
 
-#include <string_view>
-
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "torch_tpu/eager/device_buffer.h"
@@ -73,8 +71,6 @@ class FanoutHeuristic : public MaterializationHeuristic {
   FanoutHeuristic& operator=(FanoutHeuristic&&) = delete;
 
  protected:
-  std::string_view Name() const override { return "FanoutHeuristic"; }
-  bool Enabled() const override;
   void ApplyOnNode(const DeviceBufferList& node,
                    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
                        materialization_nodes) override;
