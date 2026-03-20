@@ -23,6 +23,7 @@ load(
     "use_pywrap_rules",
 )
 load("//shims/build_cleaner:build_defs.bzl", "register_extension_info")
+load("//shims/py_platform_test:py_platform_test.bzl", "py_platform_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_contrib_test")
 
 # This file is torch_tpu implementation details and should not be imported by
@@ -259,6 +260,7 @@ def torch_tpu_py_test(
         strict = False,
         size = None,
         timeout = None,
+        platform = None,
         notap = None,
         nopresubmit = None,
         nolocal = None,
@@ -276,6 +278,9 @@ def torch_tpu_py_test(
         strict: Whether to use pytype.
         size: The size of the test.
         timeout: The timeout of the test.
+        platform: The platform to run the test on. Useful for tests on GPU as the
+            requires-gpu-* tags are deprecated. If this is set, generates a py_platform_test
+            as opposed to a py_test.
         notap: If given as a string, the test will be excluded from TAP, the string will be used
             as the reason, and a build_test named `<name>_build_test` will be added for the test
             to ensure it is buildable.
@@ -353,7 +358,10 @@ def torch_tpu_py_test(
     })
     # copybara:comment_end
 
-    if strict:
+    if platform:
+        rule = py_platform_test
+        kwargs["platform"] = platform
+    elif strict:
         rule = pytype_strict_contrib_test
     else:
         rule = py_test
