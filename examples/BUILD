@@ -17,7 +17,7 @@ load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
     default_applicable_licenses = ["//:license"],
-    default_visibility = ["//examples:__subpackages__"],
+    default_visibility = ["//:__subpackages__"],
 )
 
 pytype_strict_library(
