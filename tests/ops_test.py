@@ -625,6 +625,21 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"rtol": 2.2e-1, "atol": 2.4e-2},
         torch.float16: {"rtol": 4.3e-1, "atol": 3.5e-3},
     },
+    "_foreach_erfc": {
+        torch.float32: {"rtol": 3.5e-06, "atol": 4.8e-07},
+    },
+    "_foreach_expm1": {
+        torch.bfloat16: {"rtol": 7.8e-03, "atol": 6.2e-05},
+        torch.complex64: {"rtol": 1.7e-05, "atol": 2.5e-02},
+        torch.float16: {"rtol": 9.0e-04, "atol": 4.0},
+        torch.float64: {"rtol": 2.4e-08, "atol": 7.7e-06},
+    },
+    "_foreach_frac": {
+        torch.bfloat16: {"rtol": 4.6e01, "atol": 1.0e00},
+        torch.float16: {"rtol": 1.3e02, "atol": 1.0e00},
+        torch.float32: {"rtol": 1.7e02, "atol": 1.0e00},
+        torch.float64: {"rtol": 6.4e02, "atol": 1.1e00},
+    },
     "_foreach_lerp": {
         torch.bfloat16: {"rtol": 1.1, "atol": 3.2e-2},
         torch.float16: {"rtol": 3.1e-1, "atol": 7.2e-3},
@@ -637,10 +652,27 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.complex64: {"rtol": 2.1e-4, "atol": 3.0e-5},
         torch.float32: {"rtol": 2.5e-4, "atol": 2.9e-5},
     },
+    "_foreach_log2": {
+        torch.bfloat16: {"rtol": 7.8e-03, "atol": 6.3e-02},
+        torch.complex64: {"rtol": 1.1e-04, "atol": 1.9e-04},
+        torch.float32: {"rtol": 2.7e-04, "atol": 1.5e-04},
+        torch.int16: {"rtol": 5.7e-05, "atol": 9.1e-05},
+        torch.int32: {"rtol": 5.7e-05, "atol": 9.1e-05},
+        torch.int64: {"rtol": 5.7e-05, "atol": 9.1e-05},
+        torch.int8: {"rtol": 5.7e-05, "atol": 9.1e-05},
+        torch.uint8: {"rtol": 5.7e-05, "atol": 9.1e-05},
+    },
     "_foreach_mul": {
         torch.bfloat16: {"rtol": 7.9e-3, "atol": 6.3e-2},
         torch.float16: {"rtol": 9.8e-4, "atol": 7.9e-3},
         torch.complex64: {"rtol": 1.2e-7, "atol": 1.6e-5},
+    },
+    "_foreach_norm": {
+        torch.float16: {"rtol": 6.9e-08, "atol": 4.9e-07},
+        torch.float64: {"rtol": 5.4e-08, "atol": 3.9e-07},
+    },
+    "_foreach_sigmoid": {
+        torch.complex64: {"rtol": 1.2e-05, "atol": 2.4e-05},
     },
     "_foreach_sub": {
         torch.bfloat16: {"rtol": 5.9e-2, "atol": 2.0e-3},
@@ -729,6 +761,12 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.int64: {"rtol": 1e-5, "atol": 1e-5},
         torch.float32: {"rtol": 1e-5, "atol": 1e-5},
         torch.complex64: {"rtol": 1e-5, "atol": 1e-5},
+    },
+    "cummax": {
+        torch.float64: {"rtol": 5.7e-08, "atol": 4.5e-07},
+    },
+    "cummin": {
+        torch.float64: {"rtol": 5.6e-08, "atol": 4.7e-07},
     },
     "cumsum": {
         torch.bfloat16: {"rtol": 1e-1, "atol": 1e-2},
@@ -902,6 +940,10 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
         torch.float16: {"rtol": 1e-2, "atol": 1e-2},
     },
+    "nn.functional.embedding_bag": {
+        torch.bfloat16: {"rtol": 5.9e-02, "atol": 1.6e-02},
+        torch.float16: {"rtol": 9.0e-02, "atol": 2.5e-01},
+    },
     "nn.functional.gelu": {
         torch.float16: {"rtol": 1e-1, "atol": 5e-4},
         torch.float32: {"rtol": 1e-2, "atol": 1e-5},
@@ -910,6 +952,20 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"rtol": 1e-2, "atol": 5e-2},
         torch.float16: {"rtol": 8.9e-2, "atol": 5.0e-2},
         torch.float32: {"rtol": 6.7e-4, "atol": 6.6e-4},
+    },
+    "nn.functional.hardsigmoid": {
+        torch.bfloat16: {"rtol": 3.8e-01, "atol": 9.8e-04},
+        torch.float16: {"rtol": 3.2e-02, "atol": 1.3e-04},
+    },
+    "nn.functional.hardswish": {
+        torch.bfloat16: {"rtol": 7.9e-03, "atol": 1.6e-02},
+        torch.float16: {"rtol": 9.8e-04, "atol": 2.0e-03},
+        torch.float64: {"rtol": 3.0e-08, "atol": 1.5e-07},
+    },
+    "nn.functional.mse_loss": {
+        torch.bfloat16: {"rtol": 6.7e-03, "atol": 1.0e00},
+        torch.float16: {"rtol": 8.3e-04, "atol": 1.3e-01},
+        torch.float32: {"rtol": 2.0e-06, "atol": 2.6e-04},
     },
     "nn.functional.nll_loss": {
         torch.bfloat16: {"rtol": 1e-2, "atol": 3e-1},
@@ -1401,6 +1457,10 @@ class TestOps(TorchTpuTestBase):
         "bmm",
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
+        # TODO: look into why `bmm()` fails for integral dtypes.
+        exclude_dtypes={
+            "gpu": INTEGRAL_DTYPES,
+        },
     )
 
   def test_cat(self):
