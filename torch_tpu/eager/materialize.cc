@@ -54,6 +54,7 @@
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
+#include "torch_tpu/eager/prevent_graph_splits.h"
 #include "torch_tpu/eager/split_traversal.h"
 #include "torch_tpu/eager/traversal.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -628,7 +629,21 @@ class MaterializationWorker {
                  << GetGraphviz(*traversal_or);
 
     std::vector<Traversal> traversals;
-    if (task.materialization_mode == MaterializationMode::kSplitGraph) {
+
+    bool should_split_graph =
+        (task.materialization_mode == MaterializationMode::kSplitGraph);
+    if (should_split_graph) {
+      absl::StatusOr<bool> prevent_graph_split =
+          PreventGraphSplit(*traversal_or);
+      if (!prevent_graph_split.ok()) {
+        ABSL_VLOG(1) << "[MaterializationWorker] PreventGraphSplit failed: "
+                     << prevent_graph_split.status();
+      } else {
+        should_split_graph = !(*prevent_graph_split);
+      }
+    }
+
+    if (should_split_graph) {
       // Split the traversal while nodes are still in the deferred state.
       ABSL_VLOG(1) << "[MaterializationWorker] Splitting traversal";
       absl::StatusOr<std::vector<Traversal>> traversals_or;
