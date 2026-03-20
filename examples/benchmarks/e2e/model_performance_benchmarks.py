@@ -118,6 +118,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
           benchmark_utils.RunMode.DEFER_NEVER,
       ])
   )
@@ -144,6 +145,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
           benchmark_utils.RunMode.DEFER_NEVER,
       ])
   )
@@ -170,6 +172,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
           benchmark_utils.RunMode.DEFER_NEVER,
       ])
   )
