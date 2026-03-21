@@ -225,8 +225,8 @@ common:remote_execution_readonly --extra_execution_platforms="@ml_build_config_p
 # Do this last so it takes precedence.
 try-import %workspace%/user.bazelrc
 
-# TPU wheel version for local default builds.
-build --define WHEEL_VERSION=0.1.0.dev0
+# TPU wheel version extras for local default builds.
+build --define WHEEL_VERSION_EXTRAS=
 
 # Config for testing wheel builds.
 build --flag_alias=test_wheel=//:test_wheel

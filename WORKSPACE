@@ -39,6 +39,13 @@ http_archive(
     ],
 )
 
+load("//bazel:wheel_version.bzl", "torch_tpu_version_repo")
+
+torch_tpu_version_repo(
+    name = "torch_tpu_version",
+    pyproject_toml = "//:pyproject.toml",
+)
+
 load("//bazel:xla_repo.bzl", "xla_repo")
 
 xla_repo()
