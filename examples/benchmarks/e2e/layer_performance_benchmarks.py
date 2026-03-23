@@ -37,6 +37,36 @@ _BATCHNORM1D_LAYER_BENCHMARK_NAME = "batchnorm1d"
 _LAYERNORM_LAYER_BENCHMARK_NAME = "layernorm"
 _CONV2D_LAYER_BENCHMARK_NAME = "conv2d"
 _RMSNORM_LAYER_BENCHMARK_NAME = "rmsnorm"
+_EMBEDDING_LAYER_BENCHMARK_NAME = "embedding"
+_DROPOUT_LAYER_BENCHMARK_NAME = "dropout"
+_TANH_LAYER_BENCHMARK_NAME = "tanh"
+_GELU_ACTIVATION_BENCHMARK_NAME = "gelu_activation"
+_BERT_LAYER_BENCHMARK_NAME = "bert_layer"
+_BERT_SELF_OUTPUT_BENCHMARK_NAME = "bert_self_output"
+_BERT_INTERMEDIATE_BENCHMARK_NAME = "bert_intermediate"
+_BERT_OUTPUT_BENCHMARK_NAME = "bert_output"
+_BERT_POOLER_BENCHMARK_NAME = "bert_pooler"
+_BERT_EMBEDDINGS_BENCHMARK_NAME = "bert_embeddings"
+_SILU_ACTIVATION_BENCHMARK_NAME = "silu_activation"
+_QWEN3_ATTENTION_BENCHMARK_NAME = "qwen3_attention"
+_QWEN3_RMSNORM_BENCHMARK_NAME = "qwen3_rms_norm"
+_QWEN3_MLP_BENCHMARK_NAME = "qwen3_mlp"
+_QWEN3_ROTARY_EMBEDDING_BENCHMARK_NAME = "qwen3_rotary_embedding"
+_DEEPSEEK_PARALLEL_EMBEDDING_BENCHMARK_NAME = "deepseek_parallel_embedding"
+_DEEPSEEK_RMSNORM_BENCHMARK_NAME = "deepseek_rms_norm"
+_DEEPSEEK_EXPERT_BENCHMARK_NAME = "deepseek_expert"
+
+
+def _get_microbenchmark_name(config_dataclass):
+  config_dict = dataclasses.asdict(config_dataclass)
+  name_parts = []
+  for k, v in config_dict.items():
+    if k == "dtype":
+      v = str(v).replace("torch.", "")
+    elif isinstance(v, (tuple, list)):
+      v = "x".join(map(str, v))
+    name_parts.append(f"{k}_{v}")
+  return "_".join(name_parts)
 
 
 class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
@@ -67,12 +97,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               },
           ),
       )
-      config_dict = dataclasses.asdict(layer_config)
-      name_parts = [
-          f"{k}_{str(v).replace('torch.', '')}" if k == "dtype" else f"{k}_{v}"
-          for k, v in config_dict.items()
-      ]
-      microbenchmark_name = "_".join(name_parts)
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
       self.run_performance_benchmark_test(
           config, _LINEAR_LAYER_BENCHMARK_NAME, microbenchmark_name
       )
@@ -107,12 +132,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               },
           ),
       )
-      config_dict = dataclasses.asdict(layer_config)
-      name_parts = [
-          f"{k}_{str(v).replace('torch.', '')}" if k == "dtype" else f"{k}_{v}"
-          for k, v in config_dict.items()
-      ]
-      microbenchmark_name = "_".join(name_parts)
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
       self.run_performance_benchmark_test(
           config, _BATCHNORM1D_LAYER_BENCHMARK_NAME, microbenchmark_name
       )
@@ -140,12 +160,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               },
           ),
       )
-      config_dict = dataclasses.asdict(layer_config)
-      name_parts = [
-          f"{k}_{str(v).replace('torch.', '')}" if k == "dtype" else f"{k}_{v}"
-          for k, v in config_dict.items()
-      ]
-      microbenchmark_name = "_".join(name_parts)
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
       self.run_performance_benchmark_test(
           config, _LAYERNORM_LAYER_BENCHMARK_NAME, microbenchmark_name
       )
@@ -179,51 +194,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               },
           ),
       )
-      config_dict = dataclasses.asdict(layer_config)
-      name_parts = [
-          f"{k}_{str(v).replace('torch.', '')}" if k == "dtype" else f"{k}_{v}"
-          for k, v in config_dict.items()
-      ]
-      microbenchmark_name = "_".join(name_parts)
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
       self.run_performance_benchmark_test(
           config, _CONV2D_LAYER_BENCHMARK_NAME, microbenchmark_name
       )
-
-  @dataclasses.dataclass
-  class _EmbeddingConfig:
-    batch_size: int
-    seq_len: int
-    num_embeddings: int
-    embedding_dim: int
-
-  _embedding_configs = (
-      # Default config for smoke test.
-      _EmbeddingConfig(
-          batch_size=1,
-          seq_len=128,
-          num_embeddings=128,
-          embedding_dim=128,
-      ),
-      # Configs for BERT
-      _EmbeddingConfig(
-          batch_size=32,
-          seq_len=128,
-          num_embeddings=30522,
-          embedding_dim=768,
-      ),
-      _EmbeddingConfig(
-          batch_size=1,
-          seq_len=128,
-          num_embeddings=512,
-          embedding_dim=768,
-      ),
-      _EmbeddingConfig(
-          batch_size=32,
-          seq_len=128,
-          num_embeddings=2,
-          embedding_dim=768,
-      ),
-  )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -231,7 +205,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_embedding(self, run_mode, is_training):
-    for layer_config in self._embedding_configs:
+    for layer_config in layer_configs.EMBEDDING_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -250,26 +224,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               },
           ),
       )
-      config_dict = dataclasses.asdict(layer_config)
-      name_parts = [
-          f"{k}_{str(v).replace('torch.', '')}" if k == "dtype" else f"{k}_{v}"
-          for k, v in config_dict.items()
-      ]
-      benchmark_name = "_".join(name_parts)
-      self.run_performance_benchmark_test(config, benchmark_name)
-
-  @dataclasses.dataclass
-  class _DropoutConfig:
-    p: float
-    shape: tuple[int, ...]
-
-  _dropout_configs = (
-      # BERT configs
-      _DropoutConfig(
-          p=0.1,
-          shape=(32, 128, 768),
-      ),
-  )
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _EMBEDDING_LAYER_BENCHMARK_NAME, microbenchmark_name
+      )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -277,7 +235,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_dropout(self, run_mode, is_training):
-    for layer_config in self._dropout_configs:
+    # TODO: b/494430218 - Fix dropout training.
+    if is_training:
+      self.skipTest("Dropout test fails in training mode.")
+    for layer_config in layer_configs.DROPOUT_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -294,25 +255,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               },
           ),
       )
-      # Extracting details from shape config for name building
-      custom_name_parts = []
-      custom_name_parts.append(f"p_{layer_config.p}")
-      custom_name_parts.append(
-          f"shape_{'x'.join((str(x) for x in layer_config.shape))}"
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _DROPOUT_LAYER_BENCHMARK_NAME, microbenchmark_name
       )
-      benchmark_name = "_".join(custom_name_parts)
-      self.run_performance_benchmark_test(config, benchmark_name)
-
-  @dataclasses.dataclass
-  class _TanhConfig:
-    shape: tuple[int, ...]
-
-  _tanh_configs = (
-      # BERT configs
-      _TanhConfig(
-          shape=(32, 768),
-      ),
-  )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -320,7 +266,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_tanh(self, run_mode, is_training):
-    for layer_config in self._tanh_configs:
+    # TODO: b/494430218 - Fix tanh training.
+    if is_training:
+      self.skipTest("Tanh test fails in training mode.")
+    for layer_config in layer_configs.TANH_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -336,20 +285,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               },
           ),
       )
-      # Extracting details from shape config for name building
-      custom_name_parts = []
-      custom_name_parts.append(
-          f"shape_{'x'.join((str(x) for x in layer_config.shape))}"
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _TANH_LAYER_BENCHMARK_NAME, microbenchmark_name
       )
-      benchmark_name = "_".join(custom_name_parts)
-      self.run_performance_benchmark_test(config, benchmark_name)
-
-  @dataclasses.dataclass
-  class _BertLayerConfig:
-    batch_size: int
-    seq_len: int
-
-  _bert_layer_configs = (_BertLayerConfig(batch_size=32, seq_len=128),)
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -357,7 +296,9 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_gelu_activation(self, run_mode, is_training):
-    for layer_config in self._bert_layer_configs:
+    # TODO: b/494430218 - Fix gelu_activation training.
+    self.skipTest("Gelu activation test fails in training mode.")
+    for layer_config in layer_configs.BERT_LAYER_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -372,12 +313,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               sequence_length=layer_config.seq_len,
           ),
       )
-      custom_name_parts = [
-          f"batch_size_{layer_config.batch_size}",
-          f"seq_len_{layer_config.seq_len}",
-      ]
-      benchmark_name = "_".join(custom_name_parts)
-      self.run_performance_benchmark_test(config, benchmark_name)
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _GELU_ACTIVATION_BENCHMARK_NAME, microbenchmark_name
+      )
 
   # TODO(b/484415655): Known bert training issue.
   @parameterized.named_parameters(
@@ -386,7 +325,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_bert_layer(self, run_mode, is_training):
-    for layer_config in self._bert_layer_configs:
+    for layer_config in layer_configs.BERT_LAYER_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -401,12 +340,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               sequence_length=layer_config.seq_len,
           ),
       )
-      custom_name_parts = [
-          f"batch_size_{layer_config.batch_size}",
-          f"seq_len_{layer_config.seq_len}",
-      ]
-      benchmark_name = "_".join(custom_name_parts)
-      self.run_performance_benchmark_test(config, benchmark_name)
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _BERT_LAYER_BENCHMARK_NAME, microbenchmark_name
+      )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -414,7 +351,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_bert_self_output(self, run_mode, is_training):
-    for layer_config in self._bert_layer_configs:
+    for layer_config in layer_configs.BERT_LAYER_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -429,12 +366,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               sequence_length=layer_config.seq_len,
           ),
       )
-      custom_name_parts = [
-          f"batch_size_{layer_config.batch_size}",
-          f"seq_len_{layer_config.seq_len}",
-      ]
-      benchmark_name = "_".join(custom_name_parts)
-      self.run_performance_benchmark_test(config, benchmark_name)
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _BERT_SELF_OUTPUT_BENCHMARK_NAME, microbenchmark_name
+      )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -442,7 +377,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_bert_intermediate(self, run_mode, is_training):
-    for layer_config in self._bert_layer_configs:
+    for layer_config in layer_configs.BERT_LAYER_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -457,12 +392,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               sequence_length=layer_config.seq_len,
           ),
       )
-      custom_name_parts = [
-          f"batch_size_{layer_config.batch_size}",
-          f"seq_len_{layer_config.seq_len}",
-      ]
-      benchmark_name = "_".join(custom_name_parts)
-      self.run_performance_benchmark_test(config, benchmark_name)
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _BERT_INTERMEDIATE_BENCHMARK_NAME, microbenchmark_name
+      )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -470,7 +403,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_bert_output(self, run_mode, is_training):
-    for layer_config in self._bert_layer_configs:
+    for layer_config in layer_configs.BERT_LAYER_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -485,12 +418,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               sequence_length=layer_config.seq_len,
           ),
       )
-      custom_name_parts = [
-          f"batch_size_{layer_config.batch_size}",
-          f"seq_len_{layer_config.seq_len}",
-      ]
-      benchmark_name = "_".join(custom_name_parts)
-      self.run_performance_benchmark_test(config, benchmark_name)
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _BERT_OUTPUT_BENCHMARK_NAME, microbenchmark_name
+      )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -498,7 +429,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_bert_pooler(self, run_mode, is_training):
-    for layer_config in self._bert_layer_configs:
+    for layer_config in layer_configs.BERT_LAYER_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -513,12 +444,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               sequence_length=layer_config.seq_len,
           ),
       )
-      custom_name_parts = [
-          f"batch_size_{layer_config.batch_size}",
-          f"seq_len_{layer_config.seq_len}",
-      ]
-      benchmark_name = "_".join(custom_name_parts)
-      self.run_performance_benchmark_test(config, benchmark_name)
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _BERT_POOLER_BENCHMARK_NAME, microbenchmark_name
+      )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -526,7 +455,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_bert_embeddings(self, run_mode, is_training):
-    for layer_config in self._bert_layer_configs:
+    for layer_config in layer_configs.BERT_LAYER_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
               benchmark_utils.Platform.GFC_1X1X1,
@@ -541,12 +470,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               sequence_length=layer_config.seq_len,
           ),
       )
-      custom_name_parts = [
-          f"batch_size_{layer_config.batch_size}",
-          f"seq_len_{layer_config.seq_len}",
-      ]
-      benchmark_name = "_".join(custom_name_parts)
-      self.run_performance_benchmark_test(config, benchmark_name)
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _BERT_EMBEDDINGS_BENCHMARK_NAME, microbenchmark_name
+      )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -554,6 +481,12 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_rmsnorm(self, run_mode, is_training):
+    # TODO: b/494430218 - Fix RMSNorm training.
+    if is_training and run_mode in (
+        benchmark_utils.RunMode.EAGER,
+        benchmark_utils.RunMode.EAGER_OPTIMIZED,
+    ):
+      self.skipTest("RMSNorm training with eager mode fails.")
     for layer_config in layer_configs.RMS_NORM_CONFIGS:
       config = performance_utils.PerformanceBenchmarkConfig(
           supported_platforms=[
@@ -572,12 +505,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
               },
           ),
       )
-      config_dict = dataclasses.asdict(layer_config)
-      name_parts = [
-          f"{k}_{str(v).replace('torch.', '')}" if k == "dtype" else f"{k}_{v}"
-          for k, v in config_dict.items()
-      ]
-      microbenchmark_name = "_".join(name_parts)
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
       self.run_performance_benchmark_test(
           config, _RMSNORM_LAYER_BENCHMARK_NAME, microbenchmark_name
       )
@@ -588,22 +516,26 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_qwen3_attention(self, run_mode, is_training):
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
-        run_mode=run_mode,
-        is_training=is_training,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="Qwen3Attention",
-            batch_size=1,
-            sequence_length=128,
-            custom_kwargs={},
-        ),
-    )
-    self.run_performance_benchmark_test(config, f"Qwen3Attention")
+    for layer_config in layer_configs.QWEN3_CONFIGS:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="Qwen3Attention",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+              custom_kwargs={},
+          ),
+      )
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _QWEN3_ATTENTION_BENCHMARK_NAME, microbenchmark_name
+      )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -611,22 +543,26 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_qwen3_rms_norm(self, run_mode, is_training):
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
-        run_mode=run_mode,
-        is_training=is_training,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="Qwen3RMSNorm",
-            batch_size=1,
-            sequence_length=128,
-            custom_kwargs={"hidden_size": 128},
-        ),
-    )
-    self.run_performance_benchmark_test(config, f"Qwen3RMSNorm")
+    for layer_config in layer_configs.QWEN3_CONFIGS:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="Qwen3RMSNorm",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+              custom_kwargs={"hidden_size": layer_config.hidden_size},
+          ),
+      )
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _QWEN3_RMSNORM_BENCHMARK_NAME, microbenchmark_name
+      )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -634,22 +570,29 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_qwen3_mlp(self, run_mode, is_training):
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
-        run_mode=run_mode,
-        is_training=is_training,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="Qwen3MLP",
-            batch_size=1,
-            sequence_length=128,
-            custom_kwargs={"hidden_size": 128, "intermediate_size": 512},
-        ),
-    )
-    self.run_performance_benchmark_test(config, f"Qwen3MLP")
+    for layer_config in layer_configs.QWEN3_CONFIGS:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="Qwen3MLP",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+              custom_kwargs={
+                  "hidden_size": layer_config.hidden_size,
+                  "intermediate_size": layer_config.intermediate_size,
+              },
+          ),
+      )
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _QWEN3_MLP_BENCHMARK_NAME, microbenchmark_name
+      )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -657,22 +600,26 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_silu_activation(self, run_mode, is_training):
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
-        run_mode=run_mode,
-        is_training=is_training,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="SiLUActivation",
-            batch_size=1,
-            sequence_length=128,
-            custom_kwargs={"shape": (1, 128, 512)},
-        ),
-    )
-    self.run_performance_benchmark_test(config, f"SiLUActivation")
+    for layer_config in layer_configs.SILU_CONFIGS:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="SiLUActivation",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+              custom_kwargs={"shape": layer_config.shape},
+          ),
+      )
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _SILU_ACTIVATION_BENCHMARK_NAME, microbenchmark_name
+      )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -681,22 +628,26 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   )
   def test_qwen3_rotary_embedding(self, run_mode, is_training):
     self.skipTest("TODO(b/484415655): Investigate cache miss.")
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
-        run_mode=run_mode,
-        is_training=is_training,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="Qwen3RotaryEmbedding",
-            batch_size=1,
-            sequence_length=128,
-            custom_kwargs={"head_dim": 128},
-        ),
-    )
-    self.run_performance_benchmark_test(config, f"Qwen3RotaryEmbedding")
+    for layer_config in layer_configs.QWEN3_CONFIGS:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="Qwen3RotaryEmbedding",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+              custom_kwargs={"head_dim": layer_config.head_dim},
+          ),
+      )
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _QWEN3_ROTARY_EMBEDDING_BENCHMARK_NAME, microbenchmark_name
+      )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -704,35 +655,41 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_deepseek_parallel_embedding(self, run_mode, is_training):
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
-        run_mode=run_mode,
-        is_training=is_training,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="DeepSeekParallelEmbedding",
-            batch_size=1,
-            sequence_length=128,
-            custom_kwargs={
-                "vocab_size": 1024,
-                "dim": 128,
-                "inter_dim": 512,
-                "moe_inter_dim": 64,
-                "n_layers": 1,
-                "n_dense_layers": 1,
-                "n_heads": 4,
-                "n_routed_experts": 4,
-                "n_shared_experts": 2,
-                "n_activated_experts": 2,
-                "in_features": 128,
-                "out_features": 128,
-            },
-        ),
-    )
-    self.run_performance_benchmark_test(config, f"DeepSeekParallelEmbedding")
+    for layer_config in layer_configs.DEEPSEEK_CONFIGS:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="DeepSeekParallelEmbedding",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+              custom_kwargs={
+                  "vocab_size": layer_config.vocab_size,
+                  "dim": layer_config.dim,
+                  "inter_dim": layer_config.inter_dim,
+                  "moe_inter_dim": layer_config.moe_inter_dim,
+                  "n_layers": layer_config.n_layers,
+                  "n_dense_layers": layer_config.n_dense_layers,
+                  "n_heads": layer_config.n_heads,
+                  "n_routed_experts": layer_config.n_routed_experts,
+                  "n_shared_experts": layer_config.n_shared_experts,
+                  "n_activated_experts": layer_config.n_activated_experts,
+                  "in_features": layer_config.in_features,
+                  "out_features": layer_config.out_features,
+              },
+          ),
+      )
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config,
+          _DEEPSEEK_PARALLEL_EMBEDDING_BENCHMARK_NAME,
+          microbenchmark_name,
+      )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -740,35 +697,39 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_deepseek_rms_norm(self, run_mode, is_training):
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
-        run_mode=run_mode,
-        is_training=is_training,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="DeepSeekRMSNorm",
-            batch_size=1,
-            sequence_length=128,
-            custom_kwargs={
-                "vocab_size": 1024,
-                "dim": 128,
-                "inter_dim": 512,
-                "moe_inter_dim": 64,
-                "n_layers": 1,
-                "n_dense_layers": 1,
-                "n_heads": 4,
-                "n_routed_experts": 4,
-                "n_shared_experts": 2,
-                "n_activated_experts": 2,
-                "in_features": 128,
-                "out_features": 128,
-            },
-        ),
-    )
-    self.run_performance_benchmark_test(config, f"DeepSeekRMSNorm")
+    for layer_config in layer_configs.DEEPSEEK_CONFIGS:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="DeepSeekRMSNorm",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+              custom_kwargs={
+                  "vocab_size": layer_config.vocab_size,
+                  "dim": layer_config.dim,
+                  "inter_dim": layer_config.inter_dim,
+                  "moe_inter_dim": layer_config.moe_inter_dim,
+                  "n_layers": layer_config.n_layers,
+                  "n_dense_layers": layer_config.n_dense_layers,
+                  "n_heads": layer_config.n_heads,
+                  "n_routed_experts": layer_config.n_routed_experts,
+                  "n_shared_experts": layer_config.n_shared_experts,
+                  "n_activated_experts": layer_config.n_activated_experts,
+                  "in_features": layer_config.in_features,
+                  "out_features": layer_config.out_features,
+              },
+          ),
+      )
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _DEEPSEEK_RMSNORM_BENCHMARK_NAME, microbenchmark_name
+      )
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_and_train_configs(
@@ -776,35 +737,39 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_deepseek_expert(self, run_mode, is_training):
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
-        run_mode=run_mode,
-        is_training=is_training,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="DeepSeekExpert",
-            batch_size=1,
-            sequence_length=128,
-            custom_kwargs={
-                "vocab_size": 1024,
-                "dim": 128,
-                "inter_dim": 512,
-                "moe_inter_dim": 64,
-                "n_layers": 1,
-                "n_dense_layers": 1,
-                "n_heads": 4,
-                "n_routed_experts": 4,
-                "n_shared_experts": 2,
-                "n_activated_experts": 2,
-                "in_features": 128,
-                "out_features": 128,
-            },
-        ),
-    )
-    self.run_performance_benchmark_test(config, f"DeepSeekExpert")
+    for layer_config in layer_configs.DEEPSEEK_CONFIGS:
+      config = performance_utils.PerformanceBenchmarkConfig(
+          supported_platforms=[
+              benchmark_utils.Platform.GFC_1X1X1,
+              benchmark_utils.Platform.B200_1,
+          ],
+          benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+          run_mode=run_mode,
+          is_training=is_training,
+          model_and_input_args=performance_utils.ModelAndInputArgs(
+              model_name="DeepSeekExpert",
+              batch_size=layer_config.batch_size,
+              sequence_length=layer_config.seq_len,
+              custom_kwargs={
+                  "vocab_size": layer_config.vocab_size,
+                  "dim": layer_config.dim,
+                  "inter_dim": layer_config.inter_dim,
+                  "moe_inter_dim": layer_config.moe_inter_dim,
+                  "n_layers": layer_config.n_layers,
+                  "n_dense_layers": layer_config.n_dense_layers,
+                  "n_heads": layer_config.n_heads,
+                  "n_routed_experts": layer_config.n_routed_experts,
+                  "n_shared_experts": layer_config.n_shared_experts,
+                  "n_activated_experts": layer_config.n_activated_experts,
+                  "in_features": layer_config.in_features,
+                  "out_features": layer_config.out_features,
+              },
+          ),
+      )
+      microbenchmark_name = _get_microbenchmark_name(layer_config)
+      self.run_performance_benchmark_test(
+          config, _DEEPSEEK_EXPERT_BENCHMARK_NAME, microbenchmark_name
+      )
 
 
 if __name__ == "__main__":

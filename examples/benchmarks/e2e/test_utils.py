@@ -75,8 +75,8 @@ def generate_run_mode_and_train_configs(
   for training_mode in is_training:
     for run_mode in run_modes:
       name_parts = []
-      name_parts.append(f"{run_mode.value}")
       name_parts.append("train" if training_mode else "eval")
+      name_parts.append(f"{run_mode.value}")
       testcase_name = "_".join(name_parts)
       yield dict(
           testcase_name=testcase_name,

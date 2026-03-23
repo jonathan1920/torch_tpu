@@ -391,3 +391,121 @@ NONZERO_CONFIGS = (
         num_features=8192,
     ),
 )
+
+
+@dataclasses.dataclass
+class EmbeddingConfig:
+  batch_size: int
+  seq_len: int
+  num_embeddings: int
+  embedding_dim: int
+
+
+EMBEDDING_CONFIGS = (
+    # Default config for smoke test.
+    EmbeddingConfig(
+        batch_size=1,
+        seq_len=128,
+        num_embeddings=128,
+        embedding_dim=128,
+    ),
+    # Configs for BERT
+    EmbeddingConfig(
+        batch_size=32,
+        seq_len=128,
+        num_embeddings=30522,
+        embedding_dim=768,
+    ),
+    EmbeddingConfig(
+        batch_size=1,
+        seq_len=128,
+        num_embeddings=512,
+        embedding_dim=768,
+    ),
+    EmbeddingConfig(
+        batch_size=32,
+        seq_len=128,
+        num_embeddings=2,
+        embedding_dim=768,
+    ),
+)
+
+
+@dataclasses.dataclass
+class DropoutConfig:
+  p: float
+  shape: tuple[int, ...]
+
+
+DROPOUT_CONFIGS = (
+    # BERT configs
+    DropoutConfig(
+        p=0.1,
+        shape=(32, 128, 768),
+    ),
+)
+
+
+@dataclasses.dataclass
+class TanhConfig:
+  shape: tuple[int, ...]
+
+
+TANH_CONFIGS = (
+    # BERT configs
+    TanhConfig(
+        shape=(32, 768),
+    ),
+)
+
+
+@dataclasses.dataclass
+class BertLayerConfig:
+  batch_size: int
+  seq_len: int
+
+
+BERT_LAYER_CONFIGS = (BertLayerConfig(batch_size=32, seq_len=128),)
+
+
+@dataclasses.dataclass
+class Qwen3Config:
+  batch_size: int
+  seq_len: int
+  hidden_size: int = 128
+  intermediate_size: int = 512
+  head_dim: int = 128
+
+
+QWEN3_CONFIGS = (Qwen3Config(batch_size=1, seq_len=128),)
+
+
+@dataclasses.dataclass
+class SiLUConfig:
+  batch_size: int
+  seq_len: int
+  shape: tuple[int, ...] = (1, 128, 512)
+
+
+SILU_CONFIGS = (SiLUConfig(batch_size=1, seq_len=128),)
+
+
+@dataclasses.dataclass
+class DeepSeekConfig:
+  batch_size: int
+  seq_len: int
+  vocab_size: int = 1024
+  dim: int = 128
+  inter_dim: int = 512
+  moe_inter_dim: int = 64
+  n_layers: int = 1
+  n_dense_layers: int = 1
+  n_heads: int = 4
+  n_routed_experts: int = 4
+  n_shared_experts: int = 2
+  n_activated_experts: int = 2
+  in_features: int = 128
+  out_features: int = 128
+
+
+DEEPSEEK_CONFIGS = (DeepSeekConfig(batch_size=1, seq_len=128),)

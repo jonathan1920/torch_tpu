@@ -198,7 +198,7 @@ torch_tpu_py_test(
     srcs = ["layer_performance_benchmarks.py"],
     main = "layer_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
-    shard_count = 2,
+    shard_count = 8,
     strict = True,
     tags = [
         "cpu:4",
