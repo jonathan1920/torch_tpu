@@ -18,6 +18,7 @@
 #define TORCH_TPU_OPS_MACROS_LOGGING_H_
 
 #include <ostream>
+#include <set>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -87,7 +88,7 @@ namespace torch_tpu {
       /* Only check the argument types once per kernel function. */           \
       constexpr std::string_view _func_sig = __PRETTY_FUNCTION__;             \
       static const bool _checked = [&] {                                      \
-        ::torch_tpu::internal::CheckKernelArgTypes(                           \
+        ::torch_tpu::internal::CheckTtKernelArgList(                          \
             {__FILE__, __LINE__, _func_sig,                                   \
              ::torch_tpu::internal::ParseArgTypesOrEmpty(_func_sig),          \
              TT_ARGS_AS_STRINGS_(__VA_ARGS__)} __VA_OPT__(, ) __VA_ARGS__);   \
@@ -186,28 +187,29 @@ void CheckKernelArgType(const KernelArgCheckerContext& context,
   }
 }
 
-// Variadic function CheckKernelArgTypesImpl() validates the arguments one by
+// Variadic function CheckKernelArgTypes() validates the arguments one by
 // one.
 //
 // Base case: 0 arguments to validate.
-inline void CheckKernelArgTypesImpl(const KernelArgCheckerContext& context,
-                                    const int arg_idx) {}
+inline void CheckKernelArgTypes(const KernelArgCheckerContext& context,
+                                const int arg_idx) {}
 
 // Recursive case: validate the next argument and then call the function
 // recursively with the remaining arguments.
 template <typename T, typename... Args>
-inline void CheckKernelArgTypesImpl(const KernelArgCheckerContext& context,
-                                    const int arg_idx, const T& arg,
-                                    const Args&... rest_args) {
+inline void CheckKernelArgTypes(const KernelArgCheckerContext& context,
+                                const int arg_idx, const T& arg,
+                                const Args&... rest_args) {
   CheckKernelArgType<T>(context, arg_idx);
-  CheckKernelArgTypesImpl(context, arg_idx + 1, rest_args...);
+  CheckKernelArgTypes(context, arg_idx + 1, rest_args...);
 }
 
-// Checks that the argument types of the kernel function match the arguments
-// passed to TT_KERNEL().
+// Checks that the arguments passed to TT_KERNEL() match the arguments for the
+// kernel function that encloses the TT_KERNEL() call.
 template <typename... Args>
-inline void CheckKernelArgTypes(const KernelArgCheckerContext& context,
-                                const Args&... args) {
+inline void CheckTtKernelArgList(const KernelArgCheckerContext& context,
+                                 const Args&... args) {
+  // 1. Check the number of arguments.
   const int num_args = sizeof...(args);
   ABSL_CHECK_EQ(context.arg_types.size(), num_args)  // CRASH_OK
       << "\n"
@@ -217,8 +219,22 @@ inline void CheckKernelArgTypes(const KernelArgCheckerContext& context,
       << " arguments:\n  " << absl::StrJoin(context.arg_types, ",\n  ")
       << "\nbut " << num_args << " arguments were passed to TT_KERNEL():\n  "
       << absl::StrJoin(context.tt_kernel_arg_names, ",\n  ");
-  CheckKernelArgTypesImpl(context, 0, args...);
+
+  // 2. Check that the arguments contain no duplicates.
+  std::set<std::string_view> arg_names_seen;
+  for (const std::string_view arg_name : context.tt_kernel_arg_names) {
+    ABSL_CHECK(  // CRASH_OK
+        arg_names_seen.find(arg_name) == arg_names_seen.end())
+        << "\n"
+        << context.file << ":" << context.line << ": argument '" << arg_name
+        << "' was passed to TT_KERNEL() multiple times.";
+    arg_names_seen.insert(arg_name);
+  }
+
+  // 3. Check that the argument types match the kernel function signature.
+  CheckKernelArgTypes(context, 0, args...);
 }
+
 }  // namespace internal
 
 }  // namespace torch_tpu
