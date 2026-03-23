@@ -323,6 +323,25 @@ class DynamismTest(parameterized.TestCase):
       print(w_res.cpu())
     self.assertEqual(counter.num_cache_hits(), 0)
 
+    # Call the same function with an already seen compatible static shape,
+    # marked. This should be two cache hits, one for the padding module and one
+    # for the actual computation.
+    a = torch.rand(5, 3, dtype=torch.float32, device="cpu").to(self.device)
+    a_res = dyn_pow(a)
+    with CompilationCounter(self.device) as counter:
+      print(a_res.cpu())
+    self.assertEqual(counter.num_cache_hits(), 2)
+
+    # Call the same function with an already seen compatible static shape,
+    # not marked.
+    # This should be two cache hits, one for the padding module and one for the
+    # actual computation.
+    b = torch.rand(5, 3, dtype=torch.float32, device="cpu").to(self.device)
+    b_res = b**2
+    with CompilationCounter(self.device) as counter:
+      print(b_res.cpu())
+    self.assertEqual(counter.num_cache_hits(), 2)
+
   def test_executable_is_reused_with_view_ops(self):
 
     def dyn_view_pow(x, do_mark=True):

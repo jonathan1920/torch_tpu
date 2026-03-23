@@ -420,6 +420,8 @@ CompilationCache::GetOrCreateCacheEntry(
       cache_lookup_or.has_value()) {
     return *cache_lookup_or;
   }
+  ABSL_VLOG(2) << "Compilation cache STATIC MISS #"
+               << perf_stats_.num_cache_misses() << " for key: " << key;
 
   // 2. Try to find a dynamic cache entry. We hold on to the iterator to avoid
   // having to lookup the shapeless key again later.
@@ -429,7 +431,7 @@ CompilationCache::GetOrCreateCacheEntry(
           : GetBoundedDynamicCacheEntries(key.shapeless_key);
   if (dynamic_it.has_value()) {
     for (const auto& entry : (*dynamic_it)->second) {
-      if (entry.shape_dynamism_metadata.IsCompatible(input_shapes)) {
+      if (entry.shape_dynamism_metadata.IsStaticShapeCompatible(input_shapes)) {
         ABSL_VLOG(2) << "Compilation cache DYNAMIC HIT for key: " << key;
         TT_ASSIGN_OR_RETURN(auto cache_lookup,
                             GetOrCreateCacheEntry(
@@ -498,12 +500,34 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
     // Do this first, before we move the compile options.
     auto padding_compile_options =
         std::make_unique<xla::CompileOptions>(*compile_options);
-    SharedLoadedExecutableFuture padding_executable_future =
-        EnqueuePaddingCompilation(*cache_lookup.shape_dynamism_metadata,
-                                  input_shapes,
-                                  std::move(padding_compile_options));
-    dynamic_kernel_adapter =
-        DynamicKernelAdapter{.preamble = padding_executable_future};
+    CompilationCacheKey padding_cache_key =
+        cache_lookup.shape_dynamism_metadata->GetPadModuleCacheKey(
+            input_shapes);
+    std::vector<Shape> padding_shapes =
+        cache_lookup.shape_dynamism_metadata->GetPaddingShapes(input_shapes);
+    MlirComputationBuilder padding_module_builder =
+        [padding_shapes =
+             std::move(padding_shapes)](mlir::MLIRContext& mlir_context) {
+          return GetPadModule(mlir_context, padding_shapes);
+        };
+
+    // Remove the dynamism from inputs before passing to GetOrCompile. The
+    // padding module takes all inputs, is pass through for the static ones,
+    // and for ones with dynamic dimensions it pads them to their upper bounds,
+    // and adds a new mlirOp right after the corresponding input to carry the
+    // dynamic dimensions.
+    std::vector<Shape> fixed_shape_inputs;
+    fixed_shape_inputs.reserve(input_shapes.size());
+    for (const auto& shape : input_shapes) {
+      fixed_shape_inputs.push_back(
+          {.dimensions = shape.dimensions, .dtype = shape.dtype});
+    }
+    TT_ASSIGN_OR_RETURN(CompiledKernel padding_kernel,
+                        GetOrCompile(padding_cache_key, fixed_shape_inputs,
+                                     std::move(padding_module_builder),
+                                     std::move(padding_compile_options)));
+    dynamic_kernel_adapter = DynamicKernelAdapter{
+        .preamble = std::move(padding_kernel.fixed_shape_kernel)};
     // Create a key for the storage of the dynamic executable.
     storage_key = CompilationCacheKey{
         key.shapeless_key,
@@ -551,55 +575,6 @@ void CompilationCache::EnqueueCompilation(
                                     std::move(compile_options));
         return;
       });
-}
-
-SharedLoadedExecutableFuture CompilationCache::EnqueuePaddingCompilation(
-    const ShapeDynamismMetadata& shape_dynamism_metadata,
-    const std::vector<Shape>& input_shapes,
-    UniqueCompileOptions compile_options) {
-  // TODO: For now compile the padding op every time.
-  // The padding shapes are a combination between the static input shapes and
-  // the dynamism bounds stored in the cache entry (which might or might not
-  // match the input shapes' dynamic dimensions annotation).
-  std::vector<Shape> padding_shapes =
-      shape_dynamism_metadata.GetPaddingShapes(input_shapes);
-
-  MlirComputationBuilder padding_module_builder =
-      [padding_shapes](mlir::MLIRContext& mlir_context) {
-        return GetPadModule(mlir_context, padding_shapes);
-      };
-
-  auto padding_executable_promise = std::make_shared<LoadedExecutablePromise>();
-  SharedLoadedExecutableFuture padding_executable_future =
-      padding_executable_promise->get_future();
-
-  auto padding_executable_builder_or =
-      MlirComputationBuilderToExecutableBuilder(padding_module_builder);
-  if (!padding_executable_builder_or.ok()) {
-    padding_executable_promise->set_value(
-        padding_executable_builder_or.status());
-    return padding_executable_future;
-  }
-
-  compilation_pool_->Schedule(
-      [padding_executable_promise,
-       builder = std::move(*padding_executable_builder_or),
-       compile_options = std::move(compile_options)]() mutable {
-        xla::PjRtClient* const client = GetPjRtClient();
-        if (client == nullptr) {
-          padding_executable_promise->set_value(
-              TT_ERROR(error::kFailedPrecondition)
-              << "PjRtClient must be initialized");
-          return;
-        }
-
-        auto padding_executable_or = torch_tpu::Compile(
-            *client, std::move(builder), std::move(compile_options));
-        padding_executable_promise->set_value(std::move(padding_executable_or));
-        return;
-      });
-
-  return padding_executable_future;
 }
 
 void CompilationCache::SetExecutable(

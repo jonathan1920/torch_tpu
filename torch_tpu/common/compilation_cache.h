@@ -295,22 +295,6 @@ class CompilationCache {
                UniqueCompileOptions compile_options)
       ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
-  // Ensures that the padding compilation for this entry is enqueued
-  // exactly once, even if called concurrently by multiple threads. It is safe
-  // to call this method without holding any external locks.
-  // TODO(unda): replace this with EnqueueCompilation, once we have a way to
-  // generate a cache key for the padding compilation.
-  //
-  // Parameters:
-  //  - shape_dynamism_metadata: The shape dynamism metadata to use for the
-  //    padding compilation.
-  //  - input_shapes: The input shapes to the computation.
-  //  - compile_options: The compile options to use for the compilation.
-  SharedLoadedExecutableFuture EnqueuePaddingCompilation(
-      const ShapeDynamismMetadata& shape_dynamism_metadata,
-      const std::vector<Shape>& input_shapes,
-      UniqueCompileOptions compile_options) ABSL_LOCKS_EXCLUDED(cache_mutex_);
-
   // Tries to get the compilation result from the tier-2 cache; if not
   // found, compiles the graph and stores the executable in the tier-1/2/3
   // caches.

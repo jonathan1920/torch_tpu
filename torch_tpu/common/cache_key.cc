@@ -45,6 +45,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fingerprint_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -163,9 +164,8 @@ DimensionsKey::DimensionsKey(
   key = FingerprintCat(upper_bounds, lower_bounds);
 }
 
-ShapeDynamismMetadata::ShapeDynamismMetadata(
-    const std::vector<Shape>& input_shapes) {
-  for (const Shape& shape : input_shapes) {
+ShapeDynamismMetadata::ShapeDynamismMetadata(absl::Span<const Shape> shapes) {
+  for (const Shape& shape : shapes) {
     const int64_t tensor_start_dim = input_dimension_bounds_.size();
     for (int64_t dim : shape.dimensions) {
       input_dimension_bounds_.push_back({dim, dim});
@@ -226,10 +226,10 @@ Shape GetPaddingShape(const Shape& shape,
 }
 }  // namespace
 
-bool ShapeDynamismMetadata::IsCompatible(
-    const std::vector<Shape>& input_shapes) const {
+bool ShapeDynamismMetadata::IsStaticShapeCompatible(
+    absl::Span<const Shape> shapes) const {
   int64_t flattened_size = 0;
-  for (const Shape& shape : input_shapes) {
+  for (const Shape& shape : shapes) {
     flattened_size += shape.dimensions.size();
   }
   if (flattened_size != input_dimension_bounds_.size()) {
@@ -237,7 +237,7 @@ bool ShapeDynamismMetadata::IsCompatible(
   }
   int64_t index = 0;
   absl::Span<const DimensionBounds> bounds = input_dimension_bounds_;
-  for (const Shape& shape : input_shapes) {
+  for (const Shape& shape : shapes) {
     int64_t span_size = shape.dimensions.size();
     if (!IsShapeCompatibleWithBounds(shape, bounds.subspan(index, span_size))) {
       return false;
@@ -248,20 +248,80 @@ bool ShapeDynamismMetadata::IsCompatible(
 }
 
 std::vector<Shape> ShapeDynamismMetadata::GetPaddingShapes(
-    const std::vector<Shape>& input_shapes) const {
-  TT_CHECK_THROW(IsCompatible(input_shapes), error::kInternal)
+    absl::Span<const Shape> shapes) const {
+  TT_CHECK_THROW(IsStaticShapeCompatible(shapes), error::kInternal)
       << "Input shapes are incompatible with dynamism metadata.";
   std::vector<Shape> padding_shapes;
-  padding_shapes.reserve(input_shapes.size());
+  padding_shapes.reserve(shapes.size());
   int index = 0;
   absl::Span<const DimensionBounds> bounds = input_dimension_bounds_;
-  for (const Shape& shape : input_shapes) {
+  for (const Shape& shape : shapes) {
     int64_t span_size = shape.dimensions.size();
     padding_shapes.push_back(
         GetPaddingShape(shape, bounds.subspan(index, span_size)));
     index += span_size;
   }
   return padding_shapes;
+}
+
+CompilationCacheKey ShapeDynamismMetadata::GetPadModuleCacheKey(
+    absl::Span<const Shape> shapes) const {
+  GraphSignature graph;
+
+  for (const Shape& shape : shapes) {
+    graph.AddInput(shape.dimensions, shape.dtype);
+  }
+
+  absl::Span<const DimensionBounds> bounds = input_dimension_bounds_;
+  int bounds_index = 0;
+  for (int i = 0; i < shapes.size(); ++i) {
+    const Shape& shape = shapes[i];
+    const int64_t span_size = shape.dimensions.size();
+    auto shape_bounds = bounds.subspan(bounds_index, span_size);
+    bounds_index += span_size;
+
+    bool has_dynamic_dimensions = std::any_of(
+        shape_bounds.begin(), shape_bounds.end(),
+        [](const DimensionBounds& b) { return b.lower != b.upper; });
+
+    if (!has_dynamic_dimensions) {
+      graph.AddGraphOutput(i);
+      continue;
+    }
+
+    Dimensions padded_dimensions = shape.dimensions;
+    for (int d = 0; d < span_size; ++d) {
+      if (shape_bounds[d].lower != shape_bounds[d].upper) {
+        padded_dimensions[d] = shape_bounds[d].upper;
+      }
+    }
+
+    const int padded_tensor_index = graph.AddOp(
+        OpName::kPadUninitialized_, OpParamCacheKeys(), /*aliased_inputs=*/{},
+        [&](GraphSignature::OpSignatureBuilder& op) {
+          op.AddInput(i);
+          op.AddOutput(padded_dimensions, shape.dtype);
+        });
+    graph.AddGraphOutput(padded_tensor_index);
+
+    for (int d = 0; d < span_size; ++d) {
+      if (shape_bounds[d].lower != shape_bounds[d].upper) {
+        TT_ASSIGN_OR_THROW(
+            OpParamCacheKeys params,
+            *OpParamCacheKeysBuilder().SetParam("dimension_index", d));
+
+        const int dim_size_index = graph.AddOp(
+            OpName::kGetDimensionSize, params, /*aliased_inputs=*/{},
+            [i](GraphSignature::OpSignatureBuilder& op) {
+              op.AddInput(i);
+              op.AddOutput({1}, mlir::ElementType::I32);
+            });
+        graph.AddGraphOutput(dim_size_index);
+      }
+    }
+  }
+
+  return graph.cache_key();
 }
 
 int GraphSignature::AddTensor(absl::Span<const int64_t> dimensions,

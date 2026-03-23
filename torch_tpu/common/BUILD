@@ -699,6 +699,7 @@ torch_tpu_cc_library(
         ":dtype",
         ":error_utils",
         ":fingerprint_utils",
+        ":shape",
         ":to_string",
         ":utils",
         "//shims/torch:aten_headers",

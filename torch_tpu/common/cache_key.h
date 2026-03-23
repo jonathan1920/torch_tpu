@@ -587,22 +587,26 @@ class ShapeDynamismMetadata {
  public:
   // Create ShapeDynamismMetadata using the given input shapes and its dynamic
   // dimension annotations.
-  explicit ShapeDynamismMetadata(const std::vector<Shape>& input_shapes);
+  explicit ShapeDynamismMetadata(absl::Span<const Shape> shapes);
 
-  // Check if the given shapes are compatible with these shape dynamism
-  // bounds.
-  bool IsCompatible(const std::vector<Shape>& input_shapes) const;
+  // Check if the static part of the given shapes is compatible with these shape
+  // dynamism bounds. This ignores dynamic annotations.
+  bool IsStaticShapeCompatible(absl::Span<const Shape> shapes) const;
 
   [[nodiscard]] const std::vector<DimensionBounds>& input_dimension_bounds()
       const {
     return input_dimension_bounds_;
   }
 
-  // Returns a list of shapes just like input_shapes, but with dynamic
-  // annotations replaced with the upper bounds from the shape dynamism
-  // bounds.
-  std::vector<Shape> GetPaddingShapes(
-      const std::vector<Shape>& input_shapes) const;
+  // Returns a list of shapes just like input_shapes, but dimension sizes
+  // replaced with the upper bounds from the shape dynamism bounds. This ignores
+  // dynamic annotations.
+  std::vector<Shape> GetPaddingShapes(absl::Span<const Shape> shapes) const;
+
+  // Returns a cache key for the pad module with the given input shapes. This
+  // ignores dynamic annotations.
+  CompilationCacheKey GetPadModuleCacheKey(
+      absl::Span<const Shape> shapes) const;
 
  private:
   // The lower and upper bounds of each dimension in the graph's inputs.
