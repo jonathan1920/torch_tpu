@@ -119,6 +119,7 @@ py_wheel(
         "frozendict==2.4.7",
         "libtpu==0.0.37",
         "numpy==2.3.1",
+        "portpicker",
         "tensorboard==2.20.0",
     ] + TORCH_REQ,
     strip_path_prefixes = ["ci/wheel/remapped_pywrap_binaries_pkg"],
