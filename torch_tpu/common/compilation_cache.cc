@@ -32,7 +32,6 @@
 #include <vector>
 
 #include "absl/base/const_init.h"
-#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
@@ -58,6 +57,7 @@
 #include "torch_tpu/common/thread_pool.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"
 #include "torch_tpu/common/tier3_compilation_cache.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
@@ -212,21 +212,6 @@ CompilationCache& CompilationCache::GetInstance() {
 
 void CompilationCache::Shutdown() { GetInstance().~CompilationCache(); }
 
-// TODO(unda): Remove after bounded dynamic compilations have cache keys.
-static void TrySetExecutablePromise(
-    LoadedExecutablePromise& promise,
-    const absl::StatusOr<SharedLoadedExecutable>& executable) {
-  try {
-    promise.set_value(std::move(executable));
-  } catch (const std::future_error& e) {
-    // Check if it's the specific "already satisfied" error.
-    if (e.code() != std::future_errc::promise_already_satisfied) {
-      ABSL_LOG(FATAL)  // CRASH_OK=TorchTPU bug
-          << "Unexpected future_error: " << e.what();
-    }
-  }
-}
-
 // Sets the executable promise for the given key. If the promise is already
 // satisfied, this function will do nothing.
 static void TrySetExecutablePromise(
@@ -260,15 +245,10 @@ void CompilationCache::EvictAll() {
   // process, as that work may never end.
   absl::flat_hash_set<CompilationCacheKey, CompilationCacheKey::Hash>
       keys_to_evict;
-  absl::flat_hash_set<ShapelessKey, ShapelessKey::Hash>
-      bounded_dynamic_keys_to_evict;
   {
     TT_MUTEX_LOCK(lock, cache_mutex_);
     for (const auto& [key, cache_entry] : executable_cache_) {
       keys_to_evict.insert(key);
-    }
-    for (const auto& [key, cache_entry] : bounded_dynamic_cache_) {
-      bounded_dynamic_keys_to_evict.insert(key);
     }
   }
 
@@ -305,44 +285,10 @@ void CompilationCache::EvictAll() {
     // Release the lock here to give in-flight compilations a chance to
     // complete and update the cache.
   }
-
-  // Do the same for bounded dynamic cache entries.
-  for (; !bounded_dynamic_keys_to_evict.empty();
-       absl::SleepFor(absl::Seconds(1))) {
+  // Clear bounded dynamic cache entries.
+  {
     TT_MUTEX_LOCK(lock, cache_mutex_);
-    const auto keys = bounded_dynamic_keys_to_evict;
-    // Loop over a copy of bounded_dynamic_keys_to_evict, as we will modify it
-    // during the loop and invalidate its iterator.
-    for (const auto shapeless_key : keys) {
-      const auto it = bounded_dynamic_cache_.find(shapeless_key);
-      if (it == bounded_dynamic_cache_.end()) {
-        ABSL_VLOG(1) << "Key already evicted by another thread: "
-                     << shapeless_key;
-        continue;
-      }
-      auto& cache_entries = it->second;
-      ABSL_VLOG_EVERY_N(1, 100)
-          << "Evicting bounded dynamic compilation futures for key: "
-          << shapeless_key;
-      while (!cache_entries.empty() &&
-             IsFutureReady(cache_entries.back().middle_executable_future())) {
-        cache_entries.pop_back();
-        ABSL_VLOG(1) << "Evicted bounded dynamic compilation future for key: "
-                     << shapeless_key;
-      }
-
-      if (cache_entries.empty()) {
-        bounded_dynamic_cache_.erase(it);
-        bounded_dynamic_keys_to_evict.erase(shapeless_key);
-      } else {
-        ABSL_VLOG_EVERY_N(1, 100)
-            << "Waiting for bounded dynamic compilation to complete for key: "
-            << shapeless_key << " (" << cache_entries.size()
-            << " entries remaining)";
-      }
-    }
-    // Release the lock here to give in-flight compilations a chance to
-    // complete and update the cache.
+    bounded_dynamic_cache_.clear();
   }
 
   ABSL_LOG(INFO) << "Compilation cache evicted.";
@@ -388,50 +334,109 @@ PerfStats CompilationCache::GetCacheStats() const {
   return stats;
 }
 
+std::optional<CompilationCache::CacheLookupInternal>
+CompilationCache::GetStaticCacheEntry(CompilationCacheKey key) const {
+  auto it = executable_cache_.find(key);
+  if (it == executable_cache_.end()) {
+    return std::nullopt;
+  }
+
+  perf_stats_.num_cache_hits++;
+  it->second.stats().read_count++;
+  it->second.stats().last_read = absl::Now();
+  ABSL_VLOG(2) << "Compilation cache STATIC HIT for key: " << key;
+  return CacheLookupInternal{
+      .executable_promise = it->second.executable_promise(),
+      .executable_future = it->second.executable_future(),
+      .needs_compilation = false};
+}
+
+std::optional<CompilationCache::BoundedDynamicCache::iterator>
+CompilationCache::GetBoundedDynamicCacheEntries(ShapelessKey shapeless_key) {
+  if (auto it = bounded_dynamic_cache_.find(shapeless_key);
+      it != bounded_dynamic_cache_.end()) {
+    return it;
+  }
+  return std::nullopt;
+}
+
+CompilationCache::CacheLookupInternal CompilationCache::AddStaticCacheEntry(
+    CompilationCacheKey key) {
+  const auto [entry, inserted] = executable_cache_.insert({key, CacheEntry()});
+  ABSL_CHECK(inserted)  // CRASH_OK
+      << "Key already exists in static cache: " << key;
+  return CacheLookupInternal{
+      .executable_promise = entry->second.executable_promise(),
+      .executable_future = entry->second.executable_future(),
+      .needs_compilation = true};
+}
+
+CompilationCache::CacheLookupInternal
+CompilationCache::AddBoundedDynamicCacheEntry(
+    ShapelessKey shapeless_key, ShapeDynamismMetadata shape_dynamism_metadata,
+    std::optional<CompilationCache::BoundedDynamicCache::iterator> dynamic_it) {
+  std::vector<BoundedDynamicCacheEntry>* entries;
+  if (dynamic_it.has_value()) {
+    ABSL_CHECK(shapeless_key == (*dynamic_it)->first)  // CRASH_OK
+        << "Shapeless key does not match dynamic iterator"
+        << ToString(shapeless_key)
+        << ", dynamic iterator key: " << ToString((*dynamic_it)->first);
+    entries = &(*dynamic_it)->second;
+  } else {
+    auto [entry, inserted] = bounded_dynamic_cache_.insert(
+        {shapeless_key, std::vector<BoundedDynamicCacheEntry>()});
+    ABSL_CHECK(inserted)  // CRASH_OK
+        << "Key already exists in bounded dynamic cache: "
+        << ToString(shapeless_key);
+    entries = &entry->second;
+  }
+  CompilationCacheKey middle_executable_key = CompilationCacheKey{
+      shapeless_key, DimensionsKey(shape_dynamism_metadata)};
+  entries->push_back(BoundedDynamicCacheEntry{
+      .middle_executable_key = middle_executable_key,
+      .shape_dynamism_metadata = shape_dynamism_metadata});
+  auto cache_lookup = AddStaticCacheEntry(middle_executable_key);
+  cache_lookup.shape_dynamism_metadata = shape_dynamism_metadata;
+  return cache_lookup;
+}
+
 absl::StatusOr<CompilationCache::CacheLookupInternal>
 CompilationCache::GetOrCreateCacheEntry(
-    CompilationCacheKey key, const std::vector<Shape>& input_shapes) {
-  perf_stats_.num_cache_reqs++;
-
+    CompilationCacheKey key, const std::vector<Shape>& input_shapes,
+    bool skip_dynamic_lookup_and_compilation) {
   if (!allow_cache_mode_) {
     ABSL_LOG(WARNING) << "CompilationCache is disabled. key: " << key;
     // We insert an entry into the cache anyway so we can keep track of it and
     // safely evict it later.
-    auto entry = &executable_cache_[key];
-    return CacheLookupInternal{
-        .executable_promise = entry->executable_promise(),
-        .executable_future = entry->executable_future(),
-        .needs_compilation = true};
+    auto cache_lookup_or = GetStaticCacheEntry(key);
+    if (cache_lookup_or.has_value()) {
+      return *cache_lookup_or;
+    }
+    return AddStaticCacheEntry(key);
   }
 
   // 1. Try to find a static CacheEntry.
-  if (const auto it = executable_cache_.find(key);
-      it != executable_cache_.end()) {
-    perf_stats_.num_cache_hits++;
-    it->second.stats().read_count++;
-    it->second.stats().last_read = absl::Now();
-    ABSL_VLOG(2) << "Compilation cache HIT for key: " << key;
-    return CacheLookupInternal{
-        .executable_promise = it->second.executable_promise(),
-        .executable_future = it->second.executable_future(),
-        .needs_compilation = false};
+  if (const auto cache_lookup_or = GetStaticCacheEntry(key);
+      cache_lookup_or.has_value()) {
+    return *cache_lookup_or;
   }
 
   // 2. Try to find a dynamic cache entry. We hold on to the iterator to avoid
   // having to lookup the shapeless key again later.
-  const auto dynamic_it = bounded_dynamic_cache_.find(key.shapeless_key);
-  if (dynamic_it != bounded_dynamic_cache_.end()) {
-    for (const auto& entry : dynamic_it->second) {
-      if (entry.shape_dynamism_metadata().IsCompatible(input_shapes)) {
-        perf_stats_.num_cache_hits++;
-        entry.middle_cache_entry().stats().read_count++;
-        entry.middle_cache_entry().stats().last_read = absl::Now();
+  std::optional<BoundedDynamicCache::iterator> dynamic_it =
+      skip_dynamic_lookup_and_compilation
+          ? std::nullopt
+          : GetBoundedDynamicCacheEntries(key.shapeless_key);
+  if (dynamic_it.has_value()) {
+    for (const auto& entry : (*dynamic_it)->second) {
+      if (entry.shape_dynamism_metadata.IsCompatible(input_shapes)) {
         ABSL_VLOG(2) << "Compilation cache DYNAMIC HIT for key: " << key;
-        return CacheLookupInternal{
-            .executable_promise = entry.middle_executable_promise(),
-            .executable_future = entry.middle_executable_future(),
-            .shape_dynamism_metadata = entry.shape_dynamism_metadata(),
-            .needs_compilation = false};
+        TT_ASSIGN_OR_RETURN(auto cache_lookup,
+                            GetOrCreateCacheEntry(
+                                entry.middle_executable_key, input_shapes,
+                                /*skip_dynamic_lookup_and_compilation=*/true));
+        cache_lookup.shape_dynamism_metadata = entry.shape_dynamism_metadata;
+        return cache_lookup;
       }
     }
   }
@@ -446,36 +451,19 @@ CompilationCache::GetOrCreateCacheEntry(
                << perf_stats_.num_cache_misses() << " for key: " << key;
 
   // Do we need to create a dynamic cache entry?
-  bool is_dynamic = false;
-  for (const auto& shape : input_shapes) {
-    if (!shape.dynamic_dimensions.empty()) {
-      is_dynamic = true;
-      break;
-    }
-  }
-  if (is_dynamic) {
+  bool create_dynamic_entry =
+      !skip_dynamic_lookup_and_compilation &&
+      std::any_of(input_shapes.begin(), input_shapes.end(),
+                  [](const Shape& s) { return !s.dynamic_dimensions.empty(); });
+  if (create_dynamic_entry) {
     auto dynamism_metadata = ShapeDynamismMetadata(input_shapes);
     ABSL_VLOG(2) << "Compilation cache DYNAMIC MISS for key: " << key;
-    std::vector<BoundedDynamicCacheEntry>* entries;
-    if (dynamic_it != bounded_dynamic_cache_.end()) {
-      entries = &dynamic_it->second;
-    } else {
-      entries = &bounded_dynamic_cache_[key.shapeless_key];
-    }
-    BoundedDynamicCacheEntry* entry =
-        &entries->emplace_back(std::move(dynamism_metadata));
-    return CacheLookupInternal{
-        .executable_promise = entry->middle_executable_promise(),
-        .executable_future = entry->middle_executable_future(),
-        .shape_dynamism_metadata = entry->shape_dynamism_metadata(),
-        .needs_compilation = true};
+    return AddBoundedDynamicCacheEntry(key.shapeless_key, dynamism_metadata,
+                                       dynamic_it);
   }
 
   // 4. Lastly, we create a static cache entry.
-  auto entry = &executable_cache_[key];
-  return CacheLookupInternal{.executable_promise = entry->executable_promise(),
-                             .executable_future = entry->executable_future(),
-                             .needs_compilation = true};
+  return AddStaticCacheEntry(key);
 }
 
 bool CompilationCache::IsExecutableReady(CompilationCacheKey key) const {
@@ -495,13 +483,16 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
   TT_ASSIGN_OR_RETURN(auto cache_lookup,
                       [&]() -> absl::StatusOr<CacheLookupInternal> {
                         TT_MUTEX_LOCK(lock, cache_mutex_);
+                        perf_stats_.num_cache_reqs++;
                         return GetOrCreateCacheEntry(key, input_shapes);
                       }());
   // Everything we are recovering from the cache is a shared pointer, so it
   // is safe to access them without the lock.
 
   std::optional<DynamicKernelAdapter> dynamic_kernel_adapter;
+  CompilationCacheKey storage_key = key;
   if (cache_lookup.shape_dynamism_metadata.has_value()) {
+    ABSL_VLOG(1) << "Found shape dynamism metadata for key: " << key;
     // TODO(unda): is it possible to reuse the compile options? We make a copy
     // for now.
     // Do this first, before we move the compile options.
@@ -513,33 +504,28 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
                                   std::move(padding_compile_options));
     dynamic_kernel_adapter =
         DynamicKernelAdapter{.preamble = padding_executable_future};
+    // Create a key for the storage of the dynamic executable.
+    storage_key = CompilationCacheKey{
+        key.shapeless_key,
+        DimensionsKey(*cache_lookup.shape_dynamism_metadata)};
   }
 
   if (cache_lookup.needs_compilation) {
     // Only create the contexted module if we need to compile.
     auto contexted_module_or = ContextedModule::Make(computation_builder);
     if (!contexted_module_or.ok()) {
-      TrySetExecutablePromise(key, *cache_lookup.executable_promise,
+      TrySetExecutablePromise(storage_key, *cache_lookup.executable_promise,
                               contexted_module_or.status());
       return contexted_module_or.status();
     }
     if (ABSL_VLOG_IS_ON(3)) {
-      LogLines(absl::StrCat("Compiling Module for key: ", key, "\n",
+      LogLines(absl::StrCat("Compiling Module for key: ", storage_key, "\n",
                             DebugString(contexted_module_or->get(),
                                         DebugStringOptions::kEnableDebugInfo)));
     }
-    if (cache_lookup.shape_dynamism_metadata.has_value()) {
-      // We don't store the dynamic kernel in the flat cache yet, so we
-      // don't pass the key.
-      EnqueueCompilation(std::move(cache_lookup.executable_promise),
-                         *std::move(contexted_module_or),
-                         std::move(compile_options));
-    } else {
-      EnqueueCompilation(std::move(cache_lookup.executable_promise),
-                         *std::move(contexted_module_or),
-                         std::move(compile_options), key);
-    }
-    ABSL_VLOG(1) << "[TtPerf] Scheduled compilation for key: " << key;
+    EnqueueCompilation(storage_key, *std::move(contexted_module_or),
+                       std::move(compile_options));
+    ABSL_VLOG(1) << "[TtPerf] Scheduled compilation for key: " << storage_key;
   }
 
   return CompiledKernel{
@@ -548,42 +534,23 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
 }
 
 void CompilationCache::EnqueueCompilation(
-    absl_nonnull std::shared_ptr<LoadedExecutablePromise> executable_promise,
-    ContextedModule contexted_module, UniqueCompileOptions compile_options,
-    std::optional<CompilationCacheKey> key) {
+    CompilationCacheKey key, ContextedModule contexted_module,
+    UniqueCompileOptions compile_options) {
   auto executable_builder = [contexted_module = std::move(contexted_module)](
                                 xla::PjRtClient& client,
-                                UniqueCompileOptions options) mutable
-      -> absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> {
+                                UniqueCompileOptions options) mutable {
     return client.CompileAndLoad(
         std::move(contexted_module).ToMaybeOwningMlirModule(),
         std::move(*options));
   };
 
-  compilation_pool_->Schedule([this, key, promise = executable_promise,
-                               builder = std::move(executable_builder),
-                               compile_options =
-                                   std::move(compile_options)]() mutable {
-    if (key.has_value()) {
-      this->GetFromTier2OrCompile(std::move(key.value()), std::move(builder),
-                                  std::move(compile_options));
-    } else {
-      xla::PjRtClient* const client = GetPjRtClient();
-      if (client == nullptr) {
-        TrySetExecutablePromise(*promise,
-                                TT_ERROR(error::kFailedPrecondition)
-                                    << "PjRtClient must be initialized");
+  compilation_pool_->Schedule(
+      [this, key, builder = std::move(executable_builder),
+       compile_options = std::move(compile_options)]() mutable {
+        this->GetFromTier2OrCompile(std::move(key), std::move(builder),
+                                    std::move(compile_options));
         return;
-      }
-      // We don't update stats for dynamic kernels for now.
-      // TODO(unda): make sure we are updating stats() for the bounded dynamic
-      // cache entry when we store it in the flat cache.
-      auto executable_or = torch_tpu::Compile(*client, std::move(builder),
-                                              std::move(compile_options));
-      TrySetExecutablePromise(*promise, std::move(executable_or));
-    }
-    return;
-  });
+      });
 }
 
 SharedLoadedExecutableFuture CompilationCache::EnqueuePaddingCompilation(
@@ -883,26 +850,6 @@ std::string CompilationCache::HbmUsageSummary() const {
     }
     total_size_bytes += memory_stats->generated_code_size_in_bytes;
     num_executables++;
-  }
-  for (const auto& [key, dyamic_entries] : bounded_dynamic_cache_) {
-    for (const auto& cache_entry : dyamic_entries) {
-      if (!IsFutureReady(cache_entry.middle_executable_future())) {
-        continue;
-      }
-      const auto& executable = cache_entry.middle_executable_future().get();
-      if (!executable.ok() || *executable == nullptr) {
-        continue;
-      }
-      const auto memory_stats = (*executable)->GetCompiledMemoryStats();
-      if (!memory_stats.ok()) {
-        ABSL_LOG(WARNING) << "Failed to get memory stats for dynamic key: "
-                          << std::hex << key
-                          << " with status: " << memory_stats.status();
-        continue;
-      }
-      total_size_bytes += memory_stats->generated_code_size_in_bytes;
-      num_executables++;
-    }
   }
   return absl::StrCat("CompilationCache HBM usage: ",
                       tsl::strings::HumanReadableNumBytes(total_size_bytes),

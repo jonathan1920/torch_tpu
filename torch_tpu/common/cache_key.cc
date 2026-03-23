@@ -41,6 +41,7 @@
 #include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -139,6 +140,22 @@ std::ostream& operator<<(std::ostream& os, CompilationCacheKey key) {
      << key.shapeless_key.key << ", dimensions_key=" << key.dimensions_key.key
      << std::dec << "}";
   return os;
+}
+
+DimensionsKey::DimensionsKey(
+    const ShapeDynamismMetadata& shape_dynamism_metadata) {
+  // These need to work with FingerprintCat
+  std::vector<int64_t> upper_bounds;  // INT_VEC_OK
+  std::vector<int64_t> lower_bounds;  // INT_VEC_OK
+  upper_bounds.reserve(shape_dynamism_metadata.input_dimension_bounds().size());
+  lower_bounds.reserve(shape_dynamism_metadata.input_dimension_bounds().size());
+
+  for (const auto& dimension_bounds :
+       shape_dynamism_metadata.input_dimension_bounds()) {
+    upper_bounds.push_back(dimension_bounds.upper);
+    lower_bounds.push_back(dimension_bounds.lower);
+  }
+  key = FingerprintCat(upper_bounds, lower_bounds);
 }
 
 ShapeDynamismMetadata::ShapeDynamismMetadata(

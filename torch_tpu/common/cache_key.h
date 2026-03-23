@@ -505,11 +505,17 @@ void AbslStringify(Sink& sink, const ShapelessKey key) {
   absl::Format(&sink, "%016x", key.key);
 }
 
+class ShapeDynamismMetadata;
+
 struct DimensionsKey {
-  explicit DimensionsKey(absl::Span<const int64_t> dimensions,
-                         bool is_shape_dynamic = false) {
-    key = FingerprintCat(dimensions, is_shape_dynamic);
+  explicit DimensionsKey(absl::Span<const int64_t> dimensions) {
+    // We keep the false parameter for backward compatibility.
+    // TODO: (b/494661082) - Remove the false parameter.
+    key = FingerprintCat(dimensions, false);
   }
+
+  // Create a DimensionsKey from the given shape dynamism metadata.
+  explicit DimensionsKey(const ShapeDynamismMetadata& shape_dynamism_metadata);
 
   [[nodiscard]] bool operator==(const DimensionsKey rhs) const {
     return key == rhs.key;

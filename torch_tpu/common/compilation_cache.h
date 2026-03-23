@@ -22,7 +22,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -97,43 +96,15 @@ class CacheEntry {
   mutable CacheEntryStats stats_;
 };
 
-class BoundedDynamicCacheEntry {
- public:
-  explicit BoundedDynamicCacheEntry(
-      ShapeDynamismMetadata shape_dynamism_metadata)
-      : middle_cache_entry_(CacheEntry()),
-        shape_dynamism_metadata_(std::move(shape_dynamism_metadata)) {}
-
-  BoundedDynamicCacheEntry(BoundedDynamicCacheEntry&&) = default;
-  BoundedDynamicCacheEntry& operator=(BoundedDynamicCacheEntry&&) = default;
-  BoundedDynamicCacheEntry(const BoundedDynamicCacheEntry&) = delete;
-  BoundedDynamicCacheEntry& operator=(const BoundedDynamicCacheEntry&) = delete;
-
-  [[nodiscard]] const ShapeDynamismMetadata& shape_dynamism_metadata() const {
-    return shape_dynamism_metadata_;
-  }
-
-  // Returns the cache entry corresponding to the middle part of the bounded
-  // dynamic cache entry: BoundedDynamicCacheEntries can be thought of as
-  // triplets [preamble, middle, postamble] where the preamble and postamble are
-  // lightweight computations.
-  [[nodiscard]] const CacheEntry& middle_cache_entry() const {
-    return middle_cache_entry_;
-  }
-
-  [[nodiscard]] const SharedLoadedExecutableFuture& middle_executable_future()
-      const {
-    return middle_cache_entry_.executable_future();
-  }
-
-  [[nodiscard]] const absl_nonnull std::shared_ptr<LoadedExecutablePromise>&
-  middle_executable_promise() const {
-    return middle_cache_entry_.executable_promise();
-  }
-
- private:
-  CacheEntry middle_cache_entry_;
-  ShapeDynamismMetadata shape_dynamism_metadata_;
+struct BoundedDynamicCacheEntry {
+  // The key for the cache entry corresponding to the middle part of the
+  // bounded dynamic compilation. BoundedDynamicCacheEntries can be thought of
+  // as triplets [preamble, middle, postamble] where the preamble and postamble
+  // are lightweight computations.
+  CompilationCacheKey middle_executable_key;
+  // The shape dynamism metadata required to generate the adapters around the
+  // middle executable.
+  ShapeDynamismMetadata shape_dynamism_metadata;
 };
 
 // Aggregated statistics for the compilation cache.
@@ -214,21 +185,16 @@ class CompilationCache {
       MlirComputationBuilder computation_builder,
       UniqueCompileOptions compile_options) ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
-  // Schedules compilation of this builder and sets it in the executable
-  // promise.
+  // Schedules compilation of the given module associated to the key.
   //
   // Parameters:
-  //  - executable_promise: The promise to set the executable in.
+  //  - key: The key where this entry is stored in the cache, used for tiered
+  //    cache lookups.
   //  - contexted_module: The MLIR computation to compile.
   //  - compile_options: The compile options to use for the compilation.
-  //  - key: The key where this entry is stored in the cache, used for tiered
-  //    cache lookups. If not provided, we will not perform any tiered cache
-  //    lookups. TODO(unda): remove this parameter once we store the dynamic
-  //    kernel in the flat executable cache.
-  void EnqueueCompilation(
-      absl_nonnull std::shared_ptr<LoadedExecutablePromise> executable_promise,
-      ContextedModule contexted_module, UniqueCompileOptions compile_options,
-      std::optional<CompilationCacheKey> key = std::nullopt)
+  void EnqueueCompilation(CompilationCacheKey key,
+                          ContextedModule contexted_module,
+                          UniqueCompileOptions compile_options)
       ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Debugging function to return the total resident size of the loaded
@@ -257,20 +223,51 @@ class CompilationCache {
     bool needs_compilation = false;
   };
 
-  // Private helper to retrieve a cache entry or create a new one as needed.
-  // This updates the access count and last accessed time for the cache entry
-  // if it is found.
+  // Retrieves a cache entry from the static cache. If the key is not found in
+  // the static cache, returns nullopt.
+  std::optional<CacheLookupInternal> GetStaticCacheEntry(
+      CompilationCacheKey key) const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(cache_mutex_);
+
+  using BoundedDynamicCache =
+      absl::flat_hash_map<ShapelessKey, std::vector<BoundedDynamicCacheEntry>,
+                          ShapelessKey::Hash>;
+  // Retrieves the bounded dynamic cache entries that match  this key. If the
+  // key is not found in the bounded dynamic cache, returns nullopt.
+  std::optional<BoundedDynamicCache::iterator> GetBoundedDynamicCacheEntries(
+      ShapelessKey shapeless_key) ABSL_EXCLUSIVE_LOCKS_REQUIRED(cache_mutex_);
+
+  // Creates a cache entry in the static cache. If the key is already in the
+  // static cache, it will crash.
+  CacheLookupInternal AddStaticCacheEntry(CompilationCacheKey key)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(cache_mutex_);
+
+  // Creates a new bounded dynamic cache entry for the given key and input
+  // shapes. If dynamic_it is not nullopt, we check that the shapeless key
+  // matches the dynamic iterator key, and we add it to the existing vector of
+  // bounded dynamic cache entries. Otherwise, we create a new vector of bounded
+  // dynamic cache entries.
+  CacheLookupInternal AddBoundedDynamicCacheEntry(
+      ShapelessKey shapeless_key, ShapeDynamismMetadata shape_dynamism_metadata,
+      std::optional<BoundedDynamicCache::iterator> dynamic_it)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(cache_mutex_);
+
+  // Retrieves a cache entry or create a new one as needed. This updates the
+  // access count and last accessed time for the cache entry if it is found.
   //
   // Parameters:
   //  - key: The key to lookup in the cache.
   //  - input_shapes: The input shapes to the computation, in the order given by
   // a Traversal. This is used for checking compatibility with existing bounded
   // dynamic cache entries, or to create metadata for a new one.
+  //  - skip_dynamic_lookup_and_compilation: If true, only do lookups in the
+  // static cache, and create a new static cache entry if needed.
   //
   // Returns:
   //   A `CacheLookupInternal` struct containing the cache lookup result.
   absl::StatusOr<CacheLookupInternal> GetOrCreateCacheEntry(
-      CompilationCacheKey key, const std::vector<Shape>& input_shapes)
+      CompilationCacheKey key, const std::vector<Shape>& input_shapes,
+      bool skip_dynamic_lookup_and_compilation = false)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(cache_mutex_);
 
   // Sets the executable for the given key if it is not already set.
@@ -365,11 +362,7 @@ class CompilationCache {
 
   // The cache of successfully compiled and in flight executables with bounded
   // dynamic shapes.
-  // TODO(unda): replace the cache_entry value with a reference to
-  // executable_cache_.
-  absl::flat_hash_map<ShapelessKey, std::vector<BoundedDynamicCacheEntry>,
-                      ShapelessKey::Hash>
-      bounded_dynamic_cache_ ABSL_GUARDED_BY(cache_mutex_);
+  BoundedDynamicCache bounded_dynamic_cache_ ABSL_GUARDED_BY(cache_mutex_);
 
   // Cache statistics.
   mutable PerfStats perf_stats_ ABSL_GUARDED_BY(cache_mutex_);

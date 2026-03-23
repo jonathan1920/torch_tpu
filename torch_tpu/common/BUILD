@@ -752,6 +752,7 @@ torch_tpu_cc_library(
         ":thread_pool",
         ":tier2_compilation_cache",
         ":tier3_compilation_cache",
+        ":to_string",
         ":utils",
         "//shims/torch:torch_headers",
         "//torch_tpu/_internal/dynamism:dynamism_ops",
