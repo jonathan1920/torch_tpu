@@ -27,7 +27,6 @@ pytype_strict_library(
     srcs = ["g3_multiprocessing.py"],
     deps = [
         "//shims/absl_py:app",
-        "@pypi//absl_py",
     ],
 )
 
