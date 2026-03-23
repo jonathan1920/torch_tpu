@@ -47,6 +47,9 @@ build --per_file_copt=.*@-Wno-deprecated-declarations
 build --per_file_copt=.*@-Wno-macro-redefined
 build --per_file_copt=.*@-Wno-defaulted-function-deleted
 build --per_file_copt=.*@-Wno-unused-command-line-argument
+build --host_copt=-Wno-unused-command-line-argument
+build --linkopt=-Wno-unused-command-line-argument
+build --host_linkopt=-Wno-unused-command-line-argument
 build --per_file_copt=.*@-Wno-return-type
 
 # Disable warnings from external dependencies, which we can't
