@@ -22,7 +22,7 @@ from examples.benchmarks.quality_utils.metrics import data_loader
 from examples.benchmarks.quality_utils.metrics import perplexity_metric
 from examples.benchmarks.quality_utils.models import meta_llama3_quality_benchmark
 
-from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 
 _META_LLAMA_3_2_8B_BENCHMARK_NAME = "meta_llama_3_2_8b"

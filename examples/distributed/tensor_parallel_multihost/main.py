@@ -21,7 +21,7 @@ from torch_tpu import api
 from torch_tpu._internal.utils import utils
 from examples.distributed.tensor_parallel_multihost import model
 
-from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 
 BATCH_SIZE = 64

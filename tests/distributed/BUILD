@@ -65,8 +65,8 @@ torch_tpu_py_test(
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed:tpu_distributed",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -89,9 +89,9 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -119,9 +119,9 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -145,8 +145,8 @@ torch_tpu_py_test(
         "//tests:error_testing",
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -172,8 +172,8 @@ torch_tpu_py_test(
         "//tests:error_testing",
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -193,9 +193,9 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -218,8 +218,8 @@ torch_tpu_py_test(
         "//tests:error_testing",
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -244,8 +244,8 @@ torch_tpu_py_test(
         "//tests:error_testing",
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -269,8 +269,8 @@ torch_tpu_py_test(
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal:testing",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -294,8 +294,8 @@ torch_tpu_py_test(
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal:testing",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -313,9 +313,9 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -339,8 +339,8 @@ torch_tpu_py_test(
         "//tests:error_testing",
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -365,8 +365,8 @@ torch_tpu_py_test(
         "//tests:error_testing",
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -386,9 +386,9 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -409,10 +409,10 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 
@@ -435,9 +435,9 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
-        "//torch_tpu/shims/g3_multiprocessing",
         "@pypi//fairscale",
     ],
 )

@@ -43,7 +43,7 @@ torch_tpu_py_test(
         ":singlehost_wrapper",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu/shims/g3_multiprocessing",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
 )
 
@@ -57,7 +57,7 @@ torch_tpu_py_test(
         ":singlehost_wrapper",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu/shims/g3_multiprocessing",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
 )
 

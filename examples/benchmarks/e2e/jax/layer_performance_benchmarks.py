@@ -23,7 +23,7 @@ from examples.benchmarks.e2e import performance_utils as pt_performance_utils
 from examples.benchmarks.e2e import test_utils
 from examples.benchmarks.e2e.jax import performance_utils
 
-from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 _ALL_RUN_MODES = (
     pt_benchmark_utils.RunMode.EAGER,

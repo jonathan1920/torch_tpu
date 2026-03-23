@@ -82,9 +82,9 @@ torch_tpu_py_test(
         "//torch_tpu/_internal:env",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",  # buildcleaner: keep
-        "//torch_tpu/shims/g3_multiprocessing",
     ],
 )
 

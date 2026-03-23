@@ -19,7 +19,7 @@ from torch.google import distributed as g3_distributed
 import torch.multiprocessing as mp
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from examples.tutorials.distributed import hello_world_distributed
-from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 
 def main(_):

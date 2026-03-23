@@ -75,7 +75,7 @@ torch_tpu_py_test(
         "//examples/benchmarks/e2e:test_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
-        "//torch_tpu/shims/g3_multiprocessing",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
 )
 

@@ -20,7 +20,7 @@ import torch.multiprocessing as mp
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import performance_utils
 from examples.benchmarks.e2e import test_utils
-from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 _HF_LLAMA_3_2_1B_BENCHMARK_NAME = "hf_llama_3_2_1b"
 _HF_GEMMA_3_270M_BENCHMARK_NAME = "hf_gemma_3_270m"

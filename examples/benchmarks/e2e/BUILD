@@ -125,7 +125,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
-        "//torch_tpu/shims/g3_multiprocessing",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
 )
 
@@ -154,7 +154,7 @@ torch_tpu_py_test(
         "//examples/benchmarks/quality_utils/models:meta_llama3_quality_benchmark",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu/shims/g3_multiprocessing",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
 )
 
@@ -216,7 +216,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
-        "//torch_tpu/shims/g3_multiprocessing",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
 )
 
@@ -264,7 +264,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
-        "//torch_tpu/shims/g3_multiprocessing",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
 )
 
@@ -294,7 +294,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
-        "//torch_tpu/shims/g3_multiprocessing",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
 )
 
@@ -324,7 +324,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
-        "//torch_tpu/shims/g3_multiprocessing",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
 )
 

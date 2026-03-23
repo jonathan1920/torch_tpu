@@ -32,7 +32,7 @@ torch_tpu_py_test(
         ":tp_worker",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
-        "//torch_tpu/shims/g3_multiprocessing",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
 )
 

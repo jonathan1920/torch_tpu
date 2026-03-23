@@ -19,7 +19,7 @@ import torch.multiprocessing as mp
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from examples.distributed.data_parallel.manual import dp_worker
 
-from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 
 def main(_):

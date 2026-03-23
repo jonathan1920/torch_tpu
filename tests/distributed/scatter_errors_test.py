@@ -21,7 +21,7 @@ from torch_tpu import api
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from tests import error_testing as et
 from tests.distributed import distributed_utils
-from torch_tpu.shims.g3_multiprocessing import g3_multiprocessing
+from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 
 def run_scatter_wrong_number_inputs(num_inputs: int) -> None:

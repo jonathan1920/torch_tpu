@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Bridge for internal<->external multiprocessing setup
+"""Bridge for internal<->external multiprocessing setup.
 
 See internal version of multiprocessing_setup
 """
