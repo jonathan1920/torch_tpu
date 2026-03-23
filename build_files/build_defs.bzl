@@ -23,6 +23,7 @@ load(
     "use_pywrap_rules",
 )
 load("//shims/build_cleaner:build_defs.bzl", "register_extension_info")
+load("//shims/build_files:build_defs.bzl", "process_accelerator_tags")
 load("//shims/py_platform_test:py_platform_test.bzl", "py_platform_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_contrib_test")
 
@@ -168,6 +169,8 @@ def _check_and_adjust_test_tags(name, size, timeout, notap, nopresubmit, nolocal
         # This tag causes the test to be skipped when a user runs
         # `blaze test //torch_tpu/...`.
         tags.append("manual")
+
+    process_accelerator_tags(tags)
 
 def torch_tpu_cc_test(
         name,

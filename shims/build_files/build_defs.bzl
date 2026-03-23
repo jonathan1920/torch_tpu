@@ -16,3 +16,13 @@
 
 def add_internal_filesystem_dependencies():
     return []
+
+def process_accelerator_tags(tags):
+    """process_accelerator_tags shim.
+
+    This macro currently does nothing in OSS.
+
+    Args:
+      tags: The tags to add to the test.
+    """
+    _ = tags  # @unused

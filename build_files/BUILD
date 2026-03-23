@@ -30,6 +30,7 @@ bzl_library(
         "//shims/build_cleaner:build_defs_lib",
         "//shims/py_rules:pytype_bzl",
         "//tools/build_defs/build_test",
+        "//torch_tpu/google/build_files:build_defs_bzl",
         "//torch_tpu/google/build_rules:py_platform_test_bzl",
         "@rules_cc//cc:core_rules",
         "@rules_python//python:py_test_bzl",
