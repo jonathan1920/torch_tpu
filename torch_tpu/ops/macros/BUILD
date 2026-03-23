@@ -25,10 +25,12 @@ torch_tpu_cc_library(
     hdrs = ["logging.h"],
     deps = [
         "//shims/torch:aten_headers",
+        "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:macro_utils",
         "//torch_tpu/common:to_string",
         "//torch_tpu/ops:op_names",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",

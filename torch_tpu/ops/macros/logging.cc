@@ -17,8 +17,13 @@
 #include "torch_tpu/ops/macros/logging.h"
 
 #include <cctype>
+#include <regex>
+#include <string>
 #include <string_view>
 #include <vector>
+
+#include "absl/base/no_destructor.h"
+#include "absl/strings/strip.h"
 
 namespace torch_tpu {
 namespace internal {
@@ -48,9 +53,35 @@ namespace internal {
   return i;
 }
 
-std::vector<std::string_view> ParseArgTypesOrEmpty(
-    const std::string_view func_sig) {
-  std::vector<std::string_view> arg_types;
+// Normalizes a type name parsed from __PRETTY_FUNCTION__.
+// __PRETTY_FUNCTION__ doesn't normalize the type names, so we may get
+// different strings depending on how the function definition is written.
+[[nodiscard]] static std::string NormalizePrettyFunctionTypeName(
+    std::string_view type_name) {
+  // Ignore the "const " prefix if any, as we only care about the underlying
+  // type.
+  type_name = absl::StripPrefix(type_name, "const ");
+  // Ignore the " &" suffix if any, as we only care about the underlying type.
+  type_name = absl::StripSuffix(type_name, " &");
+
+  // Replace type aliases with their underlying types.
+  static const absl::NoDestructor<std::regex> kOptionalRegex(
+      R"(\bc10::optional\b)");
+  static const absl::NoDestructor<std::regex> kScalarTypeRegex(
+      R"(\bc10::ScalarType\b)");
+  static const absl::NoDestructor<std::regex> kOptionalArrayRefRegex(
+      R"(\bc10::OptionalArrayRef<int64_t>)");
+  std::string type_name_str = std::regex_replace(
+      std::string(type_name), *kOptionalRegex, "std::optional");
+  type_name_str =
+      std::regex_replace(type_name_str, *kScalarTypeRegex, "at::ScalarType");
+  type_name_str = std::regex_replace(type_name_str, *kOptionalArrayRefRegex,
+                                     "at::OptionalIntArrayRef");
+  return type_name_str;
+}
+
+std::vector<std::string> ParseArgTypesOrEmpty(const std::string_view func_sig) {
+  std::vector<std::string> arg_types;
   // Parse the argument types from the function signature, e.g.
   // "void foo(int a, const char* b, double c)"
   // -> {"int", "const char*", "double"}.
@@ -70,7 +101,8 @@ std::vector<std::string_view> ParseArgTypesOrEmpty(
       func_sig.substr(start_idx + 1, end_idx - start_idx - 1);
   while (!args_str.empty()) {
     const int type_end_idx = FindTypeEnd(args_str);
-    arg_types.push_back(args_str.substr(0, type_end_idx));
+    arg_types.push_back(
+        NormalizePrettyFunctionTypeName(args_str.substr(0, type_end_idx)));
     args_str = args_str.substr(type_end_idx < args_str.size() ? type_end_idx + 1
                                                               : type_end_idx);
     // Skip leading whitespace.

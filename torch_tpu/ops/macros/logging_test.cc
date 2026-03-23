@@ -165,7 +165,7 @@ TEST(LogKernelArgs, LogsVariadicArgs) {
                                    "arg3: shape=[3]"));
 }
 
-std::vector<std::string_view> NullaryFunc() {
+std::vector<std::string> NullaryFunc() {
   ABSL_LOG(INFO) << __PRETTY_FUNCTION__;
   return internal::ParseArgTypesOrEmpty(__PRETTY_FUNCTION__);
 }
@@ -174,39 +174,42 @@ TEST(ParseArgTypesOrEmpty, NullaryFunc) {
   EXPECT_THAT(NullaryFunc(), IsEmpty());
 }
 
-std::vector<std::string_view> UnaryFunc(const char* arg1) {
+std::vector<std::string> UnaryFunc(const char* arg1) {
   ABSL_LOG(INFO) << __PRETTY_FUNCTION__;
   return internal::ParseArgTypesOrEmpty(__PRETTY_FUNCTION__);
 }
 
 TEST(ParseArgTypesOrEmpty, UnaryFunc) {
-  EXPECT_THAT(UnaryFunc("foo"), ElementsAre("const char *"));
+  EXPECT_THAT(UnaryFunc("foo"), ElementsAre("char *"));
 }
 
-std::vector<std::string_view> BinaryFunc(bool& arg1, const std::string& arg2) {
+std::vector<std::string> BinaryFunc(bool& arg1, const std::string& arg2) {
   ABSL_LOG(INFO) << __PRETTY_FUNCTION__;
   return internal::ParseArgTypesOrEmpty(__PRETTY_FUNCTION__);
 }
 
 TEST(ParseArgTypesOrEmpty, BinaryFunc) {
   bool b = true;
-  EXPECT_THAT(BinaryFunc(b, "foo"),
-              ElementsAre("bool &", "const std::string &"));
+  EXPECT_THAT(BinaryFunc(b, "foo"), ElementsAre("bool", "std::string"));
 }
 
-std::vector<std::string_view> FuncWithComplexType(
+std::vector<std::string> FuncWithComplexType(
+    // The c10::optional part is an alias for std::optional.
     const c10::List<c10::optional<at::Tensor>>& arg1,
     // This type has a `,` in the name.
-    const std::array<bool, 3>& arg2) {
+    const std::array<bool, 3>& arg2,
+    // This type has an alias.
+    c10::OptionalArrayRef<int64_t> arg3) {
   ABSL_LOG(INFO) << __PRETTY_FUNCTION__;
   return internal::ParseArgTypesOrEmpty(__PRETTY_FUNCTION__);
 }
 
 TEST(ParseArgTypesOrEmpty, FuncWithComplexType) {
   std::array<bool, 3> arr = {true, false, true};
-  EXPECT_THAT(FuncWithComplexType(c10::List<c10::optional<at::Tensor>>(), arr),
-              ElementsAre("const c10::List<c10::optional<at::Tensor>> &",
-                          "const std::array<bool, 3> &"));
+  EXPECT_THAT(FuncWithComplexType(c10::List<c10::optional<at::Tensor>>(), arr,
+                                  std::nullopt),
+              ElementsAre("c10::List<std::optional<at::Tensor>>",
+                          "std::array<bool, 3>", "at::OptionalIntArrayRef"));
 }
 
 }  // namespace

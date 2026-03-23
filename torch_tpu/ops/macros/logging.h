@@ -17,8 +17,10 @@
 #ifndef TORCH_TPU_OPS_MACROS_LOGGING_H_
 #define TORCH_TPU_OPS_MACROS_LOGGING_H_
 
+#include <optional>
 #include <ostream>
 #include <set>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -32,6 +34,7 @@
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/macro_utils.h"
 #include "torch_tpu/common/to_string.h"
@@ -70,32 +73,33 @@ namespace torch_tpu {
 //
 // Implementation note: __VA_OPT__(,) expands to nothing if the variadic
 // argument list is empty, and expands to a comma otherwise.
-#define TT_CHECK_AND_LOG_KERNEL_ARGS_IMPL_(op_name, ...)                      \
-  do {                                                                        \
-    static_assert(::torch_tpu::internal::ArgsAreIdentifiers(#__VA_ARGS__),    \
-                  "The op parameter list passed to TT_KERNEL() must contain " \
-                  "only identifier names.");                                  \
-    if (ABSL_VLOG_IS_ON(1)) {                                                 \
-      std::ostringstream _ss;                                                 \
-      ::torch_tpu::internal::LogKernelName(_ss, op_name);                     \
-      const std::vector<std::string_view> _arg_names =                        \
-          TT_ARGS_AS_STRINGS_(__VA_ARGS__);                                   \
-      ::torch_tpu::internal::LogKernelArgs(                                   \
-          _ss, _arg_names __VA_OPT__(, ) __VA_ARGS__);                        \
-      ABSL_LOG(INFO) << _ss.str();                                            \
-    }                                                                         \
-    if constexpr (::torch_tpu::internal::kDebugMode) {                        \
-      /* Only check the argument types once per kernel function. */           \
-      constexpr std::string_view _func_sig = __PRETTY_FUNCTION__;             \
-      static const bool _checked = [&] {                                      \
-        ::torch_tpu::internal::CheckTtKernelArgList(                          \
-            {__FILE__, __LINE__, _func_sig,                                   \
-             ::torch_tpu::internal::ParseArgTypesOrEmpty(_func_sig),          \
-             TT_ARGS_AS_STRINGS_(__VA_ARGS__)} __VA_OPT__(, ) __VA_ARGS__);   \
-        return true;                                                          \
-      }();                                                                    \
-      static_cast<void>(_checked); /* Avoid "unused variable" warning. */     \
-    }                                                                         \
+#define TT_CHECK_AND_LOG_KERNEL_ARGS_IMPL_(op_name, ...)                       \
+  do {                                                                         \
+    static_assert(::torch_tpu::internal::ArgsAreIdentifiers(#__VA_ARGS__),     \
+                  "The op parameter list passed to TT_KERNEL() must contain "  \
+                  "only identifier names.");                                   \
+    if (ABSL_VLOG_IS_ON(1)) {                                                  \
+      std::ostringstream _ss;                                                  \
+      ::torch_tpu::internal::LogKernelName(_ss, op_name);                      \
+      const std::vector<std::string_view> _arg_names =                         \
+          TT_ARGS_AS_STRINGS_(__VA_ARGS__);                                    \
+      ::torch_tpu::internal::LogKernelArgs(                                    \
+          _ss, _arg_names __VA_OPT__(, ) __VA_ARGS__);                         \
+      ABSL_LOG(INFO) << _ss.str();                                             \
+    }                                                                          \
+    if constexpr (::torch_tpu::internal::kDebugMode) {                         \
+      /* Only check the argument types once per kernel function. */            \
+      constexpr std::string_view _func_sig = __PRETTY_FUNCTION__;              \
+      static const bool _checked = [&] {                                       \
+        ::torch_tpu::internal::CheckTtKernelArgList(                           \
+            ::torch_tpu::internal::KernelArgCheckerContext{                    \
+                __FILE__, __LINE__, _func_sig,                                 \
+                ::torch_tpu::internal::ParseArgTypesOrEmpty(_func_sig),        \
+                TT_ARGS_AS_STRINGS_(__VA_ARGS__)} __VA_OPT__(, ) __VA_ARGS__); \
+        return true;                                                           \
+      }();                                                                     \
+      static_cast<void>(_checked); /* Avoid "unused variable" warning. */      \
+    }                                                                          \
   } while (false)
 
 namespace internal {
@@ -139,9 +143,9 @@ inline void LogKernelArgs(std::ostream& ss,
   LogKernelArgs(ss, arg_names.subspan(1), rest_args...);
 }
 
-// Parses the argument types from a C++ function signature generated by
-// __PRETTY_FUNCTION__. Returns an empty vector if parsing fails.
-[[nodiscard]] std::vector<std::string_view> ParseArgTypesOrEmpty(
+// Parses and normalizes the argument types from a C++ function signature
+// generated by __PRETTY_FUNCTION__. Returns an empty vector if parsing fails.
+[[nodiscard]] std::vector<std::string> ParseArgTypesOrEmpty(
     std::string_view func_sig);
 
 // Information needed for checking kernel argument types.
@@ -150,10 +154,11 @@ struct KernelArgCheckerContext {
   int line = -1;          // Line number of the TT_KERNEL() call.
   // Signature of the kernel function, as generated by __PRETTY_FUNCTION__.
   std::string_view func_sig;
-  // Argument types of the kernel function, as parsed from func_sig.
-  absl::Span<const std::string_view> arg_types;
+  // Argument types of the kernel function, as parsed and normalized from
+  // func_sig.
+  std::vector<std::string> arg_types;
   // Argument names passed to TT_KERNEL().
-  absl::Span<const std::string_view> tt_kernel_arg_names;
+  std::vector<std::string_view> tt_kernel_arg_names;
 };
 
 // Crashes if the type T does not match the given argument's type string.
@@ -161,27 +166,42 @@ template <typename T>
 void CheckKernelArgType(const KernelArgCheckerContext& context,
                         const int arg_idx) {
   const std::string_view arg_name = context.tt_kernel_arg_names[arg_idx];
-  const std::string_view arg_type_in_func_sig = context.arg_types[arg_idx];
-  const auto message = [&](const std::string_view actual_type) {
-    return absl::StrCat(
-        context.file, ":", context.line, ": INTERNAL: expected the ", arg_idx,
-        "-th (0-based) argument inside TT_KERNEL()'s inner parenthesized list "
-        "to have type ",
-        arg_type_in_func_sig, " to match the kernel function signature, got '",
-        arg_name, "' being a ", actual_type);
+  const std::string_view normalized_arg_type_in_func_sig =
+      context.arg_types[arg_idx];
+  const auto message = [&]() {
+    return absl::StrCat("\n", context.file, ":", context.line,
+                        ": INTERNAL: expected the '", arg_name,
+                        "' argument in TT_KERNEL()'s inner parenthesized list "
+                        "to have normalized type ",
+                        normalized_arg_type_in_func_sig,
+                        " to match the kernel function signature");
   };
   if constexpr (std::is_same_v<T, at::Tensor>) {
-    ABSL_CHECK(  // CRASH_OK
-        arg_type_in_func_sig == "at::Tensor &" ||
-        arg_type_in_func_sig == "const at::Tensor &")
-        << message("at::Tensor");
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "at::Tensor")
+        << message();
   } else if constexpr (std::is_same_v<T, at::Scalar>) {
-    ABSL_CHECK(  // CRASH_OK
-        arg_type_in_func_sig == "const at::Scalar &")
-        << message("at::Scalar");
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "at::Scalar")
+        << message();
   } else if constexpr (std::is_same_v<T, int>) {
-    ABSL_CHECK(arg_type_in_func_sig == "int")  // CRASH_OK
-        << message("int");
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "int")  // CRASH_OK
+        << message();
+  } else if constexpr (std::is_same_v<T, std::string>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "std::string")  // CRASH_OK
+        << message();
+  } else if constexpr (std::is_same_v<T, at::OptionalIntArrayRef>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "at::OptionalIntArrayRef")
+        << message();
+  } else if constexpr (std::is_same_v<T, at::TensorList>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "at::TensorList")
+        << message();
+  } else if constexpr (std::is_same_v<T, std::optional<c10::ScalarType>>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "std::optional<at::ScalarType>")
+        << message();
   } else {
     // TODO: Check that T and arg_type match for other types.
   }
