@@ -24,6 +24,7 @@ torch_tpu_cc_library(
     srcs = ["logging.cc"],
     hdrs = ["logging.h"],
     deps = [
+        "//shims/torch:aten_headers",
         "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:macro_utils",
         "//torch_tpu/common:to_string",
