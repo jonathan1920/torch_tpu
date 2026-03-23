@@ -16,7 +16,6 @@
 
 #include "torch_tpu/eager/traversal.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -53,7 +52,6 @@
 #include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
@@ -195,107 +193,6 @@ absl::StatusOr<Traversal> Traversal::Create(
   return traversal;
 }
 
-namespace {
-
-// A GraphSignature holds all information necessary to uniquely identify and
-// describe a graph of DeferredOps.
-// This is *not* intended to be a long-lived object; it is only intended to be
-// computed ephemerally to produce the fingerprint for a CompilationCacheKey.
-//
-// As an example, if we had this graph:
-// ```python
-//   a = torch.ones(2, 3, dtype=torch.float32)  # materialized
-//   b = torch.ones(3, 4, dtype=torch.float32)  # materialized
-//   c = a.mm(b)  # output, shape will be 2, 4 and dtype will be float32
-// ```
-// Then the theoretical tensors list would be [a, b, c] and the deferred ops
-// list would be [mm], and so the GraphSignature would be:
-// ```
-// {
-//   graph_output_indices: [2]  # tensors are [a, b, c], output index 2 is c
-//   # a is [0, 2), b is [2, 4), c is [4, 6) sliced from tensor_dimensions
-//   tensor_dimensions_starts: [0, 2, 4, 6]
-//   tensor_dimensions: [2, 3, 3, 4, 2, 4]  # (2, 3) x (3, 4) = (2, 4)
-//   tensor_element_types: [F32, F32, F32]  # types of a, b, and c
-//   # mm's inputs are [0, 2)  in op_inputs_indices
-//   op_inputs_starts: [0, 2]
-//   op_inputs_indices: [0, 1]  # mm's inputs are tensors [a, b]
-//   op_names: ["mm"]
-//   op_param_cache_keys_starts: [0, 0]  # mm has params [0, 0), an empty span
-//   op_param_cache_keys: []  # graph has no params
-//   op_outputs_indices: [2]  # tensor c is the output of mm
-// }
-// ```
-struct GraphSignature {
-  // Comparing two graphs for full equality is expensive; it requires
-  // individually checking a significant number of individual graph properties.
-  // For efficiency, we skip this full equality, and only compare 2 graph
-  // fingerprint values; one for all properties except dimension sizes and
-  // dynamism, and another for those properties. This effectively creates a
-  // 128-bit fingerprint, which is sufficiently unlikely to have collisions.
-  [[nodiscard]] CompilationCacheKey cache_key() const {
-    // Note: tensor_dimensions_starts is included in shapeless_key.
-    // This encodes the rank of each tensor; the ith tensor has rank
-    // tensor_dimensions_starts[i+1] - tensor_dimensions_starts[i]
-    // (tensor_dimensions_starts.size() == number of tensors + 1).
-    // Shape dynamism only varies values, not number of dimensions.
-    const ShapelessKey shapeless_key = {FingerprintCat(
-        graph_output_indices, tensor_dimensions_starts, tensor_element_types,
-        aliased_input_indices, op_inputs_starts, op_inputs_indices, op_names,
-        op_param_cache_keys_starts, op_param_cache_keys, op_outputs_indices)};
-    const DimensionsKey dimensions_key(tensor_dimensions);
-    return {
-        .shapeless_key = shapeless_key,
-        .dimensions_key = dimensions_key,
-    };
-  }
-
-  // Two graphs are equal only if they have the same number of inputs and ops,
-  // and if their final outputs are derived from the same graph nodes.
-  int num_inputs() const {
-    // The first non-input tensor appears at index num_inputs.
-    return op_outputs_indices[0];
-  }
-
-  int num_deferred_ops() const {
-    // Every deferred op has exactly one op name.
-    return op_names.size();
-  }
-
-  std::vector<int> graph_output_indices;
-
-  // Two graphs are equal only if they alias their root arguments in the same
-  // way.
-  std::vector<int> aliased_input_indices;
-
-  // Two graphs are equal only if they have the same number of tensors,
-  // and all tensors have the same dimensions and element types.
-  // TODO: The output shapes/dtypes of each DeferredOp should be inferrable from
-  // the input shapes, the op name, and constant op params. As such, we should
-  // only need to hash the input shapes/dtypes and op params for uniqueness.
-  // This is not currently the case and would break for some ops; once all ops
-  // are fixed, we should be able to simplify this to input values only.
-  std::vector<int> tensor_dimensions_starts;
-  std::vector<int64_t> tensor_dimensions;  // INT_VEC_OK=many tensors' dims
-  std::vector<mlir::ElementType> tensor_element_types;
-  // Two graphs are equal only if the edges in the graph are the same, which
-  // we track by input indices into each DeferredOp.
-  std::vector<int> op_inputs_starts;
-  std::vector<int> op_inputs_indices;
-  // Two graphs are equal only if all DeferredOps have matching OpNames.
-  std::vector<OpName> op_names;
-  // Two graphs are equal only if all DeferredOps have the same
-  // OpParamCacheKeys.
-  std::vector<int> op_param_cache_keys_starts;
-  // The key and value of each op param cache key, sorted by key.
-  std::vector<std::pair<std::string, std::string>> op_param_cache_keys;
-  // Two graphs are equal only if all DeferredOps have the same number of
-  // output for each node.
-  std::vector<int> op_outputs_indices;
-};
-
-}  // namespace
-
 CompilationCacheKey Traversal::BuildCacheKey() const {
   tsl::profiler::TraceMe t("Traversal::BuildCacheKey");
   // We will be building a GraphSignature object as a simplified
@@ -306,62 +203,18 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
   // where compile mode may not necessarily behave the same) needs to be
   // revisited with regard to variable naming here and throughout the rest of
   // the Traversal implementation.
-  auto num_inputs = inputs().size();
-  auto num_non_input_zero_sized_consts = non_input_zero_sized_consts().size();
-  // For cache key purposes, count non-input zero-sized const tensors as inputs
-  // for both eager and compiled modes.
-  auto num_de_facto_inputs = num_inputs + num_non_input_zero_sized_consts;
-  auto num_deferred_ops = execution_order().size();
-  graph.graph_output_indices.reserve(outputs().size());
 
-  // We don't know ahead of time how many tensors there will be in the graph
-  // (because some ops may be multi-output) or what the rank of each tensor will
-  // be, so we can't pre-reserve space.
-  // To encode the variably-sized property of tensor dimensions, we record
-  // the start indices of each tensor's dimensions.
-  // For example, if we have 2 tensors of shapes [1,2] and [3,4,5] then this
-  // would be expressed as
-  //   tensor_dimensions_starts = [0, 2, 5]
-  //   tensor_dimensions = [1, 2, 3, 4, 5]
-  size_t next_tensor_index = 0;
-  absl::flat_hash_map<DeviceBufferRef, size_t> tensor_index_map;
-  graph.tensor_dimensions_starts.push_back(0);  // first tensor starts at 0
-
-  // Every op has exactly 1 op name, so we can pre-reserve space and don't need
-  // to track start indices.
-  graph.op_names.reserve(num_deferred_ops);
-
-  // Each op can have a variable number of inputs, params, and outputs, but we
-  // know how many ops there are in total. So we can reserve space for the
-  // indices, but not the properties themselves.
-  graph.op_inputs_starts.reserve(num_deferred_ops + 1);
-  graph.op_param_cache_keys_starts.reserve(num_deferred_ops + 1);
-  graph.op_outputs_indices.reserve(num_deferred_ops + 1);
-  graph.op_inputs_starts.push_back(0);
-  graph.op_param_cache_keys_starts.push_back(0);
-  graph.op_outputs_indices.push_back(num_de_facto_inputs);
+  absl::flat_hash_map<DeviceBufferRef, int> tensor_index_map;
 
   // Add all inputs to tensor-indexed properties.
   for (const DeviceBufferRef& input : inputs()) {
-    tensor_index_map[input] = next_tensor_index++;
-    for (int64_t dim : input.dimensions()) {
-      graph.tensor_dimensions.push_back(dim);
-    }
-    graph.tensor_dimensions_starts.push_back(graph.tensor_dimensions.size());
-    graph.tensor_element_types.push_back(input.element_type());
+    tensor_index_map[input] =
+        graph.AddInput(input.dimensions(), input.element_type());
   }
   for (const DeviceBufferRef& zsc : non_input_zero_sized_consts()) {
-    tensor_index_map[zsc] = next_tensor_index++;
-    for (int64_t dim : zsc.dimensions()) {
-      graph.tensor_dimensions.push_back(dim);
-    }
-    graph.tensor_dimensions_starts.push_back(graph.tensor_dimensions.size());
-    graph.tensor_element_types.push_back(zsc.element_type());
+    tensor_index_map[zsc] =
+        graph.AddInput(zsc.dimensions(), zsc.element_type());
   }
-
-  // Deduplicate which inputs to the graph are aliased.
-  absl::flat_hash_set<size_t> aliased_input_indices_set;
-  std::vector<int> aliased_input_indices;
 
   for (const SharedDeviceBufferList& node : execution_order()) {
     const DeferredOp* absl_nullable maybe_deferred_op = node->deferred_op();
@@ -370,46 +223,24 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
     ABSL_CHECK(maybe_deferred_op != nullptr);  // CRASH_OK
     const DeferredOp& deferred_op = *maybe_deferred_op;
 
-    // Add all op-indexed properties: name, params, and input edges.
-    graph.op_names.push_back(deferred_op.op_name());
-    for (const auto& [key, value] : deferred_op.op_param_cache_keys()) {
-      graph.op_param_cache_keys.push_back({key, value});
-    }
-    graph.op_param_cache_keys_starts.push_back(
-        graph.op_param_cache_keys.size());
-    for (const DeviceBufferRef& op_input : deferred_op.inputs()) {
-      graph.op_inputs_indices.push_back(tensor_index_map[op_input]);
-    }
-    graph.op_inputs_starts.push_back(graph.op_inputs_indices.size());
-
-    for (const int64_t aliased_input_index :
-         deferred_op.aliased_input_indices()) {
-      const size_t op_input_index =
-          tensor_index_map[deferred_op.inputs()[aliased_input_index]];
-      if (op_input_index < num_inputs &&
-          aliased_input_indices_set.insert(op_input_index).second) {
-        aliased_input_indices.push_back(op_input_index);
-      }
-    }
-
-    // Add all op output tensors to tensor-indexed properties.
-    for (int64_t i = 0; i < node->size(); ++i) {
-      DeviceBufferRef output = DeviceBufferRef::Create(node, i).value();
-      for (int64_t dim : output.dimensions()) {
-        graph.tensor_dimensions.push_back(dim);
-      }
-      graph.tensor_dimensions_starts.push_back(graph.tensor_dimensions.size());
-      graph.tensor_element_types.push_back(output.element_type());
-      tensor_index_map[std::move(output)] = next_tensor_index++;
-    }
-    graph.op_outputs_indices.push_back(next_tensor_index);
+    graph.AddOp(deferred_op.op_name(), deferred_op.op_param_cache_keys(),
+                deferred_op.aliased_input_indices(),
+                [&](GraphSignature::OpSignatureBuilder& op) {
+                  for (const DeviceBufferRef& op_input : deferred_op.inputs()) {
+                    op.AddInput(tensor_index_map.at(op_input));
+                  }
+                  for (int64_t i = 0; i < node->size(); ++i) {
+                    auto output = DeviceBufferRef::Create(node, i);
+                    ABSL_CHECK(output.ok())  // CRASH_OK
+                        << "Failed to create DeviceBufferRef for output: " << i;
+                    tensor_index_map[*output] = op.AddOutput(
+                        output->dimensions(), output->element_type());
+                  }
+                });
   }
 
-  std::sort(aliased_input_indices.begin(), aliased_input_indices.end());
-  graph.aliased_input_indices = std::move(aliased_input_indices);
-
   for (const DeviceBufferRef& output : outputs()) {
-    graph.graph_output_indices.push_back(tensor_index_map[output]);
+    graph.AddGraphOutput(tensor_index_map.at(output));
   }
 
   return graph.cache_key();

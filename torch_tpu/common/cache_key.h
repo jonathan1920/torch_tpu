@@ -30,7 +30,9 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/absl_check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -53,6 +55,7 @@
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/ops/op_names.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/xla_data.pb.h"
@@ -604,6 +607,116 @@ class ShapeDynamismMetadata {
  private:
   // The lower and upper bounds of each dimension in the graph's inputs.
   std::vector<DimensionBounds> input_dimension_bounds_;
+};
+// A GraphSignature holds all information necessary to uniquely identify and
+// describe a graph of DeferredOps.
+// This is *not* intended to be a long-lived object; it is only intended to be
+// computed ephemerally to produce the fingerprint for a CompilationCacheKey.
+//
+// As an example, if we had this graph:
+// ```python
+//   a = torch.ones(2, 3, dtype=torch.float32)  # materialized
+//   b = torch.ones(3, 4, dtype=torch.float32)  # materialized
+//   c = a.mm(b)  # output, shape will be 2, 4 and dtype will be float32
+// ```
+// Then the theoretical tensors list would be [a, b, c] and the deferred ops
+// list would be [mm], and so the GraphSignature would be:
+// ```
+// {
+//   graph_output_indices: [2]  # tensors are [a, b, c], output index 2 is c
+//   # a is [0, 2), b is [2, 4), c is [4, 6) sliced from tensor_dimensions
+//   tensor_dimensions_starts: [0, 2, 4, 6]
+//   tensor_dimensions: [2, 3, 3, 4, 2, 4]  # (2, 3) x (3, 4) = (2, 4)
+//   tensor_element_types: [F32, F32, F32]  # types of a, b, and c
+//   # mm's inputs are [0, 2)  in op_inputs_indices
+//   op_inputs_starts: [0, 2]
+//   op_inputs_indices: [0, 1]  # mm's inputs are tensors [a, b]
+//   op_names: ["mm"]
+//   op_param_cache_keys_starts: [0, 0]  # mm has params [0, 0), an empty span
+//   op_param_cache_keys: []  # graph has no params
+//   op_outputs_indices: [2]  # tensor c is the output of mm
+// }
+// ```
+class GraphSignature {
+ public:
+  GraphSignature() = default;
+
+  // Adds an input tensor to the graph returning its topological index. Asserts
+  // that no ops have been added to the graph.
+  int AddInput(absl::Span<const int64_t> dimensions, mlir::ElementType dtype);
+
+  class OpSignatureBuilder {
+   public:
+    void AddInput(int topological_index);
+    int AddOutput(absl::Span<const int64_t> dimensions,
+                  mlir::ElementType dtype);
+
+   private:
+    friend class GraphSignature;
+    explicit OpSignatureBuilder(GraphSignature* graph) : graph_(graph) {}
+
+    GraphSignature* graph_;
+  };
+
+  // Adds an operation to the graph using a lambda to stream inputs and outputs.
+  // aliased_inputs are the indices within the streamed inputs of the tensors
+  // that are aliased. Returns the topological index of the first output.
+  int AddOp(OpName op_name, const OpParamCacheKeys& op_param_cache_keys,
+            absl::Span<const int64_t> aliased_inputs,
+            absl::FunctionRef<void(OpSignatureBuilder&)> builder);
+
+  // Specifies which tensors are graph outputs.
+  void AddGraphOutput(int index);
+
+  // Computes the cache key for this graph. Note that this computes the final
+  // key which involves sorting some properties, so it shouldn't be called
+  // before the graph is fully constructed.
+  [[nodiscard]] CompilationCacheKey cache_key() const;
+
+  int num_inputs() const { return num_inputs_; }
+  int num_deferred_ops() const { return op_names_.size(); }
+
+ private:
+  int next_tensor_index_ = 0;
+  int num_inputs_ = 0;
+  bool has_ops_ = false;
+
+  // Adds a tensor to the graph, returning its topological index.
+  int AddTensor(absl::Span<const int64_t> dimensions, mlir::ElementType dtype);
+
+  absl::InlinedVector<int, 8> graph_output_indices_;
+
+  // Two graphs are equal only if they alias their root arguments in the same
+  // way.
+  absl::InlinedVector<int, 8> aliased_input_indices_;
+
+  // Two graphs are equal only if they have the same number of tensors,
+  // and all tensors have the same dimensions and element types.
+  absl::InlinedVector<int, 8> tensor_dimensions_starts_{0};
+  std::vector<int64_t> tensor_dimensions_;  // INT_VEC_OK=many tensors' dims
+  absl::InlinedVector<mlir::ElementType, 8> tensor_element_types_;
+
+  // Two graphs are equal only if the edges in the graph are the same, which
+  // we track by input indices into each DeferredOp.
+  absl::InlinedVector<int, 8> op_inputs_starts_{0};
+  std::vector<int> op_inputs_indices_;
+
+  // Two graphs are equal only if all DeferredOps have matching OpNames.
+  absl::InlinedVector<OpName, 8> op_names_;
+
+  // Two graphs are equal only if all DeferredOps have the same
+  // OpParamCacheKeys.
+  absl::InlinedVector<int, 8> op_param_cache_keys_starts_{0};
+
+  // The key and value of each op param cache key, sorted by key.
+  std::vector<std::pair<std::string, std::string>> op_param_cache_keys_;
+
+  // Two graphs are equal only if all DeferredOps have the same number of
+  // output for each node.
+  absl::InlinedVector<int, 8> op_outputs_indices_{0};
+
+  // Keep track of which inputs are aliased to avoid duplicates.
+  absl::flat_hash_set<int> aliased_input_indices_set_;
 };
 
 }  // namespace torch_tpu

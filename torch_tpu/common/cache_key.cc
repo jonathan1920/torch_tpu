@@ -16,6 +16,7 @@
 
 #include "torch_tpu/common/cache_key.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <ios>
 #include <ostream>
@@ -24,6 +25,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
+#include "absl/log/absl_check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
@@ -45,6 +48,8 @@
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/ops/op_names.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 
 namespace torch_tpu {
 
@@ -257,6 +262,96 @@ std::vector<Shape> ShapeDynamismMetadata::GetPaddingShapes(
     index += span_size;
   }
   return padding_shapes;
+}
+
+int GraphSignature::AddTensor(absl::Span<const int64_t> dimensions,
+                              mlir::ElementType dtype) {
+  int tensor_index = next_tensor_index_++;
+  for (int64_t dim : dimensions) {
+    tensor_dimensions_.push_back(dim);
+  }
+  tensor_dimensions_starts_.push_back(tensor_dimensions_.size());
+  tensor_element_types_.push_back(dtype);
+  return tensor_index;
+}
+
+int GraphSignature::AddInput(absl::Span<const int64_t> dimensions,
+                             mlir::ElementType dtype) {
+  ABSL_CHECK(  // CRASH_OK=we enforce adding all inputs before any ops.
+      !has_ops_)
+      << "Cannot add inputs after ops have been added.";
+  int tensor_index = AddTensor(dimensions, dtype);
+  num_inputs_++;
+  // Update the end index for the "implicit" ops block covering just inputs.
+  // This is index 0 of `op_outputs_indices_`.
+  op_outputs_indices_[0] = next_tensor_index_;
+  return tensor_index;
+}
+
+void GraphSignature::OpSignatureBuilder::AddInput(int topological_index) {
+  graph_->op_inputs_indices_.push_back(topological_index);
+}
+
+int GraphSignature::OpSignatureBuilder::AddOutput(
+    absl::Span<const int64_t> dimensions, mlir::ElementType dtype) {
+  return graph_->AddTensor(dimensions, dtype);
+}
+
+int GraphSignature::AddOp(
+    OpName op_name, const OpParamCacheKeys& op_param_cache_keys,
+    absl::Span<const int64_t> aliased_inputs,
+    absl::FunctionRef<void(OpSignatureBuilder&)> builder) {
+  if (!has_ops_) {
+    has_ops_ = true;
+  }
+
+  op_names_.push_back(op_name);
+
+  for (const auto& [key, value] : op_param_cache_keys) {
+    op_param_cache_keys_.push_back({key, value});
+  }
+  op_param_cache_keys_starts_.push_back(op_param_cache_keys_.size());
+
+  const int first_output_index = next_tensor_index_;
+  const int first_input_vec_index = op_inputs_indices_.size();
+
+  OpSignatureBuilder op_builder(this);
+  builder(op_builder);
+
+  op_inputs_starts_.push_back(op_inputs_indices_.size());
+
+  for (int64_t aliased_input : aliased_inputs) {
+    int op_input_index =
+        op_inputs_indices_[first_input_vec_index + aliased_input];
+    if (aliased_input_indices_set_.insert(op_input_index).second) {
+      aliased_input_indices_.push_back(op_input_index);
+    }
+  }
+
+  op_outputs_indices_.push_back(next_tensor_index_);
+
+  return first_output_index;
+}
+
+void GraphSignature::AddGraphOutput(int index) {
+  graph_output_indices_.push_back(index);
+}
+
+CompilationCacheKey GraphSignature::cache_key() const {
+  auto sorted_aliased_input_indices = aliased_input_indices_;
+  std::sort(sorted_aliased_input_indices.begin(),
+            sorted_aliased_input_indices.end());
+
+  const ShapelessKey shapeless_key = {FingerprintCat(
+      graph_output_indices_, tensor_dimensions_starts_, tensor_element_types_,
+      sorted_aliased_input_indices, op_inputs_starts_, op_inputs_indices_,
+      op_names_, op_param_cache_keys_starts_, op_param_cache_keys_,
+      op_outputs_indices_)};
+  const DimensionsKey dimensions_key(tensor_dimensions_);
+  return {
+      .shapeless_key = shapeless_key,
+      .dimensions_key = dimensions_key,
+  };
 }
 
 }  // namespace torch_tpu

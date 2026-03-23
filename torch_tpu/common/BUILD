@@ -488,6 +488,7 @@ torch_tpu_cc_library(
     srcs = ["fingerprint_utils.cc"],
     hdrs = ["fingerprint_utils.h"],
     deps = [
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:fingerprint",
     ],
@@ -706,7 +707,10 @@ torch_tpu_cc_library(
         "//shims/torch/c10/util:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

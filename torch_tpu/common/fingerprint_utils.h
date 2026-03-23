@@ -19,11 +19,13 @@
 
 // Utilities for computing fingerprints.
 
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "tsl/platform/fingerprint.h"
 
@@ -71,6 +73,16 @@ struct Fingerprint64Impl<absl::Span<T>, /*kIsSmallIntegral=*/false> {
 template <typename T>
 struct Fingerprint64Impl<std::vector<T>, /*kIsSmallIntegral=*/false> {
   [[nodiscard]] static FingerprintType Compute(const std::vector<T>& span) {
+    return Fingerprint(absl::MakeConstSpan(span));
+  }
+};
+
+// Partial specialization for absl::InlinedVector.
+template <typename T, size_t N>
+struct Fingerprint64Impl<absl::InlinedVector<T, N>,
+                         /*kIsSmallIntegral=*/false> {
+  [[nodiscard]] static FingerprintType Compute(
+      const absl::InlinedVector<T, N>& span) {
     return Fingerprint(absl::MakeConstSpan(span));
   }
 };
