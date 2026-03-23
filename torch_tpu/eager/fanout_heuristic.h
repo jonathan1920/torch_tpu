@@ -20,7 +20,6 @@
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/materialization_heuristics.h"
 
 namespace torch_tpu {
 
@@ -60,22 +59,9 @@ namespace torch_tpu {
 // might be duplicated — once for computing o0 and again for computing o1.
 // This leads to redundant work. With the heuristic, x is materialized and
 // reused for both o0 and o1 (in a single execution, or sequential executions).
-class FanoutHeuristic : public MaterializationHeuristic {
- public:
-  FanoutHeuristic() = default;
-
-  // This class is neither copyable nor movable.
-  FanoutHeuristic(const FanoutHeuristic&) = delete;
-  FanoutHeuristic& operator=(const FanoutHeuristic&) = delete;
-  FanoutHeuristic(FanoutHeuristic&&) = delete;
-  FanoutHeuristic& operator=(FanoutHeuristic&&) = delete;
-
-  void ApplyOnNode(const DeviceBufferList& node,
-                   absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
-                       materialization_nodes) override;
-
- protected:
-};
+void FanoutHeuristic(const DeviceBufferList& node,
+                     absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+                         materialization_nodes);
 
 }  // namespace torch_tpu
 

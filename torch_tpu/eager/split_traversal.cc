@@ -99,25 +99,25 @@ ApplyAllMaterializationHeuristicsOn(const Traversal& traversal) {
     tsl::profiler::TraceMe t("LocalHeuristics");
     for (const auto& node : traversal.execution_order()) {
       if (enabled_heuristics.reexecution) {
-        ReexecutionHeuristic().ApplyOnNode(*node, nodes_to_materialize);
+        ReexecutionHeuristic(*node, nodes_to_materialize);
       }
       if (enabled_heuristics.forced_split) {
-        ForcedSplitHeuristic().ApplyOnNode(*node, nodes_to_materialize);
+        ForcedSplitHeuristic(*node, nodes_to_materialize);
       }
       if (enabled_heuristics.dynamic_op_split) {
-        DynamicOpSplitHeuristic().ApplyOnNode(*node, nodes_to_materialize);
+        DynamicOpSplitHeuristic(*node, nodes_to_materialize);
       }
       if (enabled_heuristics.fanout) {
-        FanoutHeuristic().ApplyOnNode(*node, nodes_to_materialize);
+        FanoutHeuristic(*node, nodes_to_materialize);
       }
       if (enabled_heuristics.stale) {
-        StaleHeuristic().ApplyOnNode(*node, nodes_to_materialize);
+        StaleHeuristic(*node, nodes_to_materialize);
       }
     }
   }
   if (enabled_heuristics.repeated_subsequence) {
     tsl::profiler::TraceMe t("RepeatedSubsequenceHeuristic");
-    RepeatedSubsequenceHeuristic().ApplyOn(traversal, nodes_to_materialize);
+    RepeatedSubsequenceHeuristic(traversal, nodes_to_materialize);
   }
 
   // If an output is also a live boundary node, we don't need to redundantly

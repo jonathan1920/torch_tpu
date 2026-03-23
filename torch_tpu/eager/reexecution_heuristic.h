@@ -20,7 +20,6 @@
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/materialization_heuristics.h"
 
 namespace torch_tpu {
 
@@ -51,14 +50,10 @@ namespace torch_tpu {
 //
 // This would stabilize to each iteration only computing `add(i-1, 1)` and
 // `sqr(add(i, 1))`, which is optimal for both cache and memory usage.
-class ReexecutionHeuristic : public MaterializationHeuristic {
- public:
-  ReexecutionHeuristic() = default;
-
-  void ApplyOnNode(const DeviceBufferList& node,
-                   absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
-                       materialization_nodes) override;
-};
+void ReexecutionHeuristic(
+    const DeviceBufferList& node,
+    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        materialization_nodes);
 
 }  // namespace torch_tpu
 

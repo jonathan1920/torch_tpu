@@ -23,10 +23,9 @@
 
 namespace torch_tpu {
 
-void StaleHeuristic::ApplyOnNode(
-    const DeviceBufferList& node,
-    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
-        materialization_nodes) {
+void StaleHeuristic(const DeviceBufferList& node,
+                    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+                        materialization_nodes) {
   // Nodes which are live, but depend directly on a stale node, must be
   // materialized so the stale node can be freed.
   const DeferredOp* const deferred_op = node.deferred_op();

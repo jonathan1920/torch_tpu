@@ -22,7 +22,7 @@
 
 namespace torch_tpu {
 
-void DynamicOpSplitHeuristic::ApplyOnNode(
+void DynamicOpSplitHeuristic(
     const DeviceBufferList& node,
     absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
         materialization_nodes) {

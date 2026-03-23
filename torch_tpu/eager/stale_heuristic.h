@@ -20,7 +20,6 @@
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/materialization_heuristics.h"
 
 namespace torch_tpu {
 
@@ -43,20 +42,9 @@ namespace torch_tpu {
 // buffer, then all of these nodes will be immediately freed, and we will avoid
 // any possible re-execution with these stale buffers. (Re-execution is still
 // possible for live buffers).
-class StaleHeuristic : public MaterializationHeuristic {
- public:
-  StaleHeuristic() = default;
-
-  // This class is neither copyable nor movable.
-  StaleHeuristic(const StaleHeuristic&) = delete;
-  StaleHeuristic& operator=(const StaleHeuristic&) = delete;
-  StaleHeuristic(StaleHeuristic&&) = delete;
-  StaleHeuristic& operator=(StaleHeuristic&&) = delete;
-
-  void ApplyOnNode(const DeviceBufferList& node,
-                   absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
-                       materialization_nodes) override;
-};
+void StaleHeuristic(const DeviceBufferList& node,
+                    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+                        materialization_nodes);
 
 }  // namespace torch_tpu
 

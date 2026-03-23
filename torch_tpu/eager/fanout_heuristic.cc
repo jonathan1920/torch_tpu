@@ -19,13 +19,11 @@
 #include "absl/log/absl_check.h"
 #include "torch_tpu/eager/device_buffer.h"
 
-
 namespace torch_tpu {
 
-void FanoutHeuristic::ApplyOnNode(
-    const DeviceBufferList& node,
-    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
-        materialization_nodes) {
+void FanoutHeuristic(const DeviceBufferList& node,
+                     absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+                         materialization_nodes) {
   const DeferredOp* const deferred_op = node.deferred_op();
   ABSL_CHECK(deferred_op)  // CRASH_OK
       << "Found traversal node that's not a deferred op. This is a torch_tpu "

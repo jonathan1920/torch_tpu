@@ -20,7 +20,6 @@
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/materialization_heuristics.h"
 #include "torch_tpu/eager/traversal.h"
 
 namespace torch_tpu {
@@ -47,27 +46,10 @@ namespace torch_tpu {
 // Note that this heuristic currently only looks at the names of the ops when
 // determining whether two computations are the same. The dtypes, shapes, and
 // parameters are ignored. Hence it may materialize more than strictly needed.
-class RepeatedSubsequenceHeuristic : public MaterializationHeuristic {
- public:
-  RepeatedSubsequenceHeuristic() = default;
-
-  // This class is neither copyable nor movable.
-  RepeatedSubsequenceHeuristic(const RepeatedSubsequenceHeuristic&) = delete;
-  RepeatedSubsequenceHeuristic& operator=(const RepeatedSubsequenceHeuristic&) =
-      delete;
-  RepeatedSubsequenceHeuristic(RepeatedSubsequenceHeuristic&&) = delete;
-  RepeatedSubsequenceHeuristic& operator=(RepeatedSubsequenceHeuristic&&) =
-      delete;
-
-  void ApplyOn(const Traversal& traversal,
-               absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
-                   materialization_nodes);
-
- protected:
-  void ApplyOnNode(const DeviceBufferList& node,
-                   absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
-                       materialization_nodes) override;
-};
+void RepeatedSubsequenceHeuristic(
+    const Traversal& traversal,
+    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        materialization_nodes);
 
 }  // namespace torch_tpu
 

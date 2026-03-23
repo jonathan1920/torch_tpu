@@ -19,7 +19,6 @@
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/traversal.h"
 
 namespace torch_tpu {
 
@@ -35,7 +34,7 @@ bool ShouldSplitBefore(OpSplitMode mode) {
 
 }  // namespace
 
-void ForcedSplitHeuristic::ApplyOnNode(
+void ForcedSplitHeuristic(
     const DeviceBufferList& node,
     absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
         materialization_nodes) {

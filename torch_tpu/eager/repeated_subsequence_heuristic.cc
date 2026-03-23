@@ -33,17 +33,7 @@ ABSL_FLAG(int, torch_tpu_internal_repeated_subsequence_heuristic_min_length, 10,
 
 namespace torch_tpu {
 
-void RepeatedSubsequenceHeuristic::ApplyOnNode(
-    const DeviceBufferList& node,
-    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
-        materialization_nodes) {
-  ABSL_CHECK(false)  // CRASH_OK
-      << "RepeatedSubsequenceHeuristic::ApplyOnNode should not be "
-         "called. Use RepeatedSubsequenceHeuristic::ApplyOn "
-         "instead.";
-}
-
-void RepeatedSubsequenceHeuristic::ApplyOn(
+void RepeatedSubsequenceHeuristic(
     const Traversal& traversal,
     absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
         materialization_nodes) {

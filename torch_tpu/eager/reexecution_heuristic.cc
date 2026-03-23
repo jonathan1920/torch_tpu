@@ -21,7 +21,7 @@
 
 namespace torch_tpu {
 
-void ReexecutionHeuristic::ApplyOnNode(
+void ReexecutionHeuristic(
     const DeviceBufferList& node,
     absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
         materialization_nodes) {

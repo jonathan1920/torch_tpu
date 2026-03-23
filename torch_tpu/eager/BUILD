@@ -153,7 +153,6 @@ torch_tpu_cc_library(
     hdrs = ["dynamic_op_split_heuristic.h"],
     deps = [
         ":device_buffer",
-        ":materialization_heuristics",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -165,7 +164,6 @@ torch_tpu_cc_library(
     hdrs = ["fanout_heuristic.h"],
     deps = [
         ":device_buffer",
-        ":materialization_heuristics",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_check",
@@ -178,7 +176,6 @@ torch_tpu_cc_library(
     hdrs = ["repeated_subsequence_heuristic.h"],
     deps = [
         ":device_buffer",
-        ":materialization_heuristics",
         ":traversal",
         "//torch_tpu/common:repeated_subsequence",
         "//torch_tpu/ops:op_names",
@@ -197,7 +194,6 @@ torch_tpu_cc_library(
     hdrs = ["reexecution_heuristic.h"],
     deps = [
         ":device_buffer",
-        ":materialization_heuristics",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_check",
@@ -210,23 +206,8 @@ torch_tpu_cc_library(
     hdrs = ["forced_split_heuristic.h"],
     deps = [
         ":device_buffer",
-        ":materialization_heuristics",
-        ":traversal",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
-torch_tpu_cc_library(
-    name = "materialization_heuristics",
-    srcs = ["materialization_heuristics.cc"],
-    hdrs = ["materialization_heuristics.h"],
-    deps = [
-        ":device_buffer",
-        ":traversal",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log:absl_log",
     ],
 )
 
@@ -236,7 +217,6 @@ torch_tpu_cc_library(
     hdrs = ["stale_heuristic.h"],
     deps = [
         ":device_buffer",
-        ":materialization_heuristics",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_check",

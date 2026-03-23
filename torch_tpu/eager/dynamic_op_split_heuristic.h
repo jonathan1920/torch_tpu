@@ -20,17 +20,14 @@
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/materialization_heuristics.h"
 
 namespace torch_tpu {
 
 // Materializes any node that has dynamic dimensions.
-class DynamicOpSplitHeuristic : public MaterializationHeuristic {
- public:
-  void ApplyOnNode(const DeviceBufferList& node,
-                   absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
-                       materialization_nodes) override;
-};
+void DynamicOpSplitHeuristic(
+    const DeviceBufferList& node,
+    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        materialization_nodes);
 
 }  // namespace torch_tpu
 
