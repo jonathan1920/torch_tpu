@@ -21,6 +21,7 @@ import flax.nnx
 import jax
 import jax.numpy as jnp
 from examples.benchmarks.e2e import benchmark_utils as pt_benchmark_utils
+from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import performance_utils as pt_performance_utils
 from examples.benchmarks.e2e.jax import model_utils
 
@@ -31,7 +32,7 @@ def _run_jax_forward_pass(
     model: flax.nnx.Module,
     inputs: Any,
     run_mode: pt_benchmark_utils.RunMode,
-) -> tuple[float, float]:
+) -> pt_benchmark_utils.PerformanceBenchmarkResult:
   model.eval()
   if pt_benchmark_utils.is_torch_compile(run_mode):
     runnable_model = flax.nnx.jit(model)
@@ -41,16 +42,20 @@ def _run_jax_forward_pass(
   def sync_jax_device(x):
     jax.tree_util.tree_map(lambda leaf: leaf.block_until_ready(), x)
 
+  e2e_start = time.time()
+
   # Warmup
   warmup_start = time.time()
+  first_step_time = 0.0
   for i in range(pt_benchmark_utils.MIN_WARMUP_STEPS):
+    step_start = time.time()
     with traceme.TraceMe("Warmup", step_num=i):
       out = runnable_model(inputs)
       sync_jax_device(out)
-  warmup_end = time.time()
-  warmup_time = (
-      warmup_end - warmup_start
-  ) / pt_benchmark_utils.MIN_WARMUP_STEPS
+    step_time = time.time() - step_start
+    if i == 0:
+      first_step_time = step_time
+  warmup_time_total = time.time() - warmup_start
 
   # Eval
   eval_start = time.time()
@@ -58,17 +63,27 @@ def _run_jax_forward_pass(
     with traceme.TraceMe("Eval", step_num=i):
       out = runnable_model(inputs)
       sync_jax_device(out)
-  eval_end = time.time()
-  eval_time = (eval_end - eval_start) / pt_benchmark_utils.POST_WARMUP_STEPS
+  eval_time_total = time.time() - eval_start
+  eval_time = eval_time_total / pt_benchmark_utils.POST_WARMUP_STEPS
 
-  return warmup_time, eval_time
+  warmup_overhead = warmup_time_total - (
+      eval_time * pt_benchmark_utils.MIN_WARMUP_STEPS
+  )
+
+  return pt_benchmark_utils.PerformanceBenchmarkResult(
+      num_warmup_steps=pt_benchmark_utils.MIN_WARMUP_STEPS,
+      first_step_time_seconds=first_step_time,
+      warmup_overhead_seconds=max(0.0, warmup_overhead),
+      post_warmup_step_time_seconds=eval_time,
+      e2e_wall_time_seconds=time.time() - e2e_start,
+  )
 
 
 def _run_jax_backward_pass(
     model: flax.nnx.Module,
     inputs: Any,
     run_mode: pt_benchmark_utils.RunMode,
-) -> tuple[float, float]:
+) -> pt_benchmark_utils.PerformanceBenchmarkResult:
   model.train()
 
   def grad_step(model, x):
@@ -91,17 +106,21 @@ def _run_jax_backward_pass(
   def sync_jax_device(x):
     jax.tree_util.tree_map(lambda leaf: leaf.block_until_ready(), x)
 
+  e2e_start = time.time()
+
   # Warmup
   warmup_start = time.time()
+  first_step_time = 0.0
   for i in range(pt_benchmark_utils.MIN_WARMUP_STEPS):
+    step_start = time.time()
     with traceme.TraceMe("Warmup", step_num=i):
       loss_val, grads = runnable_model(inputs)
       sync_jax_device(loss_val)
       sync_jax_device(grads)
-  warmup_end = time.time()
-  warmup_time = (
-      warmup_end - warmup_start
-  ) / pt_benchmark_utils.MIN_WARMUP_STEPS
+    step_time = time.time() - step_start
+    if i == 0:
+      first_step_time = step_time
+  warmup_time_total = time.time() - warmup_start
 
   # Eval
   eval_start = time.time()
@@ -110,10 +129,20 @@ def _run_jax_backward_pass(
       loss_val, grads = runnable_model(inputs)
       sync_jax_device(loss_val)
       sync_jax_device(grads)
-  eval_end = time.time()
-  eval_time = (eval_end - eval_start) / pt_benchmark_utils.POST_WARMUP_STEPS
+  eval_time_total = time.time() - eval_start
+  eval_time = eval_time_total / pt_benchmark_utils.POST_WARMUP_STEPS
 
-  return warmup_time, eval_time
+  warmup_overhead = warmup_time_total - (
+      eval_time * pt_benchmark_utils.MIN_WARMUP_STEPS
+  )
+
+  return pt_benchmark_utils.PerformanceBenchmarkResult(
+      num_warmup_steps=pt_benchmark_utils.MIN_WARMUP_STEPS,
+      first_step_time_seconds=first_step_time,
+      warmup_overhead_seconds=max(0.0, warmup_overhead),
+      post_warmup_step_time_seconds=eval_time,
+      e2e_wall_time_seconds=time.time() - e2e_start,
+  )
 
 
 def run_benchmark(
@@ -136,23 +165,34 @@ def run_benchmark(
 
   if config.is_training and args.model_name not in ["nonzero", "topk"]:
     # BW pass
-    warmup_time, eval_time = _run_jax_backward_pass(
-        model, inputs, config.run_mode
-    )
+    result = _run_jax_backward_pass(model, inputs, config.run_mode)
   else:
     # FW pass
-    warmup_time, eval_time = _run_jax_forward_pass(
-        model, inputs, config.run_mode
-    )
+    result = _run_jax_forward_pass(model, inputs, config.run_mode)
 
   logging.info(
-      "Test: %s, benchmark: %s, microbenchmark: %s, run_mode: %s,"
-      " is_training: %s, warmup_time (seconds): %s, eval_time (seconds): %s",
+      "Test: %s, benchmark: %s, microbenchmark: %s, run_mode: %s, is_training:"
+      " %s, warmup_overhead (seconds): %s, eval_time (seconds): %s,"
+      " first_step_time (seconds): %s, e2e_wall_time (seconds): %s",
       test_method_name,
       benchmark_name,
       microbenchmark_name,
       config.run_mode.value,
       config.is_training,
-      warmup_time,
-      eval_time,
+      result.warmup_overhead_seconds,
+      result.post_warmup_step_time_seconds,
+      result.first_step_time_seconds,
+      result.e2e_wall_time_seconds,
   )
+
+  if pt_benchmark_utils.MLCOMPASS_TRACKING_ID.value:
+    mlcompass_utils.export_to_mlcompass(
+        pt_benchmark_utils.PLATFORM.value,
+        result,
+        pt_benchmark_utils.BASE_CL.value,
+        pt_benchmark_utils.MLCOMPASS_TRACKING_ID.value,
+        pt_benchmark_utils.MLCOMPASS_EXECUTION_MODE.value,
+        test_method_name=test_method_name,
+        benchmark_name=benchmark_name,
+        microbenchmark_name=microbenchmark_name,
+    )
