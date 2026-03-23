@@ -19,6 +19,7 @@
 
 #include "absl/time/time.h"
 #include "torch_tpu/common/compilation_cache.h"
+#include "torch_tpu/common/discovery.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
 #include "torch_tpu/eager/device_buffer.h"
@@ -49,7 +50,12 @@ PYBIND11_MODULE(_device_ops_backend, m) {
                  // TODO: what's the right default here?
                  // Single-device, or "all available devices"?
                  // Should distributed mode be opt-in or opt-out?
-                 .world_size = GetWorldSizeFromEnvOnce().value_or(1)}),
+                 .world_size = GetWorldSizeFromEnvOnce().value_or(1),
+                 // 1 GiB, more thought needed on tuning default and overriding,
+                 // can cause memory issues if too large, not clear what the
+                 // smallest acceptable value for real use should be.
+                 .premapped_buffer_size =
+                     GetPremappedBufferSizeFromEnvOnce().value_or(1LL << 30)}),
             _.SetPrepend() << "failed to initialize PjRt: ");
         if (device_type == "tpu" || device_type == "xla_cuda") {
           TT_THROW_IF_ERROR(AddTpuHooks()) << "failed to initialize TpuHooks.";

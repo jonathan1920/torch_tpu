@@ -22,6 +22,8 @@ package(
 torch_tpu_py_test(
     name = "pallas_test",
     srcs = ["pallas_test.py"],
+    # Not supported on vl chips.
+    env = {"TPU_PREMAPPED_BUFFER_SIZE": "0"},
     tags = [
         "oss_ready_tpu",
         "requires-tpu-v5lite",
