@@ -242,23 +242,68 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
     ABSL_CHECK_EQ(  // CRASH_OK
         normalized_arg_type_in_func_sig, "at::ScalarType")
         << message();
-    // TODO(wan): enforce the type string match for the types below.
   } else if constexpr (std::is_same_v<T, at::IntArrayRef>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "at::IntArrayRef")
+        << message();
   } else if constexpr (std::is_same_v<T, bool>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "bool")  // CRASH_OK
+        << message();
   } else if constexpr (std::is_same_v<T, double>) {
+    ABSL_CHECK(  // CRASH_OK
+        normalized_arg_type_in_func_sig == "double" ||
+        // Sometimes a kernel normalizes an optional<double> to double before
+        // invoking TT_KERNEL().
+        normalized_arg_type_in_func_sig == "std::optional<double>")
+        << message();
   } else if constexpr (std::is_same_v<T, at::Device>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "at::Device")  // CRASH_OK
+        << message();
   } else if constexpr (std::is_same_v<T, std::optional<at::Device>>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "std::optional<at::Device>")
+        << message();
   } else if constexpr (std::is_same_v<T, at::Layout>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "at::Layout")  // CRASH_OK
+        << message();
   } else if constexpr (std::is_same_v<T, std::optional<at::Layout>>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "std::optional<at::Layout>")
+        << message();
   } else if constexpr (std::is_same_v<T, at::MemoryFormat>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "at::MemoryFormat")
+        << message();
   } else if constexpr (std::is_same_v<T, std::optional<at::MemoryFormat>>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "std::optional<at::MemoryFormat>")
+        << message();
   } else if constexpr (std::is_same_v<T, std::optional<at::Tensor>>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "std::optional<at::Tensor>")
+        << message();
   } else if constexpr (std::is_same_v<T, std::optional<bool>>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "std::optional<bool>")
+        << message();
   } else if constexpr (std::is_same_v<T, std::optional<double>>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "std::optional<double>")
+        << message();
   } else if constexpr (std::is_same_v<T, std::optional<int64_t>>) {
+    // TODO(wan): int64_t needs more work.
   } else if constexpr (std::is_same_v<T, std::optional<int>>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "std::optional<int>")
+        << message();
   } else if constexpr (std::is_same_v<T, std::optional<std::string>>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "std::optional<std::string>")
+        << message();
   } else if constexpr (std::is_same_v<T, at::SymInt>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "at::SymInt")  // CRASH_OK
+        << message();
+    // TODO(wan): enforce the type string match for the types below.
   } else if constexpr (std::is_same_v<T, at::DimnameList>) {
   } else if constexpr (std::is_same_v<T, at::Generator>) {
   } else if constexpr (std::is_same_v<T, std::optional<at::Generator>>) {

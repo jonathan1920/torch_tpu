@@ -71,6 +71,16 @@ namespace internal {
       R"(\bc10::ScalarType\b)");
   static const absl::NoDestructor<std::regex> kOptionalArrayRefRegex(
       R"(\bc10::OptionalArrayRef<int64_t>)");
+  static const absl::NoDestructor<std::regex> kIntArrayRefRegex(
+      R"(\bc10::IntArrayRef\b)");
+  static const absl::NoDestructor<std::regex> kDeviceRegex(
+      R"(\bc10::Device\b)");
+  static const absl::NoDestructor<std::regex> kLayoutRegex(
+      R"(\bc10::Layout\b)");
+  static const absl::NoDestructor<std::regex> kMemoryFormatRegex(
+      R"(\bc10::MemoryFormat\b)");
+  static const absl::NoDestructor<std::regex> kSymIntRegex(
+      R"(\bc10::SymInt\b)");
   static const absl::NoDestructor<std::regex> kStringViewRegex(
       R"(\bc10::string_view\b)");
   std::string type_name_str = std::regex_replace(
@@ -79,6 +89,16 @@ namespace internal {
       std::regex_replace(type_name_str, *kScalarTypeRegex, "at::ScalarType");
   type_name_str = std::regex_replace(type_name_str, *kOptionalArrayRefRegex,
                                      "at::OptionalIntArrayRef");
+  type_name_str =
+      std::regex_replace(type_name_str, *kIntArrayRefRegex, "at::IntArrayRef");
+  type_name_str =
+      std::regex_replace(type_name_str, *kDeviceRegex, "at::Device");
+  type_name_str =
+      std::regex_replace(type_name_str, *kLayoutRegex, "at::Layout");
+  type_name_str = std::regex_replace(type_name_str, *kMemoryFormatRegex,
+                                     "at::MemoryFormat");
+  type_name_str =
+      std::regex_replace(type_name_str, *kSymIntRegex, "at::SymInt");
   type_name_str =
       std::regex_replace(type_name_str, *kStringViewRegex, "std::string_view");
   return type_name_str;
