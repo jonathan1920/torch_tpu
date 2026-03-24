@@ -66,6 +66,7 @@
 #include "torch_tpu/distributed/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_types.h"
+#include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -433,6 +434,12 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::broadcast(
     c10d::AllreduceOptions allreduce_opts{c10d::ReduceOp::SUM, opts.timeout,
                                           opts.asyncOp};
     auto work_ptr = allreduce(tensors, allreduce_opts);
+
+    // TODO(b/495494333): Remove the need for this forced materialization.
+    // It exists because dist.broadcast_object_list dispatches broadcast()
+    // operations from the source rank that are not materialized, so it hangs.
+    TT_THROW_IF_ERROR(GetMaterialized(tensors));
+
     if (work_ptr != nullptr) {
       dynamic_cast<TpuWork* absl_nonnull>(work_ptr.get())->opType_ =
           c10d::OpType::BROADCAST;

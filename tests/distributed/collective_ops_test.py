@@ -28,7 +28,7 @@ before the open source release.
 
 import os
 import time
-from typing import Callable, List, Union
+from typing import Any, Callable, List, Union
 
 from absl import logging
 from absl.testing import absltest
@@ -353,6 +353,25 @@ def run_broadcast() -> None:
     utils.assert_close(x.cpu(), expected)
 
 
+def run_broadcast_objects() -> None:
+  """Tests broadcast_object_list collective."""
+  _ = api.tpu_device()
+  dist.init_process_group("tpu_dist")
+  rank = int(os.environ["RANK"])
+  source_objects = [17, "foo", {"key": False}]
+  num_objects = len(source_objects)
+  objects: list[Any | None]
+  if rank == 0:
+    objects = source_objects
+  else:
+    objects = [None] * num_objects
+  torch.distributed.broadcast_object_list(objects, src=0)
+  assert (
+      objects == source_objects
+  ), f"Rank {rank}: expected object list {source_objects}, got {objects}"
+  dist.destroy_process_group()
+
+
 def run_collectives_with_non_uniform_deferred_ops() -> None:
   """Tests collective functionality with non-uniform (per-rank) deferred ops."""
   _ = api.tpu_device()
@@ -640,6 +659,14 @@ class CollectiveOpsTest(absltest.TestCase):
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
             run_broadcast, world_size=self._world_size
+        ),
+    )
+
+  def test_broadcast_objects(self):
+    distributed_utils.dist_run(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_broadcast_objects, world_size=self._world_size
         ),
     )
 
