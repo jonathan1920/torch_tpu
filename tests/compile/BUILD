@@ -210,6 +210,41 @@ torch_tpu_py_test(
     ],
 )
 
+# Do not add oss_ready_tpu: this is not intended to be run in OSS
+torch_tpu_py_test(
+    name = "model_coverage_hf_guitar_test",
+    timeout = "long",
+    srcs = ["model_coverage_hf_test.py"],
+    args = [
+        "--model_sizes_to_run=small",
+        "--model_sizes_to_run=medium",
+        "--model_sizes_to_run=large",
+    ],
+    linking_mode = "static",
+    main = "model_coverage_hf_test.py",
+    nopresubmit = "long Forge queue",
+    notap = "For Guitar only.",
+    shard_count = 12,
+    tags = [
+        "cpu:4",
+        "guitar",
+        "requires-accel-hbm",
+        "requires-net:external",
+        "requires-tpu-v7x",
+    ],
+    deps = [
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//tests:module_registry",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/api",
+        "@pypi//accelerate",  # buildcleaner: keep
+    ],
+)
+
 torch_tpu_py_test(
     name = "model_coverage_timm_test",
     timeout = "long",
