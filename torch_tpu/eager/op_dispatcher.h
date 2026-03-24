@@ -35,7 +35,6 @@
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -182,7 +181,9 @@ class TensorHolder : public at::Tensor {
   TensorHolder() = delete;
 
   // Constructs a TensorHolder that holds the given tensor.
-  TensorHolder(const at::Tensor& tensor) : at::Tensor(tensor) {}
+  TensorHolder(  // NOLINT - implicit conversion intended
+      const at::Tensor& tensor)
+      : at::Tensor(tensor) {}
 };
 
 static_assert(sizeof(TensorHolder) == sizeof(at::Tensor),

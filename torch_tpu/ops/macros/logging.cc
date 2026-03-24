@@ -17,7 +17,7 @@
 #include "torch_tpu/ops/macros/logging.h"
 
 #include <cctype>
-#include <regex>
+#include <regex>  // NOLINT
 #include <string>
 #include <string_view>
 #include <vector>

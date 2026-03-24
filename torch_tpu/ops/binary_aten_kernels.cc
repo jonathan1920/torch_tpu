@@ -33,13 +33,15 @@
 #include "ATen/ops/sub.h"
 #include "c10/core/DefaultDtype.h"
 #include "c10/core/ScalarType.h"
-#include "c10/core/TensorOptions.h"
+#include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/binary.h"
@@ -80,16 +82,14 @@ absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(
   // Special case in which the LHS is a scalar allocated on the CPU.
   if (self.device().type() == c10::DeviceType::CPU && self.numel() == 1) {
     // MakeTensor uses a cache to deduplicate scalar tensors.
-    TT_ASSIGN_OR_RETURN(at::Tensor self_tensor,
-                        MakeTensor(self.item(), self.scalar_type()));
+    TT_ASSIGN_OR_RETURN(at::Tensor self_tensor, MakeTensor(self.item()));
     return DispatchBinaryOp(self_tensor, other, op_name,
                             std::move(bin_op_builder), std::move(opts));
   }
   // Special case in which the RHS is a scalar allocated on the CPU.
   if (other.device().type() == c10::DeviceType::CPU && other.numel() == 1) {
     // MakeTensor uses a cache to deduplicate scalar tensors.
-    TT_ASSIGN_OR_RETURN(at::Tensor other_tensor,
-                        MakeTensor(other.item(), other.scalar_type()));
+    TT_ASSIGN_OR_RETURN(at::Tensor other_tensor, MakeTensor(other.item()));
     return DispatchBinaryOp(self, other_tensor, op_name,
                             std::move(bin_op_builder), std::move(opts));
   }
