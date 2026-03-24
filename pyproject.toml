@@ -24,32 +24,25 @@ dependencies = [
     "numpy",
     "scipy",
     "absl-py",
-    # TODO: b/431034055 - accelerate is a dev dependency; move this
-    # to dev deps and update bazel config to understand
-    "accelerate",
-    # TODO: b/431034055 - JAX is a dev dependency; move this
-    # to dev deps and update bazel config to understand
-    "jax >= 0.9.1",
     "libtpu",
-    # TODO: b/431034055 - portpicker is a dev dependency; move this
-    # to dev deps and update bazel config to understand
     "portpicker",
-    # TODO: b/431034055 - transformers is a dev dependency; move this
-    # to dev deps and update bazel config to understand that.
-    "transformers",
-    # dev-only dependency.
-    "etils[epath]",
-    # dev-only dependency.
-    "expecttest",
     "tensorboard",
     "frozendict",
-    "flax",
     "pillow",
 ]
 
 [project.optional-dependencies]
+dev = [
+    "accelerate",
+    "etils[epath]",
+    "expecttest",
+    "jax >= 0.9.1",
+    "transformers",
+]
+
 benchmark = [
     "fairscale",
+    "flax",
     "grain",
     "llama-models",
     "tensorflow-datasets",
