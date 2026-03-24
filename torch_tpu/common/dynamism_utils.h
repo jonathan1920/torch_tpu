@@ -17,15 +17,12 @@
 #ifndef TORCH_TPU_COMMON_DYNAMISM_UTILS_H_
 #define TORCH_TPU_COMMON_DYNAMISM_UTILS_H_
 
-#include <memory>
 #include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/ops/python_context.h"
+#include "torch_tpu/eager/traversal.h"
 #include "stablehlo/transforms/StablehloBroadcastLowering.h"
 
 namespace torch_tpu {
@@ -40,11 +37,7 @@ struct DeviceRefDimensions {
 // DeviceBufferRef based on inputs and execution order. This involves building a
 // MLIR graph by processing the operations in execution order.
 absl::StatusOr<std::vector<DeviceRefDimensions>> GetTraversalOutputDimensions(
-    mlir::MLIRContext& mlir_context,
-    const PythonContext* absl_nullable python_context,
-    absl::Span<const DeviceBufferRef> inputs,
-    absl::Span<const DeviceBufferRef> outputs,
-    absl::Span<const std::shared_ptr<DeviceBufferList>> execution_order);
+    mlir::MLIRContext& mlir_context, const Traversal& traversal);
 
 }  // namespace torch_tpu
 

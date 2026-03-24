@@ -56,7 +56,6 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/shape.h"
-#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/python_context.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/ChloBuilder.h"
@@ -202,6 +201,9 @@ enum class DebugStringOptions {
   kEnableDebugInfo,
   kDisableDebugInfo,
 };
+
+// Returns the dimensions of the value with bounded information if present.
+mlir::stablehlo::Dimensions GetDimensions(mlir::Value value);
 
 // Returns the dimensions of the input op with bounded information if present.
 mlir::stablehlo::Dimensions GetDimensions(mlir::MlirOp input);

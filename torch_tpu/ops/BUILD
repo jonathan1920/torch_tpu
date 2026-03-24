@@ -60,7 +60,6 @@ torch_tpu_cc_library(
         "//torch_tpu/common:fixed_size_span",
         "//torch_tpu/common:shape",
         "//torch_tpu/common:to_string",
-        "//torch_tpu/common:utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:inlined_vector",

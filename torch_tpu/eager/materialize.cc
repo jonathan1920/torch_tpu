@@ -806,14 +806,8 @@ absl::Status MaterializationWorker::PropagateBoundedDynamism(
     }
     ABSL_VLOG(1) << "[PropagateBoundedDynamism] Traversal: "
                  << traversal.DebugString();
-    std::vector<DeviceRefDimensions> output_dimensions;
-    {
-      TT_ASSIGN_OR_RETURN(
-          output_dimensions,
-          GetTraversalOutputDimensions(
-              mlir_context, traversal.GetPythonContext(), traversal.inputs(),
-              traversal.outputs(), traversal.execution_order()));
-    }
+    TT_ASSIGN_OR_RETURN(std::vector<DeviceRefDimensions> output_dimensions,
+                        GetTraversalOutputDimensions(mlir_context, traversal));
     for (const auto& output_dimension : output_dimensions) {
       const DeviceBufferRef& ref = output_dimension.ref;
       const auto& dims = output_dimension.dims;

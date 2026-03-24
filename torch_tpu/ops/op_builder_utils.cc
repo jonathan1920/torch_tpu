@@ -39,7 +39,6 @@
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -69,7 +68,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
-#include "torch_tpu/common/utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/python_context.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -112,12 +111,16 @@ std::string GetBasename(std::string_view filename) {
 
 }  // namespace
 
-mlir::stablehlo::Dimensions GetDimensions(mlir::MlirOp input) {
+mlir::stablehlo::Dimensions GetDimensions(mlir::Value value) {
   mlir::FailureOr<mlir::stablehlo::Dimensions> output_dims_or_fail =
-      mlir::stablehlo::getDimensions(input.getValue());
+      mlir::stablehlo::getDimensions(value);
   ABSL_CHECK(  // CRASH_OK: Internal invariant.
       mlir::succeeded(output_dims_or_fail));
   return std::move(*output_dims_or_fail);
+}
+
+mlir::stablehlo::Dimensions GetDimensions(mlir::MlirOp input) {
+  return GetDimensions(input.getValue());
 }
 
 std::string DebugString(mlir::Operation* absl_nonnull op,
