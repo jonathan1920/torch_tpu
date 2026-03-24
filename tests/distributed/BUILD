@@ -110,6 +110,8 @@ torch_tpu_py_test(
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO: fix the test in asan mode.
+        "nomsan",  # TODO(b/495533335): fix out-of-order in msan mode.
+        "notsan",  # TODO(b/495533335): fix out-of-order in tsan mode.
         "requires-net:external",  # Needs remote file access.
         "requires-tpu-v5lite:8",
     ],
@@ -209,6 +211,7 @@ torch_tpu_py_test(
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
+        "noasan",  # TODO: fix the test OOM in asan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -234,6 +237,7 @@ torch_tpu_py_test(
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
+        "noasan",  # TODO: fix the test OOM in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
@@ -284,7 +288,9 @@ torch_tpu_py_test(
     main = "all_gather_errors_test.py",
     tags = [
         "exclusive",  # copybara:comment(oss-only)
+        "noasan",  # TODO: fix the test OOM in asan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
+        "requires-mem:28g",  # Required for msan.
         "requires-tpu-v5lite:8",
     ],
     deps = [
