@@ -16,9 +16,8 @@
 [project]
 name = "torch_tpu"
 version = "0.1.1"
-# TODO: b/431034055 - Set license parameter. Can't be set currently
-# because piptools (used by bazel compile_pip_requirements) chokes on it
-# license = "LicenseRef-Proprietary"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 
 dependencies = [
     "torch==2.10.0+cpu",
