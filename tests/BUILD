@@ -352,6 +352,7 @@ torch_tpu_py_test(
     ],
 )
 
+# See go/tt-devguide#updating-gpu-goldens for how to update the GPU goldens.
 torch_tpu_py_test(
     name = "ops_test_gen_gpu_golden",
     srcs = ["ops_test.py"],
