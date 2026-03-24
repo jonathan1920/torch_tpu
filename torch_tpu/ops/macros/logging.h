@@ -17,15 +17,20 @@
 #ifndef TORCH_TPU_OPS_MACROS_LOGGING_H_
 #define TORCH_TPU_OPS_MACROS_LOGGING_H_
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <ostream>
 #include <set>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
@@ -33,7 +38,13 @@
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
+#include "ATen/core/Generator.h"
+#include "ATen/core/IListRef.h"
 #include "ATen/core/TensorBody.h"
+#include "c10/core/Device.h"
+#include "torch/csrc/distributed/c10d/Types.hpp"
+#include "torch/headeronly/core/Layout.h"
+#include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/macro_utils.h"
@@ -161,10 +172,23 @@ struct KernelArgCheckerContext {
   std::vector<std::string_view> tt_kernel_arg_names;
 };
 
+// Trait to check T is std::array<bool, N> for some N.
+template <typename T>
+struct is_std_array_bool : std::false_type {};
+template <size_t kSize>
+struct is_std_array_bool<std::array<bool, kSize>> : std::true_type {};
+
+// Trait to check T is absl::InlinedVector<int64_t, N> for some N.
+template <typename T>
+struct is_inlined_vector_int64 : std::false_type {};
+template <size_t kSize>
+struct is_inlined_vector_int64<absl::InlinedVector<int64_t, kSize>>
+    : std::true_type {};
+
 // Crashes if the type T does not match the given argument's type string.
 template <typename T>
-void CheckKernelArgType(const KernelArgCheckerContext& context,
-                        const int arg_idx) {
+void CheckKernelArgType(  // NOLINT: cognitive complexity
+    const KernelArgCheckerContext& context, const int arg_idx) {
   const std::string_view arg_name = context.tt_kernel_arg_names[arg_idx];
   const std::string_view normalized_arg_type_in_func_sig =
       context.arg_types[arg_idx];
@@ -202,8 +226,62 @@ void CheckKernelArgType(const KernelArgCheckerContext& context,
     ABSL_CHECK_EQ(  // CRASH_OK
         normalized_arg_type_in_func_sig, "std::optional<at::ScalarType>")
         << message();
+    // TODO(wan): enforce the type string match for the types below.
+  } else if constexpr (std::is_same_v<T, std::string_view>) {
+  } else if constexpr (std::is_same_v<T, std::optional<std::string_view>>) {
+  } else if constexpr (std::is_same_v<T, std::optional<at::Scalar>>) {
+  } else if constexpr (std::is_same_v<T, std::optional<at::ScalarType>>) {
+  } else if constexpr (std::is_same_v<T, at::ScalarType>) {
+  } else if constexpr (std::is_same_v<T, at::IntArrayRef>) {
+  } else if constexpr (std::is_same_v<T, bool>) {
+  } else if constexpr (std::is_same_v<T, double>) {
+  } else if constexpr (std::is_same_v<T, at::Device>) {
+  } else if constexpr (std::is_same_v<T, std::optional<at::Device>>) {
+  } else if constexpr (std::is_same_v<T, at::Layout>) {
+  } else if constexpr (std::is_same_v<T, std::optional<at::Layout>>) {
+  } else if constexpr (std::is_same_v<T, at::MemoryFormat>) {
+  } else if constexpr (std::is_same_v<T, std::optional<at::MemoryFormat>>) {
+  } else if constexpr (std::is_same_v<T, std::optional<at::Tensor>>) {
+  } else if constexpr (std::is_same_v<T, std::optional<bool>>) {
+  } else if constexpr (std::is_same_v<T, std::optional<double>>) {
+  } else if constexpr (std::is_same_v<T, std::optional<int64_t>>) {
+  } else if constexpr (std::is_same_v<T, std::optional<int>>) {
+  } else if constexpr (std::is_same_v<T, std::optional<std::string>>) {
+  } else if constexpr (std::is_same_v<T, at::SymInt>) {
+  } else if constexpr (std::is_same_v<T, at::DimnameList>) {
+  } else if constexpr (std::is_same_v<T, at::Generator>) {
+  } else if constexpr (std::is_same_v<T, std::optional<at::Generator>>) {
+  } else if constexpr (is_std_array_bool<T>::value) {
+  } else if constexpr (is_inlined_vector_int64<T>::value) {
+  } else if constexpr (std::is_same_v<T,
+                                      c10::List<std::optional<at::Tensor>>>) {
+  } else if constexpr (std::is_same_v<T, std::vector<at::Tensor>>) {
+  } else if constexpr (                                           //
+      std::is_same_v<T, std::unordered_map<int64_t, int64_t>>) {  // NOLINT
+  } else if constexpr (std::is_same_v<T,
+                                      std::vector<std::vector<at::Tensor>>>) {
+  } else if constexpr (                        //
+      std::is_same_v<T, std::vector<int64_t>>  // INT_VEC_OK=generic code
+  ) {
+  } else if constexpr (std::is_same_v<T, c10d::AllreduceOptions>) {
+  } else if constexpr (std::is_same_v<T, c10d::BroadcastOptions>) {
+  } else if constexpr (std::is_same_v<T, c10d::AllgatherOptions>) {
+  } else if constexpr (std::is_same_v<T, c10d::ScatterOptions>) {
+  } else if constexpr (std::is_same_v<T, c10d::ReduceScatterOptions>) {
+  } else if constexpr (std::is_same_v<T, c10d::AllToAllOptions>) {
+  } else if constexpr (std::is_same_v<T, c10d::BarrierOptions>) {
+  } else if constexpr (std::is_same_v<T, c10::ArrayRef<c10::SymInt>>) {
+  } else if constexpr (std::is_same_v<T, at::Storage>) {
+  } else if constexpr (std::is_same_v<T, uint64_t>) {
+  } else if constexpr (std::is_same_v<T, int64_t>) {
+  } else if constexpr (std::is_same_v<T, c10::IListRef<at::Tensor>>) {
+  } else if constexpr (std::is_same_v<T,
+                                      c10::IListRef<at::OptionalTensorRef>>) {
+  } else if constexpr (std::is_same_v<T, c10::ArrayRef<at::Scalar>>) {
+  } else if constexpr (std::is_same_v<T, at::TensorList>) {
+  } else if constexpr (std::is_same_v<T, at::OptionalSymIntArrayRef>) {
   } else {
-    // TODO: Check that T and arg_type match for other types.
+    static_assert(false, "Unsupported argument type.");
   }
 }
 
