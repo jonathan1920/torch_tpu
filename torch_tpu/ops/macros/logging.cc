@@ -65,42 +65,82 @@ namespace internal {
   type_name = absl::StripSuffix(type_name, " &");
 
   // Replace type aliases with their underlying types.
-  static const absl::NoDestructor<std::regex> kOptionalRegex(
-      R"(\bc10::optional\b)");
-  static const absl::NoDestructor<std::regex> kScalarTypeRegex(
-      R"(\bc10::ScalarType\b)");
-  static const absl::NoDestructor<std::regex> kOptionalArrayRefRegex(
-      R"(\bc10::OptionalArrayRef<int64_t>)");
-  static const absl::NoDestructor<std::regex> kIntArrayRefRegex(
-      R"(\bc10::IntArrayRef\b)");
-  static const absl::NoDestructor<std::regex> kDeviceRegex(
-      R"(\bc10::Device\b)");
-  static const absl::NoDestructor<std::regex> kLayoutRegex(
-      R"(\bc10::Layout\b)");
-  static const absl::NoDestructor<std::regex> kMemoryFormatRegex(
-      R"(\bc10::MemoryFormat\b)");
-  static const absl::NoDestructor<std::regex> kSymIntRegex(
-      R"(\bc10::SymInt\b)");
-  static const absl::NoDestructor<std::regex> kStringViewRegex(
-      R"(\bc10::string_view\b)");
-  std::string type_name_str = std::regex_replace(
-      std::string(type_name), *kOptionalRegex, "std::optional");
+
+  using Regex = const absl::NoDestructor<std::regex>;
+
+  static Regex kOptional(R"(\bc10::optional\b)");
+  std::string type_name_str =
+      std::regex_replace(std::string(type_name), *kOptional, "std::optional");
+
+  static Regex kStringView(R"(\bc10::string_view\b)");
   type_name_str =
-      std::regex_replace(type_name_str, *kScalarTypeRegex, "at::ScalarType");
-  type_name_str = std::regex_replace(type_name_str, *kOptionalArrayRefRegex,
+      std::regex_replace(type_name_str, *kStringView, "std::string_view");
+
+  static Regex kLongLong(R"(\blong long\b)");
+  type_name_str = std::regex_replace(type_name_str, *kLongLong, "int64_t");
+
+  static Regex kLong(R"(\blong\b)");
+  type_name_str = std::regex_replace(type_name_str, *kLong, "int64_t");
+
+  static Regex kSymInt(R"(\bc10::SymInt\b)");
+  type_name_str = std::regex_replace(type_name_str, *kSymInt, "at::SymInt");
+
+  static Regex kUnsignedInt64(R"(\bunsigned int64_t\b|\bsize_t\b)");
+  type_name_str =
+      std::regex_replace(type_name_str, *kUnsignedInt64, "uint64_t");
+
+  static Regex kArrayRef(R"(\bc10::ArrayRef\b)");
+  type_name_str = std::regex_replace(type_name_str, *kArrayRef, "at::ArrayRef");
+
+  static Regex kScalarType(R"(\bc10::ScalarType\b)");
+  type_name_str =
+      std::regex_replace(type_name_str, *kScalarType, "at::ScalarType");
+
+  static Regex kOptionalIntArrayRef(R"(\bc10::OptionalIntArrayRef\b)");
+  type_name_str = std::regex_replace(type_name_str, *kOptionalIntArrayRef,
                                      "at::OptionalIntArrayRef");
+
+  static Regex kOptionalArrayRef(R"(\bc10::OptionalArrayRef\b)");
+  type_name_str = std::regex_replace(type_name_str, *kOptionalArrayRef,
+                                     "at::OptionalArrayRef");
+
+  static Regex kOptionalInt64ArrayRef(
+      R"(\bat::OptionalArrayRef\s*<\s*int64_t\s*>)");
+  type_name_str = std::regex_replace(type_name_str, *kOptionalInt64ArrayRef,
+                                     "at::OptionalIntArrayRef");
+
+  static Regex kIntArrayRef(
+      R"(\bc10::IntArrayRef\b|\bat::ArrayRef\s*<\s*int64_t\s*>)");
   type_name_str =
-      std::regex_replace(type_name_str, *kIntArrayRefRegex, "at::IntArrayRef");
+      std::regex_replace(type_name_str, *kIntArrayRef, "at::IntArrayRef");
+
+  static Regex kDevice(R"(\bc10::Device\b)");
+  type_name_str = std::regex_replace(type_name_str, *kDevice, "at::Device");
+
+  static Regex kLayout(R"(\bc10::Layout\b)");
+  type_name_str = std::regex_replace(type_name_str, *kLayout, "at::Layout");
+
+  static Regex kMemoryFormat(R"(\bc10::MemoryFormat\b)");
   type_name_str =
-      std::regex_replace(type_name_str, *kDeviceRegex, "at::Device");
+      std::regex_replace(type_name_str, *kMemoryFormat, "at::MemoryFormat");
+
+  static Regex kStorage(R"(\bc10::Storage\b)");
+  type_name_str = std::regex_replace(type_name_str, *kStorage, "at::Storage");
+
+  static Regex kSymIntArrayRef(
+      R"(\bc10::SymIntArrayRef\b|\bat::ArrayRef\s*<\s*at::SymInt\s*>)");
   type_name_str =
-      std::regex_replace(type_name_str, *kLayoutRegex, "at::Layout");
-  type_name_str = std::regex_replace(type_name_str, *kMemoryFormatRegex,
-                                     "at::MemoryFormat");
+      std::regex_replace(type_name_str, *kSymIntArrayRef, "at::SymIntArrayRef");
+
+  static Regex kOptionalSymIntArrayRef(
+      R"(\bat::OptionalArrayRef\s*<\s*at::SymInt\s*>)");
+  type_name_str = std::regex_replace(type_name_str, *kOptionalSymIntArrayRef,
+                                     "at::OptionalSymIntArrayRef");
+
+  static Regex kTensorListRef(R"(\bc10::IListRef<at::Tensor>)");
   type_name_str =
-      std::regex_replace(type_name_str, *kSymIntRegex, "at::SymInt");
-  type_name_str =
-      std::regex_replace(type_name_str, *kStringViewRegex, "std::string_view");
+      std::regex_replace(type_name_str, *kTensorListRef, "at::ITensorListRef");
+
   return type_name_str;
 }
 

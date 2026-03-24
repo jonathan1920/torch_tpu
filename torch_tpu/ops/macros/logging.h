@@ -183,7 +183,9 @@ template <typename T>
 struct is_inlined_vector_int64 : std::false_type {};
 template <size_t kSize>
 struct is_inlined_vector_int64<absl::InlinedVector<int64_t, kSize>>
-    : std::true_type {};
+    : std::true_type {
+  static constexpr size_t kCapacity = kSize;
+};
 
 // Crashes if the type T does not match the given argument's type string.
 template <typename T>
@@ -291,7 +293,9 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
         normalized_arg_type_in_func_sig, "std::optional<double>")
         << message();
   } else if constexpr (std::is_same_v<T, std::optional<int64_t>>) {
-    // TODO(wan): int64_t needs more work.
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "std::optional<int64_t>")
+        << message();
   } else if constexpr (std::is_same_v<T, std::optional<int>>) {
     ABSL_CHECK_EQ(  // CRASH_OK
         normalized_arg_type_in_func_sig, "std::optional<int>")
@@ -303,39 +307,126 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
   } else if constexpr (std::is_same_v<T, at::SymInt>) {
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "at::SymInt")  // CRASH_OK
         << message();
-    // TODO(wan): enforce the type string match for the types below.
   } else if constexpr (std::is_same_v<T, at::DimnameList>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "at::DimnameList")
+        << message();
   } else if constexpr (std::is_same_v<T, at::Generator>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "at::Generator")  // CRASH_OK
+        << message();
   } else if constexpr (std::is_same_v<T, std::optional<at::Generator>>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "std::optional<at::Generator>")
+        << message();
   } else if constexpr (is_std_array_bool<T>::value) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  absl::StrCat("std::array<bool, ", std::tuple_size_v<T>, ">"))
+        << message();
   } else if constexpr (is_inlined_vector_int64<T>::value) {
+    // Some kernels normalize integer/SymInt arrays to InlinedVector<int64_t, N>
+    // before invoking TT_KERNEL().
+    ABSL_CHECK(  // CRASH_OK
+        normalized_arg_type_in_func_sig == "at::IntArrayRef" ||
+        normalized_arg_type_in_func_sig == "at::SymIntArrayRef" ||
+        normalized_arg_type_in_func_sig == "at::OptionalIntArrayRef" ||
+        normalized_arg_type_in_func_sig == "at::OptionalSymIntArrayRef" ||
+        normalized_arg_type_in_func_sig ==
+            absl::StrCat("absl::InlinedVector<int64_t, ",
+                         is_inlined_vector_int64<T>::kCapacity, ">"))
+        << message();
   } else if constexpr (std::is_same_v<T,
                                       c10::List<std::optional<at::Tensor>>>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "c10::List<std::optional<at::Tensor>>")
+        << message();
   } else if constexpr (std::is_same_v<T, std::vector<at::Tensor>>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "std::vector<at::Tensor>")
+        << message();
   } else if constexpr (                                           //
       std::is_same_v<T, std::unordered_map<int64_t, int64_t>>) {  // NOLINT
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,                // CRASH_OK
+                  "std::unordered_map<int64_t, int64_t>")
+        << message();
   } else if constexpr (std::is_same_v<T,
                                       std::vector<std::vector<at::Tensor>>>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "std::vector<std::vector<at::Tensor>>")
+        << message();
   } else if constexpr (                        //
       std::is_same_v<T, std::vector<int64_t>>  // INT_VEC_OK=generic code
   ) {
+    // Some kernels normalize an integer/SymInt array to std::vector<int64_t>
+    // before invoking TT_KERNEL().
+    ABSL_CHECK(  // CRASH_OK
+        normalized_arg_type_in_func_sig == "at::IntArrayRef" ||
+        normalized_arg_type_in_func_sig == "at::SymIntArrayRef" ||
+        normalized_arg_type_in_func_sig ==  //
+            "std::vector<int64_t>")         // INT_VEC_OK=generic code
+        << message();
   } else if constexpr (std::is_same_v<T, c10d::AllreduceOptions>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "c10d::AllreduceOptions")
+        << message();
   } else if constexpr (std::is_same_v<T, c10d::BroadcastOptions>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "c10d::BroadcastOptions")
+        << message();
   } else if constexpr (std::is_same_v<T, c10d::AllgatherOptions>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "c10d::AllgatherOptions")
+        << message();
   } else if constexpr (std::is_same_v<T, c10d::ScatterOptions>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "c10d::ScatterOptions")
+        << message();
   } else if constexpr (std::is_same_v<T, c10d::ReduceScatterOptions>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "c10d::ReduceScatterOptions")
+        << message();
   } else if constexpr (std::is_same_v<T, c10d::AllToAllOptions>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "c10d::AllToAllOptions")
+        << message();
   } else if constexpr (std::is_same_v<T, c10d::BarrierOptions>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "c10d::BarrierOptions")
+        << message();
   } else if constexpr (std::is_same_v<T, c10::ArrayRef<c10::SymInt>>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "at::SymIntArrayRef")
+        << message();
   } else if constexpr (std::is_same_v<T, at::Storage>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "at::Storage")  // CRASH_OK
+        << message();
   } else if constexpr (std::is_same_v<T, uint64_t>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "uint64_t")  // CRASH_OK)
+        << message();
   } else if constexpr (std::is_same_v<T, int64_t>) {
-  } else if constexpr (std::is_same_v<T, c10::IListRef<at::Tensor>>) {
+    // Some kernels normalize a SymInt, optional<SymInt>, or optional<int64_t>
+    // to int64_t before invoking TT_KERNEL().
+    ABSL_CHECK(normalized_arg_type_in_func_sig == "int64_t" ||  // CRASH_OK
+               normalized_arg_type_in_func_sig == "at::SymInt" ||
+               normalized_arg_type_in_func_sig == "std::optional<at::SymInt>" ||
+               normalized_arg_type_in_func_sig == "std::optional<int64_t>")
+        << message();
+  } else if constexpr (std::is_same_v<T, at::ITensorListRef>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "at::ITensorListRef")
+        << message();
   } else if constexpr (std::is_same_v<T,
                                       c10::IListRef<at::OptionalTensorRef>>) {
-  } else if constexpr (std::is_same_v<T, c10::ArrayRef<at::Scalar>>) {
-  } else if constexpr (std::is_same_v<T, at::TensorList>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "c10::IListRef<at::OptionalTensorRef>")
+        << message();
+  } else if constexpr (std::is_same_v<T, at::ArrayRef<at::Scalar>>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "at::ArrayRef<at::Scalar>")
+        << message();
   } else if constexpr (std::is_same_v<T, at::OptionalSymIntArrayRef>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "at::OptionalSymIntArrayRef")
+        << message();
   } else {
     static_assert(false, "Unsupported argument type.");
   }
