@@ -71,8 +71,7 @@ absl::StatusOr<PjRtInitializationResult> InitializePjRt(
   }
 
   TT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
-                      torch_tpu::pjrt::GetPjRtClient(
-                          options.device_type, options.premapped_buffer_size));
+                      torch_tpu::pjrt::GetPjRtClient(options.device_type));
 
   TT_RET_CHECK(client != nullptr, error::kInternal)
       << "PjRtClient is null after initialization";

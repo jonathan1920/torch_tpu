@@ -17,7 +17,6 @@
 #ifndef TORCH_TPU_PJRT_INIT_H_
 #define TORCH_TPU_PJRT_INIT_H_
 
-#include <cstdint>
 #include <string>
 
 #include "absl/status/statusor.h"
@@ -37,9 +36,6 @@ struct PjRtInitializationOptions {
   // provide a value for this field instead of using a default value.
   const std::string& device_type;
   const int& world_size;
-  // Real-use default for tpu_premapped_buffer_size is is set in device_rt.cc,
-  // zero default is for testing purposes.
-  const int64_t& premapped_buffer_size = 0;
 };
 
 // Initializes PjRt if it hasn't been initialized. Otherwise, returns OK without
