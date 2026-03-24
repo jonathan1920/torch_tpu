@@ -174,6 +174,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
           benchmark_utils.RunMode.EAGER,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
           benchmark_utils.RunMode.DEFER_NEVER,
+          benchmark_utils.RunMode.COMPILED,
       ])
   )
   def test_fsdp_llama_3_2_1b_train_1_step(self, run_mode):
