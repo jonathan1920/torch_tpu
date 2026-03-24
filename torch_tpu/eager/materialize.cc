@@ -372,8 +372,6 @@ int64_t ApplyMemoryThrottling(const int64_t throttle_limit_bytes,
   return execution_size_bytes;
 }
 
-absl::Status PropagateBoundedDynamism(absl::Span<Traversal> traversals);
-
 class MaterializationWorker {
  public:
   // This class is move-only.
@@ -565,7 +563,7 @@ class MaterializationWorker {
   }
 
   std::vector<ExecutionTask> ProcessMaterializationTask(
-      MaterializationTask& task) {
+      MaterializationTask& task, mlir::MLIRContext& mlir_context) {
     ABSL_VLOG(1)
         << "[MaterializationWorker] Processing MaterializationTask with "
         << task.nodes_to_materialize.size() << " nodes";
@@ -664,7 +662,8 @@ class MaterializationWorker {
       traversals.push_back(std::move(*traversal_or));
     }
 
-    if (auto status = PropagateBoundedDynamism(absl::MakeSpan(traversals));
+    if (auto status =
+            PropagateBoundedDynamism(absl::MakeSpan(traversals), mlir_context);
         !status.ok()) {
       ABSL_VLOG(1) << "[MaterializationWorker] Failed to propagate bounded "
                       "dynamism: "
@@ -738,11 +737,16 @@ class MaterializationWorker {
 
   void StartThreads() {
     materialize_thread_ = std::thread([this]() {
+      // Create the MLIR context outside the loop once and reuse for
+      // materialization tasks.
+      absl_nonnull std::unique_ptr<mlir::MLIRContext> mlir_context =
+          MakeMlirContext();
       while (true) {
         MaterializationTask job = DequeueMaterializationJob();
         ABSL_VLOG(1)
             << "[MaterializationWorker] Processing MaterializationTask";
-        std::vector<ExecutionTask> tasks = ProcessMaterializationTask(job);
+        std::vector<ExecutionTask> tasks =
+            ProcessMaterializationTask(job, *mlir_context);
 
         ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing " << tasks.size()
                      << " ExecutionTasks";
@@ -772,6 +776,12 @@ class MaterializationWorker {
     });
   }
 
+  // Propagates bounded dynamism annotations from one traversal to others
+  // when one traversal's output is bounded dynamic and is another traversal's
+  // input.
+  absl::Status PropagateBoundedDynamism(absl::Span<Traversal> traversals,
+                                        mlir::MLIRContext& mlir_context);
+
   std::thread materialize_thread_;
   std::thread execute_thread_;
 
@@ -788,24 +798,22 @@ MaterializationWorker& GetMaterializationWorker() {
   return *worker;
 }
 
-absl::Status PropagateBoundedDynamism(absl::Span<Traversal> traversals) {
-  // Initialize context outside of loop to avoid the cost of reinitializing
-  // dialects used in each iteration.
-  std::unique_ptr<mlir::MLIRContext> context;
+absl::Status MaterializationWorker::PropagateBoundedDynamism(
+    absl::Span<Traversal> traversals, mlir::MLIRContext& mlir_context) {
   for (auto& traversal : traversals) {
     if (!traversal.IsBoundedDynamic()) {
       continue;
     }
-    if (!context) {
-      context = MakeMlirContext();
-    }
     ABSL_VLOG(1) << "[PropagateBoundedDynamism] Traversal: "
                  << traversal.DebugString();
-    TT_ASSIGN_OR_RETURN(
-        std::vector<DeviceRefDimensions> output_dimensions,
-        GetTraversalOutputDimensions(*context, traversal.GetPythonContext(),
-                                     traversal.inputs(), traversal.outputs(),
-                                     traversal.execution_order()));
+    std::vector<DeviceRefDimensions> output_dimensions;
+    {
+      TT_ASSIGN_OR_RETURN(
+          output_dimensions,
+          GetTraversalOutputDimensions(
+              mlir_context, traversal.GetPythonContext(), traversal.inputs(),
+              traversal.outputs(), traversal.execution_order()));
+    }
     for (const auto& output_dimension : output_dimensions) {
       const DeviceBufferRef& ref = output_dimension.ref;
       const auto& dims = output_dimension.dims;
