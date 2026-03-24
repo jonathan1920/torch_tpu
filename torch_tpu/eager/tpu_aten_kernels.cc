@@ -123,6 +123,7 @@
 #include "torch_tpu/ops/set/set_aten_kernels.h"
 #include "torch_tpu/ops/sigmoid/sigmoid_aten_kernels.h"
 #include "torch_tpu/ops/softmax/softmax_aten_kernels.h"
+#include "torch_tpu/ops/softplus/softplus_aten_kernels.h"
 #include "torch_tpu/ops/sort/sort_aten_kernels.h"
 #include "torch_tpu/ops/split_with_sizes_copy/split_with_sizes_copy_aten_kernels.h"
 #include "torch_tpu/ops/take/take_aten_kernels.h"
@@ -535,6 +536,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kSinhOut, AtenSinhOut);
   Impl(m, OpName::kSoftmaxBackwardDataOut, AtenSoftmaxBackwardDataOut);
   Impl(m, OpName::kSoftmaxOut, AtenSoftmaxOut);
+  Impl(m, OpName::kSoftplusOut, AtenSoftplusOut);
   Impl(m, OpName::kSplitWithSizesCopyOut, AtenSplitWithSizesCopyOut);
   Impl(m, OpName::kSubOut, AtenSubOut);
   Impl(m, OpName::kSumIntListOut, AtenSumIntListOut);

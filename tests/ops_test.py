@@ -480,6 +480,11 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 1e-3, "atol": 1e-2},
         torch.bfloat16: {"rtol": 1e-2, "atol": 5e-2},
     },
+    "nn.functional.softplus": {
+        torch.bfloat16: {"rtol": 7.8e-3, "atol": 3.1e-5},
+        torch.float16: {"rtol": 8.7e-4, "atol": 6.2e-5},
+        torch.float32: {"rtol": 7.4e-5, "atol": 1.5e-6},
+    },
     "nn.functional.upsample_bilinear": {
         torch.float32: {"rtol": 3.8e-06, "atol": 1e-5},
     },
@@ -2955,6 +2960,13 @@ class TestOps(TorchTpuTestBase):
         # should fail).
         # TODO: fix nn.functional.silu_() failing with complex dtypes.
         exclude_inplace_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
+    )
+
+  def test_nn_functional_softplus(self):
+    self.do_test_op(
+        "nn.functional.softplus",
+        # TODO: fix the error softplus_backward.grad_input is unimplemented.
+        check_grad=False,
     )
 
   def test_nn_functional_mse_loss(self):

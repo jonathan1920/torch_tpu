@@ -6473,6 +6473,92 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.ops.aten._weight_norm_interface(v, g, 0)
 
+  def test_softplus_unsupported_dtypes(self):
+    t_bool = torch.ones(2, 2, device=et.device(), dtype=torch.bool)
+    t_uint8 = torch.ones(2, 2, device=et.device(), dtype=torch.uint8)
+    t_int8 = torch.ones(2, 2, device=et.device(), dtype=torch.int8)
+    t_int16 = torch.ones(2, 2, device=et.device(), dtype=torch.int16)
+    t_int32 = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
+    t_int64 = torch.ones(2, 2, device=et.device(), dtype=torch.int64)
+    t_complex64 = torch.ones(2, 2, device=et.device(), dtype=torch.complex64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "softplus(): expected the input dtype to be floating-point,"
+            " got bool"
+        ),
+        cpu="\"softplus_cpu\" not implemented for 'Bool'",
+        message_reviewed_by="wan",
+    ):
+      torch.nn.functional.softplus(t_bool)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "softplus(): expected the input dtype to be floating-point,"
+            " got uint8"
+        ),
+        cpu="\"softplus_cpu\" not implemented for 'Byte'",
+        message_reviewed_by="wan",
+    ):
+      torch.nn.functional.softplus(t_uint8)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "softplus(): expected the input dtype to be floating-point,"
+            " got int8"
+        ),
+        cpu="\"softplus_cpu\" not implemented for 'Char'",
+        message_reviewed_by="wan",
+    ):
+      torch.nn.functional.softplus(t_int8)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "softplus(): expected the input dtype to be floating-point,"
+            " got int16"
+        ),
+        cpu="\"softplus_cpu\" not implemented for 'Short'",
+        message_reviewed_by="wan",
+    ):
+      torch.nn.functional.softplus(t_int16)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "softplus(): expected the input dtype to be floating-point,"
+            " got int32"
+        ),
+        cpu="\"softplus_cpu\" not implemented for 'Int'",
+        message_reviewed_by="wan",
+    ):
+      torch.nn.functional.softplus(t_int32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "softplus(): expected the input dtype to be floating-point,"
+            " got int64"
+        ),
+        cpu="\"softplus_cpu\" not implemented for 'Long'",
+        message_reviewed_by="wan",
+    ):
+      torch.nn.functional.softplus(t_int64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "softplus(): expected the input dtype to be floating-point,"
+            " got complex64"
+        ),
+        cpu="\"softplus_cpu\" not implemented for 'ComplexFloat'",
+        message_reviewed_by="wan",
+    ):
+      torch.nn.functional.softplus(t_complex64)
+
 
 if __name__ == "__main__":
   absltest.main()
