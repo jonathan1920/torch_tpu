@@ -71,12 +71,16 @@ namespace internal {
       R"(\bc10::ScalarType\b)");
   static const absl::NoDestructor<std::regex> kOptionalArrayRefRegex(
       R"(\bc10::OptionalArrayRef<int64_t>)");
+  static const absl::NoDestructor<std::regex> kStringViewRegex(
+      R"(\bc10::string_view\b)");
   std::string type_name_str = std::regex_replace(
       std::string(type_name), *kOptionalRegex, "std::optional");
   type_name_str =
       std::regex_replace(type_name_str, *kScalarTypeRegex, "at::ScalarType");
   type_name_str = std::regex_replace(type_name_str, *kOptionalArrayRefRegex,
                                      "at::OptionalIntArrayRef");
+  type_name_str =
+      std::regex_replace(type_name_str, *kStringViewRegex, "std::string_view");
   return type_name_str;
 }
 

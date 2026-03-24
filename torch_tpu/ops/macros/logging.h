@@ -222,16 +222,27 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
     ABSL_CHECK_EQ(  // CRASH_OK
         normalized_arg_type_in_func_sig, "at::TensorList")
         << message();
-  } else if constexpr (std::is_same_v<T, std::optional<c10::ScalarType>>) {
+  } else if constexpr (std::is_same_v<T, std::optional<at::ScalarType>>) {
     ABSL_CHECK_EQ(  // CRASH_OK
         normalized_arg_type_in_func_sig, "std::optional<at::ScalarType>")
         << message();
-    // TODO(wan): enforce the type string match for the types below.
   } else if constexpr (std::is_same_v<T, std::string_view>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "std::string_view")
+        << message();
   } else if constexpr (std::is_same_v<T, std::optional<std::string_view>>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "std::optional<std::string_view>")
+        << message();
   } else if constexpr (std::is_same_v<T, std::optional<at::Scalar>>) {
-  } else if constexpr (std::is_same_v<T, std::optional<at::ScalarType>>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "std::optional<at::Scalar>")
+        << message();
   } else if constexpr (std::is_same_v<T, at::ScalarType>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "at::ScalarType")
+        << message();
+    // TODO(wan): enforce the type string match for the types below.
   } else if constexpr (std::is_same_v<T, at::IntArrayRef>) {
   } else if constexpr (std::is_same_v<T, bool>) {
   } else if constexpr (std::is_same_v<T, double>) {
