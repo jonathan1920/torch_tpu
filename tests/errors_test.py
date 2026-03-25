@@ -3128,6 +3128,70 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
           t, t, approximate="invalid", grad_input=grad_input
       )
 
+  def test_glu_unsupported_input_dtype(self):
+    t = torch.ones(2, 4, device=et.device(), dtype=torch.int32)
+    out = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="glu(): expected the self dtype to be floating point, got int32",
+        cpu="\"glu_cpu\" not implemented for 'Int'",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.glu.out(t, dim=1, out=out)
+
+  def test_glu_unsupported_out_dtype(self):
+    t = torch.ones(2, 4, device=et.device(), dtype=torch.float32)
+    out = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="glu(): expected the out dtype to be floating point, got int32",
+        cpu="result type Float can't be cast to the desired output type Int",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.glu.out(t, dim=1, out=out)
+
+  def test_glu_invalid_rank(self):
+    t = torch.tensor(0.0, device=et.device(), dtype=torch.float32)
+    out = torch.tensor(0.0, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "glu(): expected input tensor to have at least 1 dimension, got 0"
+            " dimensions"
+        ),
+        cpu="glu does not support 0-dimensional tensors",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.glu.out(t, dim=0, out=out)
+
+  def test_glu_invalid_dim(self):
+    t = torch.ones(2, 4, device=et.device(), dtype=torch.float32)
+    out = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        IndexError,
+        tpu=(
+            "glu(): Dimension out of range (expected to be in range of [-2, 1],"
+            " but got 2)"
+        ),
+        cpu=(
+            "Dimension out of range (expected to be in range of [-2, 1],"
+            " but got 2)"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.glu.out(t, dim=2, out=out)
+
+  def test_glu_invalid_dim_size(self):
+    t = torch.ones(2, 5, device=et.device(), dtype=torch.float32)
+    out = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="glu(): expected the size of dimension 1 to be even, got 5",
+        cpu="Halving dimension must be even, but dimension 1 is size 5",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.glu.out(t, dim=1, out=out)
+
   def test_group_norm_backward_grad_out_numel_mismatch(self):
     with et.assert_raises_message(
         RuntimeError,

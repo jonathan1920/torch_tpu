@@ -439,6 +439,11 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float32: {"rtol": 1e-4, "atol": 1e-4},
         torch.float16: {"rtol": 1e-4, "atol": 1e-2},
     },
+    "nn.functional.glu": {
+        torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
+        torch.float16: {"rtol": 1e-3, "atol": 1e-3},
+        torch.float32: {"rtol": 1e-5, "atol": 1e-5},
+    },
     "nn.functional.grid_sample": {
         torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
         torch.float16: {"rtol": 1e-2, "atol": 1e-2},
@@ -2969,6 +2974,13 @@ class TestOps(TorchTpuTestBase):
         # TODO: fix nn.functional.gelu() failing with float64 input and nan
         # output.
         exclude_dtypes=COMPLEX_DTYPES + (torch.float64,),
+    )
+
+  def test_nn_functional_glu(self):
+    self.do_test_op(
+        "nn.functional.glu",
+        # TODO: fix the error glu_backward is unimplemented.
+        check_grad=False,
     )
 
   def test_nn_functional_hardsigmoid(self):

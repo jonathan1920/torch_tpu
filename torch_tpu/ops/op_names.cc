@@ -604,6 +604,8 @@ std::string_view ToString(OpName op_name) {
       return "gelu.out";
     case OpName::kGetDimensionSize:
       return "get_dimension_size";
+    case OpName::kGluOut:
+      return "glu.out";
     case OpName::kGridSampler2d:
       return "grid_sampler_2d";
     case OpName::kGridSampler3d:

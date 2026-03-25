@@ -313,6 +313,7 @@ enum class OpName {
   kGeluBackwardGradInput,
   kGeluOut,
   kGetDimensionSize,
+  kGluOut,
   kGridSampler2d,
   kGridSampler3d,
   kGt,

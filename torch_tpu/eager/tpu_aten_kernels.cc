@@ -69,6 +69,7 @@
 #include "torch_tpu/ops/foreach_aten_kernels.h"
 #include "torch_tpu/ops/gather/gather_aten_kernels.h"
 #include "torch_tpu/ops/gelu/gelu_aten_kernels.h"
+#include "torch_tpu/ops/glu/glu_aten_kernels.h"
 #include "torch_tpu/ops/grid_sampler/grid_sampler_aten_kernels.h"
 #include "torch_tpu/ops/group_norm/group_norm_aten_kernels.h"
 #include "torch_tpu/ops/hardsigmoid/hardsigmoid_aten_kernels.h"
@@ -390,6 +391,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kGatherOut, AtenGatherOut);
   Impl(m, OpName::kGeluBackwardGradInput, AtenGeluBackwardGradInput);
   Impl(m, OpName::kGeluOut, AtenGeluOut);
+  Impl(m, OpName::kGluOut, AtenGluOut);
   Impl(m, OpName::kHardsigmoidBackwardGradInput,
        AtenHardsigmoidBackwardGradInput);
   Impl(m, OpName::kHardsigmoidOut, AtenHardsigmoidOut);
