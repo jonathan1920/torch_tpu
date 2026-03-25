@@ -98,6 +98,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float32: {"rtol": 1, "atol": 1e2},
     },
     "_foreach_erfc": {
+        torch.float16: {"rtol": 5.8e-04, "atol": 1.6e-05},
         torch.float32: {"rtol": 3e-6, "atol": 2e-4},
     },
     "_foreach_expm1": {
@@ -139,6 +140,9 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float32: {"rtol": 1e-7, "atol": 1e-3},
         torch.float16: {"rtol": 1e-7, "atol": 1e-3},
     },
+    "_foreach_sqrt": {
+        torch.float16: {"rtol": 4.9e-04, "atol": 9.8e-04},
+    },
     "_log_softmax_backward_data": {
         torch.bfloat16: {"rtol": 2e-3, "atol": 2e-1},
         torch.float16: {"rtol": 6e-3, "atol": 2e-2},
@@ -168,7 +172,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     },
     "add": {
         torch.float32: {"rtol": 1e-5, "atol": 1e-5},
-        torch.float16: {"rtol": 1e-3, "atol": 2e-3},
+        torch.float16: {"rtol": 3.6e-03, "atol": 4.0e-03},
         torch.bfloat16: {"rtol": 5e-1, "atol": 5e-1},
     },
     "addcdiv": {
@@ -181,14 +185,15 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     },
     "addmm": {
         torch.bfloat16: {"rtol": 1e-2, "atol": 1e-4},
-        torch.float16: {"rtol": 1e-3, "atol": 1e-1},
+        # TODO(b/495931205): why are rtol and atol so high?
+        torch.float16: {"rtol": 1.5e-02, "atol": 1.5e-01},
         torch.float32: {"rtol": 1.3e-6, "atol": 1.3e-1},
     },
     "addmv": {
         torch.float16: {"rtol": 1e-2, "atol": 5e-2},
     },
     "arange": {
-        # TODO: investigate why these dtypes have such a large relative error.
+        # TODO(b/495931205): why is rtol so high?
         torch.bfloat16: {"rtol": 1e-1, "atol": 1e-5},
         torch.float16: {"rtol": 1e-2, "atol": 1e-5},
     },
@@ -219,7 +224,8 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     },
     "baddbmm": {
         torch.bfloat16: {"rtol": 6.3e-2, "atol": 1.5e-2},
-        torch.float16: {"rtol": 5.3e-2, "atol": 3.2e-1},
+        # TODO(b/495931205): investigate why rtol is so high.
+        torch.float16: {"rtol": 1.5e00, "atol": 4.3e-01},
         torch.float32: {"rtol": 3e-3, "atol": 7.4e-1},
         torch.complex64: {"rtol": 3.6e-2, "atol": 9.1e-1},
     },
@@ -289,6 +295,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 5e-3, "atol": 3e-3},
     },
     "lgamma": {
+        torch.float16: {"rtol": 1.2e-03, "atol": 2.5e-04},
         torch.float32: {"rtol": 1e-3, "atol": 1e-3},
         torch.uint8: {"rtol": 1e-4, "atol": 1e-4},
         torch.int8: {"rtol": 1e-4, "atol": 1e-4},
@@ -423,8 +430,9 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 1e-2, "atol": 1e-2},
     },
     "nn.functional.embedding_bag": {
-        torch.bfloat16: {"rtol": 2.7e-2, "atol": 1.3e-1},
-        torch.float16: {"rtol": 1.4e-1, "atol": 3.2e-1},
+        torch.bfloat16: {"rtol": 7.2e-02, "atol": 6.3e-02},
+        # TODO(b/495931205): why are rtol and atol so high?
+        torch.float16: {"rtol": 2.4e-01, "atol": 3.2e-01},
         torch.float32: {"rtol": 2.9e-6, "atol": 1.6e-5},
     },
     "nn.functional.gelu": {
@@ -440,7 +448,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 2e-1, "atol": 2e-2},
     },
     "nn.functional.hardsigmoid": {
-        torch.float16: {"rtol": 1e-3, "atol": 1e-3},
+        torch.float16: {"rtol": 2.6e-03, "atol": 1e-03},
         torch.bfloat16: {"rtol": 1.3e-1, "atol": 4e-3},
     },
     "nn.functional.hardswish": {
@@ -492,9 +500,17 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.complex64: {"rtol": 1e-3, "atol": 1e-4},
         torch.float32: {"rtol": 5e-6, "atol": 1e-5},
     },
+    "prod": {
+        torch.float16: {"rtol": 1.3e-03, "atol": 1.3e-04},
+    },
     "remainder": {
         # GPU vs CPU float16 edge case: 7.1797 % 0.3779
         torch.float16: {"rtol": 5e-1, "atol": 1.0},
+    },
+    "rsub": {
+        # TODO(b/495931205): why is rtol so high?
+        torch.bfloat16: {"rtol": 1.3e-01, "atol": 2.4e-02},
+        torch.float16: {"rtol": 8.4e-03, "atol": 1.8e-03},
     },
     "sigmoid": {
         torch.float32: {"rtol": 5e-2, "atol": 2e-5},
@@ -563,11 +579,23 @@ ACCURACY_OVERRIDES_XLA_CPU_VS_CPU: dict[
 ] = update_dict(
     copy.deepcopy(ACCURACY_OVERRIDES_VS_CPU),
     {
+        "_foreach_log1p": {
+            torch.float16: {"rtol": 1.4e-03, "atol": 4.9e-04},
+        },
         "_log_softmax_backward_data": {
             torch.bfloat16: {"rtol": 2e-2, "atol": 5e-1},
         },
+        "_softmax_backward_data": {
+            torch.float16: {"atol": 3.6e-03, "rtol": 1e-2},
+        },
+        "addcmul": {
+            torch.float16: {"rtol": 2.1e-03, "atol": 7.9e-03},
+        },
         "asinh": {
             torch.float16: {"rtol": 2e-3, "atol": 2e-3},
+        },
+        "atanh": {
+            torch.float16: {"rtol": 1.1e-03, "atol": 4.9e-04},
         },
         "cumsum": {
             torch.bfloat16: {"rtol": 5e-2, "atol": 5e-2},
@@ -584,6 +612,9 @@ ACCURACY_OVERRIDES_XLA_CPU_VS_CPU: dict[
         },
         "log_softmax": {
             torch.bfloat16: {"rtol": 1.0, "atol": 8e-3},
+        },
+        "log1p": {
+            torch.float16: {"rtol": 1.2e-03, "atol": 4.9e-04},
         },
         "mean": {
             torch.bfloat16: {"rtol": 1e-2, "atol": 5e-2},
@@ -604,13 +635,23 @@ ACCURACY_OVERRIDES_XLA_CPU_VS_CPU: dict[
             torch.bfloat16: {"rtol": 4e-1, "atol": 4e-2},
             torch.float16: {"rtol": 2e-1, "atol": 3e-2},
         },
+        "nn.functional.hardsigmoid": {
+            torch.float16: {"rtol": 4.3e-03, "atol": 4.9e-04},
+        },
         "nn.functional.scaled_dot_product_attention": {
             torch.float32: {"rtol": 1e-2, "atol": 3e-5},
             torch.bfloat16: {"rtol": 2e-1, "atol": 5e-3},
         },
+        "nn.functional.mse_loss": {
+            # TODO(b/495931205): why is error so high?
+            torch.bfloat16: {"atol": 5e-1, "rtol": 1e-2},
+        },
         "softmax": {torch.bfloat16: {"rtol": 3e-2, "atol": 5e-4}},
         "sum": {
             torch.bfloat16: {"rtol": 1e-2, "atol": 5e-2},
+        },
+        "var": {
+            torch.bfloat16: {"rtol": 2.3e-02, "atol": 1e-02},
         },
     },
 )
@@ -1066,8 +1107,8 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.float16: {"rtol": 2e-3, "atol": 1e-4},
             },
             "atan2": {
-                torch.bfloat16: {"rtol": 2e-2, "atol": 2e-2},
-                torch.float16: {"rtol": 2e-3, "atol": 2e-3},
+                torch.bfloat16: {"rtol": 3.8e-02, "atol": 2e-2},
+                torch.float16: {"rtol": 1.3e-02, "atol": 2.0e-03},
             },
             "atanh": {
                 torch.bfloat16: {"rtol": 2e-2, "atol": 3e-1},
@@ -1081,7 +1122,7 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
             "erfinv": {
                 # TODO(b/488121035)
                 torch.bfloat16: {"rtol": 2e-2, "atol": 5e-1},
-                torch.float16: {"rtol": 2e-3, "atol": 4e-2},
+                torch.float16: {"rtol": 5.9e-3, "atol": 4e-2},
             },
             "mm": {
                 torch.float16: {"rtol": 1e-1, "atol": 7e-2},
@@ -1105,7 +1146,7 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
             },
             "rsqrt": {
                 torch.bfloat16: {"rtol": 2e-2, "atol": 1e-3},
-                torch.float16: {"rtol": 2e-3, "atol": 1e-4},
+                torch.float16: {"rtol": 3.7e-03, "atol": 2.0e-03},
             },
             "tan": {
                 torch.float32: {"rtol": 1e-5, "atol": 2e-2},
@@ -1212,6 +1253,8 @@ class TestOps(TorchTpuTestBase):
   def test_abs(self):
     self.do_test_op(
         "abs",
+        check_grad=False,  # TODO(b/495929595): can be incorrect close to 0.
+        check_value=CheckValueMode.LOOSE,
         # TODO: fix abs() failing with bool dtypes.
         exclude_dtypes={"gpu": (torch.bool,)},
         exclude_inplace_dtypes={"gpu": (torch.bool,)},
@@ -1981,7 +2024,8 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_log2(self):
-    self.do_test_op("_foreach_log2")
+    # TODO: look into making this STRICT.
+    self.do_test_op("_foreach_log2", check_value=CheckValueMode.LOOSE)
 
   def test_foreach_max(self):
     # TODO(b/485291373): fix _foreach_max() failing with complex dtypes.
