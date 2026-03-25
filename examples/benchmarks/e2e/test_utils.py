@@ -20,6 +20,13 @@ from absl.testing import parameterized
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import performance_utils
 
+# CUDA only has EAGER and COMPILED run modes. Other run modes are applicable to
+# TPU only.
+CUDA_RUN_MODES = (
+    benchmark_utils.RunMode.EAGER,
+    benchmark_utils.RunMode.COMPILED,
+)
+
 
 class BenchmarkTest(parameterized.TestCase):
   """Tests for end-to-end performance benchmarks."""
@@ -51,6 +58,19 @@ class BenchmarkTest(parameterized.TestCase):
           f"Platform {benchmark_utils.PLATFORM.value} not in"
           f" {config.supported_platforms}"
       )
+    if (
+        platform
+        in (
+            benchmark_utils.Platform.B200_8,
+            benchmark_utils.Platform.B200_4,
+            benchmark_utils.Platform.B200_1,
+        )
+        and config.run_mode not in CUDA_RUN_MODES
+    ):
+      self.skipTest(
+          f"Run mode {config.run_mode} not applicable to platform {platform}"
+      )
+
     performance_utils.run_benchmark(
         config=config,
         test_method_name=self._testMethodName,
