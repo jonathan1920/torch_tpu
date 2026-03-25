@@ -213,7 +213,6 @@ torch_tpu_py_test(
     args = ["--device=tpu"],
     linking_mode = "static",
     main = "llama3_2_1b_training_test.py",
-    nopresubmit = "slow example",
     notap = "slow example",
     tags = [
         "cpu:4",  # Matches the CUDA version of the test for a fair comparison.

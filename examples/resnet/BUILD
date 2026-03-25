@@ -68,7 +68,6 @@ torch_tpu_py_test(
     args = ["--device=tpu"],
     data = ["goldfish.jpg"],
     main = "resnet50_tv_test.py",
-    nopresubmit = "slow example",
     notap = "Test passes but we don't want to run it on TAP.",
     tags = [
         "requires-net:external",
@@ -140,7 +139,6 @@ torch_tpu_py_test(
     srcs = ["resnet50_tv_tool.py"],
     args = ["--device=tpu"],
     main = "resnet50_tv_tool.py",
-    nopresubmit = "tool",
     notap = "This is a tool, not a test.",
     tags = [
         "requires-net:external",
@@ -166,7 +164,6 @@ torch_tpu_py_test(
     args = ["--device=tpu"],
     linking_mode = "static",
     main = "resnet_hf_example.py",
-    nopresubmit = "slow example",
     notap = "slow example",
     tags = [
         "cpu:4",  # Matches the CUDA version of the test for a fair comparison.

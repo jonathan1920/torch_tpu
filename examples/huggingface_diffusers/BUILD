@@ -77,7 +77,6 @@ torch_tpu_py_test(
     args = ["--device=tpu"],
     data = glob(["model_configs/**"]),
     main = "sdxl_test.py",
-    nopresubmit = "slow test",
     notap = "Fails - missing op upsample_nearest2d.out.",
     tags = [
         "requires-accel-hbm",

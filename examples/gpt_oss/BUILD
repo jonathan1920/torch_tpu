@@ -22,7 +22,6 @@ package(
 torch_tpu_py_test(
     name = "gpt_oss_20b_hf_pipe_example",
     srcs = ["gpt_oss_20b_hf_pipe_example.py"],
-    nopresubmit = "slow example",
     notap = "the test is flaky",
     tags = [
         "cpu:4",

@@ -222,7 +222,6 @@ torch_tpu_py_test(
     ],
     linking_mode = "static",
     main = "model_coverage_hf_test.py",
-    nopresubmit = "long Forge queue",
     notap = "For Guitar only.",
     shard_count = 12,
     tags = [

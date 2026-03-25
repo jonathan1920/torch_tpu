@@ -132,6 +132,9 @@ def _check_and_adjust_test_tags(name, size, timeout, notap, nopresubmit, nolocal
                  "should be skipped on TAP.")
         tags.append("notap")  # NOTAP_OK=for implementing notap logic
 
+        if nopresubmit != None:
+            fail("notap and nopresubmit cannot both be set.")
+
         # Skip in local runs as it's unreasonable to ask people to keep a notap test green.
         skip_local = True
     if (size == "enormous" or timeout == "eternal") and not notap:
