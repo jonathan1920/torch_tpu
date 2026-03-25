@@ -30,9 +30,10 @@ namespace torch_tpu {
 namespace pjrt {
 
 absl::StatusOr<absl_nonnull std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
-    const std::string& device_type) {
+    const std::string& device_type, int64_t tpu_premapped_buffer_size) {
   if (device_type == "tpu") {
-    return xla::GetCApiClient("tpu");
+    return xla::GetCApiClient(
+        "tpu", {{"premapped_buffer_size", tpu_premapped_buffer_size}});
   }
   if (device_type == "xla_cuda") {
     TT_ASSIGN_OR_RETURN(

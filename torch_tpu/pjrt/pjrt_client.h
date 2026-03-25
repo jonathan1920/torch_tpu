@@ -17,6 +17,7 @@
 #ifndef TORCH_TPU_pjrt_PJRT_CLIENT_H_
 #define TORCH_TPU_pjrt_PJRT_CLIENT_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -29,7 +30,7 @@ namespace pjrt {
 
 // Initializes and returns a PjRtClient based on the provided device type.
 absl::StatusOr<absl_nonnull std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
-    const std::string& device_type);
+    const std::string& device_type, int64_t tpu_premapped_buffer_size);
 
 }  // namespace pjrt
 }  // namespace torch_tpu
