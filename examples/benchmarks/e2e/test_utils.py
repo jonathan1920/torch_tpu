@@ -14,6 +14,7 @@
 
 """Utility functions for benchmarks."""
 
+import dataclasses
 from typing import Any, Sequence
 
 from absl.testing import parameterized
@@ -77,6 +78,49 @@ class BenchmarkTest(parameterized.TestCase):
         benchmark_name=benchmark_name,
         microbenchmark_name=microbenchmark_name,
     )
+
+
+def get_microbenchmark_name(config_dataclass) -> str:
+  """Returns a string representation of the dataclass suitable for a test name."""
+  config_dict = dataclasses.asdict(config_dataclass)
+  name_parts = []
+  for k, v in config_dict.items():
+    if k == "dtype":
+      v = str(v).replace("torch.", "")
+    elif isinstance(v, (tuple, list)):
+      v = "x".join(map(str, v))
+    name_parts.append(f"{k}_{v}")
+  return "_".join(name_parts)
+
+
+def generate_layer_test_configs(
+    run_modes: Sequence[Any],
+    is_trainings: Sequence[Any],
+    layer_configs_list: Sequence[Any],
+):
+  """Generates layer test configs for parameterized tests.
+
+  Args:
+    run_modes: The run modes to generate test parameters for.
+    is_trainings: The training modes to generate test parameters for.
+    layer_configs_list: The layer configs to generate test parameters for.
+
+  Yields:
+    A dictionary containing the test parameters.
+  """
+  for is_training in is_trainings:
+    for run_mode in run_modes:
+      for layer_config in layer_configs_list:
+        train_str = "train" if is_training else "eval"
+        microbenchmark_name = get_microbenchmark_name(layer_config)
+        testcase_name = f"{train_str}_{run_mode.value}_{microbenchmark_name}"
+
+        yield dict(
+            testcase_name=testcase_name,
+            run_mode=run_mode,
+            is_training=is_training,
+            layer_config=layer_config,
+        )
 
 
 def generate_run_mode_and_train_configs(
