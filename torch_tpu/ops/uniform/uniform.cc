@@ -38,7 +38,6 @@ namespace stablehlo = mlir::stablehlo;
 // represent 1.
 absl::StatusOr<mlir::MlirOp> BitsToUniform(mlir::MlirOp random_bits,
                                            mlir::MlirOp from, mlir::MlirOp to) {
-  mlir::RankedTensorType random_bits_type = GetTensorTypeOrDie(random_bits);
   auto& builder = random_bits.getBuilder();
   auto& op_builder = builder.getOpBuilder();
   // We will create a f64, f32 or f16 depending on the bit width of random bits,
@@ -47,43 +46,42 @@ absl::StatusOr<mlir::MlirOp> BitsToUniform(mlir::MlirOp random_bits,
   mlir::MlirOp set_exp_to_bias_mask;
   mlir::RankedTensorType random_bits_as_float_type;
   mlir::RankedTensorType from_type = GetTensorTypeOrDie(from);
-  switch (random_bits_type.getElementType().getIntOrFloatBitWidth()) {
-    case 64:
-      clear_exponent_mask =
-          MakeConstantLike(random_bits, 0x000F'FFFF'FFFF'FFFFUL);
-      set_exp_to_bias_mask =
-          MakeConstantLike(random_bits, 0x3FF0'0000'0000'0000UL);
-      random_bits_as_float_type = from_type.clone(op_builder.getF64Type());
-      break;
-    case 32:
-      clear_exponent_mask = MakeConstantLike(random_bits, 0x007F'FFFFUL);
-      set_exp_to_bias_mask = MakeConstantLike(random_bits, 0x3F80'0000UL);
-      random_bits_as_float_type = from_type.clone(op_builder.getF32Type());
-      break;
-    case 16:
-      clear_exponent_mask = MakeConstantLike(random_bits, 0x03FFU);
-      set_exp_to_bias_mask = MakeConstantLike(random_bits, 0x3C00U);
-      random_bits_as_float_type = from_type.clone(op_builder.getF16Type());
-      break;
-    default:
-      return TT_ERROR(error::kInvalidArgument)
-             << "unsupported random bits type width: "
-             << random_bits_type.getElementType().getIntOrFloatBitWidth();
+  // Dispatch on element type rather than bit width (bf16 and f16 are both
+  // 16-bit but have different layouts).
+  auto from_elem_type = from_type.getElementType();
+  if (from_elem_type.isF64()) {
+    clear_exponent_mask =
+        MakeConstantLike(random_bits, 0x000F'FFFF'FFFF'FFFFUL);
+    set_exp_to_bias_mask =
+        MakeConstantLike(random_bits, 0x3FF0'0000'0000'0000UL);
+    random_bits_as_float_type = from_type.clone(op_builder.getF64Type());
+  } else if (from_elem_type.isF32()) {
+    // f32: 8 exp, 23 mantissa, bias=127
+    clear_exponent_mask = MakeConstantLike(random_bits, 0x007F'FFFFUL);
+    set_exp_to_bias_mask = MakeConstantLike(random_bits, 0x3F80'0000UL);
+    random_bits_as_float_type = from_type.clone(op_builder.getF32Type());
+  } else if (from_elem_type.isBF16()) {
+    // bf16: 8 exp, 7 mantissa, bias=127
+    clear_exponent_mask = MakeConstantLike(random_bits, 0x007FU);
+    set_exp_to_bias_mask = MakeConstantLike(random_bits, 0x3F80U);
+    random_bits_as_float_type = from_type.clone(op_builder.getBF16Type());
+  } else if (from_elem_type.isF16()) {
+    // f16: 5 exp, 10 mantissa, bias=15
+    clear_exponent_mask = MakeConstantLike(random_bits, 0x03FFU);
+    set_exp_to_bias_mask = MakeConstantLike(random_bits, 0x3C00U);
+    random_bits_as_float_type = from_type.clone(op_builder.getF16Type());
+  } else {
+    return TT_ERROR(error::kInvalidArgument)
+           << "unsupported float type for uniform";
   }
 
-  // float is 1 sign bit, k exponent bits, and n mantissa bits, exponent is
-  // interpreted as an unsigned integer minus a bias, so we make it zero by
-  // setting the exponent bits to the bias.
-  //   f64: k = 11, n = 52, bias = 1023 = 0x3FF
-  //        -> clear_exponent_mask = 0^12 1^52 = 0x000F'FFFF'FFFF'FFFF
-  //        -> set_exp_to_bias_mask = 0^2 1^10 0^52 = 0x3F80'0000'0000'0000
-  //   f32: k = 8, n = 23, bias = 127 = 0x7F
-  //        -> clear_exponent_mask = 0^9 1^23 = 0x007F'FFFF
-  //        -> set_exp_to_bias_mask = 0^2 1^7 0^23 = 0x3F80'0000
-  //   f16: k = 5, n = 10, bias = 15 = 0xF
-  //        -> clear_exponent_mask = 0^6 1^10 = 0x03FF
-  //        -> set_exp_to_bias_mask = 0^2 1^4 0^10 = 0x3C00
-  //
+  // Float is 1 sign bit, k exponent bits, and n mantissa bits. Exponent is
+  // an unsigned integer minus a bias; setting it to bias gives 1.0.
+  //   f64:  k=11, n=52, bias=1023 →
+  //   mask=0x000F'FFFF'FFFF'FFFF, 1.0=0x3FF0'0000'0000'0000 f32:  k=8,  n=23,
+  //   bias=127  → mask=0x007F'FFFF,           1.0=0x3F80'0000 bf16: k=8,  n=7,
+  //   bias=127  → mask=0x007F,                1.0=0x3F80 f16:  k=5,  n=10,
+  //   bias=15   → mask=0x03FF,                1.0=0x3C00
   mlir::MlirOp random_mantissa =
       stablehlo::And(random_bits, clear_exponent_mask);
 

@@ -2968,6 +2968,38 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         _, p = stats.normaltest(samples)
         self.assertGreater(p, 0.01)
 
+  @parameterized.named_parameters(
+      ("bfloat16", torch.bfloat16),
+      ("float16", torch.float16),
+      ("float32", torch.float32),
+  )
+  def test_randn_dtype(self, dtype: torch.dtype):
+    numel = 100_000
+    t = torch.randn(numel, dtype=dtype, device=api.tpu_device())
+    t_cpu = t.cpu().float()
+
+    num_nonfinite = (~torch.isfinite(t_cpu)).sum().item()
+    self.assertEqual(
+        num_nonfinite,
+        0,
+        f"randn {dtype}: {num_nonfinite}/{numel} non-finite values",
+    )
+
+    mean = t_cpu.mean().item()
+    std = t_cpu.std().item()
+    self.assertAlmostEqual(
+        mean,
+        0.0,
+        delta=0.05,
+        msg=f"randn {dtype} mean={mean}, expected ~0.0",
+    )
+    self.assertAlmostEqual(
+        std,
+        1.0,
+        delta=0.05,
+        msg=f"randn {dtype} std={std}, expected ~1.0",
+    )
+
   def test_embedding_vector_indices(self):
     """Tests that embedding works with a vector of indices."""
     with set_default_dtype(torch.float32):
