@@ -164,7 +164,8 @@ const at::Generator& DeviceGenerators::GetDefaultGenerator(
     idx = guard->getDevice().index();
   } else {
     TT_CHECK_THROW(idx >= 0 && idx < num_devices_, error::kFailedPrecondition)
-        << "The device_index is invalid.";
+        << "The device_index is invalid, expected an index between 0 and"
+        << num_devices_ - 1 << " got " << static_cast<int32_t>(idx);
   }
   c10::call_once(generator_init_flags_[idx], [&] {
     generators_[idx] = at::make_generator<DeviceGeneratorImpl>(idx);
@@ -183,7 +184,8 @@ at::Generator DeviceGenerators::CreateGenerator(c10::DeviceIndex idx) const {
     idx = guard->getDevice().index();
   }
   TT_CHECK_THROW(idx >= 0 && idx < num_devices_, error::kFailedPrecondition)
-      << "The device_index is invalid.";
+      << "The device_index is invalid, expected an index between 0 and"
+      << num_devices_ - 1 << " got " << static_cast<int32_t>(idx);
   return at::make_generator<DeviceGeneratorImpl>(idx);
 }
 

@@ -46,6 +46,7 @@ pytype_strict_library(
     deps = [
         ":_device_ops_backend",
         ":streams",
+        "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu",  # buildcleaner: keep
         "//torch_tpu/_internal/precision",
@@ -130,7 +131,9 @@ torch_tpu_cc_library(
         "//shims/pybind11",
         "//shims/torch",
         "//shims/torch:aten",
+        "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
         "//torch_tpu/common:compilation_cache",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/distributed/slicebuilder:discovery",
@@ -149,10 +152,16 @@ pybind_extension(
     common_lib_packages = [
         "torch_tpu/common",
     ],
+    py_deps = [
+        "//shims/torch:pytorch",
+    ],
     wrap_py_init = True,
     deps = [
         "//shims/torch",
         "//shims/torch:aten",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
         "//torch_tpu/common:compilation_cache",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/distributed/slicebuilder:discovery",

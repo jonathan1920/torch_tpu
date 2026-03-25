@@ -21,6 +21,7 @@ and runtime.
 import atexit
 from typing import Any, List
 
+from absl import logging
 import torch
 import torch_tpu._internal.precision as _precision_module
 from torch_tpu.api import _device_ops_backend
@@ -52,6 +53,43 @@ _AMP_SUPPORTED_DTYPES = (
     torch.uint8,
     # go/keep-sorted end
 )
+
+
+def _rng_validate_device_index(
+    device: int | str | torch.device, device_idx: int
+) -> None:
+  """Validates that the provided device is this process's TPU.
+
+  Args:
+    device: The device to validate. Can be an int (device index), "tpu", or a
+      `torch.device("tpu")` object.
+    device_idx: The index of the current process's TPU device.
+
+  Raises:
+    ValueError: If the device is not a TPU device or if the index does not
+      match the current device index.
+  """
+  provided_str, provided_idx = None, -1
+  if isinstance(device, str):
+    provided_str = device
+  elif isinstance(device, torch.device):
+    provided_str = device.type
+    if provided_idx is not None:
+      provided_idx = device.index
+  elif isinstance(device, int):
+    provided_idx = device
+  else:
+    raise TypeError(f"Got unrecognized device type, {device}")
+
+  if provided_str is not None and provided_str != "tpu":
+    raise ValueError(
+        f"RNG state can only be accessed on TPU device, got {provided_str}"
+    )
+  if provided_idx is not None and provided_idx != device_idx:
+    # TODO(b/496180326): allow cross-device RNG access.
+    logging.warning(
+        "Accessing RNG state of another process's TPU is not supported"
+    )
 
 
 class _DeviceModule:
@@ -118,6 +156,20 @@ class _DeviceModule:
   def manual_seed_all(cls, seed: int) -> None:
     """Sets the seed for generating random numbers on all devices."""
     _device_ops_backend.manual_seed_all(seed)
+
+  @classmethod
+  def get_rng_state(
+      cls, device: int | str | torch.device = "tpu"
+  ) -> torch.Tensor:
+    _rng_validate_device_index(device, cls.current_device())
+    return _device_ops_backend.get_rng_state(-1)
+
+  @classmethod
+  def set_rng_state(
+      cls, new_state: torch.Tensor, device: int | str | torch.device = "tpu"
+  ) -> None:
+    _rng_validate_device_index(device, cls.current_device())
+    _device_ops_backend.set_rng_state(new_state, -1)
 
   @classmethod
   def _init_runtime(

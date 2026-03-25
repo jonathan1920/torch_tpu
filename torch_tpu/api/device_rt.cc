@@ -18,6 +18,10 @@
 #include <string>
 
 #include "absl/time/time.h"
+#include "ATen/core/Generator.h"
+#include "c10/core/ScalarType.h"
+#include "c10/core/TensorImpl.h"
+#include "torch/csrc/utils/pybind.h"  // IWYU pragma: keep, needed for at::Tensor mapping
 #include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
@@ -34,7 +38,22 @@ namespace torch_tpu {
 
 namespace py = pybind11;
 
+namespace {
+void SetRngStatePy(at::Tensor state, int device_index) {
+  const at::Generator& gen = GetDefaultDeviceGenerator(device_index);
+  if (state.dtype() == at::kByte) {
+    state = state.view(at::kUInt64);
+  }
+  if (state.device() != gen.device()) {
+    state = state.to(gen.device());
+  }
+  TT_THROW_IF_ERROR(UpdateRngState(gen, state)).SetPrepend()
+      << "failed to set RNG state: ";
+}
+}  // namespace
+
 PYBIND11_MODULE(_device_ops_backend, m) {
+  py::module::import("torch");
   m.doc() =
       "PjRt backend utilities for PyTorch PrivateUse1 integration. "
       "Core ops are registered via C++ TORCH_LIBRARY_IMPL.";
@@ -116,6 +135,17 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       "manual_seed_all", [](uint64_t seed) { SetManualSeedAll(seed); },
       py::arg("seed"),
       "Manually set the seed for all generators (one per device).");
+  m.def(
+      "get_rng_state",
+      [](int device_index) -> at::Tensor {
+        TT_ASSIGN_OR_THROW(at::Tensor state,
+                           GetRngState(GetDefaultDeviceGenerator(device_index)),
+                           _.SetPrepend() << "failed to get RNG state: ");
+        return state.view(at::kByte);
+      },
+      py::arg("device_index"), "Get RNG state for the given device index.");
+  m.def("set_rng_state", &SetRngStatePy, py::arg("state"),
+        py::arg("device_index"), "Set RNG state for the given device index.");
 
   py::class_<CacheEntryStats>(m, "CacheEntryStats")
       .def_property_readonly(
