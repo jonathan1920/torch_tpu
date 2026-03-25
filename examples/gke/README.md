@@ -13,6 +13,7 @@ export ZONE_NAME=
 export PROJECT=
 export ARTIFACT_REGISTRY_URL=us-pkg.docker.dev/...
 export DOCKER_IMAGE=test-docker-image:latest
+export TPU_TYPE=
 ```
 
 ### Setup XPK
@@ -33,7 +34,7 @@ unique clusters per user.
 ```bash
 xpk cluster create \
   --cluster=${CLUSTER} \
-  --tpu-type=tpu7x-8 \
+  --tpu-type=${TPU_TYPE} \
   --num-slices=1 \
   --zone=${ZONE_NAME} \
   --project=${PROJECT} \
