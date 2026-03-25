@@ -86,7 +86,7 @@ torch_tpu_py_test(
         "--device=xla_cuda",
     ],
     main = "mingpt_example.py",
-    nopresubmit = "slow example",
+    notap = "slow example",
     tags = [
         "requires-gpu-sm60-only",
         "requires-net:external",
@@ -180,7 +180,7 @@ torch_tpu_py_test(
 #         "--native_device=cuda",
 #     ],
 #     main = "mingpt_example.py",
-#     nopresubmit = "slow example",
+#     notap = "slow example",
 #     tags = [
 #         "requires-gpu-sm60-only",
 #         "requires-net:external",

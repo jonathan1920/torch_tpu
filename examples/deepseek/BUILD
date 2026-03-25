@@ -68,7 +68,7 @@ torch_tpu_py_test(
     srcs = ["deepseek_decomposition_one_acc_test.py"],
     args = ["--acc=gpu"],
     main = "deepseek_decomposition_one_acc_test.py",
-    nopresubmit = "slow test",
+    notap = "slow test",
     tags = [
         "ignore_for_dep=third_party.torch_tpu.api",
         "requires-gpu-nvidia",

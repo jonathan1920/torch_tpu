@@ -92,6 +92,13 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+def _is_cuda_test(tags):
+    """Returns true if the test is a CUDA test."""
+    for tag in tags:
+        if tag.startswith("requires-gpu-"):
+            return True
+    return False
+
 def _check_and_adjust_test_tags(name, size, timeout, notap, nopresubmit, nolocal, tags):
     """Validates the test tags.
 
@@ -144,6 +151,13 @@ def _check_and_adjust_test_tags(name, size, timeout, notap, nopresubmit, nolocal
         if type(nopresubmit) != "string" or not nopresubmit:
             fail("nopresubmit must be a non-empty string documenting why the test " +
                  "should be skipped in presubmit.")
+
+        # We only have a presubmit build for CUDA tests. Therefore, skipping a CUDA test
+        # in presubmit means it won't run on TAP at all. To make this explicit, we don't
+        # allow nopresubmit for CUDA tests - they must use notap instead.
+        if _is_cuda_test(tags):
+            fail("CUDA tests must use notap instead of nopresubmit, as there's no postsubmit build for CUDA.")
+
         if "nofastbuild" not in tags:
             # This tag causes the test to be skipped in presubmit, as we only run
             # fastbuild tests in presubmit.

@@ -26,7 +26,6 @@ torch_tpu_py_test(
     args = ["--device=cpu"],
     data = glob(["model_configs/**"]),
     main = "sdxl_test.py",
-    nopresubmit = "slow test",
     notap = "Fails - missing op upsample_nearest2d.out.",
     tags = [
         "ignore_for_dep=third_party.torch_tpu.api",
@@ -53,7 +52,7 @@ torch_tpu_py_test(
     args = ["--device=cuda"],
     data = glob(["model_configs/**"]),
     main = "sdxl_test.py",
-    nopresubmit = "slow test",
+    notap = "slow test",
     tags = [
         "ignore_for_dep=third_party.torch_tpu.api",
         "requires-gpu-sm80",
@@ -104,7 +103,7 @@ torch_tpu_py_test(
     args = ["--device=cuda"],
     data = glob(["model_configs/**"]),
     main = "flux_1_schnell_test.py",
-    nopresubmit = "slow test",
+    notap = "slow test",
     tags = [
         "ignore_for_dep=third_party.torch_tpu.api",
         "requires-accel-hbm",

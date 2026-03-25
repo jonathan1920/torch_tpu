@@ -42,7 +42,6 @@ torch_tpu_py_test(
     args = ["--device=cuda"],
     data = ["goldfish.jpg"],
     main = "resnet50_tv_test.py",
-    nopresubmit = "slow example",
     notap = "This manual test validates that the code runs on cuda.",
     tags = [
         "requires-gpu-nvidia",
@@ -95,7 +94,6 @@ torch_tpu_py_test(
     srcs = ["resnet50_tv_tool.py"],
     args = ["--device=cpu"],
     main = "resnet50_tv_tool.py",
-    nopresubmit = "tool",
     notap = "This is a tool, not a test.",
     tags = [
         "requires-gpu-nvidia",
@@ -119,7 +117,6 @@ torch_tpu_py_test(
     srcs = ["resnet50_tv_tool.py"],
     args = ["--device=cuda"],
     main = "resnet50_tv_tool.py",
-    nopresubmit = "tool",
     notap = "This is a tool, not a test.",
     tags = [
         "requires-gpu-nvidia",
