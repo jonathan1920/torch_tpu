@@ -13,6 +13,7 @@
 # limitations under the License.
 
 load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
+load("@torch_tpu_deps//:dependencies.bzl", "WHEEL_REQUIRES")
 load("@torch_tpu_version//:version.bzl", "WHEEL_VERSION")
 load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
 load("//ci/wheel:pywrap_mapper.bzl", "remap_pywrap_binaries")
@@ -38,6 +39,12 @@ TORCH_REQ = select({
     ":use_local_torch": [],
     "//conditions:default": ["torch==2.10.0"],
 })
+
+FILTERED_REQUIRES = [req for req in WHEEL_REQUIRES if not req.startswith("torch")]
+
+# Check the value of FILTERED_REQUIRES locally by uncommenting the line below and running:
+# `bazel query //ci/wheel:torch_tpu_wheel`.
+print("FILTERED_REQUIRES: ", FILTERED_REQUIRES)
 
 pytype_strict_binary(
     name = "wheel_mapper_bin",
@@ -114,14 +121,7 @@ py_wheel(
     # HERMETIC Python set to 3.12
     python_requires = ">=3.12",
     python_tag = "cp312",
-    requires = [
-        "absl-py==2.3.1",
-        "frozendict==2.4.7",
-        "libtpu==0.0.38",
-        "numpy==2.3.1",
-        "portpicker",
-        "tensorboard==2.20.0",
-    ] + TORCH_REQ,
+    requires = FILTERED_REQUIRES + TORCH_REQ,
     strip_path_prefixes = ["ci/wheel/remapped_pywrap_binaries_pkg"],
     summary = "TPU/XLA support for PyTorch",
     tags = ["manual"],
