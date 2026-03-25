@@ -40,6 +40,7 @@ from torch._dynamo.utils import dynamo_timed
 from torch._inductor.fx_passes import post_grad
 from torch._logging import trace_structured
 from torch._logging._internal import trace_log
+from torch._subclasses.fake_tensor import unset_fake_temporarily
 from torch.fx.passes import graph_transform_observer
 from torch.utils import _pytree
 from torch_tpu._internal import export as torch_tpu_export
@@ -104,38 +105,6 @@ UNSET_GRAPH_HELPER_STR = (
     "FX/MLIR graph is not recorded by default. Turn on TPU backend debug mode"
     " to record it."
 )
-
-
-class _DisableFakeTensorMode:
-  """Context manager to temporarily exit FakeTensorMode.
-
-  AOT autograd will trace the model with FakeTensorMode enabled. This converts
-  all tensors to FakeTensors which do not have valid storage to avoid
-  computation.
-
-  TorchTPU tracing requires all tensors to have valid storage, so is not
-  compatible with FakeTensorMode. This applies to placeholder tensors as well,
-  fake-tensor will attempt to convert our placeholder tensors into FakeTensors
-  before continuing eager tracing.
-  """
-
-  def __init__(self):
-    self.fake_mode = None
-
-  def __enter__(self):
-    # Requires internal API, no public way to temporarily exit fake mode.
-    self.fake_mode = torch._guards.active_fake_mode()
-    if self.fake_mode and not self.fake_mode.enter_stack:
-      # In fake mode, but it is not actively enabled, do nothing.
-      self.fake_mode = None
-    if self.fake_mode:
-      logging.debug("[DisableFakeTensorMode] In fake mode, exiting to compile")
-      self.fake_mode.__exit__(None, None, None)
-
-  def __exit__(self, exc_type, exc_val, exc_tb):
-    if self.fake_mode:
-      logging.debug("[DisableFakeTensorMode] Reentering fake mode")
-      self.fake_mode.__enter__()
 
 
 class _TorchTpuCompiledExecutable:
@@ -334,8 +303,15 @@ class TpuBackend:
           expect_trace_id=True,
       )
 
-    # Exit fake mode to trace, see _DisableFakeTensorMode docstring for details.
-    with _DisableFakeTensorMode():
+    # AOT autograd will trace the model with FakeTensorMode enabled. This
+    # converts all tensors to FakeTensors which do not have valid storage to
+    # avoid computation.
+
+    # TorchTPU tracing requires all tensors to have valid storage, so is not
+    # compatible with FakeTensorMode. This applies to placeholder tensors as
+    # well, fake-tensor will attempt to convert our placeholder tensors into
+    # FakeTensors before continuing eager tracing.
+    with unset_fake_temporarily():
       # Convert example_inputs to placeholders. This is done to:
       # (1) Prevent the unintentional compilation of deferred operations.
       #     placeholders will error.
