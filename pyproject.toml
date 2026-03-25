@@ -22,13 +22,11 @@ license-files = ["LICENSE"]
 dependencies = [
     "torch==2.10.0+cpu",
     "numpy",
-    "scipy",
     "absl-py",
     "libtpu",
     "portpicker",
     "tensorboard",
     "frozendict",
-    "pillow",
 ]
 
 [project.optional-dependencies]
@@ -38,6 +36,11 @@ dev = [
     "expecttest",
     "jax >= 0.9.1",
     "transformers",
+]
+
+test = [
+    "pillow",
+    "scipy",
 ]
 
 benchmark = [
@@ -51,6 +54,7 @@ benchmark = [
 
 examples = [
     "datasets",
+    "pillow",
     "tqdm",
 ]
 
