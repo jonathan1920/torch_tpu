@@ -2229,6 +2229,15 @@ class TorchTpuVsCpuTestBase(TorchTpuTestBase):
     self.skip_unless_torch_tpu_vs_cpu()
 
 
+def _golden_file_prefix() -> str:
+  """Returns the prefix for the golden file name."""
+  return (
+      "ops_test_gpu_golden_compiled"
+      if _USE_COMPILED.value
+      else "ops_test_gpu_golden"
+  )
+
+
 def _save_golden_file() -> None:
   """Saves the golden data to the undeclared outputs directory on Forge.
 
@@ -2248,7 +2257,7 @@ def _save_golden_file() -> None:
   test_shard = _get_test_shard()
   golden_file = (
       os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR", "/tmp")
-      + f"/ops_test_gpu_golden{test_shard}.gz"
+      + f"/{_golden_file_prefix()}{test_shard}.gz"
   )
   print(
       f"Dumping the collected input/output pairs for each op to {golden_file}",
@@ -2303,7 +2312,7 @@ def _save_golden_file() -> None:
 
 def _load_golden_files() -> None:
   """Loads the checked in golden files into _GOLDEN_GPU_DATA."""
-  golden_file_pattern = "ops_test_gpu_golden*.gz"
+  golden_file_pattern = f"{_golden_file_prefix()}*.gz"
   golden_files = list(pathlib.Path(__file__).parent.glob(golden_file_pattern))
   if not golden_files:
     raise ValueError(
