@@ -25,6 +25,12 @@ namespace torch_tpu {
 at::Tensor& AtenSoftplusOut(const at::Tensor& self, const at::Scalar& beta,
                             const at::Scalar& threshold, at::Tensor& out);
 
+at::Tensor& AtenSoftplusBackwardGradInput(const at::Tensor& grad_output,
+                                          const at::Tensor& self,
+                                          const at::Scalar& beta,
+                                          const at::Scalar& threshold,
+                                          at::Tensor& grad_input);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_SOFTPLUS_SOFTPLUS_ATEN_KERNELS_H_

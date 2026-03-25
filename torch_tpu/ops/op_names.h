@@ -512,6 +512,7 @@ enum class OpName {
   kSlice,
   kSoftmaxBackwardDataOut,
   kSoftmaxOut,
+  kSoftplusBackwardGradInput,
   kSoftplusOut,
   kSortValuesStable,
   kSplitWithSizesCopyOut,

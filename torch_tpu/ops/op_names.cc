@@ -1002,6 +1002,8 @@ std::string_view ToString(OpName op_name) {
       return "_softmax_backward_data.out";
     case OpName::kSoftmaxOut:
       return "_softmax.out";
+    case OpName::kSoftplusBackwardGradInput:
+      return "softplus_backward.grad_input";
     case OpName::kSoftplusOut:
       return "softplus.out";
     case OpName::kSortValuesStable:

@@ -23,13 +23,18 @@
 #include "ATen/core/ATen_fwd.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/unary_aten_kernels.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 
@@ -59,6 +64,26 @@ absl::StatusOr<mlir::MlirOp> BuildSoftplusShlo(mlir::MlirOp input_op,
 MlirUnaryOpBuilder GetSoftplusFunctional(const at::Scalar& beta,
                                          const at::Scalar& threshold) {
   return std::bind(&BuildSoftplusShlo, std::placeholders::_1, beta, threshold);
+};
+
+absl::StatusOr<mlir::MlirOp> BuildSoftplusBackwardShlo(
+    mlir::MlirOp grad_output_op, mlir::MlirOp input_op, const at::Scalar& beta,
+    const at::Scalar& threshold) {
+  auto beta_op = MakeConstantLike(grad_output_op, beta.toDouble());
+  auto threshold_op = MakeConstantLike(grad_output_op, threshold.toDouble());
+
+  // grad_output * z / (z + 1.0), where z = (x * beta).exp()
+  // Here we use StableHLO.LogisticOp, where Logistic(z) = z / (z + 1.0)
+  auto beta_x = mlir::stablehlo::Mul(input_op, beta_op);
+  auto sigmoid_beta_x = mlir::stablehlo::Logistic(beta_x);
+  auto grad_scaled = mlir::stablehlo::Mul(grad_output_op, sigmoid_beta_x);
+
+  // Threshold judgment: beta * x > threshold
+  // If the condition is met, reverts to the linear function
+  mlir::MlirOp condition = mlir::stablehlo::Compare(
+      beta_x, threshold_op, mlir::stablehlo::ComparisonDirection::GT);
+
+  return mlir::stablehlo::Select(condition, grad_output_op, grad_scaled);
 }
 }  // namespace
 
@@ -75,5 +100,38 @@ at::Tensor& AtenSoftplusOut(const at::Tensor& self, const at::Scalar& beta,
         {.op_param_cache_keys = std::move(param_keys)}));
     return out;
   });
+}
+
+at::Tensor& AtenSoftplusBackwardGradInput(const at::Tensor& grad_output,
+                                          const at::Tensor& self,
+                                          const at::Scalar& beta,
+                                          const at::Scalar& threshold,
+                                          at::Tensor& grad_input) {
+  TT_KERNEL(
+      OpName::kSoftplusBackwardGradInput, param_keys,
+      (grad_output, self, beta, threshold, grad_input), {
+        TT_ASSIGN_OR_THROW(
+            mlir::ElementType out_dtype,
+            ConvertTo<mlir::ElementType>(grad_input.scalar_type()));
+
+        auto op_builder = [beta,
+                           threshold](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+            -> absl::StatusOr<mlir::MlirOp> {
+          return BuildSoftplusBackwardShlo(inputs[0], inputs[1], beta,
+                                           threshold);
+        };
+
+        TT_ASSIGN_OR_THROW(
+            auto result_buf,
+            DispatchOp<2>(OpName::kSoftplusBackwardGradInput,
+                          std::move(op_builder), {grad_output, self},
+                          {.out_dtype = out_dtype,
+                           .out_dims = CopyIntVector(grad_input.sizes()),
+                           .op_param_cache_keys = std::move(param_keys)}));
+
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(result_buf), grad_input));
+        return grad_input;
+      });
 }
 }  // namespace torch_tpu

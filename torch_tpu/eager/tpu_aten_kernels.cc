@@ -538,6 +538,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kSinhOut, AtenSinhOut);
   Impl(m, OpName::kSoftmaxBackwardDataOut, AtenSoftmaxBackwardDataOut);
   Impl(m, OpName::kSoftmaxOut, AtenSoftmaxOut);
+  Impl(m, OpName::kSoftplusBackwardGradInput, AtenSoftplusBackwardGradInput);
   Impl(m, OpName::kSoftplusOut, AtenSoftplusOut);
   Impl(m, OpName::kSplitWithSizesCopyOut, AtenSplitWithSizesCopyOut);
   Impl(m, OpName::kSubOut, AtenSubOut);
