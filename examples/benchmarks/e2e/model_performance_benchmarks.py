@@ -120,6 +120,32 @@ class BenchmarkTest(test_utils.BenchmarkTest):
           benchmark_utils.RunMode.EAGER,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
           benchmark_utils.RunMode.DEFER_NEVER,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_gemma_3_270m_forward(self, run_mode):
+    """Tests the forward pass of Gemma-3-270m."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="google/gemma-3-270m",
+            sequence_length=512,
+            batch_size=1,
+        ),
+    )
+    self.run_performance_benchmark_test(config, _HF_GEMMA_3_270M_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.DEFER_NEVER,
       ])
   )
   def test_distributed_meta_llama_3_2_8b_forward(self, run_mode):
