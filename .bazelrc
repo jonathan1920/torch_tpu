@@ -201,11 +201,15 @@ common:ci_cpu --build_tag_filters=-requires-gpu-sm80,-requires-gpu-sm80-only,-re
 common:ci_cpu --test_tag_filters=oss_ready_cpu,-notap,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only,-requires-gpu-nvidia
 
 # Settings specific to TPU CI runs.
-common:ci_tpu --config=ci
-common:ci_tpu --build_tag_filters=requires-tpu-v5lite,requires-tpu-v5lite:8
+common:ci_tpu_base --config=ci
+common:ci_tpu_base --build_tag_filters=requires-tpu-v5lite,requires-tpu-v5lite:8
+common:ci_tpu_base --spawn_strategy=standalone,local
+
+common:ci_tpu --config=ci_tpu_base
 # We exclude tests tagged "notap" as it indicates that the test should be skipped from CI.
 common:ci_tpu --test_tag_filters=oss_ready_tpu,-notap
-common:ci_tpu --spawn_strategy=standalone,local
+
+common:ci_tpu_nightly --config=ci_tpu_base
 
 # Setting TPU support true for profiler trace.
 build --define=with_tpu_support=true

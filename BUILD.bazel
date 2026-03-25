@@ -61,6 +61,7 @@ genrule(
     testonly = True,
     srcs = [
         "//tests/distributed:distributed_utils",
+        "//tests:dynamism_test_utils",
         "//tests:error_testing",
         "//tests:op_testing",
         "//tests/compile:stablehlo_compile_testing",
