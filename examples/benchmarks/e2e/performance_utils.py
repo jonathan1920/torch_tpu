@@ -212,11 +212,20 @@ def _run_single_process_benchmark(
         xprof_client=xprof_client,
     )
     logging.info(
-        "Test: %s, benchmark: %s, microbenchmark: %s, platform: %s,"
-        " weights_dtype: %s, rank(0-indexed): %s, world_size: %s,"
-        " num_warmup_steps: %s, first_step_time (seconds): %s, warmup_overhead"
-        " (seconds): %s, average_step_time (seconds): %s, peak_device_memory"
-        " (MB): %s, e2e_wall_time (seconds): %s",
+        "Performance Benchmark Results:\n"
+        "  Test: %s\n"
+        "  benchmark: %s\n"
+        "  microbenchmark: %s\n"
+        "  platform: %s\n"
+        "  weights_dtype: %s\n"
+        "  rank(0-indexed): %s\n"
+        "  world_size: %s\n"
+        "  num_warmup_steps: %s\n"
+        "  first_step_time (seconds): %s\n"
+        "  warmup_overhead (seconds): %s\n"
+        "  average_step_time (seconds): %s\n"
+        "  peak_device_memory (MB): %s\n"
+        "  e2e_wall_time (seconds): %s",
         test_method_name,
         benchmark_name,
         microbenchmark_name,
