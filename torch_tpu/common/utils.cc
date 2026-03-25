@@ -16,6 +16,7 @@
 
 #include "torch_tpu/common/utils.h"
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -67,6 +68,14 @@ void LogLines(std::string_view s) {
   if (!chunk.empty()) {
     ABSL_LOG(INFO) << chunk;
   }
+}
+
+std::string PercAsStr(uint64_t num, uint64_t den) {
+  if (den == 0) {
+    return "NA";
+  }
+  auto k = num * 1000 / den;
+  return absl::StrCat(k / 10, ".", k % 10, "%");
 }
 
 }  // namespace torch_tpu

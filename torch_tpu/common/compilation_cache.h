@@ -35,6 +35,7 @@
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/thread_pool.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
@@ -59,6 +60,17 @@ struct CacheEntryStats {
   // Set only when the entry is populated from the tier-2 cache as opposed to
   // being compiled from scratch.
   std::optional<Tier2CacheEntryStats> tier2;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const CacheEntryStats& stats) {
+    sink.Append("{\n");
+    absl::Format(&sink, "\tcompilation_duration=%v,\n",
+                 stats.compilation_duration);
+    absl::Format(&sink, "\tlast_read=%v,\n", stats.last_read);
+    absl::Format(&sink, "\tread_count=%d,\n", stats.read_count);
+    // TODO(@lukeboyer): Handle tier2 if present.
+    sink.Append("}");
+  }
 };
 
 class CompilationCache;
@@ -112,6 +124,12 @@ struct PerfStats {
   // Statistics for a single entry in the compilation cache.
   struct EntryStats : public CacheEntryStats {
     CompilationCacheKey key;
+
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const EntryStats& stats) {
+      absl::Format(&sink, "%v", stats.key);
+      absl::Format(&sink, "%v", static_cast<const CacheEntryStats&>(stats));
+    }
   };
 
   // These fields refer to the tier-1 cache. E.g. a hit here means the entry was
@@ -123,6 +141,24 @@ struct PerfStats {
   int64_t num_cache_hits = 0;
 
   std::vector<EntryStats> per_entry_stats;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const PerfStats& stats) {
+    absl::Format(&sink, "num_cache_reqs=%d\n", stats.num_cache_reqs);
+    absl::Format(&sink, "num_cache_hits=%d {%s}\n", stats.num_cache_hits,
+                 PercAsStr(stats.num_cache_hits, stats.num_cache_reqs));
+    if (stats.per_entry_stats.empty()) {
+      return;
+    }
+    absl::Duration total_comp_time = absl::ZeroDuration();
+    for (const auto& entry : stats.per_entry_stats) {
+      absl::Format(&sink, "%v\n", entry);
+      total_comp_time += entry.compilation_duration;
+    }
+    absl::Format(&sink, "num_compilation_events=%d\n",
+                 stats.per_entry_stats.size());
+    absl::Format(&sink, "sum_compilation_time=%v\n", total_comp_time);
+  }
 };
 
 // An in-memory cache for compiled XLA programs. The ownership of cached

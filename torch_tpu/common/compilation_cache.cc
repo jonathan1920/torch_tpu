@@ -77,15 +77,6 @@ absl::Mutex CompilationCache::g_mutex_(absl::kConstInit);
 
 namespace {
 
-// TODO(mvoz): move to utils
-std::string PercAsStr(uint64_t num, uint64_t den) {
-  if (den == 0) {
-    return "NA";
-  }
-  auto k = num * 1000 / den;
-  return absl::StrCat(k / 10, ".", k % 10, "%");
-}
-
 // Returns true if the future is ready.
 bool IsFutureReady(const SharedLoadedExecutableFuture& future) {
   return future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
@@ -196,12 +187,7 @@ CompilationCache::~CompilationCache() {
   backup_compilation_pool_.reset();
   EvictAll();
   TT_MUTEX_LOCK(lock, cache_mutex_);
-  ABSL_LOG(INFO) << "CompilationCache final stats: "
-                 << "Requests=" << perf_stats_.num_cache_reqs
-                 << ", Hits=" << perf_stats_.num_cache_hits << " ("
-                 << PercAsStr(perf_stats_.num_cache_hits,
-                              perf_stats_.num_cache_reqs)
-                 << ")";
+  ABSL_LOG(INFO) << "CompilationCache final stats: " << perf_stats_;
 }
 
 CompilationCache& CompilationCache::GetInstance() {
@@ -240,6 +226,7 @@ static void TrySetExecutablePromise(
 }
 
 void CompilationCache::EvictAll() {
+  ABSL_VLOG(1) << "Evicted compilation state: " << GetCacheStats();
   // Get all existing keys from the cache - these are the entries we need to
   // evict. We cannot promise to evict new entries created during the eviction
   // process, as that work may never end.

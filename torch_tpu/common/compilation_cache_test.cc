@@ -17,11 +17,15 @@
 #include "torch_tpu/common/compilation_cache.h"
 
 #include <string>
-#include <thread>
+#include <thread>  // NOLINT
 
 #include "gtest/gtest.h"
 #include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/time/time.h"
+#include "torch_tpu/common/cache_key.h"
 #include "xla/xla.pb.h"
 
 ABSL_DECLARE_FLAG(int, torch_tpu_internal_num_compilation_threads);
@@ -31,6 +35,10 @@ namespace torch_tpu {
 int GetNumCompilationThreads(int num_procs);
 
 namespace {
+
+CompilationCacheKey DummyKey() {
+  return CompilationCacheKey(ShapelessKey(), DimensionsKey({}));
+}
 
 class GetNumCompilationThreadsTest : public testing::Test {};
 
@@ -59,6 +67,60 @@ TEST_F(GetNumCompilationThreadsTest,
 TEST_F(GetNumCompilationThreadsTest, FlagTakesPrecedenceOverNproc) {
   absl::SetFlag(&FLAGS_torch_tpu_internal_num_compilation_threads, 42);
   EXPECT_EQ(GetNumCompilationThreads(10), 42);
+}
+
+TEST(PerfStatsPrinterTest, EmptyPerEntry) {
+  PerfStats stats;
+  stats.num_cache_reqs = 10;
+  stats.num_cache_hits = 5;
+  EXPECT_EQ(absl::StrCat(stats),
+            "num_cache_reqs=10\nnum_cache_hits=5 {50.0%}\n");
+}
+
+TEST(PerfStatsPrinterTest, WithPerEntry) {
+  PerfStats stats;
+  stats.num_cache_reqs = 10;
+  stats.num_cache_hits = 5;
+  stats.per_entry_stats.push_back({
+      {.compilation_duration = absl::Milliseconds(100),
+       .last_read = absl::FromUnixMillis(1000),
+       .read_count = 10},
+      DummyKey(),
+  });
+  stats.per_entry_stats.push_back({
+      {.compilation_duration = absl::Milliseconds(50),
+       .last_read = absl::FromUnixMillis(2000),
+       .read_count = 5},
+      DummyKey(),
+  });
+  // NOLINTBEGIN
+  static constexpr std::string_view kExpected = R"(num_cache_reqs=10
+num_cache_hits=5 {50.0%}
+CompilationCacheKey{shapeless_key=0, dimensions_key=5825f5f3bd962979}{
+	compilation_duration=100ms,
+	last_read=1969-12-31T16:00:01-08:00,
+	read_count=10,
+}
+CompilationCacheKey{shapeless_key=0, dimensions_key=5825f5f3bd962979}{
+	compilation_duration=50ms,
+	last_read=1969-12-31T16:00:02-08:00,
+	read_count=5,
+}
+num_compilation_events=2
+sum_compilation_time=150ms
+)";
+  // NOLINTEND
+  EXPECT_EQ(absl::StrCat(stats), kExpected);
+}
+
+TEST(CacheEntryStatsPrinterTest, Works) {
+  CacheEntryStats stats;
+  stats.compilation_duration = absl::Milliseconds(100);
+  stats.last_read = absl::FromUnixMillis(1000);
+  stats.read_count = 10;
+  EXPECT_EQ(absl::StrCat(stats),
+            "{\n\tcompilation_duration=100ms,\n\tlast_read=1969-12-31T16:00:01-"
+            "08:00,\n\tread_count=10,\n}");
 }
 
 }  // namespace
