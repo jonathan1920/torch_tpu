@@ -99,6 +99,11 @@ def _is_cuda_test(tags):
             return True
     return False
 
+# Tags that should propagate to the build_test target
+# TODO(b/495860371): Switch to a set when we are using bazel >= 7.7
+_BUILD_TEST_ALLOWED_TAGS = [
+]
+
 def _check_and_adjust_test_tags(name, size, timeout, nobuild, notap, nopresubmit, nolocal, tags):
     """Validates the test tags.
 
@@ -152,17 +157,18 @@ def _check_and_adjust_test_tags(name, size, timeout, nobuild, notap, nopresubmit
 
     # Add a build_test for notap test unless nobuild is set.
     if "notap" in tags and nobuild == None:  # NOTAP_OK=for implementing notap logic
-        build_test_args = []
+        build_test_tags = [tag for tag in tags if tag in _BUILD_TEST_ALLOWED_TAGS]
 
         # The torch_tpu.cuda build only runs tests with requires-gpu-* tags.
         # Therefore, to ensure that the build_test for a CUDA test is picked
         # up by the torch_tpu.cuda build, we must add a requires-gpu-* tag to the build_test.
         if _is_cuda_test(tags):
-            build_test_args.append("requires-gpu-nvidia")
+            build_test_tags.append("requires-gpu-nvidia")
+
         build_test(
             name = name + "_build_test",
             targets = [":" + name],
-            tags = build_test_args,
+            tags = build_test_tags,
         )
 
     # Adjust tags for nopresubmit.
