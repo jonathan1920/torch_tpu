@@ -44,7 +44,7 @@ struct BinaryOpOptions {
   bool force_float_inputs =
       false;  // Force inputs to be floats, by casting if necessary.
   std::optional<mlir::ElementType> output_dtype_override = std::nullopt;
-  OpParamCacheKeys op_param_cache_keys = {};
+  OpParamCacheKeys op_param_cache_keys;
   OpSplitMode split_mode = OpSplitMode::kNone;
 };
 
@@ -54,11 +54,11 @@ absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(const at::Tensor& self,
                                                  const at::Scalar& other,
                                                  OpName op_name,
                                                  MlirBinaryOpBuilder op_builder,
-                                                 BinaryOpOptions opts = {});
+                                                 BinaryOpOptions opts);
 
 absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(
     const at::Tensor& self, const at::Tensor& other, OpName op_name,
-    MlirBinaryOpBuilder bin_op_builder, BinaryOpOptions opts = {});
+    MlirBinaryOpBuilder bin_op_builder, BinaryOpOptions opts);
 
 }  // namespace internal
 
@@ -66,7 +66,7 @@ template <typename OtherType>
 absl::StatusOr<at::Tensor> BinaryOp(OpName op_name, const at::Tensor& tensor,
                                     const OtherType& other,
                                     MlirBinaryOpBuilder op_builder,
-                                    BinaryOpOptions opts = {}) {
+                                    BinaryOpOptions opts) {
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       internal::DispatchBinaryOp(tensor, other, op_name, std::move(op_builder),
@@ -77,8 +77,7 @@ absl::StatusOr<at::Tensor> BinaryOp(OpName op_name, const at::Tensor& tensor,
 template <typename OtherType>
 absl::Status BinaryOpOut(const OpName op_name, const at::Tensor& tensor,
                          const OtherType& other, at::Tensor& out,
-                         MlirBinaryOpBuilder op_builder,
-                         BinaryOpOptions opts = {}) {
+                         MlirBinaryOpBuilder op_builder, BinaryOpOptions opts) {
   TT_RET_CHECK(out.device().type() == GetPrivateUse1DeviceType(),
                error::kInvalidArgument)
       << "the out tensor is expected to be on tpu, got " << out.device().str();

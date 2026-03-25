@@ -25,6 +25,7 @@ torch_tpu_cc_library(
     hdrs = ["fmin_aten_kernels.h"],
     deps = [
         "//shims/torch:aten_headers",
+        "//torch_tpu/common:cache_key",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:binary_aten_kernels",
         "//torch_tpu/ops:op_builder_utils",

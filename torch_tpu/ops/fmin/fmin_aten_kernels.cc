@@ -19,6 +19,7 @@
 #include "absl/status/statusor.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/binary_aten_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -51,7 +52,8 @@ at::Tensor& AtenFminOut(const at::Tensor& self, const at::Tensor& other,
                         at::Tensor& out) {
   TT_KERNEL(OpName::kFminOut, _, (self, other, out), {
     TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kFminOut, self, other, out, BuildFminShlo));
+        BinaryOpOut(OpName::kFminOut, self, other, out, BuildFminShlo,
+                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
 }

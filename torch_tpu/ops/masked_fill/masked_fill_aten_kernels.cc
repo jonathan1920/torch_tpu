@@ -26,6 +26,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -90,7 +91,9 @@ absl::StatusOr<DeviceBufferRef> MaskedFillTensor(const OpName op_name,
 
   const auto elem_type = output_mlir_type;
   return DispatchOp<3>(op_name, std::move(op_builder), {input, mask, value},
-                       {.out_dtype = elem_type, .out_dims = output_dims});
+                       {.out_dtype = elem_type,
+                        .out_dims = output_dims,
+                        .op_param_cache_keys = OpParamCacheKeys::Empty()});
 }
 
 }  // namespace

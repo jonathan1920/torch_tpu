@@ -314,7 +314,7 @@ TEST(SymbolicViewPrimitive, ReshapeViewCacheKeys) {
   // Create a fallback tensor which is only used when symbolic keygen fails
   at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
 
-  OpParamCacheKeys param_keys;
+  auto param_keys = OpParamCacheKeys::Empty();
   ViewSequence flatten = {
       ReshapePrimitive{.base_sizes = {2, 2}, .new_sizes = {4}}};
   ASSERT_OK_AND_ASSIGN(
@@ -378,7 +378,7 @@ TEST(SymbolicViewPrimitive, TransposeViewCacheKeys) {
   at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
   std::string no_sym_key = "cache_key{storage_offset:0, strides:[4,1]}";
 
-  OpParamCacheKeys param_keys;
+  auto param_keys = OpParamCacheKeys::Empty();
   ViewSequence transpose = {TransposePrimitive{.permutation = {1, 0}}};
   ASSERT_OK_AND_ASSIGN(
       param_keys,
@@ -390,7 +390,7 @@ TEST(SymbolicViewPrimitive, CastingViewCacheKeys) {
   // Create a fallback tensor which is only used when symbolic keygen fails
   at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
 
-  OpParamCacheKeys param_keys;
+  auto param_keys = OpParamCacheKeys::Empty();
   ViewSequence conj = {ConjPrimitive{true}};
   ASSERT_OK_AND_ASSIGN(
       param_keys, ViewSequenceCacheKey(conj, *tensor.unsafeGetTensorImpl()));
@@ -426,7 +426,7 @@ TEST(SymbolicViewPrimitive, PadViewCacheKeys) {
   // Create a fallback tensor which is only used when symbolic keygen fails
   at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
 
-  OpParamCacheKeys param_keys;
+  auto param_keys = OpParamCacheKeys::Empty();
   ViewSequence pad = {PadPrimitive{
       .pad_dims = {
           {.low_padding = 0, .high_padding = 0, .interior_padding = 0}}}};
@@ -439,7 +439,7 @@ TEST(SymbolicViewPrimitive, BroadcastViewCacheKeys) {
   // Create a fallback tensor which is only used when symbolic keygen fails
   at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
 
-  OpParamCacheKeys param_keys;
+  auto param_keys = OpParamCacheKeys::Empty();
   ViewSequence bcast_size_one = {BroadcastPrimitive{
       .base_shape{1, 1}, .new_sizes = {2, 2}, .broadcast_dimensions = {0, 1}}};
   ASSERT_OK_AND_ASSIGN(
@@ -459,7 +459,7 @@ TEST(SymbolicViewPrimitive, MultipleViewCacheKeys) {
   // Create a fallback tensor which is only used when symbolic keygen fails
   at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
 
-  OpParamCacheKeys param_keys;
+  auto param_keys = OpParamCacheKeys::Empty();
   ViewSequence reshape_transpose = {
       ReshapePrimitive{.base_sizes = {2, 2, 2}, .new_sizes = {4, 2}},
       TransposePrimitive{.permutation = {1, 0}},
@@ -486,7 +486,7 @@ TEST(SymbolicViewPrimitive, UnsupportedViewCacheKeys) {
   // Create a fallback tensor which is only used when symbolic keygen fails
   at::Tensor tensor = at::empty({4, 6}).reshape({6, 4});
 
-  OpParamCacheKeys param_keys;
+  auto param_keys = OpParamCacheKeys::Empty();
 
   // Unfolds are mostly static shape, symbolic keygen not very useful.
   ViewSequence unfold = {UnfoldPrimitive{.start_index = 0,

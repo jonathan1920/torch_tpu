@@ -25,6 +25,7 @@
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/tpu_hooks.h"
@@ -88,17 +89,20 @@ TEST_F(MaterializeTest, AddLeafNodes) {
         BuildFillUninitialized(builder, shape.dtype, shape.dimensions)};
   };
 
-  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> target_refs,
-                       DeviceBufferList::CreateDeferred(OpName::kAdd, builder,
-                                                        {arg}, {}, {shape}));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<DeviceBufferRef> target_refs,
+      DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {arg},
+                                       OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef target_ref = target_refs[0];
 
-  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> leaf_a_refs,
-                       DeviceBufferList::CreateDeferred(
-                           OpName::kAdd, builder, {target_ref}, {}, {shape}));
-  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> leaf_b_refs,
-                       DeviceBufferList::CreateDeferred(
-                           OpName::kAdd, builder, {target_ref}, {}, {shape}));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<DeviceBufferRef> leaf_a_refs,
+      DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {target_ref},
+                                       OpParamCacheKeys::Empty(), {shape}));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<DeviceBufferRef> leaf_b_refs,
+      DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {target_ref},
+                                       OpParamCacheKeys::Empty(), {shape}));
 
   // Call AddLeafNodes on the target list.
   std::vector<SharedDeviceBufferList> actual_nodes = {
@@ -133,26 +137,30 @@ TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
 
   // Node a
   ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> refs_a,
-                       DeviceBufferList::CreateDeferred(OpName::kEmpty, builder,
-                                                        {}, {}, {shape}));
+                       DeviceBufferList::CreateDeferred(
+                           OpName::kEmpty, builder,
+                           /*inputs=*/{}, OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef ref_a = refs_a[0];
 
   // Node b (depends on a)
-  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> refs_b,
-                       DeviceBufferList::CreateDeferred(OpName::kAdd, builder,
-                                                        {ref_a}, {}, {shape}));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<DeviceBufferRef> refs_b,
+      DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {ref_a},
+                                       OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef ref_b = refs_b[0];
 
   // Node c (depends on a)
-  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> refs_c,
-                       DeviceBufferList::CreateDeferred(OpName::kAdd, builder,
-                                                        {ref_a}, {}, {shape}));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<DeviceBufferRef> refs_c,
+      DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {ref_a},
+                                       OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef ref_c = refs_c[0];
 
   // Node d (depends on b)
-  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> refs_d,
-                       DeviceBufferList::CreateDeferred(OpName::kAdd, builder,
-                                                        {ref_b}, {}, {shape}));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<DeviceBufferRef> refs_d,
+      DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {ref_b},
+                                       OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef ref_d = refs_d[0];
 
   EXPECT_EQ(ref_a.state(), DeviceBufferRefState::kDeferred);

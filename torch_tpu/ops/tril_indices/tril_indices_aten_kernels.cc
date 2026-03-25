@@ -25,7 +25,7 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/native/TensorFactories.h"
 #include "c10/core/Device.h"
-#include "c10/core/Layout.h"
+#include "torch/headeronly/core/Layout.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -59,7 +59,7 @@ at::Tensor AtenTrilIndices(int64_t row, int64_t col, int64_t offset,
                            std::optional<at::Device> device_opt,
                            std::optional<bool> pin_memory_opt) {
   TT_KERNEL(
-      OpName::kTrilIndices, _,
+      OpName::kTrilIndices, param_keys,
       (row, col, offset, dtype_opt, layout_opt, device_opt, pin_memory_opt), {
         at::ScalarType dtype = dtype_opt.value_or(at::ScalarType::Long);
 
@@ -77,7 +77,7 @@ at::Tensor AtenTrilIndices(int64_t row, int64_t col, int64_t offset,
             GetTrilIndicesFunctional(row, col, offset, tril_size, dtype));
 
         return ApplyNullaryOp(OpName::kTrilIndices, std::move(builder), dtype,
-                              {2, tril_size});
+                              {2, tril_size}, std::move(param_keys));
       });
 }
 

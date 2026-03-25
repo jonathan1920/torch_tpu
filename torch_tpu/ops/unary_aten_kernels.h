@@ -34,7 +34,7 @@ namespace torch_tpu {
 struct UnaryOpOptions {
   // Parameters (if any) that were used to construct op_builder and will be used
   // by the compilation cache.
-  OpParamCacheKeys op_param_cache_keys = {};
+  OpParamCacheKeys op_param_cache_keys;
   // dtype of the output tensor. If not specified, use self's dtype.
   std::optional<c10::ScalarType> out_dtype;
   // Size of the output tensor. If not specified use self's size.
@@ -54,21 +54,20 @@ struct UnaryOpOptions {
 //   A new tensor with the result of the operation.
 absl::StatusOr<at::Tensor> UnaryOp(const at::Tensor& self, OpName op_name,
                                    MlirUnaryOpBuilder op_builder,
-                                   UnaryOpOptions options = {});
+                                   UnaryOpOptions options);
 
 // Like UnaryOpCallback, but the result overwrites the input.
 // Because of this overwrite, the output must have the shape and dtype of self.
 // Hence .out_dims and .out_dtype in options are ignored.
 absl::Status UnaryOpInPlace(at::Tensor& self, OpName op_name,
                             MlirUnaryOpBuilder op_builder,
-                            UnaryOpOptions options = {});
+                            UnaryOpOptions options);
 
 // Like UnaryOpCallback, but the result overwrites the provided `out` tensor.
 // `out` is resized to `out_dims` and must have dtype `out_dtype`.
 // If they are not provided then the values from `self` are used.
 absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out, OpName op_name,
-                        MlirUnaryOpBuilder op_builder,
-                        UnaryOpOptions options = {});
+                        MlirUnaryOpBuilder op_builder, UnaryOpOptions options);
 
 // Declare callbacks for a unary ATEN op
 #define TT_DECLARE_ATEN_UNARY_OUT(func_name) \

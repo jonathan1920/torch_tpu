@@ -21,9 +21,11 @@
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "ATen/core/TensorBody.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -86,7 +88,8 @@ at::Tensor& AtenHardsigmoidOut(const at::Tensor& self, at::Tensor& out) {
         << "expected the input dtype to be floating point, got "
         << ToString(self.scalar_type());
     TT_THROW_IF_ERROR(
-        UnaryOpOut(self, out, OpName::kHardsigmoidOut, BuildHardsigmoidShlo));
+        UnaryOpOut(self, out, OpName::kHardsigmoidOut, BuildHardsigmoidShlo,
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
 }
@@ -112,7 +115,9 @@ at::Tensor& AtenHardsigmoidBackwardGradInput(const at::Tensor& grad_output,
                   return BuildHardsigmoidBackwardShlo(grad_output_op, self_op);
                 },
                 {grad_output, self},
-                {.out_dtype = output_mlir_type, .out_dims = self.sizes()})));
+                {.out_dtype = output_mlir_type,
+                 .out_dims = self.sizes(),
+                 .op_param_cache_keys = OpParamCacheKeys::Empty()})));
 
         TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(result), grad_input));

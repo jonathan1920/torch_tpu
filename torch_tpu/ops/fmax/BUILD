@@ -26,6 +26,7 @@ torch_tpu_cc_library(
     deps = [
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
+        "//torch_tpu/common:cache_key",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:binary_aten_kernels",
         "//torch_tpu/ops:op_builder_utils",

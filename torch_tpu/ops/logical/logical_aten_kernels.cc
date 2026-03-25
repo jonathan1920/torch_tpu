@@ -21,6 +21,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "ATen/core/ATen_fwd.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/binary_aten_kernels.h"
@@ -58,9 +59,10 @@ absl::Status LogicalBinaryOutImpl(OpName op_name, const at::Tensor& self,
     return result;
   };
 
-  TT_RETURN_IF_ERROR(BinaryOpOut(op_name, self, other, out,
-                                 std::move(custom_op_builder),
-                                 {.output_dtype_override = out_dtype}));
+  TT_RETURN_IF_ERROR(
+      BinaryOpOut(op_name, self, other, out, std::move(custom_op_builder),
+                  {.output_dtype_override = out_dtype,
+                   .op_param_cache_keys = OpParamCacheKeys::Empty()}));
   return absl::OkStatus();
 }
 
@@ -84,9 +86,10 @@ absl::Status LogicalUnaryOutImpl(OpName op_name, const at::Tensor& self,
     return result;
   };
 
-  TT_RETURN_IF_ERROR(::torch_tpu::UnaryOpOut(self, out, op_name,
-                                             std::move(custom_op_builder),
-                                             {.out_dtype = out.scalar_type()}));
+  TT_RETURN_IF_ERROR(
+      ::torch_tpu::UnaryOpOut(self, out, op_name, std::move(custom_op_builder),
+                              {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                               .out_dtype = out.scalar_type()}));
   return absl::OkStatus();
 }
 

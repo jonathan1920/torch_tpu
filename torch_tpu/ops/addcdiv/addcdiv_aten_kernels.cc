@@ -22,6 +22,7 @@
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "ATen/core/ATen_fwd.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
@@ -66,11 +67,13 @@ at::Tensor& AtenAddcdivOut(const at::Tensor& self, const at::Tensor& tensor1,
 
     TT_ASSIGN_OR_THROW(mlir::ElementType out_dtype,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
-    TT_ASSIGN_OR_THROW(auto result_buffer,
-                       DispatchOp<4>(OpName::kAddcdivOut, std::move(op_builder),
-                                     {self, tensor1, tensor2, value_tensor},
-                                     {.out_dtype = out_dtype,
-                                      .out_dims = CopyIntVector(out.sizes())}));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffer,
+        DispatchOp<4>(OpName::kAddcdivOut, std::move(op_builder),
+                      {self, tensor1, tensor2, value_tensor},
+                      {.out_dtype = out_dtype,
+                       .out_dims = CopyIntVector(out.sizes()),
+                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buffer), out));
     return out;
   });

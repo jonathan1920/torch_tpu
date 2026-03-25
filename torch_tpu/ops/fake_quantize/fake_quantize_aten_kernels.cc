@@ -26,6 +26,7 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/empty_like.h"
 #include "c10/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
@@ -96,13 +97,11 @@ FakeQuantizePerTensorAffineCachemaskHelper(const at::Tensor& self, double scale,
 
   TT_ASSIGN_OR_RETURN(
       (auto [output, mask]),
-      (DispatchOp<1, 2>(
-          OpName::kFakeQuantizePerTensorAffineCachemask, std::move(op_builder),
-          {self},
-          {
-              .out_dtypes = {output_dtype, mlir::ElementType::PRED},
-              .out_dims_list = {self.sizes(), self.sizes()},
-          })));
+      (DispatchOp<1, 2>(OpName::kFakeQuantizePerTensorAffineCachemask,
+                        std::move(op_builder), {self},
+                        {.out_dtypes = {output_dtype, mlir::ElementType::PRED},
+                         .out_dims_list = {self.sizes(), self.sizes()},
+                         .op_param_cache_keys = OpParamCacheKeys::Empty()})));
 
   return FakeQuantizePerTensorAffineCachemaskResult{std::move(output),
                                                     std::move(mask)};

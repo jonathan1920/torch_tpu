@@ -21,9 +21,11 @@
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "ATen/core/TensorBody.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -67,7 +69,8 @@ absl::StatusOr<mlir::MlirOp> BuildSigmoidShlo(mlir::MlirOp input_op) {
 at::Tensor& AtenSigmoidOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kSigmoidOut, _, (self, out), {
     TT_THROW_IF_ERROR(
-        UnaryOpOut(self, out, OpName::kSigmoidOut, BuildSigmoidShlo));
+        UnaryOpOut(self, out, OpName::kSigmoidOut, BuildSigmoidShlo,
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
 }
@@ -90,16 +93,17 @@ at::Tensor& AtenSigmoidBackwardGradInput(const at::Tensor& grad_output,
         TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=errors should be covered
                              // inside.
             auto result,
-            (DispatchOp<2>(OpName::kSigmoidBackwardGradInput,
-                           [](FixedSizeSpan<mlir::MlirOp, 2> inputs)
-                               -> absl::StatusOr<mlir::MlirOp> {
-                             auto& [grad_output_op, output_op] = inputs;
-                             return BuildSigmoidBackwardShlo(grad_output_op,
-                                                             output_op);
-                           },
-                           {grad_output, output},
-                           {.out_dtype = output_mlir_type,
-                            .out_dims = grad_input.sizes()})));
+            (DispatchOp<2>(
+                OpName::kSigmoidBackwardGradInput,
+                [](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+                    -> absl::StatusOr<mlir::MlirOp> {
+                  auto& [grad_output_op, output_op] = inputs;
+                  return BuildSigmoidBackwardShlo(grad_output_op, output_op);
+                },
+                {grad_output, output},
+                {.out_dtype = output_mlir_type,
+                 .out_dims = grad_input.sizes(),
+                 .op_param_cache_keys = OpParamCacheKeys::Empty()})));
         TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=errors should be covered
                             // inside.
             AssignBufferToAtTensor(std::move(result), grad_input));

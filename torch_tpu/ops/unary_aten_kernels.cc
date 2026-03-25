@@ -28,6 +28,7 @@
 #include "c10/core/DefaultDtype.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/macro_utils.h"  // IWYU pragma: keep
@@ -51,8 +52,9 @@
 #define TT_DEFINE_ATEN_UNARY_OUT(op_name, func_name, op_builder)        \
   at::Tensor& func_name##Out(const at::Tensor& self, at::Tensor& out) { \
     TT_KERNEL(op_name, _, (self, out), {                                \
-      TT_THROW_IF_ERROR(                                                \
-          ::torch_tpu::UnaryOpOut(self, out, op_name, op_builder));     \
+      TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(                        \
+          self, out, op_name, op_builder,                               \
+          {.op_param_cache_keys = OpParamCacheKeys::Empty()}));         \
       return out;                                                       \
     });                                                                 \
   }                                                                     \
@@ -200,30 +202,37 @@ TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kTanhOut, AtenTanh, BuildTanhShlo);
 
 at::Tensor& AtenAbsOut(const at ::Tensor& self, at ::Tensor& out) {
   TT_KERNEL(OpName::kAbsOut, _, (self, out), {
-    TT_THROW_IF_ERROR(UnaryOpOut(self, out, OpName::kAbsOut, BuildAbsShlo));
+    TT_THROW_IF_ERROR(
+        UnaryOpOut(self, out, OpName::kAbsOut, BuildAbsShlo,
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
 }
 
 at::Tensor& AtenNegOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kNegOut, _, (self, out), {
-    TT_THROW_IF_ERROR(UnaryOpOut(self, out, OpName::kNegOut, BuildNegShlo));
+    TT_THROW_IF_ERROR(
+        UnaryOpOut(self, out, OpName::kNegOut, BuildNegShlo,
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
 }
 
 at::Tensor AtenRelu(const at::Tensor& self) {
   TT_KERNEL(OpName::kRelu, _, (self), {
-    TT_ASSIGN_OR_THROW(
-        at::Tensor result,
-        ::torch_tpu::UnaryOp(self, OpName::kRelu, BuildReluShlo));
+    TT_ASSIGN_OR_THROW(at::Tensor result,
+                       ::torch_tpu::UnaryOp(
+                           self, OpName::kRelu, BuildReluShlo,
+                           {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return result;
   });
 }
 
 at::Tensor& AtenRelu_(at::Tensor& self) {
   TT_KERNEL(OpName::kRelu_, _, (self), {
-    TT_THROW_IF_ERROR(UnaryOpInPlace(self, OpName::kRelu_, BuildReluShlo));
+    TT_THROW_IF_ERROR(
+        UnaryOpInPlace(self, OpName::kRelu_, BuildReluShlo,
+                       {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return self;
   });
 }
@@ -238,7 +247,9 @@ at::Tensor& AtenSignOut(const at::Tensor& self, at::Tensor& out) {
         auto result_buf,
         DispatchOp<1>(OpName::kSignOut, BuildSignShlo, self,
                       /*options=*/
-                      {.out_dtype = out_dtype, .out_dims = self.sizes()}));
+                      {.out_dtype = out_dtype,
+                       .out_dims = self.sizes(),
+                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
@@ -271,7 +282,9 @@ at::Tensor& AtenSignbitOut(const at::Tensor& self, at::Tensor& out) {
         auto result_buf,
         DispatchOp<1>(OpName::kSignbitOut, std::move(op_builder), self,
                       /*options=*/
-                      {.out_dtype = output_dtype, .out_dims = out.sizes()}));
+                      {.out_dtype = output_dtype,
+                       .out_dims = out.sizes(),
+                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
 
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
@@ -283,7 +296,9 @@ at::Tensor& AtenTruncOut(const at::Tensor& self, at::Tensor& out) {
     TT_CHECK_THROW(self.scalar_type() != c10::ScalarType::Bool,
                    error::kInvalidArgument)
         << "does not support boolean types";
-    TT_THROW_IF_ERROR(UnaryOpOut(self, out, OpName::kTruncOut, BuildTruncShlo));
+    TT_THROW_IF_ERROR(
+        UnaryOpOut(self, out, OpName::kTruncOut, BuildTruncShlo,
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
 }

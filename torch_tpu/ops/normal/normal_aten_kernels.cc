@@ -26,6 +26,7 @@
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/ops/scalar_tensor.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
@@ -128,6 +129,7 @@ absl::StatusOr<DeviceBufferRef> NormalLike(
                         {self, rng_input_state, mean, std},
                         {.out_dtypes = {mlir::ElementType::UI64, mlir_type},
                          .out_dims_list = {{2}, self.sizes()},
+                         .op_param_cache_keys = OpParamCacheKeys::Empty(),
                          .split_mode = OpSplitMode::kSplitAfter})));
   // After the state has been used (and updated) to generate random bits, we
   // give it back to the generator, so that it can be used by other ops in the

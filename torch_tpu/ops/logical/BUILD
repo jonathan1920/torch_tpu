@@ -27,6 +27,7 @@ torch_tpu_cc_library(
         ":logical",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
+        "//torch_tpu/common:cache_key",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:binary_aten_kernels",

@@ -28,6 +28,7 @@ torch_tpu_cc_library(
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
+        "//torch_tpu/common:cache_key",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:shape",
         "//torch_tpu/ops:op_builder_utils",

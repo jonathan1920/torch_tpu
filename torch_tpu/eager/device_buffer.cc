@@ -30,7 +30,6 @@
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
@@ -52,12 +51,13 @@
 #include "c10/util/accumulate.h"
 #include "c10/util/intrusive_ptr.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
+#include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -631,7 +631,7 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateEmpty(
   TT_ASSIGN_OR_RETURN(
       auto results, DeviceBufferList::CreateDeferred(
                         OpName::kEmpty, std::move(op_builder), /*inputs=*/{},
-                        /*op_param_cache_keys=*/{}, {std::move(output_shape)}));
+                        OpParamCacheKeys::Empty(), {std::move(output_shape)}));
   ABSL_CHECK_EQ(results.size(), 1);  // CRASH_OK
   return std::move(results[0]);
 }

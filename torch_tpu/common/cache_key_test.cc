@@ -48,7 +48,7 @@ using testing::IsEmpty;
 using testing::Pair;
 
 TEST(OpParamCacheKeys, DefaultIsEmpty) {
-  OpParamCacheKeys params;
+  OpParamCacheKeys params = OpParamCacheKeys::Empty();
   EXPECT_TRUE(params.begin() == params.end());
   EXPECT_THAT(params, IsEmpty());
   EXPECT_EQ(params.size(), 0);

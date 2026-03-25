@@ -30,11 +30,12 @@
 #include "ATen/ops/nll_loss_forward.h"
 #include "ATen/ops/permute.h"
 #include "ATen/ops/reshape.h"
-#include "c10/core/ScalarType.h"
 #include "c10/util/Optional.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -240,9 +241,10 @@ at::Tensor& AtenNllLossBackwardGradInput(
           inputs.push_back(weight.value());
         }
 
-        DispatchOpOptions<1> options = {.out_dtype = output_dtype,
-                                        .out_dims = output_dims};
-        options.op_param_cache_keys = std::move(param_keys);
+        DispatchOpOptions<1> options = {
+            .out_dtype = output_dtype,
+            .out_dims = output_dims,
+            .op_param_cache_keys = std::move(param_keys)};
 
         TT_ASSIGN_OR_THROW(
             auto grad_input_buf,

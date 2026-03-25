@@ -29,6 +29,7 @@
 #include "ATen/ops/empty.h"
 #include "c10/util/Exception.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
@@ -186,9 +187,11 @@ at::Tensor& AtenHistcOut(const at::Tensor& self, const int64_t bins,
 
       TT_ASSIGN_OR_THROW(
           (auto [input_min, input_max]),
-          (DispatchOp<1, 2>(OpName::kHistcBounds, std::move(op_builder), self,
-                            {.out_dtypes = {mlir_out_dtype, mlir_out_dtype},
-                             .out_dims_list = {Dimensions(), Dimensions()}})));
+          (DispatchOp<1, 2>(
+              OpName::kHistcBounds, std::move(op_builder), self,
+              {.out_dtypes = {mlir_out_dtype, mlir_out_dtype},
+               .out_dims_list = {Dimensions(), Dimensions()},
+               .op_param_cache_keys = OpParamCacheKeys::Empty()})));
       TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(input_min), min_val));
       TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(input_max), max_val));
 

@@ -25,6 +25,7 @@
 #include "absl/types/span.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
@@ -84,7 +85,7 @@ TEST(DynamismOpsTest, GetTraversalOutputDimensionsNoBoundedInput) {
   ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> add_deferred_refs,
                        DeviceBufferList::CreateDeferred(
                            OpName::kAdd, std::move(builder), add_inputs,
-                           /*op_param_cache_keys=*/{}, {add_output_shape}));
+                           OpParamCacheKeys::Empty(), {add_output_shape}));
   ASSERT_EQ(add_deferred_refs.size(), 1);
   SharedDeviceBufferList add_node = add_deferred_refs[0].device_buffer_list();
   DeviceBufferRef add_output = add_deferred_refs[0];
@@ -138,7 +139,7 @@ TEST(DynamismOpsTest, GetTraversalOutputDimensionsWithBoundedInput) {
   ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> add_deferred_refs,
                        DeviceBufferList::CreateDeferred(
                            OpName::kAdd, std::move(builder), add_inputs,
-                           /*op_param_cache_keys=*/{}, {add_output_shape}));
+                           OpParamCacheKeys::Empty(), {add_output_shape}));
   ASSERT_EQ(add_deferred_refs.size(), 1);
   SharedDeviceBufferList add_node = add_deferred_refs[0].device_buffer_list();
   DeviceBufferRef add_output = add_deferred_refs[0];

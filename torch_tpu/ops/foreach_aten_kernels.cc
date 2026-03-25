@@ -427,7 +427,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> ForeachUnaryOp(
   DispatchOpOptions<torch_tpu::kDynamicSize> options = {
       .out_dtypes = out_dtypes_span,
       .out_dims_list = out_dims_list,
-  };
+      .op_param_cache_keys = OpParamCacheKeys::Empty()};
 
   TT_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferRef> result_buffers,
@@ -450,7 +450,7 @@ std::vector<DeviceBufferRef> ForeachAddList(at::TensorList self,
   inputs.insert(inputs.end(), other.begin(), other.end());
   bool alpha_is_one = (alpha.isIntegral(true) && alpha.to<int64_t>() == 1) ||
                       (alpha.isFloatingPoint() && alpha.to<double>() == 1.0);
-  OpParamCacheKeys param_keys;
+  auto param_keys = OpParamCacheKeys::Empty();
   // We create different Shlo based on whether alpha is one or not.
   // Alpha is not multiplied if equal to 1.0.
   TT_THROW_IF_ERROR(param_keys.SetParam("alpha_is_one", alpha_is_one));
@@ -525,6 +525,7 @@ std::vector<DeviceBufferRef> ForeachMulList(at::TensorList self,
   DispatchOpOptions<kDynamicSize> options = {
       .out_dtypes = out_dtypes_span,
       .out_dims_list = out_dims_list,
+      .op_param_cache_keys = OpParamCacheKeys::Empty(),
   };
 
   // Dispatch the op and prepare results.

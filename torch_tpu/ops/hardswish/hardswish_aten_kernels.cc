@@ -21,9 +21,11 @@
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "ATen/core/TensorBody.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -89,8 +91,10 @@ at::Tensor AtenHardswish(const at::Tensor& self) {
     TT_CHECK_THROW(self.is_floating_point(), error::kInvalidArgument)
         << "expected the input dtype to be floating point, got "
         << ToString(self.scalar_type());
-    TT_ASSIGN_OR_THROW(auto result,
-                       UnaryOp(self, OpName::kHardswish, BuildHardswishShlo));
+    TT_ASSIGN_OR_THROW(
+        at::Tensor result,
+        UnaryOp(self, OpName::kHardswish, BuildHardswishShlo,
+                {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return result;
   });
 }
@@ -101,7 +105,8 @@ at::Tensor& AtenHardswishOut(const at::Tensor& self, at::Tensor& out) {
         << "expected the input dtype to be floating point, got "
         << ToString(self.scalar_type());
     TT_THROW_IF_ERROR(
-        UnaryOpOut(self, out, OpName::kHardswishOut, BuildHardswishShlo));
+        UnaryOpOut(self, out, OpName::kHardswishOut, BuildHardswishShlo,
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
 }
@@ -112,7 +117,8 @@ at::Tensor& AtenHardswish_(at::Tensor& self) {
         << "expected the input dtype to be floating point, got "
         << ToString(self.scalar_type());
     TT_THROW_IF_ERROR(
-        UnaryOpInPlace(self, OpName::kHardswish_, BuildHardswishShlo));
+        UnaryOpInPlace(self, OpName::kHardswish_, BuildHardswishShlo,
+                       {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return self;
   });
 }
@@ -127,15 +133,18 @@ at::Tensor AtenHardswishBackward(const at::Tensor& grad_output,
                        ConvertTo<mlir::ElementType>(self.scalar_type()));
     TT_ASSIGN_OR_THROW(
         auto result,
-        (DispatchOp<2>(
-            OpName::kHardswishBackward,
-            [](FixedSizeSpan<mlir::MlirOp, 2> inputs)
-                -> absl::StatusOr<mlir::MlirOp> {
-              auto& [grad_output_op, self_op] = inputs;
-              return BuildHardswishBackwardShlo(grad_output_op, self_op);
-            },
-            {grad_output, self},
-            {.out_dtype = output_mlir_type, .out_dims = self.sizes()})));
+        (DispatchOp<2>(OpName::kHardswishBackward,
+                       [](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+                           -> absl::StatusOr<mlir::MlirOp> {
+                         auto& [grad_output_op, self_op] = inputs;
+                         return BuildHardswishBackwardShlo(grad_output_op,
+                                                           self_op);
+                       },
+                       {grad_output, self},
+                       /*options=*/
+                       {.out_dtype = output_mlir_type,
+                        .out_dims = self.sizes(),
+                        .op_param_cache_keys = OpParamCacheKeys::Empty()})));
     return MakeTensor(std::move(result));
   });
 }

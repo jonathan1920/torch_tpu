@@ -25,6 +25,7 @@
 #include "ATen/core/TensorBody.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
@@ -128,7 +129,8 @@ std::tuple<at::Tensor, at::Tensor> AtenWeightNormInterface(const at::Tensor& v,
                           {v, g},
                           {.out_dtypes = {out_dtype, norm_dtype},
                            .out_dims_list = {CopyIntVector(v.sizes()),
-                                             CopyIntVector(g.sizes())}})));
+                                             CopyIntVector(g.sizes())},
+                           .op_param_cache_keys = OpParamCacheKeys::Empty()})));
 
     return std::make_tuple(MakeTensor(std::move(weight_norm_buf)),
                            MakeTensor(std::move(v_norm_buf)));

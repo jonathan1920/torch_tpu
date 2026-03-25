@@ -26,6 +26,7 @@
 #include "ATen/core/TensorBody.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -68,8 +69,9 @@ std::string GetRoundIntegralDecimalsError(at::ScalarType scalar_type,
 at::Tensor& AtenRoundOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kRoundOut, _, (self, out), {
     TT_THROW_IF_ERROR(CheckNumericDtype(self.scalar_type()));
-    TT_THROW_IF_ERROR(UnaryOpOut(self, out, OpName::kRound,
-                                 GetRoundFunctional(/*decimals=*/0)));
+    TT_THROW_IF_ERROR(UnaryOpOut(
+        self, out, OpName::kRound, GetRoundFunctional(/*decimals=*/0),
+        {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
 }

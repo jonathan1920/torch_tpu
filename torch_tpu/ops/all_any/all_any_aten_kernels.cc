@@ -26,6 +26,7 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "c10/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/all_any/all_any.h"
@@ -118,7 +119,8 @@ at::Tensor& AtenAllAllOut(const at::Tensor& self, at::Tensor& out) {
     TT_THROW_IF_ERROR(UnaryOpOut(
         self, out, OpName::kAllAllOut,
         GetAllBuilder(std::move(params.dims_to_reduce), params.reduction_mode),
-        {.out_dims = std::move(params.reduced_shape)}));
+        {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+         .out_dims = std::move(params.reduced_shape)}));
     return MaybeCastToByte(self, out);
   });
 }
@@ -145,7 +147,8 @@ at::Tensor& AtenAnyAllOut(const at::Tensor& self, at::Tensor& out) {
     TT_THROW_IF_ERROR(UnaryOpOut(
         self, out, OpName::kAnyAllOut,
         GetAnyBuilder(std::move(params.dims_to_reduce), params.reduction_mode),
-        {.out_dims = std::move(params.reduced_shape)}));
+        {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+         .out_dims = std::move(params.reduced_shape)}));
     return MaybeCastToByte(self, out);
   });
 }

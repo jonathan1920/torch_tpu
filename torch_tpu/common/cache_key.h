@@ -324,14 +324,17 @@ class [[nodiscard]] OpParamCacheKeys {
   using const_pointer = Map::const_pointer;
   using const_reverse_iterator = Map::const_reverse_iterator;
 
-  // Makes an empty OpParamCacheKeys.
-  OpParamCacheKeys() = default;
+  // Disable default ctor to force callers to decide what entries to include.
+  OpParamCacheKeys() = delete;
 
   // Make OpParamCacheKeys move-only, as copying may be expensive.
   OpParamCacheKeys(const OpParamCacheKeys&) = delete;
   OpParamCacheKeys& operator=(const OpParamCacheKeys&) = delete;
   OpParamCacheKeys(OpParamCacheKeys&&) = default;
   OpParamCacheKeys& operator=(OpParamCacheKeys&&) = default;
+
+  // Shorthand for making an empty OpParamCacheKeys.
+  static OpParamCacheKeys Empty() { return OpParamCacheKeys(Map()); }
 
   // Returns a copy of the OpParamCacheKeys.
   OpParamCacheKeys Clone() const { return OpParamCacheKeys(name_to_value_); }
@@ -387,7 +390,7 @@ using OpParamCacheKeysBuilder = OpParamCacheKeys::Builder;
 class OpParamCacheKeys::Builder {
  public:
   // Creates an empty builder that doesn't contain any parameters.
-  Builder() = default;
+  Builder() : param_keys_(OpParamCacheKeys::Empty()) {}
 
   // This class is move-only.
   Builder(Builder&& other) = default;

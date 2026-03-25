@@ -297,8 +297,8 @@ CompilationCacheKey ShapeDynamismMetadata::GetPadModuleCacheKey(
     }
 
     const int padded_tensor_index = graph.AddOp(
-        OpName::kPadUninitialized_, OpParamCacheKeys(), /*aliased_inputs=*/{},
-        [&](GraphSignature::OpSignatureBuilder& op) {
+        OpName::kPadUninitialized_, OpParamCacheKeys::Empty(),
+        /*aliased_inputs=*/{}, [&](GraphSignature::OpSignatureBuilder& op) {
           op.AddInput(i);
           op.AddOutput(padded_dimensions, shape.dtype);
         });

@@ -21,8 +21,10 @@
 #include "absl/status/statusor.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -60,7 +62,9 @@ absl::StatusOr<DeviceBufferRef> LeakyReluShlo(const at::Tensor& self,
     return BuildLeakyReluShlo(self_op, negative_slope, out_dtype, result_shape);
   };
   return DispatchOp<1>(OpName::kLeakyReluOut, std::move(op_builder), {self},
-                       {.out_dtype = out_dtype, .out_dims = result_shape});
+                       {.out_dtype = out_dtype,
+                        .out_dims = result_shape,
+                        .op_param_cache_keys = OpParamCacheKeys::Empty()});
 }
 
 }  // namespace

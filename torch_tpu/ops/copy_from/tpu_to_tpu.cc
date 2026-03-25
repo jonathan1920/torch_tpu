@@ -23,9 +23,10 @@
 #include "absl/status/statusor.h"
 #include "ATen/core/TensorBody.h"
 #include "c10/core/Device.h"
-#include "torch_tpu/common/aten_utils.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -69,7 +70,9 @@ absl::Status CopyTpuToTpu(const at::Tensor& src, const at::Tensor& dest) {
   TT_ASSIGN_OR_RETURN(
       auto new_buf,
       DispatchOp<1>(OpName::kCopyFrom, std::move(unary_op_builder), src,
-                    {.out_dtype = out_dtype, .out_dims = dest.sizes()}),
+                    {.out_dtype = out_dtype,
+                     .out_dims = dest.sizes(),
+                     .op_param_cache_keys = OpParamCacheKeys::Empty()}),
       _.SetPrepend() << "TPU->TPU copy (dtype change): ");
   return AssignBufferToAtTensor(new_buf, dest);
 }

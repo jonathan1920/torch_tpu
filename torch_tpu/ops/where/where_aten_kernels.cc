@@ -24,6 +24,7 @@
 #include "ATen/native/Resize.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
@@ -68,7 +69,9 @@ at::Tensor AtenWhereSelf(const at::Tensor& condition, const at::Tensor& self,
         DeviceBufferRef result_buf,
         DispatchOp<3>(OpName::kWhereSelf, std::move(op_builder),
                       {condition, self, other},
-                      {.out_dtype = elem_type, .out_dims = output_dims}));
+                      {.out_dtype = elem_type,
+                       .out_dims = output_dims,
+                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
 
     // Return the result
     return MakeTensor(std::move(result_buf));
@@ -113,7 +116,9 @@ at::Tensor& AtenWhereSelfOut(const at::Tensor& condition,
         DeviceBufferRef result_buf,
         DispatchOp<3>(OpName::kWhereSelfOut, std::move(op_builder),
                       {condition, self, other},
-                      {.out_dtype = elem_type, .out_dims = output_dims}));
+                      {.out_dtype = elem_type,
+                       .out_dims = output_dims,
+                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
 
     // Assign the result.
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));

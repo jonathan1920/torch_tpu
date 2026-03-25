@@ -26,6 +26,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "ATen/core/TensorBody.h"
 #include "c10/util/Exception.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
@@ -143,7 +144,9 @@ at::Tensor AtenTake(const at::Tensor& self, const at::Tensor& index) {
         auto result,
         DispatchOp<2>(OpName::kTake, std::move(op_builder),
                       /*inputs=*/{self, index},
-                      {.out_dtype = out_dtype, .out_dims = index.sizes()}));
+                      {.out_dtype = out_dtype,
+                       .out_dims = index.sizes(),
+                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return MakeTensor(std::move(result));
   });
 }

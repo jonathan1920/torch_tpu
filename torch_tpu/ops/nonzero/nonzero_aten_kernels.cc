@@ -25,6 +25,7 @@
 #include "ATen/core/ScalarType.h"
 #include "ATen/core/TensorBody.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -39,12 +40,13 @@ namespace torch_tpu {
 namespace {
 
 absl::StatusOr<at::Tensor> GetNumNonZeroElements(const at::Tensor& self) {
-  TT_ASSIGN_OR_RETURN(
-      auto num_non_zero_elements,
-      UnaryOp(self, OpName::kNonzeroSize,
-              absl::bind_front(BuildNonzeroGetOutputSizeShlo,
-                               mlir::ElementType::I64),
-              {.out_dtype = c10::ScalarType::Long, .out_dims = Dimensions()}));
+  TT_ASSIGN_OR_RETURN(auto num_non_zero_elements,
+                      UnaryOp(self, OpName::kNonzeroSize,
+                              absl::bind_front(BuildNonzeroGetOutputSizeShlo,
+                                               mlir::ElementType::I64),
+                              {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                               .out_dtype = c10::ScalarType::Long,
+                               .out_dims = Dimensions()}));
   return num_non_zero_elements;
 }
 

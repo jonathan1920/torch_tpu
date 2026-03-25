@@ -22,6 +22,7 @@
 #include "gtest/gtest.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -44,13 +45,13 @@ TEST(DeviceBufferTest, SubgraphMerging) {
   Shape shape = {.dimensions = {8}, .dtype = mlir::ElementType::F32};
 
   // Create two independent deferred nodes.
-  auto refs1_or = DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder,
-                                                   {}, {}, {shape});
+  auto refs1_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
   ASSERT_TRUE(refs1_or.ok());
   auto ref1 = refs1_or.value()[0];
 
-  auto refs2_or = DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder,
-                                                   {}, {}, {shape});
+  auto refs2_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
   ASSERT_TRUE(refs2_or.ok());
   auto ref2 = refs2_or.value()[0];
 
@@ -58,8 +59,9 @@ TEST(DeviceBufferTest, SubgraphMerging) {
             ref2.device_buffer_list()->subgraph()->Find());
 
   // Create a third node that merges the first two.
-  auto refs3_or = DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder,
-                                                   {ref1, ref2}, {}, {shape});
+  auto refs3_or =
+      DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder, {ref1, ref2},
+                                       OpParamCacheKeys::Empty(), {shape});
   ASSERT_TRUE(refs3_or.ok());
   auto ref3 = refs3_or.value()[0];
 
@@ -80,13 +82,13 @@ TEST(DeviceBufferTest, GetLeafNodesInvalidPopping) {
   std::shared_ptr<Subgraph> subgraph;
 
   {
-    auto refs1_or = DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder,
-                                                     {}, {}, {shape});
+    auto refs1_or = DeviceBufferList::CreateDeferred(
+        OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
     ASSERT_TRUE(refs1_or.ok());
     SharedDeviceBufferList node1 = refs1_or.value()[0].device_buffer_list();
 
-    auto refs2_or = DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder,
-                                                     {}, {}, {shape});
+    auto refs2_or = DeviceBufferList::CreateDeferred(
+        OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
     ASSERT_TRUE(refs2_or.ok());
     node2 = refs2_or.value()[0].device_buffer_list();
 
@@ -113,16 +115,16 @@ TEST(DeviceBufferTest, GetLeafNodesStopPopping) {
   std::shared_ptr<Subgraph> subgraph;
 
   {
-    auto refs1_or = DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder,
-                                                     {}, {}, {shape});
+    auto refs1_or = DeviceBufferList::CreateDeferred(
+        OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
     node1 = refs1_or.value()[0].device_buffer_list();
 
-    auto refs2_or = DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder,
-                                                     {}, {}, {shape});
+    auto refs2_or = DeviceBufferList::CreateDeferred(
+        OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
     SharedDeviceBufferList node2 = refs2_or.value()[0].device_buffer_list();
 
-    auto refs3_or = DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder,
-                                                     {}, {}, {shape});
+    auto refs3_or = DeviceBufferList::CreateDeferred(
+        OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
     node3 = refs3_or.value()[0].device_buffer_list();
 
     subgraph = node1->subgraph()->Find();
@@ -159,8 +161,8 @@ TEST(DeviceBufferTest, DeferredOpSubgraphDereference) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape = {.dimensions = {8}, .dtype = mlir::ElementType::F32};
 
-  auto refs_or = DeviceBufferList::CreateDeferred(OpName::kAdd, DummyBuilder,
-                                                  {}, {}, {shape});
+  auto refs_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
   ASSERT_TRUE(refs_or.ok());
   auto ref = refs_or.value()[0];
 

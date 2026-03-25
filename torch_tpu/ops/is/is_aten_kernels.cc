@@ -18,6 +18,7 @@
 
 #include "ATen/core/TensorBody.h"
 #include "c10/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/is/is.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -29,26 +30,30 @@ namespace torch_tpu {
 at::Tensor AtenIsNan(const at::Tensor& self) {
   TT_KERNEL(OpName::kIsNan, _, (self), {
     TT_ASSIGN_OR_THROW(
-        auto result, ::torch_tpu::UnaryOp(self, OpName::kIsNan, BuildIsNanShlo,
-                                          {.out_dtype = c10::kBool}));
+        auto result,
+        ::torch_tpu::UnaryOp(self, OpName::kIsNan, BuildIsNanShlo,
+                             {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                              .out_dtype = c10::kBool}));
     return result;
   });
 }
 
 at::Tensor& AtenIsNegInfOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kIsNegInfOut, _, (self, out), {
-    TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(self, out, OpName::kIsNegInfOut,
-                                              BuildIsNegInfShlo,
-                                              {.out_dtype = c10::kBool}));
+    TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(
+        self, out, OpName::kIsNegInfOut, BuildIsNegInfShlo,
+        {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+         .out_dtype = c10::kBool}));
     return out;
   });
 }
 
 at::Tensor& AtenIsPosInfOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kIsPosInfOut, _, (self, out), {
-    TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(self, out, OpName::kIsPosInfOut,
-                                              BuildIsPosInfShlo,
-                                              {.out_dtype = c10::kBool}));
+    TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(
+        self, out, OpName::kIsPosInfOut, BuildIsPosInfShlo,
+        {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+         .out_dtype = c10::kBool}));
     return out;
   });
 }

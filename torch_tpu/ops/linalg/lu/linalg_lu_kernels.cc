@@ -45,11 +45,11 @@
 #include "ATen/ops/where.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
-#include "torch_tpu/common/utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/linalg/solve_triangular/linalg_solve_triangular_kernels.h"
@@ -214,7 +214,8 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuFactorExOut(
             (DispatchOp<1, 2>(
                 OpName::kLinalgLuFactorExOut, LuDecompositionBuilder, {a_f32},
                 {.out_dtypes = {out_mlir_type, mlir::ElementType::I32},
-                 .out_dims_list = {a.sizes(), pivot_dims}})));
+                 .out_dims_list = {a.sizes(), pivot_dims},
+                 .op_param_cache_keys = OpParamCacheKeys::Empty()})));
 
         if (lu.sizes() != a.sizes()) {
           lu.resize_(a.sizes());

@@ -986,6 +986,7 @@ torch_tpu_cc_test(
         "cpp_link.mem": "16g",  # Needed for asan.
     },
     deps = [
+        ":cache_key",
         ":dynamism_utils",
         ":error_utils",
         ":shape",
