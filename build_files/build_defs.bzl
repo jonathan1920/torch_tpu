@@ -99,13 +99,14 @@ def _is_cuda_test(tags):
             return True
     return False
 
-def _check_and_adjust_test_tags(name, size, timeout, notap, nopresubmit, nolocal, tags):
+def _check_and_adjust_test_tags(name, size, timeout, nobuild, notap, nopresubmit, nolocal, tags):
     """Validates the test tags.
 
     Args:
         name: The name of the test.
         size: The size of the test.
         timeout: The timeout of the test.
+        nobuild: If given as a string, will not generate a build_test for the test.
         notap: If given as a string, the test will be excluded from TAP, the string will be used
             as the reason, and a build_test named `<name>_build_test` will be added for the test
             to ensure it is buildable.
@@ -118,6 +119,14 @@ def _check_and_adjust_test_tags(name, size, timeout, notap, nopresubmit, nolocal
             and the string will be used as the reason.
         tags: The tags to add to the test.
     """
+
+    # Adjust tags for nobuild.
+    if nobuild != None:
+        # Enforce that nobuild is a non-empty string.
+        if type(nobuild) != "string" or not nobuild:
+            fail("nobuild must be a non-empty string documenting why the test " +
+                 "should be skipped in build.")
+        tags.append("nobuild")  # So that we know that this test shouldn't have a build_test.
 
     # Adjust tags for notap.
     #
@@ -141,11 +150,19 @@ def _check_and_adjust_test_tags(name, size, timeout, notap, nopresubmit, nolocal
         fail("Tests with size 'enormous' or timeout 'eternal' are always skipped by TAP. " +
              "Please add a 'notap' argument to torch_tpu_*_test() to make the fact explicit.")
 
-    # Add a build_test for notap test.
-    if "notap" in tags:  # NOTAP_OK=for implementing notap logic
+    # Add a build_test for notap test unless nobuild is set.
+    if "notap" in tags and nobuild == None:  # NOTAP_OK=for implementing notap logic
+        build_test_args = []
+
+        # The torch_tpu.cuda build only runs tests with requires-gpu-* tags.
+        # Therefore, to ensure that the build_test for a CUDA test is picked
+        # up by the torch_tpu.cuda build, we must add a requires-gpu-* tag to the build_test.
+        if _is_cuda_test(tags):
+            build_test_args.append("requires-gpu-nvidia")
         build_test(
             name = name + "_build_test",
             targets = [":" + name],
+            tags = build_test_args,
         )
 
     # Adjust tags for nopresubmit.
@@ -199,6 +216,7 @@ def torch_tpu_cc_test(
         linkstatic = True,
         shuffle_tests = True,
         fail_if_no_test_linked = True,
+        nobuild = None,
         notap = None,
         nopresubmit = None,
         nolocal = None,
@@ -219,6 +237,7 @@ def torch_tpu_cc_test(
             definitions and increase accelerator utilization by reducing test run time.
         shuffle_tests: Whether to shuffle the test cases.
         fail_if_no_test_linked: Whether to fail if no tests are linked.
+        nobuild: If given as a string, will not generate a build_test for the test.
         notap: If given as a string, the test will be excluded from TAP, the string will be used
             as the reason, and a build_test named `<name>_build_test` will be added for the test
             to ensure it is buildable.
@@ -249,6 +268,7 @@ def torch_tpu_cc_test(
         name = name,
         size = size,
         timeout = timeout,
+        nobuild = nobuild,
         notap = notap,
         nopresubmit = nopresubmit,
         nolocal = nolocal,
@@ -281,6 +301,7 @@ def torch_tpu_py_test(
         size = None,
         timeout = None,
         platform = None,
+        nobuild = None,
         notap = None,
         nopresubmit = None,
         nolocal = None,
@@ -301,6 +322,7 @@ def torch_tpu_py_test(
         platform: The platform to run the test on. Useful for tests on GPU as the
             requires-gpu-* tags are deprecated. If this is set, generates a py_platform_test
             as opposed to a py_test.
+        nobuild: If given as a string, will not generate a build_test for the test.
         notap: If given as a string, the test will be excluded from TAP, the string will be used
             as the reason, and a build_test named `<name>_build_test` will be added for the test
             to ensure it is buildable.
@@ -325,6 +347,7 @@ def torch_tpu_py_test(
         name = name,
         size = size,
         timeout = timeout,
+        nobuild = nobuild,
         notap = notap,
         nopresubmit = nopresubmit,
         nolocal = nolocal,

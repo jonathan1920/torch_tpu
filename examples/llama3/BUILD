@@ -178,6 +178,7 @@ torch_tpu_py_test(
     srcs = ["llama3_2_1b_training_test.py"],
     args = ["--device=cuda"],
     main = "llama3_2_1b_training_test.py",
+    nobuild = "This test doesn't build.",
     notap = "slow example",
     tags = [
         "cpu:4",  # For CUDA, the only choices are 1 or 4.
@@ -247,6 +248,7 @@ torch_tpu_py_test(
     srcs = ["llama3_2_1b_training_test.py"],
     args = ["--device=xla_cuda"],
     main = "llama3_2_1b_training_test.py",
+    nobuild = "This test doesn't build.",
     notap = "slow example",
     tags = [
         "cpu:4",  # For CUDA, the only choices are 1 or 4.
