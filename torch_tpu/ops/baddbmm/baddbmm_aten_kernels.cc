@@ -198,10 +198,13 @@ at::Tensor& AtenBaddbmmDtypeOut(const at::Tensor& self,
 at::Tensor& AtenBaddbmmOut(const at::Tensor& self, const at::Tensor& batch1,
                            const at::Tensor& batch2, const at::Scalar& beta,
                            const at::Scalar& alpha, at::Tensor& out) {
-  TT_KERNEL(OpName::kBaddbmmOut, _, (self, batch1, batch2, beta, alpha, out), {
-    return AtenBaddbmmDtypeOut(self, batch1, batch2, out.scalar_type(), beta,
-                               alpha, out);
-  });
+  TT_KERNEL(OpName::kBaddbmmOut, _,
+            (self, batch1, batch2, IgnoreInCacheKey(beta),
+             IgnoreInCacheKey(alpha), out),
+            {
+              return AtenBaddbmmDtypeOut(self, batch1, batch2,
+                                         out.scalar_type(), beta, alpha, out);
+            });
 }
 
 }  // namespace torch_tpu

@@ -23,6 +23,7 @@
 #include "ATen/ops/ones.h"
 #include "c10/util/Exception.h"
 #include "c10/util/StringUtil.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/op_names.h"
 
@@ -41,7 +42,7 @@ static const auto kInitShowCppContext =
     setenv("TORCH_SHOW_CPP_STACKTRACES", "0", /*overwrite=*/1);
 
 void Kernel1(int ndim) {
-  TT_KERNEL(OpName::kAdd, _, (ndim), {
+  TT_KERNEL(OpName::kAdd, _, (IgnoreInCacheKey(ndim)), {
     throw  // For testing error API.
         TtError(TT_ERROR(error::kInvalidArgument) << "test error",
                 c10::SourceLocation({"foo()", "bar.cc", 42}));
@@ -64,7 +65,7 @@ TEST(TtKernel, PrependOpName) {
 
 // A delegated-to op.
 at::Tensor AtenOp2(bool cond) {
-  TT_KERNEL(OpName::kBmm, _, (cond), {
+  TT_KERNEL(OpName::kBmm, _, (IgnoreInCacheKey(cond)), {
     // Even though this error is thrown in op2, the root op is op3 as we
     // are calling op2 from op3.
     throw  // For testing error API.
@@ -74,7 +75,7 @@ at::Tensor AtenOp2(bool cond) {
 }
 
 void NewKernel1(int ndim) {
-  TT_KERNEL(OpName::kCatOut, _, (ndim), { AtenOp2(true); });
+  TT_KERNEL(OpName::kCatOut, _, (IgnoreInCacheKey(ndim)), { AtenOp2(true); });
 }
 
 TEST(TtKernel, PrependRootOpName) {

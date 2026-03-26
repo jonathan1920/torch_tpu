@@ -37,6 +37,7 @@
 #include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch/headeronly/macros/Export.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
@@ -221,61 +222,65 @@ struct TORCH_API TpuHooksInterface : public at::PrivateUse1HooksInterface {
   //  resize_bytes_nocuda() in Resize.cpp.
   void resizePrivateUse1Bytes(const c10::Storage& storage,
                               size_t new_bytes) const override {
-    TT_KERNEL(OpName::kUntypedStorageResize_, _, (storage, new_bytes), {
-      const size_t current_bytes = storage.nbytes();
-      TT_ASSIGN_OR_THROW(const DeviceBufferRef old_buffer_ref,
-                         GetBaseBufferFromStorage(storage));
-      const mlir::ElementType element_type = old_buffer_ref.element_type();
-      const at::ScalarType dtype = ConvertTo<at::ScalarType>(element_type);
-      const int64_t itemsize = static_cast<int64_t>(at::elementSize(dtype));
-      // Calculates the new number of elements, rounding down if new_bytes is
-      // not a multiple of itemsize. Attempting to access this partial item
-      // would throw an error so there is no need to save the partial bytes.
-      const int64_t new_numel = static_cast<int64_t>(new_bytes) / itemsize;
+    TT_KERNEL(
+        OpName::kUntypedStorageResize_, _,
+        (IgnoreInCacheKey(storage), IgnoreInCacheKey(new_bytes)), {
+          const size_t current_bytes = storage.nbytes();
+          TT_ASSIGN_OR_THROW(const DeviceBufferRef old_buffer_ref,
+                             GetBaseBufferFromStorage(storage));
+          const mlir::ElementType element_type = old_buffer_ref.element_type();
+          const at::ScalarType dtype = ConvertTo<at::ScalarType>(element_type);
+          const int64_t itemsize = static_cast<int64_t>(at::elementSize(dtype));
+          // Calculates the new number of elements, rounding down if new_bytes
+          // is not a multiple of itemsize. Attempting to access this partial
+          // item would throw an error so there is no need to save the partial
+          // bytes.
+          const int64_t new_numel = static_cast<int64_t>(new_bytes) / itemsize;
 
-      if (new_bytes == 0 || current_bytes == 0) {
-        // Resizes to or from 0 bytes. Creates an empty buffer with the new
-        // number of elements and assigns the storage to it.
-        TT_ASSIGN_OR_THROW(
-            DeviceBufferRef buffer_ref,
-            DeviceBufferList::CreateEmpty({new_numel}, element_type));
-        c10::DataPtr data_ptr =
-            MakeDataPtr(std::move(buffer_ref), storage.device().index());
-        storage.set_data_ptr(std::move(data_ptr));
-        storage.set_nbytes(new_bytes);
-        return;
-      }
-      if (new_bytes > current_bytes) {
-        // Resizes from non-zero to a larger number of bytes. Creates a dummy
-        // tensor that shares the storage and uses aten::resize_, which inserts
-        // the pad operation.
-        const auto options =
-            at::TensorOptions().dtype(dtype).device(storage.device());
-        at::Tensor dummy_tensor = at::empty({0}, options).set_(storage);
-        dummy_tensor.resize_({new_numel});
-        // After resizing the storage has (new_numel * itemsize) bytes,
-        // which is not necessarily equal to new_bytes.
-        storage.set_nbytes(new_bytes);
-        return;
-      }
-      // Resizes to a smaller yet non-zero number of bytes. Creates an empty
-      // tensor of the new size and writes the relevant slice of the original
-      // data into it (accessed via a dummy tensor that shares the storage).
-      // This has the effect of erasing the rest of the original data,
-      // whereas a simple slice would preserve all of the data in the buffer.
-      const auto options =
-          at::TensorOptions().dtype(dtype).device(storage.device());
-      TT_ASSIGN_OR_THROW(
-          DeviceBufferRef new_buffer_ref,
-          DeviceBufferList::CreateEmpty({new_numel}, element_type));
-      at::Tensor new_tensor = MakeTensor(new_buffer_ref);
-      at::Tensor dummy_tensor = at::empty({0}, options).set_(storage);
-      new_tensor.copy_(
-          dummy_tensor.slice(/*dim=*/0, /*start=*/0, /*end=*/new_numel));
-      // Transfers the new tensor's storage pointer to the original storage.
-      storage.set_data_ptr(new_tensor.storage().set_data_ptr({}));
-      storage.set_nbytes(new_bytes);
-    });
+          if (new_bytes == 0 || current_bytes == 0) {
+            // Resizes to or from 0 bytes. Creates an empty buffer with the new
+            // number of elements and assigns the storage to it.
+            TT_ASSIGN_OR_THROW(
+                DeviceBufferRef buffer_ref,
+                DeviceBufferList::CreateEmpty({new_numel}, element_type));
+            c10::DataPtr data_ptr =
+                MakeDataPtr(std::move(buffer_ref), storage.device().index());
+            storage.set_data_ptr(std::move(data_ptr));
+            storage.set_nbytes(new_bytes);
+            return;
+          }
+          if (new_bytes > current_bytes) {
+            // Resizes from non-zero to a larger number of bytes. Creates a
+            // dummy tensor that shares the storage and uses aten::resize_,
+            // which inserts the pad operation.
+            const auto options =
+                at::TensorOptions().dtype(dtype).device(storage.device());
+            at::Tensor dummy_tensor = at::empty({0}, options).set_(storage);
+            dummy_tensor.resize_({new_numel});
+            // After resizing the storage has (new_numel * itemsize) bytes,
+            // which is not necessarily equal to new_bytes.
+            storage.set_nbytes(new_bytes);
+            return;
+          }
+          // Resizes to a smaller yet non-zero number of bytes. Creates an empty
+          // tensor of the new size and writes the relevant slice of the
+          // original data into it (accessed via a dummy tensor that shares the
+          // storage). This has the effect of erasing the rest of the original
+          // data, whereas a simple slice would preserve all of the data in the
+          // buffer.
+          const auto options =
+              at::TensorOptions().dtype(dtype).device(storage.device());
+          TT_ASSIGN_OR_THROW(
+              DeviceBufferRef new_buffer_ref,
+              DeviceBufferList::CreateEmpty({new_numel}, element_type));
+          at::Tensor new_tensor = MakeTensor(new_buffer_ref);
+          at::Tensor dummy_tensor = at::empty({0}, options).set_(storage);
+          new_tensor.copy_(
+              dummy_tensor.slice(/*dim=*/0, /*start=*/0, /*end=*/new_numel));
+          // Transfers the new tensor's storage pointer to the original storage.
+          storage.set_data_ptr(new_tensor.storage().set_data_ptr({}));
+          storage.set_nbytes(new_bytes);
+        });
   }
 
   bool isAvailable() const override { return GetPjRtClient() != nullptr; }

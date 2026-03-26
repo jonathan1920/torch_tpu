@@ -55,28 +55,31 @@ absl::StatusOr<mlir::MlirOp> BuildAddcdivShlo(mlir::MlirOp self,
 at::Tensor& AtenAddcdivOut(const at::Tensor& self, const at::Tensor& tensor1,
                            const at::Tensor& tensor2, const at::Scalar& value,
                            at::Tensor& out) {
-  TT_KERNEL(OpName::kAddcdivOut, _, (self, tensor1, tensor2, value, out), {
-    TT_ASSIGN_OR_THROW(at::Tensor value_tensor, MakeTensor(value));
+  TT_KERNEL(
+      OpName::kAddcdivOut, _,
+      (self, tensor1, tensor2, IgnoreInCacheKey(value), out), {
+        TT_ASSIGN_OR_THROW(at::Tensor value_tensor, MakeTensor(value));
 
-    // Build the op.
-    auto op_builder = [](FixedSizeSpan<mlir::MlirOp, 4> inputs)
-        -> absl::StatusOr<mlir::MlirOp> {
-      auto& [self_op, tensor1_op, tensor2_op, value_op] = inputs;
-      return BuildAddcdivShlo(self_op, tensor1_op, tensor2_op, value_op);
-    };
+        // Build the op.
+        auto op_builder = [](FixedSizeSpan<mlir::MlirOp, 4> inputs)
+            -> absl::StatusOr<mlir::MlirOp> {
+          auto& [self_op, tensor1_op, tensor2_op, value_op] = inputs;
+          return BuildAddcdivShlo(self_op, tensor1_op, tensor2_op, value_op);
+        };
 
-    TT_ASSIGN_OR_THROW(mlir::ElementType out_dtype,
-                       ConvertTo<mlir::ElementType>(out.scalar_type()));
-    TT_ASSIGN_OR_THROW(
-        auto result_buffer,
-        DispatchOp<4>(OpName::kAddcdivOut, std::move(op_builder),
-                      {self, tensor1, tensor2, value_tensor},
-                      {.out_dtype = out_dtype,
-                       .out_dims = CopyIntVector(out.sizes()),
-                       .op_param_cache_keys = OpParamCacheKeys::Empty()}));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buffer), out));
-    return out;
-  });
+        TT_ASSIGN_OR_THROW(mlir::ElementType out_dtype,
+                           ConvertTo<mlir::ElementType>(out.scalar_type()));
+        TT_ASSIGN_OR_THROW(
+            auto result_buffer,
+            DispatchOp<4>(OpName::kAddcdivOut, std::move(op_builder),
+                          {self, tensor1, tensor2, value_tensor},
+                          {.out_dtype = out_dtype,
+                           .out_dims = CopyIntVector(out.sizes()),
+                           .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(result_buffer), out));
+        return out;
+      });
 }
 
 }  // namespace torch_tpu

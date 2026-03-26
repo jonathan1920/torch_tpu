@@ -72,21 +72,22 @@ absl::StatusOr<DeviceBufferRef> LeakyReluShlo(const at::Tensor& self,
 at::Tensor& AtenLeakyReluOut(const at::Tensor& self,
                              const at::Scalar& negative_slope,
                              at::Tensor& out) {
-  TT_KERNEL(OpName::kLeakyReluOut, _, (self, negative_slope, out), {
-    TT_ASSIGN_OR_THROW(mlir::ElementType dtype,
-                       ConvertTo<mlir::ElementType>(self.scalar_type()));
-    TT_CHECK_THROW(!IsBoolean(dtype), error::kUnimplemented)
-        << "boolean dtypes are not supported, got " << self.scalar_type();
-    TT_CHECK_THROW(!IsInteger(dtype, /*includeBool=*/false),
-                   error::kUnimplemented)
-        << "integer dtypes are not supported, got " << self.scalar_type();
-    TT_CHECK_THROW(!IsComplex(dtype), error::kUnimplemented)
-        << "complex dtypes are not supported, got " << self.scalar_type();
-    TT_ASSIGN_OR_THROW(auto result_buf,
-                       LeakyReluShlo(self, negative_slope, out));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
-    return out;
-  });
+  TT_KERNEL(
+      OpName::kLeakyReluOut, _, (self, IgnoreInCacheKey(negative_slope), out), {
+        TT_ASSIGN_OR_THROW(mlir::ElementType dtype,
+                           ConvertTo<mlir::ElementType>(self.scalar_type()));
+        TT_CHECK_THROW(!IsBoolean(dtype), error::kUnimplemented)
+            << "boolean dtypes are not supported, got " << self.scalar_type();
+        TT_CHECK_THROW(!IsInteger(dtype, /*includeBool=*/false),
+                       error::kUnimplemented)
+            << "integer dtypes are not supported, got " << self.scalar_type();
+        TT_CHECK_THROW(!IsComplex(dtype), error::kUnimplemented)
+            << "complex dtypes are not supported, got " << self.scalar_type();
+        TT_ASSIGN_OR_THROW(auto result_buf,
+                           LeakyReluShlo(self, negative_slope, out));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+        return out;
+      });
 }
 
 }  // namespace torch_tpu

@@ -32,9 +32,12 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/permute.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/index_put/index_put.h"
@@ -504,7 +507,10 @@ at::Tensor& TpuAtenIndexPutImpl_(
     at::Tensor& self, const c10::List<std::optional<at::Tensor>>& indices,
     const at::Tensor& values, bool accumulate, bool unsafe) {
   TT_KERNEL(
-      OpName::kIndexPutImpl_, _, (self, indices, values, accumulate, unsafe), {
+      OpName::kIndexPutImpl_, _,
+      (self, IgnoreInCacheKey(indices), values, IgnoreInCacheKey(accumulate),
+       IgnoreInCacheKey(unsafe)),
+      {
         TT_ASSIGN_OR_THROW(
             DeviceBufferRef result_buf,
             IndexPutHelper(self, indices, values, accumulate, unsafe));

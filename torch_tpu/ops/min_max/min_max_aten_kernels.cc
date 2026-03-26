@@ -34,6 +34,8 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -172,30 +174,36 @@ absl::Status ArgMinMax(OpName op_name, const at::Tensor& self,
 
 at::Tensor& AtenArgmaxOut(const at::Tensor& self, c10::optional<int64_t> dim,
                           bool keep_dim, at::Tensor& out) {
-  TT_KERNEL(OpName::kArgMaxOut, _, (self, dim, keep_dim, out), {
-    // keep_dim does not affect the SHLO and therefore does not need to be
-    // included in the cache key.
-    TT_ASSIGN_OR_THROW(auto param_keys,
-                       *OpParamCacheKeysBuilder().SetParam("dim", dim));
+  TT_KERNEL(OpName::kArgMaxOut, _,
+            (self, IgnoreInCacheKey(dim), IgnoreInCacheKey(keep_dim), out), {
+              // keep_dim does not affect the SHLO and therefore does not need
+              // to be included in the cache key.
+              TT_ASSIGN_OR_THROW(
+                  auto param_keys,
+                  *OpParamCacheKeysBuilder().SetParam("dim", dim));
 
-    TT_THROW_IF_ERROR(ArgMinMax(OpName::kArgMaxOut, self, dim, keep_dim,
-                                MinMaxOp::kMax, out, std::move(param_keys)));
-    return out;
-  });
+              TT_THROW_IF_ERROR(ArgMinMax(OpName::kArgMaxOut, self, dim,
+                                          keep_dim, MinMaxOp::kMax, out,
+                                          std::move(param_keys)));
+              return out;
+            });
 }
 
 at::Tensor& AtenArgminOut(const at::Tensor& self, c10::optional<int64_t> dim,
                           bool keep_dim, at::Tensor& out) {
-  TT_KERNEL(OpName::kArgMinOut, _, (self, dim, keep_dim, out), {
-    // keep_dim does not affect the SHLO and therefore does not need to be
-    // included in the cache key.
-    TT_ASSIGN_OR_THROW(auto param_keys,
-                       *OpParamCacheKeysBuilder().SetParam("dim", dim));
+  TT_KERNEL(OpName::kArgMinOut, _,
+            (self, IgnoreInCacheKey(dim), IgnoreInCacheKey(keep_dim), out), {
+              // keep_dim does not affect the SHLO and therefore does not need
+              // to be included in the cache key.
+              TT_ASSIGN_OR_THROW(
+                  auto param_keys,
+                  *OpParamCacheKeysBuilder().SetParam("dim", dim));
 
-    TT_THROW_IF_ERROR(ArgMinMax(OpName::kArgMinOut, self, dim, keep_dim,
-                                MinMaxOp::kMin, out, std::move(param_keys)));
-    return out;
-  });
+              TT_THROW_IF_ERROR(ArgMinMax(OpName::kArgMinOut, self, dim,
+                                          keep_dim, MinMaxOp::kMin, out,
+                                          std::move(param_keys)));
+              return out;
+            });
 }
 
 at::Tensor AtenMax(const at::Tensor& self) {

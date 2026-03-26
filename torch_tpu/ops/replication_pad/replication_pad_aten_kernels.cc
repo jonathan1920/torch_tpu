@@ -17,12 +17,12 @@
 #include "torch_tpu/ops/replication_pad/replication_pad_aten_kernels.h"
 
 #include <cstdint>
-#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/LLVM.h"
@@ -32,7 +32,9 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/utils.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
+#include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/nullary_aten_kernels.h"
@@ -342,8 +344,8 @@ at::Tensor& AtenReplicationPad3dBackwardGradInput(const at::Tensor& grad_output,
 at::Tensor AtenReplicationPad2dBackward(const at::Tensor& grad_output,
                                         const at::Tensor& self,
                                         at::IntArrayRef padding) {
-  TT_KERNEL(OpName::kReplicationPad2dBackward, _, (grad_output, self, padding),
-            {
+  TT_KERNEL(OpName::kReplicationPad2dBackward, _,
+            (grad_output, self, IgnoreInCacheKey(padding)), {
               Dimensions gidims(grad_output.sizes().begin(),
                                 grad_output.sizes().end());
               TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
@@ -383,7 +385,8 @@ at::Tensor AtenReplicationPad3dBackward(const at::Tensor& grad_output,
                                         const at::Tensor& self,
                                         at::IntArrayRef padding) {
   TT_KERNEL(
-      OpName::kReplicationPad3dBackward, _, (grad_output, self, padding), {
+      OpName::kReplicationPad3dBackward, _,
+      (grad_output, self, IgnoreInCacheKey(padding)), {
         Dimensions gidims(grad_output.sizes().begin(),
                           grad_output.sizes().end());
         TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are guaranteed

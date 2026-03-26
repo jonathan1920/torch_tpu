@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "absl/log/absl_check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"
@@ -44,6 +45,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -569,7 +571,10 @@ std::tuple<at::Tensor, at::Tensor> AtenMaxPool3dWithIndices(
     const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,
     at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode) {
   TT_KERNEL(OpName::kMaxPool3dWithIndices, _,
-            (self, kernel_size, stride, padding, dilation, ceil_mode), {
+            (self, IgnoreInCacheKey(kernel_size), IgnoreInCacheKey(stride),
+             IgnoreInCacheKey(padding), IgnoreInCacheKey(dilation),
+             IgnoreInCacheKey(ceil_mode)),
+            {
               auto output_size =
                   GetMaxPoolOutputSize(self.sizes(), kernel_size, stride,
                                        padding, dilation, ceil_mode, 3);
@@ -609,8 +614,9 @@ at::Tensor AtenMaxPool3dWithIndicesBackward(
     at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode,
     const at::Tensor& indices) {
   TT_KERNEL(OpName::kMaxPool3dWithIndicesBackward, _,
-            (grad_output, self, kernel_size, stride, padding, dilation,
-             ceil_mode, indices),
+            (grad_output, self, IgnoreInCacheKey(kernel_size),
+             IgnoreInCacheKey(stride), IgnoreInCacheKey(padding),
+             IgnoreInCacheKey(dilation), IgnoreInCacheKey(ceil_mode), indices),
             {
               at::Tensor grad_input = at::empty(self.sizes(), self.options());
               AtenMaxPool3dWithIndicesBackwardGradInput(

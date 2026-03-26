@@ -323,7 +323,10 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
                            std::optional<double> scale, bool enable_gqa) {
   TT_KERNEL(
       OpName::kFusedSdpChoice, _,
-      (query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa), {
+      (query, key, value, IgnoreInCacheKey(attn_mask),
+       IgnoreInCacheKey(dropout_p), IgnoreInCacheKey(is_causal),
+       IgnoreInCacheKey(scale), IgnoreInCacheKey(enable_gqa)),
+      {
         const auto& ctx = at::globalContext();
 
         // The first 2 branches check for SDP kernel options, falling through
@@ -426,8 +429,9 @@ AtenScaledDotProductFusedAttentionOverrideable(
     const std::optional<at::Tensor>& attn_bias, double dropout_p,
     bool is_causal, bool return_debug_mask, std::optional<double> scale) {
   TT_KERNEL(OpName::kScaledDotProductFusedAttentionOverrideable, _,
-            (query, key, value, attn_bias, dropout_p, is_causal,
-             return_debug_mask, scale),
+            (query, key, value, IgnoreInCacheKey(attn_bias),
+             IgnoreInCacheKey(dropout_p), IgnoreInCacheKey(is_causal),
+             IgnoreInCacheKey(return_debug_mask), IgnoreInCacheKey(scale)),
             {
               // Unused arguments: attn_bias, dropout_p, is_causal,
               // return_debug_mask, scale.
@@ -451,9 +455,11 @@ AtenScaledDotProductFusedAttentionOverrideableBackward(
     double dropout_p, bool is_causal, const at::Tensor& philox_seed,
     const at::Tensor& philox_offset, std::optional<double> scale) {
   TT_KERNEL(OpName::kScaledDotProductFusedAttentionOverrideableBackward, _,
-            (grad_out, query, key, value, attn_bias, grad_input_mask, out,
-             logsumexp, cum_seq_q, cum_seq_k, max_q, max_k, dropout_p,
-             is_causal, philox_seed, philox_offset, scale),
+            (grad_out, query, key, value, attn_bias,
+             IgnoreInCacheKey(grad_input_mask), out, logsumexp, cum_seq_q,
+             cum_seq_k, IgnoreInCacheKey(max_q), IgnoreInCacheKey(max_k),
+             IgnoreInCacheKey(dropout_p), IgnoreInCacheKey(is_causal),
+             philox_seed, philox_offset, IgnoreInCacheKey(scale)),
             {
               // Unused arguments: attn_bias, grad_input_mask, out, logsumexp,
               // cum_seq_q, cum_seq_k, max_q, max_k, dropout_p, is_causal,
@@ -473,8 +479,9 @@ AtenScaledDotProductEfficientAttention(
     const std::optional<at::Tensor>& attn_bias, bool compute_log_sumexp,
     double dropout_p, bool is_causal, std::optional<double> scale) {
   TT_KERNEL(OpName::kScaledDotProductEfficientAttention, _,
-            (query, key, value, attn_bias, compute_log_sumexp, dropout_p,
-             is_causal, scale),
+            (query, key, value, IgnoreInCacheKey(attn_bias),
+             IgnoreInCacheKey(compute_log_sumexp), IgnoreInCacheKey(dropout_p),
+             IgnoreInCacheKey(is_causal), IgnoreInCacheKey(scale)),
             {
               // Unused arguments: attn_bias, compute_log_sumexp, dropout_p,
               // scale.
@@ -495,7 +502,9 @@ AtenScaledDotProductFlashAttention(const at::Tensor& query,
                                    bool is_causal, bool return_debug_mask,
                                    std::optional<double> scale) {
   TT_KERNEL(OpName::kScaledDotProductFlashAttention, _,
-            (query, key, value, dropout_p, is_causal, return_debug_mask, scale),
+            (query, key, value, IgnoreInCacheKey(dropout_p),
+             IgnoreInCacheKey(is_causal), IgnoreInCacheKey(return_debug_mask),
+             IgnoreInCacheKey(scale)),
             {
               // Unused arguments: dropout_p, return_debug_mask, scale.
               TT_ASSIGN_OR_THROW(auto out, ScaledDotProductFusedAttentionImpl(

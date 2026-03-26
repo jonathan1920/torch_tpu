@@ -31,6 +31,7 @@
 #include "c10/util/Exception.h"
 #include "c10/util/OptionalArrayRef.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
@@ -73,55 +74,64 @@ double CalculateNormalizationFactor(const std::optional<at::Scalar>& correction,
 
 at::Tensor AtenVar(const at::Tensor& self, c10::OptionalArrayRef<int64_t> dim,
                    const std::optional<at::Scalar>& correction, bool keep_dim) {
-  TT_KERNEL(OpName::kVar, _, (self, dim, correction, keep_dim), {
-    c10::ScalarType scalar_dtype = self.scalar_type();
-    TT_THROW_IF_ERROR(CheckFloatOrComplex(scalar_dtype));
-    if (c10::isComplexType(scalar_dtype)) {
-      scalar_dtype = c10::toRealValueType(scalar_dtype);
-    }
-    if (self.numel() == 0)
-      return at::full({}, std::numeric_limits<double>::quiet_NaN(),
-                      scalar_dtype);
+  TT_KERNEL(OpName::kVar, _,
+            (self, IgnoreInCacheKey(dim), IgnoreInCacheKey(correction),
+             IgnoreInCacheKey(keep_dim)),
+            {
+              c10::ScalarType scalar_dtype = self.scalar_type();
+              TT_THROW_IF_ERROR(CheckFloatOrComplex(scalar_dtype));
+              if (c10::isComplexType(scalar_dtype)) {
+                scalar_dtype = c10::toRealValueType(scalar_dtype);
+              }
+              if (self.numel() == 0)
+                return at::full({}, std::numeric_limits<double>::quiet_NaN(),
+                                scalar_dtype);
 
-    at::Tensor diff_sq_tensor = CalculateSquaredDiff(self, dim);
-    TT_ASSIGN_OR_THROW(at::Tensor sum_sq_tensor,
-                       ApplySumReduction(diff_sq_tensor, dim,
-                                         keep_dim ? ReductionMode::kKeepDims
-                                                  : ReductionMode::kDropDims,
-                                         scalar_dtype));
+              at::Tensor diff_sq_tensor = CalculateSquaredDiff(self, dim);
+              TT_ASSIGN_OR_THROW(
+                  at::Tensor sum_sq_tensor,
+                  ApplySumReduction(diff_sq_tensor, dim,
+                                    keep_dim ? ReductionMode::kKeepDims
+                                             : ReductionMode::kDropDims,
+                                    scalar_dtype));
 
-    TT_ASSIGN_OR_THROW(int64_t reduction_size, GetReductionFactor(self, dim));
-    const double denom =
-        CalculateNormalizationFactor(correction, reduction_size);
-    return sum_sq_tensor.div(denom);
-  });
+              TT_ASSIGN_OR_THROW(int64_t reduction_size,
+                                 GetReductionFactor(self, dim));
+              const double denom =
+                  CalculateNormalizationFactor(correction, reduction_size);
+              return sum_sq_tensor.div(denom);
+            });
 }
 
 at::Tensor& AtenVarOut(const at::Tensor& self,
                        c10::OptionalArrayRef<int64_t> dim,
                        const std::optional<at::Scalar>& correction,
                        bool keep_dim, at::Tensor& out) {
-  TT_KERNEL(OpName::kVarOut, _, (self, dim, correction, keep_dim, out), {
-    c10::ScalarType scalar_dtype = out.scalar_type();
-    TT_THROW_IF_ERROR(CheckFloatOrComplex(scalar_dtype));
-    if (self.numel() == 0) {
-      at::full_out(out, {}, std::numeric_limits<double>::quiet_NaN());
-      return out;
-    }
+  TT_KERNEL(
+      OpName::kVarOut, _,
+      (self, IgnoreInCacheKey(dim), IgnoreInCacheKey(correction),
+       IgnoreInCacheKey(keep_dim), out),
+      {
+        c10::ScalarType scalar_dtype = out.scalar_type();
+        TT_THROW_IF_ERROR(CheckFloatOrComplex(scalar_dtype));
+        if (self.numel() == 0) {
+          at::full_out(out, {}, std::numeric_limits<double>::quiet_NaN());
+          return out;
+        }
 
-    at::Tensor diff_sq_tensor = CalculateSquaredDiff(self, dim);
-    TT_THROW_IF_ERROR(ApplySumReductionOut(
-        diff_sq_tensor, out, dim,
-        keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims,
-        scalar_dtype));
+        at::Tensor diff_sq_tensor = CalculateSquaredDiff(self, dim);
+        TT_THROW_IF_ERROR(ApplySumReductionOut(
+            diff_sq_tensor, out, dim,
+            keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims,
+            scalar_dtype));
 
-    TT_ASSIGN_OR_THROW(const int64_t reduction_size,
-                       GetReductionFactor(self, dim));
-    const double denom =
-        CalculateNormalizationFactor(correction, reduction_size);
-    out.div_(denom);
-    return out;
-  });
+        TT_ASSIGN_OR_THROW(const int64_t reduction_size,
+                           GetReductionFactor(self, dim));
+        const double denom =
+            CalculateNormalizationFactor(correction, reduction_size);
+        out.div_(denom);
+        return out;
+      });
 }
 
 }  // namespace torch_tpu

@@ -23,6 +23,7 @@
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
@@ -69,11 +70,14 @@ absl::StatusOr<DeviceBufferRef> Gather(const at::Tensor& self, int64_t dim,
 at::Tensor& AtenGatherOut(const at::Tensor& self, int64_t dim,
                           const at::Tensor& index, bool sparse_grad,
                           at::Tensor& out) {
-  TT_KERNEL(OpName::kGatherOut, _, (self, dim, index, sparse_grad, out), {
-    TT_ASSIGN_OR_THROW(auto result, Gather(self, dim, index, sparse_grad));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
-    return out;
-  });
+  TT_KERNEL(
+      OpName::kGatherOut, _,
+      (self, IgnoreInCacheKey(dim), index, IgnoreInCacheKey(sparse_grad), out),
+      {
+        TT_ASSIGN_OR_THROW(auto result, Gather(self, dim, index, sparse_grad));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
+        return out;
+      });
 }
 
 }  // namespace torch_tpu

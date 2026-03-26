@@ -143,94 +143,107 @@ absl::StatusOr<DeviceBufferRef> NormalLike(
 
 at::Tensor& AtenNormal_(at::Tensor& self, double mean, double std,
                         std::optional<at::Generator> generator) {
-  TT_KERNEL(OpName::kNormal_, _, (self, mean, std, generator), {
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(self));
-    at::Tensor mean_tensor = at::scalar_tensor(mean, self.options());
-    at::Tensor std_tensor = at::scalar_tensor(std, self.options());
-    TT_ASSIGN_OR_THROW(
-        auto output_buf,
-        NormalLike(self, OpName::kNormal_, mean_tensor, std_tensor, generator));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), self));
-    return self;
-  });
+  TT_KERNEL(
+      OpName::kNormal_, _,
+      (self, IgnoreInCacheKey(mean), IgnoreInCacheKey(std),
+       IgnoreInCacheKey(generator)),
+      {
+        TT_THROW_IF_ERROR(CheckNormalPreconditions(self));
+        at::Tensor mean_tensor = at::scalar_tensor(mean, self.options());
+        at::Tensor std_tensor = at::scalar_tensor(std, self.options());
+        TT_ASSIGN_OR_THROW(auto output_buf,
+                           NormalLike(self, OpName::kNormal_, mean_tensor,
+                                      std_tensor, generator));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), self));
+        return self;
+      });
 }
 
 at::Tensor AtenNormalFloatTensor(double mean, const at::Tensor& std,
                                  std::optional<at::Generator> generator) {
-  TT_KERNEL(OpName::kNormalFloatTensor, _, (mean, std, generator), {
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(std));
-    at::Tensor mean_tensor = at::scalar_tensor(mean, std.options());
-    TT_ASSIGN_OR_THROW(auto output_buf,
-                       NormalLike(std, OpName::kNormalFloatTensor, mean_tensor,
-                                  std, generator));
-    return MakeTensor(std::move(output_buf));
-  });
+  TT_KERNEL(OpName::kNormalFloatTensor, _,
+            (IgnoreInCacheKey(mean), std, IgnoreInCacheKey(generator)), {
+              TT_THROW_IF_ERROR(CheckNormalPreconditions(std));
+              at::Tensor mean_tensor = at::scalar_tensor(mean, std.options());
+              TT_ASSIGN_OR_THROW(auto output_buf,
+                                 NormalLike(std, OpName::kNormalFloatTensor,
+                                            mean_tensor, std, generator));
+              return MakeTensor(std::move(output_buf));
+            });
 }
 
 at::Tensor& AtenNormalFloatTensorOut(double mean, const at::Tensor& std,
                                      std::optional<at::Generator> generator,
                                      at::Tensor& out) {
-  TT_KERNEL(OpName::kNormalFloatTensorOut, _, (mean, std, generator, out), {
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(out));
-    at::Tensor mean_tensor = at::scalar_tensor(mean, out.options());
-    TT_ASSIGN_OR_THROW(auto output_buf,
-                       NormalLike(out, OpName::kNormalFloatTensorOut,
-                                  mean_tensor, std, generator));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
-    return out;
-  });
+  TT_KERNEL(
+      OpName::kNormalFloatTensorOut, _,
+      (IgnoreInCacheKey(mean), std, IgnoreInCacheKey(generator), out), {
+        TT_THROW_IF_ERROR(CheckNormalPreconditions(out));
+        at::Tensor mean_tensor = at::scalar_tensor(mean, out.options());
+        TT_ASSIGN_OR_THROW(auto output_buf,
+                           NormalLike(out, OpName::kNormalFloatTensorOut,
+                                      mean_tensor, std, generator));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
+        return out;
+      });
 }
 
 at::Tensor AtenNormalTensorFloat(const at::Tensor& mean, double std,
                                  std::optional<at::Generator> generator) {
-  TT_KERNEL(OpName::kNormalTensorFloat, _, (mean, std, generator), {
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(mean));
-    at::Tensor std_tensor = at::scalar_tensor(std, mean.options());
-    TT_ASSIGN_OR_THROW(auto output_buf,
-                       NormalLike(mean, OpName::kNormalTensorFloat, mean,
-                                  std_tensor, generator));
-    return MakeTensor(std::move(output_buf));
-  });
+  TT_KERNEL(OpName::kNormalTensorFloat, _,
+            (mean, IgnoreInCacheKey(std), IgnoreInCacheKey(generator)), {
+              TT_THROW_IF_ERROR(CheckNormalPreconditions(mean));
+              at::Tensor std_tensor = at::scalar_tensor(std, mean.options());
+              TT_ASSIGN_OR_THROW(auto output_buf,
+                                 NormalLike(mean, OpName::kNormalTensorFloat,
+                                            mean, std_tensor, generator));
+              return MakeTensor(std::move(output_buf));
+            });
 }
 
 at::Tensor& AtenNormalTensorFloatOut(const at::Tensor& mean, double std,
                                      std::optional<at::Generator> generator,
                                      at::Tensor& out) {
-  TT_KERNEL(OpName::kNormalTensorFloatOut, _, (mean, std, generator, out), {
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(out));
-    at::Tensor std_tensor = at::scalar_tensor(std, out.options());
-    TT_ASSIGN_OR_THROW(auto output_buf,
-                       NormalLike(out, OpName::kNormalTensorFloatOut, mean,
-                                  std_tensor, generator));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
-    return out;
-  });
+  TT_KERNEL(
+      OpName::kNormalTensorFloatOut, _,
+      (mean, IgnoreInCacheKey(std), IgnoreInCacheKey(generator), out), {
+        TT_THROW_IF_ERROR(CheckNormalPreconditions(out));
+        at::Tensor std_tensor = at::scalar_tensor(std, out.options());
+        TT_ASSIGN_OR_THROW(auto output_buf,
+                           NormalLike(out, OpName::kNormalTensorFloatOut, mean,
+                                      std_tensor, generator));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
+        return out;
+      });
 }
 
 at::Tensor AtenNormalTensorTensor(const at::Tensor& mean, const at::Tensor& std,
                                   std::optional<at::Generator> generator) {
-  TT_KERNEL(OpName::kNormalTensorTensor, _, (mean, std, generator), {
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(mean));
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(std));
-    TT_ASSIGN_OR_THROW(
-        auto output_buf,
-        NormalLike(mean, OpName::kNormalTensorTensor, mean, std, generator));
-    return MakeTensor(std::move(output_buf));
-  });
+  TT_KERNEL(OpName::kNormalTensorTensor, _,
+            (mean, std, IgnoreInCacheKey(generator)), {
+              TT_THROW_IF_ERROR(CheckNormalPreconditions(mean));
+              TT_THROW_IF_ERROR(CheckNormalPreconditions(std));
+              TT_ASSIGN_OR_THROW(auto output_buf,
+                                 NormalLike(mean, OpName::kNormalTensorTensor,
+                                            mean, std, generator));
+              return MakeTensor(std::move(output_buf));
+            });
 }
 
 at::Tensor& AtenNormalTensorTensorOut(const at::Tensor& mean,
                                       const at::Tensor& std,
                                       std::optional<at::Generator> generator,
                                       at::Tensor& out) {
-  TT_KERNEL(OpName::kNormalTensorTensorOut, _, (mean, std, generator, out), {
-    TT_THROW_IF_ERROR(CheckNormalPreconditions(out));
-    TT_ASSIGN_OR_THROW(
-        auto output_buf,
-        NormalLike(out, OpName::kNormalTensorTensorOut, mean, std, generator));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
-    return out;
-  });
+  TT_KERNEL(
+      OpName::kNormalTensorTensorOut, _,
+      (mean, std, IgnoreInCacheKey(generator), out), {
+        TT_THROW_IF_ERROR(CheckNormalPreconditions(out));
+        TT_ASSIGN_OR_THROW(auto output_buf,
+                           NormalLike(out, OpName::kNormalTensorTensorOut, mean,
+                                      std, generator));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), out));
+        return out;
+      });
 }
 
 }  // namespace torch_tpu

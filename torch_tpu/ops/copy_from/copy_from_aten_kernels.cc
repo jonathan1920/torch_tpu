@@ -28,6 +28,7 @@
 #include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/MemoryFormat.h"
 #include "torch_tpu/common/aten_utils.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/ops/copy_from/cpu_to_tpu.h"
@@ -77,59 +78,61 @@ absl::StatusOr<CopyType> GetCopyType(const at::Tensor& src,
 at::Tensor AtenCopyFrom(const at::Tensor& src, const at::Tensor& self_dest,
                         bool non_blocking) {
   tsl::profiler::TraceMe trace("AtenCopyFrom");
-  TT_KERNEL(OpName::kCopyFrom, _, (src, self_dest, non_blocking), {
-    TT_CHECK_THROW(IsPrivateUse1Device(src) || IsPrivateUse1Device(self_dest),
-                   error::kInvalidArgument)
-        << "expected at least one of the inputs to be on '"
-        << GetPrivateUse1DeviceDebugName() << "' device, got '"
-        << src.device().type() << "' (source) and '"
-        << self_dest.device().type() << "' (destination)";
+  TT_KERNEL(
+      OpName::kCopyFrom, _, (src, self_dest, IgnoreInCacheKey(non_blocking)), {
+        TT_CHECK_THROW(
+            IsPrivateUse1Device(src) || IsPrivateUse1Device(self_dest),
+            error::kInvalidArgument)
+            << "expected at least one of the inputs to be on '"
+            << GetPrivateUse1DeviceDebugName() << "' device, got '"
+            << src.device().type() << "' (source) and '"
+            << self_dest.device().type() << "' (destination)";
 
-    if (src.is_same(self_dest)) {
-      // Self-to-self copy is a no-op.
-      return self_dest;
-    }
+        if (src.is_same(self_dest)) {
+          // Self-to-self copy is a no-op.
+          return self_dest;
+        }
 
-    // Broadcast if necessary (on the source device).
-    at::Tensor broadcasted_src = src;
-    if (src.sizes() != self_dest.sizes()) {
-      tsl::profiler::TraceMe trace_broadcast("AtenCopyFrom::Broadcast");
-      while (broadcasted_src.dim() < self_dest.dim()) {
-        broadcasted_src.unsqueeze_(0);
-      }
-      // This may throw if the src tensor cannot be expanded.
-      broadcasted_src = broadcasted_src.expand(self_dest.sizes());
-    }
+        // Broadcast if necessary (on the source device).
+        at::Tensor broadcasted_src = src;
+        if (src.sizes() != self_dest.sizes()) {
+          tsl::profiler::TraceMe trace_broadcast("AtenCopyFrom::Broadcast");
+          while (broadcasted_src.dim() < self_dest.dim()) {
+            broadcasted_src.unsqueeze_(0);
+          }
+          // This may throw if the src tensor cannot be expanded.
+          broadcasted_src = broadcasted_src.expand(self_dest.sizes());
+        }
 
-    // Perform a CPU-to-TPU, TPU-to-TPU, or TPU-to-CPU copy; in any case,
-    // self_dest will be updated with a new c10::StorageImpl containing the
-    // same values as exist in src's c10::DataPtr.
-    TT_ASSIGN_OR_THROW(CopyType to_copy_type, GetCopyType(src, self_dest));
+        // Perform a CPU-to-TPU, TPU-to-TPU, or TPU-to-CPU copy; in any case,
+        // self_dest will be updated with a new c10::StorageImpl containing the
+        // same values as exist in src's c10::DataPtr.
+        TT_ASSIGN_OR_THROW(CopyType to_copy_type, GetCopyType(src, self_dest));
 
-    switch (to_copy_type) {
-      case CopyType::kCpuToTpu:
-        TT_THROW_IF_ERROR(
-            CopyCpuToTpu(broadcasted_src, self_dest, non_blocking));
-        break;
-      case CopyType::kTpuToTpu:
-        TT_THROW_IF_ERROR(CopyTpuToTpu(broadcasted_src, self_dest));
-        break;
-      case CopyType::kTpuToCpu:
-        TT_THROW_IF_ERROR(
-            CopyTpuToCpu(broadcasted_src, self_dest, non_blocking));
-        break;
-    }
+        switch (to_copy_type) {
+          case CopyType::kCpuToTpu:
+            TT_THROW_IF_ERROR(
+                CopyCpuToTpu(broadcasted_src, self_dest, non_blocking));
+            break;
+          case CopyType::kTpuToTpu:
+            TT_THROW_IF_ERROR(CopyTpuToTpu(broadcasted_src, self_dest));
+            break;
+          case CopyType::kTpuToCpu:
+            TT_THROW_IF_ERROR(
+                CopyTpuToCpu(broadcasted_src, self_dest, non_blocking));
+            break;
+        }
 
-    // Also copy the gradient if it exists on the src.
-    if (src.grad().defined()) {
-      // self_dest.grad() may not yet be defined; redispatch through to() and
-      // not copy_ to avoid undefined tensor accesses.
-      at::Tensor new_grad =
-          src.grad().to(self_dest.options(), non_blocking, /*copy=*/true);
-      self_dest.mutable_grad() = new_grad;
-    }
-    return self_dest;
-  });
+        // Also copy the gradient if it exists on the src.
+        if (src.grad().defined()) {
+          // self_dest.grad() may not yet be defined; redispatch through to()
+          // and not copy_ to avoid undefined tensor accesses.
+          at::Tensor new_grad =
+              src.grad().to(self_dest.options(), non_blocking, /*copy=*/true);
+          self_dest.mutable_grad() = new_grad;
+        }
+        return self_dest;
+      });
 }
 
 at::Tensor AtenCopyFromAndResize(const at::Tensor& self,
@@ -160,7 +163,7 @@ at::Scalar AtenLocalScalarDense(const at::Tensor& self) {
 // Identical to _copy_from, only registered to avoid a dispatch error in torch.
 at::Tensor& AtenCopy_(at::Tensor& self, const at::Tensor& src,
                       bool non_blocking) {
-  TT_KERNEL(OpName::kCopy_, _, (self, src, non_blocking), {
+  TT_KERNEL(OpName::kCopy_, _, (self, src, IgnoreInCacheKey(non_blocking)), {
     AtenCopyFrom(src, self, non_blocking);
     return self;
   });

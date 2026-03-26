@@ -29,7 +29,6 @@
 #include "ATen/core/Generator.h"
 #include "ATen/ops/full.h"
 #include "c10/core/Device.h"
-#include "c10/core/DeviceType.h"
 #include "c10/core/DispatchKey.h"
 #include "c10/core/DispatchKeySet.h"
 #include "c10/core/GeneratorImpl.h"
@@ -40,6 +39,8 @@
 #include "c10/util/CallOnce.h"
 #include "c10/util/Optional.h"
 #include "c10/util/intrusive_ptr.h"
+#include "torch/headeronly/core/DeviceType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -212,7 +213,7 @@ DeviceGeneratorImpl::DeviceGeneratorImpl(c10::DeviceIndex device_index,
 
 void DeviceGeneratorImpl::set_current_seed(uint64_t seed) {
   // set_current_seed() is invoked by PyTorch and behaves like an op.
-  TT_KERNEL(OpName::kRngSetSeed, _, (seed), {
+  TT_KERNEL(OpName::kRngSetSeed, _, (IgnoreInCacheKey(seed)), {
     TT_ASSIGN_OR_THROW(auto rng_state_buffer, UpdateRngSeed(rng_state_, seed));
     auto new_rng_state = MakeTensor(std::move(rng_state_buffer));
     rng_state_ = new_rng_state;
@@ -221,7 +222,7 @@ void DeviceGeneratorImpl::set_current_seed(uint64_t seed) {
 
 void DeviceGeneratorImpl::set_offset(uint64_t offset) {
   // set_offset() is invoked by PyTorch and behaves like an op.
-  TT_KERNEL(OpName::kRngSetOffset, _, (offset), {
+  TT_KERNEL(OpName::kRngSetOffset, _, (IgnoreInCacheKey(offset)), {
     TT_ASSIGN_OR_THROW(auto rng_state_buffer,
                        UpdateRngOffset(rng_state_, offset));
     auto new_rng_state = MakeTensor(std::move(rng_state_buffer));

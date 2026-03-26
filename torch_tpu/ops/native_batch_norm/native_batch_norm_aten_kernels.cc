@@ -357,8 +357,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenNativeBatchNormLegit(
     const std::optional<at::Tensor>& bias, at::Tensor& running_mean,
     at::Tensor& running_variance, bool training, double momentum, double eps) {
   TT_KERNEL(OpName::kNativeBatchNormLegit, _,
-            (input, weight, bias, running_mean, running_variance, training,
-             momentum, eps),
+            (input, IgnoreInCacheKey(weight), IgnoreInCacheKey(bias),
+             running_mean, running_variance, IgnoreInCacheKey(training),
+             IgnoreInCacheKey(momentum), IgnoreInCacheKey(eps)),
             {
               return AtenNativeBatchNorm(input, weight, bias, running_mean,
                                          running_variance, training, momentum,
@@ -371,7 +372,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenNativeBatchNormLegitNoStats(
     const std::optional<at::Tensor>& bias, bool training, double momentum,
     double eps) {
   TT_KERNEL(OpName::kNativeBatchNormLegitNoStats, _,
-            (input, weight, bias, training, momentum, eps), {
+            (input, IgnoreInCacheKey(weight), IgnoreInCacheKey(bias),
+             IgnoreInCacheKey(training), IgnoreInCacheKey(momentum),
+             IgnoreInCacheKey(eps)),
+            {
               return AtenNativeBatchNorm(
                   input, weight, bias, /*running_mean=*/std::nullopt,
                   /*running_variance=*/std::nullopt, training, momentum, eps);

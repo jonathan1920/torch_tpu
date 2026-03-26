@@ -17,6 +17,7 @@
 #ifndef TORCH_TPU_COMMON_MACRO_UTILS_H_
 #define TORCH_TPU_COMMON_MACRO_UTILS_H_
 
+#include <cstddef>
 #include <vector>
 
 #include "absl/strings/str_split.h"  // IWYU pragma: keep for macro
@@ -95,56 +96,69 @@ inline constexpr bool kDebugMode = true;
          ('A' <= c && c <= 'Z') || c == '_';
 }
 
-// State of the identifier parser.
-enum class ParseIdentifierState {
-  kBeforeIdentifier,
-  kIdentifier,
-  kAfterIdentifier,
-};
+// Checks if a string is a valid identifier.
+[[nodiscard]] inline constexpr bool IsValidIdentifier(
+    std::string_view s) noexcept {
+  if (s.empty()) return false;
+  for (char c : s) {
+    if (!IsIdentifierChar(c)) return false;
+  }
+  return true;
+}
 
-// Returns true if the string is a comma-separated list of identifier names.
+// Returns true if the string is a comma-separated list where each item is an
+// identifier name or "IgnoreInCacheKey(identifier)".
 // This must be evaluated at compile time as we don't want to incur any
 // runtime overhead.
 [[nodiscard]] inline constexpr bool ArgsAreIdentifiers(
     const std::string_view csv_string) noexcept {
-  auto state = ParseIdentifierState::kBeforeIdentifier;
-  for (const char ch : csv_string) {
-    if (state == ParseIdentifierState::kBeforeIdentifier) {
-      if (IsWhitespace(ch)) {
-        continue;
+  if (csv_string.empty()) return true;
+
+  size_t start = 0;
+  while (start <= csv_string.size()) {
+    size_t comma_pos = csv_string.find(',', start);
+    std::string_view element =
+        (comma_pos == std::string_view::npos)
+            ? csv_string.substr(start)
+            : csv_string.substr(start, comma_pos - start);
+
+    while (!element.empty() && IsWhitespace(element.front())) {
+      element.remove_prefix(1);
+    }
+    while (!element.empty() && IsWhitespace(element.back())) {
+      element.remove_suffix(1);
+    }
+
+    if (element.empty()) {
+      // Allow a trailing comma (e.g., "a,") to match original behavior.
+      if (comma_pos == std::string_view::npos) {
+        break;
       }
-      if (IsIdentifierChar(ch)) {
-        state = ParseIdentifierState::kIdentifier;
-        continue;
-      }
-      // Looking for an identifier, but got something else.
-      return false;
-    } else if (state == ParseIdentifierState::kIdentifier) {
-      if (IsIdentifierChar(ch)) {
-        continue;
-      }
-      if (IsWhitespace(ch)) {
-        state = ParseIdentifierState::kAfterIdentifier;
-        continue;
-      }
-      if (ch == ',') {
-        state = ParseIdentifierState::kBeforeIdentifier;
-        continue;
-      }
-      // Saw an unexpected character in an identifier.
-      return false;
-    } else {  // state == ParseIdentifierState::kAfterIdentifier
-      if (IsWhitespace(ch)) {
-        continue;
-      }
-      if (ch == ',') {
-        state = ParseIdentifierState::kBeforeIdentifier;
-        continue;
-      }
-      // Looking for whitespace or ',' after the identifier, but got something
-      // else.
       return false;
     }
+
+    bool valid = IsValidIdentifier(element);
+    if (!valid) {
+      constexpr std::string_view kPrefix = "IgnoreInCacheKey(";
+      if (element.size() > kPrefix.size() &&
+          element.substr(0, kPrefix.size()) == kPrefix &&
+          element.back() == ')') {
+        std::string_view inner =
+            element.substr(kPrefix.size(), element.size() - kPrefix.size() - 1);
+        while (!inner.empty() && IsWhitespace(inner.front())) {
+          inner.remove_prefix(1);
+        }
+        while (!inner.empty() && IsWhitespace(inner.back())) {
+          inner.remove_suffix(1);
+        }
+        valid = IsValidIdentifier(inner);
+      }
+    }
+
+    if (!valid) return false;
+
+    if (comma_pos == std::string_view::npos) break;
+    start = comma_pos + 1;
   }
   return true;
 }

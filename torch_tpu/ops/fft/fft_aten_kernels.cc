@@ -31,6 +31,7 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/empty.h"
 #include "c10/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
@@ -165,23 +166,26 @@ absl::StatusOr<mlir::MlirOp> BuildFftR2cShlo(mlir::MlirOp input,
 
 at::Tensor AtenFftR2c(const at::Tensor& self, at::IntArrayRef dim,
                       int64_t normalization, bool onesided) {
-  TT_KERNEL(OpName::kFftR2c, _, (self, dim, normalization, onesided), {
-    TT_THROW_IF_ERROR(CheckStaticShape(self, "input"));
+  TT_KERNEL(OpName::kFftR2c, _,
+            (self, IgnoreInCacheKey(dim), IgnoreInCacheKey(normalization),
+             IgnoreInCacheKey(onesided)),
+            {
+              TT_THROW_IF_ERROR(CheckStaticShape(self, "input"));
 
-    auto normalized_dims = GetNormalizedDims(self, dim);
-    auto out_sizes = CopyIntVector(self.sizes());
-    if (onesided) {
-      const int64_t last_dim = normalized_dims.back();
-      out_sizes[last_dim] = self.size(last_dim) / 2 + 1;
-    }
+              auto normalized_dims = GetNormalizedDims(self, dim);
+              auto out_sizes = CopyIntVector(self.sizes());
+              if (onesided) {
+                const int64_t last_dim = normalized_dims.back();
+                out_sizes[last_dim] = self.size(last_dim) / 2 + 1;
+              }
 
-    auto out =
-        at::empty(out_sizes,
+              auto out = at::empty(
+                  out_sizes,
                   self.options().dtype(c10::toComplexType(self.scalar_type())));
 
-    AtenFftR2cOut(self, dim, normalization, onesided, out);
-    return out;
-  });
+              AtenFftR2cOut(self, dim, normalization, onesided, out);
+              return out;
+            });
 }
 
 at::Tensor& AtenFftR2cOut(const at::Tensor& self, at::IntArrayRef dim,

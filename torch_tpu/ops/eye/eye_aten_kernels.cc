@@ -25,6 +25,7 @@
 #include "ATen/core/TensorBody.h"
 #include "c10/core/SymInt.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -84,7 +85,8 @@ at::Tensor& AtenEyeMOut(c10::SymInt n, c10::SymInt m, at::Tensor& out) {
 }
 
 at::Tensor& AtenEyeOut(c10::SymInt n, at::Tensor& out) {
-  TT_KERNEL(OpName::kEyeOut, _, (n, out), { return AtenEyeMOut(n, n, out); });
+  TT_KERNEL(OpName::kEyeOut, _, (IgnoreInCacheKey(n), out),
+            { return AtenEyeMOut(n, n, out); });
 }
 
 }  // namespace torch_tpu

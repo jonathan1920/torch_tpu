@@ -26,6 +26,7 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/full.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
@@ -63,21 +64,25 @@ absl::Status DivideByReductionFactor(const at::Tensor& input_tensor,
 at::Tensor& AtenMeanOut(const at::Tensor& self,
                         c10::OptionalArrayRef<int64_t> dim, bool keep_dim,
                         std::optional<c10::ScalarType> dtype, at::Tensor& out) {
-  TT_KERNEL(OpName::kMeanOut, _, (self, dim, keep_dim, dtype, out), {
-    TT_ASSIGN_OR_THROW(c10::ScalarType scalar_dtype,
-                       GetOutputScalarType(out, dtype));
-    if (self.numel() == 0) {
-      at::full_out(out, {}, std::numeric_limits<double>::quiet_NaN());
-      return out;
-    }
+  TT_KERNEL(
+      OpName::kMeanOut, _,
+      (self, IgnoreInCacheKey(dim), IgnoreInCacheKey(keep_dim),
+       IgnoreInCacheKey(dtype), out),
+      {
+        TT_ASSIGN_OR_THROW(c10::ScalarType scalar_dtype,
+                           GetOutputScalarType(out, dtype));
+        if (self.numel() == 0) {
+          at::full_out(out, {}, std::numeric_limits<double>::quiet_NaN());
+          return out;
+        }
 
-    TT_THROW_IF_ERROR(ApplySumReductionOut(
-        self, out, dim,
-        keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims,
-        scalar_dtype));
-    TT_THROW_IF_ERROR(DivideByReductionFactor(self, out, dim));
-    return out;
-  });
+        TT_THROW_IF_ERROR(ApplySumReductionOut(
+            self, out, dim,
+            keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims,
+            scalar_dtype));
+        TT_THROW_IF_ERROR(DivideByReductionFactor(self, out, dim));
+        return out;
+      });
 }
 
 }  // namespace torch_tpu

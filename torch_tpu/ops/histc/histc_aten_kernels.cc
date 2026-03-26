@@ -136,12 +136,16 @@ absl::Status ValidateBounds(
 
 at::Tensor AtenHistc(const at::Tensor& self, const int64_t bins,
                      const at::Scalar& min, const at::Scalar& max) {
-  TT_KERNEL(OpName::kHistc, _, (self, bins, min, max), {
-    c10::ScalarType out_dtype = self.scalar_type();
-    at::Tensor out = at::empty({bins}, self.options().dtype(out_dtype));
-    AtenHistcOut(self, bins, min, max, out);
-    return out;
-  });
+  TT_KERNEL(OpName::kHistc, _,
+            (self, IgnoreInCacheKey(bins), IgnoreInCacheKey(min),
+             IgnoreInCacheKey(max)),
+            {
+              c10::ScalarType out_dtype = self.scalar_type();
+              at::Tensor out =
+                  at::empty({bins}, self.options().dtype(out_dtype));
+              AtenHistcOut(self, bins, min, max, out);
+              return out;
+            });
 }
 
 at::Tensor& AtenHistcOut(const at::Tensor& self, const int64_t bins,

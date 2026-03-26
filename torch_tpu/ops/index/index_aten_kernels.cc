@@ -29,10 +29,11 @@
 #include "c10/core/ScalarType.h"
 #include "c10/util/Optional.h"
 #include "torch_tpu/common/aten_utils.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
-#include "torch_tpu/common/utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/index/index.h"
@@ -140,61 +141,65 @@ at::Tensor& AtenIndexTensorOut(
     const at::Tensor& self,
     const c10::List<c10::optional<at::Tensor>>& indices_list_opt,
     at::Tensor& out) {
-  TT_KERNEL(OpName::kIndexTensorOut, _, (self, indices_list_opt, out), {
-    TT_CHECK_THROW(indices_list_opt.size() <= self.dim(), error::kIndexError)
-        << "expected the size of the indices to be <= " << self.dim()
-        << " (number of input dimensions), got " << indices_list_opt.size();
+  TT_KERNEL(
+      OpName::kIndexTensorOut, _,
+      (self, IgnoreInCacheKey(indices_list_opt), out), {
+        TT_CHECK_THROW(indices_list_opt.size() <= self.dim(),
+                       error::kIndexError)
+            << "expected the size of the indices to be <= " << self.dim()
+            << " (number of input dimensions), got " << indices_list_opt.size();
 
-    TT_ASSIGN_OR_THROW(IndicesInfo info,
-                       CheckedGetIndicesInfo(indices_list_opt));
+        TT_ASSIGN_OR_THROW(IndicesInfo info,
+                           CheckedGetIndicesInfo(indices_list_opt));
 
-    // If the indices are a single boolean tensor, use masked_select.
-    if (info.indices.size() == 1 &&
-        info.indices[0].scalar_type() == at::kBool) {
-      return AtenMaskedSelectOut(self, info.indices[0], out);
-    }
+        // If the indices are a single boolean tensor, use masked_select.
+        if (info.indices.size() == 1 &&
+            info.indices[0].scalar_type() == at::kBool) {
+          return AtenMaskedSelectOut(self, info.indices[0], out);
+        }
 
-    TT_ASSIGN_OR_THROW(Dimensions output_dims, GetOutputDims(self, info));
-    // The indices_list_opt gets ignored in the cache key, but we still
-    // want to record which dimensions are indexed.
-    TT_ASSIGN_OR_THROW(auto param_keys,
-                       TT_MAKE_OP_PARAM_CACHE_KEYS(info.dimensions));
+        TT_ASSIGN_OR_THROW(Dimensions output_dims, GetOutputDims(self, info));
+        // The indices_list_opt gets ignored in the cache key, but we still
+        // want to record which dimensions are indexed.
+        TT_ASSIGN_OR_THROW(auto param_keys,
+                           TT_MAKE_OP_PARAM_CACHE_KEYS(info.dimensions));
 
-    ABSL_VLOG(2) << "[AtenIndexTensorOut] self: " << ToString(self);
-    for (const auto& t : info.indices) {
-      ABSL_VLOG(2) << "[AtenIndexTensorOut] indices_list: " << ToString(t);
-    }
-    ABSL_VLOG(2) << "[AtenIndexTensorOut] indexed_dims: "
-                 << ToString(info.dimensions);
-    ABSL_VLOG(2) << "[AtenIndexTensorOut] output_dims: "
-                 << ToString(output_dims);
+        ABSL_VLOG(2) << "[AtenIndexTensorOut] self: " << ToString(self);
+        for (const auto& t : info.indices) {
+          ABSL_VLOG(2) << "[AtenIndexTensorOut] indices_list: " << ToString(t);
+        }
+        ABSL_VLOG(2) << "[AtenIndexTensorOut] indexed_dims: "
+                     << ToString(info.dimensions);
+        ABSL_VLOG(2) << "[AtenIndexTensorOut] output_dims: "
+                     << ToString(output_dims);
 
-    if (self.dim() == 0) {
-      output_dims = {};
-    }
+        if (self.dim() == 0) {
+          output_dims = {};
+        }
 
-    std::vector<at::Tensor> self_and_indices(std::move(info.indices));
-    self_and_indices.insert(self_and_indices.begin(), self);
+        std::vector<at::Tensor> self_and_indices(std::move(info.indices));
+        self_and_indices.insert(self_and_indices.begin(), self);
 
-    TT_ASSIGN_OR_THROW(const auto computation_dtype,
-                       ConvertTo<mlir::ElementType>(self.scalar_type()));
+        TT_ASSIGN_OR_THROW(const auto computation_dtype,
+                           ConvertTo<mlir::ElementType>(self.scalar_type()));
 
-    auto index_op_builder = [indexed_dimensions = std::move(info.dimensions)](
-                                absl::Span<mlir::MlirOp> inputs,
-                                mlir::MlirBuilder& builder) {
-      return BuildIndexShlo(inputs, indexed_dimensions);
-    };
+        auto index_op_builder =
+            [indexed_dimensions = std::move(info.dimensions)](
+                absl::Span<mlir::MlirOp> inputs, mlir::MlirBuilder& builder) {
+              return BuildIndexShlo(inputs, indexed_dimensions);
+            };
 
-    TT_ASSIGN_OR_THROW(auto result_buf,
-                       DispatchOp<kDynamicSize>(
-                           OpName::kIndexTensorOut, std::move(index_op_builder),
-                           self_and_indices,
-                           {.out_dtype = computation_dtype,
-                            .out_dims = absl::Span<const int64_t>(output_dims),
-                            .op_param_cache_keys = std::move(param_keys)}));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
-    return out;
-  });
+        TT_ASSIGN_OR_THROW(
+            auto result_buf,
+            DispatchOp<kDynamicSize>(
+                OpName::kIndexTensorOut, std::move(index_op_builder),
+                self_and_indices,
+                {.out_dtype = computation_dtype,
+                 .out_dims = absl::Span<const int64_t>(output_dims),
+                 .op_param_cache_keys = std::move(param_keys)}));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+        return out;
+      });
 }
 
 }  // namespace torch_tpu

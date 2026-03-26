@@ -139,8 +139,9 @@ at::Tensor AtenEmptyMemoryFormat(
     c10::optional<at::MemoryFormat> memory_format_opt) {
   TT_KERNEL(
       OpName::kEmpty, _,
-      (size, dtype_opt, layout_opt, device_opt, pin_memory_opt,
-       memory_format_opt),
+      (IgnoreInCacheKey(size), IgnoreInCacheKey(dtype_opt),
+       IgnoreInCacheKey(layout_opt), IgnoreInCacheKey(device_opt),
+       IgnoreInCacheKey(pin_memory_opt), IgnoreInCacheKey(memory_format_opt)),
       {
         TT_CHECK_THROW(!dtype_opt.has_value() ||
                            dtype_opt.value() != at::ScalarType::ComplexHalf,
@@ -203,8 +204,9 @@ at::Tensor AtenEmptyStrided(c10::SymIntArrayRef size_sym,
     final_strides_vec.push_back(s.guard_int(__FILE__, __LINE__));
   TT_KERNEL(
       OpName::kEmptyStrided, _,
-      (final_sizes_vec, final_strides_vec, dtype_opt, layout_opt, device_opt,
-       pin_memory_opt),
+      (IgnoreInCacheKey(final_sizes_vec), IgnoreInCacheKey(final_strides_vec),
+       IgnoreInCacheKey(dtype_opt), IgnoreInCacheKey(layout_opt),
+       IgnoreInCacheKey(device_opt), IgnoreInCacheKey(pin_memory_opt)),
       {
         TT_CHECK_THROW(!dtype_opt.has_value() ||
                            dtype_opt.value() != at::ScalarType::ComplexHalf,

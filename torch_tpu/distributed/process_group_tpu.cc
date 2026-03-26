@@ -54,6 +54,7 @@
 #include "torch/csrc/distributed/c10d/Types.hpp"
 #include "torch/csrc/distributed/c10d/Work.hpp"
 #include "torch/headeronly/core/DeviceType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
@@ -398,54 +399,60 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allreduce(
 
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::broadcast(
     std::vector<at::Tensor>& tensors, const c10d::BroadcastOptions& opts) {
-  TT_KERNEL(OpName::kDistributedBroadcast, _, (tensors, opts), {
-    auto src_rank = opts.rootRank;
-    auto src_dev_id = rank_to_device_id_[src_rank];
-    auto cur_dev_id = addressable_device_id_;
+  TT_KERNEL(OpName::kDistributedBroadcast, _, (tensors, IgnoreInCacheKey(opts)),
+            {
+              auto src_rank = opts.rootRank;
+              auto src_dev_id = rank_to_device_id_[src_rank];
+              auto cur_dev_id = addressable_device_id_;
 
-    // NOTE: NCCL implementation does the same check. Gloo implementation does
-    // something different. In either case, the python-side of the API doesn't
-    // actually directly expose multi-tensor variant. Revisit this later.
-    TT_CHECK_THROW(tensors.size() == 1, error::kInvalidArgument)
-        << "single tensor expected, but got multiple tensors.";
-    auto& tensor = tensors[0];
+              // NOTE: NCCL implementation does the same check. Gloo
+              // implementation does something different. In either case, the
+              // python-side of the API doesn't actually directly expose
+              // multi-tensor variant. Revisit this later.
+              TT_CHECK_THROW(tensors.size() == 1, error::kInvalidArgument)
+                  << "single tensor expected, but got multiple tensors.";
+              auto& tensor = tensors[0];
 
-    if (src_dev_id != cur_dev_id) {
-      // NOTE: At the pybind layer (distributed/c10d/init.cpp), torch
-      // effectively holds on to the TensorImpl of the original input/output.
-      // See https://github.com/pytorch/pytorch/issues/159686 for details.
-      // This is why we need to copy_ here, and cannot simply re-assign.
-      tensor.copy_(at::zeros(tensor.sizes(), tensor.options()));
-    } else {
-      // Rank 0 (root rank): We must push the exact same sequence of operations
-      // to the dispatcher to keep the thread-local `detect_repeated_ops`
-      // heuristic synchronized across all ranks. We execute the same ops on a
-      // discarded dummy tensor so we don't corrupt the actual broadcast data.
-      auto dummy = at::empty(tensor.sizes(), tensor.options());
-      dummy.copy_(at::zeros(tensor.sizes(), tensor.options()));
-    }
-    ABSL_VLOG(1) << OpDebugString("broadcast")
-                 << "DeviceBufferRef: " << DeviceBufferRefDebugString(tensor);
+              if (src_dev_id != cur_dev_id) {
+                // NOTE: At the pybind layer (distributed/c10d/init.cpp), torch
+                // effectively holds on to the TensorImpl of the original
+                // input/output. See
+                // https://github.com/pytorch/pytorch/issues/159686 for details.
+                // This is why we need to copy_ here, and cannot simply
+                // re-assign.
+                tensor.copy_(at::zeros(tensor.sizes(), tensor.options()));
+              } else {
+                // Rank 0 (root rank): We must push the exact same sequence of
+                // operations to the dispatcher to keep the thread-local
+                // `detect_repeated_ops` heuristic synchronized across all
+                // ranks. We execute the same ops on a discarded dummy tensor so
+                // we don't corrupt the actual broadcast data.
+                auto dummy = at::empty(tensor.sizes(), tensor.options());
+                dummy.copy_(at::zeros(tensor.sizes(), tensor.options()));
+              }
+              ABSL_VLOG(1) << OpDebugString("broadcast") << "DeviceBufferRef: "
+                           << DeviceBufferRefDebugString(tensor);
 
-    // In the short-term, we implement broadcast in terms of all-reduce, which
-    // is suboptimal. This is because stablehlo.collective_broadcast is not
-    // implemented for TPUs. We can re-visit this later and implement a more
-    // efficient version.
-    c10d::AllreduceOptions allreduce_opts{c10d::ReduceOp::SUM, opts.timeout,
-                                          opts.asyncOp};
-    auto work_ptr = allreduce(tensors, allreduce_opts);
+              // In the short-term, we implement broadcast in terms of
+              // all-reduce, which is suboptimal. This is because
+              // stablehlo.collective_broadcast is not implemented for TPUs. We
+              // can re-visit this later and implement a more efficient version.
+              c10d::AllreduceOptions allreduce_opts{c10d::ReduceOp::SUM,
+                                                    opts.timeout, opts.asyncOp};
+              auto work_ptr = allreduce(tensors, allreduce_opts);
 
-    // TODO(b/495494333): Remove the need for this forced materialization.
-    // It exists because dist.broadcast_object_list dispatches broadcast()
-    // operations from the source rank that are not materialized, so it hangs.
-    TT_THROW_IF_ERROR(GetMaterialized(tensors));
+              // TODO(b/495494333): Remove the need for this forced
+              // materialization. It exists because dist.broadcast_object_list
+              // dispatches broadcast() operations from the source rank that are
+              // not materialized, so it hangs.
+              TT_THROW_IF_ERROR(GetMaterialized(tensors));
 
-    if (work_ptr != nullptr) {
-      dynamic_cast<TpuWork* absl_nonnull>(work_ptr.get())->opType_ =
-          c10d::OpType::BROADCAST;
-    }
-    return work_ptr;
-  });
+              if (work_ptr != nullptr) {
+                dynamic_cast<TpuWork* absl_nonnull>(work_ptr.get())->opType_ =
+                    c10d::OpType::BROADCAST;
+              }
+              return work_ptr;
+            });
 }
 
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather(
@@ -679,65 +686,70 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::scatter(
     std::vector<at::Tensor>& outputs,
     std::vector<std::vector<at::Tensor>>& inputs,
     const c10d::ScatterOptions& opts) {
-  TT_KERNEL(OpName::kDistributedScatter, _, (outputs, inputs, opts), {
-    const int64_t rank = getRank();
-    const int64_t root_rank = opts.rootRank;
-    TT_CHECK_THROW(outputs.size() == 1, error::kInvalidArgument)
-        << "a single output tensor must be provided, got " << outputs.size();
-    auto& output = outputs[0];
-    bool is_scalar = output.dim() == 0;
+  TT_KERNEL(
+      OpName::kDistributedScatter, _, (outputs, inputs, IgnoreInCacheKey(opts)),
+      {
+        const int64_t rank = getRank();
+        const int64_t root_rank = opts.rootRank;
+        TT_CHECK_THROW(outputs.size() == 1, error::kInvalidArgument)
+            << "a single output tensor must be provided, got "
+            << outputs.size();
+        auto& output = outputs[0];
+        bool is_scalar = output.dim() == 0;
 
-    at::Tensor scatter_input;  // UNINITIALIZED_TENSOR_OK
-    if (rank == root_rank) {
-      TT_CHECK_THROW(inputs.size() == 1, error::kInvalidArgument)
-          << "there must be a single list of input tensors on the root "
-             "rank, got "
-          << inputs.size();
-      const auto& input_tensors = inputs[0];
-      TT_CHECK_THROW(input_tensors.size() == getSize(), error::kInvalidArgument)
-          << "the number of input tensors on the root rank must be equal to"
-          << " the group size, got " << input_tensors.size() << " tensors and "
-          << getSize() << " processes";
+        at::Tensor scatter_input;  // UNINITIALIZED_TENSOR_OK
+        if (rank == root_rank) {
+          TT_CHECK_THROW(inputs.size() == 1, error::kInvalidArgument)
+              << "there must be a single list of input tensors on the root "
+                 "rank, got "
+              << inputs.size();
+          const auto& input_tensors = inputs[0];
+          TT_CHECK_THROW(input_tensors.size() == getSize(),
+                         error::kInvalidArgument)
+              << "the number of input tensors on the root rank must be equal to"
+              << " the group size, got " << input_tensors.size()
+              << " tensors and " << getSize() << " processes";
 
-      TT_THROW_IF_ERROR(CheckTensorsUniformShape(input_tensors)).SetPrepend()
-          << "input tensors on the root rank: ";
-      TT_CHECK_THROW(output.sizes() == input_tensors[0].sizes(),
-                     error::kInvalidArgument)
-          << "output tensor shape must match input tensor shape, got "
-          << output.sizes() << " and " << input_tensors[0].sizes();
-      if (is_scalar) {
-        scatter_input = at::stack(input_tensors);
-      } else {
-        scatter_input = at::cat(input_tensors, 0);
-      }
-    } else {
-      TT_CHECK_THROW(inputs.empty(), error::kInvalidArgument)
-          << "on non-root rank " << rank
-          << " the list of input tensors must be empty";
+          TT_THROW_IF_ERROR(CheckTensorsUniformShape(input_tensors))
+                  .SetPrepend()
+              << "input tensors on the root rank: ";
+          TT_CHECK_THROW(output.sizes() == input_tensors[0].sizes(),
+                         error::kInvalidArgument)
+              << "output tensor shape must match input tensor shape, got "
+              << output.sizes() << " and " << input_tensors[0].sizes();
+          if (is_scalar) {
+            scatter_input = at::stack(input_tensors);
+          } else {
+            scatter_input = at::cat(input_tensors, 0);
+          }
+        } else {
+          TT_CHECK_THROW(inputs.empty(), error::kInvalidArgument)
+              << "on non-root rank " << rank
+              << " the list of input tensors must be empty";
 
-      if (is_scalar) {
-        scatter_input = at::zeros({getSize()}, output.options());
-      } else {
-        auto scatter_input_dims = CopyIntVector(output.sizes());
-        scatter_input_dims[0] *= getSize();
-        scatter_input = at::zeros(scatter_input_dims, output.options());
-      }
-    }
+          if (is_scalar) {
+            scatter_input = at::zeros({getSize()}, output.options());
+          } else {
+            auto scatter_input_dims = CopyIntVector(output.sizes());
+            scatter_input_dims[0] *= getSize();
+            scatter_input = at::zeros(scatter_input_dims, output.options());
+          }
+        }
 
-    c10d::ReduceScatterOptions reduce_scatter_opts;
-    reduce_scatter_opts.reduceOp = c10d::ReduceOp::SUM;
-    reduce_scatter_opts.timeout = opts.timeout;
-    reduce_scatter_opts.asyncOp = opts.asyncOp;
+        c10d::ReduceScatterOptions reduce_scatter_opts;
+        reduce_scatter_opts.reduceOp = c10d::ReduceOp::SUM;
+        reduce_scatter_opts.timeout = opts.timeout;
+        reduce_scatter_opts.asyncOp = opts.asyncOp;
 
-    c10::intrusive_ptr<c10d::Work> work_ptr =
-        _reduce_scatter_base(output, scatter_input, reduce_scatter_opts);
-    if (work_ptr != nullptr) {
-      // If async updates the Work object to have the correct op type.
-      dynamic_cast<TpuWork* absl_nonnull>(work_ptr.get())->opType_ =
-          c10d::OpType::SCATTER;
-    }
-    return work_ptr;
-  });
+        c10::intrusive_ptr<c10d::Work> work_ptr =
+            _reduce_scatter_base(output, scatter_input, reduce_scatter_opts);
+        if (work_ptr != nullptr) {
+          // If async updates the Work object to have the correct op type.
+          dynamic_cast<TpuWork* absl_nonnull>(work_ptr.get())->opType_ =
+              c10d::OpType::SCATTER;
+        }
+        return work_ptr;
+      });
 }
 
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter(
@@ -746,7 +758,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter(
     const c10d::ReduceScatterOptions& opts) {
   TT_KERNEL(
       OpName::kDistributedReduceScatter, _,
-      (output_tensors, input_tensors, opts), {
+      (output_tensors, input_tensors, IgnoreInCacheKey(opts)), {
         // NOTE: Python side API only exposes single-element reduce_scatter op.
         // Same validation is done in NCCL backend.
         TT_CHECK_THROW(input_tensors.size() == 1, error::kUnimplemented)
@@ -855,7 +867,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter_tensor_coalesced(
     const c10d::ReduceScatterOptions& opts) {
   TT_KERNEL(
       OpName::kDistributedReduceScatterTensorCoalesced, _,
-      (outputs, inputs, opts), {
+      (outputs, inputs, IgnoreInCacheKey(opts)), {
         TT_CHECK_THROW(inputs.size() == outputs.size(), error::kInvalidArgument)
             << "inputs and outputs must have the same size, got "
             << inputs.size() << " inputs and " << outputs.size() << " outputs";
@@ -882,7 +894,9 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall_base(
     std::vector<int64_t>& input_split_sizes,   // INT_VEC_OK
     const c10d::AllToAllOptions& opts) {
   TT_KERNEL(OpName::kDistributedAllToAllSingle, _,
-            (output, input, output_split_sizes, input_split_sizes, opts), {
+            (output, input, IgnoreInCacheKey(output_split_sizes),
+             IgnoreInCacheKey(input_split_sizes), opts),
+            {
               const int64_t rank = getRank();
               const bool async = opts.asyncOp;
               const int64_t group_size = subgroup_device_ids_[0].size();

@@ -64,6 +64,30 @@ namespace torch_tpu {
 
 namespace internal {
 
+// Wrapper for a value that should be ignored in the cache key computation.
+template <typename T>
+class IgnoredInCacheKey {
+ public:
+  using value_type = T;
+
+  explicit IgnoredInCacheKey(const T& value) : value_ref_(value) {}
+
+  // Supports logging.
+  friend auto ToString(const IgnoredInCacheKey& value) {
+    using torch_tpu::ToString;
+    return ToString(value.value_ref_);
+  }
+
+ private:
+  const T& value_ref_;
+};
+
+// Trait to check if T is IgnoredInCacheKey.
+template <typename T>
+struct is_ignored_in_cache_key : std::false_type {};
+template <typename T>
+struct is_ignored_in_cache_key<IgnoredInCacheKey<T>> : std::true_type {};
+
 // Returns true if an op parameter of type T should be included in the parameter
 // cache key computation.
 //
@@ -72,16 +96,24 @@ namespace internal {
 // automatically.
 template <typename T>
 constexpr bool IncludeInCacheKey() {
+  using U = std::decay_t<T>;
+  // If the argument is wrapped in IgnoreInCacheKey(), it should not be
+  // included in the cache key.
+  if constexpr (is_ignored_in_cache_key<U>::value) {
+    return false;
+  }
   return !(
       // go/keep-sorted start
-      std::is_same_v<T, at::Generator> ||
-      std::is_same_v<T, at::ITensorListRef> ||
-      std::is_same_v<T, at::Tensor> ||  //
-      std::is_same_v<T, c10d::AllToAllOptions> ||
-      std::is_same_v<T, c10d::AllgatherOptions> ||
-      std::is_same_v<T, c10d::BarrierOptions> ||
-      std::is_same_v<T, std::vector<at::Tensor>> ||
-      std::is_same_v<T, std::vector<std::vector<at::Tensor>>> ||
+      std::is_same_v<U, at::ArrayRef<at::Tensor>> ||
+      std::is_same_v<U, at::Generator> ||
+      std::is_same_v<U, at::ITensorListRef> ||  //
+      std::is_same_v<U, at::Tensor> ||          //
+      std::is_same_v<U, at::TensorList> ||
+      std::is_same_v<U, c10d::AllToAllOptions> ||
+      std::is_same_v<U, c10d::AllgatherOptions> ||
+      std::is_same_v<U, c10d::BarrierOptions> ||
+      std::is_same_v<U, std::vector<at::Tensor>> ||
+      std::is_same_v<U, std::vector<std::vector<at::Tensor>>> ||
       // go/keep-sorted end
       false);
 }
@@ -290,6 +322,15 @@ FormattedKey<T> FormatParamCacheKey(at::ArrayRef<T> value) {
 }
 
 }  // namespace internal
+
+// Returns an IgnoredInCacheKey object that wraps the given value.
+template <typename T,
+          // Only allow this function to be called for types that should be
+          // included in the cache key.
+          typename = std::enable_if_t<internal::IncludeInCacheKey<T>()>>
+constexpr internal::IgnoredInCacheKey<T> IgnoreInCacheKey(const T& value) {
+  return internal::IgnoredInCacheKey<T>(value);
+}
 
 // When defining an op, any parameters that can change the compilation of the
 // op without changing the shape or dtype of the inputs or outputs should be

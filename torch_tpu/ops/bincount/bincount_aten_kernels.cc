@@ -33,9 +33,11 @@
 #include "c10/util/Optional.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
-#include "torch_tpu/common/utils.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -111,68 +113,71 @@ absl::StatusOr<mlir::MlirOp> BuildBinCount(
 at::Tensor AtenBinCount(const at::Tensor& self,
                         const c10::optional<at::Tensor>& weights,
                         c10::SymInt minlength) {
-  TT_KERNEL(OpName::kBinCount, _, (self, weights, minlength), {
-    auto weights_ = SanitizeOptionalTensor(weights);
-    int64_t minlength_val = minlength.guard_int(__FILE__, __LINE__);
+  TT_KERNEL(
+      OpName::kBinCount, _,
+      (self, IgnoreInCacheKey(weights), IgnoreInCacheKey(minlength)), {
+        auto weights_ = SanitizeOptionalTensor(weights);
+        int64_t minlength_val = minlength.guard_int(__FILE__, __LINE__);
 
-    // Shortcut optimization for empty input tensors.
-    if (self.defined() && self.numel() == 0) {
-      return at::zeros({minlength_val}, self.options().dtype(at::kLong));
-    }
+        // Shortcut optimization for empty input tensors.
+        if (self.defined() && self.numel() == 0) {
+          return at::zeros({minlength_val}, self.options().dtype(at::kLong));
+        }
 
-    // Compute the maximum element in the input and move it to the CPU. This
-    // inevitably introduces a graph break because we need to know that value in
-    // order to pass it to the actual bincount computation and to properly size
-    // the output tensor of that computation.
-    at::Scalar max = self.max().cpu().item();
+        // Compute the maximum element in the input and move it to the CPU. This
+        // inevitably introduces a graph break because we need to know that
+        // value in order to pass it to the actual bincount computation and to
+        // properly size the output tensor of that computation.
+        at::Scalar max = self.max().cpu().item();
 
-    // Compute the number of bins, i.e., the output size.
-    int64_t nbins = std::max(max.toLong() + 1, minlength_val);
+        // Compute the number of bins, i.e., the output size.
+        int64_t nbins = std::max(max.toLong() + 1, minlength_val);
 
-    if (weights_) {
-      // If weights are provided, PyTorch expects the computation/output dtype
-      // to always be torch.float64, unless the weights are torch.float32, in
-      // which case that's what's being used.
-      mlir::ElementType cdtype =
-          weights_->scalar_type() == at::ScalarType::Float
-              ? mlir::ElementType::F32
-              : mlir::ElementType::F64;
-      mlir::ElementType output_dtype = cdtype;
-      TT_ASSIGN_OR_THROW(auto param_keys,
-                         TT_MAKE_OP_PARAM_CACHE_KEYS(nbins, cdtype));
-      auto op_builder = [nbins, cdtype](FixedSizeSpan<mlir::MlirOp, 2> inputs)
-          -> absl::StatusOr<mlir::MlirOp> {
-        auto& [input, weights] = inputs;
-        return BuildBinCount(input, nbins, cdtype, weights);
-      };
-      TT_ASSIGN_OR_THROW(
-          auto result_buf,
-          DispatchOp<2>(OpName::kBinCount, std::move(op_builder),
-                        {self, *weights_},
-                        {.out_dtype = output_dtype,
-                         .out_dims = {nbins},
-                         .op_param_cache_keys = std::move(param_keys)}));
-      return MakeTensor(std::move(result_buf));
-    }
+        if (weights_) {
+          // If weights are provided, PyTorch expects the computation/output
+          // dtype to always be torch.float64, unless the weights are
+          // torch.float32, in which case that's what's being used.
+          mlir::ElementType cdtype =
+              weights_->scalar_type() == at::ScalarType::Float
+                  ? mlir::ElementType::F32
+                  : mlir::ElementType::F64;
+          mlir::ElementType output_dtype = cdtype;
+          TT_ASSIGN_OR_THROW(auto param_keys,
+                             TT_MAKE_OP_PARAM_CACHE_KEYS(nbins, cdtype));
+          auto op_builder = [nbins,
+                             cdtype](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+              -> absl::StatusOr<mlir::MlirOp> {
+            auto& [input, weights] = inputs;
+            return BuildBinCount(input, nbins, cdtype, weights);
+          };
+          TT_ASSIGN_OR_THROW(
+              auto result_buf,
+              DispatchOp<2>(OpName::kBinCount, std::move(op_builder),
+                            {self, *weights_},
+                            {.out_dtype = output_dtype,
+                             .out_dims = {nbins},
+                             .op_param_cache_keys = std::move(param_keys)}));
+          return MakeTensor(std::move(result_buf));
+        }
 
-    // If no weights are provided, the computation/output dtype is always
-    // torch.int64.
-    mlir::ElementType computation_dtype = mlir::ElementType::I64;
-    mlir::ElementType output_dtype = computation_dtype;
-    TT_ASSIGN_OR_THROW(auto param_keys, TT_MAKE_OP_PARAM_CACHE_KEYS(nbins));
-    MlirUnaryOpBuilder op_builder =
-        [nbins, computation_dtype](
-            mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
-      return BuildBinCount(input, nbins, computation_dtype);
-    };
-    TT_ASSIGN_OR_THROW(
-        auto result_buf,
-        DispatchOp<1>(OpName::kBinCount, std::move(op_builder), self,
-                      {.out_dtype = output_dtype,
-                       .out_dims = {nbins},
-                       .op_param_cache_keys = std::move(param_keys)}));
-    return MakeTensor(std::move(result_buf));
-  });
+        // If no weights are provided, the computation/output dtype is always
+        // torch.int64.
+        mlir::ElementType computation_dtype = mlir::ElementType::I64;
+        mlir::ElementType output_dtype = computation_dtype;
+        TT_ASSIGN_OR_THROW(auto param_keys, TT_MAKE_OP_PARAM_CACHE_KEYS(nbins));
+        MlirUnaryOpBuilder op_builder =
+            [nbins, computation_dtype](
+                mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
+          return BuildBinCount(input, nbins, computation_dtype);
+        };
+        TT_ASSIGN_OR_THROW(
+            auto result_buf,
+            DispatchOp<1>(OpName::kBinCount, std::move(op_builder), self,
+                          {.out_dtype = output_dtype,
+                           .out_dims = {nbins},
+                           .op_param_cache_keys = std::move(param_keys)}));
+        return MakeTensor(std::move(result_buf));
+      });
 }
 
 }  // namespace torch_tpu

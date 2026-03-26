@@ -27,9 +27,11 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/full_like.h"
 #include "ATen/ops/result_type.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -94,25 +96,29 @@ at::Tensor TensorFromValue(const at::Tensor& self, const at::Scalar& value) {
 at::Tensor& AtenScatterSrcOut(const at::Tensor& self, int64_t dim,
                               const at::Tensor& index, const at::Tensor& src,
                               at::Tensor& out) {
-  TT_KERNEL(OpName::kScatterSrcOut, _, (self, dim, index, src, out), {
-    TT_ASSIGN_OR_THROW(DeviceBufferRef result,
-                       Scatter(OpName::kScatterSrcOut, self, dim, index, src));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
-    return out;
-  });
+  TT_KERNEL(OpName::kScatterSrcOut, _,
+            (self, IgnoreInCacheKey(dim), index, src, out), {
+              TT_ASSIGN_OR_THROW(
+                  DeviceBufferRef result,
+                  Scatter(OpName::kScatterSrcOut, self, dim, index, src));
+              TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
+              return out;
+            });
 }
 
 at::Tensor& AtenScatterValueOut(const at::Tensor& self, int64_t dim,
                                 const at::Tensor& index,
                                 const at::Scalar& value, at::Tensor& out) {
-  TT_KERNEL(OpName::kScatterValueOut, _, (self, dim, index, value, out), {
-    auto value_tensor = TensorFromValue(self, value);
-    TT_ASSIGN_OR_THROW(
-        DeviceBufferRef result,
-        Scatter(OpName::kScatterValueOut, self, dim, index, value_tensor));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
-    return out;
-  });
+  TT_KERNEL(
+      OpName::kScatterValueOut, _,
+      (self, IgnoreInCacheKey(dim), index, IgnoreInCacheKey(value), out), {
+        auto value_tensor = TensorFromValue(self, value);
+        TT_ASSIGN_OR_THROW(
+            DeviceBufferRef result,
+            Scatter(OpName::kScatterValueOut, self, dim, index, value_tensor));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
+        return out;
+      });
 }
 
 at::Tensor& AtenScatterReduceOut(const at::Tensor& self, int64_t dim,
@@ -120,7 +126,9 @@ at::Tensor& AtenScatterReduceOut(const at::Tensor& self, int64_t dim,
                                  std::string_view reduction_op,
                                  at::Tensor& out) {
   TT_KERNEL(OpName::kScatterReduceOut, _,
-            (self, dim, index, src, reduction_op, out), {
+            (self, IgnoreInCacheKey(dim), index, src,
+             IgnoreInCacheKey(reduction_op), out),
+            {
               TT_ASSIGN_OR_THROW(ScatterOp scatter_op,
                                  ParseScatterOp(reduction_op));
               TT_ASSIGN_OR_THROW(DeviceBufferRef result,
@@ -137,7 +145,9 @@ at::Tensor& AtenScatterValueReduceOut(const at::Tensor& self, int64_t dim,
                                       std::string_view reduction_op,
                                       at::Tensor& out) {
   TT_KERNEL(OpName::kScatterValueReduceOut, _,
-            (self, dim, index, value, reduction_op, out), {
+            (self, IgnoreInCacheKey(dim), index, IgnoreInCacheKey(value),
+             IgnoreInCacheKey(reduction_op), out),
+            {
               auto value_tensor = TensorFromValue(self, value);
               TT_ASSIGN_OR_THROW(ScatterOp scatter_op,
                                  ParseScatterOp(reduction_op));
@@ -152,9 +162,9 @@ at::Tensor& AtenScatterValueReduceOut(const at::Tensor& self, int64_t dim,
 at::Tensor& AtenScatterAddOut(const at::Tensor& self, int64_t dim,
                               const at::Tensor& index, const at::Tensor& src,
                               at::Tensor& out) {
-  TT_KERNEL(OpName::kScatterAddOut, _, (self, dim, index, src, out), {
-    return AtenScatterReduceOut(self, dim, index, src, "add", out);
-  });
+  TT_KERNEL(
+      OpName::kScatterAddOut, _, (self, IgnoreInCacheKey(dim), index, src, out),
+      { return AtenScatterReduceOut(self, dim, index, src, "add", out); });
 }
 
 }  // namespace torch_tpu

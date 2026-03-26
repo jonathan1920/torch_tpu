@@ -32,6 +32,7 @@
 #include "ATen/ops/reshape.h"
 #include "c10/util/Optional.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
@@ -137,7 +138,9 @@ std::tuple<at::Tensor, at::Tensor> AtenNllLoss2dForward(
     int64_t ignore_index) {
   TT_KERNEL(
       OpName::kNllLoss2dForward, _,
-      (self, target, weight, reduction, ignore_index), {
+      (self, target, IgnoreInCacheKey(weight), IgnoreInCacheKey(reduction),
+       IgnoreInCacheKey(ignore_index)),
+      {
         TT_CHECK_THROW(self.dim() >= 3 && self.dim() == target.dim() + 1 &&
                            self.size(0) == target.size(0) &&
                            self.sizes().slice(2) == target.sizes().slice(1),
@@ -179,7 +182,9 @@ std::tuple<at::Tensor&, at::Tensor&> AtenNllLoss2dForwardOut(
     int64_t ignore_index, at::Tensor& output, at::Tensor& total_weight) {
   TT_KERNEL(
       OpName::kNllLoss2dForwardOut, _,
-      (self, target, weight, reduction, ignore_index, output, total_weight), {
+      (self, target, IgnoreInCacheKey(weight), IgnoreInCacheKey(reduction),
+       IgnoreInCacheKey(ignore_index), output, total_weight),
+      {
         at::Tensor loss_output_inner;   // UNINITIALIZED_TENSOR_OK=return value
                                         // in a tuple
         at::Tensor total_weight_inner;  // UNINITIALIZED_TENSOR_OK=return value

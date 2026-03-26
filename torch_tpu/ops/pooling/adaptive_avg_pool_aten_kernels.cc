@@ -29,6 +29,7 @@
 #include "ATen/ops/empty.h"
 #include "c10/core/SymIntArrayRef.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
@@ -590,25 +591,26 @@ at::Tensor& AtenAdaptiveAvgPool2dOut(const at::Tensor& self,
 
 at::Tensor AtenAdaptiveAvgPool2d(const at::Tensor& self,
                                  c10::SymIntArrayRef output_size) {
-  TT_KERNEL(OpName::kAdaptiveAvgPool2d, _, (self, output_size), {
-    auto num_dims = self.dim();
+  TT_KERNEL(OpName::kAdaptiveAvgPool2d, _,
+            (self, IgnoreInCacheKey(output_size)), {
+              auto num_dims = self.dim();
 
-    // The output size is either a single integer H or a tuple (H, W)
-    const int64_t out_h = output_size[0].expect_int();
-    int64_t out_w = out_h;
-    if (output_size.size() > 1) {
-      out_w = output_size[1].expect_int();
-    }
+              // The output size is either a single integer H or a tuple (H, W)
+              const int64_t out_h = output_size[0].expect_int();
+              int64_t out_w = out_h;
+              if (output_size.size() > 1) {
+                out_w = output_size[1].expect_int();
+              }
 
-    auto out_shape = CopyIntVector(self.sizes());
-    out_shape[num_dims - 2] = out_h;
-    out_shape[num_dims - 1] = out_w;
+              auto out_shape = CopyIntVector(self.sizes());
+              out_shape[num_dims - 2] = out_h;
+              out_shape[num_dims - 1] = out_w;
 
-    at::Tensor out = at::empty(out_shape, self.options());
+              at::Tensor out = at::empty(out_shape, self.options());
 
-    AtenAdaptiveAvgPool2dOut(self, output_size, out);
-    return out;
-  });
+              AtenAdaptiveAvgPool2dOut(self, output_size, out);
+              return out;
+            });
 }
 
 at::Tensor& AtenAdaptiveAvgPool3dOut(const at::Tensor& self,
@@ -705,28 +707,30 @@ at::Tensor& AtenAdaptiveAvgPool3dOut(const at::Tensor& self,
 
 at::Tensor AtenAdaptiveAvgPool3d(const at::Tensor& self,
                                  c10::SymIntArrayRef output_size) {
-  TT_KERNEL(OpName::kAdaptiveAvgPool3d, _, (self, output_size), {
-    auto num_dims = self.dim();
+  TT_KERNEL(OpName::kAdaptiveAvgPool3d, _,
+            (self, IgnoreInCacheKey(output_size)), {
+              auto num_dims = self.dim();
 
-    // The output size is either a single integer or a triple-integer tuple
-    const int64_t out_d = output_size[0].expect_int();
-    int64_t out_h = out_d;
-    int64_t out_w = out_d;
-    if (output_size.size() > 1) {
-      out_h = output_size[1].expect_int();
-      out_w = output_size[2].expect_int();
-    }
+              // The output size is either a single integer or a triple-integer
+              // tuple
+              const int64_t out_d = output_size[0].expect_int();
+              int64_t out_h = out_d;
+              int64_t out_w = out_d;
+              if (output_size.size() > 1) {
+                out_h = output_size[1].expect_int();
+                out_w = output_size[2].expect_int();
+              }
 
-    auto out_shape = CopyIntVector(self.sizes());
-    out_shape[num_dims - 3] = out_d;
-    out_shape[num_dims - 2] = out_h;
-    out_shape[num_dims - 1] = out_w;
+              auto out_shape = CopyIntVector(self.sizes());
+              out_shape[num_dims - 3] = out_d;
+              out_shape[num_dims - 2] = out_h;
+              out_shape[num_dims - 1] = out_w;
 
-    at::Tensor out = at::empty(out_shape, self.options());
+              at::Tensor out = at::empty(out_shape, self.options());
 
-    AtenAdaptiveAvgPool3dOut(self, output_size, out);
-    return out;
-  });
+              AtenAdaptiveAvgPool3dOut(self, output_size, out);
+              return out;
+            });
 }
 
 at::Tensor AtenAdaptiveAvgPool2dBackward(const at::Tensor& grad_output,

@@ -1278,36 +1278,38 @@ void AtenForeachZero_(at::TensorList self) {
 std::vector<at::Tensor> AtenForeachAddList(at::TensorList self,
                                            at::TensorList other,
                                            const at::Scalar& alpha) {
-  TT_KERNEL(OpName::kForeachAddList, _, (self, other, alpha), {
-    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, other));
+  TT_KERNEL(
+      OpName::kForeachAddList, _, (self, other, IgnoreInCacheKey(alpha)), {
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, other));
 
-    // Check for invalid input types.
-    size_t num_tensors = self.size();
-    for (size_t i = 0; i < num_tensors; ++i) {
-      TT_CHECK_THROW(!(c10::isIntegralType(self[i].scalar_type(), true) &&
-                       c10::isIntegralType(other[i].scalar_type(), true) &&
-                       !c10::isIntegralType(alpha.type(), true)),
-                     error::kInvalidArgument)
-          << "expected alpha to be integral for integral input tensors, got "
-          << ToString(alpha.type());
-      TT_CHECK_THROW(!alpha.isBoolean() ||
-                         (self[i].scalar_type() == at::ScalarType::Bool &&
-                          other[i].scalar_type() == at::ScalarType::Bool),
-                     error::kInvalidArgument)
-          << "expected input tensor dtypes to be bool when alpha dtype is "
-             "bool, got "
-          << ToString(self[i].scalar_type()) << " and "
-          << ToString(other[i].scalar_type());
-    }
+        // Check for invalid input types.
+        size_t num_tensors = self.size();
+        for (size_t i = 0; i < num_tensors; ++i) {
+          TT_CHECK_THROW(!(c10::isIntegralType(self[i].scalar_type(), true) &&
+                           c10::isIntegralType(other[i].scalar_type(), true) &&
+                           !c10::isIntegralType(alpha.type(), true)),
+                         error::kInvalidArgument)
+              << "expected alpha to be integral for integral input tensors, "
+                 "got "
+              << ToString(alpha.type());
+          TT_CHECK_THROW(!alpha.isBoolean() ||
+                             (self[i].scalar_type() == at::ScalarType::Bool &&
+                              other[i].scalar_type() == at::ScalarType::Bool),
+                         error::kInvalidArgument)
+              << "expected input tensor dtypes to be bool when alpha dtype is "
+                 "bool, got "
+              << ToString(self[i].scalar_type()) << " and "
+              << ToString(other[i].scalar_type());
+        }
 
-    return ForeachConvertToTensor(
-        ForeachAddList(self, other, alpha, std::move(out_dtypes)));
-  });
+        return ForeachConvertToTensor(
+            ForeachAddList(self, other, alpha, std::move(out_dtypes)));
+      });
 }
 
 std::vector<at::Tensor> AtenForeachAddScalar(at::TensorList self,
                                              const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachAddScalar, _, (self, scalar), {
+  TT_KERNEL(OpName::kForeachAddScalar, _, (self, IgnoreInCacheKey(scalar)), {
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, scalar));
     std::vector<at::Tensor> other;
     other.reserve(self.size());
@@ -1324,43 +1326,47 @@ std::vector<at::Tensor> AtenForeachAddScalar(at::TensorList self,
 
 std::vector<at::Tensor> AtenForeachAddScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachAddScalarList, _, (self, scalars), {
-    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, scalars));
-    std::vector<at::Tensor> other;
-    other.reserve(self.size());
-    for (size_t i = 0; i < self.size(); ++i) {
-      at::ScalarType scalar_type = ConvertTo<at::ScalarType>((*out_dtypes)[i]);
-      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
-                         MakeTensor(scalars[i], scalar_type));
-      other.push_back(scalar_tensor);
-    }
-    return ForeachConvertToTensor(
-        ForeachAddList(self, other, 1.0, std::move(out_dtypes)));
-  });
+  TT_KERNEL(
+      OpName::kForeachAddScalarList, _, (self, IgnoreInCacheKey(scalars)), {
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, scalars));
+        std::vector<at::Tensor> other;
+        other.reserve(self.size());
+        for (size_t i = 0; i < self.size(); ++i) {
+          at::ScalarType scalar_type =
+              ConvertTo<at::ScalarType>((*out_dtypes)[i]);
+          TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                             MakeTensor(scalars[i], scalar_type));
+          other.push_back(scalar_tensor);
+        }
+        return ForeachConvertToTensor(
+            ForeachAddList(self, other, 1.0, std::move(out_dtypes)));
+      });
 }
 
 std::vector<at::Tensor> AtenForeachAddTensor(at::TensorList self,
                                              const at::Tensor& other,
                                              const at::Scalar& alpha) {
-  TT_KERNEL(OpName::kForeachAddTensor, _, (self, other, alpha), {
-    std::vector<at::Tensor> other_list(self.size(), other);
-    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, other_list));
-    return ForeachConvertToTensor(
-        ForeachAddList(self, other_list, alpha, std::move(out_dtypes)));
-  });
+  TT_KERNEL(
+      OpName::kForeachAddTensor, _, (self, other, IgnoreInCacheKey(alpha)), {
+        std::vector<at::Tensor> other_list(self.size(), other);
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, other_list));
+        return ForeachConvertToTensor(
+            ForeachAddList(self, other_list, alpha, std::move(out_dtypes)));
+      });
 }
 
 void AtenForeachAdd_List(at::TensorList self, at::TensorList other,
                          const at::Scalar& alpha) {
-  TT_KERNEL(OpName::kForeachAdd_List, _, (self, other, alpha), {
-    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(
-        ForeachAddList(self, other, alpha, std::move(out_dtypes)), self));
-  });
+  TT_KERNEL(
+      OpName::kForeachAdd_List, _, (self, other, IgnoreInCacheKey(alpha)), {
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+        TT_THROW_IF_ERROR(ForeachAssignToTensor(
+            ForeachAddList(self, other, alpha, std::move(out_dtypes)), self));
+      });
 }
 
 void AtenForeachAdd_Scalar(at::TensorList self, const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachAdd_Scalar, _, (self, scalar), {
+  TT_KERNEL(OpName::kForeachAdd_Scalar, _, (self, IgnoreInCacheKey(scalar)), {
     TT_THROW_IF_ERROR(CheckInplaceScalarType(self, scalar));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     std::vector<at::Tensor> other;
@@ -1377,50 +1383,57 @@ void AtenForeachAdd_Scalar(at::TensorList self, const at::Scalar& scalar) {
 
 void AtenForeachAdd_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachAdd_ScalarList, _, (self, scalars), {
-    TT_THROW_IF_ERROR(CheckInplaceScalarType(self, scalars));
-    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    std::vector<at::Tensor> other;
-    other.reserve(self.size());
-    for (size_t i = 0; i < self.size(); ++i) {
-      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
-                         MakeTensor(scalars[i], self[i].scalar_type()));
-      other.push_back(scalar_tensor);
-    }
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(
-        ForeachAddList(self, other, 1.0, std::move(out_dtypes)), self));
-  });
+  TT_KERNEL(
+      OpName::kForeachAdd_ScalarList, _, (self, IgnoreInCacheKey(scalars)), {
+        TT_THROW_IF_ERROR(CheckInplaceScalarType(self, scalars));
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+        std::vector<at::Tensor> other;
+        other.reserve(self.size());
+        for (size_t i = 0; i < self.size(); ++i) {
+          TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                             MakeTensor(scalars[i], self[i].scalar_type()));
+          other.push_back(scalar_tensor);
+        }
+        TT_THROW_IF_ERROR(ForeachAssignToTensor(
+            ForeachAddList(self, other, 1.0, std::move(out_dtypes)), self));
+      });
 }
 
 void AtenForeachAdd_Tensor(at::TensorList self, const at::Tensor& other,
                            const at::Scalar& alpha) {
-  TT_KERNEL(OpName::kForeachAdd_Tensor, _, (self, other, alpha), {
-    std::vector<at::Tensor> other_list(self.size(), other);
-    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(
-        ForeachAddList(self, other_list, alpha, std::move(out_dtypes)), self));
-  });
+  TT_KERNEL(
+      OpName::kForeachAdd_Tensor, _, (self, other, IgnoreInCacheKey(alpha)), {
+        std::vector<at::Tensor> other_list(self.size(), other);
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+        TT_THROW_IF_ERROR(ForeachAssignToTensor(
+            ForeachAddList(self, other_list, alpha, std::move(out_dtypes)),
+            self));
+      });
 }
 
 std::vector<at::Tensor> AtenForeachAddcdivScalar(at::TensorList self,
                                                  at::TensorList tensor1,
                                                  at::TensorList tensor2,
                                                  const at::Scalar& value) {
-  TT_KERNEL(OpName::kForeachAddcdivScalar, _, (self, tensor1, tensor2, value), {
-    // _foreach_div supports two integral tensors, but _foreach_addcdiv doesn't.
-    TT_THROW_IF_ERROR(
-        CheckPairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
-    std::vector<at::Tensor> quotient = AtenForeachDivList(tensor1, tensor2);
-    std::vector<at::Tensor> product = AtenForeachMulScalar(quotient, value);
-    return AtenForeachAddList(self, product, 1.0);
-  });
+  TT_KERNEL(
+      OpName::kForeachAddcdivScalar, _,
+      (self, tensor1, tensor2, IgnoreInCacheKey(value)), {
+        // _foreach_div supports two integral tensors, but _foreach_addcdiv
+        // doesn't.
+        TT_THROW_IF_ERROR(
+            CheckPairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
+        std::vector<at::Tensor> quotient = AtenForeachDivList(tensor1, tensor2);
+        std::vector<at::Tensor> product = AtenForeachMulScalar(quotient, value);
+        return AtenForeachAddList(self, product, 1.0);
+      });
 }
 
 std::vector<at::Tensor> AtenForeachAddcdivScalarList(
     at::TensorList self, at::TensorList tensor1, at::TensorList tensor2,
     at::ArrayRef<at::Scalar> scalars) {
   TT_KERNEL(
-      OpName::kForeachAddcdivScalarList, _, (self, tensor1, tensor2, scalars), {
+      OpName::kForeachAddcdivScalarList, _,
+      (self, tensor1, tensor2, IgnoreInCacheKey(scalars)), {
         // _foreach_div supports two integral tensors, but _foreach_addcdiv
         // doesn't.
         TT_THROW_IF_ERROR(
@@ -1452,7 +1465,8 @@ void AtenForeachAddcdiv_Scalar(at::TensorList self, at::TensorList tensor1,
                                at::TensorList tensor2,
                                const at::Scalar& value) {
   TT_KERNEL(
-      OpName::kForeachAddcdiv_Scalar, _, (self, tensor1, tensor2, value), {
+      OpName::kForeachAddcdiv_Scalar, _,
+      (self, tensor1, tensor2, IgnoreInCacheKey(value)), {
         // _foreach_div supports two integral tensors, but _foreach_addcdiv
         // doesn't.
         TT_THROW_IF_ERROR(
@@ -1467,7 +1481,7 @@ void AtenForeachAddcdiv_ScalarList(at::TensorList self, at::TensorList tensor1,
                                    at::TensorList tensor2,
                                    at::ArrayRef<at::Scalar> scalars) {
   TT_KERNEL(OpName::kForeachAddcdiv_ScalarList, _,
-            (self, tensor1, tensor2, scalars), {
+            (self, tensor1, tensor2, IgnoreInCacheKey(scalars)), {
               // _foreach_div supports two integral tensors, but
               // _foreach_addcdiv doesn't.
               TT_THROW_IF_ERROR(
@@ -1500,22 +1514,25 @@ std::vector<at::Tensor> AtenForeachAddcmulScalar(at::TensorList self,
                                                  at::TensorList tensor1,
                                                  at::TensorList tensor2,
                                                  const at::Scalar& value) {
-  TT_KERNEL(OpName::kForeachAddcmulScalar, _, (self, tensor1, tensor2, value), {
-    // _foreach_mul and _foreach_add supports bool tensors, but _foreach_addcmul
-    // doesn't.
-    TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
-    std::vector<at::Tensor> product = AtenForeachMulList(tensor1, tensor2);
-    std::vector<at::Tensor> scaled_product =
-        AtenForeachMulScalar(product, value);
-    return AtenForeachAddList(self, scaled_product, 1);
-  });
+  TT_KERNEL(OpName::kForeachAddcmulScalar, _,
+            (self, tensor1, tensor2, IgnoreInCacheKey(value)), {
+              // _foreach_mul and _foreach_add supports bool tensors, but
+              // _foreach_addcmul doesn't.
+              TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+              std::vector<at::Tensor> product =
+                  AtenForeachMulList(tensor1, tensor2);
+              std::vector<at::Tensor> scaled_product =
+                  AtenForeachMulScalar(product, value);
+              return AtenForeachAddList(self, scaled_product, 1);
+            });
 }
 
 std::vector<at::Tensor> AtenForeachAddcmulScalarList(
     at::TensorList self, at::TensorList tensor1, at::TensorList tensor2,
     at::ArrayRef<at::Scalar> scalars) {
   TT_KERNEL(
-      OpName::kForeachAddcmulScalarList, _, (self, tensor1, tensor2, scalars), {
+      OpName::kForeachAddcmulScalarList, _,
+      (self, tensor1, tensor2, IgnoreInCacheKey(scalars)), {
         // _foreach_mul and _foreach_add supports bool tensors, but
         // _foreach_addcmul doesn't.
         TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
@@ -1546,7 +1563,8 @@ void AtenForeachAddcmul_Scalar(at::TensorList self, at::TensorList tensor1,
                                at::TensorList tensor2,
                                const at::Scalar& value) {
   TT_KERNEL(
-      OpName::kForeachAddcmul_Scalar, _, (self, tensor1, tensor2, value), {
+      OpName::kForeachAddcmul_Scalar, _,
+      (self, tensor1, tensor2, IgnoreInCacheKey(value)), {
         // _foreach_mul and _foreach_add supports bool tensors, but
         // _foreach_addcmul doesn't.
         TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
@@ -1561,7 +1579,7 @@ void AtenForeachAddcmul_ScalarList(at::TensorList self, at::TensorList tensor1,
                                    at::TensorList tensor2,
                                    at::ArrayRef<at::Scalar> scalars) {
   TT_KERNEL(OpName::kForeachAddcmul_ScalarList, _,
-            (self, tensor1, tensor2, scalars), {
+            (self, tensor1, tensor2, IgnoreInCacheKey(scalars)), {
               // _foreach_mul and _foreach_add supports bool tensors, but
               // _foreach_addcmul doesn't.
               TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
@@ -1596,20 +1614,21 @@ std::vector<at::Tensor> AtenForeachDivList(at::TensorList self,
 
 std::vector<at::Tensor> AtenForeachDivScalar(at::TensorList self,
                                              const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachDivScalar, _, (self, scalar),
+  TT_KERNEL(OpName::kForeachDivScalar, _, (self, IgnoreInCacheKey(scalar)),
             { return AtenForeachMulScalar(self, 1.0 / scalar.to<double>()); });
 }
 
 std::vector<at::Tensor> AtenForeachDivScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachDivScalarList, _, (self, scalars), {
-    std::vector<at::Scalar> reciprocal_scalars;
-    reciprocal_scalars.reserve(scalars.size());
-    for (const auto& scalar : scalars) {
-      reciprocal_scalars.push_back(1.0 / scalar.to<double>());
-    }
-    return AtenForeachMulScalarList(self, reciprocal_scalars);
-  });
+  TT_KERNEL(OpName::kForeachDivScalarList, _, (self, IgnoreInCacheKey(scalars)),
+            {
+              std::vector<at::Scalar> reciprocal_scalars;
+              reciprocal_scalars.reserve(scalars.size());
+              for (const auto& scalar : scalars) {
+                reciprocal_scalars.push_back(1.0 / scalar.to<double>());
+              }
+              return AtenForeachMulScalarList(self, reciprocal_scalars);
+            });
 }
 
 std::vector<at::Tensor> AtenForeachDivTensor(at::TensorList self,
@@ -1626,20 +1645,21 @@ void AtenForeachDiv_List(at::TensorList self, at::TensorList other) {
 }
 
 void AtenForeachDiv_Scalar(at::TensorList self, const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachDiv_Scalar, _, (self, scalar),
+  TT_KERNEL(OpName::kForeachDiv_Scalar, _, (self, IgnoreInCacheKey(scalar)),
             { AtenForeachMul_Scalar(self, 1.0 / scalar.to<double>()); });
 }
 
 void AtenForeachDiv_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachDiv_ScalarList, _, (self, scalars), {
-    std::vector<at::Scalar> reciprocal_scalars;
-    reciprocal_scalars.reserve(scalars.size());
-    for (const auto& scalar : scalars) {
-      reciprocal_scalars.push_back(1.0 / scalar.to<double>());
-    }
-    AtenForeachMul_ScalarList(self, reciprocal_scalars);
-  });
+  TT_KERNEL(OpName::kForeachDiv_ScalarList, _,
+            (self, IgnoreInCacheKey(scalars)), {
+              std::vector<at::Scalar> reciprocal_scalars;
+              reciprocal_scalars.reserve(scalars.size());
+              for (const auto& scalar : scalars) {
+                reciprocal_scalars.push_back(1.0 / scalar.to<double>());
+              }
+              AtenForeachMul_ScalarList(self, reciprocal_scalars);
+            });
 }
 
 void AtenForeachDiv_Tensor(at::TensorList self, const at::Tensor& other) {
@@ -1662,21 +1682,23 @@ std::vector<at::Tensor> AtenForeachLerpList(at::TensorList self,
 std::vector<at::Tensor> AtenForeachLerpScalar(at::TensorList self,
                                               at::TensorList other,
                                               const at::Scalar& weight) {
-  TT_KERNEL(OpName::kForeachLerpScalar, _, (self, other, weight), {
-    auto diff = AtenForeachSubList(other, self, 1.0);
-    auto weighted_diff = AtenForeachMulScalar(diff, weight);
-    return AtenForeachAddList(self, weighted_diff, 1.0);
-  });
+  TT_KERNEL(OpName::kForeachLerpScalar, _,
+            (self, other, IgnoreInCacheKey(weight)), {
+              auto diff = AtenForeachSubList(other, self, 1.0);
+              auto weighted_diff = AtenForeachMulScalar(diff, weight);
+              return AtenForeachAddList(self, weighted_diff, 1.0);
+            });
 }
 
 std::vector<at::Tensor> AtenForeachLerpScalarList(
     at::TensorList self, at::TensorList other,
     at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachLerpScalarList, _, (self, other, scalars), {
-    auto diff = AtenForeachSubList(other, self, 1.0);
-    auto weighted_diff = AtenForeachMulScalarList(diff, scalars);
-    return AtenForeachAddList(self, weighted_diff, 1.0);
-  });
+  TT_KERNEL(OpName::kForeachLerpScalarList, _,
+            (self, other, IgnoreInCacheKey(scalars)), {
+              auto diff = AtenForeachSubList(other, self, 1.0);
+              auto weighted_diff = AtenForeachMulScalarList(diff, scalars);
+              return AtenForeachAddList(self, weighted_diff, 1.0);
+            });
 }
 
 void AtenForeachLerp_List(at::TensorList self, at::TensorList other,
@@ -1690,20 +1712,22 @@ void AtenForeachLerp_List(at::TensorList self, at::TensorList other,
 
 void AtenForeachLerp_Scalar(at::TensorList self, at::TensorList other,
                             const at::Scalar& weight) {
-  TT_KERNEL(OpName::kForeachLerp_Scalar, _, (self, other, weight), {
-    auto diff = AtenForeachSubList(other, self, 1.0);
-    auto weighted_diff = AtenForeachMulScalar(diff, weight);
-    AtenForeachAdd_List(self, weighted_diff, 1.0);
-  });
+  TT_KERNEL(OpName::kForeachLerp_Scalar, _,
+            (self, other, IgnoreInCacheKey(weight)), {
+              auto diff = AtenForeachSubList(other, self, 1.0);
+              auto weighted_diff = AtenForeachMulScalar(diff, weight);
+              AtenForeachAdd_List(self, weighted_diff, 1.0);
+            });
 }
 
 void AtenForeachLerp_ScalarList(at::TensorList self, at::TensorList other,
                                 at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachLerp_ScalarList, _, (self, other, scalars), {
-    auto diff = AtenForeachSubList(other, self, 1.0);
-    auto weighted_diff = AtenForeachMulScalarList(diff, scalars);
-    AtenForeachAdd_List(self, weighted_diff, 1.0);
-  });
+  TT_KERNEL(OpName::kForeachLerp_ScalarList, _,
+            (self, other, IgnoreInCacheKey(scalars)), {
+              auto diff = AtenForeachSubList(other, self, 1.0);
+              auto weighted_diff = AtenForeachMulScalarList(diff, scalars);
+              AtenForeachAdd_List(self, weighted_diff, 1.0);
+            });
 }
 
 std::vector<at::Tensor> AtenForeachMulList(at::TensorList self,
@@ -1717,7 +1741,7 @@ std::vector<at::Tensor> AtenForeachMulList(at::TensorList self,
 
 std::vector<at::Tensor> AtenForeachMulScalar(at::TensorList self,
                                              const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachMulScalar, _, (self, scalar), {
+  TT_KERNEL(OpName::kForeachMulScalar, _, (self, IgnoreInCacheKey(scalar)), {
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, scalar));
     std::vector<at::Tensor> other;
     other.reserve(self.size());
@@ -1734,19 +1758,21 @@ std::vector<at::Tensor> AtenForeachMulScalar(at::TensorList self,
 
 std::vector<at::Tensor> AtenForeachMulScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachMulScalarList, _, (self, scalars), {
-    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, scalars));
-    std::vector<at::Tensor> other;
-    other.reserve(self.size());
-    for (size_t i = 0; i < self.size(); ++i) {
-      at::ScalarType scalar_type = ConvertTo<at::ScalarType>((*out_dtypes)[i]);
-      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
-                         MakeTensor(scalars[i], scalar_type));
-      other.push_back(scalar_tensor);
-    }
-    return ForeachConvertToTensor(
-        ForeachMulList(self, other, std::move(out_dtypes)));
-  });
+  TT_KERNEL(
+      OpName::kForeachMulScalarList, _, (self, IgnoreInCacheKey(scalars)), {
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, scalars));
+        std::vector<at::Tensor> other;
+        other.reserve(self.size());
+        for (size_t i = 0; i < self.size(); ++i) {
+          at::ScalarType scalar_type =
+              ConvertTo<at::ScalarType>((*out_dtypes)[i]);
+          TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                             MakeTensor(scalars[i], scalar_type));
+          other.push_back(scalar_tensor);
+        }
+        return ForeachConvertToTensor(
+            ForeachMulList(self, other, std::move(out_dtypes)));
+      });
 }
 
 std::vector<at::Tensor> AtenForeachMulTensor(at::TensorList self,
@@ -1768,7 +1794,7 @@ void AtenForeachMul_List(at::TensorList self, at::TensorList other) {
 }
 
 void AtenForeachMul_Scalar(at::TensorList self, const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachMul_Scalar, _, (self, scalar), {
+  TT_KERNEL(OpName::kForeachMul_Scalar, _, (self, IgnoreInCacheKey(scalar)), {
     TT_THROW_IF_ERROR(CheckInplaceScalarType(self, scalar));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     std::vector<at::Tensor> other;
@@ -1785,19 +1811,20 @@ void AtenForeachMul_Scalar(at::TensorList self, const at::Scalar& scalar) {
 
 void AtenForeachMul_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachMul_ScalarList, _, (self, scalars), {
-    TT_THROW_IF_ERROR(CheckInplaceScalarType(self, scalars));
-    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    std::vector<at::Tensor> other;
-    other.reserve(self.size());
-    for (size_t i = 0; i < self.size(); ++i) {
-      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
-                         MakeTensor(scalars[i], self[i].scalar_type()));
-      other.push_back(scalar_tensor);
-    }
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(
-        ForeachMulList(self, other, std::move(out_dtypes)), self));
-  });
+  TT_KERNEL(
+      OpName::kForeachMul_ScalarList, _, (self, IgnoreInCacheKey(scalars)), {
+        TT_THROW_IF_ERROR(CheckInplaceScalarType(self, scalars));
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+        std::vector<at::Tensor> other;
+        other.reserve(self.size());
+        for (size_t i = 0; i < self.size(); ++i) {
+          TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                             MakeTensor(scalars[i], self[i].scalar_type()));
+          other.push_back(scalar_tensor);
+        }
+        TT_THROW_IF_ERROR(ForeachAssignToTensor(
+            ForeachMulList(self, other, std::move(out_dtypes)), self));
+      });
 }
 
 void AtenForeachMul_Tensor(at::TensorList self, const at::Tensor& other) {
@@ -1812,29 +1839,31 @@ void AtenForeachMul_Tensor(at::TensorList self, const at::Tensor& other) {
 std::vector<at::Tensor> AtenForeachSubList(at::TensorList self,
                                            at::TensorList other,
                                            const at::Scalar& alpha) {
-  TT_KERNEL(OpName::kForeachSubList, _, (self, other, alpha), {
-    // _foreach_add supports bool, but _foreach_sub does not.
-    TT_THROW_IF_ERROR(CheckNotBool(alpha, /* arg_name= */ "alpha"));
-    TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
-    TT_THROW_IF_ERROR(CheckNotBool(other, /* arg_name= */ "other"));
-    return AtenForeachAddList(self, other, -alpha);
-  });
+  TT_KERNEL(OpName::kForeachSubList, _, (self, other, IgnoreInCacheKey(alpha)),
+            {
+              // _foreach_add supports bool, but _foreach_sub does not.
+              TT_THROW_IF_ERROR(CheckNotBool(alpha, /* arg_name= */ "alpha"));
+              TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+              TT_THROW_IF_ERROR(CheckNotBool(other, /* arg_name= */ "other"));
+              return AtenForeachAddList(self, other, -alpha);
+            });
 }
 
 void AtenForeachSub_List(at::TensorList self, at::TensorList other,
                          const at::Scalar& alpha) {
-  TT_KERNEL(OpName::kForeachSub_List, _, (self, other, alpha), {
-    // _foreach_add supports bool, but _foreach_sub does not.
-    TT_THROW_IF_ERROR(CheckNotBool(alpha, /* arg_name= */ "alpha"));
-    TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
-    TT_THROW_IF_ERROR(CheckNotBool(other, /* arg_name= */ "other"));
-    AtenForeachAdd_List(self, other, -alpha);
-  });
+  TT_KERNEL(OpName::kForeachSub_List, _, (self, other, IgnoreInCacheKey(alpha)),
+            {
+              // _foreach_add supports bool, but _foreach_sub does not.
+              TT_THROW_IF_ERROR(CheckNotBool(alpha, /* arg_name= */ "alpha"));
+              TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+              TT_THROW_IF_ERROR(CheckNotBool(other, /* arg_name= */ "other"));
+              AtenForeachAdd_List(self, other, -alpha);
+            });
 }
 
 std::vector<at::Tensor> AtenForeachSubScalar(at::TensorList self,
                                              const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachSubScalar, _, (self, scalar), {
+  TT_KERNEL(OpName::kForeachSubScalar, _, (self, IgnoreInCacheKey(scalar)), {
     // _foreach_add supports bool, but _foreach_sub does not.
     TT_THROW_IF_ERROR(CheckNotBool(scalar, /* arg_name= */ "scalar"));
     TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
@@ -1843,7 +1872,7 @@ std::vector<at::Tensor> AtenForeachSubScalar(at::TensorList self,
 }
 
 void AtenForeachSub_Scalar(at::TensorList self, const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachSub_Scalar, _, (self, scalar), {
+  TT_KERNEL(OpName::kForeachSub_Scalar, _, (self, IgnoreInCacheKey(scalar)), {
     // _foreach_add supports bool, but _foreach_sub does not.
     TT_THROW_IF_ERROR(CheckNotBool(scalar, /* arg_name= */ "scalar"));
     TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
@@ -1853,32 +1882,34 @@ void AtenForeachSub_Scalar(at::TensorList self, const at::Scalar& scalar) {
 
 std::vector<at::Tensor> AtenForeachSubScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachSubScalarList, _, (self, scalars), {
-    // _foreach_add supports bool, but _foreach_sub does not.
-    TT_THROW_IF_ERROR(CheckNotBool(scalars, /* arg_name= */ "scalars"));
-    TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
-    std::vector<at::Scalar> neg_scalars;
-    neg_scalars.reserve(scalars.size());
-    for (const auto& scalar : scalars) {
-      neg_scalars.push_back(-scalar);
-    }
-    return AtenForeachAddScalarList(self, neg_scalars);
-  });
+  TT_KERNEL(
+      OpName::kForeachSubScalarList, _, (self, IgnoreInCacheKey(scalars)), {
+        // _foreach_add supports bool, but _foreach_sub does not.
+        TT_THROW_IF_ERROR(CheckNotBool(scalars, /* arg_name= */ "scalars"));
+        TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+        std::vector<at::Scalar> neg_scalars;
+        neg_scalars.reserve(scalars.size());
+        for (const auto& scalar : scalars) {
+          neg_scalars.push_back(-scalar);
+        }
+        return AtenForeachAddScalarList(self, neg_scalars);
+      });
 }
 
 void AtenForeachSub_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachSub_ScalarList, _, (self, scalars), {
-    // _foreach_add supports bool, but _foreach_sub does not.
-    TT_THROW_IF_ERROR(CheckNotBool(scalars, /* arg_name= */ "scalars"));
-    TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
-    std::vector<at::Scalar> neg_scalars;
-    neg_scalars.reserve(scalars.size());
-    for (const auto& scalar : scalars) {
-      neg_scalars.push_back(-scalar);
-    }
-    AtenForeachAdd_ScalarList(self, neg_scalars);
-  });
+  TT_KERNEL(
+      OpName::kForeachSub_ScalarList, _, (self, IgnoreInCacheKey(scalars)), {
+        // _foreach_add supports bool, but _foreach_sub does not.
+        TT_THROW_IF_ERROR(CheckNotBool(scalars, /* arg_name= */ "scalars"));
+        TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
+        std::vector<at::Scalar> neg_scalars;
+        neg_scalars.reserve(scalars.size());
+        for (const auto& scalar : scalars) {
+          neg_scalars.push_back(-scalar);
+        }
+        AtenForeachAdd_ScalarList(self, neg_scalars);
+      });
 }
 
 absl::StatusOr<at::Tensor> AtenClampMax(const at::Tensor& self,
@@ -1891,23 +1922,25 @@ absl::StatusOr<at::Tensor> AtenClampMax(const at::Tensor& self,
 
 std::vector<at::Tensor> AtenForeachClampMaxScalar(at::TensorList self,
                                                   const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachClampMaxScalar, _, (self, scalar), {
-    std::vector<at::Tensor> result;
-    result.reserve(self.size());
-    for (const auto& tensor : self) {
-      TT_ASSIGN_OR_THROW(auto out, AtenClampMax(tensor, scalar));
-      result.push_back(out);
-    }
-    return result;
-  });
+  TT_KERNEL(OpName::kForeachClampMaxScalar, _, (self, IgnoreInCacheKey(scalar)),
+            {
+              std::vector<at::Tensor> result;
+              result.reserve(self.size());
+              for (const auto& tensor : self) {
+                TT_ASSIGN_OR_THROW(auto out, AtenClampMax(tensor, scalar));
+                result.push_back(out);
+              }
+              return result;
+            });
 }
 
 void AtenForeachClampMax_Scalar(at::TensorList self, const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachClampMax_Scalar, _, (self, scalar), {
-    for (const auto& tensor : self) {
-      AtenClampMaxOut(tensor, scalar, const_cast<at::Tensor&>(tensor));
-    }
-  });
+  TT_KERNEL(
+      OpName::kForeachClampMax_Scalar, _, (self, IgnoreInCacheKey(scalar)), {
+        for (const auto& tensor : self) {
+          AtenClampMaxOut(tensor, scalar, const_cast<at::Tensor&>(tensor));
+        }
+      });
 }
 
 absl::StatusOr<at::Tensor> AtenClampMax(const at::Tensor& self,
@@ -1942,24 +1975,27 @@ void AtenForeachClampMax_List(at::TensorList self, at::TensorList other) {
 
 std::vector<at::Tensor> AtenForeachClampMaxScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachClampMaxScalarList, _, (self, scalars), {
-    std::vector<at::Tensor> result;
-    result.reserve(self.size());
-    for (size_t i = 0; i < self.size(); ++i) {
-      TT_ASSIGN_OR_THROW(auto out, AtenClampMax(self[i], scalars[i]));
-      result.push_back(out);
-    }
-    return result;
-  });
+  TT_KERNEL(OpName::kForeachClampMaxScalarList, _,
+            (self, IgnoreInCacheKey(scalars)), {
+              std::vector<at::Tensor> result;
+              result.reserve(self.size());
+              for (size_t i = 0; i < self.size(); ++i) {
+                TT_ASSIGN_OR_THROW(auto out, AtenClampMax(self[i], scalars[i]));
+                result.push_back(out);
+              }
+              return result;
+            });
 }
 
 void AtenForeachClampMax_ScalarList(at::TensorList self,
                                     at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachClampMax_ScalarList, _, (self, scalars), {
-    for (size_t i = 0; i < self.size(); ++i) {
-      AtenClampMaxOut(self[i], scalars[i], const_cast<at::Tensor&>(self[i]));
-    }
-  });
+  TT_KERNEL(OpName::kForeachClampMax_ScalarList, _,
+            (self, IgnoreInCacheKey(scalars)), {
+              for (size_t i = 0; i < self.size(); ++i) {
+                AtenClampMaxOut(self[i], scalars[i],
+                                const_cast<at::Tensor&>(self[i]));
+              }
+            });
 }
 
 absl::StatusOr<at::Tensor> AtenClampMin(const at::Tensor& self,
@@ -1980,23 +2016,25 @@ absl::StatusOr<at::Tensor> AtenClampMin(const at::Tensor& self,
 
 std::vector<at::Tensor> AtenForeachClampMinScalar(at::TensorList self,
                                                   const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachClampMinScalar, _, (self, scalar), {
-    std::vector<at::Tensor> result;
-    result.reserve(self.size());
-    for (const auto& tensor : self) {
-      TT_ASSIGN_OR_THROW(auto out, AtenClampMin(tensor, scalar));
-      result.push_back(out);
-    }
-    return result;
-  });
+  TT_KERNEL(OpName::kForeachClampMinScalar, _, (self, IgnoreInCacheKey(scalar)),
+            {
+              std::vector<at::Tensor> result;
+              result.reserve(self.size());
+              for (const auto& tensor : self) {
+                TT_ASSIGN_OR_THROW(auto out, AtenClampMin(tensor, scalar));
+                result.push_back(out);
+              }
+              return result;
+            });
 }
 
 void AtenForeachClampMin_Scalar(at::TensorList self, const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachClampMin_Scalar, _, (self, scalar), {
-    for (const auto& tensor : self) {
-      AtenClampMinOut(tensor, scalar, const_cast<at::Tensor&>(tensor));
-    }
-  });
+  TT_KERNEL(
+      OpName::kForeachClampMin_Scalar, _, (self, IgnoreInCacheKey(scalar)), {
+        for (const auto& tensor : self) {
+          AtenClampMinOut(tensor, scalar, const_cast<at::Tensor&>(tensor));
+        }
+      });
 }
 
 std::vector<at::Tensor> AtenForeachClampMinList(at::TensorList self,
@@ -2023,61 +2061,67 @@ void AtenForeachClampMin_List(at::TensorList self, at::TensorList other) {
 
 std::vector<at::Tensor> AtenForeachClampMinScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachClampMinScalarList, _, (self, scalars), {
-    std::vector<at::Tensor> result;
-    result.reserve(self.size());
-    for (size_t i = 0; i < self.size(); ++i) {
-      TT_ASSIGN_OR_THROW(auto out, AtenClampMin(self[i], scalars[i]));
-      result.push_back(out);
-    }
-    return result;
-  });
+  TT_KERNEL(OpName::kForeachClampMinScalarList, _,
+            (self, IgnoreInCacheKey(scalars)), {
+              std::vector<at::Tensor> result;
+              result.reserve(self.size());
+              for (size_t i = 0; i < self.size(); ++i) {
+                TT_ASSIGN_OR_THROW(auto out, AtenClampMin(self[i], scalars[i]));
+                result.push_back(out);
+              }
+              return result;
+            });
 }
 
 void AtenForeachClampMin_ScalarList(at::TensorList self,
                                     at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachClampMin_ScalarList, _, (self, scalars), {
-    for (size_t i = 0; i < self.size(); ++i) {
-      AtenClampMinOut(self[i], scalars[i], const_cast<at::Tensor&>(self[i]));
-    }
-  });
+  TT_KERNEL(OpName::kForeachClampMin_ScalarList, _,
+            (self, IgnoreInCacheKey(scalars)), {
+              for (size_t i = 0; i < self.size(); ++i) {
+                AtenClampMinOut(self[i], scalars[i],
+                                const_cast<at::Tensor&>(self[i]));
+              }
+            });
 }
 
 void AtenForeachCopy_(at::TensorList self, at::TensorList src,
                       bool non_blocking) {
-  TT_KERNEL(OpName::kForeachCopy_, _, (self, src, non_blocking), {
-    for (size_t i = 0; i < self.size(); ++i) {
-      AtenCopy_(const_cast<at::Tensor&>(self[i]), src[i], non_blocking);
-    }
-  });
+  TT_KERNEL(
+      OpName::kForeachCopy_, _, (self, src, IgnoreInCacheKey(non_blocking)), {
+        for (size_t i = 0; i < self.size(); ++i) {
+          AtenCopy_(const_cast<at::Tensor&>(self[i]), src[i], non_blocking);
+        }
+      });
 }
 
 std::vector<at::Tensor> AtenForeachNormScalar(
     at::TensorList self, const at::Scalar& ord,
     const std::optional<c10::ScalarType> dtype) {
-  TT_KERNEL(OpName::kForeachNormScalar, _, (self, ord, dtype), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
-    std::vector<at::Tensor> result;
-    result.reserve(self.size());
-    for (const auto& tensor : self) {
-      auto out_dtype =
-          at::toRealValueType(dtype.value_or(tensor.scalar_type()));
-      auto out = MakeEmptyTensor({}, out_dtype, tensor.device());
-      // If the tensor is empty, return zero scalar.
-      // If ord < 0, to avoid inf caused by pow(0, ord), check for 0s in the
-      // tensor and return zero directly, which is the correct result.
-      if (tensor.numel() == 0 ||
-          (ord.to<double>() < 0 && tensor.eq(0).any().item<bool>())) {
-        out.fill_(0);
-        result.push_back(out);
-        continue;
-      }
-      AtenLinalgVectorNormOut(tensor.to(out_dtype), ord, /*dim=*/{},
-                              /*keepdim=*/false, dtype, out);
-      result.push_back(out);
-    }
-    return result;
-  });
+  TT_KERNEL(OpName::kForeachNormScalar, _,
+            (self, IgnoreInCacheKey(ord), IgnoreInCacheKey(dtype)), {
+              TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+              std::vector<at::Tensor> result;
+              result.reserve(self.size());
+              for (const auto& tensor : self) {
+                auto out_dtype =
+                    at::toRealValueType(dtype.value_or(tensor.scalar_type()));
+                auto out = MakeEmptyTensor({}, out_dtype, tensor.device());
+                // If the tensor is empty, return zero scalar.
+                // If ord < 0, to avoid inf caused by pow(0, ord), check for 0s
+                // in the tensor and return zero directly, which is the correct
+                // result.
+                if (tensor.numel() == 0 ||
+                    (ord.to<double>() < 0 && tensor.eq(0).any().item<bool>())) {
+                  out.fill_(0);
+                  result.push_back(out);
+                  continue;
+                }
+                AtenLinalgVectorNormOut(tensor.to(out_dtype), ord, /*dim=*/{},
+                                        /*keepdim=*/false, dtype, out);
+                result.push_back(out);
+              }
+              return result;
+            });
 }
 
 std::vector<at::Tensor> AtenForeachMax(at::TensorList self) {
@@ -2102,25 +2146,28 @@ absl::StatusOr<at::Tensor> AtenMaximum(const at::Tensor& self,
 
 std::vector<at::Tensor> AtenForeachMaximumScalar(at::TensorList self,
                                                  const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachMaximumScalar, _, (self, scalar), {
-    std::vector<at::Tensor> result;
-    result.reserve(self.size());
-    for (const auto& tensor : self) {
-      TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalar));
-      TT_ASSIGN_OR_THROW(auto out, AtenMaximum(tensor, scalar_tensor));
-      result.push_back(out);
-    }
-    return result;
-  });
+  TT_KERNEL(
+      OpName::kForeachMaximumScalar, _, (self, IgnoreInCacheKey(scalar)), {
+        std::vector<at::Tensor> result;
+        result.reserve(self.size());
+        for (const auto& tensor : self) {
+          TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalar));
+          TT_ASSIGN_OR_THROW(auto out, AtenMaximum(tensor, scalar_tensor));
+          result.push_back(out);
+        }
+        return result;
+      });
 }
 
 void AtenForeachMaximum_Scalar(at::TensorList self, const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachMaximum_Scalar, _, (self, scalar), {
-    for (const auto& tensor : self) {
-      TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalar));
-      AtenMaximumOut(tensor, scalar_tensor, const_cast<at::Tensor&>(tensor));
-    }
-  });
+  TT_KERNEL(OpName::kForeachMaximum_Scalar, _, (self, IgnoreInCacheKey(scalar)),
+            {
+              for (const auto& tensor : self) {
+                TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalar));
+                AtenMaximumOut(tensor, scalar_tensor,
+                               const_cast<at::Tensor&>(tensor));
+              }
+            });
 }
 
 std::vector<at::Tensor> AtenForeachMaximumList(at::TensorList self,
@@ -2146,26 +2193,29 @@ void AtenForeachMaximum_List(at::TensorList self, at::TensorList other) {
 
 std::vector<at::Tensor> AtenForeachMaximumScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachMaximumScalarList, _, (self, scalars), {
-    std::vector<at::Tensor> result;
-    result.reserve(self.size());
-    for (size_t i = 0; i < self.size(); ++i) {
-      TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalars[i]));
-      TT_ASSIGN_OR_THROW(auto out, AtenMaximum(self[i], scalar_tensor));
-      result.push_back(out);
-    }
-    return result;
-  });
+  TT_KERNEL(
+      OpName::kForeachMaximumScalarList, _, (self, IgnoreInCacheKey(scalars)), {
+        std::vector<at::Tensor> result;
+        result.reserve(self.size());
+        for (size_t i = 0; i < self.size(); ++i) {
+          TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalars[i]));
+          TT_ASSIGN_OR_THROW(auto out, AtenMaximum(self[i], scalar_tensor));
+          result.push_back(out);
+        }
+        return result;
+      });
 }
 
 void AtenForeachMaximum_ScalarList(at::TensorList self,
                                    at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachMaximum_ScalarList, _, (self, scalars), {
-    for (size_t i = 0; i < self.size(); ++i) {
-      TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalars[i]));
-      AtenMaximumOut(self[i], scalar_tensor, const_cast<at::Tensor&>(self[i]));
-    }
-  });
+  TT_KERNEL(OpName::kForeachMaximum_ScalarList, _,
+            (self, IgnoreInCacheKey(scalars)), {
+              for (size_t i = 0; i < self.size(); ++i) {
+                TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalars[i]));
+                AtenMaximumOut(self[i], scalar_tensor,
+                               const_cast<at::Tensor&>(self[i]));
+              }
+            });
 }
 
 absl::StatusOr<at::Tensor> AtenMinimum(const at::Tensor& self,
@@ -2178,25 +2228,28 @@ absl::StatusOr<at::Tensor> AtenMinimum(const at::Tensor& self,
 
 std::vector<at::Tensor> AtenForeachMinimumScalar(at::TensorList self,
                                                  const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachMinimumScalar, _, (self, scalar), {
-    std::vector<at::Tensor> result;
-    result.reserve(self.size());
-    for (const auto& tensor : self) {
-      TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalar));
-      TT_ASSIGN_OR_THROW(auto out, AtenMinimum(tensor, scalar_tensor));
-      result.push_back(out);
-    }
-    return result;
-  });
+  TT_KERNEL(
+      OpName::kForeachMinimumScalar, _, (self, IgnoreInCacheKey(scalar)), {
+        std::vector<at::Tensor> result;
+        result.reserve(self.size());
+        for (const auto& tensor : self) {
+          TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalar));
+          TT_ASSIGN_OR_THROW(auto out, AtenMinimum(tensor, scalar_tensor));
+          result.push_back(out);
+        }
+        return result;
+      });
 }
 
 void AtenForeachMinimum_Scalar(at::TensorList self, const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachMinimum_Scalar, _, (self, scalar), {
-    for (const auto& tensor : self) {
-      TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalar));
-      AtenMinimumOut(tensor, scalar_tensor, const_cast<at::Tensor&>(tensor));
-    }
-  });
+  TT_KERNEL(OpName::kForeachMinimum_Scalar, _, (self, IgnoreInCacheKey(scalar)),
+            {
+              for (const auto& tensor : self) {
+                TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalar));
+                AtenMinimumOut(tensor, scalar_tensor,
+                               const_cast<at::Tensor&>(tensor));
+              }
+            });
 }
 
 std::vector<at::Tensor> AtenForeachMinimumList(at::TensorList self,
@@ -2222,26 +2275,29 @@ void AtenForeachMinimum_List(at::TensorList self, at::TensorList other) {
 
 std::vector<at::Tensor> AtenForeachMinimumScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachMinimumScalarList, _, (self, scalars), {
-    std::vector<at::Tensor> result;
-    result.reserve(self.size());
-    for (size_t i = 0; i < self.size(); ++i) {
-      TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalars[i]));
-      TT_ASSIGN_OR_THROW(auto out, AtenMinimum(self[i], scalar_tensor));
-      result.push_back(out);
-    }
-    return result;
-  });
+  TT_KERNEL(
+      OpName::kForeachMinimumScalarList, _, (self, IgnoreInCacheKey(scalars)), {
+        std::vector<at::Tensor> result;
+        result.reserve(self.size());
+        for (size_t i = 0; i < self.size(); ++i) {
+          TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalars[i]));
+          TT_ASSIGN_OR_THROW(auto out, AtenMinimum(self[i], scalar_tensor));
+          result.push_back(out);
+        }
+        return result;
+      });
 }
 
 void AtenForeachMinimum_ScalarList(at::TensorList self,
                                    at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachMinimum_ScalarList, _, (self, scalars), {
-    for (size_t i = 0; i < self.size(); ++i) {
-      TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalars[i]));
-      AtenMinimumOut(self[i], scalar_tensor, const_cast<at::Tensor&>(self[i]));
-    }
-  });
+  TT_KERNEL(OpName::kForeachMinimum_ScalarList, _,
+            (self, IgnoreInCacheKey(scalars)), {
+              for (size_t i = 0; i < self.size(); ++i) {
+                TT_ASSIGN_OR_THROW(auto scalar_tensor, MakeTensor(scalars[i]));
+                AtenMinimumOut(self[i], scalar_tensor,
+                               const_cast<at::Tensor&>(self[i]));
+              }
+            });
 }
 
 absl::StatusOr<at::Tensor> AtenPow(const at::Tensor& self,
@@ -2292,7 +2348,7 @@ void AtenForeachPow_List(at::TensorList self, at::TensorList exponent) {
 
 std::vector<at::Tensor> AtenForeachPowScalar(at::TensorList self,
                                              const at::Scalar& exponent) {
-  TT_KERNEL(OpName::kForeachPowScalar, _, (self, exponent), {
+  TT_KERNEL(OpName::kForeachPowScalar, _, (self, IgnoreInCacheKey(exponent)), {
     std::vector<at::Tensor> result;
     result.reserve(self.size());
     for (const auto& tensor : self) {
@@ -2304,7 +2360,7 @@ std::vector<at::Tensor> AtenForeachPowScalar(at::TensorList self,
 }
 
 void AtenForeachPow_Scalar(at::TensorList self, const at::Scalar& exponent) {
-  TT_KERNEL(OpName::kForeachPow_Scalar, _, (self, exponent), {
+  TT_KERNEL(OpName::kForeachPow_Scalar, _, (self, IgnoreInCacheKey(exponent)), {
     for (const auto& tensor : self) {
       AtenPowTensorScalarOut(tensor, exponent, const_cast<at::Tensor&>(tensor));
     }
@@ -2313,38 +2369,41 @@ void AtenForeachPow_Scalar(at::TensorList self, const at::Scalar& exponent) {
 
 std::vector<at::Tensor> AtenForeachPowScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> exponent) {
-  TT_KERNEL(OpName::kForeachPowScalarList, _, (self, exponent), {
-    std::vector<at::Tensor> result;
-    result.reserve(self.size());
-    for (size_t i = 0; i < self.size(); ++i) {
-      TT_ASSIGN_OR_THROW(auto out, AtenPow(self[i], exponent[i]));
-      result.push_back(out);
-    }
-    return result;
-  });
+  TT_KERNEL(OpName::kForeachPowScalarList, _,
+            (self, IgnoreInCacheKey(exponent)), {
+              std::vector<at::Tensor> result;
+              result.reserve(self.size());
+              for (size_t i = 0; i < self.size(); ++i) {
+                TT_ASSIGN_OR_THROW(auto out, AtenPow(self[i], exponent[i]));
+                result.push_back(out);
+              }
+              return result;
+            });
 }
 
 void AtenForeachPow_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> exponent) {
-  TT_KERNEL(OpName::kForeachPow_ScalarList, _, (self, exponent), {
-    for (size_t i = 0; i < self.size(); ++i) {
-      AtenPowTensorScalarOut(self[i], exponent[i],
-                             const_cast<at::Tensor&>(self[i]));
-    }
-  });
+  TT_KERNEL(OpName::kForeachPow_ScalarList, _,
+            (self, IgnoreInCacheKey(exponent)), {
+              for (size_t i = 0; i < self.size(); ++i) {
+                AtenPowTensorScalarOut(self[i], exponent[i],
+                                       const_cast<at::Tensor&>(self[i]));
+              }
+            });
 }
 
 std::vector<at::Tensor> AtenForeachPowScalarAndTensor(const at::Scalar& self,
                                                       at::TensorList exponent) {
-  TT_KERNEL(OpName::kForeachPowScalarAndTensor, _, (self, exponent), {
-    std::vector<at::Tensor> result;
-    result.reserve(exponent.size());
-    for (const auto& tensor : exponent) {
-      TT_ASSIGN_OR_THROW(auto out, AtenPow(self, tensor));
-      result.push_back(out);
-    }
-    return result;
-  });
+  TT_KERNEL(OpName::kForeachPowScalarAndTensor, _,
+            (IgnoreInCacheKey(self), exponent), {
+              std::vector<at::Tensor> result;
+              result.reserve(exponent.size());
+              for (const auto& tensor : exponent) {
+                TT_ASSIGN_OR_THROW(auto out, AtenPow(self, tensor));
+                result.push_back(out);
+              }
+              return result;
+            });
 }
 
 }  // namespace torch_tpu

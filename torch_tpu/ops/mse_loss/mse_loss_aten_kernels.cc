@@ -29,8 +29,9 @@
 #include "ATen/ops/sub.h"
 #include "ATen/ops/sum.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/dtype.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
 
@@ -38,55 +39,59 @@ namespace torch_tpu {
 
 at::Tensor& AtenMseLossOut(const at::Tensor& self, const at::Tensor& target,
                            int64_t reduction, at::Tensor& out) {
-  TT_KERNEL(OpName::kMseLossOut, _, (self, target, reduction, out), {
-    TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Byte &&
-                       self.scalar_type() != at::ScalarType::Char &&
-                       self.scalar_type() != at::ScalarType::Short &&
-                       self.scalar_type() != at::ScalarType::Int &&
-                       self.scalar_type() != at::ScalarType::Long &&
-                       self.scalar_type() != at::ScalarType::ComplexFloat,
-                   error::kInvalidArgument)
-        << "uint8, int8, int16, int32, int64, and complex64 dtypes"
-        << " are not supported, got: "
-        << torch_tpu::ToString(self.scalar_type());
-    TT_CHECK_THROW(self.scalar_type() == target.scalar_type(),
-                   error::kInvalidArgument)
-        << "input and target must have the same dtype";
+  TT_KERNEL(
+      OpName::kMseLossOut, _, (self, target, IgnoreInCacheKey(reduction), out),
+      {
+        TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Byte &&
+                           self.scalar_type() != at::ScalarType::Char &&
+                           self.scalar_type() != at::ScalarType::Short &&
+                           self.scalar_type() != at::ScalarType::Int &&
+                           self.scalar_type() != at::ScalarType::Long &&
+                           self.scalar_type() != at::ScalarType::ComplexFloat,
+                       error::kInvalidArgument)
+            << "uint8, int8, int16, int32, int64, and complex64 dtypes"
+            << " are not supported, got: "
+            << torch_tpu::ToString(self.scalar_type());
+        TT_CHECK_THROW(self.scalar_type() == target.scalar_type(),
+                       error::kInvalidArgument)
+            << "input and target must have the same dtype";
 
-    {
-      // All compositional ATen calls must be within a guard to prevent
-      // re-dispatching to the Autograd layer, which would cause infinite
-      // recursion. This ensures we are calling the primitive PrivateUse1
-      // kernels.
-      at::AutoDispatchBelowAutograd guard;
+        {
+          // All compositional ATen calls must be within a guard to prevent
+          // re-dispatching to the Autograd layer, which would cause infinite
+          // recursion. This ensures we are calling the primitive PrivateUse1
+          // kernels.
+          at::AutoDispatchBelowAutograd guard;
 
-      at::Tensor squared_error = at::pow(at::sub(self, target), 2);
-      at::Tensor result;  // UNINITIALIZED_TENSOR_OK=initialized in the if-else
-      if (reduction == at::Reduction::None) {
-        result = squared_error;
-      } else if (reduction == at::Reduction::Mean) {
-        result = at::mean(squared_error);
-      } else if (reduction == at::Reduction::Sum) {
-        result = at::sum(squared_error);
-      } else {
-        TT_CHECK_THROW(false, error::kInvalidArgument)
-            << "unrecognized reduction mode " << reduction;
-      }
+          at::Tensor squared_error = at::pow(at::sub(self, target), 2);
+          at::Tensor
+              result;  // UNINITIALIZED_TENSOR_OK=initialized in the if-else
+          if (reduction == at::Reduction::None) {
+            result = squared_error;
+          } else if (reduction == at::Reduction::Mean) {
+            result = at::mean(squared_error);
+          } else if (reduction == at::Reduction::Sum) {
+            result = at::sum(squared_error);
+          } else {
+            TT_CHECK_THROW(false, error::kInvalidArgument)
+                << "unrecognized reduction mode " << reduction;
+          }
 
-      // Resize the output tensor and copy the result into it.
-      // This is the standard way to handle `out=` variants.
-      at::native::resize_output(out, result.sizes());
-      out.copy_(result);
-    }
-    return out;
-  });
+          // Resize the output tensor and copy the result into it.
+          // This is the standard way to handle `out=` variants.
+          at::native::resize_output(out, result.sizes());
+          out.copy_(result);
+        }
+        return out;
+      });
 }
 
 at::Tensor AtenMseLossBackward(const at::Tensor& grad_output,
                                const at::Tensor& self, const at::Tensor& target,
                                int64_t reduction) {
   TT_KERNEL(
-      OpName::kMseLossBackward, _, (grad_output, self, target, reduction), {
+      OpName::kMseLossBackward, _,
+      (grad_output, self, target, IgnoreInCacheKey(reduction)), {
         at::Tensor grad_input;  // UNINITIALIZED_TENSOR_OK=initialized below
         {
           at::AutoDispatchBelowAutograd guard;

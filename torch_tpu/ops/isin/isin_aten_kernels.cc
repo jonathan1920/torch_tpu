@@ -29,6 +29,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/isin/isin.h"
@@ -113,7 +114,9 @@ at::Tensor& AtenIsInScalarTensorOut(const at::Scalar& element,
                                     bool assume_unique, bool invert,
                                     at::Tensor& out) {
   TT_KERNEL(OpName::kIsInScalarTensorOut, _,
-            (element, test_elements, assume_unique, invert, out), {
+            (IgnoreInCacheKey(element), test_elements,
+             IgnoreInCacheKey(assume_unique), IgnoreInCacheKey(invert), out),
+            {
               at::Tensor wrapper_scalar_tensor =
                   at::full({}, element).to(test_elements.device());
 

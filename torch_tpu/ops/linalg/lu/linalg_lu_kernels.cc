@@ -186,7 +186,9 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuFactorExOut(
     at::Tensor& pivots, at::Tensor& info) {
   TT_KERNEL(
       OpName::kLinalgLuFactorExOut, _,
-      (a, pivot, check_errors, lu, pivots, info), {
+      (a, IgnoreInCacheKey(pivot), IgnoreInCacheKey(check_errors), lu, pivots,
+       info),
+      {
         TT_CHECK_THROW(pivot, error::kInvalidArgument)
             << "non-pivoting decomposition is not supported";
         TT_CHECK_THROW(a.dim() >= 2, error::kInvalidArgument)
@@ -246,7 +248,9 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLuUnpackOut(
     bool unpack_pivots, at::Tensor& p, at::Tensor& l, at::Tensor& u) {
   TT_KERNEL(
       OpName::kLuUnpackOut, _,
-      (lu_data, lu_pivots, unpack_data, unpack_pivots, p, l, u), {
+      (lu_data, lu_pivots, IgnoreInCacheKey(unpack_data),
+       IgnoreInCacheKey(unpack_pivots), p, l, u),
+      {
         if (unpack_data || unpack_pivots) {
           TT_CHECK_THROW(lu_data.dim() >= 2, error::kInvalidArgument)
               << "lu_data must have at least 2 dimensions, got "
@@ -445,7 +449,7 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
 std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuOut(
     const at::Tensor& a, bool pivot, at::Tensor& p, at::Tensor& l,
     at::Tensor& u) {
-  TT_KERNEL(OpName::kLinalgLuOut, _, (a, pivot, p, l, u), {
+  TT_KERNEL(OpName::kLinalgLuOut, _, (a, IgnoreInCacheKey(pivot), p, l, u), {
     at::Tensor lu = at::empty_like(a);
     Dimensions pivot_dims = CopyIntVector(a.sizes());
     pivot_dims.pop_back();

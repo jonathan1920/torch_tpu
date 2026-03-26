@@ -33,11 +33,13 @@
 #include "ATen/ops/ones_like.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/static_shape_check.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/embedding/embedding.h"
@@ -179,8 +181,11 @@ AtenEmbeddingBagForwardOnly(const at::Tensor& weight, const at::Tensor& indices,
                             const std::optional<at::Tensor>& per_sample_weights,
                             bool include_last_offset, int64_t padding_idx) {
   TT_KERNEL(OpName::kEmbeddingBagForwardOnly, _,
-            (weight, indices, offsets, scale_grad_by_freq, mode, sparse,
-             per_sample_weights, include_last_offset, padding_idx),
+            (weight, indices, offsets, IgnoreInCacheKey(scale_grad_by_freq),
+             IgnoreInCacheKey(mode), IgnoreInCacheKey(sparse),
+             IgnoreInCacheKey(per_sample_weights),
+             IgnoreInCacheKey(include_last_offset),
+             IgnoreInCacheKey(padding_idx)),
             {
               return AtenEmbeddingBag(
                   weight, indices, offsets, scale_grad_by_freq, mode, sparse,
@@ -237,7 +242,8 @@ at::Tensor AtenEmbeddingDenseBackward(const at::Tensor& grad_output,
                                       bool scale_grad_by_freq) {
   TT_KERNEL(
       OpName::kEmbeddingDenseBackward, _,
-      (grad_output, indices, num_weights, padding_idx_sym, scale_grad_by_freq),
+      (grad_output, indices, IgnoreInCacheKey(num_weights),
+       IgnoreInCacheKey(padding_idx_sym), IgnoreInCacheKey(scale_grad_by_freq)),
       {
         auto dtype = grad_output.scalar_type();
         auto computation_dtype = GetComputationDtype(dtype);

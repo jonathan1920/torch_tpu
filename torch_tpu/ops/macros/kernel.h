@@ -18,6 +18,7 @@
 #define TORCH_TPU_OPS_MACROS_KERNEL_H_
 
 #include <string_view>
+#include <type_traits>
 
 #include "absl/status/status.h"
 #include "torch_tpu/common/cache_key.h"
@@ -58,30 +59,39 @@
 // Implementation note: the last argument ... is for the statements. We use
 // a variadic macro parameter as the statements may contain unprotected commas.
 
-#define TT_KERNEL(op_name, param_keys, args, ...)                             \
-  do {                                                                        \
-    TT_CHECK_AND_LOG_KERNEL_ARGS_(op_name, TT_REMOVE_PARENS_(args));          \
-    ::torch_tpu::ScopedPythonContextCapturer _capturer(op_name);              \
-    if constexpr (std::string_view(#param_keys) == "_") {                     \
-      /* Use InvalidOpParamCacheKeys as the type of _, to prevent using it in \
-       * ...                                                                  \
-       */                                                                     \
-      ::torch_tpu::internal::InvalidOpParamCacheKeys param_keys;              \
-      try {                                                                   \
-        __VA_ARGS__;                                                          \
-      } catch (const ::torch_tpu::TtError& e) {                               \
-        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                          \
-      }                                                                       \
-    } else {                                                                  \
-      TT_ASSIGN_OR_THROW(/* ERROR_COV_INFEASIBLE=in macro definition. */      \
-                         ::torch_tpu::OpParamCacheKeys param_keys,            \
-                         TT_MAKE_OP_PARAM_CACHE_KEYS args);                   \
-      try {                                                                   \
-        __VA_ARGS__;                                                          \
-      } catch (const ::torch_tpu::TtError& e) {                               \
-        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                          \
-      }                                                                       \
-    }                                                                         \
+#define TT_KERNEL(op_name, param_keys, args, ...)                              \
+  do {                                                                         \
+    TT_CHECK_AND_LOG_KERNEL_ARGS_(op_name, TT_REMOVE_PARENS_(args));           \
+    ::torch_tpu::ScopedPythonContextCapturer _capturer(op_name);               \
+    if constexpr (std::string_view(#param_keys) == "_") {                      \
+      constexpr bool _param_types_ok =                                         \
+          std::string_view(#param_keys) != "_" ||                              \
+          !decltype(::torch_tpu::internal::ShouldIncludeSomeInCacheKey         \
+                        args)::value;                                          \
+      static_assert(_param_types_ok,                                           \
+                    "TT_KERNEL() argument list contains an argument that "     \
+                    "should normally be included in parameter cache keys. If " \
+                    "you are sure that you want to exclude it from cache key " \
+                    "computation, wrap it in IgnoreInCacheKey().");            \
+      /* Use InvalidOpParamCacheKeys as the type of _, to prevent using it in  \
+       * ...                                                                   \
+       */                                                                      \
+      ::torch_tpu::internal::InvalidOpParamCacheKeys param_keys;               \
+      try {                                                                    \
+        __VA_ARGS__;                                                           \
+      } catch (const ::torch_tpu::TtError& e) {                                \
+        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                           \
+      }                                                                        \
+    } else {                                                                   \
+      TT_ASSIGN_OR_THROW(/* ERROR_COV_INFEASIBLE=in macro definition. */       \
+                         ::torch_tpu::OpParamCacheKeys param_keys,             \
+                         TT_MAKE_OP_PARAM_CACHE_KEYS args);                    \
+      try {                                                                    \
+        __VA_ARGS__;                                                           \
+      } catch (const ::torch_tpu::TtError& e) {                                \
+        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                           \
+      }                                                                        \
+    }                                                                          \
   } while (false)
 
 // Invokes MakeOpParamCacheKeys() with the given arguments, with the
@@ -135,6 +145,12 @@ class InvalidOpParamCacheKeys {
   operator OpParamCacheKeys&() &;    // NOLINT
   operator OpParamCacheKeys&&() &&;  // NOLINT
 };
+
+// This helper returns std::true_type if any of the given arguments should
+// normally be included in the parameter cache key computation.
+template <typename... Ts>
+std::bool_constant<(... || IncludeInCacheKey<Ts>())>
+ShouldIncludeSomeInCacheKey(const Ts&...);
 
 }  // namespace internal
 }  // namespace torch_tpu

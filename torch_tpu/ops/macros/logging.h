@@ -47,6 +47,7 @@
 #include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/macro_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/op_names.h"
@@ -464,6 +465,9 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
                   "at::OptionalSymIntArrayRef")
         << message();
+  } else if constexpr (is_ignored_in_cache_key<T>::value) {
+    // The argument is IgnoreInCacheKey(x), so we check the type of x.
+    CheckKernelArgType<typename T::value_type>(context, arg_idx);
   } else {
     static_assert(false, "Unsupported argument type.");
   }

@@ -24,11 +24,12 @@
 #include "c10/core/SymInt.h"
 #include "c10/core/SymIntArrayRef.h"
 #include "c10/core/TensorImpl.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
-#include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/stride/stride_helper.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -51,7 +52,7 @@ at::Tensor& AtenSet_(at::Tensor& self) {
 }
 
 at::Tensor& AtenSet_SourceStorage(at::Tensor& self, c10::Storage src) {
-  TT_KERNEL(OpName::kSet_SourceStorage, _, (self, src), {
+  TT_KERNEL(OpName::kSet_SourceStorage, _, (self, IgnoreInCacheKey(src)), {
     c10::TensorImpl* impl = self.unsafeGetTensorImpl();
     TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref,
                        GetBaseBufferFromStorage(src));
@@ -77,7 +78,9 @@ at::Tensor& AtenSet_SourceStorageOffset(at::Tensor& self, c10::Storage src,
     stride_vec.push_back(s.guard_int(__FILE__, __LINE__));
   }
   TT_KERNEL(OpName::kSet_SourceStorageOffset, _,
-            (self, src, offset, size_vec, stride_vec), {
+            (self, IgnoreInCacheKey(src), IgnoreInCacheKey(offset),
+             IgnoreInCacheKey(size_vec), IgnoreInCacheKey(stride_vec)),
+            {
               c10::TensorImpl* impl = self.unsafeGetTensorImpl();
               TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref,
                                  GetBaseBufferFromStorage(src));

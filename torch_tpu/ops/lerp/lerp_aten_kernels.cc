@@ -25,9 +25,11 @@
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -117,10 +119,11 @@ at::Tensor& AtenLerpTensorOut(const at::Tensor& self, const at::Tensor& end,
 
 at::Tensor& AtenLerpScalarOut(const at::Tensor& self, const at::Tensor& end,
                               const at::Scalar& weight, at::Tensor& out) {
-  TT_KERNEL(OpName::kLerpScalarOut, _, (self, end, weight, out), {
-    TT_ASSIGN_OR_THROW(at::Tensor weight_tensor, MakeTensor(weight));
-    return AtenLerpTensorOut(self, end, weight_tensor, out);
-  });
+  TT_KERNEL(OpName::kLerpScalarOut, _,
+            (self, end, IgnoreInCacheKey(weight), out), {
+              TT_ASSIGN_OR_THROW(at::Tensor weight_tensor, MakeTensor(weight));
+              return AtenLerpTensorOut(self, end, weight_tensor, out);
+            });
 }
 
 }  // namespace torch_tpu

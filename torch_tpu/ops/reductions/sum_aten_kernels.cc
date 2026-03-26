@@ -24,6 +24,7 @@
 #include "ATen/ops/zeros.h"
 #include "c10/util/OptionalArrayRef.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
@@ -36,18 +37,22 @@ at::Tensor& AtenSumIntListOut(const at::Tensor& self,
                               c10::OptionalArrayRef<int64_t> dim, bool keep_dim,
                               std::optional<c10::ScalarType> dtype,
                               at::Tensor& out) {
-  TT_KERNEL(OpName::kSumIntListOut, _, (self, dim, keep_dim, dtype, out), {
-    c10::ScalarType scalar_dtype = dtype.value_or(out.scalar_type());
-    if (self.numel() == 0) {
-      out = at::zeros({}, at::TensorOptions().dtype(scalar_dtype));
-      return out;
-    }
-    TT_THROW_IF_ERROR(ApplySumReductionOut(
-        self, out, dim,
-        keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims,
-        scalar_dtype));
-    return out;
-  });
+  TT_KERNEL(
+      OpName::kSumIntListOut, _,
+      (self, IgnoreInCacheKey(dim), IgnoreInCacheKey(keep_dim),
+       IgnoreInCacheKey(dtype), out),
+      {
+        c10::ScalarType scalar_dtype = dtype.value_or(out.scalar_type());
+        if (self.numel() == 0) {
+          out = at::zeros({}, at::TensorOptions().dtype(scalar_dtype));
+          return out;
+        }
+        TT_THROW_IF_ERROR(ApplySumReductionOut(
+            self, out, dim,
+            keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims,
+            scalar_dtype));
+        return out;
+      });
 }
 
 }  // namespace torch_tpu
