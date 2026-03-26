@@ -101,7 +101,7 @@ pytype_strict_library(
 # 6. ops_test_grad: gradient on TPU vs CPU.
 # 7. ops_test_perf: TPU only, for measuring compilation/execution time.
 # 8. ops_test_dynamic: TPU only, bounds a dimension and compares TPU vs CPU.
-# 9. ops_test_compiled: TPU only, torch.compile TpuBackend vs CPU aot_eager backend.
+# 9. ops_test_tpu_vs_gpu_compiled: TPU only, torch.compile TpuBackend vs GPU inductor backend.
 
 #
 # TorchTPU can run on "tpu" or "xla_cuda" or "xla_cpu" devices using the --torch_tpu_device flag.
@@ -175,13 +175,19 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "ops_test_compiled",
+    name = "ops_test_tpu_vs_gpu_compiled",
     timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
     args = [
         "--torch_tpu_device=tpu",
         "--use_compiled=True",
-        "--max_samples_per_op_dtype=1",  # No need for many samples to catch compiled mode bugs.
+        "--test_mode=torch_tpu_vs_gpu",
+        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
+    ],
+    data = [
+        "ops_test_gpu_golden_compiled0.gz",
+        "ops_test_gpu_golden_compiled1.gz",
+        "ops_test_gpu_golden_compiled2.gz",
     ],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",

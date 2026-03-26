@@ -704,6 +704,11 @@ def _perf_mode() -> bool:
   return _TEST_MODE.value == TestMode.PERF
 
 
+def is_compiled_mode() -> bool:
+  """Returns true if --use_compiled is set."""
+  return _USE_COMPILED.value
+
+
 def _to_plistlib_compatible(ptree: _pytree.PyTree) -> _pytree.PyTree:
   """Converts values in the PyTree to values that plistlib can handle.
 
@@ -1590,7 +1595,7 @@ class TorchTpuTestBase(TestCase):
       logging.getLogger(tt_compile.TpuBackend.__module__).setLevel(
           logging.DEBUG
       )
-      backend = "tpu" if str(device) in XLA_DEVICES else "aot_eager"
+      backend = "tpu" if str(device) in XLA_DEVICES else "inductor"
       print(f"Compiling {op_name} for device {device} ...", flush=True)
       op_func = torch.compile(op_func, dynamic=False, backend=backend)
 
@@ -2133,7 +2138,7 @@ class TorchTpuTestBase(TestCase):
     )
     skip_output_indices = skip_output_indices or []
     compute_grad = _COMPUTE_GRAD.value
-    use_compiled = _USE_COMPILED.value
+    use_compiled = is_compiled_mode()
 
     if compute_grad and not check_grad:
       self.skipTest(
@@ -2233,7 +2238,7 @@ def _golden_file_prefix() -> str:
   """Returns the prefix for the golden file name."""
   return (
       "ops_test_gpu_golden_compiled"
-      if _USE_COMPILED.value
+      if is_compiled_mode()
       else "ops_test_gpu_golden"
   )
 
