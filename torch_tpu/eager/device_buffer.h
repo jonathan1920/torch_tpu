@@ -833,6 +833,10 @@ class DeviceBufferList {
 
   // If the DeviceBufferList is materialized, returns a non-null pointer to
   // the MaterializedBuffers. Otherwise, returns a nullptr.
+  [[nodiscard]] const MaterializedBuffers* absl_nullable materialized_buffers()
+      const {
+    return std::get_if<MaterializedBuffers>(&data_);
+  }
   [[nodiscard]] MaterializedBuffers* absl_nullable materialized_buffers() {
     return std::get_if<MaterializedBuffers>(&data_);
   }
@@ -845,6 +849,8 @@ class DeviceBufferList {
   // DeferredOps appended to it. This allows for more optimal materialization
   // patterns in some cases.
   [[nodiscard]] bool is_stale() const { return live_data_ptrs_ == 0; }
+
+  std::string DebugString() const;
 
  private:
   // Private constructor for a DeviceBufferList wrapping a single materialized

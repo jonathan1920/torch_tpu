@@ -295,9 +295,19 @@ void DebugDataState(std::ostream& os,
 
 }  // namespace
 
+std::string DeviceBufferList::DebugString() const {
+  std::ostringstream os;
+  os << "DeviceBufferList:"
+     << "\n\tAddress: " << this << "\n\tNum buffers: " << size();
+  for (auto i = 0; i < size(); ++i) {
+    os << "\n\t\t=== Buffer " << i << " ===\n\t\t";
+    DebugDataState(os, deferred_op(), materialized_buffers(), dimensions(i));
+  }
+  return os.str();
+}
+
 std::string DeviceBufferRef::DebugString() const {
-  std::stringbuf sb;
-  std::ostream os(&sb);
+  std::ostringstream os;
   os << "DeviceBufferRef:"
      << "\n\tAddress of ref: " << this
      << "\n\tAddress of DeviceBufferList: " << device_buffer_list_.get()
@@ -306,7 +316,7 @@ std::string DeviceBufferRef::DebugString() const {
      << ToString(dimensions()) << "\n\tData state: ";
   DebugDataState(os, deferred_op(), device_buffer_list_->materialized_buffers(),
                  dimensions());
-  return sb.str();
+  return os.str();
 }
 
 DeviceBufferRefState DeviceBufferList::state(int64_t index) const {
