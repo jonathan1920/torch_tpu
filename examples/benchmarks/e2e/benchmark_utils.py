@@ -33,11 +33,30 @@ from torch_tpu._internal.shims.xprof import xprof_analysis_client
 from torch_tpu._internal.shims.xprof import xprof_session
 
 
-# TODO: Make this configurable
-_MAX_WARMUP_STEPS = 20
-MIN_WARMUP_STEPS = 10
-POST_WARMUP_STEPS = 10
+MAX_WARMUP_STEPS = flags.DEFINE_integer(
+    "max_warmup_steps", 20, "Maximum number of warmup steps."
+)
+MIN_WARMUP_STEPS = flags.DEFINE_integer(
+    "min_warmup_steps", 10, "Minimum number of warmup steps."
+)
+POST_WARMUP_STEPS = flags.DEFINE_integer(
+    "post_warmup_steps", 10, "Number of post-warmup steps."
+)
 _RANDOM_SEED = 0
+
+
+def _do_post_warmup() -> bool:
+  return POST_WARMUP_STEPS.value > 0
+
+
+# Used to disable some of the checks if the user
+# just wants a single warmup run.
+def _is_warmup_only() -> bool:
+  return (
+      MIN_WARMUP_STEPS.value == 1
+      and POST_WARMUP_STEPS.value == 0
+      and MAX_WARMUP_STEPS.value == 1
+  )
 
 
 class Platform(enum.Enum):
@@ -309,10 +328,13 @@ def _get_device_name(device: torch.device) -> str:
 def _get_warmup_overhead(timings: np.ndarray, num_warmup_steps: int) -> float:
   """Calculates the warmup overhead in seconds from the timings of the warmup runs."""
 
+  if _is_warmup_only():
+    return timings[0]
+
   if not num_warmup_steps:
     raise RuntimeError(
         "Benchmark function compilations have not stabilized after"
-        f" {_MAX_WARMUP_STEPS} warmup runs. num_warmup_steps was"
+        f" {MAX_WARMUP_STEPS.value} warmup runs. num_warmup_steps was"
         f" {num_warmup_steps}. Consider increasing the number of warmup steps."
     )
 
@@ -332,6 +354,7 @@ def _warmup_run(
     device: torch.device,
     *,
     optimizer: torch.optim.Optimizer | None = None,
+    enable_xprof: bool = False,
 ) -> _WarmupRunResult:
   """Runs the model for MAX_WARMUP_STEPS times to warmup the caches.
 
@@ -345,6 +368,7 @@ def _warmup_run(
     example_inputs: The example inputs to run the model with.
     device: The device to run the benchmark on.
     optimizer: The optimizer to use for the model.
+    enable_xprof: Whether to enable xprof profiling.
 
   Returns:
     A _WarmupRunResult instance containing the number of warmup steps, the time
@@ -352,28 +376,29 @@ def _warmup_run(
   """
   # TODO(bbahl): Decide the number of warmup steps dynamically, possibly based
   # on cache miss count.
-  timings = np.zeros(_MAX_WARMUP_STEPS, dtype=np.float64)
+  timings = np.zeros(MAX_WARMUP_STEPS.value, dtype=np.float64)
   # cache misses is always 0 for CUDA. In this case,
   # we just use the first run as the preheat overhead.
-  cache_misses = np.zeros(_MAX_WARMUP_STEPS, dtype=np.int64)
+  cache_misses = np.zeros(MAX_WARMUP_STEPS.value, dtype=np.int64)
   num_warmup_steps = None
   device_name = _get_device_name(device)
 
-  for step in range(_MAX_WARMUP_STEPS):
-    start_time = time.perf_counter()
-    out = benchmark_function(model, example_inputs, optimizer)
-    if isinstance(out, torch.Tensor):
-      device_utils.synchronize(device_name, out)
+  with XprofContext("warmup_run", enable_xprof):
+    for step in range(MAX_WARMUP_STEPS.value):
+      start_time = time.perf_counter()
+      out = benchmark_function(model, example_inputs, optimizer)
+      if isinstance(out, torch.Tensor):
+        device_utils.synchronize(device_name, out)
 
-    timings[step] = time.perf_counter() - start_time
-    cache_misses[step] = device_utils.cache_miss_count(device_name)
+      timings[step] = time.perf_counter() - start_time
+      cache_misses[step] = device_utils.cache_miss_count(device_name)
 
-    if (
-        step >= MIN_WARMUP_STEPS
-        and cache_misses[step] == cache_misses[step - 1]
-    ):
-      num_warmup_steps = step
-      break
+      if (
+          step >= MIN_WARMUP_STEPS.value
+          and cache_misses[step] == cache_misses[step - 1]
+      ):
+        num_warmup_steps = step
+        break
 
   logging.info("Warmup Timings: %s", timings)
   logging.info("Warmup cache misses: %s", cache_misses)
@@ -414,7 +439,7 @@ def _post_warmup_run(
     device memory usage.
   """
 
-  timings = np.zeros(POST_WARMUP_STEPS, dtype=np.float64)
+  timings = np.zeros(POST_WARMUP_STEPS.value, dtype=np.float64)
   device_utils.reset_peak_memory_stats(_get_device_name(device))
   num_cache_misses = None
   device_name = _get_device_name(device)
@@ -422,7 +447,7 @@ def _post_warmup_run(
   # TODO(bbahl): Calculate the number of post warmup steps based on timing
   # information.
   with XprofContext("post_warmup_run", enable_xprof) as xprof_context:
-    for step in range(POST_WARMUP_STEPS):
+    for step in range(POST_WARMUP_STEPS.value):
       start_time = time.perf_counter()
       out = benchmark_function(model, example_inputs, optimizer)
       if isinstance(out, torch.Tensor):
@@ -437,8 +462,8 @@ def _post_warmup_run(
         raise RuntimeError(
             "Cache misses are not consistent across steps; expected"
             f" {num_cache_misses}, got {step_cache_misses}. This means that the"
-            f" model is not fully warmed up after {_MAX_WARMUP_STEPS} warmup"
-            " steps. Consider increasing the number of warmup steps."
+            f" model is not fully warmed up after {MAX_WARMUP_STEPS.value}"
+            " warmup steps. Consider increasing the number of warmup steps."
         )
 
   # Calculate the memory usage after the post warmup run is complete. This
@@ -496,28 +521,35 @@ def run_performance_benchmark(
     # presubmits on non-CUDA environments.
     return PerformanceBenchmarkResult()
 
+  result_kwargs = {}
   start_time = time.perf_counter()
-  warmup_run_result = _warmup_run(
-      benchmark_function,
-      model,
-      example_inputs,
-      device,
-      optimizer=optimizer,
+  result_kwargs |= dataclasses.asdict(
+      _warmup_run(
+          benchmark_function,
+          model,
+          example_inputs,
+          device,
+          optimizer=optimizer,
+          enable_xprof=enable_xprof,
+      )
   )
 
-  post_warmup_run_result = _post_warmup_run(
-      benchmark_function,
-      model,
-      example_inputs,
-      device,
-      optimizer=optimizer,
-      enable_xprof=enable_xprof,
-      xprof_client=xprof_client,
-  )
+  if _do_post_warmup():
+    result_kwargs |= dataclasses.asdict(
+        _post_warmup_run(
+            benchmark_function,
+            model,
+            example_inputs,
+            device,
+            optimizer=optimizer,
+            enable_xprof=enable_xprof,
+            xprof_client=xprof_client,
+        )
+    )
+
   return PerformanceBenchmarkResult(
       e2e_wall_time_seconds=time.perf_counter() - start_time,
-      **dataclasses.asdict(warmup_run_result),
-      **dataclasses.asdict(post_warmup_run_result),
+      **result_kwargs,
   )
 
 
