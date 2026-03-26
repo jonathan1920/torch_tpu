@@ -70,11 +70,12 @@ PYBIND11_MODULE(_device_ops_backend, m) {
                  // Single-device, or "all available devices"?
                  // Should distributed mode be opt-in or opt-out?
                  .world_size = GetWorldSizeFromEnvOnce().value_or(1),
-                 // 1 GiB, more thought needed on tuning default and overriding,
-                 // can cause memory issues if too large, not clear what the
-                 // smallest acceptable value for real use should be.
+                 // TODO(@lukeboyer): Determine if this should stay default 0
+                 // and opt-in for users or set to a few gigs by default. The
+                 // latter can cause some OOMs for exists and would require
+                 // tuning for those specific tests.
                  .premapped_buffer_size =
-                     GetPremappedBufferSizeFromEnvOnce().value_or(1LL << 30)}),
+                     GetPremappedBufferSizeFromEnvOnce().value_or(0)}),
             _.SetPrepend() << "failed to initialize PjRt: ");
         if (device_type == "tpu" || device_type == "xla_cuda") {
           TT_THROW_IF_ERROR(AddTpuHooks()) << "failed to initialize TpuHooks.";

@@ -144,6 +144,8 @@ torch_tpu_py_test(
     args = [
         "--device=cuda",
     ],
+    # 1gig.
+    env = {"TPU_PREMAPPED_BUFFER_SIZE": "1073741824"},
     # go/cppdebugflags#increasing-your-size-limits
     exec_properties = {
         "cpp_link.mem": "16g",  # Avoid Forge OOM in CppLink.
