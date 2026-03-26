@@ -651,6 +651,9 @@ ACCURACY_OVERRIDES_XLA_CPU_VS_CPU: dict[
             # TODO(b/495931205): why is error so high?
             torch.bfloat16: {"atol": 5e-1, "rtol": 1e-2},
         },
+        "nn.functional.softplus": {
+            torch.bfloat16: {"rtol": 1.6e-2, "atol": 1e-4},
+        },
         "softmax": {torch.bfloat16: {"rtol": 3e-2, "atol": 5e-4}},
         "sum": {
             torch.bfloat16: {"rtol": 1e-2, "atol": 5e-2},
