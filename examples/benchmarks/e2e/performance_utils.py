@@ -18,23 +18,22 @@ import contextlib
 import dataclasses
 import functools
 import os
-from typing import Any, Callable, Mapping, Optional, Sequence
+import sys
+from typing import Any, Callable, Mapping, Optional, Sequence, Tuple
 
 from absl import flags
 from absl import logging
 from tensorboardX import writer
 import torch
-from torch import distributed as dist
-from torch.google import distributed as g3_distributed
 from torch_tpu import api
 from torch_tpu._internal import execution_mode
-from torch_tpu._internal.distributed import gpu_env
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import device_utils
 from examples.benchmarks.e2e import benchmark_function_db
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import model_utils
+from tests.distributed import distributed_utils
 
 from torch_tpu._internal.shims.xprof import xprof_analysis_client
 
@@ -110,6 +109,7 @@ class PerformanceBenchmarkConfig:
   grad_accumulation_steps: int = 4
 # LINT.ThenChange(../../../g3doc/benchmarking.md)
 
+
 @contextlib.contextmanager
 def _run_mode_context(run_mode: benchmark_utils.RunMode, device: torch.device):
   """Context manager to configure the environment for different run modes.
@@ -151,11 +151,20 @@ def _run_mode_context(run_mode: benchmark_utils.RunMode, device: torch.device):
       torch._dynamo.reset()
 
 
+def _setup_absl() -> None:
+  """Parses flags from sys.argv if not already parsed and sets up absl logging.
+
+  This function is required for multiprocessing setups. For single processing
+  setups absltest.main called in the test file already handles this.
+  """
+  if not flags.FLAGS.is_parsed():
+    flags.FLAGS(sys.argv, known_only=True)
+  logging.use_absl_handler()
+
+
 # Not using keyword arguments here because the google version of torchrun
 # doesn't support passing keyword arguments to the worker function.
 def _run_single_process_benchmark(
-    rank: int,
-    world_size: int,
     config: PerformanceBenchmarkConfig,
     test_method_name: str,
     benchmark_name: str,
@@ -164,16 +173,18 @@ def _run_single_process_benchmark(
   """Runs the benchmark for the given config.
 
   Args:
-    rank: The rank of the process. This is used to run the benchmark in
-      distributed mode.
-    world_size: The size of the world. This is used to run the benchmark in
-      distributed mode.
     config: The benchmark config. Contains the arguments to run the benchmark.
     test_method_name: The name of the test method. This is used for logging the
       benchmark results.
     benchmark_name: The name of the benchmark. This combined with
       test_method_name is used to uniquely identify the benchmark in MLCompass.
+    microbenchmark_name: This is used to export microbenchmark results to
+      MLCompass when a benchmark test method is composed of multiple
+      microbenchmarks. See go/mlcompass-microbenchmark-guide for more details.
   """
+  _setup_absl()
+  rank = int(os.environ.get("RANK", "0"))
+  world_size = int(os.environ.get("WORLD_SIZE", "1"))
   platform = benchmark_utils.PLATFORM.value
   device = benchmark_utils.get_torch_device(platform)
   # Seed random number generators for reproducibility. This should be done after
@@ -275,25 +286,32 @@ def _run_single_process_benchmark(
         logging.exception("Error writing TensorBoard logs")
 
 
-def _run_torch_tpu_worker(
-    config: PerformanceBenchmarkConfig,
-    test_method_name: str,
-    benchmark_name: str,
-    microbenchmark_name: str | None = None,
+def _run_torch_tpu_task(
+    worker_func: Callable[..., Any],
+    extra_worker_func_args: Tuple[Any, ...],
 ):
   _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
-  rank = dist.get_rank()
-  world_size = dist.get_world_size()
-  _run_single_process_benchmark(
-      rank,
-      world_size,
-      config,
-      test_method_name,
-      benchmark_name,
-      microbenchmark_name,
+  torch.distributed.init_process_group(backend="tpu_dist")
+  worker_func(*extra_worker_func_args)
+  torch.distributed.destroy_process_group()
+
+
+def _run_cuda_task(
+    worker_func: Callable[..., Any],
+    extra_worker_func_args: Tuple[Any, ...],
+) -> None:
+  rank = int(os.environ.get("RANK", "0"))
+  world_size = int(os.environ.get("WORLD_SIZE", "1"))
+  if not torch.cuda.is_available():
+    raise RuntimeError(f"CUDA is not available on rank {rank}.")
+
+  torch.distributed.init_process_group(
+      backend="nccl", rank=rank, world_size=world_size
   )
-  dist.destroy_process_group()
+  torch.cuda.set_device(rank)
+
+  worker_func(*extra_worker_func_args)
+  torch.distributed.destroy_process_group()
 
 
 def _run_distributed_benchmark(
@@ -304,36 +322,39 @@ def _run_distributed_benchmark(
     microbenchmark_name: str | None = None,
 ) -> None:
   """Runs the benchmark for the given config."""
-  if benchmark_utils.PLATFORM.value == benchmark_utils.Platform.GFC_2X2X1:
-    singlehost_wrapper.prepare_tpu_environment()
-    run_worker = singlehost_wrapper.tpu_env_wrapper(
-        _run_torch_tpu_worker,
-        world_size=8,
-    )
-    g3_distributed.torchrun(
-        run_worker,
-        nproc_per_node=8,
-    )(
-        config,
-        test_method_name,
-        benchmark_name,
-        microbenchmark_name,
-    )
-  elif benchmark_utils.PLATFORM.value == benchmark_utils.Platform.B200_4:
+  if benchmark_utils.PLATFORM.value == benchmark_utils.Platform.B200_4:
     # A single B200 device is roughly equivalent to two GFC devices,
     # so double the batch size on B200 to make a fairer comparison.
     config.model_and_input_args.batch_size = (
         config.model_and_input_args.batch_size * 2
     )
-    g3_distributed.torchrun(
-        gpu_env.run_in_workers,
-        nproc_per_node=4,
-    )(
+    distributed_utils.dist_run(
+        4,
+        _run_cuda_task,
         _run_single_process_benchmark,
-        config,
-        test_method_name,
-        benchmark_name,
-        microbenchmark_name,
+        (
+            config,
+            test_method_name,
+            benchmark_name,
+            microbenchmark_name,
+        ),
+    )
+  elif benchmark_utils.PLATFORM.value == benchmark_utils.Platform.GFC_2X2X1:
+    singlehost_wrapper.prepare_tpu_environment(world_size=8)
+    distributed_utils.dist_run(
+        8,
+        _run_torch_tpu_task,
+        _run_single_process_benchmark,
+        (
+            config,
+            test_method_name,
+            benchmark_name,
+            microbenchmark_name,
+        ),
+    )
+  else:
+    raise ValueError(
+        f"No worker function for platform: {benchmark_utils.PLATFORM.value}"
     )
 
 
@@ -367,8 +388,6 @@ def run_benchmark(
     )
   else:
     _run_single_process_benchmark(
-        0,
-        1,
         config,
         test_method_name=test_method_name,
         benchmark_name=benchmark_name,

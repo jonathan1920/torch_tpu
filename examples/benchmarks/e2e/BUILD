@@ -62,7 +62,7 @@ pytype_strict_library(
         "//shims/absl_py/logging",
         "//shims/torch",
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/distributed:gpu_env",
+        "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
@@ -117,6 +117,7 @@ torch_tpu_py_test(
         "nofastbuild",  # Benchmark.
         # Needed for getting xprof links
         "requires-net:external",
+        "exclusive",  # copybara:comment(oss-only)
     ],
     deps = [
         ":benchmark_utils",
