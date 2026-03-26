@@ -43,7 +43,7 @@ _TPU_PCI_DEVICE_IDS_TO_TOPOLOGY = {
     # tpu v6e
     "0x006f": {
         4: "2,2,1",
-        8: "2,2,2",
+        8: "2,4,1",
     },
     # tpu v7
     "0x0076": {
