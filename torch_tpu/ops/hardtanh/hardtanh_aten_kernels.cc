@@ -102,7 +102,7 @@ at::Tensor& AtenHardtanh_(at::Tensor& self, const at::Scalar& min_val,
 
 at::Tensor& AtenHardtanhOut(const at::Tensor& self, const at::Scalar& min_val,
                             const at::Scalar& max_val, at::Tensor& out) {
-  TT_KERNEL(OpName::kHardtanhOut, param_keys, (self, min_val, max_val), {
+  TT_KERNEL(OpName::kHardtanhOut, param_keys, (self, min_val, max_val, out), {
     TT_ASSIGN_OR_THROW(auto op_builder,
                        AtenHardtanhHelper(self, min_val, max_val));
     TT_THROW_IF_ERROR(
