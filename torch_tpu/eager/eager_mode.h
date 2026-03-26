@@ -31,7 +31,8 @@ enum class EagerMode {
   // suboptimal compile and execution performance.
   kDeferNever,
   // kDeferNeverAndLaunchBlocking marks all ops to be executed immediately and
-  // waits for the complition of one op before dispatching the next one. This
+  // waits for the compilation of one op before dispatching the next one.
+  // Some expensive runtime checks are also performed in this mode. This
   // should be used only for debugging, as it has the worst execution
   // performance.
   kDeferNeverAndLaunchBlocking,

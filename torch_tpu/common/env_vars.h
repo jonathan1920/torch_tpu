@@ -56,7 +56,8 @@ inline constexpr char kTorchShowCppStacktracesEnvVar[] =
     "TORCH_SHOW_CPP_STACKTRACES";
 // If set to "1", enable expensive debug checks in TorchTPU. This catches
 // more bugs in user code, but comes at a significant performance cost for
-// some ops.
+// some ops. The debug eager mode enables these checks by default, but can
+// be overridden by setting this env var to "0".
 inline constexpr char kTorchTpuInternalEnableDebugChecksEnvVar[] =
     "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS";
 // The name of the tier-2 compilation cache. The special name "disabled" can be

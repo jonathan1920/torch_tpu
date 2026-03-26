@@ -18,6 +18,7 @@
 
 #include "torch_tpu/common/error_utils.h"
 
+#include <cstdlib>
 #include <map>
 #include <memory>
 #include <string>
@@ -27,6 +28,8 @@
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "torch_tpu/common/env_vars.h"
+#include "torch_tpu/eager/eager_mode.h"
 
 namespace torch_tpu {
 namespace {
@@ -794,6 +797,42 @@ TEST(ReturnIfError, EvaluatesMessageOnceOnError) {
   EXPECT_EQ(error.code(), error::kInternal);
   EXPECT_EQ(error.message(), "my error: unexpected 1");
   EXPECT_EQ(count, 1);  // Incremented once.
+}
+
+TEST(ErrorDeathTest, GetEnableDebugChecksEnabledByDefaultInDebugMode) {
+  EXPECT_EXIT(
+      {
+        SetEagerMode(EagerMode::kDeferNeverAndLaunchBlocking);
+        exit(GetEnableDebugChecks());
+      },
+      testing::ExitedWithCode(1), "");
+}
+
+TEST(ErrorDeathTest, GetEnableDebugChecksDisabledByDefaultInNormalMode) {
+  EXPECT_EXIT(
+      {
+        SetEagerMode(EagerMode::kDefault);
+        exit(GetEnableDebugChecks());
+      },
+      testing::ExitedWithCode(0), "");
+}
+
+TEST(ErrorDeathTest, GetEnableDebugChecksEnabledByEnvVar) {
+  EXPECT_EXIT(
+      {
+        SetEnv(kTorchTpuInternalEnableDebugChecksEnvVar, "1");
+        exit(GetEnableDebugChecks());
+      },
+      testing::ExitedWithCode(1), "");
+}
+
+TEST(ErrorDeathTest, GetEnableDebugChecksDisabledByEnvVar) {
+  EXPECT_EXIT(
+      {
+        SetEnv(kTorchTpuInternalEnableDebugChecksEnvVar, "0");
+        exit(GetEnableDebugChecks());
+      },
+      testing::ExitedWithCode(0), "");
 }
 
 // Tests for TT_THROW_IF_ERROR.

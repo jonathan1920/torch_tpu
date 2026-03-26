@@ -44,6 +44,7 @@
 #include "torch_tpu/common/status_builder.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_types.h"
+#include "torch_tpu/eager/eager_mode.h"
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
@@ -52,7 +53,12 @@ bool GetEnableDebugChecks() {
   static const bool enable = [] {
     const auto& env_var =
         GetEnvOnce<kTorchTpuInternalEnableDebugChecksEnvVar>();
-    return env_var.has_value() && *env_var == "1";
+    // If the env var is set, respect the user's choice.
+    if (env_var.has_value()) {
+      return *env_var == "1";
+    }
+    // Otherwise, enable debug checks if we are in debug eager mode.
+    return GetEagerMode() == EagerMode::kDeferNeverAndLaunchBlocking;
   }();
   return enable;
 }

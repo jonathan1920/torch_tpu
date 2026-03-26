@@ -107,6 +107,7 @@ torch_tpu_cc_library(
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
         "//torch_tpu/eager:device_types",
+        "//torch_tpu/eager:eager_mode",
         "//torch_tpu/ops:python_context",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:absl_check",
@@ -145,7 +146,9 @@ torch_tpu_cc_test(
         "oss_ready_cpu",
     ],
     deps = [
+        ":env_vars",
         ":error_utils",
+        "//torch_tpu/eager:eager_mode",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
