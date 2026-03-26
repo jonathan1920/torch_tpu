@@ -187,6 +187,11 @@ class _DeviceModule:
         cls._atexit_registered = True
 
   @classmethod
+  def synchronize(cls, device: int | None = None) -> None:
+    """Waits for all kernels in all streams on a TPU device to complete."""
+    streams.synchronize(device)
+
+  @classmethod
   def device_count(cls) -> int:  # This is in torch/cuda/__init__.py.
     """Returns the number of TPU devices."""
     if (maybe_count := cls._device_count) is None:

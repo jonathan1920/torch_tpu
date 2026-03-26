@@ -95,6 +95,7 @@ pybind_extension(
         ":sync_cc",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
+        "//shims/torch/c10/core:base_headers",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:device_types",

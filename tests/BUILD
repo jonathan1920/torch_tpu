@@ -886,4 +886,19 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "allocator_repro_test",
+    srcs = ["allocator_repro_test.py"],
+    tags = [
+        "oss_ready_tpu",
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/api",
+    ],
+)
+
 torch_tpu_package_end()

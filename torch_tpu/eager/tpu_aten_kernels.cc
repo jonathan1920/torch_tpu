@@ -130,6 +130,7 @@
 #include "torch_tpu/ops/take/take_aten_kernels.h"
 #include "torch_tpu/ops/tanh/tanh_aten_kernels.h"
 #include "torch_tpu/ops/threshold/threshold_aten_kernels.h"
+#include "torch_tpu/ops/to_copy/to_copy_aten_kernels.h"
 #include "torch_tpu/ops/topk/topk_aten_kernels.h"
 #include "torch_tpu/ops/triangular/triangular_aten_kernels.h"
 #include "torch_tpu/ops/tril_indices/tril_indices_aten_kernels.h"
@@ -550,6 +551,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kTanhOut, AtenTanhOut);
   Impl(m, OpName::kThresholdBackwardGradInput, AtenThresholdBackwardGradInput);
   Impl(m, OpName::kThresholdOut, AtenThresholdOut);
+  Impl(m, OpName::kToCopy, AtenToCopy);
   Impl(m, OpName::kTopkValues, AtenTopKValues);
   Impl(m, OpName::kTrilIndices, AtenTrilIndices);
   Impl(m, OpName::kTrilOut, AtenTrilOut);

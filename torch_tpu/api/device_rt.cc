@@ -15,12 +15,15 @@
  */
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/time/time.h"
 #include "ATen/core/Generator.h"
+#include "c10/core/Device.h"
 #include "c10/core/ScalarType.h"
 #include "c10/core/TensorImpl.h"
+#include "c10/core/impl/DeviceGuardImplInterface.h"
 #include "torch/csrc/utils/pybind.h"  // IWYU pragma: keep, needed for at::Tensor mapping
 #include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/common/discovery.h"
@@ -28,10 +31,14 @@
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_gen_impl.h"
+#include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/eager/tpu_hooks.h"
 #include "torch_tpu/pjrt/pjrt_init.h"
 #include "torch_tpu/pjrt/pjrt_shutdown.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
+#include "pybind11/attr.h"
 #include "pybind11/chrono.h"
+#include "pybind11/gil.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 
@@ -90,6 +97,24 @@ PYBIND11_MODULE(_device_ops_backend, m) {
   m.def(
       "_shutdown_runtime", []() { ShutdownPjRt(); },
       "Shuts down the PjRt runtime.");
+
+  m.def(
+      "_synchronize",
+      [](std::optional<int> device_index) {
+        c10::DeviceIndex index;
+        if (device_index.has_value()) {
+          index = static_cast<c10::DeviceIndex>(*device_index);
+        } else {
+          index = c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType())
+                      ->getDevice()
+                      .index();
+        }
+        SynchronizeStream(index);
+      },
+      py::arg("device_index") = py::none(),
+      py::call_guard<py::gil_scoped_release>(),
+      "Blocks until all async d2h copies on the specified device have "
+      "completed.");
 
   py::class_<PjRtInitializationResult>(m, "PjRtInitializationResult")
       .def_readonly("device_count", &PjRtInitializationResult::device_count)

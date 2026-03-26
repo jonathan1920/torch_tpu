@@ -26,6 +26,7 @@
 #include "ATen/core/Generator.h"
 #include "ATen/detail/PrivateUse1HooksInterface.h"
 #include "ATen/ops/empty.h"
+#include "c10/core/Allocator.h"
 #include "c10/core/Device.h"
 #include "c10/core/ScalarType.h"
 #include "c10/core/Storage.h"
@@ -53,7 +54,7 @@ namespace {
 
 struct TpuDeviceGuardImpl final : public c10::impl::DeviceGuardImplInterface {
   TpuDeviceGuardImpl() = default;
-  TpuDeviceGuardImpl(c10::DeviceType t);
+  explicit TpuDeviceGuardImpl(c10::DeviceType t);
 
   c10::DeviceType type() const override;
   c10::Device exchangeDevice(c10::Device d) const override;
@@ -186,7 +187,7 @@ bool TpuDeviceGuardImpl::queryStream(const c10::Stream& stream) const {
   return true;
 }
 void TpuDeviceGuardImpl::synchronizeStream(const c10::Stream& stream) const {
-  TORCH_WARN_ONCE("synchronizeStream not yet implemented.");
+  SynchronizeStream(stream.device_index());
 }
 void TpuDeviceGuardImpl::destroyEvent(
     void* event, const c10::DeviceIndex device_index) const noexcept {
@@ -209,13 +210,20 @@ struct TORCH_API TpuHooksInterface : public at::PrivateUse1HooksInterface {
 
   void init() const override {}
 
-  at::Generator getNewGenerator(
-      c10::DeviceIndex device_index = -1) const override {
+  at::Generator getNewGenerator(c10::DeviceIndex device_index) const override {
     return MakeDeviceGenerator(device_index);
   }
 
   bool hasPrimaryContext(c10::DeviceIndex device_index) const override {
     return GetPjRtClient() != nullptr;
+  }
+
+  bool isPinnedPtr(const void* data) const override {
+    return IsTpuPinnedPtr(data);
+  }
+
+  at::Allocator* getPinnedMemoryAllocator() const override {
+    return GetTpuPinnedAllocator();
   }
 
   // TODO: b/449801230 - once TPU is upstreamed, invoke this logic from

@@ -39,6 +39,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
+#include "ATen/core/CachingHostAllocator.h"
 #include "ATen/core/TensorBody.h"
 #include "c10/core/Allocator.h"
 #include "c10/core/TensorImpl.h"
@@ -46,6 +47,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -945,6 +947,13 @@ class DeviceBufferList {
 
 // Returns the C10 allocator singleton for TPU.
 c10::Allocator* GetTpuAllocator();
+
+// Returns the Tpu pinned memory allocator.
+at::HostAllocator* GetTpuPinnedAllocator();
+
+// Returns true if the given pointer was allocated by the Tpu pinned memory
+// allocator.
+bool IsTpuPinnedPtr(const void* ptr);
 
 // Registers the TpuAllocator as the allocator for the PrivateUse1 device.
 // This must be called before using the allocator for any device operations.

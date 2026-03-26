@@ -30,19 +30,19 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
-#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/ops/empty.h"
-#include "c10/core/DeviceType.h"
+#include "c10/core/Device.h"
 #include "c10/core/TensorImpl.h"
+#include "c10/util/Exception.h"
+#include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/future.h"
@@ -176,26 +176,32 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
   return std::move(*buffer_ref);
 }
 
-absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref) {
+absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref,
+                                         bool non_blocking) {
   tsl::profiler::TraceMe trace("TpuMemcpyDtoH");
   ABSL_VLOG(1) << "[TpuMemcpyDtoH ENTRY] buffer_ref: "
                << buffer_ref.DebugString();
 
-  ABSL_VLOG(1) << "[TpuMemcpyDtoH] Extracted buffer_ref: "
-               << buffer_ref.DebugString();
+  if (non_blocking) {
+    TORCH_WARN_ONCE(
+        "non_blocking=True in .cpu() or .to('cpu') only works if the "
+        "destination is already a pinned tensor. This will block until all "
+        "pending d2h copies on the device complete.");
+  }
 
   size_t buffer_expected_bytes = buffer_ref.size_bytes();
-  const auto buffer_expected_type =
-      ConvertTo<xla::PrimitiveType>(buffer_ref.element_type());
   const auto buffer_tensor_type =
       ConvertTo<at::ScalarType>(buffer_ref.element_type());
   absl::Span<const int64_t> buffer_expected_dims = buffer_ref.dimensions();
+
+  at::Tensor cpu_tensor_receiver =
+      at::empty(buffer_expected_dims,
+                at::TensorOptions().dtype(buffer_tensor_type).device(at::kCPU));
+
   if (buffer_expected_bytes == 0) {
     ABSL_VLOG(1) << "[TpuMemcpyDtoH] DeviceBufferRef size_bytes is 0. "
                     "Returning empty vector.";
-    return at::empty(
-        buffer_expected_dims,
-        at::TensorOptions().dtype(buffer_tensor_type).device(at::kCPU));
+    return cpu_tensor_receiver;
   }
 
   TT_ASSIGN_OR_RETURN(
@@ -209,13 +215,12 @@ absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref) {
                << ", IsOnCpu: " << buffer->IsOnCpu()
                << ", Shape: " << buffer->on_device_shape().ToString(true);
 
-  ABSL_VLOG(1) << "[TpuMemcpyDtoH] Calling PjRtBuffer::ToLiteralSync()...";
-  std::vector<char> host_data_vec(buffer_expected_bytes);
-  at::Tensor cpu_tensor_receiver =
-      at::empty(buffer_expected_dims,
-                at::TensorOptions().dtype(buffer_tensor_type).device(at::kCPU));
+  ABSL_VLOG(1) << "[TpuMemcpyDtoH] Calling PjRtBuffer::ToLiteral()...";
+
   xla::Shape xla_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
-      buffer_expected_type, buffer_expected_dims);
+      ConvertTo<xla::PrimitiveType>(buffer_ref.element_type()),
+      buffer_expected_dims);
+
   auto literal = std::make_unique<xla::MutableBorrowingLiteral>(
       static_cast<char*>(cpu_tensor_receiver.data_ptr()), xla_shape);
   auto future = buffer->ToLiteral(literal.get());
@@ -224,6 +229,42 @@ absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref) {
     TT_RETURN_IF_ERROR(future.Await());
   }
   return cpu_tensor_receiver;
+}
+
+absl::Status TpuMemcpyDtoHDirect(const DeviceBufferRef& buffer_ref,
+                                 void* dst_ptr, bool non_blocking) {
+  size_t buffer_expected_bytes = buffer_ref.size_bytes();
+  if (buffer_expected_bytes == 0) {
+    return absl::OkStatus();
+  }
+
+  TT_ASSIGN_OR_RETURN(
+      auto* buffer, buffer_ref.GetOrMaterializeBuffer(),
+      _ << " - TpuMemcpyDtoHDirect: DeviceBufferRef has nonzero size, "
+           "but does not have a PjRtBuffer to copy from.");
+
+  absl::Span<const int64_t> buffer_expected_dims = buffer_ref.dimensions();
+  xla::Shape xla_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
+      ConvertTo<xla::PrimitiveType>(buffer_ref.element_type()),
+      buffer_expected_dims);
+
+  auto literal = std::make_unique<xla::MutableBorrowingLiteral>(
+      static_cast<char*>(dst_ptr), xla_shape);
+  xla::Future<> future = buffer->ToLiteral(literal.get());
+
+  if (non_blocking) {
+    future.OnReady([literal = std::move(literal)](absl::Status s) {
+      if (!s.ok()) {
+        ABSL_LOG(ERROR) << "Async D2H ToLiteral transfer failed: " << s;
+      }
+    });
+    MarkStreamActive(static_cast<c10::DeviceIndex>(
+                         buffer->device()->local_hardware_id().value()),
+                     future);
+    return absl::OkStatus();
+  } else {
+    return future.Await();
+  }
 }
 
 absl::StatusOr<PjRtBufferPointers> Execute(

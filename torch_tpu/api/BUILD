@@ -58,6 +58,7 @@ pytype_strict_library(
     name = "streams",
     srcs = ["streams.py"],
     deps = [
+        ":_device_ops_backend",
     ],
 )
 
@@ -140,9 +141,11 @@ torch_tpu_cc_library(
         "//torch_tpu/distributed/slicebuilder:discovery",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:device_gen_impl",
+        "//torch_tpu/eager:device_types",
         "//torch_tpu/eager:tpu_hooks",
         "//torch_tpu/pjrt:pjrt_init",
         "//torch_tpu/pjrt:pjrt_shutdown",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/time",
     ],
 )
@@ -169,6 +172,7 @@ pybind_extension(
         "//torch_tpu/distributed/slicebuilder:discovery",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:device_gen_impl",
+        "//torch_tpu/eager:device_types",
         "//torch_tpu/eager:tpu_hooks",
         "//torch_tpu/pjrt:pjrt_init",
         "//torch_tpu/pjrt:pjrt_shutdown",

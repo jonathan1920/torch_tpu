@@ -15,6 +15,7 @@
 from absl.testing import absltest
 import torch
 from torch_tpu import api
+from torch_tpu._internal.utils import utils
 
 
 class StreamsTest(absltest.TestCase):
@@ -45,12 +46,58 @@ class StreamsTest(absltest.TestCase):
   def test_stream_unimplemented_method(self):
     _ = api.tpu_device()
     expected_msg = (
-        'Streams and Events are not implemented in TorchTPU. Please file a'
-        ' feature request describing your use case.'
+        'Streams and Events are not fully implemented in TorchTPU. Please file'
+        ' a feature request describing your use case.'
     )
     with self.assertRaisesWithLiteralMatch(NotImplementedError, expected_msg):
       default_stream = torch.tpu.default_stream()
       default_stream.query()
+
+  def test_stream_partially_implemented_method(self):
+    """Tests that unimplemented stream methods raise NotImplementedError."""
+    _ = api.tpu_device()
+    s = torch.tpu.Stream()
+    expected_msg = (
+        'Streams and Events are not fully implemented in TorchTPU. Please file'
+        ' a feature request describing your use case.'
+    )
+    with self.assertRaisesWithLiteralMatch(NotImplementedError, expected_msg):
+      s.query()
+    with self.assertRaisesWithLiteralMatch(NotImplementedError, expected_msg):
+      s.priority_range()
+
+  def test_synchronize_default(self):
+    """Tests that synchronize() correctly waits for async ops."""
+    _ = api.tpu_device()
+
+    # Create a large tensor to make the transfer non-instantaneous
+    size = 1024 * 1024
+    t_tpu = torch.ones(size, device='tpu', dtype=torch.float32)
+    t_cpu = torch.empty(size, device='cpu', pin_memory=True)
+
+    # Start a non-blocking copy
+    t_cpu.copy_(t_tpu, non_blocking=True)
+
+    # Calling synchronize without arguments should sync the current device
+    torch.tpu.synchronize()
+
+    # Verify data integrity
+    utils.assert_close(t_cpu, torch.ones(size, dtype=torch.float32))
+
+  def test_event_partially_implemented(self):
+    """Tests that unimplemented event methods raise NotImplementedError."""
+    _ = api.tpu_device()
+    e = torch.tpu.Event()
+    expected_msg = (
+        'Streams and Events are not fully implemented in TorchTPU. Please file'
+        ' a feature request describing your use case.'
+    )
+    with self.assertRaisesWithLiteralMatch(NotImplementedError, expected_msg):
+      e.query()
+    with self.assertRaisesWithLiteralMatch(NotImplementedError, expected_msg):
+      e.elapsed_time(e)
+    with self.assertRaisesWithLiteralMatch(NotImplementedError, expected_msg):
+      e.ipc_handle()
 
 
 if __name__ == '__main__':

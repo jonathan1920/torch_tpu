@@ -17,13 +17,21 @@
 #include "torch_tpu/pjrt/pjrt_state.h"
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/absl_log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "c10/core/Device.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_types.h"
+#include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/tsl/framework/allocator.h"
 
@@ -113,6 +121,52 @@ absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() {
     return TT_ERROR(error::kInternal) << "PjRt device is not initialized";
   }
   return device->GetAllocatorStats();
+}
+
+absl::StatusOr<xla::PjRtClient::HostAllocator*> GetHostAllocator() {
+  xla::PjRtClient* client = GetPjRtClient();
+  if (client == nullptr) {
+    return TT_ERROR(error::kInternal) << "PjRt client is not initialized";
+  }
+  return client->GetHostAllocator();
+}
+
+struct StreamState {
+  absl::Mutex mutex;
+  absl::flat_hash_map<c10::DeviceIndex, std::vector<xla::Future<void>>>
+      pending_futures ABSL_GUARDED_BY(mutex);
+};
+
+StreamState& GetStreamState() {
+  static absl::NoDestructor<StreamState> state;
+  return *state;
+}
+
+void MarkStreamActive(c10::DeviceIndex device_index, xla::Future<void> future) {
+  StreamState& state = GetStreamState();
+  TT_MUTEX_LOCK(lock, state.mutex);
+  state.pending_futures[device_index].push_back(std::move(future));
+}
+
+void SynchronizeStream(c10::DeviceIndex device_index) {
+  std::vector<xla::Future<void>> futures;
+  {
+    StreamState& state = GetStreamState();
+    TT_MUTEX_LOCK(lock, state.mutex);
+    auto it = state.pending_futures.find(device_index);
+    if (it != state.pending_futures.end()) {
+      futures = std::move(it->second);
+    }
+  }
+  for (auto& future : futures) {
+    if (future.IsValid()) {
+      absl::Status s = future.Await();
+      if (!s.ok()) {
+        ABSL_LOG(ERROR) << "Stream synchronization failed for device "
+                        << static_cast<int>(device_index) << ": " << s;
+      }
+    }
+  }
 }
 
 }  // namespace torch_tpu

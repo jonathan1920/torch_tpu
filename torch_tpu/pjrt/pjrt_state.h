@@ -20,7 +20,9 @@
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "c10/core/Device.h"
 #include "torch_tpu/eager/device_types.h"
+#include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/tsl/framework/allocator.h"
 
@@ -56,6 +58,15 @@ void SetPjRtState(xla::PjRtClient* client, xla::PjRtDevice* device,
 
 // Returns allocator stats for the current PjRt device.
 absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats();
+
+// Returns the PjRt host allocator from the PjRt client.
+absl::StatusOr<xla::PjRtClient::HostAllocator*> GetHostAllocator();
+
+// Updates the tracked future for the given device.
+void MarkStreamActive(c10::DeviceIndex device_index, xla::Future<void> future);
+
+// Blocks until all pending operations on the given device have completed.
+void SynchronizeStream(c10::DeviceIndex device_index);
 
 }  // namespace torch_tpu
 

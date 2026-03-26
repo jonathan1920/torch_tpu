@@ -15,10 +15,11 @@
 """Python interface for streams and events on TPU."""
 
 from typing import Optional, Self
+from torch_tpu.api import _device_ops_backend
 
 _NOT_IMPLEMENTED_STREAMS_MSG = (
-    'Streams and Events are not implemented in TorchTPU. Please file a feature'
-    ' request describing your use case.'
+    'Streams and Events are not fully implemented in TorchTPU. Please file a'
+    ' feature request describing your use case.'
 )
 
 
@@ -66,6 +67,9 @@ class TpuStream:
 
   def synchronize(self) -> None:
     """Waits for all work submitted on this stream to complete."""
+    synchronize()
+
+  def priority_range(self):
     raise NotImplementedError(_NOT_IMPLEMENTED_STREAMS_MSG)
 
   def __repr__(self):
@@ -110,7 +114,7 @@ class TpuEvent:
 
   def synchronize(self) -> None:
     """Waits for this event to complete."""
-    raise NotImplementedError(_NOT_IMPLEMENTED_STREAMS_MSG)
+    synchronize()
 
   @classmethod
   def from_ipc_handle(cls, device, handle):
@@ -123,3 +127,15 @@ class TpuEvent:
 
   def __repr__(self) -> str:
     return '<torch.tpu.TpuEvent>'
+
+
+def synchronize(device: Optional[int] = None) -> None:
+  """Waits for all pending d2h copies on a TPU device to complete.
+
+  This function implements `torch.tpu.synchronize()`.
+
+  Args:
+    device (int, optional): device for which to wait. Uses the current device if
+      device is None (default).
+  """
+  _device_ops_backend._synchronize(device)  # pylint: disable=protected-access

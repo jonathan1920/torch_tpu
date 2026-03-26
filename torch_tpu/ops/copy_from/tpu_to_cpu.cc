@@ -30,6 +30,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/pjrt/pjrt_utils.h"
@@ -86,8 +87,26 @@ absl::Status CopyTpuToCpu(const at::Tensor& src, const at::Tensor& dest,
                 DeviceBufferRefState::kMaterialized)
       << "expected materialized buffer after GetMaterialized";
 
+  // Fast path: if the destination tensor is fully allocated, contiguous, and
+  // has the exact same size and dtype as the source, we can copy directly
+  // into its memory. This enables true non-blocking transfers because we
+  // don't need to invoke a secondary PyTorch CPU copy_() afterwards.
+  bool can_copy_directly = dest.is_contiguous() &&
+                           dest.scalar_type() == src.scalar_type() &&
+                           dest.nbytes() == materialized_src_buf.size_bytes();
+
+  if (can_copy_directly) {
+    TT_RETURN_IF_ERROR(TpuMemcpyDtoHDirect(materialized_src_buf,
+                                           dest.data_ptr(), non_blocking));
+    return absl::OkStatus();
+  }
+
+  // Fallback: copy into a temporary buffer and rely on PyTorch's CPU copy_()
+  // to handle type conversions and non-contiguous layouts. This must be
+  // synchronous, otherwise the CPU copy_() will read garbage.
   TT_ASSIGN_OR_RETURN(
-      at::Tensor cpu_tensor_receiver, TpuMemcpyDtoH(materialized_src_buf),
+      at::Tensor cpu_tensor_receiver,
+      TpuMemcpyDtoH(materialized_src_buf, /*non_blocking=*/false),
       TranslateXlaTensorOomError(_, dest.scalar_type(), src.sizes()));
 
   // Redispatch using copy_() on the CPU to do any type or layout conversions

@@ -499,6 +499,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/take:take_aten_kernels",
         "//torch_tpu/ops/tanh:tanh_aten_kernels",
         "//torch_tpu/ops/threshold:threshold_aten_kernels",
+        "//torch_tpu/ops/to_copy",
         "//torch_tpu/ops/topk:topk_aten_kernels",
         "//torch_tpu/ops/triangular:triangular_aten_kernels",
         "//torch_tpu/ops/tril_indices:tril_indices_aten_kernels",

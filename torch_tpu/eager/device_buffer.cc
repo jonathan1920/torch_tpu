@@ -30,13 +30,17 @@
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
+#include "ATen/core/CachingHostAllocator.h"
 #include "c10/core/Allocator.h"
 #include "c10/core/CachingDeviceAllocator.h"
 #include "c10/core/Device.h"
@@ -50,6 +54,7 @@
 #include "c10/util/UniqueVoidPtr.h"
 #include "c10/util/accumulate.h"
 #include "c10/util/intrusive_ptr.h"
+#include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
@@ -526,13 +531,107 @@ class TpuAllocator final : public c10::DeviceAllocator {
   }
 };
 
+class TpuPinnedAllocator final : public at::HostAllocator {
+ public:
+  c10::DataPtr allocate(size_t nbytes) override {
+    if (nbytes == 0) {
+      return {nullptr, nullptr, &DeleteTpuPinnedBufferStatic,
+              c10::Device(c10::DeviceType::CPU)};
+    }
+    TT_ASSIGN_OR_THROW(auto* host_allocator, GetHostAllocator(),
+                       _ << "Failed to get PJRT host allocator");
+    void* data = host_allocator->Allocate(
+        nbytes, host_allocator->GetPreferredAlignment());
+    TT_CHECK_THROW(data != nullptr, error::kResourceExhausted)
+        << "Failed to allocate " << nbytes << " bytes of pinned host memory";
+
+    {
+      TT_MUTEX_LOCK(lock, mutex_);
+      pinned_ptrs_.insert(data);
+    }
+
+    return {data, data, &DeleteTpuPinnedBufferStatic,
+            c10::Device(c10::DeviceType::CPU)};
+  }
+
+  void copy_data(void* dest, const void* src,
+                 std::size_t count) const override {
+    default_copy_data(dest, src, count);
+  }
+
+  c10::DeleterFnPtr raw_deleter() const override {
+    return &DeleteTpuPinnedBufferStatic;
+  }
+
+  bool record_event(void* ptr, void* ctx, c10::Stream stream) override {
+    // TPU does not yet support asynchronous stream-based events for pinned
+    // memory in the same way CUDA does. Returning false indicates that
+    // this allocator does not support event recording.
+    return false;
+  }
+
+  // This allocator does not cache allocations, so there is nothing to do here.
+  void empty_cache() override {
+    TORCH_WARN_ONCE(
+        "TpuPinnedAllocator::empty_cache is not implemented for TPU.");
+  }
+
+  at::HostStats get_stats() override { return {}; }
+
+  void reset_accumulated_stats() override {}
+
+  void reset_peak_stats() override {}
+
+  bool is_pinned_ptr(const void* ptr) {
+    TT_READER_MUTEX_LOCK(lock, mutex_);
+    return pinned_ptrs_.contains(ptr);
+  }
+
+  void free_ptr(void* ptr) {
+    if (ptr) {
+      {
+        TT_MUTEX_LOCK(lock, mutex_);
+        pinned_ptrs_.erase(ptr);
+      }
+      TT_ASSIGN_OR_THROW(auto* host_allocator, GetHostAllocator());
+      host_allocator->Free(ptr);
+    }
+  }
+
+ private:
+  static void DeleteTpuPinnedBufferStatic(void* ptr);
+
+  absl::Mutex mutex_;
+  absl::flat_hash_set<const void*> pinned_ptrs_ ABSL_GUARDED_BY(mutex_);
+};
+
+at::HostAllocator* GetTpuPinnedAllocatorInternal() {
+  static absl::NoDestructor<TpuPinnedAllocator> g_tpu_pinned_allocator;
+  return g_tpu_pinned_allocator.get();
+}
+
+void TpuPinnedAllocator::DeleteTpuPinnedBufferStatic(void* ptr) {
+  static_cast<TpuPinnedAllocator*>(GetTpuPinnedAllocatorInternal())
+      ->free_ptr(ptr);
+}
+
 c10::Allocator* GetTpuAllocator() {
   static absl::NoDestructor<TpuAllocator> g_tpu_allocator;
   return g_tpu_allocator.get();
 }
 
+at::HostAllocator* GetTpuPinnedAllocator() {
+  return GetTpuPinnedAllocatorInternal();
+}
+
+bool IsTpuPinnedPtr(const void* ptr) {
+  return static_cast<TpuPinnedAllocator*>(GetTpuPinnedAllocatorInternal())
+      ->is_pinned_ptr(ptr);
+}
+
 void RegisterTpuAllocator() {
   c10::SetAllocator(GetPrivateUse1DeviceType(), GetTpuAllocator());
+  at::setHostAllocator(GetPrivateUse1DeviceType(), GetTpuPinnedAllocator());
 }
 
 absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateMaterialized(

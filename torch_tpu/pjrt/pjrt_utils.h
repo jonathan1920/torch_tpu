@@ -23,11 +23,13 @@
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/xla_data.pb.h"
 
@@ -40,7 +42,12 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
     absl::Span<const int64_t> dimensions,
     std::optional<at::Tensor> backing_tensor = std::nullopt);
 
-absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref);
+absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref,
+                                         bool non_blocking = false);
+
+// Copies the data from the device directly into the provided host buffer.
+absl::Status TpuMemcpyDtoHDirect(const DeviceBufferRef& buffer_ref,
+                                 void* dst_ptr, bool non_blocking = false);
 
 // The result of executing a PjRtExecutable, which may produce multiple non-null
 // PjRtBuffers.
