@@ -25,6 +25,7 @@ from absl import flags
 from absl import logging
 import numpy as np
 import torch
+from torch.utils import _pytree as pytree
 from torch_tpu._internal.utils import device_utils
 import torch_tpu.api as xla_api
 from examples.benchmarks.quality_utils import quality_benchmark_model
@@ -482,6 +483,17 @@ def _post_warmup_run(
   )
 
 
+def _synchronize_all_tensors(tensor_pytree: Any, device: torch.device):
+  """Synchronizes example inputs to device."""
+
+  def _sync_element(elem):
+    if isinstance(elem, torch.Tensor):
+      device_utils.synchronize(device.type, elem)
+    return elem
+
+  pytree.tree_map(_sync_element, tensor_pytree)
+
+
 def run_performance_benchmark(
     benchmark_function: Callable[
         [torch.nn.Module, Any, torch.optim.Optimizer | None],
@@ -521,6 +533,8 @@ def run_performance_benchmark(
     # presubmits on non-CUDA environments.
     return PerformanceBenchmarkResult()
 
+  _synchronize_all_tensors(example_inputs, device)
+  _synchronize_all_tensors(list(model.state_dict().values()), device)
   result_kwargs = {}
   start_time = time.perf_counter()
   result_kwargs |= dataclasses.asdict(
