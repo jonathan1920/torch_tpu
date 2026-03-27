@@ -704,6 +704,8 @@ std::string_view ToString(OpName op_name) {
       return "linalg_solve_triangular.out";
     case OpName::kLinalgVectorNormOut:
       return "linalg_vector_norm.out";
+    case OpName::kLinspaceOut:
+      return "linspace.out";
     case OpName::kLocalScalarDense:
       return "_local_scalar_dense";
     case OpName::kLog10Out:

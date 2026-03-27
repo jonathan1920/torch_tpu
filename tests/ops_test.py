@@ -316,6 +316,10 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.complex64: {"rtol": 1e-5, "atol": 1e-3},
         torch.float32: {"rtol": 1e-5, "atol": 1e-3},
     },
+    "linspace": {
+        torch.bfloat16: {"rtol": 7e-2, "atol": 4e-3},
+        torch.float16: {"rtol": 6e-3, "atol": 2e-3},
+    },
     "log": {
         torch.complex64: {"rtol": 1e-4, "atol": 1e-4},
         torch.float32: {"rtol": 1e-4, "atol": 1e-4},
@@ -889,6 +893,10 @@ ACCURACY_OVERRIDES_VS_GPU = {
     "linalg.vector_norm": {
         torch.complex64: {"rtol": 5.3e-6, "atol": 5.1e-4},
         torch.float32: {"rtol": 5.1e-6, "atol": 2.5e-4},
+    },
+    "linspace": {
+        torch.bfloat16: {"rtol": 5e-2, "atol": 4e-3},
+        torch.float16: {"rtol": 6e-3, "atol": 2e-3},
     },
     "log": {
         torch.uint8: {"rtol": 1e-4, "atol": 1e-5},
@@ -2786,6 +2794,17 @@ class TestOps(TorchTpuTestBase):
         # instructions which greatly slow down op test(~180 cases). Skip it and
         # test a much smaller set in ops_unit_test.py."
         exclude_dtypes=(torch.float64,),
+    )
+
+  def test_linspace(self):
+    self.do_test_op(
+        "linspace",
+        check_value=CheckValueMode.LOOSE,
+        # PyTorch's upstream sample generator for linspace includes a hardcoded
+        # sample without a device kwarg: `yield SampleInput(1, args=(3, 1))`
+        # (see common_methods_invocations.py).
+        # Same issue as test_arange() above.
+        skip_if=lambda _1, _2, op_input: "device" not in op_input.kwargs,
     )
 
   def test_lt(self):

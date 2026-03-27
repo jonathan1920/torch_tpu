@@ -4433,7 +4433,19 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         )
     )
 
-  def test_linlag_vertor_norm_float_64(self):
+  def test_linspace_steps_zero(self):
+    def test_fn(device):
+      return torch.linspace(0, 10, steps=0, device=device)
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
+  def test_linspace_steps_one(self):
+    def test_fn(device):
+      return torch.linspace(0, 10, steps=1, device=device)
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
+  def test_linalg_vector_norm_float_64(self):
 
     def fn(device, norm, dim=None, keepdim=False):
       x = torch.tensor(

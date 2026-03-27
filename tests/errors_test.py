@@ -3443,6 +3443,23 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.arange(1, 10, 0, device=et.device())
 
+  def test_linspace_negative_steps(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="linspace(): expected non-negative steps, got -1",
+        cpu="number of steps must be non-negative",
+    ):
+      torch.linspace(0, 10, -1, device=et.device())
+
+  def test_linspace_bool_error(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="linspace(): expected output dtype to be other than bool, got bool",
+        cpu="\"linspace_cpu\" not implemented for 'Bool'",
+    ):
+      out = torch.empty(5, dtype=torch.bool, device=et.device())
+      torch.linspace(0, 10, 5, out=out)
+
   def test_arange_infinite_inputs(self):
     """Tests that arange fails on infinite inputs with expected error.
 
