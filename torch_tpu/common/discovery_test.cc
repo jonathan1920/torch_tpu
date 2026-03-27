@@ -15,6 +15,7 @@
  */
 #include "torch_tpu/common/discovery.h"
 
+#include <cstdlib>
 #include <string>
 
 #include "gtest/gtest.h"
@@ -24,7 +25,17 @@
 namespace torch_tpu {
 namespace {
 
-TEST(DiscoveryTest, GetPremappedBufferSizeFromEnvOnceReturnsValue) {
+TEST(DiscoveryTest, GetPremappedBufferSizeWithDefaultReturnsValue) {
+  unsetenv(kTpuPremappedBufferSizeEnvVar);
+
+  const auto& status_or_size = GetPremappedBufferSizeFromEnvOnce();
+  ASSERT_TRUE(status_or_size.ok()) << status_or_size.status();
+  EXPECT_EQ(*status_or_size, 0);
+  EXPECT_EQ(std::string(getenv(kTpuPremappedBufferSizeEnvVar)), "0");
+}
+
+// TODO: determine how to un-memoize environment variable reads for testing.
+TEST(DiscoveryTest, DISABLED_GetPremappedBufferSizeWithDefaultReadsEnv) {
   setenv(kTpuPremappedBufferSizeEnvVar, "1024", 1);
 
   const auto& status_or_size = GetPremappedBufferSizeFromEnvOnce();

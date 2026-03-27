@@ -77,10 +77,8 @@ PYBIND11_MODULE(_device_ops_backend, m) {
                  // Single-device, or "all available devices"?
                  // Should distributed mode be opt-in or opt-out?
                  .world_size = GetWorldSizeFromEnvOnce().value_or(1),
-                 // TODO(@lukeboyer): Determine if this should stay default 0
-                 // and opt-in for users or set to a few gigs by default. The
-                 // latter can cause some OOMs for exists and would require
-                 // tuning for those specific tests.
+                 // TODO(@lukeboyer): Determine what a safe default
+                 // is here.
                  .premapped_buffer_size =
                      GetPremappedBufferSizeFromEnvOnce().value_or(0)}),
             _.SetPrepend() << "failed to initialize PjRt: ");
