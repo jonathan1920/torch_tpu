@@ -193,7 +193,9 @@ torch_tpu_py_test(
     main = "ops_test.py",
     shard_count = 40,
     tags = [
+        "noasan",  # TODO: fix the timeout of test_grid_sampler in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
+        "notsan",  # TODO: fix the timeout of test_grid_sampler in tsan mode.
         "requires-tpu-v5lite",
     ],
     deps = [

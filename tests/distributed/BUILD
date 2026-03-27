@@ -81,6 +81,7 @@ torch_tpu_py_test(
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO: fix the test in asan mode.
+        "notsan",  # TODO: fix timeout in tsan mode due to test_broadcast_objects.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
