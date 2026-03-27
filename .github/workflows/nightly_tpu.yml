@@ -72,6 +72,7 @@ jobs:
         //tests:ops_test_grad
         //tests:ops_test_perf
         //tests:ops_test_tpu
+        //tests:ops_test_tpu_vs_gpu
     steps:
       - run: echo "Start running tests."
       # Clone the GitHub repository to runner's environment $GITHUB_WORKSPACE, making its files
