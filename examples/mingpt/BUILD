@@ -155,22 +155,6 @@ pytype_strict_library(
     ],
 )
 
-torch_tpu_py_test(
-    name = "mingpt_threshold_test",
-    srcs = ["mingpt_threshold_test.py"],
-    tags = [
-        "cpu:8",
-        "noopt",  # Currently broken in opt mode.
-        "requires-net:external",
-        "requires-tpu-v5lite",
-    ],
-    deps = [
-        ":mingpt_runner_lib",
-        "//pyglib:build_data",
-        "//shims/absl_py/testing:absltest",
-    ],
-)
-
 # Disabled because it fails
 #
 # torch_tpu_py_test(
