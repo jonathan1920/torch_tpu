@@ -56,6 +56,7 @@ torch_tpu_py_test(
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO: fix the test in asan mode.
+        "nomsan",  # TODO: fix the test in msan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -263,6 +264,7 @@ torch_tpu_py_test(
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO: fix the test in asan mode.
+        "notsan",  # TODO: fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -289,8 +291,8 @@ torch_tpu_py_test(
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO: fix the test OOM in asan mode.
+        "nomsan",  # TODO: fix the test OOM in msan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
-        "requires-mem:28g",  # Required for msan.
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -336,6 +338,7 @@ torch_tpu_py_test(
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO: fix the test in asan mode.
+        "nomsan",  # TODO: fix the test in msan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],

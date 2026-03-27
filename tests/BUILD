@@ -191,7 +191,7 @@ torch_tpu_py_test(
     ],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
-    shard_count = 20,
+    shard_count = 40,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
         "requires-tpu-v5lite",
