@@ -166,8 +166,8 @@ torch_tpu_py_test(
     ],
     deps = [
         ":mingpt_runner_lib",
+        "//pyglib:build_data",
         "//shims/absl_py/testing:absltest",
-        "//torch_tpu/_internal/shims/pyglib:build_data",
     ],
 )
 
