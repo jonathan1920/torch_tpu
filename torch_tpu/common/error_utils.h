@@ -160,11 +160,10 @@ class TtError : public std::runtime_error {
  public:
   TtError(absl::Status status, c10::SourceLocation thrown_from);
 
-  // This class is move-only.
   TtError(TtError&& other) = default;
   TtError& operator=(TtError&& other) = default;
-  TtError(const TtError&) = delete;
-  TtError& operator=(const TtError&) = delete;
+  TtError(const TtError&) = default;
+  TtError& operator=(const TtError&) = default;
 
   // Getters.
   const absl::Status& status() const { return status_; }
@@ -219,6 +218,11 @@ class TtError : public std::runtime_error {
           absl::Status(error_code, ""),                                   \
           ::torch_tpu::GetRootOpName(std::nullopt)),                      \
       __FILE__, __LINE__, __func__))
+
+// TT_SOURCE_LOCATION
+//
+// Returns the current C++ source location.
+#define TT_SOURCE_LOCATION ::c10::SourceLocation({__func__, __FILE__, __LINE__})
 
 // TT_RET_CHECK(cond, error_code);
 //
@@ -817,13 +821,12 @@ class AnythingCompatibleWithThrow {
 //
 // Implementation note: we don't capture the caller's source location here
 // because TT_THROW_TT_ERROR_ already does that.
-#define TT_ASSIGN_OR_THROW_IMPL_2_(statusor, lhs, rexpr)                     \
-  auto statusor = (rexpr);                                                   \
-  TT_STATIC_ASSERT_NOT_STATUS_OR_REF_(statusor);                             \
-  if (ABSL_PREDICT_FALSE(!statusor.ok())) {                                  \
-    TT_THROW_TT_ERROR_(statusor.status(),                                    \
-                       c10::SourceLocation({__func__, __FILE__, __LINE__})); \
-  }                                                                          \
+#define TT_ASSIGN_OR_THROW_IMPL_2_(statusor, lhs, rexpr)       \
+  auto statusor = (rexpr);                                     \
+  TT_STATIC_ASSERT_NOT_STATUS_OR_REF_(statusor);               \
+  if (ABSL_PREDICT_FALSE(!statusor.ok())) {                    \
+    TT_THROW_TT_ERROR_(statusor.status(), TT_SOURCE_LOCATION); \
+  }                                                            \
   TT_REMOVE_PARENS_(lhs) = (*std::move(statusor))
 
 // Implements TT_ASSIGN_OR_THROW(lhs, rexpr, error_expr).
@@ -845,15 +848,14 @@ class AnythingCompatibleWithThrow {
 // Since error_expr doesn't have to reference the `_` variable, we include
 // a static_cast<void>(_) to avoid a "unused variable" warning from the C++
 // compiler.
-#define TT_ASSIGN_OR_THROW_IMPL_3_(statusor, lhs, rexpr, error_expr)         \
-  auto statusor = (rexpr);                                                   \
-  TT_STATIC_ASSERT_NOT_STATUS_OR_REF_(statusor);                             \
-  if (ABSL_PREDICT_FALSE(!statusor.ok())) {                                  \
-    ::torch_tpu::StatusBuilderWithMessage _(std::move(statusor).status());   \
-    static_cast<void>(_);                                                    \
-    TT_THROW_TT_ERROR_(absl::Status((error_expr)),                           \
-                       c10::SourceLocation({__func__, __FILE__, __LINE__})); \
-  }                                                                          \
+#define TT_ASSIGN_OR_THROW_IMPL_3_(statusor, lhs, rexpr, error_expr)       \
+  auto statusor = (rexpr);                                                 \
+  TT_STATIC_ASSERT_NOT_STATUS_OR_REF_(statusor);                           \
+  if (ABSL_PREDICT_FALSE(!statusor.ok())) {                                \
+    ::torch_tpu::StatusBuilderWithMessage _(std::move(statusor).status()); \
+    static_cast<void>(_);                                                  \
+    TT_THROW_TT_ERROR_(absl::Status((error_expr)), TT_SOURCE_LOCATION);    \
+  }                                                                        \
   TT_REMOVE_PARENS_(lhs) = (*std::move(statusor))
 
 // Trait: is the type a StatusOr<T&>?
