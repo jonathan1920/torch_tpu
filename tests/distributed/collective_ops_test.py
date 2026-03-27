@@ -212,6 +212,83 @@ def run_all_gather_tensor_stack() -> None:
   utils.assert_close(output_cpu, expected)
 
 
+def run_gather_scalar() -> None:
+  """Tests gather on scalar input."""
+  _ = api.tpu_device()
+  dist.init_process_group(backend="tpu_dist")
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+  dst = 0
+  tensor = torch.tensor(rank, device="tpu", dtype=torch.float32)
+  if rank == dst:
+    gather_list = [
+        torch.tensor(0, device="tpu", dtype=torch.float32)
+        for _ in range(world_size)
+    ]
+  else:
+    gather_list = None
+
+  torch.distributed.gather(tensor, gather_list=gather_list, dst=dst)
+
+  if rank == dst:
+    for i in range(world_size):
+      utils.assert_close(
+          gather_list[i].cpu(), torch.tensor(i, dtype=torch.float32)
+      )
+
+
+def run_gather_tensor() -> None:
+  """Tests gather on tensor input."""
+  _ = api.tpu_device()
+  dist.init_process_group(backend="tpu_dist")
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+  dst = 0
+  tensor = torch.tensor([rank, rank], device="tpu", dtype=torch.float32)
+  if rank == dst:
+    gather_list = [
+        torch.zeros(2, device="tpu", dtype=torch.float32)
+        for _ in range(world_size)
+    ]
+  else:
+    gather_list = None
+
+  torch.distributed.gather(tensor, gather_list=gather_list, dst=dst)
+
+  if rank == dst:
+    for i in range(world_size):
+      utils.assert_close(
+          gather_list[i].cpu(), torch.tensor([i, i], dtype=torch.float32)
+      )
+
+
+def run_gather_with_root_subset_use() -> None:
+  """Tests gather when only a subset of outputs is used on the root rank.
+
+  This test verifies that gather does not hang when only a subset of output
+  tensors are used on the root rank, matching eager PyTorch behavior.
+  """
+  _ = api.tpu_device()
+  dist.init_process_group(backend="tpu_dist")
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+  dst = 0
+  tensor = torch.tensor([rank, rank], device="tpu", dtype=torch.float32)
+  if rank == dst:
+    gather_list = [
+        torch.zeros(2, device="tpu", dtype=torch.float32)
+        for _ in range(world_size)
+    ]
+  else:
+    gather_list = None
+
+  torch.distributed.gather(tensor, gather_list=gather_list, dst=dst)
+
+  if rank == dst:
+    res = gather_list[0] + 1.0
+    res.cpu()
+
+
 def run_reduce_scatter() -> None:
   """Tests reduce-scatter functionality."""
   _ = api.tpu_device()
@@ -620,6 +697,24 @@ class CollectiveOpsTest(absltest.TestCase):
         fn=singlehost_wrapper.tpu_env_wrapper(
             run_all_gather_tensor_stack, world_size=self._world_size
         ),
+    )
+
+  def test_gather_scalar(self):
+    distributed_utils.dist_run(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(run_gather_scalar),
+    )
+
+  def test_gather_tensor(self):
+    distributed_utils.dist_run(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(run_gather_tensor),
+    )
+
+  def test_gather_with_root_subset_use(self):
+    distributed_utils.dist_run(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(run_gather_with_root_subset_use),
     )
 
   def test_reduce_scatter(self):

@@ -47,6 +47,11 @@ std::string ToString(const c10d::ScatterOptions& options) {
                       ", asyncOp=", options.asyncOp, "}");
 }
 
+std::string ToString(const c10d::GatherOptions& options) {
+  return absl::StrCat("{rootRank=", options.rootRank,
+                      ", asyncOp=", options.asyncOp, "}");
+}
+
 std::string ToString(const c10d::ReduceScatterOptions& options) {
   return absl::StrCat("{reduceOp=", ToString(options.reduceOp),
                       ", asyncOp=", options.asyncOp, "}");

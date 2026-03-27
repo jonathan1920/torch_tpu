@@ -321,6 +321,11 @@ FormattedKey<T> FormatParamCacheKey(at::ArrayRef<T> value) {
   return FormatParamCacheKey(value.rootRank);
 }
 
+[[nodiscard]] inline std::string FormatParamCacheKey(
+    const c10d::GatherOptions& value) {
+  return FormatParamCacheKey(value.rootRank);
+}
+
 }  // namespace internal
 
 // Returns an IgnoredInCacheKey object that wraps the given value.

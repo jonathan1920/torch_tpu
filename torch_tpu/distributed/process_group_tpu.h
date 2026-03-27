@@ -91,6 +91,11 @@ class ProcessGroupTpu : public c10d::Backend {
       std::vector<at::Tensor>& outputs, std::vector<at::Tensor>& inputs,
       const c10d::AllgatherOptions& opts = c10d::AllgatherOptions()) override;
 
+  c10::intrusive_ptr<c10d::Work> gather(
+      std::vector<std::vector<at::Tensor>>& output_tensors,
+      std::vector<at::Tensor>& input_tensors,
+      const c10d::GatherOptions& opts = c10d::GatherOptions()) override;
+
   // Scatters a list of tensors from the root process to other processes
   // in the group such that each process gets exactly one tensor.
   // This function is invoked by torch.distributed.scatter.

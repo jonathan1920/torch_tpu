@@ -104,6 +104,7 @@ template <typename Iterator>
 [[nodiscard]] std::string ToString(const c10d::BroadcastOptions& options);
 [[nodiscard]] std::string ToString(const c10d::ReduceScatterOptions& options);
 [[nodiscard]] std::string ToString(const c10d::ScatterOptions& options);
+[[nodiscard]] std::string ToString(const c10d::GatherOptions& options);
 [[nodiscard]] std::string ToString(const c10d::AllToAllOptions& options);
 [[nodiscard]] std::string ToString(const c10d::BarrierOptions& options);
 

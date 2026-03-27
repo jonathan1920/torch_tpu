@@ -414,6 +414,10 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
     ABSL_CHECK_EQ(  // CRASH_OK
         normalized_arg_type_in_func_sig, "c10d::AllgatherOptions")
         << message();
+  } else if constexpr (std::is_same_v<T, c10d::GatherOptions>) {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        normalized_arg_type_in_func_sig, "c10d::GatherOptions")
+        << message();
   } else if constexpr (std::is_same_v<T, c10d::ScatterOptions>) {
     ABSL_CHECK_EQ(  // CRASH_OK
         normalized_arg_type_in_func_sig, "c10d::ScatterOptions")

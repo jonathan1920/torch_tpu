@@ -312,6 +312,135 @@ def run_reduce_scatter_tensor_errors() -> None:
     torch.distributed.reduce_scatter_tensor(output, input_invalid)
 
 
+def run_gather_wrong_input_size() -> None:
+  """Tests gather failure when input_tensors.size() != 1."""
+  _ = api.tpu_device()
+  dist.init_process_group(backend="tpu_dist")
+  dst = 0
+  pg = dist.group.WORLD
+  opts = dist.GatherOptions()
+  opts.rootRank = dst
+  tensor = torch.zeros(2, device="tpu")
+  expected_msg = (
+      "distributed.gather(): a single input tensor must be provided, got 2"
+  )
+  with et.assert_raises_message(RuntimeError, expected_msg):
+    pg.gather([[]], [tensor, tensor], opts)
+
+
+def run_gather_wrong_output_list_size() -> None:
+  """Tests gather failure when output_tensors.size() != 1 on root."""
+  _ = api.tpu_device()
+  dist.init_process_group(backend="tpu_dist")
+  rank = int(os.environ["RANK"])
+  dst = 0
+  pg = dist.group.WORLD
+  opts = dist.GatherOptions()
+  opts.rootRank = dst
+  tensor = torch.zeros(2, device="tpu")
+  if rank == dst:
+    expected_msg = (
+        "distributed.gather(): there must be a single list of output tensors on"
+        " the root rank, got 0"
+    )
+    with et.assert_raises_message(RuntimeError, expected_msg):
+      pg.gather([], [tensor], opts)
+  else:
+    pg.gather([], [tensor], opts)
+
+
+def run_gather_wrong_output_tensor_count() -> None:
+  """Tests gather failure when output_tensor_list.size() != world_size."""
+  _ = api.tpu_device()
+  dist.init_process_group(backend="tpu_dist")
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+  dst = 0
+  tensor = torch.zeros(2, device="tpu")
+  if rank == dst:
+    gather_list = [torch.zeros(2, device="tpu") for _ in range(world_size - 1)]
+    expected_msg = (
+        "distributed.gather(): the number of output tensors on the root rank"
+        f" must be equal to the group size, got {world_size - 1} tensors and"
+        f" {world_size} processes"
+    )
+    with et.assert_raises_message(RuntimeError, expected_msg):
+      torch.distributed.gather(tensor, gather_list=gather_list, dst=dst)
+  else:
+    torch.distributed.gather(tensor, gather_list=None, dst=dst)
+
+
+def run_gather_mismatch_input_size() -> None:
+  """Tests gather failure when input shape != output shape."""
+  _ = api.tpu_device()
+  dist.init_process_group(backend="tpu_dist")
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+  dst = 0
+  tensor = torch.zeros(2, device="tpu")
+  if rank == dst:
+    gather_list = [torch.zeros(3, device="tpu") for _ in range(world_size)]
+    expected_msg = (
+        "distributed.gather(): input tensor shape must match output tensor"
+        " shape"
+    )
+    with et.assert_raises_message(RuntimeError, expected_msg):
+      torch.distributed.gather(tensor, gather_list=gather_list, dst=dst)
+  else:
+    torch.distributed.gather(tensor, gather_list=None, dst=dst)
+
+
+def run_gather_non_uniform_output_shapes() -> None:
+  """Tests gather failure when output tensors have different shapes."""
+  _ = api.tpu_device()
+  dist.init_process_group(backend="tpu_dist")
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+  dst = 0
+  tensor = torch.zeros(2, device="tpu")
+  if rank == dst:
+    gather_list = [torch.zeros(2, device="tpu") for _ in range(world_size)]
+    gather_list[1] = torch.zeros(3, device="tpu")
+    expected_msg = (
+        "distributed.gather(): output tensors on the root rank: tensors in the"
+        " list must have the same shape, got [2] at index 0 and [3] at index 1"
+    )
+    with et.assert_raises_message(RuntimeError, expected_msg):
+      torch.distributed.gather(tensor, gather_list=gather_list, dst=dst)
+  else:
+    torch.distributed.gather(tensor, gather_list=None, dst=dst)
+
+
+def run_gather_output_on_non_root() -> None:
+  """Tests gather failure when output list is provided on non-root."""
+  _ = api.tpu_device()
+  dist.init_process_group(backend="tpu_dist")
+  rank = int(os.environ["RANK"])
+  world_size = int(os.environ["WORLD_SIZE"])
+  dst = 0
+  pg = dist.group.WORLD
+  opts = dist.GatherOptions()
+  opts.rootRank = dst
+  tensor = torch.zeros(2, device="tpu")
+  if rank == dst:
+    # Multiple output lists to fail on root as well.
+    expected_msg = (
+        "distributed.gather(): there must be a single list of output tensors on"
+        " the root rank, got 2"
+    )
+    gather_list = [torch.zeros(2, device="tpu") for _ in range(world_size)]
+    with et.assert_raises_message(RuntimeError, expected_msg):
+      pg.gather([gather_list, gather_list], [tensor], opts)
+  else:
+    expected_msg = (
+        f"distributed.gather(): on non-root rank {rank} the list of output"
+        " tensors must be empty"
+    )
+    gather_list = [torch.zeros(2, device="tpu") for _ in range(world_size)]
+    with et.assert_raises_message(RuntimeError, expected_msg):
+      pg.gather([gather_list], [tensor], opts)
+
+
 class CollectiveErrorsTest(et.TpuOnlyErrorTestBase):
 
   def test_all_gather(self):
@@ -406,6 +535,54 @@ class CollectiveErrorsTest(et.TpuOnlyErrorTestBase):
         nproc_per_node=8,
         fn=singlehost_wrapper.tpu_env_wrapper(
             run_reduce_scatter_tensor_errors, world_size=8
+        ),
+    )
+
+  def test_gather_wrong_input_size(self):
+    distributed_utils.dist_run(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_gather_wrong_input_size, world_size=8
+        ),
+    )
+
+  def test_gather_wrong_output_list_size(self):
+    distributed_utils.dist_run(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_gather_wrong_output_list_size, world_size=8
+        ),
+    )
+
+  def test_gather_wrong_output_tensor_count(self):
+    distributed_utils.dist_run(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_gather_wrong_output_tensor_count, world_size=8
+        ),
+    )
+
+  def test_gather_mismatch_input_size(self):
+    distributed_utils.dist_run(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_gather_mismatch_input_size, world_size=8
+        ),
+    )
+
+  def test_gather_non_uniform_output_shapes(self):
+    distributed_utils.dist_run(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_gather_non_uniform_output_shapes, world_size=8
+        ),
+    )
+
+  def test_gather_output_on_non_root(self):
+    distributed_utils.dist_run(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_gather_output_on_non_root, world_size=8
         ),
     )
 

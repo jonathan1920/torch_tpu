@@ -42,6 +42,7 @@
 #include "ATen/core/jit_type.h"
 #include "ATen/ops/cat.h"
 #include "ATen/ops/empty.h"
+#include "ATen/ops/empty_like.h"
 #include "ATen/ops/flatten.h"
 #include "ATen/ops/ones.h"
 #include "ATen/ops/stack.h"
@@ -679,6 +680,90 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather_into_tensor_coalesced(
               outputs, getRank(), c10d::OpType::ALLGATHER_COALESCED);
         }
         return nullptr;
+      });
+}
+
+c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::gather(
+    std::vector<std::vector<at::Tensor>>& output_tensors,
+    std::vector<at::Tensor>& input_tensors, const c10d::GatherOptions& opts) {
+  TT_KERNEL(
+      OpName::kDistributedGather, param_keys,
+      (output_tensors, input_tensors, opts), {
+        TT_SET_PROCESS_GROUP_ID(param_keys);
+        const int64_t rank = getRank();
+        const int64_t root_rank = opts.rootRank;
+        TT_CHECK_THROW(input_tensors.size() == 1, error::kInvalidArgument)
+            << "a single input tensor must be provided, got "
+            << input_tensors.size();
+        auto& input = input_tensors[0];
+
+        if (rank == root_rank) {
+          TT_CHECK_THROW(output_tensors.size() == 1, error::kInvalidArgument)
+              << "there must be a single list of output tensors on the root "
+                 "rank, got "
+              << output_tensors.size();
+          const auto& output_tensor_list = output_tensors[0];
+          TT_CHECK_THROW(output_tensor_list.size() == getSize(),
+                         error::kInvalidArgument)
+              << "the number of output tensors on the root rank must be equal "
+                 "to the group size, got "
+              << output_tensor_list.size() << " tensors and " << getSize()
+              << " processes";
+          TT_THROW_IF_ERROR(CheckTensorsUniformShape(output_tensor_list))
+                  .SetPrepend()
+              << "output tensors on the root rank: ";
+          TT_CHECK_THROW(input.sizes() == output_tensor_list[0].sizes(),
+                         error::kInvalidArgument)
+              << "input tensor shape must match output tensor shape";
+        } else {
+          TT_CHECK_THROW(output_tensors.empty(), error::kInvalidArgument)
+              << "on non-root rank " << rank
+              << " the list of output tensors must be empty";
+        }
+
+        std::vector<at::Tensor> allgather_outputs;
+        if (rank == root_rank) {
+          allgather_outputs = output_tensors[0];
+        } else {
+          allgather_outputs.reserve(getSize());
+          for (int i = 0; i < getSize(); ++i) {
+            allgather_outputs.push_back(at::empty_like(input));
+          }
+        }
+
+        // Materialize the outputs before the collective to ensure symmetry.
+        // This is needed because on the root rank, output_tensors[0] might have
+        // deferred ops. On non-root ranks, the temporary tensors are fresh,
+        // which can result in an asymmetry.
+        TT_THROW_IF_ERROR(GetMaterialized(allgather_outputs));
+
+        c10d::AllgatherOptions allgather_opts;
+        allgather_opts.timeout = opts.timeout;
+        allgather_opts.asyncOp = opts.asyncOp;
+
+        std::vector<std::vector<at::Tensor>> allgather_output_tensors = {
+            std::move(allgather_outputs)};
+        auto work_ptr =
+            allgather(allgather_output_tensors, input_tensors, allgather_opts);
+
+        // TODO(b/495494333): Remove the need for this forced materialization.
+        // On non-root ranks, the all-gather outputs are local temporaries and
+        // never materialized if unused, e.g. if the root rank does not use all
+        // the gathered outputs.
+        // Therefore, we need to force materialization on at least all non-root
+        // ranks. If we do not materialize all ranks synchronously, it can cause
+        // a stutter where non-root ranks block early while waiting for the root
+        // rank to reach a graph break and then need to catch up. Materializing
+        // on all ranks synchronously is safer and keeps all devices moving
+        // forward smoothly.
+        TT_THROW_IF_ERROR(GetMaterialized(allgather_output_tensors[0]));
+
+        if (work_ptr != nullptr) {
+          dynamic_cast<TpuWork* absl_nonnull>(work_ptr.get())->opType_ =
+              c10d::OpType::GATHER;
+        }
+
+        return work_ptr;
       });
 }
 
