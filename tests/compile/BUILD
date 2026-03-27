@@ -43,6 +43,22 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "dropout_test",
+    srcs = ["dropout_test.py"],
+    tags = [
+        "oss_ready_tpu",
+        "requires-net:external",
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/api",
+    ],
+)
+
+torch_tpu_py_test(
     name = "ensure_no_dynamic_test",
     srcs = ["ensure_no_dynamic_test.py"],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
