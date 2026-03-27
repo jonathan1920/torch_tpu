@@ -38,15 +38,10 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "ATen/core/ATen_fwd.h"
-#include "ATen/core/CachingHostAllocator.h"
-#include "ATen/core/TensorBody.h"
 #include "c10/core/Allocator.h"
-#include "c10/core/TensorImpl.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -57,41 +52,47 @@
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/shape.h"
 
-// This library holds the core data object interfaces required by PyTorch.
+// This library holds the core internal representation of the "data" of a
+// tensor in TorchTPU.
 //
-// The aten/c10 pointer hierarchy is:
-//   at::Tensor
-//   -> c10::TensorImpl { .storage = c10::Storage }
-//   -> c10::StorageImpl {
-//     .data_ptr = c10::DataPtr, .allocator = c10::Allocator }
-//   -> c10::UniqueVoidPtr { .data_ = void*, .ctx_ = void* }
-//   -> DeviceBufferRef {
-//     .device_buffer_list_ = std::shared_ptr<DeviceBufferList>,
-//     .index_ = int64_t }
-//   -> DeviceBufferList
+// In Torch/CUDA or Torch/CPU, a c10::DataPtr points to an output buffer, that
+// contains the data backing the tensor. This data may be in-flight, pending an
+// asynchronous computation, but every new c10::DataPtr represents a physical
+// block of device memory.
 //
-// In order to register a custom backend, we need to supply two things:
-//  1. A c10::Allocator subclass that is able to create c10::DataPtrs of a
-//     specified size_t bytes (but no shape or type information)
-//  2. A mechanism to cast the void* pointers within a c10::DataPtr to concrete
-//     types as required to resolve registered aten kernels.
+// In TorchTPU, however, a c10::DataPtr may point to either a materialized
+// output buffer, **or** a deferred operation that can produce it. This deferred
+// operation allows us to build a graph incrementally, and merge them into a
+// larger compilation unit. It also means that we do not need to persist every
+// intermediate tensor; only the tensors which have their data moved off-device
+// are strictly necessary to materialize to a physical buffer.
 //
-// For torch_tpu, we satisfy these requirements by:
-//  -  Defining a global allocator (accessed by calling GetTpuAllocator()),
-//     which will create one-dimensionsal u8 tensors when requested
-//  -  Defining a DeviceBufferList class, which describes the shapes, types, and
-//     current evaluation state (materialized, deferred, or nonexistent) of the
-//     data on the XLA device.
-//  -  Defining a DeviceBufferRef class, which is the referent of the
-//     c10::DataPtr, and is itself a reference (as a std::shared_ptr plus an
-//     index) to a buffer in the DeviceBufferList, which holds the actual data.
-//     This indirection allows us to preserve a buffer beyond the lifetime of
-//     its at::Tensors, which is required for deferred op graph construction,
-//     including multi-output deferred ops.
-//  -  Providing getter functions to resolve the DeviceBufferRef from a given
-//     c10::Storage or at::Tensor. This includes the logic necessary to convert
-//     from a contiguous base DeviceBufferRef to a strided view; this logic
-//     is defined in view_decomposition.h and applied in GetBufferFromAtTensor.
+// However, there is some complexity introduced by the fact that one aten
+// operation can produce multiple outputs; this is common for normalization
+// functions (e.g. layer norm, batch norm, group norm). This means that deferred
+// operations are not one-to-one with individual tensors.
+//
+// This requires a three-part recursive graph structure:
+///  - A DeviceBufferRef represents the data of a single tensor. It is nothing
+//     more than a shared pointer to a DeviceBufferList and an index into that
+//     list.
+//   - A DeviceBufferList represents the data that was, or could be, produced by
+//     a single aten operation. Since an aten operation may produce multiple
+//     tensors, a DeviceBufferList can contain multiple DeviceBufferRefs. If the
+//     operation is deferred, it has a DeferredOp; otherwise it usually
+//     contains a MaterializedBuffers (see note below).
+//   - A DeferredOp represents a single aten operation that has not yet been
+//     executed. It contains a list of DeviceBufferRefs that represent the
+//     inputs to the operation.
+//
+// While "materialized" and "deferred" are the most common states, two special
+// "dataless" cases also exist:
+//   - A tensor that represents zero bytes, e.g. `torch.tensor([])`, doesn't
+//     need either a physical buffer or a deferred operation; it's just nothing.
+//   - To support full-graph compiled mode, we know the shapes and dtypes of
+//     inputs in advance, but we need to trace the FX graph without real data.
+//     For this, we define a "placeholder" state, which represents a tensor that
+//     will be provided in the future when the compiled function is executed.
 //
 // This is generally a low-level implementation detail that should be invisible
 // to most users of PyTorch or libtorch; the at::Tensors at the surface level
@@ -562,7 +563,7 @@ class MaterializedBuffers {
     future_ = std::move(promise_pair.second);
   }
 
-  MaterializedBuffers(
+  explicit MaterializedBuffers(
       std::vector<absl_nonnull std::unique_ptr<xla::PjRtBuffer>> buffers)
       : buffers_(std::move(buffers)) {
     auto promise_pair = xla::MakePromise();
@@ -621,42 +622,6 @@ class MaterializedBuffers {
   xla::Promise<> promise_;
   std::vector<absl_nonnull std::unique_ptr<xla::PjRtBuffer>> buffers_;
 };
-
-// Extracts the DeviceBufferRef from the given ATen tensor or storage.
-// The tensor must be allocated by the TpuAllocator
-// and have a valid DeviceBufferRef via the data_ptr context.
-//
-// The returned DeviceBufferRef is always the contiguous buffer that was used
-// to create the c10::StorageImpl backing the tensor; if tensor is a view, then
-// the returned DeviceBufferRef may have different dimensions than the tensor.
-absl::StatusOr<DeviceBufferRef> GetBaseBufferFromAtTensor(
-    const c10::TensorImpl& tensor);
-absl::StatusOr<DeviceBufferRef> GetBaseBufferFromAtTensor(
-    const at::Tensor& tensor);
-absl::StatusOr<DeviceBufferRef> GetBaseBufferFromStorage(
-    const c10::Storage& storage);
-
-// Extracts the DeviceBufferRef from the given ATen tensor. The tensor must be
-// allocated by the TpuAllocator and have a valid DeviceBufferRef via the
-// data_ptr context.
-//
-// If the tensor is a view, then the returned DeviceBufferRef will always be
-// in the kDeferred state, with a DeferredOp that will convert the inner
-// contiguous base buffer into the view's layout, unless the view is zero-sized,
-// in which case it will be kZeroSize.
-//
-// The returned value may be in any DeviceBufferRefState, including
-// kMaterialized, kDeferred, kZeroSize, and kPlaceholder. Callers are
-// responsible for handling any unexpected states; for example, erroring on a
-// kPlaceholder state before calling a PjRtLoadedExecutable.
-absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(const at::Tensor& tensor);
-absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(
-    const c10::TensorImpl& tensor);
-
-// Extracts all DeviceBufferRefs from the list of AtenTensors.
-// This is just GetBufferFromAtTensor in a loop, exiting on the first error.
-absl::StatusOr<std::vector<DeviceBufferRef>> GetBuffersFromAtTensors(
-    absl::Span<const at::Tensor> tensors);
 
 // A DeviceBufferList contains the data backing one or more tensors.
 //
@@ -944,50 +909,6 @@ class DeviceBufferList {
   friend c10::DataPtr MakeDataPtr(DeviceBufferRef buffer_ref, int device_idx);
   friend void DeleteDeviceBufferRef(void* ctx_ptr);
 };
-
-// Returns the C10 allocator singleton for TPU.
-c10::Allocator* GetTpuAllocator();
-
-// Returns the Tpu pinned memory allocator.
-at::HostAllocator* GetTpuPinnedAllocator();
-
-// Returns true if the given pointer was allocated by the Tpu pinned memory
-// allocator.
-bool IsTpuPinnedPtr(const void* ptr);
-
-// Registers the TpuAllocator as the allocator for the PrivateUse1 device.
-// This must be called before using the allocator for any device operations.
-void RegisterTpuAllocator();
-
-// Creates a c10::Storage pointer to a new c10::StorageImpl, which holds a
-// c10::DataPtr to the given DeviceBufferRef.
-// The nbytes of the c10::StorageImpl will be set to the size
-// of the DeviceBufferRef.
-// The DeviceBufferRef must be in a valid state.
-c10::Storage MakeStorage(DeviceBufferRef buffer_ref);
-
-// Returns an ATen tensor with the given DeviceBufferRef.
-//
-// This creates a full pointer chain of a new c10::DataPtr,
-// c10::StorageImpl/c10::Storage, c10::TensorImpl, and at::Tensor.
-//
-// The resulting tensor will have the same sizes and dtype as the
-// DeviceBufferRef (converting from mlir::ElementType to ScalarType) and will
-// be contiguous.
-at::Tensor MakeTensor(DeviceBufferRef device_buffer_ref);
-
-// Assigns the given DeviceBufferRef to the given ATen tensor.
-//
-// This is typically used for inplace operations that overwrite a "self" tensor,
-// and "out"-tensor operations that use a provided destination tensor.
-//
-// Args:
-//    result_buf: the result buffer.
-//    tensor: reference to the tensor into which to copy result_buf.
-// Requires:
-//    result_buf and tensor must have the same shape and dtype.
-absl::Status AssignBufferToAtTensor(DeviceBufferRef result_buf,
-                                    const at::Tensor& tensor);
 
 }  // namespace torch_tpu
 

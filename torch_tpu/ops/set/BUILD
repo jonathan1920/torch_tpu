@@ -32,6 +32,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:shape",
         "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops/macros:kernel",
         "//torch_tpu/ops/stride:stride_helper",

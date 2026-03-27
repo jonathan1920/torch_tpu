@@ -56,6 +56,7 @@
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/prevent_graph_splits.h"
 #include "torch_tpu/eager/split_traversal.h"
+#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/traversal.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/pjrt/pjrt_state.h"

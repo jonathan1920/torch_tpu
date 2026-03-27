@@ -1,3 +1,4 @@
+#include "torch_tpu/eager/tensor_to_buffer.h"
 /*
  * Copyright 2025 Google LLC
  *
