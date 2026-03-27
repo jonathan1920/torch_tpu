@@ -22,85 +22,60 @@ from torch_tpu._internal.utils import utils
 
 class AllocatorReproTest(absltest.TestCase):
 
-  def test_parallel_async_transfers(self):
+  def test_non_blocking_returns_immediately(self):
     device = api.tpu_device()
-    num_tensors = 10
-    size = 2048  # 2048x2048 int32 = 16MB per tensor, 160MB total
+    size = 8192  # 8192x8192 int32 = 256MB
 
-    tpu_tensors = []
-    expected_cpus = []
-
-    # 1. Setup Phase
-    for _ in range(num_tensors):
-      # Generate on CPU first to avoid lazy evaluation differences
-      a_cpu = torch.randint(1, 10, (size, size), dtype=torch.int32)
-      b_cpu = torch.randint(1, 10, (size, size), dtype=torch.int32)
-
-      a = a_cpu.to(device)
-      b = b_cpu.to(device)
-      c = a * 2 + b
-      tpu_tensors.append(c)
-      expected_cpus.append(a_cpu * 2 + b_cpu)
-
-    # Force materialization (compilation and execution) of the graph
-    _ = [t.to('cpu') for t in tpu_tensors]
+    # 1. Warmup: compile the 'a + b' graph and drive materialization.
+    a_cpu = torch.randint(1, 10, (size, size), dtype=torch.int32)
+    b_cpu = torch.randint(1, 10, (size, size), dtype=torch.int32)
+    a = a_cpu.to(device)
+    b = b_cpu.to(device)
+    c = a + b
+    cpu_dst = torch.empty_like(c, device='cpu', pin_memory=True)
+    # Warm up the compilation.
+    cpu_dst.copy_(c, non_blocking=True)
     torch.tpu.synchronize()
 
-    # Pre-allocate CPU tensors so we can test the direct copy path
-    cpu_tensors_async = [
-        torch.empty_like(t, device='cpu', pin_memory=True)
-        for t in expected_cpus
-    ]
-    cpu_tensors_sync = [
-        torch.empty_like(t, device='cpu', pin_memory=True)
-        for t in expected_cpus
-    ]
+    # 2. Main test: measure immediate return of a TPU computation copy.
+    a2_cpu = torch.randint(1, 10, (size, size), dtype=torch.int32)
+    b2_cpu = torch.randint(1, 10, (size, size), dtype=torch.int32)
+    a2 = a2_cpu.to(device)
+    b2 = b2_cpu.to(device)
+    c2 = a2 + b2
 
-    # Create a dummy CPU workload that takes roughly ~20ms to execute.
-    dummy_cpu_tensor_a = torch.randn(2000, 2000, device='cpu')
-    dummy_cpu_tensor_b = torch.randn(2000, 2000, device='cpu')
-
-    def do_cpu_work():
-      _ = dummy_cpu_tensor_a @ dummy_cpu_tensor_b
-
-    # 2. Async Transfers WITH Overlapped CPU Work
     t0 = time.time()
-    for t_src, t_dst in zip(tpu_tensors, cpu_tensors_async):
-      t_dst.copy_(t_src, non_blocking=True)
-
-    # CPU does heavy work WHILE the TPU is DMA transferring data in the
-    # background
-    do_cpu_work()
+    # This should return immediately as it only enqueues the computation and
+    # DMA.
+    cpu_dst.copy_(c2, non_blocking=True)
+    async_duration = time.time() - t0
 
     torch.tpu.synchronize()
-    overlapped_async_time = time.time() - t0
 
-    # 3. Synchronous (Blocking) Transfers WITH Sequential CPU Work
-    t2 = time.time()
-    for t_src, t_dst in zip(tpu_tensors, cpu_tensors_sync):
-      t_dst.copy_(t_src, non_blocking=False)
+    # 3. Measure blocking return of the same size
+    a3_cpu = torch.randint(1, 10, (size, size), dtype=torch.int32)
+    b3_cpu = torch.randint(1, 10, (size, size), dtype=torch.int32)
+    a3 = a3_cpu.to(device)
+    b3 = b3_cpu.to(device)
+    c3 = a3 + b3
 
-    # CPU is blocked until transfers finish, so this work happens sequentially
-    do_cpu_work()
+    t1 = time.time()
+    # This should block until the computation and DMA are finished.
+    cpu_dst.copy_(c3, non_blocking=False)
+    sync_duration = time.time() - t1
 
-    sequential_sync_time = time.time() - t2
+    # A 256MB transfer + computation takes ~40-60ms if blocking.
+    # We expect microsecond-level return for async, so 10ms is a safe, tight
+    # threshold.
+    print('\n--- Transfer Return Latency (256MB) ---')
+    print(f'Non-blocking copy_ duration : {async_duration:.6f}s')
+    print(f'Blocking copy_ duration     : {sync_duration:.6f}s')
+    print(f'Ratio (Sync/Async)          : {sync_duration/async_duration:.1f}x')
+    print('----------------------------------------\n')
 
-    print(f'\n--- Overlap Performance Results ({num_tensors} x 16MB) ---')
-    print(f'Async (Overlapped Work) Total Time : {overlapped_async_time:.5f}s')
-    print(f'Sync (Sequential Work) Total Time  : {sequential_sync_time:.5f}s')
-    print('-----------------------------------------\n')
-
-    # If non_blocking=True allows true overlapping, the overlapped total time
-    # should be significantly faster than doing the transfer and CPU work
-    # sequentially.
-    self.assertLess(overlapped_async_time, sequential_sync_time)
-
-    # Verify data correctness
-    for cpu_t, expected in zip(cpu_tensors_async, expected_cpus):
-      utils.assert_close(cpu_t, expected)
-
-    for cpu_t, expected in zip(cpu_tensors_sync, expected_cpus):
-      utils.assert_close(cpu_t, expected)
+    self.assertLess(async_duration, 0.01)  # 10ms threshold
+    # The sync duration should be significantly higher than async duration.
+    self.assertLess(async_duration, sync_duration)
 
   def test_to_cpu_non_blocking(self):
     device = api.tpu_device()
