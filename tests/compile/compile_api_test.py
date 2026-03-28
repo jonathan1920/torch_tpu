@@ -87,6 +87,35 @@ class CompileApiTest(absltest.TestCase):
 
     self.assertEmpty(tpu_backend._compiled_executables)
 
+  def test_compile_default_backend_no_recompilations(self):
+    tpu_backend1 = tt_compile.TpuBackend()
+    torch._dynamo.backends.registry._COMPILER_FNS['tpu'] = tpu_backend1
+
+    num_calls = 0
+
+    def f(x):
+      return x + 1
+
+    def user_context() -> str:
+      nonlocal num_calls
+      num_calls += 1
+      return 'user_context: ' + str(num_calls)
+
+    torch._dynamo.register_hook_for_recompile_user_context(user_context)
+
+    for _ in range(10):
+      torch.compile(f)(torch.randn(1, 5, device=api.tpu_device()))
+    num_calls_with_first_backend = num_calls
+
+    tpu_backend2 = tt_compile.TpuBackend()
+    torch._dynamo.backends.registry._COMPILER_FNS['tpu'] = tpu_backend2
+
+    for _ in range(10):
+      torch.compile(f)(torch.randn(1, 5, device=api.tpu_device()))
+
+    self.assertEqual(num_calls_with_first_backend, 1)
+    self.assertEqual(num_calls, 2)
+
 
 if __name__ == '__main__':
   absltest.main()

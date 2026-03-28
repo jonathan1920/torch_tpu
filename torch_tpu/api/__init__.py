@@ -21,8 +21,6 @@ import threading
 from typing import Any, Callable
 
 import torch
-from torch._dynamo.backends import inductor
-import torch._dynamo.backends.registry as backend_registry
 import torch.distributed
 # For torch.compile() "tpu" backend registration.
 import torch_tpu._internal.compile  # pylint: disable=unused-import
@@ -124,40 +122,18 @@ def _xla_cpu_device() -> torch.device:
 _torch_compile = torch.compile
 
 
-class DefaultBackendSelector:
-  """Default to the TPU backend for torch.compile() if available.
-
-  Falls back to Inductor if a TPU is not available.
-  """
-
-  def __call__(
-      self,
-      graph_module: torch.fx.GraphModule,
-      example_inputs: list[torch.Tensor],
-      **kwargs,
-  ) -> Callable[[torch.fx.GraphModule, list[torch.Tensor]], Callable[..., Any]]:
-    @functools.cache
-    def get_backend():
-      # Get the default backend, falling back to Inductor if TPU is not
-      # available.
-      try:
-        # tpu_device() will raise a RuntimeError if a TPU is not available.
-        tpu_device()
-        return backend_registry.lookup_backend("tpu")
-      except RuntimeError:
-        return backend_registry.lookup_backend("inductor")
-
-    backend = get_backend()
-    return backend(graph_module, example_inputs, **kwargs)
-
-
 # Monkeypatch torch.compile to default to TPU backend if available.
 @functools.wraps(_torch_compile)
 def _default_tpu_compile(*args, **kwargs):
 
-  # If an explicit backend is not specified, use DefaultBackendSelector.
+  # If an explicit backend is not specified, use the "tpu" backend.
   if "backend" not in kwargs:
-    kwargs["backend"] = DefaultBackendSelector()
+    try:
+      # tpu_device() will raise a RuntimeError if a TPU is not available.
+      tpu_device()
+      kwargs["backend"] = "tpu"
+    except RuntimeError:
+      pass
   return _torch_compile(*args, **kwargs)
 
 
