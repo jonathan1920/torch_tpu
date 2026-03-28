@@ -21,15 +21,39 @@
 #include <string>
 
 #include "absl/log/absl_check.h"
+#include "absl/types/span.h"
+#include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
-#include "c10/core/ScalarType.h"
-#include "torch/headeronly/core/DeviceType.h"
-#include "torch/headeronly/core/ScalarType.h"
+#include "c10/util/ArrayRef.h"
+#include "c10/util/DimVector.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_types.h"
 
 namespace torch_tpu {
+
+// Returns a copy of the array of integers.
+[[nodiscard]] inline SmallInt64Vector CopyIntVector(at::IntArrayRef ints) {
+  return SmallInt64Vector(ints.begin(), ints.end());
+}
+[[nodiscard]] inline SmallInt64Vector CopyIntVector(
+    const c10::DimVector& ints) {
+  return SmallInt64Vector(ints.begin(), ints.end());
+}
+[[nodiscard]] inline SmallInt64Vector CopyIntVector(
+    absl::Span<const int64_t> ints) {
+  return SmallInt64Vector(ints.begin(), ints.end());
+}
+[[nodiscard]] inline SmallInt64Vector CopyIntVector(
+    llvm::ArrayRef<int64_t> ints) {
+  return SmallInt64Vector(ints.begin(), ints.end());
+}
+[[nodiscard]] inline SmallInt64Vector CopyIntVector(
+    const std::vector<int64_t>& ints  // INT_VEC_OK
+) {
+  return SmallInt64Vector(ints.begin(), ints.end());
+}
 
 // Use these functions only for debugging purposes.
 [[nodiscard]] std::string ToString(const at::ScalarType& scalar_type,

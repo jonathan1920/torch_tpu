@@ -589,29 +589,6 @@ absl::StatusOr<DynamicMlirOpResults> ToResultVector(
   return DynamicMlirOpResults{results_value};
 }
 
-absl::StatusOr<Shape> MakeShape(const xla::Shape& xla_shape) {
-  TT_ASSIGN_OR_RETURN(mlir::ElementType result_dtype,
-                      ConvertTo<mlir::ElementType>(xla_shape.element_type()));
-  return Shape{.dimensions = CopyIntVector(xla_shape.dimensions()),
-               .dtype = result_dtype};
-}
-
-std::string ToString(const Shape& s) {
-  std::ostringstream os;
-  for (auto d : s.dimensions) {
-    os << d << "x";
-  }
-  os << ToShortString(s.dtype);
-  if (!s.dynamic_dimensions.empty()) {
-    os << "[";
-    for (auto d : s.dynamic_dimensions) {
-      os << d.dimension << ":" << d.lower_bound << ":" << d.upper_bound << ",";
-    }
-    os << "]";
-  }
-  return os.str();
-}
-
 std::string BuildModuleNameFromPyContext(
     mlir::MLIRContext& mlir_context,
     const PythonContext* absl_nullable python_context) {

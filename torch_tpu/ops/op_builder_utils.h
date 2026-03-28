@@ -53,6 +53,7 @@
 #include "c10/util/Exception.h"
 #include "c10/util/Optional.h"
 #include "torch/csrc/distributed/c10d/Types.hpp"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/shape.h"
@@ -67,28 +68,6 @@
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
-
-// Returns a copy of the array of integers.
-[[nodiscard]] inline SmallInt64Vector CopyIntVector(at::IntArrayRef ints) {
-  return SmallInt64Vector(ints.begin(), ints.end());
-}
-[[nodiscard]] inline SmallInt64Vector CopyIntVector(
-    const c10::DimVector& ints) {
-  return SmallInt64Vector(ints.begin(), ints.end());
-}
-[[nodiscard]] inline SmallInt64Vector CopyIntVector(
-    absl::Span<const int64_t> ints) {
-  return SmallInt64Vector(ints.begin(), ints.end());
-}
-[[nodiscard]] inline SmallInt64Vector CopyIntVector(
-    llvm::ArrayRef<int64_t> ints) {
-  return SmallInt64Vector(ints.begin(), ints.end());
-}
-[[nodiscard]] inline SmallInt64Vector CopyIntVector(
-    const std::vector<int64_t>& ints  // INT_VEC_OK
-) {
-  return SmallInt64Vector(ints.begin(), ints.end());
-}
 
 namespace internal {
 
@@ -635,37 +614,6 @@ absl::StatusOr<DynamicMlirOpResults> ToResultVector(
 // or passes an input error unmodified.
 absl::StatusOr<DynamicMlirOpResults> ToResultVector(
     absl::StatusOr<mlir::MlirOp> results);
-
-// A dimension that should be interpreted as dynamic.
-// Tensors always have a concrete shape, but we might want to build operations
-// they are involved in with a dynamic dimension so they can be reused.
-struct BoundedDynamicDimension {
-  int64_t dimension;
-  int64_t lower_bound;
-  int64_t upper_bound;
-};
-
-// A tensor shape, consisting of dimensions and element type.
-// This is roughly equivalent to xla::Shape, but is just a struct and not a
-// full protobuf definition.
-struct Shape {
-  Dimensions dimensions;
-  mlir::ElementType dtype;
-  // We choose 1 as the inlined size because most Shapes are not dynamic, and
-  // most dynamic Shapes are dynamic in 1 dimension only, so this allows for
-  // no heap allocation in the common case.
-  absl::InlinedVector<BoundedDynamicDimension, 1> dynamic_dimensions;
-};
-static_assert(sizeof(Shape) == 96);
-
-inline bool operator==(const Shape& lhs, const Shape& rhs) {
-  return lhs.dtype == rhs.dtype && lhs.dimensions == rhs.dimensions;
-}
-
-// Converts an XLA shape to a torch_tpu shape.
-absl::StatusOr<Shape> MakeShape(const xla::Shape& xla_shape);
-
-std::string ToString(const Shape& s);
 
 // Builds a module name from the current Python stack frame.
 // In most cases this frame is the one that triggered a materialization.

@@ -18,25 +18,46 @@
 #define TORCH_TPU_COMMON_SHAPE_H_
 
 #include <cstdint>
+#include <string>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
+#include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/dtype.h"
+#include "xla/shape.h"
 
 namespace torch_tpu {
 
-// Compared with std::vector, this avoids a heap allocation when the vector has
-// <= 6 elements. The threshold 6 is chosen to match XLA:
-// See https://github.com/openxla/xla/blob/main/xla/util.h, DimensionVector
-constexpr int kNumInlinedDimensions = 6;
-using SmallInt64Vector = absl::InlinedVector<int64_t, kNumInlinedDimensions>;
+// A dimension that should be interpreted as dynamic.
+// Tensors always have a concrete shape, but we might want to build operations
+// they are involved in with a dynamic dimension so they can be reused.
+struct BoundedDynamicDimension {
+  int64_t dimension;
+  int64_t lower_bound;
+  int64_t upper_bound;
+};
 
-// Holds the size array of a tensor efficiently.
-using Dimensions = absl::InlinedVector<int64_t, kNumInlinedDimensions>;
+// A tensor shape, consisting of dimensions and element type.
+// This is roughly equivalent to xla::Shape, but is just a struct and not a
+// full protobuf definition.
+struct Shape {
+  Dimensions dimensions;
+  mlir::ElementType dtype;
+  // We choose 1 as the inlined size because most Shapes are not dynamic, and
+  // most dynamic Shapes are dynamic in 1 dimension only, so this allows for
+  // no heap allocation in the common case.
+  absl::InlinedVector<BoundedDynamicDimension, 1> dynamic_dimensions;
+};
+static_assert(sizeof(Shape) == 96);
 
-// Holds the strides array of a tensor efficiently.
-using Strides = absl::InlinedVector<int64_t, kNumInlinedDimensions>;
+inline bool operator==(const Shape& lhs, const Shape& rhs) {
+  return lhs.dtype == rhs.dtype && lhs.dimensions == rhs.dimensions;
+}
 
-// Holds an array of indices efficiently.
-using Indices = absl::InlinedVector<int64_t, kNumInlinedDimensions>;
+// Converts an XLA shape to a torch_tpu shape.
+absl::StatusOr<Shape> MakeShape(const xla::Shape& xla_shape);
+
+std::string ToString(const Shape& s);
 
 }  // namespace torch_tpu
 
