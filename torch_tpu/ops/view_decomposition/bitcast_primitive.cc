@@ -151,8 +151,8 @@ absl::StatusOr<int64_t> GetStorageOffsetAfterRealToRealBitcast(
 
 // Returns a common error message prefix for invalid real-to-real bitcasts.
 std::string RealToRealBitcastErrorPrefix(const RealToRealBitcast& bitcast) {
-  return absl::StrCat("cannot bitcast from ", ToDTypeName(bitcast.from_type),
-                      " to ", ToDTypeName(bitcast.to_type), ": ");
+  return absl::StrCat("cannot bitcast from ", ToString(bitcast.from_type),
+                      " to ", ToString(bitcast.to_type), ": ");
 }
 
 // Returns the logical equivalent of torch.view_as_real().
@@ -177,8 +177,8 @@ absl::StatusOr<mlir::MlirOp> ViewAsRealShlo(mlir::MlirOp input) {
 }  // namespace
 
 std::ostream& operator<<(std::ostream& os, const RealToRealBitcast& bitcast) {
-  os << "bitcast(from_type=" << ToDTypeName(bitcast.from_type)
-     << ", to_type=" << ToDTypeName(bitcast.to_type) << ")";
+  os << "bitcast(from_type=" << ToString(bitcast.from_type)
+     << ", to_type=" << ToString(bitcast.to_type) << ")";
   return os;
 }
 

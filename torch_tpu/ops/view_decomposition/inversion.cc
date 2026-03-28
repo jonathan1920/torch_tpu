@@ -589,7 +589,7 @@ absl::StatusOr<InverseViewOperation> ComputeInverseViewOperation(
                                                 writable_dtype, layout);
 
   // Initially set the final shape to the shape after the bitcast.
-  Shape final_shape = {.dtype = writable_dtype};
+  Shape final_shape{.dtype = writable_dtype};
   final_shape.dimensions.reserve(layout.strided_dims.size());
   for (const auto& dim : layout.strided_dims) {
     final_shape.dimensions.push_back(dim.size);

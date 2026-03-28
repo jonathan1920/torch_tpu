@@ -665,6 +665,8 @@ inline bool operator==(const Shape& lhs, const Shape& rhs) {
 // Converts an XLA shape to a torch_tpu shape.
 absl::StatusOr<Shape> MakeShape(const xla::Shape& xla_shape);
 
+std::string ToString(const Shape& s);
+
 // Builds a module name from the current Python stack frame.
 // In most cases this frame is the one that triggered a materialization.
 //

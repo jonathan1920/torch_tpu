@@ -94,7 +94,7 @@ absl::Status CheckViewPreconditions(
   TT_RET_CHECK(view_required_bits <= base_bits, error::kInvalidArgument)
       << "the view requires " << view_required_bits / 8
       << " bytes of data, but the base tensor only has " << base_bits / 8
-      << " bytes (as " << ToDTypeName(view_dtype)
+      << " bytes (as " << ToString(view_dtype)
       << ToString(contiguous_base_shape) << ")";
   return absl::OkStatus();
 }

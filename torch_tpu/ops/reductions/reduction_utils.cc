@@ -109,8 +109,7 @@ absl::Status CheckFloatOrComplex(c10::ScalarType scalar_type) {
   TT_RET_CHECK(
       c10::isFloatingType(scalar_type) || c10::isComplexType(scalar_type),
       error::kInvalidArgument)
-      << "expected a floating point or complex dtype, got "
-      << ToDTypeName(dtype);
+      << "expected a floating point or complex dtype, got " << ToString(dtype);
   return absl::OkStatus();
 }
 

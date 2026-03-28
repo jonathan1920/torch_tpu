@@ -24,6 +24,7 @@
 #include <limits>
 #include <numeric>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -169,7 +170,7 @@ mlir::ElementType GetElementTypeOrDie(mlir::MlirOp op) {
 
 absl::StatusOr<mlir::Type> GetMlirType(mlir::MLIRContext& ctx,
                                        const mlir::ElementType element_type) {
-  ABSL_VLOG(1) << "[GetMlirType] element_type: " << ToDTypeName(element_type);
+  ABSL_VLOG(1) << "[GetMlirType] element_type: " << ToString(element_type);
   return mlir::getElementType(ctx, element_type);
 }
 
@@ -595,6 +596,22 @@ absl::StatusOr<Shape> MakeShape(const xla::Shape& xla_shape) {
                .dtype = result_dtype};
 }
 
+std::string ToString(const Shape& s) {
+  std::ostringstream os;
+  for (auto d : s.dimensions) {
+    os << d << "x";
+  }
+  os << ToShortString(s.dtype);
+  if (!s.dynamic_dimensions.empty()) {
+    os << "[";
+    for (auto d : s.dynamic_dimensions) {
+      os << d.dimension << ":" << d.lower_bound << ":" << d.upper_bound << ",";
+    }
+    os << "]";
+  }
+  return os.str();
+}
+
 std::string BuildModuleNameFromPyContext(
     mlir::MLIRContext& mlir_context,
     const PythonContext* absl_nullable python_context) {
@@ -681,14 +698,14 @@ absl::StatusOr<mlir::MlirOp> CastIfNeeded(
       << c10::toString(expected_scalar_type);
   if (actual_element_type != expected_output_type) {
     ABSL_VLOG(3) << "[CastIfNeeded]: Casting needed. "
-                 << "current element type: " << ToDTypeName(actual_element_type)
+                 << "current element type: " << ToString(actual_element_type)
                  << ", expected output type: "
-                 << ToDTypeName(expected_output_type);
+                 << ToString(expected_output_type);
     return mlir::stablehlo::ConvertElementType(op, expected_output_type);
   }
   ABSL_VLOG(3) << "[CastIfNeeded]: No casting needed. "
                << "Current and expected types are the same: "
-               << ToDTypeName(actual_element_type);
+               << ToString(actual_element_type);
   return op;
 }
 

@@ -46,12 +46,12 @@ namespace torch_tpu {
 // Returns a string representation of the given type as a PyTorch
 // dtype name (e.g. "float32", "int8"). This is suitable for use in user
 // messages.
-[[nodiscard]] std::string_view ToDTypeName(mlir::ElementType element_type);
+[[nodiscard]] std::string_view ToString(mlir::ElementType element_type);
 
 // Returns a string representation of the given MLIR element type.
 // E.g. "f32", "ui8". This is suitable for use in cache keys but not for user
 // messages.
-[[nodiscard]] std::string_view ToShortName(mlir::ElementType element_type);
+[[nodiscard]] std::string_view ToShortString(mlir::ElementType element_type);
 
 // Validates that `size` is a valid tensor size, and returns that size in bytes.
 // Sizes must have no negative dimensions, and the total size of the tensor

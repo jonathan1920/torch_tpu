@@ -353,7 +353,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
     std::stringstream inputs_ss;
     for (int i = 0; i < inputs.size(); ++i) {
       inputs_ss << " input " << i << ": " << ToString(inputs[i].dimensions())
-                << " dtype=" << ToDTypeName(inputs[i].element_type());
+                << " dtype=" << ToString(inputs[i].element_type());
     }
     ABSL_VLOG(3) << inputs_ss.str();
   }

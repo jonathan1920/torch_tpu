@@ -409,7 +409,7 @@ absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(
   TT_RETURN_IF_ERROR(Simplify(view_sequence, base_buffer_ref.dimensions()));
   ABSL_VLOG(1)
       << "[GetBufferFromAtTensor] Decomposed base buffer dtype and shape "
-      << ToDTypeName(base_buffer_ref.element_type())
+      << ToString(base_buffer_ref.element_type())
       << ToString(base_buffer_ref.dimensions()) << " into view sequence "
       << ToString(view_sequence) << " to achieve target view layout "
       << view_layout << " (is_conj=" << tensor.is_conj() << ")";
@@ -471,7 +471,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> GetBuffersFromAtTensors(
 c10::Storage MakeStorage(DeviceBufferRef buffer_ref) {
   ABSL_VLOG(1) << "[MakeStorage] Received DeviceBufferRef with dims: ["
                << absl::StrJoin(buffer_ref.dimensions(), ",") << "]"
-               << " and dtype: " << ToDTypeName(buffer_ref.element_type());
+               << " and dtype: " << ToString(buffer_ref.element_type());
   const auto size = buffer_ref.size_bytes();
   return c10::Storage(c10::make_intrusive<c10::StorageImpl>(
       c10::StorageImpl::use_byte_size_t(), size,

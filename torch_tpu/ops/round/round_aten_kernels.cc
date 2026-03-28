@@ -50,7 +50,7 @@ absl::Status CheckNumericDtype(at::ScalarType scalar_type) {
   TT_RET_CHECK(c10::isFloatingType(scalar_type) ||
                    c10::isIntegralType(scalar_type, /*include_bool=*/false),
                error::kInvalidArgument)
-      << "dtype " << ToDTypeName(dtype) << " is not supported";
+      << "dtype " << ToString(dtype) << " is not supported";
   return absl::OkStatus();
 }
 
@@ -60,7 +60,7 @@ std::string GetRoundIntegralDecimalsError(at::ScalarType scalar_type,
                                           int64_t decimals) {
   TT_ASSIGN_OR_THROW(const auto dtype,
                      ConvertTo<mlir::ElementType>(scalar_type));
-  return absl::StrCat("dtype ", ToDTypeName(dtype),
+  return absl::StrCat("dtype ", ToString(dtype),
                       " is not supported when decimals is specified");
 }
 

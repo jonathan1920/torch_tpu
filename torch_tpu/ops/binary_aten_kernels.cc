@@ -141,7 +141,7 @@ absl::StatusOr<MlirBinaryOpBuilder> AtenAddHelper(const at::Tensor& self,
     TT_ASSIGN_OR_RETURN(const auto alpha_element_type,
                         internal::ToElementType(alpha.type()));
     return TT_ERROR(error::kUnimplemented)
-           << ToDTypeName(alpha_element_type)
+           << ToString(alpha_element_type)
            << " alpha value is not yet supported";
   }
 

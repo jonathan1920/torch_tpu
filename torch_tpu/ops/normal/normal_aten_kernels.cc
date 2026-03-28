@@ -110,7 +110,7 @@ absl::Status CheckNormalPreconditions(const at::Tensor& self) {
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   TT_RET_CHECK(self.is_floating_point(), error::kInvalidArgument)
       << "normal: input tensor must be floating point type but got "
-      << ToDTypeName(dtype);
+      << ToString(dtype);
   return absl::OkStatus();
 }
 

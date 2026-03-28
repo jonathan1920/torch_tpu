@@ -115,7 +115,7 @@ xla::PrimitiveType ToXlaType(const mlir::ElementType element_type) {
   // but all mlir::ElementType values are created by us and should be valid.
   // Therefore we should never reach here.
   ABSL_LOG(FATAL)  // CRASH_OK
-      << "unsupported mlir::ElementType: " << ToShortName(element_type);
+      << "unsupported mlir::ElementType: " << ToShortString(element_type);
 }
 
 absl::StatusOr<mlir::ElementType> ToElementType(
@@ -423,7 +423,7 @@ at::ScalarType ToScalarType(const mlir::ElementType element_type) {
   }
 
   ABSL_LOG(FATAL)  // CRASH_OK
-      << "unsupported mlir::ElementType: " << ToShortName(element_type);
+      << "unsupported mlir::ElementType: " << ToShortString(element_type);
 }
 
 static at::ScalarType ToScalarType(const mlir::IntegerType int_type) {
@@ -496,11 +496,11 @@ at::ScalarType ToScalarType(mlir::Type type) {
 
 }  // namespace internal
 
-std::string_view ToDTypeName(const mlir::ElementType element_type) {
+std::string_view ToString(const mlir::ElementType element_type) {
   return ToString(internal::ToScalarType(element_type));
 }
 
-std::string_view ToShortName(const mlir::ElementType element_type) {
+std::string_view ToShortString(const mlir::ElementType element_type) {
   switch (element_type) {
     case mlir::ElementType::PRED:
       return "pred";
@@ -625,7 +625,7 @@ template <typename Container>
 absl::StatusOr<int64_t> ValidateTensorByteSize(at::IntArrayRef size,
                                                mlir::ElementType element_type) {
   TT_RET_CHECK(IsSupportedBufferType(element_type), error::kUnimplemented)
-      << "element type " << ToShortName(element_type)
+      << "element type " << ToShortString(element_type)
       << " is not supported as a tensor element type";
   const auto negative_dims = GetNegativeValuesIn(size);
   TT_RET_CHECK(negative_dims.empty(), error::kInvalidArgument)
@@ -638,7 +638,7 @@ absl::StatusOr<int64_t> ValidateTensorByteSize(at::IntArrayRef size,
                    xla::ShapeUtil::ByteSizeOfPrimitiveType(xla_primitive_type)))
           .SetOverride()
       << "product of dimension sizes [" << absl::StrJoin(size, ", ")
-      << "] and size of " << ToShortName(element_type) << " ("
+      << "] and size of " << ToShortString(element_type) << " ("
       << xla::ShapeUtil::ByteSizeOfPrimitiveType(xla_primitive_type)
       << " bytes) overflows as int64";
   return extent_product;

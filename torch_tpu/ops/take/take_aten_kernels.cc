@@ -123,7 +123,7 @@ at::Tensor AtenTake(const at::Tensor& self, const at::Tensor& index) {
                        ConvertTo<mlir::ElementType>(index.scalar_type()));
     TT_CHECK_THROW(index_dtype == mlir::ElementType::I64,
                    error::kInvalidArgument)
-        << "expected index dtype to be int64, got " << ToDTypeName(index_dtype);
+        << "expected index dtype to be int64, got " << ToString(index_dtype);
 
     TT_ASSIGN_OR_THROW(const int64_t num_elements, NumElements(self));
     if (GetEnableDebugChecks()) {

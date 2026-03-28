@@ -141,7 +141,7 @@ absl::StatusOr<std::string> FormatParamCacheKey(at::Scalar value);
 [[nodiscard]] std::string FormatParamCacheKey(c10d::ReduceOp value);
 [[nodiscard]] inline std::string FormatParamCacheKey(
     const mlir::ElementType value) {
-  return std::string(ToShortName(value));
+  return std::string(ToShortString(value));
 }
 [[nodiscard]] inline std::string FormatParamCacheKey(
     const mlir::stablehlo::Precision value) {

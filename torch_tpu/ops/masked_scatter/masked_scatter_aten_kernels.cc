@@ -93,7 +93,7 @@ at::Tensor& AtenMaskedScatter_(at::Tensor& self, const at::Tensor& mask,
                        ConvertTo<mlir::ElementType>(mask.scalar_type()));
     TT_CHECK_THROW(mask.scalar_type() == c10::ScalarType::Bool,
                    error::kInvalidArgument)
-        << "expected Boolean tensor for mask, got " << ToDTypeName(mask_dtype);
+        << "expected Boolean tensor for mask, got " << ToString(mask_dtype);
 
     TT_ASSIGN_OR_THROW(const auto self_dtype,
                        ConvertTo<mlir::ElementType>(self.scalar_type()));
@@ -101,8 +101,8 @@ at::Tensor& AtenMaskedScatter_(at::Tensor& self, const at::Tensor& mask,
                        ConvertTo<mlir::ElementType>(source.scalar_type()));
     TT_CHECK_THROW(self_dtype == source_dtype, error::kInvalidArgument)
         << "expected same dtype for self and source,"
-        << " got self dtype " << ToDTypeName(self_dtype) << " and source dtype "
-        << ToDTypeName(source_dtype);
+        << " got self dtype " << ToString(self_dtype) << " and source dtype "
+        << ToString(source_dtype);
 
     auto broadcasted = at::broadcast_tensors({mask, self});
     at::Tensor& mask_broadcasted = broadcasted[0];

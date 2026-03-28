@@ -848,7 +848,7 @@ class DeviceBufferList {
     }
     ABSL_VLOG(3) << "[DeviceBuffer CONSTRUCTOR (materialized)] Created. Dims: "
                  << ToString(shapes_[0].dimensions)
-                 << ", Type: " << ToDTypeName(shapes_[0].dtype)
+                 << ", Type: " << ToString(shapes_[0].dtype)
                  << ", PjRtBuffer: " << buffer_address
                  << ", Should await: " << future.has_value();
   }
@@ -887,7 +887,7 @@ class DeviceBufferList {
         Shape{.dimensions = std::move(dimensions), .dtype = element_type});
     ABSL_VLOG(3) << "[DeviceBuffer CONSTRUCTOR (bufferless)] Created. Dims: "
                  << ToString(shapes_[0].dimensions)
-                 << ", Type: " << ToDTypeName(shapes_[0].dtype);
+                 << ", Type: " << ToString(shapes_[0].dtype);
   }
 
   // The data backing the DeviceBufferList.

@@ -292,7 +292,7 @@ std::string DeviceBufferRef::DebugString() const {
      << "\n\tAddress of ref: " << this
      << "\n\tAddress of DeviceBufferList: " << device_buffer_list_.get()
      << "\n\tIndex: " << index_
-     << "\n\tShape and type: " << ToDTypeName(element_type())
+     << "\n\tShape and type: " << ToString(element_type())
      << ToString(dimensions()) << "\n\tData state: ";
   DebugDataState(os, deferred_op(), device_buffer_list_->materialized_buffers(),
                  dimensions());
@@ -487,8 +487,8 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateEmpty(
     return DynamicMlirOpResults{
         BuildFillUninitialized(builder, element_type, dimensions)};
   };
-  Shape output_shape = {.dimensions = std::move(dimensions),
-                        .dtype = element_type};
+  Shape output_shape{.dimensions = std::move(dimensions),
+                     .dtype = element_type};
   TT_ASSIGN_OR_RETURN(
       auto results, DeviceBufferList::CreateDeferred(
                         OpName::kEmpty, std::move(op_builder), /*inputs=*/{},
@@ -600,8 +600,8 @@ absl::Status DeviceBufferList::SetAsMaterialized(
     TT_RET_CHECK(actual_element_type == shapes_[i].dtype,
                  error::kInvalidArgument)
         << "unexpected element type for buffer " << i
-        << "; expected: " << ToDTypeName(shapes_[i].dtype)
-        << " but got: " << ToDTypeName(actual_element_type);
+        << "; expected: " << ToString(shapes_[i].dtype)
+        << " but got: " << ToString(actual_element_type);
   }
   ABSL_VLOG(1) << "[SetAsMaterialized] Setting as materialized";
   return materialized_buffers->SetAsAvailable(std::move(buffers));

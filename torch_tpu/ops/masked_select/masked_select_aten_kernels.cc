@@ -103,8 +103,8 @@ absl::Status PrepareOutTensor(const at::Tensor& result, at::Tensor& out) {
                       ConvertTo<mlir::ElementType>(result.scalar_type()));
   TT_RET_CHECK(result.scalar_type() == out.scalar_type(),
                error::kInvalidArgument)
-      << "the out tensor dtype is expected to be " << ToDTypeName(result_dtype)
-      << ", got " << ToDTypeName(out_dtype);
+      << "the out tensor dtype is expected to be " << ToString(result_dtype)
+      << ", got " << ToString(out_dtype);
   return absl::OkStatus();
 }
 
@@ -116,7 +116,7 @@ at::Tensor AtenMaskedSelect(const at::Tensor& self, const at::Tensor& mask) {
                        ConvertTo<mlir::ElementType>(mask.scalar_type()));
     TT_CHECK_THROW(mask.scalar_type() == c10::ScalarType::Bool,
                    error::kInvalidArgument)
-        << "expected Boolean tensor for mask, got " << ToDTypeName(mask_dtype);
+        << "expected Boolean tensor for mask, got " << ToString(mask_dtype);
 
     auto broadcasted = at::broadcast_tensors({mask, self});
     at::Tensor& mask_broadcasted = broadcasted[0];
@@ -142,7 +142,7 @@ at::Tensor& AtenMaskedSelectOut(const at::Tensor& self, const at::Tensor& mask,
                        ConvertTo<mlir::ElementType>(mask.scalar_type()));
     TT_CHECK_THROW(mask.scalar_type() == c10::ScalarType::Bool,
                    error::kInvalidArgument)
-        << "expected Boolean tensor for mask, got " << ToDTypeName(mask_dtype);
+        << "expected Boolean tensor for mask, got " << ToString(mask_dtype);
 
     at::Tensor result = AtenMaskedSelect(self, mask);
     TT_THROW_IF_ERROR(PrepareOutTensor(result, out));

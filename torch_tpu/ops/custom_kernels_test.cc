@@ -138,7 +138,8 @@ TEST(CustomKernelRegistry, CannotLoadNonexistentKernel) {
       mlir::makeTensorType(fb.getContext(), {10}, mlir::ElementType::F32);
   mlir::MlirOp op1 = mlir::func::Argument(fb, arg_type);
   mlir::MlirOp op2 = mlir::func::Argument(fb, arg_type);
-  Shape arg_shape = {.dimensions = {10}, .dtype = mlir::ElementType::F32};
+  Shape arg_shape{.dimensions = Dimensions{10},
+                  .dtype = mlir::ElementType::F32};
   auto kernel_add_func_status =
       CallCustomKernel(fb, {op1, op2}, "does_not_exist", "");
 

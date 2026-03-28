@@ -529,7 +529,7 @@ namespace {
 // "#0: float32[1,2,3]"
 void StreamBufferRefDebug(std::ostream& os, const DeviceBufferRef& ref,
                           const int64_t buffer_index) {
-  os << "#" << buffer_index << ": " << ToDTypeName(ref.element_type())
+  os << "#" << buffer_index << ": " << ToString(ref.element_type())
      << ToString(ref.dimensions()) << "";
 }
 
@@ -554,7 +554,12 @@ void StreamInputDebug(
       os << " <- input " << arg_index++ << " (placeholder)";
       break;
     case DeviceBufferRefState::kDeferred:
-      os << " <- input " << arg_index++ << " (deferred)";
+      os << " <- input " << arg_index++;
+      {
+        auto* deferred_op = input.deferred_op();
+        ABSL_CHECK(deferred_op);  // CRASH_OK
+        os << " (deferred " << ToString(deferred_op->op_name()) << ")";
+      }
       break;
   }
   buffer_to_index[input] = buffer_index++;
@@ -605,9 +610,11 @@ std::string Traversal::DebugString() const {
   size_t arg_index = 0;
   size_t buffer_index = 0;
   absl::flat_hash_map<DeviceBufferRef, size_t> buffer_to_index;
+  os << "Inputs:\n";
   for (const auto& input : inputs_) {
     StreamInputDebug(os, input, arg_index, buffer_index, buffer_to_index);
   }
+  os << "Execution Order:\n";
   for (const SharedDeviceBufferList& node : execution_order_) {
     StreamDeferredOpDebug(os, node, buffer_index, buffer_to_index);
   }
@@ -732,7 +739,7 @@ std::string GraphvizVertexParams(
     } else {
       os << " ";
     }
-    os << ToDTypeName(ref.element_type()) << ToString(ref.dimensions());
+    os << ToString(ref.element_type()) << ToString(ref.dimensions());
     switch (ref.state()) {
       case DeviceBufferRefState::kZeroSize:
         os << " (zero-sized constant)";

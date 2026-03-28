@@ -424,9 +424,8 @@ struct ViewCacheKeyVisitor {
 
   absl::StatusOr<std::string> operator()(
       const RealToRealBitcast& primitive) const {
-    return absl::StrCat(
-        "real_to_real_bitcast:", ToDTypeName(primitive.from_type), "->",
-        ToDTypeName(primitive.to_type));
+    return absl::StrCat("real_to_real_bitcast:", ToString(primitive.from_type),
+                        "->", ToString(primitive.to_type));
   }
   absl::StatusOr<std::string> operator()(
       const ComplexToRealBitcast& primitive) const {

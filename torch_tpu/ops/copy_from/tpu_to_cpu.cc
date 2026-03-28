@@ -55,7 +55,7 @@ static absl::Status TranslateXlaTensorOomError(const absl::Status& status,
   TT_RET_CHECK(!IsXlaOomError(status), error::kResourceExhausted)
       << "the TPU ran out of memory while awaiting the materialization of "
          "value "
-      << ToDTypeName(dtype) << "[" << absl::StrJoin(dims, ", ") << "]:\n"
+      << ToString(dtype) << "[" << absl::StrJoin(dims, ", ") << "]:\n"
       << status.message();
   return status;
 }
