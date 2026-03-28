@@ -826,12 +826,17 @@ torch_tpu_cc_test(
     deps = [
         ":cache_key",
         ":compilation_cache",
+        ":utils",
         "//shims/torch:torch_headers",
+        "//torch_tpu/pjrt:pjrt_init",
         "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:scoped_mock_log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
         "@xla//xla:xla_proto_cc",
         "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
     ],

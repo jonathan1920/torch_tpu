@@ -293,6 +293,17 @@ void CompilationCache::SetCacheOnlyMode(bool cache_only) {
   ABSL_LOG(INFO) << "CompilationCache cache-only mode set to: " << cache_only;
 }
 
+void CompilationCache::SetDumpOnCacheMissMode(bool enable) {
+  TT_MUTEX_LOCK(lock, cache_mutex_);
+  dump_on_cache_miss_ = enable;
+  ABSL_LOG(INFO) << "CompilationCache dump-on-miss mode set to: " << enable;
+}
+
+bool CompilationCache::GetDumpOnCacheMissMode() const {
+  TT_MUTEX_LOCK(lock, cache_mutex_);
+  return dump_on_cache_miss_;
+}
+
 int64_t CompilationCache::GetCacheRequests() const {
   TT_MUTEX_LOCK(lock, cache_mutex_);
   return perf_stats_.num_cache_reqs;
@@ -335,7 +346,8 @@ CompilationCache::GetStaticCacheEntry(CompilationCacheKey key) const {
   return CacheLookupInternal{
       .executable_promise = it->second.executable_promise(),
       .executable_future = it->second.executable_future(),
-      .needs_compilation = false};
+      .needs_compilation = false,
+      .dump_on_cache_miss = false};
 }
 
 std::optional<CompilationCache::BoundedDynamicCache::iterator>
@@ -355,7 +367,8 @@ CompilationCache::CacheLookupInternal CompilationCache::AddStaticCacheEntry(
   return CacheLookupInternal{
       .executable_promise = entry->second.executable_promise(),
       .executable_future = entry->second.executable_future(),
-      .needs_compilation = true};
+      .needs_compilation = true,
+      .dump_on_cache_miss = false};
 }
 
 CompilationCache::CacheLookupInternal
@@ -469,12 +482,15 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
     MlirComputationBuilder computation_builder,
     UniqueCompileOptions compile_options) {
   // Critical section for cache lookups and insertion.
-  TT_ASSIGN_OR_RETURN(auto cache_lookup,
-                      [&]() -> absl::StatusOr<CacheLookupInternal> {
-                        TT_MUTEX_LOCK(lock, cache_mutex_);
-                        perf_stats_.num_cache_reqs++;
-                        return GetOrCreateCacheEntry(key, input_shapes);
-                      }());
+  TT_ASSIGN_OR_RETURN(
+      auto cache_lookup, [&]() -> absl::StatusOr<CacheLookupInternal> {
+        TT_MUTEX_LOCK(lock, cache_mutex_);
+        perf_stats_.num_cache_reqs++;
+        TT_ASSIGN_OR_RETURN(auto lookup,
+                            GetOrCreateCacheEntry(key, input_shapes));
+        lookup.dump_on_cache_miss = dump_on_cache_miss_;
+        return lookup;
+      }());
   // Everything we are recovering from the cache is a shared pointer, so it
   // is safe to access them without the lock.
 
@@ -529,10 +545,12 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
                               contexted_module_or.status());
       return contexted_module_or.status();
     }
-    if (ABSL_VLOG_IS_ON(3)) {
-      LogLines(absl::StrCat("Compiling Module for key: ", storage_key, "\n",
-                            DebugString(contexted_module_or->get(),
-                                        DebugStringOptions::kEnableDebugInfo)));
+    if (cache_lookup.dump_on_cache_miss) {
+      LogLines(absl::StrCat(
+          "Dumping StableHLO module due to cache miss for key: ", storage_key,
+          "\n",
+          DebugString(contexted_module_or->get(),
+                      DebugStringOptions::kEnableDebugInfo)));
     }
     EnqueueCompilation(storage_key, *std::move(contexted_module_or),
                        std::move(compile_options));

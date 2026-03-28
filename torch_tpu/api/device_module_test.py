@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests _DeviceModule."""
-
 from absl.testing import absltest
 import torch
 from torch.testing._internal import common_utils
@@ -61,6 +59,14 @@ class DeviceModuleTest(absltest.TestCase, common_utils.TestCase):
 
     with self.assertRaises(ValueError):
       _DevicePythonModule._set_autocast_dtype(None)
+
+  def test_dump_on_miss(self):
+    # Default should be False
+    self.assertFalse(_DevicePythonModule._get_dump_on_cache_miss())
+    _DevicePythonModule._set_dump_on_cache_miss(True)
+    self.assertTrue(_DevicePythonModule._get_dump_on_cache_miss())
+    _DevicePythonModule._set_dump_on_cache_miss(False)
+    self.assertFalse(_DevicePythonModule._get_dump_on_cache_miss())
 
 
 if __name__ == "__main__":

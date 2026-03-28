@@ -287,8 +287,16 @@ class _DeviceModule:
     _device_ops_backend._set_cache_only(cache_only)  # pylint: disable=protected-access
 
   @classmethod
+  def _set_dump_on_cache_miss(cls, enable: bool = True):
+    _device_ops_backend._set_dump_on_cache_miss(enable)  # pylint: disable=protected-access
+
+  @classmethod
+  def _get_dump_on_cache_miss(cls):
+    return _device_ops_backend._get_dump_on_cache_miss()  # pylint: disable=protected-access
+
+  @classmethod
   def _get_cache_requests(cls):
-    return _device_ops_backend._get_cache_requests()  # pylint: disable=protected-access
+    return _device_ops_backend._get_cache_requests()  # pylint: disable=protected-accessœ
 
   @classmethod
   def _get_cache_hits(cls):

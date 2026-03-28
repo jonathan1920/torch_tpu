@@ -137,6 +137,18 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       "If True, the compilation cache will only lookup and not compile. Any "
       "cache miss will result in an error.");
   m.def(
+      "_set_dump_on_cache_miss",
+      [](bool enable) {
+        CompilationCache::GetInstance().SetDumpOnCacheMissMode(enable);
+      },
+      py::arg("enable"),
+      "If True, the compilation cache will dump the input StableHLO module for "
+      "any cache misses.");
+  m.def(
+      "_get_dump_on_cache_miss",
+      []() { return CompilationCache::GetInstance().GetDumpOnCacheMissMode(); },
+      "Check if compilation cache dumping is enabled.");
+  m.def(
       "_get_cache_requests",
       []() { return CompilationCache::GetInstance().GetCacheRequests(); },
       "Get compilation cache requests.");

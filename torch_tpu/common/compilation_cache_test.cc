@@ -18,14 +18,24 @@
 
 #include <string>
 #include <thread>  // NOLINT
+#include <utility>
+#include <vector>
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
+#include "absl/log/scoped_mock_log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/utils.h"
+#include "torch_tpu/pjrt/pjrt_init.h"
 #include "xla/xla.pb.h"
 
 ABSL_DECLARE_FLAG(int, torch_tpu_internal_num_compilation_threads);
@@ -37,7 +47,7 @@ int GetNumCompilationThreads(int num_procs);
 namespace {
 
 CompilationCacheKey DummyKey() {
-  return CompilationCacheKey(ShapelessKey(), DimensionsKey({}));
+  return CompilationCacheKey(ShapelessKey{0}, DimensionsKey({}));
 }
 
 class GetNumCompilationThreadsTest : public testing::Test {};
@@ -121,6 +131,54 @@ TEST(CacheEntryStatsPrinterTest, Works) {
   EXPECT_EQ(absl::StrCat(stats),
             "{\n\tcompilation_duration=100ms,\n\tlast_read=1969-12-31T16:00:01-"
             "08:00,\n\tread_count=10,\n}");
+}
+
+TEST(CompilationCacheTest, DumpOnMissMode) {
+  CompilationCache& cache = CompilationCache::GetInstance();
+  bool initial_mode = cache.GetDumpOnCacheMissMode();
+  cache.SetDumpOnCacheMissMode(!initial_mode);
+  EXPECT_EQ(cache.GetDumpOnCacheMissMode(), !initial_mode);
+  cache.SetDumpOnCacheMissMode(initial_mode);
+  EXPECT_EQ(cache.GetDumpOnCacheMissMode(), initial_mode);
+}
+
+TEST(CompilationCacheTest, GetOrCompileLogsOnMiss) {
+  CompilationCache& cache = CompilationCache::GetInstance();
+  bool initial_mode = cache.GetDumpOnCacheMissMode();
+  cache.SetDumpOnCacheMissMode(true);
+
+  // Trigger a miss with a unique key.
+  CompilationCacheKey key(ShapelessKey{12345}, DimensionsKey({}));
+  std::vector<Shape> input_shapes;
+
+  MlirComputationBuilder builder = [](mlir::MLIRContext& context) {
+    return mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
+  };
+
+  // We need to initialize PjRt to make MakeCompilerOptions work.
+  // It's safe to call this multiple times; it will return early if already
+  // initialized. Use xla_cpu for unit testing as it doesn't require real
+  // hardware.
+  absl::Status pjrt_status =
+      InitializePjRt({.device_type = "xla_cpu", .world_size = 1}).status();
+
+  auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
+  ASSERT_TRUE(options_or.ok())
+      << "MakeCompilerOptions failed: " << options_or.status()
+      << " (PjRt status: " << pjrt_status << ")";
+
+  absl::ScopedMockLog log;
+  EXPECT_CALL(
+      log,
+      Log(absl::LogSeverity::kInfo, testing::_,
+          testing::HasSubstr("Dumping StableHLO module due to cache miss")));
+
+  log.StartCapturingLogs();
+  auto result = cache.GetOrCompile(key, input_shapes, std::move(builder),
+                                   std::move(*options_or));
+
+  // Clean up.
+  cache.SetDumpOnCacheMissMode(initial_mode);
 }
 
 }  // namespace

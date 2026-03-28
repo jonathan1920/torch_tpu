@@ -233,6 +233,11 @@ class CompilationCache {
                           UniqueCompileOptions compile_options)
       ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
+  // Sets the cache to dump the input StableHLO module for any cache misses.
+  void SetDumpOnCacheMissMode(bool enable = true)
+      ABSL_LOCKS_EXCLUDED(cache_mutex_);
+  bool GetDumpOnCacheMissMode() const ABSL_LOCKS_EXCLUDED(cache_mutex_);
+
   // Debugging function to return the total resident size of the loaded
   // executables in HBM.
   std::string HbmUsageSummary() const ABSL_LOCKS_EXCLUDED(cache_mutex_);
@@ -257,6 +262,7 @@ class CompilationCache {
     SharedLoadedExecutableFuture executable_future;
     std::optional<ShapeDynamismMetadata> shape_dynamism_metadata;
     bool needs_compilation = false;
+    bool dump_on_cache_miss = false;
   };
 
   // Retrieves a cache entry from the static cache. If the key is not found in
@@ -393,6 +399,9 @@ class CompilationCache {
   // If true, the cache will only lookup and not compile. Any cache miss will
   // result in an error.
   bool cache_only_mode_ ABSL_GUARDED_BY(cache_mutex_) = false;
+  // If true, the cache will dump the input StableHLO module for any cache
+  // misses.
+  bool dump_on_cache_miss_ ABSL_GUARDED_BY(cache_mutex_) = false;
 };
 
 // Returns the number of threads to use for compilation based on the flag value,
