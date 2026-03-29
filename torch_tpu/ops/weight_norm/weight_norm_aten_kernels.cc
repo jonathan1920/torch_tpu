@@ -92,7 +92,7 @@ absl::StatusOr<MlirOpResults<2>> BuildWeightNormShlo(mlir::MlirOp v_op,
 std::tuple<at::Tensor, at::Tensor> AtenWeightNormInterface(const at::Tensor& v,
                                                            const at::Tensor& g,
                                                            int64_t dim) {
-  TT_KERNEL(OpName::kWeightNormInterface, _, (v, g, IgnoreInCacheKey(dim)), {
+  TT_KERNEL(OpName::kWeightNormInterface, param_keys, (v, g, dim), {
     TT_CHECK_THROW(IsFloatingPoint(v), error::kInvalidArgument)
         << "expected the input dtype to be floating point, got "
         << v.scalar_type();
@@ -131,7 +131,7 @@ std::tuple<at::Tensor, at::Tensor> AtenWeightNormInterface(const at::Tensor& v,
                           {.out_dtypes = {out_dtype, norm_dtype},
                            .out_dims_list = {CopyIntVector(v.sizes()),
                                              CopyIntVector(g.sizes())},
-                           .op_param_cache_keys = OpParamCacheKeys::Empty()})));
+                           .op_param_cache_keys = std::move(param_keys)})));
 
     return std::make_tuple(MakeTensor(std::move(weight_norm_buf)),
                            MakeTensor(std::move(v_norm_buf)));
