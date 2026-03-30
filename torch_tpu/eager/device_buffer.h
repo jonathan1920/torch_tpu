@@ -243,6 +243,8 @@ class DeviceBufferRef {
   // The current state of the referenced buffer, as an enum.
   [[nodiscard]] DeviceBufferRefState state() const;
 
+  [[nodiscard]] bool IsMaterialized() const;
+
   // The logical dimensions of the referenced buffer.
   [[nodiscard]] absl::Span<const int64_t> dimensions() const;
 
@@ -312,6 +314,9 @@ class DeviceBufferRef {
   friend H AbslHashValue(H h, const DeviceBufferRef& ref) {
     return H::combine(std::move(h), ref.index_, ref.device_buffer_list_);
   }
+
+  void set_layout_hint(std::string layout_hint) const;
+  std::optional<std::string> layout_hint() const;
 
  private:
   // DeviceBufferRefs can only be constructed by DeviceBufferList::Create*
@@ -811,6 +816,19 @@ class DeviceBufferList {
   // Returns the representative ID of the subgraph this node belongs to.
   [[nodiscard]] std::shared_ptr<Subgraph> subgraph() const { return subgraph_; }
 
+  void set_layout_hint(int64_t index, std::string layout_hint) const {
+    if (layout_hints_.empty()) {
+      layout_hints_.resize(shapes_.size());
+    }
+    layout_hints_[index] = std::move(layout_hint);
+  }
+  std::optional<std::string> layout_hint(int64_t index) const {
+    if (layout_hints_.empty()) {
+      return std::nullopt;
+    }
+    return layout_hints_[index];
+  }
+
   // If the DeviceBufferList has no live data pointers, it is "stale", meaning
   // that it will never be directly materialized and will never have any new
   // DeferredOps appended to it. This allows for more optimal materialization
@@ -846,6 +864,7 @@ class DeviceBufferList {
     } else {
       data_ = MaterializedBuffers(std::move(buffers));
     }
+    layout_hints_.resize(shapes_.size());
     ABSL_VLOG(3) << "[DeviceBuffer CONSTRUCTOR (materialized)] Created. Dims: "
                  << ToString(shapes_[0].dimensions)
                  << ", Type: " << ToString(shapes_[0].dtype)
@@ -864,6 +883,7 @@ class DeviceBufferList {
       : data_(DeferredOp(std::move(deferred_op))),
         shapes_(std::move(shapes)),
         subgraph_(std::move(subgraph)) {
+    layout_hints_.resize(shapes_.size());
     ABSL_VLOG(3)
         << "[DeviceBuffer CONSTRUCTOR (deferred)] Created. DeferredOp: "
         << std::get<DeferredOp>(data_).op_name()
@@ -885,6 +905,7 @@ class DeviceBufferList {
       : subgraph_(nullptr) {
     shapes_.push_back(
         Shape{.dimensions = std::move(dimensions), .dtype = element_type});
+    layout_hints_.resize(shapes_.size());
     ABSL_VLOG(3) << "[DeviceBuffer CONSTRUCTOR (bufferless)] Created. Dims: "
                  << ToString(shapes_[0].dimensions)
                  << ", Type: " << ToString(shapes_[0].dtype);
@@ -899,6 +920,10 @@ class DeviceBufferList {
   std::variant<std::monostate, DeferredOp, MaterializedBuffers> data_;
   // The shapes of all the buffers in the DeviceBufferList.
   std::vector<Shape> shapes_;
+  // User-provided layout hints for each buffer in the DeviceBufferList. These
+  // hints are currently only applied to inputs and outputs of compiled modules
+  // if they were given before the module materialization.
+  mutable std::vector<std::optional<std::string>> layout_hints_;
   // The subgraph this node belongs to. Only valid for deferred nodes.
   std::shared_ptr<Subgraph> subgraph_;
 

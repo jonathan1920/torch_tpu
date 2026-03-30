@@ -34,6 +34,7 @@ pytype_strict_library(
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compile:tpu_torch_compile",
         "//torch_tpu/_internal/device_utils",
+        "//torch_tpu/_internal/device_utils:annotations",
         "//torch_tpu/_internal/execution_mode",
     ],
 )

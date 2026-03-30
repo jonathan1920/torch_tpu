@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -676,6 +677,10 @@ DeviceBufferRefState DeviceBufferRef::state() const {
   return device_buffer_list_->state(index_);
 }
 
+bool DeviceBufferRef::IsMaterialized() const {
+  return state() == DeviceBufferRefState::kMaterialized;
+}
+
 [[nodiscard]] absl::Span<const int64_t> DeviceBufferRef::dimensions() const {
   return device_buffer_list_->dimensions(index_);
 }
@@ -712,6 +717,14 @@ absl::Status DeviceBufferRef::MarkDynamic(int64_t dimension,
 absl::Span<const BoundedDynamicDimension> DeviceBufferRef::dynamic_dimensions()
     const {
   return device_buffer_list()->dynamic_dimensions(index_);
+}
+
+void DeviceBufferRef::set_layout_hint(std::string layout_hint) const {
+  device_buffer_list_->set_layout_hint(index_, std::move(layout_hint));
+}
+
+std::optional<std::string> DeviceBufferRef::layout_hint() const {
+  return device_buffer_list_->layout_hint(index_);
 }
 
 }  // namespace torch_tpu

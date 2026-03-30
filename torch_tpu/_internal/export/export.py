@@ -28,6 +28,7 @@ from torch.utils import _pytree
 from torch_tpu._internal import device_utils
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal.device_utils import annotations  # pylint: disable=unused-import # Used to register the layout_hint function.
 
 
 def _extract_states_from_exported_program(exported_model):
@@ -185,6 +186,18 @@ class EagerLikeFxInterpreter(torch.fx.Interpreter):
       return super(EagerLikeFxInterpreter, self).run_node(node)
 
     self._set_func_code_to_node_source_locations(dispatch_fx_node, node)
+
+    if node.target == torch.ops.torch_tpu.layout_hint.default:
+      with self._set_current_node(node):
+        args, _ = self.fetch_args_kwargs_from_env(node)
+        input_tensor = args[0]
+        layout_id = args[1]
+
+        tpu_torch_compile.set_layout_hint(input_tensor, layout_id)
+        logging.info("Successfully set layout hint to %s", layout_id)
+
+        return input_tensor
+
     return dispatch_fx_node(node)
 
 

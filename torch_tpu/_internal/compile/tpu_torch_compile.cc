@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -41,6 +42,8 @@
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
+#include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -129,6 +132,24 @@ at::Tensor PyMakePlaceholderLike(const at::Tensor& arg_tensor) {
                                    arg_tensor.sizes().end());
   return PyMakePlaceholder(sizes, arg_tensor.scalar_type(),
                            arg_tensor.requires_grad());
+}
+
+void PySetLayoutHint(const at::Tensor& tensor,
+                     const std::optional<std::string>& layout) {
+  if (!layout) {
+    return;
+  }
+  TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref, GetBufferFromAtTensor(tensor));
+  buffer_ref.set_layout_hint(*layout);
+}
+
+py::object PyGetDeviceLayoutIfMaterialized(const at::Tensor& tensor) {
+  TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref, GetBufferFromAtTensor(tensor));
+  if (!buffer_ref.IsMaterialized()) {
+    return py::none();
+  }
+  TT_ASSIGN_OR_THROW(auto* pjrt_buffer, buffer_ref.GetOrMaterializeBuffer());
+  return py::cast(pjrt_buffer->layout()->xla_layout().ToString());
 }
 
 // Returns MLIR module corresponding to the graph terminating at result_tensors
@@ -290,6 +311,10 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   m.def("placeholder", PyMakePlaceholder, py::arg("sizes"), py::arg("dtype"),
         py::arg("requires_grad"));
   m.def("placeholder_like", PyMakePlaceholderLike, py::arg("arg_tensor"));
+  m.def("set_layout_hint", &PySetLayoutHint, py::arg("tensor"),
+        py::arg("layout") = py::none());
+  m.def("get_device_layout_if_materialized", &PyGetDeviceLayoutIfMaterialized,
+        py::arg("tensor"));
   m.def("build_mlir", PyExtractMlirModule, py::arg("result_tensors"),
         py::arg("argument_tensors"), py::arg("print_config") = "MlirPretty",
         py::arg("donate_args") = std::vector<int64_t>());  // INT_VEC_OK
