@@ -572,6 +572,21 @@ pytype_strict_library(
 )
 
 torch_tpu_py_test(
+    name = "error_testing_test",
+    srcs = ["error_testing_test.py"],
+    args = [
+        "--test_mode=cpu",
+    ],
+    tags = [
+        "oss_ready_tpu",
+    ],
+    deps = [
+        ":error_testing",
+        "//shims/absl_py/testing:absltest",
+    ],
+)
+
+torch_tpu_py_test(
     name = "errors_test_tpu",
     srcs = ["errors_test.py"],
     args = [

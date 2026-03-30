@@ -162,6 +162,71 @@ def _check_error_message(
     )
 
 
+def _append_error_test_failure_protocol(assert_fn):
+  """Appends the test failure protocol to the error raised by `assert_fn`.
+
+  Whenever `assert_fn` fails (either because of an error mismatch, or the fact
+  that no errors were raised), this function makes sure to append the errors
+  test protocol to the error message.
+
+  As an example, the following note is appended:
+
+  ```
+  AssertionError: Expected the tpu message to match:
+  ...
+  but got:
+  ...
+
+  ----------------------------------------------------------------------
+
+  NOTE: This test might fail depending on which PyTorch version is being used.
+
+  If this is a failure from an `*errors_test` target, you might be seeing this
+  because one of the scenarios below:
+      1. You are updating the version of PyTorch used by TorchTPU.
+      2. You are building against a different PyTorch version than the one used
+         by the main TorchTPU project.
+  In either case, just ignore the failure (the test is not currently enforced
+  for new changes) - the TorchTPU team will fix it later.
+
+  ----------------------------------------------------------------------
+  Ran X test in X.XXXs
+  ```
+
+  Args:
+    assert_fn: either one of `assert_raises_message` or
+      `assert_subprocess_raises_message`.
+
+  Returns:
+    A context manager that internally uses the assertion function, appending
+    the
+    note if any exception is raised.
+  """
+
+  @contextlib.contextmanager
+  @functools.wraps(assert_fn)
+  def wrapper(*args, **kwargs):
+    try:
+      with assert_fn(*args, **kwargs):
+        yield
+    except Exception as e:
+      raise type(e)(
+          f"""{e}
+
+----------------------------------------------------------------------
+
+NOTE: This test might fail depending on which PyTorch version is being used.
+
+If this is a failure from an `*errors_test` target, you might be seeing this because one of the scenarios below:
+    1. You are updating the version of PyTorch used by TorchTPU.
+    2. You are building against a different PyTorch version than the one used by the main TorchTPU project.
+In either case, just ignore the failure (the test is not currently enforced for new changes) - the TorchTPU team will fix it later."""
+      )
+
+  return wrapper
+
+
+@_append_error_test_failure_protocol
 @contextlib.contextmanager
 def assert_raises_message(
     exception_type,
@@ -211,6 +276,7 @@ def assert_raises_message(
     )
 
 
+@_append_error_test_failure_protocol
 @contextlib.contextmanager
 def assert_subprocess_raises_message(exception_type, expected_msg: str):
   """Asserts that a specific exception and message is raised by a subprocess.
