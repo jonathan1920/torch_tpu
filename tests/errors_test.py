@@ -1292,6 +1292,20 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
           grad_out, inp, mean, rstd, weight, n, c, h_w, group, output_mask
       )
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # PyTorch implementation promotes `input` and `target` dtypes, instead of
+  # raising an error.
+  # TODO: TorchTPU should have similar behavior w.r.t. PyTorch native devices.
+  def test_mse_loss_dtype_mismatch(self):
+    inp = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    target = torch.ones(2, 2, device=et.device(), dtype=torch.float64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="mse_loss(): input and target must have the same dtype",
+    ):
+      torch.nn.functional.mse_loss(inp, target)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
@@ -6869,6 +6883,159 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         message_reviewed_by="wan",
     ):
       torch.masked_select(self_tensor, mask, out=out)
+
+  def test_mse_loss_invalid_reduction(self):
+    inp = torch.ones(2, 2, device=et.device())
+    target = torch.ones(2, 2, device=et.device())
+    out = torch.empty(1, device=et.device())
+
+    # Reduction 3 is invalid (valid are 0: None, 1: Mean, 2: Sum).
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="mse_loss(): unrecognized reduction mode 3",
+        cpu=(
+            re.compile(
+                r"reduction == Reduction::Mean \|\| reduction == Reduction::Sum"
+                r" INTERNAL ASSERT FAILED at .*"
+            )
+        ),
+    ):
+      torch.ops.aten.mse_loss(inp, target, 3, out=out)
+
+  def test_nll_loss_invalid_target_dtype(self):
+    inp = torch.ones(2, 2, device=et.device())
+    target = torch.ones(2, device=et.device(), dtype=torch.int32)
+    output = torch.empty(1, device=et.device())
+    total_weight = torch.empty(1, device=et.device())
+
+    weight = None
+    reduction = 1
+    ignore_index = -100
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "nll_loss_forward(): expected the target dtype to be either int64"
+            " or uint8, got int32"
+        ),
+        cpu="expected target dtype to be Long or Byte, but got Int",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.nll_loss_forward(
+          inp,
+          target,
+          weight,
+          reduction,
+          ignore_index,
+          output=output,
+          total_weight=total_weight,
+      )
+
+  def test_adaptive_avg_pool2d_invalid_rank(self):
+    inp = torch.ones(10, 10, device=et.device())
+    out = torch.empty(5, 5, device=et.device())
+
+    # adaptive_avg_pool2d expects 3-D or 4-D input.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "adaptive_avg_pool2d(): input must be a 3-D or 4-D tensor, got 2-D"
+            " tensor"
+        ),
+        cpu="adaptive_avg_pool2d(): Expected 3D or 4D tensor, but got [10, 10]",
+    ):
+      torch.ops.aten.adaptive_avg_pool2d.out(inp, tuple(out.shape), out=out)
+
+  def test_adaptive_avg_pool3d_invalid_rank(self):
+    inp = torch.ones(10, 10, 10, device=et.device())
+    out = torch.empty(5, 5, 5, device=et.device())
+
+    # adaptive_avg_pool3d expects 4-D or 5-D input.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "adaptive_avg_pool3d(): input must be a 4-D or 5-D tensor, got 3-D"
+            " tensor"
+        ),
+        cpu=(
+            "adaptive_avg_pool3d(): Expected 4D or 5D tensor, but got [10,"
+            " 10, 10]"
+        ),
+    ):
+      torch.ops.aten.adaptive_avg_pool3d.out(inp, tuple(out.shape), out=out)
+
+  def test_max_pool2d_with_indices_invalid_rank(self):
+    inp = torch.ones(10, 10, device=et.device())
+
+    out = torch.empty(1, device=et.device())
+    indices = torch.empty(1, device=et.device(), dtype=torch.int64)
+
+    kernel_size = [3, 3]
+    stride = [2, 2]
+    padding = [1, 1]
+    dilation = [1, 1]
+    ceil_mode = False
+
+    # TODO: Error eagerly, i.e. without having to call the op builder.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "max_pool2d_with_indices(): input must be a 3-D or 4-D tensor, got"
+            " 2-D tensor - TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but"
+            " does not have a PjRtBuffer to copy from."
+        ),
+        cpu="non-empty 3D or 4D (batch mode) tensor expected for input",
+    ):
+      out, indices = torch.ops.aten.max_pool2d_with_indices.out(
+          inp,
+          kernel_size,
+          stride,
+          padding,
+          dilation,
+          ceil_mode,
+          out=out,
+          indices=indices,
+      )
+
+      out.cpu()
+      indices.cpu()
+
+  def test_pooling_create_batch_input_invalid_rank(self):
+    inp = torch.ones(10, 10, device=et.device())
+    out = torch.empty(1, device=et.device())
+
+    kernel_size = [3, 3]
+    stride = [2, 2]
+    padding = [1, 1]
+    ceil_mode = False
+    count_include_pad = True
+    divisor_override = None
+
+    # TODO: Error eagerly, i.e. without having to call the op builder.
+    with et.assert_raises_message(
+        (RuntimeError, IndexError),
+        tpu=(
+            "avg_pool2d(): input must be a 3-D or 4-D tensor, got 2-D tensor -"
+            " TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
+            " have a PjRtBuffer to copy from."
+        ),
+        cpu=(
+            "Dimension out of range (expected to be in range of [-2, 1], but"
+            " got -3)"
+        ),
+    ):
+      torch.ops.aten.avg_pool2d.out(
+          inp,
+          kernel_size,
+          stride,
+          padding,
+          ceil_mode,
+          count_include_pad,
+          divisor_override,
+          out=out,
+      )
+
+      out.cpu()
 
 
 if __name__ == "__main__":

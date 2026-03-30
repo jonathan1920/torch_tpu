@@ -5096,6 +5096,29 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(compute)
 
+  def test_nll_loss_backward(self):
+    inp = torch.randn(2, 2)
+    target = torch.ones(2, dtype=torch.uint8)
+    output = torch.empty(1)
+    total_weight = torch.empty(1)
+
+    weight = None
+    reduction = 1
+    ignore_index = -100
+
+    def compute(device):
+      return torch.ops.aten.nll_loss_forward(
+          inp.to(device),
+          target.to(device),
+          weight,
+          reduction,
+          ignore_index,
+          output=output.to(device),
+          total_weight=total_weight.to(device),
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
 
 if __name__ == "__main__":
   absltest.main()

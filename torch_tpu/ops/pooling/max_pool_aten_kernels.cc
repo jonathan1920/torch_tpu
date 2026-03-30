@@ -280,7 +280,9 @@ absl::StatusOr<std::vector<mlir::MlirOp>> BuildMaxPoolWithIndicesShlo(
       GetTensorTypeOrDie(batch_input_info.batch_input);
   auto total_num_dims = input_shape.getRank();
   const int64_t expected_dims = spatial_dim_count + 2;
-  TT_RET_CHECK(total_num_dims == expected_dims, error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=`CreateBatchInput()` function above
+                 // catches this error first.
+      total_num_dims == expected_dims, error::kInvalidArgument)
       << "expected input shape dim size == " << expected_dims << " , got "
       << total_num_dims;
 

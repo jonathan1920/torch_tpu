@@ -123,7 +123,9 @@ absl::StatusOr<mlir::MlirOp> ComputeAvgPoolDivisor(
     for (int i = 0; i < rank; ++i) {
       const int64_t pad_low = padding_vals[2 * i];
       const int64_t pad_high = padding_vals[2 * i + 1];
-      TT_RET_CHECK(pad_high >= pad_low, error::kInvalidArgument)
+      TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Expanded padding values are not
+                     // reachable by the user.
+          pad_high >= pad_low, error::kInvalidArgument)
           << "expected pad_high >= pad_low for implicit ceil_mode padding, "
              "got "
           << pad_high << " vs " << pad_low;
