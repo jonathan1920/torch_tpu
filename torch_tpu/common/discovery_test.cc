@@ -19,28 +19,59 @@
 #include <string>
 
 #include "gtest/gtest.h"
+#include "absl/log/absl_check.h"
 #include "absl/status/statusor.h"
 #include "torch_tpu/common/env_vars.h"
 
 namespace torch_tpu {
 namespace {
 
-TEST(DiscoveryTest, GetPremappedBufferSizeWithDefaultReturnsValue) {
-  unsetenv(kTpuPremappedBufferSizeEnvVar);
+using testing::ExitedWithCode;
 
-  const auto& status_or_size = GetPremappedBufferSizeFromEnvOnce();
-  ASSERT_TRUE(status_or_size.ok()) << status_or_size.status();
-  EXPECT_EQ(*status_or_size, 0);
-  EXPECT_EQ(std::string(getenv(kTpuPremappedBufferSizeEnvVar)), "0");
+// Since GetPremappedBufferSizeFromEnvOnce() memoizes the environment variable,
+// we need to use EXPECT_EXIT() to test the behavior of the function when
+// setting the environment variable to different values (EXPECT_EXIT() runs
+// the function in a subprocess, so side effects are not shared between tests).
+
+TEST(GetPremappedBufferSizeFromEnvOnceDeathTest, Returns0ByDefault) {
+  EXPECT_EXIT(
+      {
+        unsetenv(kTpuPremappedBufferSizeEnvVar);
+        const auto& status_or_size = GetPremappedBufferSizeFromEnvOnce();
+        ABSL_CHECK_OK(status_or_size.status());
+        exit(*status_or_size);
+      },
+      // Verifies that *status_or_size is 0.
+      ExitedWithCode(0), "");
 }
 
-// TODO: determine how to un-memoize environment variable reads for testing.
-TEST(DiscoveryTest, DISABLED_GetPremappedBufferSizeWithDefaultReadsEnv) {
-  setenv(kTpuPremappedBufferSizeEnvVar, "1024", 1);
+TEST(GetPremappedBufferSizeFromEnvOnceDeathTest, SetsEnvVarIfNotFound) {
+  EXPECT_EXIT(
+      {
+        unsetenv(kTpuPremappedBufferSizeEnvVar);
+        const auto& status_or_size = GetPremappedBufferSizeFromEnvOnce();
+        ABSL_CHECK_OK(status_or_size.status());
+        // This should be true.
+        const bool env_var_is_0 =
+            std::string(getenv(kTpuPremappedBufferSizeEnvVar)) == "0";
+        exit(env_var_is_0 ? 0 : 1);
+      },
+      // Verifies that env_var_is_0 is true.
+      ExitedWithCode(0), "");
+}
 
-  const auto& status_or_size = GetPremappedBufferSizeFromEnvOnce();
-  ASSERT_TRUE(status_or_size.ok()) << status_or_size.status();
-  EXPECT_EQ(*status_or_size, 1024);
+TEST(GetPremappedBufferSizeFromEnvOnceDeathTest, ReturnsEnvVarValueIfSet) {
+  EXPECT_EXIT(
+      {
+        setenv(kTpuPremappedBufferSizeEnvVar, "123", 1);
+        const auto& status_or_size = GetPremappedBufferSizeFromEnvOnce();
+        if (!status_or_size.ok()) {
+          exit(1);  // Failed to getenv.
+        }
+        exit(*status_or_size);
+      },
+      // Verifies that *status_or_size is 123.
+      ExitedWithCode(123), "");
 }
 
 }  // namespace
