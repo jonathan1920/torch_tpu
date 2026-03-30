@@ -373,6 +373,20 @@ int64_t ApplyMemoryThrottling(const int64_t throttle_limit_bytes,
   return execution_size_bytes;
 }
 
+void LogDeferredNodes(absl::Span<const SharedDeviceBufferList> nodes,
+                      const std::string_view msg_prefix) {
+  if (ABSL_VLOG_IS_ON(1)) {
+    for (int64_t i = 0; i < nodes.size(); i++) {
+      const auto& node = nodes[i];
+      ABSL_VLOG(1) << msg_prefix << i << ": " << node.get()
+                   << (node->deferred_op()
+                           ? absl::StrCat(" op: ",
+                                          node->deferred_op()->op_name())
+                           : "<Not Deferred>");
+    }
+  }
+}
+
 class MaterializationWorker {
  public:
   // This class is move-only.
@@ -563,20 +577,13 @@ class MaterializationWorker {
                  << task_name;
   }
 
-  std::vector<ExecutionTask> ProcessMaterializationTask(
+  absl::StatusOr<std::vector<ExecutionTask>> ProcessMaterializationTask(
       MaterializationTask& task, mlir::MLIRContext& mlir_context) {
     ABSL_VLOG(1)
         << "[MaterializationWorker] Processing MaterializationTask with "
         << task.nodes_to_materialize.size() << " nodes";
-    if (ABSL_VLOG_IS_ON(1)) {
-      for (const auto& node : task.nodes_to_materialize) {
-        ABSL_VLOG(1) << "  Input node: " << node.get()
-                     << (node->deferred_op()
-                             ? absl::StrCat(" op: ",
-                                            node->deferred_op()->op_name())
-                             : "");
-      }
-    }
+    LogDeferredNodes(task.nodes_to_materialize,
+                     /* msg_prefix= */ "  Input node");
 
     ABSL_VLOG(1) << "[MaterializationWorker] Getting leaf nodes";
     std::vector<SharedDeviceBufferList> all_nodes =
@@ -585,93 +592,62 @@ class MaterializationWorker {
       tsl::profiler::TraceMe t("AddLeafNodes");
       AddLeafNodes(all_nodes);
     }
+
     ABSL_VLOG(1) << "[MaterializationWorker] Found " << all_nodes.size()
                  << " leaf nodes";
-    if (ABSL_VLOG_IS_ON(1)) {
-      for (const auto& node : all_nodes) {
-        ABSL_VLOG(1) << "  Output leaf node: " << node.get()
-                     << (node->deferred_op()
-                             ? absl::StrCat(" op: ",
-                                            node->deferred_op()->op_name())
-                             : "");
-      }
-    }
+    LogDeferredNodes(all_nodes, /* msg_prefix= */ "  Output leaf node");
 
     if (all_nodes.empty()) {
-      return {};
+      return std::vector<ExecutionTask>();
     }
 
     std::vector<DeviceBufferRef> refs;
     for (const auto& node : all_nodes) {
-      for (int i = 0; i < node->size(); ++i) {
-        auto ref_or = DeviceBufferRef::Create(node, i);
-        if (ref_or.ok()) {
-          refs.push_back(std::move(*ref_or));
-        }
+      for (int64_t i = 0; i < node->size(); ++i) {
+        TT_ASSIGN_OR_RETURN(DeviceBufferRef ref,
+                            DeviceBufferRef::Create(node, i));
+        refs.push_back(std::move(ref));
       }
     }
 
     ABSL_VLOG(1) << "[MaterializationWorker] Creating traversal";
-    absl::StatusOr<Traversal> traversal_or;
+    absl::StatusOr<Traversal> traversal;
     {
       tsl::profiler::TraceMe t("Traversal::Create");
-      traversal_or = Traversal::Create(std::move(refs));
-    }
-    if (!traversal_or.ok()) {
-      ABSL_VLOG(1) << "[MaterializationWorker] Failed to create traversal: "
-                   << traversal_or.status();
-      SetOutputNodesAsError(all_nodes, traversal_or.status());
-      return {};
+      TT_ASSIGN_OR_RETURN(traversal, Traversal::Create(std::move(refs)));
     }
 
     ABSL_VLOG(3) << "[MaterializationWorker] Traversal created: "
-                 << GetGraphviz(*traversal_or);
+                 << GetGraphviz(*traversal);
 
     std::vector<Traversal> traversals;
 
-    bool should_split_graph =
-        (task.materialization_mode == MaterializationMode::kSplitGraph);
-    if (should_split_graph) {
-      absl::StatusOr<bool> prevent_graph_split =
-          PreventGraphSplit(*traversal_or);
-      if (!prevent_graph_split.ok()) {
-        ABSL_VLOG(1) << "[MaterializationWorker] PreventGraphSplit failed: "
-                     << prevent_graph_split.status();
+    // Split the graph only if both are true:
+    //   - `materialization_mode` is `kSplitGraph`
+    //   - `PreventGraphSplit()` returns false (i.e. do not prevent the graph
+    //      to be split)
+    if (task.materialization_mode == MaterializationMode::kSplitGraph) {
+      TT_ASSIGN_OR_RETURN(bool prevent_graph_split,
+                          PreventGraphSplit(*traversal));
+
+      if (!prevent_graph_split) {
+        // Split the traversal while nodes are still in the deferred state.
+        ABSL_VLOG(1) << "[MaterializationWorker] Splitting traversal";
+        {
+          tsl::profiler::TraceMe t("SplitTraversal");
+          TT_ASSIGN_OR_RETURN(traversals,
+                              SplitTraversal(std::move(*traversal)));
+        }
+
+        ABSL_VLOG(1) << "[MaterializationWorker] Split traversal into "
+                     << traversals.size() << " traversals";
       } else {
-        should_split_graph = !(*prevent_graph_split);
+        traversals.push_back(std::move(*traversal));
       }
     }
 
-    if (should_split_graph) {
-      // Split the traversal while nodes are still in the deferred state.
-      ABSL_VLOG(1) << "[MaterializationWorker] Splitting traversal";
-      absl::StatusOr<std::vector<Traversal>> traversals_or;
-      {
-        tsl::profiler::TraceMe t("SplitTraversal");
-        traversals_or = SplitTraversal(std::move(*traversal_or));
-      }
-      if (!traversals_or.ok()) {
-        ABSL_VLOG(1) << "[MaterializationWorker] Failed to split traversal: "
-                     << traversals_or.status();
-        SetOutputNodesAsError(all_nodes, traversals_or.status());
-        return {};
-      }
-      ABSL_VLOG(1) << "[MaterializationWorker] Split traversal into "
-                   << traversals_or->size() << " traversals";
-      traversals = std::move(*traversals_or);
-    } else {
-      traversals.push_back(std::move(*traversal_or));
-    }
-
-    if (auto status =
-            PropagateBoundedDynamism(absl::MakeSpan(traversals), mlir_context);
-        !status.ok()) {
-      ABSL_VLOG(1) << "[MaterializationWorker] Failed to propagate bounded "
-                      "dynamism: "
-                   << status;
-      SetOutputNodesAsError(all_nodes, status);
-      return {};
-    }
+    TT_RETURN_IF_ERROR(
+        PropagateBoundedDynamism(absl::MakeSpan(traversals), mlir_context));
 
     std::vector<ExecutionTask> execution_tasks;
     for (auto& split_traversal : traversals) {
@@ -679,18 +655,11 @@ class MaterializationWorker {
       auto compilation_mode = (GetEagerMode() == EagerMode::kOptimized)
                                   ? CompilationMode::kFastRuntime
                                   : CompilationMode::kFastCompile;
-      absl::StatusOr<CompiledKernel> compile_result_or;
+      absl::StatusOr<CompiledKernel> compiled_kernel;
       {
         tsl::profiler::TraceMe t("CompileTraversal");
-        compile_result_or = split_traversal.Compile(compilation_mode);
-      }
-      if (!compile_result_or.ok()) {
-        ABSL_VLOG(1) << "[MaterializationWorker] Failed to compile "
-                        "split_traversal: "
-                     << compile_result_or.status();
-        SetOutputNodesAsError(split_traversal.outputs(),
-                              compile_result_or.status());
-        continue;
+        TT_ASSIGN_OR_RETURN(compiled_kernel,
+                            split_traversal.Compile(compilation_mode));
       }
 
       // Mark all outputs of the split as scheduled/materialized.
@@ -704,14 +673,8 @@ class MaterializationWorker {
         ABSL_VLOG(1)
             << "[MaterializationWorker] Marking output as materialized: "
             << output.device_buffer_list();
-        if (auto status = output.device_buffer_list()->SetAsMaterialized();
-            !status.ok()) {
-          ABSL_VLOG(1) << "[MaterializationWorker] Failed to mark output as "
-                          "materialized: "
-                       << status;
-          SetOutputNodesAsError(all_nodes, status);
-          return {};
-        }
+
+        TT_RETURN_IF_ERROR(output.device_buffer_list()->SetAsMaterialized());
       }
 
       ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing traversal: cache_key="
@@ -730,7 +693,7 @@ class MaterializationWorker {
       }
 
       execution_tasks.push_back(CreateExecutionTask(
-          std::move(split_traversal), std::move(*compile_result_or)));
+          std::move(split_traversal), std::move(*compiled_kernel)));
     }
 
     return execution_tasks;
@@ -746,18 +709,21 @@ class MaterializationWorker {
         MaterializationTask job = DequeueMaterializationJob();
         ABSL_VLOG(1)
             << "[MaterializationWorker] Processing MaterializationTask";
-        std::vector<ExecutionTask> tasks =
+        absl::StatusOr<std::vector<ExecutionTask>> tasks =
             ProcessMaterializationTask(job, *mlir_context);
 
-        ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing " << tasks.size()
-                     << " ExecutionTasks";
-        {
-          TT_MUTEX_LOCK(lock, execute_mu_);
-          for (auto& task : tasks) {
-            execute_jobs_.push(std::move(task));
+        if (tasks.ok()) {
+          ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing " << tasks->size()
+                       << " ExecutionTasks";
+          {
+            TT_MUTEX_LOCK(lock, execute_mu_);
+            for (auto& task : *tasks) {
+              execute_jobs_.push(std::move(task));
+            }
           }
         }
-        job.completion_promise.Set();
+
+        job.completion_promise.Set(tasks.status());
       }
     });
 
@@ -844,7 +810,8 @@ absl::Status MaterializeImpl(
 
   auto future = GetMaterializationWorker().EnqueueNodes(std::move(nodes),
                                                         materialization_mode);
-  TT_RETURN_IF_ERROR(future.Await());
+  TT_RETURN_IF_ERROR(future.Await()).SetPrepend()
+      << "materialization failed with: ";
 
   // Check that all nodes to materialize have indeed been materialized.
   for (auto& node : nodes_to_materialize) {

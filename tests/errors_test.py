@@ -1063,9 +1063,8 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "cumprod(): the dtype argument cannot be bool -"
-            " TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
-            " have a PjRtBuffer to copy from."
+            "cumprod(): materialization failed with: the dtype argument cannot"
+            " be bool"
         ),
     ):
       # cpu() is needed because the error is triggered inside the op builder.
@@ -1084,11 +1083,10 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "custom_kernel(): unknown custom kernel; call"
+            "custom_kernel(): materialization failed with: unknown custom"
+            " kernel; call"
             f' torch_tpu._internal.pallas.tpu_torch_pallas.register_custom_kernel("{name}",'
-            f' "{kernel_key}", ...) to register the kernel before calling it -'
-            " TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
-            " have a PjRtBuffer to copy from."
+            f' "{kernel_key}", ...) to register the kernel before calling it'
         ),
     ):
       outputs = tpu_torch_pallas.call_custom_kernel(
@@ -1101,16 +1099,13 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
   # Why do we run this test only on TPU (and not on CPU)?
   # The notion of 'dynamic dimensions' does not exist in eager PyTorch.
   def test_embedding_bag_dynamic_shape_arg(self):
-    indices = torch.ones(10, 10, device=et.device())
-    weight = torch.ones(10, 10, device=et.device())
-
     with self.subTest(arg="indices"):
-      indices_ = indices.clone()
+      indices = torch.ones(10, 10, device=et.device())
+      weight = torch.ones(10, 10, device=et.device())
 
       # Mark dimension 1 of `indices` as dynamic.
-      dynamism.mark_dynamic(indices_, 1, 5, 20)
+      dynamism.mark_dynamic(indices, 1, 5, 20)
 
-      # TODO: Error eagerly, i.e. without having to call the op builder.
       with et.assert_raises_message(
           RuntimeError,
           tpu=(
@@ -1120,15 +1115,14 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
           ),
           message_reviewed_by="wan",
       ):
-        out = torch.nn.functional.embedding_bag(indices_, weight)
-        # cpu() is needed because the error is triggered inside the op builder.
-        out.cpu()
+        torch.nn.functional.embedding_bag(indices, weight)
 
     with self.subTest(arg="weight"):
-      weight_ = weight.clone()
+      indices = torch.ones(10, 10, device=et.device())
+      weight = torch.ones(10, 10, device=et.device())
 
       # Mark the dimension 1 of `weight` as dynamic.
-      dynamism.mark_dynamic(weight_, 1, 5, 20)
+      dynamism.mark_dynamic(weight, 1, 5, 20)
 
       with et.assert_raises_message(
           RuntimeError,
@@ -1139,16 +1133,15 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
           ),
           message_reviewed_by="wan",
       ):
-        out = torch.nn.functional.embedding_bag(indices, weight_)
-        # cpu() is needed because the error is triggered inside the op builder.
-        out.cpu()
+        torch.nn.functional.embedding_bag(indices, weight)
 
     with self.subTest(arg="offsets"):
-      offsets_ = torch.arange(0, 100, 10, device=et.device(), dtype=torch.int64)
-      indices_ = indices.flatten()
+      indices = torch.ones(10 * 10, device=et.device())
+      weight = torch.ones(10, 10, device=et.device())
+      offsets = torch.arange(0, 100, 10, device=et.device(), dtype=torch.int64)
 
       # Mark the dimension 1 of `offsets` as dynamic.
-      dynamism.mark_dynamic(offsets_, 0, 5, 20)
+      dynamism.mark_dynamic(offsets, 0, 5, 20)
 
       with et.assert_raises_message(
           RuntimeError,
@@ -1159,9 +1152,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
           ),
           message_reviewed_by="wan",
       ):
-        out = torch.nn.functional.embedding_bag(indices_, weight, offsets_)
-        # cpu() is needed because the error is triggered inside the op builder.
-        out.cpu()
+        torch.nn.functional.embedding_bag(indices, weight, offsets)
 
   @parameterized.named_parameters(
       {"testcase_name": "2d", "op": torch.grid_sampler_2d, "dims": 2},
@@ -6360,9 +6351,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "bincount(): Unexpected dimension of input tensor: [2, 2, 2] -"
-            " TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
-            " have a PjRtBuffer to copy from."
+            "bincount(): materialization failed with: Unexpected dimension of"
+            " input tensor: [2, 2, 2]"
         ),
         cpu="bincount only supports 1-d non-negative integral inputs.",
     ):
@@ -6380,10 +6370,9 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "gather(): expected the input to be a scalar or a 1D tensor when"
-            " the index tensor is a scalar, got 2D of shape [2, 2] -"
-            " TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
-            " have a PjRtBuffer to copy from."
+            "gather(): materialization failed with: expected the input to be a"
+            " scalar or a 1D tensor when the index tensor is a scalar, got 2D"
+            " of shape [2, 2]"
         ),
         cpu=(
             "Index tensor must have the same number of dimensions as input"
@@ -6405,10 +6394,9 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "gather(): expected the input and the index tensor to have the same"
-            " number of dimensions, got [2, 2] vs [1, 1, 1] - TpuMemcpyDtoH:"
-            " DeviceBufferRef has nonzero size, but does not have a PjRtBuffer"
-            " to copy from."
+            "gather(): materialization failed with: expected the input and the"
+            " index tensor to have the same number of dimensions, got [2, 2] vs"
+            " [1, 1, 1]"
         ),
         cpu=(
             "Index tensor must have the same number of dimensions as input"
@@ -6980,9 +6968,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "max_pool2d_with_indices(): input must be a 3-D or 4-D tensor, got"
-            " 2-D tensor - TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but"
-            " does not have a PjRtBuffer to copy from."
+            "max_pool2d_with_indices(): materialization failed with: input must"
+            " be a 3-D or 4-D tensor, got 2-D tensor"
         ),
         cpu="non-empty 3D or 4D (batch mode) tensor expected for input",
     ):
@@ -7015,9 +7002,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         (RuntimeError, IndexError),
         tpu=(
-            "avg_pool2d(): input must be a 3-D or 4-D tensor, got 2-D tensor -"
-            " TpuMemcpyDtoH: DeviceBufferRef has nonzero size, but does not"
-            " have a PjRtBuffer to copy from."
+            "avg_pool2d(): materialization failed with: input must be a 3-D or"
+            " 4-D tensor, got 2-D tensor"
         ),
         cpu=(
             "Dimension out of range (expected to be in range of [-2, 1], but"
