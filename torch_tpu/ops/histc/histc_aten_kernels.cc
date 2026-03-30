@@ -29,11 +29,13 @@
 #include "ATen/ops/empty.h"
 #include "c10/util/Exception.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -153,8 +155,9 @@ at::Tensor& AtenHistcOut(const at::Tensor& self, const int64_t bins,
                          const at::Scalar& min, const at::Scalar& max,
                          at::Tensor& out) {
   TT_KERNEL(OpName::kHistcOut, param_keys, (self, bins, min, max, out), {
-    TT_CHECK_THROW(!self.is_complex(), error::kInvalidArgument)
-        << "histc doesn't support complex dtypes";
+    TT_CHECK_THROW(!IsComplex(self), error::kInvalidArgument)
+        << "expected the first argument not to be complex, got "
+        << ToString(self.scalar_type());
 
     const int64_t numel = self.numel();
 

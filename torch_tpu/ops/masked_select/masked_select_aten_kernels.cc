@@ -26,8 +26,10 @@
 #include "ATen/ops/broadcast_tensors.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
 #include "torch_tpu/ops/gather/gather_aten_kernels.h"
@@ -108,15 +110,17 @@ absl::Status PrepareOutTensor(const at::Tensor& result, at::Tensor& out) {
   return absl::OkStatus();
 }
 
+absl::Status CheckMaskTensorIsBool(const at::Tensor& mask) {
+  TT_RET_CHECK(IsBool(mask), error::kInvalidArgument)
+      << "expected the mask to be bool, got " << ToString(mask.scalar_type());
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 at::Tensor AtenMaskedSelect(const at::Tensor& self, const at::Tensor& mask) {
   TT_KERNEL(OpName::kMaskedSelect, _, (self, mask), {
-    TT_ASSIGN_OR_THROW(const auto mask_dtype,
-                       ConvertTo<mlir::ElementType>(mask.scalar_type()));
-    TT_CHECK_THROW(mask.scalar_type() == c10::ScalarType::Bool,
-                   error::kInvalidArgument)
-        << "expected Boolean tensor for mask, got " << ToString(mask_dtype);
+    TT_THROW_IF_ERROR(CheckMaskTensorIsBool(mask));
 
     auto broadcasted = at::broadcast_tensors({mask, self});
     at::Tensor& mask_broadcasted = broadcasted[0];
@@ -138,14 +142,11 @@ at::Tensor AtenMaskedSelect(const at::Tensor& self, const at::Tensor& mask) {
 at::Tensor& AtenMaskedSelectOut(const at::Tensor& self, const at::Tensor& mask,
                                 at::Tensor& out) {
   TT_KERNEL(OpName::kMaskedSelect, _, (self, mask, out), {
-    TT_ASSIGN_OR_THROW(const auto mask_dtype,
-                       ConvertTo<mlir::ElementType>(mask.scalar_type()));
-    TT_CHECK_THROW(mask.scalar_type() == c10::ScalarType::Bool,
-                   error::kInvalidArgument)
-        << "expected Boolean tensor for mask, got " << ToString(mask_dtype);
+    TT_THROW_IF_ERROR(CheckMaskTensorIsBool(mask));
 
     at::Tensor result = AtenMaskedSelect(self, mask);
     TT_THROW_IF_ERROR(PrepareOutTensor(result, out));
+
     out = AtenCopyFrom(result, out, /*non_blocking=*/true);
     return out;
   });

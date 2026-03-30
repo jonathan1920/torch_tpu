@@ -17,6 +17,7 @@
 #include "torch_tpu/ops/normal/normal_aten_kernels.h"
 
 #include <optional>
+#include <string_view>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -26,10 +27,12 @@
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/ops/scalar_tensor.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -102,15 +105,11 @@ absl::StatusOr<NAryMlirOpBuilder<4, 2>> GetNormalFunctional() {
   };
 }
 
-absl::Status CheckNormalPreconditions(const at::Tensor& self) {
-  TT_RET_CHECK(!self.is_complex(), error::kUnimplemented)
-      << "normal: input tensor must not be complex type. XLA doesn't "
-      << "support complex types for this op.";
-  TT_ASSIGN_OR_RETURN(const auto dtype,
-                      ConvertTo<mlir::ElementType>(self.scalar_type()));
-  TT_RET_CHECK(self.is_floating_point(), error::kInvalidArgument)
-      << "normal: input tensor must be floating point type but got "
-      << ToString(dtype);
+absl::Status CheckInputIsFloatingPoint(const at::Tensor& tensor,
+                                       const std::string_view arg_name) {
+  TT_RET_CHECK(IsFloatingPoint(tensor), error::kInvalidArgument)
+      << "expected the " << arg_name << " tensor to be floating point, got "
+      << ToString(tensor.scalar_type());
   return absl::OkStatus();
 }
 
@@ -149,7 +148,8 @@ at::Tensor& AtenNormal_(at::Tensor& self, double mean, double std,
       (self, IgnoreInCacheKey(mean), IgnoreInCacheKey(std),
        IgnoreInCacheKey(generator)),
       {
-        TT_THROW_IF_ERROR(CheckNormalPreconditions(self));
+        TT_THROW_IF_ERROR(
+            CheckInputIsFloatingPoint(self, /* arg_name= */ "self"));
         at::Tensor mean_tensor = at::scalar_tensor(mean, self.options());
         at::Tensor std_tensor = at::scalar_tensor(std, self.options());
         TT_ASSIGN_OR_THROW(auto output_buf,
@@ -164,7 +164,8 @@ at::Tensor AtenNormalFloatTensor(double mean, const at::Tensor& std,
                                  std::optional<at::Generator> generator) {
   TT_KERNEL(OpName::kNormalFloatTensor, _,
             (IgnoreInCacheKey(mean), std, IgnoreInCacheKey(generator)), {
-              TT_THROW_IF_ERROR(CheckNormalPreconditions(std));
+              TT_THROW_IF_ERROR(
+                  CheckInputIsFloatingPoint(std, /* arg_name= */ "std"));
               at::Tensor mean_tensor = at::scalar_tensor(mean, std.options());
               TT_ASSIGN_OR_THROW(auto output_buf,
                                  NormalLike(std, OpName::kNormalFloatTensor,
@@ -179,7 +180,8 @@ at::Tensor& AtenNormalFloatTensorOut(double mean, const at::Tensor& std,
   TT_KERNEL(
       OpName::kNormalFloatTensorOut, _,
       (IgnoreInCacheKey(mean), std, IgnoreInCacheKey(generator), out), {
-        TT_THROW_IF_ERROR(CheckNormalPreconditions(out));
+        TT_THROW_IF_ERROR(
+            CheckInputIsFloatingPoint(out, /* arg_name= */ "out"));
         at::Tensor mean_tensor = at::scalar_tensor(mean, out.options());
         TT_ASSIGN_OR_THROW(auto output_buf,
                            NormalLike(out, OpName::kNormalFloatTensorOut,
@@ -193,7 +195,8 @@ at::Tensor AtenNormalTensorFloat(const at::Tensor& mean, double std,
                                  std::optional<at::Generator> generator) {
   TT_KERNEL(OpName::kNormalTensorFloat, _,
             (mean, IgnoreInCacheKey(std), IgnoreInCacheKey(generator)), {
-              TT_THROW_IF_ERROR(CheckNormalPreconditions(mean));
+              TT_THROW_IF_ERROR(
+                  CheckInputIsFloatingPoint(mean, /* arg_name= */ "mean"));
               at::Tensor std_tensor = at::scalar_tensor(std, mean.options());
               TT_ASSIGN_OR_THROW(auto output_buf,
                                  NormalLike(mean, OpName::kNormalTensorFloat,
@@ -208,7 +211,8 @@ at::Tensor& AtenNormalTensorFloatOut(const at::Tensor& mean, double std,
   TT_KERNEL(
       OpName::kNormalTensorFloatOut, _,
       (mean, IgnoreInCacheKey(std), IgnoreInCacheKey(generator), out), {
-        TT_THROW_IF_ERROR(CheckNormalPreconditions(out));
+        TT_THROW_IF_ERROR(
+            CheckInputIsFloatingPoint(out, /* arg_name= */ "out"));
         at::Tensor std_tensor = at::scalar_tensor(std, out.options());
         TT_ASSIGN_OR_THROW(auto output_buf,
                            NormalLike(out, OpName::kNormalTensorFloatOut, mean,
@@ -222,8 +226,10 @@ at::Tensor AtenNormalTensorTensor(const at::Tensor& mean, const at::Tensor& std,
                                   std::optional<at::Generator> generator) {
   TT_KERNEL(OpName::kNormalTensorTensor, _,
             (mean, std, IgnoreInCacheKey(generator)), {
-              TT_THROW_IF_ERROR(CheckNormalPreconditions(mean));
-              TT_THROW_IF_ERROR(CheckNormalPreconditions(std));
+              TT_THROW_IF_ERROR(
+                  CheckInputIsFloatingPoint(mean, /* arg_name= */ "mean"));
+              TT_THROW_IF_ERROR(
+                  CheckInputIsFloatingPoint(std, /* arg_name= */ "std"));
               TT_ASSIGN_OR_THROW(auto output_buf,
                                  NormalLike(mean, OpName::kNormalTensorTensor,
                                             mean, std, generator));
@@ -238,7 +244,8 @@ at::Tensor& AtenNormalTensorTensorOut(const at::Tensor& mean,
   TT_KERNEL(
       OpName::kNormalTensorTensorOut, _,
       (mean, std, IgnoreInCacheKey(generator), out), {
-        TT_THROW_IF_ERROR(CheckNormalPreconditions(out));
+        TT_THROW_IF_ERROR(
+            CheckInputIsFloatingPoint(out, /* arg_name= */ "out"));
         TT_ASSIGN_OR_THROW(auto output_buf,
                            NormalLike(out, OpName::kNormalTensorTensorOut, mean,
                                       std, generator));

@@ -170,10 +170,10 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
                            .out_dims_list = output_dims,
                            .op_param_cache_keys = std::move(param_keys)})));
   } else {
-    TT_RET_CHECK(false, error::kInternal)
-        << "Not implemented yet (weight: " << !!weight << ", bias: " << !!bias
-        << ", running_mean: " << !!running_mean
-        << ", running_variance: " << !!running_variance << ")";
+    return TT_ERROR(error::kInternal)
+           << "Not implemented yet (weight: " << !!weight
+           << ", bias: " << !!bias << ", running_mean: " << !!running_mean
+           << ", running_variance: " << !!running_variance << ")";
   }
   return std::move(*results);
 }

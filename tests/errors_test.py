@@ -1426,7 +1426,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         cpu="masked_select: expected BoolTensor for mask",
-        tpu="masked_select(): expected Boolean tensor for mask, got float32",
+        tpu="masked_select(): expected the mask to be bool, got float32",
     ):
       t.masked_select(mask)
 
@@ -6789,6 +6789,86 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         ),
     ):
       torch.masked_fill(inp, mask, value)
+
+  def test_normal_int32(self):
+    std = torch.ones(5, device=et.device(), dtype=torch.int32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="normal(): expected the std tensor to be floating point, got int32",
+        cpu="\"normal_kernel_cpu\" not implemented for 'Int'",
+        message_reviewed_by="wan",
+    ):
+      torch.normal(mean=0.0, std=std)
+
+  def test_histc_complex(self):
+    t = torch.tensor([1, 2], device=et.device(), dtype=torch.complex64)
+    bins = 10
+    min_val = 0
+    max_val = 1
+    out = torch.empty(bins, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "histc(): expected the first argument not to be complex, got"
+            " complex64"
+        ),
+        cpu=(
+            "torch.histogram: input tensor and hist tensor should have the same"
+            " dtype, but got input c10::complex<float> and hist float"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.histc(t, bins=bins, min=min_val, max=max_val, out=out)
+
+  def test_linalg_solve_triangular_dim_mismatch(self):
+    a = torch.ones(3, 3, device=et.device())
+    b = torch.ones(3, device=et.device())
+    out = torch.empty(3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "linalg_solve_triangular(): expected the two inputs to have the"
+            " same number of dimensions, got 2 and 1"
+        ),
+        cpu=(
+            "linalg.solve_triangular: The input tensor B must have at least 2"
+            " dimensions."
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.linalg.solve_triangular(a, b, upper=True, out=out)
+
+  def test_linalg_solve_triangular_int32(self):
+    a = torch.ones(3, 3, device=et.device(), dtype=torch.int32)
+    b = torch.ones(3, 3, device=et.device(), dtype=torch.int32)
+    out = torch.empty(3, 3, device=et.device(), dtype=torch.int32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "linalg_solve_triangular(): triangular solve not supported for"
+            " dtype int32"
+        ),
+        cpu="\"triangular_solve_cpu\" not implemented for 'Int'",
+        message_reviewed_by="wan",
+    ):
+      torch.linalg.solve_triangular(a, b, upper=True, out=out)
+
+  def test_masked_select_mask_int32(self):
+    self_tensor = torch.ones(5, device=et.device())
+    mask = torch.ones(5, device=et.device(), dtype=torch.int32)
+    out = torch.empty(0, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="masked_select(): expected the mask to be bool, got int32",
+        cpu="masked_select: expected BoolTensor for mask",
+        message_reviewed_by="wan",
+    ):
+      torch.masked_select(self_tensor, mask, out=out)
 
 
 if __name__ == "__main__":
