@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -25,7 +26,10 @@
 #include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_check.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -36,25 +40,44 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
+#include "mlir/IR/Visitors.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/Passes.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
+#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/FuncBuilder.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/transforms/Passes.h"
+#include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/translate/stablehlo.h"
 #include "xla/mlir/utils/error_util.h"
-#include "xla/mlir/utils/type_util.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/service/call_inliner.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
+#include "xla/service/spmd/shardy/shardy_xla_pass.h"
+#include "xla/service/spmd/spmd_partitioner.h"
 
 namespace torch_tpu {
 
@@ -176,12 +199,173 @@ absl::Status SpecializeCustomMlirKernel(
   return absl::OkStatus();
 }
 
+void RemoveCopyOps(mlir::ModuleOp module) {
+  module.walk([&](mlir::mhlo::CopyOp copy_op) {
+    copy_op.replaceAllUsesWith(copy_op.getOperand());
+  });
+}
+
+void RemoveSpmdParametersShardings(mlir::ModuleOp module) {
+  module->removeAttr("mhlo.spmd_parameters_shardings");
+}
+
+absl::Status AddTpuPartitioningPasses(xla::HloModule* module,
+                                      const xla::AliasInfo* alias_info,
+                                      xla::HloPassPipeline* pipeline) {
+  if (!module->config().use_spmd_partitioning()) {
+    return absl::OkStatus();
+  }
+  TT_RET_CHECK(pipeline != nullptr, error::kInternal)
+      << "Expected a parent pipeline to be passed as input";
+
+  pipeline->AddPass<xla::HloDCE>();
+  // TODO(elliotenglish): Move the internals of this function to the StableHLO
+  // prologue passes. This will require determining how to map the HLO parts to
+  // StableHLO.
+  pipeline->AddPass<xla::sdy::ShardyXLA>(
+      /*runSdyShardingPropagation=*/true,
+      mlir::sdy::PropagationOptions{
+          .enableInsertExplicitCollectives = true
+          /*shardy_options.enable_explicit_collectives()*/,
+          .removeAllGatherReduceScatterForCMV1 = false,
+          .avoidReshardsOnNamedComputations = false
+          /*shardy_options.dedup_functions_fully()*/,
+      },
+      false /*shardy_options.dedup_functions_fully()*/,
+      false /*shardy_options.enable_native_non_flat_support()*/);
+
+  xla::spmd::SPMDCollectiveOpsCreator collective_creator =
+      xla::spmd::GetDefaultCollectiveOpsCreator(
+          module->config().num_partitions(), module->config().replica_count());
+
+  pipeline->AddPass<xla::spmd::SpmdPartitioner>(
+      module->config().num_partitions(), module->config().replica_count(),
+      xla::spmd::SpmdPartitionerOptions{
+          .conv_halo_exchange_always_on_lhs =
+              false /*comp_env->xla_jf_spmd_conv_halo_exchange_always_on_lhs()*/
+          ,
+          .report_instruction_count =
+              false /*comp_env->xla_jf_spmd_report_instruction_count()*/,
+          .threshold_for_windowed_einsum_mib =
+              false /*threshold_for_windowed_einsum_mib*/,
+          .unroll_windowed_einsum =
+              false /*comp_env->xla_tpu_spmd_unroll_windowed_einsum()*/,
+          .bidirectional_windowed_einsum =
+              false /*(!comp_env->xla_tpu_spmd_unroll_windowed_einsum() &&
+                comp_env->xla_tpu_spmd_bidirectional_windowed_einsum())*/
+          ,
+          .allow_module_signature_change =
+              true /*allow_module_signature_change*/,
+          // We use ScheduleAwareAllGatherCSE to remove redundant all-gather.
+          .cache_all_gather = false,
+          .choose_faster_windowed_einsum_over_mem =
+              false /*comp_env->xla_tpu_choose_faster_windowed_einsum_over_mem()*/
+          ,
+          .skip_checking_windowed_einsum_users =
+              false /*comp_env->xla_tpu_skip_checking_windowed_einsum_users()*/,
+          .enable_windowed_einsum_for_all_gather =
+              false /*enable_cmv1_all_gather*/,
+          .enable_windowed_einsum_for_reduce_scatter =
+              false /*enable_cmv1_reduce_scatter*/,
+          .need_resolve_conflicts = false /*need_resolve_conflicts*/},
+      collective_creator);
+
+  pipeline->AddPass<xla::FlattenCallGraph>();
+  pipeline->AddPass<xla::CallInliner>();
+  pipeline->AddPass<xla::HloDCE>();
+  return absl::OkStatus();
+}
+
+absl::Status PartitionGlobalToLocal(
+    mlir::MLIRContext* context, mlir::ModuleOp module,
+    const xla::PjRtTopologyDescription* client_topology) {
+  //////////////////////////////////////////////////////////////////////////////
+  // Perform Shardy StableHLO/MLIR passes.
+
+  mlir::PassManager shardy_pm(context);
+  xla::sdy::addSdyRoundTripExportPipeline(shardy_pm);
+  TT_RET_CHECK(mlir::succeeded(shardy_pm.run(module)), error::kInternal)
+      << "Running Shardy MLIR passes failed.";
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Convert StableHLO to HLO.
+  TT_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloModule> hlo_module,
+                      xla::ConvertStablehloToHlo(module));
+
+  hlo_module->mutable_config().set_use_spmd_partitioning(true);
+  hlo_module->mutable_config().set_use_shardy_partitioner(true);
+  TT_ASSIGN_OR_RETURN(int chip_count, client_topology->ChipCount());
+  hlo_module->mutable_config().set_num_partitions(chip_count);
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Partition HLO module.
+  xla::HloPassPipeline pass("tpu-partition-assignment-pipeline");
+  xla::AliasInfo alias_info_;
+  TT_RETURN_IF_ERROR(
+      AddTpuPartitioningPasses(hlo_module.get(), &alias_info_, &pass));
+
+  TT_RETURN_IF_ERROR(pass.Run(hlo_module.get()).status());
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Convert HLO back to StableHLO.
+  TT_ASSIGN_OR_RETURN(auto new_module_owned,
+                      xla::ConvertHloToStablehlo(*context, hlo_module.get()));
+  mlir::ModuleOp new_module = new_module_owned.release();
+
+  // TODO(elliotenglish): After partitioning, we may have multiple functions at
+  // the top level. We need to inline them back into the main function since
+  // this is expected when we move the module into the main TorchTPU graph.
+  // HLO's DCE and Inliner passes are unable to do this.
+  mlir::PassManager inline_pm(context);
+  inline_pm.addPass(mlir::createInlinerPass());
+  TT_RET_CHECK(mlir::succeeded(inline_pm.run(new_module)), error::kInternal)
+      << "Running inline passes failed.";
+
+  // Replace the contents of the original module with the new module.
+  module.getBody()->clear();
+  module.getBody()->getOperations().splice(
+      module.getBody()->end(), new_module.getBody()->getOperations());
+  module->setAttrs(new_module->getAttrDictionary());
+
+  new_module.erase();
+
+  RemoveCopyOps(module);
+  RemoveSpmdParametersShardings(module);
+
+  return absl::OkStatus();
+}
+
+// Returns true if the module contains any sdy.manual_computation operations.
+bool ContainsSdyManualComputation(mlir::ModuleOp module) {
+  bool has_manual_computation = false;
+  module.walk([&](mlir::Operation* op) {
+    if (mlir::isa<mlir::sdy::ManualComputationOp>(op)) {
+      has_manual_computation = true;
+      return mlir::WalkResult::interrupt();  // Stop walking
+    }
+    return mlir::WalkResult::advance();
+  });
+  return has_manual_computation;
+}
+
 absl::StatusOr<mlir::func::FuncOp> InjectCustomKernel(
     mlir::MlirBuilder& builder, mlir::ModuleOp custom_kernel,
     mlir::ArrayRef<mlir::Type> input_types,
     std::optional<std::string_view> kernel_id_str = std::nullopt) {
-  TT_RETURN_IF_ERROR(SpecializeCustomMlirKernel(custom_kernel, input_types));
-  TT_RETURN_IF_ERROR(ValidateAndEraseShapeAssertions(custom_kernel));
+  // TODO(elliotenglish): Currently symbolic shape export is unsupported when we
+  // have a distributed kernel. The specialization code also doesn't understand
+  // these constructs. Fix this when we implement distributed framework kernels.
+  if (!ContainsSdyManualComputation(custom_kernel)) {
+    // Specialize the kernel to local shapes.
+    TT_RETURN_IF_ERROR(SpecializeCustomMlirKernel(custom_kernel, input_types));
+    TT_RETURN_IF_ERROR(ValidateAndEraseShapeAssertions(custom_kernel));
+  }
+
+  // Partition global view kernels to local view.
+  TT_ASSIGN_OR_RETURN(const xla::PjRtTopologyDescription* client_topology,
+                      torch_tpu::GetPjRtClient()->GetTopologyDescription());
+  TT_RETURN_IF_ERROR(PartitionGlobalToLocal(custom_kernel.getContext(),
+                                            custom_kernel, client_topology));
 
   // Move the main function into the builder's current module.
   mlir::ModuleOp module_op = GetModuleOp(builder);
@@ -393,16 +577,15 @@ absl::StatusOr<DynamicMlirOpResults> CallCustomKernel(
 absl::StatusOr<DynamicMlirOpResults> BuildSpecializedMlirKernel(
     mlir::MlirBuilder& builder, mlir::ModuleOp custom_kernel,
     absl::Span<mlir::MlirOp> inputs) {
+  // Apply specialization and partitioning passes to kernel and then add it to
+  // builder.
   // Get the argument types from inputs
   mlir::SmallVector<mlir::Type> input_types = llvm::to_vector(
       llvm::map_range(inputs, [](mlir::MlirOp op) { return op.getType(); }));
-  TT_RETURN_IF_ERROR(SpecializeCustomMlirKernel(custom_kernel, input_types));
-  TT_RETURN_IF_ERROR(ValidateAndEraseShapeAssertions(custom_kernel));
 
-  // Move the main function into the builder's current module.
-  mlir::ModuleOp module_op = GetModuleOp(builder);
   TT_ASSIGN_OR_RETURN(mlir::func::FuncOp main_func,
-                      MoveCustomMlirKernel(custom_kernel, module_op));
+                      InjectCustomKernel(builder, custom_kernel, input_types));
+
   return mlir::func::Call(builder, main_func, inputs);
 }
 

@@ -41,4 +41,25 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "pallas_communication_test",
+    srcs = ["pallas_communication_test.py"],
+    tags = [
+        "requires-tpu-v5lite:8",
+    ],
+    deps = [
+        "//shims/absl_py/logging",
+        "//shims/absl_py/testing:absltest",
+        "//shims/jax:pallas",
+        "//shims/jax:pallas_tpu",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/distributed:tpu_distributed",
+        "//torch_tpu/_internal/distributed:tpu_env",
+        "//torch_tpu/_internal/pallas",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "//torch_tpu/_internal/utils",
+        "@pypi//jax",
+    ],
+)
+
 torch_tpu_package_end()

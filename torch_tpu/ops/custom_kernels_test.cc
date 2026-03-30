@@ -29,6 +29,7 @@
 #include "mlir/IR/Types.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/pjrt/pjrt_init.h"
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/FuncBuilder.h"
@@ -60,7 +61,16 @@ module @kernel_add {
 }
 )";
 
-TEST(CustomKernelRegistry, RegisterAndCallMlirKernel) {
+class CustomKernelRegistryTest : public testing::Test {
+ protected:
+  static void SetUpTestSuite() {
+    // This must be done before CustomKernelRegistry::GetInstance() is called,
+    // as the latter depends on the PjRt client.
+    ASSERT_TRUE(InitializePjRt({.device_type = "tpu", .world_size = 1}).ok());
+  }
+};
+
+TEST_F(CustomKernelRegistryTest, RegisterAndCallMlirKernel) {
   // Register the custom kernel
   RegisterCustomKernel("kernel_add", "", kUnrefinedRank1AddMlirKernel);
 
@@ -100,7 +110,7 @@ TEST(CustomKernelRegistry, RegisterAndCallMlirKernel) {
               HasSubstr("stablehlo.add %arg0, %arg1 : tensor<10xf32>"));
 }
 
-TEST(CustomKernelRegistry, RegistrationIsIdempotent) {
+TEST_F(CustomKernelRegistryTest, RegistrationIsIdempotent) {
   // Register the custom kernel
   RegisterCustomKernel("kernel_add", "", kUnrefinedRank1AddMlirKernel);
 
@@ -111,7 +121,7 @@ TEST(CustomKernelRegistry, RegistrationIsIdempotent) {
   ASSERT_FALSE(inserted_again);
 }
 
-TEST(CustomKernelRegistry, RegisterWithDifferentKwargs) {
+TEST_F(CustomKernelRegistryTest, RegisterWithDifferentKwargs) {
   // Register the custom kernel once
   RegisterCustomKernel("kernel_add", "", kUnrefinedRank1AddMlirKernel);
 
@@ -122,7 +132,7 @@ TEST(CustomKernelRegistry, RegisterWithDifferentKwargs) {
   ASSERT_TRUE(inserted_again);
 }
 
-TEST(CustomKernelRegistry, CannotLoadNonexistentKernel) {
+TEST_F(CustomKernelRegistryTest, CannotLoadNonexistentKernel) {
   // Initialize an MLIR builder
   mlir::DialectRegistry registry;
   mlir::stablehlo::registerAllDialects(registry);
@@ -148,7 +158,7 @@ TEST(CustomKernelRegistry, CannotLoadNonexistentKernel) {
               StatusIs(absl::StatusCode::kNotFound));  // STATUS_CODE_OK
 }
 
-TEST(CustomKernelRegistry, RegisterAndCallMlirKernel_InvalidShape) {
+TEST_F(CustomKernelRegistryTest, RegisterAndCallMlirKernel_InvalidShape) {
   // Register the custom kernel
   RegisterCustomKernel("kernel_add", "", kUnrefinedRank1AddMlirKernel);
 
@@ -181,7 +191,8 @@ TEST(CustomKernelRegistry, RegisterAndCallMlirKernel_InvalidShape) {
           "Input shapes do not match the polymorphic shapes specification"));
 }
 
-TEST(CustomKernelRegistry, RegisterAndCallMlirKernel_InvalidArgumentCount) {
+TEST_F(CustomKernelRegistryTest,
+       RegisterAndCallMlirKernel_InvalidArgumentCount) {
   // Register the custom kernel
   RegisterCustomKernel("kernel_add", "", kUnrefinedRank1AddMlirKernel);
 

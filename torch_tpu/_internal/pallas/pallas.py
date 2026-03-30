@@ -90,7 +90,34 @@ TORCH_TO_JAX_DTYPE_MAP = frozendict.frozendict({
 JAX_TO_TORCH_DTYPE_MAP = {v: k for k, v in TORCH_TO_JAX_DTYPE_MAP.items()}
 
 
-def jax_placeholder(tensor: torch.Tensor) -> jax.ShapeDtypeStruct:
+def _convert_shape(shape, mesh, partition_spec, op):
+  """Converts a shape based on a mesh and partition specification."""
+  if mesh is not None and partition_spec is not None:
+    ans = tuple(
+        [
+            op(s, mesh.devices.shape[mesh.axis_names.index(name)])
+            if name is not None
+            else s
+            for s, name in zip(shape, partition_spec)
+        ]
+        + list(shape[len(partition_spec) :])
+    )
+  else:
+    ans = shape
+  return ans
+
+
+def get_global_shape(local_shape, mesh, partition_spec):
+  return _convert_shape(local_shape, mesh, partition_spec, lambda a, b: a * b)
+
+
+def get_local_shape(global_shape, mesh, partition_spec):
+  return _convert_shape(global_shape, mesh, partition_spec, lambda a, b: a // b)
+
+
+def jax_placeholder(
+    tensor: torch.Tensor, mesh=None, partition_spec=None
+) -> jax.ShapeDtypeStruct:
   """Converts a torch tensor to a jax placeholder for tracing."""
   if not isinstance(tensor, torch.Tensor):
     # Preserve POD constants / None types
@@ -102,18 +129,36 @@ def jax_placeholder(tensor: torch.Tensor) -> jax.ShapeDtypeStruct:
     raise NotImplementedError(
         f"Unsupported dtype for pallas kernels: {tensor.dtype}"
     )
-  return jax.ShapeDtypeStruct(tensor.shape, jax_dtype)
+  if mesh is not None:
+    return jax.ShapeDtypeStruct(
+        get_global_shape(tensor.shape, mesh, partition_spec),
+        jax_dtype,
+        sharding=jax.sharding.NamedSharding(mesh, partition_spec),
+    )
+  else:
+    return jax.ShapeDtypeStruct(tensor.shape, jax_dtype)
 
 
-def jax_placeholders(tensors: Sequence[torch.Tensor] | torch.Tensor):
+def jax_placeholders(
+    tensors: Sequence[torch.Tensor] | torch.Tensor,
+    mesh=None,
+    partition_specs=None,
+):
   """Converts a sequence of torch tensors to a sequence of jax placeholders."""
   if isinstance(tensors, torch.Tensor):
-    return jax_placeholder(tensors)
-  return [jax_placeholder(tensor) for tensor in tensors]
+    return jax_placeholder(tensors, mesh, partition_specs)
+  if mesh is not None:
+    return [
+        jax_placeholder(tensor, mesh, partition_spec)
+        for tensor, partition_spec in zip(tensors, partition_specs)
+    ]
+  else:
+    return [jax_placeholder(tensor) for tensor in tensors]
 
 
 def torch_placeholder(
     tensor: jax.core.ShapedArray | None,
+    mesh=None,
 ) -> torch.Tensor | None:
   """Converts a jax output to a torch tensor for return type.
 
@@ -132,7 +177,10 @@ def torch_placeholder(
     raise NotImplementedError(
         f"Unsupported dtype for pallas kernels: {tensor.dtype}"
     )
-  return torch.empty(tensor.shape, dtype=torch_dtype)
+  return torch.empty(
+      get_local_shape(tensor.shape, mesh, tensor.sharding.spec),
+      dtype=torch_dtype,
+  )
 
 
 def _get_kernel_invocation_key(
@@ -190,6 +238,8 @@ class JaxCallable:
       name: str,
       jit_fn: Any,
       trace_key: str,
+      mesh: jax.sharding.Mesh | None = None,
+      input_partition_specs: tuple[tuple[str, ...], ...] | None = None,
       static_argnums: tuple[int, ...] = (),
       input_output_aliases: Mapping[int, int] | None = None,
   ):
@@ -210,6 +260,9 @@ class JaxCallable:
       jit_fn: The JAX function or wrapped pallas function output from `jax.jit`.
       trace_key: A string key of args / kwargs used to trace the exported
         function.
+      mesh: If using a distributed kernel, provide the device mesh.
+      input_partition_specs: If using a distributed kernel, provide the input
+        partition specs for each input tensor.
       static_argnums: Tuple of argument positions that are compile-time
         constants.
       input_output_aliases: A mapping of input indices to output indices that
@@ -218,6 +271,8 @@ class JaxCallable:
     self.name = name
     self.trace_key = trace_key
     self.output_shapes = {}  # cache output shapes per kernel specialization
+    self.mesh = mesh
+    self.input_partition_specs = input_partition_specs
     self.static_argnums = static_argnums
     self.exported = jax.export.export(jit_fn, platforms=["tpu"])
     self.input_output_aliases = (
@@ -258,7 +313,9 @@ class JaxCallable:
     output_shapes, out_tree = self.output_shapes.get(kernel_key, (None, None))
     kernel_exists = tpu_torch_pallas.lookup_custom_kernel(self.name, kernel_key)
     if not output_shapes or not kernel_exists:
-      jax_args = jax_placeholders(args)
+      jax_args = jax_placeholders(
+          args, mesh=self.mesh, partition_specs=self.input_partition_specs
+      )
       lowered = self.exported(*jax_args, **kwargs)
       tpu_torch_pallas.register_custom_kernel(
           self.name,
@@ -267,7 +324,9 @@ class JaxCallable:
       )
       # Use out_tree to format the outputs shapes - i.e. pack in tuple, nested
       # tuple, etc.
-      output_shapes = [torch_placeholder(aval) for aval in lowered.out_avals]
+      output_shapes = [
+          torch_placeholder(aval, mesh=self.mesh) for aval in lowered.out_avals
+      ]
       out_tree = lowered.out_tree
       self.output_shapes[kernel_key] = (output_shapes, out_tree)
 
@@ -369,6 +428,8 @@ def custom_jax_kernel(
     name: str | None = None,
     static_argnums: tuple[int, ...] = (),
     input_output_aliases: Mapping[int, int] | None = None,
+    mesh: jax.sharding.Mesh | None = None,
+    input_partition_specs: tuple[tuple[str, ...], ...] | None = None,
     **jit_kwargs,
 ) -> Callable[..., JaxCallable] | Callable[[Callable[..., Any]], JaxCallable]:
   """A decorator that imports a JAX kernel into for use with torch_tpu.
@@ -405,6 +466,9 @@ def custom_jax_kernel(
     input_output_aliases: A mapping of input indices to output indices that
       alias each input. Optional, default is no aliasing. This must match the
       settings of `donate_argnums` and/or `donate_argnames` in jit_kwargs.
+    mesh: If using a distributed kernel, provide the device mesh.
+    input_partition_specs: If using a distributed kernel, provide the input
+      partition specs for each input tensor.
     **jit_kwargs: Additional keyword arguments to configure the inner `jax.jit`,
       like `donate_argnums`, etc.
 
@@ -425,11 +489,17 @@ def custom_jax_kernel(
         {**jit_kwargs, "static_argnums": static_argnums},
     )
 
-    jit_fn = jax.jit(jax_fn, static_argnums=static_argnums, **jit_kwargs)
+    jit_fn = jax.jit(
+        jax_fn,
+        static_argnums=static_argnums,
+        **jit_kwargs,
+    )
     return JaxCallable(
         name=name,
         jit_fn=jit_fn,
         trace_key=trace_key,
+        mesh=mesh,
+        input_partition_specs=input_partition_specs,
         static_argnums=static_argnums,
         input_output_aliases=input_output_aliases,
     )
