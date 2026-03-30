@@ -16,7 +16,10 @@
 
 #include "torch_tpu/ops/replication_pad/replication_pad_aten_kernels.h"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -24,18 +27,22 @@
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
+#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -259,6 +266,41 @@ absl::Status ReplicationPadHelper(
   return AssignBufferToAtTensor(std::move(out_buf), out);
 }
 
+absl::Status Check3DPaddingIsValid(absl::Span<const int64_t> grad_output,
+                                   absl::Span<const int64_t> padding) {
+  constexpr size_t kNumSpatialDimensions = 3;
+  constexpr std::array<std::string_view, kNumSpatialDimensions>
+      spatial_dimension_names = {"depth", "height", "width"};
+
+  // Dimension where the spatial dimensions begin.
+  const size_t dimension_offset = grad_output.size() - kNumSpatialDimensions;
+
+  for (size_t i = 0; i < kNumSpatialDimensions; i++) {
+    // Padding dimensions correspond to the reversed `grad_output` dimensions.
+    //
+    //       Instead of being: depth-height-width
+    // Padding dimensions are: width-height-depth
+    const size_t padding_i = kNumSpatialDimensions - i - 1;
+
+    const size_t beg = 2 * padding_i;
+    const size_t end = 2 * padding_i + 1;
+    const size_t grad_output_dimension = dimension_offset + i;
+
+    const size_t padding_values_sum = padding[beg] + padding[end];
+    const size_t grad_output_size = grad_output[grad_output_dimension];
+
+    TT_RET_CHECK(padding_values_sum < grad_output_size, error::kInvalidArgument)
+        << "expected padding at indices " << beg << " and " << end
+        << " to sum to a value smaller than the grad_output "
+        << spatial_dimension_names[i] << " (at dimension "
+        << grad_output_dimension << ") of " << grad_output_size << ", got "
+        << padding_values_sum << " (" << padding[beg] << " + " << padding[end]
+        << ")";
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 at::Tensor& AtenReplicationPad1dOut(const at::Tensor& self,
@@ -370,10 +412,13 @@ at::Tensor AtenReplicationPad2dBackward(const at::Tensor& grad_output,
               gidims[gidims.size() - 1] -= (padding[0] + padding[1]);
 
               TT_CHECK_THROW(gidims == self.sizes(), error::kInvalidArgument)
-                  << "calculated grad_input shape "
-                     "does not match the input shape expected "
-                  << ToString(self.sizes()) << " but got " << ToString(gidims)
-                  << "";
+                  << "expected the input shape to match the output (input "
+                     "grad) shape "
+                  << ToString(gidims)
+                  << " computed by removing the padding from grad_output, "
+                     "got "
+                  << ToString(self.sizes());
+
               at::Tensor grad_input =
                   MakeEmptyTensor(gidims, self.scalar_type(), self.device());
               AtenReplicationPad2dBackwardGradInput(grad_output, self, padding,
@@ -381,6 +426,7 @@ at::Tensor AtenReplicationPad2dBackward(const at::Tensor& grad_output,
               return grad_input;
             });
 }
+
 at::Tensor AtenReplicationPad3dBackward(const at::Tensor& grad_output,
                                         const at::Tensor& self,
                                         at::IntArrayRef padding) {
@@ -399,19 +445,17 @@ at::Tensor AtenReplicationPad3dBackward(const at::Tensor& grad_output,
             padding.size() == 6, error::kInvalidArgument)
             << "expected padding to have " << 6 << " elements"
             << ", got " << padding.size() << " elements";
-        TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are guaranteed
-                         // to be within range.
-            gidims[gidims.size() - 3] - (padding[4] + padding[5]) > 0 &&
-                gidims[gidims.size() - 2] - (padding[2] + padding[3]) > 0 &&
-                gidims[gidims.size() - 1] - (padding[0] + padding[1]) > 0,
-            error::kInvalidArgument)
-            << "padding values must add up to a valid input dimension.";
+        TT_THROW_IF_ERROR(Check3DPaddingIsValid(grad_output.sizes(), padding));
         gidims[gidims.size() - 3] -= (padding[4] + padding[5]);
         gidims[gidims.size() - 2] -= (padding[2] + padding[3]);
         gidims[gidims.size() - 1] -= (padding[0] + padding[1]);
         TT_CHECK_THROW(gidims == self.sizes(), error::kInvalidArgument)
-            << "calculated grad_input shape "
-               "does not match the input shape";
+            << "expected the input shape to match the output (input "
+               "grad) shape "
+            << ToString(gidims)
+            << " computed by removing the padding from the grad_output, "
+               "got "
+            << ToString(self.sizes());
         at::Tensor grad_input =
             MakeEmptyTensor(gidims, self.scalar_type(), self.device());
         AtenReplicationPad3dBackwardGradInput(grad_output, self, padding,

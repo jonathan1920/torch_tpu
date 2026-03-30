@@ -18,17 +18,17 @@
 
 #include <cstdint>
 #include <functional>
-#include <string>
 #include <utility>
 
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "ATen/core/TensorBody.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -54,16 +54,6 @@ absl::Status CheckNumericDtype(at::ScalarType scalar_type) {
   return absl::OkStatus();
 }
 
-// Error message for when decimals is specified on an integral dtype.
-// TODO: return StatusOr<string> instead of throwing.
-std::string GetRoundIntegralDecimalsError(at::ScalarType scalar_type,
-                                          int64_t decimals) {
-  TT_ASSIGN_OR_THROW(const auto dtype,
-                     ConvertTo<mlir::ElementType>(scalar_type));
-  return absl::StrCat("dtype ", ToString(dtype),
-                      " is not supported when decimals is specified");
-}
-
 }  // namespace
 
 at::Tensor& AtenRoundOut(const at::Tensor& self, at::Tensor& out) {
@@ -80,10 +70,10 @@ at::Tensor& AtenRoundDecimalsOut(const at::Tensor& self, int64_t decimals,
                                  at::Tensor& out) {
   TT_KERNEL(OpName::kRoundDecimalsOut, param_keys, (self, decimals, out), {
     TT_THROW_IF_ERROR(CheckNumericDtype(self.scalar_type()));
-    TT_CHECK_THROW(
-        !c10::isIntegralType(self.scalar_type(), /*include_bool=*/false),
-        error::kInvalidArgument)
-        << GetRoundIntegralDecimalsError(self.scalar_type(), decimals);
+    TT_CHECK_THROW(!IsInteger(self), error::kInvalidArgument)
+        << "expected the input dtype not to be integer when the decimals "
+           "argument is specified ("
+        << decimals << "), got " << ToString(self.scalar_type());
     TT_THROW_IF_ERROR(UnaryOpOut(
         self, out, OpName::kRoundDecimalsOut, GetRoundFunctional(decimals),
         {.op_param_cache_keys = std::move(param_keys)}));

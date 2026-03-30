@@ -53,7 +53,7 @@ const at::Tensor& AtenResize_(
         TT_CHECK_THROW(!memory_format_opt.has_value() ||
                            *memory_format_opt == at::MemoryFormat::Contiguous,
                        error::kUnimplemented)
-            << "only contiguous memory format is currently supported.";
+            << "non-contiguous memory formats are not yet supported";
 
         // Validate new size, and determine if this is shrinking or growing.
         TT_ASSIGN_OR_THROW(DeviceBufferRef base_buffer_ref,

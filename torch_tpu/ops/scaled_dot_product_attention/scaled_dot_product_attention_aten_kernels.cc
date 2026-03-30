@@ -344,9 +344,10 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
               "arguments.");
         } else {
           TT_CHECK_THROW(ctx.userEnabledMathSDP(), error::kFailedPrecondition)
-              << "cannot use scaled_dot_product_attention with no SDPBackends "
-                 "enabled. Please enable at least one of FLASH, EFFICIENT, "
-                 "OVERRIDEABLE, or MATH for torch_tpu";
+              << "no viable SDPBackend found: all supported backends are "
+                 "disabled, including the fallback MATH backend; enable at "
+                 "least one of FLASH, EFFICIENT, OVERRIDEABLE, or MATH for "
+                 "TorchTPU";
           return static_cast<int64_t>(at::SDPBackend::math);
         }
 

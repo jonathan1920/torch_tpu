@@ -1297,6 +1297,19 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.nn.functional.mse_loss(inp, target)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # Limitation is TorchTPU specific.
+  # TODO: add support to other memory formats for `resize_()` op.
+  def test_resize_unsupported_memory_format(self):
+    t = torch.ones(1, 2, 3, 4, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="resize_(): non-contiguous memory formats are not yet supported",
+        message_reviewed_by="wan",
+    ):
+      t.resize_((1, 2, 3, 4), memory_format=torch.channels_last)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
@@ -2074,16 +2087,24 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t = torch.ones(1, device=et.device(), dtype=torch.int64)
     with et.assert_raises_message(
         RuntimeError,
+        tpu=(
+            "round(): expected the input dtype not to be integer when the"
+            " decimals argument is specified (-1), got int64"
+        ),
         cpu="\"round_cpu\" not implemented for 'Long'",
-        tpu="round(): dtype int64 is not supported when decimals is specified",
+        message_reviewed_by="wan",
     ):
       t.round(decimals=-1)
 
     t = torch.ones(1, device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(
         RuntimeError,
+        tpu=(
+            "round(): expected the input dtype not to be integer when the"
+            " decimals argument is specified (2), got int32"
+        ),
         cpu="\"round_cpu\" not implemented for 'Int'",
-        tpu="round(): dtype int32 is not supported when decimals is specified",
+        message_reviewed_by="wan",
     ):
       t.round_(decimals=2)
 
@@ -2091,8 +2112,12 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     out_t = torch.zeros(1, device=et.device(), dtype=torch.int16)
     with et.assert_raises_message(
         RuntimeError,
+        tpu=(
+            "round(): expected the input dtype not to be integer when the"
+            " decimals argument is specified (0), got int16"
+        ),
         cpu="\"round_vml_cpu\" not implemented for 'Short'",
-        tpu="round(): dtype int16 is not supported when decimals is specified",
+        message_reviewed_by="wan",
     ):
       torch.round(t, decimals=0, out=out_t)
 
@@ -2102,6 +2127,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         RuntimeError,
         cpu="\"round_vml_cpu\" not implemented for 'Bool'",
         tpu="round(): dtype bool is not supported",
+        message_reviewed_by="wan",
     ):
       torch.round(t)
 
@@ -7022,6 +7048,143 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       )
 
       out.cpu()
+
+  def test_reflection_pad2d_backward_shape_mismatch(self):
+    inp = torch.randn(1, 1, 4, 4, device=et.device())
+    grad_output = torch.randn(1, 1, 7, 7, device=et.device())
+    padding = [1, 1, 1, 1]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "reflection_pad2d_backward(): expected the input shape to match the"
+            " output (input grad) shape [1, 1, 5, 5] computed by removing the"
+            " padding from the grad_output, got [1, 1, 4, 4]"
+        ),
+        cpu="gradOutput width unexpected. Expected: 6, Got: 7",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.reflection_pad2d_backward(grad_output, inp, padding)
+
+  def test_replication_pad2d_backward_shape_mismatch(self):
+    inp = torch.randn(1, 1, 4, 4, device=et.device())
+    grad_output = torch.randn(1, 1, 7, 7, device=et.device())
+    padding = [1, 1, 1, 1]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "replication_pad2d_backward(): expected the input shape to match"
+            " the output (input grad) shape [1, 1, 5, 5] computed by removing"
+            " the padding from grad_output, got [1, 1, 4, 4]"
+        ),
+        cpu="gradOutput width unexpected. Expected: 6, Got: 7",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.replication_pad2d_backward(grad_output, inp, padding)
+
+  def test_replication_pad3d_backward_shape_mismatch(self):
+    inp = torch.randn(1, 1, 4, 4, 4, device=et.device())
+    grad_output = torch.randn(1, 1, 7, 7, 7, device=et.device())
+    padding = [1, 1, 1, 1, 1, 1]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "replication_pad3d_backward(): expected the input shape to match"
+            " the output (input grad) shape [1, 1, 5, 5, 5] computed by"
+            " removing the padding from the grad_output, got [1, 1, 4, 4, 4]"
+        ),
+        cpu="gradOutput width unexpected. Expected: 6, Got: 7",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.replication_pad3d_backward(grad_output, inp, padding)
+
+  def test_replication_pad3d_backward_invalid_padding_width(self):
+    inp = torch.randn(1, 1, 4, 4, 4, device=et.device())
+    grad_output = torch.randn(1, 1, 6, 6, 6, device=et.device())
+    padding = [4, 4, 1, 1, 1, 1]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "replication_pad3d_backward(): expected padding at indices 0 and 1"
+            " to sum to a value smaller than the grad_output width (at"
+            " dimension 4) of 6, got 8 (4 + 4)"
+        ),
+        cpu="gradOutput width unexpected. Expected: 12, Got: 6",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.replication_pad3d_backward(grad_output, inp, padding)
+
+  def test_replication_pad3d_backward_invalid_padding_height(self):
+    inp = torch.randn(1, 1, 4, 4, 4, device=et.device())
+    grad_output = torch.randn(1, 1, 6, 6, 6, device=et.device())
+    padding = [1, 1, 4, 4, 1, 1]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "replication_pad3d_backward(): expected padding at indices 2 and 3"
+            " to sum to a value smaller than the grad_output height (at"
+            " dimension 3) of 6, got 8 (4 + 4)"
+        ),
+        cpu="gradOutput height unexpected. Expected: 12, Got: 6",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.replication_pad3d_backward(grad_output, inp, padding)
+
+  def test_replication_pad3d_backward_invalid_padding_depth(self):
+    inp = torch.randn(1, 1, 4, 4, 4, device=et.device())
+    grad_output = torch.randn(1, 1, 6, 6, 6, device=et.device())
+    padding = [1, 1, 1, 1, 4, 4]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "replication_pad3d_backward(): expected padding at indices 4 and 5"
+            " to sum to a value smaller than the grad_output depth (at"
+            " dimension 2) of 6, got 8 (4 + 4)"
+        ),
+        cpu="gradOutput depth unexpected. Expected: 12, Got: 6",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.replication_pad3d_backward(grad_output, inp, padding)
+
+  def test_scaled_dot_product_attention_no_backends(self):
+    query = torch.randn(1, 1, 512, 128, device=et.device())
+    key = torch.randn(1, 1, 512, 128, device=et.device())
+    value = torch.randn(1, 1, 512, 128, device=et.device())
+
+    with torch.nn.attention.sdpa_kernel(backends=[]):
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu=(
+              "fused_sdp_choice(): no viable SDPBackend found: all supported"
+              " backends are disabled, including the fallback MATH backend;"
+              " enable at least one of FLASH, EFFICIENT, OVERRIDEABLE, or MATH"
+              " for TorchTPU"
+          ),
+          cpu=(
+              "No viable backend for scaled_dot_product_attention was found."
+              " This is likely due to turning off both the math kernel and the"
+              " fused kernels."
+          ),
+          message_reviewed_by="wan",
+      ):
+        torch.nn.functional.scaled_dot_product_attention(query, key, value)
+
+  def test_tril_indices_unsupported_dtype(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "tril_indices(): expected the dtype to be either int32 or int64,"
+            " got float32"
+        ),
+        cpu="\"tril_indices\" not implemented for 'Float'",
+        message_reviewed_by="wan",
+    ):
+      torch.tril_indices(3, 3, dtype=torch.float32, device=et.device())
 
 
 if __name__ == "__main__":

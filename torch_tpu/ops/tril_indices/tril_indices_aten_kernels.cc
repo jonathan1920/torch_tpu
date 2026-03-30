@@ -29,6 +29,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -63,11 +64,12 @@ at::Tensor AtenTrilIndices(int64_t row, int64_t col, int64_t offset,
       (row, col, offset, dtype_opt, layout_opt, device_opt, pin_memory_opt), {
         at::ScalarType dtype = dtype_opt.value_or(at::ScalarType::Long);
 
-        // Torch cpu only supports int and long.
+        // PyTorch native devices (CPU and CUDA) only support int32 and int64.
         TT_CHECK_THROW(
             dtype == at::ScalarType::Long || dtype == at::ScalarType::Int,
             error::kInvalidArgument)
-            << "\"tril_indices\" is not implemented for '" << dtype << "'";
+            << "expected the dtype to be either int32 or int64, got "
+            << ToString(dtype);
 
         at::native::check_args(row, col, layout_opt);
 

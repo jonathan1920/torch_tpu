@@ -436,9 +436,12 @@ at::Tensor AtenReflectionPad2dBackward(const at::Tensor& grad_output,
               gidims[gidims.size() - 1] -= (padding[0] + padding[1]);
 
               TT_CHECK_THROW(gidims == self.sizes(), error::kInvalidArgument)
-                  << "expected the shape of the input gradients calculated "
-                     "using padding to match the input "
-                  << ToString(self.sizes()) << ", got " << ToString(gidims);
+                  << "expected the input shape to match the output (input "
+                     "grad) shape "
+                  << ToString(gidims)
+                  << " computed by removing the padding from the grad_output, "
+                     "got "
+                  << ToString(self.sizes());
               at::Tensor grad_input =
                   MakeEmptyTensor(gidims, self.scalar_type(), self.device());
               AtenReflectionPad2dBackwardGradInput(grad_output, self, padding,
