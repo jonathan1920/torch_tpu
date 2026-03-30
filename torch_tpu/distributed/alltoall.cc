@@ -50,13 +50,13 @@ absl::StatusOr<mlir::MlirOp> BuildDistributedAllToAllBaseShlo(
 
   auto replica_groups_attr = BuildReplicaGroupsAttr(builder, device_groups);
 
-  auto all_to_all_results =
-      stablehlo::AllToAll(builder, input,
-                          /*split_dimension=*/split_dimension,
-                          /*concat_dimension=*/concat_dimension,
-                          /*split_count=*/split_count,
-                          /*replica_groups=*/replica_groups_attr,
-                          /*channel_handle=*/nullptr);
+  auto all_to_all_results = stablehlo::AllToAll(
+      builder, input,
+      /*split_dimension=*/split_dimension,
+      /*concat_dimension=*/concat_dimension,
+      /*split_count=*/split_count,
+      /*replica_groups=*/replica_groups_attr,
+      /*channel_id=*/BuildChannelHandleAttr(builder, /*handle=*/1, /*type=*/0));
 
   ABSL_CHECK_EQ(all_to_all_results.size(), 1);  // CRASH_OK
   mlir::MlirOp result = all_to_all_results[0];

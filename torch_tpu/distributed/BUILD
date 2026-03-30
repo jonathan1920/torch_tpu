@@ -97,6 +97,7 @@ torch_tpu_cc_library(
         "@llvm-project//mlir:IR",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

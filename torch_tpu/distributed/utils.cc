@@ -29,6 +29,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/distributed/types.h"
 #include "torch_tpu/ops/op_builder_utils.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
@@ -52,6 +53,12 @@ mlir::DenseIntElementsAttr BuildReplicaGroupsAttr(
 
   return llvm::cast<mlir::DenseIntElementsAttr>(
       mlir::makeConstant(llvm::ArrayRef<int64_t>(flattened_ids), tensor_type));
+}
+
+mlir::stablehlo::ChannelHandleAttr BuildChannelHandleAttr(
+    mlir::MlirBuilder& builder, int handle, int type) {
+  return mlir::stablehlo::ChannelHandleAttr::get(&builder.getContext(), handle,
+                                                 type);
 }
 
 absl::Status ValidateReductionOp(c10d::ReduceOp reduce_op,

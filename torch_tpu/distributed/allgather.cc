@@ -67,8 +67,8 @@ absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildDistributedAllGatherShlo(
       /*operands=*/input,
       /*all_gather_dim=*/0,
       /*replica_groups=*/BuildReplicaGroupsAttr(builder, device_groups),
-      /*channel_handle=*/{},
-      /*use_global_device_ids=*/false);
+      /*channel_id=*/BuildChannelHandleAttr(builder, /*handle=*/1, /*type=*/0),
+      /*use_global_device_ids=*/true);
   ABSL_CHECK_EQ(gather_outputs.size(), 1);  // CRASH_OK
   auto gather_output = gather_outputs[0];
 

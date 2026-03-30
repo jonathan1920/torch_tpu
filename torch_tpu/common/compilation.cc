@@ -224,13 +224,21 @@ static absl::Status SetDefaultDeviceAssignment(
   // which aligns with typical single-host parallelism in native PyTorch.
   // Every device runs identical HLO and collectives are included explicitly.
   // We will revisit this as we explore multiple hosts, shardy, etc.
-  options.set_num_replicas(num_devices);
-  options.set_num_partitions(1);
-  xla::DeviceAssignment da(num_devices, 1);
+
+  // Use of multiple partitions aligns with JAX collective behavior and is
+  // required by Pallas/Mosaic.
+  options.set_num_replicas(1);
+  options.set_num_partitions(num_devices);
+  xla::DeviceAssignment da(1, num_devices);
   for (int idx = 0; idx < num_devices; ++idx) {
-    da(idx, 0) = idx;
+    da(0, idx) = idx;
   }
   options.set_device_assignment(da);
+
+  // Enable SPMD partitioning in order to compile Pallas / Mosaic
+  // kernels with RDMAs. Since TorchTPU generates StableHLO without sharding
+  // annotations, the partitioning will be a no-op.
+  options.set_use_spmd_partitioning(true);
   return absl::OkStatus();
 }
 

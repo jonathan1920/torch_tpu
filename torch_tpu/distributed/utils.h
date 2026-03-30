@@ -22,6 +22,7 @@
 #include "torch/csrc/distributed/c10d/Types.hpp"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/distributed/types.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {
@@ -30,6 +31,17 @@ namespace torch_tpu {
 // used for `replica_groups` attribute in all the StableHLO collectives.
 mlir::DenseIntElementsAttr BuildReplicaGroupsAttr(
     mlir::MlirBuilder& builder, const DeviceGroupList& device_groups);
+
+// Given a channel handle and type, construct a MLIR constant used for the
+// `channel` attribute in StableHLO collectives.
+//
+// Channels are generally used to allow multiple concurrent communication
+// operations between same device pairs (see
+// https://openxla.org/stablehlo/spec#send). They are also used to control the
+// interpretation of device groups (see
+// https://openxla.org/stablehlo/spec#all_gather).
+mlir::stablehlo::ChannelHandleAttr BuildChannelHandleAttr(
+    mlir::MlirBuilder& builder, int handle, int type);
 
 absl::Status ValidateReductionOp(c10d::ReduceOp reduce_op,
                                  c10::ScalarType scalar_type);
