@@ -55,8 +55,9 @@ torch_tpu_py_test(
     srcs = ["multi_tpu_test.py"],
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test in asan mode.
-        "nomsan",  # TODO: fix the test in msan mode.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -80,8 +81,9 @@ torch_tpu_py_test(
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test in asan mode.
-        "notsan",  # TODO: fix timeout in tsan mode due to test_broadcast_objects.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the timeout in test_broadcast_objects.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -111,7 +113,7 @@ torch_tpu_py_test(
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test in asan mode.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/495533335): fix out-of-order in msan mode.
         "notsan",  # TODO(b/495533335): fix out-of-order in tsan mode.
         "requires-net:external",  # Needs remote file access.
@@ -139,7 +141,9 @@ torch_tpu_py_test(
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test in asan mode.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -165,8 +169,9 @@ torch_tpu_py_test(
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test in asan mode.
-        "nomsan",  # TODO: fix the test in msan mode.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -187,6 +192,9 @@ torch_tpu_py_test(
     shard_count = 4,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-accel-hbm",
         "requires-tpu-v5lite:8",
@@ -213,7 +221,9 @@ torch_tpu_py_test(
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test OOM in asan mode.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -239,8 +249,9 @@ torch_tpu_py_test(
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test OOM in asan mode.
-        "nomsan",  # TODO: fix the test in msan mode.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -264,8 +275,9 @@ torch_tpu_py_test(
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test in asan mode.
-        "notsan",  # TODO: fix the test in tsan mode.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -291,8 +303,9 @@ torch_tpu_py_test(
     main = "all_gather_errors_test.py",
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test OOM in asan mode.
-        "nomsan",  # TODO: fix the test OOM in msan mode.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -313,7 +326,9 @@ torch_tpu_py_test(
     srcs = ["scatter_test.py"],
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test in asan mode.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -338,8 +353,9 @@ torch_tpu_py_test(
     shard_count = 3,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test in asan mode.
-        "nomsan",  # TODO: fix the test in msan mode.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -365,7 +381,9 @@ torch_tpu_py_test(
     shard_count = 3,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test in asan mode.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -386,7 +404,9 @@ torch_tpu_py_test(
     shard_count = 4,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test in asan mode.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -404,13 +424,13 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "dtensor_test",
-    timeout = "long",  # Needed for tsan.
     srcs = ["dtensor_test.py"],
     shard_count = 10,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test in asan mode.
-        "nomsan",  # TODO: fix the test in msan mode.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
@@ -435,7 +455,9 @@ torch_tpu_py_test(
     main = "fairscale_tp_test.py",
     tags = [
         "exclusive",  # copybara:comment(oss-only)
-        "noasan",  # TODO: fix the test in asan mode.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
