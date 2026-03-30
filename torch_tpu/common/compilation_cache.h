@@ -63,13 +63,9 @@ struct CacheEntryStats {
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const CacheEntryStats& stats) {
-    sink.Append("{\n");
-    absl::Format(&sink, "\tcompilation_duration=%v,\n",
-                 stats.compilation_duration);
-    absl::Format(&sink, "\tlast_read=%v,\n", stats.last_read);
-    absl::Format(&sink, "\tread_count=%d,\n", stats.read_count);
+    absl::Format(&sink, "compilation_duration=%v, last_read=%v, read_count=%d",
+                 stats.compilation_duration, stats.last_read, stats.read_count);
     // TODO(@lukeboyer): Handle tier2 if present.
-    sink.Append("}");
   }
 };
 
@@ -127,8 +123,8 @@ struct PerfStats {
 
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const EntryStats& stats) {
-      absl::Format(&sink, "%v", stats.key);
-      absl::Format(&sink, "%v", static_cast<const CacheEntryStats&>(stats));
+      absl::Format(&sink, "%v{%v}", stats.key,
+                   static_cast<const CacheEntryStats&>(stats));
     }
   };
 
@@ -152,7 +148,7 @@ struct PerfStats {
     }
     absl::Duration total_comp_time = absl::ZeroDuration();
     for (const auto& entry : stats.per_entry_stats) {
-      absl::Format(&sink, "%v\n", entry);
+      // TODO(@lukeboyer): Aggregate cache read stats as well.
       total_comp_time += entry.compilation_duration;
     }
     absl::Format(&sink, "num_compilation_events=%d\n",

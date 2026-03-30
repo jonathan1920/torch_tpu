@@ -226,7 +226,12 @@ static void TrySetExecutablePromise(
 }
 
 void CompilationCache::EvictAll() {
-  ABSL_VLOG(1) << "Evicted compilation state: " << GetCacheStats();
+  {
+    auto stats = GetCacheStats();
+    ABSL_VLOG(1) << "Evicted compilation state: " << stats;
+    std::for_each(stats.per_entry_stats.begin(), stats.per_entry_stats.end(),
+                  [](const auto& entry) { ABSL_VLOG(1) << entry; });
+  }
   // Get all existing keys from the cache - these are the entries we need to
   // evict. We cannot promise to evict new entries created during the eviction
   // process, as that work may never end.

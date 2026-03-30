@@ -106,16 +106,6 @@ TEST(PerfStatsPrinterTest, WithPerEntry) {
   // NOLINTBEGIN
   static constexpr std::string_view kExpected = R"(num_cache_reqs=10
 num_cache_hits=5 {50.0%}
-CompilationCacheKey{shapeless_key=0, dimensions_key=5825f5f3bd962979}{
-	compilation_duration=100ms,
-	last_read=1969-12-31T16:00:01-08:00,
-	read_count=10,
-}
-CompilationCacheKey{shapeless_key=0, dimensions_key=5825f5f3bd962979}{
-	compilation_duration=50ms,
-	last_read=1969-12-31T16:00:02-08:00,
-	read_count=5,
-}
 num_compilation_events=2
 sum_compilation_time=150ms
 )";
@@ -129,8 +119,8 @@ TEST(CacheEntryStatsPrinterTest, Works) {
   stats.last_read = absl::FromUnixMillis(1000);
   stats.read_count = 10;
   EXPECT_EQ(absl::StrCat(stats),
-            "{\n\tcompilation_duration=100ms,\n\tlast_read=1969-12-31T16:00:01-"
-            "08:00,\n\tread_count=10,\n}");
+            "compilation_duration=100ms, last_read=1969-12-31T16:00:01-"
+            "08:00, read_count=10");
 }
 
 TEST(CompilationCacheTest, DumpOnMissMode) {
