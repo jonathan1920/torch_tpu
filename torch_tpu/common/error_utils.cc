@@ -50,17 +50,13 @@
 namespace torch_tpu {
 
 bool GetEnableDebugChecks() {
-  static const bool enable = [] {
-    const auto& env_var =
-        GetEnvOnce<kTorchTpuInternalEnableDebugChecksEnvVar>();
-    // If the env var is set, respect the user's choice.
-    if (env_var.has_value()) {
-      return *env_var == "1";
-    }
-    // Otherwise, enable debug checks if we are in debug eager mode.
-    return GetEagerMode() == EagerMode::kDeferNeverAndLaunchBlocking;
-  }();
-  return enable;
+  const auto& env_var = GetEnvOnce<kTorchTpuInternalEnableDebugChecksEnvVar>();
+  // If the env var is set, respect the user's choice.
+  if (env_var.has_value()) {
+    return *env_var == "1";
+  }
+  // Otherwise, enable debug checks if we are in debug eager mode.
+  return GetEagerMode() == EagerMode::kDeferNeverAndLaunchBlocking;
 }
 
 absl::StatusOr<int64_t> SafeMultiply(int64_t x, int64_t y) {

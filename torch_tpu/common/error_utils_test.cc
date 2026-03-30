@@ -808,16 +808,12 @@ TEST(ErrorDeathTest, GetEnableDebugChecksEnabledByDefaultInDebugMode) {
       testing::ExitedWithCode(1), "");
 }
 
-TEST(ErrorDeathTest, GetEnableDebugChecksDisabledByDefaultInNormalMode) {
-  EXPECT_EXIT(
-      {
-        SetEagerMode(EagerMode::kDefault);
-        exit(GetEnableDebugChecks());
-      },
-      testing::ExitedWithCode(0), "");
+TEST(GetEnableDebugChecks, IsDisabledInDefaultEagerMode) {
+  SetEagerMode(EagerMode::kDefault);
+  EXPECT_FALSE(GetEnableDebugChecks());
 }
 
-TEST(ErrorDeathTest, GetEnableDebugChecksEnabledByEnvVar) {
+TEST(GetEnableDebugChecksDeathTest, CanBeEnabledByEnvVar) {
   EXPECT_EXIT(
       {
         SetEnv(kTorchTpuInternalEnableDebugChecksEnvVar, "1");
@@ -826,13 +822,40 @@ TEST(ErrorDeathTest, GetEnableDebugChecksEnabledByEnvVar) {
       testing::ExitedWithCode(1), "");
 }
 
-TEST(ErrorDeathTest, GetEnableDebugChecksDisabledByEnvVar) {
+TEST(GetEnableDebugChecksDeathTest, CanBeDisabledByEnvVar) {
   EXPECT_EXIT(
       {
         SetEnv(kTorchTpuInternalEnableDebugChecksEnvVar, "0");
         exit(GetEnableDebugChecks());
       },
       testing::ExitedWithCode(0), "");
+}
+
+TEST(GetEnableDebugChecksDeathTest, CanBeEnabledByEnvVarInDebugMode) {
+  EXPECT_EXIT(
+      {
+        SetEagerMode(EagerMode::kDeferNeverAndLaunchBlocking);
+        SetEnv(kTorchTpuInternalEnableDebugChecksEnvVar, "1");
+        exit(GetEnableDebugChecks());
+      },
+      testing::ExitedWithCode(1), "");
+}
+
+TEST(GetEnableDebugChecksDeathTest, CanBeDisabledByEnvVarInDebugMode) {
+  EXPECT_EXIT(
+      {
+        SetEagerMode(EagerMode::kDeferNeverAndLaunchBlocking);
+        SetEnv(kTorchTpuInternalEnableDebugChecksEnvVar, "0");
+        exit(GetEnableDebugChecks());
+      },
+      testing::ExitedWithCode(0), "");
+}
+
+TEST(GetEnableDebugChecks, DependsOnCurrentEagerMode) {
+  SetEagerMode(EagerMode::kDefault);
+  EXPECT_FALSE(GetEnableDebugChecks());
+  SetEagerMode(EagerMode::kDeferNeverAndLaunchBlocking);
+  EXPECT_TRUE(GetEnableDebugChecks());
 }
 
 // Tests for TT_THROW_IF_ERROR.
