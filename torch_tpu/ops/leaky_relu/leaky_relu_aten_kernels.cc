@@ -76,12 +76,12 @@ at::Tensor& AtenLeakyReluOut(const at::Tensor& self,
       OpName::kLeakyReluOut, _, (self, IgnoreInCacheKey(negative_slope), out), {
         TT_ASSIGN_OR_THROW(mlir::ElementType dtype,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
-        TT_CHECK_THROW(!IsBoolean(dtype), error::kUnimplemented)
+        TT_CHECK_THROW(!IsBoolean(dtype), error::kInvalidArgument)
             << "boolean dtypes are not supported, got " << self.scalar_type();
         TT_CHECK_THROW(!IsInteger(dtype, /*includeBool=*/false),
-                       error::kUnimplemented)
+                       error::kInvalidArgument)
             << "integer dtypes are not supported, got " << self.scalar_type();
-        TT_CHECK_THROW(!IsComplex(dtype), error::kUnimplemented)
+        TT_CHECK_THROW(!IsComplex(dtype), error::kInvalidArgument)
             << "complex dtypes are not supported, got " << self.scalar_type();
         TT_ASSIGN_OR_THROW(auto result_buf,
                            LeakyReluShlo(self, negative_slope, out));

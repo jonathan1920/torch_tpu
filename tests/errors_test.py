@@ -1263,6 +1263,35 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.fft.rfftn(inp)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # PyTorch `native_group_norm_backward` implementation doesn't check the
+  # dimensions of `grad` and `inp`.
+  # TODO: TorchTPU should have similar behavior w.r.t. PyTorch native devices.
+  def test_native_group_norm_backward_mismatch_grad_shape(self):
+    n = 5
+    c = 5
+    h_w = 5
+    group = 5
+
+    grad_out = torch.ones(n * c * h_w, device=et.device())
+    inp = torch.ones(n, c, h_w, device=et.device())
+    mean = torch.ones(n, group, device=et.device())
+    rstd = torch.ones(n, group, device=et.device())
+    weight = torch.ones(c, device=et.device())
+
+    output_mask = [True, True, True]
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "native_group_norm_backward(): grad_out and input must have the"
+            " same dimensions, got grad_out size [125], input size [5, 5, 5]"
+        ),
+    ):
+      torch.ops.aten.native_group_norm_backward(
+          grad_out, inp, mean, rstd, weight, n, c, h_w, group, output_mask
+      )
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
@@ -6245,6 +6274,33 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.nn.functional.hardswish(t)
 
+  def test_hardswish_out_unsupported_dtype(self):
+    t = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
+    out = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "hardswish(): expected the input dtype to be floating point, got"
+            " int32"
+        ),
+        cpu="\"hardswish_cpu\" not implemented for 'Int'",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.hardswish.out(t, out=out)
+
+  def test_hardswish_inplace_unsupported_dtype(self):
+    t = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "hardswish_(): expected the input dtype to be floating point, got"
+            " int32"
+        ),
+        cpu="\"hardswish_cpu\" not implemented for 'Int'",
+        message_reviewed_by="wan",
+    ):
+      torch.nn.functional.hardswish(t, inplace=True)
+
   def test_hardswish_backward_unsupported_dtype(self):
     grad = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
     self_val = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
@@ -6639,6 +6695,100 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         message_reviewed_by="wan",
     ):
       torch.nn.functional.softplus(t_complex64)
+
+  def test_hardtanh_unsupported_complex_dtype(self):
+    t = torch.ones(2, device=et.device(), dtype=torch.complex64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="hardtanh(): hardtanh: complex types are not supported.",
+        cpu="clamp is not supported for complex types",
+    ):
+      torch.nn.functional.hardtanh(t)
+
+  def test_hardtanh_unsupported_bool_dtype(self):
+    t = torch.tensor([True, False], device=et.device(), dtype=torch.bool)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="hardtanh(): hardtanh: bool type is not supported.",
+        cpu="Bool inputs not supported for hardtanh",
+    ):
+      torch.nn.functional.hardtanh(t)
+
+  def test_hardtanh_unsupported_unsigned_negative_limits(self):
+    t = torch.ones(2, device=et.device(), dtype=torch.uint8)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "hardtanh(): hardtanh: cannot do hardtanh on an unsigned type with"
+            " negative limits."
+        ),
+        cpu="cannot do hardtanh on an unsigned type with negative limits",
+    ):
+      torch.nn.functional.hardtanh(t, min_val=-1)
+
+  def test_leaky_relu_unsupported_bool_dtype(self):
+    inp = torch.tensor([True, False], device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="leaky_relu(): boolean dtypes are not supported, got Bool",
+        cpu="\"leaky_relu_cpu\" not implemented for 'Bool'",
+    ):
+      torch.nn.functional.leaky_relu(inp)
+
+  def test_leaky_relu_unsupported_int_dtype(self):
+    inp = torch.tensor([1, 2], device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="leaky_relu(): integer dtypes are not supported, got Long",
+        cpu="\"leaky_relu_cpu\" not implemented for 'Long'",
+    ):
+      torch.nn.functional.leaky_relu(inp)
+
+  def test_leaky_relu_unsupported_complex_dtype(self):
+    inp = torch.tensor(
+        [1 + 1j, 2 + 2j], device=et.device(), dtype=torch.complex64
+    )
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="leaky_relu(): complex dtypes are not supported, got ComplexFloat",
+        cpu="\"leaky_relu_cpu\" not implemented for 'ComplexFloat'",
+    ):
+      torch.nn.functional.leaky_relu(inp)
+
+  def test_masked_fill_multi_element_value(self):
+    inp = torch.ones(2, 2, device=et.device())
+    mask = torch.ones(2, 2, dtype=torch.bool, device=et.device())
+    value = torch.ones(2, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="masked_fill_(): only supports 1-element value tensors",
+        cpu=(
+            "masked_fill_ only supports a 0-dimensional value tensor, but got"
+            " tensor with 1 dimension(s)."
+        ),
+    ):
+      torch.masked_fill(inp, mask, value)
+
+  def test_masked_fill_type_mismatch(self):
+    inp = torch.ones(2, 2, dtype=torch.float32, device=et.device())
+    mask = torch.ones(2, 2, dtype=torch.bool, device=et.device())
+    value = torch.ones(1, dtype=torch.int32, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="masked_fill_(): value and input must have the same element type",
+        cpu=(
+            "masked_fill_ only supports a 0-dimensional value tensor, but got"
+            " tensor with 1 dimension(s)."
+        ),
+    ):
+      torch.masked_fill(inp, mask, value)
 
 
 if __name__ == "__main__":

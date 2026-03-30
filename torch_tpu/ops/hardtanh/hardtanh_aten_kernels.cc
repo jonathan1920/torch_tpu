@@ -48,14 +48,14 @@ absl::StatusOr<MlirUnaryOpBuilder> AtenHardtanhHelper(
     const at::Scalar& max_val) {
   // Our StableHLO implementation supports these types but PT CPU kernels do
   // not, and we want to have a consistent behavior across the backends.
-  TT_RET_CHECK(!c10::isComplexType(self.scalar_type()), error::kUnimplemented)
+  TT_RET_CHECK(!c10::isComplexType(self.scalar_type()), error::kInvalidArgument)
       << "hardtanh: complex types are not supported.";
   TT_RET_CHECK(self.scalar_type() != c10::ScalarType::Bool,
-               error::kUnimplemented)
+               error::kInvalidArgument)
       << "hardtanh: bool type is not supported.";
   TT_RET_CHECK(c10::isSignedType(self.scalar_type()) ||
                    (min_val.toInt() >= 0 && max_val.toInt() >= 0),
-               error::kUnimplemented)
+               error::kInvalidArgument)
       << "hardtanh: cannot do hardtanh on an unsigned type with negative "
          "limits.";
 
