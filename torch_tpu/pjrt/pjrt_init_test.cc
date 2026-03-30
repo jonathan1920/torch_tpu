@@ -33,13 +33,9 @@ class PjRtInitTest : public ::testing::Test {
 TEST_F(PjRtInitTest, InitializePjRtRespectsWorldSize) {
   EXPECT_FALSE(IsPjRtInitialized());
 
-  PjRtInitializationOptions options = {
-      .device_type = "xla_cpu",
-      .world_size = 1,
-  };
-
-  ASSERT_OK_AND_ASSIGN(PjRtInitializationResult result,
-                       InitializePjRt(options));
+  ASSERT_OK_AND_ASSIGN(
+      PjRtInitializationResult result,
+      InitializePjRt({.device_type = "xla_cpu", .world_size = 1}));
   EXPECT_TRUE(IsPjRtInitialized());
 
   // CPU backend usually has 1 device by default anyway,
@@ -49,8 +45,9 @@ TEST_F(PjRtInitTest, InitializePjRtRespectsWorldSize) {
   EXPECT_EQ(GetPjRtDeviceType(), PjRtDeviceType::kCpu);
 
   // Call it again to test the caching logic
-  ASSERT_OK_AND_ASSIGN(PjRtInitializationResult result_2,
-                       InitializePjRt(options));
+  ASSERT_OK_AND_ASSIGN(
+      PjRtInitializationResult result_2,
+      InitializePjRt({.device_type = "xla_cpu", .world_size = 1}));
 
   EXPECT_EQ(result_2.device_count, 1);
   // Ensure the second call returned the exact same thing
