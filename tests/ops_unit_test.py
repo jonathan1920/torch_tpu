@@ -5088,6 +5088,14 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(compute)
 
+  def test_pow_large_int(self):
+    def compute(device):
+      return torch.pow(
+          2.0, torch.tensor([127], dtype=torch.int32, device=device)
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
 
 if __name__ == "__main__":
   absltest.main()
