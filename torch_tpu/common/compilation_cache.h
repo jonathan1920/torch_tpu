@@ -33,6 +33,7 @@
 #include "absl/time/time.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/thread_pool.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"
 #include "torch_tpu/common/utils.h"
@@ -161,6 +162,14 @@ struct PerfStats {
 // executables is shared between the cache and the user of the executable.
 // This shared ownership is needed to avoid deleting an executable still in use
 // when the cache decides to evict it.
+//
+// This class uses a lazy initialization pattern. The singleton instance is
+// created upon the first call to GetInstance(), but internal resources like
+// thread pools are only allocated when they are first needed (e.g., during the
+// first compilation request) or when specific options are set. This is needed
+// to support lazy initialization of PjRt, as the compilation thread pool
+// initialization needs Pj Rt to be initialized (and PJRT initialization is
+// lazy).
 class CompilationCache {
  public:
   // CompilationCache is neither copyable nor movable.
@@ -169,17 +178,26 @@ class CompilationCache {
   CompilationCache(CompilationCache&&) = delete;
   CompilationCache& operator=(CompilationCache&&) = delete;
 
-  // Initializes the global compilation cache singleton.
-  // If called more than once, a new singleton will **not** be created; the
-  // existing singleton will be updated with the new options.
-  // To clear the cache and create a new singleton, call Shutdown() first.
-  static void Initialize(const CompilationCacheInitializationOptions& options);
-
-  // Returns the singleton cache instance.
+  // Returns the singleton cache instance. Note that this returns the instance
+  // without performing full internal initialization (e.g., creating compilation
+  // thread pools). Internal resources are initialized only when they are first
+  // needed.
   [[nodiscard]] static CompilationCache& GetInstance();
 
   // Shuts down the cache and its thread pool, evicting all entries.
   static void Shutdown();
+
+  // Returns whether the global compilation cache is initialized.
+  [[nodiscard]] bool IsInitialized() const ABSL_LOCKS_EXCLUDED(cache_mutex_);
+
+  // Sets the global compilation cache initialization options. These options
+  // will be applied to the cache and used during its internal initialization.
+  //
+  // Calling this method after internal resources (like thread pools) have
+  // already been initialized will update runtime-adjustable options (e.g.,
+  // cache-only mode), but will not re-configure already established resources.
+  void SetOptions(const CompilationCacheInitializationOptions& options)
+      ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Evicts all existing executables from the cache. The function waits for all
   // in-flight compilations to complete.
@@ -239,6 +257,12 @@ class CompilationCache {
   std::string HbmUsageSummary() const ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
  private:
+  // Ensures that the internal resources (like thread pools) of the compilation
+  // cache are initialized. This method is idempotent and is triggered by any
+  // operation that requires the compilation infrastructure (e.g.,
+  // GetOrCompile, EnqueueCompilation).
+  void EnsureInitialized() ABSL_LOCKS_EXCLUDED(cache_mutex_);
+
   // Private constructor and destructor to enforce singleton pattern.
   CompilationCache();
   ~CompilationCache();
@@ -364,9 +388,6 @@ class CompilationCache {
                              absl::Time request_start)
       ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
-  // Global mutex for singleton creation.
-  static absl::Mutex g_mutex_;
-
   // Main mutex for protecting cache statistics and cache-only mode.
   mutable absl::Mutex cache_mutex_;
 
@@ -398,6 +419,12 @@ class CompilationCache {
   // If true, the cache will dump the input StableHLO module for any cache
   // misses.
   bool dump_on_cache_miss_ ABSL_GUARDED_BY(cache_mutex_) = false;
+
+  // The current initialization options.
+  CompilationCacheInitializationOptions options_ ABSL_GUARDED_BY(cache_mutex_);
+
+  // Whether the cache has been fully initialized (thread pools started).
+  bool initialized_ ABSL_GUARDED_BY(cache_mutex_) = false;
 };
 
 // Returns the number of threads to use for compilation based on the flag value,

@@ -804,6 +804,7 @@ torch_tpu_cc_library(
         ":compilation",
         ":env_vars",
         ":error_utils",
+        ":shape",
         ":thread_pool",
         ":tier2_compilation_cache",
         ":tier3_compilation_cache",
@@ -871,10 +872,13 @@ torch_tpu_cc_test(
     exec_properties = {"cpp_link.mem": "16g"},  # multiline select
     deps = [
         ":cache_key",
+        ":compilation",
         ":compilation_cache",
-        ":utils",
+        ":shape",
         "//shims/torch:torch_headers",
+        "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/pjrt:pjrt_init",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/status",
@@ -884,6 +888,7 @@ torch_tpu_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@xla//xla:xla_proto_cc",
+        "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
     ],
 )

@@ -16,6 +16,7 @@
 
 #include "torch_tpu/common/compilation_cache.h"
 
+#include <memory>
 #include <string>
 #include <thread>  // NOLINT
 #include <utility>
@@ -23,6 +24,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/base/log_severity.h"
 #include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
 #include "absl/log/scoped_mock_log.h"
@@ -33,9 +35,13 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "torch_tpu/common/cache_key.h"
-#include "torch_tpu/common/utils.h"
+#include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/pjrt/pjrt_init.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla.pb.h"
 
 ABSL_DECLARE_FLAG(int, torch_tpu_internal_num_compilation_threads);
@@ -169,6 +175,58 @@ TEST(CompilationCacheTest, GetOrCompileLogsOnMiss) {
 
   // Clean up.
   cache.SetDumpOnCacheMissMode(initial_mode);
+}
+
+TEST(CompilationCacheInitTest, LazyInitialization) {
+  CompilationCache::Shutdown();
+  EXPECT_FALSE(CompilationCache::GetInstance().IsInitialized());
+
+  CompilationCache::GetInstance().SetOptions({.cache_only = true});
+  // SetOptions now triggers GetInstance(), which creates the object but NOT
+  // the heavy initialization (threads).
+  EXPECT_FALSE(CompilationCache::GetInstance().IsInitialized());
+
+  CompilationCache& cache = CompilationCache::GetInstance();
+  // GetInstance alone does not trigger heavy initialization anymore.
+  EXPECT_FALSE(CompilationCache::GetInstance().IsInitialized());
+  EXPECT_EQ(&cache, &CompilationCache::GetInstance());
+
+  // Trigger lazy initialization via EnqueueCompilation.
+  auto key = DummyKey();
+  auto contexted_module_or = ContextedModule::Make([](mlir::MLIRContext& ctx) {
+    return mlir::OwningOpRef<mlir::ModuleOp>(
+        mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx)));
+  });
+  ASSERT_OK(contexted_module_or.status());
+  cache.EnqueueCompilation(key, *std::move(contexted_module_or),
+                           std::make_unique<xla::CompileOptions>());
+  EXPECT_TRUE(CompilationCache::GetInstance().IsInitialized());
+
+  CompilationCache::Shutdown();
+  EXPECT_FALSE(CompilationCache::GetInstance().IsInitialized());
+}
+
+TEST(CompilationCacheInitTest, OptionsApplied) {
+  CompilationCache::Shutdown();
+
+  CompilationCache::GetInstance().SetOptions({.cache_only = true});
+  CompilationCache& cache = CompilationCache::GetInstance();
+
+  // Trigger a cache miss. In cache_only mode, this should return
+  // FAILED_PRECONDITION.
+  auto key = DummyKey();
+  auto status_or = cache.GetOrCompile(
+      key, /*input_shapes=*/{},
+      /*computation_builder=*/
+      [](mlir::MLIRContext&) { return mlir::OwningOpRef<mlir::ModuleOp>(); },
+      /*compile_options=*/std::make_unique<xla::CompileOptions>());
+
+  EXPECT_FALSE(status_or.ok());
+  EXPECT_EQ(status_or.status().code(), error::kFailedPrecondition);
+  EXPECT_THAT(status_or.status().message(),
+              testing::HasSubstr("no more compilation should happen"));
+
+  CompilationCache::Shutdown();
 }
 
 }  // namespace

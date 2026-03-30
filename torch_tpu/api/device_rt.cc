@@ -86,7 +86,7 @@ PYBIND11_MODULE(_device_ops_backend, m) {
           TT_THROW_IF_ERROR(AddTpuHooks()) << "failed to initialize TpuHooks.";
           RegisterTpuAllocator();
         }
-        CompilationCache::Initialize({});
+        CompilationCache::GetInstance().SetOptions({});
         return result;
       },
       py::arg("device_type") = "tpu",

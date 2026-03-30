@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "absl/base/const_init.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
@@ -54,6 +55,7 @@
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/thread_pool.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"
 #include "torch_tpu/common/tier3_compilation_cache.h"
@@ -72,8 +74,6 @@ ABSL_FLAG(int32_t, torch_tpu_internal_num_compilation_threads, 0,
           "number of threads based on the number of logical CPUs.");
 
 namespace torch_tpu {
-
-absl::Mutex CompilationCache::g_mutex_(absl::kConstInit);
 
 namespace {
 
@@ -154,32 +154,31 @@ int GetNumCompilationThreads() {
   return GetNumCompilationThreads(GetNumProcs());
 }
 
-void CompilationCache::Initialize(
-    const CompilationCacheInitializationOptions& options) {
-  ABSL_VLOG(1) << "InitializeCompilationCache: cache_only="
-               << options.cache_only;
-  auto& cache = CompilationCache::GetInstance();
-  cache.SetCacheOnlyMode(options.cache_only);
+void CompilationCache::EnsureInitialized() {
+  TT_MUTEX_LOCK(lock, cache_mutex_);
+  if (initialized_) return;
+
+  compilation_pool_ = std::make_unique<torch_tpu::ThreadPool>(
+      // The actual thread name will be "tf_tt_compile" in logs.
+      "tt_compile", GetNumCompilationThreads());
+
+  if (UsesLocalBackupTaskForTier3Read()) {
+    backup_compilation_pool_ = std::make_unique<torch_tpu::ThreadPool>(
+        // The actual thread name will be "tf_tt_compile2" in
+        // logs. Unfortunately, we cannot use a longer, more
+        // descriptive name, as that will cause the thread name to
+        // be truncated in logs.
+        "tt_compile2",
+        // Use fewer threads for backup compilations.
+        std::max(1, compilation_pool_->NumThreads() / 2),
+        // Don't optimize for low latency - we want to leave room
+        // for the main compilation pool.
+        /*low_latency_hint=*/false);
+  }
+  initialized_ = true;
 }
 
-CompilationCache::CompilationCache()
-    : compilation_pool_(std::make_unique<ThreadPool>(
-          // The actual thread name will be "tf_tt_compile" in logs.
-          "tt_compile", GetNumCompilationThreads())),
-      backup_compilation_pool_(
-          UsesLocalBackupTaskForTier3Read()
-              ? std::make_unique<ThreadPool>(
-                    // The actual thread name will be "tf_tt_compile2" in
-                    // logs. Unfortunately, we cannot use a longer, more
-                    // descriptive name, as that will cause the thread name to
-                    // be truncated in logs.
-                    "tt_compile2",
-                    // Use fewer threads for backup compilations.
-                    std::max(1, compilation_pool_->NumThreads() / 2),
-                    // Don't optimize for low latency - we want to leave room
-                    // for the main compilation pool.
-                    /*low_latency_hint=*/false)
-              : nullptr) {}
+CompilationCache::CompilationCache() = default;
 
 CompilationCache::~CompilationCache() {
   ABSL_VLOG(1) << "CompilationCache shutting down.";
@@ -190,13 +189,42 @@ CompilationCache::~CompilationCache() {
   ABSL_LOG(INFO) << "CompilationCache final stats: " << perf_stats_;
 }
 
+// g_cache_instance_mutex_ protects the creation and lifecycle of the
+// CompilationCache singleton object itself. This is distinct from
+// cache_mutex_ (a member of the class), which protects the internal
+// state (cache entries, stats, etc.) of a specific instance.
+static absl::Mutex g_cache_instance_mutex_(absl::kConstInit);
+static CompilationCache* g_instance ABSL_GUARDED_BY(g_cache_instance_mutex_) =
+    nullptr;
+
 CompilationCache& CompilationCache::GetInstance() {
-  TT_MUTEX_LOCK(lock, g_mutex_);
-  static CompilationCache* const cache = new CompilationCache();
-  return *cache;
+  TT_MUTEX_LOCK(lock, g_cache_instance_mutex_);
+  if (g_instance == nullptr) {
+    g_instance = new CompilationCache();
+  }
+  return *g_instance;
 }
 
-void CompilationCache::Shutdown() { GetInstance().~CompilationCache(); }
+void CompilationCache::Shutdown() {
+  TT_MUTEX_LOCK(lock, g_cache_instance_mutex_);
+  if (g_instance != nullptr) {
+    delete g_instance;
+    g_instance = nullptr;
+  }
+}
+
+bool CompilationCache::IsInitialized() const {
+  TT_MUTEX_LOCK(lock, cache_mutex_);
+  return initialized_;
+}
+
+void CompilationCache::SetOptions(
+    const CompilationCacheInitializationOptions& options) {
+  TT_MUTEX_LOCK(lock, cache_mutex_);
+  options_ = options;
+  // TODO(jparkerh): Consolidate cache_only_mode_ into options_.cache_only.
+  cache_only_mode_ = options.cache_only;
+}
 
 // Sets the executable promise for the given key. If the promise is already
 // satisfied, this function will do nothing.
@@ -570,6 +598,7 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
 void CompilationCache::EnqueueCompilation(
     CompilationCacheKey key, ContextedModule contexted_module,
     UniqueCompileOptions compile_options) {
+  EnsureInitialized();
   auto executable_builder = [contexted_module = std::move(contexted_module)](
                                 xla::PjRtClient& client,
                                 UniqueCompileOptions options) mutable {

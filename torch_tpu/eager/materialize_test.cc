@@ -27,6 +27,7 @@
 #include "absl/types/span.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation_cache.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/tpu_hooks.h"
@@ -50,7 +51,7 @@ class MaterializeTest : public testing::Test {
             .status());
     ASSERT_OK(AddTpuHooks());
     RegisterTpuAllocator();
-    CompilationCache::Initialize(/*options=*/{});
+    CompilationCache::GetInstance().SetOptions({});
   }
 };
 

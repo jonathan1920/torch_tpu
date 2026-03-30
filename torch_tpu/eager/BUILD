@@ -52,6 +52,7 @@ torch_tpu_cc_test(
         ":tpu_hooks",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:compilation_cache",
+        "//torch_tpu/common:shape",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",
