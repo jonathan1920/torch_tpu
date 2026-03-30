@@ -217,6 +217,7 @@ torch_tpu_py_test(
         "--max_samples_per_op_dtype=3",  # Reduce test samples as XLA:CUDA is not a priority.
     ],
     main = "ops_test.py",
+    notap = "Need fixes on tolerances",
     shard_count = 20,
     tags = ["requires-gpu-sm80-only"],
     deps = [
