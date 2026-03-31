@@ -177,7 +177,7 @@ def torch_compile(func: Callable[..., Any], device: str) -> Callable[..., Any]:
     ValueError: If the device is not supported.
   """
   if device == 'cuda':
-    func = torch.compile(func)
+    func = torch.compile(func, backend='inductor')
   elif device in ('tpu', 'xla_cuda'):
     func = torch.compile(
         func, dynamic=False, backend=torch_tpu_compile.TpuBackend()
