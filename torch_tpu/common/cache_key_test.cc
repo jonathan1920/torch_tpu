@@ -35,7 +35,7 @@
 #include "torch/headeronly/core/Layout.h"
 #include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/xla_data.pb.h"
@@ -212,15 +212,6 @@ TEST(OpParamCacheKeys, SetParamOptionalTensor) {
   EXPECT_THAT(params_or.value(), ElementsAre(Pair("bar", "t")));
 }
 
-TEST(OpParamCacheKeys, SetParamTensor) {
-  at::Tensor tensor;  // UNINITIALIZED_TENSOR_OK=for testing.
-  auto params_or = *OpParamCacheKeysBuilder().SetParam("bar", tensor);
-  ASSERT_TRUE(params_or.ok());
-  // bar should be omitted from the cache keys as we already include the
-  // tensor shape/dtype in the cache keys automatically.
-  EXPECT_THAT(params_or.value(), IsEmpty());
-}
-
 TEST(OpParamCacheKeys, SetParamMemoryFormat) {
   auto params_or = *OpParamCacheKeysBuilder()
                         .SetParam("foo", at::MemoryFormat::Contiguous)
@@ -305,20 +296,6 @@ TEST(OpParamCacheKeys, SetParamScatterOptions) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", options);
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "2")));
-}
-
-TEST(OpParamCacheKeys, SetParamAllgatherOptions) {
-  c10d::AllgatherOptions options;
-  auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", options);
-  ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), IsEmpty());
-}
-
-TEST(OpParamCacheKeys, SetParamAllToAllOptions) {
-  c10d::AllToAllOptions options;
-  auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", options);
-  ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), IsEmpty());
 }
 
 }  // namespace

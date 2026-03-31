@@ -85,7 +85,7 @@
     } else {                                                                   \
       TT_ASSIGN_OR_THROW(/* ERROR_COV_INFEASIBLE=in macro definition. */       \
                          ::torch_tpu::OpParamCacheKeys param_keys,             \
-                         TT_MAKE_OP_PARAM_CACHE_KEYS args);                    \
+                         TT_MAKE_OP_PARAM_CACHE_KEYS_NO_ENFORCE_ args);        \
       try {                                                                    \
         __VA_ARGS__;                                                           \
       } catch (const ::torch_tpu::TtError& e) {                                \
@@ -106,9 +106,17 @@
 //
 // Implementation note: the __VA_OPT__(,) expands to nothing if the argument
 // list is empty, and expands to a comma otherwise.
-#define TT_MAKE_OP_PARAM_CACHE_KEYS(...)                                  \
-  ::torch_tpu::internal::MakeOpParamCacheKeys(#__VA_ARGS__ __VA_OPT__(, ) \
-                                                  __VA_ARGS__)
+#define TT_MAKE_OP_PARAM_CACHE_KEYS(...)                 \
+  ::torch_tpu::internal::MakeOpParamCacheKeys<           \
+      ::torch_tpu::internal::EnforceSetParamType::kYes>( \
+      #__VA_ARGS__ __VA_OPT__(, ) __VA_ARGS__)
+
+// Like TT_MAKE_OP_PARAM_CACHE_KEYS, but does not enforce that arguments should
+// be included in the cache key.
+#define TT_MAKE_OP_PARAM_CACHE_KEYS_NO_ENFORCE_(...)    \
+  ::torch_tpu::internal::MakeOpParamCacheKeys<          \
+      ::torch_tpu::internal::EnforceSetParamType::kNo>( \
+      #__VA_ARGS__ __VA_OPT__(, ) __VA_ARGS__)
 
 namespace torch_tpu {
 namespace internal {

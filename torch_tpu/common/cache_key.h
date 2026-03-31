@@ -53,8 +53,8 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fingerprint_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/utils.h"
-#include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -392,6 +392,10 @@ class [[nodiscard]] OpParamCacheKeys {
   // a programmer error.
   template <typename T>
   absl::Status SetParam(std::string_view name, const T& value) {
+    static_assert(internal::IncludeInCacheKey<T>(),
+                  "This argument should not be included in the cache key "
+                  "explicitly.");
+
     std::string name_str(name);
     const auto it = name_to_value_.find(name_str);
     ABSL_CHECK(it == name_to_value_.end())  // CRASH_OK
@@ -464,10 +468,8 @@ class OpParamCacheKeys::Builder {
   // overload in the torch_tpu::internal namespace in this file.
   template <typename T>
   Builder& SetParam(std::string_view name, const T& value) {
-    if constexpr (internal::IncludeInCacheKey<T>()) {
-      if (first_error_.ok()) {
-        first_error_.Update(param_keys_.SetParam(name, value));
-      }
+    if (first_error_.ok()) {
+      first_error_.Update(param_keys_.SetParam(name, value));
     }
     return *this;
   }
@@ -501,6 +503,13 @@ namespace internal {
 // args_str to "".
 [[nodiscard]] std::string_view ParseNextArgName(std::string_view& args_str);
 
+// Whether to enforce at compile time that SetParam() is only called with
+// arguments that should be included in the cache key.
+enum class EnforceSetParamType {
+  kNo,
+  kYes,
+};
+
 // MakeOpParamCacheKeys() creates an OpParamCacheKeys from the given arguments
 // for an op kernel. This function skips all at::Tensor-typed arguments in the
 // list, as their dtypes and shapes are already encoded in the cache key
@@ -512,24 +521,29 @@ namespace internal {
 //       argument names in args_str.
 
 // The base case: no arguments.
+template <EnforceSetParamType kEnforceSetParamType>
 inline void MakeOpParamCacheKeysImpl(OpParamCacheKeys::Builder& builder,
                                      const std::string_view args_str) {}
 
 // The recursive case: at least one argument.
-template <typename Arg, typename... Args>
+template <EnforceSetParamType kEnforceSetParamType, typename Arg,
+          typename... Args>
 inline void MakeOpParamCacheKeysImpl(OpParamCacheKeys::Builder& builder,
                                      std::string_view args_str, const Arg& arg,
                                      const Args&... args) {
   std::string_view arg_name = ParseNextArgName(args_str);
-  builder.SetParam(arg_name, arg);
-  MakeOpParamCacheKeysImpl(builder, args_str, args...);
+  if constexpr (IncludeInCacheKey<Arg>() ||
+                kEnforceSetParamType == EnforceSetParamType::kYes) {
+    builder.SetParam(arg_name, arg);
+  }
+  MakeOpParamCacheKeysImpl<kEnforceSetParamType>(builder, args_str, args...);
 }
 
-template <typename... Args>
+template <EnforceSetParamType kEnforceSetParamType, typename... Args>
 absl::StatusOr<OpParamCacheKeys> MakeOpParamCacheKeys(
     const std::string_view args_str, const Args&... args) {
   OpParamCacheKeys::Builder builder;
-  MakeOpParamCacheKeysImpl(builder, args_str, args...);
+  MakeOpParamCacheKeysImpl<kEnforceSetParamType>(builder, args_str, args...);
   return *std::move(builder);
 }
 

@@ -770,7 +770,7 @@ torch_tpu_cc_test(
     srcs = ["cache_key_test.cc"],
     deps = [
         ":cache_key",
-        ":shape",
+        ":dimension_types",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
