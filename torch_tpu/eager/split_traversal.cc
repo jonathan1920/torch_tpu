@@ -34,7 +34,6 @@
 #include "torch_tpu/eager/fanout_heuristic.h"
 #include "torch_tpu/eager/forced_split_heuristic.h"
 #include "torch_tpu/eager/reexecution_heuristic.h"
-#include "torch_tpu/eager/repeated_subsequence_heuristic.h"
 #include "torch_tpu/eager/stale_heuristic.h"
 #include "torch_tpu/eager/traversal.h"
 #include "xla/xla_data.pb.h"
@@ -44,9 +43,6 @@ ABSL_FLAG(bool, torch_tpu_internal_fanout_heuristic, true,
           "Use a materialization heuristic that looks at node fanout.");
 ABSL_FLAG(bool, torch_tpu_internal_reexecution_heuristic, true,
           "Use a materialization heuristic that materializes on reexecution.");
-ABSL_FLAG(bool, torch_tpu_internal_repeated_subsequence_heuristic, false,
-          "Use a heuristic that materializes endpoints of repeated "
-          "subsequences.");
 ABSL_FLAG(bool, torch_tpu_internal_stale_heuristic, true,
           "Use a materialization heuristic that materializes around the stale "
           "regions of a graph.");
@@ -60,8 +56,6 @@ struct EnabledHeuristics {
   void Initialize() {
     reexecution = absl::GetFlag(FLAGS_torch_tpu_internal_reexecution_heuristic);
     fanout = absl::GetFlag(FLAGS_torch_tpu_internal_fanout_heuristic);
-    repeated_subsequence =
-        absl::GetFlag(FLAGS_torch_tpu_internal_repeated_subsequence_heuristic);
     stale = absl::GetFlag(FLAGS_torch_tpu_internal_stale_heuristic);
     initialized = true;
   }
@@ -72,7 +66,6 @@ struct EnabledHeuristics {
   bool forced_split = true;      // always enabled
   bool dynamic_op_split = true;  // always enabled
   bool fanout = false;
-  bool repeated_subsequence = false;
   bool stale = false;
 };
 
@@ -107,10 +100,6 @@ ApplyAllMaterializationHeuristicsOn(const Traversal& traversal) {
         StaleHeuristic(*node, nodes_to_materialize);
       }
     }
-  }
-  if (enabled_heuristics.repeated_subsequence) {
-    tsl::profiler::TraceMe t("RepeatedSubsequenceHeuristic");
-    RepeatedSubsequenceHeuristic(traversal, nodes_to_materialize);
   }
 
   // If an output is also a live boundary node, we don't need to redundantly

@@ -213,24 +213,6 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
-    name = "repeated_subsequence_heuristic",
-    srcs = ["repeated_subsequence_heuristic.cc"],
-    hdrs = ["repeated_subsequence_heuristic.h"],
-    deps = [
-        ":device_buffer",
-        ":traversal",
-        "//torch_tpu/common:repeated_subsequence",
-        "//torch_tpu/ops:op_names",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-torch_tpu_cc_library(
     name = "reexecution_heuristic",
     srcs = ["reexecution_heuristic.cc"],
     hdrs = ["reexecution_heuristic.h"],
@@ -408,7 +390,6 @@ torch_tpu_cc_library(
         ":fanout_heuristic",
         ":forced_split_heuristic",
         ":reexecution_heuristic",
-        ":repeated_subsequence_heuristic",
         ":stale_heuristic",
         ":traversal",
         "//shims/torch:torch_headers",

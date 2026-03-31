@@ -508,27 +508,6 @@ torch_tpu_cc_test(
 )
 
 torch_tpu_cc_library(
-    name = "repeated_subsequence",
-    hdrs = ["repeated_subsequence.h"],
-    deps = [
-        ":utils",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-torch_tpu_cc_test(
-    name = "repeated_subsequence_test",
-    srcs = ["repeated_subsequence_test.cc"],
-    deps = [
-        ":repeated_subsequence",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-torch_tpu_cc_library(
     name = "fingerprint_utils",
     srcs = ["fingerprint_utils.cc"],
     hdrs = ["fingerprint_utils.h"],
