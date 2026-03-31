@@ -107,6 +107,9 @@ def link_events(
   Args:
     pre_log: The pre-forward hook log from ActivationTracer.
     log: The forward log from ActivationTracer.
+
+  Raises:
+    RuntimeError: If we fail to link all pre and post events.
   """
   if "post_event" in pre_log[0]:
     return
@@ -185,7 +188,6 @@ def pformat_activation_tracer(tracer) -> str:
       depth = post_item["depth"]
       prefix = "|  " * depth
       deeper_prefix = "|  " * (depth + 1)
-      shallower_prefix = "|  " * (depth - 1)
 
       lines.extend(_pformat_value(deeper_prefix, output=output))
       lines.append(prefix + "+- {} END (#{})".format(name, post_item["idx"]))

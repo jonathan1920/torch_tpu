@@ -94,7 +94,7 @@ class ProfilerInternalTest(absltest.TestCase):
       profiler_impl.start_trace(output_dir)
       a = torch.randn(2, 2)
       b = torch.randn(2, 2)
-      c = a - b
+      _ = a - b
     finally:
       if profiler_impl._profile_state.profile_session is not None:
         profiler_impl.stop_trace()

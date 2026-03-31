@@ -54,7 +54,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/sync",
         "//torch_tpu/api",
         "//torch_tpu/eager:tpu_aten_kernels",
-        "@pypi//portpicker",
     ],
 )
 

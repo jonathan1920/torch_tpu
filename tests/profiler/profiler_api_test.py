@@ -17,7 +17,6 @@
 import os
 
 from absl.testing import absltest
-import portpicker
 import torch
 from torch_tpu import api as tpu_api
 from torch_tpu._internal import profiler
@@ -41,11 +40,11 @@ class ProfilerApiTest(absltest.TestCase):
     with profiler.profile(
         activities=[profiler.ProfilerActivity.CPU],
         on_trace_ready=handler,
-    ) as prof:
+    ):
       # Simulate some work
       a = torch.randn(10, 10)
       b = torch.randn(10, 10)
-      c = a + b
+      _ = a + b
 
     # Check if trace files are created
     plugins_dir = os.path.join(output_dir, 'plugins', 'profile')
@@ -53,8 +52,8 @@ class ProfilerApiTest(absltest.TestCase):
         os.path.isdir(plugins_dir), msg=f'Plugins dir not found: {plugins_dir}'
     )
     trace_dirs = os.listdir(plugins_dir)
-    self.assertEqual(
-        len(trace_dirs), 1, msg=f'Expected 1 trace dir, found: {trace_dirs}'
+    self.assertLen(
+        trace_dirs, 1, msg=f'Expected 1 trace dir, found: {trace_dirs}'
     )
     trace_dir = os.path.join(plugins_dir, trace_dirs[0])
     found_files = os.listdir(trace_dir)
@@ -79,7 +78,7 @@ class ProfilerApiTest(absltest.TestCase):
     with profiler.profile(
         activities=[profiler.ProfilerActivity.TPU],
         on_trace_ready=handler,
-    ) as prof:
+    ):
       a = torch.randn((16, 16)).to(device)
       b = torch.randn((16, 16)).to(device)
       c = a @ b
@@ -91,8 +90,8 @@ class ProfilerApiTest(absltest.TestCase):
         os.path.isdir(plugins_dir), msg=f'Plugins dir not found: {plugins_dir}'
     )
     trace_dirs = os.listdir(plugins_dir)
-    self.assertEqual(
-        len(trace_dirs), 1, msg=f'Expected 1 trace dir, found: {trace_dirs}'
+    self.assertLen(
+        trace_dirs, 1, msg=f'Expected 1 trace dir, found: {trace_dirs}'
     )
     trace_dir = os.path.join(plugins_dir, trace_dirs[0])
     found_files = os.listdir(trace_dir)

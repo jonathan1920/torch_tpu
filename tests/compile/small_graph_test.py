@@ -22,7 +22,7 @@ from unittest import mock
 from absl.testing import absltest
 import torch
 from torch_tpu import api
-from torch_tpu._internal import compile
+from torch_tpu._internal import compile as compile_lib
 # leaking the private function for testing.
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import utils
@@ -41,7 +41,7 @@ class FunctionTest(absltest.TestCase):
       inputs: List[torch.Tensor],
       donate_args: Optional[List[int]] = None,
       debug: bool = True,
-  ) -> compile.TpuBackend:
+  ) -> compile_lib.TpuBackend:
     """Runs the given function on CPU, TPU eager mode, and TPU compiled mode and compares the results.
 
     Args:
@@ -75,7 +75,7 @@ class FunctionTest(absltest.TestCase):
       raise ValueError(f"Unsupported result type: {type(result_cpu)}")
 
     # TPU compiled
-    tpu_backend = compile.TpuBackend(debug=debug)
+    tpu_backend = compile_lib.TpuBackend(debug=debug)
     options = {"donate_args": donate_args} if donate_args else {}
     compiled = torch.compile(func, backend=tpu_backend, options=options)
     tpu_compiled_result = _backend.to_device(compiled(*inputs_tpu), "cpu")
@@ -142,11 +142,11 @@ class FunctionTest(absltest.TestCase):
       a = 0.3 * x + 0.5 * y
       return a
 
-    input = [
+    inputs_val = [
         torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]),
         torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6]),
     ]
-    self._run_and_compare(simple, input)
+    self._run_and_compare(simple, inputs_val)
 
   def test_super_simple_donate(self):
     # Check that the buffer is correctly donated and can't be used after the
@@ -168,9 +168,10 @@ class FunctionTest(absltest.TestCase):
   def test_to_copy(self):
     """Test that we can handle to_copy ops in compiled mode.
 
-    Unclear why this is inserting a new op in the deferred graph, but generally
-    ops that take in explicit devices have caused problems in compile.
-    _to_copy should be a no-op in this case is both args are on the same device.
+    Unclear why this is inserting a new op in the deferred graph, but
+    generally ops that take in explicit devices have caused problems in
+    compile. _to_copy should be a no-op in this case is both args are on
+    the same device.
 
     Note: The test requires both (1) embedded constant and (2) to_copy op to
     exercise the issue.
@@ -185,18 +186,18 @@ class FunctionTest(absltest.TestCase):
     self._run_and_compare(simple, [x], debug=True)
 
   def test_simple_handle_input_flip(self):
-    # Without CL/794139909, the eager model will follow the invoke order and flip
-    # the input from x, y to y, x. See this doc for more details:
+    # Without CL/794139909, the eager model will follow the invoke order
+    # and flip the input from x, y to y, x. See this doc for more details:
     # https://docs.google.com/document/d/1D-Ltx94oZRwxnNvajME2c5CCtPJAle_WV1tU8p4sly0/edit?tab=t.0
     def simple(x, y):
       a = x + 0.5 * y
       return a
 
-    input = [
+    inputs_val = [
         torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]),
         torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6]),
     ]
-    self._run_and_compare(simple, input)
+    self._run_and_compare(simple, inputs_val)
 
   def test_mlir_generates_one_more_input(self):
     # torch.ones_likes(x) used to introduce a phantom input to the MLIRgraph.
@@ -207,11 +208,11 @@ class FunctionTest(absltest.TestCase):
       c = torch.ones_like(x) + b
       return c
 
-    input = [
+    inputs_val = [
         torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]),
         torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6]),
     ]
-    self._run_and_compare(func, input)
+    self._run_and_compare(func, inputs_val)
 
   def test_compile_duplicate_inputs(self):
     def func(x, y):
@@ -222,12 +223,12 @@ class FunctionTest(absltest.TestCase):
 
     # Call with repeated and different inputs to ensure no torch_tpu caching
     # gets in the way.
-    inputA = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]).to(api.tpu_device())
-    inputB = torch.tensor([0.5, 0.4, 0.3, 0.2, 0.1]).to(api.tpu_device())
-    compiled = torch.compile(func, backend=compile.TpuBackend())
-    resA = compiled(inputA, inputA).to("cpu")
-    resAB = compiled(inputA, inputB).to("cpu")
-    utils.assert_close(resA.sum(), resAB.sum(), rtol=1e-3, atol=1e-5)
+    input_a = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]).to(api.tpu_device())
+    input_b = torch.tensor([0.5, 0.4, 0.3, 0.2, 0.1]).to(api.tpu_device())
+    compiled = torch.compile(func, backend=compile_lib.TpuBackend())
+    res_a = compiled(input_a, input_a).to("cpu")
+    res_ab = compiled(input_a, input_b).to("cpu")
+    utils.assert_close(res_a.sum(), res_ab.sum(), rtol=1e-3, atol=1e-5)
 
   def test_fx_graph_generates_more_than_one_graph_to_compile(self):
     # The if case trigger a graph break, so tpu_backend will generate two graphs
@@ -238,12 +239,12 @@ class FunctionTest(absltest.TestCase):
         b = b * -1
       return x * b
 
-    input = [
+    inputs_val = [
         torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]),
         torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6]),
     ]
 
-    v = self._run_and_compare(func, input)
+    v = self._run_and_compare(func, inputs_val)
 
     # This test has a graph break, so we are expecting two graphs in the cache.
     self.assertLen(v, 2)
@@ -270,20 +271,20 @@ class FunctionTest(absltest.TestCase):
       z = y.sum()
       return z
 
-    input = [
+    inputs_val = [
         torch.tensor([1, 2, 3, 4, 5]),
         torch.tensor([6, 7, 8, 9, 10]),
     ]
 
     # Check if dynamo breaks on data dependent ops:
     compiled = torch.compile(func, backend="aot_eager")
-    exp = torch._dynamo.explain(compiled)(*input)
+    exp = torch._dynamo.explain(compiled)(*inputs_val)
     self.assertEqual(exp.graph_count, 2)
     self.assertNotIn("bincount", str(exp.graphs[0]))
     self.assertNotIn("bincount", str(exp.graphs[1]))
 
     # Execute a function with data dep op
-    self._run_and_compare(func, input)
+    self._run_and_compare(func, inputs_val)
 
   def test_multi_output_aten_op(self):
     func = torch.ops.aten.native_batch_norm
@@ -296,7 +297,7 @@ class FunctionTest(absltest.TestCase):
     training = False
     momentum = 0.5
     eps = 0.6
-    input = [
+    inputs_val = [
         x,
         weight,
         bias,
@@ -307,7 +308,7 @@ class FunctionTest(absltest.TestCase):
         eps,
     ]
 
-    self._run_and_compare(func, input)
+    self._run_and_compare(func, inputs_val)
 
   def test_input_has_view(self):
     """Tests that we can handle input tensors that are view ops."""
@@ -417,8 +418,8 @@ class FunctionTest(absltest.TestCase):
     tpu_eager_result = func(x_tpu, y_tpu)
     utils.assert_close(tpu_eager_result.to("cpu"), cpu_eager_result)
 
-    # Compiled mode will compile only the part after the input
-    tpu_backend = compile.TpuBackend(debug=True)
+    # Compiled mode will compile only the part after the inputs_val
+    tpu_backend = compile_lib.TpuBackend(debug=True)
     compiled = torch.compile(func, backend=tpu_backend)
     compiled_result = compiled(x_tpu, y_tpu)
     utils.assert_close(compiled_result.to("cpu"), cpu_eager_result)
@@ -466,7 +467,7 @@ class FunctionTest(absltest.TestCase):
 
     args = [torch.tensor([4.0, 5.0]), torch.tensor([10.0, 11.0])]
     args_tpu = _backend.to_device(args, api.tpu_device())
-    tpu_backend = compile.TpuBackend(debug=True)
+    tpu_backend = compile_lib.TpuBackend(debug=True)
     compiled = torch.compile(inplace_add, backend=tpu_backend)
     result_tpu = compiled(*args_tpu).to("cpu")
     utils.assert_close(result_tpu, torch.tensor([11.0, 12.0]))
@@ -512,10 +513,10 @@ class FunctionTest(absltest.TestCase):
     """
 
     def func_with_int_put(i: int, device):
-      range = torch.arange(0, 9, device=device)
-      return range[i]
+      value_range = torch.arange(0, 9, device=device)
+      return value_range[i]
 
-    tpu_backend = compile.TpuBackend(debug=True)
+    tpu_backend = compile_lib.TpuBackend(debug=True)
     compiled = torch.compile(func_with_int_put, backend=tpu_backend)
     result_tpu = compiled(3, api.tpu_device()).to("cpu")
     self.assertEqual(result_tpu, 3)
@@ -535,7 +536,7 @@ class FunctionTest(absltest.TestCase):
     model = SimpleModel().to(api.tpu_device())
     x = torch.randn(4, 8).to(api.tpu_device())
 
-    backend = compile.TpuBackend()
+    backend = compile_lib.TpuBackend()
     gm = torch.fx.symbolic_trace(model)
     # Get the raw executable
     compiled_fn = backend._compile_graph_module(gm, [x], donate_args=[])
@@ -560,7 +561,7 @@ class ModuleTest(absltest.TestCase):
 
   def _run_and_compare(
       self, module_class, inputs: List[torch.Tensor], debug: bool = True
-  ) -> compile.TpuBackend:
+  ) -> compile_lib.TpuBackend:
     """Runs the given function on CPU, TPU eager mode, and TPU compiled mode and compares the results.
 
     Args:
@@ -583,7 +584,7 @@ class ModuleTest(absltest.TestCase):
     self.assertIn("same device", str(err.exception))
 
     # Fail when inputs on TPU but module on CPU
-    tpu_backend = compile.TpuBackend(debug=debug)
+    tpu_backend = compile_lib.TpuBackend(debug=debug)
     compiled = torch.compile(m, backend=tpu_backend)
     with self.assertRaises(Exception) as err:
       _ = compiled(*inputs_tpu).to("cpu")
