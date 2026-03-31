@@ -31,19 +31,6 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
-    name = "tpu_env",
-    srcs = ["tpu_env.py"],
-    deps = [
-        ":tpu_distributed",
-        ":tpu_topology",
-        "//shims/absl_py/logging",
-        "//shims/torch:pytorch",
-        "//torch_tpu/api",
-        "@pypi//portpicker",
-    ],
-)
-
-pytype_strict_library(
     name = "gpu_env",
     srcs = ["gpu_env.py"],
     deps = [

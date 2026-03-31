@@ -15,6 +15,7 @@
 """Small graph test for TPU backend."""
 
 import functools
+
 from absl import logging
 from absl.testing import absltest
 import jax
@@ -22,12 +23,17 @@ from jax.experimental import pallas as pl
 from jax.experimental.pallas import tpu as pltpu
 import jax.export
 import torch
+from torch import distributed as dist
+from torch.google import distributed as g3_distributed
 import torch.multiprocessing as mp
+from torch_tpu import api
 from torch_tpu._internal import pallas
 from torch_tpu._internal.distributed import tpu_distributed
-from torch_tpu._internal.distributed import tpu_env
+from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import utils
+
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
+
 
 P = jax.sharding.PartitionSpec
 
@@ -94,8 +100,11 @@ def roll_torch_pallas(world_size, rank, input_local):
   return output_local
 
 
-def run(rank, world_size):
-  device = "tpu"
+def run(world_size):
+  device = api.tpu_device()
+  dist.init_process_group(backend="tpu_dist")
+  rank = dist.get_rank()
+
   num_per_device = 8
 
   num_devices = len(tpu_distributed.all_global_device_ids())
@@ -123,16 +132,19 @@ def run(rank, world_size):
   utils.assert_close(y, y_expected)
 
 
+def _run_torch_tpu_worker():
+  run(8)
+
+
 # TODO(elliotenglish): Add test for compiled: cl/885571521
 class TestPallasCommunicationKernels(absltest.TestCase):
 
   def test_kernel_communication(self):
 
-    tpu_env.run_in_workers(
-        8,
-        run,
-        worker_args=(),
-    )
+    g3_distributed.torchrun(
+        singlehost_wrapper.tpu_env_wrapper(_run_torch_tpu_worker, world_size=8),
+        nproc_per_node=8,
+    )()
 
 
 if __name__ == "__main__":

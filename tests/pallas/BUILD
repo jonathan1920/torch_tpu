@@ -53,10 +53,11 @@ torch_tpu_py_test(
         "//shims/jax:pallas_tpu",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/distributed:tpu_distributed",
-        "//torch_tpu/_internal/distributed:tpu_env",
+        "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/pallas",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
+        "//torch_tpu/api",
         "@pypi//jax",
     ],
 )
