@@ -38,6 +38,7 @@
 #include "mlir/IR/OwningOpRef.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/pjrt/pjrt_init.h"
@@ -49,6 +50,12 @@ ABSL_DECLARE_FLAG(int, torch_tpu_internal_num_compilation_threads);
 namespace torch_tpu {
 
 int GetNumCompilationThreads(int num_procs);
+
+// Friend class for CompilationCache, to allow using private members.
+class CompilationCacheTestHelper {
+ public:
+  static void RestartCompilationCache() { CompilationCache::Restart(); }
+};
 
 namespace {
 
@@ -129,7 +136,14 @@ TEST(CacheEntryStatsPrinterTest, Works) {
             "08:00, read_count=10");
 }
 
-TEST(CompilationCacheTest, DumpOnMissMode) {
+class CompilationCacheTest : public testing::Test {
+ protected:
+  CompilationCacheTest() {
+    CompilationCacheTestHelper::RestartCompilationCache();
+  }
+};
+
+TEST_F(CompilationCacheTest, DumpOnMissMode) {
   CompilationCache& cache = CompilationCache::GetInstance();
   bool initial_mode = cache.GetDumpOnCacheMissMode();
   cache.SetDumpOnCacheMissMode(!initial_mode);
@@ -138,7 +152,7 @@ TEST(CompilationCacheTest, DumpOnMissMode) {
   EXPECT_EQ(cache.GetDumpOnCacheMissMode(), initial_mode);
 }
 
-TEST(CompilationCacheTest, GetOrCompileLogsOnMiss) {
+TEST_F(CompilationCacheTest, GetOrCompileLogsOnMiss) {
   CompilationCache& cache = CompilationCache::GetInstance();
   bool initial_mode = cache.GetDumpOnCacheMissMode();
   cache.SetDumpOnCacheMissMode(true);
@@ -177,8 +191,9 @@ TEST(CompilationCacheTest, GetOrCompileLogsOnMiss) {
   cache.SetDumpOnCacheMissMode(initial_mode);
 }
 
-TEST(CompilationCacheInitTest, LazyInitialization) {
-  CompilationCache::Shutdown();
+class CompilationCacheInitTest : public CompilationCacheTest {};
+
+TEST_F(CompilationCacheInitTest, LazyInitialization) {
   EXPECT_FALSE(CompilationCache::GetInstance().IsInitialized());
 
   CompilationCache::GetInstance().SetOptions({.cache_only = true});
@@ -202,13 +217,10 @@ TEST(CompilationCacheInitTest, LazyInitialization) {
                            std::make_unique<xla::CompileOptions>());
   EXPECT_TRUE(CompilationCache::GetInstance().IsInitialized());
 
-  CompilationCache::Shutdown();
-  EXPECT_FALSE(CompilationCache::GetInstance().IsInitialized());
+  CompilationCache::ShutDown();
 }
 
-TEST(CompilationCacheInitTest, OptionsApplied) {
-  CompilationCache::Shutdown();
-
+TEST_F(CompilationCacheInitTest, OptionsApplied) {
   CompilationCache::GetInstance().SetOptions({.cache_only = true});
   CompilationCache& cache = CompilationCache::GetInstance();
 
@@ -221,12 +233,12 @@ TEST(CompilationCacheInitTest, OptionsApplied) {
       [](mlir::MLIRContext&) { return mlir::OwningOpRef<mlir::ModuleOp>(); },
       /*compile_options=*/std::make_unique<xla::CompileOptions>());
 
-  EXPECT_FALSE(status_or.ok());
+  ASSERT_FALSE(status_or.ok());
   EXPECT_EQ(status_or.status().code(), error::kFailedPrecondition);
   EXPECT_THAT(status_or.status().message(),
               testing::HasSubstr("no more compilation should happen"));
 
-  CompilationCache::Shutdown();
+  CompilationCache::ShutDown();
 }
 
 }  // namespace

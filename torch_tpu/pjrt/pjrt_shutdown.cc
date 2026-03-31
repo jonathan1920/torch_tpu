@@ -22,7 +22,7 @@ namespace torch_tpu {
 
 void ShutdownPjRt() {
   ABSL_VLOG(1) << "ShutdownPjRt";
-  CompilationCache::Shutdown();
+  CompilationCache::ShutDown();
   auto* client = GetPjRtClient();
   if (!client) {
     ABSL_VLOG(1) << "PjRt not initialized.";

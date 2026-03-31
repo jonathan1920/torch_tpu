@@ -32,6 +32,8 @@
 #include <vector>
 
 #include "absl/base/const_init.h"
+#include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -189,28 +191,38 @@ CompilationCache::~CompilationCache() {
   ABSL_LOG(INFO) << "CompilationCache final stats: " << perf_stats_;
 }
 
-// g_cache_instance_mutex_ protects the creation and lifecycle of the
-// CompilationCache singleton object itself. This is distinct from
-// cache_mutex_ (a member of the class), which protects the internal
-// state (cache entries, stats, etc.) of a specific instance.
-static absl::Mutex g_cache_instance_mutex_(absl::kConstInit);
-static CompilationCache* g_instance ABSL_GUARDED_BY(g_cache_instance_mutex_) =
-    nullptr;
+absl::Mutex CompilationCache::cache_instance_mutex_(absl::kConstInit);
 
-CompilationCache& CompilationCache::GetInstance() {
-  TT_MUTEX_LOCK(lock, g_cache_instance_mutex_);
-  if (g_instance == nullptr) {
-    g_instance = new CompilationCache();
-  }
-  return *g_instance;
+absl_nonnull std::unique_ptr<CompilationCache>&
+CompilationCache::GetInstanceNoLock() {
+  static absl::NoDestructor<std::unique_ptr<CompilationCache>> instance(
+      // Cannot call std::make_unique here as the ctor is private.
+      new CompilationCache());
+  return *instance;
 }
 
-void CompilationCache::Shutdown() {
-  TT_MUTEX_LOCK(lock, g_cache_instance_mutex_);
-  if (g_instance != nullptr) {
-    delete g_instance;
-    g_instance = nullptr;
-  }
+CompilationCache& CompilationCache::GetInstance() {
+  TT_MUTEX_LOCK(lock, cache_instance_mutex_);
+  auto& instance = GetInstanceNoLock();
+  ABSL_CHECK(instance != nullptr)  // CRASH_OK
+      << "Cannot use CompilationCache after it has been shut down.";
+  return *instance;
+}
+
+void CompilationCache::ShutDown() {
+  TT_MUTEX_LOCK(lock, cache_instance_mutex_);
+  auto& instance = GetInstanceNoLock();
+  ABSL_CHECK(instance != nullptr)  // CRASH_OK
+      << "The CompilationCache has already been shut down. Don't shut down "
+         "twice.";
+  instance.reset();
+}
+
+void CompilationCache::Restart() {
+  TT_MUTEX_LOCK(lock, cache_instance_mutex_);
+  auto& instance = GetInstanceNoLock();
+  // Cannot call std::make_unique here as the ctor is private.
+  instance.reset(new CompilationCache());
 }
 
 bool CompilationCache::IsInitialized() const {

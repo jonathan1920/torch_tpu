@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/base/const_init.h"
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -178,14 +179,21 @@ class CompilationCache {
   CompilationCache(CompilationCache&&) = delete;
   CompilationCache& operator=(CompilationCache&&) = delete;
 
+  ~CompilationCache();
+
   // Returns the singleton cache instance. Note that this returns the instance
   // without performing full internal initialization (e.g., creating compilation
   // thread pools). Internal resources are initialized only when they are first
   // needed.
-  [[nodiscard]] static CompilationCache& GetInstance();
+  //
+  // Cannot be called after ShutDown().
+  [[nodiscard]] static CompilationCache& GetInstance()
+      ABSL_LOCKS_EXCLUDED(cache_instance_mutex_);
 
   // Shuts down the cache and its thread pool, evicting all entries.
-  static void Shutdown();
+  //
+  // Cannot be called before GetInstance() or more than once.
+  static void ShutDown() ABSL_LOCKS_EXCLUDED(cache_instance_mutex_);
 
   // Returns whether the global compilation cache is initialized.
   [[nodiscard]] bool IsInitialized() const ABSL_LOCKS_EXCLUDED(cache_mutex_);
@@ -257,15 +265,35 @@ class CompilationCache {
   std::string HbmUsageSummary() const ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
  private:
+  friend class CompilationCacheTestHelper;
+
+  // Protects the creation and lifecycle of the CompilationCache singleton
+  // object itself. This is distinct from cache_mutex_ (a non-static member of
+  // the class), which protects the internal state (cache entries, stats, etc.)
+  // of a specific instance.
+  static absl::Mutex cache_instance_mutex_;
+
+  // Private constructor to enforce singleton pattern.
+  CompilationCache();
+
+  // Returns the singleton cache instance without performing full internal
+  // initialization. Unlike GetInstance(), this function doesn't acquire any
+  // locks.
+  [[nodiscard]] static absl_nonnull std::unique_ptr<CompilationCache>&
+  GetInstanceNoLock();
+
+  // Shuts down the cache and its thread pool, evicting all entries, and then
+  // creates a new instance of the compilation cache.
+  //
+  // Only used in testing to restore the cache to a clean state after
+  // shutdown.
+  static void Restart() ABSL_LOCKS_EXCLUDED(cache_instance_mutex_);
+
   // Ensures that the internal resources (like thread pools) of the compilation
   // cache are initialized. This method is idempotent and is triggered by any
   // operation that requires the compilation infrastructure (e.g.,
   // GetOrCompile, EnqueueCompilation).
   void EnsureInitialized() ABSL_LOCKS_EXCLUDED(cache_mutex_);
-
-  // Private constructor and destructor to enforce singleton pattern.
-  CompilationCache();
-  ~CompilationCache();
 
   // The internal variant type for GetOrCreateCacheEntry, which returns
   // CacheEntry internal data that can be used outside of a lock, given a
