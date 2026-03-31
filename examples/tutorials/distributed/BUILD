@@ -25,8 +25,6 @@ pytype_strict_library(
     srcs = ["hello_world_distributed.py"],
     deps = [
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
-        "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
     ],
 )
