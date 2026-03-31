@@ -24,6 +24,7 @@ package(
 torch_tpu_py_test(
     name = "qwen3_example",
     srcs = ["qwen3_example.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
     tags = [
         "requires-net:external",
@@ -42,6 +43,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "qwen_kv_cache",
     srcs = ["qwen_kv_cache.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
     tags = [
         "cpu:8",
@@ -68,6 +70,7 @@ torch_tpu_py_test(
     data = [
         "//examples/huggingface_transformers:model_configs_data",
     ],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "this is a manual test",
     strict = True,
     tags = [
@@ -101,6 +104,7 @@ torch_tpu_py_test(
         "//examples/huggingface_transformers:model_configs_data",
     ],
     main = "qwen3_kv_cache_bd.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "manual test",
     # copybara:uncomment platform = "//buildenv/platforms/forge/gpu/gb200",
     tags = [
@@ -127,6 +131,9 @@ torch_tpu_py_test(
 
 build_test(
     name = "build_test",
+    tags = [
+        "nobuild_oss",  # Disabled during switch from opt-in to opt-out
+    ],
     targets = [
         # In addition to any existing tests, include the following:
         ":qwen3_kv_cache_bd_b200",
@@ -151,6 +158,7 @@ torch_tpu_py_test(
     # of high latency when accessing remote storage.
     timeout = "long",  # 15 minutes
     srcs = ["qwen3_hf_example.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nolocal = "slow example",
     tags = [
         "nofastbuild",  # Benchmark.
@@ -172,6 +180,7 @@ torch_tpu_py_test(
     name = "qwen3_hf_pipe_example",
     timeout = "long",  # 15 minutes
     srcs = ["qwen3_hf_pipe_example.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
     tags = [
         "requires-net:external",  # Needed to access remote files.
@@ -193,6 +202,7 @@ torch_tpu_py_test(
     srcs = ["qwen3_0_6b_forward_test.py"],
     args = ["--device=tpu"],
     main = "qwen3_0_6b_forward_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
     tags = [
         "requires-tpu-v5lite",
@@ -213,6 +223,7 @@ torch_tpu_py_test(
     srcs = ["qwen3_0_6b_forward_test.py"],
     args = ["--device=cuda"],
     main = "qwen3_0_6b_forward_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "slow example",
     tags = [
         "ignore_for_dep=third_party.torch_tpu.api",
@@ -235,6 +246,7 @@ torch_tpu_py_test(
     srcs = ["qwen3_0_6b_forward_test.py"],
     args = ["--device=xla_cuda"],
     main = "qwen3_0_6b_forward_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "slow example",
     tags = [
         "requires-gpu-sm80-only",
@@ -258,6 +270,7 @@ torch_tpu_py_test(
     srcs = ["qwen3_0_6b_custom_sampling_test.py"],
     args = ["--device=tpu"],
     main = "qwen3_0_6b_custom_sampling_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
     tags = [
         "requires-net:external",
@@ -283,6 +296,7 @@ torch_tpu_py_test(
     srcs = ["qwen3_0_6b_custom_sampling_test.py"],
     args = ["--device=cuda"],
     main = "qwen3_0_6b_custom_sampling_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "slow example",
     tags = [
         "ignore_for_dep=third_party.torch_tpu.api",

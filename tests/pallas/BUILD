@@ -24,10 +24,7 @@ torch_tpu_py_test(
     srcs = ["pallas_test.py"],
     # Not supported on vl chips.
     env = {"TPU_PREMAPPED_BUFFER_SIZE": "0"},
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
@@ -44,6 +41,8 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "pallas_communication_test",
     srcs = ["pallas_communication_test.py"],
+    # TODO(b/497890629): Enable in OSS
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite:8",
     ],

@@ -39,9 +39,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "strided_layout_test",
     srcs = ["strided_layout_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":strided_layout",
         "@com_google_absl//absl/types:span",
@@ -73,9 +70,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "reshape_primitive_test",
     srcs = ["reshape_primitive_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":reshape_primitive",
         ":strided_layout",
@@ -108,9 +102,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "transpose_primitive_test",
     srcs = ["transpose_primitive_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":strided_layout",
         ":transpose_primitive",
@@ -146,9 +137,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "broadcast_primitive_test",
     srcs = ["broadcast_primitive_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":broadcast_primitive",
         ":strided_layout",
@@ -181,9 +169,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "slice_primitive_test",
     srcs = ["slice_primitive_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":slice_primitive",
         ":strided_layout",
@@ -217,9 +202,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "pad_primitive_test",
     srcs = ["pad_primitive_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":pad_primitive",
         ":strided_layout",
@@ -264,9 +246,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "bitcast_primitive_test",
     srcs = ["bitcast_primitive_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":bitcast_primitive",
         ":strided_layout",
@@ -296,9 +275,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "unfold_primitive_test",
     srcs = ["unfold_primitive_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":strided_layout",
         ":unfold_primitive",
@@ -346,9 +322,7 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "view_sequence_test",
     srcs = ["view_sequence_test.cc"],
-    tags = [
-        # "oss_ready_cpu", # TODO: b/491622189 - ASSERT_OK_AND_ASSIGN fails in OSS.
-    ],
+    nobuild_oss = "ASSERT_OK_AND_ASSIGN fails in OSS",  # TODO(b/491622189)
     deps = [
         ":bitcast_primitive",
         ":broadcast_primitive",
@@ -405,9 +379,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "decomposition_test",
     srcs = ["decomposition_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":decomposition",
         ":strided_layout",
@@ -459,9 +430,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "inversion_test",
     srcs = ["inversion_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":bitcast_primitive",
         ":broadcast_primitive",

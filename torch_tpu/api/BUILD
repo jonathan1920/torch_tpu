@@ -66,9 +66,6 @@ torch_tpu_py_test(
     name = "device_module_test",
     srcs = ["device_module_test.py"],
     strict = True,
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":_device_module",
         "//shims/absl_py/testing:absltest",
@@ -81,10 +78,7 @@ torch_tpu_py_test(
     name = "tpu_module_test",
     srcs = ["tpu_module_test.py"],
     strict = True,
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         ":_device_module",
         ":api",
@@ -97,6 +91,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "xla_cuda_module_test",
     srcs = ["xla_cuda_module_test.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     strict = True,
     tags = ["requires-gpu-sm60-only"],
     deps = [
@@ -112,9 +107,6 @@ torch_tpu_py_test(
     name = "xla_cpu_module_test",
     srcs = ["xla_cpu_module_test.py"],
     strict = True,
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":_device_module",
         "//shims/absl_py/testing:absltest",

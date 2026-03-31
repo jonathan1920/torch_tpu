@@ -159,9 +159,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "error_utils_test",
     srcs = ["error_utils_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":env_vars",
         ":error_utils",
@@ -233,6 +230,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
     ],
@@ -265,6 +263,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
     ],
@@ -293,6 +292,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
     ],
@@ -317,6 +317,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "long Forge queue",
     tags = [
         "requires-tpu-v5p:4",  # Needs PjRt client and multiple devices.
@@ -344,6 +345,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
     ],
@@ -370,6 +372,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "long Forge queue",
     tags = [
         "requires-tpu-v5p:4",  # Needs PjRt client and multiple devices.
@@ -397,6 +400,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",  # Needs PjRt client.
     ],
@@ -423,6 +427,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "long Forge queue",
     tags = [
         "requires-tpu-v5p:4",  # Needs PjRt client and multiple devices.
@@ -487,9 +492,6 @@ torch_tpu_cc_test(
     srcs = [
         "error_utils_cpp_context_test.cc",
     ],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":error_utils",
         ":error_utils_test_helper",
@@ -519,9 +521,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "repeated_subsequence_test",
     srcs = ["repeated_subsequence_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":repeated_subsequence",
         "@com_google_absl//absl/types:span",
@@ -543,9 +542,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "fingerprint_utils_test",
     srcs = ["fingerprint_utils_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":fingerprint_utils",
         "@com_google_absl//absl/types:span",
@@ -609,9 +605,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "utils_test",
     srcs = ["utils_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":utils",
         "@com_google_googletest//:gtest_main",
@@ -658,9 +651,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "discovery_test",
     srcs = ["discovery_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":discovery",
         ":env_vars",
@@ -685,6 +675,7 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "environment_test",
     srcs = ["environment_test.cc"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
         ":env_vars",
         ":environment",
@@ -777,9 +768,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "cache_key_test",
     srcs = ["cache_key_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":cache_key",
         ":shape",
@@ -844,12 +832,9 @@ torch_tpu_cc_test(
     srcs = ["compilation_test.cc"],
     # go/cppdebugflags#increasing-your-size-limits
     exec_properties = {"cpp_link.mem": "16g"},  # multiline select
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Do not enable this in OSS, instead use `oss_compilation_test` to run tests in the OSS TPU CI.",
     tags = [
-        # Do not add tag "oss_ready_tpu" here. Instead, use "oss_compilation_test" below to
-        # run tests in TPU CI.
-        # To initialize PjRt, we need to explicitly set environment variable TPU_LIBRARY_PATH to
-        # point to libtpu.so for C++ tests before starting running the tests, which is not needed
-        # for Python tests.
         "requires-tpu-v5lite",
     ],
     deps = [
@@ -870,6 +855,7 @@ torch_tpu_cc_test(
     srcs = ["compilation_cache_test.cc"],
     # go/cppdebugflags#increasing-your-size-limits
     exec_properties = {"cpp_link.mem": "16g"},  # multiline select
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
         ":cache_key",
         ":compilation",
@@ -907,9 +893,7 @@ sh_test(
         ":compilation_test",
         "@pypi_libtpu//:whl",
     ],
-    tags = [
-        "oss_ready_tpu",
-    ],
+    tags = ["requires-tpu-v5lite"],
 )
 # copybara:comment_end
 
@@ -918,6 +902,7 @@ torch_tpu_cc_test(
     srcs = ["compilation_parse_xla_options_test.cc"],
     # go/cppdebugflags#increasing-your-size-limits
     exec_properties = {"cpp_link.mem": "16g"},  # multiline select
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -944,6 +929,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -975,6 +961,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-net:external",  # Requires remote file access.
         "requires-tpu-v5lite",
@@ -1006,6 +993,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-net:external",  # Requires remote file access.
         "requires-tpu-v5lite",
@@ -1052,6 +1040,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
         ":cache_key",
         ":dynamism_utils",

@@ -33,6 +33,7 @@ torch_tpu_py_test(
     name = "model_test",
     srcs = ["model_test.py"],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5p",
     ],

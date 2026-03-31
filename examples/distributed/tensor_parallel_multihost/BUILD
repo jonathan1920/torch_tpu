@@ -25,6 +25,7 @@ torch_tpu_py_test(
     srcs = [
         "main.py",
     ],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "this test requires multiple hosts.",
     tags = [
         "requires-tpu-v5lite:8",

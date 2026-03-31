@@ -74,9 +74,6 @@ pytype_strict_library(
 torch_tpu_py_test(
     name = "utils_test",
     srcs = ["utils_test.py"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":test_fixtures",
         ":utils",
@@ -118,9 +115,6 @@ torch_tpu_py_test(
     name = "tracer_utils_test",
     srcs = ["tracer_utils_test.py"],
     strict = True,
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":test_fixtures",
         ":tracer_utils",
@@ -137,10 +131,7 @@ torch_tpu_py_test(
     srcs = ["tracer_utils_tpu_test.py"],
     main = "tracer_utils_tpu_test.py",
     strict = True,
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         ":test_fixtures",
         ":tracer_utils",
@@ -156,9 +147,6 @@ torch_tpu_py_test(
     name = "test_fixtures_test",
     srcs = ["test_fixtures_test.py"],
     strict = True,
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":test_fixtures",
         "//shims/absl_py/testing:absltest",

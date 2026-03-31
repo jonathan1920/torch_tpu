@@ -22,6 +22,7 @@ package(
 torch_tpu_py_test(
     name = "strictly_ordering",
     srcs = ["strictly_ordering.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     strict = True,
     tags = ["requires-tpu-v5lite"],
     deps = [

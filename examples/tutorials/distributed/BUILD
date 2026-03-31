@@ -37,6 +37,7 @@ torch_tpu_py_test(
     env = {
         "WORLD_SIZE": "8",
     },
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "this is a manual test",
     tags = [
         "requires-net:external",

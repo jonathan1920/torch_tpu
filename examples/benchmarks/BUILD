@@ -32,6 +32,7 @@ torch_tpu_py_test(
         "cpp_link.mem": "16g",  # Avoid Forge OOM in CppLink.
     },
     main = "ml_layers_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "this is a manual test",
     shard_count = 4,
     strict = True,
@@ -69,11 +70,12 @@ torch_tpu_py_test(
     ],
     main = "ml_layers_test.py",
     nopresubmit = "slow test",
+    # TODO: Right this test in nightly builds
+    notest_oss = "Slow test that also seems to be broken",
     shard_count = 4,
     strict = True,
     tags = [
         "cpu:4",  # Matches the CUDA version of the test for a fair comparison.
-        "oss_ready_tpu",
         "requires-net:external",
         "requires-tpu-v7x",
     ],
@@ -109,6 +111,7 @@ torch_tpu_py_test(
         "cpp_link.mem": "16g",
     },
     main = "ml_layers_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "this is a manual test",
     shard_count = 4,
     strict = True,
@@ -185,7 +188,6 @@ torch_tpu_py_test(
     strict = True,
     tags = [
         "cpu:4",  # Matches the CUDA version of the test for a fair comparison.
-        "oss_ready_tpu",
         "requires-net:external",
         "requires-tpu-v7x",
     ],

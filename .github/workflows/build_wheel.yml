@@ -110,11 +110,9 @@ jobs:
         include:
           - name: CPU
             runner: linux-x86-n2-16
-            tag: oss_ready_cpu
             extra_flags: "--config=wheel_test_cpu"
           - name: TPU
             runner: linux-x86-ct5lp-224-8tpu
-            tag: oss_ready_tpu
             extra_flags: '--config=wheel_test_tpu --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"'
     runs-on: ${{ matrix.runner }}
     container:
@@ -136,6 +134,4 @@ jobs:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
       - name: Run tests
         shell: bash
-        run: |
-          bazel test ${{ matrix.extra_flags }} \
-            -- $(bazel query 'kind("(py_test|torch_tpu_py_test) rule", attr(tags, "${{ matrix.tag }}", //...))')
+        run: bazel test ${{ matrix.extra_flags }} //...

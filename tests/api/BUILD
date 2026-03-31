@@ -23,7 +23,6 @@ torch_tpu_py_test(
     name = "api_test",
     srcs = ["api_test.py"],
     tags = [
-        "oss_ready_tpu",
         "requires-net:external",
         "requires-tpu-v5lite",
     ],
@@ -37,10 +36,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "stream_test",
     srcs = ["stream_test.py"],
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",

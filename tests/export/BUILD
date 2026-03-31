@@ -22,9 +22,6 @@ package(
 torch_tpu_py_test(
     name = "export_test",
     srcs = ["export_test.py"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",

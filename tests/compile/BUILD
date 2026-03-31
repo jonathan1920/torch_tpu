@@ -29,7 +29,6 @@ torch_tpu_py_test(
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.
-        "oss_ready_tpu",
         "requires-net:external",
         "requires-tpu-v5lite",
     ],
@@ -63,7 +62,6 @@ torch_tpu_py_test(
     srcs = ["ensure_no_dynamic_test.py"],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     tags = [
-        "oss_ready_tpu",
         "requires-net:external",
         "requires-tpu-v5lite",
     ],
@@ -88,7 +86,6 @@ torch_tpu_py_test(
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO: fix the test in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
-        "oss_ready_tpu",
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -108,7 +105,6 @@ torch_tpu_py_test(
     name = "compile_api_test",
     srcs = ["compile_api_test.py"],
     tags = [
-        "oss_ready_tpu",
         "requires-net:external",
         "requires-tpu-v5lite",
     ],
@@ -154,7 +150,6 @@ torch_tpu_py_test(
     tags = [
         "cpu:1",  # Ensure reproducible performance on Forge.
         "nofastbuild",  # Measures performance.
-        "oss_ready_tpu",
         "requires-tpu-v6e",
     ],
     deps = [
@@ -171,7 +166,6 @@ torch_tpu_py_test(
     srcs = ["output_modify_test.py"],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     tags = [
-        "oss_ready_tpu",
         "requires-net:external",
         "requires-tpu-v5lite",
     ],
@@ -189,7 +183,6 @@ torch_tpu_py_test(
     name = "compile_with_inference_mode_test",
     srcs = ["compile_with_inference_mode_test.py"],
     tags = [
-        "oss_ready_tpu",
         "requires-net:external",
         "requires-tpu-v5lite",
     ],
@@ -205,6 +198,7 @@ torch_tpu_py_test(
     name = "model_coverage_hf_test",
     timeout = "long",
     srcs = ["model_coverage_hf_test.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
     shard_count = 6,
     tags = [
@@ -226,7 +220,6 @@ torch_tpu_py_test(
     ],
 )
 
-# Do not add oss_ready_tpu: this is not intended to be run in OSS
 torch_tpu_py_test(
     name = "model_coverage_hf_guitar_test",
     timeout = "long",
@@ -238,6 +231,7 @@ torch_tpu_py_test(
     ],
     linking_mode = "static",
     main = "model_coverage_hf_test.py",
+    nobuild_oss = "Not intended to run in OSS",
     notap = "For Guitar only.",
     shard_count = 12,
     tags = [
@@ -266,6 +260,7 @@ torch_tpu_py_test(
     srcs = ["model_coverage_timm_test.py"],
     data = ["data/goldfish.jpg"],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 6,
     tags = [
         "noasan",  # TODO: fix the test in asan mode.

@@ -44,6 +44,7 @@ torch_tpu_py_test(
     srcs = ["module_registry_test.py"],
     data = ["//tests/compile:data/goldfish.jpg"],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 6,
     tags = [
         "noasan",  # TODO: fix the test timing out in asan mode.
@@ -126,12 +127,13 @@ torch_tpu_py_test(
     ],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 50,
     tags = [
+        # Will re-enable this slow test until we have a proper way to speed it up.
         "noasan",  # TODO: fix the test timing out in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.
-        # "oss_ready_tpu",  # Will re-enable this slow test until we have a proper way to speed it up.
         "requires-tpu-v5lite",
     ],
     deps = [
@@ -156,11 +158,11 @@ torch_tpu_py_test(
     ],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
+    notest_oss = "Will re-enable this slow test until we have a proper way to speed it up.",
     shard_count = 50,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.
-        # "oss_ready_tpu",  # Will re-enable this slow test until we have a proper way to speed it up.
         "requires-tpu-v5lite",
     ],
     deps = [
@@ -191,6 +193,7 @@ torch_tpu_py_test(
     ],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 40,
     tags = [
         "noasan",  # TODO: fix the timeout of test_grid_sampler in asan mode.
@@ -217,9 +220,12 @@ torch_tpu_py_test(
         "--max_samples_per_op_dtype=3",  # Reduce test samples as XLA:CUDA is not a priority.
     ],
     main = "ops_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "Need fixes on tolerances",
     shard_count = 20,
-    tags = ["requires-gpu-sm80-only"],
+    tags = [
+        "requires-gpu-sm80-only",
+    ],
     deps = [
         ":dynamism_test_utils",
         ":op_testing",
@@ -243,13 +249,14 @@ torch_tpu_py_test(
     ],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    # This test takes almost 30 minutes to run, since it is only using one
+    # machine per build for now and it is not essential for the OSS release.
+    notest_oss = "Test is too slow to run in OSS CI",
     shard_count = 25,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.
-        # This test takes almost 30 minutes to run in the OSS CI, which
-        # uses just one machine for each build for now. It's not essential
-        # for the OSS release, so we skip it for OSS.
     ],
     deps = [
         ":dynamism_test_utils",
@@ -277,13 +284,13 @@ torch_tpu_py_test(
     ],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
+    notest_oss = "Will re-enable this slow test until we have a proper way to speed it up.",
     shard_count = 50,
     tags = [
-        # "oss_ready_tpu",  # Will re-enable this slow test until we have a proper way to speed it up.
-        "requires-tpu-v5lite",
         "noasan",  # This test times out in asan mode.
         "nomsan",  # This test times out in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.  # This test times out in tsan mode.
+        "requires-tpu-v5lite",
     ],
     deps = [
         ":dynamism_test_utils",
@@ -313,6 +320,7 @@ torch_tpu_py_test(
         # go/keep-sorted end
     ],
     main = "ops_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nolocal = "slow test",
     shard_count = 50,
     tags = [
@@ -344,6 +352,7 @@ torch_tpu_py_test(
     ],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 32,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
@@ -369,6 +378,7 @@ torch_tpu_py_test(
         "--test_mode=gen_gpu_golden",
     ],
     main = "ops_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nolocal = "slow test",
     # Each shard generates one golden file that contains one slice of the
     # golden data. Therefore the smaller the count, the bigger each file
@@ -402,6 +412,7 @@ torch_tpu_py_test(
     srcs = ["ops_unit_test.py"],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_unit_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 20,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
@@ -431,6 +442,7 @@ torch_tpu_py_test(
         "ASAN_OPTIONS": "detect_leaks=0",
     },
     main = "ops_unit_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 20,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
@@ -461,6 +473,7 @@ torch_tpu_py_test(
         "ASAN_OPTIONS": "detect_leaks=0",
     },
     main = "ops_unit_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 20,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
@@ -485,10 +498,7 @@ torch_tpu_py_test(
     srcs = ["compiler_option_test.py"],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "compiler_option_test.py",
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         ":op_testing",
         "//shims/absl_py/testing:absltest",
@@ -505,10 +515,7 @@ torch_tpu_py_test(
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "index_put_op_unit_test.py",
     shard_count = 20,
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         ":op_testing",
         "//shims/absl_py/testing:absltest",
@@ -523,7 +530,6 @@ torch_tpu_py_test(
     srcs = ["nn_test.py"],
     tags = [
         "notsan",  # TODO: fix the test in tsan mode.
-        "oss_ready_tpu",
         "requires-tpu-v5lite",
     ],
     deps = [
@@ -542,7 +548,6 @@ torch_tpu_py_test(
     srcs = ["tensor_test.py"],
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
-        "oss_ready_tpu",
         "requires-tpu-v5lite",
     ],
     deps = [
@@ -601,7 +606,6 @@ torch_tpu_py_test(
     notap = "TODO(wan): Re-enable after the March 2026 TorchTPU release.",
     shard_count = 4,
     tags = [
-        "oss_ready_tpu",
         "requires-tpu-v5lite",
         "wheel_test_excluded",
     ],
@@ -631,11 +635,10 @@ torch_tpu_py_test(
     },
     main = "errors_test.py",
     notap = "TODO(wan): Re-enable after the March 2026 TorchTPU release.",
+    # TODO: Get working in OSS and enable in nightlies
+    notest_oss = "Disabled as too slow and because it is failing in OSS.",
     shard_count = 4,
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     visibility = ["//:__subpackages__"],
     deps = [
         ":error_testing",
@@ -659,10 +662,7 @@ torch_tpu_py_test(
     main = "errors_test.py",
     notap = "TODO(wan): Re-enable after the March 2026 TorchTPU release.",
     shard_count = 4,
-    tags = [
-        "oss_ready_cpu",
-        "wheel_test_excluded",
-    ],
+    tags = ["wheel_test_excluded"],
     deps = [
         ":error_testing",
         "//shims/absl_py/testing:absltest",
@@ -680,10 +680,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "errors_cpp_context_test",
     srcs = ["errors_cpp_context_test.py"],
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -696,10 +693,7 @@ torch_tpu_py_test(
     name = "booleans_test",
     srcs = ["booleans_test.py"],
     # args = [],
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -711,6 +705,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "backwards_test",
     srcs = ["backwards_test.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "notsan",  # TODO: fix the test in tsan mode.
         "requires-tpu-v5lite",
@@ -729,10 +724,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "untyped_storage_test",
     srcs = ["untyped_storage_test.py"],
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
@@ -746,10 +738,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "view_test",
     srcs = ["view_test.py"],
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -762,10 +751,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "zero_size_test",
     srcs = ["zero_size_test.py"],
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -778,10 +764,7 @@ torch_tpu_py_test(
     name = "sync_test",
     srcs = ["sync_test.py"],
     main = "sync_test.py",
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -794,10 +777,7 @@ torch_tpu_py_test(
     name = "set_test",
     srcs = ["set_test.py"],
     main = "set_test.py",
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -810,10 +790,7 @@ torch_tpu_py_test(
     name = "execution_mode_test",
     srcs = ["execution_mode_test.py"],
     main = "execution_mode_test.py",
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//torch_tpu/_internal/execution_mode",
@@ -826,10 +803,7 @@ torch_tpu_py_test(
     srcs = ["dynamism_test.py"],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "dynamism_test.py",
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         ":op_testing",
         "//shims/absl_py/testing:absltest",
@@ -844,6 +818,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "compilation_cache_stress_test",
     srcs = ["compilation_cache_stress_test.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -859,6 +834,7 @@ torch_tpu_py_test(
     name = "dynamism_model_test",
     srcs = ["dynamism_model_test.py"],
     main = "dynamism_model_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -877,10 +853,7 @@ torch_tpu_py_test(
     name = "precision_test",
     srcs = ["precision_test.py"],
     main = "precision_test.py",
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",

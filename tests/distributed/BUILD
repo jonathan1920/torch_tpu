@@ -37,7 +37,6 @@ torch_tpu_py_test(
     name = "single_tpu_pg_test",
     srcs = ["single_tpu_pg_test.py"],
     tags = [
-        "oss_ready_tpu",
         "requires-tpu-v5lite",
     ],
     deps = [
@@ -53,12 +52,13 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "multi_tpu_test",
     srcs = ["multi_tpu_test.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -78,13 +78,14 @@ torch_tpu_py_test(
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/collective_ops_test",
     },
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the timeout in test_broadcast_objects.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -110,6 +111,8 @@ torch_tpu_py_test(
         "",
     },
     main = "collective_ops_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
@@ -138,13 +141,14 @@ torch_tpu_py_test(
         "--test_mode=tpu",
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -166,13 +170,14 @@ torch_tpu_py_test(
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "1"},
     main = "collective_errors_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -189,13 +194,14 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "alltoall_collective_test",
     srcs = ["alltoall_collective_test.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 4,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-accel-hbm",
         "requires-tpu-v5lite:8",
     ],
@@ -218,13 +224,14 @@ torch_tpu_py_test(
         "--test_mode=tpu",
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -246,13 +253,14 @@ torch_tpu_py_test(
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "1"},
     main = "alltoall_collective_errors_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -273,12 +281,13 @@ torch_tpu_py_test(
         "--test_mode=tpu",
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -301,12 +310,13 @@ torch_tpu_py_test(
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "1"},
     main = "all_gather_errors_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -324,12 +334,13 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "scatter_test",
     srcs = ["scatter_test.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -350,13 +361,14 @@ torch_tpu_py_test(
         "--test_mode=tpu",
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 3,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -378,13 +390,14 @@ torch_tpu_py_test(
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "1"},
     main = "scatter_errors_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 3,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -401,13 +414,14 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "subgroup_collectives_test",
     srcs = ["subgroup_collectives_test.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 4,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -425,13 +439,14 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "dtensor_test",
     srcs = ["dtensor_test.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     shard_count = 10,
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -453,12 +468,13 @@ torch_tpu_py_test(
         "--xla_jf_conv_full_precision",  # Use highest precision for matmuls for tests only.
     ],
     main = "fairscale_tp_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     tags = [
         "exclusive",  # copybara:comment(oss-only)
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
-        # "oss_ready_tpu",  # TODO: fix hang in OSS
         "requires-tpu-v5lite:8",
     ],
     deps = [

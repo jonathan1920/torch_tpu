@@ -46,9 +46,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "logging_test",
     srcs = ["logging_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":logging",
         "//shims/torch:aten_headers",
@@ -82,9 +79,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "kernel_test",
     srcs = ["kernel_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":kernel",
         "//shims/torch:aten_headers",

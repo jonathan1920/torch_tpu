@@ -208,18 +208,20 @@ test:ci --test_output=errors
 
 # Settings specific to CPU CI runs.
 common:ci_cpu --config=ci
-common:ci_cpu --build_tag_filters=-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only,-requires-gpu-nvidia
+common:ci_cpu --build_tag_filters=-nobuild_oss,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only,-requires-gpu-nvidia,-requires-tpu-v5lite,-requires-tpu-v5lite:8,-requires-tpu-v5p,-requires-tpu-v5p:4,-requires-tpu-v6e,-requires-tpu-v7x,-requires-tpu-v7x:4
+
 # We exclude tests tagged "notap" as it indicates that the test should be skipped from CI.
-common:ci_cpu --test_tag_filters=oss_ready_cpu,-notap,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only,-requires-gpu-nvidia
+# Also exclude anything with `-notest_oss` (which implies `-nobuild_oss`)
+common:ci_cpu --test_tag_filters=-nobuild_oss,-notest_oss,-notap,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only,-requires-gpu-nvidia,-requires-tpu-v5lite,-requires-tpu-v5lite:8,-requires-tpu-v5p,-requires-tpu-v5p:4,-requires-tpu-v6e,-requires-tpu-v7x,-requires-tpu-v7x:4
 
 # Settings specific to TPU CI runs.
 common:ci_tpu_base --config=ci
-common:ci_tpu_base --build_tag_filters=requires-tpu-v5lite,requires-tpu-v5lite:8
+common:ci_tpu_base --build_tag_filters=-nobuild_oss,requires-tpu-v5lite,requires-tpu-v5lite:8,requires-tpu-v5p,requires-tpu-v5p:4
 common:ci_tpu_base --spawn_strategy=standalone,local
+# We exclude tests tagged "notap" as it indicates that the test should be skipped from CI.
+common:ci_tpu_base --test_tag_filters=-notest_oss,-nobuild_oss,-notap
 
 common:ci_tpu --config=ci_tpu_base
-# We exclude tests tagged "notap" as it indicates that the test should be skipped from CI.
-common:ci_tpu --test_tag_filters=oss_ready_tpu,-notap
 
 common:ci_tpu_nightly --config=ci_tpu_base
 
@@ -257,7 +259,7 @@ test:wheel_config --test_output=errors
 test:wheel_config --test_wheel=true
 test:wheel_config --config=remote_caching_readonly
 test:wheel_config --config=remote_execution_readonly
-test:wheel_config --test_tag_filters=-wheel_test_excluded
+test:wheel_config --test_lang_filters=py  # Only run python tests
 
 # Config for testing CPU wheel test.
 test:wheel_test_cpu --config=ci_cpu
@@ -268,3 +270,9 @@ test:wheel_test_tpu --config=ci_tpu
 test:wheel_test_tpu --config=wheel_config
 test:wheel_test_tpu --spawn_strategy=local
 
+# We need to re-specify all of these tag filters because when specified more
+# than once, they don't compose and we want to be able to also exclude
+# wheel_test_excluded
+common:wheel_test_cpu --test_tag_filters=-nobuild_oss,-notest_oss,-notap,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only,-requires-gpu-nvidia,-requires-tpu-v5lite,-requires-tpu-v5lite:8,-requires-tpu-v5p,-requires-tpu-v5p:4,-requires-tpu-v6e,-requires-tpu-v7x,-requires-tpu-v7x:4,-wheel_test_excluded
+
+common:wheel_test_tpu --test_tag_filters=-notest_oss,-nobuild_oss,-notap,-wheel_test_excluded

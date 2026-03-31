@@ -21,6 +21,7 @@ package(
 torch_tpu_py_test(
     name = "layernorm",
     srcs = ["layernorm.py"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -38,6 +39,7 @@ torch_tpu_py_test(
     name = "var",
     srcs = ["var.py"],
     args = [],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -57,6 +59,7 @@ torch_tpu_py_test(
     args = [
         "--tpu=true",
     ],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",

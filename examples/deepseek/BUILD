@@ -47,6 +47,7 @@ torch_tpu_py_test(
     srcs = ["deepseek_decomposition_one_acc_test.py"],
     args = ["--acc=tpu"],
     main = "deepseek_decomposition_one_acc_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "Currently broken. Meant to be used for finding missing pieces.",
     tags = [
         "requires-tpu-v5lite",
@@ -68,6 +69,7 @@ torch_tpu_py_test(
     srcs = ["deepseek_decomposition_one_acc_test.py"],
     args = ["--acc=gpu"],
     main = "deepseek_decomposition_one_acc_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "slow test",
     tags = [
         "ignore_for_dep=third_party.torch_tpu.api",

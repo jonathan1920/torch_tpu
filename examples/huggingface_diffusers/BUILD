@@ -26,6 +26,7 @@ torch_tpu_py_test(
     args = ["--device=cpu"],
     data = glob(["model_configs/**"]),
     main = "sdxl_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "Fails - missing op upsample_nearest2d.out.",
     tags = [
         "ignore_for_dep=third_party.torch_tpu.api",
@@ -52,6 +53,7 @@ torch_tpu_py_test(
     args = ["--device=cuda"],
     data = glob(["model_configs/**"]),
     main = "sdxl_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "slow test",
     tags = [
         "ignore_for_dep=third_party.torch_tpu.api",
@@ -77,6 +79,7 @@ torch_tpu_py_test(
     args = ["--device=tpu"],
     data = glob(["model_configs/**"]),
     main = "sdxl_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "Fails - missing op upsample_nearest2d.out.",
     tags = [
         "requires-accel-hbm",
@@ -102,6 +105,7 @@ torch_tpu_py_test(
     args = ["--device=cuda"],
     data = glob(["model_configs/**"]),
     main = "flux_1_schnell_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "slow test",
     tags = [
         "ignore_for_dep=third_party.torch_tpu.api",
@@ -128,6 +132,7 @@ torch_tpu_py_test(
     args = ["--device=tpu"],
     data = glob(["model_configs/**"]),
     main = "flux_1_schnell_test.py",
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "OOMs.",
     tags = [
         "requires-accel-hbm",

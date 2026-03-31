@@ -22,7 +22,10 @@ torch_tpu_py_test(
     name = "profiler_impl_test",
     srcs = ["profiler_impl_test.py"],
     main = "profiler_impl_test.py",
-    tags = ["requires-tpu-v5lite"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     target_compatible_with = ["@platforms//:incompatible"],  # copybara:comment(oss-only)
     deps = [
         "//shims/absl_py/testing:absltest",
@@ -39,7 +42,10 @@ torch_tpu_py_test(
     name = "profiler_api_test",
     srcs = ["profiler_api_test.py"],
     main = "profiler_api_test.py",
-    tags = ["requires-tpu-v5lite"],
+    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     target_compatible_with = ["@platforms//:incompatible"],  # copybara:comment(oss-only)
     deps = [
         "//shims/absl_py/testing:absltest",

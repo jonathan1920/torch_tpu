@@ -25,10 +25,7 @@ torch_tpu_py_test(
     srcs = ["simple_ops_nn_example.py"],
     nopresubmit = "slow example",
     shuffle_tests = False,
-    tags = [
-        "oss_ready_tpu",
-        "requires-tpu-v5lite",
-    ],
+    tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py:app",
         "//shims/torch:pytorch",

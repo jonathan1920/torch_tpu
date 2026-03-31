@@ -94,9 +94,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "op_builder_utils_test",
     srcs = ["op_builder_utils_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":op_builder_utils",
         "//shims/torch:aten_headers",
@@ -147,9 +144,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "python_context_test",
     srcs = ["python_context_test.cc"],
-    tags = [
-        "oss_ready_cpu",
-    ],
     deps = [
         ":op_names",
         ":python_context",
@@ -428,6 +422,8 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "custom_kernels_test",
     srcs = ["custom_kernels_test.cc"],
+    # TODO(b/497890629): Enable in OSS
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         # Do not add tag "oss_ready_tpu" here. Instead, use "oss_custom_kernels_test" below to
         # run tests in TPU CI.
