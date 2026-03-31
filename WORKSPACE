@@ -29,13 +29,13 @@ http_archive(
 
 # XLA defines rules_ml_toolchain, but does so too late in the ordering of its
 # own setup, so we have to manually define it before XLA's setup runs.
-# Commit 2025-10-11 : 0fccc2447ef3bec3d75046a60a1895f053424727
+# Commit 2026-03-27 : 40efd07eb8e6565e506562f36d7dc43cd83e5b32
 http_archive(
     name = "rules_ml_toolchain",
-    sha256 = "3ea1041deb46cf4f927dd994e32acd8c436f7997b12a9558e85dee6a5a89e35c",
-    strip_prefix = "rules_ml_toolchain-0fccc2447ef3bec3d75046a60a1895f053424727",
+    sha256 = "9bd46bc5e06a56a9335897be630d4b820c678281aa88302518c250921338ad22",
+    strip_prefix = "rules_ml_toolchain-40efd07eb8e6565e506562f36d7dc43cd83e5b32",
     urls = [
-        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/0fccc2447ef3bec3d75046a60a1895f053424727.tar.gz",
+        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/40efd07eb8e6565e506562f36d7dc43cd83e5b32.tar.gz",
     ],
 )
 
