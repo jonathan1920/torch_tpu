@@ -24,6 +24,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -42,7 +43,7 @@ absl::StatusOr<DynamicMlirOpResults> DummyBuilder(
   return DynamicMlirOpResults{};
 }
 
-TEST(DeviceBufferTest, SubgraphMerging) {
+TEST(SubgraphTest, SubgraphMerging) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -76,7 +77,7 @@ TEST(DeviceBufferTest, SubgraphMerging) {
   EXPECT_EQ(rep1, rep3);
 }
 
-TEST(DeviceBufferTest, GetLeafNodesInvalidPopping) {
+TEST(SubgraphTest, GetLeafNodesInvalidPopping) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -108,7 +109,7 @@ TEST(DeviceBufferTest, GetLeafNodesInvalidPopping) {
   EXPECT_EQ(leaves[0], node2);
 }
 
-TEST(DeviceBufferTest, GetLeafNodesStopPopping) {
+TEST(SubgraphTest, GetLeafNodesStopPopping) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -159,7 +160,7 @@ TEST(DeviceBufferTest, GetLeafNodesStopPopping) {
   EXPECT_EQ(leaves[0], node3);
 }
 
-TEST(DeviceBufferTest, DeferredOpSubgraphDereference) {
+TEST(SubgraphTest, DeferredOpSubgraphDereference) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -192,6 +193,37 @@ TEST(DeviceBufferTest, LayoutHint) {
 
   ASSERT_TRUE(ref.layout_hint().has_value());
   EXPECT_EQ(ref.layout_hint().value(), my_hint);
+}
+
+TEST(SubgraphTest, MergeAll) {
+  ScopedPythonContextCapturer capturer(OpName::kEmpty);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+
+  // Create two unrelated deferred nodes.
+  auto refs_a_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_a_or.ok());
+  auto ref_a = refs_a_or.value()[0];
+  const auto* ref_a_deferred_op = ref_a.deferred_op();
+  ASSERT_NE(ref_a_deferred_op, nullptr);
+
+  auto refs_b_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_b_or.ok());
+  auto ref_b = refs_b_or.value()[0];
+  const auto* ref_b_deferred_op = ref_b.deferred_op();
+  ASSERT_NE(ref_b_deferred_op, nullptr);
+
+  // The subgraphs should be distinct; they haven't been merged.
+  EXPECT_NE(ref_a_deferred_op->subgraph()->Find(),
+            ref_b_deferred_op->subgraph()->Find());
+
+  // Merge all subgraphs.
+  auto merged_subgraph = SubgraphRegistry::GetInstance().MergeAll();
+
+  // Both nodes should now be in this merged subgraph.
+  EXPECT_EQ(ref_a_deferred_op->subgraph()->Find(), merged_subgraph);
+  EXPECT_EQ(ref_b_deferred_op->subgraph()->Find(), merged_subgraph);
 }
 
 }  // namespace

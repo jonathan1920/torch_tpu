@@ -169,6 +169,65 @@ std::vector<SharedDeviceBufferList> Subgraph::GetLeafNodes() {
   return leaf_nodes;
 }
 
+SubgraphRegistry& SubgraphRegistry::GetInstance() {
+  static SubgraphRegistry* const registry = new SubgraphRegistry();
+  return *registry;
+}
+
+absl_nonnull std::shared_ptr<Subgraph> SubgraphRegistry::MakeNewSubgraph() {
+  TT_MUTEX_LOCK(lock, mu_);
+  if (subgraphs_.size() >= subgraphs_.capacity()) {
+    // Try to free up capacity by pruning down to just the live subgraphs.
+    subgraphs_.erase(std::remove_if(subgraphs_.begin(), subgraphs_.end(),
+                                    [](std::weak_ptr<Subgraph>& weak_subgraph) {
+                                      return weak_subgraph.lock() == nullptr;
+                                    }),
+                     subgraphs_.end());
+  }
+
+  auto subgraph = std::make_shared<Subgraph>();
+  subgraphs_.push_back(subgraph);  // intentional copy
+  return subgraph;
+}
+
+absl_nonnull std::shared_ptr<Subgraph> SubgraphRegistry::MergeAll() {
+  TT_MUTEX_LOCK(lock, mu_);
+  // Find the first non-expired subgraph.
+  std::shared_ptr<Subgraph> root;
+  auto it = subgraphs_.begin();
+  while (it != subgraphs_.end()) {
+    root = it->lock();
+    if (root) break;
+    ++it;
+  }
+  if (it == subgraphs_.end()) {
+    // All subgraphs are expired. Create a new one and register it as the only
+    // subgraph.
+    subgraphs_.clear();
+    auto subgraph = std::make_shared<Subgraph>();
+    subgraphs_.push_back(subgraph);  // intentional copy
+    return subgraph;
+  }
+
+  // Merge all other subgraphs into the root subgraph.
+  ++it;
+  for (; it != subgraphs_.end(); ++it) {
+    if (auto subgraph = it->lock()) {
+      Subgraph::Merge(root, subgraph);
+    }
+  }
+
+  // Make the root subgraph the only subgraph in the registry and return it.
+  ABSL_CHECK(root);  // CRASH_OK=satisfying ClangTidy
+  subgraphs_.clear();
+  subgraphs_.push_back(root);  // intentional copy
+  return root;
+}
+
+std::shared_ptr<Subgraph> Subgraph::Create() {
+  return SubgraphRegistry::GetInstance().MakeNewSubgraph();
+}
+
 size_t DeviceBufferList::size_bytes(int64_t index) const {
   ABSL_CHECK(index >= 0 && index < shapes_.size());  // CRASH_OK
   const auto xla_type = ConvertTo<xla::PrimitiveType>(shapes_[index].dtype());
@@ -445,7 +504,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
   }
 
   if (!subgraph) {
-    subgraph = std::make_shared<Subgraph>();
+    subgraph = Subgraph::Create();
   }
 
   // Create the DeferredOp.
