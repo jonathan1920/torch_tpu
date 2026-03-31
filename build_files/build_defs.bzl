@@ -45,6 +45,8 @@ _TORCH_TPU_COPTS = [
     # C++ exception thrown will immediately crash the process instead of being
     # converted to a Python exception.
     "-fexceptions",
+    # Make unused variable a build error.
+    "-Werror=unused-variable",
 ]
 
 def adjust_cc_options(copts, features):
