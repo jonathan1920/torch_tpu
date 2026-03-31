@@ -21,8 +21,8 @@ package(
 torch_tpu_py_test(
     name = "dlrm_simple",
     srcs = ["dlrm_simple.py"],
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",

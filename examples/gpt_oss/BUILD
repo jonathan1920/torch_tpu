@@ -22,8 +22,8 @@ package(
 torch_tpu_py_test(
     name = "gpt_oss_20b_hf_pipe_example",
     srcs = ["gpt_oss_20b_hf_pipe_example.py"],
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "the test is flaky",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "cpu:4",
         "requires-accel-hbm",  # This test will OOM on Forge with the default 12GB limit.
@@ -48,8 +48,8 @@ torch_tpu_py_test(
     args = ["--device=tpu"],
     data = ["//examples/huggingface_transformers:model_configs_data"],
     main = "gpt_oss_120b_random_data_training_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "this is a manual test",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "cpu:4",
         "requires-accel-hbm",

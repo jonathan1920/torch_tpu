@@ -104,7 +104,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
         ":pjrt_init",
         ":pjrt_shutdown",

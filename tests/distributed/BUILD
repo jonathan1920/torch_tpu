@@ -52,7 +52,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "multi_tpu_test",
     srcs = ["multi_tpu_test.py"],
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     tags = [
         "exclusive",  # copybara:comment(oss-only)
@@ -78,7 +77,6 @@ torch_tpu_py_test(
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/collective_ops_test",
     },
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
     tags = [
@@ -111,7 +109,6 @@ torch_tpu_py_test(
         "",
     },
     main = "collective_ops_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
     tags = [
@@ -141,7 +138,6 @@ torch_tpu_py_test(
         "--test_mode=tpu",
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
     tags = [
@@ -170,7 +166,6 @@ torch_tpu_py_test(
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "1"},
     main = "collective_errors_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
     tags = [
@@ -194,7 +189,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "alltoall_collective_test",
     srcs = ["alltoall_collective_test.py"],
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 4,
     tags = [
@@ -224,7 +218,6 @@ torch_tpu_py_test(
         "--test_mode=tpu",
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
     tags = [
@@ -253,7 +246,6 @@ torch_tpu_py_test(
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "1"},
     main = "alltoall_collective_errors_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
     tags = [
@@ -281,7 +273,6 @@ torch_tpu_py_test(
         "--test_mode=tpu",
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     tags = [
         "exclusive",  # copybara:comment(oss-only)
@@ -310,7 +301,6 @@ torch_tpu_py_test(
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "1"},
     main = "all_gather_errors_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     tags = [
         "exclusive",  # copybara:comment(oss-only)
@@ -334,7 +324,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "scatter_test",
     srcs = ["scatter_test.py"],
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     tags = [
         "exclusive",  # copybara:comment(oss-only)
@@ -361,7 +350,6 @@ torch_tpu_py_test(
         "--test_mode=tpu",
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 3,
     tags = [
@@ -390,7 +378,6 @@ torch_tpu_py_test(
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "1"},
     main = "scatter_errors_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 3,
     tags = [
@@ -414,7 +401,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "subgroup_collectives_test",
     srcs = ["subgroup_collectives_test.py"],
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 4,
     tags = [
@@ -439,7 +425,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "dtensor_test",
     srcs = ["dtensor_test.py"],
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 10,
     tags = [
@@ -468,7 +453,6 @@ torch_tpu_py_test(
         "--xla_jf_conv_full_precision",  # Use highest precision for matmuls for tests only.
     ],
     main = "fairscale_tp_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notest_oss = "fix hang in OSS",  # TODO
     tags = [
         "exclusive",  # copybara:comment(oss-only)

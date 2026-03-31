@@ -422,14 +422,12 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "custom_kernels_test",
     srcs = ["custom_kernels_test.cc"],
-    # TODO(b/497890629): Enable in OSS
-    notest_oss = "Disabled during switch from opt-in to opt-out",
+    # To initialize PjRt, we need to explicitly set environment variable
+    # TPU_LIBRARY_PATH to point to libtpu.so for C++ tests before starting
+    # running the tests, which is not needed for Python tests.
+    # TODO(b/497890629): Run this test in OSS CI instead of using the hack
+    notest_oss = "Use oss_custom_kernels_test instead in OSS CI",
     tags = [
-        # Do not add tag "oss_ready_tpu" here. Instead, use "oss_custom_kernels_test" below to
-        # run tests in TPU CI.
-        # To initialize PjRt, we need to explicitly set environment variable TPU_LIBRARY_PATH to
-        # point to libtpu.so for C++ tests before starting running the tests, which is not needed
-        # for Python tests.
         "requires-tpu-v5lite",
     ],
     deps = [
@@ -464,7 +462,7 @@ sh_test(
         "@pypi_libtpu//:whl",
     ],
     tags = [
-        "oss_ready_tpu",
+        "requires-tpu-v5lite",
     ],
 )
 # copybara:comment_end

@@ -22,7 +22,7 @@ torch_tpu_py_test(
     name = "profiler_impl_test",
     srcs = ["profiler_impl_test.py"],
     main = "profiler_impl_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -42,7 +42,7 @@ torch_tpu_py_test(
     name = "profiler_api_test",
     srcs = ["profiler_api_test.py"],
     main = "profiler_api_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",
     ],

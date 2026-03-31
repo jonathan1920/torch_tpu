@@ -21,8 +21,8 @@ package(
 torch_tpu_py_test(
     name = "resnet",
     srcs = ["resnet.py"],
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nopresubmit = "slow example",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -43,8 +43,8 @@ torch_tpu_py_test(
     args = ["--device=cuda"],
     data = ["goldfish.jpg"],
     main = "resnet50_tv_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "This manual test validates that the code runs on cuda.",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-gpu-nvidia",
         "requires-net:external",
@@ -70,8 +70,8 @@ torch_tpu_py_test(
     args = ["--device=tpu"],
     data = ["goldfish.jpg"],
     main = "resnet50_tv_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "Test passes but we don't want to run it on TAP.",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -96,8 +96,8 @@ torch_tpu_py_test(
     srcs = ["resnet50_tv_tool.py"],
     args = ["--device=cpu"],
     main = "resnet50_tv_tool.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "This is a tool, not a test.",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-gpu-nvidia",
         "requires-net:external",
@@ -120,8 +120,8 @@ torch_tpu_py_test(
     srcs = ["resnet50_tv_tool.py"],
     args = ["--device=cuda"],
     main = "resnet50_tv_tool.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "This is a tool, not a test.",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-gpu-nvidia",
         "requires-net:external",
@@ -144,8 +144,8 @@ torch_tpu_py_test(
     srcs = ["resnet50_tv_tool.py"],
     args = ["--device=tpu"],
     main = "resnet50_tv_tool.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "This is a tool, not a test.",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -170,8 +170,8 @@ torch_tpu_py_test(
     args = ["--device=tpu"],
     linking_mode = "static",
     main = "resnet_hf_example.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "slow example",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "cpu:4",  # Matches the CUDA version of the test for a fair comparison.
         "requires-accel-hbm",
@@ -201,8 +201,8 @@ torch_tpu_py_test(
     srcs = ["resnet_hf_example.py"],
     args = ["--device=cuda"],
     main = "resnet_hf_example.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "slow example",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "cpu:4",  # For CUDA, the only choices are 1 or 4.
         "requires-accel-hbm",
@@ -232,8 +232,8 @@ torch_tpu_py_test(
     srcs = ["resnet_hf_example.py"],
     args = ["--device=xla_cuda"],
     main = "resnet_hf_example.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "slow example",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "cpu:4",  # For CUDA, the only choices are 1 or 4.
         "requires-gpu-sm100-full-only",

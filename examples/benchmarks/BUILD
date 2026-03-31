@@ -32,8 +32,8 @@ torch_tpu_py_test(
         "cpp_link.mem": "16g",  # Avoid Forge OOM in CppLink.
     },
     main = "ml_layers_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "this is a manual test",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 4,
     strict = True,
     tags = [
@@ -111,8 +111,8 @@ torch_tpu_py_test(
         "cpp_link.mem": "16g",
     },
     main = "ml_layers_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "this is a manual test",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 4,
     strict = True,
     tags = [

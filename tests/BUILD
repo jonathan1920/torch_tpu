@@ -44,7 +44,7 @@ torch_tpu_py_test(
     srcs = ["module_registry_test.py"],
     data = ["//tests/compile:data/goldfish.jpg"],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 6,
     tags = [
         "noasan",  # TODO: fix the test timing out in asan mode.
@@ -193,7 +193,7 @@ torch_tpu_py_test(
     ],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 40,
     tags = [
         "noasan",  # TODO: fix the timeout of test_grid_sampler in asan mode.
@@ -220,8 +220,8 @@ torch_tpu_py_test(
         "--max_samples_per_op_dtype=3",  # Reduce test samples as XLA:CUDA is not a priority.
     ],
     main = "ops_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     notap = "Need fixes on tolerances",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 20,
     tags = [
         "requires-gpu-sm80-only",
@@ -249,7 +249,6 @@ torch_tpu_py_test(
     ],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     # This test takes almost 30 minutes to run, since it is only using one
     # machine per build for now and it is not essential for the OSS release.
     notest_oss = "Test is too slow to run in OSS CI",
@@ -320,8 +319,8 @@ torch_tpu_py_test(
         # go/keep-sorted end
     ],
     main = "ops_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nolocal = "slow test",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 50,
     tags = [
         "cpu:8",  # Specify the number of CPUs for reproducible results.
@@ -352,7 +351,7 @@ torch_tpu_py_test(
     ],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 32,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
@@ -378,8 +377,8 @@ torch_tpu_py_test(
         "--test_mode=gen_gpu_golden",
     ],
     main = "ops_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
     nolocal = "slow test",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     # Each shard generates one golden file that contains one slice of the
     # golden data. Therefore the smaller the count, the bigger each file
     # will be.
@@ -412,7 +411,7 @@ torch_tpu_py_test(
     srcs = ["ops_unit_test.py"],
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_unit_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 20,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
@@ -442,7 +441,7 @@ torch_tpu_py_test(
         "ASAN_OPTIONS": "detect_leaks=0",
     },
     main = "ops_unit_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 20,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
@@ -473,7 +472,7 @@ torch_tpu_py_test(
         "ASAN_OPTIONS": "detect_leaks=0",
     },
     main = "ops_unit_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 20,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
@@ -705,7 +704,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "backwards_test",
     srcs = ["backwards_test.py"],
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "notsan",  # TODO: fix the test in tsan mode.
         "requires-tpu-v5lite",
@@ -818,7 +817,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "compilation_cache_stress_test",
     srcs = ["compilation_cache_stress_test.py"],
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -834,7 +833,7 @@ torch_tpu_py_test(
     name = "dynamism_model_test",
     srcs = ["dynamism_model_test.py"],
     main = "dynamism_model_test.py",
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-tpu-v5lite",
     ],

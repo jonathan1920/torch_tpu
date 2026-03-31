@@ -42,7 +42,7 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "discovery_test",
     srcs = ["discovery_test.cc"],
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
         ":discovery",
         "//torch_tpu/common:env_vars",
