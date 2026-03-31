@@ -429,6 +429,11 @@ torch_tpu_cc_test(
     name = "custom_kernels_test",
     srcs = ["custom_kernels_test.cc"],
     tags = [
+        # Do not add tag "oss_ready_tpu" here. Instead, use "oss_custom_kernels_test" below to
+        # run tests in TPU CI.
+        # To initialize PjRt, we need to explicitly set environment variable TPU_LIBRARY_PATH to
+        # point to libtpu.so for C++ tests before starting running the tests, which is not needed
+        # for Python tests.
         "requires-tpu-v5lite",
     ],
     deps = [
@@ -449,5 +454,23 @@ torch_tpu_cc_test(
         "@stablehlo//:register",
     ],
 )
+
+# Using this test as a hack to run custom_kernels_test.cc in TPU CI.
+# This test should be removed once either an equivalent C++ libtpu API is available or
+# custom_kernels_test.cc is converted to a Python test.
+# copybara:comment_begin(oss-only)
+sh_test(
+    name = "oss_custom_kernels_test",
+    srcs = ["//torch_tpu/common:run_cc_tpu_test.sh"],
+    args = ["$(location :custom_kernels_test)"],
+    data = [
+        ":custom_kernels_test",
+        "@pypi_libtpu//:whl",
+    ],
+    tags = [
+        "oss_ready_tpu",
+    ],
+)
+# copybara:comment_end
 
 torch_tpu_package_end()

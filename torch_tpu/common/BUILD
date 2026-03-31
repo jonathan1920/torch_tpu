@@ -893,6 +893,8 @@ torch_tpu_cc_test(
     ],
 )
 
+exports_files(["run_cc_tpu_test.sh"])
+
 # TODO: b/479574836 - Using this test as a hack to run compilation_test.cc in TPU CI.
 # This test should be removed once either an equivalent C++ libtpu API is available or
 # compilation_test.cc is converted to a Python test.
