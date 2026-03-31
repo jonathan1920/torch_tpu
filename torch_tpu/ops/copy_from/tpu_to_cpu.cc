@@ -17,7 +17,7 @@
 #include "torch_tpu/ops/copy_from/tpu_to_cpu.h"
 
 #include <cstdint>
-#include <string_view>
+#include <utility>
 
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -96,8 +96,12 @@ absl::Status CopyTpuToCpu(const at::Tensor& src, const at::Tensor& dest,
                            dest.nbytes() == materialized_src_buf.size_bytes();
 
   if (can_copy_directly) {
-    TT_RETURN_IF_ERROR(TpuMemcpyDtoHDirect(materialized_src_buf,
-                                           dest.data_ptr(), non_blocking));
+    // Store the status first, so that we can translate the OpenXLA OOM error
+    // message if needed.
+    absl::Status status = TpuMemcpyDtoHDirect(materialized_src_buf,
+                                              dest.data_ptr(), non_blocking);
+    TT_RETURN_IF_ERROR(TranslateXlaTensorOomError(
+        std::move(status), dest.scalar_type(), src.sizes()));
     return absl::OkStatus();
   }
 

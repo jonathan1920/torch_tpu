@@ -505,7 +505,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=re.compile(
-            r"copy_\(\): the TPU ran out of memory while awaiting the"
+            r"to_copy\(\): the TPU ran out of memory while awaiting the"
             r" materialization of value float32\[1048576, 1048576\]:(.|\n)*"
         ),
     ):
@@ -656,7 +656,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     tensor.untyped_storage().resize_(nbytes // 2)
     with et.assert_raises_message(
         IndexError,
-        "copy_(): cannot read 32 bytes (8 elements of type float32 with an"
+        "to_copy(): cannot read 32 bytes (8 elements of type float32 with an"
         " offset of 0 elements) from a storage buffer with 16 bytes",
     ):
       tensor.to("cpu")
@@ -3504,12 +3504,14 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       torch.arange(1, 10, 0, device=et.device())
 
   def test_linspace_negative_steps(self):
+    out = torch.empty(5, device=et.device())
+
     with et.assert_raises_message(
         RuntimeError,
         tpu="linspace(): expected non-negative steps, got -1",
         cpu="number of steps must be non-negative",
     ):
-      torch.linspace(0, 10, -1, device=et.device())
+      torch.linspace(0, 10, -1, device=et.device(), out=out)
 
   def test_linspace_bool_error(self):
     with et.assert_raises_message(
