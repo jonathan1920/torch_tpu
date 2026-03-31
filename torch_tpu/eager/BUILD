@@ -251,9 +251,11 @@ torch_tpu_cc_library(
     name = "materialize",
     srcs = [
         "materialize.cc",
+        "materialize_new.cc",
     ],
     hdrs = [
         "materialize.h",
+        "materialize_new.h",
     ],
     deps = [
         ":device_buffer",

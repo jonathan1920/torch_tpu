@@ -31,6 +31,7 @@
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -55,6 +56,7 @@
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize.h"
+#include "torch_tpu/eager/materialize_new.h"
 #include "torch_tpu/ops/copy_from/cpu_to_tpu.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -67,6 +69,7 @@
 ABSL_FLAG(std::string, torch_tpu_internal_detect_repeated_ops, "safe",
           "Look for repeated sequences of ops and compile them as a whole. "
           "Possible values are \"safe\", \"aggressive\", or \"\" if not used");
+ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 
 namespace torch_tpu {
 namespace {
@@ -430,6 +433,10 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
     }
 
   } else if (eager_mode != EagerMode::kDeferAll) {
+    if (absl::GetFlag(FLAGS_torch_tpu_internal_enable_new_materialization)) {
+      TT_RETURN_IF_ERROR(OnNewOpDispatch(results[0].device_buffer_list()));
+    }
+
     const std::string& detect_repeated_ops =
         absl::GetFlag(FLAGS_torch_tpu_internal_detect_repeated_ops);
     if (!detect_repeated_ops.empty()) {

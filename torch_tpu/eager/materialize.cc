@@ -35,6 +35,7 @@
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -54,6 +55,7 @@
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
+#include "torch_tpu/eager/materialize_new.h"
 #include "torch_tpu/eager/prevent_graph_splits.h"
 #include "torch_tpu/eager/split_traversal.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -78,6 +80,7 @@ ABSL_FLAG(std::optional<float>, torch_tpu_internal_throttle_limit_rate,
           "If set, throttle active materializations to try to stay below this "
           "memory limit (as a fraction of total device memory). Must be in "
           "the range [0.0, 1.0].");
+ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 
 namespace torch_tpu {
 namespace {
@@ -191,6 +194,8 @@ absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>> GetRootArgs(
   return root_args;
 }
 
+}  // namespace
+
 // PRECONDITION: executables must be a sequence that is compatible with the
 // inputs and composable, as they will be executed in order and the outputs of
 // an executable are the inputs to the next. The final execuatable returns a
@@ -205,11 +210,12 @@ absl::Status ExecuteMaterializationJob(
     absl::Span<const DeviceBufferRef> inputs,
     absl::Span<const DeviceBufferRef> outputs,
     std::vector<SharedLoadedExecutable> executables,
-    std::string_view task_name = "anonymous") {
+    std::string_view task_name) {
   tsl::profiler::TraceMe trace("ExecuteMaterializationJob");
   ABSL_VLOG(1) << "[ExecuteMaterializationJob]: task_name=" << task_name
                << " input arg count: " << inputs.size()
-               << " output arg count: " << outputs.size();
+               << " output arg count: " << outputs.size()
+               << " executables count: " << executables.size();
   ABSL_CHECK(!executables.empty()) << "No executables to execute";  // CRASH_OK
 
   TT_ASSIGN_OR_RETURN(std::vector<xla::PjRtBuffer*> root_args,
@@ -247,8 +253,11 @@ absl::Status ExecuteMaterializationJob(
   for (const auto& output : outputs) {
     output_refs.push_back(output);
   }
+
   return SetOutputNodesAsMaterialized(output_refs, std::move(final_results));
 }
+
+namespace {
 
 // An InFlightExecution is an execution that has started but may not yet be
 // finished. This is used to measure memory usage to determine when to throttle.
@@ -797,6 +806,10 @@ absl::Status MaterializationWorker::PropagateBoundedDynamism(
 absl::Status MaterializeImpl(
     absl::Span<const SharedDeviceBufferList> nodes_to_materialize,
     MaterializationMode materialization_mode) {
+  if (absl::GetFlag(FLAGS_torch_tpu_internal_enable_new_materialization)) {
+    return MaterializeImplNew(nodes_to_materialize);
+  }
+
   ABSL_VLOG(1) << "[MaterializeImpl] Materializing "
                << nodes_to_materialize.size() << " nodes";
   if (nodes_to_materialize.empty()) {
@@ -904,6 +917,11 @@ absl::StatusOr<DeviceBufferRef> GetMaterialized(const at::Tensor& tensor) {
                       GetBufferFromAtTensor(tensor));
   // Materialize the view (no-op if the tensor is a continuous base tensor)
   TT_RETURN_IF_ERROR(Materialize(view_buffer_ref));
+
+  if (absl::GetFlag(FLAGS_torch_tpu_internal_enable_new_materialization)) {
+    TT_RETURN_IF_ERROR(BlockOnPendingMaterializations());
+  }
+
   return view_buffer_ref;
 }
 
@@ -934,6 +952,10 @@ absl::StatusOr<std::vector<DeviceBufferRef>> GetMaterialized(
     view_buffer_refs.push_back(view_buffer_ref);
   }
   TT_RETURN_IF_ERROR(Materialize(view_buffer_refs));
+
+  if (absl::GetFlag(FLAGS_torch_tpu_internal_enable_new_materialization)) {
+    TT_RETURN_IF_ERROR(BlockOnPendingMaterializations());
+  }
 
   return view_buffer_refs;
 }

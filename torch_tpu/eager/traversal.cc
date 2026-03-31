@@ -184,6 +184,87 @@ absl::StatusOr<Traversal> Traversal::Create(
       stack.pop();
     }
   }
+  auto traversal = Traversal(std::move(inputs), std::move(execution_order),
+                             std::move(outputs));
+#ifndef NDEBUG
+  if (auto status = traversal.Validate(); !status.ok()) {
+    LogLines(traversal.DebugString());
+    return status;
+  }
+#endif
+  return traversal;
+}
+
+absl::StatusOr<Traversal> Traversal::CreateFromLinearRegion(
+    absl::Span<const SharedDeviceBufferList> region) {
+  ABSL_VLOG(1) << "[Traversal::CreateFromLinearRegion] Creating Traversal";
+  tsl::profiler::TraceMe t([] { return "Traversal::CreateFromLinearRegion"; });
+
+  // This will contain the traversal inputs.
+  std::vector<DeviceBufferRef> inputs;
+  // This will contain the traversal outputs.
+  std::vector<DeviceBufferRef> outputs;
+  // This will contain a sort of the internal traversal nodes.
+  std::vector<SharedDeviceBufferList> execution_order;
+
+  // View ops are not dispatched like regular ops, they appear as deferred ops
+  // in the input of the other dispatched ops. In order to extract all ops that
+  // must be scheduled we build a traversal from all the outputs in the region,
+  // but we use only its execution order and its inputs, since its outputs are
+  // not what we want.
+  {
+    std::vector<DeviceBufferRef> all_node_outputs;
+    all_node_outputs.reserve(region.size());
+    for (auto& node : region) {
+      for (auto i = 0; i < node->size(); ++i) {
+        TT_ASSIGN_OR_RETURN(auto output, DeviceBufferRef::Create(node, i));
+        all_node_outputs.push_back(std::move(output));
+      }
+    }
+    TT_ASSIGN_OR_RETURN(Traversal tmp_traversal, Create(all_node_outputs));
+    execution_order = std::move(tmp_traversal.execution_order_);
+    inputs = std::move(tmp_traversal.inputs_);
+  }
+
+  // Set of all buffers consumed as inputs by ops within the region.
+  absl::flat_hash_set<DeviceBufferRef> region_consumptions;
+  for (const auto& node : execution_order) {
+    const auto* deferred_op = node->deferred_op();
+    ABSL_CHECK(deferred_op);  // CRASH_OK
+    for (const auto& input : deferred_op->inputs()) {
+      region_consumptions.insert(input);
+    }
+  }
+
+  // A traversal output is an op output that is NOT consumed by any other op
+  // within the region.
+  //
+  // NOTE: In principle we'd like to only consider as outputs the
+  // DeviceBufferRefs that are not used as inputs from ops in the execution
+  // order. However, when dealing with multi-output ops that would break our
+  // downstream logic. In fact, when we mark a DeviceBufferList as materialized,
+  // all items in the list must be materialized, i.e., we don't support
+  // materialization of only some of the list items. Consequently, for
+  // multi-output ops we consider all its outputs, even if they some of them
+  // are used from within the region, as long as at least one is not.
+  absl::flat_hash_set<const DeviceBufferList*> visited_nodes;
+  for (const auto& node : execution_order) {
+    bool must_insert = false;
+    for (size_t i = 0; i < node->size(); ++i) {
+      TT_ASSIGN_OR_RETURN(auto output, DeviceBufferRef::Create(node, i));
+      if (!region_consumptions.contains(output) &&
+          visited_nodes.insert(node.get()).second) {
+        must_insert = true;
+        break;
+      }
+    }
+    if (must_insert) {
+      for (size_t i = 0; i < node->size(); ++i) {
+        TT_ASSIGN_OR_RETURN(auto output, DeviceBufferRef::Create(node, i));
+        outputs.push_back(std::move(output));
+      }
+    }
+  }
 
   auto traversal = Traversal(std::move(inputs), std::move(execution_order),
                              std::move(outputs));

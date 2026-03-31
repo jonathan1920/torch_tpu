@@ -639,7 +639,7 @@ absl::Status DeviceBufferList::SetAsMaterialized(
   TT_RET_CHECK(shapes_.size() == buffers.size(), error::kInvalidArgument)
       << "unexpected number of buffers; expected: " << shapes_.size()
       << " but got: " << buffers.size();
-  auto materialized_buffers = std::get_if<MaterializedBuffers>(&data_);
+  auto* materialized_buffers = std::get_if<MaterializedBuffers>(&data_);
   TT_RET_CHECK(materialized_buffers, error::kInvalidArgument)
       << "DeviceBufferList is not in a materialized state";
   TT_RET_CHECK(!materialized_buffers->IsAvailable(), error::kInvalidArgument)

@@ -118,6 +118,19 @@ class Traversal {
       const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
           stopping_points = {});
 
+  // Creates a traversal such that:
+  //
+  // * the traversal execution order is the same as the ops are listed in
+  //   `region`;
+  //
+  // * the traversal inputs are the op inputs in `region` that are not defined
+  //   by any other op in `region`;
+  //
+  // * the traversal outputs are the op outputs in `region` that are not
+  //   consumed by any other op in `region`.
+  static absl::StatusOr<Traversal> CreateFromLinearRegion(
+      absl::Span<const SharedDeviceBufferList> region);
+
   CompilationCacheKey cache_key() const {
     if (!cache_key_) {
       cache_key_ = BuildCacheKey();

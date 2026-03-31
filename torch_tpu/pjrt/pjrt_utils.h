@@ -62,6 +62,8 @@ absl::StatusOr<PjRtBufferPointers> Execute(
     const SharedLoadedExecutable& executable,
     std::vector<xla::PjRtBuffer* absl_nullable> argument_buffers);
 
+std::string ToString(const xla::PjRtBuffer& buffer);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_PJRT_PJRT_UTILS_H_

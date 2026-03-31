@@ -21,6 +21,8 @@
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <sstream>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -292,6 +294,12 @@ absl::StatusOr<PjRtBufferPointers> Execute(
   }
 
   return result_pointers;
+}
+
+std::string ToString(const xla::PjRtBuffer& buffer) {
+  std::ostringstream os;
+  os << "PjRtBuffer[shape=" << buffer.on_device_shape().ToString() << "]";
+  return os.str();
 }
 
 }  // namespace torch_tpu
