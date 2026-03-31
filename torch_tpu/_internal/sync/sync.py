@@ -31,17 +31,23 @@ def _maybe_unwrap(tensor: torch.Tensor) -> torch.Tensor:
   return tensor
 
 
-def synchronize(tensors: torch.Tensor | list[torch.Tensor], wait: bool = False):
+def synchronize(
+    tensors: torch.Tensor | list[torch.Tensor] | None = None, wait: bool = False
+) -> None:
   """Forces a materialization of one or more TPU tensors.
 
   Args:
-    tensors: The tensor or list of tensors to synchronize.
+    tensors: what to synchronize. If None, synchronizes the entire graph of
+      deferred operations. Otherwise, synchronizes only the specified tensor or
+      list of tensors.
     wait: Whether to wait for the tensor(s) to be ready. If wait is False, the
       function will compiled a graph to compute the tensors and enqueue it for
       execution, but will not wait for the results. If wait is True, the
       function will also wait for the results to be ready.
   """
-  if isinstance(tensors, list):
+  if tensors is None:
+    _tpu_torch_sync._synchronize_all(wait)  # pylint: disable=protected-access
+  elif isinstance(tensors, list):
     _tpu_torch_sync._synchronize_list(  # pylint: disable=protected-access
         [_maybe_unwrap(t) for t in tensors], wait
     )

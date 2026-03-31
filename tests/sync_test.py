@@ -96,6 +96,39 @@ class SyncTest(absltest.TestCase):
       self.assertTrue(sync.is_materialized(tensor))
       self.assertTrue(sync.is_ready(tensor))
 
+  def test_sync_no_wait_all(self):
+    x = torch.ones(10, device=api.tpu_device())
+    y = torch.ones(11, device=api.tpu_device())
+    z = torch.ones(12, device=api.tpu_device())
+
+    # Nothing is materialized or ready.
+    for tensor in [x, y, z]:
+      self.assertFalse(sync.is_materialized(tensor))
+      self.assertFalse(sync.is_ready(tensor))
+
+    sync.synchronize(wait=False)
+
+    # Everything is materialized, but may or may not be ready.
+    for tensor in [x, y, z]:
+      self.assertTrue(sync.is_materialized(tensor))
+
+  def test_sync_and_wait_all(self):
+    x = torch.ones(10, device=api.tpu_device())
+    y = torch.ones(11, device=api.tpu_device())
+    z = torch.ones(12, device=api.tpu_device())
+
+    # Nothing is materialized or ready.
+    for tensor in [x, y, z]:
+      self.assertFalse(sync.is_materialized(tensor))
+      self.assertFalse(sync.is_ready(tensor))
+
+    sync.synchronize(wait=True)
+
+    # Everything is materialized and ready.
+    for tensor in [x, y, z]:
+      self.assertTrue(sync.is_materialized(tensor))
+      self.assertTrue(sync.is_ready(tensor))
+
   def test_host_to_device_is_materialized(self):
     x = torch.ones(128, device="cpu").to(api.tpu_device())
 
