@@ -15,8 +15,7 @@
 
 # A script to run the distributed example.
 
-export TORCH_TPU_TOPOLOGY="2,4,1"
-export MASTER_ADDR="localhost"
-export MASTER_PORT=12355
+eval $(python3 -m torch_tpu._internal.distributed.launchers.singlehost_wrapper)
+export TORCH_TPU_TOPOLOGY TORCH_TPU_SLICEBUILDER_ADDRESSES WORLD_SIZE
 
 torchrun --nproc_per_node=8 ./examples/tutorials/distributed/hello_world_distributed.py
