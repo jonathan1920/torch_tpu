@@ -590,11 +590,9 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::MakePlaceholder(
 
 absl::Status DeviceBufferList::SetAsMaterialized() {
   ABSL_VLOG(1) << "[SetAsMaterialized] Setting as empty materialized";
-  auto state_ = state(0);
-  if (state_ == DeviceBufferRefState::kMaterialized) {
-    return absl::OkStatus();
+  if (!std::holds_alternative<MaterializedBuffers>(data_)) {
+    data_ = MaterializedBuffers();
   }
-  data_ = MaterializedBuffers();
   return absl::OkStatus();
 }
 
@@ -634,6 +632,10 @@ absl::Status ValidateBufferShape(const Shape& at_shape,
 
 absl::Status DeviceBufferList::SetAsMaterialized(
     std::vector<absl_nonnull std::unique_ptr<xla::PjRtBuffer>> buffers) {
+  // Call SetAsMaterialized() so as to initialize field data_ with
+  // MaterializedBuffers. The body of this function expects that.
+  TT_RETURN_IF_ERROR(SetAsMaterialized());
+
   TT_RET_CHECK(shapes_.size() == buffers.size(), error::kInvalidArgument)
       << "unexpected number of buffers; expected: " << shapes_.size()
       << " but got: " << buffers.size();
