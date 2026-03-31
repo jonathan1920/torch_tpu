@@ -868,6 +868,85 @@ def get_ml_layer_model(
     if model_name not in ["DeepSeekParallelEmbedding"]:
       model = model.to(dtype=weights_dtype)
 
+  elif model_name == "nn.f.scaled_dot_product_attention":
+    embed_dim = kwargs["embed_dim"]
+    q_num_heads = kwargs["q_num_heads"]
+    kv_num_heads = kwargs["kv_num_heads"]
+    qk_head_dim = kwargs["qk_head_dim"]
+    v_head_dim = kwargs["v_head_dim"]
+    is_causal = kwargs["is_causal"]
+    enable_gqa = kwargs["enable_gqa"]
+    use_math_backend = kwargs.get("use_math_backend", False)
+
+    class AttentionLayer(torch.nn.Module):
+
+      def __init__(self, dtype):
+        super().__init__()
+        self.q_proj = torch.nn.Linear(
+            embed_dim,
+            q_num_heads * qk_head_dim,
+            bias=False,
+            dtype=dtype,
+        )
+        self.k_proj = torch.nn.Linear(
+            embed_dim,
+            kv_num_heads * qk_head_dim,
+            bias=False,
+            dtype=dtype,
+        )
+        self.v_proj = torch.nn.Linear(
+            embed_dim,
+            kv_num_heads * v_head_dim,
+            bias=False,
+            dtype=dtype,
+        )
+        self.out_proj = torch.nn.Linear(
+            q_num_heads * v_head_dim,
+            embed_dim,
+            bias=False,
+            dtype=dtype,
+        )
+
+      def forward(self, x):
+        bsz, q_len, _ = x.size()
+        q = (
+            self.q_proj(x)
+            .view(bsz, q_len, q_num_heads, qk_head_dim)
+            .transpose(1, 2)
+        )
+        k = (
+            self.k_proj(x)
+            .view(bsz, q_len, kv_num_heads, qk_head_dim)
+            .transpose(1, 2)
+        )
+        v = (
+            self.v_proj(x)
+            .view(bsz, q_len, kv_num_heads, v_head_dim)
+            .transpose(1, 2)
+        )
+
+        with torch.nn.attention.sdpa_kernel(
+            [torch.nn.attention.SDPBackend.MATH]
+            if use_math_backend
+            else [torch.nn.attention.SDPBackend.OVERRIDEABLE]
+        ):
+          attn_output = torch.nn.functional.scaled_dot_product_attention(
+              q, k, v, is_causal=is_causal, enable_gqa=enable_gqa
+          )
+        attn_output = (
+            attn_output.transpose(1, 2)
+            .contiguous()
+            .view(bsz, q_len, q_num_heads * v_head_dim)
+        )
+        return self.out_proj(attn_output)
+
+    model = AttentionLayer(dtype=weights_dtype)
+    example_inputs = torch.randn(
+        (batch_size, kwargs["q_seq_len"], embed_dim),
+        dtype=weights_dtype,
+        device=device,
+    )
+
   else:
     raise ValueError(f"Unknown ML layer model: {model_name}")
 

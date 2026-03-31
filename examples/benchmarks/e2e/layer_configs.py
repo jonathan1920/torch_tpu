@@ -15,6 +15,7 @@
 """Shared layer configurations for benchmarks."""
 
 import dataclasses
+import torch
 
 
 @dataclasses.dataclass
@@ -290,58 +291,124 @@ RMS_NORM_CONFIGS = (
 @dataclasses.dataclass(frozen=True)
 class SdpaConfig:
   batch_size: int
-  seq_len: int
-  num_heads: int
-  head_dim: int
+  embed_dim: int
+  q_seq_len: int
+  q_num_heads: int
+  kv_num_heads: int
+  qk_head_dim: int
+  v_head_dim: int
+  is_causal: bool
+  enable_gqa: bool
+  dtype: torch.dtype
+  use_math_backend: bool = False
 
 
-SDPA_CONFIGS = (
-    # Default config for smoke test.
-    SdpaConfig(
-        batch_size=1,
-        seq_len=128,
-        num_heads=8,
-        head_dim=64,
-    ),
-    # Configs for Llama3 70B attention layers
-    SdpaConfig(
-        batch_size=1,
-        seq_len=2048,
-        num_heads=64,
-        head_dim=128,
-    ),
-    SdpaConfig(
-        batch_size=4,
-        seq_len=2048,
-        num_heads=64,
-        head_dim=128,
-    ),
-    # Configs for Qwen3 480B attention layers
-    SdpaConfig(
-        batch_size=1,
-        seq_len=2048,
-        num_heads=96,
-        head_dim=128,
-    ),
-    SdpaConfig(
-        batch_size=4,
-        seq_len=2048,
-        num_heads=96,
-        head_dim=128,
-    ),
-    # Configs for Gemma3 27B attention layers
-    SdpaConfig(
-        batch_size=1,
-        seq_len=2048,
-        num_heads=32,
-        head_dim=128,
-    ),
-    SdpaConfig(
-        batch_size=4,
-        seq_len=2048,
-        num_heads=32,
-        head_dim=128,
-    ),
+SDPA_CONFIGS = tuple(
+    dataclasses.replace(config, use_math_backend=use_math_backend)
+    for config in [
+        # Default config for smoke test.
+        SdpaConfig(
+            batch_size=1,
+            embed_dim=4096,
+            q_seq_len=128,
+            q_num_heads=8,
+            kv_num_heads=8,
+            qk_head_dim=64,
+            v_head_dim=64,
+            is_causal=True,
+            enable_gqa=True,
+            dtype=torch.bfloat16,
+        ),
+        # Configs for Llama3 70B attention layers
+        SdpaConfig(
+            batch_size=1,
+            embed_dim=4096,
+            q_seq_len=2048,
+            q_num_heads=64,
+            kv_num_heads=64,
+            qk_head_dim=128,
+            v_head_dim=128,
+            is_causal=True,
+            enable_gqa=True,
+            dtype=torch.bfloat16,
+        ),
+        SdpaConfig(
+            batch_size=4,
+            embed_dim=4096,
+            q_seq_len=2048,
+            q_num_heads=64,
+            kv_num_heads=64,
+            qk_head_dim=128,
+            v_head_dim=128,
+            is_causal=True,
+            enable_gqa=True,
+            dtype=torch.bfloat16,
+        ),
+        # Configs for Qwen3 480B attention layers
+        SdpaConfig(
+            batch_size=1,
+            embed_dim=4096,
+            q_seq_len=2048,
+            q_num_heads=96,
+            kv_num_heads=96,
+            qk_head_dim=128,
+            v_head_dim=128,
+            is_causal=True,
+            enable_gqa=True,
+            dtype=torch.bfloat16,
+        ),
+        SdpaConfig(
+            batch_size=4,
+            embed_dim=4096,
+            q_seq_len=2048,
+            q_num_heads=96,
+            kv_num_heads=96,
+            qk_head_dim=128,
+            v_head_dim=128,
+            is_causal=True,
+            enable_gqa=True,
+            dtype=torch.bfloat16,
+        ),
+        # Configs for Gemma3 27B attention layers
+        SdpaConfig(
+            batch_size=1,
+            embed_dim=4096,
+            q_seq_len=2048,
+            q_num_heads=32,
+            kv_num_heads=32,
+            qk_head_dim=128,
+            v_head_dim=128,
+            is_causal=True,
+            enable_gqa=True,
+            dtype=torch.bfloat16,
+        ),
+        SdpaConfig(
+            batch_size=4,
+            embed_dim=4096,
+            q_seq_len=2048,
+            q_num_heads=32,
+            kv_num_heads=32,
+            qk_head_dim=128,
+            v_head_dim=128,
+            is_causal=True,
+            enable_gqa=True,
+            dtype=torch.bfloat16,
+        ),
+        # AFM v7 configs
+        SdpaConfig(
+            batch_size=4,
+            embed_dim=2048,
+            q_seq_len=2048,
+            q_num_heads=16,
+            kv_num_heads=2,
+            qk_head_dim=128,
+            v_head_dim=128,
+            is_causal=True,
+            enable_gqa=True,
+            dtype=torch.bfloat16,
+        ),
+    ]
+    for use_math_backend in [False, True]
 )
 
 

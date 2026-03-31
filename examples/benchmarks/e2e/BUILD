@@ -193,6 +193,7 @@ pytype_strict_library(
     name = "layer_configs",
     testonly = True,
     srcs = ["layer_configs.py"],
+    deps = ["//shims/torch:pytorch"],
 )
 
 torch_tpu_py_test(
