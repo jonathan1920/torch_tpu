@@ -899,7 +899,8 @@ torch_tpu_cc_test(
 # copybara:comment_begin(oss-only)
 sh_test(
     name = "oss_compilation_test",
-    srcs = ["oss_compilation_test.sh"],
+    srcs = ["run_cc_tpu_test.sh"],
+    args = ["$(location :compilation_test)"],
     data = [
         ":compilation_test",
         "@pypi_libtpu//:whl",

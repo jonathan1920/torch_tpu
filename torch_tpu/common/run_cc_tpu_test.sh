@@ -13,6 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+if [[ $# -eq 0 ]]; then
+  echo "ERROR: No test binary provided."
+  echo "Usage: $0 <path_to_test_binary> [args...]"
+  exit 1
+fi
+
+# The first argument is the Bazel-provided path to the C++ test binary.
+TEST_BINARY="$1"
+shift # Remove the binary from the argument list so "$@" contains only test flags.
 
 echo "INFO: Setting environment var TPU_LIBRARY_PATH."
 
@@ -51,5 +60,6 @@ ABS_LIBTPU=$(readlink -f "$LIBTPU_SO")
 export TPU_LIBRARY_PATH="$ABS_LIBTPU"
 echo "INFO: Set TPU_LIBRARY_PATH=$TPU_LIBRARY_PATH"
 
-# 5. Run the binary
-./torch_tpu/common/compilation_test "$@"
+# 5. Run the binary with any remaining Bazel arguments
+echo "INFO: Executing test binary: $TEST_BINARY $@"
+"$TEST_BINARY" "$@"
