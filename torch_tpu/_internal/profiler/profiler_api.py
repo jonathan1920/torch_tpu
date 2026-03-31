@@ -83,15 +83,21 @@ def _get_profile_options(activities: list[ProfilerActivity]) -> ProfileOptions:
     raise ValueError("GPU profiling is not supported.")
 
   # Disable tracer options by default.
+  # For descriptions of the levels, see:
+  # https://www.tensorflow.org/guide/profiler#profiler_options
+  options.python_tracer_level = 0
   options.device_tracer_level = 0
   options.host_tracer_level = 0
-  options.python_tracer_level = 0
 
   if tpu_active:
+    # Enables device tracing.
     options.device_tracer_level = 1
 
   if cpu_active:
+    # Enables host tracing for tf.data, framework ops, user defined TraceMe,
+    # and Silva CPU profiler events.
     options.host_tracer_level = 2
+    # Enables python tracing.
     options.python_tracer_level = 1
 
   return options
@@ -127,9 +133,9 @@ def profile(
   if not on_trace_ready:
     raise ValueError("on_trace_ready must be provided for profiler.profile.")
 
-  if not activities:
+  if activities is None:
     warnings.warn(
-        "No activities provided to profiler.profile. Defaulting to CPU only"
+        "No activities provided to profiler.profile. Defaulting to CPU and TPU"
         " profiling."
     )
     activities = [ProfilerActivity.CPU, ProfilerActivity.TPU]

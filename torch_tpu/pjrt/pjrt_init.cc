@@ -17,9 +17,12 @@
 #include "torch_tpu/pjrt/pjrt_init.h"
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <string_view>
+#include <utility>
 
+#include "absl/base/call_once.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/statusor.h"
@@ -30,11 +33,28 @@
 #include "torch_tpu/common/environment.h"
 #include "torch_tpu/pjrt/pjrt_client.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
+#include "xla/backends/profiler/plugin/plugin_tracer.h"
+#include "xla/backends/profiler/plugin/profiler_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/plugin_names.h"
+#include "tsl/profiler/lib/profiler_factory.h"
+#include "tsl/profiler/lib/profiler_interface.h"
 
 namespace torch_tpu {
+namespace {
+
+bool IsRunningInTest() {
+  return GetEnvOnce<kTestWorkspaceEnvVar>().has_value() ||
+         GetEnvOnce<kTestTargetEnvVar>().has_value();
+}
+
+}  // namespace
+
+static absl::once_flag profiler_factory_once;
 
 absl::StatusOr<PjRtInitializationResult> InitializePjRt(
     const PjRtInitializationOptions& options) {
@@ -57,7 +77,69 @@ absl::StatusOr<PjRtInitializationResult> InitializePjRt(
       TT_ASSIGN_OR_RETURN(config, GetDistributedWorkerConfiguration());
       TT_RETURN_IF_ERROR(InitializeDistributedEnvironment(config));
     }
-    TT_RETURN_IF_ERROR(::pjrt::InitializePjrtPlugin(kTpuPjrtName));
+    TT_RETURN_IF_ERROR(
+        ::pjrt::InitializePjrtPlugin(kTpuPjrtName));  // LEADING_COLONS_OK
+
+    // Initialize profiler if PJRT_Profiler_Extension is available.
+    absl::StatusOr<const PJRT_Api*> api =
+        ::pjrt::PjrtApi(kTpuPjrtName);  // LEADING_COLONS_OK
+    if (api.ok() && *api != nullptr) {
+      PJRT_Profiler_Extension* profiler_ext =
+          ::pjrt::FindExtension<PJRT_Profiler_Extension>(  // LEADING_COLONS_OK
+              *api, PJRT_Extension_Type::PJRT_Extension_Type_Profiler);
+      if (profiler_ext != nullptr && profiler_ext->profiler_api != nullptr) {
+        absl::call_once(profiler_factory_once, [&]() {
+          const PLUGIN_Profiler_Api* profiler_api = profiler_ext->profiler_api;
+          std::function<std::unique_ptr  // STD_FUNCTION_OK
+                        <tsl::profiler::ProfilerInterface>(
+                            const tensorflow::ProfileOptions&)>
+              create_func =
+                  [profiler_api](const tensorflow::ProfileOptions& profile_opts)
+              -> std::unique_ptr<tsl::profiler::ProfilerInterface> {
+            // In test environments (e.g. running on simulators with shared
+            // symbols), the mock libtpu plugin is often linked statically
+            // into the framework binary.
+            //
+            // When the framework starts tracing, it calls
+            // `tsl::profiler::CreateProfilers`, which acquires a global
+            // non-recursive mutex in TSL.
+            //
+            // 1. Framework acquires Global Mutex A.
+            // 2. Calls this factory lambda to create `PluginTracer`.
+            // 3. `PluginTracer` constructor calls the plugin (mock libtpu).
+            // 4. The mock plugin attempts to initialize its own profilers by
+            // calling
+            //    `tsl::profiler::CreateProfilers` again (nested call).
+            // 5. The nested call tries to acquire Global Mutex A and deadlocks!
+            //
+            // Since we cannot modify TSL (to make it re-entrant safe or using
+            // recursive mutexes) and we cannot modify the mock plugin (to stop
+            // it from calling out), the only safe solution in this
+            // statically-linked environment is to SKIP creating the
+            // `PluginTracer` in tests.
+            //
+            // We use standard Bazel environment variables (`TEST_WORKSPACE` or
+            // `TEST_TARGET`) to detect if we are running in a test context.
+            if (IsRunningInTest()) {
+              ABSL_VLOG(1) << "Skipping PluginTracer in test environment to "
+                              "avoid shared "
+                              "TSL mutex deadlock.";
+              return nullptr;
+            }
+
+            return std::make_unique<xla::profiler::PluginTracer>(profiler_api,
+                                                                 profile_opts);
+          };
+          tsl::profiler::RegisterProfilerFactory(std::move(create_func));
+        });
+      } else {
+        ABSL_LOG(WARNING) << "PJRT_Profiler_Extension not found, profiler will "
+                             "not be initialized.";
+      }
+    } else {
+      ABSL_LOG(WARNING)
+          << "Failed to get PjRtApi, profiler will not be initialized.";
+    }
     device_type = PjRtDeviceType::kTpu;
   } else if (options.device_type == "xla_cuda") {
     TT_RETURN_IF_ERROR(::pjrt::InitializePjrtPlugin(kGpuPjrtName));
