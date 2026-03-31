@@ -17,6 +17,7 @@
 #ifndef TORCH_TPU_EAGER_TRAVERSAL_H_
 #define TORCH_TPU_EAGER_TRAVERSAL_H_
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <utility>
@@ -188,6 +189,22 @@ class Traversal {
 
   // Returns the Python context for the Traversal.
   const PythonContext* absl_nullable GetPythonContext() const;
+
+  // Sorts the Traversal's execution_order by op creation index.
+  inline void SortByCreationOrder() {
+    std::sort(
+        execution_order_.begin(), execution_order_.end(),
+        [](const SharedDeviceBufferList& a, const SharedDeviceBufferList& b) {
+          if (const auto* a_deferred_op = a->deferred_op()) {
+            if (const auto* b_deferred_op = b->deferred_op()) {
+              return a_deferred_op->creation_index() <
+                     b_deferred_op->creation_index();
+            }
+          }
+          // This should never happen.
+          return true;
+        });
+  }
 
  private:
   // Private constructor, only called by Traversal::Create().
