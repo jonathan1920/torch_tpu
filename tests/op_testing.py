@@ -1175,6 +1175,7 @@ class TorchTpuTestBase(TestCase):
 
   tpu_cpu_accuracy_overrides: AccuracyOverrides
   xla_cpu_cpu_accuracy_overrides: AccuracyOverrides
+  xla_cuda_cpu_accuracy_overrides: AccuracyOverrides
   tpu_gpu_accuracy_overrides: AccuracyOverrides
   grad_accuracy_overrides: AccuracyOverrides
 
@@ -1219,6 +1220,9 @@ class TorchTpuTestBase(TestCase):
       xla_cpu_cpu_overrides: Mapping[
           str, Mapping[torch.dtype, Mapping[str, Tolerance]]
       ],
+      xla_cuda_cpu_overrides: Mapping[
+          str, Mapping[torch.dtype, Mapping[str, Tolerance]]
+      ],
       tpu_gpu_overrides: Mapping[
           str, Mapping[torch.dtype, Mapping[str, Tolerance]]
       ],
@@ -1231,6 +1235,7 @@ class TorchTpuTestBase(TestCase):
     Args:
       tpu_cpu_overrides: Accuracy overrides for TorchTPU vs CPU.
       xla_cpu_cpu_overrides: Accuracy overrides for XLA:CPU vs CPU.
+      xla_cuda_cpu_overrides: Accuracy overrides for XLA:CUDA vs CPU.
       tpu_gpu_overrides: Accuracy overrides for TorchTPU vs GPU.
       grad_overrides: Accuracy overrides for gradients.
 
@@ -1238,6 +1243,7 @@ class TorchTpuTestBase(TestCase):
     """
     self.tpu_cpu_accuracy_overrides = tpu_cpu_overrides
     self.xla_cpu_cpu_accuracy_overrides = xla_cpu_cpu_overrides
+    self.xla_cuda_cpu_accuracy_overrides = xla_cuda_cpu_overrides
     self.tpu_gpu_accuracy_overrides = tpu_gpu_overrides
     self.grad_accuracy_overrides = grad_overrides
 
@@ -1856,9 +1862,10 @@ class TorchTpuTestBase(TestCase):
     if compute_grad:
       accuracy_overrides = self.grad_accuracy_overrides
     elif _torch_tpu_vs_cpu_mode():
-      # TODO: Split off XLA:GPU accuracy overrides.
-      if _torch_tpu_tpu_device() or _torch_tpu_xla_cuda_device():
+      if _torch_tpu_tpu_device():
         accuracy_overrides = self.tpu_cpu_accuracy_overrides
+      elif _torch_tpu_xla_cuda_device():
+        accuracy_overrides = self.xla_cuda_cpu_accuracy_overrides
       elif _torch_tpu_xla_cpu_device():
         accuracy_overrides = self.xla_cpu_cpu_accuracy_overrides
       else:

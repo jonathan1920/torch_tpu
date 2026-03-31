@@ -177,11 +177,11 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     },
     "addcdiv": {
         torch.float16: {"rtol": 1e-3, "atol": 1e-1},
-        torch.bfloat16: {"rtol": 2e-1, "atol": 1e-1},  # Only fails on xla_cpu.
+        torch.bfloat16: {"rtol": 2e-1, "atol": 1e-1},
     },
     "addcmul": {
         torch.float16: {"rtol": 1e-3, "atol": 3e-3},
-        torch.bfloat16: {"rtol": 1e-1, "atol": 1e-2},  # Only fails on xla_cpu.
+        torch.bfloat16: {"rtol": 1e-1, "atol": 1e-2},
     },
     "addmm": {
         torch.bfloat16: {"rtol": 1e-2, "atol": 1e-4},
@@ -664,6 +664,30 @@ ACCURACY_OVERRIDES_XLA_CPU_VS_CPU: dict[
         },
         "var": {
             torch.bfloat16: {"rtol": 2.3e-02, "atol": 1e-02},
+        },
+    },
+)
+
+# XLA:CUDA overrides based on TPU overrides
+ACCURACY_OVERRIDES_XLA_CUDA_VS_CPU: dict[
+    str, dict[torch.dtype, dict[str, float]]
+] = update_dict(
+    copy.deepcopy(ACCURACY_OVERRIDES_VS_CPU),
+    {
+        "_foreach_addcdiv": {
+            torch.bfloat16: {"rtol": 1.6e-2, "atol": 1e-2},
+        },
+        "_softmax_backward_data": {
+            torch.float16: {"rtol": 2e-2, "atol": 5e-3},
+        },
+        "addcmul": {
+            torch.float16: {"rtol": 2e-3, "atol": 3e-3},
+        },
+        "nn.functional.hardsigmoid": {
+            torch.float16: {"rtol": 5e-03, "atol": 1e-03}
+        },
+        "nn.functional.softplus": {
+            torch.bfloat16: {"rtol": 7.8e-3, "atol": 1e-4},
         },
     },
 )
@@ -1585,6 +1609,7 @@ class TestOps(TorchTpuTestBase):
     self.set_accuracy_overrides(
         tpu_cpu_overrides=ACCURACY_OVERRIDES_VS_CPU,
         xla_cpu_cpu_overrides=ACCURACY_OVERRIDES_XLA_CPU_VS_CPU,
+        xla_cuda_cpu_overrides=ACCURACY_OVERRIDES_XLA_CUDA_VS_CPU,
         tpu_gpu_overrides=ACCURACY_OVERRIDES_VS_GPU_COMPILED
         if op_testing.is_compiled_mode()
         else ACCURACY_OVERRIDES_VS_GPU,

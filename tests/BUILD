@@ -220,7 +220,6 @@ torch_tpu_py_test(
         "--max_samples_per_op_dtype=3",  # Reduce test samples as XLA:CUDA is not a priority.
     ],
     main = "ops_test.py",
-    notap = "Need fixes on tolerances",
     notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 20,
     tags = [
