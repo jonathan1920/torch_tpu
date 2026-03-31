@@ -104,6 +104,7 @@ torch_tpu_py_test(
     name = "compile_api_test",
     srcs = ["compile_api_test.py"],
     tags = [
+        "noasan",  # TODO(b/497852581): fix the test in asan mode.
         "requires-net:external",
         "requires-tpu-v5lite",
     ],
