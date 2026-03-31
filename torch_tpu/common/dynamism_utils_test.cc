@@ -74,8 +74,7 @@ TEST(DynamismOpsTest, GetTraversalOutputDimensionsNoBoundedInput) {
 
   // Create a Deferred Op that uses the inputs.
   std::vector<DeviceBufferRef> add_inputs = {input1, input2};
-  Shape add_output_shape{.dimensions = Dimensions{5, 10},
-                         .dtype = mlir::ElementType::F32};
+  Shape add_output_shape(Dimensions{5, 10}, mlir::ElementType::F32);
   auto builder = [](mlir::MlirBuilder& builder, absl::Span<mlir::MlirOp> inputs)
       -> absl::StatusOr<DynamicMlirOpResults> {
     EXPECT_EQ(inputs.size(), 2);
@@ -128,8 +127,7 @@ TEST(DynamismOpsTest, GetTraversalOutputDimensionsWithBoundedInput) {
 
   // Create a Deferred Op that uses the inputs.
   std::vector<DeviceBufferRef> add_inputs = {input1, input2};
-  Shape add_output_shape{.dimensions = Dimensions{5, 10},
-                         .dtype = mlir::ElementType::F32};
+  Shape add_output_shape(Dimensions{5, 10}, mlir::ElementType::F32);
   auto builder = [](mlir::MlirBuilder& builder, absl::Span<mlir::MlirOp> inputs)
       -> absl::StatusOr<DynamicMlirOpResults> {
     EXPECT_EQ(inputs.size(), 2);

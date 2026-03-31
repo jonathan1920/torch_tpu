@@ -519,10 +519,9 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
   std::vector<Shape> input_shapes;
   input_shapes.reserve(inputs_.size());
   for (const auto& input : inputs_) {
-    Shape input_shape{.dimensions = CopyIntVector(input.dimensions()),
-                      .dtype = input.element_type()};
+    Shape input_shape(CopyIntVector(input.dimensions()), input.element_type());
     for (const auto& dynamic_dim : input.dynamic_dimensions()) {
-      input_shape.dynamic_dimensions.push_back(dynamic_dim);
+      input_shape.dynamic_dimensions().push_back(dynamic_dim);
     }
     input_shapes.push_back(std::move(input_shape));
   }

@@ -59,7 +59,7 @@ TEST(ComputeInverseViewOperation, ScalarNoOp) {
       .base_transform = {},
       .bitcast_view = {},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {}, .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -81,8 +81,7 @@ TEST(ComputeInverseViewOperation, TensorNoOp) {
       .base_transform = {},
       .bitcast_view = {},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {2, 3, 4},
-                      .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({2, 3, 4}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -104,7 +103,7 @@ TEST(ComputeInverseViewOperation, ReshapeScalarToTensor) {
       .base_transform = {ReshapePrimitive{.new_sizes = {1, 1}}},
       .bitcast_view = {},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {1, 1}, .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({1, 1}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -127,7 +126,7 @@ TEST(ComputeInverseViewOperation, ReshapeTensorToScalar) {
                                           .new_sizes = {}}},
       .bitcast_view = {},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {}, .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -150,7 +149,7 @@ TEST(ComputeInverseViewOperation, ReshapeTensorToTensor) {
                                           .new_sizes = {6, 9}}},
       .bitcast_view = {},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {6, 9}, .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({6, 9}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -176,8 +175,7 @@ TEST(ComputeInverseViewOperation, PermuteTensor) {
       .stages = {InverseViewStage{
           .forward = {TransposePrimitive{.permutation = {1, 0, 2}}},
           .inverse = {TransposePrimitive{.permutation = {1, 0, 2}}}}},
-      .final_shape = {.dimensions = {2, 3, 4},
-                      .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({2, 3, 4}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -211,8 +209,7 @@ TEST(ComputeInverseViewOperation, SliceTensorLow) {
                                                              .limit_index = 4,
                                                              .stride = 1}}}},
                  InverseViewStage()},
-      .final_shape = {.dimensions = {2, 3, 4},
-                      .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({2, 3, 4}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -248,7 +245,7 @@ TEST(ComputeInverseViewOperation, SliceTensorHigh) {
                                                   .new_sizes = {1, 2, 3}}},
                      .inverse = {ReshapePrimitive{.base_sizes = {1, 2, 3},
                                                   .new_sizes = {2, 3}}}}},
-      .final_shape = {.dimensions = {6, 4}, .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({6, 4}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -318,7 +315,7 @@ TEST(ComputeInverseViewOperation, SliceTensorStridedNonContiguous) {
                                       .base_sizes =
                                           {2, 2},
                                       .new_sizes = {2, 2, 1}}}}},
-      .final_shape = {.dimensions = {7}, .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({7}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -356,8 +353,7 @@ TEST(ComputeInverseViewOperation, SliceTensorStridedContiguous) {
                                              .new_sizes = {1, 2, 2}}},
                 .inverse = {ReshapePrimitive{.base_sizes = {1, 2, 1},
                                              .new_sizes = {2, 2, 1}}}}},
-       .final_shape = {.dimensions = {4, 4, 2},
-                       .dtype = mlir::ElementType::F32}};
+       .final_shape = Shape({4, 4, 2}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -392,7 +388,7 @@ TEST(ComputeInverseViewOperation, SliceTensorStridedWithLowAndHighIndex) {
                                                   .new_sizes = {3}}},
                      .inverse = {ReshapePrimitive{.base_sizes = {3},
                                                   .new_sizes = {3, 1}}}}},
-      .final_shape = {.dimensions = {5, 6}, .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({5, 6}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -458,8 +454,7 @@ TEST(ComputeInverseViewOperation, NoDtypeChange) {
                                           .new_sizes = {4, 3, 2}}},
       .bitcast_view = {},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {4, 3, 2},
-                      .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({4, 3, 2}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -483,8 +478,7 @@ TEST(ComputeInverseViewOperation, RealToRealSameSize) {
       .bitcast_view = {RealToRealBitcast{.from_type = mlir::ElementType::UI32,
                                          .to_type = mlir::ElementType::F32}},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {4, 3, 2},
-                      .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({4, 3, 2}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -507,15 +501,14 @@ TEST(ComputeInverseViewOperation, RealToRealLargerSize) {
       .bitcast_view = {RealToRealBitcast{.from_type = mlir::ElementType::UI64,
                                          .to_type = mlir::ElementType::F32}},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {3, 2, 2, 2},
-                      .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({3, 2, 2, 2}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
-  EXPECT_EQ(inverse_view_operation->final_shape.dimensions,
-            expected.final_shape.dimensions);
-  EXPECT_EQ(inverse_view_operation->final_shape.dtype,
-            expected.final_shape.dtype);
+  EXPECT_EQ(inverse_view_operation->final_shape.dimensions(),
+            expected.final_shape.dimensions());
+  EXPECT_EQ(inverse_view_operation->final_shape.dtype(),
+            expected.final_shape.dtype());
 }
 
 TEST(ComputeInverseViewOperation, RealToRealSmallerSize) {
@@ -535,8 +528,7 @@ TEST(ComputeInverseViewOperation, RealToRealSmallerSize) {
                                           .new_sizes = {4, 3, 4}}},
       .bitcast_view = {},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {4, 3, 4},
-                      .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({4, 3, 4}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -559,8 +551,7 @@ TEST(ComputeInverseViewOperation, BoolToBool) {
                                           .new_sizes = {4, 3, 2}}},
       .bitcast_view = {},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {4, 3, 2},
-                      .dtype = mlir::ElementType::PRED}};
+      .final_shape = Shape({4, 3, 2}, mlir::ElementType::PRED)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -585,8 +576,7 @@ TEST(ComputeInverseViewOperation, BoolToByte) {
                                           .new_sizes = {4, 3, 2}}},
       .bitcast_view = {},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {4, 3, 2},
-                      .dtype = mlir::ElementType::UI8}};
+      .final_shape = Shape({4, 3, 2}, mlir::ElementType::UI8)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -613,15 +603,14 @@ TEST(ComputeInverseViewOperation, BoolToLargerSize) {
       .bitcast_view = {RealToRealBitcast{.from_type = mlir::ElementType::F32,
                                          .to_type = mlir::ElementType::UI8}},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {3, 2, 4},
-                      .dtype = mlir::ElementType::UI8}};
+      .final_shape = Shape({3, 2, 4}, mlir::ElementType::UI8)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
-  EXPECT_EQ(inverse_view_operation->final_shape.dimensions,
-            expected.final_shape.dimensions);
-  EXPECT_EQ(inverse_view_operation->final_shape.dtype,
-            expected.final_shape.dtype);
+  EXPECT_EQ(inverse_view_operation->final_shape.dimensions(),
+            expected.final_shape.dimensions());
+  EXPECT_EQ(inverse_view_operation->final_shape.dtype(),
+            expected.final_shape.dtype());
 }
 
 TEST(ComputeInverseViewOperation, ByteToBool) {
@@ -641,8 +630,7 @@ TEST(ComputeInverseViewOperation, ByteToBool) {
       .bitcast_view = {RealToRealBitcast{.from_type = mlir::ElementType::PRED,
                                          .to_type = mlir::ElementType::UI8}},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {4, 3, 2},
-                      .dtype = mlir::ElementType::UI8}};
+      .final_shape = Shape({4, 3, 2}, mlir::ElementType::UI8)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -669,8 +657,7 @@ TEST(ComputeInverseViewOperation, ViewAsReal) {
                                           .new_sizes = {2, 2, 4, 3}}},
       .bitcast_view = {},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {2, 2, 4, 3},
-                      .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({2, 2, 4, 3}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -717,8 +704,7 @@ TEST(ComputeInverseViewOperation, RealPart) {
                      .inverse = {TransposePrimitive{.permutation = {0, 2, 1}},
                                  ReshapePrimitive{.base_sizes = {2, 3, 4},
                                                   .new_sizes = {2, 3, 4, 1}}}}},
-      .final_shape = {.dimensions = {2, 3, 4, 2},
-                      .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({2, 3, 4, 2}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -766,8 +752,7 @@ TEST(ComputeInverseViewOperation, ImaginaryPart) {
                      .inverse = {TransposePrimitive{.permutation = {0, 2, 1}},
                                  ReshapePrimitive{.base_sizes = {2, 3, 4},
                                                   .new_sizes = {2, 3, 4, 1}}}}},
-      .final_shape = {.dimensions = {2, 3, 4, 2},
-                      .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({2, 3, 4, 2}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -791,8 +776,7 @@ TEST(ComputeInverseViewOperation, ViewAsComplex) {
           .complex_element_type = ComplexElementType::kComplexFloat,
           .bitcast_type = ComplexToRealBitcastType::kViewAsReal}},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {2, 4, 3, 2},
-                      .dtype = mlir::ElementType::F32}};
+      .final_shape = Shape({2, 4, 3, 2}, mlir::ElementType::F32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -823,8 +807,7 @@ TEST(ComputeInverseViewOperation, ComplexF32ToComplexF64) {
                        ViewAsComplex{.complex_element_type =
                                          ComplexElementType::kComplexFloat}},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {2, 3, 2, 2, 1},
-                      .dtype = mlir::ElementType::COMPLEXF32}};
+      .final_shape = Shape({2, 3, 2, 2, 1}, mlir::ElementType::COMPLEXF32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);
@@ -856,8 +839,7 @@ TEST(ComputeInverseViewOperation, ComplexF64ToComplexF32) {
                                           .new_sizes = {4, 3, 2}}},
       .bitcast_view = {},
       .stages = {InverseViewStage()},
-      .final_shape = {.dimensions = {4, 3, 2},
-                      .dtype = mlir::ElementType::COMPLEXF32}};
+      .final_shape = Shape({4, 3, 2}, mlir::ElementType::COMPLEXF32)};
   EXPECT_EQ(inverse_view_operation->base_transform, expected.base_transform);
   EXPECT_EQ(inverse_view_operation->bitcast_view, expected.bitcast_view);
   EXPECT_EQ(inverse_view_operation->stages, expected.stages);

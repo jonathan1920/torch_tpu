@@ -190,7 +190,7 @@ absl::StatusOr<DeviceBufferRef> MakeBuffer(
   // on future executions.
   TT_ASSIGN_OR_RETURN(auto scalar_element_type,
                       ConvertTo<mlir::ElementType>(scalar_type));
-  Shape shape{Dimensions{}, scalar_element_type};
+  Shape shape(Dimensions{}, scalar_element_type);
 
   TT_ASSIGN_OR_RETURN(auto op_param_cache_keys,
                       TT_MAKE_OP_PARAM_CACHE_KEYS(scalar));
@@ -411,8 +411,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
   std::vector<Shape> output_shapes;
   output_shapes.reserve(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
-    output_shapes.push_back(
-        Shape{CopyIntVector(out_dims_list[i]), out_dtypes[i]});
+    output_shapes.emplace_back(CopyIntVector(out_dims_list[i]), out_dtypes[i]);
   }
   TT_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferRef> results,

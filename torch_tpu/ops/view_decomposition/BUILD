@@ -441,6 +441,7 @@ torch_tpu_cc_library(
         ":unfold_primitive",
         ":view_sequence",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
         "//torch_tpu/common:utils",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/container:inlined_vector",

@@ -171,8 +171,8 @@ std::vector<SharedDeviceBufferList> Subgraph::GetLeafNodes() {
 
 size_t DeviceBufferList::size_bytes(int64_t index) const {
   ABSL_CHECK(index >= 0 && index < shapes_.size());  // CRASH_OK
-  const auto xla_type = ConvertTo<xla::PrimitiveType>(shapes_[index].dtype);
-  absl::Span<const int64_t> dimensions = shapes_[index].dimensions;
+  const auto xla_type = ConvertTo<xla::PrimitiveType>(shapes_[index].dtype());
+  absl::Span<const int64_t> dimensions = shapes_[index].dimensions();
   if (dimensions.empty()) {
     // Scalars are 1 element, size depends on the element type.
     return xla::ShapeUtil::ByteSizeOfPrimitiveType(xla_type);
@@ -203,7 +203,7 @@ absl::StatusOr<size_t> DeviceBufferList::pjrt_buffer_size(int64_t index) const {
       << on_device_size_in_bytes.status()
       << ". Inferring from PjRtBuffer shape and DeviceBufferRef elementtype.";
   xla::Shape physical_buffer_shape_estimate = xla::ShapeUtil::MakeShape(
-      ConvertTo<xla::PrimitiveType>(shapes_[index].dtype),
+      ConvertTo<xla::PrimitiveType>(shapes_[index].dtype()),
       pjrt_buffer->on_device_shape().dimensions());
   return xla::ShapeUtil::ByteSizeOf(physical_buffer_shape_estimate);
 }
@@ -309,7 +309,7 @@ DeviceBufferRefState DeviceBufferList::state(int64_t index) const {
   // this will also produce some zero-sized PjRtBuffers that can be ignored.
   // In either case, we identify zero-sized tensors as kZeroSize (even if a
   // DeferredOp or PjRtBuffer happens to exist for it).
-  for (int64_t dim : shapes_[index].dimensions) {
+  for (int64_t dim : shapes_[index].dimensions()) {
     if (dim == 0) {
       return DeviceBufferRefState::kZeroSize;
     }
@@ -325,18 +325,18 @@ DeviceBufferRefState DeviceBufferList::state(int64_t index) const {
 
 absl::Span<const int64_t> DeviceBufferList::dimensions(int64_t index) const {
   ABSL_CHECK(index >= 0 && index < shapes_.size());  // CRASH_OK
-  return shapes_[index].dimensions;
+  return shapes_[index].dimensions();
 }
 
 mlir::ElementType DeviceBufferList::element_type(int64_t index) const {
   ABSL_CHECK(index >= 0 && index < shapes_.size());  // CRASH_OK
-  return shapes_[index].dtype;
+  return shapes_[index].dtype();
 }
 
 int64_t DeviceBufferList::num_elements(int64_t index) const {
   ABSL_CHECK(index >= 0 && index < shapes_.size());  // CRASH_OK
   // Validated at construction time to not overflow.
-  return c10::multiply_integers(shapes_[index].dimensions);
+  return c10::multiply_integers(shapes_[index].dimensions());
 }
 
 absl::Status DeviceBufferList::Synchronize() const {
@@ -423,8 +423,8 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
     Indices aliased_input_indices) {
   // Validate that the output shapes are valid.
   for (const auto& output_shape : output_shapes) {
-    TT_RETURN_IF_ERROR(
-        ValidateTensorByteSize(output_shape.dimensions, output_shape.dtype));
+    TT_RETURN_IF_ERROR(ValidateTensorByteSize(output_shape.dimensions(),
+                                              output_shape.dtype()));
   }
   int64_t num_outputs = output_shapes.size();
 
@@ -488,8 +488,7 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateEmpty(
     return DynamicMlirOpResults{
         BuildFillUninitialized(builder, element_type, dimensions)};
   };
-  Shape output_shape{.dimensions = std::move(dimensions),
-                     .dtype = element_type};
+  Shape output_shape(std::move(dimensions), element_type);
   TT_ASSIGN_OR_RETURN(
       auto results, DeviceBufferList::CreateDeferred(
                         OpName::kEmpty, std::move(op_builder), /*inputs=*/{},
@@ -553,20 +552,20 @@ absl::Status ValidateBufferShape(const Shape& at_shape,
                                  const xla::Shape& buffer_shape) {
   // Ranks must match
   absl::Span<const int64_t> buffer_dims = buffer_shape.dimensions();
-  TT_RET_CHECK(at_shape.dimensions.size() == buffer_dims.size(),
+  TT_RET_CHECK(at_shape.dimensions().size() == buffer_dims.size(),
                error::kInvalidArgument)
       << "unexpected rank for buffer; expected: "
-      << ToString(at_shape.dimensions.size())
+      << ToString(at_shape.dimensions().size())
       << " but got: " << ToString(buffer_dims.size());
 
   // Static dims must match and dynamic dims must be LTE the upper bound.
-  for (int64_t d = 0; d < at_shape.dimensions.size(); ++d) {
-    TT_RET_CHECK(at_shape.dimensions[d] == buffer_dims[d] ||
+  for (int64_t d = 0; d < at_shape.dimensions().size(); ++d) {
+    TT_RET_CHECK(at_shape.dimensions()[d] == buffer_dims[d] ||
                      (buffer_shape.is_dynamic_dimension(d) &&
-                      at_shape.dimensions[d] <= buffer_dims[d]),
+                      at_shape.dimensions()[d] <= buffer_dims[d]),
                  error::kInvalidArgument)
         << "incompatible buffer shapes at dimension " << d << "; for op shape "
-        << ToString(at_shape.dimensions) << " and buffer shape "
+        << ToString(at_shape.dimensions()) << " and buffer shape "
         << buffer_shape.ToString();
   }
   return absl::OkStatus();
@@ -598,10 +597,10 @@ absl::Status DeviceBufferList::SetAsMaterialized(
                         << " has an unsupported element type: "
                         << xla::primitive_util::LowercasePrimitiveTypeName(
                                buffers[i]->element_type()));
-    TT_RET_CHECK(actual_element_type == shapes_[i].dtype,
+    TT_RET_CHECK(actual_element_type == shapes_[i].dtype(),
                  error::kInvalidArgument)
         << "unexpected element type for buffer " << i
-        << "; expected: " << ToString(shapes_[i].dtype)
+        << "; expected: " << ToString(shapes_[i].dtype())
         << " but got: " << ToString(actual_element_type);
   }
   ABSL_VLOG(1) << "[SetAsMaterialized] Setting as materialized";
@@ -620,30 +619,30 @@ absl::Status DeviceBufferList::MarkDynamic(int64_t index, int64_t dimension,
       << "index " << index << " is out of bounds for DeviceBufferList of size "
       << shapes_.size();
   Shape& shape = shapes_[index];
-  TT_RET_CHECK(dimension >= 0 && dimension < shape.dimensions.size(),
+  TT_RET_CHECK(dimension >= 0 && dimension < shape.dimensions().size(),
                error::kOutOfRange)
       << "dimension " << dimension << " is out of bounds for tensor of rank "
-      << shape.dimensions.size();
-  TT_RET_CHECK(shape.dimensions[dimension] >= lower_bound &&
-                   shape.dimensions[dimension] <= upper_bound,
+      << shape.dimensions().size();
+  TT_RET_CHECK(shape.dimensions()[dimension] >= lower_bound &&
+                   shape.dimensions()[dimension] <= upper_bound,
                error::kOutOfRange)
       << "trying to mark dimension " << dimension << " as dynamic with bounds ["
       << lower_bound << ", " << upper_bound << "], but the dimension size is "
-      << shape.dimensions[dimension];
+      << shape.dimensions()[dimension];
   auto it_find = std::find_if(
-      shape.dynamic_dimensions.begin(), shape.dynamic_dimensions.end(),
+      shape.dynamic_dimensions().begin(), shape.dynamic_dimensions().end(),
       [dimension](const BoundedDynamicDimension& dynamic_dimension) {
         return dynamic_dimension.dimension == dimension;
       });
-  if (it_find != shape.dynamic_dimensions.end()) {
+  if (it_find != shape.dynamic_dimensions().end()) {
     it_find->lower_bound = lower_bound;
     it_find->upper_bound = upper_bound;
   } else {
-    TT_RET_CHECK(shape.dynamic_dimensions.empty(), error::kInvalidArgument)
+    TT_RET_CHECK(shape.dynamic_dimensions().empty(), error::kInvalidArgument)
         << "only one dynamic dimension is supported per tensor";
-    shape.dynamic_dimensions.push_back({.dimension = dimension,
-                                        .lower_bound = lower_bound,
-                                        .upper_bound = upper_bound});
+    shape.dynamic_dimensions().push_back({.dimension = dimension,
+                                          .lower_bound = lower_bound,
+                                          .upper_bound = upper_bound});
   }
   return absl::OkStatus();
 };
@@ -651,7 +650,7 @@ absl::Status DeviceBufferList::MarkDynamic(int64_t index, int64_t dimension,
 absl::Span<const BoundedDynamicDimension> DeviceBufferList::dynamic_dimensions(
     int64_t index) const {
   ABSL_CHECK(index >= 0 && index < shapes_.size());  // CRASH_OK
-  return shapes_[index].dynamic_dimensions;
+  return shapes_[index].dynamic_dimensions();
 }
 
 absl::StatusOr<DeviceBufferRef> DeviceBufferRef::Create(

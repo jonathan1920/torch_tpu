@@ -24,6 +24,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -43,7 +44,7 @@ absl::StatusOr<DynamicMlirOpResults> DummyBuilder(
 
 TEST(DeviceBufferTest, SubgraphMerging) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape = {.dimensions = {8}, .dtype = mlir::ElementType::F32};
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   // Create two independent deferred nodes.
   auto refs1_or = DeviceBufferList::CreateDeferred(
@@ -77,7 +78,7 @@ TEST(DeviceBufferTest, SubgraphMerging) {
 
 TEST(DeviceBufferTest, GetLeafNodesInvalidPopping) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape = {.dimensions = {8}, .dtype = mlir::ElementType::F32};
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   SharedDeviceBufferList node2;
   std::shared_ptr<Subgraph> subgraph;
@@ -109,7 +110,7 @@ TEST(DeviceBufferTest, GetLeafNodesInvalidPopping) {
 
 TEST(DeviceBufferTest, GetLeafNodesStopPopping) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape = {.dimensions = {8}, .dtype = mlir::ElementType::F32};
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   SharedDeviceBufferList node1;
   SharedDeviceBufferList node3;
@@ -160,7 +161,7 @@ TEST(DeviceBufferTest, GetLeafNodesStopPopping) {
 
 TEST(DeviceBufferTest, DeferredOpSubgraphDereference) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape = {.dimensions = {8}, .dtype = mlir::ElementType::F32};
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   auto refs_or = DeviceBufferList::CreateDeferred(
       OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
@@ -177,7 +178,7 @@ TEST(DeviceBufferTest, DeferredOpSubgraphDereference) {
 
 TEST(DeviceBufferTest, LayoutHint) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape = {.dimensions = {8}, .dtype = mlir::ElementType::F32};
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   auto refs_or = DeviceBufferList::CreateDeferred(
       OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});

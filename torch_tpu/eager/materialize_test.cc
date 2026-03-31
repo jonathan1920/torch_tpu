@@ -81,14 +81,14 @@ TEST_F(MaterializeTest, AddLeafNodes) {
   ASSERT_OK_AND_ASSIGN(DeviceBufferRef arg, DeviceBufferList::CreateZeroSize(
                                                 {0}, mlir::ElementType::F32));
 
-  const Shape shape = {.dimensions = {8}, .dtype = mlir::ElementType::F32};
+  const Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   auto builder = [shape](mlir::MlirBuilder& builder,
                          absl::Span<mlir::MlirOp> inputs)
       -> absl::StatusOr<DynamicMlirOpResults> {
     if (!inputs.empty()) return DynamicMlirOpResults{inputs[0]};
     return DynamicMlirOpResults{
-        BuildFillUninitialized(builder, shape.dtype, shape.dimensions)};
+        BuildFillUninitialized(builder, shape.dtype(), shape.dimensions())};
   };
 
   ASSERT_OK_AND_ASSIGN(
@@ -122,14 +122,14 @@ TEST_F(MaterializeTest, AddLeafNodes) {
 
 TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  const Shape shape = {.dimensions = {8}, .dtype = mlir::ElementType::F32};
+  const Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   auto builder = [shape](mlir::MlirBuilder& builder,
                          absl::Span<mlir::MlirOp> inputs)
       -> absl::StatusOr<DynamicMlirOpResults> {
     if (!inputs.empty()) return DynamicMlirOpResults{inputs[0]};
     return DynamicMlirOpResults{
-        BuildFillUninitialized(builder, shape.dtype, shape.dimensions)};
+        BuildFillUninitialized(builder, shape.dtype(), shape.dimensions())};
   };
 
   // Create a graph: a -> b, a -> c, b -> d.

@@ -822,6 +822,7 @@ class DeviceBufferList {
     }
     layout_hints_[index] = std::move(layout_hint);
   }
+
   std::optional<std::string> layout_hint(int64_t index) const {
     if (layout_hints_.empty()) {
       return std::nullopt;
@@ -851,9 +852,7 @@ class DeviceBufferList {
                    std::optional<xla::Future<>> future = std::nullopt)
       : subgraph_(nullptr) {
     const xla::Shape& on_device_shape = buffer->on_device_shape();
-    Shape shape =
-        Shape{.dimensions = CopyIntVector(on_device_shape.dimensions()),
-              .dtype = element_type};
+    Shape shape(CopyIntVector(on_device_shape.dimensions()), element_type);
     shapes_.push_back(std::move(shape));
 
     auto buffer_address = buffer.get();
@@ -866,8 +865,8 @@ class DeviceBufferList {
     }
     layout_hints_.resize(shapes_.size());
     ABSL_VLOG(3) << "[DeviceBuffer CONSTRUCTOR (materialized)] Created. Dims: "
-                 << ToString(shapes_[0].dimensions)
-                 << ", Type: " << ToString(shapes_[0].dtype)
+                 << ToString(shapes_[0].dimensions())
+                 << ", Type: " << ToString(shapes_[0].dtype())
                  << ", PjRtBuffer: " << buffer_address
                  << ", Should await: " << future.has_value();
   }
@@ -903,12 +902,11 @@ class DeviceBufferList {
   // that the compiled executable will expect to be provided as an argument.
   DeviceBufferList(Dimensions dimensions, const mlir::ElementType element_type)
       : subgraph_(nullptr) {
-    shapes_.push_back(
-        Shape{.dimensions = std::move(dimensions), .dtype = element_type});
+    shapes_.emplace_back(std::move(dimensions), element_type);
     layout_hints_.resize(shapes_.size());
     ABSL_VLOG(3) << "[DeviceBuffer CONSTRUCTOR (bufferless)] Created. Dims: "
-                 << ToString(shapes_[0].dimensions)
-                 << ", Type: " << ToString(shapes_[0].dtype);
+                 << ToString(shapes_[0].dimensions())
+                 << ", Type: " << ToString(shapes_[0].dtype());
   }
 
   // The data backing the DeviceBufferList.

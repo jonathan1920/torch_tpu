@@ -167,10 +167,10 @@ DimensionsKey::DimensionsKey(
 ShapeDynamismMetadata::ShapeDynamismMetadata(absl::Span<const Shape> shapes) {
   for (const Shape& shape : shapes) {
     const int64_t tensor_start_dim = input_dimension_bounds_.size();
-    for (int64_t dim : shape.dimensions) {
+    for (int64_t dim : shape.dimensions()) {
       input_dimension_bounds_.push_back({dim, dim});
     }
-    for (const auto& dynamic_dim : shape.dynamic_dimensions) {
+    for (const auto& dynamic_dim : shape.dynamic_dimensions()) {
       const int64_t dynamic_dim_index =
           tensor_start_dim + dynamic_dim.dimension;
       input_dimension_bounds_[dynamic_dim_index] = {dynamic_dim.lower_bound,
@@ -182,10 +182,10 @@ ShapeDynamismMetadata::ShapeDynamismMetadata(absl::Span<const Shape> shapes) {
 namespace {
 bool IsShapeCompatibleWithBounds(const Shape& shape,
                                  absl::Span<const DimensionBounds> bounds) {
-  TT_CHECK_THROW(shape.dimensions.size() == bounds.size(), error::kInternal)
+  TT_CHECK_THROW(shape.dimensions().size() == bounds.size(), error::kInternal)
       << "Shape and bounds spans must have the same size.";
-  for (int i = 0; i < shape.dimensions.size(); ++i) {
-    const int64_t dim = shape.dimensions[i];
+  for (int i = 0; i < shape.dimensions().size(); ++i) {
+    const int64_t dim = shape.dimensions()[i];
     if (dim < bounds[i].lower || dim > bounds[i].upper) {
       return false;
     }
@@ -198,7 +198,8 @@ std::string GetIncompatibilityErrorMsg(
     absl::Span<const DimensionBounds> bounds) {
   return absl::StrCat(
       "Input shape is incompatible with dynamism metadata at index ", index,
-      ". ", "input shapes: ", ToString(shape.dimensions), " dynamism bounds: ",
+      ". ", "input shapes: ", ToString(shape.dimensions()),
+      " dynamism bounds: ",
       absl::StrJoin(
           bounds, ",", [](std::string* out, const DimensionBounds& bounds) {
             absl::StrAppend(out, "[", bounds.lower, ",", bounds.upper, "]");
@@ -207,16 +208,16 @@ std::string GetIncompatibilityErrorMsg(
 
 Shape GetPaddingShape(const Shape& shape,
                       absl::Span<const DimensionBounds> bounds) {
-  TT_CHECK_THROW(shape.dimensions.size() == bounds.size(), error::kInternal)
+  TT_CHECK_THROW(shape.dimensions().size() == bounds.size(), error::kInternal)
       << "Shape and bounds spans must have the same size.";
-  Shape padding_shape{.dimensions = shape.dimensions, .dtype = shape.dtype};
-  for (int i = 0; i < shape.dimensions.size(); ++i) {
-    TT_CHECK_THROW(padding_shape.dimensions[i] >= bounds[i].lower &&
-                       padding_shape.dimensions[i] <= bounds[i].upper,
+  Shape padding_shape(shape.dimensions(), shape.dtype());
+  for (int i = 0; i < shape.dimensions().size(); ++i) {
+    TT_CHECK_THROW(padding_shape.dimensions()[i] >= bounds[i].lower &&
+                       padding_shape.dimensions()[i] <= bounds[i].upper,
                    error::kInternal)
-        << GetIncompatibilityErrorMsg(i, {shape}, bounds);
+        << GetIncompatibilityErrorMsg(i, shape, bounds);
     if (bounds[i].lower != bounds[i].upper) {
-      padding_shape.dynamic_dimensions.push_back(
+      padding_shape.dynamic_dimensions().push_back(
           {.dimension = i,
            .lower_bound = bounds[i].lower,
            .upper_bound = bounds[i].upper});
@@ -230,7 +231,7 @@ bool ShapeDynamismMetadata::IsStaticShapeCompatible(
     absl::Span<const Shape> shapes) const {
   int64_t flattened_size = 0;
   for (const Shape& shape : shapes) {
-    flattened_size += shape.dimensions.size();
+    flattened_size += shape.dimensions().size();
   }
   if (flattened_size != input_dimension_bounds_.size()) {
     return false;
@@ -238,7 +239,7 @@ bool ShapeDynamismMetadata::IsStaticShapeCompatible(
   int64_t index = 0;
   absl::Span<const DimensionBounds> bounds = input_dimension_bounds_;
   for (const Shape& shape : shapes) {
-    int64_t span_size = shape.dimensions.size();
+    int64_t span_size = shape.dimensions().size();
     if (!IsShapeCompatibleWithBounds(shape, bounds.subspan(index, span_size))) {
       return false;
     }
@@ -256,7 +257,7 @@ std::vector<Shape> ShapeDynamismMetadata::GetPaddingShapes(
   int index = 0;
   absl::Span<const DimensionBounds> bounds = input_dimension_bounds_;
   for (const Shape& shape : shapes) {
-    int64_t span_size = shape.dimensions.size();
+    int64_t span_size = shape.dimensions().size();
     padding_shapes.push_back(
         GetPaddingShape(shape, bounds.subspan(index, span_size)));
     index += span_size;
@@ -269,14 +270,14 @@ CompilationCacheKey ShapeDynamismMetadata::GetPadModuleCacheKey(
   GraphSignature graph;
 
   for (const Shape& shape : shapes) {
-    graph.AddInput(shape.dimensions, shape.dtype);
+    graph.AddInput(shape.dimensions(), shape.dtype());
   }
 
   absl::Span<const DimensionBounds> bounds = input_dimension_bounds_;
   int bounds_index = 0;
   for (int i = 0; i < shapes.size(); ++i) {
     const Shape& shape = shapes[i];
-    const int64_t span_size = shape.dimensions.size();
+    const int64_t span_size = shape.dimensions().size();
     auto shape_bounds = bounds.subspan(bounds_index, span_size);
     bounds_index += span_size;
 
@@ -289,7 +290,7 @@ CompilationCacheKey ShapeDynamismMetadata::GetPadModuleCacheKey(
       continue;
     }
 
-    Dimensions padded_dimensions = shape.dimensions;
+    Dimensions padded_dimensions = shape.dimensions();
     for (int d = 0; d < span_size; ++d) {
       if (shape_bounds[d].lower != shape_bounds[d].upper) {
         padded_dimensions[d] = shape_bounds[d].upper;
@@ -300,7 +301,7 @@ CompilationCacheKey ShapeDynamismMetadata::GetPadModuleCacheKey(
         OpName::kPadUninitialized_, OpParamCacheKeys::Empty(),
         /*aliased_inputs=*/{}, [&](GraphSignature::OpSignatureBuilder& op) {
           op.AddInput(i);
-          op.AddOutput(padded_dimensions, shape.dtype);
+          op.AddOutput(padded_dimensions, shape.dtype());
         });
     graph.AddGraphOutput(padded_tensor_index);
 

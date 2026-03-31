@@ -31,19 +31,18 @@ namespace torch_tpu {
 absl::StatusOr<Shape> MakeShape(const xla::Shape& xla_shape) {
   TT_ASSIGN_OR_RETURN(mlir::ElementType result_dtype,
                       ConvertTo<mlir::ElementType>(xla_shape.element_type()));
-  return Shape{.dimensions = CopyIntVector(xla_shape.dimensions()),
-               .dtype = result_dtype};
+  return Shape(CopyIntVector(xla_shape.dimensions()), result_dtype);
 }
 
 std::string ToString(const Shape& s) {
   std::ostringstream os;
-  for (auto d : s.dimensions) {
+  for (auto d : s.dimensions()) {
     os << d << "x";
   }
-  os << ToShortString(s.dtype);
-  if (!s.dynamic_dimensions.empty()) {
+  os << ToShortString(s.dtype());
+  if (!s.dynamic_dimensions().empty()) {
     os << "[";
-    for (auto d : s.dynamic_dimensions) {
+    for (auto d : s.dynamic_dimensions()) {
       os << d.dimension << ":" << d.lower_bound << ":" << d.upper_bound << ",";
     }
     os << "]";

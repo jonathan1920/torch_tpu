@@ -28,6 +28,7 @@
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Types.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/pjrt/pjrt_init.h"
 #include "stablehlo/dialect/Register.h"
@@ -148,8 +149,7 @@ TEST_F(CustomKernelRegistryTest, CannotLoadNonexistentKernel) {
       mlir::makeTensorType(fb.getContext(), {10}, mlir::ElementType::F32);
   mlir::MlirOp op1 = mlir::func::Argument(fb, arg_type);
   mlir::MlirOp op2 = mlir::func::Argument(fb, arg_type);
-  Shape arg_shape{.dimensions = Dimensions{10},
-                  .dtype = mlir::ElementType::F32};
+  Shape arg_shape(Dimensions{10}, mlir::ElementType::F32);
   auto kernel_add_func_status =
       CallCustomKernel(fb, {op1, op2}, "does_not_exist", "");
 

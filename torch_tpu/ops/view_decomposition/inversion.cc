@@ -31,6 +31,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
@@ -589,10 +590,10 @@ absl::StatusOr<InverseViewOperation> ComputeInverseViewOperation(
                                                 writable_dtype, layout);
 
   // Initially set the final shape to the shape after the bitcast.
-  Shape final_shape{.dtype = writable_dtype};
-  final_shape.dimensions.reserve(layout.strided_dims.size());
+  Shape final_shape({}, writable_dtype);
+  final_shape.dimensions().reserve(layout.strided_dims.size());
   for (const auto& dim : layout.strided_dims) {
-    final_shape.dimensions.push_back(dim.size);
+    final_shape.dimensions().push_back(dim.size);
   }
 
   // Cast the view to the writable dtype and update the layout accordingly.
@@ -627,9 +628,9 @@ absl::StatusOr<InverseViewOperation> ComputeInverseViewOperation(
       // An initial reshape can be folded into the base transform, since it
       // retains contiguity. This also changes the expected final shape.
       TT_RETURN_IF_ERROR(UpdateLayout(layout, base_to_view[i]));
-      final_shape.dimensions.clear();
+      final_shape.dimensions().clear();
       for (const auto& dim : layout.strided_dims) {
-        final_shape.dimensions.push_back(dim.size);
+        final_shape.dimensions().push_back(dim.size);
       }
       base_transform.push_back(std::move(base_to_view[i]));
     } else if (SlicePrimitive* slice =

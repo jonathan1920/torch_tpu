@@ -435,6 +435,7 @@ torch_tpu_cc_test(
         ":custom_kernels",
         ":op_builder_utils",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
         "//torch_tpu/pjrt:pjrt_init",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",

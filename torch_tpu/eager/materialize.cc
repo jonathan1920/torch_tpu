@@ -419,9 +419,9 @@ class MaterializationWorker {
     for (const auto& shape : output_shapes) {
       // Make a placeholder and then immediately put it in the
       // pending-materialization state.
-      TT_ASSIGN_OR_RETURN(DeviceBufferRef output_ref,
-                          DeviceBufferList::MakePlaceholder(
-                              std::move(shape.dimensions), shape.dtype));
+      TT_ASSIGN_OR_RETURN(
+          DeviceBufferRef output_ref,
+          DeviceBufferList::MakePlaceholder(shape.dimensions(), shape.dtype()));
       TT_RETURN_IF_ERROR(output_ref.device_buffer_list()->SetAsMaterialized());
       outputs.push_back(std::move(output_ref));
     }
