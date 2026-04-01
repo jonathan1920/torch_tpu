@@ -240,29 +240,12 @@ class TpuBackend:
       if "donate_args" in options:
         donate_args = options["donate_args"]
 
-    # Wrap _compile_graph_module to capture the layouts of the example inputs.
-    # This information won't be present in the FakeTensors so we have to capture
-    # it in advance.
-    fw_compiler = functools.partial(
-        self._compile_graph_module,
-        donate_args=donate_args,
-        layouts=[
-            tpu_torch_compile.get_device_layout_if_materialized(example_input)
-            for example_input in example_inputs
-        ],
-    )
-    # We don't have the layouts for the backwards pass so we don't capture them
-    # and we let the compiler handle them.
-    bw_compiler = functools.partial(
-        self._compile_graph_module,
-        donate_args=donate_args,
-    )
-    # This is to avoid inplace generating graph modules that contains
-    # inplace update.
-
     return aot_autograd(
-        fw_compiler=fw_compiler,
-        bw_compiler=bw_compiler,
+        fw_compiler=functools.partial(
+            self._compile_graph_module, donate_args=donate_args
+        ),
+        # This is to avoid inplace generating graph modules that contains
+        # inplace update.
         keep_inference_input_mutations=False,
     )(graph_module, example_inputs)
 
@@ -271,7 +254,6 @@ class TpuBackend:
       graph_module: torch.fx.GraphModule,
       example_inputs: List[torch.Tensor],
       donate_args: Sequence[int],
-      layouts: List[str] | None = None,
   ) -> Callable[[torch.fx.GraphModule, List[torch.Tensor]], Callable[..., Any]]:
     """Compiles the graph_module with the given inputs for TPU.
 
@@ -284,8 +266,6 @@ class TpuBackend:
       example_inputs: Example inputs to the FX graph for tracing (not the actual
         inputs).
       donate_args: The list of argument indices that are allowed to be donated.
-      layouts: The original layouts of the inputs seen by the backend before
-        aot_autograd tracing.
 
     Returns:
       A function that executes the compiled graph on the TPU.
@@ -343,11 +323,6 @@ class TpuBackend:
           else arg
           for arg in example_inputs
       ]
-
-      if layouts is None:
-        layouts = [None] * len(placeholder_args)
-      for arg, layout in zip(placeholder_args, layouts, strict=True):
-        tpu_torch_compile.set_layout_hint(arg, layout)
 
       # Use debug info format when TORCH_TRACE is set so the artifact has
       # human-readable MLIR with source location annotations.

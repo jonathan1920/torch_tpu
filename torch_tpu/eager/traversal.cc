@@ -24,7 +24,6 @@
 #include <sstream>
 #include <stack>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -40,10 +39,8 @@
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseSet.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Types.h"
@@ -397,15 +394,14 @@ absl::StatusOr<mlir::MlirOp> Traversal::GetMlirOpForProcessedBuffer(
 
 namespace {
 
-std::pair<mlir::MlirOp, std::optional<std::string>>
-BufferToArgumentAndLayoutHint(mlir::func::FunctionBuilder& fb,
+mlir::MlirOp BufferToArgument(mlir::func::FunctionBuilder& fb,
                               const DeviceBufferRef& input) {
   if (input.state() == DeviceBufferRefState::kZeroSize) {
     auto type = makeTensorType(fb.getContext(), input.dimensions(),
                                input.element_type());
     // In compiled mode we can still have zero-sized tensors as explicit
     // inputs and we handle those here.
-    return {MakeConstant(fb, mlir::ArrayRef<int64_t>{}, type), std::nullopt};
+    return MakeConstant(fb, mlir::ArrayRef<int64_t>{}, type);
   }
   Dimensions dimensions = CopyIntVector(input.dimensions());
   // If input has bounded dynamic dimensions, we assume we will receive an
@@ -424,8 +420,7 @@ BufferToArgumentAndLayoutHint(mlir::func::FunctionBuilder& fb,
     result = mlir::stablehlo::SetDimensionSize(result, dimension_size,
                                                dynamic_dim.dimension);
   }
-
-  return {result, input.layout_hint()};
+  return result;
 }
 
 }  // namespace
@@ -459,16 +454,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
   RefToOpMap ref_to_op_map;
   ABSL_VLOG(2) << "[Traversal::BuildMlirModule] building MLIR ops for "
                << inputs.size() << " inputs";
-  // Store layout hints for each non-zero-sized input.
-  std::vector<std::string> input_layout_hints;
-  input_layout_hints.reserve(inputs.size());
   for (const DeviceBufferRef& input : inputs) {
-    std::optional<std::string> layout_hint = input.layout_hint();
-    std::tie(ref_to_op_map[input], layout_hint) =
-        BufferToArgumentAndLayoutHint(fb, input);
-    if (layout_hint.has_value()) {
-      input_layout_hints.push_back(std::move(layout_hint.value()));
-    }
+    ref_to_op_map[input] = BufferToArgument(fb, input);
   }
 
   for (const DeviceBufferRef& zsc : non_input_zero_sized_consts()) {
@@ -551,25 +538,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
 
   mlir::func::Return(fb, results);
   auto module = mb.build();
-
-  // Annotate argument and result layouts.
-  mlir::func::FuncOp main_fn = module->lookupSymbol<mlir::func::FuncOp>("main");
-  if (main_fn) {
-    for (size_t i = 0; i < input_layout_hints.size(); ++i) {
-      main_fn.setArgAttr(
-          i, "mhlo.layout_mode",
-          mlir::StringAttr::get(&mlir_context, input_layout_hints[i]));
-    }
-
-    for (size_t i = 0; i < outputs.size(); ++i) {
-      if (outputs[i].layout_hint().has_value()) {
-        main_fn.setResultAttr(
-            i, "mhlo.layout_mode",
-            mlir::StringAttr::get(&mlir_context,
-                                  outputs[i].layout_hint().value()));
-      }
-    }
-  }
 
   // Identify which inputs to the Traversal are aliased.
   Indices donated_inputs;

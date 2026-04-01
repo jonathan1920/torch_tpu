@@ -730,4 +730,5 @@ void RegisterTpuAllocator() {
   c10::SetAllocator(GetPrivateUse1DeviceType(), GetTpuAllocator());
   at::setHostAllocator(GetPrivateUse1DeviceType(), GetTpuPinnedAllocator());
 }
+
 }  // namespace torch_tpu

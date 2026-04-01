@@ -17,7 +17,6 @@
 #include "torch_tpu/eager/device_buffer.h"
 
 #include <memory>
-#include <string>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -175,24 +174,6 @@ TEST(SubgraphTest, DeferredOpSubgraphDereference) {
   // Dereference to the necessary subgraph object via the
   // subgraph pointer in the deferred op.
   EXPECT_EQ(op->subgraph(), ref.device_buffer_list()->subgraph());
-}
-
-TEST(DeviceBufferTest, LayoutHint) {
-  ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32);
-
-  auto refs_or = DeviceBufferList::CreateDeferred(
-      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
-  ASSERT_TRUE(refs_or.ok());
-  auto ref = refs_or.value()[0];
-
-  EXPECT_FALSE(ref.layout_hint().has_value());
-
-  std::string my_hint = "{2,1,0:T(16,128)(2,1)}";
-  ref.set_layout_hint(my_hint);
-
-  ASSERT_TRUE(ref.layout_hint().has_value());
-  EXPECT_EQ(ref.layout_hint().value(), my_hint);
 }
 
 TEST(SubgraphTest, MergeAll) {
