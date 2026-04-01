@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import concurrent.futures
 import threading
 
 from absl.testing import absltest
@@ -204,6 +205,71 @@ class PrecisionTest(absltest.TestCase):
 
       # The main thread should still be default
       self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+
+  def test_thread_local_stress(self):
+    def worker(target_precision, target_impl_precision):
+      for _ in range(100):
+        with precision(target_precision):
+          self.assertEqual(p_impl._get_precision(), target_impl_precision)
+        self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+
+    threads = []
+    configs = [
+        (Precision.HIGH, p_impl.Precision.high),
+        (Precision.HIGHEST, p_impl.Precision.highest),
+        (Precision.DEFAULT, p_impl.Precision.default),
+    ]
+    for i in range(10):
+      config = configs[i % len(configs)]
+      t = threading.Thread(target=worker, args=config)
+      threads.append(t)
+      t.start()
+
+    for t in threads:
+      t.join()
+
+  def test_thread_local_inheritance(self):
+    def child_worker():
+      # Child thread should NOT inherit the parent's precision context.
+      self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+
+    with precision(Precision.HIGH):
+      self.assertEqual(p_impl._get_precision(), p_impl.Precision.high)
+      t = threading.Thread(target=child_worker)
+      t.start()
+      t.join()
+      self.assertEqual(p_impl._get_precision(), p_impl.Precision.high)
+
+  def test_thread_pool_executor(self):
+    def worker(target_precision, target_impl_precision):
+      with precision(target_precision):
+        self.assertEqual(p_impl._get_precision(), target_impl_precision)
+      return p_impl._get_precision()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+      futures = []
+      futures.append(
+          executor.submit(worker, Precision.HIGH, p_impl.Precision.high)
+      )
+      futures.append(
+          executor.submit(worker, Precision.HIGHEST, p_impl.Precision.highest)
+      )
+
+      for future in concurrent.futures.as_completed(futures):
+        self.assertEqual(future.result(), p_impl.Precision.default)
+
+  def test_nested_thread_local(self):
+    def worker():
+      with precision(Precision.HIGH):
+        self.assertEqual(p_impl._get_precision(), p_impl.Precision.high)
+        with precision(Precision.HIGHEST):
+          self.assertEqual(p_impl._get_precision(), p_impl.Precision.highest)
+        self.assertEqual(p_impl._get_precision(), p_impl.Precision.high)
+      self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+
+    t = threading.Thread(target=worker)
+    t.start()
+    t.join()
 
 
 if __name__ == "__main__":
