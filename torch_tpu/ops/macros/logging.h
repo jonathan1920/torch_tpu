@@ -327,6 +327,7 @@ void CheckScalarInput() {
                     kOpName == OpName::kIsInTensorScalarOut ||         //
                     kOpName == OpName::kLe ||                          //
                     kOpName == OpName::kLeakyReluOut ||                //
+                    kOpName == OpName::kLerpScalarOut ||               //
                     kOpName == OpName::kLinalgVectorNormOut ||         //
                     kOpName == OpName::kLinspaceOut ||                 //
                     kOpName == OpName::kLocalScalarDense ||            //
