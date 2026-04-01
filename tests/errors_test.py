@@ -6237,6 +6237,17 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       t.random_(20, 10)
 
+  def test_randn_unsupported_dtype(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "normal_(): expected the self tensor to be floating point or"
+            " complex type, got int32"
+        ),
+        cpu="\"normal_kernel_cpu\" not implemented for 'Int'",
+    ):
+      torch.randn(5, dtype=torch.int32, device=et.device())
+
   def test_linalg_inv_ex_1d(self):
     a = torch.ones(5, device=et.device())
 
@@ -6820,7 +6831,66 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.masked_fill(inp, mask, value)
 
-  def test_normal_int32(self):
+  def test_normal_empty_std_tensor(self):
+    device = et.device()
+    out_empty = torch.empty(0, device=device)
+    torch.normal(mean=0.0, std=torch.tensor([], device=device), out=out_empty)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="int32",
+          dtype=torch.int32,
+          cpu_msg="\"normal_kernel_cpu\" not implemented for 'Int'",
+          tpu_msg=(
+              "normal_(): expected the self tensor to be floating point or"
+              " complex type, got int32"
+          ),
+      ),
+      dict(
+          testcase_name="int64",
+          dtype=torch.int64,
+          cpu_msg="\"normal_kernel_cpu\" not implemented for 'Long'",
+          tpu_msg=(
+              "normal_(): expected the self tensor to be floating point or"
+              " complex type, got int64"
+          ),
+      ),
+  )
+  def test_normal_errors_invalid_input_dtype(
+      self, dtype: torch.dtype, *, cpu_msg: str, tpu_msg: str
+  ):
+    device = et.device()
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu=cpu_msg,
+        tpu=tpu_msg,
+    ):
+      torch.tensor([1, 2], device=device, dtype=dtype).normal_()
+
+  def test_normal_errors_negative_std_scalar(self):
+    device = et.device()
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu="normal expects std >= 0.0, but found std -1",
+        tpu="normal_(): expected std >= 0.0, but found std -1",
+    ):
+      torch.empty(2, device=device).normal_(mean=0.0, std=-1.0)
+
+  def test_normal_errors_negative_std_tensor(self):
+    device = et.device()
+    out = torch.empty(2, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu="normal expects all elements of std >= 0.0",
+        tpu=(
+            "normal(): expected all elements of std >= 0.0, got min element: -1"
+        ),
+    ):
+      torch.normal(
+          mean=0.0, std=torch.tensor([-1.0, 1.0], device=device), out=out
+      )
+
+  def test_normal_errors_float_scalar_mean_int32_tensor_std(self):
     std = torch.ones(5, device=et.device(), dtype=torch.int32)
 
     with et.assert_raises_message(
@@ -6830,6 +6900,83 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         message_reviewed_by="wan",
     ):
       torch.normal(mean=0.0, std=std)
+
+  def test_normal_errors_float_scalar_mean_complex_tensor_std_out(self):
+    device = et.device()
+    out = torch.empty(2, device=device)
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu="normal expects standard deviation to be non-complex",
+        tpu=(
+            "normal(): expected the std tensor to be floating point, got"
+            " complex64"
+        ),
+    ):
+      torch.normal(
+          mean=0.0,
+          std=torch.tensor([1j], device=device, dtype=torch.complex64),
+          out=out,
+      )
+
+  def test_normal_errors_float_scalar_mean_complex_tensor_std(self):
+    device = et.device()
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu="normal expects standard deviation to be non-complex",
+        tpu=(
+            "normal(): expected the std tensor to be floating point, got"
+            " complex64"
+        ),
+    ):
+      torch.normal(
+          mean=0.0,
+          std=torch.tensor([1j], device=device, dtype=torch.complex64),
+      )
+
+  def test_normal_errors_tensor_mean_complex_tensor_std(self):
+    device = et.device()
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu="normal expects standard deviation to be non-complex",
+        tpu=(
+            "normal(): expected the std tensor to be non-complex, got complex64"
+        ),
+    ):
+      torch.normal(
+          mean=torch.tensor([0.0], device=device),
+          std=torch.tensor([1j], device=device, dtype=torch.complex64),
+      )
+
+  def test_normal_errors_mismatched_shapes_functional(self):
+    device = et.device()
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu=(
+            "The size of tensor a (2) must match the size of tensor b (3) at"
+            " non-singleton dimension 0"
+        ),
+        tpu=(
+            "The size of tensor a (2) must match the size of tensor b (3) at"
+            " non-singleton dimension 0"
+        ),
+    ):
+      torch.normal(
+          mean=torch.zeros(2, device=device), std=torch.ones(3, device=device)
+      )
+
+  def test_normal_errors_invalid_mean_dtype(self):
+    device = et.device()
+    with et.assert_raises_message(
+        (RuntimeError, NotImplementedError),
+        cpu="\"normal_kernel_cpu\" not implemented for 'Int'",
+        tpu=(
+            "normal(): expected the mean tensor to be floating point or complex"
+            " type, got int32"
+        ),
+    ):
+      torch.normal(
+          mean=torch.tensor([1], device=device, dtype=torch.int32), std=1.0
+      )
 
   def test_histc_complex(self):
     t = torch.tensor([1, 2], device=et.device(), dtype=torch.complex64)

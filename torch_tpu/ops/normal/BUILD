@@ -47,6 +47,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops:xla_utils",
         "//torch_tpu/ops/macros:kernel",
         "//torch_tpu/ops/uniform",
+        "//torch_tpu/ops/view:view_aten_kernels",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

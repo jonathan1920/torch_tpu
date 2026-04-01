@@ -2493,17 +2493,177 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         ),
     )
 
-  # TODO(b/439675122): Figure out how to trigger op variants properly.
   def test_normal_float_float_out(self):
-    """Tests that normal.float_float_out works."""
     golden_result = torch.normal(
-        2, 3, size=(1, 4), dtype=torch.float32, device=self.golden_device
+        mean=2.0,
+        std=3.0,
+        size=(1, 4),
+        dtype=torch.float32,
+        device=self.golden_device,
     )
     out = torch.empty(1, 4, dtype=torch.float32, device=api.tpu_device())
-    tpu_result = torch.normal(2, 3, size=(1, 4), out=out).cpu()
+    tpu_result = torch.normal(mean=2.0, std=3.0, size=(1, 4), out=out).cpu()
 
     self.assertEqual(golden_result.shape, tpu_result.shape)
     self.assertEqual(golden_result.dtype, tpu_result.dtype)
+
+  def test_normal_broadcasting_real(self):
+    def compute(device):
+      mean = torch.zeros((2, 1), device=device)
+      std = torch.ones((1, 3), device=device)
+      return torch.normal(mean, std)
+
+    self.assert_close_tpu_vs_cpu(compute, check_value=CheckValueMode.SKIP)
+
+  def test_normal_broadcasting_complex(self):
+    def compute(device):
+      mean_c = torch.complex(
+          torch.zeros((2, 1), device=device), torch.zeros((2, 1), device=device)
+      )
+      std = torch.ones((1, 3), device=device)
+      return torch.normal(mean_c, std)
+
+    self.assert_close_tpu_vs_cpu(compute, check_value=CheckValueMode.SKIP)
+
+  def test_normal_inplace_complex(self):
+    device = api.tpu_device()
+    t = torch.zeros(10, dtype=torch.complex64, device=device)
+    t.normal_(mean=1.0, std=0.5)
+    self.assertTrue(t.is_complex())
+    self.assertNotEqual(t.abs().sum().item(), 0.0)
+
+  def test_normal_integer_std(self):
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.normal(
+            mean=torch.zeros((2, 1), device=device),
+            std=torch.ones((1, 3), device=device, dtype=torch.int32),
+        ),
+        check_value=CheckValueMode.SKIP,
+    )
+
+  def test_normal_empty_std(self):
+    def compute(device):
+      out_empty = torch.empty(0, device=device)
+      torch.normal(mean=0.0, std=torch.tensor([], device=device), out=out_empty)
+      return out_empty
+
+    self.assert_close_tpu_vs_cpu(compute, check_value=CheckValueMode.SKIP)
+
+  def test_normal_resize_out(self):
+    def compute(device):
+      mean = torch.zeros(2, device=device)
+      std = torch.ones(2, device=device)
+      out = torch.empty(3, device=device)
+      torch.normal(mean, std, out=out)
+      return out
+
+    self.assert_close_tpu_vs_cpu(compute, check_value=CheckValueMode.SKIP)
+
+  def test_normal_resize_float_tensor_out(self):
+    def compute(device):
+      std = torch.ones(5, device=device)
+      out = torch.empty(2, device=device)
+      torch.normal(mean=0.0, std=std, out=out)
+      return out
+
+    self.assert_close_tpu_vs_cpu(compute, check_value=CheckValueMode.SKIP)
+
+  def test_normal_resize_tensor_float_out(self):
+    def compute(device):
+      mean = torch.zeros(4, device=device)
+      out = torch.empty(1, device=device)
+      torch.normal(mean, std=1.0, out=out)
+      return out
+
+    self.assert_close_tpu_vs_cpu(compute, check_value=CheckValueMode.SKIP)
+
+  def test_normal_resize_complex_out(self):
+    def compute(device):
+      mean = torch.zeros(3, dtype=torch.complex64, device=device)
+      out = torch.empty(1, dtype=torch.complex64, device=device)
+      torch.normal(mean, std=1.0, out=out)
+      return out
+
+    self.assert_close_tpu_vs_cpu(compute, check_value=CheckValueMode.SKIP)
+
+  def test_normal_real_mean_complex_out(self):
+    def compute(device):
+      mean = torch.zeros(100, device=device)
+      std = torch.ones(100, device=device)
+      out = torch.empty(100, dtype=torch.complex64, device=device)
+      torch.normal(mean, std, out=out)
+      # Having a real mean does not mean the output should be real; it just
+      # means the complex output will center around mean+0j.
+      self.assertTrue((out.imag != 0.0).any())
+      return out
+
+    self.assert_close_tpu_vs_cpu(compute, check_value=CheckValueMode.SKIP)
+
+  def test_normal_complex_scaling_deterministic_scalar(self):
+    def compute(device):
+      # Sample complex normal.
+      torch.manual_seed(42)
+      z = torch.normal(
+          mean=0.0, std=1.0, size=(10,), dtype=torch.complex64, device=device
+      )
+
+      # Sample real normal with 1/sqrt(2) scaling.
+      torch.manual_seed(42)
+      r = torch.normal(
+          mean=0.0,
+          std=1.0 / math.sqrt(2.0),
+          size=(10, 2),
+          dtype=torch.float32,
+          device=device,
+      )
+
+      self.assert_close(
+          golden_result=r.cpu(), torch_tpu_result=torch.view_as_real(z).cpu()
+      )
+      return z
+
+    self.assert_close_tpu_vs_cpu(compute, check_value=CheckValueMode.SKIP)
+
+  def test_normal_complex_scaling_deterministic_tensor_scalar(self):
+    def compute(device):
+      mean = torch.full((10,), 1.0 + 2.0j, dtype=torch.complex64, device=device)
+      torch.manual_seed(42)
+      z = torch.normal(mean, std=1.0)
+
+      torch.manual_seed(42)
+      mean_real = torch.tensor([1.0, 2.0], device=device).expand(10, 2)
+      r = torch.normal(
+          mean_real,
+          std=1.0 / math.sqrt(2.0),
+      )
+      self.assert_close(
+          golden_result=r.cpu(), torch_tpu_result=torch.view_as_real(z).cpu()
+      )
+      return z
+
+    self.assert_close_tpu_vs_cpu(compute, check_value=CheckValueMode.SKIP)
+
+  def test_normal_complex_scaling_deterministic_tensor_tensor(self):
+    def compute(device):
+      mean = torch.full((10,), 1.0 + 2.0j, dtype=torch.complex64, device=device)
+      std = torch.full((10,), 3.0, dtype=torch.float32, device=device)
+      torch.manual_seed(42)
+      z = torch.normal(mean, std)
+
+      torch.manual_seed(42)
+      mean_real = torch.tensor([1.0, 2.0], device=device).expand(10, 2)
+      # The real std is unsqueezed and broadcasted to both real/imag parts.
+      std_real = torch.full((10, 2), 3.0, device=device)
+      r = torch.normal(
+          mean_real,
+          std_real / math.sqrt(2.0),
+      )
+      self.assert_close(
+          golden_result=r.cpu(), torch_tpu_result=torch.view_as_real(z).cpu()
+      )
+      return z
+
+    self.assert_close_tpu_vs_cpu(compute, check_value=CheckValueMode.SKIP)
 
   def test_pow(self):
     rtol, atol = 1.3e-6, 1.2e-5
@@ -2973,7 +3133,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       ("float16", torch.float16),
       ("float32", torch.float32),
   )
-  def test_randn_dtype(self, dtype: torch.dtype):
+  def test_randn_float(self, dtype: torch.dtype):
     numel = 100_000
     t = torch.randn(numel, dtype=dtype, device=api.tpu_device())
     t_cpu = t.cpu().float()
@@ -2988,16 +3148,56 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     mean = t_cpu.mean().item()
     std = t_cpu.std().item()
     self.assertAlmostEqual(
-        mean,
-        0.0,
-        delta=0.05,
-        msg=f"randn {dtype} mean={mean}, expected ~0.0",
+        mean, 0.0, delta=0.05, msg=f"randn {dtype} mean={mean}, expected ~0.0"
     )
     self.assertAlmostEqual(
-        std,
-        1.0,
+        std, 1.0, delta=0.05, msg=f"randn {dtype} std={std}, expected ~1.0"
+    )
+
+  @parameterized.named_parameters(
+      ("complex64", torch.complex64),
+      ("complex128", torch.complex128),
+  )
+  def test_randn_complex(self, dtype: torch.dtype):
+    numel = 100_000
+    t = torch.randn(numel, dtype=dtype, device=api.tpu_device())
+    t_cpu = t.cpu()
+
+    num_nonfinite = (~torch.isfinite(t_cpu)).sum().item()
+    self.assertEqual(
+        num_nonfinite,
+        0,
+        f"randn {dtype}: {num_nonfinite}/{numel} non-finite values",
+    )
+
+    real_mean = t_cpu.real.float().mean().item()
+    real_std = t_cpu.real.float().std().item()
+    imag_mean = t_cpu.imag.float().mean().item()
+    imag_std = t_cpu.imag.float().std().item()
+
+    self.assertAlmostEqual(
+        real_mean,
+        0.0,
         delta=0.05,
-        msg=f"randn {dtype} std={std}, expected ~1.0",
+        msg=f"randn {dtype} real mean={real_mean}, expected ~0.0",
+    )
+    self.assertAlmostEqual(
+        real_std,
+        0.707,
+        delta=0.05,
+        msg=f"randn {dtype} real std={real_std}, expected ~0.707",
+    )
+    self.assertAlmostEqual(
+        imag_mean,
+        0.0,
+        delta=0.05,
+        msg=f"randn {dtype} imag mean={imag_mean}, expected ~0.0",
+    )
+    self.assertAlmostEqual(
+        imag_std,
+        0.707,
+        delta=0.05,
+        msg=f"randn {dtype} imag std={imag_std}, expected ~0.707",
     )
 
   def test_embedding_vector_indices(self):

@@ -3154,10 +3154,9 @@ class TestOps(TorchTpuTestBase):
         # By definition, normal() returns a tensor with random values, so
         # there's no point in checking the values.
         check_value=CheckValueMode.SKIP,
-        # TODO: fix normal() failing with complex dtypes.
         # TODO: fix normal() failing with float64 input.
-        exclude_dtypes=COMPLEX_DTYPES + (torch.float64,),
-        exclude_inplace_dtypes=COMPLEX_DTYPES + (torch.float64,),
+        exclude_dtypes=(torch.float64,),
+        exclude_inplace_dtypes=(torch.float64,),
     )
 
   def test_ones(self):
@@ -3472,8 +3471,7 @@ class TestOps(TorchTpuTestBase):
         check_out_variant=False,
         check_value=CheckValueMode.SKIP,  # randn() returns random values.
         # TODO: fix randn() failing with float64 input.
-        # TODO: fix randn() failing with complex dtypes.
-        exclude_dtypes=(torch.float64,) + COMPLEX_DTYPES,
+        exclude_dtypes=(torch.float64,),
     )
 
   def test_randint(self):
