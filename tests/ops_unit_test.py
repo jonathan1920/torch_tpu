@@ -5342,6 +5342,168 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(compute)
 
+  @parameterized.product(
+      shape=[(100,), (0,), (2, 10, 5), (2, 2, 2, 2), (1, 0, 2)],
+      return_inverse=[True, False],
+      return_counts=[True, False],
+      dtype=[
+          torch.float32,
+          torch.float64,
+          torch.bfloat16,
+          torch.float16,
+          torch.int64,
+          torch.int32,
+          torch.int16,
+          torch.int8,
+          torch.uint8,
+          torch.bool,
+      ],
+  )
+  def test_unique2(self, shape, return_inverse, return_counts, dtype):
+    if dtype.is_floating_point:
+      input_value = torch.randn(shape, dtype=dtype)
+    elif dtype == torch.bool:
+      input_value = torch.randint(0, 2, shape, dtype=torch.uint8).to(torch.bool)
+    else:
+      input_value = torch.randint(0, 10, shape, dtype=dtype)
+
+    def compute(device):
+      return torch._unique2(
+          input_value.to(device),
+          sorted=True,
+          return_inverse=return_inverse,
+          return_counts=return_counts,
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  def test_unique2_distributions(self):
+    for dtype in [torch.float32, torch.int64]:
+      for distribution in [
+          "all_same",
+          "all_different",
+          "sorted",
+          "reverse_sorted",
+      ]:
+        if distribution == "all_same":
+          input_value = torch.full((100,), 42, dtype=dtype)
+        elif distribution == "all_different":
+          input_value = torch.arange(100, dtype=dtype)
+        elif distribution == "sorted":
+          input_value = torch.sort(torch.randint(0, 50, (100,), dtype=dtype))[0]
+        elif distribution == "reverse_sorted":
+          input_value = torch.sort(
+              torch.randint(0, 50, (100,), dtype=dtype), descending=True
+          )[0]
+        else:
+          raise ValueError(f"Unknown distribution: {distribution}")
+
+        def compute(device, input_value=input_value):
+          return torch._unique2(
+              input_value.to(device),
+              sorted=True,
+              return_inverse=True,
+              return_counts=True,
+          )
+
+        with self.subTest(dtype=dtype, distribution=distribution):
+          self.assert_close_tpu_vs_cpu(compute)
+
+  def test_unique2_nan(self):
+    # Multiple NaNs collapse into a single NaN, sorted at the end.
+    # Inverse indices for NaNs are documented to be unpredictable,
+    # so we omit them from the CPU vs TPU check.
+    input_value = torch.tensor([1.0, float("nan"), 2.0, float("nan"), 1.0])
+
+    def compute(device):
+      res = torch._unique2(
+          input_value.to(device),
+          sorted=True,
+          return_inverse=True,
+          return_counts=True,
+      )
+      return res[0], res[2]
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  def test_unique2_infs(self):
+    # Tests that +/- Infs are sorted correctly (-Inf < ... < +Inf < NaN)
+    # Inverse indices are omitted due to NaN unpredictability.
+    input_value = torch.tensor(
+        [float("inf"), 1.0, float("-inf"), float("nan"), float("-inf"), 2.0]
+    )
+
+    def compute(device):
+      res = torch._unique2(
+          input_value.to(device),
+          sorted=True,
+          return_inverse=True,
+          return_counts=True,
+      )
+      return res[0], res[2]
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  def test_unique2_zeros(self):
+    # -0.0 and 0.0 are considered equivalent. The exact returned value
+    # depends on the backend, so we check the absolute value instead.
+    input_value = torch.tensor([-0.0, 0.0, -0.0, 0.0, 1.0])
+
+    def compute(device):
+      res = torch._unique2(
+          input_value.to(device),
+          sorted=True,
+          return_inverse=True,
+          return_counts=True,
+      )
+      # We check out.abs(), inverse_indices, and counts
+      return res[0].abs(), res[1], res[2]
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  def test_unique2_non_contiguous(self):
+    # (2, 3) -> (3, 2) but non-contiguous
+    input_value = torch.tensor([[1, 2], [3, 4], [1, 2]]).t()
+
+    def compute(device):
+      return torch._unique2(
+          input_value.to(device),
+          sorted=True,
+          return_inverse=True,
+          return_counts=True,
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  def test_unique2_large(self):
+    input_value = torch.randint(0, 1000, (10000,), dtype=torch.int64)
+
+    def compute(device):
+      return torch._unique2(
+          input_value.to(device),
+          sorted=True,
+          return_inverse=True,
+          return_counts=True,
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
+  def test_unique2_more_shapes(self):
+    shapes = [(2, 0, 3), (1, 5, 1, 1), (0, 0)]
+    for shape in shapes:
+      input_value = torch.randint(0, 10, shape, dtype=torch.int32)
+
+      def compute(device, input_value=input_value):
+        return torch._unique2(
+            input_value.to(device),
+            sorted=True,
+            return_inverse=True,
+            return_counts=True,
+        )
+
+      with self.subTest(shape=shape):
+        self.assert_close_tpu_vs_cpu(compute)
+
 
 if __name__ == "__main__":
   absltest.main()

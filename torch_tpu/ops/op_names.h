@@ -570,6 +570,7 @@ enum class OpName {
   kTruncOut,
   kUnfold,
   kUniform_,
+  kUnique2,
   kUnsqueeze,
   kUnsqueezeCopy,
   kUnsqueezeCopyOut,

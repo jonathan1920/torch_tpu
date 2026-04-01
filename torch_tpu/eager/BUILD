@@ -563,6 +563,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/tril_indices:tril_indices_aten_kernels",
         "//torch_tpu/ops/unfold:unfold_aten_kernels",
         "//torch_tpu/ops/uniform:uniform_aten_kernels",
+        "//torch_tpu/ops/unique:unique_aten_kernels",
         "//torch_tpu/ops/upsample:upsample_aten_kernels",
         "//torch_tpu/ops/view:view_aten_kernels",
         "//torch_tpu/ops/weight_norm:weight_norm_aten_kernels",

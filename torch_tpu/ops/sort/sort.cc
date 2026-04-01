@@ -45,11 +45,15 @@ SortShloOutputs BuildSortShlo(mlir::MlirOp input_op, bool stable, int64_t dim,
                       dim);
   auto comparator = [inputType, descending](mlir::RegionBuilder& rb) {
     mlir::OpBuilder& op_builder = rb.getOpBuilder();
+    std::optional<llvm::StringRef> compare_type = std::nullopt;
+    if (mlir::isa<mlir::FloatType>(inputType.getElementType())) {
+      compare_type = "TOTALORDER";
+    }
     stablehlo::buildSortComparisonBody(
         {inputType.getElementType(), op_builder.getI32Type()},
         descending ? stablehlo::ComparisonDirection::GT
                    : stablehlo::ComparisonDirection::LT,
-        std::nullopt, &rb.getRegion(), &op_builder);
+        compare_type, &rb.getRegion(), &op_builder);
   };
   auto outputs =
       stablehlo::Sort(builder, {input_op, indices}, comparator, dim, stable);

@@ -1118,6 +1118,8 @@ std::string_view ToString(OpName op_name) {
       return "unfold";
     case OpName::kUniform_:
       return "uniform_";
+    case OpName::kUnique2:
+      return "_unique2";
     case OpName::kUnsqueeze:
       return "unsqueeze";
     case OpName::kUnsqueezeCopy:
