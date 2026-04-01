@@ -72,8 +72,12 @@ std::string_view ToString(OpName op_name) {
       return "all.out";
     case OpName::kAmax:
       return "amax";
+    case OpName::kAmaxOut:
+      return "amax.out";
     case OpName::kAmin:
       return "amin";
+    case OpName::kAminOut:
+      return "amin.out";
     case OpName::kAminmaxOut:
       return "aminmax.out";
     case OpName::kAnyAllOut:
@@ -122,20 +126,30 @@ std::string_view ToString(OpName op_name) {
       return "bitwise_and";
     case OpName::kBitwiseAndOut:
       return "bitwise_and.out";
+    case OpName::kBitwiseAndTensorOut:
+      return "bitwise_and.Tensor_out";
     case OpName::kBitwiseLeftShiftTensorOut:
       return "bitwise_left_shift.Tensor_out";
+    case OpName::kBitwiseNotOut:
+      return "bitwise_not.out";
     case OpName::kBitwiseOr:
       return "bitwise_or";
     case OpName::kBitwiseOrOut:
       return "bitwise_or.out";
+    case OpName::kBitwiseOrTensorOut:
+      return "bitwise_or.Tensor_out";
     case OpName::kBitwiseRightShiftTensorOut:
       return "bitwise_right_shift.Tensor_out";
     case OpName::kBitwiseXor:
       return "bitwise_xor";
     case OpName::kBitwiseXorOut:
       return "bitwise_xor.out";
+    case OpName::kBitwiseXorTensorOut:
+      return "bitwise_xor.Tensor_out";
     case OpName::kBmm:
       return "bmm";
+    case OpName::kBmmDtype:
+      return "bmm.dtype";
     case OpName::kBmmDtypeOut:
       return "bmm.dtype_out";
     case OpName::kBmmOut:
@@ -248,12 +262,18 @@ std::string_view ToString(OpName op_name) {
       return "embedding_renorm_";
     case OpName::kEmpty:
       return "empty";
+    case OpName::kEmptyMemoryFormat:
+      return "empty.memory_format";
     case OpName::kEmptyStrided:
       return "empty_strided";
     case OpName::kEq:
       return "eq";
     case OpName::kEqOut:
       return "eq.out";
+    case OpName::kEqScalarOut:
+      return "eq.Scalar_out";
+    case OpName::kEqTensorOut:
+      return "eq.Tensor_out";
     case OpName::kEqual:
       return "equal";
     case OpName::kErfInvOut:
@@ -600,6 +620,10 @@ std::string_view ToString(OpName op_name) {
       return "ge";
     case OpName::kGeOut:
       return "ge.out";
+    case OpName::kGeScalarOut:
+      return "ge.Scalar_out";
+    case OpName::kGeTensorOut:
+      return "ge.Tensor_out";
     case OpName::kGeluBackwardGradInput:
       return "gelu_backward.grad_input";
     case OpName::kGeluOut:
@@ -616,6 +640,10 @@ std::string_view ToString(OpName op_name) {
       return "gt";
     case OpName::kGtOut:
       return "gt.out";
+    case OpName::kGtScalarOut:
+      return "gt.Scalar_out";
+    case OpName::kGtTensorOut:
+      return "gt.Tensor_out";
     case OpName::kHardsigmoidBackwardGradInput:
       return "hardsigmoid_backward.grad_input";
     case OpName::kHardsigmoidOut:
@@ -661,11 +689,11 @@ std::string_view ToString(OpName op_name) {
     case OpName::kIrshiftTensor:
       return "__irshift__.Tensor";
     case OpName::kIsInScalarTensorOut:
-      return "isin.ScalarTensor_out";
+      return "isin.Scalar_Tensor_out";
     case OpName::kIsInTensorScalarOut:
-      return "isin.TensorScalar_out";
+      return "isin.Tensor_Scalar_out";
     case OpName::kIsInTensorTensorOut:
-      return "isin.TensorTensor_out";
+      return "isin.Tensor_Tensor_out";
     case OpName::kIsNan:
       return "isnan";
     case OpName::kIsNegInfOut:
@@ -680,6 +708,10 @@ std::string_view ToString(OpName op_name) {
       return "le";
     case OpName::kLeOut:
       return "le.out";
+    case OpName::kLeScalarOut:
+      return "le.Scalar_out";
+    case OpName::kLeTensorOut:
+      return "le.Tensor_out";
     case OpName::kLeakyReluOut:
       return "leaky_relu.out";
     case OpName::kLerpScalarOut:
@@ -738,6 +770,10 @@ std::string_view ToString(OpName op_name) {
       return "lt";
     case OpName::kLtOut:
       return "lt.out";
+    case OpName::kLtScalarOut:
+      return "lt.Scalar_out";
+    case OpName::kLtTensorOut:
+      return "lt.Tensor_out";
     case OpName::kLuUnpackOut:
       return "lu_unpack.out";
     case OpName::kMaskedFill_Scalar:
@@ -748,6 +784,8 @@ std::string_view ToString(OpName op_name) {
       return "masked_scatter_";
     case OpName::kMaskedSelect:
       return "masked_select";
+    case OpName::kMaskedSelectOut:
+      return "masked_select.out";
     case OpName::kMaskedSelectSize:
       return "masked_select_size";
     case OpName::kMax:
@@ -812,6 +850,8 @@ std::string_view ToString(OpName op_name) {
       return "_native_batch_norm_legit.out";
     case OpName::kNativeBatchNormOut:
       return "native_batch_norm.out";
+    case OpName::kNativeDropout:
+      return "native_dropout";
     case OpName::kNativeDropoutBackward:
       return "native_dropout_backward";
     case OpName::kNativeGroupNormBackward:
@@ -824,6 +864,10 @@ std::string_view ToString(OpName op_name) {
       return "ne";
     case OpName::kNeOut:
       return "ne.out";
+    case OpName::kNeScalarOut:
+      return "ne.Scalar_out";
+    case OpName::kNeTensorOut:
+      return "ne.Tensor_out";
     case OpName::kNegOut:
       return "neg.out";
     case OpName::kNllLoss2dForward:
@@ -854,8 +898,6 @@ std::string_view ToString(OpName op_name) {
       return "normal.Tensor_Tensor_out";
     case OpName::kNormal_:
       return "normal_";
-    case OpName::kNotOut:
-      return "not.out";
     case OpName::kPadUninitialized_:
       return "pad_uninitialized_";
     case OpName::kPdistForward:
@@ -866,12 +908,20 @@ std::string_view ToString(OpName op_name) {
       return "pow";
     case OpName::kPowOut:
       return "pow.out";
+    case OpName::kPowScalarOut:
+      return "pow.Scalar_out";
+    case OpName::kPowTensorScalarOut:
+      return "pow.Tensor_Scalar_out";
+    case OpName::kPowTensorTensorOut:
+      return "pow.Tensor_Tensor_out";
     case OpName::kProd:
       return "prod";
     case OpName::kProdDimOut:
       return "prod.int_out";
     case OpName::kRaggedDot:
       return "ragged_dot";
+    case OpName::kRaggedDotOut:
+      return "ragged_dot.out";
     case OpName::kRandom_:
       return "random_";
     case OpName::kRandom_From:
@@ -906,6 +956,10 @@ std::string_view ToString(OpName op_name) {
       return "remainder";
     case OpName::kRemainderOut:
       return "remainder.out";
+    case OpName::kRemainderScalarTensor:
+      return "remainder.Scalar_Tensor";
+    case OpName::kRemainderTensorOut:
+      return "remainder.Tensor_out";
     case OpName::kRepeat:
       return "repeat";
     case OpName::kReplicationPad1dBackwardGradInput:
@@ -952,8 +1006,12 @@ std::string_view ToString(OpName op_name) {
       return "__rshift__.Tensor";
     case OpName::kRsqrOut:
       return "rsqr.out";
+    case OpName::kRsqrtOut:
+      return "rsqrt.out";
     case OpName::kRsub:
       return "rsub";
+    case OpName::kRsubTensor:
+      return "rsub.Tensor";
     case OpName::kScalarTensor:
       return "scalar_tensor";
     case OpName::kScaledDotProductEfficientAttention:
@@ -1016,6 +1074,8 @@ std::string_view ToString(OpName op_name) {
       return "split_with_sizes_copy.out";
     case OpName::kSqrOut:
       return "sqr.out";
+    case OpName::kSqrtOut:
+      return "sqrt.out";
     case OpName::kSub:
       return "sub";
     case OpName::kSubOut:
@@ -1098,6 +1158,10 @@ std::string_view ToString(OpName op_name) {
       return "_upsample_nearest_exact3d.out";
     case OpName::kVar:
       return "var";
+    case OpName::kVarCorrection:
+      return "var.correction";
+    case OpName::kVarCorrectionOut:
+      return "var.correction_out";
     case OpName::kVarOut:
       return "var.out";
     case OpName::kVdot:

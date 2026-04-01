@@ -165,6 +165,7 @@ void Impl(torch::Library& m, const OpName op_name, KernelFn kernel_fn) {
 // defined later in this file.
 TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   // go/keep-sorted start
+  Impl(m, OpName::kAbsOut, AtenAbsOut);
   Impl(m, OpName::kAcosOut, AtenAcosOut);
   Impl(m, OpName::kAcoshOut, AtenAcoshOut);
   Impl(m, OpName::kAdaptiveAvgPool2d, AtenAdaptiveAvgPool2d);
@@ -178,13 +179,24 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kAddOut, AtenAddOut);
   Impl(m, OpName::kAddcdivOut, AtenAddcdivOut);
   Impl(m, OpName::kAddcmulOut, AtenAddcmulOut);
+  Impl(m, OpName::kAddmmDtype, AtenAddmmDtype);
+  Impl(m, OpName::kAddmmDtypeOut, AtenAddmmDtypeOut);
+  Impl(m, OpName::kAddmmOut, AtenAddmmOut);
   Impl(m, OpName::kAddmvOut, AtenAddmvOut);
+  Impl(m, OpName::kAllAllOut, AtenAllAllOut);
+  Impl(m, OpName::kAllOut, AtenAllOut);
+  Impl(m, OpName::kAmaxOut, AtenAmaxOut);
+  Impl(m, OpName::kAminOut, AtenAminOut);
   Impl(m, OpName::kAminmaxOut, AtenAminmaxOut);
+  Impl(m, OpName::kAnyAllOut, AtenAnyAllOut);
+  Impl(m, OpName::kAnyOut, AtenAnyOut);
   Impl(m, OpName::kArangeStartOut, AtenArangeStartOut);
   Impl(m, OpName::kArgMaxOut, AtenArgmaxOut);
   Impl(m, OpName::kArgMinOut, AtenArgminOut);
+  Impl(m, OpName::kAsStrided, AtenAsStrided);
   Impl(m, OpName::kAsinOut, AtenAsinOut);
   Impl(m, OpName::kAsinhOut, AtenAsinhOut);
+  Impl(m, OpName::kAtan2Out, AtenAtan2Out);
   Impl(m, OpName::kAtanOut, AtenAtanOut);
   Impl(m, OpName::kAtanhOut, AtenAtanhOut);
   Impl(m, OpName::kAvgPool2dBackwardGradInput, AtenAvgPool2dBackwardGradInput);
@@ -195,8 +207,16 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kBaddbmmDtypeOut, AtenBaddbmmDtypeOut);
   Impl(m, OpName::kBaddbmmOut, AtenBaddbmmOut);
   Impl(m, OpName::kBernoulli_Float, AtenBernoulli_Float);
+  Impl(m, OpName::kBinCount, AtenBinCount);
+  Impl(m, OpName::kBitwiseAndTensorOut, AtenBitwiseAndTensorOut);
   Impl(m, OpName::kBitwiseLeftShiftTensorOut, AtenBitwiseLeftShiftTensorOut);
+  Impl(m, OpName::kBitwiseNotOut, AtenBitwiseNotOut);
+  Impl(m, OpName::kBitwiseOrTensorOut, AtenBitwiseOrTensorOut);
   Impl(m, OpName::kBitwiseRightShiftTensorOut, AtenBitwiseRightShiftTensorOut);
+  Impl(m, OpName::kBitwiseXorTensorOut, AtenBitwiseXorTensorOut);
+  Impl(m, OpName::kBmmDtype, AtenBmmDtype);
+  Impl(m, OpName::kBmmDtypeOut, AtenBmmDtypeOut);
+  Impl(m, OpName::kBmmOut, AtenBmmOut);
   Impl(m, OpName::kCatOut, AtenCatOut);
   Impl(m, OpName::kCdistForward, AtenCdistForward);
   Impl(m, OpName::kCeilOut, AtenCeilOut);
@@ -213,11 +233,13 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kConvolution, AtenConvolution);
   Impl(m, OpName::kConvolutionBackward, AtenConvolutionBackward);
   Impl(m, OpName::kConvolutionOut, AtenConvolutionOut);
+  Impl(m, OpName::kCopyFrom, AtenCopyFrom);
   // per https://github.com/pytorch/xla/issues/2881, this function was added
   // to fix aten:cpufallback for pytorch_xla in 2021.
   // But it isn't registered for CPU and is not called from copy_ in Python.
   // TODO: Revisit if we can replace it with _copy_from. // NOLINT
   Impl(m, OpName::kCopyFromAndResize, AtenCopyFromAndResize);
+  Impl(m, OpName::kCopy_, AtenCopy_);
   Impl(m, OpName::kCosOut, AtenCosOut);
   Impl(m, OpName::kCoshOut, AtenCoshOut);
   Impl(m, OpName::kCummaxHelper, AtenCummaxHelper);
@@ -226,22 +248,36 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kCumsumOut, AtenCumsumOut);
   Impl(m, OpName::kDivOut, AtenDivOut);
   Impl(m, OpName::kDivOutMode, AtenDivOutMode);
+  Impl(m, OpName::kDot, AtenDot);
   Impl(m, OpName::kEluBackwardGradInput, AtenEluBackwardGradInput);
   Impl(m, OpName::kEluOut, AtenEluOut);
   Impl(m, OpName::kEmbeddingBag, AtenEmbeddingBag);
   Impl(m, OpName::kEmbeddingBagForwardOnly, AtenEmbeddingBagForwardOnly);
   Impl(m, OpName::kEmbeddingDenseBackward, AtenEmbeddingDenseBackward);
   Impl(m, OpName::kEmbeddingRenorm_, AtenEmbeddingRenorm_);
+  Impl(m, OpName::kEmptyMemoryFormat, AtenEmptyMemoryFormat);
+  Impl(m, OpName::kEmptyStrided, AtenEmptyStrided);
+  Impl(m, OpName::kEqScalarOut, AtenEqScalarOut);
+  Impl(m, OpName::kEqTensorOut, AtenEqTensorOut);
   Impl(m, OpName::kEqual, AtenEqual);
   Impl(m, OpName::kErfInvOut, AtenErfInvOut);
+  Impl(m, OpName::kErfOut, AtenErfOut);
+  Impl(m, OpName::kExpM1Out, AtenExpm1Out);
   Impl(m, OpName::kExpOut, AtenExpOut);
   Impl(m, OpName::kExponential_, AtenExponential_);
   Impl(m, OpName::kEyeMOut, AtenEyeMOut);
   Impl(m, OpName::kEyeOut, AtenEyeOut);
+  Impl(m, OpName::kFakeQuantizePerTensorAffineCachemask,
+       FakeQuantizePerTensorAffineCachemask);
   Impl(m, OpName::kFftR2c, AtenFftR2c);
   Impl(m, OpName::kFftR2cOut, AtenFftR2cOut);
+  Impl(m, OpName::kFill_Scalar, AtenFillScalar_);
+  Impl(m, OpName::kFill_Tensor, AtenFillTensor_);
+  Impl(m, OpName::kFlip, AtenFlip);
   Impl(m, OpName::kFloorDivide, AtenFloorDivide);
   Impl(m, OpName::kFloorDivideOut, AtenFloorDivideOut);
+  Impl(m, OpName::kFloorDivide_Tensor, AtenFloorDivide_Tensor);
+  Impl(m, OpName::kFloorOut, AtenFloorOut);
   Impl(m, OpName::kFmaxOut, AtenFmaxOut);
   Impl(m, OpName::kFminOut, AtenFminOut);
   Impl(m, OpName::kFmodTensorOut, AtenFmodTensorOut);
@@ -391,9 +427,15 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kFusedRmsNorm, AtenFusedRmsNorm);
   Impl(m, OpName::kFusedRmsNormBackward, AtenFusedRmsNormBackward);
   Impl(m, OpName::kGatherOut, AtenGatherOut);
+  Impl(m, OpName::kGeScalarOut, AtenGeScalarOut);
+  Impl(m, OpName::kGeTensorOut, AtenGeTensorOut);
   Impl(m, OpName::kGeluBackwardGradInput, AtenGeluBackwardGradInput);
   Impl(m, OpName::kGeluOut, AtenGeluOut);
   Impl(m, OpName::kGluOut, AtenGluOut);
+  Impl(m, OpName::kGridSampler2d, AtenGridSampler2d);
+  Impl(m, OpName::kGridSampler3d, AtenGridSampler3d);
+  Impl(m, OpName::kGtScalarOut, AtenGtScalarOut);
+  Impl(m, OpName::kGtTensorOut, AtenGtTensorOut);
   Impl(m, OpName::kHardsigmoidBackwardGradInput,
        AtenHardsigmoidBackwardGradInput);
   Impl(m, OpName::kHardsigmoidOut, AtenHardsigmoidOut);
@@ -415,10 +457,15 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kIndexTensorOut, AtenIndexTensorOut);
   Impl(m, OpName::kIrshiftScalar, AtenIrshiftScalar);
   Impl(m, OpName::kIrshiftTensor, AtenIrshiftTensor);
+  Impl(m, OpName::kIsInScalarTensorOut, AtenIsInScalarTensorOut);
+  Impl(m, OpName::kIsInTensorScalarOut, AtenIsInTensorScalarOut);
+  Impl(m, OpName::kIsInTensorTensorOut, AtenIsInTensorTensorOut);
   Impl(m, OpName::kIsNan, AtenIsNan);
   Impl(m, OpName::kIsNegInfOut, AtenIsNegInfOut);
   Impl(m, OpName::kIsPosInfOut, AtenIsPosInfOut);
   Impl(m, OpName::kLayerNormBackward, AtenLayerNormBackward);
+  Impl(m, OpName::kLeScalarOut, AtenLeScalarOut);
+  Impl(m, OpName::kLeTensorOut, AtenLeTensorOut);
   Impl(m, OpName::kLeakyReluOut, AtenLeakyReluOut);
   Impl(m, OpName::kLerpScalarOut, AtenLerpScalarOut);
   Impl(m, OpName::kLerpTensorOut, AtenLerpTensorOut);
@@ -436,22 +483,47 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kLog10Out, AtenLog10Out);
   Impl(m, OpName::kLog1pOut, AtenLog1pOut);
   Impl(m, OpName::kLog2Out, AtenLog2Out);
+  Impl(m, OpName::kLogOut, AtenLogOut);
   Impl(m, OpName::kLogSoftmaxBackwardDataOut, AtenLogSoftmaxBackwardDataOut);
   Impl(m, OpName::kLogSoftmaxOut, AtenLogSoftmaxOut);
+  Impl(m, OpName::kLogicalAndOut, AtenLogicalAndOut);
+  Impl(m, OpName::kLogicalNotOut, AtenLogicalNotOut);
+  Impl(m, OpName::kLogicalOrOut, AtenLogicalOrOut);
+  Impl(m, OpName::kLogicalXorOut, AtenLogicalXorOut);
   Impl(m, OpName::kLshiftScalar, AtenLshiftScalar);
   Impl(m, OpName::kLshiftTensor, AtenLshiftTensor);
+  Impl(m, OpName::kLtScalarOut, AtenLtScalarOut);
+  Impl(m, OpName::kLtTensorOut, AtenLtTensorOut);
   Impl(m, OpName::kLuUnpackOut, AtenLuUnpackOut);
   Impl(m, OpName::kMaskedFill_Scalar, AtenMaskedFill_Scalar);
   Impl(m, OpName::kMaskedFill_Tensor, AtenMaskedFill_Tensor);
   Impl(m, OpName::kMaskedScatter_, AtenMaskedScatter_);
   Impl(m, OpName::kMaskedSelect, AtenMaskedSelect);
+  Impl(m, OpName::kMaskedSelectOut, AtenMaskedSelectOut);
+  Impl(m, OpName::kMax, AtenMax);
+  Impl(m, OpName::kMaxDimMax, AtenMaxDimMax);
+  Impl(m, OpName::kMaxPool2dWithIndicesBackwardGradInput,
+       AtenMaxPool2dWithIndicesBackwardGradInput);
+  Impl(m, OpName::kMaxPool2dWithIndicesOut, AtenMaxPool2dWithIndicesOut);
+  Impl(m, OpName::kMaxPool3dWithIndices, AtenMaxPool3dWithIndices);
+  Impl(m, OpName::kMaxPool3dWithIndicesBackward,
+       AtenMaxPool3dWithIndicesBackward);
+  Impl(m, OpName::kMaxPool3dWithIndicesBackwardGradInput,
+       AtenMaxPool3dWithIndicesBackwardGradInput);
+  Impl(m, OpName::kMaxPool3dWithIndicesOut, AtenMaxPool3dWithIndicesOut);
+  Impl(m, OpName::kMaxUnaryOut, AtenMaxUnaryOut);
   Impl(m, OpName::kMaximumOut, AtenMaximumOut);
   Impl(m, OpName::kMeanOut, AtenMeanOut);
+  Impl(m, OpName::kMin, AtenMin);
+  Impl(m, OpName::kMinDimMin, AtenMinDimMin);
+  Impl(m, OpName::kMinUnaryOut, AtenMinUnaryOut);
   Impl(m, OpName::kMinimumOut, AtenMinimumOut);
   Impl(m, OpName::kMmOut, AtenMmOut);
   Impl(m, OpName::kMseLossBackward, AtenMseLossBackward);
   Impl(m, OpName::kMseLossOut, AtenMseLossOut);
   Impl(m, OpName::kMulOut, AtenMulOut);
+  Impl(m, OpName::kMultinomial, AtenMultinomial);
+  Impl(m, OpName::kMultinomialOut, AtenMultinomialOut);
   Impl(m, OpName::kNativeBatchNorm, AtenNativeBatchNorm);
   Impl(m, OpName::kNativeBatchNormBackward, AtenNativeBatchNormBackward);
   Impl(m, OpName::kNativeBatchNormLegit, AtenNativeBatchNormLegit);
@@ -461,7 +533,12 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
        AtenNativeBatchNormLegitNoStatsOut);
   Impl(m, OpName::kNativeBatchNormLegitOut, AtenNativeBatchNormLegitOut);
   Impl(m, OpName::kNativeBatchNormOut, AtenNativeBatchNormOut);
+  Impl(m, OpName::kNativeDropout, AtenDropout);
+  Impl(m, OpName::kNativeDropoutBackward, AtenNativeDropoutBackward);
   Impl(m, OpName::kNativeGroupNormBackward, AtenNativeGroupNormBackward);
+  Impl(m, OpName::kNativeLayerNorm, AtenNativeLayerNorm);
+  Impl(m, OpName::kNeScalarOut, AtenNeScalarOut);
+  Impl(m, OpName::kNeTensorOut, AtenNeTensorOut);
   Impl(m, OpName::kNegOut, AtenNegOut);
   Impl(m, OpName::kNllLoss2dForward, AtenNllLoss2dForward);
   Impl(m, OpName::kNllLoss2dForwardOut, AtenNllLoss2dForwardOut);
@@ -478,12 +555,16 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kNormal_, AtenNormal_);
   Impl(m, OpName::kPdistForward, AtenPdistForward);
   Impl(m, OpName::kPolarOut, AtenPolarOut);
+  Impl(m, OpName::kPowScalarOut, AtenPowScalarOut);
+  Impl(m, OpName::kPowTensorScalarOut, AtenPowTensorScalarOut);
+  Impl(m, OpName::kPowTensorTensorOut, AtenPowTensorTensorOut);
   Impl(m, OpName::kProd, AtenProd);
   Impl(m, OpName::kProdDimOut, AtenProdDimOut);
   Impl(m, OpName::kRandom_, AtenRandom_);
   Impl(m, OpName::kRandom_From, AtenRandom_From);
   Impl(m, OpName::kRandom_To, AtenRandom_To);
   Impl(m, OpName::kRandpermGeneratorOut, AtenRandpermGeneratorOut);
+  Impl(m, OpName::kReciprocalOut, AtenReciprocalOut);
   Impl(m, OpName::kReflectionPad1dBackwardGradInput,
        AtenReflectionPad1dBackwardGradInput);
   Impl(m, OpName::kReflectionPad1dOut, AtenReflectionPad1dOut);
@@ -497,6 +578,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kReflectionPad3dOut, AtenReflectionPad3dOut);
   Impl(m, OpName::kRelu, AtenRelu);
   Impl(m, OpName::kRelu_, AtenRelu_);
+  Impl(m, OpName::kRemainderScalarTensor, AtenRemainderScalarTensor);
+  Impl(m, OpName::kRemainderTensorOut, AtenRemainderTensorOut);
   Impl(m, OpName::kReplicationPad1dBackwardGradInput,
        AtenReplicationPad1dBackwardGradInput);
   Impl(m, OpName::kReplicationPad1dOut, AtenReplicationPad1dOut);
@@ -508,12 +591,15 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kReplicationPad3dBackwardGradInput,
        AtenReplicationPad3dBackwardGradInput);
   Impl(m, OpName::kReplicationPad3dOut, AtenReplicationPad3dOut);
+  Impl(m, OpName::kReshapeAlias, AtenReshapeAlias);
   Impl(m, OpName::kResize_, AtenResize_);
   Impl(m, OpName::kRoll, AtenRoll);
   Impl(m, OpName::kRoundDecimalsOut, AtenRoundDecimalsOut);
   Impl(m, OpName::kRoundOut, AtenRoundOut);
   Impl(m, OpName::kRshiftScalar, AtenRshiftScalar);
   Impl(m, OpName::kRshiftTensor, AtenRshiftTensor);
+  Impl(m, OpName::kRsqrtOut, AtenRsqrtOut);
+  Impl(m, OpName::kRsubTensor, AtenRsubTensor);
   Impl(m, OpName::kScaledDotProductEfficientAttention,
        AtenScaledDotProductEfficientAttention);
   Impl(m, OpName::kScaledDotProductFlashAttention,
@@ -543,7 +629,9 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kSoftmaxOut, AtenSoftmaxOut);
   Impl(m, OpName::kSoftplusBackwardGradInput, AtenSoftplusBackwardGradInput);
   Impl(m, OpName::kSoftplusOut, AtenSoftplusOut);
+  Impl(m, OpName::kSortValuesStable, AtenSortValuesStable);
   Impl(m, OpName::kSplitWithSizesCopyOut, AtenSplitWithSizesCopyOut);
+  Impl(m, OpName::kSqrtOut, AtenSqrtOut);
   Impl(m, OpName::kSubOut, AtenSubOut);
   Impl(m, OpName::kSumIntListOut, AtenSumIntListOut);
   Impl(m, OpName::kTake, AtenTake);
@@ -559,6 +647,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kTrilOut, AtenTrilOut);
   Impl(m, OpName::kTriuOut, AtenTriuOut);
   Impl(m, OpName::kTruncOut, AtenTruncOut);
+  Impl(m, OpName::kUnfold, AtenUnfold);
   Impl(m, OpName::kUniform_, AtenUniform_);
   Impl(m, OpName::kUpsampleBilinear2dBackwardGradInput,
        AtenUpsampleBilinear2dBackwardGradInput);
@@ -581,104 +670,16 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kUpsampleNearestExact3dBackwardGradInput,
        AtenUpsampleNearestExact3dBackwardGradInput);
   Impl(m, OpName::kUpsampleNearestExact3dOut, AtenUpsampleNearestExact3dOut);
+  Impl(m, OpName::kVarCorrection, AtenVar);
+  Impl(m, OpName::kVarCorrectionOut, AtenVarOut);
   Impl(m, OpName::kVdot, AtenVdot);
+  Impl(m, OpName::kView, AtenView);
+  Impl(m, OpName::kViewAsComplex, AtenViewAsComplex);
   Impl(m, OpName::kViewAsReal, AtenViewAsReal);
   Impl(m, OpName::kWeightNormInterface, AtenWeightNormInterface);
   Impl(m, OpName::kWhereSelf, AtenWhereSelf);
   Impl(m, OpName::kWhereSelfOut, AtenWhereSelfOut);
-  m.impl("_copy_from", AtenCopyFrom);
-  m.impl("_reshape_alias", AtenReshapeAlias);
-  m.impl("abs.out", AtenAbsOut);
-  m.impl("addmm.dtype", AtenAddmmDtype);
-  m.impl("addmm.dtype_out", AtenAddmmDtypeOut);
-  m.impl("addmm.out", AtenAddmmOut);
-  m.impl("all.all_out", AtenAllAllOut);
-  m.impl("all.out", AtenAllOut);
-  m.impl("amax.out", AtenAmaxOut);
-  m.impl("amin.out", AtenAminOut);
-  m.impl("any.all_out", AtenAnyAllOut);
-  m.impl("any.out", AtenAnyOut);
-  m.impl("as_strided", AtenAsStrided);
-  m.impl("atan2.out", AtenAtan2Out);
-  m.impl("bincount", AtenBinCount);
-  m.impl("bitwise_and.Tensor_out", AtenBitwiseAndTensorOut);
-  m.impl("bitwise_not.out", AtenNotOut);
-  m.impl("bitwise_or.Tensor_out", AtenBitwiseOrTensorOut);
-  m.impl("bitwise_xor.Tensor_out", AtenBitwiseXorTensorOut);
-  m.impl("bmm.dtype", AtenBmmDtype);
-  m.impl("bmm.dtype_out", AtenBmmDtypeOut);
-  m.impl("bmm.out", AtenBmmOut);
-  m.impl("copy_", AtenCopy_);
-  m.impl("dot", AtenDot);
-  m.impl("empty.memory_format", AtenEmptyMemoryFormat);
-  m.impl("empty_strided", AtenEmptyStrided);
-  m.impl("eq.Scalar_out", AtenEqScalarOut);
-  m.impl("eq.Tensor_out", AtenEqTensorOut);
-  m.impl("erf.out", AtenErfOut);
-  m.impl("expm1.out", AtenExpm1Out);
-  m.impl("fake_quantize_per_tensor_affine_cachemask",
-         FakeQuantizePerTensorAffineCachemask);
-  m.impl("fill_.Scalar", AtenFillScalar_);
-  m.impl("fill_.Tensor", AtenFillTensor_);
-  m.impl("flip", AtenFlip);
-  m.impl("floor.out", AtenFloorOut);
-  m.impl("floor_divide_.Tensor", AtenFloorDivide_Tensor);
-  m.impl("ge.Scalar_out", AtenGeScalarOut);
-  m.impl("ge.Tensor_out", AtenGeTensorOut);
-  m.impl("grid_sampler_2d", AtenGridSampler2d);
-  m.impl("grid_sampler_3d", AtenGridSampler3d);
-  m.impl("gt.Scalar_out", AtenGtScalarOut);
-  m.impl("gt.Tensor_out", AtenGtTensorOut);
-  m.impl("isin.Scalar_Tensor_out", AtenIsInScalarTensorOut);
-  m.impl("isin.Tensor_Scalar_out", AtenIsInTensorScalarOut);
-  m.impl("isin.Tensor_Tensor_out", AtenIsInTensorTensorOut);
-  m.impl("le.Scalar_out", AtenLeScalarOut);
-  m.impl("le.Tensor_out", AtenLeTensorOut);
-  m.impl("log.out", AtenLogOut);
-  m.impl("logical_and.out", AtenLogicalAndOut);
-  m.impl("logical_not.out", AtenLogicalNotOut);
-  m.impl("logical_or.out", AtenLogicalOrOut);
-  m.impl("logical_xor.out", AtenLogicalXorOut);
-  m.impl("lt.Scalar_out", AtenLtScalarOut);
-  m.impl("lt.Tensor_out", AtenLtTensorOut);
-  m.impl("masked_select.out", AtenMaskedSelectOut);
-  m.impl("max", AtenMax);
-  m.impl("max.dim_max", AtenMaxDimMax);
-  m.impl("max.unary_out", AtenMaxUnaryOut);
-  m.impl("max_pool2d_with_indices.out", AtenMaxPool2dWithIndicesOut);
-  m.impl("max_pool2d_with_indices_backward.grad_input",
-         AtenMaxPool2dWithIndicesBackwardGradInput);
-  m.impl("max_pool3d_with_indices", AtenMaxPool3dWithIndices);
-  m.impl("max_pool3d_with_indices.out", AtenMaxPool3dWithIndicesOut);
-  m.impl("max_pool3d_with_indices_backward", AtenMaxPool3dWithIndicesBackward);
-  m.impl("max_pool3d_with_indices_backward.grad_input",
-         AtenMaxPool3dWithIndicesBackwardGradInput);
-  m.impl("min", AtenMin);
-  m.impl("min.dim_min", AtenMinDimMin);
-  m.impl("min.unary_out", AtenMinUnaryOut);
-  m.impl("multinomial", AtenMultinomial);
-  m.impl("multinomial.out", AtenMultinomialOut);
-  m.impl("native_dropout", AtenDropout);
-  m.impl("native_dropout_backward", AtenNativeDropoutBackward);
-  m.impl("native_layer_norm", AtenNativeLayerNorm);
-  m.impl("ne.Scalar_out", AtenNeScalarOut);
-  m.impl("ne.Tensor_out", AtenNeTensorOut);
-  m.impl("pow.Scalar_out", AtenPowScalarOut);
-  m.impl("pow.Tensor_Scalar_out", AtenPowTensorScalarOut);
-  m.impl("pow.Tensor_Tensor_out", AtenPowTensorTensorOut);
-  m.impl("reciprocal.out", AtenReciprocalOut);
-  m.impl("remainder.Scalar_Tensor", AtenRemainderScalarTensor);
-  m.impl("remainder.Tensor_out", AtenRemainderTensorOut);
-  m.impl("rsqrt.out", AtenRsqrtOut);
-  m.impl("rsub.Tensor", AtenRsubTensor);
-  m.impl("sort.values_stable", AtenSortValuesStable);
-  m.impl("sqrt.out", AtenSqrtOut);
-  m.impl("unfold", AtenUnfold);
-  m.impl("var.correction", AtenVar);
-  m.impl("var.correction_out", AtenVarOut);
-  m.impl("view", AtenView);
-  m.impl("view_as_complex", AtenViewAsComplex);
-  m.impl("zero_", AtenZero_);
+  Impl(m, OpName::kZero_, AtenZero_);
   // go/keep-sorted end
 }
 
@@ -722,13 +723,13 @@ TORCH_LIBRARY(torch_tpu, m) {
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
-  m.impl("ragged_dot", AtenRaggedDot);
-  m.impl("ragged_dot.out", AtenRaggedDotOut);
+  Impl(m, OpName::kRaggedDot, AtenRaggedDot);
+  Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, CPU, m) {
-  m.impl("ragged_dot", AtenRaggedDot);
-  m.impl("ragged_dot.out", AtenRaggedDotOut);
+  Impl(m, OpName::kRaggedDot, AtenRaggedDot);
+  Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
 }
 
 bool& MutableIsCpuFallbackEnabled() {

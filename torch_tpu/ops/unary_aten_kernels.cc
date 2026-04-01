@@ -305,13 +305,13 @@ at::Tensor& AtenTruncOut(const at::Tensor& self, at::Tensor& out) {
 }
 
 // go/keep-sorted start
+TT_DEFINE_ATEN_UNARY_OUT(OpName::kBitwiseNotOut, AtenBitwiseNot, BuildNotShlo);
 TT_DEFINE_ATEN_UNARY_OUT(OpName::kCeilOut, AtenCeil, BuildCeilShlo);
 TT_DEFINE_ATEN_UNARY_OUT(OpName::kConjPhysicalOut, AtenConjPhysical,
                          BuildConjPhysicalShlo);
 TT_DEFINE_ATEN_UNARY_OUT(OpName::kFloorOut, AtenFloor, BuildFloorShlo);
 TT_DEFINE_ATEN_UNARY_OUT(OpName::kLiftFreshOut, AtenLiftFresh,
                          BuildLiftFreshShlo);
-TT_DEFINE_ATEN_UNARY_OUT(OpName::kNotOut, AtenNot, BuildNotShlo);
 TT_DEFINE_ATEN_UNARY_OUT(OpName::kSgnOut, AtenSgn, BuildSgnShlo);
 TT_DEFINE_ATEN_UNARY_OUT(OpName::kSiluOut, AtenSilu, BuildSiluShlo);
 // go/keep-sorted end
