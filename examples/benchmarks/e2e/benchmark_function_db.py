@@ -93,8 +93,10 @@ def _huggingface_llm_train_1_step(
   accumulated_losses = []
   optimizer.zero_grad()
   for _ in range(grad_accumulation_steps):
-    output = model(**inputs)
-    output.loss.backward()
+    # TODO(b/495432689): The test fails with flash attention on CUDA.
+    with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.MATH):
+      output = model(**inputs)
+      output.loss.backward()
     accumulated_losses.append(output.loss.detach())
   optimizer_step_fn(optimizer)
   step_loss = torch.sum(torch.stack(accumulated_losses)).item()
