@@ -218,10 +218,10 @@ common:ci_cpu --test_tag_filters=-nobuild_oss,-notest_oss,-notap,-requires-gpu-s
 common:ci_tpu_base --config=ci
 common:ci_tpu_base --build_tag_filters=-nobuild_oss,requires-tpu-v5lite,requires-tpu-v5lite:8,requires-tpu-v5p,requires-tpu-v5p:4
 common:ci_tpu_base --spawn_strategy=standalone,local
-# We exclude tests tagged "notap" as it indicates that the test should be skipped from CI.
-common:ci_tpu_base --test_tag_filters=-notest_oss,-nobuild_oss,-notap
 
 common:ci_tpu --config=ci_tpu_base
+# We exclude tests tagged "notap" as it indicates that the test should be skipped from CI.
+common:ci_tpu --test_tag_filters=-notest_oss,-nobuild_oss,-notap
 
 common:ci_tpu_nightly --config=ci_tpu_base
 
