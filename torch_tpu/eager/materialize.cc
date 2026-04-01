@@ -56,7 +56,6 @@
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize_new.h"
-#include "torch_tpu/eager/prevent_graph_splits.h"
 #include "torch_tpu/eager/split_traversal.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/traversal.h"
@@ -631,28 +630,18 @@ class MaterializationWorker {
 
     std::vector<Traversal> traversals;
 
-    // Split the graph only if both are true:
-    //   - `materialization_mode` is `kSplitGraph`
-    //   - `PreventGraphSplit()` returns false (i.e. do not prevent the graph
-    //      to be split)
     if (task.materialization_mode == MaterializationMode::kSplitGraph) {
-      TT_ASSIGN_OR_RETURN(bool prevent_graph_split,
-                          PreventGraphSplit(*traversal));
-
-      if (!prevent_graph_split) {
-        // Split the traversal while nodes are still in the deferred state.
-        ABSL_VLOG(1) << "[MaterializationWorker] Splitting traversal";
-        {
-          tsl::profiler::TraceMe t("SplitTraversal");
-          TT_ASSIGN_OR_RETURN(traversals,
-                              SplitTraversal(std::move(*traversal)));
-        }
-
-        ABSL_VLOG(1) << "[MaterializationWorker] Split traversal into "
-                     << traversals.size() << " traversals";
-      } else {
-        traversals.push_back(std::move(*traversal));
+      // Split the traversal while nodes are still in the deferred state.
+      ABSL_VLOG(1) << "[MaterializationWorker] Splitting traversal";
+      {
+        tsl::profiler::TraceMe t("SplitTraversal");
+        TT_ASSIGN_OR_RETURN(traversals, SplitTraversal(std::move(*traversal)));
       }
+
+      ABSL_VLOG(1) << "[MaterializationWorker] Split traversal into "
+                   << traversals.size() << " traversals";
+    } else {
+      traversals.push_back(std::move(*traversal));
     }
 
     TT_RETURN_IF_ERROR(

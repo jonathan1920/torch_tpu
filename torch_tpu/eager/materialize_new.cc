@@ -27,6 +27,7 @@
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -41,7 +42,6 @@
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize.h"
-#include "torch_tpu/eager/prevent_graph_splits.h"
 #include "torch_tpu/eager/traversal.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"

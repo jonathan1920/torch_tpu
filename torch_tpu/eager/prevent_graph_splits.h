@@ -21,6 +21,7 @@
 #include "absl/status/statusor.h"
 namespace torch_tpu {
 
+// TODO(b/498334411): make this logic safe in distributed code
 // Returns true if the traversal should be prevented from splitting.
 //
 // This is disabled by default; if enabled (by setting

@@ -260,7 +260,6 @@ torch_tpu_cc_library(
     deps = [
         ":device_buffer",
         ":eager_mode",
-        ":prevent_graph_splits",
         ":split_traversal",
         ":tensor_to_buffer",
         ":traversal",
