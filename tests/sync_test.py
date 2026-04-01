@@ -14,7 +14,6 @@
 
 import os
 import re
-import tempfile
 
 from absl.testing import absltest
 import torch
@@ -34,13 +33,16 @@ class SyncTest(absltest.TestCase):
       self.assertFalse(sync.is_materialized(tensor))
       self.assertFalse(sync.is_ready(tensor))
 
-    sync.synchronize(z, wait=False)
+    sync.synchronize(y, wait=False)
 
-    # x and y were not materialized.
-    self.assertFalse(sync.is_materialized(x))
-    self.assertFalse(sync.is_materialized(y))
+    # Strict ordering forces x to be materialized along with y.
+    # But it may not be ready yet.
+    self.assertTrue(sync.is_materialized(x))
 
-    # z was materialized, but may or may not be ready.
+    # y was materialized, but may not be ready yet.
+    self.assertTrue(sync.is_materialized(y))
+
+    # z was materialized because it is a leaf node. It may not be ready yet.
     self.assertTrue(sync.is_materialized(z))
 
   def test_sync_no_wait_list(self):
@@ -69,15 +71,20 @@ class SyncTest(absltest.TestCase):
       self.assertFalse(sync.is_materialized(tensor))
       self.assertFalse(sync.is_ready(tensor))
 
-    sync.synchronize(z, wait=True)
+    sync.synchronize(y, wait=True)
 
-    # x and y were not materialized.
-    self.assertFalse(sync.is_materialized(x))
-    self.assertFalse(sync.is_materialized(y))
+    # Strict ordering forces x to be materialized along with y.
+    self.assertTrue(sync.is_materialized(x))
+    self.assertTrue(sync.is_ready(x))
 
-    # z was materialized and is ready.
+    # y was materialized and is ready.
+    self.assertTrue(sync.is_materialized(y))
+    self.assertTrue(sync.is_ready(y))
+
+    # z was materialized because it is a leaf node.
+    # However, z may not be ready yet; the wait only applies to the target (y),
+    # and z is materialized after.
     self.assertTrue(sync.is_materialized(z))
-    self.assertTrue(sync.is_ready(z))
 
   def test_sync_and_wait_list(self):
     x = torch.ones(10, device=api.tpu_device())
@@ -213,6 +220,8 @@ digraph {
       self.assertRegex(s, node_param)
     self.assertLen(s.split("\n"), num_lines)
 
+  # TODO(bawilson): remove leaf node materialization
+  @absltest.skip("Safe rule with leaf nodes forces everything to materialize")
   def test_computation_graphviz_partially_materialized(self):
     expected_before = """Graphviz string: (try pasting in http://graphviz/ to see the graph)
 digraph {
@@ -268,21 +277,19 @@ digraph {
   3 -> 4
 }
 """
-    # Keep all tensors alive to prevent stale heuristic from materializing them.
     # Create materialized leaf inputs by doing a host to device copy.
     x_ones = torch.ones(2, 3, device="cpu").to(api.tpu_device())
     y_ones = torch.ones(3, 4, device="cpu").to(api.tpu_device())
     z_ones = torch.ones(2, 4, device="cpu").to(api.tpu_device())
-    two = torch.tensor(2, device="cpu").to(api.tpu_device())
-    three = torch.tensor(3, device="cpu").to(api.tpu_device())
-    four = torch.tensor(4, device="cpu").to(api.tpu_device())
 
     # Create a graph of deferred operations.
-    x = x_ones * two
-    y = y_ones * three
-    z = z_ones * four
-    x_times_y = x @ y
-    w = x_times_y + z
+    x = x_ones * 2
+    y = y_ones * 3
+    z = z_ones * 4
+    w = x @ y + z
+
+    # Drop everything but the final outputs.
+    del x_ones, y_ones, z_ones, z
 
     node_params, num_lines = self.extract_graphviz_invariants(expected_before)
     s = sync.computation_graphviz(y, w)

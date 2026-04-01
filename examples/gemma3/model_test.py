@@ -27,6 +27,7 @@ from absl import logging
 from absl.testing import absltest
 import torch
 from torch_tpu import api
+from torch_tpu._internal import sync
 from torch_tpu._internal.utils import utils
 from examples.gemma3 import model
 import transformers
@@ -44,27 +45,31 @@ class TestModel(absltest.TestCase):
     self.device = api.tpu_device()
     logging.info("Using device: %s", self.device)
 
-  def test_numel_equal_hf_and_custom(self):
-    # Arrange
+    # TODO(b/498567957): fix OOMs from parallel test execution
+    miniconfig = json.loads(model.GEMMA3_27B_TEXT)
+    miniconfig["num_hidden_layers"] = 6
     with torch.device(self.device):
-      hf_model = transformers.Gemma3TextModel(
-          transformers.Gemma3TextConfig(**json.loads(model.GEMMA3_27B_TEXT))
+      self.hf_model = transformers.Gemma3TextModel(
+          transformers.Gemma3TextConfig(**miniconfig)
       )
-
-      # Act
-      custom_model = model.Gemma3TextModel(
-          model.Gemma3TextConfig(**json.loads(model.GEMMA3_27B_TEXT))
+      self.custom_model = model.Gemma3TextModel(
+          model.Gemma3TextConfig(**miniconfig)
       )
+    self.custom_model.load_state_dict(self.hf_model.state_dict())
+    sync.synchronize(wait=True)
 
+  def test_numel_equal_hf_and_custom(self):
     # Assert
     self.assertEqual(
-        next(iter(custom_model.parameters())).device.type, self.device.type
+        next(iter(self.custom_model.parameters())).device.type, self.device.type
     )
 
     def count_params(module: torch.nn.Module) -> int:
       return sum(p.numel() for p in module.parameters())
 
-    self.assertEqual(count_params(hf_model), count_params(custom_model))
+    self.assertEqual(
+        count_params(self.hf_model), count_params(self.custom_model)
+    )
 
   def test_equivalence_hf_and_custom_rope(self):
     """Tests just the rope transform.
@@ -73,22 +78,11 @@ class TestModel(absltest.TestCase):
     is not a nn.module tracked by
     utils.ActivationTracer.
     """
-    # Arrange
-    miniconfig = json.loads(model.GEMMA3_27B_TEXT)
-    miniconfig["num_hidden_layers"] = 6
-    with torch.device(self.device):
-      hf_model = transformers.Gemma3TextModel(
-          transformers.Gemma3TextConfig(**miniconfig)
-      )
-      custom_model = model.Gemma3TextModel(model.Gemma3TextConfig(**miniconfig))
-
     # TODO: Fuzz the weight on RMSNorm layers. They are initialized to zeros.
 
-    custom_model.load_state_dict(hf_model.state_dict())
-
     # Act
-    hf_rope = hf_model.rotary_emb
-    custom_rope = custom_model.rotary_emb
+    hf_rope = self.hf_model.rotary_emb
+    custom_rope = self.custom_model.rotary_emb
 
     x = torch.randn(2, 32, 128).to(self.device)
     position_ids = (
@@ -104,26 +98,18 @@ class TestModel(absltest.TestCase):
   def test_equivalence_hf_and_custom_modules(self):
     """Tests equivalence of hf and custom model."""
     # Arrange
-    miniconfig = json.loads(model.GEMMA3_27B_TEXT)
-    miniconfig["num_hidden_layers"] = 6
-    with torch.device(self.device):
-      hf_model = transformers.Gemma3TextModel(
-          transformers.Gemma3TextConfig(**miniconfig)
-      )
-      custom_model = model.Gemma3TextModel(model.Gemma3TextConfig(**miniconfig))
-
-      x = torch.randint(0, hf_model.config.vocab_size, (2, 32)).to(self.device)
+    x = torch.randint(
+        0, self.hf_model.config.vocab_size, (2, 32), device=self.device
+    )
 
     # TODO: Fuzz the weight on RMSNorm layers. They are initialized to zeros.
 
-    custom_model.load_state_dict(hf_model.state_dict())
-
     # Act
-    with utils.ActivationTracer(hf_model) as hf_trace:
-      _ = hf_model(x)
+    with utils.ActivationTracer(self.hf_model) as hf_trace:
+      _ = self.hf_model(x)
 
-    with utils.ActivationTracer(custom_model) as custom_trace:
-      _ = custom_model(x)
+    with utils.ActivationTracer(self.custom_model) as custom_trace:
+      _ = self.custom_model(x)
 
     # Log the series of modules first to assist in debugging.
     logging.info("Listing all forward modules, collated.")

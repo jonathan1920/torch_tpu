@@ -132,9 +132,9 @@ TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
         BuildFillUninitialized(builder, shape.dtype(), shape.dimensions())};
   };
 
-  // Create a graph: a -> b, a -> c, b -> d.
-  // d and c are leaf nodes in the connected subgraph.
-  // a and b are internal nodes, but a has fanout, so
+  // Create a graph: a -> b, a -> c, c -> d.
+  // b and d are leaf nodes in the connected subgraph.
+  // a and c are internal nodes, but a has fanout, so
   // it will be materialized.
 
   // Node a
@@ -158,10 +158,10 @@ TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
                                        OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef ref_c = refs_c[0];
 
-  // Node d (depends on b)
+  // Node d (depends on c)
   ASSERT_OK_AND_ASSIGN(
       std::vector<DeviceBufferRef> refs_d,
-      DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {ref_b},
+      DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {ref_c},
                                        OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef ref_d = refs_d[0];
 
@@ -170,20 +170,20 @@ TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
   EXPECT_EQ(ref_c.state(), DeviceBufferRefState::kDeferred);
   EXPECT_EQ(ref_d.state(), DeviceBufferRefState::kDeferred);
 
-  // Materializing d should materialize d (requested) and c (leaf).
+  // Materializing d should materialize d (requested) and b (leaf).
   // Intermediate nodes a and b should remain deferred.
   EXPECT_EQ(Materialize(ref_d), absl::OkStatus());
 
   // a is materialized as it has fanout > 1.
   EXPECT_EQ(ref_a.state(), DeviceBufferRefState::kMaterialized);
 
-  // b remains deferred as it is an internal node not requested for
+  // c remains deferred as it is an internal node not requested for
   // materialization.
-  EXPECT_EQ(ref_b.state(), DeviceBufferRefState::kDeferred);
+  EXPECT_EQ(ref_c.state(), DeviceBufferRefState::kDeferred);
 
-  // c and d are materialized: d is the requested target, and c is a leaf in the
+  // b and d are materialized: d is the requested target, and b is a leaf in the
   // subgraph discovered during the traversal from d.
-  EXPECT_EQ(ref_c.state(), DeviceBufferRefState::kMaterialized);
+  EXPECT_EQ(ref_b.state(), DeviceBufferRefState::kMaterialized);
   EXPECT_EQ(ref_d.state(), DeviceBufferRefState::kMaterialized);
 }
 

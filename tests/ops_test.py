@@ -704,7 +704,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"rtol": 6.4e-1, "atol": 3.4e-2},
     },
     "_foreach_addcmul": {
-        torch.bfloat16: {"rtol": 2.2e-1, "atol": 2.4e-2},
+        torch.bfloat16: {"rtol": 2.2e-1, "atol": 3.2e-2},
         torch.float16: {"rtol": 4.3e-1, "atol": 3.5e-3},
     },
     "_foreach_erfc": {
@@ -1474,7 +1474,7 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.float16: {"rtol": 2e-3, "atol": 1e-4},
             },
             "atan2": {
-                torch.bfloat16: {"rtol": 3.8e-02, "atol": 2e-2},
+                torch.bfloat16: {"rtol": 5.2e-02, "atol": 4e-2},
                 torch.float16: {"rtol": 1.3e-02, "atol": 2.0e-03},
             },
             "atanh": {

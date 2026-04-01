@@ -46,7 +46,7 @@ ABSL_FLAG(bool, torch_tpu_internal_reexecution_heuristic, true,
 ABSL_FLAG(bool, torch_tpu_internal_stale_heuristic, true,
           "Use a materialization heuristic that materializes around the stale "
           "regions of a graph.");
-ABSL_FLAG(bool, torch_tpu_internal_safe_materialization_rule, false,
+ABSL_FLAG(bool, torch_tpu_internal_safe_materialization_rule, true,
           "Use a set of materialization heuristics that ensures nodes are "
           "dropped or materialized sequentially.");
 
