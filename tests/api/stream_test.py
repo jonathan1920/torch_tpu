@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import concurrent.futures
 from absl.testing import absltest
 import torch
 from torch_tpu import api
@@ -83,6 +84,31 @@ class StreamsTest(absltest.TestCase):
 
     # Verify data integrity
     utils.assert_close(t_cpu, torch.ones(size, dtype=torch.float32))
+
+  def test_synchronize_from_multiple_threads(self):
+    _ = api.tpu_device()
+
+    # Create a large tensor that will take a while to copy
+    size = 8192 * 8192
+    t_tpu = torch.ones(size, device='tpu', dtype=torch.float32)
+    t_cpu = torch.empty(size, device='cpu', pin_memory=True)
+
+    # Start a non-blocking copy
+    t_cpu.copy_(t_tpu, non_blocking=True)
+
+    def sync_and_check():
+      torch.tpu.synchronize()
+      # Verify data integrity
+      utils.assert_close(t_cpu, torch.ones(size, dtype=torch.float32))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+      futures = [
+          executor.submit(sync_and_check),
+          executor.submit(sync_and_check),
+      ]
+      # Wait for all futures to complete. Exceptions will be re-raised.
+      for future in concurrent.futures.as_completed(futures):
+        future.result()
 
   def test_event_partially_implemented(self):
     """Tests that unimplemented event methods raise NotImplementedError."""

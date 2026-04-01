@@ -148,17 +148,20 @@ void MarkStreamActive(c10::DeviceIndex device_index, xla::Future<void> future) {
   state.pending_futures[device_index].push_back(std::move(future));
 }
 
+// Blocks the calling thread until all previously enqueued operations on the
+// specified device's stream have completed.
+// If multiple threads call SynchronizeStream for the same device concurrently,
+// all threads will block until the pending operations at the time of their
+// call are finished.
 void SynchronizeStream(c10::DeviceIndex device_index) {
-  std::vector<xla::Future<void>> futures;
-  {
-    StreamState& state = GetStreamState();
-    TT_MUTEX_LOCK(lock, state.mutex);
-    auto it = state.pending_futures.find(device_index);
-    if (it != state.pending_futures.end()) {
-      futures = std::move(it->second);
-    }
+  StreamState& state = GetStreamState();
+  TT_MUTEX_LOCK(lock, state.mutex);
+  auto it = state.pending_futures.find(device_index);
+  if (it == state.pending_futures.end()) {
+    // No pending futures for this device.
+    return;
   }
-  for (auto& future : futures) {
+  for (auto& future : it->second) {
     if (future.IsValid()) {
       absl::Status s = future.Await();
       if (!s.ok()) {
@@ -167,6 +170,7 @@ void SynchronizeStream(c10::DeviceIndex device_index) {
       }
     }
   }
+  it->second.clear();
 }
 
 }  // namespace torch_tpu
