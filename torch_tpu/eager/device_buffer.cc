@@ -487,6 +487,17 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
   int64_t num_outputs = output_shapes.size();
 
   std::shared_ptr<Subgraph> subgraph = nullptr;
+
+  if (IsDistributedOp(op_name)) {
+    // Each distributed op acts as a barrier; all prior operations (connected or
+    // not) that were created before it must be considered part of the same
+    // graph so that proper ordering is maintained.
+    // Otherwise, two independent collective operations could be isolated in
+    // disconnected subgraphs, and different rank processes could have different
+    // orderings of these subgraphs, leading to a deadlock.
+    subgraph = SubgraphRegistry::GetInstance().MergeAll();
+  }
+
   for (const auto& input : inputs) {
     if (input.state() == DeviceBufferRefState::kDeferred) {
       auto input_subgraph = input.device_buffer_list()->subgraph();
