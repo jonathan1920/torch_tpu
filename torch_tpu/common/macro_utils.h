@@ -117,16 +117,28 @@ inline constexpr bool kDebugMode = true;
 }
 
 // Returns true if the string is a comma-separated list where each item is an
-// identifier name or "IgnoreInCacheKey(identifier)".
-// This must be evaluated at compile time as we don't want to incur any
-// runtime overhead.
+// identifier name or "IgnoreInCacheKey(identifier)" or
+// "IgnoreInCacheKey(identifier, reason)". This must be evaluated at compile
+// time as we don't want to incur any runtime overhead.
 [[nodiscard]] inline constexpr bool ArgsAreIdentifiers(
     const std::string_view csv_string) noexcept {
   if (csv_string.empty()) return true;
 
   size_t start = 0;
-  while (start <= csv_string.size()) {
-    size_t comma_pos = csv_string.find(',', start);
+  while (start < csv_string.size()) {
+    size_t comma_pos = std::string_view::npos;
+    int depth = 0;
+    for (size_t i = start; i < csv_string.size(); ++i) {
+      if (csv_string[i] == '(') {
+        ++depth;
+      } else if (csv_string[i] == ')') {
+        --depth;
+      } else if (csv_string[i] == ',' && depth == 0) {
+        comma_pos = i;
+        break;
+      }
+    }
+
     std::string_view element =
         (comma_pos == std::string_view::npos)
             ? csv_string.substr(start)
@@ -161,7 +173,25 @@ inline constexpr bool kDebugMode = true;
         while (!inner.empty() && IsWhitespace(inner.back())) {
           inner.remove_suffix(1);
         }
-        valid = IsValidIdentifier(inner);
+
+        // Handle IgnoreInCacheKey(identifier) or
+        // IgnoreInCacheKey(identifier, "reason").
+        const size_t inner_comma_pos = inner.find(',');
+        if (inner_comma_pos == std::string_view::npos) {
+          valid = IsValidIdentifier(inner);
+        } else {
+          std::string_view identifier = inner.substr(0, inner_comma_pos);
+          while (!identifier.empty() && IsWhitespace(identifier.front())) {
+            identifier.remove_prefix(1);
+          }
+          while (!identifier.empty() && IsWhitespace(identifier.back())) {
+            identifier.remove_suffix(1);
+          }
+          valid = IsValidIdentifier(identifier);
+          // We don't strictly validate the "reason" part here as it can be
+          // any string literal, and this is mainly for preventing accidental
+          // complex expressions.
+        }
       }
     }
 

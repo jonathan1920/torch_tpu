@@ -30,10 +30,34 @@ namespace torch_tpu {
 namespace internal {
 
 std::vector<std::string_view> ArgsAsStrings(const std::string_view csv_string) {
-  std::vector<std::string_view> split_args =
-      absl::StrSplit(csv_string, absl::ByChar(','), absl::SkipWhitespace());
-  for (auto& arg : split_args) {
+  std::vector<std::string_view> split_args;
+  if (csv_string.empty()) return split_args;
+
+  size_t start = 0;
+  while (start < csv_string.size()) {
+    size_t comma_pos = std::string_view::npos;
+    int depth = 0;
+    for (size_t i = start; i < csv_string.size(); ++i) {
+      if (csv_string[i] == '(') {
+        ++depth;
+      } else if (csv_string[i] == ')') {
+        --depth;
+      } else if (csv_string[i] == ',' && depth == 0) {
+        comma_pos = i;
+        break;
+      }
+    }
+
+    std::string_view arg = (comma_pos == std::string_view::npos)
+                               ? csv_string.substr(start)
+                               : csv_string.substr(start, comma_pos - start);
     arg = absl::StripAsciiWhitespace(arg);
+    if (!arg.empty() || comma_pos != std::string_view::npos) {
+      split_args.push_back(arg);
+    }
+
+    if (comma_pos == std::string_view::npos) break;
+    start = comma_pos + 1;
   }
   return split_args;
 }

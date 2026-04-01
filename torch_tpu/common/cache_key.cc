@@ -17,6 +17,7 @@
 #include "torch_tpu/common/cache_key.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <ios>
 #include <ostream>
@@ -109,8 +110,21 @@ std::string FormatParamCacheKey(const at::Device value) {
 }
 
 std::string_view ParseNextArgName(std::string_view& args_str) {
-  // Find the first ',' or the end of the string.
-  auto name_end = args_str.find(',');
+  // Find the first ',' that is not inside parentheses, or the end of the
+  // string.
+  size_t name_end = std::string_view::npos;
+  int depth = 0;
+  for (size_t i = 0; i < args_str.size(); ++i) {
+    if (args_str[i] == '(') {
+      ++depth;
+    } else if (args_str[i] == ')') {
+      --depth;
+    } else if (args_str[i] == ',' && depth == 0) {
+      name_end = i;
+      break;
+    }
+  }
+
   if (name_end == std::string_view::npos) {
     name_end = args_str.size();
   }

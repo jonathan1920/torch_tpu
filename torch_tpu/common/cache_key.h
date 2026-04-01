@@ -333,8 +333,21 @@ template <typename T,
           // Only allow this function to be called for types that should be
           // included in the cache key.
           typename = std::enable_if_t<internal::IncludeInCacheKey<T>()>>
-constexpr internal::IgnoredInCacheKey<T> IgnoreInCacheKey(const T& value) {
+constexpr internal::IgnoredInCacheKey<T> IgnoreInCacheKey(
+    const T& value, const std::string_view reason) {
+  ABSL_CHECK(!reason.empty())  // CRASH_OK
+      << "Please provide a non-empty reason for using IgnoreInCacheKey().";
   return internal::IgnoredInCacheKey<T>(value);
+}
+
+// Returns an IgnoredInCacheKey object that wraps the given value.
+template <typename T,
+          // Only allow this function to be called for types that should be
+          // included in the cache key.
+          typename = std::enable_if_t<internal::IncludeInCacheKey<T>()>>
+[[deprecated("Use IgnoreInCacheKey(value, reason) instead.")]]
+constexpr internal::IgnoredInCacheKey<T> IgnoreInCacheKey(const T& value) {
+  return IgnoreInCacheKey(value, "legacy usage");
 }
 
 // When defining an op, any parameters that can change the compilation of the

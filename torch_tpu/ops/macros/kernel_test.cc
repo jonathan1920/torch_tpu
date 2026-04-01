@@ -42,7 +42,7 @@ static const auto kInitShowCppContext =
     setenv("TORCH_SHOW_CPP_STACKTRACES", "0", /*overwrite=*/1);
 
 void Kernel1(int ndim) {
-  TT_KERNEL(OpName::kAdd, _, (IgnoreInCacheKey(ndim)), {
+  TT_KERNEL(OpName::kAdd, _, (IgnoreInCacheKey(ndim, "testing")), {
     throw  // For testing error API.
         TtError(TT_ERROR(error::kInvalidArgument) << "test error",
                 c10::SourceLocation({"foo()", "bar.cc", 42}));
@@ -65,7 +65,7 @@ TEST(TtKernel, PrependOpName) {
 
 // A delegated-to op.
 at::Tensor AtenOp2(bool cond) {
-  TT_KERNEL(OpName::kBmm, _, (IgnoreInCacheKey(cond)), {
+  TT_KERNEL(OpName::kBmm, _, (IgnoreInCacheKey(cond, "testing")), {
     // Even though this error is thrown in op2, the root op is op3 as we
     // are calling op2 from op3.
     throw  // For testing error API.
@@ -75,7 +75,8 @@ at::Tensor AtenOp2(bool cond) {
 }
 
 void NewKernel1(int ndim) {
-  TT_KERNEL(OpName::kCatOut, _, (IgnoreInCacheKey(ndim)), { AtenOp2(true); });
+  TT_KERNEL(OpName::kCatOut, _, (IgnoreInCacheKey(ndim, "testing")),
+            { AtenOp2(true); });
 }
 
 TEST(TtKernel, PrependRootOpName) {
@@ -146,6 +147,18 @@ void Kernel0() {
 }
 
 TEST(TtKernel, SupportsNullaryOps) { Kernel0(); }
+
+void Kernel6(int ndim, int size, int step) {
+  TT_KERNEL(
+      OpName::kAdd, param_keys,
+      (ndim, IgnoreInCacheKey(size, "Ignore."),
+       IgnoreInCacheKey(
+           step,
+           "This reason contains a comma, which should be handled correctly.")),
+      { EXPECT_THAT(param_keys, ElementsAre(Pair("ndim", "1"))); });
+}
+
+TEST(TtKernel, SupportsIgnoreInCacheKeyWithReason) { Kernel6(1, 2, 3); }
 
 }  // namespace
 }  // namespace torch_tpu

@@ -34,11 +34,9 @@ at::Tensor AtenUnfold(const at::Tensor& self, int64_t dimension, int64_t size,
                       int64_t step) {
   TT_KERNEL(
       OpName::kUnfold, _,
-      (self,
-       // No need to include these in the cache key as this kernel delegates
-       // to AtenAsStrided, which takes care of cache key computation.
-       IgnoreInCacheKey(dimension), IgnoreInCacheKey(size),
-       IgnoreInCacheKey(step)),
+      (self, IgnoreInCacheKey(dimension, "Delegates to AtenAsStrided"),
+       IgnoreInCacheKey(size, "Delegates to AtenAsStrided"),
+       IgnoreInCacheKey(step, "Delegates to AtenAsStrided")),
       {
         const bool self_is_scalar = self.dim() == 0;
         at::Tensor self_reshaped = self_is_scalar ? self.unsqueeze(0) : self;
