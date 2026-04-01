@@ -38,36 +38,36 @@ class PrecisionTest(absltest.TestCase):
     self.assertTrue(torch.tpu.Precision)
 
     with torch.tpu.precision(torch.tpu.Precision.HIGHEST):
-      self.assertEqual(p_impl._get_precision(), p_impl.Precision.highest)
+      self.assertEqual(p_impl._get_precision(), Precision.HIGHEST)
 
   def test_context_manager(self):
-    self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+    self.assertEqual(p_impl._get_precision(), Precision.DEFAULT)
     with precision(Precision.HIGH):
-      self.assertEqual(p_impl._get_precision(), p_impl.Precision.high)
-    self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+      self.assertEqual(p_impl._get_precision(), Precision.HIGH)
+    self.assertEqual(p_impl._get_precision(), Precision.DEFAULT)
 
     with precision(Precision.HIGHEST):
-      self.assertEqual(p_impl._get_precision(), p_impl.Precision.highest)
-    self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+      self.assertEqual(p_impl._get_precision(), Precision.HIGHEST)
+    self.assertEqual(p_impl._get_precision(), Precision.DEFAULT)
 
   def test_nested_context_manager(self):
-    self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+    self.assertEqual(p_impl._get_precision(), Precision.DEFAULT)
     with precision(Precision.HIGH):
-      self.assertEqual(p_impl._get_precision(), p_impl.Precision.high)
+      self.assertEqual(p_impl._get_precision(), Precision.HIGH)
       with precision(Precision.HIGHEST):
-        self.assertEqual(p_impl._get_precision(), p_impl.Precision.highest)
-      self.assertEqual(p_impl._get_precision(), p_impl.Precision.high)
-    self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+        self.assertEqual(p_impl._get_precision(), Precision.HIGHEST)
+      self.assertEqual(p_impl._get_precision(), Precision.HIGH)
+    self.assertEqual(p_impl._get_precision(), Precision.DEFAULT)
 
   def test_exception_handling(self):
-    self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+    self.assertEqual(p_impl._get_precision(), Precision.DEFAULT)
     try:
       with precision(Precision.HIGH):
-        self.assertEqual(p_impl._get_precision(), p_impl.Precision.high)
+        self.assertEqual(p_impl._get_precision(), Precision.HIGH)
         raise ValueError("Test Exception")
     except ValueError:
       pass
-    self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+    self.assertEqual(p_impl._get_precision(), Precision.DEFAULT)
 
   def test_matmul_runs(self):
     a = torch.randn(10, 10, device="tpu")
@@ -181,17 +181,17 @@ class PrecisionTest(absltest.TestCase):
 
   def test_thread_local(self):
     # Set precision in main thread
-    self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+    self.assertEqual(p_impl._get_precision(), Precision.DEFAULT)
 
     def worker_high():
       with precision(Precision.HIGH):
-        self.assertEqual(p_impl._get_precision(), p_impl.Precision.high)
+        self.assertEqual(p_impl._get_precision(), Precision.HIGH)
 
     def worker_highest():
       # Start without any context, should default to default
-      self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+      self.assertEqual(p_impl._get_precision(), Precision.DEFAULT)
       with precision(Precision.HIGHEST):
-        self.assertEqual(p_impl._get_precision(), p_impl.Precision.highest)
+        self.assertEqual(p_impl._get_precision(), Precision.HIGHEST)
 
     with precision(Precision.DEFAULT):
       t1 = threading.Thread(target=worker_high)
@@ -204,24 +204,25 @@ class PrecisionTest(absltest.TestCase):
       t2.join()
 
       # The main thread should still be default
-      self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+      self.assertEqual(p_impl._get_precision(), Precision.DEFAULT)
 
   def test_thread_local_stress(self):
-    def worker(target_precision, target_impl_precision):
+
+    def worker(target_precision):
       for _ in range(100):
         with precision(target_precision):
-          self.assertEqual(p_impl._get_precision(), target_impl_precision)
-        self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+          self.assertEqual(p_impl._get_precision(), target_precision)
+        self.assertEqual(p_impl._get_precision(), Precision.DEFAULT)
 
     threads = []
     configs = [
-        (Precision.HIGH, p_impl.Precision.high),
-        (Precision.HIGHEST, p_impl.Precision.highest),
-        (Precision.DEFAULT, p_impl.Precision.default),
+        Precision.HIGH,
+        Precision.HIGHEST,
+        Precision.DEFAULT,
     ]
     for i in range(10):
       config = configs[i % len(configs)]
-      t = threading.Thread(target=worker, args=config)
+      t = threading.Thread(target=worker, args=(config,))
       threads.append(t)
       t.start()
 
@@ -231,14 +232,14 @@ class PrecisionTest(absltest.TestCase):
   def test_thread_local_inheritance(self):
     def child_worker():
       # Child thread should NOT inherit the parent's precision context.
-      self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+      self.assertEqual(p_impl._get_precision(), Precision.DEFAULT)
 
     with precision(Precision.HIGH):
-      self.assertEqual(p_impl._get_precision(), p_impl.Precision.high)
+      self.assertEqual(p_impl._get_precision(), Precision.HIGH)
       t = threading.Thread(target=child_worker)
       t.start()
       t.join()
-      self.assertEqual(p_impl._get_precision(), p_impl.Precision.high)
+      self.assertEqual(p_impl._get_precision(), Precision.HIGH)
 
   def test_thread_pool_executor(self):
     def worker(target_precision, target_impl_precision):
@@ -248,24 +249,22 @@ class PrecisionTest(absltest.TestCase):
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
       futures = []
+      futures.append(executor.submit(worker, Precision.HIGH, Precision.HIGH))
       futures.append(
-          executor.submit(worker, Precision.HIGH, p_impl.Precision.high)
-      )
-      futures.append(
-          executor.submit(worker, Precision.HIGHEST, p_impl.Precision.highest)
+          executor.submit(worker, Precision.HIGHEST, Precision.HIGHEST)
       )
 
       for future in concurrent.futures.as_completed(futures):
-        self.assertEqual(future.result(), p_impl.Precision.default)
+        self.assertEqual(future.result(), Precision.DEFAULT)
 
   def test_nested_thread_local(self):
     def worker():
       with precision(Precision.HIGH):
-        self.assertEqual(p_impl._get_precision(), p_impl.Precision.high)
+        self.assertEqual(p_impl._get_precision(), Precision.HIGH)
         with precision(Precision.HIGHEST):
-          self.assertEqual(p_impl._get_precision(), p_impl.Precision.highest)
-        self.assertEqual(p_impl._get_precision(), p_impl.Precision.high)
-      self.assertEqual(p_impl._get_precision(), p_impl.Precision.default)
+          self.assertEqual(p_impl._get_precision(), Precision.HIGHEST)
+        self.assertEqual(p_impl._get_precision(), Precision.HIGH)
+      self.assertEqual(p_impl._get_precision(), Precision.DEFAULT)
 
     t = threading.Thread(target=worker)
     t.start()

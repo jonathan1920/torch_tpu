@@ -15,7 +15,6 @@
 """Op precision context manager."""
 
 import contextlib
-import enum
 from typing import Generator
 
 from torch_tpu._internal.precision import precision_impl
@@ -25,25 +24,17 @@ from torch_tpu._internal.precision import precision_impl
 __all__ = ["precision", "Precision"]
 
 
-class Precision(enum.Enum):
-  """StableHLO PrecisionConfig.
+# This enum provides a direct binding to the StableHLO precision configuration.
+# For explicit definitions of 'DEFAULT', 'HIGH', and 'HIGHEST', please see the
+# StableHLO documentation for 'dot_general':
+# https://openxla.org/stablehlo/spec#dot_general
+Precision = precision_impl.Precision
 
-  This enum provides a direct binding to the StableHLO precision configuration.
-  For explicit definitions of 'DEFAULT', 'HIGH', and 'HIGHEST', please see the
-  StableHLO documentation for 'dot_general':
-  https://openxla.org/stablehlo/spec#dot_general
-  """
-
-  DEFAULT = "DEFAULT"
-  HIGH = "HIGH"
-  HIGHEST = "HIGHEST"
-
-
-_PRECISION_CONFIG_TO_IMPL = {
-    Precision.DEFAULT: precision_impl.Precision.default,
-    Precision.HIGH: precision_impl.Precision.high,
-    Precision.HIGHEST: precision_impl.Precision.highest,
-}
+_VALID_PRECISIONS = (
+    Precision.DEFAULT,
+    Precision.HIGH,
+    Precision.HIGHEST,
+)
 
 
 @contextlib.contextmanager
@@ -72,14 +63,14 @@ def precision(mode: Precision) -> Generator[None, None, None]:
       None
   """
 
-  if mode not in _PRECISION_CONFIG_TO_IMPL:
+  if mode not in _VALID_PRECISIONS:
     raise ValueError(
         "expected to be one of 'PrecisionConfig.DEFAULT',"
         f" 'PrecisionConfig.HIGH', or 'PrecisionConfig.HIGHEST', got '{mode}'"
     )
 
   # Push the new state.
-  precision_impl._push_precision(_PRECISION_CONFIG_TO_IMPL[mode])
+  precision_impl._push_precision(mode)
   try:
     yield
   finally:
