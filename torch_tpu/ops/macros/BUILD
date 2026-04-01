@@ -55,6 +55,7 @@ torch_tpu_cc_test(
         "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:macro_utils",
+        "//torch_tpu/ops:op_names",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings",

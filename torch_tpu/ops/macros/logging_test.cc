@@ -32,6 +32,7 @@
 #include "torch/headeronly/core/Layout.h"
 #include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/ops/op_names.h"
 
 namespace torch_tpu {
 namespace {
@@ -45,7 +46,7 @@ using testing::IsEmpty;
 using testing::StartsWith;
 
 void Kernel2(int x, const std::string& y) {
-  TT_CHECK_AND_LOG_KERNEL_ARGS_("my_op", x, y);
+  TT_CHECK_AND_LOG_KERNEL_ARGS_(OpName::kAdd, x, y);
 }
 
 TEST(LogKernelStart, CompilesWhenArgsAreIdentifiers) {
