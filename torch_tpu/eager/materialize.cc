@@ -16,7 +16,6 @@
 
 #include "torch_tpu/eager/materialize.h"
 
-#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <future>
@@ -52,6 +51,7 @@
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/dynamism_utils.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
@@ -59,26 +59,14 @@
 #include "torch_tpu/eager/split_traversal.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/traversal.h"
-#include "torch_tpu/ops/op_builder_utils.h"
-#include "torch_tpu/pjrt/pjrt_state.h"
 #include "torch_tpu/pjrt/pjrt_utils.h"
 #include "stablehlo/transforms/StablehloBroadcastLowering.h"
 #include "xla/future.h"
 #include "xla/hlo/translate/register.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 
-ABSL_FLAG(std::optional<int64_t>, torch_tpu_internal_throttle_limit_gib,
-          std::nullopt,
-          "If set, throttle active materializations to try to stay below this "
-          "memory limit (in GiB).");
-ABSL_FLAG(std::optional<float>, torch_tpu_internal_throttle_limit_rate,
-          std::nullopt,
-          "If set, throttle active materializations to try to stay below this "
-          "memory limit (as a fraction of total device memory). Must be in "
-          "the range [0.0, 1.0].");
 ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 
 namespace torch_tpu {
@@ -258,129 +246,6 @@ absl::Status ExecuteMaterializationJob(
 
 namespace {
 
-// An InFlightExecution is an execution that has started but may not yet be
-// finished. This is used to measure memory usage to determine when to throttle.
-struct InFlightExecution {
-  // The first output node of the execution. All output nodes complete at the
-  // same time, so we only need to keep track of one.
-  std::weak_ptr<DeviceBufferList> node;
-  // The total execution cost, in bytes, including input size, output size,
-  // program size, and temporary stack memory, less any input/output aliasing.
-  int64_t size_bytes;
-};
-
-// Determines the memory throttling limit based on the flags.
-// If both absolute and relative limits are set, then the smaller one is used.
-// If the device memory limit cannot be determined, then the relative limit is
-// ignored.
-// Returns nullopt if no throttling should be applied.
-std::optional<int64_t> GetThrottleLimitBytes() {
-  std::optional<int64_t> throttle_limit_absolute =
-      absl::GetFlag(FLAGS_torch_tpu_internal_throttle_limit_gib);
-  if (throttle_limit_absolute.has_value() && *throttle_limit_absolute > 0) {
-    // Convert from GiB to bytes.
-    throttle_limit_absolute =
-        throttle_limit_absolute.value() * 1024 * 1024 * 1024;
-  }
-
-  std::optional<float> throttle_limit_rate =
-      absl::GetFlag(FLAGS_torch_tpu_internal_throttle_limit_rate);
-  if (!throttle_limit_rate.has_value()) {
-    // No relative limit is set, just use the absolute limit (possibly nullopt)
-    return throttle_limit_absolute;
-  }
-  ABSL_CHECK(throttle_limit_rate.value() >= 0.0 &&  // CRASH_OK
-             throttle_limit_rate.value() <= 1.0)
-      << "Invalid value for --torch_tpu_internal_throttle_limit_fraction: "
-      << throttle_limit_rate.value() << ". Must be in range [0.0, 1.0].";
-
-  // Try to get the maximum byte size from the PjRtClient.
-  // This only works if there is a single addressable device, which is the
-  // expectation for current torch.distributed configurations on TorchTPU.
-  int64_t device_bytes_limit = -1;
-  if (auto* client = GetPjRtClient(); client != nullptr) {
-    if (auto devices = client->addressable_devices(); devices.size() == 1) {
-      const auto& device = devices[0];
-      if (auto stats = device->GetAllocatorStats(); stats.ok()) {
-        device_bytes_limit = stats->bytes_limit.value_or(-1);
-      }
-    }
-  }
-  if (device_bytes_limit < 0) {
-    // Could not get the device bytes limit, so just use the absolute limit
-    // (possibly nullopt).
-    return throttle_limit_absolute;
-  }
-  int64_t throttle_limit_relative =
-      static_cast<int64_t>(device_bytes_limit * throttle_limit_rate.value());
-  if (throttle_limit_absolute.has_value()) {
-    // If both absolute and relative limits are set, then we use the smaller
-    // one.
-    return std::min(throttle_limit_absolute.value(), throttle_limit_relative);
-  } else {
-    // Only a relative limit is set, so we use that.
-    return throttle_limit_relative;
-  }
-}
-
-// Blocks the calling thread until enqueuing the given executable onto the queue
-// would not exceed the throttle limit, or until the queue is empty.
-// Returns the size of the executable.
-int64_t ApplyMemoryThrottling(const int64_t throttle_limit_bytes,
-                              int64_t& in_flight_bytes,
-                              std::queue<InFlightExecution>& in_flight_nodes,
-                              const xla::PjRtLoadedExecutable& executable) {
-  tsl::profiler::TraceMe t("ApplyMemoryThrottling");
-  // Compute the execution cost of the executable.
-  const auto memory_stats_status = executable.GetCompiledMemoryStats();
-  int64_t execution_size_bytes;
-  if (memory_stats_status.ok()) {
-    const xla::CompiledMemoryStats& memory_stats = *memory_stats_status;
-    // This is technically the lower bound of the execution cost, but it's a
-    // reasonable measurement for throttling purposes.
-    // See comment in PjRtExecutable::CompiledMemoryStats for details.
-    execution_size_bytes = memory_stats.generated_code_size_in_bytes +
-                           memory_stats.argument_size_in_bytes +
-                           memory_stats.output_size_in_bytes -
-                           memory_stats.alias_size_in_bytes +
-                           memory_stats.temp_size_in_bytes;
-  } else {
-    // If we can't get the memory stats, then we conservatively assume
-    // the executable is so big that we need to flush the queue both
-    // before and after execution.
-    execution_size_bytes = throttle_limit_bytes;
-  }
-
-  // Block on all executions until either the queue is empty or adding the new
-  // executable would not exceed the throttle limit.
-  while (!in_flight_nodes.empty() &&
-         in_flight_bytes + execution_size_bytes >= throttle_limit_bytes) {
-    // Pop the first node and update the in-flight bytes.
-    InFlightExecution in_flight_node = in_flight_nodes.front();
-    in_flight_nodes.pop();
-    in_flight_bytes -= in_flight_node.size_bytes;
-    // If the node is expired, then that means it was computed, used,
-    // and freed, so it's done.
-    if (auto maybe_list = in_flight_node.node.lock()) {
-      const auto* materialized_buffers = maybe_list->materialized_buffers();
-      // If the Await() fails, then the execution failed, which means it's no
-      // longer consuming resources.
-      if (materialized_buffers != nullptr &&
-          materialized_buffers->Await().ok() &&
-          materialized_buffers->size() > 0) {
-        // As soon as the first PjRtBuffer is ready, then the whole execution is
-        // complete.
-        // If the execution fails, then the result will be an error, but it's
-        // done using resources so we can proceed.
-        if (auto* buffer = (*materialized_buffers)[0]) {
-          buffer->GetReadyFuture().Await().IgnoreError();
-        }
-      }
-    }
-  }
-  return execution_size_bytes;
-}
-
 void LogDeferredNodes(absl::Span<const SharedDeviceBufferList> nodes,
                       const std::string_view msg_prefix) {
   if (ABSL_VLOG_IS_ON(1)) {
@@ -479,10 +344,7 @@ class MaterializationWorker {
     return popped_job;
   }
 
-  void ProcessExecutionTask(
-      ExecutionTask task, const std::optional<int64_t>& throttle_limit_bytes,
-      int64_t& in_flight_bytes,
-      std::queue<InFlightExecution>& in_flight_executions) {
+  void ProcessExecutionTask(ExecutionTask task) {
     tsl::profiler::TraceMe trace("ProcessExecutionTask");
     std::string_view task_name = "anonymous";
     if (!task.task_name.empty()) {
@@ -541,18 +403,6 @@ class MaterializationWorker {
     ABSL_VLOG(1) << "[MaterializationWorker] Cached executables size: "
                  << cached_executables.size();
 
-    int64_t execution_size_bytes = 0;
-    for (const auto& cached_executable : cached_executables) {
-      if (throttle_limit_bytes.has_value()) {
-        ABSL_VLOG(1) << "[MaterializationWorker] Applying memory throttling "
-                        "for task_name="
-                     << task_name;
-        execution_size_bytes +=
-            ApplyMemoryThrottling(*throttle_limit_bytes, in_flight_bytes,
-                                  in_flight_executions, *cached_executable);
-      }
-    }
-
     ABSL_VLOG(1) << "[MaterializationWorker] Executing job for task_name="
                  << task_name;
     absl::Status status = ExecuteMaterializationJob(
@@ -564,20 +414,6 @@ class MaterializationWorker {
           << task_name << " with status: " << status;
       SetOutputNodesAsError(task.outputs, status);
       return;
-    }
-
-    // Add the now in-flight execution to the throttling queue.
-    if (throttle_limit_bytes.has_value()) {
-      ABSL_VLOG(1)
-          << "[MaterializationWorker] Adding in-flight execution of size "
-          << execution_size_bytes / (1024 * 1024 * 1024)
-          << " GiB for task_name=" << task_name;
-      InFlightExecution in_flight_execution = {
-          .node = task.outputs[0].device_buffer_list(),
-          .size_bytes = execution_size_bytes,
-      };
-      in_flight_bytes += execution_size_bytes;
-      in_flight_executions.push(std::move(in_flight_execution));
     }
 
     ABSL_VLOG(1) << "[MaterializationWorker] ExecuteMaterializationJob "
@@ -698,45 +534,40 @@ class MaterializationWorker {
   }
 
   void StartThreads() {
-    materialize_thread_ = std::thread([this]() {
-      // Create the MLIR context outside the loop once and reuse for
-      // materialization tasks.
-      absl_nonnull std::unique_ptr<mlir::MLIRContext> mlir_context =
-          MakeMlirContext();
-      while (true) {
-        MaterializationTask job = DequeueMaterializationJob();
-        ABSL_VLOG(1)
-            << "[MaterializationWorker] Processing MaterializationTask";
-        absl::StatusOr<std::vector<ExecutionTask>> tasks =
-            ProcessMaterializationTask(job, *mlir_context);
+    materialize_thread_ =
+        std::thread(
+            [this]() {
+              // Create the MLIR context outside the loop once and reuse for
+              // materialization tasks.
+              absl_nonnull std::unique_ptr<mlir::MLIRContext> mlir_context =
+                  MakeMlirContext();
+              while (true) {
+                MaterializationTask job = DequeueMaterializationJob();
+                ABSL_VLOG(1)
+                    << "[MaterializationWorker] Processing MaterializationTask";
+                absl::StatusOr<std::vector<ExecutionTask>> tasks =
+                    ProcessMaterializationTask(job, *mlir_context);
 
-        if (tasks.ok()) {
-          ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing " << tasks->size()
-                       << " ExecutionTasks";
-          {
-            TT_MUTEX_LOCK(lock, execute_mu_);
-            for (auto& task : *tasks) {
-              execute_jobs_.push(std::move(task));
-            }
-          }
-        }
+                if (tasks.ok()) {
+                  ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing "
+                               << tasks->size() << " ExecutionTasks";
+                  {
+                    TT_MUTEX_LOCK(lock, execute_mu_);
+                    for (auto& task : *tasks) {
+                      execute_jobs_.push(std::move(task));
+                    }
+                  }
+                }
 
-        job.completion_promise.Set(tasks.status());
-      }
-    });
+                job.completion_promise.Set(tasks.status());
+              }
+            });
 
     execute_thread_ = std::thread([this]() {
-      // Throttling parameters
-      const std::optional<int64_t> throttle_limit_bytes =
-          GetThrottleLimitBytes();
-      int64_t in_flight_bytes = 0;
-      std::queue<InFlightExecution> in_flight_executions;
-
       while (true) {
         ExecutionTask job = DequeueExecutionJob();
         ABSL_VLOG(1) << "[MaterializationWorker] Processing ExecutionTask";
-        ProcessExecutionTask(std::move(job), throttle_limit_bytes,
-                             in_flight_bytes, in_flight_executions);
+        ProcessExecutionTask(std::move(job));
       }
     });
   }

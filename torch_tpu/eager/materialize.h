@@ -26,7 +26,6 @@
 #include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/ops/op_builder_utils.h"
 
 // When an aten op is dispatched, we always create a DeviceBufferList to contain
 // the result. Typically, this will contain a DeferredOp, which describes the

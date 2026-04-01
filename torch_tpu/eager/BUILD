@@ -268,9 +268,9 @@ torch_tpu_cc_library(
         "//torch_tpu/common:compilation",
         "//torch_tpu/common:dynamism_utils",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
         "//torch_tpu/common:utils",
         "//torch_tpu/ops:op_builder_utils",
-        "//torch_tpu/pjrt:pjrt_state",
         "//torch_tpu/pjrt:pjrt_utils",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
@@ -294,7 +294,6 @@ torch_tpu_cc_library(
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/translate:register",
         "@xla//xla/pjrt:pjrt_client",
-        "@xla//xla/pjrt:pjrt_executable",
     ],
 )
 
