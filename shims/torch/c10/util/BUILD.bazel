@@ -18,6 +18,14 @@ load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
 package(default_visibility = PACKAGE_DEFAULT_VISIBILITY)
 
 cc_library(
+    name = "base",
+    deps = select({
+        "//shims/torch:use_local_torch": ["@local_torch//:torch_headers"],
+        "//conditions:default": ["@pypi//torch:torch_headers"],
+    }),
+)
+
+cc_library(
     name = "base_headers",
     deps = select({
         "//shims/torch:use_local_torch": ["@local_torch//:torch_headers"],

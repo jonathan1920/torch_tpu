@@ -21,17 +21,19 @@
 
 namespace torch_tpu {
 
-// Manages the thread-local precision configuration for StableHLO operations.
-// This allows different threads to operate with different precision settings
-// for matrix multiplications or convolutions, such as DEFAULT, HIGH, or
-// HIGHEST.
-class PrecisionContext {
- public:
-  // Sets the precision for the current thread.
-  static void SetPrecision(mlir::stablehlo::Precision precision);
-  // Returns the precision for the current thread.
-  [[nodiscard]] static mlir::stablehlo::Precision GetPrecision();
-};
+// These functions manage the python-thread-local precision configuration for
+// StableHLO operations. This allows different python threads to operate with
+// different precision settings for matrix multiplications or convolutions, such
+// as DEFAULT, HIGH, or HIGHEST.
+
+// Returns the current python thread's precision.
+mlir::stablehlo::Precision GetPrecision();
+
+// Pushes the given precision onto the current python thread's state stack.
+void PushPrecision(mlir::stablehlo::Precision precision);
+
+// Pops the current python thread's precision state stack.
+void PopPrecision();
 
 }  // namespace torch_tpu
 

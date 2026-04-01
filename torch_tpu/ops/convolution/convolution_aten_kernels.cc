@@ -202,7 +202,7 @@ absl::StatusOr<DeviceBufferRef> ConvolutionBinary(
   Dimensions expanded_output_padding =
       ExpandIfNecessary(output_padding, num_spatial_dims);
 
-  const auto current_precision = PrecisionContext::GetPrecision();
+  const auto current_precision = GetPrecision();
   TT_ASSIGN_OR_RETURN(param_keys,
                       *OpParamCacheKeys::Builder(std::move(param_keys))
                            .SetParam("precision", current_precision));
@@ -254,7 +254,7 @@ absl::StatusOr<DeviceBufferRef> ConvolutionTernary(
   Dimensions expanded_output_padding =
       ExpandIfNecessary(output_padding, num_spatial_dims);
 
-  const auto current_precision = PrecisionContext::GetPrecision();
+  const auto current_precision = GetPrecision();
   TT_ASSIGN_OR_RETURN(param_keys,
                       *OpParamCacheKeys::Builder(std::move(param_keys))
                            .SetParam("precision", current_precision));
@@ -336,7 +336,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> ConvolutionBackward(
   Dimensions expanded_output_padding =
       ExpandIfNecessary(output_padding, num_spatial_dims);
 
-  const auto current_precision = PrecisionContext::GetPrecision();
+  const auto current_precision = GetPrecision();
   TT_ASSIGN_OR_RETURN(param_keys,
                       (*OpParamCacheKeys::Builder(std::move(param_keys))
                             .SetParam("precision", current_precision)));

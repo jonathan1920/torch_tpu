@@ -159,7 +159,11 @@ torch_tpu_cc_library(
     name = "precision_context",
     srcs = ["precision_context.cc"],
     hdrs = ["precision_context.h"],
-    deps = ["@stablehlo//:stablehlo_ops"],
+    deps = [
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/util:base",
+        "@stablehlo//:stablehlo_ops",
+    ],
 )
 
 torch_tpu_cc_library(

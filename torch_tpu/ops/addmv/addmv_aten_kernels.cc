@@ -114,7 +114,7 @@ absl::StatusOr<DeviceBufferRef> Addmv(const at::Tensor& self,
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(out.scalar_type()));
 
-  const auto current_precision = PrecisionContext::GetPrecision();
+  const auto current_precision = GetPrecision();
   TT_ASSIGN_OR_RETURN(param_keys,
                       *OpParamCacheKeys::Builder(std::move(param_keys))
                            .SetParam("precision", current_precision));

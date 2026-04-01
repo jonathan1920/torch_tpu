@@ -99,7 +99,7 @@ absl::StatusOr<DeviceBufferRef> SoftmaxBackwardDataInternalOut(
     const at::Tensor& grad_output, const at::Tensor& output, int64_t dim,
     at::ScalarType input_dtype, SoftmaxMode softmax_mode,
     OpParamCacheKeys param_keys) {
-  const auto precision = PrecisionContext::GetPrecision();
+  const auto precision = GetPrecision();
   TT_ASSIGN_OR_RETURN(param_keys,
                       *OpParamCacheKeys::Builder(std::move(param_keys))
                            .SetParam("precision", precision));

@@ -63,7 +63,7 @@ absl::StatusOr<DeviceBufferRef> Vdot(const at::Tensor& lhs,
 
   TT_ASSIGN_OR_RETURN(auto result_scalar_type,
                       CheckedGetDotOutputType(lhs, rhs));
-  const auto current_precision = PrecisionContext::GetPrecision();
+  const auto current_precision = GetPrecision();
   TT_ASSIGN_OR_RETURN(param_keys,
                       *OpParamCacheKeys::Builder(std::move(param_keys))
                            .SetParam("precision", current_precision));

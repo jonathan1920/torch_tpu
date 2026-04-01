@@ -31,11 +31,9 @@ PYBIND11_MODULE(precision_impl, m) {
                                                    // usage
       .export_values();
 
-  m.def("_set_precision", [](mlir::stablehlo::Precision precision) {
-    PrecisionContext::SetPrecision(precision);
-  });
-
-  m.def("_get_precision", []() { return PrecisionContext::GetPrecision(); });
+  m.def("_get_precision", &GetPrecision, "Internal get for context manager");
+  m.def("_push_precision", &PushPrecision, "Internal push for context manager");
+  m.def("_pop_precision", &PopPrecision, "Internal pop for context manager");
 }
 
 }  // namespace torch_tpu

@@ -15,11 +15,10 @@
 """Op precision context manager."""
 
 import contextlib
-import contextvars
 import enum
 from typing import Generator
 
-import torch_tpu._internal.precision.precision_impl as precision_impl  # pylint: disable=consider-using-from-import
+from torch_tpu._internal.precision import precision_impl
 
 # pylint: disable=protected-access
 
@@ -39,8 +38,6 @@ class Precision(enum.Enum):
   HIGH = "HIGH"
   HIGHEST = "HIGHEST"
 
-
-_precision_var = contextvars.ContextVar("precision", default=Precision.DEFAULT)
 
 _PRECISION_CONFIG_TO_IMPL = {
     Precision.DEFAULT: precision_impl.Precision.default,
@@ -74,21 +71,17 @@ def precision(mode: Precision) -> Generator[None, None, None]:
   Yields:
       None
   """
+
   if mode not in _PRECISION_CONFIG_TO_IMPL:
     raise ValueError(
         "expected to be one of 'PrecisionConfig.DEFAULT',"
         f" 'PrecisionConfig.HIGH', or 'PrecisionConfig.HIGHEST', got '{mode}'"
     )
 
-  precision_config = _precision_var.set(mode)
-  # TODO: b/489872437 - ContextVar should be the source of truth. We shouldn't
-  # maintain another SoT in C++. When we need the value in C++, we should get it
-  # from the Python ContextVar.
-  precision_impl._set_precision(_PRECISION_CONFIG_TO_IMPL[mode])
+  # Push the new state.
+  precision_impl._push_precision(_PRECISION_CONFIG_TO_IMPL[mode])
   try:
     yield
   finally:
-    _precision_var.reset(precision_config)
-    precision_impl._set_precision(
-        _PRECISION_CONFIG_TO_IMPL[_precision_var.get()]
-    )
+    # Guarantee the state is restored even if Python code throws an exception.
+    precision_impl._pop_precision()

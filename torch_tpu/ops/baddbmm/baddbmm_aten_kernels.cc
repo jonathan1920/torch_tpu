@@ -102,7 +102,7 @@ absl::StatusOr<mlir::MlirOp> BuildBaddbmmShlo(
   TT_ASSIGN_OR_RETURN(mlir::ElementType out_dtype_mlir,
                       ConvertTo<mlir::ElementType>(out_dtype));
 
-  const auto current_precision = PrecisionContext::GetPrecision();
+  const auto current_precision = GetPrecision();
   TT_ASSIGN_OR_RETURN(
       mlir::MlirOp bmm_res,
       BuildBmmShlo(batch1_op, batch2_op, out_dtype_mlir, current_precision));
