@@ -15,12 +15,15 @@
 """Core API for TorchTPU."""
 
 import functools
+import inspect
 import os
 import sys
 import threading
 from typing import Any, Callable
 
 import torch
+from torch._dynamo.backends import inductor
+import torch._dynamo.backends.registry as backend_registry
 import torch.distributed
 # For torch.compile() "tpu" backend registration.
 import torch_tpu._internal.compile  # pylint: disable=unused-import
@@ -122,18 +125,39 @@ def _xla_cpu_device() -> torch.device:
 _torch_compile = torch.compile
 
 
+def _get_default_backend_impl() -> backend_registry.CompilerFn:
+  """Checks for TPU and returns the appropriate backend function.
+
+  Note: The reason for this auxiliary method rather than just passing the "tpu"
+  string in the monkeypatched torch.compile is that we need InitGoogle to be
+  called before we call "tpu_device", therefore we defer till call time.
+
+  Returns:
+    The appropriate backend function for `torch.compile`.
+  """
+  try:
+    # tpu_device() will raise a RuntimeError if a TPU is not available.
+    tpu_device()
+    return backend_registry.lookup_backend("tpu")
+  except RuntimeError:
+    original_signature = inspect.signature(_torch_compile)
+    default_backend = original_signature.parameters["backend"].default
+    return backend_registry.lookup_backend(default_backend)
+
+
+def _default_backend_selector(graph_module, example_inputs, **kwargs):
+  """The backend callable to pass to torch.compile."""
+  backend = _get_default_backend_impl()
+  return backend(graph_module, example_inputs, **kwargs)
+
+
 # Monkeypatch torch.compile to default to TPU backend if available.
 @functools.wraps(_torch_compile)
 def _default_tpu_compile(*args, **kwargs):
 
-  # If an explicit backend is not specified, use the "tpu" backend.
+  # If an explicit backend is not specified, use DefaultBackendSelector.
   if "backend" not in kwargs:
-    try:
-      # tpu_device() will raise a RuntimeError if a TPU is not available.
-      tpu_device()
-      kwargs["backend"] = "tpu"
-    except RuntimeError:
-      pass
+    kwargs["backend"] = _default_backend_selector
   return _torch_compile(*args, **kwargs)
 
 

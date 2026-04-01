@@ -17,8 +17,19 @@
 from absl.testing import absltest
 import torch
 from torch_tpu import api
-from torch_tpu._internal import compile as tt_compile
 from torch_tpu._internal.compile import tpu_torch_compile
+
+
+@torch.compile
+def global_compile_plus_one(x):
+  return x + 1
+
+
+def get_mock_lookup_backend():
+  return absltest.mock.patch(
+      'torch._dynamo.backends.registry.lookup_backend',
+      wraps=torch._dynamo.backends.registry.lookup_backend,
+  )
 
 
 # TODO: add more test coverage for the direct compile API.
@@ -68,34 +79,29 @@ class CompileApiTest(absltest.TestCase):
     )
 
   def test_compile_backend_defaults_to_tpu(self):
-    tpu_backend = tt_compile.TpuBackend()
-    # Patch the backend registry to use a local tpu backend object so that we
-    # can track the number of compiled executables.
-    torch._dynamo.backends.registry._COMPILER_FNS['tpu'] = tpu_backend
+    with get_mock_lookup_backend() as mock_lookup_backend:
+      x = torch.ones(10, device=api.tpu_device())
+      torch.compile(lambda arg: arg + 1)(x)
 
-    x = torch.ones(10, device=api.tpu_device())
-    torch.compile(lambda arg: arg + 1)(x)
+      mock_lookup_backend.assert_called_with('tpu')
 
-    self.assertLen(tpu_backend._compiled_executables, 1)
+  def test_global_compile_decorator_backend_defaults_to_tpu(self):
+    with get_mock_lookup_backend() as mock_lookup_backend:
+      x = torch.ones(10, device=api.tpu_device())
+      global_compile_plus_one(x)
+
+      mock_lookup_backend.assert_called_with('tpu')
 
   def test_compile_explicit_backend_is_respected(self):
-    tpu_backend = tt_compile.TpuBackend()
-    torch._dynamo.backends.registry._COMPILER_FNS['tpu'] = tpu_backend
 
-    x = torch.ones(10)
-    torch.compile(lambda arg: arg + 1, backend='aot_eager')(x)
+    with get_mock_lookup_backend() as mock_lookup_backend:
+      x = torch.ones(10)
+      torch.compile(lambda arg: arg + 1, backend='aot_eager')(x)
 
-    self.assertEmpty(tpu_backend._compiled_executables)
+      mock_lookup_backend.assert_called_with('aot_eager')
 
   def test_compile_default_backend_no_recompilations(self):
-    tpu_backend1 = tt_compile.TpuBackend()
-    torch._dynamo.backends.registry._COMPILER_FNS['tpu'] = tpu_backend1
-
     num_calls = 0
-
-    def f(x):
-      return x + 1
-
     def user_context() -> str:
       nonlocal num_calls
       num_calls += 1
@@ -103,18 +109,12 @@ class CompileApiTest(absltest.TestCase):
 
     torch._dynamo.register_hook_for_recompile_user_context(user_context)
 
-    for _ in range(10):
-      torch.compile(f)(torch.randn(1, 5, device=api.tpu_device()))
-    num_calls_with_first_backend = num_calls
-
-    tpu_backend2 = tt_compile.TpuBackend()
-    torch._dynamo.backends.registry._COMPILER_FNS['tpu'] = tpu_backend2
+    def f(x):
+      return x + 1
 
     for _ in range(10):
       torch.compile(f)(torch.randn(1, 5, device=api.tpu_device()))
-
-    self.assertEqual(num_calls_with_first_backend, 1)
-    self.assertEqual(num_calls, 2)
+    self.assertEqual(num_calls, 1)
 
 
 if __name__ == '__main__':
