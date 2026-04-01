@@ -1741,6 +1741,29 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           check_value=CheckValueMode.LOOSE,
       )
 
+  def test_uniform_complex(self):
+    def compute(device):
+      z = torch.zeros(100, dtype=torch.complex64, device=device).uniform_(0, 10)
+      with self.subTest("is_complex"):
+        self.assertTrue(z.is_complex())
+
+      with self.subTest("real_part_non_zero"):
+        self.assertTrue((z.real != 0).any())
+
+      with self.subTest("imag_part_non_zero"):
+        self.assertTrue((z.imag != 0).any())
+
+      with self.subTest("real_part_in_range"):
+        self.assertTrue((z.real >= 0).all())
+        self.assertTrue((z.real < 10).all())
+
+      with self.subTest("imag_part_in_range"):
+        self.assertTrue((z.imag >= 0).all())
+        self.assertTrue((z.imag < 10).all())
+      return z
+
+    self.assert_close_tpu_vs_cpu(compute, check_value=CheckValueMode.SKIP)
+
   def test_random_reproducible(self):
     t = torch.zeros(10, 10, dtype=torch.int32, device=api.tpu_device())
     w = torch.zeros(10, 10, dtype=torch.int32, device=api.tpu_device())

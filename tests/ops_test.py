@@ -3787,9 +3787,6 @@ class TestOps(TorchTpuTestBase):
         # By definition, uniform() returns a tensor with random values, so
         # there's no point in checking the values.
         check_value=CheckValueMode.SKIP,
-        # TODO: fix uniform() failing with complex dtypes.
-        exclude_dtypes=COMPLEX_DTYPES,
-        exclude_inplace_dtypes=COMPLEX_DTYPES,
     )
 
   def test_unsafe_view(self):
