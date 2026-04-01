@@ -50,7 +50,7 @@ def jax_kernel(global_input, mesh):
         send_sem=send_sem,
         recv_sem=recv_sem,
         device_id=(destination_id,),
-        device_id_type=pltpu.DeviceIdType.MESH,
+        device_id_type=pl.DeviceIdType.MESH,
     )
     desc.start()
     desc.wait()

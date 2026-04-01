@@ -44,6 +44,7 @@ torch_tpu_py_test(
     # TODO(b/497890629): Enable in OSS
     notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
+        "requires-mem:28g",
         "requires-tpu-v5lite:8",
     ],
     deps = [
