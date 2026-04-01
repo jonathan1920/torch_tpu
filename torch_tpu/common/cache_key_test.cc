@@ -116,14 +116,15 @@ TEST(OpParamCacheKeys, SetParamStablehloPrecision) {
   EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "DEFAULT")));
 
   auto params2_or = *OpParamCacheKeysBuilder().SetParam(
-      "foo", mlir::stablehlo::Precision::HIGH);  // PRECISION_HIGH_OK=unit
+      "foo", mlir::stablehlo::Precision::HIGH);  // EXPLICIT_PRECISION_OK=unit
                                                  // test okay
   ASSERT_TRUE(params2_or.ok());
   EXPECT_THAT(params2_or.value(), ElementsAre(Pair("foo", "HIGH")));
 
   auto params3_or = *OpParamCacheKeysBuilder().SetParam(
-      "foo", mlir::stablehlo::Precision::HIGHEST);  // PRECISION_HIGH_OK=unit
-                                                    // test okay
+      "foo",
+      mlir::stablehlo::Precision::HIGHEST);  // EXPLICIT_PRECISION_OK=unit
+                                             // test okay
   ASSERT_TRUE(params3_or.ok());
   EXPECT_THAT(params3_or.value(), ElementsAre(Pair("foo", "HIGHEST")));
 }

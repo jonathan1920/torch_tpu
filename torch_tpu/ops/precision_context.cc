@@ -24,7 +24,7 @@ namespace {
 
 mlir::stablehlo::Precision& GetCurrentPrecision() {
   static thread_local mlir::stablehlo::Precision current_precision =
-      mlir::stablehlo::Precision::DEFAULT;
+      mlir::stablehlo::Precision::DEFAULT;  // EXPLICIT_PRECISION_OK=root usage
   return current_precision;
 }
 

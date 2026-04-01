@@ -23,11 +23,12 @@ namespace torch_tpu {
 PYBIND11_MODULE(precision_impl, m) {
   pybind11::enum_<mlir::stablehlo::Precision>(m, "Precision")
       .value("default", mlir::stablehlo::Precision::DEFAULT)
-      .value("high",
-             mlir::stablehlo::Precision::HIGH)  // PRECISION_HIGH_OK=root usage
       .value(
-          "highest",
-          mlir::stablehlo::Precision::HIGHEST)  // PRECISION_HIGH_OK=root usage
+          "high",
+          mlir::stablehlo::Precision::HIGH)  // EXPLICIT_PRECISION_OK=root usage
+      .value("highest",
+             mlir::stablehlo::Precision::HIGHEST)  // EXPLICIT_PRECISION_OK=root
+                                                   // usage
       .export_values();
 
   m.def("_set_precision", [](mlir::stablehlo::Precision precision) {
