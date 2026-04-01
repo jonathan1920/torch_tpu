@@ -17,7 +17,6 @@
 #include "torch_tpu/eager/split_traversal.h"
 
 #include <memory>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -34,6 +33,7 @@
 #include "torch_tpu/eager/fanout_heuristic.h"
 #include "torch_tpu/eager/forced_split_heuristic.h"
 #include "torch_tpu/eager/reexecution_heuristic.h"
+#include "torch_tpu/eager/safe_materialization_rule.h"
 #include "torch_tpu/eager/stale_heuristic.h"
 #include "torch_tpu/eager/traversal.h"
 #include "xla/xla_data.pb.h"
@@ -46,6 +46,9 @@ ABSL_FLAG(bool, torch_tpu_internal_reexecution_heuristic, true,
 ABSL_FLAG(bool, torch_tpu_internal_stale_heuristic, true,
           "Use a materialization heuristic that materializes around the stale "
           "regions of a graph.");
+ABSL_FLAG(bool, torch_tpu_internal_safe_materialization_rule, false,
+          "Use a set of materialization heuristics that ensures nodes are "
+          "dropped or materialized sequentially.");
 
 namespace torch_tpu {
 
@@ -54,14 +57,26 @@ namespace {
 // Config struct indicating which materialization heuristics are enabled.
 struct EnabledHeuristics {
   void Initialize() {
-    reexecution = absl::GetFlag(FLAGS_torch_tpu_internal_reexecution_heuristic);
-    fanout = absl::GetFlag(FLAGS_torch_tpu_internal_fanout_heuristic);
-    stale = absl::GetFlag(FLAGS_torch_tpu_internal_stale_heuristic);
+    if (absl::GetFlag(FLAGS_torch_tpu_internal_safe_materialization_rule)) {
+      safe_rule = true;
+    } else {
+      reexecution =
+          absl::GetFlag(FLAGS_torch_tpu_internal_reexecution_heuristic);
+      fanout = absl::GetFlag(FLAGS_torch_tpu_internal_fanout_heuristic);
+      stale = absl::GetFlag(FLAGS_torch_tpu_internal_stale_heuristic);
+    }
+
     initialized = true;
   }
 
   // Whether the heuristics have been initialized.
   bool initialized = false;
+
+  // If torch_tpu_internal_safe_materialization_rule is enabled, then use the
+  // safe materialization rule and ignore the other heuristics.
+  bool safe_rule = false;
+
+  // Otherwise, use heuristics a la carte as indicated.
   bool reexecution = false;
   bool forced_split = true;      // always enabled
   bool dynamic_op_split = true;  // always enabled
@@ -81,31 +96,36 @@ ApplyAllMaterializationHeuristicsOn(const Traversal& traversal) {
 
   absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
       nodes_to_materialize;
-  {
-    tsl::profiler::TraceMe t("LocalHeuristics");
-    for (const auto& node : traversal.execution_order()) {
-      if (enabled_heuristics.reexecution) {
-        ReexecutionHeuristic(*node, nodes_to_materialize);
-      }
-      if (enabled_heuristics.forced_split) {
-        ForcedSplitHeuristic(*node, nodes_to_materialize);
-      }
-      if (enabled_heuristics.dynamic_op_split) {
-        DynamicOpSplitHeuristic(*node, nodes_to_materialize);
-      }
-      if (enabled_heuristics.fanout) {
-        FanoutHeuristic(*node, nodes_to_materialize);
-      }
-      if (enabled_heuristics.stale) {
-        StaleHeuristic(*node, nodes_to_materialize);
+  if (enabled_heuristics.safe_rule) {
+    auto safe_rule = SafeMaterializationRule();
+    safe_rule(traversal, nodes_to_materialize);
+  } else {
+    {
+      tsl::profiler::TraceMe t("LocalHeuristics");
+      for (const auto& node : traversal.execution_order()) {
+        if (enabled_heuristics.reexecution) {
+          ReexecutionHeuristic(*node, nodes_to_materialize);
+        }
+        if (enabled_heuristics.forced_split) {
+          ForcedSplitHeuristic(*node, nodes_to_materialize);
+        }
+        if (enabled_heuristics.dynamic_op_split) {
+          DynamicOpSplitHeuristic(*node, nodes_to_materialize);
+        }
+        if (enabled_heuristics.fanout) {
+          FanoutHeuristic(*node, nodes_to_materialize);
+        }
+        if (enabled_heuristics.stale) {
+          StaleHeuristic(*node, nodes_to_materialize);
+        }
       }
     }
-  }
 
-  // If an output is also a live boundary node, we don't need to redundantly
-  // return it as a materialization node.
-  for (const auto& output : traversal.outputs()) {
-    nodes_to_materialize.erase(output.device_buffer_list().get());
+    // If an output is also a live boundary node, we don't need to redundantly
+    // return it as a materialization node.
+    for (const auto& output : traversal.outputs()) {
+      nodes_to_materialize.erase(output.device_buffer_list().get());
+    }
   }
 
   return nodes_to_materialize;

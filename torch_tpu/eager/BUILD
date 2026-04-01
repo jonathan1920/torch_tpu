@@ -248,6 +248,44 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "safe_materialization_rule",
+    srcs = ["safe_materialization_rule.cc"],
+    hdrs = ["safe_materialization_rule.h"],
+    deps = [
+        ":device_buffer",
+        ":dynamic_op_split_heuristic",
+        ":forced_split_heuristic",
+        ":traversal",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "safe_materialization_rule_test",
+    srcs = ["safe_materialization_rule_test.cc"],
+    deps = [
+        ":device_buffer",
+        ":safe_materialization_rule",
+        ":tensor_to_buffer",
+        ":traversal",
+        "//shims/torch:aten_headers",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:dimension_types",
+        "//torch_tpu/common:shape",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:python_context",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "materialize",
     srcs = [
         "materialize.cc",
@@ -390,6 +428,7 @@ torch_tpu_cc_library(
         ":fanout_heuristic",
         ":forced_split_heuristic",
         ":reexecution_heuristic",
+        ":safe_materialization_rule",
         ":stale_heuristic",
         ":traversal",
         "//shims/torch:torch_headers",
