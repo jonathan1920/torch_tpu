@@ -19,7 +19,9 @@
 
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/traversal.h"
 
 namespace torch_tpu {
@@ -29,7 +31,9 @@ namespace torch_tpu {
 // points. The returned traversals are guaranteed to have only one output, and
 // are organized according to the execution order of the original traversal.
 // This function returns traversals in topological order.
-absl::StatusOr<std::vector<Traversal>> SplitTraversal(Traversal traversal);
+absl::StatusOr<std::vector<Traversal>> SplitTraversal(
+    Traversal traversal,
+    const absl::flat_hash_set<const DeviceBufferList*>& required_outputs);
 
 }  // namespace torch_tpu
 

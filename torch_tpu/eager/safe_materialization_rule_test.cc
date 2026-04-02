@@ -72,7 +72,10 @@ TEST(SafeMaterializationRuleTest, StaleNodesDropped) {
   traversal.SortByCreationOrder();
 
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes;
-  SafeMaterializationRule()(traversal, materialization_nodes);
+  absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
+      ref_c.device_buffer_list().get()};
+  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
+  safe_materialization_rule(traversal, materialization_nodes);
 
   // a and b are not materialized; the execution plan is a single graph.
   EXPECT_THAT(materialization_nodes, testing::SizeIs(1));
@@ -110,7 +113,10 @@ TEST(SafeMaterializationRuleTest, LiveNodesMaterialized) {
   traversal.SortByCreationOrder();
 
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes;
-  SafeMaterializationRule()(traversal, materialization_nodes);
+  absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
+      ref_c.device_buffer_list().get()};
+  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
+  safe_materialization_rule(traversal, materialization_nodes);
 
   // a and b are both materialized along with c; they have live tensors.
   EXPECT_THAT(materialization_nodes, testing::SizeIs(3));
@@ -150,7 +156,10 @@ TEST(SafeMaterializationRuleTest, ExternalFanoutMaterialized) {
   traversal.SortByCreationOrder();
 
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes;
-  SafeMaterializationRule()(traversal, materialization_nodes);
+  absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
+      ref_b.device_buffer_list().get(), ref_c.device_buffer_list().get()};
+  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
+  safe_materialization_rule(traversal, materialization_nodes);
 
   // a is materialized because it has two separate dependencies that are
   // materialized.
@@ -201,7 +210,10 @@ TEST(SafeMaterializationRuleTest, InternalFanoutNotMaterialized) {
   traversal.SortByCreationOrder();
 
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes;
-  SafeMaterializationRule()(traversal, materialization_nodes);
+  absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
+      ref_d.device_buffer_list().get()};
+  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
+  safe_materialization_rule(traversal, materialization_nodes);
 
   // Only d is materialized; while a has fanout, it's fully internal to d's
   // subgraph.
@@ -250,7 +262,10 @@ TEST(SafeMaterializationRuleTest, DispatchOrderMaintained) {
   traversal.SortByCreationOrder();
 
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes;
-  SafeMaterializationRule()(traversal, materialization_nodes);
+  absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
+      ref_d.device_buffer_list().get(), ref_e.device_buffer_list().get()};
+  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
+  safe_materialization_rule(traversal, materialization_nodes);
 
   // b is materialized so that {a, b} is executed before {c, d}.
   // a and c are not materialized and are fused into {a, b} and {c, d}.
@@ -299,7 +314,10 @@ TEST(SafeMaterializationRuleTest, ForcedSplitHeuristicRespected) {
   traversal.SortByCreationOrder();
 
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes;
-  SafeMaterializationRule()(traversal, materialization_nodes);
+  absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
+      ref_b.device_buffer_list().get(), ref_d.device_buffer_list().get()};
+  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
+  safe_materialization_rule(traversal, materialization_nodes);
 
   // d is materialized because it is a required output.
   // Both b and c are materialized because of the forced split heuristic.
@@ -346,7 +364,10 @@ TEST(SafeMaterializationRuleTest, DynamicOpSplitHeuristicRespected) {
   traversal.SortByCreationOrder();
 
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes;
-  SafeMaterializationRule()(traversal, materialization_nodes);
+  absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
+      ref_c.device_buffer_list().get()};
+  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
+  safe_materialization_rule(traversal, materialization_nodes);
 
   // c is materialized because it is a required output.
   // b is materialized because of the dynamic shape heuristic.
@@ -356,6 +377,98 @@ TEST(SafeMaterializationRuleTest, DynamicOpSplitHeuristicRespected) {
               testing::Contains(ref_b.device_buffer_list().get()));
   EXPECT_THAT(materialization_nodes,
               testing::Contains(ref_c.device_buffer_list().get()));
+}
+
+TEST(SafeMaterializationRuleTest, NonRequiredNodesNotMaterialized) {
+  ScopedPythonContextCapturer capturer(OpName::kEmpty);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+
+  // Dispatch a, b, c to make a graph like:
+  // a -> b -> c
+  auto refs_a_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_a_or.ok());
+  auto ref_a = refs_a_or.value()[0];
+
+  auto refs_b_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {ref_a}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_b_or.ok());
+  auto ref_b = refs_b_or.value()[0];
+
+  auto refs_c_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {ref_b}, OpParamCacheKeys::Empty(), {shape},
+      OpSplitMode::kSplitBoth);
+  ASSERT_TRUE(refs_c_or.ok());
+  auto ref_c = refs_c_or.value()[0];
+
+  // Create a traversal that traces the entire graph.
+  auto traversal_or = Traversal::Create({ref_c});
+  ASSERT_TRUE(traversal_or.ok());
+  auto& traversal = traversal_or.value();
+  traversal.SortByCreationOrder();
+
+  // But only require b to be materialized.
+  absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
+      ref_b.device_buffer_list().get()};
+
+  absl::flat_hash_set<const DeviceBufferList*> materialization_nodes;
+  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
+  safe_materialization_rule(traversal, materialization_nodes);
+
+  // c is not materialized because it is after the last required output.
+  // b is materialized because it is a required output.
+  // a is not materialized, and is fused into a graph with b.
+  EXPECT_THAT(materialization_nodes, testing::SizeIs(1));
+  EXPECT_THAT(materialization_nodes,
+              testing::Contains(ref_b.device_buffer_list().get()));
+}
+
+TEST(SafeMaterializationRuleTest, EdgesFromNonRequiredNodesConsidered) {
+  ScopedPythonContextCapturer capturer(OpName::kEmpty);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+
+  // Dispatch a, b, c to make a graph like:
+  // a -> b -> c
+  //  \_______/
+  auto refs_a_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_a_or.ok());
+  auto ref_a = refs_a_or.value()[0];
+
+  auto refs_b_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {ref_a}, OpParamCacheKeys::Empty(), {shape});
+  ASSERT_TRUE(refs_b_or.ok());
+  auto ref_b = refs_b_or.value()[0];
+
+  auto refs_c_or = DeviceBufferList::CreateDeferred(
+      OpName::kAdd, DummyBuilder, {ref_a, ref_b}, OpParamCacheKeys::Empty(),
+      {shape}, OpSplitMode::kSplitBoth);
+  ASSERT_TRUE(refs_c_or.ok());
+  auto ref_c = refs_c_or.value()[0];
+
+  // Create a traversal that traces the entire graph.
+  auto traversal_or = Traversal::Create({ref_c});
+  ASSERT_TRUE(traversal_or.ok());
+  auto& traversal = traversal_or.value();
+  traversal.SortByCreationOrder();
+
+  // But only require b to be materialized.
+  absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
+      ref_b.device_buffer_list().get()};
+
+  absl::flat_hash_set<const DeviceBufferList*> materialization_nodes;
+  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
+  safe_materialization_rule(traversal, materialization_nodes);
+
+  // c is not materialized because it is after the last required output.
+  // b is materialized because it is a required output.
+  // a is materialized because it has a live edge from c, even though c is not
+  // materialized.
+  EXPECT_THAT(materialization_nodes, testing::SizeIs(2));
+  EXPECT_THAT(materialization_nodes,
+              testing::Contains(ref_a.device_buffer_list().get()));
+  EXPECT_THAT(materialization_nodes,
+              testing::Contains(ref_b.device_buffer_list().get()));
 }
 
 }  // namespace

@@ -45,6 +45,10 @@ namespace torch_tpu {
 // in the graph (retrieved via AddLeafNodes/Subgraph) because these may hold
 // references to in-scope tensors, preventing them from being dropped.
 struct SafeMaterializationRule {
+  explicit SafeMaterializationRule(
+      const absl::flat_hash_set<const DeviceBufferList*>& required_outputs)
+      : required_outputs(required_outputs) {}
+
   void operator()(
       const Traversal& traversal,
       absl::flat_hash_set<const DeviceBufferList*>& materialization_nodes);
@@ -89,7 +93,7 @@ struct SafeMaterializationRule {
   absl::flat_hash_set<const DeviceBufferList*> live_edges_set;
 
   // Input parameter; these nodes are guaranteed to be materialized.
-  absl::flat_hash_set<const DeviceBufferList*> required_outputs;
+  const absl::flat_hash_set<const DeviceBufferList*>& required_outputs;
 };
 
 }  // namespace torch_tpu

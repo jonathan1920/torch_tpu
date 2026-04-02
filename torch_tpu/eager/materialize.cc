@@ -471,7 +471,13 @@ class MaterializationWorker {
       ABSL_VLOG(1) << "[MaterializationWorker] Splitting traversal";
       {
         tsl::profiler::TraceMe t("SplitTraversal");
-        TT_ASSIGN_OR_RETURN(traversals, SplitTraversal(std::move(*traversal)));
+        // TODO(bawilson): don't require leaf nodes to be materialized
+        absl::flat_hash_set<const DeviceBufferList*> required_outputs;
+        for (const auto& node : all_nodes) {
+          required_outputs.insert(node.get());
+        }
+        TT_ASSIGN_OR_RETURN(traversals, SplitTraversal(std::move(*traversal),
+                                                       required_outputs));
       }
 
       ABSL_VLOG(1) << "[MaterializationWorker] Split traversal into "

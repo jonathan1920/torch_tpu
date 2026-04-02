@@ -80,11 +80,6 @@ void SafeMaterializationRule::operator()(
     const Traversal& traversal,
     absl::flat_hash_set<const DeviceBufferList*>& materialization_nodes) {
   tsl::profiler::TraceMe t("SafeMaterializationRule");
-  // TODO(bawilson): pass in required outputs explicitly to differentiate
-  // from leaf nodes used for DFS traversal.
-  for (const auto& output : traversal.outputs()) {
-    required_outputs.insert(output.device_buffer_list().get());
-  }
   for (auto it = traversal.execution_order().rbegin();
        it != traversal.execution_order().rend(); ++it) {
     VisitNode(**it, materialization_nodes);

@@ -88,16 +88,18 @@ struct EnabledHeuristics {
 // return the set of nodes in `traversal` that at least one heuristic decides
 // to materialize.
 [[nodiscard]] absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-ApplyAllMaterializationHeuristicsOn(const Traversal& traversal) {
+ApplyAllMaterializationHeuristicsOn(
+    const Traversal& traversal,
+    const absl::flat_hash_set<const DeviceBufferList*>& required_outputs) {
   static EnabledHeuristics enabled_heuristics;
   if (!enabled_heuristics.initialized) {
     enabled_heuristics.Initialize();
   }
 
-  absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-      nodes_to_materialize;
+  absl::flat_hash_set<const DeviceBufferList*> nodes_to_materialize =
+      required_outputs;
   if (enabled_heuristics.safe_rule) {
-    auto safe_rule = SafeMaterializationRule();
+    auto safe_rule = SafeMaterializationRule(required_outputs);
     safe_rule(traversal, nodes_to_materialize);
   } else {
     {
@@ -120,20 +122,15 @@ ApplyAllMaterializationHeuristicsOn(const Traversal& traversal) {
         }
       }
     }
-
-    // If an output is also a live boundary node, we don't need to redundantly
-    // return it as a materialization node.
-    for (const auto& output : traversal.outputs()) {
-      nodes_to_materialize.erase(output.device_buffer_list().get());
-    }
   }
-
   return nodes_to_materialize;
 }
 
 }  // namespace
 
-absl::StatusOr<std::vector<Traversal>> SplitTraversal(Traversal traversal) {
+absl::StatusOr<std::vector<Traversal>> SplitTraversal(
+    Traversal traversal,
+    const absl::flat_hash_set<const DeviceBufferList*>& required_outputs) {
   ABSL_VLOG(1) << ">>> SplitTraversal " << traversal.execution_order().size();
   tsl::profiler::TraceMe t("SplitTraversal");
 
@@ -147,27 +144,23 @@ absl::StatusOr<std::vector<Traversal>> SplitTraversal(Traversal traversal) {
 
   // Here we collect a set of materialization nodes internal to the input
   // `traversal`.
-  auto materialization_nodes_set =
-      ApplyAllMaterializationHeuristicsOn(traversal);
-  ABSL_VLOG(1) << "Found " << materialization_nodes_set.size()
-               << " materialization nodes";
+  absl::flat_hash_set<const DeviceBufferList*> materialization_nodes_set =
+      ApplyAllMaterializationHeuristicsOn(traversal, required_outputs);
 
-  if (materialization_nodes_set.empty()) {
+  if (materialization_nodes_set.size() <= required_outputs.size()) {
     // Shortcut in the simple case where there is no internal materialization
     // node.
     traversals.push_back(std::move(traversal));
     return traversals;
   }
 
+  ABSL_VLOG(1) << "Found " << required_outputs.size()
+               << " required outputs and "
+               << materialization_nodes_set.size() - required_outputs.size()
+               << " internal materialization nodes.";
+
   // In the following code, we split the original traversal into multiple
   // traversals, based on the identified materialization points.
-
-  // We add traversal outputs to the materialization nodes -- they do need to be
-  // materialized.
-  for (const auto& node_ref : traversal.outputs()) {
-    const auto& node = node_ref.device_buffer_list();
-    materialization_nodes_set.insert(node.get());
-  }
 
   // Split traversal into one node per materialization point, maintaining the
   // creation index order established above.
