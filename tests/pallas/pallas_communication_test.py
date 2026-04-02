@@ -83,7 +83,7 @@ def jax_kernel(global_input, mesh):
   return global_output
 
 
-def roll_torch_pallas(world_size, rank, input_local):
+def create_roll_op(world_size, rank):
   del rank
 
   mesh = jax.make_mesh([world_size], ("x",))
@@ -91,16 +91,26 @@ def roll_torch_pallas(world_size, rank, input_local):
 
   input_partition_specs = [partition_spec]
 
-  output_local = pallas.custom_jax_kernel(
+  torch_kernel = pallas.custom_jax_kernel(
       functools.partial(jax_kernel, mesh=mesh),
       mesh=mesh,
       input_partition_specs=input_partition_specs,
-  )(input_local)
+  )
 
-  return output_local
+  torch_kernel_op = torch.library.custom_op(
+      "pallas::roll_vectors",
+      torch_kernel,
+      mutates_args=(),
+      schema="(Tensor x) -> Tensor",
+      device_types=["tpu"],
+  )
+
+  torch_kernel_op.register_fake(torch.empty_like)
+
+  return torch_kernel_op
 
 
-def run(world_size):
+def run(world_size, do_compile):
   device = api.tpu_device()
   dist.init_process_group(backend="tpu_dist")
   rank = dist.get_rank()
@@ -117,12 +127,23 @@ def run(world_size):
         device=device,
     )
 
+  roll_op = create_roll_op(world_size, rank)
+
+  # Add a non-kernel local operation to ensure that it is correctly stitched
+  # with the wider graph.
+  def roll_op_plus_one(x):
+    return roll_op(x) + 1
+
+  if do_compile:
+    roll_op_plus_one = torch.compile(
+        roll_op_plus_one, fullgraph=True, dynamic=False
+    )
+
   x = generate_input(device_id, num_per_device)
+  y = roll_op_plus_one(x)
 
   src_device_id = (device_id + num_devices - 1) % num_devices
-  y_expected = generate_input(src_device_id, num_per_device)
-
-  y = roll_torch_pallas(world_size, rank, x)
+  y_expected = generate_input(src_device_id, num_per_device) + 1
 
   logging.info("device_id = %d, src_device_id = %d", device_id, src_device_id)
   logging.info("device_id = %d, x = %s", device_id, x.cpu())
@@ -132,17 +153,27 @@ def run(world_size):
   utils.assert_close(y, y_expected)
 
 
-def _run_torch_tpu_worker():
-  run(8)
+def _run_torch_tpu_worker(do_compile):
+  run(8, do_compile)
 
 
-# TODO(elliotenglish): Add test for compiled: cl/885571521
 class TestPallasCommunicationKernels(absltest.TestCase):
 
   def test_kernel_communication(self):
 
     g3_distributed.torchrun(
-        singlehost_wrapper.tpu_env_wrapper(_run_torch_tpu_worker, world_size=8),
+        singlehost_wrapper.tpu_env_wrapper(
+            functools.partial(_run_torch_tpu_worker, False), world_size=8
+        ),
+        nproc_per_node=8,
+    )()
+
+  def test_kernel_communication_compiled(self):
+
+    g3_distributed.torchrun(
+        singlehost_wrapper.tpu_env_wrapper(
+            functools.partial(_run_torch_tpu_worker, True), world_size=8
+        ),
         nproc_per_node=8,
     )()
 
