@@ -67,11 +67,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_llama_3_2_1b_train_1_step(self, run_mode):
     """Tests the training of Llama-3.2-1B."""
-    batch_size = 12
-    if run_mode == benchmark_utils.RunMode.COMPILED:
-      # Batch size 12 OOMs on TPU Ironwood 1x1x1 for torch compile. Using batch
-      # size 8 instead.
-      batch_size = 8
+    batch_size = 8
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
