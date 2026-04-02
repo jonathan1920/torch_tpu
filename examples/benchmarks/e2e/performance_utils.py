@@ -212,45 +212,54 @@ def _run_single_process_benchmark(
   if enable_xprof:
     xprof_client = get_xprof_client()
 
-  with _run_mode_context(config.run_mode, device):
-    result = benchmark_utils.run_performance_benchmark(
-        func,
-        model_and_input.model,
-        model_and_input.example_inputs,
-        device,
-        enable_xprof=enable_xprof,
-        optimizer=optimizer,
-        xprof_client=xprof_client,
-    )
-    logging.info(
-        "Performance Benchmark Results:\n"
-        "  Test: %s\n"
-        "  benchmark: %s\n"
-        "  microbenchmark: %s\n"
-        "  platform: %s\n"
-        "  weights_dtype: %s\n"
-        "  rank(0-indexed): %s\n"
-        "  world_size: %s\n"
-        "  num_warmup_steps: %s\n"
-        "  first_step_time (seconds): %s\n"
-        "  warmup_overhead (seconds): %s\n"
-        "  average_step_time (seconds): %s\n"
-        "  peak_device_memory (MB): %s\n"
-        "  e2e_wall_time (seconds): %s",
-        test_method_name,
-        benchmark_name,
-        microbenchmark_name,
-        benchmark_utils.PLATFORM.value,
-        WEIGHTS_DTYPE.value,
-        rank,
-        world_size,
-        result.num_warmup_steps,
-        result.first_step_time_seconds,
-        result.warmup_overhead_seconds,
-        result.post_warmup_step_time_seconds,
-        result.peak_device_memory_mb,
-        result.e2e_wall_time_seconds,
-    )
+  benchmark_succeeded = True
+  result = None
+  benchmark_exception = None
+  try:
+    with _run_mode_context(config.run_mode, device):
+      result = benchmark_utils.run_performance_benchmark(
+          func,
+          model_and_input.model,
+          model_and_input.example_inputs,
+          device,
+          enable_xprof=enable_xprof,
+          optimizer=optimizer,
+          xprof_client=xprof_client,
+      )
+      logging.info(
+          "Performance Benchmark Results:\n"
+          "  Test: %s\n"
+          "  benchmark: %s\n"
+          "  microbenchmark: %s\n"
+          "  platform: %s\n"
+          "  weights_dtype: %s\n"
+          "  rank(0-indexed): %s\n"
+          "  world_size: %s\n"
+          "  num_warmup_steps: %s\n"
+          "  first_step_time (seconds): %s\n"
+          "  warmup_overhead (seconds): %s\n"
+          "  average_step_time (seconds): %s\n"
+          "  peak_device_memory (MB): %s\n"
+          "  e2e_wall_time (seconds): %s",
+          test_method_name,
+          benchmark_name,
+          microbenchmark_name,
+          benchmark_utils.PLATFORM.value,
+          WEIGHTS_DTYPE.value,
+          rank,
+          world_size,
+          result.num_warmup_steps,
+          result.first_step_time_seconds,
+          result.warmup_overhead_seconds,
+          result.post_warmup_step_time_seconds,
+          result.peak_device_memory_mb,
+          result.e2e_wall_time_seconds,
+      )
+  except Exception as e:
+    logging.exception("Benchmark failed: %s", e)
+    benchmark_succeeded = False
+    benchmark_exception = e
+
   # Only export results from the rank 0 process to avoid duplicate entries in
   # MLCompass.
   if benchmark_utils.MLCOMPASS_TRACKING_ID.value and rank == 0:
@@ -263,9 +272,18 @@ def _run_single_process_benchmark(
         test_method_name=test_method_name,
         benchmark_name=benchmark_name,
         microbenchmark_name=microbenchmark_name,
+        succeeded=benchmark_succeeded,
     )
 
-  if benchmark_utils.ENABLE_TENSORBOARD_LOGGING.value and rank == 0:
+  if not benchmark_succeeded and benchmark_exception is not None:
+    raise benchmark_exception
+
+  if (
+      benchmark_succeeded
+      and result is not None
+      and benchmark_utils.ENABLE_TENSORBOARD_LOGGING.value
+      and rank == 0
+  ):
     tblog_dir = os.environ.get(benchmark_utils.TENSORBOARD_OUTPUT_ENV_VAR.value)
     if tblog_dir:
       try:

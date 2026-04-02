@@ -26,7 +26,7 @@ TEAM_NAME = "torch_tpu"
 # TODO(b/470090396): Export to MLCompass for quality benchmarking as well.
 def export_to_mlcompass(
     platform: benchmark_utils.Platform,
-    metrics: benchmark_utils.BenchmarkResultInterface,
+    metrics: benchmark_utils.BenchmarkResultInterface | None,
     base_cl: str | None,
     mlcompass_tracking_id: str,
     mlcompass_execution_mode: str,
@@ -34,6 +34,7 @@ def export_to_mlcompass(
     test_method_name: str,
     benchmark_name: str,
     microbenchmark_name: str | None = None,
+    succeeded: bool = True,
 ) -> None:
   """Exports benchmark results to mlcompass.
 
@@ -51,6 +52,7 @@ def export_to_mlcompass(
       microbenchmark results to MLCompass when a benchmark test method is
       composed of multiple microbenchmarks. See
       go/mlcompass-microbenchmark-guide for more details.
+    succeeded: Whether the benchmark succeeded or failed.
   """
 
   assert mlcompass_tracking_id is not None
@@ -67,19 +69,20 @@ def export_to_mlcompass(
   # across time. We need to make sure that the strings are uniform across all
   # benchmarks for displaying on dashboards but there are no restrictions on
   # what the names should be.
-  metric_map = metrics.metric_map()
+  metric_map = metrics.metric_map() if metrics is not None else {}
+  wall_time = metrics.e2e_wall_time_seconds if metrics is not None else None
   test_name = (
       f"{TEAM_NAME}/{platform.value}/{test_method_name}/{benchmark_name}"
   )
   benchmark_data = benchmark_data_lib.BenchmarkData(
       test_name=test_name,
-      wall_time=metrics.e2e_wall_time_seconds,
+      wall_time=wall_time,
       base_cl=base_cl,
       metrics=metric_map,
       mlcompass_tracking_id=mlcompass_tracking_id,
       mlcompass_execution_mode=mlcompass_execution_mode,
       team_name=TEAM_NAME,
-      succeeded=True,
+      succeeded=succeeded,
   )
   if microbenchmark_name:
     benchmark_data.micro_result_key = microbenchmark_name

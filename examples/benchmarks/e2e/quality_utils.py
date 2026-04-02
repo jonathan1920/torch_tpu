@@ -77,24 +77,32 @@ def _run_single_process_benchmark(
   benchmark_utils.seed_rngs()
   data_iterator = data_loader.get_dataset_loader(config.dataset_type)
 
-  result = benchmark_utils.run_quality_benchmark(
-      config.benchmark_model,
-      benchmark_utils.is_torch_compile(config.run_mode),
-      data_iterator,
-      config.metrics,
-      device,
-  )
+  benchmark_succeeded = True
+  result = None
+  benchmark_exception = None
+  try:
+    result = benchmark_utils.run_quality_benchmark(
+        config.benchmark_model,
+        benchmark_utils.is_torch_compile(config.run_mode),
+        data_iterator,
+        config.metrics,
+        device,
+    )
 
-  logging.info(
-      "Test: %s, benchmark: %s, platform: %s, rank(0-indexed): %s, world_size:"
-      " %s, metrics: %s",
-      test_method_name,
-      benchmark_name,
-      platform,
-      rank,
-      world_size,
-      result.metrics,
-  )
+    logging.info(
+        "Test: %s, benchmark: %s, platform: %s, rank(0-indexed): %s,"
+        " world_size: %s, metrics: %s",
+        test_method_name,
+        benchmark_name,
+        platform,
+        rank,
+        world_size,
+        result.metrics,
+    )
+  except Exception as e:
+    logging.exception("Benchmark failed: %s", e)
+    benchmark_succeeded = False
+    benchmark_exception = e
 
   # Only export results from the rank 0 process to avoid duplicate entries in
   # MLCompass.
@@ -107,7 +115,11 @@ def _run_single_process_benchmark(
         benchmark_utils.MLCOMPASS_EXECUTION_MODE.value,
         test_method_name=test_method_name,
         benchmark_name=benchmark_name,
+        succeeded=benchmark_succeeded,
     )
+
+  if not benchmark_succeeded and benchmark_exception is not None:
+    raise benchmark_exception
 
 
 def _run_torch_tpu_worker(
