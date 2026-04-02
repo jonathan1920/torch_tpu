@@ -430,8 +430,7 @@ class MaterializationWorker {
                      /* msg_prefix= */ "  Input node");
 
     ABSL_VLOG(1) << "[MaterializationWorker] Getting leaf nodes";
-    std::vector<SharedDeviceBufferList> all_nodes =
-        std::move(task.nodes_to_materialize);
+    std::vector<SharedDeviceBufferList> all_nodes = task.nodes_to_materialize;
     {
       tsl::profiler::TraceMe t("AddLeafNodes");
       AddLeafNodes(all_nodes);
@@ -471,9 +470,8 @@ class MaterializationWorker {
       ABSL_VLOG(1) << "[MaterializationWorker] Splitting traversal";
       {
         tsl::profiler::TraceMe t("SplitTraversal");
-        // TODO(bawilson): don't require leaf nodes to be materialized
         absl::flat_hash_set<const DeviceBufferList*> required_outputs;
-        for (const auto& node : all_nodes) {
+        for (const auto& node : task.nodes_to_materialize) {
           required_outputs.insert(node.get());
         }
         TT_ASSIGN_OR_RETURN(traversals, SplitTraversal(std::move(*traversal),
