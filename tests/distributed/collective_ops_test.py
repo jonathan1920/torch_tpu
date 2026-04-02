@@ -59,6 +59,36 @@ from tests.distributed import distributed_utils
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 
+def _test_wrapper(
+    test_fn: Callable[..., None], *args: Any, **kwargs: Any
+) -> None:
+  """Wrapper to initialize and cleanup the distributed environment for tests.
+
+  This helper ensures that every test rank initializes the TPU device and
+  process group. After the test function completes, it performs a final
+  synchronization barrier to ensure all workers have finished before
+  destroying the process group, preventing premature exit crashes.
+
+  Args:
+    test_fn: The test function to execute.
+    *args: Positional arguments for the test function.
+    **kwargs: Keyword arguments for the test function.
+  """
+  _ = api.tpu_device()
+  dist.init_process_group(backend="tpu_dist")
+  try:
+    test_fn(*args, **kwargs)
+  finally:
+    # Ensure all ranks synchronize at the end of each test so that every worker
+    # in the slice completes. This prevents one rank from destroying the process
+    # group while others are still performing collectives or verification.
+    # TODO: remove this wrapper when we figure out a principled way to prevent
+    # the premature exit.
+    if dist.is_initialized():
+      dist.barrier()
+      dist.destroy_process_group()
+
+
 def _all_reduce_input_fn_rank(r, w):
   """Generates rank-based input for all-reduce tests.
 
@@ -116,8 +146,6 @@ def run_all_reduce(
     dtype: torch.dtype,
 ) -> None:
   """Tests all-reduce functionality."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
   device = "tpu"
@@ -148,8 +176,6 @@ def run_all_reduce(
 
 def run_all_gather_scalar() -> None:
   """Tests all_gather on scalar input."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
   outputs = [
@@ -165,8 +191,6 @@ def run_all_gather_scalar() -> None:
 
 def run_all_gather_tensor_concat() -> None:
   """Tests all_gather_into_tensor with concatenation."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
   x = torch.tensor([rank, rank], device="tpu", dtype=torch.float32)
@@ -183,8 +207,6 @@ def run_all_gather_tensor_concat() -> None:
 
 def run_all_gather_tensor_scalar() -> None:
   """Tests all_gather_into_tensor on scalar input."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
   x = torch.tensor(rank, device="tpu", dtype=torch.float32)
@@ -197,8 +219,6 @@ def run_all_gather_tensor_scalar() -> None:
 
 def run_all_gather_tensor_stack() -> None:
   """Tests all_gather_into_tensor with stacking."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
   x = torch.tensor([rank, rank], device="tpu", dtype=torch.float32)
@@ -214,8 +234,6 @@ def run_all_gather_tensor_stack() -> None:
 
 def run_gather_scalar() -> None:
   """Tests gather on scalar input."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
   dst = 0
@@ -239,8 +257,6 @@ def run_gather_scalar() -> None:
 
 def run_gather_tensor() -> None:
   """Tests gather on tensor input."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
   dst = 0
@@ -268,8 +284,6 @@ def run_gather_with_root_subset_use() -> None:
   This test verifies that gather does not hang when only a subset of output
   tensors are used on the root rank, matching eager PyTorch behavior.
   """
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
   dst = 0
@@ -291,8 +305,6 @@ def run_gather_with_root_subset_use() -> None:
 
 def run_reduce_scatter() -> None:
   """Tests reduce-scatter functionality."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
   inputs = []
@@ -325,12 +337,10 @@ def run_reduce_scatter() -> None:
 
 def run_reduce_scatter_tensor_stack() -> None:
   """Tests reduce_scatter_tensor (in stack input mode) functionality."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
 
-  # We run a [world_size*3, 4, 5] --> [3, 4, 5] reduce-scatter operation.
+  # We run a [world_size, world_size, 3, 4, 5] --> [3, 4, 5] reduce-scatter.
   # Construct input tensors for all ranks (each unreduced, full-size) on CPU:
   torch.manual_seed(42)
   x_full_cpu = torch.randn((world_size, world_size, 3, 4, 5))
@@ -356,8 +366,6 @@ def run_reduce_scatter_tensor_stack() -> None:
 
 def run_reduce_scatter_tensor_concat() -> None:
   """Tests reduce_scatter_tensor (in concat input mode) functionality."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
 
@@ -387,8 +395,6 @@ def run_reduce_scatter_tensor_concat() -> None:
 
 def run_reduce_scatter_tensor_avg() -> None:
   """Tests reduce_scatter_tensor with an AVG reduction op."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
 
@@ -412,8 +418,6 @@ def run_reduce_scatter_tensor_avg() -> None:
 
 def run_broadcast() -> None:
   """Tests collective broadcast functionality."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
 
@@ -432,8 +436,6 @@ def run_broadcast() -> None:
 
 def run_broadcast_objects() -> None:
   """Tests broadcast_object_list collective."""
-  _ = api.tpu_device()
-  dist.init_process_group("tpu_dist")
   rank = int(os.environ["RANK"])
   source_objects = [17, "foo", {"key": False}]
   num_objects = len(source_objects)
@@ -446,13 +448,10 @@ def run_broadcast_objects() -> None:
   assert (
       objects == source_objects
   ), f"Rank {rank}: expected object list {source_objects}, got {objects}"
-  dist.destroy_process_group()
 
 
 def run_collectives_with_non_uniform_deferred_ops() -> None:
   """Tests collective functionality with non-uniform (per-rank) deferred ops."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
 
@@ -493,15 +492,11 @@ def run_collectives_with_non_uniform_deferred_ops() -> None:
 
 def run_barrier(async_op: bool) -> None:
   """Tests barrier functionality."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   torch.distributed.barrier(async_op=async_op)
 
 
 def run_barrier_blocking(async_op: bool) -> None:
   """Tests barrier functionality blocks."""
-  _ = api.tpu_device()
-  dist.init_process_group(backend="tpu_dist")
   rank = int(os.environ["RANK"])
 
   # Ensure all ranks start reasonably close to each other.
@@ -551,8 +546,9 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_all_reduce,
         input_fn=_all_reduce_input_fn_rank,
         reduce_op=torch.distributed.ReduceOp.SUM,
         expected=[0.0, 8.0, 28.0, 140.0],
@@ -563,8 +559,9 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_all_reduce,
         input_fn=_all_reduce_input_fn_rank,
         reduce_op=torch.distributed.ReduceOp.AVG,
         expected=[0.0, 1.0, 3.5, 17.5],
@@ -575,8 +572,9 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_all_reduce,
         input_fn=_all_reduce_input_fn_rank,
         reduce_op=torch.distributed.ReduceOp.PRODUCT,
         expected=[0.0, 1.0, 0.0, 0.0],
@@ -587,8 +585,9 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_all_reduce,
         input_fn=_all_reduce_input_fn_rank,
         reduce_op=torch.distributed.ReduceOp.MIN,
         expected=[0.0, 1.0, 0.0, 0.0],
@@ -599,8 +598,9 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_all_reduce,
         input_fn=_all_reduce_input_fn_rank,
         reduce_op=torch.distributed.ReduceOp.MAX,
         expected=[0.0, 1.0, 7.0, 49.0],
@@ -611,8 +611,9 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_all_reduce,
         input_fn=_all_reduce_bitwise_input_fn,
         reduce_op=torch.distributed.ReduceOp.BAND,
         expected=[0, 0, 255],
@@ -623,8 +624,9 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_all_reduce,
         input_fn=_all_reduce_bitwise_input_fn,
         reduce_op=torch.distributed.ReduceOp.BOR,
         expected=[255, 31, 255],
@@ -635,8 +637,9 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_all_reduce,
         input_fn=_all_reduce_bitwise_input_fn,
         reduce_op=torch.distributed.ReduceOp.BXOR,
         expected=[0, 8, 0],
@@ -647,8 +650,9 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_all_reduce,
         input_fn=_all_reduce_input_fn_const,
         reduce_op=torch.distributed.ReduceOp.SUM,
         expected=[8, 16, 24, 32],
@@ -659,8 +663,9 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_reduce, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_all_reduce,
         input_fn=_all_reduce_input_fn_const,
         reduce_op=torch.distributed.ReduceOp.PRODUCT,
         expected=[1.0, 256.0, 6561.0, 65536.0],
@@ -671,118 +676,143 @@ class CollectiveOpsTest(absltest.TestCase):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_gather_scalar, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_all_gather_scalar,
     )
 
   def test_all_gather_tensor_concat(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_gather_tensor_concat, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_all_gather_tensor_concat,
     )
 
   def test_all_gather_tensor_scalar(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_gather_tensor_scalar, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_all_gather_tensor_scalar,
     )
 
   def test_all_gather_tensor_stack(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_all_gather_tensor_stack, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_all_gather_tensor_stack,
     )
 
   def test_gather_scalar(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
-        fn=singlehost_wrapper.tpu_env_wrapper(run_gather_scalar),
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            _test_wrapper, world_size=self._world_size
+        ),
+        test_fn=run_gather_scalar,
     )
 
   def test_gather_tensor(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
-        fn=singlehost_wrapper.tpu_env_wrapper(run_gather_tensor),
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            _test_wrapper, world_size=self._world_size
+        ),
+        test_fn=run_gather_tensor,
     )
 
   def test_gather_with_root_subset_use(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
-        fn=singlehost_wrapper.tpu_env_wrapper(run_gather_with_root_subset_use),
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            _test_wrapper, world_size=self._world_size
+        ),
+        test_fn=run_gather_with_root_subset_use,
     )
 
   def test_reduce_scatter(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_reduce_scatter, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_reduce_scatter,
     )
 
   def test_reduce_scatter_tensor_stack(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_reduce_scatter_tensor_stack, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_reduce_scatter_tensor_stack,
     )
 
   def test_reduce_scatter_tensor_concat(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_reduce_scatter_tensor_concat, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_reduce_scatter_tensor_concat,
     )
 
   def test_reduce_scatter_tensor_avg(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_reduce_scatter_tensor_avg, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_reduce_scatter_tensor_avg,
     )
 
   def test_broadcast(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_broadcast, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_broadcast,
     )
 
   def test_broadcast_objects(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_broadcast_objects, world_size=self._world_size
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_broadcast_objects,
     )
 
   def test_collectives_with_non_uniform_deferred_ops(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
-            run_collectives_with_non_uniform_deferred_ops,
-            world_size=self._world_size,
+            _test_wrapper, world_size=self._world_size
         ),
+        test_fn=run_collectives_with_non_uniform_deferred_ops,
     )
 
   def test_barrier(self):
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
-        fn=singlehost_wrapper.tpu_env_wrapper(run_barrier),
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            _test_wrapper, world_size=self._world_size
+        ),
+        test_fn=run_barrier,
         async_op=False,
     )
     distributed_utils.dist_run(
         nproc_per_node=self._world_size,
-        fn=singlehost_wrapper.tpu_env_wrapper(run_barrier),
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            _test_wrapper, world_size=self._world_size
+        ),
+        test_fn=run_barrier,
         async_op=True,
     )
 
