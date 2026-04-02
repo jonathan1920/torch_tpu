@@ -78,7 +78,11 @@ at::Tensor& AtenUniform_(at::Tensor& self, double from, double to,
             {rng_input_state},
             {.out_dtypes = {mlir::ElementType::UI64, output_dtype},
              .out_dims_list = {{2}, self_real.sizes()},
-             .op_param_cache_keys = std::move(param_keys)})));
+             .op_param_cache_keys = std::move(param_keys),
+             // Force a graph split in Eager mode to prevent the serialization
+             // of otherwise independent ops due to the propagation of the RNG
+             // state, which RNG ops consume and update.
+             .split_mode = OpSplitMode::kSplitAfter})));
     // After the state has been used (and updated) after generating random bits,
     // we give it back to the generator, so that it can be used by other ops in
     // the same graph.
