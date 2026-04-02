@@ -26,7 +26,6 @@
 #include <string_view>
 
 #include "torch/headeronly/util/complex.h"
-#include "torch_tpu/common/to_string.h"
 
 // 1 if this is a Google-internal version of torch_tpu. Otherwise 0.
 #define TT_IS_INTERNAL_TORCH_TPU 0

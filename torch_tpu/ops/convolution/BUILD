@@ -25,7 +25,7 @@ torch_tpu_cc_library(
     hdrs = ["convolution_checks.h"],
     deps = [
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:utils",
+        "//torch_tpu/common:to_string",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
@@ -38,9 +38,9 @@ torch_tpu_cc_library(
     deps = [
         ":convolution_checks",
         "//shims/torch:torch_headers",
+        "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:shape",
-        "//torch_tpu/common:utils",
+        "//torch_tpu/common:to_string",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
@@ -69,6 +69,7 @@ torch_tpu_cc_library(
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:fixed_size_span",

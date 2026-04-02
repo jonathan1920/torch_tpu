@@ -23,6 +23,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "ATen/core/ATen_fwd.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"

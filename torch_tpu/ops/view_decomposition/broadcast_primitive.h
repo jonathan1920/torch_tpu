@@ -20,10 +20,9 @@
 #include <stdint.h>
 
 #include <ostream>
-#include <vector>
 
 #include "absl/status/statusor.h"
-#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 

@@ -21,7 +21,6 @@
 #include <cstdint>
 #include <iterator>
 #include <ostream>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <variant>
@@ -41,7 +40,7 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/unary.h"
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"

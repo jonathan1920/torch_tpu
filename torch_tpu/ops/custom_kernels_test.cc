@@ -27,6 +27,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Types.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"

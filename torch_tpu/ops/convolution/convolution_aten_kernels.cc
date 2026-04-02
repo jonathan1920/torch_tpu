@@ -33,10 +33,10 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
-#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -56,10 +56,10 @@ namespace torch_tpu {
 namespace {
 
 // This helper function handles PyTorch's parameter broadcasting for
-// convolutions.  It ensures that convolution parameters (specifically stride,
+// convolutions. It ensures that convolution parameters (specifically stride,
 // padding, dilation, and output_padding) have the correct number of elements to
 // match the input's spatial dimensions (e.g., 2 elements for conv2d, 1 for
-// conv1d).  This function is needed because in PyTorch a user can provide
+// conv1d). This function is needed because in PyTorch a user can provide
 // convolution parameters in two ways:
 //
 //   1. A tuple matching the rank: For conv2d, providing stride=(2, 2).
@@ -69,7 +69,7 @@ namespace {
 //  as at::IntArrayRef. If a single value is passed (like [2]), the backend must
 //  "expand" it to match the spatial dimensions (becoming [2, 2]) before it can
 //  be used for output shape calculations or used to generate StableHLO, which
-//  expects the full array.  Without this expansion, the code below would see an
+//  expects the full array. Without this expansion, the code below would see an
 //  input with 2 spatial dimensions but a stride with only 1 dimension.
 Dimensions ExpandIfNecessary(at::IntArrayRef param, int num_spatial_dims) {
   if (param.size() == 1) {

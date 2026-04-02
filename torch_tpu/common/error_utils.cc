@@ -17,7 +17,6 @@
 #include "torch_tpu/common/error_utils.h"
 
 #include <cstdint>
-#include <cstdlib>
 #include <optional>
 #include <stdexcept>
 #include <string>

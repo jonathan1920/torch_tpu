@@ -24,7 +24,7 @@
 #include "ATen/core/ATen_fwd.h"
 #include "c10/util/OptionalArrayRef.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/ops/reductions/reductions.h"
 
 namespace torch_tpu {

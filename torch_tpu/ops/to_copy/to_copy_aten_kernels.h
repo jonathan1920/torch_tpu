@@ -21,9 +21,9 @@
 
 #include "ATen/core/TensorBody.h"
 #include "c10/core/Device.h"
-#include "c10/core/Layout.h"
-#include "c10/core/MemoryFormat.h"
-#include "c10/core/ScalarType.h"
+#include "torch/headeronly/core/Layout.h"
+#include "torch/headeronly/core/MemoryFormat.h"
+#include "torch/headeronly/core/ScalarType.h"
 
 namespace torch_tpu {
 

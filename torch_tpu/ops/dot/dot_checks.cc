@@ -26,7 +26,7 @@
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 
 namespace torch_tpu {

@@ -39,7 +39,7 @@
 #include "torch/csrc/distributed/c10d/Store.hpp"
 #include "torch/csrc/distributed/c10d/Types.hpp"
 #include "torch/csrc/distributed/c10d/Work.hpp"
-#include "torch_tpu/common/utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/distributed/types.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/ops/op_names.h"

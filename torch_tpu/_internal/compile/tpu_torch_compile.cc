@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,7 +28,6 @@
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Verifier.h"
@@ -40,7 +40,6 @@
 #include "torch_tpu/_internal/compile/compiled_mode.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -48,7 +47,6 @@
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "stablehlo/dialect/Version.h"
-#include "xla/hlo/translate/register.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"

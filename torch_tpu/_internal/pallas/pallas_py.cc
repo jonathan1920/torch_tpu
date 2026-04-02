@@ -28,9 +28,9 @@
 #include "ATen/core/TensorBody.h"
 #include "c10/util/string_view.h"
 #include "torch/extension.h"  // IWYU pragma: keep for aten::Tensor pybind type
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"

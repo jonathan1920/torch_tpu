@@ -30,7 +30,7 @@
 #include "ATen/core/Generator.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/compilation.h"
-#include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/common/shape.h"
 
 // The core functions used for Dynamo compiled mode.
 // Python bindings are declared in tpu_torch_compile.cc.

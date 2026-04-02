@@ -17,7 +17,6 @@
 #include "torch_tpu/ops/gather/gather.h"
 
 #include <cstdint>
-#include <string_view>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -31,9 +30,10 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
+#include "torch_tpu/common/aten_utils.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/shape.h"
-#include "torch_tpu/common/utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"

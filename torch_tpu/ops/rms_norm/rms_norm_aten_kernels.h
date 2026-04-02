@@ -18,6 +18,7 @@
 #define TORCH_TPU_OPS_RMS_NORM_RMS_NORM_ATEN_KERNELS_H_
 
 #include <array>
+#include <optional>
 #include <tuple>
 
 #include "ATen/core/ATen_fwd.h"

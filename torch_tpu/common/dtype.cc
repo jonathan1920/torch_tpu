@@ -34,7 +34,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"

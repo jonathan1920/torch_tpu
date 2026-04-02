@@ -24,12 +24,11 @@
 #include "ATen/core/Generator.h"
 #include "ATen/ops/tensor.h"  // IWYU pragma: keep
 #include "c10/core/Device.h"
-#include "c10/core/DeviceType.h"
 #include "c10/core/GeneratorImpl.h"
 #include "c10/core/TensorImpl.h"
 #include "c10/util/Optional.h"
 #include "c10/util/intrusive_ptr.h"
-#include "torch_tpu/ops/op_names.h"
+#include "torch/headeronly/core/DeviceType.h"
 
 namespace torch_tpu {
 

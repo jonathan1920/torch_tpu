@@ -16,7 +16,7 @@
 #define TORCH_TPU_OPS_COL2IM_COL2IM_H_
 
 #include "absl/status/statusor.h"
-#include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {

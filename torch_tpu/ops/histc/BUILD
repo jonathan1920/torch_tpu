@@ -30,6 +30,7 @@ torch_tpu_cc_library(
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:fixed_size_span",
@@ -54,6 +55,7 @@ torch_tpu_cc_library(
     srcs = ["histc.cc"],
     hdrs = ["histc.h"],
     deps = [
+        "//torch_tpu/common:dimension_types",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",

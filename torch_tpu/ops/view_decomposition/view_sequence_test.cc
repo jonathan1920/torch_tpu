@@ -28,7 +28,7 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/empty.h"
 #include "torch_tpu/common/cache_key.h"
-#include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
 #include "torch_tpu/ops/view_decomposition/broadcast_primitive.h"
 #include "torch_tpu/ops/view_decomposition/conj_primitive.h"

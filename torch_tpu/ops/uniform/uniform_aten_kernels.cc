@@ -21,6 +21,7 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "torch_tpu/common/aten_utils.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"

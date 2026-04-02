@@ -25,7 +25,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/LLVM.h"
-#include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {

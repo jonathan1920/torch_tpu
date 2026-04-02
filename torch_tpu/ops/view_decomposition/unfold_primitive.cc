@@ -22,6 +22,7 @@
 
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"

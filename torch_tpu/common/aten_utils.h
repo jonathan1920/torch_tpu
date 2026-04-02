@@ -17,18 +17,22 @@
 #ifndef TORCH_TPU_COMMON_ATEN_UTILS_H_
 #define TORCH_TPU_COMMON_ATEN_UTILS_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/log/absl_check.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
-#include "c10/util/ArrayRef.h"
+#include "c10/core/ScalarType.h"
 #include "c10/util/DimVector.h"
+#include "torch/headeronly/core/DeviceType.h"
+#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dimension_types.h"
-#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_types.h"
 
 namespace torch_tpu {

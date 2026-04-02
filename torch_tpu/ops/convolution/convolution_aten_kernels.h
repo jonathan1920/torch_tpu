@@ -17,8 +17,10 @@
 #ifndef TORCH_TPU_OPS_CONVOLUTION_CONVOLUTION_ATEN_KERNELS_H_
 #define TORCH_TPU_OPS_CONVOLUTION_CONVOLUTION_ATEN_KERNELS_H_
 
+#include <array>
 #include <cstdint>
 #include <optional>
+#include <tuple>
 
 #include "ATen/core/ATen_fwd.h"
 

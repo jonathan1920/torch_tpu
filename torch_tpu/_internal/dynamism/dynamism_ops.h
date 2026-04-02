@@ -22,7 +22,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/common/shape.h"
 
 namespace torch_tpu {
 

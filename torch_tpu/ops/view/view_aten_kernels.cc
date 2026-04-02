@@ -33,13 +33,13 @@
 #include "c10/util/irange.h"
 #include "c10/util/typeid.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/as_strided/as_strided_aten_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"
-#include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 
 // Both _reshape_alias() and view() require kernel registrations according to

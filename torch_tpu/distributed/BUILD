@@ -36,7 +36,9 @@ torch_tpu_cc_library(
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
+        "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:shape",
@@ -46,6 +48,7 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:device_types",
         "//torch_tpu/eager:materialize",
         "//torch_tpu/eager:op_dispatcher",
+        "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",
@@ -91,7 +94,7 @@ torch_tpu_cc_library(
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/common:to_string",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -115,6 +118,8 @@ torch_tpu_cc_library(
         "//shims/torch",
         "//shims/torch:aten",
         "//shims/torch:torch_headers",
+        "//torch_tpu/common:aten_utils",
+        "//torch_tpu/common:dimension_types",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status:statusor",
@@ -122,7 +127,6 @@ torch_tpu_cc_library(
         "@llvm-project//mlir:Support",
         "@stablehlo//:mlir_builder",
         "@stablehlo//:stablehlo_builder",
-        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -140,6 +144,7 @@ torch_tpu_cc_library(
         "//shims/torch",
         "//shims/torch:aten",
         "//shims/torch:torch_headers",
+        "//torch_tpu/common:to_string",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
@@ -148,7 +153,6 @@ torch_tpu_cc_library(
         "@llvm-project//mlir:Support",
         "@stablehlo//:mlir_builder",
         "@stablehlo//:stablehlo_builder",
-        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -166,6 +170,8 @@ torch_tpu_cc_library(
         "//shims/torch",
         "//shims/torch:aten",
         "//shims/torch:torch_headers",
+        "//torch_tpu/common:aten_utils",
+        "//torch_tpu/common:dimension_types",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
@@ -174,7 +180,6 @@ torch_tpu_cc_library(
         "@llvm-project//mlir:Support",
         "@stablehlo//:mlir_builder",
         "@stablehlo//:stablehlo_builder",
-        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -192,6 +197,8 @@ torch_tpu_cc_library(
         "//shims/torch",
         "//shims/torch:aten",
         "//shims/torch:torch_headers",
+        "//torch_tpu/common:aten_utils",
+        "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/log:absl_check",
@@ -202,7 +209,6 @@ torch_tpu_cc_library(
         "@llvm-project//mlir:Support",
         "@stablehlo//:mlir_builder",
         "@stablehlo//:stablehlo_builder",
-        "@stablehlo//:stablehlo_ops",
     ],
 )
 

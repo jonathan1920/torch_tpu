@@ -26,8 +26,8 @@ torch_tpu_cc_library(
     deps = [
         "//shims/torch:aten_headers",
         "//torch_tpu/common:aten_utils",
+        "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:shape",
         "//torch_tpu/common:to_string",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",

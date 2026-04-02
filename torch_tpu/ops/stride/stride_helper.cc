@@ -23,8 +23,8 @@
 #include "absl/log/absl_check.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 

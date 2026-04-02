@@ -27,7 +27,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
-#include <string_view>
 #include <system_error>
 #include <thread>
 #include <vector>
@@ -40,9 +39,9 @@
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/unique_file_descriptor.h"
 #include "torch_tpu/pjrt/pjrt_init.h"
 

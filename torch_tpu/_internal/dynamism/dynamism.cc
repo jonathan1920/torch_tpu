@@ -19,14 +19,13 @@
 #include <cstdint>
 
 #include "absl/log/absl_log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
-#include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
 

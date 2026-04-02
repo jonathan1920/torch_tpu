@@ -21,8 +21,8 @@
 #include <ostream>
 
 #include "absl/types/span.h"
-#include "torch_tpu/common/utils.h"
-#include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/to_string.h"
 
 namespace torch_tpu {
 

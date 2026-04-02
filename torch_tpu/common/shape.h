@@ -19,11 +19,12 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "torch_tpu/common/dimension_types.h"
-#include "torch_tpu/common/dtype.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/shape.h"
 
 namespace torch_tpu {

@@ -76,10 +76,10 @@ torch_tpu_cc_library(
     deps = [
         "//shims/torch:aten_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
-        "//torch_tpu/common:aten_utils",
+        "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:shape",
+        "//torch_tpu/common:to_string",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/pjrt:pjrt_utils",

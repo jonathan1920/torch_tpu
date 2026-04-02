@@ -24,7 +24,6 @@
 #include <limits>
 #include <numeric>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -66,9 +65,9 @@
 #include "torch/csrc/distributed/c10d/Types.hpp"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch/headeronly/util/complex.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/python_context.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -78,7 +77,6 @@
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "stablehlo/transforms/StablehloBroadcastLowering.h"
 #include "xla/mlir/utils/error_util.h"
-#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 

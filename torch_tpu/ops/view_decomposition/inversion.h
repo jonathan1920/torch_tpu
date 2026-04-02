@@ -25,7 +25,7 @@
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/view_decomposition/conj_primitive.h"
 #include "torch_tpu/ops/view_decomposition/reshape_primitive.h"
 #include "torch_tpu/ops/view_decomposition/slice_primitive.h"

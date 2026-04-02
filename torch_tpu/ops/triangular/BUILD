@@ -40,8 +40,9 @@ torch_tpu_cc_library(
     srcs = ["triangular.cc"],
     hdrs = ["triangular.h"],
     deps = [
+        "//torch_tpu/common:aten_utils",
+        "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:shape",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

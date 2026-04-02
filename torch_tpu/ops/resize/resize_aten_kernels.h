@@ -19,9 +19,9 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
-#include "c10/core/MemoryFormat.h"
 #include "c10/util/ArrayRef.h"
 #include "c10/util/Optional.h"
+#include "torch/headeronly/core/MemoryFormat.h"
 
 namespace torch_tpu {
 

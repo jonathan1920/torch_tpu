@@ -20,6 +20,7 @@
 #include <cstdint>
 
 #include "absl/status/statusor.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"

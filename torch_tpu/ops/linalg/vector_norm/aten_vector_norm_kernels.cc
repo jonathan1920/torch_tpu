@@ -28,6 +28,7 @@
 #include "c10/util/OptionalArrayRef.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/linalg/vector_norm/pnorm.h"

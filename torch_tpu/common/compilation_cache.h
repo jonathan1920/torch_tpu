@@ -24,7 +24,6 @@
 #include <string>
 #include <vector>
 
-#include "absl/base/const_init.h"
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"

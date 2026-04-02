@@ -21,7 +21,6 @@
 #include "gtest/gtest.h"
 #include "absl/log/absl_check.h"
 #include "absl/status/status.h"
-#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/pjrt/pjrt_init.h"
 #include "xla/xla.pb.h"
 

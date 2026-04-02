@@ -22,7 +22,7 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "c10/core/Device.h"
-#include "c10/core/Layout.h"
+#include "torch/headeronly/core/Layout.h"
 #include "torch/headeronly/core/ScalarType.h"
 
 namespace torch_tpu {

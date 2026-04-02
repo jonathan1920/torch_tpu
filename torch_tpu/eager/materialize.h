@@ -25,6 +25,7 @@
 #include "absl/types/span.h"
 #include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 
 // When an aten op is dispatched, we always create a DeviceBufferList to contain

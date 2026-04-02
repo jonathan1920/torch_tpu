@@ -32,11 +32,10 @@ torch_tpu_cc_library(
     deps = [
         "//shims/torch:aten_headers",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:tensor_to_buffer",
-        "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
@@ -51,8 +50,8 @@ torch_tpu_cc_library(
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
         "//torch_tpu/eager:device_types",
-        "//torch_tpu/ops:op_builder_utils",
     ],
 )
 
@@ -62,6 +61,7 @@ torch_tpu_cc_library(
     hdrs = ["dynamism_ops.h"],
     deps = [
         "//shims/torch:torch_headers",
+        "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:shape",
         "//torch_tpu/ops:op_builder_utils",
@@ -93,8 +93,8 @@ pybind_extension(
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
         "//torch_tpu/eager:device_types",
-        "//torch_tpu/ops:op_builder_utils",
     ],
 )
 

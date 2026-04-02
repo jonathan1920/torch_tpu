@@ -35,6 +35,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:fixed_size_span",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:op_dispatcher",
+        "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops/macros:kernel",
@@ -51,6 +52,7 @@ torch_tpu_cc_library(
     srcs = ["index_copy.cc"],
     hdrs = ["index_copy.h"],
     deps = [
+        "//torch_tpu/common:dimension_types",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",

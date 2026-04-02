@@ -24,8 +24,8 @@
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 
 namespace torch_tpu {

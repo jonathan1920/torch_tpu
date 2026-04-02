@@ -19,7 +19,7 @@
 
 #include <cstdint>
 
-#include "ATen/core/Tensor.h"
+#include "ATen/core/TensorBody.h"
 
 namespace torch_tpu {
 

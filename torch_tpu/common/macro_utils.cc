@@ -24,7 +24,6 @@
 #include <vector>
 
 #include "absl/strings/ascii.h"
-#include "absl/strings/str_split.h"
 
 namespace torch_tpu {
 namespace internal {

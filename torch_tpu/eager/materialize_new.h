@@ -17,16 +17,10 @@
 #ifndef TORCH_TPU_EAGER_MATERIALIZE_NEW_H_
 #define TORCH_TPU_EAGER_MATERIALIZE_NEW_H_
 
-#include <string_view>
-#include <vector>
 
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "ATen/core/TensorBody.h"
-#include "torch_tpu/common/compilation.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
 

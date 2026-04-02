@@ -20,15 +20,12 @@
 #include <optional>
 
 #include "absl/status/statusor.h"
-#include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Location.h"
-#include "mlir/IR/Region.h"
 #include "mlir/IR/Types.h"
-#include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
+#include "torch_tpu/common/aten_utils.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"

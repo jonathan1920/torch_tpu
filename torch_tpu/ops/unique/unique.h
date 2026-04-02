@@ -20,7 +20,7 @@
 #include <cstdint>
 
 #include "absl/status/statusor.h"
-#include "mlir/IR/Types.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {
