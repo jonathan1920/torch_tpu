@@ -1324,6 +1324,20 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       t.resize_((1, 2, 3, 4), memory_format=torch.channels_last)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # PyTorch native devices don't error on bool input dtype.
+  # TODO: add support to threshold_backward() for bool input dtype.
+  def test_threshold_backward_unsupported_dtype_bool(self):
+    grad_output = torch.ones(2, device=et.device())
+    self_tensor = torch.tensor([True, False], device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="threshold_backward(): bool input dtype is not yet supported",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.threshold_backward(grad_output, self_tensor, 0.5)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
@@ -7359,6 +7373,21 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         message_reviewed_by="wan",
     ):
       torch.tril_indices(3, 3, dtype=torch.float32, device=et.device())
+
+  def test_threshold_backward_unsupported_dtype_complex(self):
+    grad_output = torch.ones(2, device=et.device())
+    self_tensor = torch.tensor([1 + 1j, 2 + 2j], device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "threshold_backward(): expected the input dtype not to be complex,"
+            " got complex64"
+        ),
+        cpu="\"threshold_cpu\" not implemented for 'ComplexFloat'",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.threshold_backward(grad_output, self_tensor, 0.5)
 
 
 if __name__ == "__main__":

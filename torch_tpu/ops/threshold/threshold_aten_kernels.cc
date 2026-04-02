@@ -24,9 +24,11 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/scalar_tensor.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -93,11 +95,11 @@ at::Tensor& AtenThresholdBackwardGradInput(const at::Tensor& grad_output,
   TT_KERNEL(
       OpName::kThresholdBackwardGradInput, param_keys,
       (grad_output, self, threshold, grad_input), {
-        TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Bool,
-                       error::kUnimplemented)
-            << "threshold is not implemented for bool type";
-        TT_CHECK_THROW(!self.is_complex(), error::kUnimplemented)
-            << "threshold is not implemented for complex types";
+        TT_CHECK_THROW(!IsBool(self), error::kUnimplemented)
+            << "bool input dtype is not yet supported";
+        TT_CHECK_THROW(!IsComplex(self), error::kInvalidArgument)
+            << "expected the input dtype not to be complex, got "
+            << ToString(self.scalar_type());
         TT_ASSIGN_OR_THROW(
             auto result_buf,
             (DispatchOp<3>(OpName::kThresholdBackwardGradInput,
