@@ -44,13 +44,16 @@ torch_tpu_cc_library(
     srcs = [
         "profiler.cc",
     ],
-    hdrs = [
-        "profiler.h",
-    ],
     deps = [
         "//shims/pybind11",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:utils",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/profiler/lib:profiler_session",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
@@ -67,7 +70,6 @@ pybind_extension(
     name = "_profiler_backend",
     srcs = [
         "profiler.cc",
-        "profiler.h",
     ],
     # Torch_tpu uses rules_pywrap in XLA for OSS builds:
     # https://github.com/openxla/xla/tree/main/third_party/py/rules_pywrap.
@@ -78,8 +80,14 @@ pybind_extension(
     wrap_py_init = True,
     deps = [
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:utils",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/profiler/lib:profiler_session",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",

@@ -14,13 +14,18 @@
  * limitations under the License.
  */
 
-#include "torch_tpu/_internal/profiler/profiler.h"
-
 #include <memory>
 #include <string>
 
+#include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/log/absl_log.h"
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/utils.h"
+#include "pybind11/pybind11.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/profiler/rpc/profiler_server.h"
@@ -33,30 +38,95 @@ namespace torch_tpu {
 
 namespace py = pybind11;
 
-// We use raw pointers for global variables because they are trivially
-// destructible, and complex static destructors are disallowed by ClangTidy.
-static tsl::ProfilerSession* global_session = nullptr;
-static tsl::profiler::ProfilerServer* global_server = nullptr;
+// Thread-safe wrapper for tsl::profiler::ProfilerServer.
+class TpuProfilerServer {
+ public:
+  // Creates a server in not-started state.
+  TpuProfilerServer() = default;
 
-void StartProfilerServer(int port) {
-  if (!global_server) {
-    // 1. Create the server object
-    global_server = new tsl::profiler::ProfilerServer();
+  // This class is neither copyable nor movable.
+  TpuProfilerServer(const TpuProfilerServer&) = delete;
+  TpuProfilerServer& operator=(const TpuProfilerServer&) = delete;
+  TpuProfilerServer(TpuProfilerServer&&) = delete;
+  TpuProfilerServer& operator=(TpuProfilerServer&&) = delete;
 
-    // 2. Start it on the specific port
-    global_server->StartProfilerServer(port);
+  // Starts the profiler server on the given port. Fails if the server has
+  // already been started.
+  absl::Status Start(int port) ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Stops the profiler server. Fails if the server has not been started or has
+  // already been stopped.
+  absl::Status Stop() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Returns the global profiler server instance.
+  static TpuProfilerServer& GetInstance() {
+    static absl::NoDestructor<TpuProfilerServer> global_server;
+    return *global_server;
   }
+
+ private:
+  mutable absl::Mutex mutex_;
+  absl_nullable std::unique_ptr<tsl::profiler::ProfilerServer> server_
+      ABSL_GUARDED_BY(mutex_);
+};
+
+// Thread-safe wrapper for tsl::ProfilerSession.
+class TpuProfilerSession {
+ public:
+  // Creates a session in not-started state.
+  TpuProfilerSession() = default;
+
+  // This class is neither copyable nor movable.
+  TpuProfilerSession(const TpuProfilerSession&) = delete;
+  TpuProfilerSession& operator=(const TpuProfilerSession&) = delete;
+  TpuProfilerSession(TpuProfilerSession&&) = delete;
+  TpuProfilerSession& operator=(TpuProfilerSession&&) = delete;
+
+  // Starts the profiler session on the given log directory with the given
+  // options. Fails if the session has already been started.
+  absl::Status Start(const std::string& logdir, py::object options_obj)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Stops the profiler session and writes the trace data to the given file.
+  // Fails if the session has not been started or has already been stopped.
+  absl::Status Stop(const std::string& filename) ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Returns the global profiler session instance.
+  static TpuProfilerSession& GetInstance() {
+    static absl::NoDestructor<TpuProfilerSession> global_session;
+    return *global_session;
+  }
+
+ private:
+  mutable absl::Mutex mutex_;
+  absl_nullable std::unique_ptr<tsl::ProfilerSession> session_
+      ABSL_GUARDED_BY(mutex_);
+};
+
+absl::Status TpuProfilerServer::Start(int port) ABSL_LOCKS_EXCLUDED(mutex_) {
+  TT_MUTEX_LOCK(lock, mutex_);
+  TT_RET_CHECK(server_ == nullptr, error::kFailedPrecondition)
+      << "the profiler server has already been started";
+  server_ = std::make_unique<tsl::profiler::ProfilerServer>();
+  server_->StartProfilerServer(port);
+  return absl::OkStatus();
 }
 
-void StopProfilerServer() {
-  // Destroying the object stops the server and releases the port.
-  if (global_server) {
-    delete global_server;
-    global_server = nullptr;
-  }
+absl::Status TpuProfilerServer::Stop() ABSL_LOCKS_EXCLUDED(mutex_) {
+  TT_MUTEX_LOCK(lock, mutex_);
+  TT_RET_CHECK(server_ != nullptr, error::kFailedPrecondition)
+      << "the profiler server has not been started or has already been "
+         "stopped";
+  server_.reset();
+  return absl::OkStatus();
 }
 
-void StartTrace(const std::string& logdir, py::object options_obj) {
+absl::Status TpuProfilerSession::Start(const std::string& logdir,
+                                       py::object options_obj) {
+  TT_MUTEX_LOCK(lock, mutex_);
+  TT_RET_CHECK(session_ == nullptr, error::kFailedPrecondition)
+      << "the profiler session has already been started";
+
   tensorflow::ProfileOptions opts = tsl::ProfilerSession::DefaultOptions();
   if (!options_obj.is_none()) {
     py::dict options = options_obj.cast<py::dict>();
@@ -74,62 +144,85 @@ void StartTrace(const std::string& logdir, py::object options_obj) {
     opts.set_repository_path(logdir);
   }
   ABSL_LOG(INFO) << "Starting trace, logdir: " << logdir;
-  // If a session is already running, delete it before starting a new one.
-  delete global_session;
-  // Create returns a unique_ptr, we release it to get the raw pointer.
-  global_session = tsl::ProfilerSession::Create(opts).release();
-  if (global_session) {
-    TT_THROW_IF_ERROR(global_session->Status())
-        << "failed to start profiler session";
-  }
+
+  session_ = tsl::ProfilerSession::Create(opts);
+  TT_RETURN_IF_ERROR(session_->Status()).SetPrepend()
+      << "failed to start profiler session: ";
+  return absl::OkStatus();
 }
 
-void StopTrace(const std::string& filename) {
-  if (global_session) {
-    tensorflow::profiler::XSpace xspace;
-    TT_THROW_IF_ERROR(global_session->CollectData(&xspace))
-        << "failed to collect trace data";
-    ABSL_LOG(INFO) << "Collected " << xspace.planes_size() << " planes.";
-    tsl::Env* env = tsl::Env::Default();
+absl::Status TpuProfilerSession::Stop(const std::string& filename) {
+  TT_MUTEX_LOCK(lock, mutex_);
+  TT_RET_CHECK(session_ != nullptr, error::kFailedPrecondition)
+      << "the profiler session has not been started or has already been "
+         "stopped";
 
-    // Ensure the parent directory exists
-    std::string dirname = std::string(tsl::io::Dirname(filename));
-    if (!dirname.empty()) {
-      TT_THROW_IF_ERROR(env->RecursivelyCreateDir(dirname))
-          << "failed to create directory: " << dirname;
-    }
+  tensorflow::profiler::XSpace xspace;
+  TT_RETURN_IF_ERROR(session_->CollectData(&xspace))
+      << "failed to collect trace data";
+  ABSL_LOG(INFO) << "Collected " << xspace.planes_size() << " planes.";
+  tsl::Env* env = tsl::Env::Default();
 
-    std::unique_ptr<tsl::WritableFile> outfile;
-    TT_THROW_IF_ERROR(env->NewWritableFile(filename, &outfile))
-        << "failed to create file: " << filename;
-
-    // Serialize the collected XSpace data to a string.
-    std::string serialized_proto;
-    TT_CHECK_THROW(xspace.SerializeToString(&serialized_proto),
-                   error::kInternal)
-        << "failed to serialize profile data";
-    ABSL_LOG(INFO) << "Writing " << serialized_proto.size() << " bytes to "
-                   << filename;
-
-    // Write the serialized XSpace to the file.
-    TT_THROW_IF_ERROR(outfile->Append(serialized_proto))
-        << "failed to write data to " << filename;
-    TT_THROW_IF_ERROR(outfile->Close()) << "failed to close file: " << filename;
-    delete global_session;
-    global_session = nullptr;
+  // Ensure the parent directory exists
+  std::string dirname = std::string(tsl::io::Dirname(filename));
+  if (!dirname.empty()) {
+    TT_RETURN_IF_ERROR(env->RecursivelyCreateDir(dirname))
+        << "failed to create directory: " << dirname;
   }
+
+  std::unique_ptr<tsl::WritableFile> outfile;
+  TT_RETURN_IF_ERROR(env->NewWritableFile(filename, &outfile))
+      << "failed to create file: " << filename;
+
+  // Serialize the collected XSpace data to a string.
+  std::string serialized_proto;
+  TT_RET_CHECK(xspace.SerializeToString(&serialized_proto), error::kInternal)
+      << "failed to serialize profile data";
+  ABSL_LOG(INFO) << "Writing " << serialized_proto.size() << " bytes to "
+                 << filename;
+
+  // Write the serialized XSpace to the file.
+  TT_RETURN_IF_ERROR(outfile->Append(serialized_proto))
+      << "failed to write data to " << filename;
+  TT_RETURN_IF_ERROR(outfile->Close()) << "failed to close file: " << filename;
+
+  session_.reset();
+  return absl::OkStatus();
+}
+
+static void StartProfilerServerPy(int port) {
+  TT_THROW_IF_ERROR(TpuProfilerServer::GetInstance().Start(port));
+}
+
+static void StopProfilerServerPy() {
+  TT_THROW_IF_ERROR(TpuProfilerServer::GetInstance().Stop());
+}
+
+static void StartTracePy(const std::string& logdir, py::object options_obj) {
+  TT_THROW_IF_ERROR(
+      TpuProfilerSession::GetInstance().Start(logdir, options_obj));
+}
+
+static void StopTracePy(const std::string& filename) {
+  TT_THROW_IF_ERROR(TpuProfilerSession::GetInstance().Stop(filename));
 }
 
 PYBIND11_MODULE(_profiler_backend, m) {
   m.doc() = "PjRt backend for PyTorch profiler.";
 
-  m.def("start_trace", &torch_tpu::StartTrace, py::arg("logdir"),
-        py::arg("options") = py::none(), "Starts profiler trace.");
-  m.def("stop_trace", &torch_tpu::StopTrace);
-  m.def("start_profiler_server", &torch_tpu::StartProfilerServer,
-        py::arg("port"), "Starts the profiler gRPC server on the given port.");
-  m.def("stop_profiler_server", &torch_tpu::StopProfilerServer,
-        "Stops the profiler gRPC server.");
+  m.def("start_trace", &StartTracePy, py::arg("logdir"),
+        py::arg("options") = py::none(),
+        "Starts a profiler trace with the given options; fails if the trace "
+        "has already been started.");
+  m.def("stop_trace", &StopTracePy,
+        "Stops the profiler trace and writes the trace data to the log dir; "
+        "fails if the trace has not been started or has already been stopped.");
+  m.def("start_profiler_server", &StartProfilerServerPy, py::arg("port"),
+        "Starts the profiler gRPC server on the given port; fails if the "
+        "server has already been started.");
+  m.def("stop_profiler_server", &StopProfilerServerPy,
+        "Stops the profiler gRPC server; fails if the server has not been "
+        "started or has already been stopped.");
 }
 
 }  // namespace torch_tpu
