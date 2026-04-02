@@ -15,6 +15,7 @@
 """Shared layer configurations for benchmarks."""
 
 import dataclasses
+from typing import Any
 import torch
 
 
@@ -300,13 +301,11 @@ class SdpaConfig:
   is_causal: bool
   enable_gqa: bool
   dtype: torch.dtype
-  use_math_backend: bool = False
+  backend: Any = torch.nn.attention.SDPBackend.MATH
 
-
-SDPA_CONFIGS = tuple(
-    dataclasses.replace(config, use_math_backend=use_math_backend)
-    for config in [
-        # Default config for smoke test.
+  @classmethod
+  def get_base_configs(cls):
+    return [
         SdpaConfig(
             batch_size=1,
             embed_dim=4096,
@@ -408,8 +407,12 @@ SDPA_CONFIGS = tuple(
             dtype=torch.bfloat16,
         ),
     ]
-    for use_math_backend in [False, True]
-)
+
+  @classmethod
+  def configs_with_backends(cls, *backends):
+    for backend in backends:
+      for config in cls.get_base_configs():
+        yield dataclasses.replace(config, backend=backend)
 
 
 @dataclasses.dataclass

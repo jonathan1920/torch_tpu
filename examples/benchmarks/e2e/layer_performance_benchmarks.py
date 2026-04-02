@@ -18,6 +18,7 @@ import dataclasses
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import torch
 import torch.multiprocessing as mp
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import layer_configs
@@ -741,15 +742,65 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          _ALL_RUN_MODES, (True, False), layer_configs.SDPA_CONFIGS
+          _ALL_RUN_MODES,
+          (True, False),
+          list(
+              layer_configs.SdpaConfig.configs_with_backends(
+                  torch.nn.attention.SDPBackend.MATH,
+                  torch.nn.attention.SDPBackend.OVERRIDEABLE,
+              )
+          ),
       )
   )
-  def test_sdpa(self, run_mode, is_training, layer_config):
+  def test_sdpa_tpu(self, run_mode, is_training, layer_config):
     if run_mode == benchmark_utils.RunMode.COMPILED:
       self.skipTest("SDPA is broken in compiled mode")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nn.f.scaled_dot_product_attention",
+            batch_size=layer_config.batch_size,
+            custom_kwargs={
+                "embed_dim": layer_config.embed_dim,
+                "q_seq_len": layer_config.q_seq_len,
+                "q_num_heads": layer_config.q_num_heads,
+                "kv_num_heads": layer_config.kv_num_heads,
+                "qk_head_dim": layer_config.qk_head_dim,
+                "v_head_dim": layer_config.v_head_dim,
+                "is_causal": layer_config.is_causal,
+                "enable_gqa": layer_config.enable_gqa,
+                "backend": layer_config.backend,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _SDPA_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      # TODO(lukeboyer): Add training mode back in once breakage is figured out.
+      test_utils.generate_layer_test_configs(
+          _ALL_RUN_MODES,
+          (False,),
+          list(
+              layer_configs.SdpaConfig.configs_with_backends(
+                  torch.nn.attention.SDPBackend.FLASH_ATTENTION,
+                  torch.nn.attention.SDPBackend.EFFICIENT_ATTENTION,
+                  torch.nn.attention.SDPBackend.MATH,
+                  torch.nn.attention.SDPBackend.CUDNN_ATTENTION,
+              )
+          ),
+      )
+  )
+  def test_sdpa_cuda(self, run_mode, is_training, layer_config):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
             benchmark_utils.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
@@ -767,7 +818,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
                 "v_head_dim": layer_config.v_head_dim,
                 "is_causal": layer_config.is_causal,
                 "enable_gqa": layer_config.enable_gqa,
-                "use_math_backend": layer_config.use_math_backend,
+                "backend": layer_config.backend,
             },
         ),
     )

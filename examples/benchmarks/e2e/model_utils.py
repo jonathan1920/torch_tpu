@@ -876,7 +876,7 @@ def get_ml_layer_model(
     v_head_dim = kwargs["v_head_dim"]
     is_causal = kwargs["is_causal"]
     enable_gqa = kwargs["enable_gqa"]
-    use_math_backend = kwargs.get("use_math_backend", False)
+    backend = kwargs["backend"]
 
     class AttentionLayer(torch.nn.Module):
 
@@ -925,11 +925,7 @@ def get_ml_layer_model(
             .transpose(1, 2)
         )
 
-        with torch.nn.attention.sdpa_kernel(
-            [torch.nn.attention.SDPBackend.MATH]
-            if use_math_backend
-            else [torch.nn.attention.SDPBackend.OVERRIDEABLE]
-        ):
+        with torch.nn.attention.sdpa_kernel(backend):
           attn_output = torch.nn.functional.scaled_dot_product_attention(
               q, k, v, is_causal=is_causal, enable_gqa=enable_gqa
           )
