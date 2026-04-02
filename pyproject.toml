@@ -41,6 +41,10 @@ dev = [
 test = [
     "pillow",
     "scipy",
+    "numpy",
+    "timm",
+    "torchvision",
+    "transformers",
 ]
 
 benchmark = [
@@ -56,6 +60,21 @@ examples = [
     "datasets",
     "pillow",
     "tqdm",
+    "huggingface_hub",
+    "transformers",
+    "diffusers",
+    "peft",
+    "torchvision",
+    "llama_models",
+    "fairscale",
+    "grain",
+    "tensorflow_datasets",
+    "accelerate",
+    "jax",
+    "matplotlib",
+    "tqdm",
+    "flax",
+    "tensorboardx",
 ]
 
 [[tool.uv.index]]
