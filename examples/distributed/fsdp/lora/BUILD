@@ -45,8 +45,10 @@ pytype_strict_library(
     deps = [
         "//examples/distributed/fsdp:fsdp_worker",
         "//examples/distributed/fsdp:model",
+        "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/utils",
+        "//torch_tpu/_internal/utils:log_utils",
         "//torch_tpu/api",
         "@pypi//peft",
     ],

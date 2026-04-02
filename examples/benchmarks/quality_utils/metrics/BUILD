@@ -34,6 +34,7 @@ pytype_strict_library(
     srcs = ["data_loader.py"],
     deps = [
         "//shims/absl_py/logging",
+        "//torch_tpu/_internal/utils:log_utils",
         "@pypi//grain",
         "@pypi//tensorflow_datasets",
     ],

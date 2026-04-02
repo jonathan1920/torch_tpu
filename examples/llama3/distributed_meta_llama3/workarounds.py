@@ -16,9 +16,14 @@
 
 import functools
 from typing import Tuple
+
 from absl import logging
 import llama_models.llama3.model as m
 import torch
+from torch_tpu._internal.utils import log_utils
+
+
+log_utils.log_to_stderr()
 
 
 # This signature matches the signature of the apply_rotary_emb function in

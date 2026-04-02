@@ -31,7 +31,6 @@ NOTE: This file/model is meant to DEBUG and TRIAGE remaining
 //////////////////////////////////////////////////////////////
 """
 
-import sys
 
 from absl import app
 from absl import flags

@@ -29,14 +29,20 @@ blaze run //examples/huggingface_transformers:trace_ops -- \
 """
 
 import collections
+
 from absl import app
 from absl import flags
 from absl import logging
 import torch
+from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.utils import tracer_utils
 from torch_tpu._internal.utils import utils
 from examples.huggingface_transformers import model_configs
 import transformers
+
+
+log_utils.log_to_stderr()
+
 
 FLAGS = flags.FLAGS
 

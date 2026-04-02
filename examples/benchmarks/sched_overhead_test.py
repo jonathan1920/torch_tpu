@@ -26,9 +26,14 @@ import torch
 import torch._inductor.config as inductor_config
 from torch_tpu import api
 from torch_tpu._internal import sync
+from torch_tpu._internal.utils import log_utils
 
 from torch_tpu._internal.shims.xprof import traceme
 from torch_tpu._internal.shims.xprof import xprof_session
+
+
+log_utils.log_to_stderr()
+
 
 _NUM_WARMUP_STEPS = flags.DEFINE_integer(
     "num_warmup_steps", 5, "Numer of warm-up steps."

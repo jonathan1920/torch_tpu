@@ -22,15 +22,17 @@ blaze test -c opt \
 """
 
 import json
-
 from absl import logging
 from absl.testing import absltest
 import torch
 from torch_tpu import api
 from torch_tpu._internal import sync
+from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.utils import utils
 from examples.gemma3 import model
 import transformers
+
+log_utils.log_to_stderr()
 
 
 class TestModel(absltest.TestCase):

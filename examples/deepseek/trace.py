@@ -23,9 +23,13 @@ The core algorithm is adapted from work by @gunhyun.
 from absl import app
 from absl import logging
 import torch
+from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.utils import tracer_utils
 from torch_tpu._internal.utils import utils
 from examples.deepseek import model
+
+
+log_utils.log_to_stderr()
 
 
 def main(argv):

@@ -154,4 +154,12 @@ torch_tpu_py_test(
     ],
 )
 
+pytype_strict_library(
+    name = "log_utils",
+    srcs = ["log_utils.py"],
+    deps = [
+        "//shims/absl_py/logging",
+    ],
+)
+
 torch_tpu_package_end()

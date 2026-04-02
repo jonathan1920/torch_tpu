@@ -33,6 +33,7 @@ pytype_strict_library(
         "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
         "//torch_tpu/_internal/shims/xprof:xprof_session",
         "//torch_tpu/_internal/utils:device_utils",
+        "//torch_tpu/_internal/utils:log_utils",
         "//torch_tpu/api",
         "@pypi//numpy",
     ],
@@ -46,6 +47,7 @@ pytype_strict_library(
         "//shims/absl_py/logging",
         "//torch_tpu/_internal/shims/mlcompass:benchmark_data",
         "//torch_tpu/_internal/shims/mlcompass:export_lib_borg",
+        "//torch_tpu/_internal/utils:log_utils",
     ],
 )
 
@@ -67,6 +69,7 @@ pytype_strict_library(
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
         "//torch_tpu/_internal/utils:device_utils",
+        "//torch_tpu/_internal/utils:log_utils",
         "//torch_tpu/api",
         "@pypi//tensorboardx",
     ],
@@ -81,9 +84,11 @@ pytype_strict_library(
         ":mlcompass_utils",
         "//examples/benchmarks/quality_utils:quality_benchmark_model",
         "//examples/benchmarks/quality_utils/metrics:data_loader",
+        "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/distributed:gpu_env",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/utils:log_utils",
         "//torch_tpu/api",
     ],
 )

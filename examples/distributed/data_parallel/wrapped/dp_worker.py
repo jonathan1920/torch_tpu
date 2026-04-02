@@ -18,26 +18,22 @@ This file contains model initializations, training loop, and result validation.
 For the model itself, see simple_model.py
 """
 
-import logging
 import sys
 
 from absl import flags
+from absl import logging
 from torch import distributed as dist
 from torch import optim
 from torch.nn.parallel import DistributedDataParallel as DDP  # pylint: disable=g-importing-member
 from torch_tpu import api
+from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.utils import utils
 from examples.distributed.data_parallel import dp_utils
 
+
 FLAGS = flags.FLAGS
 
-# Direct all logs to stdout so kubectl logs can see them.
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    stream=sys.stdout,
-)
-logger = logging.getLogger(__name__)
+log_utils.log_to_stderr()
 
 flags.DEFINE_bool(
     "broadcast_buffers",
@@ -109,7 +105,7 @@ def worker_fn() -> None:
         random_seed=RANDOM_SEED,
     )
     cpu_final_weight = cpu_model.linear1_weight()
-    logger.info(
+    logging.info(
         "CPU: rank: %d, final weight 1 (reference): %s",
         rank,
         cpu_final_weight,
@@ -146,7 +142,7 @@ def worker_fn() -> None:
   )
 
   tpu_final_weight = model.linear1_weight()
-  logger.info(
+  logging.info(
       "TPU: rank: %d, final weight 1 (distributed): %s",
       rank,
       tpu_final_weight,

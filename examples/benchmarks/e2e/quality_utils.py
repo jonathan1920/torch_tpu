@@ -15,18 +15,23 @@
 """Utilities for running end-to-end quality benchmarks."""
 
 import dataclasses
-import logging
 from typing import Sequence
 
+from absl import logging
 from torch import distributed as dist
 from torch.google import distributed as g3_distributed
 from torch_tpu import api
 from torch_tpu._internal.distributed import gpu_env
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
+from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.quality_utils import quality_benchmark_model
 from examples.benchmarks.quality_utils.metrics import data_loader
+
+
+log_utils.log_to_stderr()
+
 
 N_PROC_MAP = {
     benchmark_utils.Platform.B200_4: 4,

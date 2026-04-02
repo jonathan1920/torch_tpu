@@ -30,10 +30,14 @@ from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.utils import benchmarking
+from torch_tpu._internal.utils import log_utils
 from examples import paths
 import transformers
 
 from torch_tpu._internal.shims.xprof import traceme
+
+
+log_utils.log_to_stderr()
 
 
 MODEL_PATH = f"{paths.XM_HOME}weights/huggingface/microsoft/resnet-50"

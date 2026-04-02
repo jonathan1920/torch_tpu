@@ -21,6 +21,10 @@ from typing import Any, Iterable, final
 
 from absl import logging
 import torch
+from torch_tpu._internal.utils import log_utils
+
+
+log_utils.log_to_stderr()
 
 
 class MetricProducer(abc.ABC):

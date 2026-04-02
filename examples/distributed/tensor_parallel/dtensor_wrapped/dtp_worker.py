@@ -20,27 +20,22 @@ layers automatically across TPU chunks without manually rewriting the
 model code.
 """
 
-import logging
 import os
-import sys
 
+from absl import logging
 import torch
 from torch import distributed as dist
 from torch.distributed import device_mesh
 from torch.distributed import tensor
 from torch.distributed.tensor import parallel
 from torch_tpu import api
+# Direct all logs to stdout so kubectl logs can see them
+from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.utils import utils
 from examples.distributed.tensor_parallel.dtensor_wrapped import model
 
 
-# Direct all logs to stdout so kubectl logs can see them
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    stream=sys.stdout,
-)
-logger = logging.getLogger(__name__)
+log_utils.log_to_stderr()
 
 BATCH_SIZE = 64
 MODEL_DIM = 128
@@ -60,7 +55,7 @@ def worker_fn() -> None:
   """
   rank = int(os.environ["RANK"])
   world_size = int(os.environ["WORLD_SIZE"])
-  logger.info("Worker function started, rank: %d", rank)
+  logging.info("Worker function started, rank: %d", rank)
 
   _ = api.tpu_device()
   dist.init_process_group(backend="tpu_dist")
@@ -74,7 +69,7 @@ def worker_fn() -> None:
     with torch.no_grad():
       data = fake_dataloader_read()
       reference_output = mymodel(data)
-    logger.info("CPU rank: %d, reference_output: %s", rank, reference_output)
+    logging.info("CPU rank: %d, reference_output: %s", rank, reference_output)
 
   # Run on multiple TPUs using Tensor Parallelism via Wrappers.
   torch.manual_seed(RANDOM_SEED)
@@ -122,7 +117,7 @@ def worker_fn() -> None:
       # PyTorch DTensors use the to_local() method to drop the proxy and get the inner tensor.
       tpu_tp_output = tpu_tp_output.to_local().cpu()
 
-  logger.info("TPU rank: %d, tpu_tp_output: %s", rank, tpu_tp_output)
+  logging.info("TPU rank: %d, tpu_tp_output: %s", rank, tpu_tp_output)
 
   # Assert TPU outputs on rank=0 match the reference outputs.
   if rank == 0:

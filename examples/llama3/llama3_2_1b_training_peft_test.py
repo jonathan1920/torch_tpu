@@ -22,9 +22,12 @@ from etils import epath
 import peft
 import torch
 from torch.utils.data import DataLoader
+from torch_tpu._internal.utils import log_utils
 import torch_tpu.api as tpu
 from examples import paths
 import transformers
+
+log_utils.log_to_stderr()
 
 
 FLAGS = flags.FLAGS

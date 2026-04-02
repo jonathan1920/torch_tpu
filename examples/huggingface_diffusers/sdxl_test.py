@@ -26,7 +26,11 @@ from absl.testing import absltest
 import diffusers
 import torch
 import torch.nn.functional as F
+from torch_tpu._internal.utils import log_utils
 from examples import paths
+
+
+log_utils.log_to_stderr()
 
 
 _DEVICE = flags.DEFINE_enum(

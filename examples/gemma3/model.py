@@ -45,9 +45,15 @@ import copy
 import math
 import types
 from typing import Any, Optional, cast
+
 from absl import logging
 import torch
 from torch import nn
+from torch_tpu._internal.utils import log_utils
+
+
+log_utils.log_to_stderr()
+
 
 # This was established to be equiv to text part of Gemma3 27B in tool.py.
 # Directly modify the num_hidden_layers to 6 to create a mini version.

@@ -27,11 +27,15 @@ import numpy as np
 import torch
 from torch.utils import _pytree as pytree
 from torch_tpu._internal.utils import device_utils
+from torch_tpu._internal.utils import log_utils
 import torch_tpu.api as xla_api
 from examples.benchmarks.quality_utils import quality_benchmark_model
 
 from torch_tpu._internal.shims.xprof import xprof_analysis_client
 from torch_tpu._internal.shims.xprof import xprof_session
+
+
+log_utils.log_to_stderr()
 
 
 MAX_WARMUP_STEPS = flags.DEFINE_integer(

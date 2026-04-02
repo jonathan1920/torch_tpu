@@ -20,8 +20,11 @@ from absl import app
 from absl import logging
 import torch
 from torch_tpu import api
+from torch_tpu._internal.utils import log_utils
 from examples import paths
 import transformers
+
+log_utils.log_to_stderr()
 
 
 #  for backend registration

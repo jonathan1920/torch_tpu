@@ -46,8 +46,10 @@ pytype_strict_library(
     srcs = ["dp_worker.py"],
     deps = [
         "//examples/distributed/data_parallel:dp_utils",
+        "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/utils",
+        "//torch_tpu/_internal/utils:log_utils",
         "//torch_tpu/api",
     ],
 )

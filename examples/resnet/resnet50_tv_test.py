@@ -26,10 +26,14 @@ from absl.testing import absltest
 from etils import epath
 from PIL import Image
 import torch
+from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.utils import tracer_utils
 from torch_tpu._internal.utils import utils
 from examples import paths
 import torchvision
+
+
+log_utils.log_to_stderr()
 
 
 _DEVICE = flags.DEFINE_enum(

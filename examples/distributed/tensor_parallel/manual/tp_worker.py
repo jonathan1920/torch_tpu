@@ -18,23 +18,19 @@ This file contains model initializations, inference loop, and result validation.
 For the model itself, including the tensor-parallelism logic, see model.py.
 """
 
-import logging
 import os
-import sys
 
+from absl import logging
 import torch
 from torch import distributed as dist
 from torch_tpu import api
+# Direct all logs to stdout so kubectl logs can see them
+from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.utils import utils
 from examples.distributed.tensor_parallel.manual import model
 
-# Direct all logs to stdout so kubectl logs can see them
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    stream=sys.stdout,
-)
-logger = logging.getLogger(__name__)
+
+log_utils.log_to_stderr()
 
 BATCH_SIZE = 64
 MODEL_DIM = 256
@@ -54,6 +50,7 @@ def worker_fn() -> None:
   """
   rank = int(os.environ.get("RANK", -1))
   local_rank = int(os.environ.get("LOCAL_RANK", -1))
+  logging.info("Worker function started, rank: %d", rank)
 
   _ = api.tpu_device()
 
@@ -68,6 +65,7 @@ def worker_fn() -> None:
     with torch.no_grad():
       data = fake_dataloader_read()
       reference_output = mymodel(data)
+    logging.info("rank: %d, reference_output: %s", rank, reference_output)
 
   # Run on multiple TPUs using Tensor Parallelism.
   torch.manual_seed(RANDOM_SEED)
@@ -85,7 +83,7 @@ def worker_fn() -> None:
     tpu_tp_output = tpu_tp_output.cpu()
     step_time = time.time() - start_time
 
-  logger.info(
+  logging.info(
       "rank: %d, step_time: %f s, tpu_tp_output: %s",
       rank,
       step_time,
@@ -94,7 +92,7 @@ def worker_fn() -> None:
 
   # Assert TPU outputs on rank=0 match the reference outputs.
   if rank == 0:
-    logger.info("Comparing TPU output with reference output...")
+    logging.info("Comparing TPU output with reference output...")
     utils.assert_close(
         actual=tpu_tp_output,
         expected=reference_output,
@@ -102,11 +100,11 @@ def worker_fn() -> None:
         atol=7e-2,
         check_value=utils.CheckValueMode.LOOSE,
     )
-    logger.info("Comparison successful.")
+    logging.info("Comparison successful.")
 
-  logger.info("Destroying process group...")
+  logging.info("Destroying process group...")
   dist.destroy_process_group()
-  logger.info("Worker function finished.")
+  logging.info("Worker function finished.")
 
 
 if __name__ == "__main__":

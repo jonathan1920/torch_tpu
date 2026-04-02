@@ -25,8 +25,12 @@ from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
 import torch
+from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.utils import utils
 from examples.deepseek import model
+
+log_utils.log_to_stderr()
+
 
 CheckValueMode = utils.CheckValueMode
 

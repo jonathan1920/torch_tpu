@@ -36,6 +36,7 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
+        "//torch_tpu/_internal/utils:log_utils",
         "//torch_tpu/api",
     ],
 )
@@ -55,6 +56,7 @@ pytype_strict_binary(
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
+        "//torch_tpu/_internal/utils:log_utils",
         "//torch_tpu/api",
     ],
 )

@@ -21,26 +21,19 @@ into sharded gradients.
 https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html
 """
 
-import logging
-import os
-import sys
-
+from absl import logging
 import torch
 from torch import distributed as dist
 from torch import nn
 from torch import optim
 from torch.distributed import fsdp
 from torch_tpu import api
+from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.utils import utils
 from examples.distributed.fsdp import model
 
-# Direct all logs to stdout so kubectl logs can see them.
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    stream=sys.stdout,
-)
-logger = logging.getLogger(__name__)
+
+log_utils.log_to_stderr()
 
 CheckValueMode = utils.CheckValueMode
 
@@ -66,7 +59,7 @@ def worker_fn() -> None:
   rank = dist.get_rank()
   world_size = dist.get_world_size()
 
-  logger.info('Worker function started, rank: %d', rank)
+  logging.info('Worker function started, rank: %d', rank)
 
   in_features = world_size * 8
   out_features = world_size
@@ -137,7 +130,7 @@ def worker_fn() -> None:
           atol=3e-3,
           preamble=f'step {i}',
       )
-    logger.info('rank: %d, tpu_tp_output: %s', rank, y_pred_ref)
+    logging.info('rank: %d, tpu_tp_output: %s', rank, y_pred_ref)
   dist.destroy_process_group()
 
 

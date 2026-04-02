@@ -12,16 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import os
 
 from absl import logging
 import torch
 from torch_tpu import api
+from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.utils import utils
 from examples.distributed.tensor_parallel_multihost import model
 
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
+
+
+log_utils.log_to_stderr()
 
 
 BATCH_SIZE = 64
@@ -54,9 +57,7 @@ def run_worker(rank: int, world_size: int) -> None:
     with torch.no_grad():
       data = fake_dataloader_read()
       reference_output = mymodel(data)
-    logging.info(
-        'rank: %d, reference_output: %s', rank, reference_output
-    )
+    logging.info('rank: %d, reference_output: %s', rank, reference_output)
 
   torch.manual_seed(RANDOM_SEED)
   mymodel_tp = model.MyModel(dmodel=MODEL_DIM, use_tp=True)

@@ -67,6 +67,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/shims/xprof:traceme",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils:benchmarking",
+        "//torch_tpu/_internal/utils:log_utils",
         "//torch_tpu/api",
         "@pypi//transformers",
         "@rules_python//python/runfiles",

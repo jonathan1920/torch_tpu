@@ -24,9 +24,13 @@ from absl import logging
 from absl.testing import absltest
 import torch
 from torch.nn import attention
+from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.utils import utils
 from examples.huggingface_transformers import model_configs
 import transformers
+
+log_utils.log_to_stderr()
+
 
 _DEVICE = flags.DEFINE_enum(
     "device",

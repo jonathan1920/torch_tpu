@@ -29,6 +29,7 @@ from torch_tpu import api
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import device_utils
+from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import benchmark_function_db
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import mlcompass_utils
@@ -36,6 +37,9 @@ from examples.benchmarks.e2e import model_utils
 from tests.distributed import distributed_utils
 
 from torch_tpu._internal.shims.xprof import xprof_analysis_client
+
+
+log_utils.log_to_stderr()
 
 
 WEIGHTS_DTYPE = flags.DEFINE_string(

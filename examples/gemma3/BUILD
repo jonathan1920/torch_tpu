@@ -26,6 +26,7 @@ pytype_strict_library(
     deps = [
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
+        "//torch_tpu/_internal/utils:log_utils",
     ],
 )
 
@@ -44,6 +45,7 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils",
+        "//torch_tpu/_internal/utils:log_utils",
         "//torch_tpu/api",
         "@pypi//transformers",
     ],

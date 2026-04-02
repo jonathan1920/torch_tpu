@@ -15,7 +15,9 @@
 """Micro benchmarks for common ML layers."""
 
 from collections.abc import Callable, Sequence
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict
+from dataclasses import dataclass
+from dataclasses import replace
 import json
 import os
 import pprint
@@ -40,14 +42,18 @@ from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.utils import benchmarking
+from torch_tpu._internal.utils import log_utils
 from tests import ops_test_data
+
+from torch_tpu._internal.shims.xprof import traceme
+from torch_tpu._internal.shims.xprof import xprof_session
+
 
 generate_configs_for_parameterized = (
     ops_test_data.generate_configs_for_parameterized
 )
+log_utils.log_to_stderr()
 
-from torch_tpu._internal.shims.xprof import traceme
-from torch_tpu._internal.shims.xprof import xprof_session
 
 Metric: TypeAlias = dict[str, str | float]
 Metrics: TypeAlias = Sequence[Metric]

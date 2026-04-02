@@ -15,13 +15,13 @@
 # %%
 """Tests of Llama3 1B training based on llama3_1B_training_nb.py."""
 
+from absl import logging
 import os
 import sys
 import time
 from typing import Any, Dict
 
 from absl import flags
-from absl import logging
 from absl.testing import absltest
 import datasets
 from etils import epath
@@ -33,11 +33,15 @@ from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.utils import benchmarking
 from examples import paths
-
 import tqdm
 import transformers
 
 from torch_tpu._internal.shims.xprof import traceme
+
+
+from torch_tpu._internal.utils import log_utils
+
+log_utils.log_to_stderr()
 
 
 # %%

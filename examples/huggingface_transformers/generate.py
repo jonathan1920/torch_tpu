@@ -28,10 +28,15 @@ from typing import Dict, Iterator, List, Tuple
 from absl import logging
 from etils import epath
 import torch
+from torch_tpu._internal.utils import log_utils
 from examples import paths
 import transformers
 from transformers import masking_utils
 from transformers import modeling_outputs
+
+
+log_utils.log_to_stderr()
+
 
 # Monkey patch to address b/417424824
 masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping["sdpa"] = (  # pylint: disable=protected-access

@@ -21,11 +21,10 @@ into sharded gradients.
 https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html
 """
 
-import logging
 import os
-import sys
 import tempfile
 
+from absl import logging
 import peft
 from peft.utils.constants import WEIGHTS_NAME
 from peft.utils.save_and_load import get_peft_model_state_dict
@@ -39,18 +38,13 @@ from torch.distributed.fsdp.fully_sharded_data_parallel import FullStateDictConf
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
 import torch.multiprocessing as mp
 from torch_tpu import api
+from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.utils import utils
 from examples.distributed.fsdp import fsdp_worker as fsdp_tp_worker
 from examples.distributed.fsdp import model
 
 
-# Direct all logs to stdout so kubectl logs can see them.
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    stream=sys.stdout,
-)
-logger = logging.getLogger(__name__)
+log_utils.log_to_stderr()
 
 
 def worker_fn() -> None:
@@ -213,7 +207,7 @@ def worker_fn() -> None:
           atol=3e-3,
           preamble=f'step {i}',
       )
-      logger.info('rank: %d, tpu_tp_output: %s', rank, y_pred_ref)
+      logging.info('rank: %d, tpu_tp_output: %s', rank, y_pred_ref)
     dist.destroy_process_group()
 
 

@@ -31,10 +31,14 @@ from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.utils import benchmarking
+from torch_tpu._internal.utils import log_utils
 import transformers
 
 from torch_tpu._internal.shims.xprof import traceme
 from rules_python.python.runfiles import runfiles
+
+log_utils.log_to_stderr()
+
 
 _NUM_EPOCHS = flags.DEFINE_integer("num_epochs", 10, "Numer of epochs.")
 

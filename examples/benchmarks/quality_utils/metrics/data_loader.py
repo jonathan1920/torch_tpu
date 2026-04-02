@@ -20,6 +20,10 @@ from typing import Any, Iterable
 from absl import logging
 import grain.python as grain
 import tensorflow_datasets as tfds
+from torch_tpu._internal.utils import log_utils
+
+
+log_utils.log_to_stderr()
 
 
 def _get_num_prompts(num_prompts: int, dataset_size: int) -> int:

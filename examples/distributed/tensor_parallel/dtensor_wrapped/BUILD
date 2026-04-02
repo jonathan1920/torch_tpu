@@ -51,8 +51,10 @@ pytype_strict_library(
     srcs = ["dtp_worker.py"],
     deps = [
         ":model",
+        "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/utils",
+        "//torch_tpu/_internal/utils:log_utils",
         "//torch_tpu/api",
     ],
 )
