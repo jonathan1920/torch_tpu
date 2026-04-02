@@ -414,12 +414,15 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
       values.to("cpu")
       indices.to("cpu")
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # TorchTPU does not support `sorted=False` for `_unique2()`.
+  # TODO: add support for `_unique2()` with `sorted=False`
   def test_unique2_unsupported_sorted(self):
     """Tests unique2 fails if sorted=False."""
     t = torch.ones(2, 3, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        "unique2: sorted=false is not supported yet on TPU",
+        tpu="unique2(): sorted=False is not yet supported",
     ):
       torch.ops.aten._unique2(
           t, sorted=False, return_inverse=True, return_counts=True

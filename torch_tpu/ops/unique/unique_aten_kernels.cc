@@ -124,7 +124,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenUnique2(
        IgnoreInCacheKey(return_counts)),
       {
         TT_CHECK_THROW(sorted, error::kInvalidArgument)
-            << "expected sorted=true, got sorted=false";
+            << "sorted=False is not yet supported";
 
         TT_ASSIGN_OR_THROW(at::Tensor unique_count_tensor,
                            GetUniqueCount(self, sorted));
