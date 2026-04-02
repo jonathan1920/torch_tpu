@@ -31,7 +31,9 @@ torch_tpu_py_test(
     main = "launch.py",
     notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
-        "noasan",  # OOMs even with the highest memory limit.
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
         "requires-tpu-v5lite:8",
     ],
     deps = [
