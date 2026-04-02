@@ -48,11 +48,18 @@ jobs:
     name: "Postsubmit on ${{ matrix.job_info.runner }}"
     # Available self-hosted runners.
     strategy:
+      fail-fast: false
       matrix:
         job_info: [
           {
             runner: "linux-x86-ct6e-180-8tpu",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            running_on_v7: false,
+            bazel_config: "ci_tpu_on_v6",
+          },
+          {
+            runner: "linux-x86-tpu7x-224-4tpu",
+            running_on_v7: true,
+            bazel_config: "ci_tpu_on_v7",
           }
         ]
     # Use self-hosted runners. For a Linux runner, a corresponding container image used for the
@@ -60,7 +67,7 @@ jobs:
     # See go/ml-github-actions/getting_started/using_runners.md#supported-runner-scale-set.
     runs-on: ${{ matrix.job_info.runner }}
     container:
-      image: ${{ matrix.job_info.container }}
+      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
     steps:
       - run: echo "Start running tests."
       # Clone the GitHub repository to runner's environment $GITHUB_WORKSPACE, making its files
@@ -74,20 +81,33 @@ jobs:
         uses: google-ml-infra/actions/ci_connection@9f8d7d8d9954430d0fef4a8cce2cb4e3844c200d
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
+      # TODO: b/494827819 - Remove this step once we figure out a way to make this CI work without
+      # lock removal.
+      # This step is to violently evict any dirty state of previous crashed jobs, guarantee the TPU
+      # is unlocked and ready for the current job. Self-hosted v7 runners seems to be persistent
+      # machines that cannot exit cleanly on failure. Leftover lockfile blocks subsequent jobs
+      # saying "All accelerator slots are busy, retrying in 1s...".
+      # `|| true` is to prevent the workflow from failing if the cleanup command fails. It
+      # transforms the command from a strict requirement into a "best-effort" command, and ensures
+      # that this workflow never accidentally fails just because the cleanup step itself threw a
+      # minor filesystem warning.
+      - name: Clean up stale TPU locks
+        if: ${{ matrix.job_info.running_on_v7 }}
+        run: sudo rm -f /tmp/libtpu_lockfile || true
       # Run Bazel build.
       # The flags used here for `bazel build` need to be the same as that used for `bazel test`
       # below. Otherwise, the remote cache benefits of the build step are lost and the test step has
       # to redo that work.
-      - run: bazel build --config=ci_tpu_on_v6 --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" //...
+      - run: bazel build --config=${{ matrix.job_info.bazel_config }} --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" //...
       # Run Bazel test.
       # The flags used here for `bazel test` need to be the same as that used for `bazel build`
       # above. Otherwise, the remote cache benefits of the build step are lost and the test step has
       # to redo that work.
-      - run: bazel test --config=ci_tpu_on_v6 --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" //...
+      - run: bazel test --config=${{ matrix.job_info.bazel_config }} --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" //...
       - name: Upload Test Logs on Failure
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: bazel-testlogs
+          name: bazel-testlogs-${{ matrix.job_info.runner }}
           path: bazel-testlogs/
           retention-days: 7
