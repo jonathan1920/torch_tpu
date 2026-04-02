@@ -223,6 +223,13 @@ common:ci_tpu_base --test_tag_filters=-notest_oss,-nobuild_oss,-notap
 
 common:ci_tpu --config=ci_tpu_base
 
+common:ci_tpu_on_v6 --config=ci_tpu_base
+common:ci_tpu_on_v6 --test_tag_filters=-notest_oss,-nobuild_oss,-notap,-fails-on-tpu-v6
+
+common:ci_tpu_on_v7 --config=ci_tpu_base
+common:ci_tpu_on_v7 --test_tag_filters=-notest_oss,-nobuild_oss,-notap,-fails-on-tpu-v7
+common:ci_tpu_on_v7 --local_test_jobs=1
+
 common:ci_tpu_nightly --config=ci_tpu_base
 
 # Setting TPU support true for profiler trace.
