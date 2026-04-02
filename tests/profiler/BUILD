@@ -57,4 +57,19 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "profiler_backend_test",
+    srcs = ["profiler_backend_test.py"],
+    main = "profiler_backend_test.py",
+    notest_oss = "has import errors in OSS",
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//torch_tpu/_internal/profiler",
+        "@pypi//portpicker",
+    ],
+)
+
 torch_tpu_package_end()
