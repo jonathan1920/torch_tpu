@@ -81,6 +81,17 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
+    name = "ops_test_data",
+    testonly = True,
+    srcs = ["ops_test_data.py"],
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//shims/absl_py/flags",
+        "//shims/torch:pytorch",
+    ],
+)
+
+pytype_strict_library(
     name = "dynamism_test_utils",
     testonly = True,
     srcs = ["dynamism_test_utils.py"],
@@ -419,6 +430,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":op_testing",
+        ":ops_test_data",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -449,6 +461,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":op_testing",
+        ":ops_test_data",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
@@ -480,6 +493,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":op_testing",
+        ":ops_test_data",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",

@@ -40,6 +40,11 @@ from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.utils import benchmarking
+from tests import ops_test_data
+
+generate_configs_for_parameterized = (
+    ops_test_data.generate_configs_for_parameterized
+)
 
 from torch_tpu._internal.shims.xprof import traceme
 from torch_tpu._internal.shims.xprof import xprof_session
@@ -97,14 +102,6 @@ _CAPTURE_DELIM = flags.DEFINE_string(
     "Surrounds structured output so that it may be captured by build"
     " orchestration tools listening on this tests console output. Has no effect"
     " in text output mode.",
-)
-
-_RUN_CONFIGS = flags.DEFINE_enum(
-    "run_configs",
-    "first",
-    ["first", "all"],
-    "Which test configurations to run. 'first' runs only the first config,"
-    " while 'all' runs all configurations.",
 )
 
 
@@ -187,27 +184,6 @@ def is_pytorch_framework() -> bool:
 
 def is_jax_framework() -> bool:
   return _FRAMEWORK.value == "jax"
-
-
-def generate_configs_for_parameterized(configs):
-  """Generates test parameters from a list of configuration dataclasses."""
-  # Parse flags if they haven't been parsed yet. This is necessary because
-  # parameterized decorators are executed at module import time, before
-  # absltest.main() has a chance to parse them.
-  if not flags.FLAGS.is_parsed():
-    flags.FLAGS(sys.argv, known_only=True)
-
-  for config in configs:
-    config_dict = asdict(config)
-    name_parts = (
-        f"{k}_{str(v).replace('torch.', '')}" if k == "dtype" else f"{k}_{v}"
-        for k, v in config_dict.items()
-    )
-    testcase_name = "_".join(name_parts)
-    yield dict(testcase_name=testcase_name, config=config)
-    if _RUN_CONFIGS.value == "first":
-      # We consider only the first configuration.
-      break
 
 
 def reset_torch_cuda_peak_memory():
@@ -1410,145 +1386,18 @@ class MlLayersTest(parameterized.TestCase):
         is_jax=True,
     )
 
-  # ############################################################################
   # Scaled dot product attention tests
   # ############################################################################
 
-  @dataclass(frozen=True)
-  class _SdpaConfig:
-    # TODO(elliotenglish): Use kv_seq_len to have different q and kv sequence
-    # lengths as is the case in inference or chunked processing.
-    batch_size: int
-    embed_dim: int
-    q_seq_len: int
-    # kv_seq_len: int
-    q_num_heads: int
-    kv_num_heads: int
-    qk_head_dim: int
-    v_head_dim: int
-    is_causal: bool
-    enable_gqa: bool
-    dtype: torch.dtype
-    use_math_backend: bool = False
-
-  _sdpa_configs = [
-      replace(config, use_math_backend=use_math_backend)
-      for config in [
-          # Default config for smoke test.
-          _SdpaConfig(
-              batch_size=1,
-              embed_dim=4096,
-              q_seq_len=128,
-              # kv_seq_len=128,
-              q_num_heads=8,
-              kv_num_heads=8,
-              qk_head_dim=64,
-              v_head_dim=64,
-              is_causal=True,
-              enable_gqa=True,
-              dtype=torch.bfloat16,
-          ),
-          # Configs for Llama3 70B attention layers
-          _SdpaConfig(
-              batch_size=1,
-              embed_dim=4096,
-              q_seq_len=2048,
-              # kv_seq_len=2048,
-              q_num_heads=64,
-              kv_num_heads=64,
-              qk_head_dim=128,
-              v_head_dim=128,
-              is_causal=True,
-              enable_gqa=True,
-              dtype=torch.bfloat16,
-          ),
-          _SdpaConfig(
-              batch_size=4,
-              embed_dim=4096,
-              q_seq_len=2048,
-              # kv_seq_len=2048,
-              q_num_heads=64,
-              kv_num_heads=64,
-              qk_head_dim=128,
-              v_head_dim=128,
-              is_causal=True,
-              enable_gqa=True,
-              dtype=torch.bfloat16,
-          ),
-          # Configs for Qwen3 480B attention layers
-          _SdpaConfig(
-              batch_size=1,
-              embed_dim=4096,
-              q_seq_len=2048,
-              # kv_seq_len=2048,
-              q_num_heads=96,
-              kv_num_heads=96,
-              qk_head_dim=128,
-              v_head_dim=128,
-              is_causal=True,
-              enable_gqa=True,
-              dtype=torch.bfloat16,
-          ),
-          _SdpaConfig(
-              batch_size=4,
-              embed_dim=4096,
-              q_seq_len=2048,
-              # kv_seq_len=2048,
-              q_num_heads=96,
-              kv_num_heads=96,
-              qk_head_dim=128,
-              v_head_dim=128,
-              is_causal=True,
-              enable_gqa=True,
-              dtype=torch.bfloat16,
-          ),
-          # Configs for Gemma3 27B attention layers
-          _SdpaConfig(
-              batch_size=1,
-              embed_dim=4096,
-              q_seq_len=2048,
-              # kv_seq_len=2048,
-              q_num_heads=32,
-              kv_num_heads=32,
-              qk_head_dim=128,
-              v_head_dim=128,
-              is_causal=True,
-              enable_gqa=True,
-              dtype=torch.bfloat16,
-          ),
-          _SdpaConfig(
-              batch_size=4,
-              embed_dim=4096,
-              q_seq_len=2048,
-              # kv_seq_len=2048,
-              q_num_heads=32,
-              kv_num_heads=32,
-              qk_head_dim=128,
-              v_head_dim=128,
-              is_causal=True,
-              enable_gqa=True,
-              dtype=torch.bfloat16,
-          ),
-          # AFM v7 configs
-          _SdpaConfig(
-              batch_size=4,
-              embed_dim=2048,
-              q_seq_len=2048,
-              # kv_seq_len=2048,
-              q_num_heads=16,
-              kv_num_heads=2,
-              qk_head_dim=128,
-              v_head_dim=128,
-              is_causal=True,
-              enable_gqa=True,
-              dtype=torch.bfloat16,
-          ),
-      ]
-      for use_math_backend in [False, True]
+  _sdpa_configs_with_math_backend = ops_test_data.SDPA_CONFIGS + [
+      replace(config, use_math_backend=True)
+      for config in ops_test_data.SDPA_CONFIGS
   ]
 
   @parameterized.named_parameters(
-      generate_configs_for_parameterized(_sdpa_configs)
+      ops_test_data.generate_configs_for_parameterized(
+          _sdpa_configs_with_math_backend
+      )
   )
   def test_nn_Sdpa(self, config):
     """Benchmark torch.nn.functional.scaled_dot_product_attention."""
@@ -1557,7 +1406,7 @@ class MlLayersTest(parameterized.TestCase):
 
     class AttentionLayer(torch.nn.Module):
 
-      def __init__(self, c: MlLayersTest._SdpaConfig):
+      def __init__(self, c: ops_test_data.SdpaConfig):
         super().__init__()
         self.c = c
         self.q_proj = torch.nn.Linear(
@@ -1631,7 +1480,9 @@ class MlLayersTest(parameterized.TestCase):
     )
 
   @parameterized.named_parameters(
-      generate_configs_for_parameterized(_sdpa_configs)
+      ops_test_data.generate_configs_for_parameterized(
+          ops_test_data.SDPA_CONFIGS
+      )
   )
   def test_nnx_Sdpa(self, config):
     """Benchmark jax.nn.dot_product_attention."""
@@ -1640,7 +1491,7 @@ class MlLayersTest(parameterized.TestCase):
 
     class AttentionLayer(flax.nnx.Module):
 
-      def __init__(self, c: MlLayersTest._SdpaConfig, rngs):
+      def __init__(self, c: ops_test_data.SdpaConfig, rngs):
         super().__init__()
         self.c = c
         dtype = pt2jax_dtype(c.dtype)

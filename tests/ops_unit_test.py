@@ -16,6 +16,7 @@
 
 import concurrent
 import contextlib
+import dataclasses
 import functools
 import itertools
 import math
@@ -31,6 +32,7 @@ from torch_tpu import api
 from torch_tpu._internal import sync
 from torch_tpu._internal.utils import utils
 from tests import op_testing
+from tests import ops_test_data
 
 # In this file, we use the following naming convention for variables:
 # - golden_*: a value for the device used for computing the golden results
@@ -5503,6 +5505,68 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
       with self.subTest(shape=shape):
         self.assert_close_tpu_vs_cpu(compute)
+
+  @parameterized.named_parameters(
+      ops_test_data.generate_configs_for_parameterized([
+          # Reduce the batch size to max 2 to avoid OOM on smaller devices.
+          dataclasses.replace(c, batch_size=min(c.batch_size, 2))
+          for c in ops_test_data.SDPA_CONFIGS
+      ])
+  )
+  def test_scaled_dot_product_attention(self, config: ops_test_data.SdpaConfig):
+    """Tests torch.nn.functional.scaled_dot_product_attention."""
+    torch.manual_seed(5432)
+    q = torch.randn(
+        config.batch_size,
+        config.q_num_heads,
+        config.q_seq_len,
+        config.qk_head_dim,
+        dtype=config.dtype,
+    )
+    k = torch.randn(
+        config.batch_size,
+        config.kv_num_heads,
+        config.q_seq_len,  # Using q_seq_len as per ml_layers_test logic for K
+        config.qk_head_dim,
+        dtype=config.dtype,
+    )
+    v = torch.randn(
+        config.batch_size,
+        config.kv_num_heads,
+        config.q_seq_len,
+        config.v_head_dim,
+        dtype=config.dtype,
+    )
+
+    def compute(device):
+      q_t = q.clone().detach().to(device)
+      k_t = k.clone().detach().to(device)
+      v_t = v.clone().detach().to(device)
+      q_t.requires_grad_(True)
+      k_t.requires_grad_(True)
+      v_t.requires_grad_(True)
+
+      y = torch.nn.functional.scaled_dot_product_attention(
+          q_t,
+          k_t,
+          v_t,
+          is_causal=config.is_causal,
+          enable_gqa=config.enable_gqa,
+      )
+
+      y.sum().backward()
+      return y, q_t.grad, k_t.grad, v_t.grad
+
+    # Use tolerances from ops_test.py for SDPA
+    rtol, atol = None, None
+    if config.dtype == torch.bfloat16:
+      rtol, atol = 5e-2, 1e-1
+    elif config.dtype == torch.float32:
+      rtol, atol = 1e-2, 1e-2
+
+    self.assert_close_tpu_vs_cpu(
+        compute, rtol=rtol, atol=atol, check_value=utils.CheckValueMode.LOOSE
+    )
 
 
 if __name__ == "__main__":
