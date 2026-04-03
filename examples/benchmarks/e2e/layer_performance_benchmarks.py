@@ -28,8 +28,8 @@ from examples.benchmarks.e2e import test_utils
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 _ALL_RUN_MODES = (
-    benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE_WITH_O1,
-    benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE,
+    benchmark_utils.RunMode.EAGER_DEFAULT,
+    benchmark_utils.RunMode.EAGER_OPTIMIZED,
     benchmark_utils.RunMode.COMPILED,
 )
 
@@ -459,8 +459,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_rmsnorm(self, run_mode, is_training, layer_config):
     # TODO: b/494430218 - Fix RMSNorm training.
     if is_training and run_mode in (
-        benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE_WITH_O1,
-        benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE,
+        benchmark_utils.RunMode.EAGER_DEFAULT,
+        benchmark_utils.RunMode.EAGER_OPTIMIZED,
     ):
       self.skipTest("RMSNorm training with eager mode fails.")
     config = performance_utils.PerformanceBenchmarkConfig(

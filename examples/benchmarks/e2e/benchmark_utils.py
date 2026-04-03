@@ -159,21 +159,21 @@ class RunMode(enum.Enum):
   Make sure that no entry is a prefix of the other. Run mode name is appended
   to test names, and MLCompass runs tests based on a prefix match, it can lead
   to duplicate entries. For e.g., test_model_eager will match both
-  test_model_eager and test_model_eager_defer_and_fuse. Hence, we use
-  eager_defer_and_fuse_with_o1 and eager_defer_and_fuse.
+  test_model_eager and test_model_eager_optimized. Hence, we use
+  eager_default and eager_optimized.
   """
 
-  EAGER_DEFER_AND_FUSE_WITH_O1 = (  # Run the model in eager mode with O1 XLA optimizations.
-      "eager_defer_and_fuse_with_o1"
+  EAGER_DEFAULT = (  # Run the model in eager mode with DeferAndFuseWithO1.
+      "eager_default"
   )
-  EAGER_DEFER_AND_FUSE = (  # Run the model in eager mode with O2 XLA optimizations.
-      "eager_defer_and_fuse"
+  EAGER_OPTIMIZED = (  # Run the model in eager mode with DeferAndFuse.
+      "eager_optimized"
   )
   DEFER_NEVER_ONLY = (  # Run the model in eager mode with DeferNever.
       "defer_never_only"
   )
-  DEFER_NEVER_AND_LAUNCH_BLOCKING = (  # Run the model in eager mode with DeferNeverAndLaunchBlocking.
-      "defer_never_and_launch_blocking"
+  EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING = (  # Run the model in eager mode with DeferNeverAndLaunchBlocking.
+      "eager_defer_never_and_launch_blocking"
   )
   COMPILED = "compiled"  # Run the model with torch.compile.
 

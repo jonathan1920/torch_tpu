@@ -112,7 +112,7 @@ class BenchmarkTest(absltest.TestCase):
     platform = benchmark_utils.PLATFORM.value
     self.run_benchmark_test(
         _distributed_meta_llama_3_benchmark_config(
-            platform, "8B", benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE_WITH_O1
+            platform, "8B", benchmark_utils.RunMode.EAGER_DEFAULT
         ),
         _META_LLAMA_3_2_8B_BENCHMARK_NAME,
         True,
@@ -125,7 +125,7 @@ class BenchmarkTest(absltest.TestCase):
         _distributed_meta_llama_3_benchmark_config(
             platform,
             "70B",
-            benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE_WITH_O1,
+            benchmark_utils.RunMode.EAGER_DEFAULT,
         ),
         _META_LLAMA_3_2_70B_BENCHMARK_NAME,
         True,
