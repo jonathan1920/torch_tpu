@@ -16,10 +16,12 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
@@ -145,9 +147,15 @@ absl::Status TpuProfilerSession::Start(const std::string& logdir,
   }
   ABSL_LOG(INFO) << "Starting trace, logdir: " << logdir;
 
-  session_ = tsl::ProfilerSession::Create(opts);
-  TT_RETURN_IF_ERROR(session_->Status()).SetPrepend()
+  // Put the new session in a temporary variable first. Only update
+  // session_ if the session is successfully created. This way, if the new
+  // session has a bad status, session_ will still be null and the user
+  // can try to create a session again.
+  auto session = tsl::ProfilerSession::Create(opts);
+  TT_RETURN_IF_ERROR(session->Status()).SetPrepend()
       << "failed to start profiler session: ";
+
+  session_ = std::move(session);
   return absl::OkStatus();
 }
 
@@ -156,6 +164,17 @@ absl::Status TpuProfilerSession::Stop(const std::string& filename) {
   TT_RET_CHECK(session_ != nullptr, error::kFailedPrecondition)
       << "the profiler session has not been started or has already been "
          "stopped";
+
+  // Set an auto-cleanup callback to ensure that the session is deleted
+  // regardless of whether an error occurs below.
+  absl::Cleanup cleanup = [this] {
+    // cleanup is guaranteed to destruct before the lock destructs,
+    // so accessing the session_ here is safe. However, the compiler
+    // isn't smart enough to know this, so we need to assert that the mutex is
+    // held. Without this, the code won't compile.
+    mutex_.AssertHeld();
+    session_.reset();
+  };
 
   tensorflow::profiler::XSpace xspace;
   TT_RETURN_IF_ERROR(session_->CollectData(&xspace))
@@ -186,7 +205,6 @@ absl::Status TpuProfilerSession::Stop(const std::string& filename) {
       << "failed to write data to " << filename;
   TT_RETURN_IF_ERROR(outfile->Close()) << "failed to close file: " << filename;
 
-  session_.reset();
   return absl::OkStatus();
 }
 

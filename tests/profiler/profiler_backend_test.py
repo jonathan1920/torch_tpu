@@ -146,6 +146,21 @@ class ProfilerBackendTest(absltest.TestCase):
     finally:
       profiler_backend.stop_trace(os.path.join(self.tmpdir, 'trace.pb'))
 
+  def test_retry_start_after_stop_failure(self):
+    """Calling stop_trace() failure should still allow a subsequent start."""
+
+    profiler_backend.start_trace(self.tmpdir)
+    # Use a directory path as a filename, which should fail on stop.
+    # In Stop(), it tries to NewWritableFile(filename, &outfile).
+    # If self.tmpdir is a directory, NewWritableFile likely fails.
+    invalid_filename = self.tmpdir
+    with self.assertRaisesRegex(RuntimeError, 'failed to create file'):
+      profiler_backend.stop_trace(invalid_filename)
+
+    # Now verify that we can start again.
+    profiler_backend.start_trace(self.tmpdir)
+    profiler_backend.stop_trace(os.path.join(self.tmpdir, 'trace.pb'))
+
 
 if __name__ == '__main__':
   absltest.main()
