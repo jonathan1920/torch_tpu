@@ -105,23 +105,20 @@ pytype_strict_library(
 )
 
 # We have multiple targets for ops_test.py:
-# 1. ops_test_tpu: TPU vs CPU.
-# 2. ops_test_xla_cuda: XLA:CUDA vs CPU.
-# 3. ops_test_xla_cpu: XLA:CPU vs CPU.
-# 4. ops_test_tpu_vs_gpu: TPU vs GPU.
-# 5. ops_test_gen_gpu_golden: generates the golden file for the GPU backend
-# 6. ops_test_grad: gradient on TPU vs CPU.
-# 7. ops_test_perf: TPU only, for measuring compilation/execution time.
-# 8. ops_test_dynamic: TPU only, bounds a dimension and compares TPU vs CPU.
-# 9. ops_test_tpu_vs_gpu_compiled: TPU only, torch.compile TpuBackend vs GPU inductor backend.
+# * ops_test_tpu: TPU vs CPU.
+# * ops_test_tpu_vs_gpu: TPU vs GPU.
+# * ops_test_gen_gpu_golden: generates the golden file for the GPU backend
+# * ops_test_grad: gradient on TPU vs CPU.
+# * ops_test_perf: TPU only, for measuring compilation/execution time.
+# * ops_test_dynamic: TPU only, bounds a dimension and compares TPU vs CPU.
+# * ops_test_tpu_vs_gpu_compiled: TPU only, torch.compile TpuBackend vs GPU inductor backend.
 
 #
 # TorchTPU can run on "tpu" or "xla_cuda" or "xla_cpu" devices using the --torch_tpu_device flag.
 #
 
-# (1) and (2) are identical except for the compilation mode. We chose to
-# manually maintain the duplicate tests instead of using a for-loop to
-# generate the targets because:
+# We chose to manually maintain the duplicate tests instead of using a for-loop to generate the
+# targets because:
 #
 # - The for-loop approach is incompatible with build_cleaner.
 # - The for-loop approach breaks the Cider-torch_tpu_py_test integration (in particular,
@@ -211,61 +208,6 @@ torch_tpu_py_test(
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the timeout of test_grid_sampler in tsan mode.
         "requires-tpu-v5lite",
-    ],
-    deps = [
-        ":dynamism_test_utils",
-        ":op_testing",
-        "//shims/absl_py/testing:absltest",
-        "//shims/torch:pytorch",
-        "//torch_tpu/_internal:env",
-        "//torch_tpu/_internal/utils",
-        "//torch_tpu/eager:tpu_aten_kernels",
-    ],
-)
-
-torch_tpu_py_test(
-    name = "ops_test_xla_cuda",
-    srcs = ["ops_test.py"],
-    args = [
-        "--torch_tpu_device=xla_cuda",
-        "--max_samples_per_op_dtype=3",  # Reduce test samples as XLA:CUDA is not a priority.
-    ],
-    main = "ops_test.py",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
-    shard_count = 20,
-    tags = [
-        "requires-gpu-sm80-only",
-    ],
-    deps = [
-        ":dynamism_test_utils",
-        ":op_testing",
-        "//shims/absl_py/testing:absltest",
-        "//shims/torch:pytorch",
-        "//torch_tpu/_internal:env",
-        "//torch_tpu/_internal/utils",
-        "//torch_tpu/eager:tpu_aten_kernels",
-        "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
-        "@xla//xla/stream_executor:cuda_platform",
-    ],
-)
-
-torch_tpu_py_test(
-    name = "ops_test_xla_cpu",
-    timeout = "long",
-    srcs = ["ops_test.py"],
-    args = [
-        "--torch_tpu_device=xla_cpu",
-        "--max_samples_per_op_dtype=3",  # Reduce test samples as XLA:CPU is not a priority.
-    ],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
-    main = "ops_test.py",
-    # This test takes almost 30 minutes to run, since it is only using one
-    # machine per build for now and it is not essential for the OSS release.
-    notest_oss = "Test is too slow to run in OSS CI",
-    shard_count = 25,
-    tags = [
-        "nomsan",  # TODO: fix the test in msan mode.
-        "notsan",  # TODO: fix the test in tsan mode.
     ],
     deps = [
         ":dynamism_test_utils",
