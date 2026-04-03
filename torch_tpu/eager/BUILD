@@ -43,6 +43,19 @@ torch_tpu_cc_test(
 )
 
 torch_tpu_cc_test(
+    name = "op_dispatcher_test",
+    srcs = ["op_dispatcher_test.cc"],
+    notest_oss = "Fails due to TPU_LIBRARY_PATH not set.",
+    deps = [
+        ":op_dispatcher",
+        "//shims/torch:aten_headers",
+        "//torch_tpu/common:cache_key",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+torch_tpu_cc_test(
     name = "materialize_test",
     srcs = ["materialize_test.cc"],
     exec_properties = {

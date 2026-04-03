@@ -120,13 +120,11 @@ at::Tensor& AtenLerpTensorOut(const at::Tensor& self, const at::Tensor& end,
 
 at::Tensor& AtenLerpScalarOut(const at::Tensor& self, const at::Tensor& end,
                               const at::Scalar& weight, at::Tensor& out) {
-  TT_KERNEL(OpName::kLerpScalarOut, _,
-            (self, end,
-             IgnoreInCacheKey(weight, "Delegates to AtenLerpTensorOut"), out),
-            {
-              TT_ASSIGN_OR_THROW(at::Tensor weight_tensor, MakeTensor(weight));
-              return AtenLerpTensorOut(self, end, weight_tensor, out);
-            });
+  auto promoted_weight = PromoteScalar(weight);
+  TT_KERNEL(OpName::kLerpScalarOut, _, (self, end, promoted_weight, out), {
+    TT_ASSIGN_OR_THROW(auto weight_tensor, promoted_weight.tensor());
+    return AtenLerpTensorOut(self, end, weight_tensor, out);
+  });
 }
 
 }  // namespace torch_tpu

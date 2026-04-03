@@ -1,5 +1,3 @@
-#include "torch_tpu/common/dimension_types.h"
-#include "torch_tpu/eager/tensor_to_buffer.h"
 /*
  * Copyright 2025 Google LLC
  *
@@ -33,9 +31,11 @@
 #include "c10/util/Optional.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -335,6 +335,17 @@ absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
 absl::StatusOr<at::Tensor> MakeTensor(
     const at::Scalar& scalar,
     c10::optional<at::ScalarType> scalar_type_opt = std::nullopt);
+
+// Promotes the given scalar to a tensor lazily.
+[[nodiscard]] internal::PromotedScalar PromoteScalar(at::Scalar scalar);
+
+// Promotes the given optional scalar to an optional tensor lazily.
+[[nodiscard]] std::optional<internal::PromotedScalar> PromoteScalar(
+    std::optional<at::Scalar> scalar);
+
+// Promotes the given scalars to tensors lazily.
+[[nodiscard]] std::vector<internal::PromotedScalar> PromoteScalar(
+    at::ArrayRef<at::Scalar> scalars);
 
 }  // namespace torch_tpu
 

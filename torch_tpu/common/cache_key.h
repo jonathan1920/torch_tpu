@@ -32,6 +32,7 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/absl_check.h"
 #include "absl/status/status.h"
@@ -64,6 +65,47 @@
 namespace torch_tpu {
 
 namespace internal {
+
+// A scalar value that is promoted to a tensor lazily.
+class PromotedScalar {
+ public:
+  // Type of a invoke-once function that turns a Scalar into a Tensor.
+  // The `&&` enforces that the function is invoked at most once.
+  using Promoter =
+      absl::AnyInvocable<absl::StatusOr<at::Tensor>(const at::Scalar&) &&>;
+
+  // Promotes the given scalar to a tensor. We make the promoter a parameter
+  // rather than a hard-coded MakeTensor() to avoid a circular dependency
+  // between cache_key.h and op_dispatcher.h.
+  PromotedScalar(Promoter promoter, at::Scalar scalar);
+
+  // This class is move-only.
+  PromotedScalar(PromotedScalar&& other);
+  PromotedScalar& operator=(PromotedScalar&& other);
+  PromotedScalar(const PromotedScalar&) = delete;
+  PromotedScalar& operator=(const PromotedScalar&) = delete;
+
+  // Checks that the tensor has been read. This ensures that an op uses the
+  // promoted tensor rather than the scalar in its lowering.
+  ~PromotedScalar();
+
+  // Returns the scalar value.
+  const at::Scalar& scalar() const { return scalar_; }
+
+  // Returns the tensor value.
+  const absl::StatusOr<at::Tensor>& tensor() const;
+
+  // Formats the scalar for logging.
+  [[nodiscard]] std::string ToString() const;
+
+ private:
+  mutable Promoter promoter_;
+  at::Scalar scalar_;
+  // Holds the tensor promoted from the scalar. Lazily initialized on the first
+  // call to tensor().
+  mutable std::optional<absl::StatusOr<at::Tensor>> tensor_;
+  mutable bool tensor_used_ = false;
+};
 
 // Wrapper for a value that should be ignored in the cache key computation.
 template <typename T>
@@ -105,16 +147,18 @@ constexpr bool IncludeInCacheKey() {
   }
   return !(
       // go/keep-sorted start
-      std::is_same_v<U, at::ArrayRef<at::Tensor>> ||
-      std::is_same_v<U, at::Generator> ||
-      std::is_same_v<U, at::ITensorListRef> ||  //
-      std::is_same_v<U, at::Tensor> ||          //
-      std::is_same_v<U, at::TensorList> ||
-      std::is_same_v<U, c10d::AllToAllOptions> ||
-      std::is_same_v<U, c10d::AllgatherOptions> ||
-      std::is_same_v<U, c10d::BarrierOptions> ||
-      std::is_same_v<U, std::vector<at::Tensor>> ||
-      std::is_same_v<U, std::vector<std::vector<at::Tensor>>> ||
+      std::is_same_v<U, PromotedScalar> ||                        //
+      std::is_same_v<U, at::ArrayRef<at::Tensor>> ||              //
+      std::is_same_v<U, at::Generator> ||                         //
+      std::is_same_v<U, at::ITensorListRef> ||                    //
+      std::is_same_v<U, at::Tensor> ||                            //
+      std::is_same_v<U, at::TensorList> ||                        //
+      std::is_same_v<U, c10d::AllToAllOptions> ||                 //
+      std::is_same_v<U, c10d::AllgatherOptions> ||                //
+      std::is_same_v<U, c10d::BarrierOptions> ||                  //
+      std::is_same_v<U, std::vector<PromotedScalar>> ||           //
+      std::is_same_v<U, std::vector<at::Tensor>> ||               //
+      std::is_same_v<U, std::vector<std::vector<at::Tensor>>> ||  //
       // go/keep-sorted end
       false);
 }
@@ -173,6 +217,9 @@ template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
     const c10::optional<at::Tensor>& value) {
   return value.has_value() ? "t" : "";
 }
+
+[[nodiscard]] std::string FormatParamCacheKey(
+    const std::optional<PromotedScalar>& value);
 
 [[nodiscard]] inline std::string FormatParamCacheKey(
     const c10::optional<at::Generator>& value) {

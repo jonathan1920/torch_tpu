@@ -466,6 +466,10 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
   return results;
 }
 
+std::string FormatParamCacheKey(const std::optional<PromotedScalar>& value) {
+  return value.has_value() ? "s" : "";
+}
+
 }  // namespace internal
 
 absl::StatusOr<at::Tensor> MakeTensor(
@@ -473,6 +477,30 @@ absl::StatusOr<at::Tensor> MakeTensor(
   TT_ASSIGN_OR_RETURN(  // TODO: Test by forcing "scalar_tensor" to fail.
       DeviceBufferRef buffer, MakeBuffer(scalar, scalar_type_opt));
   return MakeTensor(std::move(buffer));
+}
+
+internal::PromotedScalar PromoteScalar(at::Scalar scalar) {
+  return internal::PromotedScalar(
+      [](const at::Scalar& scalar) { return MakeTensor(scalar); },
+      std::move(scalar));
+}
+
+std::optional<internal::PromotedScalar> PromoteScalar(
+    std::optional<at::Scalar> scalar) {
+  if (!scalar.has_value()) {
+    return std::nullopt;
+  }
+  return PromoteScalar(scalar.value());
+}
+
+std::vector<internal::PromotedScalar> PromoteScalar(
+    at::ArrayRef<at::Scalar> scalars) {
+  std::vector<internal::PromotedScalar> promoted_scalars;
+  promoted_scalars.reserve(scalars.size());
+  for (const auto& scalar : scalars) {
+    promoted_scalars.push_back(PromoteScalar(scalar));
+  }
+  return promoted_scalars;
 }
 
 }  // namespace torch_tpu

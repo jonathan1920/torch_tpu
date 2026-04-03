@@ -225,143 +225,160 @@ struct is_inlined_vector_int64<absl::InlinedVector<int64_t, kSize>>
   static constexpr size_t kCapacity = kSize;
 };
 
+// Does an op use Scalar inputs in TT_KERNEL()?
+enum class UsesScalarInput {
+  kNo,
+  kYes,
+};
+
 // Reports a compiler error if the given op uses Scalar inputs in
 // TT_KERNEL().
-template <OpName kOpName>
+template <OpName kOpName, UsesScalarInput kUse>
 void CheckScalarInput() {
-  static_assert(false ||  // The `false` case is for nice code formatting.
-                          // DO NOT ADD NEW ENTRIES TO THIS LIST.
-                          // TODO: make this list empty.
-                          // go/keep-sorted start
-                    kOpName == OpName::kAdd ||                         //
-                    kOpName == OpName::kAddOut ||                      //
-                    kOpName == OpName::kAddReluOut ||                  //
-                    kOpName == OpName::kAddReluScalar ||               //
-                    kOpName == OpName::kAddReluTensor ||               //
-                    kOpName == OpName::kAddRelu_Scalar ||              //
-                    kOpName == OpName::kAddRelu_Tensor ||              //
-                    kOpName == OpName::kAddcdivOut ||                  //
-                    kOpName == OpName::kAddcmulOut ||                  //
-                    kOpName == OpName::kAddmmDtype ||                  //
-                    kOpName == OpName::kAddmmDtypeOut ||               //
-                    kOpName == OpName::kAddmmOut ||                    //
-                    kOpName == OpName::kAddmvOut ||                    //
-                    kOpName == OpName::kArangeStartOut ||              //
-                    kOpName == OpName::kBaddbmmDtype ||                //
-                    kOpName == OpName::kBaddbmmDtypeOut ||             //
-                    kOpName == OpName::kBaddbmmOut ||                  //
-                    kOpName == OpName::kCdistForward ||                //
-                    kOpName == OpName::kClampMaxOut ||                 //
-                    kOpName == OpName::kClampMaxTensorOut ||           //
-                    kOpName == OpName::kClampMinOut ||                 //
-                    kOpName == OpName::kClampMinTensorOut ||           //
-                    kOpName == OpName::kClampOut ||                    //
-                    kOpName == OpName::kClampTensorOut ||              //
-                    kOpName == OpName::kEluBackwardGradInput ||        //
-                    kOpName == OpName::kEluOut ||                      //
-                    kOpName == OpName::kEq ||                          //
-                    kOpName == OpName::kExponential_ ||                //
-                    kOpName == OpName::kFill_Scalar ||                 //
-                    kOpName == OpName::kForeachAddList ||              //
-                    kOpName == OpName::kForeachAddScalar ||            //
-                    kOpName == OpName::kForeachAddScalarList ||        //
-                    kOpName == OpName::kForeachAddTensor ||            //
-                    kOpName == OpName::kForeachAdd_List ||             //
-                    kOpName == OpName::kForeachAdd_Scalar ||           //
-                    kOpName == OpName::kForeachAdd_ScalarList ||       //
-                    kOpName == OpName::kForeachAdd_Tensor ||           //
-                    kOpName == OpName::kForeachAddcdivScalar ||        //
-                    kOpName == OpName::kForeachAddcdivScalarList ||    //
-                    kOpName == OpName::kForeachAddcdiv_Scalar ||       //
-                    kOpName == OpName::kForeachAddcdiv_ScalarList ||   //
-                    kOpName == OpName::kForeachAddcmulScalar ||        //
-                    kOpName == OpName::kForeachAddcmulScalarList ||    //
-                    kOpName == OpName::kForeachAddcmul_Scalar ||       //
-                    kOpName == OpName::kForeachAddcmul_ScalarList ||   //
-                    kOpName == OpName::kForeachClampMaxScalar ||       //
-                    kOpName == OpName::kForeachClampMaxScalarList ||   //
-                    kOpName == OpName::kForeachClampMax_Scalar ||      //
-                    kOpName == OpName::kForeachClampMax_ScalarList ||  //
-                    kOpName == OpName::kForeachClampMinScalar ||       //
-                    kOpName == OpName::kForeachClampMinScalarList ||   //
-                    kOpName == OpName::kForeachClampMin_Scalar ||      //
-                    kOpName == OpName::kForeachClampMin_ScalarList ||  //
-                    kOpName == OpName::kForeachDivScalar ||            //
-                    kOpName == OpName::kForeachDivScalarList ||        //
-                    kOpName == OpName::kForeachDiv_Scalar ||           //
-                    kOpName == OpName::kForeachDiv_ScalarList ||       //
-                    kOpName == OpName::kForeachLerpScalar ||           //
-                    kOpName == OpName::kForeachLerpScalarList ||       //
-                    kOpName == OpName::kForeachLerp_Scalar ||          //
-                    kOpName == OpName::kForeachLerp_ScalarList ||      //
-                    kOpName == OpName::kForeachMaximumScalar ||        //
-                    kOpName == OpName::kForeachMaximumScalarList ||    //
-                    kOpName == OpName::kForeachMaximum_Scalar ||       //
-                    kOpName == OpName::kForeachMaximum_ScalarList ||   //
-                    kOpName == OpName::kForeachMinimumScalar ||        //
-                    kOpName == OpName::kForeachMinimumScalarList ||    //
-                    kOpName == OpName::kForeachMinimum_Scalar ||       //
-                    kOpName == OpName::kForeachMinimum_ScalarList ||   //
-                    kOpName == OpName::kForeachMulScalar ||            //
-                    kOpName == OpName::kForeachMulScalarList ||        //
-                    kOpName == OpName::kForeachMul_Scalar ||           //
-                    kOpName == OpName::kForeachMul_ScalarList ||       //
-                    kOpName == OpName::kForeachNormScalar ||           //
-                    kOpName == OpName::kForeachPowScalar ||            //
-                    kOpName == OpName::kForeachPowScalarAndTensor ||   //
-                    kOpName == OpName::kForeachPowScalarList ||        //
-                    kOpName == OpName::kForeachPow_Scalar ||           //
-                    kOpName == OpName::kForeachPow_ScalarList ||       //
-                    kOpName == OpName::kForeachSubList ||              //
-                    kOpName == OpName::kForeachSubScalar ||            //
-                    kOpName == OpName::kForeachSubScalarList ||        //
-                    kOpName == OpName::kForeachSub_List ||             //
-                    kOpName == OpName::kForeachSub_Scalar ||           //
-                    kOpName == OpName::kForeachSub_ScalarList ||       //
-                    kOpName == OpName::kGe ||                          //
-                    kOpName == OpName::kGt ||                          //
-                    kOpName == OpName::kHardtanh ||                    //
-                    kOpName == OpName::kHardtanhOut ||                 //
-                    kOpName == OpName::kHardtanh_ ||                   //
-                    kOpName == OpName::kHistc ||                       //
-                    kOpName == OpName::kHistcOut ||                    //
-                    kOpName == OpName::kIlshiftScalar ||               //
-                    kOpName == OpName::kIndexAddOut ||                 //
-                    kOpName == OpName::kIrshiftScalar ||               //
-                    kOpName == OpName::kIsInScalarTensorOut ||         //
-                    kOpName == OpName::kIsInTensorScalarOut ||         //
-                    kOpName == OpName::kLe ||                          //
-                    kOpName == OpName::kLeakyReluOut ||                //
-                    kOpName == OpName::kLerpScalarOut ||               //
-                    kOpName == OpName::kLinalgVectorNormOut ||         //
-                    kOpName == OpName::kLinspaceOut ||                 //
-                    kOpName == OpName::kLocalScalarDense ||            //
-                    kOpName == OpName::kLogSoftmaxBackwardDataOut ||   //
-                    kOpName == OpName::kLshiftScalar ||                //
-                    kOpName == OpName::kLt ||                          //
-                    kOpName == OpName::kMaskedFill_Scalar ||           //
-                    kOpName == OpName::kNativeBatchNormBackward ||     //
-                    kOpName == OpName::kNe ||                          //
-                    kOpName == OpName::kPdistForward ||                //
-                    kOpName == OpName::kPow ||                         //
-                    kOpName == OpName::kRemainder ||                   //
-                    kOpName == OpName::kRshiftScalar ||                //
-                    kOpName == OpName::kRsub ||                        //
-                    kOpName == OpName::kScatterValueOut ||             //
-                    kOpName == OpName::kScatterValueReduceOut ||       //
-                    kOpName == OpName::kSoftmaxBackwardDataOut ||      //
-                    kOpName == OpName::kSoftplusBackwardGradInput ||   //
-                    kOpName == OpName::kSoftplusOut ||                 //
-                    kOpName == OpName::kSub ||                         //
-                    kOpName == OpName::kThresholdBackwardGradInput ||  //
-                    kOpName == OpName::kThresholdOut ||                //
-                    kOpName == OpName::kVar ||                         //
-                    kOpName == OpName::kVarOut ||                      //
-                    // go/keep-sorted end
-                    false,  // The `false` case is for nice code formatting.
-                "Don't use Scalar inputs with TT_KERNEL(). Promote them to "
-                "Tensors via MakeTensor() first. See AtenLerpScalarOut() for "
-                "an example.");
+  // Is this op an existing violation of the scalar promotion pattern?
+  constexpr bool kIsLegacyViolation =
+      false ||  // The `false` case is for nice code formatting.
+                // DO NOT ADD NEW ENTRIES TO THIS LIST.
+                // TODO: make this list empty.
+                // go/keep-sorted start
+      kOpName == OpName::kAdd ||                         //
+      kOpName == OpName::kAddOut ||                      //
+      kOpName == OpName::kAddReluOut ||                  //
+      kOpName == OpName::kAddReluScalar ||               //
+      kOpName == OpName::kAddReluTensor ||               //
+      kOpName == OpName::kAddRelu_Scalar ||              //
+      kOpName == OpName::kAddRelu_Tensor ||              //
+      kOpName == OpName::kAddcdivOut ||                  //
+      kOpName == OpName::kAddcmulOut ||                  //
+      kOpName == OpName::kAddmmDtype ||                  //
+      kOpName == OpName::kAddmmDtypeOut ||               //
+      kOpName == OpName::kAddmmOut ||                    //
+      kOpName == OpName::kAddmvOut ||                    //
+      kOpName == OpName::kArangeStartOut ||              //
+      kOpName == OpName::kBaddbmmDtype ||                //
+      kOpName == OpName::kBaddbmmDtypeOut ||             //
+      kOpName == OpName::kBaddbmmOut ||                  //
+      kOpName == OpName::kCdistForward ||                //
+      kOpName == OpName::kClampMaxOut ||                 //
+      kOpName == OpName::kClampMaxTensorOut ||           //
+      kOpName == OpName::kClampMinOut ||                 //
+      kOpName == OpName::kClampMinTensorOut ||           //
+      kOpName == OpName::kClampOut ||                    //
+      kOpName == OpName::kClampTensorOut ||              //
+      kOpName == OpName::kEluBackwardGradInput ||        //
+      kOpName == OpName::kEluOut ||                      //
+      kOpName == OpName::kEq ||                          //
+      kOpName == OpName::kExponential_ ||                //
+      kOpName == OpName::kFill_Scalar ||                 //
+      kOpName == OpName::kForeachAddList ||              //
+      kOpName == OpName::kForeachAddScalar ||            //
+      kOpName == OpName::kForeachAddScalarList ||        //
+      kOpName == OpName::kForeachAddTensor ||            //
+      kOpName == OpName::kForeachAdd_List ||             //
+      kOpName == OpName::kForeachAdd_Scalar ||           //
+      kOpName == OpName::kForeachAdd_ScalarList ||       //
+      kOpName == OpName::kForeachAdd_Tensor ||           //
+      kOpName == OpName::kForeachAddcdivScalar ||        //
+      kOpName == OpName::kForeachAddcdivScalarList ||    //
+      kOpName == OpName::kForeachAddcdiv_Scalar ||       //
+      kOpName == OpName::kForeachAddcdiv_ScalarList ||   //
+      kOpName == OpName::kForeachAddcmulScalar ||        //
+      kOpName == OpName::kForeachAddcmulScalarList ||    //
+      kOpName == OpName::kForeachAddcmul_Scalar ||       //
+      kOpName == OpName::kForeachAddcmul_ScalarList ||   //
+      kOpName == OpName::kForeachClampMaxScalar ||       //
+      kOpName == OpName::kForeachClampMaxScalarList ||   //
+      kOpName == OpName::kForeachClampMax_Scalar ||      //
+      kOpName == OpName::kForeachClampMax_ScalarList ||  //
+      kOpName == OpName::kForeachClampMinScalar ||       //
+      kOpName == OpName::kForeachClampMinScalarList ||   //
+      kOpName == OpName::kForeachClampMin_Scalar ||      //
+      kOpName == OpName::kForeachClampMin_ScalarList ||  //
+      kOpName == OpName::kForeachDivScalar ||            //
+      kOpName == OpName::kForeachDivScalarList ||        //
+      kOpName == OpName::kForeachDiv_Scalar ||           //
+      kOpName == OpName::kForeachDiv_ScalarList ||       //
+      kOpName == OpName::kForeachLerpScalar ||           //
+      kOpName == OpName::kForeachLerpScalarList ||       //
+      kOpName == OpName::kForeachLerp_Scalar ||          //
+      kOpName == OpName::kForeachLerp_ScalarList ||      //
+      kOpName == OpName::kForeachMaximumScalar ||        //
+      kOpName == OpName::kForeachMaximumScalarList ||    //
+      kOpName == OpName::kForeachMaximum_Scalar ||       //
+      kOpName == OpName::kForeachMaximum_ScalarList ||   //
+      kOpName == OpName::kForeachMinimumScalar ||        //
+      kOpName == OpName::kForeachMinimumScalarList ||    //
+      kOpName == OpName::kForeachMinimum_Scalar ||       //
+      kOpName == OpName::kForeachMinimum_ScalarList ||   //
+      kOpName == OpName::kForeachMulScalar ||            //
+      kOpName == OpName::kForeachMulScalarList ||        //
+      kOpName == OpName::kForeachMul_Scalar ||           //
+      kOpName == OpName::kForeachMul_ScalarList ||       //
+      kOpName == OpName::kForeachNormScalar ||           //
+      kOpName == OpName::kForeachPowScalar ||            //
+      kOpName == OpName::kForeachPowScalarAndTensor ||   //
+      kOpName == OpName::kForeachPowScalarList ||        //
+      kOpName == OpName::kForeachPow_Scalar ||           //
+      kOpName == OpName::kForeachPow_ScalarList ||       //
+      kOpName == OpName::kForeachSubList ||              //
+      kOpName == OpName::kForeachSubScalar ||            //
+      kOpName == OpName::kForeachSubScalarList ||        //
+      kOpName == OpName::kForeachSub_List ||             //
+      kOpName == OpName::kForeachSub_Scalar ||           //
+      kOpName == OpName::kForeachSub_ScalarList ||       //
+      kOpName == OpName::kGe ||                          //
+      kOpName == OpName::kGt ||                          //
+      kOpName == OpName::kHardtanh ||                    //
+      kOpName == OpName::kHardtanhOut ||                 //
+      kOpName == OpName::kHardtanh_ ||                   //
+      kOpName == OpName::kHistc ||                       //
+      kOpName == OpName::kHistcOut ||                    //
+      kOpName == OpName::kIlshiftScalar ||               //
+      kOpName == OpName::kIndexAddOut ||                 //
+      kOpName == OpName::kIrshiftScalar ||               //
+      kOpName == OpName::kIsInScalarTensorOut ||         //
+      kOpName == OpName::kIsInTensorScalarOut ||         //
+      kOpName == OpName::kLe ||                          //
+      kOpName == OpName::kLeakyReluOut ||                //
+      kOpName == OpName::kLinalgVectorNormOut ||         //
+      kOpName == OpName::kLinspaceOut ||                 //
+      kOpName == OpName::kLocalScalarDense ||            //
+      kOpName == OpName::kLogSoftmaxBackwardDataOut ||   //
+      kOpName == OpName::kLshiftScalar ||                //
+      kOpName == OpName::kLt ||                          //
+      kOpName == OpName::kMaskedFill_Scalar ||           //
+      kOpName == OpName::kNativeBatchNormBackward ||     //
+      kOpName == OpName::kNe ||                          //
+      kOpName == OpName::kPdistForward ||                //
+      kOpName == OpName::kPow ||                         //
+      kOpName == OpName::kRemainder ||                   //
+      kOpName == OpName::kRshiftScalar ||                //
+      kOpName == OpName::kRsub ||                        //
+      kOpName == OpName::kScatterValueOut ||             //
+      kOpName == OpName::kScatterValueReduceOut ||       //
+      kOpName == OpName::kSoftmaxBackwardDataOut ||      //
+      kOpName == OpName::kSoftplusBackwardGradInput ||   //
+      kOpName == OpName::kSoftplusOut ||                 //
+      kOpName == OpName::kSub ||                         //
+      kOpName == OpName::kThresholdBackwardGradInput ||  //
+      kOpName == OpName::kThresholdOut ||                //
+      kOpName == OpName::kVar ||                         //
+      kOpName == OpName::kVarOut ||                      //
+      // go/keep-sorted end
+      false;  // The `false` case is for nice code formatting.
+  if constexpr (kUse == UsesScalarInput::kYes) {
+    static_assert(
+        kIsLegacyViolation,
+        "Don't use Scalar inputs with TT_KERNEL(). Promote them to "
+        "Tensors via PromoteScalar() first. See AtenLerpScalarOut() for "
+        "an example.");
+  } else {
+    static_assert(!kIsLegacyViolation,
+                  "This op already follows the best practice of promoting "
+                  "Scalar inputs to Tensors via PromoteScalar(). Please remove "
+                  "its OpName from the list of OpNames in CheckScalarInput() "
+                  "in logging.h.");
+  }
 }
 
 // Crashes if the type T does not match the given argument's type string.
@@ -381,13 +398,10 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
   };
   if constexpr (std::is_same_v<T, at::Tensor>) {
     ABSL_CHECK(  // CRASH_OK
-        normalized_arg_type_in_func_sig == "at::Tensor" ||
-        // We allow a Scalar to be promoted to a Tensor before invoking
-        // TT_KERNEL().
-        normalized_arg_type_in_func_sig == "at::Scalar")
+        normalized_arg_type_in_func_sig == "at::Tensor")
         << message();
   } else if constexpr (std::is_same_v<T, at::Scalar>) {
-    CheckScalarInput<kOpName>();
+    CheckScalarInput<kOpName, UsesScalarInput::kYes>();
     ABSL_CHECK_EQ(  // CRASH_OK
         normalized_arg_type_in_func_sig, "at::Scalar")
         << message();
@@ -418,7 +432,7 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
         normalized_arg_type_in_func_sig, "std::optional<std::string_view>")
         << message();
   } else if constexpr (std::is_same_v<T, std::optional<at::Scalar>>) {
-    CheckScalarInput<kOpName>();
+    CheckScalarInput<kOpName, UsesScalarInput::kYes>();
     ABSL_CHECK_EQ(  // CRASH_OK
         normalized_arg_type_in_func_sig, "std::optional<at::Scalar>")
         << message();
@@ -464,10 +478,7 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
         << message();
   } else if constexpr (std::is_same_v<T, std::optional<at::Tensor>>) {
     ABSL_CHECK(  // CRASH_OK
-        normalized_arg_type_in_func_sig == "std::optional<at::Tensor>" ||
-        // We allow an optional Scalar to be promoted to an optional Tensor
-        // before invoking TT_KERNEL().
-        normalized_arg_type_in_func_sig == "std::optional<at::Scalar>")
+        normalized_arg_type_in_func_sig == "std::optional<at::Tensor>")
         << message();
   } else if constexpr (std::is_same_v<T, std::optional<bool>>) {
     ABSL_CHECK_EQ(  // CRASH_OK
@@ -610,16 +621,9 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
                   "c10::IListRef<at::OptionalTensorRef>")
         << message();
   } else if constexpr (std::is_same_v<T, at::ArrayRef<at::Scalar>>) {
-    CheckScalarInput<kOpName>();
+    CheckScalarInput<kOpName, UsesScalarInput::kYes>();
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
                   "at::ArrayRef<at::Scalar>")
-        << message();
-  } else if constexpr (std::is_same_v<T, at::ArrayRef<at::Tensor>>) {
-    ABSL_CHECK_EQ(  // CRASH_OK
-        normalized_arg_type_in_func_sig,
-        // We allow an ArrayRef<Scalar> to be promoted to an ArrayRef<Tensor>
-        // before invoking TT_KERNEL().
-        "at::ArrayRef<at::Scalar>")
         << message();
   } else if constexpr (std::is_same_v<T, at::OptionalSymIntArrayRef>) {
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
@@ -628,6 +632,28 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
   } else if constexpr (is_ignored_in_cache_key<T>::value) {
     // The argument is IgnoreInCacheKey(x), so we check the type of x.
     CheckKernelArgType<kOpName, typename T::value_type>(context, arg_idx);
+  } else if constexpr (std::is_same_v<T, internal::PromotedScalar>) {
+    CheckScalarInput<kOpName, UsesScalarInput::kNo>();
+    // The argument is a PromotedScalar, so we check it matches an at::Scalar
+    // parameter in the kernel function signature.
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "at::Scalar")  // CRASH_OK
+        << message();
+  } else if constexpr (std::is_same_v<
+                           T, std::optional<internal::PromotedScalar>>) {
+    CheckScalarInput<kOpName, UsesScalarInput::kNo>();
+    // The argument is an optional PromotedScalar, so we check it matches an
+    // optional at::Scalar parameter in the kernel function signature.
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "std::optional<at::Scalar>")
+        << message();
+  } else if constexpr (std::is_same_v<T,
+                                      std::vector<internal::PromotedScalar>>) {
+    CheckScalarInput<kOpName, UsesScalarInput::kNo>();
+    // The argument is a vector of PromotedScalar, so we check it matches an
+    // ArrayRef of at::Scalar parameter in the kernel function signature.
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "at::ArrayRef<at::Scalar>")
+        << message();
   } else {
     static_assert(false, "Unsupported argument type.");
   }
