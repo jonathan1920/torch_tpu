@@ -29,6 +29,7 @@ pytype_library(
     ],
     visibility = [
         "//:__subpackages__",
+        "//learning/agents/tern/torch_agent:__subpackages__",
     ],
     deps = [
         ":tpu_torch_compile",
