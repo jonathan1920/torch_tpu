@@ -119,7 +119,6 @@ def _load_fsdp_model(
   """
   for layer in model.model.layers:
     fsdp.fully_shard(layer)
-  fsdp.fully_shard(model.model)
   fsdp.fully_shard(model)
   model.to_empty(device=device)
 
