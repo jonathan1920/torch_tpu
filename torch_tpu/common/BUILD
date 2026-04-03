@@ -755,6 +755,8 @@ torch_tpu_cc_test(
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops/macros:kernel",
         "@com_google_googletest//:gtest_main",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:stablehlo_ops",

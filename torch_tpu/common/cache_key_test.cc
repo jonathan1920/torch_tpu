@@ -36,6 +36,8 @@
 #include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/ops/macros/kernel.h"
+#include "torch_tpu/ops/op_names.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/xla_data.pb.h"
@@ -144,6 +146,17 @@ TEST(OpParamCacheKeys, SetParamBool) {
   ASSERT_TRUE(params2_or.ok());
   EXPECT_THAT(params2_or.value(), ElementsAre(Pair("bar", "f")));
 }
+
+void Kernel1(int x, int y) {
+  TT_KERNEL(OpName::kAdd, param_keys, (IgnoreInCacheKey(x, "testing"), y), {
+    // x should be ignored in the cache keys, so only y should be there.
+    EXPECT_THAT(param_keys, ElementsAre(Pair("y", "42")));
+  });
+}
+
+// Verifies that TT_KERNEL() ignores the arguments marked by
+// IgnoreInCacheKey() in the cache key.
+TEST(OpParamCacheKeys, TtKernelIgnored) { Kernel1(9, 42); }
 
 TEST(OpParamCacheKeys, SetParamString) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", "a,bar=b");
