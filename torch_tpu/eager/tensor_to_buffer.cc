@@ -522,7 +522,7 @@ class TpuAllocator final : public c10::DeviceAllocator {
 
   c10::DataPtr allocate(size_t nbytes) override {
     c10::DeviceIndex device_idx = 0;
-    if (const auto* device = GetPjRtDevice()) {
+    if (const auto* device = PjrtBackend::GetInstance().GetDevice()) {
       device_idx =
           static_cast<c10::DeviceIndex>(device->local_hardware_id().value());
     }
@@ -568,7 +568,7 @@ class TpuAllocator final : public c10::DeviceAllocator {
   c10::CachingDeviceAllocator::DeviceStats getDeviceStats(
       c10::DeviceIndex device) override {
     c10::CachingDeviceAllocator::DeviceStats stats;
-    auto pjrt_stats_or = GetAllocatorStats();
+    auto pjrt_stats_or = PjrtBackend::GetInstance().GetAllocatorStats();
     if (!pjrt_stats_or.ok()) {
       TORCH_WARN("Failed to get allocator stats: ", pjrt_stats_or.status());
       return stats;
@@ -617,7 +617,7 @@ class TpuAllocator final : public c10::DeviceAllocator {
   }
 
   std::pair<size_t, size_t> getMemoryInfo(c10::DeviceIndex device) override {
-    auto pjrt_stats_or = GetAllocatorStats();
+    auto pjrt_stats_or = PjrtBackend::GetInstance().GetAllocatorStats();
     if (!pjrt_stats_or.ok()) {
       TORCH_WARN("Failed to get allocator stats: ", pjrt_stats_or.status());
       return {0, 0};
@@ -636,7 +636,8 @@ class TpuPinnedAllocator final : public at::HostAllocator {
       return {nullptr, nullptr, &DeleteTpuPinnedBufferStatic,
               c10::Device(c10::DeviceType::CPU)};
     }
-    TT_ASSIGN_OR_THROW(auto* host_allocator, GetHostAllocator(),
+    TT_ASSIGN_OR_THROW(auto* host_allocator,
+                       PjrtBackend::GetInstance().GetHostAllocator(),
                        _ << "Failed to get PJRT host allocator");
     void* data = host_allocator->Allocate(
         nbytes, host_allocator->GetPreferredAlignment());
@@ -691,7 +692,8 @@ class TpuPinnedAllocator final : public at::HostAllocator {
         absl::MutexLock lock(mutex_);
         pinned_ptrs_.erase(ptr);
       }
-      TT_ASSIGN_OR_THROW(auto* host_allocator, GetHostAllocator());
+      TT_ASSIGN_OR_THROW(auto* host_allocator,
+                         PjrtBackend::GetInstance().GetHostAllocator());
       host_allocator->Free(ptr);
     }
   }

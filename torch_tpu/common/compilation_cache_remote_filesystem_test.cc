@@ -26,7 +26,7 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/tier3_compilation_cache.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 #include "xla/tsl/platform/env.h"
 
 namespace torch_tpu {
@@ -45,7 +45,9 @@ class TpuTestEnvironment : public testing::Environment {
  public:
   void SetUp() override {
     // This must be done before testing GetFromTier2Cache(),.
-    ABSL_CHECK_OK(InitializePjRt({.device_type = "tpu", .world_size = 1}));
+    PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+        {.device_type = "tpu"});
+    ABSL_CHECK_OK(PjrtBackend::GetInstance().EnsureInitialized());
   }
 };
 

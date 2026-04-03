@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Google LLC
+ * Copyright 2026 Google LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,23 +14,33 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_pjrt_PJRT_CLIENT_H_
-#define TORCH_TPU_pjrt_PJRT_CLIENT_H_
+#ifndef TORCH_TPU_COMMON_DEVICE_TYPE_H_
+#define TORCH_TPU_COMMON_DEVICE_TYPE_H_
 
-#include <cstdint>
-#include <memory>
 #include <string>
 
-#include "absl/base/nullability.h"
-#include "absl/status/statusor.h"
-#include "xla/pjrt/pjrt_client.h"
+#include "torch/headeronly/core/DeviceType.h"
 
 namespace torch_tpu {
 
-// Initializes and returns a PjRtClient based on the provided device type.
-absl::StatusOr<absl_nonnull std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
-    const std::string& device_type, int64_t tpu_premapped_buffer_size);
+// The actual physical device type used by PjRt.
+enum class PjRtDeviceType {
+  kUnknown,
+  kTpu,
+  kCpu,
+  kCuda,
+};
+
+// Returns the device type for TPU.
+[[nodiscard]] inline constexpr c10::DeviceType GetPrivateUse1DeviceType() {
+  return c10::DeviceType::PrivateUse1;
+}
+
+// Returns a user-friendly name for the PrivateUse1 device.
+[[nodiscard]] inline std::string GetPrivateUse1DeviceDebugName() {
+  return "tpu";
+}
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_pjrt_PJRT_CLIENT_H_
+#endif  // TORCH_TPU_COMMON_DEVICE_TYPE_H_

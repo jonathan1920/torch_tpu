@@ -17,6 +17,7 @@
 from absl.testing import absltest
 import torch
 from torch.testing._internal import common_utils
+from torch_tpu import api
 from torch_tpu.api import _device_module
 
 _DevicePythonModule = _device_module._DeviceModule
@@ -29,12 +30,14 @@ class XlaCudaModuleTest(absltest.TestCase, common_utils.TestCase):
     # Reset class variables before each test
     _DevicePythonModule._autocast_enabled = False
     _DevicePythonModule._autocast_dtype = torch.float16
+    # Ensure xla_cuda backend is registered
+    api._xla_cuda_device()
 
   def test_init_gpu_runtime(self):
     # Test GPU initialization
-    _DevicePythonModule._init_runtime(device_type="xla_cuda")
-    self.assertTrue(_DevicePythonModule.is_initialized())
-    self.assertGreater(_DevicePythonModule.device_count(), 0)
+    torch.xla_cuda.current_device()
+    self.assertTrue(torch.xla_cuda.is_initialized())
+    self.assertGreater(torch.xla_cuda.device_count(), 0)
 
 
 if __name__ == "__main__":

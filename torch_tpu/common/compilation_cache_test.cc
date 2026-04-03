@@ -27,6 +27,7 @@
 #include "absl/base/log_severity.h"
 #include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
+#include "absl/log/absl_check.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -41,7 +42,8 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla.pb.h"
 
@@ -153,6 +155,11 @@ TEST_F(CompilationCacheTest, DumpOnMissMode) {
 }
 
 TEST_F(CompilationCacheTest, GetOrCompileLogsOnMiss) {
+  // Use xla_cpu for unit testing as it doesn't require real hardware.
+  PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+      {.device_type = "xla_cpu"});
+  ABSL_CHECK_OK(PjrtBackend::GetInstance().EnsureInitialized());
+
   CompilationCache& cache = CompilationCache::GetInstance();
   bool initial_mode = cache.GetDumpOnCacheMissMode();
   cache.SetDumpOnCacheMissMode(true);
@@ -165,17 +172,9 @@ TEST_F(CompilationCacheTest, GetOrCompileLogsOnMiss) {
     return mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   };
 
-  // We need to initialize PjRt to make MakeCompilerOptions work.
-  // It's safe to call this multiple times; it will return early if already
-  // initialized. Use xla_cpu for unit testing as it doesn't require real
-  // hardware.
-  absl::Status pjrt_status =
-      InitializePjRt({.device_type = "xla_cpu", .world_size = 1}).status();
-
   auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
   ASSERT_TRUE(options_or.ok())
-      << "MakeCompilerOptions failed: " << options_or.status()
-      << " (PjRt status: " << pjrt_status << ")";
+      << "MakeCompilerOptions failed: " << options_or.status();
 
   absl::ScopedMockLog log;
   EXPECT_CALL(
@@ -194,6 +193,11 @@ TEST_F(CompilationCacheTest, GetOrCompileLogsOnMiss) {
 class CompilationCacheInitTest : public CompilationCacheTest {};
 
 TEST_F(CompilationCacheInitTest, LazyInitialization) {
+  CompilationCache::Restart();
+  // Ensure we use xla_cpu for testing to avoid hardware requirements.
+  PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+      {.device_type = "xla_cpu"});
+
   EXPECT_FALSE(CompilationCache::GetInstance().IsInitialized());
 
   CompilationCache::GetInstance().SetOptions({.cache_only = true});
@@ -221,6 +225,11 @@ TEST_F(CompilationCacheInitTest, LazyInitialization) {
 }
 
 TEST_F(CompilationCacheInitTest, OptionsApplied) {
+  CompilationCache::Restart();
+  // Ensure we use xla_cpu for testing to avoid hardware requirements.
+  PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+      {.device_type = "xla_cpu"});
+
   CompilationCache::GetInstance().SetOptions({.cache_only = true});
   CompilationCache& cache = CompilationCache::GetInstance();
 

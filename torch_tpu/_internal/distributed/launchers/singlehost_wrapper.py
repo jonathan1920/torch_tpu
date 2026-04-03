@@ -43,7 +43,7 @@ from typing import Any, Callable
 
 from absl import logging
 import portpicker
-from torch_tpu._internal.distributed import tpu_topology
+from torch_tpu._internal.utils import hardware
 
 
 def prepare_tpu_environment(world_size: int | None = None) -> None:
@@ -62,7 +62,10 @@ def prepare_tpu_environment(world_size: int | None = None) -> None:
     os.environ["TORCH_TPU_XPROF_SESSION_ID"] = xprof_session_id
   logging.info("TORCH_TPU_XPROF_SESSION_ID: %s", xprof_session_id)
 
-  topology, count = tpu_topology.get_tpu_topology(world_size)
+  topology = hardware.get_tpu_topology(world_size)
+  count = (
+      world_size if world_size is not None else hardware.get_tpu_device_count()
+  )
 
   # Get open ports on this host for slicebuilder.
   if "TORCH_TPU_SLICEBUILDER_ADDRESSES" not in os.environ:
@@ -107,7 +110,8 @@ def tpu_env_wrapper(func, *, world_size=None) -> Any:
 
 
 if __name__ == "__main__":
-  host_topology, host_count = tpu_topology.get_tpu_topology()
+  host_topology = hardware.get_tpu_topology()
+  host_count = hardware.get_tpu_device_count()
   host_sb_ports = [portpicker.pick_unused_port() for _ in range(host_count)]
   host_sb_addresses = ",".join([f"localhost:{p}" for p in host_sb_ports])
 

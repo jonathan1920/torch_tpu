@@ -982,7 +982,7 @@ def main(argv):
   torch._register_device_module(tpu_backend_name, _device_module._DeviceModule)
   print(f"Registered Python module for '{tpu_backend_name}'.")
   try:
-    getattr(torch, tpu_backend_name)._init_runtime()
+    getattr(torch, tpu_backend_name)._init_runtime_options()  # pylint: disable=protected-access
     pt_tpu_device_global = torch.device(tpu_backend_name)
     print(
         f"PT Device type: {pt_tpu_device_global.type}, Index:"

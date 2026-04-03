@@ -834,7 +834,7 @@ void CompilationCache::GetFromTier3OrCompile(
 void CompilationCache::Compile(CompilationCacheKey key,
                                LoadedExecutableBuilder executable_builder,
                                UniqueCompileOptions compile_options) {
-  xla::PjRtClient* const client = GetPjRtClient();
+  xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   if (client == nullptr) {
     absl::Status error = TT_ERROR(error::kFailedPrecondition)
                          << "PjRtClient must be initialized";

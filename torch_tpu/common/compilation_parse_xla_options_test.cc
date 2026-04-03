@@ -23,7 +23,7 @@
 #include "absl/log/absl_check.h"
 #include "absl/status/status.h"
 #include "torch_tpu/common/compilation.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla.pb.h"
 
@@ -43,7 +43,9 @@ class MakeCompilerOptionsTest : public testing::Test {
   static void SetUpTestSuite() {
     // This must be done before MakeCompilerOptions() is called, as the latter
     // depends on the PjRt client.
-    ABSL_CHECK_OK(InitializePjRt({.device_type = "tpu", .world_size = 1}));
+    PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+        {.device_type = "tpu"});
+    ABSL_CHECK_OK(PjrtBackend::GetInstance().EnsureInitialized());
   }
 };
 

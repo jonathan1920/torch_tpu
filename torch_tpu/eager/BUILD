@@ -28,12 +28,14 @@ torch_tpu_cc_test(
     notest_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
         ":device_buffer",
+        ":tensor_to_buffer",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:shape",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -75,7 +77,7 @@ torch_tpu_cc_test(
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
@@ -282,6 +284,7 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "safe_materialization_rule_test",
     srcs = ["safe_materialization_rule_test.cc"],
+    notest_oss = "Disabled because lazy-init means this requires TPU_LIBRARY_PATH",
     deps = [
         ":device_buffer",
         ":safe_materialization_rule",

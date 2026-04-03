@@ -36,7 +36,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
@@ -47,10 +47,8 @@ class MaterializeTest : public testing::Test {
  protected:
   static void SetUpTestSuite() {
     const std::string device_type = "xla_cpu";
-    const int world_size = 1;
-    ASSERT_OK(
-        InitializePjRt({.device_type = device_type, .world_size = world_size})
-            .status());
+    PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+        {.device_type = device_type});
     ASSERT_OK(AddTpuHooks());
     RegisterTpuAllocator();
     CompilationCache::GetInstance().SetOptions({});

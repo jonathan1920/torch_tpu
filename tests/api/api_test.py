@@ -23,6 +23,14 @@ class ApiTest(absltest.TestCase):
 
   def test_api_availability(self):
     device = api.tpu_device()
+    # Lazy init: shouldn't be initialized yet.
+    self.assertFalse(getattr(torch, device.type).is_initialized())
+
+    # Create a tensor to trigger initialization.
+    output = torch.zeros(1, device=device)
+    # Trigger materialization.
+    _ = output.item()
+
     self.assertTrue(getattr(torch, device.type).is_initialized())
     self.assertEqual(getattr(torch, device.type).current_device(), 0)
 

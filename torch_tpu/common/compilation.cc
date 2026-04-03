@@ -219,7 +219,8 @@ static const CompilerOptionOverrides& GetCompilerOptionOverridesFromEnvVar() {
 
 static absl::Status SetDefaultDeviceAssignment(
     xla::ExecutableBuildOptions& options) {
-  TT_ASSIGN_OR_RETURN(const int num_devices, GetGlobalDeviceCount());
+  TT_ASSIGN_OR_RETURN(const int num_devices,
+                      PjrtBackend::GetInstance().GetGlobalDeviceCount());
   // These options are sensible for 1 partition and 1 replica per device,
   // which aligns with typical single-host parallelism in native PyTorch.
   // Every device runs identical HLO and collectives are included explicitly.
@@ -247,7 +248,7 @@ static absl::Status SetDefaultDeviceAssignment(
 //
 // Returns whether the current device is a TPU.
 static absl::StatusOr<bool> SetTpuOptions(xla::CompileOptions& options) {
-  const xla::PjRtClient* const client = GetPjRtClient();
+  const xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   TT_RET_CHECK(client, error::kFailedPrecondition)
       << "PjRtClient must be initialized.";
   const bool is_tpu = client->platform_id() == xla::TpuId();

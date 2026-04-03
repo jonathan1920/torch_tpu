@@ -60,12 +60,12 @@ def _ensure_runtime_initialized():
   """Ensure the PjRt runtime is actually initialized.
 
   Handles the partial-init case where ``_init_device_impl`` registered
-  ``torch.tpu`` but ``_init_runtime`` failed.  On retry,
+  ``torch.tpu`` but ``_init_runtime_options`` failed.  On retry,
   ``_init_device`` short-circuits via ``hasattr(torch, 'tpu')`` and
-  never calls ``_init_runtime``, leaving PjRt uninitialized.
+  never calls ``_init_runtime_options``, leaving PjRt uninitialized.
   """
-  if not _DeviceModule._is_initialized:
-    _DeviceModule._init_runtime(device_type="tpu")
+  if not _DeviceModule.is_initialized():
+    _DeviceModule._init_runtime_options(device_type="tpu")
 
 
 def safe_init(accelerator_type="v6e-4"):
@@ -82,7 +82,7 @@ def safe_init(accelerator_type="v6e-4"):
      device to be released, then retries full initialization.
   3. **Lock held by our own PID** → reuses the existing runtime.
   4. **Partial init** (module registered but runtime not started) →
-     calls ``_init_runtime`` explicitly.
+     calls ``_init_runtime_options`` explicitly.
 
   Args:
       accelerator_type: TPU topology string (default: 'v6e-4').
@@ -93,7 +93,7 @@ def safe_init(accelerator_type="v6e-4"):
   os.environ.setdefault("ACCELERATOR_TYPE", accelerator_type)
 
   # ── Fast path: runtime already alive in this process ──
-  if _DeviceModule._is_initialized:
+  if _DeviceModule.is_initialized():
     return api.tpu_device()
 
   # ── Slow path: first init or recovery ──
@@ -105,7 +105,7 @@ def safe_init(accelerator_type="v6e-4"):
       device = api.tpu_device()
       # Guard against partial init: the torch.tpu module may have
       # been registered by a prior failed attempt, causing
-      # _init_device to short-circuit without calling _init_runtime.
+      # _init_device to short-circuit without calling _init_runtime_options.
       _ensure_runtime_initialized()
       return device
     except RuntimeError as e:

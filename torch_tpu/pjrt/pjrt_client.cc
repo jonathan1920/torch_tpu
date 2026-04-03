@@ -27,7 +27,6 @@
 #include "xla/pjrt/pjrt_client.h"
 
 namespace torch_tpu {
-namespace pjrt {
 
 absl::StatusOr<absl_nonnull std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
     const std::string& device_type, int64_t tpu_premapped_buffer_size) {
@@ -53,5 +52,4 @@ absl::StatusOr<absl_nonnull std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
          << device_type;
 }
 
-}  // namespace pjrt
 }  // namespace torch_tpu

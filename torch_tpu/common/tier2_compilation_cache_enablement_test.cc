@@ -20,7 +20,7 @@
 #include "absl/flags/flag.h"
 #include "absl/log/absl_check.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 
 ABSL_FLAG(int, world_size, 1, "The world size to use for the test.");
 ABSL_FLAG(std::string, expected_tier2_cache_name, "",
@@ -36,8 +36,9 @@ class TpuTestEnvironment : public testing::Environment {
  public:
   void SetUp() override {
     // This must be done before testing GetFromTier2Cache(),.
-    ABSL_CHECK_OK(InitializePjRt(
-        {.device_type = "tpu", .world_size = absl::GetFlag(FLAGS_world_size)}));
+    PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+        {.device_type = "tpu"});
+    ABSL_CHECK_OK(PjrtBackend::GetInstance().EnsureInitialized());
   }
 };
 

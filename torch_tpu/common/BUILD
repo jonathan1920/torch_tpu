@@ -240,7 +240,7 @@ torch_tpu_cc_test(
         ":error_utils",
         ":tier2_compilation_cache",
         ":unique_file_descriptor",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
@@ -268,7 +268,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":tier2_compilation_cache",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_googletest//:gtest_main",
@@ -297,7 +297,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":tier2_compilation_cache",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_googletest//:gtest_main",
@@ -323,7 +323,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":tier2_compilation_cache",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_googletest//:gtest_main",
@@ -350,7 +350,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":tier2_compilation_cache",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_googletest//:gtest_main",
@@ -378,7 +378,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":tier2_compilation_cache",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_googletest//:gtest_main",
@@ -405,7 +405,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":tier2_compilation_cache",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_googletest//:gtest_main",
@@ -433,7 +433,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":tier2_compilation_cache",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_googletest//:gtest_main",
@@ -819,7 +819,7 @@ torch_tpu_cc_test(
     deps = [
         ":compilation",
         "//shims/torch:torch_headers",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
@@ -842,9 +842,10 @@ torch_tpu_cc_test(
         ":shape",
         "//shims/torch:torch_headers",
         "//torch_tpu/ops:op_builder_utils",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -853,6 +854,7 @@ torch_tpu_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@xla//xla:xla_proto_cc",
+        "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
     ],
@@ -888,7 +890,7 @@ torch_tpu_cc_test(
     deps = [
         ":compilation",
         "//shims/torch:torch_headers",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
@@ -919,7 +921,7 @@ torch_tpu_cc_test(
         ":error_utils",
         ":tier2_compilation_cache",
         ":tier3_compilation_cache",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -952,7 +954,7 @@ torch_tpu_cc_test(
         ":error_utils",
         ":tier2_compilation_cache",
         ":tier3_compilation_cache",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -982,7 +984,7 @@ torch_tpu_cc_test(
         ":env_vars",
         ":tier2_compilation_cache",  # buildcleaner: keep
         ":tier3_compilation_cache",
-        "//torch_tpu/pjrt:pjrt_init",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
@@ -1039,6 +1041,15 @@ torch_tpu_cc_test(
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
         "@stablehlo//:register",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "device_type",
+    hdrs = ["device_type.h"],
+    deps = [
+        "//shims/torch:torch_headers",
+        "//shims/torch/torch/headeronly:torch_headeronly",
     ],
 )
 

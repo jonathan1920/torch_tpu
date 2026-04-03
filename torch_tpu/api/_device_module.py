@@ -24,6 +24,7 @@ from typing import Any, List
 from absl import logging
 import torch
 import torch_tpu._internal.precision as _precision_module
+from torch_tpu._internal.utils import hardware
 from torch_tpu.api import _device_ops_backend
 from torch_tpu.api import streams
 
@@ -105,9 +106,8 @@ class _DeviceModule:
   leading underscore to the names of internal methods.
   """
 
-  # Invariant: if _is_initialized is True, then _device_count and
-  # _current_device must not be None. Otherwise they must be None.
-  _is_initialized: bool = False
+  # device_count and current_device are None until device_count() and
+  # current_device() are called.
   _device_count: int | None = None
   _current_device: int | None = None
   _autocast_enabled: bool = False
@@ -115,16 +115,14 @@ class _DeviceModule:
 
   Precision = _precision_module.Precision  # pylint: disable=invalid-name
   precision = _precision_module.precision
+  _device_type: str = "tpu"
 
   @classmethod
   def current_device(cls) -> int:  # This is in torch/cuda/__init__.py.
     """Returns the index of the currently selected device."""
-    if not cls._is_initialized:
-      raise RuntimeError(
-          "torch.tpu.current_device() not available because the TPU runtime is"
-          " not initialized. Please initialize it by calling"
-          " torch_tpu.api.tpu_device()."
-      )
+    if cls._current_device is None:
+      cls._current_device = _device_ops_backend._get_current_device_id()  # pylint: disable=protected-access
+
     assert (
         cls._current_device is not None
     ), "_DeviceModule is initialized but has no current device."
@@ -133,12 +131,19 @@ class _DeviceModule:
   @classmethod
   def is_available(cls) -> bool:  # This is in torch/cuda/__init__.py.
     """Returns if the TPU backend is currently available."""
-    return True
+    if cls._device_type == "tpu":
+      return cls.device_count() > 0
+    if cls._device_type == "xla_cpu":
+      return True
+    if cls._device_type == "xla_cuda":
+      # TODO(jparkerh): detect GPUs without full init.
+      return True
+    return False
 
   @classmethod
   def is_initialized(cls) -> bool:  # This is in torch/cuda/__init__.py.
     """Returns whether PyTorch's TPU state has been initialized."""
-    return cls._is_initialized
+    return _device_ops_backend._is_initialized()  # pylint: disable=protected-access
 
   @classmethod
   def _is_in_bad_fork(cls) -> bool:
@@ -172,16 +177,13 @@ class _DeviceModule:
     _device_ops_backend.set_rng_state(new_state, -1)
 
   @classmethod
-  def _init_runtime(
+  def _init_runtime_options(
       cls,
       device_type="tpu",
   ):
-    """Initializes the TPU runtime."""
-    if not cls._is_initialized:
-      init_result = _device_ops_backend._init_runtime(device_type)  # pylint: disable=protected-access
-      cls._is_initialized = True
-      cls._device_count = init_result.device_count
-      cls._current_device = init_result.device_id
+    """Initializes the TPU runtime options."""
+    if not cls.is_initialized():
+      _device_ops_backend._init_runtime_options(device_type)  # pylint: disable=protected-access
       if not hasattr(cls, "_atexit_registered"):
         atexit.register(cls._shutdown_runtime)
         cls._atexit_registered = True
@@ -193,14 +195,18 @@ class _DeviceModule:
 
   @classmethod
   def device_count(cls) -> int:  # This is in torch/cuda/__init__.py.
-    """Returns the number of TPU devices."""
-    if (maybe_count := cls._device_count) is None:
-      raise RuntimeError(
-          "torch.tpu.device_count() not available because PJRT not initialized."
-          " Please initialize the TPU runtime by calling"
-          " torch_tpu.api.tpu_device()."
-      )
-    return maybe_count
+    """Returns the count of devices. This is implemented for *local* devices."""
+    if cls._device_count is None:
+      if cls.is_initialized():
+        cls._device_count = _device_ops_backend._get_device_count()  # pylint: disable=protected-access
+      elif cls._device_type == "tpu":
+        return hardware.get_tpu_device_count()
+      else:
+        # Fallback to init for other devices if needed.
+        cls._device_count = _device_ops_backend._get_device_count()  # pylint: disable=protected-access
+
+    assert cls._device_count is not None
+    return cls._device_count
 
   @classmethod
   def stream(cls, stream: streams.TpuStream | None) -> "TpuStreamContext":
@@ -320,9 +326,8 @@ class _DeviceModule:
 
   @classmethod
   def _shutdown_runtime(cls):
-    if cls._is_initialized:
+    if cls.is_initialized():
       _device_ops_backend._shutdown_runtime()  # pylint: disable=protected-access
-      cls._is_initialized = False
 
 
 class TpuStreamContext:

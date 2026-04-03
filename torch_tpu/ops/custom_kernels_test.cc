@@ -31,7 +31,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/FuncBuilder.h"
@@ -68,7 +68,10 @@ class CustomKernelRegistryTest : public testing::Test {
   static void SetUpTestSuite() {
     // This must be done before CustomKernelRegistry::GetInstance() is called,
     // as the latter depends on the PjRt client.
-    ASSERT_TRUE(InitializePjRt({.device_type = "tpu", .world_size = 1}).ok());
+    PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+        {.device_type = "tpu"});
+    absl::Status status = PjrtBackend::GetInstance().EnsureInitialized();
+    ASSERT_TRUE(status.ok()) << status;
   }
 };
 

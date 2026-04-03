@@ -194,6 +194,13 @@ class CompilationCache {
   // Cannot be called before GetInstance() or more than once.
   static void ShutDown() ABSL_LOCKS_EXCLUDED(cache_instance_mutex_);
 
+  // Shuts down the cache and its thread pool, evicting all entries, and then
+  // creates a new instance of the compilation cache.
+  //
+  // Only used in testing to restore the cache to a clean state after
+  // shutdown.
+  static void Restart() ABSL_LOCKS_EXCLUDED(cache_instance_mutex_);
+
   // Returns whether the global compilation cache is initialized.
   [[nodiscard]] bool IsInitialized() const ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
@@ -280,13 +287,6 @@ class CompilationCache {
   // locks.
   [[nodiscard]] static absl_nonnull std::unique_ptr<CompilationCache>&
   GetInstanceNoLock();
-
-  // Shuts down the cache and its thread pool, evicting all entries, and then
-  // creates a new instance of the compilation cache.
-  //
-  // Only used in testing to restore the cache to a clean state after
-  // shutdown.
-  static void Restart() ABSL_LOCKS_EXCLUDED(cache_instance_mutex_);
 
   // Ensures that the internal resources (like thread pools) of the compilation
   // cache are initialized. This method is idempotent and is triggered by any

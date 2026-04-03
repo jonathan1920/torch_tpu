@@ -39,11 +39,11 @@ _INIT_LOCK = threading.Lock()
 def _init_device_impl(device: str) -> torch.device:
   """Initializes the runtime for a specific device.
 
-  If the underlying InitializePjRt call fails, _init_tpu_runtime() will
-  throw a runtime error exception.
+  If the underlying PjrtBackend::EnsureInitialized call fails,
+  _init_device_impl() will throw a runtime error exception.
 
-  This function is idempotent, the underlying _init_runtime checkes
-  whether InitializePjRt has been called already.
+  This function is idempotent, the underlying _init_runtime_options checks
+  whether PjrtBackend has been initialized already.
 
   Args:
     device: Name of the device. Currently "tpu" and "xla_cuda" are supported.
@@ -69,20 +69,16 @@ def _init_device_impl(device: str) -> torch.device:
   )
 
   # pylint: disable=protected-access
-  torch._register_device_module(device, _device_module._DeviceModule)
-  print(f"Registered Python module for '{device}'.", file=sys.stderr)
+  _device_module._DeviceModule._device_type = device
+  _device_module._device_ops_backend._init_runtime_options(device)
 
-  # Call InitializePjRt runtime or raise a runtime error.
-  getattr(torch, device)._init_runtime(device_type=device)
-  print(
-      f"Device type: {device_d.type}, Device index:"
-      f" {device_d.index if device_d.index is not None else 'default'}"
-  )
+  torch._register_device_module(device, _device_module._DeviceModule)
+  # pylint: enable=protected-access
+  print(f"Registered Python module for '{device}'.", file=sys.stderr)
 
   if (
       device == "tpu"
       and not torch.distributed.is_initialized()
-      and len(tpu_distributed.all_global_device_ids()) > 1
   ):
     # Looks like we are running in a distributed setup.
     # Register the TPU distributed runtime; users will also need to

@@ -33,11 +33,6 @@ class TpuModuleTest(absltest.TestCase, common_utils.TestCase):
     # Ensure TPU backend is initialized and registered
     api.tpu_device()
 
-  def test_init_tpu_runtime(self):
-    # Test TPU initialization
-    self.assertTrue(_DevicePythonModule.is_initialized())
-    self.assertGreater(_DevicePythonModule.device_count(), 0)
-
   def test_memory_stats(self):
     stats = torch.accelerator.memory_stats()
     self.assertIn("active_bytes.all.current", stats)

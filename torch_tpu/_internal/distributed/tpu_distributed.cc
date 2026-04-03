@@ -47,15 +47,16 @@ c10::intrusive_ptr<c10d::Backend> MakeProcessGroup(
   return c10::make_intrusive<ProcessGroupTpu>(store, rank, size);
 }
 
-// Global device id of the (single) addressible device this process is using.
+// Global device id of the (single) addressable device this process is using.
 int GetGlobalDeviceId() {
-  const auto* pjrtdev = GetPjRtDevice();
-  TT_CHECK_THROW(pjrtdev, error::kInternal) << "PjRtDevice is not initialized.";
-  return pjrtdev->global_device_id().value();
+  TT_ASSIGN_OR_THROW(int device_id,
+                     PjrtBackend::GetInstance().GetGlobalDeviceId(),
+                     _ << "failed to get global device ID");
+  return device_id;
 }
 
 std::vector<int> GetAllGlobalDeviceIds() {
-  const auto* pjrt_client = GetPjRtClient();
+  const auto* pjrt_client = PjrtBackend::GetInstance().GetClient();
   TT_CHECK_THROW(pjrt_client, error::kInternal)
       << "PjRtClient is not initialized.";
 
@@ -70,7 +71,7 @@ std::vector<int> GetAllGlobalDeviceIds() {
 }
 
 std::string DeviceDebugString() {
-  const auto* pjrtdev = GetPjRtDevice();
+  const auto* pjrtdev = PjrtBackend::GetInstance().GetDevice();
   TT_CHECK_THROW(pjrtdev, error::kInternal) << "PjRtDevice is not initialized.";
   return std::string(pjrtdev->DebugString());
 }

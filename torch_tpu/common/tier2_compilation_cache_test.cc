@@ -43,7 +43,7 @@
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/unique_file_descriptor.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 
 namespace torch_tpu {
 
@@ -114,7 +114,9 @@ class TpuTestEnvironment : public testing::Environment {
  public:
   void SetUp() override {
     // This must be done before testing GetFromTier2Cache(),.
-    ABSL_CHECK_OK(InitializePjRt({.device_type = "tpu", .world_size = 1}));
+    PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+        {.device_type = "tpu"});
+    ABSL_CHECK_OK(PjrtBackend::GetInstance().EnsureInitialized());
   }
 };
 

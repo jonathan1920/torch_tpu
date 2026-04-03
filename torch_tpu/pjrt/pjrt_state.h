@@ -17,9 +17,16 @@
 #ifndef TORCH_TPU_PJRT_PJRT_STATE_H_
 #define TORCH_TPU_PJRT_PJRT_STATE_H_
 
+#include <cstdint>
+#include <memory>
 #include <string>
 
+#include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "c10/core/Device.h"
 #include "torch_tpu/eager/device_types.h"
 #include "xla/future.h"
@@ -28,46 +35,98 @@
 
 namespace torch_tpu {
 
-// Returns the PjRtClient singleton. Triggers lazy initialization if needed.
-[[nodiscard]] xla::PjRtClient* GetPjRtClient();
+// PjRt initialization options. Defaults to TPU, no pre-mapped buffer.
+struct PjRtInitializationOptions {
+  std::string device_type = "tpu";
+  int64_t premapped_buffer_size_bytes = 0;
+};
 
-// Returns the PjRtDevice singleton. Triggers lazy initialization if needed.
-[[nodiscard]] xla::PjRtDevice* GetPjRtDevice();
+// PjrtBackend manages the lifecycle and state of the PjRt runtime.
+//
+// It provides a singleton interface to initialize and access the PjRt client
+// and devices. Initialization is lazy and thread-safe.
+class PjrtBackend {
+ public:
+  // PjrtBackend is neither copyable nor movable.
+  PjrtBackend(const PjrtBackend&) = delete;
+  PjrtBackend& operator=(const PjrtBackend&) = delete;
+  PjrtBackend(PjrtBackend&&) = delete;
+  PjrtBackend& operator=(PjrtBackend&&) = delete;
 
-// Sets the PjRt device.
-void SetPjRtDevice(xla::PjRtDevice* device);
+  // Returns the singleton PjrtBackend instance.
+  [[nodiscard]] static PjrtBackend& GetInstance();
 
-// Returns whether the PjRt runtime is initialized.
-[[nodiscard]] bool IsPjRtInitialized();
+  // Sets the global PjRt initialization options. These options will be used
+  // for lazy initialization when the first device or client is requested.
+  void SetPjRtInitializationOptions(const PjRtInitializationOptions& options)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
-// Returns the global device count. Triggers lazy initialization if needed.
-absl::StatusOr<int> GetGlobalDeviceCount();
+  // Ensures that the PjRt singleton state is initialized. This method is
+  // idempotent and is triggered by any operation that requires the PjRt
+  // infrastructure (e.g., GetClient, GetDevice).
+  absl::Status EnsureInitialized() ABSL_LOCKS_EXCLUDED(mutex_);
 
-// Returns the PjRt device type.
-[[nodiscard]] PjRtDeviceType GetPjRtDeviceType();
+  // Returns whether the PjRt runtime is initialized.
+  [[nodiscard]] bool IsInitialized() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-// Sets the PjRt backend name for implicit initialization.
-void SetPjRtBackendName(const std::string& device_type);
+  // Returns the PjRtClient singleton. Triggers lazy initialization if needed.
+  [[nodiscard]] xla::PjRtClient* absl_nullable GetClient()
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
-// Returns the PjRt backend name.
-[[nodiscard]] std::string GetPjRtBackendName();
+  // Returns the PjRtDevice singleton. Triggers lazy initialization if needed.
+  [[nodiscard]] xla::PjRtDevice* absl_nullable GetDevice()
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
-// Internal function to set the initialized state.
-void SetPjRtState(xla::PjRtClient* client, xla::PjRtDevice* device,
-                  PjRtDeviceType device_type, int global_device_count);
+  // Returns the global device count. Triggers lazy initialization if needed.
+  absl::StatusOr<int> GetGlobalDeviceCount() ABSL_LOCKS_EXCLUDED(mutex_);
 
-// Returns allocator stats for the current PjRt device.
-absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats();
+  // Returns the global ID of the current device. Triggers lazy initialization
+  // if needed.
+  absl::StatusOr<int> GetGlobalDeviceId() ABSL_LOCKS_EXCLUDED(mutex_);
 
-// Returns the PjRt host allocator from the PjRt client.
-absl::StatusOr<xla::PjRtClient::HostAllocator*> GetHostAllocator();
+  // Returns the PjRt device type.
+  [[nodiscard]] PjRtDeviceType GetDeviceType() ABSL_LOCKS_EXCLUDED(mutex_);
 
-// Updates the tracked future for the given device.
-void MarkStreamActive(c10::DeviceIndex device_index, xla::Future<void> future);
+  // Returns allocator stats for the current PjRt device.
+  absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats()
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
-// Blocks until all pending operations on the given device have completed.
-void SynchronizeStream(c10::DeviceIndex device_index);
+  // Returns the PjRt host allocator from the PjRt client.
+  absl::StatusOr<xla::PjRtClient::HostAllocator*> GetHostAllocator()
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Shuts down the PjRt runtime and resets the global state.
+  void Shutdown() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Updates the tracked future for the given device.
+  void MarkStreamActive(c10::DeviceIndex device_index,
+                        xla::Future<void> future);
+
+  // Blocks until all pending operations on the given device have completed.
+  void SynchronizeStream(c10::DeviceIndex device_index);
+
+ private:
+  friend class absl::NoDestructor<PjrtBackend>;
+
+  PjrtBackend() = default;
+  ~PjrtBackend() = default;
+
+  // Internal initialization logic that returns an absl::Status.
+  absl::Status InitializeInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  mutable absl::Mutex mutex_;
+  std::unique_ptr<xla::PjRtClient> absl_nullable client_
+      ABSL_GUARDED_BY(mutex_);
+  xla::PjRtDevice* absl_nullable device_ ABSL_GUARDED_BY(mutex_) = nullptr;
+  PjRtDeviceType device_type_ ABSL_GUARDED_BY(mutex_) =
+      PjRtDeviceType::kUnknown;
+  int global_device_count_ ABSL_GUARDED_BY(mutex_) = 0;
+  int global_device_id_ ABSL_GUARDED_BY(mutex_) = -1;
+  PjRtInitializationOptions options_ ABSL_GUARDED_BY(mutex_) = {};
+  bool init_attempted_ ABSL_GUARDED_BY(mutex_) = false;
+  absl::Status init_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
+};
 
 }  // namespace torch_tpu
 
-#endif  // THIRD_PARTY_PY_TORCH_TPU_PJRT_PJRT_STATE_H_
+#endif  // TORCH_TPU_PJRT_PJRT_STATE_H_

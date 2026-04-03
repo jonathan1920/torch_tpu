@@ -31,7 +31,8 @@
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
+
 namespace torch_tpu {
 
 absl::Status AtomicWriteToCacheFile(const std::string& cache_entry_path,
@@ -46,7 +47,9 @@ using testing::StartsWith;
 class TpuTestEnvironment : public testing::Environment {
  public:
   void SetUp() override {
-    ABSL_CHECK_OK(InitializePjRt({.device_type = "tpu", .world_size = 1}));
+    PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+        {.device_type = "tpu"});
+    ABSL_CHECK_OK(PjrtBackend::GetInstance().EnsureInitialized());
   }
 };
 

@@ -14,44 +14,46 @@
  * limitations under the License.
  */
 
-#include "torch_tpu/pjrt/pjrt_init.h"
+#include <cstdlib>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "torch_tpu/eager/device_types.h"
-#include "torch_tpu/pjrt/pjrt_shutdown.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 
 namespace torch_tpu {
 namespace {
 
+using testing::ExitedWithCode;
+
 class PjRtInitTest : public ::testing::Test {
  protected:
-  void TearDown() override { ShutdownPjRt(); }
+  void TearDown() override { PjrtBackend::GetInstance().Shutdown(); }
 };
 
-TEST_F(PjRtInitTest, InitializePjRtRespectsWorldSize) {
-  EXPECT_FALSE(IsPjRtInitialized());
+TEST_F(PjRtInitTest, InitializePjRtIsLazy) {
+  EXPECT_EXIT(
+      {
+        auto check_lazy = []() -> bool {
+          if (PjrtBackend::GetInstance().IsInitialized()) {
+            return false;
+          }
 
-  ASSERT_OK_AND_ASSIGN(
-      PjRtInitializationResult result,
-      InitializePjRt({.device_type = "xla_cpu", .world_size = 1}));
-  EXPECT_TRUE(IsPjRtInitialized());
+          PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+              {.device_type = "xla_cpu"});
+          if (PjrtBackend::GetInstance().IsInitialized()) {
+            return false;
+          }
 
-  // CPU backend usually has 1 device by default anyway,
-  // but we can at least assert the return value matches what we asked for.
-  EXPECT_EQ(result.device_count, 1);
-  EXPECT_EQ(GetGlobalDeviceCount().value(), 1);
-  EXPECT_EQ(GetPjRtDeviceType(), PjRtDeviceType::kCpu);
-
-  // Call it again to test the caching logic
-  ASSERT_OK_AND_ASSIGN(
-      PjRtInitializationResult result_2,
-      InitializePjRt({.device_type = "xla_cpu", .world_size = 1}));
-
-  EXPECT_EQ(result_2.device_count, 1);
-  // Ensure the second call returned the exact same thing
-  EXPECT_EQ(result_2.global_device_id, result.global_device_id);
+          if (PjrtBackend::GetInstance().GetClient() == nullptr) {
+            return false;
+          }
+          if (!PjrtBackend::GetInstance().IsInitialized()) {
+            return false;
+          }
+          return true;
+        };
+        std::exit(check_lazy() ? 0 : 1);
+      },
+      ExitedWithCode(0), "");
 }
 
 }  // namespace

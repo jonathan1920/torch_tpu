@@ -17,6 +17,7 @@
 #include "torch_tpu/eager/device_buffer.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "gmock/gmock.h"
@@ -26,9 +27,11 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/shape.h"
+#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
@@ -37,13 +40,23 @@ namespace {
 
 using testing::SizeIs;
 
+class SubgraphTest : public testing::Test {
+ protected:
+  static void SetUpTestSuite() {
+    const std::string device_type = "xla_cpu";
+    PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+        {.device_type = device_type});
+    RegisterTpuAllocator();
+  }
+};
+
 // A dummy MLIR op builder for testing purposes.
 absl::StatusOr<DynamicMlirOpResults> DummyBuilder(
     mlir::MlirBuilder& builder, absl::Span<mlir::MlirOp> inputs) {
   return DynamicMlirOpResults{};
 }
 
-TEST(SubgraphTest, SubgraphMerging) {
+TEST_F(SubgraphTest, SubgraphMerging) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -77,7 +90,7 @@ TEST(SubgraphTest, SubgraphMerging) {
   EXPECT_EQ(rep1, rep3);
 }
 
-TEST(SubgraphTest, GetLeafNodesInvalidPopping) {
+TEST_F(SubgraphTest, GetLeafNodesInvalidPopping) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -109,7 +122,7 @@ TEST(SubgraphTest, GetLeafNodesInvalidPopping) {
   EXPECT_EQ(leaves[0], node2);
 }
 
-TEST(SubgraphTest, GetLeafNodesStopPopping) {
+TEST_F(SubgraphTest, GetLeafNodesStopPopping) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -160,7 +173,7 @@ TEST(SubgraphTest, GetLeafNodesStopPopping) {
   EXPECT_EQ(leaves[0], node3);
 }
 
-TEST(SubgraphTest, DeferredOpSubgraphDereference) {
+TEST_F(SubgraphTest, DeferredOpSubgraphDereference) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -177,7 +190,7 @@ TEST(SubgraphTest, DeferredOpSubgraphDereference) {
   EXPECT_EQ(op->subgraph(), ref.device_buffer_list()->subgraph());
 }
 
-TEST(SubgraphTest, MergeAll) {
+TEST_F(SubgraphTest, MergeAll) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -208,7 +221,7 @@ TEST(SubgraphTest, MergeAll) {
   EXPECT_EQ(ref_b_deferred_op->subgraph()->Find(), merged_subgraph);
 }
 
-TEST(SubgraphTest, DistributedCollectivesInSameSubgraph) {
+TEST_F(SubgraphTest, DistributedCollectivesInSameSubgraph) {
   ScopedPythonContextCapturer capturer(OpName::kDistributedAllReduce);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -255,7 +268,7 @@ TEST(SubgraphTest, DistributedCollectivesInSameSubgraph) {
                                    ref_b.device_buffer_list().get()));
 }
 
-TEST(SubgraphTest, CollectivesMergeNonCollectives) {
+TEST_F(SubgraphTest, CollectivesMergeNonCollectives) {
   ScopedPythonContextCapturer capturer(OpName::kDistributedAllReduce);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 

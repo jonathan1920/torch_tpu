@@ -16,11 +16,13 @@
 
 #include "torch_tpu/pjrt/pjrt_state.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/absl_log.h"
@@ -29,107 +31,178 @@
 #include "absl/synchronization/mutex.h"
 #include "c10/core/Device.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/distributed/slicebuilder/discovery.h"
 #include "torch_tpu/eager/device_types.h"
+#include "torch_tpu/common/environment.h"
+#include "torch_tpu/pjrt/pjrt_client.h"
 #include "xla/future.h"
+#include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/tsl/framework/allocator.h"
 
 namespace torch_tpu {
-namespace {
 
-struct GlobalPjRtState {
-  absl::Mutex mutex;
-  xla::PjRtClient* client = nullptr;
-  xla::PjRtDevice* device = nullptr;
+PjrtBackend& PjrtBackend::GetInstance() {
+  static absl::NoDestructor<PjrtBackend> instance;
+  return *instance;
+}
+
+void PjrtBackend::SetPjRtInitializationOptions(
+    const PjRtInitializationOptions& options) {
+  absl::MutexLock lock(mutex_);
+  options_ = options;
+}
+
+absl::Status PjrtBackend::EnsureInitialized() {
+  {
+    absl::ReaderMutexLock lock(mutex_);
+    if (init_attempted_) {
+      return init_status_;
+    }
+  }
+
+  absl::MutexLock lock(mutex_);
+  if (init_attempted_) {
+    return init_status_;
+  }
+
+  init_status_ = InitializeInternal();
+  init_attempted_ = true;
+  return init_status_;
+}
+
+absl::Status PjrtBackend::InitializeInternal() {
   PjRtDeviceType device_type = PjRtDeviceType::kUnknown;
-  int global_device_count = 0;
-  std::string backend_name = "tpu";
-};
+  std::string plugin_name;
+  if (options_.device_type == "tpu") {
+    device_type = PjRtDeviceType::kTpu;
+    plugin_name = kTpuPjrtName;
 
-GlobalPjRtState& GetGlobalState() {
-  static absl::NoDestructor<GlobalPjRtState> state;
-  return *state;
+    if (auto world_size_or = GetWorldSizeFromEnvOnce(); world_size_or.ok()) {
+      TT_ASSIGN_OR_RETURN(auto config, GetDistributedWorkerConfiguration());
+      TT_RETURN_IF_ERROR(InitializeDistributedEnvironment(config)).SetPrepend()
+          << "InitializeDistributedEnvironment failed: ";
+    }
+  } else if (options_.device_type == "xla_cuda") {
+    plugin_name = kGpuPjrtName;
+    device_type = PjRtDeviceType::kCuda;
+  } else if (options_.device_type == "xla_cpu") {
+    plugin_name = kCpuPjrtName;
+    device_type = PjRtDeviceType::kCpu;
+  } else {
+    return TT_ERROR(error::kInvalidArgument)
+           << "Unsupported device type: " << options_.device_type;
+  }
+
+  TT_ASSIGN_OR_RETURN(bool is_initialized,
+                      pjrt::IsPjrtPluginInitialized(plugin_name));
+
+  if (!is_initialized) {
+    TT_RETURN_IF_ERROR(pjrt::InitializePjrtPlugin(plugin_name)).SetPrepend()
+        << "InitializePjrtPlugin failed: ";
+  }
+
+  TT_ASSIGN_OR_RETURN(
+      client_,
+      torch_tpu::GetPjRtClient(options_.device_type,
+                               options_.premapped_buffer_size_bytes),
+      _.SetPrepend() << "GetPjrtClient failed: ");
+
+  TT_RET_CHECK(client_ != nullptr, error::kInternal)
+      << "PjRtClient is null after initialization";
+  TT_RET_CHECK(!client_->devices().empty(), error::kNotFound)
+      << "no PjRt devices found after client initialization";
+
+  const auto& addressable_devices = client_->addressable_devices();
+  TT_RET_CHECK(!addressable_devices.empty(), error::kInternal)
+      << "no addressable PjRt devices found";
+
+  device_ = addressable_devices[0];
+  device_type_ = device_type;
+  global_device_count_ = client_->device_count();
+  global_device_id_ = device_->global_device_id().value();
+  return absl::OkStatus();
 }
 
-}  // namespace
-
-xla::PjRtClient* GetPjRtClient() {
-  auto& state = GetGlobalState();
-  absl::ReaderMutexLock lock(state.mutex);
-  return state.client;
+bool PjrtBackend::IsInitialized() const {
+  absl::ReaderMutexLock lock(mutex_);
+  return client_ != nullptr;
 }
 
-xla::PjRtDevice* GetPjRtDevice() {
-  auto& state = GetGlobalState();
-  absl::ReaderMutexLock lock(state.mutex);
-  return state.device;
+xla::PjRtClient* absl_nullable PjrtBackend::GetClient() {
+  if (!EnsureInitialized().ok()) {
+    return nullptr;
+  }
+  absl::ReaderMutexLock lock(mutex_);
+  return client_.get();
 }
 
-void SetPjRtDevice(xla::PjRtDevice* device) {
-  auto& state = GetGlobalState();
-  absl::MutexLock lock(state.mutex);
-  state.device = device;
+xla::PjRtDevice* absl_nullable PjrtBackend::GetDevice() {
+  if (!EnsureInitialized().ok()) {
+    return nullptr;
+  }
+  absl::ReaderMutexLock lock(mutex_);
+  return device_;
 }
 
-bool IsPjRtInitialized() {
-  auto& state = GetGlobalState();
-  absl::ReaderMutexLock lock(state.mutex);
-  return state.client != nullptr;
-}
-
-absl::StatusOr<int> GetGlobalDeviceCount() {
-  auto& state = GetGlobalState();
-  absl::ReaderMutexLock lock(state.mutex);
-  if (state.client == nullptr) {
+absl::StatusOr<int> PjrtBackend::GetGlobalDeviceCount() {
+  TT_RETURN_IF_ERROR(EnsureInitialized());
+  absl::ReaderMutexLock lock(mutex_);
+  if (client_ == nullptr) {
     return TT_ERROR(error::kInternal) << "PjRt is not initialized";
   }
-  return state.global_device_count;
+  return global_device_count_;
 }
 
-PjRtDeviceType GetPjRtDeviceType() {
-  auto& state = GetGlobalState();
-  absl::ReaderMutexLock lock(state.mutex);
-  return state.device_type;
+absl::StatusOr<int> PjrtBackend::GetGlobalDeviceId() {
+  TT_RETURN_IF_ERROR(EnsureInitialized());
+  absl::ReaderMutexLock lock(mutex_);
+  if (client_ == nullptr) {
+    return TT_ERROR(error::kInternal) << "PjRt is not initialized";
+  }
+  return global_device_id_;
 }
 
-void SetPjRtBackendName(const std::string& device_type) {
-  auto& state = GetGlobalState();
-  absl::MutexLock lock(state.mutex);
-  state.backend_name = device_type;
+PjRtDeviceType PjrtBackend::GetDeviceType() {
+  absl::ReaderMutexLock lock(mutex_);
+  return device_type_;
 }
 
-std::string GetPjRtBackendName() {
-  auto& state = GetGlobalState();
-  absl::ReaderMutexLock lock(state.mutex);
-  return state.backend_name;
-}
-
-void SetPjRtState(xla::PjRtClient* client, xla::PjRtDevice* device,
-                  PjRtDeviceType device_type, int global_device_count) {
-  auto& state = GetGlobalState();
-  absl::MutexLock lock(state.mutex);
-  state.client = client;
-  state.device = device;
-  state.device_type = device_type;
-  state.global_device_count = global_device_count;
-}
-
-absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() {
-  xla::PjRtDevice* device = GetPjRtDevice();
+absl::StatusOr<tsl::AllocatorStats> PjrtBackend::GetAllocatorStats() {
+  xla::PjRtDevice* device = GetDevice();
   if (device == nullptr) {
     return TT_ERROR(error::kInternal) << "PjRt device is not initialized";
   }
   return device->GetAllocatorStats();
 }
 
-absl::StatusOr<xla::PjRtClient::HostAllocator*> GetHostAllocator() {
-  xla::PjRtClient* client = GetPjRtClient();
+absl::StatusOr<xla::PjRtClient::HostAllocator*>
+PjrtBackend::GetHostAllocator() {
+  xla::PjRtClient* client = GetClient();
   if (client == nullptr) {
     return TT_ERROR(error::kInternal) << "PjRt client is not initialized";
   }
   return client->GetHostAllocator();
 }
 
+void PjrtBackend::Shutdown() {
+  absl::MutexLock lock(mutex_);
+  if (!init_attempted_) {
+    return;
+  }
+  ABSL_VLOG(1) << "ShutdownPjRt";
+
+  client_.reset();
+  device_ = nullptr;
+  device_type_ = PjRtDeviceType::kUnknown;
+  global_device_count_ = 0;
+  init_attempted_ = false;
+  init_status_ = absl::OkStatus();
+  ABSL_VLOG(1) << "PjRt shut down.";
+}
+
+namespace {
 struct StreamState {
   absl::Mutex mutex;
   absl::flat_hash_map<c10::DeviceIndex, std::vector<xla::Future<void>>>
@@ -140,8 +213,10 @@ StreamState& GetStreamState() {
   static absl::NoDestructor<StreamState> state;
   return *state;
 }
+}  // namespace
 
-void MarkStreamActive(c10::DeviceIndex device_index, xla::Future<void> future) {
+void PjrtBackend::MarkStreamActive(c10::DeviceIndex device_index,
+                                   xla::Future<void> future) {
   StreamState& state = GetStreamState();
   absl::MutexLock lock(state.mutex);
   state.pending_futures[device_index].push_back(std::move(future));
@@ -152,7 +227,7 @@ void MarkStreamActive(c10::DeviceIndex device_index, xla::Future<void> future) {
 // If multiple threads call SynchronizeStream for the same device concurrently,
 // all threads will block until the pending operations at the time of their
 // call are finished.
-void SynchronizeStream(c10::DeviceIndex device_index) {
+void PjrtBackend::SynchronizeStream(c10::DeviceIndex device_index) {
   StreamState& state = GetStreamState();
   absl::MutexLock lock(state.mutex);
   auto it = state.pending_futures.find(device_index);

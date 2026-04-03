@@ -25,7 +25,7 @@ pytype_strict_library(
     srcs = ["singlehost_wrapper.py"],
     deps = [
         "//shims/absl_py/logging",
-        "//torch_tpu/_internal/distributed:tpu_topology",
+        "//torch_tpu/_internal/utils:hardware",
         "@pypi//portpicker",
     ],
 )

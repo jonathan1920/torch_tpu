@@ -18,6 +18,7 @@
 #include <optional>
 #include <string>
 
+#include "absl/log/absl_log.h"
 #include "absl/time/time.h"
 #include "ATen/core/Generator.h"
 #include "c10/core/Device.h"
@@ -28,19 +29,16 @@
 #include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/common/discovery.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/distributed/slicebuilder/discovery.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/tpu_hooks.h"
-#include "torch_tpu/pjrt/pjrt_init.h"
-#include "torch_tpu/pjrt/pjrt_shutdown.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
-#include "pybind11/attr.h"
 #include "pybind11/chrono.h"
 #include "pybind11/gil.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
+#include "xla/pjrt/pjrt_client.h"
 
 namespace torch_tpu {
 
@@ -58,6 +56,19 @@ void SetRngStatePy(at::Tensor state, int device_index) {
   TT_THROW_IF_ERROR(UpdateRngState(gen, state)).SetPrepend()
       << "failed to set RNG state: ";
 }
+
+void InitRuntimeOptions(const std::string& device_type) {
+  if (device_type == "tpu" || device_type == "xla_cuda") {
+    TT_THROW_IF_ERROR(AddTpuHooks()) << "Failed to add TPU hooks.";
+    RegisterTpuAllocator();
+  }
+  PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+      {.device_type = device_type,
+       .premapped_buffer_size_bytes =
+           GetPremappedBufferSizeFromEnvOnce().value_or(0)});
+  ABSL_LOG(INFO) << "PjRt runtime initialization deferred for " << device_type;
+  CompilationCache::GetInstance().SetOptions({});
+}
 }  // namespace
 
 PYBIND11_MODULE(_device_ops_backend, m) {
@@ -66,34 +77,23 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       "PjRt backend utilities for PyTorch PrivateUse1 integration. "
       "Core ops are registered via C++ TORCH_LIBRARY_IMPL.";
 
-  m.def(
-      "_init_runtime",
-      [](const std::string& device_type) -> PjRtInitializationResult {
-        TT_ASSIGN_OR_THROW(
-            PjRtInitializationResult result,
-            InitializePjRt(
-                {.device_type = device_type,
-                 // TODO: what's the right default here?
-                 // Single-device, or "all available devices"?
-                 // Should distributed mode be opt-in or opt-out?
-                 .world_size = GetWorldSizeFromEnvOnce().value_or(1),
-                 // TODO(@lukeboyer): Determine what a safe default
-                 // is here.
-                 .premapped_buffer_size =
-                     GetPremappedBufferSizeFromEnvOnce().value_or(0)}),
-            _.SetPrepend() << "failed to initialize PjRt: ");
-        if (device_type == "tpu" || device_type == "xla_cuda") {
-          TT_THROW_IF_ERROR(AddTpuHooks()) << "failed to initialize TpuHooks.";
-          RegisterTpuAllocator();
-        }
-        CompilationCache::GetInstance().SetOptions({});
-        return result;
-      },
-      py::arg("device_type") = "tpu",
-      "Initializes the PjRt runtime for the specified device type.");
+  m.def("_init_runtime_options", &InitRuntimeOptions,
+        py::arg("device_type") = "tpu",
+        "Initializes the PjRt runtime options for the specified device type. "
+        "This function configures backend options and hooks, but actual "
+        "hardware initialization is deferred until the first device request.");
 
   m.def(
-      "_shutdown_runtime", []() { ShutdownPjRt(); },
+      "_is_initialized",
+      []() -> bool { return PjrtBackend::GetInstance().IsInitialized(); },
+      "Returns whether the PjRt runtime is initialized.");
+
+  m.def(
+      "_shutdown_runtime",
+      []() {
+        CompilationCache::ShutDown();
+        PjrtBackend::GetInstance().Shutdown();
+      },
       "Shuts down the PjRt runtime.");
 
   m.def(
@@ -107,16 +107,33 @@ PYBIND11_MODULE(_device_ops_backend, m) {
                       ->getDevice()
                       .index();
         }
-        SynchronizeStream(index);
+        PjrtBackend::GetInstance().SynchronizeStream(index);
       },
       py::arg("device_index") = py::none(),
       py::call_guard<py::gil_scoped_release>(),
       "Blocks until all async d2h copies on the specified device have "
       "completed.");
 
-  py::class_<PjRtInitializationResult>(m, "PjRtInitializationResult")
-      .def_readonly("device_count", &PjRtInitializationResult::device_count)
-      .def_readonly("device_id", &PjRtInitializationResult::global_device_id);
+  m.def(
+      "_get_current_device_id",
+      []() -> int {
+        TT_ASSIGN_OR_THROW(int device_id,
+                           PjrtBackend::GetInstance().GetGlobalDeviceId(),
+                           _ << "failed to get current device ID");
+        return device_id;
+      },
+      "Returns the global ID of the current PJRT device.");
+
+  m.def(
+      "_get_device_count",
+      []() -> int {
+        xla::PjRtClient* client = PjrtBackend::GetInstance().GetClient();
+        TT_CHECK_THROW(client != nullptr, error::kInternal)
+            << "PjRtClient is null after initialization.";
+        return client->device_count();
+      },
+      "Returns the number of devices visible to the PJRT client. This count "
+      "is equivalent to the global device count.");
 
   m.def(
       "_set_allow_cache",
@@ -128,6 +145,7 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       "the compilation cache will be disabled and every computation graph "
       "will be compiled from scratch (this is useful for debugging and perf "
       "analysis).");
+
   m.def(
       "_set_cache_only",
       [](bool cache_only) {
@@ -136,6 +154,7 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       py::arg("cache_only"),
       "If True, the compilation cache will only lookup and not compile. Any "
       "cache miss will result in an error.");
+
   m.def(
       "_set_dump_on_cache_miss",
       [](bool enable) {

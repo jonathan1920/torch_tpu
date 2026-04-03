@@ -25,12 +25,6 @@ package(
 )
 
 pytype_strict_library(
-    name = "tpu_topology",
-    srcs = ["tpu_topology.py"],
-    deps = ["//shims/absl_py/logging"],
-)
-
-pytype_strict_library(
     name = "gpu_env",
     srcs = ["gpu_env.py"],
     deps = [

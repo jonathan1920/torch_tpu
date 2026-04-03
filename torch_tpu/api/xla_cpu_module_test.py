@@ -17,6 +17,7 @@
 from absl.testing import absltest
 import torch
 from torch.testing._internal import common_utils
+from torch_tpu import api
 from torch_tpu.api import _device_module
 
 _DevicePythonModule = _device_module._DeviceModule
@@ -29,12 +30,14 @@ class XlaCpuModuleTest(absltest.TestCase, common_utils.TestCase):
     # Reset class variables before each test
     _DevicePythonModule._autocast_enabled = False
     _DevicePythonModule._autocast_dtype = torch.float16
+    # Ensure xla_cpu backend is registered
+    api._xla_cpu_device()
 
   def test_init_cpu_runtime(self):
     # Test CPU initialization
-    _DevicePythonModule._init_runtime(device_type="xla_cpu")
-    self.assertTrue(_DevicePythonModule.is_initialized())
-    self.assertGreater(_DevicePythonModule.device_count(), 0)
+    torch.xla_cpu.current_device()
+    self.assertTrue(torch.xla_cpu.is_initialized())
+    self.assertGreater(torch.xla_cpu.device_count(), 0)
 
 
 if __name__ == "__main__":

@@ -60,7 +60,7 @@ class StableHloCompileTimeTestBase(absltest.TestCase):
     super().setUpClass()
     cls._writer = None
     cls._preheat_xla_done = False  # Whether XLA has been preheated.
-    _device_ops_backend._init_runtime(
+    _device_ops_backend._init_runtime_options(  # pylint: disable=protected-access
         device_type="tpu",
     )
 

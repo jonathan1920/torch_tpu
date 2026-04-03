@@ -81,7 +81,7 @@ std::ostream& operator<<(std::ostream& os, const CacheTier tier) {
 
 // Returns the PjRt version string.
 [[nodiscard]] static std::string GetPjRtVersion() {
-  xla::PjRtClient* const client = GetPjRtClient();
+  xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   ABSL_CHECK(client != nullptr)  // CRASH_OK
       << "PjRtClient must be initialized before accessing the tier-2 cache.";
 
@@ -142,7 +142,8 @@ const std::string& GetTier2CacheName() {
         return std::string(kDefaultCacheName);
       }
       // Decide whether to use the tier-2 cache based on the world size.
-      const auto world_size_or = GetGlobalDeviceCount();
+      const auto world_size_or =
+          PjrtBackend::GetInstance().GetGlobalDeviceCount();
       if (world_size_or.ok()) {
         if (*world_size_or <= 1) {
           ABSL_LOG(INFO) << "Tier-2 compilation cache is disabled for world "
@@ -273,7 +274,7 @@ class MappedCacheEntry {
 
 absl::StatusOr<SharedLoadedExecutable> LoadSerializedExecutable(
     CacheTier tier, CompilationCacheKey key, const std::string_view data) {
-  xla::PjRtClient* const client = GetPjRtClient();
+  xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   TT_RET_CHECK(client, error::kFailedPrecondition)
       << "PjRtClient must be initialized before accessing the " << tier
       << " cache.";

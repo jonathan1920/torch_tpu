@@ -72,6 +72,21 @@ pytype_strict_library(
     ],
 )
 
+pytype_strict_library(
+    name = "hardware",
+    srcs = ["hardware.py"],
+    deps = ["@pypi//immutabledict"],
+)
+
+torch_tpu_py_test(
+    name = "hardware_test",
+    srcs = ["hardware_test.py"],
+    deps = [
+        ":hardware",
+        "//shims/absl_py/testing:absltest",
+    ],
+)
+
 torch_tpu_py_test(
     name = "utils_test",
     srcs = ["utils_test.py"],

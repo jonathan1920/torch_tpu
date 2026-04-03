@@ -141,7 +141,7 @@ absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
 
   TT_ASSIGN_OR_RETURN(UniqueCompileOptions compile_options,
                       MakeCompilerOptions(compilation_mode));
-  xla::PjRtClient* const client = GetPjRtClient();
+  xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   TT_RET_CHECK(client, error::kFailedPrecondition)
       << "PjRtClient must be initialized";
   TT_ASSIGN_OR_RETURN(

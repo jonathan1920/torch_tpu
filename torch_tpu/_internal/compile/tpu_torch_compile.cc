@@ -266,7 +266,7 @@ py::bytes PySerializeExecutable(const SharedLoadedExecutable& executable) {
 
 SharedLoadedExecutable PyLoadSerializedExecutable(py::bytes& serialized_bytes) {
   const auto data = py::cast<std::string_view>(serialized_bytes);
-  xla::PjRtClient* const client = GetPjRtClient();
+  xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   TT_CHECK_THROW(client != nullptr, error::kFailedPrecondition)
       << "PjRtClient must be initialized before loading a serialized "
          "executable.";

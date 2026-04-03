@@ -52,6 +52,7 @@ pytype_strict_library(
         "//shims/torch:pytorch",
         "//torch_tpu",  # buildcleaner: keep
         "//torch_tpu/_internal/precision",
+        "//torch_tpu/_internal/utils:hardware",
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
@@ -98,6 +99,7 @@ torch_tpu_py_test(
     tags = ["requires-gpu-sm60-only"],
     deps = [
         ":_device_module",
+        ":api",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//shims/torch:testing_internal",
@@ -111,6 +113,7 @@ torch_tpu_py_test(
     strict = True,
     deps = [
         ":_device_module",
+        ":api",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//shims/torch:testing_internal",
@@ -132,15 +135,14 @@ torch_tpu_cc_library(
         "//torch_tpu/common:compilation_cache",
         "//torch_tpu/common:discovery",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/distributed/slicebuilder:discovery",
         "//torch_tpu/eager:device_gen_impl",
         "//torch_tpu/eager:device_types",
         "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/eager:tpu_hooks",
-        "//torch_tpu/pjrt:pjrt_init",
-        "//torch_tpu/pjrt:pjrt_shutdown",
         "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/time",
+        "@xla//xla/pjrt:pjrt_client",
     ],
 )
 
@@ -162,6 +164,7 @@ pybind_extension(
         "//shims/torch/c10/core:base_headers",
         "//torch_tpu/common:compilation_cache",
         "//torch_tpu/common:discovery",
+        "//torch_tpu/common:env_vars",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/distributed/slicebuilder:discovery",
         "//torch_tpu/eager:device_buffer",
@@ -169,10 +172,11 @@ pybind_extension(
         "//torch_tpu/eager:device_types",
         "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/eager:tpu_hooks",
-        "//torch_tpu/pjrt:pjrt_init",
-        "//torch_tpu/pjrt:pjrt_shutdown",
         "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
+        "@xla//xla/pjrt:pjrt_client",
     ],
 )
 

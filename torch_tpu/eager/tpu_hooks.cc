@@ -93,7 +93,7 @@ c10::Device TpuDeviceGuardImpl::exchangeDevice(c10::Device d) const {
   TT_CHECK_THROW(d.type() == type(), error::kInvalidArgument)
       << "TpuDeviceGuardImpl: invalid device type " << d.type();
   c10::Device old_device(type(), current_device_index_);
-  auto* pjrt_client = GetPjRtClient();
+  auto* pjrt_client = PjrtBackend::GetInstance().GetClient();
   if (pjrt_client != nullptr) {
     const int addressable_device_count =
         pjrt_client->addressable_device_count();
@@ -117,7 +117,7 @@ c10::Device TpuDeviceGuardImpl::getDevice() const {
 void TpuDeviceGuardImpl::setDevice(c10::Device d) const {
   TT_CHECK_THROW(d.type() == type(), error::kInvalidArgument)
       << "TpuDeviceGuardImpl: invalid device type " << d.type();
-  auto* pjrt_client = GetPjRtClient();
+  auto* pjrt_client = PjrtBackend::GetInstance().GetClient();
   if (pjrt_client != nullptr) {
     const int addressable_device_count =
         pjrt_client->addressable_device_count();
@@ -156,7 +156,7 @@ c10::Stream TpuDeviceGuardImpl::exchangeStream(c10::Stream s) const {
 }
 
 c10::DeviceIndex TpuDeviceGuardImpl::deviceCount() const noexcept {
-  auto* pjrt_client = GetPjRtClient();
+  auto* pjrt_client = PjrtBackend::GetInstance().GetClient();
   if (pjrt_client != nullptr) {
     return static_cast<c10::DeviceIndex>(
         pjrt_client->addressable_device_count());
@@ -188,7 +188,7 @@ bool TpuDeviceGuardImpl::queryStream(const c10::Stream& stream) const {
   return true;
 }
 void TpuDeviceGuardImpl::synchronizeStream(const c10::Stream& stream) const {
-  SynchronizeStream(stream.device_index());
+  PjrtBackend::GetInstance().SynchronizeStream(stream.device_index());
 }
 void TpuDeviceGuardImpl::destroyEvent(
     void* event, const c10::DeviceIndex device_index) const noexcept {
@@ -216,7 +216,7 @@ struct TORCH_API TpuHooksInterface : public at::PrivateUse1HooksInterface {
   }
 
   bool hasPrimaryContext(c10::DeviceIndex device_index) const override {
-    return GetPjRtClient() != nullptr;
+    return PjrtBackend::GetInstance().GetClient() != nullptr;
   }
 
   bool isPinnedPtr(const void* data) const override {
@@ -292,7 +292,9 @@ struct TORCH_API TpuHooksInterface : public at::PrivateUse1HooksInterface {
         });
   }
 
-  bool isAvailable() const override { return GetPjRtClient() != nullptr; }
+  bool isAvailable() const override {
+    return PjrtBackend::GetInstance().GetClient() != nullptr;
+  }
 };
 
 struct TORCH_API TpuHooksArgs : public at::PrivateUse1HooksArgs {};

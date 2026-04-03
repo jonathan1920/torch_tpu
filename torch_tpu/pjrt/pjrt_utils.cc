@@ -76,8 +76,8 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
                << xla::primitive_util::LowercasePrimitiveTypeName(type)
                << ", dimensions: [" << absl::StrJoin(dimensions, ",") << "]";
 
-  xla::PjRtClient* const client = GetPjRtClient();
-  xla::PjRtDevice* const device = GetPjRtDevice();
+  xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
+  xla::PjRtDevice* const device = PjrtBackend::GetInstance().GetDevice();
 
   TT_RET_CHECK(client != nullptr, error::kFailedPrecondition)
       << "PjRt client not initialized in TpuMallocAndMemcpyHtoD.";
@@ -260,9 +260,10 @@ absl::Status TpuMemcpyDtoHDirect(const DeviceBufferRef& buffer_ref,
         ABSL_LOG(ERROR) << "Async D2H ToLiteral transfer failed: " << s;
       }
     });
-    MarkStreamActive(static_cast<c10::DeviceIndex>(
-                         buffer->device()->local_hardware_id().value()),
-                     future);
+    PjrtBackend::GetInstance().MarkStreamActive(
+        static_cast<c10::DeviceIndex>(
+            buffer->device()->local_hardware_id().value()),
+        future);
     return absl::OkStatus();
   } else {
     return future.Await();
