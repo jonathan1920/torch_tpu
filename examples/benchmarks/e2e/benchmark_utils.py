@@ -159,15 +159,15 @@ class RunMode(enum.Enum):
   Make sure that no entry is a prefix of the other. Run mode name is appended
   to test names, and MLCompass runs tests based on a prefix match, it can lead
   to duplicate entries. For e.g., test_model_eager will match both
-  test_model_eager and test_model_eager_optimized. Hence, we use
-  eager_default and eager_optimized.
+  test_model_eager and test_model_eager_defer_and_fuse. Hence, we use
+  eager_defer_and_fuse_with_o1 and eager_defer_and_fuse.
   """
 
-  EAGER_DEFAULT = (  # Run the model in eager mode with O1 XLA optimizations.
-      "eager_default"
+  EAGER_DEFER_AND_FUSE_WITH_O1 = (  # Run the model in eager mode with O1 XLA optimizations.
+      "eager_defer_and_fuse_with_o1"
   )
-  EAGER_OPTIMIZED = (  # Run the model in eager mode with O2 XLA optimizations.
-      "eager_optimized"
+  EAGER_DEFER_AND_FUSE = (  # Run the model in eager mode with O2 XLA optimizations.
+      "eager_defer_and_fuse"
   )
   DEFER_NEVER_ONLY = (  # Run the model in eager mode with DeferNever.
       "defer_never_only"

@@ -30,9 +30,9 @@ enum class FallbackMode { kNoFallback, kAllowFallback };
 
 PYBIND11_MODULE(execution_mode_impl, m) {
   py::enum_<EagerMode>(m, "EagerMode")
-      .value("DEFAULT", EagerMode::kDefault)
-      .value("OPTIMIZED", EagerMode::kOptimized)
-      .value("DEFER_ALL", EagerMode::kDeferAll)
+      .value("DEFER_AND_FUSE_WITH_O1", EagerMode::kDeferAndFuseWithO1)
+      .value("DEFER_AND_FUSE", EagerMode::kDeferAndFuse)
+      .value("INTERNAL_DEFER_ALL", EagerMode::kInternalDeferAll)
       .value("DEFER_NEVER", EagerMode::kDeferNever)
       .value("DEFER_NEVER_AND_LAUNCH_BLOCKING",
              EagerMode::kDeferNeverAndLaunchBlocking)

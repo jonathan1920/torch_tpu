@@ -32,8 +32,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE_WITH_O1,
+          benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE,
           benchmark_utils.RunMode.DEFER_NEVER_ONLY,
           benchmark_utils.RunMode.DEFER_NEVER_AND_LAUNCH_BLOCKING,
           benchmark_utils.RunMode.COMPILED,
@@ -59,8 +59,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE_WITH_O1,
+          benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE,
           benchmark_utils.RunMode.DEFER_NEVER_ONLY,
           benchmark_utils.RunMode.COMPILED,
       ])
@@ -87,8 +87,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE_WITH_O1,
+          benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE,
           benchmark_utils.RunMode.DEFER_NEVER_ONLY,
           benchmark_utils.RunMode.COMPILED,
       ])
@@ -113,8 +113,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE_WITH_O1,
+          benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE,
           benchmark_utils.RunMode.DEFER_NEVER_ONLY,
           benchmark_utils.RunMode.COMPILED,
       ])
@@ -139,8 +139,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE_WITH_O1,
+          benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE,
           benchmark_utils.RunMode.DEFER_NEVER_ONLY,
       ])
   )
@@ -166,8 +166,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE_WITH_O1,
+          benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE,
           benchmark_utils.RunMode.DEFER_NEVER_ONLY,
       ])
   )
@@ -193,8 +193,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE_WITH_O1,
+          benchmark_utils.RunMode.EAGER_DEFER_AND_FUSE,
           benchmark_utils.RunMode.DEFER_NEVER_ONLY,
           benchmark_utils.RunMode.COMPILED,
       ])

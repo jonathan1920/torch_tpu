@@ -281,7 +281,7 @@ absl::Status MaterializationWorker::MaterializeQueue(
   auto regions = SplitQueueIntoRegions(queue);
 
   // Launch compilations for the identified regions.
-  auto compilation_mode = (GetEagerMode() == EagerMode::kOptimized)
+  auto compilation_mode = (GetEagerMode() == EagerMode::kDeferAndFuse)
                               ? CompilationMode::kFastRuntime
                               : CompilationMode::kFastCompile;
 

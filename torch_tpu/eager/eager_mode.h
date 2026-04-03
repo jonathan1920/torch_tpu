@@ -21,11 +21,12 @@ namespace torch_tpu {
 
 // The op defer mode.
 enum class EagerMode {
-  // kDefault defers all ops except those that cannot be deferred. This is used
+  // kDeferAndFuseWithO1 defers all ops except those that cannot be deferred.
+  // This is used
   // in eager mode (normal operation, not torch.compile).
-  kDefault,
-  // Similar to kDefault, but uses more aggressive XLA optimizations.
-  kOptimized,
+  kDeferAndFuseWithO1,
+  // Similar to kDeferAndFuseWithO1, but uses more aggressive XLA optimizations.
+  kDeferAndFuse,
   // kDeferNever marks all ops to be executed immediately, similarly to PyTorch
   // on CUDA eager mode. This is primarily used for debugging, as it has
   // suboptimal compile and execution performance.
@@ -36,9 +37,10 @@ enum class EagerMode {
   // should be used only for debugging, as it has the worst execution
   // performance.
   kDeferNeverAndLaunchBlocking,
-  // kDeferAll attempts to defer all ops. If an op cannot be deferred, it will
+  // kInternalDeferAll attempts to defer all ops. If an op cannot be deferred,
+  // it will
   // raise a runtime exception. This should be used only in torch.compile mode.
-  kDeferAll,
+  kInternalDeferAll,
 };
 
 // Sets the defer mode for the current thread. Thread-safe.

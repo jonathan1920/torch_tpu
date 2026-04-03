@@ -29,7 +29,7 @@ EagerMode GetDefaultEagerMode() {
   if (GetEnvOnce<kTpuLaunchBlocking>() == "1") {
     return EagerMode::kDeferNeverAndLaunchBlocking;
   }
-  return EagerMode::kDefault;
+  return EagerMode::kDeferAndFuseWithO1;
 }
 
 // Returns the defer mode for the current thread.

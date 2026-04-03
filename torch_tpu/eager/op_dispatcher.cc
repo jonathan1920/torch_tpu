@@ -146,7 +146,7 @@ absl::StatusOr<DeviceBufferRef> MakeBuffer(
     // TPU does not support complex128. Use complex64 instead.
     scalar_type = at::ScalarType::ComplexFloat;
   }
-  if (GetEagerMode() != EagerMode::kDeferAll) {
+  if (GetEagerMode() != EagerMode::kInternalDeferAll) {
     // Variable execution mode: materialize the scalar to a DeviceBufferRef.
     // This treats the scalar as an argument rather than a constant, which
     // decreases compiler specialization and improves code reuse.
@@ -434,7 +434,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
       TT_RETURN_IF_ERROR(device_buffer_list->Synchronize());
     }
 
-  } else if (eager_mode != EagerMode::kDeferAll) {
+  } else if (eager_mode != EagerMode::kInternalDeferAll) {
     if (absl::GetFlag(FLAGS_torch_tpu_internal_enable_new_materialization)) {
       TT_RETURN_IF_ERROR(OnNewOpDispatch(results[0].device_buffer_list()));
     }

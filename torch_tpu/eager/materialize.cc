@@ -489,7 +489,7 @@ class MaterializationWorker {
     std::vector<ExecutionTask> execution_tasks;
     for (auto& split_traversal : traversals) {
       ABSL_VLOG(1) << "[MaterializationWorker] Compiling traversal";
-      auto compilation_mode = (GetEagerMode() == EagerMode::kOptimized)
+      auto compilation_mode = (GetEagerMode() == EagerMode::kDeferAndFuse)
                                   ? CompilationMode::kFastRuntime
                                   : CompilationMode::kFastCompile;
       absl::StatusOr<CompiledKernel> compiled_kernel;

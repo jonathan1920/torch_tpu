@@ -667,7 +667,10 @@ def format_model(
       shlo = torch_tpu_export.exported_to_mlir(exported)
       result += shlo.decode("utf-8") + "\n"
     else:
-      with execution_mode.eager_mode(execution_mode.EagerMode.DEFER_ALL):
+      with execution_mode.eager_mode(
+          execution_mode.EagerMode.INTERNAL_DEFER_ALL
+      ):
+
         results = model(*input_tensors)
       shlo = sync.computation_mlir(results)
       result += shlo + "\n"

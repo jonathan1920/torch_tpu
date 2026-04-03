@@ -345,7 +345,7 @@ def fx_to_mlir(
 
   This function traces the given FX graph module by running it with an
   EagerLikeFxInterpreter in full defer mode
-  (`execution_mode.EagerMode.DEFER_ALL`).
+  (`execution_mode.EagerMode.INTERNAL_DEFER_ALL`).
   The
   resulting deferred graph is then converted to MLIR bytes.
 
@@ -370,7 +370,7 @@ def fx_to_mlir(
   # Run the module through the EagerLikeFxInterpreter with MLIR location
   # tracebacks enabled so that the MLIR we generate has file location info.
   with execution_mode.eager_mode(
-      execution_mode.EagerMode.DEFER_ALL
+      execution_mode.EagerMode.INTERNAL_DEFER_ALL
   ), enable_tracebacks():
     # We clone the args so that inplace updates do not overwrite the placeholder
     # args, these copies will be removed in the compiled code so there is no

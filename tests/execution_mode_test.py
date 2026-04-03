@@ -32,10 +32,10 @@ class ExecutionModeTest(absltest.TestCase):
   def test_eager_mode_in_threads(self):
     """Tests setting compiler options in nested contexts concurrently."""
     eager_modes = [
-        execution_mode.EagerMode.DEFAULT,
-        execution_mode.EagerMode.OPTIMIZED,
+        execution_mode.EagerMode.DEFER_AND_FUSE_WITH_O1,
+        execution_mode.EagerMode.DEFER_AND_FUSE,
         execution_mode.EagerMode.DEFER_NEVER,
-        execution_mode.EagerMode.DEFER_ALL,
+        execution_mode.EagerMode.INTERNAL_DEFER_ALL,
     ]
 
     def _change_eager_mode(new_mode):

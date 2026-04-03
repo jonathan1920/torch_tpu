@@ -55,9 +55,10 @@ _DEVICE = flags.DEFINE_enum(
 
 _EAGER_MODE = flags.DEFINE_enum(
     "eager_mode",
-    "DEFAULT",
-    ["DEFAULT", "OPTIMIZED", "DEFER_NEVER"],
-    "Eager mode for the model. Can be 'DEFAULT', 'OPTIMIZED' or 'DEFER_NEVER'.",
+    "DEFER_AND_FUSE_WITH_O1",
+    ["DEFER_AND_FUSE_WITH_O1", "DEFER_AND_FUSE", "DEFER_NEVER"],
+    "Eager mode for the model. Can be 'DEFER_AND_FUSE_WITH_O1',"
+    " 'DEFER_AND_FUSE' or 'DEFER_NEVER'.",
 )
 
 _USE_TORCH_COMPILE = flags.DEFINE_bool(
@@ -97,10 +98,10 @@ def get_torch_device() -> torch.device:
 
 # %%
 def get_eager_mode() -> execution_mode.EagerMode:
-  if _EAGER_MODE.value == "DEFAULT":
-    return execution_mode.EagerMode.DEFAULT
-  elif _EAGER_MODE.value == "OPTIMIZED":
-    return execution_mode.EagerMode.OPTIMIZED
+  if _EAGER_MODE.value == "DEFER_AND_FUSE_WITH_O1":
+    return execution_mode.EagerMode.DEFER_AND_FUSE_WITH_O1
+  elif _EAGER_MODE.value == "DEFER_AND_FUSE":
+    return execution_mode.EagerMode.DEFER_AND_FUSE
   elif _EAGER_MODE.value == "DEFER_NEVER":
     return execution_mode.EagerMode.DEFER_NEVER
   else:
