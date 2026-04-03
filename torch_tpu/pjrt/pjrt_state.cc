@@ -29,7 +29,6 @@
 #include "absl/synchronization/mutex.h"
 #include "c10/core/Device.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_types.h"
 #include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -56,31 +55,31 @@ GlobalPjRtState& GetGlobalState() {
 
 xla::PjRtClient* GetPjRtClient() {
   auto& state = GetGlobalState();
-  TT_READER_MUTEX_LOCK(lock, state.mutex);
+  absl::ReaderMutexLock lock(state.mutex);
   return state.client;
 }
 
 xla::PjRtDevice* GetPjRtDevice() {
   auto& state = GetGlobalState();
-  TT_READER_MUTEX_LOCK(lock, state.mutex);
+  absl::ReaderMutexLock lock(state.mutex);
   return state.device;
 }
 
 void SetPjRtDevice(xla::PjRtDevice* device) {
   auto& state = GetGlobalState();
-  TT_MUTEX_LOCK(lock, state.mutex);
+  absl::MutexLock lock(state.mutex);
   state.device = device;
 }
 
 bool IsPjRtInitialized() {
   auto& state = GetGlobalState();
-  TT_READER_MUTEX_LOCK(lock, state.mutex);
+  absl::ReaderMutexLock lock(state.mutex);
   return state.client != nullptr;
 }
 
 absl::StatusOr<int> GetGlobalDeviceCount() {
   auto& state = GetGlobalState();
-  TT_READER_MUTEX_LOCK(lock, state.mutex);
+  absl::ReaderMutexLock lock(state.mutex);
   if (state.client == nullptr) {
     return TT_ERROR(error::kInternal) << "PjRt is not initialized";
   }
@@ -89,26 +88,26 @@ absl::StatusOr<int> GetGlobalDeviceCount() {
 
 PjRtDeviceType GetPjRtDeviceType() {
   auto& state = GetGlobalState();
-  TT_READER_MUTEX_LOCK(lock, state.mutex);
+  absl::ReaderMutexLock lock(state.mutex);
   return state.device_type;
 }
 
 void SetPjRtBackendName(const std::string& device_type) {
   auto& state = GetGlobalState();
-  TT_MUTEX_LOCK(lock, state.mutex);
+  absl::MutexLock lock(state.mutex);
   state.backend_name = device_type;
 }
 
 std::string GetPjRtBackendName() {
   auto& state = GetGlobalState();
-  TT_READER_MUTEX_LOCK(lock, state.mutex);
+  absl::ReaderMutexLock lock(state.mutex);
   return state.backend_name;
 }
 
 void SetPjRtState(xla::PjRtClient* client, xla::PjRtDevice* device,
                   PjRtDeviceType device_type, int global_device_count) {
   auto& state = GetGlobalState();
-  TT_MUTEX_LOCK(lock, state.mutex);
+  absl::MutexLock lock(state.mutex);
   state.client = client;
   state.device = device;
   state.device_type = device_type;
@@ -144,7 +143,7 @@ StreamState& GetStreamState() {
 
 void MarkStreamActive(c10::DeviceIndex device_index, xla::Future<void> future) {
   StreamState& state = GetStreamState();
-  TT_MUTEX_LOCK(lock, state.mutex);
+  absl::MutexLock lock(state.mutex);
   state.pending_futures[device_index].push_back(std::move(future));
 }
 
@@ -155,7 +154,7 @@ void MarkStreamActive(c10::DeviceIndex device_index, xla::Future<void> future) {
 // call are finished.
 void SynchronizeStream(c10::DeviceIndex device_index) {
   StreamState& state = GetStreamState();
-  TT_MUTEX_LOCK(lock, state.mutex);
+  absl::MutexLock lock(state.mutex);
   auto it = state.pending_futures.find(device_index);
   if (it == state.pending_futures.end()) {
     // No pending futures for this device.

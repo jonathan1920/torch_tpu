@@ -46,7 +46,6 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
-#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -99,7 +98,7 @@ void Subgraph::PruneAndReturnLeafNodes(
 }
 
 void Subgraph::push(std::weak_ptr<DeviceBufferList> device_buffer) {
-  TT_MUTEX_LOCK(lock, mu_);
+  absl::MutexLock lock(mu_);
   if (queue_.size() >= queue_.capacity()) {
     // Try to free up capacity by pruning down to just the live leaf nodes.
     Prune();
@@ -112,7 +111,7 @@ std::shared_ptr<Subgraph> Subgraph::Find() {
   while (true) {
     std::shared_ptr<Subgraph> next_root;
     {
-      TT_MUTEX_LOCK(lock, root->mu_);
+      absl::MutexLock lock(root->mu_);
       next_root = root->parent_;
     }
     if (!next_root) break;
@@ -124,7 +123,7 @@ std::shared_ptr<Subgraph> Subgraph::Find() {
   while (current != root) {
     std::shared_ptr<Subgraph> next;
     {
-      TT_MUTEX_LOCK(lock, current->mu_);
+      absl::MutexLock lock(current->mu_);
       next = current->parent_;
       if (next) {
         current->parent_ = root;
@@ -143,8 +142,8 @@ void Subgraph::Merge(std::shared_ptr<Subgraph> s1,
   auto r2 = s2->Find();
   if (r1 == r2) return;
 
-  TT_MUTEX_LOCK(lock1, r1->mu_);
-  TT_MUTEX_LOCK(lock2, r2->mu_);
+  absl::MutexLock lock1(r1->mu_);
+  absl::MutexLock lock2(r2->mu_);
 
   // Prune r1's queue to avoid reallocation if possible.
   r1->Prune();
@@ -163,7 +162,7 @@ void Subgraph::Merge(std::shared_ptr<Subgraph> s1,
 }
 
 std::vector<SharedDeviceBufferList> Subgraph::GetLeafNodes() {
-  TT_MUTEX_LOCK(lock, mu_);
+  absl::MutexLock lock(mu_);
   // Simultaneously prune the queue and write leaf nodes to the output.
   std::vector<SharedDeviceBufferList> leaf_nodes;
   PruneAndReturnLeafNodes(leaf_nodes);
@@ -176,7 +175,7 @@ SubgraphRegistry& SubgraphRegistry::GetInstance() {
 }
 
 absl_nonnull std::shared_ptr<Subgraph> SubgraphRegistry::MakeNewSubgraph() {
-  TT_MUTEX_LOCK(lock, mu_);
+  absl::MutexLock lock(mu_);
   if (subgraphs_.size() >= subgraphs_.capacity()) {
     // Try to free up capacity by pruning down to just the live subgraphs.
     subgraphs_.erase(std::remove_if(subgraphs_.begin(), subgraphs_.end(),
@@ -192,7 +191,7 @@ absl_nonnull std::shared_ptr<Subgraph> SubgraphRegistry::MakeNewSubgraph() {
 }
 
 absl_nonnull std::shared_ptr<Subgraph> SubgraphRegistry::MergeAll() {
-  TT_MUTEX_LOCK(lock, mu_);
+  absl::MutexLock lock(mu_);
   // Find the first non-expired subgraph.
   std::shared_ptr<Subgraph> root;
   auto it = subgraphs_.begin();

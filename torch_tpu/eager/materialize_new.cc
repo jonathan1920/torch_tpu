@@ -38,7 +38,6 @@
 #include "absl/types/span.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize.h"
@@ -91,7 +90,7 @@ class MaterializationWorker {
   ~MaterializationWorker() { Exit(); }
 
   absl::Status GetLastStatus() const {
-    TT_MUTEX_LOCK(lock, mutex_);
+    absl::MutexLock lock(mutex_);
     return last_status_;
   }
 
@@ -125,7 +124,7 @@ absl::Status MaterializationWorker::OnNewOpDispatch(
     const SharedDeviceBufferList& device_buffer_list) {
   tsl::profiler::TraceMe t("Worker_OnNewOpDispatch");
   TT_RETURN_IF_ERROR(GetLastStatus());
-  TT_MUTEX_LOCK(lock, mutex_);
+  absl::MutexLock lock(mutex_);
   // Wait if the current dispatch queue is being processed.
   mutex_.Await(
       absl::Condition(this, &MaterializationWorker::IsReadyToDispatch));
@@ -137,7 +136,7 @@ absl::Status MaterializationWorker::Materialize() {
   tsl::profiler::TraceMe t("Worker_Materialize");
   TT_RETURN_IF_ERROR(GetLastStatus());
   {
-    TT_MUTEX_LOCK(lock, mutex_);
+    absl::MutexLock lock(mutex_);
     // Wait if the current dispatch queue is being processed.
     mutex_.Await(
         absl::Condition(this, &MaterializationWorker::IsReadyToDispatch));
@@ -156,7 +155,7 @@ absl::Status MaterializationWorker::BlockOnPendingMaterializations() {
   TT_RETURN_IF_ERROR(GetLastStatus());
 
   {
-    TT_MUTEX_LOCK(lock, mutex_);
+    absl::MutexLock lock(mutex_);
     // Wait for the execution thread to be caught up.
     mutex_.Await(absl::Condition(
         this, &MaterializationWorker::IsExecutionThreadCaughtUp));
@@ -169,7 +168,7 @@ absl::Status MaterializationWorker::BlockOnPendingMaterializations() {
 void MaterializationWorker::Exit() {
   ABSL_VLOG(1) << ">>> MaterializationWorker::Exit";
   {
-    TT_MUTEX_LOCK(lock, mutex_);
+    absl::MutexLock lock(mutex_);
     must_exit_ = true;
   }
   if (execution_thread_.joinable()) {

@@ -52,7 +52,6 @@
 #include "torch_tpu/common/dynamism_utils.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
-#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize_new.h"
@@ -275,7 +274,7 @@ class MaterializationWorker {
     ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing " << nodes.size()
                  << " nodes for materialization";
     auto [promise, future] = xla::MakePromise<void>();
-    TT_MUTEX_LOCK(lock, materialize_mu_);
+    absl::MutexLock lock(materialize_mu_);
     materialize_jobs_.push(
         MaterializationTask{.nodes_to_materialize = std::move(nodes),
                             .completion_promise = std::move(promise),
@@ -313,7 +312,7 @@ class MaterializationWorker {
                           .outputs = outputs,  // intentional copy
                           .compiled_kernel = std::move(compiled_kernel),
                           .task_name = std::string(task_name)};
-    TT_MUTEX_LOCK(lock, execute_mu_);
+    absl::MutexLock lock(execute_mu_);
     execute_jobs_.push(std::move(task));
 
     return outputs;
@@ -321,7 +320,7 @@ class MaterializationWorker {
 
  private:
   MaterializationTask DequeueMaterializationJob() {
-    TT_MUTEX_LOCK(lock, materialize_mu_);
+    absl::MutexLock lock(materialize_mu_);
     if (materialize_jobs_.empty()) {
       materialize_mu_.Await(absl::Condition(
           +[](std::queue<MaterializationTask>* jobs) { return !jobs->empty(); },
@@ -333,7 +332,7 @@ class MaterializationWorker {
   }
 
   ExecutionTask DequeueExecutionJob() {
-    TT_MUTEX_LOCK(lock, execute_mu_);
+    absl::MutexLock lock(execute_mu_);
     if (execute_jobs_.empty()) {
       execute_mu_.Await(absl::Condition(
           +[](std::queue<ExecutionTask>* jobs) { return !jobs->empty(); },
@@ -556,7 +555,7 @@ class MaterializationWorker {
                   ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing "
                                << tasks->size() << " ExecutionTasks";
                   {
-                    TT_MUTEX_LOCK(lock, execute_mu_);
+                    absl::MutexLock lock(execute_mu_);
                     for (auto& task : *tasks) {
                       execute_jobs_.push(std::move(task));
                     }

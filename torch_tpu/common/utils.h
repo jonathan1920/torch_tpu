@@ -30,11 +30,6 @@
 // 1 if this is a Google-internal version of torch_tpu. Otherwise 0.
 #define TT_IS_INTERNAL_TORCH_TPU 0
 
-// TODO: b/442629517 - Passing by explicit reference is deprecated, but external
-// builds use an older absl version that doesn't have implicit reference APIs.
-#define TT_MUTEX_LOCK(lock, mu) absl::MutexLock lock(&(mu))
-#define TT_READER_MUTEX_LOCK(lock, mu) absl::ReaderMutexLock lock(&(mu))
-
 namespace torch_tpu {
 
 // Returns a string representation of the given value that can be losslessly

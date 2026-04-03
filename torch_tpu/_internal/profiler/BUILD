@@ -47,7 +47,6 @@ torch_tpu_cc_library(
     deps = [
         "//shims/pybind11",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:utils",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",

@@ -26,7 +26,6 @@
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/utils.h"
 #include "pybind11/pybind11.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
@@ -106,7 +105,7 @@ class TpuProfilerSession {
 };
 
 absl::Status TpuProfilerServer::Start(int port) ABSL_LOCKS_EXCLUDED(mutex_) {
-  TT_MUTEX_LOCK(lock, mutex_);
+  absl::MutexLock lock(mutex_);
   TT_RET_CHECK(server_ == nullptr, error::kFailedPrecondition)
       << "the profiler server has already been started";
   server_ = std::make_unique<tsl::profiler::ProfilerServer>();
@@ -115,7 +114,7 @@ absl::Status TpuProfilerServer::Start(int port) ABSL_LOCKS_EXCLUDED(mutex_) {
 }
 
 absl::Status TpuProfilerServer::Stop() ABSL_LOCKS_EXCLUDED(mutex_) {
-  TT_MUTEX_LOCK(lock, mutex_);
+  absl::MutexLock lock(mutex_);
   TT_RET_CHECK(server_ != nullptr, error::kFailedPrecondition)
       << "the profiler server has not been started or has already been "
          "stopped";
@@ -125,7 +124,7 @@ absl::Status TpuProfilerServer::Stop() ABSL_LOCKS_EXCLUDED(mutex_) {
 
 absl::Status TpuProfilerSession::Start(const std::string& logdir,
                                        py::object options_obj) {
-  TT_MUTEX_LOCK(lock, mutex_);
+  absl::MutexLock lock(mutex_);
   TT_RET_CHECK(session_ == nullptr, error::kFailedPrecondition)
       << "the profiler session has already been started";
 
@@ -160,7 +159,7 @@ absl::Status TpuProfilerSession::Start(const std::string& logdir,
 }
 
 absl::Status TpuProfilerSession::Stop(const std::string& filename) {
-  TT_MUTEX_LOCK(lock, mutex_);
+  absl::MutexLock lock(mutex_);
   TT_RET_CHECK(session_ != nullptr, error::kFailedPrecondition)
       << "the profiler session has not been started or has already been "
          "stopped";

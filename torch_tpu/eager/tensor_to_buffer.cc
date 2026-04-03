@@ -55,7 +55,6 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
-#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -645,7 +644,7 @@ class TpuPinnedAllocator final : public at::HostAllocator {
         << "Failed to allocate " << nbytes << " bytes of pinned host memory";
 
     {
-      TT_MUTEX_LOCK(lock, mutex_);
+      absl::MutexLock lock(mutex_);
       pinned_ptrs_.insert(data);
     }
 
@@ -682,14 +681,14 @@ class TpuPinnedAllocator final : public at::HostAllocator {
   void reset_peak_stats() override {}
 
   bool is_pinned_ptr(const void* ptr) {
-    TT_READER_MUTEX_LOCK(lock, mutex_);
+    absl::ReaderMutexLock lock(mutex_);
     return pinned_ptrs_.contains(ptr);
   }
 
   void free_ptr(void* ptr) {
     if (ptr) {
       {
-        TT_MUTEX_LOCK(lock, mutex_);
+        absl::MutexLock lock(mutex_);
         pinned_ptrs_.erase(ptr);
       }
       TT_ASSIGN_OR_THROW(auto* host_allocator, GetHostAllocator());

@@ -53,7 +53,6 @@ torch_tpu_cc_library(
     deps = [
         "//shims/torch/c10/core:base_headers",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:utils",
         "//torch_tpu/eager:device_types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",

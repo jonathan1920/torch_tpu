@@ -156,7 +156,7 @@ int GetNumCompilationThreads() {
 }
 
 void CompilationCache::EnsureInitialized() {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   if (initialized_) return;
 
   compilation_pool_ = std::make_unique<torch_tpu::ThreadPool>(
@@ -186,7 +186,7 @@ CompilationCache::~CompilationCache() {
   compilation_pool_.reset();
   backup_compilation_pool_.reset();
   EvictAll();
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   ABSL_LOG(INFO) << "CompilationCache final stats: " << perf_stats_;
 }
 
@@ -201,7 +201,7 @@ CompilationCache::GetInstanceNoLock() {
 }
 
 CompilationCache& CompilationCache::GetInstance() {
-  TT_MUTEX_LOCK(lock, cache_instance_mutex_);
+  absl::MutexLock lock(cache_instance_mutex_);
   auto& instance = GetInstanceNoLock();
   ABSL_CHECK(instance != nullptr)  // CRASH_OK
       << "Cannot use CompilationCache after it has been shut down.";
@@ -209,7 +209,7 @@ CompilationCache& CompilationCache::GetInstance() {
 }
 
 void CompilationCache::ShutDown() {
-  TT_MUTEX_LOCK(lock, cache_instance_mutex_);
+  absl::MutexLock lock(cache_instance_mutex_);
   auto& instance = GetInstanceNoLock();
   ABSL_CHECK(instance != nullptr)  // CRASH_OK
       << "The CompilationCache has already been shut down. Don't shut down "
@@ -218,20 +218,20 @@ void CompilationCache::ShutDown() {
 }
 
 void CompilationCache::Restart() {
-  TT_MUTEX_LOCK(lock, cache_instance_mutex_);
+  absl::MutexLock lock(cache_instance_mutex_);
   auto& instance = GetInstanceNoLock();
   // Cannot call std::make_unique here as the ctor is private.
   instance.reset(new CompilationCache());
 }
 
 bool CompilationCache::IsInitialized() const {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   return initialized_;
 }
 
 void CompilationCache::SetOptions(
     const CompilationCacheInitializationOptions& options) {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   options_ = options;
   // TODO(jparkerh): Consolidate cache_only_mode_ into options_.cache_only.
   cache_only_mode_ = options.cache_only;
@@ -277,7 +277,7 @@ void CompilationCache::EvictAll() {
   absl::flat_hash_set<CompilationCacheKey, CompilationCacheKey::Hash>
       keys_to_evict;
   {
-    TT_MUTEX_LOCK(lock, cache_mutex_);
+    absl::MutexLock lock(cache_mutex_);
     for (const auto& [key, cache_entry] : executable_cache_) {
       keys_to_evict.insert(key);
     }
@@ -289,7 +289,7 @@ void CompilationCache::EvictAll() {
   //
   // We chose a busy-wait loop as the alternative is much more complex.
   for (; !keys_to_evict.empty(); absl::SleepFor(absl::Seconds(1))) {
-    TT_MUTEX_LOCK(lock, cache_mutex_);
+    absl::MutexLock lock(cache_mutex_);
     const auto keys = keys_to_evict;
     // Loop over a copy of keys_to_evict, as we will modify it during
     // the loop and invalidate its iterator.
@@ -318,7 +318,7 @@ void CompilationCache::EvictAll() {
   }
   // Clear bounded dynamic cache entries.
   {
-    TT_MUTEX_LOCK(lock, cache_mutex_);
+    absl::MutexLock lock(cache_mutex_);
     bounded_dynamic_cache_.clear();
   }
 
@@ -326,45 +326,45 @@ void CompilationCache::EvictAll() {
 }
 
 void CompilationCache::SetAllowCacheMode(bool allow) {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   allow_cache_mode_ = allow;
   ABSL_LOG(INFO) << "CompilationCache allow-cache mode set to: " << allow;
 }
 
 void CompilationCache::SetCacheOnlyMode(bool cache_only) {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   cache_only_mode_ = cache_only;
   ABSL_LOG(INFO) << "CompilationCache cache-only mode set to: " << cache_only;
 }
 
 void CompilationCache::SetDumpOnCacheMissMode(bool enable) {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   dump_on_cache_miss_ = enable;
   ABSL_LOG(INFO) << "CompilationCache dump-on-miss mode set to: " << enable;
 }
 
 bool CompilationCache::GetDumpOnCacheMissMode() const {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   return dump_on_cache_miss_;
 }
 
 int64_t CompilationCache::GetCacheRequests() const {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   return perf_stats_.num_cache_reqs;
 }
 
 int64_t CompilationCache::GetCacheHits() const {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   return perf_stats_.num_cache_hits;
 }
 
 int64_t CompilationCache::GetCacheMisses() const {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   return perf_stats_.num_cache_misses();
 }
 
 PerfStats CompilationCache::GetCacheStats() const {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   PerfStats stats = perf_stats_;
   stats.per_entry_stats.reserve(executable_cache_.size());
   for (const auto& [key, cache_entry] : executable_cache_) {
@@ -514,7 +514,7 @@ CompilationCache::GetOrCreateCacheEntry(
 }
 
 bool CompilationCache::IsExecutableReady(CompilationCacheKey key) const {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   if (const auto it = executable_cache_.find(key);
       it != executable_cache_.end()) {
     return IsFutureReady(it->second.executable_future());
@@ -529,7 +529,7 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
   // Critical section for cache lookups and insertion.
   TT_ASSIGN_OR_RETURN(
       auto cache_lookup, [&]() -> absl::StatusOr<CacheLookupInternal> {
-        TT_MUTEX_LOCK(lock, cache_mutex_);
+        absl::MutexLock lock(cache_mutex_);
         perf_stats_.num_cache_reqs++;
         TT_ASSIGN_OR_RETURN(auto lookup,
                             GetOrCreateCacheEntry(key, input_shapes));
@@ -630,7 +630,7 @@ void CompilationCache::EnqueueCompilation(
 void CompilationCache::SetExecutable(
     CompilationCacheKey key, absl::StatusOr<SharedLoadedExecutable> executable,
     CacheEntryStats stats) {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   // If the user requested to evict the cache while we were compiling this
   // executable, the key may be missing. In this case, adding the key back to
   // the cache doesn't help as EvictAll() already set the executable future
@@ -769,7 +769,7 @@ void CompilationCache::GetFromTier3OrCompile(
   // Read the tier-1 cache.
   SharedLoadedExecutableFuture f;
   {
-    TT_MUTEX_LOCK(lock, cache_mutex_);
+    absl::MutexLock lock(cache_mutex_);
     const CacheEntry& cache_entry = executable_cache_[key];
     f = cache_entry.executable_future();
   }
@@ -806,7 +806,7 @@ void CompilationCache::GetFromTier3OrCompile(
     ABSL_VLOG(2) << "Tier-2 cache WRITE for key: " << key
                  << "\n  Pre-compile wait: " << pre_compile_duration
                  << "\n  Write duration: " << write_duration;
-    TT_MUTEX_LOCK(lock, cache_mutex_);
+    absl::MutexLock lock(cache_mutex_);
     const CacheEntry& cache_entry = executable_cache_[key];
     auto& tier2_stats = cache_entry.stats().tier2;
     if (!tier2_stats.has_value()) {
@@ -856,7 +856,7 @@ void CompilationCache::Compile(CompilationCacheKey key,
 }
 
 std::string CompilationCache::HbmUsageSummary() const {
-  TT_MUTEX_LOCK(lock, cache_mutex_);
+  absl::MutexLock lock(cache_mutex_);
   int64_t total_size_bytes = 0;
   int64_t num_executables = 0;
   for (const auto& [key, cache_entry] : executable_cache_) {

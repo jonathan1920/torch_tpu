@@ -55,7 +55,6 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fingerprint_utils.h"
-#include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -453,7 +452,7 @@ class CustomKernelRegistry {
   // existed.
   bool RegisterCustomKernel(std::string_view name, std::string_view kwargs,
                             std::string_view mlir_module_string) {
-    TT_MUTEX_LOCK(lock, mutex_);
+    absl::MutexLock lock(mutex_);
     if (registry_.contains(CustomKernelId{.name = std::string(name),
                                           .kwargs = std::string(kwargs)})) {
       return false;
@@ -465,7 +464,7 @@ class CustomKernelRegistry {
   }
 
   bool LookupCustomKernel(std::string_view name, std::string_view kwargs) {
-    TT_MUTEX_LOCK(lock, mutex_);
+    absl::MutexLock lock(mutex_);
     return registry_.contains(CustomKernelId{.name = std::string(name),
                                              .kwargs = std::string(kwargs)});
   }
@@ -484,7 +483,7 @@ class CustomKernelRegistry {
     // Lock the registry while we retrieve the MLIR module string.
     std::string mlir_module_string;
     {
-      TT_MUTEX_LOCK(lock, mutex_);
+      absl::MutexLock lock(mutex_);
       auto it =
           registry_.find(CustomKernelIdRef{.name = name, .kwargs = kernel_key});
       TT_RET_CHECK(it != registry_.end(), error::kNotFound)

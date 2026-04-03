@@ -378,7 +378,6 @@ torch_tpu_cc_library(
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:fingerprint_utils",
-        "//torch_tpu/common:utils",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
