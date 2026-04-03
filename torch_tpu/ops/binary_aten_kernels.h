@@ -122,6 +122,21 @@ absl::Status BinaryOpOut(const OpName op_name, const at::Tensor& tensor,
 at::Tensor& AtenAddOut(const at::Tensor& self, const at::Tensor& other,
                        const at::Scalar& alpha, at::Tensor& out);
 
+at::Tensor& AtenAddReluOut(const at::Tensor& self, const at::Tensor& other,
+                           const at::Scalar& alpha, at::Tensor& out);
+
+at::Tensor AtenAddReluScalar(const at::Tensor& self, const at::Scalar& other,
+                             const at::Scalar& alpha);
+
+at::Tensor AtenAddReluTensor(const at::Tensor& self, const at::Tensor& other,
+                             const at::Scalar& alpha);
+
+at::Tensor& AtenAddRelu_Scalar(at::Tensor& self, const at::Scalar& other,
+                               const at::Scalar& alpha);
+
+at::Tensor& AtenAddRelu_Tensor(at::Tensor& self, const at::Tensor& other,
+                               const at::Scalar& alpha);
+
 at::Tensor& AtenAtan2Out(const at::Tensor& x, const at::Tensor& y,
                          at::Tensor& out);
 

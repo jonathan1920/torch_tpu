@@ -318,6 +318,118 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         )
     )
 
+  def test__add_relu_Scalar(self):
+    """Tests _add_relu.Scalar with various inputs and dtypes."""
+    # Case 1: Standard positive
+    x1 = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ops.aten._add_relu.Scalar(x1.to(device), 2.0, 1.0)
+    )
+
+    # Case 2: Negative values (ReLU clamping)
+    x2 = torch.tensor([[-1.0, -5.0], [1.0, 2.0]], dtype=torch.float32)
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ops.aten._add_relu.Scalar(x2.to(device), -1.0, 1.0)
+    )
+
+    # Case 3: bfloat16 (PyTorch CPU doesn't support _add_relu.Scalar,
+    # use separate ops on CPU for reference)
+    x3 = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.bfloat16)
+    self.assert_close_tpu_vs_cpu(
+        lambda device: (
+            torch.relu(x3 + 2.0 * 0.5)
+            if device == "cpu"
+            else torch.ops.aten._add_relu.Scalar(x3.to(device), 2.0, 0.5)
+        )
+    )
+
+    # Case 4: Non-contiguous
+    x4 = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32).t()
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ops.aten._add_relu.Scalar(x4.to(device), 2.0, 1.0)
+    )
+
+  def test__add_relu_Tensor(self):
+    """Tests _add_relu.Tensor with various inputs and dtypes."""
+    # Case 1: Standard positive
+    x1 = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)
+    y1 = torch.tensor([[2.0, 3.0], [1.0, 5.0]], dtype=torch.float32)
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ops.aten._add_relu.Tensor(
+            x1.to(device), y1.to(device), alpha=1.0
+        )
+    )
+
+    # Case 2: Negative values (ReLU clamping)
+    x2 = torch.tensor([[-1.0, -5.0], [1.0, 2.0]], dtype=torch.float32)
+    y2 = torch.tensor([[-2.0, 1.0], [-1.0, -3.0]], dtype=torch.float32)
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ops.aten._add_relu.Tensor(
+            x2.to(device), y2.to(device), alpha=1.0
+        )
+    )
+
+    # Case 3: bfloat16
+    x3 = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.bfloat16)
+    y3 = torch.tensor([[2.0, 3.0], [1.0, 5.0]], dtype=torch.bfloat16)
+
+    def compute_add_relu_tensor(device):
+      if device == "cpu":
+        # CPU backend might not support _add_relu.Tensor directly
+        return torch.relu(x3 + y3 * 0.5)
+      else:
+        return torch.ops.aten._add_relu.Tensor(
+            x3.to(device), y3.to(device), alpha=0.5
+        )
+
+    self.assert_close_tpu_vs_cpu(compute_add_relu_tensor)
+
+  def test__add_relu_out(self):
+    """Tests _add_relu.out with various inputs and dtypes."""
+    x1 = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)
+    y1 = torch.tensor([[2.0, 3.0], [1.0, 5.0]], dtype=torch.float32)
+
+    def test_fn(device):
+      out = torch.empty(2, 2, dtype=torch.float32, device=device)
+      if device == "cpu":
+        # CPU backend might not support _add_relu.out directly
+        return torch.relu(x1 + y1 * 1.0)
+      torch.ops.aten._add_relu.out(
+          x1.to(device), y1.to(device), alpha=1.0, out=out
+      )
+      return out
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
+  def test__add_relu__Scalar(self):
+    """Tests _add_relu_.Scalar with various inputs and dtypes."""
+    x1 = torch.tensor([[1.0, -2.0], [-3.0, 4.0]], dtype=torch.float32)
+
+    def test_fn(device):
+      t = x1.clone().to(device)
+      if device == "cpu":
+        # CPU backend might not support add_relu_.Scalar directly
+        return torch.relu(t + 2.0 * 1.0)
+      torch.ops.aten._add_relu_.Scalar(t, 2.0, alpha=1.0)
+      return t
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
+  def test__add_relu__Tensor(self):
+    """Tests _add_relu_.Tensor with various inputs and dtypes."""
+    x1 = torch.tensor([[1.0, -2.0], [-3.0, 4.0]], dtype=torch.float32)
+    y1 = torch.tensor([[2.0, 3.0], [-1.0, -5.0]], dtype=torch.float32)
+
+    def test_fn(device):
+      t = x1.clone().to(device)
+      if device == "cpu":
+        # CPU backend might not support _add_relu_.Tensor directly
+        return torch.relu(t + y1 * 1.0)
+      torch.ops.aten._add_relu_.Tensor(t, y1.to(device), alpha=1.0)
+      return t
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
   def test_ones_grad(self):
     """Tests autograd for ones()."""
 

@@ -502,6 +502,70 @@ at::Tensor& AtenAddOut(const at::Tensor& self, const at::Tensor& other,
   });
 }
 
+at::Tensor& AtenAddReluOut(const at::Tensor& self, const at::Tensor& other,
+                           const at::Scalar& alpha, at::Tensor& out) {
+  TT_KERNEL(OpName::kAddReluOut, param_keys, (self, other, alpha, out), {
+    TT_ASSIGN_OR_THROW(auto add_builder, (AtenAddHelper(self, other, alpha)));
+    auto add_relu_builder =
+        [add_builder = std::move(add_builder)](
+            mlir::MlirOp self_op,
+            mlir::MlirOp other_op) -> absl::StatusOr<mlir::MlirOp> {
+      TT_ASSIGN_OR_RETURN(auto add_op, add_builder(self_op, other_op));
+      return BuildReluShlo(add_op);
+    };
+    TT_THROW_IF_ERROR(BinaryOpOut(
+        OpName::kAddReluOut, self, other, out, std::move(add_relu_builder),
+        {.op_param_cache_keys = std::move(param_keys)}));
+    return out;
+  });
+}
+
+at::Tensor AtenAddReluScalar(const at::Tensor& self, const at::Scalar& other,
+                             const at::Scalar& alpha) {
+  TT_KERNEL(OpName::kAddReluScalar, _,
+            (self, IgnoreInCacheKey(other), IgnoreInCacheKey(alpha)), {
+              at::ScalarType promoted_scalar_type =
+                  at::result_type(self, other);
+              at::Tensor out = MakeEmptyTensor(
+                  self.sizes(), promoted_scalar_type, self.device());
+              TT_ASSIGN_OR_THROW(auto wrapped_other, MakeTensor(other));
+              AtenAddReluOut(self, wrapped_other, alpha, out);
+              return out;
+            });
+}
+
+at::Tensor AtenAddReluTensor(const at::Tensor& self, const at::Tensor& other,
+                             const at::Scalar& alpha) {
+  TT_KERNEL(OpName::kAddReluTensor, _, (self, other, IgnoreInCacheKey(alpha)), {
+    at::ScalarType promoted_scalar_type = at::result_type(self, other);
+    TT_ASSIGN_OR_THROW(const Dimensions output_dims,
+                       InferSize(self.sizes(), other.sizes()));
+    at::Tensor out =
+        MakeEmptyTensor(output_dims, promoted_scalar_type, self.device());
+    AtenAddReluOut(self, other, alpha, out);
+    return out;
+  });
+}
+
+at::Tensor& AtenAddRelu_Scalar(at::Tensor& self, const at::Scalar& other,
+                               const at::Scalar& alpha) {
+  TT_KERNEL(OpName::kAddRelu_Scalar, _,
+            (self, IgnoreInCacheKey(other), IgnoreInCacheKey(alpha)), {
+              TT_ASSIGN_OR_THROW(auto wrapped_other, MakeTensor(other));
+              AtenAddReluOut(self, wrapped_other, alpha, self);
+              return self;
+            });
+}
+
+at::Tensor& AtenAddRelu_Tensor(at::Tensor& self, const at::Tensor& other,
+                               const at::Scalar& alpha) {
+  TT_KERNEL(OpName::kAddRelu_Tensor, _, (self, other, IgnoreInCacheKey(alpha)),
+            {
+              AtenAddReluOut(self, other, alpha, self);
+              return self;
+            });
+}
+
 at::Tensor& AtenAtan2Out(const at::Tensor& x, const at::Tensor& y,
                          at::Tensor& out) {
   TT_KERNEL(OpName::kAtan2Out, _, (x, y, out), {

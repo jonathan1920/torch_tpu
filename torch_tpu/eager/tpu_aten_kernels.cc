@@ -178,6 +178,11 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
        AtenAdaptiveAvgPool3dBackwardGradInput);
   Impl(m, OpName::kAdaptiveAvgPool3dOut, AtenAdaptiveAvgPool3dOut);
   Impl(m, OpName::kAddOut, AtenAddOut);
+  Impl(m, OpName::kAddReluOut, AtenAddReluOut);
+  Impl(m, OpName::kAddReluScalar, AtenAddReluScalar);
+  Impl(m, OpName::kAddReluTensor, AtenAddReluTensor);
+  Impl(m, OpName::kAddRelu_Scalar, AtenAddRelu_Scalar);
+  Impl(m, OpName::kAddRelu_Tensor, AtenAddRelu_Tensor);
   Impl(m, OpName::kAddcdivOut, AtenAddcdivOut);
   Impl(m, OpName::kAddcmulOut, AtenAddcmulOut);
   Impl(m, OpName::kAddmmDtype, AtenAddmmDtype);

@@ -804,6 +804,61 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.add(t, s, alpha=1j)
 
+  # TODO: remove this test once we support complex alpha on TPU.
+  def test__add_relu_Scalar_complex_alpha(self):
+    """Tests _add_relu.Scalar with an alpha of complex type."""
+    device = et.device()
+    t = torch.ones(4, device=device, dtype=torch.float32)
+    with et.assert_raises_message(
+        NotImplementedError,
+        "add_relu(): complex128 alpha value is not yet supported",
+    ):
+      torch.ops.aten._add_relu.Scalar(t, 2.0, 1j)
+
+  def test__add_relu_Tensor_complex_alpha(self):
+    """Tests _add_relu.Tensor with an alpha of complex type."""
+    device = et.device()
+    t = torch.ones(4, device=device, dtype=torch.float32)
+    s = torch.ones(4, device=device, dtype=torch.float32)
+    with et.assert_raises_message(
+        NotImplementedError,
+        "add_relu(): complex128 alpha value is not yet supported",
+    ):
+      torch.ops.aten._add_relu.Tensor(t, s, alpha=1j)
+
+  def test__add_relu_out_complex_alpha(self):
+    """Tests _add_relu.out with an alpha of complex type."""
+    device = et.device()
+    t = torch.ones(4, device=device, dtype=torch.float32)
+    s = torch.ones(4, device=device, dtype=torch.float32)
+    out = torch.ones(4, device=device, dtype=torch.float32)
+    with et.assert_raises_message(
+        NotImplementedError,
+        "add_relu(): complex128 alpha value is not yet supported",
+    ):
+      torch.ops.aten._add_relu.out(t, s, alpha=1j, out=out)
+
+  def test__add_relu__Scalar_complex_alpha(self):
+    """Tests _add_relu_.Scalar with an alpha of complex type."""
+    device = et.device()
+    t = torch.ones(4, device=device, dtype=torch.float32)
+    with et.assert_raises_message(
+        NotImplementedError,
+        "add_relu_(): complex128 alpha value is not yet supported",
+    ):
+      torch.ops.aten._add_relu_.Scalar(t, 2.0, alpha=1j)
+
+  def test__add_relu__Tensor_complex_alpha(self):
+    """Tests _add_relu_.Tensor with an alpha of complex type."""
+    device = et.device()
+    t = torch.ones(4, device=device, dtype=torch.float32)
+    s = torch.ones(4, device=device, dtype=torch.float32)
+    with et.assert_raises_message(
+        NotImplementedError,
+        "add_relu_(): complex128 alpha value is not yet supported",
+    ):
+      torch.ops.aten._add_relu_.Tensor(t, s, alpha=1j)
+
   def test_threshold_unsupported_bool_dtype(self):
     with et.assert_raises_message(
         NotImplementedError,

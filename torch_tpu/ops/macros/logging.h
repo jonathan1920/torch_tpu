@@ -235,6 +235,11 @@ void CheckScalarInput() {
                           // go/keep-sorted start
                     kOpName == OpName::kAdd ||                         //
                     kOpName == OpName::kAddOut ||                      //
+                    kOpName == OpName::kAddReluOut ||                  //
+                    kOpName == OpName::kAddReluScalar ||               //
+                    kOpName == OpName::kAddReluTensor ||               //
+                    kOpName == OpName::kAddRelu_Scalar ||              //
+                    kOpName == OpName::kAddRelu_Tensor ||              //
                     kOpName == OpName::kAddcdivOut ||                  //
                     kOpName == OpName::kAddcmulOut ||                  //
                     kOpName == OpName::kAddmmDtype ||                  //

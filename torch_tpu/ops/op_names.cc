@@ -50,6 +50,16 @@ std::string_view ToString(OpName op_name) {
       return "add";
     case OpName::kAddOut:
       return "add.out";
+    case OpName::kAddReluOut:
+      return "_add_relu.out";
+    case OpName::kAddReluScalar:
+      return "_add_relu.Scalar";
+    case OpName::kAddReluTensor:
+      return "_add_relu.Tensor";
+    case OpName::kAddRelu_Scalar:
+      return "_add_relu_.Scalar";
+    case OpName::kAddRelu_Tensor:
+      return "_add_relu_.Tensor";
     case OpName::kAddcdivOut:
       return "addcdiv.out";
     case OpName::kAddcmulOut:
