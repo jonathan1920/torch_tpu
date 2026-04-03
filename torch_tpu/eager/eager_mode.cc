@@ -28,8 +28,11 @@ namespace {
 EagerMode GetDefaultEagerMode() {
   if (GetEnvOnce<kTpuLaunchBlocking>() == "1") {
     return EagerMode::kDeferNeverAndLaunchBlocking;
+  } else if (GetEnvOnce<kTpuDeferAndFuse>() == "1") {
+    return EagerMode::kDeferAndFuse;
+  } else {
+    return EagerMode::kDeferAndFuseWithO1;
   }
-  return EagerMode::kDeferAndFuseWithO1;
 }
 
 // Returns the defer mode for the current thread.

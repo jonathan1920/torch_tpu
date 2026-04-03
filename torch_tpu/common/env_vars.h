@@ -88,10 +88,15 @@ inline constexpr char kTorchTpuInternalXlaOptionsEnvVar[] =
     "TORCH_TPU_INTERNAL_XLA_OPTIONS";
 inline constexpr char kTpuChipsPerHostBoundsEnvVar[] =
     "TPU_CHIPS_PER_HOST_BOUNDS";  // Read by Google Cloud.
+inline constexpr char kTpuDeferAndFuse[] =
+    "TPU_DEFER_AND_FUSE";  // Used to enable EagerMode::kDeferAndFuse by
+                           // default.
 inline constexpr char kTpuHostBoundsEnvVar[] =
     "TPU_HOST_BOUNDS";  // Read by Google Cloud.
 inline constexpr char kTpuLaunchBlocking[] =
-    "TPU_LAUNCH_BLOCKING";  // Similar to CUDA_LAUNCH_BLOCKING.
+    "TPU_LAUNCH_BLOCKING";  // Similar to CUDA_LAUNCH_BLOCKING, used enable
+                            // EagerMode::kDeferNeverAndLaunchBlocking by
+                            // default.
 inline constexpr char kTpuPremappedBufferSizeEnvVar[] =
     "TPU_PREMAPPED_BUFFER_SIZE";  // Read when initializing the pjrt runtime.
 inline constexpr char kTpuProcessAddressesEnvVar[] =
