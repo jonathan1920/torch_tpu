@@ -349,6 +349,7 @@ torch_tpu_cc_library(
         "eager_mode.h",
     ],
     deps = [
+        "//torch_tpu/common:env_vars",
         "@com_google_absl//absl/log:absl_log",
     ],
 )

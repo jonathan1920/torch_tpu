@@ -90,6 +90,8 @@ inline constexpr char kTpuChipsPerHostBoundsEnvVar[] =
     "TPU_CHIPS_PER_HOST_BOUNDS";  // Read by Google Cloud.
 inline constexpr char kTpuHostBoundsEnvVar[] =
     "TPU_HOST_BOUNDS";  // Read by Google Cloud.
+inline constexpr char kTpuLaunchBlocking[] =
+    "TPU_LAUNCH_BLOCKING";  // Similar to CUDA_LAUNCH_BLOCKING.
 inline constexpr char kTpuPremappedBufferSizeEnvVar[] =
     "TPU_PREMAPPED_BUFFER_SIZE";  // Read when initializing the pjrt runtime.
 inline constexpr char kTpuProcessAddressesEnvVar[] =
