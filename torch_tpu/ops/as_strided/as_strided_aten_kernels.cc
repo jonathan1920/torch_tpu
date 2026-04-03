@@ -64,8 +64,9 @@ at::Tensor AtenAsStrided(const at::Tensor& self, c10::SymIntArrayRef size_sym,
             (self,
              // No need to include these in the cache key as this "kernel"
              // doesn't lower to SHLO.
-             IgnoreInCacheKey(new_sizes), IgnoreInCacheKey(new_strides),
-             IgnoreInCacheKey(new_offset)),
+             IgnoreInCacheKey(new_sizes, "Legacy usage"),
+             IgnoreInCacheKey(new_strides, "Legacy usage"),
+             IgnoreInCacheKey(new_offset, "Legacy usage")),
             {
               // Get the base buffer so we can check that the view is valid
               TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Cannot directly create an

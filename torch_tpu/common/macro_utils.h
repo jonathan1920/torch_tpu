@@ -117,9 +117,8 @@ inline constexpr bool kDebugMode = true;
 }
 
 // Returns true if the string is a comma-separated list where each item is an
-// identifier name or "IgnoreInCacheKey(identifier)" or
-// "IgnoreInCacheKey(identifier, reason)". This must be evaluated at compile
-// time as we don't want to incur any runtime overhead.
+// identifier name or "IgnoreInCacheKey(identifier, reason)". This must be
+// evaluated at compile time as we don't want to incur any runtime overhead.
 [[nodiscard]] inline constexpr bool ArgsAreIdentifiers(
     const std::string_view csv_string) noexcept {
   if (csv_string.empty()) return true;
@@ -174,12 +173,9 @@ inline constexpr bool kDebugMode = true;
           inner.remove_suffix(1);
         }
 
-        // Handle IgnoreInCacheKey(identifier) or
-        // IgnoreInCacheKey(identifier, "reason").
+        // Handle IgnoreInCacheKey(identifier, "reason").
         const size_t inner_comma_pos = inner.find(',');
-        if (inner_comma_pos == std::string_view::npos) {
-          valid = IsValidIdentifier(inner);
-        } else {
+        if (inner_comma_pos != std::string_view::npos) {
           std::string_view identifier = inner.substr(0, inner_comma_pos);
           while (!identifier.empty() && IsWhitespace(identifier.front())) {
             identifier.remove_prefix(1);

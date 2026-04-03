@@ -329,15 +329,17 @@ at::Tensor& AtenReflectionPad1dOut(const at::Tensor& self,
 
 at::Tensor AtenReflectionPad2d(const at::Tensor& self,
                                at::IntArrayRef padding) {
-  TT_KERNEL(OpName::kReflectionPad2d, _, (self, IgnoreInCacheKey(padding)), {
-    Dimensions out_dimensions(self.sizes().begin(), self.sizes().end());
-    out_dimensions[out_dimensions.size() - 2] += padding[2] + padding[3];
-    out_dimensions[out_dimensions.size() - 1] += padding[0] + padding[1];
+  TT_KERNEL(
+      OpName::kReflectionPad2d, _,
+      (self, IgnoreInCacheKey(padding, "Legacy usage")), {
+        Dimensions out_dimensions(self.sizes().begin(), self.sizes().end());
+        out_dimensions[out_dimensions.size() - 2] += padding[2] + padding[3];
+        out_dimensions[out_dimensions.size() - 1] += padding[0] + padding[1];
 
-    at::Tensor out =
-        MakeEmptyTensor(out_dimensions, self.scalar_type(), self.device());
-    return AtenReflectionPad2dOut(self, padding, out);
-  });
+        at::Tensor out =
+            MakeEmptyTensor(out_dimensions, self.scalar_type(), self.device());
+        return AtenReflectionPad2dOut(self, padding, out);
+      });
 }
 
 at::Tensor& AtenReflectionPad2dOut(const at::Tensor& self,
@@ -413,7 +415,7 @@ at::Tensor AtenReflectionPad2dBackward(const at::Tensor& grad_output,
                                        const at::Tensor& self,
                                        at::IntArrayRef padding) {
   TT_KERNEL(OpName::kReflectionPad2dBackward, _,
-            (grad_output, self, IgnoreInCacheKey(padding)), {
+            (grad_output, self, IgnoreInCacheKey(padding, "Legacy usage")), {
               Dimensions gidims(grad_output.sizes().begin(),
                                 grad_output.sizes().end());
               TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are

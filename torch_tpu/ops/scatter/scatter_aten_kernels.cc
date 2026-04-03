@@ -99,7 +99,7 @@ at::Tensor& AtenScatterSrcOut(const at::Tensor& self, int64_t dim,
                               const at::Tensor& index, const at::Tensor& src,
                               at::Tensor& out) {
   TT_KERNEL(OpName::kScatterSrcOut, _,
-            (self, IgnoreInCacheKey(dim), index, src, out), {
+            (self, IgnoreInCacheKey(dim, "Legacy usage"), index, src, out), {
               TT_ASSIGN_OR_THROW(
                   DeviceBufferRef result,
                   Scatter(OpName::kScatterSrcOut, self, dim, index, src));
@@ -113,7 +113,9 @@ at::Tensor& AtenScatterValueOut(const at::Tensor& self, int64_t dim,
                                 const at::Scalar& value, at::Tensor& out) {
   TT_KERNEL(
       OpName::kScatterValueOut, _,
-      (self, IgnoreInCacheKey(dim), index, IgnoreInCacheKey(value), out), {
+      (self, IgnoreInCacheKey(dim, "Legacy usage"), index,
+       IgnoreInCacheKey(value, "Legacy usage"), out),
+      {
         auto value_tensor = TensorFromValue(self, value);
         TT_ASSIGN_OR_THROW(
             DeviceBufferRef result,
@@ -128,8 +130,8 @@ at::Tensor& AtenScatterReduceOut(const at::Tensor& self, int64_t dim,
                                  std::string_view reduction_op,
                                  at::Tensor& out) {
   TT_KERNEL(OpName::kScatterReduceOut, _,
-            (self, IgnoreInCacheKey(dim), index, src,
-             IgnoreInCacheKey(reduction_op), out),
+            (self, IgnoreInCacheKey(dim, "Legacy usage"), index, src,
+             IgnoreInCacheKey(reduction_op, "Legacy usage"), out),
             {
               TT_ASSIGN_OR_THROW(ScatterOp scatter_op,
                                  ParseScatterOp(reduction_op));
@@ -147,8 +149,9 @@ at::Tensor& AtenScatterValueReduceOut(const at::Tensor& self, int64_t dim,
                                       std::string_view reduction_op,
                                       at::Tensor& out) {
   TT_KERNEL(OpName::kScatterValueReduceOut, _,
-            (self, IgnoreInCacheKey(dim), index, IgnoreInCacheKey(value),
-             IgnoreInCacheKey(reduction_op), out),
+            (self, IgnoreInCacheKey(dim, "Legacy usage"), index,
+             IgnoreInCacheKey(value, "Legacy usage"),
+             IgnoreInCacheKey(reduction_op, "Legacy usage"), out),
             {
               auto value_tensor = TensorFromValue(self, value);
               TT_ASSIGN_OR_THROW(ScatterOp scatter_op,
@@ -164,9 +167,10 @@ at::Tensor& AtenScatterValueReduceOut(const at::Tensor& self, int64_t dim,
 at::Tensor& AtenScatterAddOut(const at::Tensor& self, int64_t dim,
                               const at::Tensor& index, const at::Tensor& src,
                               at::Tensor& out) {
-  TT_KERNEL(
-      OpName::kScatterAddOut, _, (self, IgnoreInCacheKey(dim), index, src, out),
-      { return AtenScatterReduceOut(self, dim, index, src, "add", out); });
+  TT_KERNEL(OpName::kScatterAddOut, _,
+            (self, IgnoreInCacheKey(dim, "Legacy usage"), index, src, out), {
+              return AtenScatterReduceOut(self, dim, index, src, "add", out);
+            });
 }
 
 }  // namespace torch_tpu

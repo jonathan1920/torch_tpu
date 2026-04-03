@@ -200,8 +200,8 @@ at::Tensor& AtenBaddbmmOut(const at::Tensor& self, const at::Tensor& batch1,
                            const at::Tensor& batch2, const at::Scalar& beta,
                            const at::Scalar& alpha, at::Tensor& out) {
   TT_KERNEL(OpName::kBaddbmmOut, _,
-            (self, batch1, batch2, IgnoreInCacheKey(beta),
-             IgnoreInCacheKey(alpha), out),
+            (self, batch1, batch2, IgnoreInCacheKey(beta, "Legacy usage"),
+             IgnoreInCacheKey(alpha, "Legacy usage"), out),
             {
               return AtenBaddbmmDtypeOut(self, batch1, batch2,
                                          out.scalar_type(), beta, alpha, out);

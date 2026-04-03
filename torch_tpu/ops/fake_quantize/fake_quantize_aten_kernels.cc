@@ -115,8 +115,10 @@ std::tuple<at::Tensor, at::Tensor> FakeQuantizePerTensorAffineCachemask(
     int64_t quant_max) {
   TT_KERNEL(
       OpName::kFakeQuantizePerTensorAffineCachemask, _,
-      (self, IgnoreInCacheKey(scale), IgnoreInCacheKey(zero_point),
-       IgnoreInCacheKey(quant_min), IgnoreInCacheKey(quant_max)),
+      (self, IgnoreInCacheKey(scale, "Legacy usage"),
+       IgnoreInCacheKey(zero_point, "Legacy usage"),
+       IgnoreInCacheKey(quant_min, "Legacy usage"),
+       IgnoreInCacheKey(quant_max, "Legacy usage")),
       {
         at::Tensor out = at::empty_like(self);
         at::Tensor mask = at::empty_like(self, at::kBool);

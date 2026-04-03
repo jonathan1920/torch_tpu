@@ -40,8 +40,8 @@ namespace torch_tpu {
 at::Tensor& AtenMseLossOut(const at::Tensor& self, const at::Tensor& target,
                            int64_t reduction, at::Tensor& out) {
   TT_KERNEL(
-      OpName::kMseLossOut, _, (self, target, IgnoreInCacheKey(reduction), out),
-      {
+      OpName::kMseLossOut, _,
+      (self, target, IgnoreInCacheKey(reduction, "Legacy usage"), out), {
         TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Byte &&
                            self.scalar_type() != at::ScalarType::Char &&
                            self.scalar_type() != at::ScalarType::Short &&
@@ -91,7 +91,8 @@ at::Tensor AtenMseLossBackward(const at::Tensor& grad_output,
                                int64_t reduction) {
   TT_KERNEL(
       OpName::kMseLossBackward, _,
-      (grad_output, self, target, IgnoreInCacheKey(reduction)), {
+      (grad_output, self, target, IgnoreInCacheKey(reduction, "Legacy usage")),
+      {
         at::Tensor grad_input;  // UNINITIALIZED_TENSOR_OK=initialized below
         {
           at::AutoDispatchBelowAutograd guard;

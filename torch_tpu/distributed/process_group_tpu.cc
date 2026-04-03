@@ -402,8 +402,8 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allreduce(
 
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::broadcast(
     std::vector<at::Tensor>& tensors, const c10d::BroadcastOptions& opts) {
-  TT_KERNEL(OpName::kDistributedBroadcast, _, (tensors, IgnoreInCacheKey(opts)),
-            {
+  TT_KERNEL(OpName::kDistributedBroadcast, _,
+            (tensors, IgnoreInCacheKey(opts, "Legacy usage")), {
               auto src_rank = opts.rootRank;
               auto src_dev_id = rank_to_device_id_[src_rank];
               auto cur_dev_id = addressable_device_id_;
@@ -774,8 +774,8 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::scatter(
     std::vector<std::vector<at::Tensor>>& inputs,
     const c10d::ScatterOptions& opts) {
   TT_KERNEL(
-      OpName::kDistributedScatter, _, (outputs, inputs, IgnoreInCacheKey(opts)),
-      {
+      OpName::kDistributedScatter, _,
+      (outputs, inputs, IgnoreInCacheKey(opts, "Legacy usage")), {
         const int64_t rank = getRank();
         const int64_t root_rank = opts.rootRank;
         TT_CHECK_THROW(outputs.size() == 1, error::kInvalidArgument)
@@ -845,7 +845,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter(
     const c10d::ReduceScatterOptions& opts) {
   TT_KERNEL(
       OpName::kDistributedReduceScatter, _,
-      (output_tensors, input_tensors, IgnoreInCacheKey(opts)), {
+      (output_tensors, input_tensors, IgnoreInCacheKey(opts, "Legacy usage")), {
         // NOTE: Python side API only exposes single-element reduce_scatter op.
         // Same validation is done in NCCL backend.
         TT_CHECK_THROW(input_tensors.size() == 1, error::kUnimplemented)
@@ -954,7 +954,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter_tensor_coalesced(
     const c10d::ReduceScatterOptions& opts) {
   TT_KERNEL(
       OpName::kDistributedReduceScatterTensorCoalesced, _,
-      (outputs, inputs, IgnoreInCacheKey(opts)), {
+      (outputs, inputs, IgnoreInCacheKey(opts, "Legacy usage")), {
         TT_CHECK_THROW(inputs.size() == outputs.size(), error::kInvalidArgument)
             << "inputs and outputs must have the same size, got "
             << inputs.size() << " inputs and " << outputs.size() << " outputs";
@@ -981,8 +981,9 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall_base(
     std::vector<int64_t>& input_split_sizes,   // INT_VEC_OK
     const c10d::AllToAllOptions& opts) {
   TT_KERNEL(OpName::kDistributedAllToAllSingle, _,
-            (output, input, IgnoreInCacheKey(output_split_sizes),
-             IgnoreInCacheKey(input_split_sizes), opts),
+            (output, input,
+             IgnoreInCacheKey(output_split_sizes, "Legacy usage"),
+             IgnoreInCacheKey(input_split_sizes, "Legacy usage"), opts),
             {
               const int64_t rank = getRank();
               const bool async = opts.asyncOp;

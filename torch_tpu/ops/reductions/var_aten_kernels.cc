@@ -75,8 +75,9 @@ double CalculateNormalizationFactor(const std::optional<at::Scalar>& correction,
 at::Tensor AtenVar(const at::Tensor& self, c10::OptionalArrayRef<int64_t> dim,
                    const std::optional<at::Scalar>& correction, bool keep_dim) {
   TT_KERNEL(OpName::kVar, _,
-            (self, IgnoreInCacheKey(dim), IgnoreInCacheKey(correction),
-             IgnoreInCacheKey(keep_dim)),
+            (self, IgnoreInCacheKey(dim, "Legacy usage"),
+             IgnoreInCacheKey(correction, "Legacy usage"),
+             IgnoreInCacheKey(keep_dim, "Legacy usage")),
             {
               c10::ScalarType scalar_dtype = self.scalar_type();
               TT_THROW_IF_ERROR(CheckFloatOrComplex(scalar_dtype));
@@ -109,8 +110,9 @@ at::Tensor& AtenVarOut(const at::Tensor& self,
                        bool keep_dim, at::Tensor& out) {
   TT_KERNEL(
       OpName::kVarOut, _,
-      (self, IgnoreInCacheKey(dim), IgnoreInCacheKey(correction),
-       IgnoreInCacheKey(keep_dim), out),
+      (self, IgnoreInCacheKey(dim, "Legacy usage"),
+       IgnoreInCacheKey(correction, "Legacy usage"),
+       IgnoreInCacheKey(keep_dim, "Legacy usage"), out),
       {
         c10::ScalarType scalar_dtype = out.scalar_type();
         TT_THROW_IF_ERROR(CheckFloatOrComplex(scalar_dtype));

@@ -523,7 +523,9 @@ at::Tensor& AtenAddReluOut(const at::Tensor& self, const at::Tensor& other,
 at::Tensor AtenAddReluScalar(const at::Tensor& self, const at::Scalar& other,
                              const at::Scalar& alpha) {
   TT_KERNEL(OpName::kAddReluScalar, _,
-            (self, IgnoreInCacheKey(other), IgnoreInCacheKey(alpha)), {
+            (self, IgnoreInCacheKey(other, "Legacy usage"),
+             IgnoreInCacheKey(alpha, "Legacy usage")),
+            {
               at::ScalarType promoted_scalar_type =
                   at::result_type(self, other);
               at::Tensor out = MakeEmptyTensor(
@@ -536,21 +538,25 @@ at::Tensor AtenAddReluScalar(const at::Tensor& self, const at::Scalar& other,
 
 at::Tensor AtenAddReluTensor(const at::Tensor& self, const at::Tensor& other,
                              const at::Scalar& alpha) {
-  TT_KERNEL(OpName::kAddReluTensor, _, (self, other, IgnoreInCacheKey(alpha)), {
-    at::ScalarType promoted_scalar_type = at::result_type(self, other);
-    TT_ASSIGN_OR_THROW(const Dimensions output_dims,
-                       InferSize(self.sizes(), other.sizes()));
-    at::Tensor out =
-        MakeEmptyTensor(output_dims, promoted_scalar_type, self.device());
-    AtenAddReluOut(self, other, alpha, out);
-    return out;
-  });
+  TT_KERNEL(OpName::kAddReluTensor, _,
+            (self, other, IgnoreInCacheKey(alpha, "Legacy usage")), {
+              at::ScalarType promoted_scalar_type =
+                  at::result_type(self, other);
+              TT_ASSIGN_OR_THROW(const Dimensions output_dims,
+                                 InferSize(self.sizes(), other.sizes()));
+              at::Tensor out = MakeEmptyTensor(
+                  output_dims, promoted_scalar_type, self.device());
+              AtenAddReluOut(self, other, alpha, out);
+              return out;
+            });
 }
 
 at::Tensor& AtenAddRelu_Scalar(at::Tensor& self, const at::Scalar& other,
                                const at::Scalar& alpha) {
   TT_KERNEL(OpName::kAddRelu_Scalar, _,
-            (self, IgnoreInCacheKey(other), IgnoreInCacheKey(alpha)), {
+            (self, IgnoreInCacheKey(other, "Legacy usage"),
+             IgnoreInCacheKey(alpha, "Legacy usage")),
+            {
               TT_ASSIGN_OR_THROW(auto wrapped_other, MakeTensor(other));
               AtenAddReluOut(self, wrapped_other, alpha, self);
               return self;
@@ -559,8 +565,8 @@ at::Tensor& AtenAddRelu_Scalar(at::Tensor& self, const at::Scalar& other,
 
 at::Tensor& AtenAddRelu_Tensor(at::Tensor& self, const at::Tensor& other,
                                const at::Scalar& alpha) {
-  TT_KERNEL(OpName::kAddRelu_Tensor, _, (self, other, IgnoreInCacheKey(alpha)),
-            {
+  TT_KERNEL(OpName::kAddRelu_Tensor, _,
+            (self, other, IgnoreInCacheKey(alpha, "Legacy usage")), {
               AtenAddReluOut(self, other, alpha, self);
               return self;
             });
@@ -670,24 +676,26 @@ at::Tensor& AtenDivOut(const at::Tensor& self, const at::Tensor& other,
 at::Tensor& AtenDivOutMode(const at::Tensor& self, const at::Tensor& other,
                            std::optional<std::string_view> mode,
                            at::Tensor& out) {
-  TT_KERNEL(OpName::kDiv, _, (self, other, IgnoreInCacheKey(mode), out), {
-    TT_ASSIGN_OR_THROW((auto [op_builder, op_param_cache_keys, _]),
-                       GetDivOpBuilder(self, other, mode));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kDivOut, self, other, out, std::move(op_builder),
-                    {.op_param_cache_keys = std::move(op_param_cache_keys)}));
-    return out;
-  });
+  TT_KERNEL(OpName::kDiv, _,
+            (self, other, IgnoreInCacheKey(mode, "Legacy usage"), out), {
+              TT_ASSIGN_OR_THROW((auto [op_builder, op_param_cache_keys, _]),
+                                 GetDivOpBuilder(self, other, mode));
+              TT_THROW_IF_ERROR(BinaryOpOut(
+                  OpName::kDivOut, self, other, out, std::move(op_builder),
+                  {.op_param_cache_keys = std::move(op_param_cache_keys)}));
+              return out;
+            });
 }
 
 at::Tensor& AtenEqScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
-  TT_KERNEL(OpName::kEq, _, (self, IgnoreInCacheKey(other), out), {
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kEqOut, self, other, out, BuildEqShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
-    return out;
-  });
+  TT_KERNEL(
+      OpName::kEq, _, (self, IgnoreInCacheKey(other, "Legacy usage"), out), {
+        TT_THROW_IF_ERROR(
+            BinaryOpOut(OpName::kEqOut, self, other, out, BuildEqShlo,
+                        {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+        return out;
+      });
 }
 
 at::Tensor& AtenEqTensorOut(const at::Tensor& self, const at::Tensor& other,
@@ -742,13 +750,14 @@ at::Tensor& AtenFmodTensorOut(const at::Tensor& self, const at::Tensor& other,
 
 at::Tensor& AtenGeScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
-  TT_KERNEL(OpName::kGe, _, (self, IgnoreInCacheKey(other), out), {
-    TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kGeOut, self, other, out, BuildGeShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
-    return out;
-  });
+  TT_KERNEL(
+      OpName::kGe, _, (self, IgnoreInCacheKey(other, "Legacy usage"), out), {
+        TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
+        TT_THROW_IF_ERROR(
+            BinaryOpOut(OpName::kGeOut, self, other, out, BuildGeShlo,
+                        {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+        return out;
+      });
 }
 
 at::Tensor& AtenGeTensorOut(const at::Tensor& self, const at::Tensor& other,
@@ -764,13 +773,14 @@ at::Tensor& AtenGeTensorOut(const at::Tensor& self, const at::Tensor& other,
 
 at::Tensor& AtenGtScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
-  TT_KERNEL(OpName::kGt, _, (self, IgnoreInCacheKey(other), out), {
-    TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kGtOut, self, other, out, BuildGtShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
-    return out;
-  });
+  TT_KERNEL(
+      OpName::kGt, _, (self, IgnoreInCacheKey(other, "Legacy usage"), out), {
+        TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
+        TT_THROW_IF_ERROR(
+            BinaryOpOut(OpName::kGtOut, self, other, out, BuildGtShlo,
+                        {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+        return out;
+      });
 }
 
 at::Tensor& AtenGtTensorOut(const at::Tensor& self, const at::Tensor& other,
@@ -785,11 +795,13 @@ at::Tensor& AtenGtTensorOut(const at::Tensor& self, const at::Tensor& other,
 }
 
 at::Tensor& AtenIlshiftScalar(at::Tensor& self, const at::Scalar& other) {
-  TT_KERNEL(OpName::kIlshiftScalar, _, (self, IgnoreInCacheKey(other)), {
-    at::Tensor wrapped_scalar = at::native::wrapped_scalar_tensor(other);
-    AtenBitwiseLeftShiftTensorOut(self, wrapped_scalar, self);
-    return self;
-  });
+  TT_KERNEL(OpName::kIlshiftScalar, _,
+            (self, IgnoreInCacheKey(other, "Legacy usage")), {
+              at::Tensor wrapped_scalar =
+                  at::native::wrapped_scalar_tensor(other);
+              AtenBitwiseLeftShiftTensorOut(self, wrapped_scalar, self);
+              return self;
+            });
 }
 
 at::Tensor& AtenIlshiftTensor(at::Tensor& self, const at::Tensor& other) {
@@ -800,11 +812,13 @@ at::Tensor& AtenIlshiftTensor(at::Tensor& self, const at::Tensor& other) {
 }
 
 at::Tensor& AtenIrshiftScalar(at::Tensor& self, const at::Scalar& other) {
-  TT_KERNEL(OpName::kIrshiftScalar, _, (self, IgnoreInCacheKey(other)), {
-    at::Tensor wrapped_scalar = at::native::wrapped_scalar_tensor(other);
-    AtenBitwiseRightShiftTensorOut(self, wrapped_scalar, self);
-    return self;
-  });
+  TT_KERNEL(OpName::kIrshiftScalar, _,
+            (self, IgnoreInCacheKey(other, "Legacy usage")), {
+              at::Tensor wrapped_scalar =
+                  at::native::wrapped_scalar_tensor(other);
+              AtenBitwiseRightShiftTensorOut(self, wrapped_scalar, self);
+              return self;
+            });
 }
 
 at::Tensor& AtenIrshiftTensor(at::Tensor& self, const at::Tensor& other) {
@@ -816,13 +830,14 @@ at::Tensor& AtenIrshiftTensor(at::Tensor& self, const at::Tensor& other) {
 
 at::Tensor& AtenLeScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
-  TT_KERNEL(OpName::kLe, _, (self, IgnoreInCacheKey(other), out), {
-    TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kLeOut, self, other, out, BuildLeShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
-    return out;
-  });
+  TT_KERNEL(
+      OpName::kLe, _, (self, IgnoreInCacheKey(other, "Legacy usage"), out), {
+        TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
+        TT_THROW_IF_ERROR(
+            BinaryOpOut(OpName::kLeOut, self, other, out, BuildLeShlo,
+                        {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+        return out;
+      });
 }
 
 at::Tensor& AtenLeTensorOut(const at::Tensor& self, const at::Tensor& other,
@@ -837,13 +852,15 @@ at::Tensor& AtenLeTensorOut(const at::Tensor& self, const at::Tensor& other,
 }
 
 at::Tensor AtenLshiftScalar(const at::Tensor& self, const at::Scalar& other) {
-  TT_KERNEL(OpName::kLshiftScalar, _, (self, IgnoreInCacheKey(other)), {
-    at::Tensor out =
-        MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device());
-    at::Tensor wrapped_scalar = at::native::wrapped_scalar_tensor(other);
-    AtenBitwiseLeftShiftTensorOut(self, wrapped_scalar, out);
-    return out;
-  });
+  TT_KERNEL(OpName::kLshiftScalar, _,
+            (self, IgnoreInCacheKey(other, "Legacy usage")), {
+              at::Tensor out = MakeEmptyTensor(self.sizes(), self.scalar_type(),
+                                               self.device());
+              at::Tensor wrapped_scalar =
+                  at::native::wrapped_scalar_tensor(other);
+              AtenBitwiseLeftShiftTensorOut(self, wrapped_scalar, out);
+              return out;
+            });
 }
 
 at::Tensor AtenLshiftTensor(const at::Tensor& self, const at::Tensor& other) {
@@ -858,13 +875,14 @@ at::Tensor AtenLshiftTensor(const at::Tensor& self, const at::Tensor& other) {
 
 at::Tensor& AtenLtScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
-  TT_KERNEL(OpName::kLt, _, (self, IgnoreInCacheKey(other), out), {
-    TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kLtOut, self, other, out, BuildLtShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
-    return out;
-  });
+  TT_KERNEL(
+      OpName::kLt, _, (self, IgnoreInCacheKey(other, "Legacy usage"), out), {
+        TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
+        TT_THROW_IF_ERROR(
+            BinaryOpOut(OpName::kLtOut, self, other, out, BuildLtShlo,
+                        {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+        return out;
+      });
 }
 
 at::Tensor& AtenLtTensorOut(const at::Tensor& self, const at::Tensor& other,
@@ -910,15 +928,16 @@ at::Tensor& AtenMulOut(const at::Tensor& self, const at::Tensor& other,
 
 at::Tensor& AtenNeScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
-  TT_KERNEL(OpName::kNe, _, (self, IgnoreInCacheKey(other), out), {
-    TT_ASSIGN_OR_THROW(auto output_dtype,
-                       ConvertTo<mlir::ElementType>(out.scalar_type()));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kNeOut, self, other, out, BuildNeShlo,
-                    {.output_dtype_override = output_dtype,
-                     .op_param_cache_keys = OpParamCacheKeys::Empty()}));
-    return out;
-  });
+  TT_KERNEL(
+      OpName::kNe, _, (self, IgnoreInCacheKey(other, "Legacy usage"), out), {
+        TT_ASSIGN_OR_THROW(auto output_dtype,
+                           ConvertTo<mlir::ElementType>(out.scalar_type()));
+        TT_THROW_IF_ERROR(
+            BinaryOpOut(OpName::kNeOut, self, other, out, BuildNeShlo,
+                        {.output_dtype_override = output_dtype,
+                         .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+        return out;
+      });
 }
 
 at::Tensor& AtenNeTensorOut(const at::Tensor& self, const at::Tensor& other,
@@ -947,32 +966,34 @@ at::Tensor& AtenPolarOut(const at::Tensor& abs, const at::Tensor& angle,
 
 at::Tensor& AtenPowScalarOut(const at::Scalar& self, const at::Tensor& exponent,
                              at::Tensor& out) {
-  TT_KERNEL(OpName::kPow, _, (IgnoreInCacheKey(self), exponent, out), {
-    TT_THROW_IF_ERROR(CheckPowInputs(self, exponent));
-    // Can't use reverse_operands here because a^b != b^a.
-    // Cast to out tensor dtype to be consistent with PyTorch.
-    TT_ASSIGN_OR_THROW(at::Tensor self_tensor,
-                       MakeTensor(self, out.scalar_type()));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kPowOut, self_tensor, exponent, out, BuildPowShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
-    return out;
-  });
+  TT_KERNEL(OpName::kPow, _,
+            (IgnoreInCacheKey(self, "Legacy usage"), exponent, out), {
+              TT_THROW_IF_ERROR(CheckPowInputs(self, exponent));
+              // Can't use reverse_operands here because a^b != b^a.
+              // Cast to out tensor dtype to be consistent with PyTorch.
+              TT_ASSIGN_OR_THROW(at::Tensor self_tensor,
+                                 MakeTensor(self, out.scalar_type()));
+              TT_THROW_IF_ERROR(BinaryOpOut(
+                  OpName::kPowOut, self_tensor, exponent, out, BuildPowShlo,
+                  {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+              return out;
+            });
 }
 
 at::Tensor& AtenPowTensorScalarOut(const at::Tensor& self,
                                    const at::Scalar& exponent,
                                    at::Tensor& out) {
-  TT_KERNEL(OpName::kPow, _, (self, IgnoreInCacheKey(exponent), out), {
-    TT_THROW_IF_ERROR(CheckPowInputs(self, exponent));
-    // Cast to self dtype to be consistent with PyTorch.
-    TT_ASSIGN_OR_THROW(at::Tensor exponent_tensor,
-                       MakeTensor(exponent, self.scalar_type()));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kPowOut, self, exponent, out, BuildPowShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
-    return out;
-  });
+  TT_KERNEL(OpName::kPow, _,
+            (self, IgnoreInCacheKey(exponent, "Legacy usage"), out), {
+              TT_THROW_IF_ERROR(CheckPowInputs(self, exponent));
+              // Cast to self dtype to be consistent with PyTorch.
+              TT_ASSIGN_OR_THROW(at::Tensor exponent_tensor,
+                                 MakeTensor(exponent, self.scalar_type()));
+              TT_THROW_IF_ERROR(BinaryOpOut(
+                  OpName::kPowOut, self, exponent, out, BuildPowShlo,
+                  {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+              return out;
+            });
 }
 
 at::Tensor& AtenPowTensorTensorOut(const at::Tensor& self,
@@ -989,29 +1010,31 @@ at::Tensor& AtenPowTensorTensorOut(const at::Tensor& self,
 
 at::Tensor AtenRemainderScalarTensor(const at::Scalar& self,
                                      const at::Tensor& other) {
-  TT_KERNEL(OpName::kRemainder, _, (IgnoreInCacheKey(self), other), {
-    TT_THROW_IF_ERROR(CheckRemainderInputs(self, other));
-    TT_ASSIGN_OR_THROW(auto div_opts, GetDivOpOptionsFloorMode());
+  TT_KERNEL(
+      OpName::kRemainder, _, (IgnoreInCacheKey(self, "Legacy usage"), other), {
+        TT_THROW_IF_ERROR(CheckRemainderInputs(self, other));
+        TT_ASSIGN_OR_THROW(auto div_opts, GetDivOpOptionsFloorMode());
 
-    auto remainder_builder =
-        [div_opts = std::move(div_opts)](
-            mlir::MlirOp self_op,
-            mlir::MlirOp other_op) -> absl::StatusOr<mlir::MlirOp> {
-      TT_ASSIGN_OR_RETURN((auto [cast_self_op, cast_other_op]),
-                          ApplyBroadcastIfNeeded(self_op, other_op));
-      TT_ASSIGN_OR_RETURN(auto div_op,
-                          div_opts.op_builder(cast_self_op, cast_other_op));
-      auto mul_op = stablehlo::Mul(div_op, cast_other_op);
-      return stablehlo::Subtract(cast_self_op, mul_op);
-    };
+        auto remainder_builder =
+            [div_opts = std::move(div_opts)](
+                mlir::MlirOp self_op,
+                mlir::MlirOp other_op) -> absl::StatusOr<mlir::MlirOp> {
+          TT_ASSIGN_OR_RETURN((auto [cast_self_op, cast_other_op]),
+                              ApplyBroadcastIfNeeded(self_op, other_op));
+          TT_ASSIGN_OR_RETURN(auto div_op,
+                              div_opts.op_builder(cast_self_op, cast_other_op));
+          auto mul_op = stablehlo::Mul(div_op, cast_other_op);
+          return stablehlo::Subtract(cast_self_op, mul_op);
+        };
 
-    TT_ASSIGN_OR_THROW(
-        auto result,
-        BinaryOp(OpName::kRemainder, other, self, std::move(remainder_builder),
-                 {.reverse_operands = true,
-                  .op_param_cache_keys = OpParamCacheKeys::Empty()}));
-    return result;
-  });
+        TT_ASSIGN_OR_THROW(
+            auto result,
+            BinaryOp(OpName::kRemainder, other, self,
+                     std::move(remainder_builder),
+                     {.reverse_operands = true,
+                      .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+        return result;
+      });
 }
 
 at::Tensor& AtenRemainderTensorOut(const at::Tensor& self,
@@ -1039,13 +1062,15 @@ at::Tensor& AtenRemainderTensorOut(const at::Tensor& self,
 }
 
 at::Tensor AtenRshiftScalar(const at::Tensor& self, const at::Scalar& other) {
-  TT_KERNEL(OpName::kRshiftScalar, _, (self, IgnoreInCacheKey(other)), {
-    at::Tensor out =
-        MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device());
-    at::Tensor wrapped_scalar = at::native::wrapped_scalar_tensor(other);
-    AtenBitwiseRightShiftTensorOut(self, wrapped_scalar, out);
-    return out;
-  });
+  TT_KERNEL(OpName::kRshiftScalar, _,
+            (self, IgnoreInCacheKey(other, "Legacy usage")), {
+              at::Tensor out = MakeEmptyTensor(self.sizes(), self.scalar_type(),
+                                               self.device());
+              at::Tensor wrapped_scalar =
+                  at::native::wrapped_scalar_tensor(other);
+              AtenBitwiseRightShiftTensorOut(self, wrapped_scalar, out);
+              return out;
+            });
 }
 
 at::Tensor AtenRshiftTensor(const at::Tensor& self, const at::Tensor& other) {
@@ -1060,7 +1085,8 @@ at::Tensor AtenRshiftTensor(const at::Tensor& self, const at::Tensor& other) {
 
 at::Tensor AtenRsubTensor(const at::Tensor& self, const at::Tensor& other,
                           const at::Scalar& alpha) {
-  TT_KERNEL(OpName::kRsub, _, (self, other, IgnoreInCacheKey(alpha)),
+  TT_KERNEL(OpName::kRsub, _,
+            (self, other, IgnoreInCacheKey(alpha, "Legacy usage")),
             { return at::sub(other, self, alpha); });
 }
 

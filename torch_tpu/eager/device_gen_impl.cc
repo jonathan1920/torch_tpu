@@ -214,7 +214,7 @@ DeviceGeneratorImpl::DeviceGeneratorImpl(c10::DeviceIndex device_index,
 
 void DeviceGeneratorImpl::set_current_seed(uint64_t seed) {
   // set_current_seed() is invoked by PyTorch and behaves like an op.
-  TT_KERNEL(OpName::kRngSetSeed, _, (IgnoreInCacheKey(seed)), {
+  TT_KERNEL(OpName::kRngSetSeed, _, (IgnoreInCacheKey(seed, "Legacy usage")), {
     TT_ASSIGN_OR_THROW(auto rng_state_buffer, UpdateRngSeed(rng_state_, seed));
     auto new_rng_state = MakeTensor(std::move(rng_state_buffer));
     rng_state_ = new_rng_state;
@@ -223,12 +223,13 @@ void DeviceGeneratorImpl::set_current_seed(uint64_t seed) {
 
 void DeviceGeneratorImpl::set_offset(uint64_t offset) {
   // set_offset() is invoked by PyTorch and behaves like an op.
-  TT_KERNEL(OpName::kRngSetOffset, _, (IgnoreInCacheKey(offset)), {
-    TT_ASSIGN_OR_THROW(auto rng_state_buffer,
-                       UpdateRngOffset(rng_state_, offset));
-    auto new_rng_state = MakeTensor(std::move(rng_state_buffer));
-    rng_state_ = new_rng_state;
-  });
+  TT_KERNEL(OpName::kRngSetOffset, _,
+            (IgnoreInCacheKey(offset, "Legacy usage")), {
+              TT_ASSIGN_OR_THROW(auto rng_state_buffer,
+                                 UpdateRngOffset(rng_state_, offset));
+              auto new_rng_state = MakeTensor(std::move(rng_state_buffer));
+              rng_state_ = new_rng_state;
+            });
 }
 
 uint64_t DeviceGeneratorImpl::get_offset() const {

@@ -115,8 +115,9 @@ at::Tensor& AtenIsInScalarTensorOut(const at::Scalar& element,
                                     bool assume_unique, bool invert,
                                     at::Tensor& out) {
   TT_KERNEL(OpName::kIsInScalarTensorOut, _,
-            (IgnoreInCacheKey(element), test_elements,
-             IgnoreInCacheKey(assume_unique), IgnoreInCacheKey(invert), out),
+            (IgnoreInCacheKey(element, "Legacy usage"), test_elements,
+             IgnoreInCacheKey(assume_unique, "Legacy usage"),
+             IgnoreInCacheKey(invert, "Legacy usage"), out),
             {
               at::Tensor wrapper_scalar_tensor =
                   at::full({}, element).to(test_elements.device());

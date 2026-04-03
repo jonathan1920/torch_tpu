@@ -324,9 +324,11 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
                            std::optional<double> scale, bool enable_gqa) {
   TT_KERNEL(
       OpName::kFusedSdpChoice, _,
-      (query, key, value, IgnoreInCacheKey(attn_mask),
-       IgnoreInCacheKey(dropout_p), IgnoreInCacheKey(is_causal),
-       IgnoreInCacheKey(scale), IgnoreInCacheKey(enable_gqa)),
+      (query, key, value, IgnoreInCacheKey(attn_mask, "Legacy usage"),
+       IgnoreInCacheKey(dropout_p, "Legacy usage"),
+       IgnoreInCacheKey(is_causal, "Legacy usage"),
+       IgnoreInCacheKey(scale, "Legacy usage"),
+       IgnoreInCacheKey(enable_gqa, "Legacy usage")),
       {
         const auto& ctx = at::globalContext();
 
@@ -431,9 +433,11 @@ AtenScaledDotProductFusedAttentionOverrideable(
     const std::optional<at::Tensor>& attn_bias, double dropout_p,
     bool is_causal, bool return_debug_mask, std::optional<double> scale) {
   TT_KERNEL(OpName::kScaledDotProductFusedAttentionOverrideable, _,
-            (query, key, value, IgnoreInCacheKey(attn_bias),
-             IgnoreInCacheKey(dropout_p), IgnoreInCacheKey(is_causal),
-             IgnoreInCacheKey(return_debug_mask), IgnoreInCacheKey(scale)),
+            (query, key, value, IgnoreInCacheKey(attn_bias, "Legacy usage"),
+             IgnoreInCacheKey(dropout_p, "Legacy usage"),
+             IgnoreInCacheKey(is_causal, "Legacy usage"),
+             IgnoreInCacheKey(return_debug_mask, "Legacy usage"),
+             IgnoreInCacheKey(scale, "Legacy usage")),
             {
               // Unused arguments: attn_bias, dropout_p, is_causal,
               // return_debug_mask, scale.
@@ -458,10 +462,12 @@ AtenScaledDotProductFusedAttentionOverrideableBackward(
     const at::Tensor& philox_offset, std::optional<double> scale) {
   TT_KERNEL(OpName::kScaledDotProductFusedAttentionOverrideableBackward, _,
             (grad_out, query, key, value, attn_bias,
-             IgnoreInCacheKey(grad_input_mask), out, logsumexp, cum_seq_q,
-             cum_seq_k, IgnoreInCacheKey(max_q), IgnoreInCacheKey(max_k),
-             IgnoreInCacheKey(dropout_p), IgnoreInCacheKey(is_causal),
-             philox_seed, philox_offset, IgnoreInCacheKey(scale)),
+             IgnoreInCacheKey(grad_input_mask, "Legacy usage"), out, logsumexp,
+             cum_seq_q, cum_seq_k, IgnoreInCacheKey(max_q, "Legacy usage"),
+             IgnoreInCacheKey(max_k, "Legacy usage"),
+             IgnoreInCacheKey(dropout_p, "Legacy usage"),
+             IgnoreInCacheKey(is_causal, "Legacy usage"), philox_seed,
+             philox_offset, IgnoreInCacheKey(scale, "Legacy usage")),
             {
               // Unused arguments: attn_bias, grad_input_mask, out, logsumexp,
               // cum_seq_q, cum_seq_k, max_q, max_k, dropout_p, is_causal,
@@ -481,9 +487,11 @@ AtenScaledDotProductEfficientAttention(
     const std::optional<at::Tensor>& attn_bias, bool compute_log_sumexp,
     double dropout_p, bool is_causal, std::optional<double> scale) {
   TT_KERNEL(OpName::kScaledDotProductEfficientAttention, _,
-            (query, key, value, IgnoreInCacheKey(attn_bias),
-             IgnoreInCacheKey(compute_log_sumexp), IgnoreInCacheKey(dropout_p),
-             IgnoreInCacheKey(is_causal), IgnoreInCacheKey(scale)),
+            (query, key, value, IgnoreInCacheKey(attn_bias, "Legacy usage"),
+             IgnoreInCacheKey(compute_log_sumexp, "Legacy usage"),
+             IgnoreInCacheKey(dropout_p, "Legacy usage"),
+             IgnoreInCacheKey(is_causal, "Legacy usage"),
+             IgnoreInCacheKey(scale, "Legacy usage")),
             {
               // Unused arguments: attn_bias, compute_log_sumexp, dropout_p,
               // scale.
@@ -504,9 +512,10 @@ AtenScaledDotProductFlashAttention(const at::Tensor& query,
                                    bool is_causal, bool return_debug_mask,
                                    std::optional<double> scale) {
   TT_KERNEL(OpName::kScaledDotProductFlashAttention, _,
-            (query, key, value, IgnoreInCacheKey(dropout_p),
-             IgnoreInCacheKey(is_causal), IgnoreInCacheKey(return_debug_mask),
-             IgnoreInCacheKey(scale)),
+            (query, key, value, IgnoreInCacheKey(dropout_p, "Legacy usage"),
+             IgnoreInCacheKey(is_causal, "Legacy usage"),
+             IgnoreInCacheKey(return_debug_mask, "Legacy usage"),
+             IgnoreInCacheKey(scale, "Legacy usage")),
             {
               // Unused arguments: dropout_p, return_debug_mask, scale.
               TT_ASSIGN_OR_THROW(auto out, ScaledDotProductFusedAttentionImpl(

@@ -169,8 +169,9 @@ absl::StatusOr<mlir::MlirOp> BuildFftR2cShlo(mlir::MlirOp input,
 at::Tensor AtenFftR2c(const at::Tensor& self, at::IntArrayRef dim,
                       int64_t normalization, bool onesided) {
   TT_KERNEL(OpName::kFftR2c, _,
-            (self, IgnoreInCacheKey(dim), IgnoreInCacheKey(normalization),
-             IgnoreInCacheKey(onesided)),
+            (self, IgnoreInCacheKey(dim, "Legacy usage"),
+             IgnoreInCacheKey(normalization, "Legacy usage"),
+             IgnoreInCacheKey(onesided, "Legacy usage")),
             {
               TT_THROW_IF_ERROR(CheckStaticShape(self, "input"));
 

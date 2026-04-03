@@ -148,8 +148,9 @@ std::tuple<at::Tensor, at::Tensor> AtenNllLoss2dForward(
     int64_t ignore_index) {
   TT_KERNEL(
       OpName::kNllLoss2dForward, _,
-      (self, target, IgnoreInCacheKey(weight), IgnoreInCacheKey(reduction),
-       IgnoreInCacheKey(ignore_index)),
+      (self, target, IgnoreInCacheKey(weight, "Legacy usage"),
+       IgnoreInCacheKey(reduction, "Legacy usage"),
+       IgnoreInCacheKey(ignore_index, "Legacy usage")),
       {
         TT_CHECK_THROW(self.dim() >= 3 && self.dim() == target.dim() + 1 &&
                            self.size(0) == target.size(0) &&
@@ -192,8 +193,9 @@ std::tuple<at::Tensor&, at::Tensor&> AtenNllLoss2dForwardOut(
     int64_t ignore_index, at::Tensor& output, at::Tensor& total_weight) {
   TT_KERNEL(
       OpName::kNllLoss2dForwardOut, _,
-      (self, target, IgnoreInCacheKey(weight), IgnoreInCacheKey(reduction),
-       IgnoreInCacheKey(ignore_index), output, total_weight),
+      (self, target, IgnoreInCacheKey(weight, "Legacy usage"),
+       IgnoreInCacheKey(reduction, "Legacy usage"),
+       IgnoreInCacheKey(ignore_index, "Legacy usage"), output, total_weight),
       {
         at::Tensor loss_output_inner;   // UNINITIALIZED_TENSOR_OK=return value
                                         // in a tuple

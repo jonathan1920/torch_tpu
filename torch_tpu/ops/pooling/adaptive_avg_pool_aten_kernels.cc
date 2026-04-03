@@ -594,7 +594,7 @@ at::Tensor& AtenAdaptiveAvgPool2dOut(const at::Tensor& self,
 at::Tensor AtenAdaptiveAvgPool2d(const at::Tensor& self,
                                  c10::SymIntArrayRef output_size) {
   TT_KERNEL(OpName::kAdaptiveAvgPool2d, _,
-            (self, IgnoreInCacheKey(output_size)), {
+            (self, IgnoreInCacheKey(output_size, "Legacy usage")), {
               auto num_dims = self.dim();
 
               // The output size is either a single integer H or a tuple (H, W)
@@ -710,7 +710,7 @@ at::Tensor& AtenAdaptiveAvgPool3dOut(const at::Tensor& self,
 at::Tensor AtenAdaptiveAvgPool3d(const at::Tensor& self,
                                  c10::SymIntArrayRef output_size) {
   TT_KERNEL(OpName::kAdaptiveAvgPool3d, _,
-            (self, IgnoreInCacheKey(output_size)), {
+            (self, IgnoreInCacheKey(output_size, "Legacy usage")), {
               auto num_dims = self.dim();
 
               // The output size is either a single integer or a triple-integer

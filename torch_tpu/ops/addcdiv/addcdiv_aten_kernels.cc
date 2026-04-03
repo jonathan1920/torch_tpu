@@ -59,7 +59,7 @@ at::Tensor& AtenAddcdivOut(const at::Tensor& self, const at::Tensor& tensor1,
                            at::Tensor& out) {
   TT_KERNEL(
       OpName::kAddcdivOut, _,
-      (self, tensor1, tensor2, IgnoreInCacheKey(value), out), {
+      (self, tensor1, tensor2, IgnoreInCacheKey(value, "Legacy usage"), out), {
         TT_ASSIGN_OR_THROW(at::Tensor value_tensor, MakeTensor(value));
 
         // Build the op.

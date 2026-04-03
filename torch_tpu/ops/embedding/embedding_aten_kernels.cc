@@ -182,11 +182,13 @@ AtenEmbeddingBagForwardOnly(const at::Tensor& weight, const at::Tensor& indices,
                             const std::optional<at::Tensor>& per_sample_weights,
                             bool include_last_offset, int64_t padding_idx) {
   TT_KERNEL(OpName::kEmbeddingBagForwardOnly, _,
-            (weight, indices, offsets, IgnoreInCacheKey(scale_grad_by_freq),
-             IgnoreInCacheKey(mode), IgnoreInCacheKey(sparse),
-             IgnoreInCacheKey(per_sample_weights),
-             IgnoreInCacheKey(include_last_offset),
-             IgnoreInCacheKey(padding_idx)),
+            (weight, indices, offsets,
+             IgnoreInCacheKey(scale_grad_by_freq, "Legacy usage"),
+             IgnoreInCacheKey(mode, "Legacy usage"),
+             IgnoreInCacheKey(sparse, "Legacy usage"),
+             IgnoreInCacheKey(per_sample_weights, "Legacy usage"),
+             IgnoreInCacheKey(include_last_offset, "Legacy usage"),
+             IgnoreInCacheKey(padding_idx, "Legacy usage")),
             {
               return AtenEmbeddingBag(
                   weight, indices, offsets, scale_grad_by_freq, mode, sparse,
@@ -243,8 +245,9 @@ at::Tensor AtenEmbeddingDenseBackward(const at::Tensor& grad_output,
                                       bool scale_grad_by_freq) {
   TT_KERNEL(
       OpName::kEmbeddingDenseBackward, _,
-      (grad_output, indices, IgnoreInCacheKey(num_weights),
-       IgnoreInCacheKey(padding_idx_sym), IgnoreInCacheKey(scale_grad_by_freq)),
+      (grad_output, indices, IgnoreInCacheKey(num_weights, "Legacy usage"),
+       IgnoreInCacheKey(padding_idx_sym, "Legacy usage"),
+       IgnoreInCacheKey(scale_grad_by_freq, "Legacy usage")),
       {
         auto dtype = grad_output.scalar_type();
         auto computation_dtype = GetComputationDtype(dtype);

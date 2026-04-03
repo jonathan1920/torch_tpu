@@ -75,7 +75,8 @@ at::Tensor& AtenLeakyReluOut(const at::Tensor& self,
                              const at::Scalar& negative_slope,
                              at::Tensor& out) {
   TT_KERNEL(
-      OpName::kLeakyReluOut, _, (self, IgnoreInCacheKey(negative_slope), out), {
+      OpName::kLeakyReluOut, _,
+      (self, IgnoreInCacheKey(negative_slope, "Legacy usage"), out), {
         TT_ASSIGN_OR_THROW(mlir::ElementType dtype,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
         TT_CHECK_THROW(!IsBoolean(dtype), error::kInvalidArgument)

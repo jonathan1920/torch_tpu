@@ -176,7 +176,9 @@ absl::Status ArgMinMax(OpName op_name, const at::Tensor& self,
 at::Tensor& AtenArgmaxOut(const at::Tensor& self, c10::optional<int64_t> dim,
                           bool keep_dim, at::Tensor& out) {
   TT_KERNEL(OpName::kArgMaxOut, _,
-            (self, IgnoreInCacheKey(dim), IgnoreInCacheKey(keep_dim), out), {
+            (self, IgnoreInCacheKey(dim, "Legacy usage"),
+             IgnoreInCacheKey(keep_dim, "Legacy usage"), out),
+            {
               // keep_dim does not affect the SHLO and therefore does not need
               // to be included in the cache key.
               TT_ASSIGN_OR_THROW(
@@ -193,7 +195,9 @@ at::Tensor& AtenArgmaxOut(const at::Tensor& self, c10::optional<int64_t> dim,
 at::Tensor& AtenArgminOut(const at::Tensor& self, c10::optional<int64_t> dim,
                           bool keep_dim, at::Tensor& out) {
   TT_KERNEL(OpName::kArgMinOut, _,
-            (self, IgnoreInCacheKey(dim), IgnoreInCacheKey(keep_dim), out), {
+            (self, IgnoreInCacheKey(dim, "Legacy usage"),
+             IgnoreInCacheKey(keep_dim, "Legacy usage"), out),
+            {
               // keep_dim does not affect the SHLO and therefore does not need
               // to be included in the cache key.
               TT_ASSIGN_OR_THROW(

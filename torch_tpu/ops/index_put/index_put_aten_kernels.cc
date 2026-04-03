@@ -510,8 +510,9 @@ at::Tensor& TpuAtenIndexPutImpl_(
     const at::Tensor& values, bool accumulate, bool unsafe) {
   TT_KERNEL(
       OpName::kIndexPutImpl_, _,
-      (self, IgnoreInCacheKey(indices), values, IgnoreInCacheKey(accumulate),
-       IgnoreInCacheKey(unsafe)),
+      (self, IgnoreInCacheKey(indices, "Legacy usage"), values,
+       IgnoreInCacheKey(accumulate, "Legacy usage"),
+       IgnoreInCacheKey(unsafe, "Legacy usage")),
       {
         TT_ASSIGN_OR_THROW(
             DeviceBufferRef result_buf,

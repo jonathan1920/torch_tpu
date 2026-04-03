@@ -575,9 +575,11 @@ std::tuple<at::Tensor, at::Tensor> AtenMaxPool3dWithIndices(
     const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,
     at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode) {
   TT_KERNEL(OpName::kMaxPool3dWithIndices, _,
-            (self, IgnoreInCacheKey(kernel_size), IgnoreInCacheKey(stride),
-             IgnoreInCacheKey(padding), IgnoreInCacheKey(dilation),
-             IgnoreInCacheKey(ceil_mode)),
+            (self, IgnoreInCacheKey(kernel_size, "Legacy usage"),
+             IgnoreInCacheKey(stride, "Legacy usage"),
+             IgnoreInCacheKey(padding, "Legacy usage"),
+             IgnoreInCacheKey(dilation, "Legacy usage"),
+             IgnoreInCacheKey(ceil_mode, "Legacy usage")),
             {
               auto output_size =
                   GetMaxPoolOutputSize(self.sizes(), kernel_size, stride,
@@ -618,9 +620,11 @@ at::Tensor AtenMaxPool3dWithIndicesBackward(
     at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode,
     const at::Tensor& indices) {
   TT_KERNEL(OpName::kMaxPool3dWithIndicesBackward, _,
-            (grad_output, self, IgnoreInCacheKey(kernel_size),
-             IgnoreInCacheKey(stride), IgnoreInCacheKey(padding),
-             IgnoreInCacheKey(dilation), IgnoreInCacheKey(ceil_mode), indices),
+            (grad_output, self, IgnoreInCacheKey(kernel_size, "Legacy usage"),
+             IgnoreInCacheKey(stride, "Legacy usage"),
+             IgnoreInCacheKey(padding, "Legacy usage"),
+             IgnoreInCacheKey(dilation, "Legacy usage"),
+             IgnoreInCacheKey(ceil_mode, "Legacy usage"), indices),
             {
               at::Tensor grad_input = at::empty(self.sizes(), self.options());
               AtenMaxPool3dWithIndicesBackwardGradInput(

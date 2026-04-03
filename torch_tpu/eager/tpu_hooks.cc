@@ -233,7 +233,9 @@ struct TORCH_API TpuHooksInterface : public at::PrivateUse1HooksInterface {
                               size_t new_bytes) const override {
     TT_KERNEL(
         OpName::kUntypedStorageResize_, _,
-        (IgnoreInCacheKey(storage), IgnoreInCacheKey(new_bytes)), {
+        (IgnoreInCacheKey(storage, "Legacy usage"),
+         IgnoreInCacheKey(new_bytes, "Legacy usage")),
+        {
           const size_t current_bytes = storage.nbytes();
           TT_ASSIGN_OR_THROW(const DeviceBufferRef old_buffer_ref,
                              GetBaseBufferFromStorage(storage));

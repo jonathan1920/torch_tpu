@@ -85,7 +85,7 @@ at::Tensor& AtenEyeMOut(c10::SymInt n, c10::SymInt m, at::Tensor& out) {
 }
 
 at::Tensor& AtenEyeOut(c10::SymInt n, at::Tensor& out) {
-  TT_KERNEL(OpName::kEyeOut, _, (IgnoreInCacheKey(n), out),
+  TT_KERNEL(OpName::kEyeOut, _, (IgnoreInCacheKey(n, "Legacy usage"), out),
             { return AtenEyeMOut(n, n, out); });
 }
 

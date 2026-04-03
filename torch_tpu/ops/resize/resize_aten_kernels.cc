@@ -49,7 +49,9 @@ const at::Tensor& AtenResize_(
     c10::optional<at::MemoryFormat> memory_format_opt) {
   TT_KERNEL(
       OpName::kResize_, _,
-      (self, IgnoreInCacheKey(size), IgnoreInCacheKey(memory_format_opt)), {
+      (self, IgnoreInCacheKey(size, "Legacy usage"),
+       IgnoreInCacheKey(memory_format_opt, "Legacy usage")),
+      {
         TT_CHECK_THROW(!memory_format_opt.has_value() ||
                            *memory_format_opt == at::MemoryFormat::Contiguous,
                        error::kUnimplemented)

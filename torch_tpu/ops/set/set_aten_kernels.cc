@@ -53,16 +53,17 @@ at::Tensor& AtenSet_(at::Tensor& self) {
 }
 
 at::Tensor& AtenSet_SourceStorage(at::Tensor& self, c10::Storage src) {
-  TT_KERNEL(OpName::kSet_SourceStorage, _, (self, IgnoreInCacheKey(src)), {
-    c10::TensorImpl* impl = self.unsafeGetTensorImpl();
-    TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref,
-                       GetBaseBufferFromStorage(src));
-    const int64_t numel = buffer_ref.num_elements();
-    impl->set_storage_keep_dtype(std::move(src));
-    impl->set_storage_offset(0);
-    impl->set_sizes_contiguous({numel});
-    return self;
-  });
+  TT_KERNEL(OpName::kSet_SourceStorage, _,
+            (self, IgnoreInCacheKey(src, "Legacy usage")), {
+              c10::TensorImpl* impl = self.unsafeGetTensorImpl();
+              TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref,
+                                 GetBaseBufferFromStorage(src));
+              const int64_t numel = buffer_ref.num_elements();
+              impl->set_storage_keep_dtype(std::move(src));
+              impl->set_storage_offset(0);
+              impl->set_sizes_contiguous({numel});
+              return self;
+            });
 }
 
 at::Tensor& AtenSet_SourceStorageOffset(at::Tensor& self, c10::Storage src,
@@ -79,8 +80,10 @@ at::Tensor& AtenSet_SourceStorageOffset(at::Tensor& self, c10::Storage src,
     stride_vec.push_back(s.guard_int(__FILE__, __LINE__));
   }
   TT_KERNEL(OpName::kSet_SourceStorageOffset, _,
-            (self, IgnoreInCacheKey(src), IgnoreInCacheKey(offset),
-             IgnoreInCacheKey(size_vec), IgnoreInCacheKey(stride_vec)),
+            (self, IgnoreInCacheKey(src, "Legacy usage"),
+             IgnoreInCacheKey(offset, "Legacy usage"),
+             IgnoreInCacheKey(size_vec, "Legacy usage"),
+             IgnoreInCacheKey(stride_vec, "Legacy usage")),
             {
               c10::TensorImpl* impl = self.unsafeGetTensorImpl();
               TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref,

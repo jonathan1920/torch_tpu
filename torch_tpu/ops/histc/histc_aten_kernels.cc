@@ -140,8 +140,9 @@ absl::Status ValidateBounds(
 at::Tensor AtenHistc(const at::Tensor& self, const int64_t bins,
                      const at::Scalar& min, const at::Scalar& max) {
   TT_KERNEL(OpName::kHistc, _,
-            (self, IgnoreInCacheKey(bins), IgnoreInCacheKey(min),
-             IgnoreInCacheKey(max)),
+            (self, IgnoreInCacheKey(bins, "Legacy usage"),
+             IgnoreInCacheKey(min, "Legacy usage"),
+             IgnoreInCacheKey(max, "Legacy usage")),
             {
               c10::ScalarType out_dtype = self.scalar_type();
               at::Tensor out =

@@ -61,7 +61,7 @@ at::Tensor& AtenAddcmulOut(const at::Tensor& self, const at::Tensor& tensor1,
                            at::Tensor& out) {
   TT_KERNEL(
       OpName::kAddcmulOut, _,
-      (self, tensor1, tensor2, IgnoreInCacheKey(value), out), {
+      (self, tensor1, tensor2, IgnoreInCacheKey(value, "Legacy usage"), out), {
         TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Bool &&
                            tensor1.scalar_type() != at::ScalarType::Bool &&
                            tensor2.scalar_type() != at::ScalarType::Bool,

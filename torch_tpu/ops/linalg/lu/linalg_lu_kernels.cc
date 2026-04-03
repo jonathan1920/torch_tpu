@@ -188,8 +188,8 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuFactorExOut(
     at::Tensor& pivots, at::Tensor& info) {
   TT_KERNEL(
       OpName::kLinalgLuFactorExOut, _,
-      (a, IgnoreInCacheKey(pivot), IgnoreInCacheKey(check_errors), lu, pivots,
-       info),
+      (a, IgnoreInCacheKey(pivot, "Legacy usage"),
+       IgnoreInCacheKey(check_errors, "Legacy usage"), lu, pivots, info),
       {
         TT_CHECK_THROW(pivot, error::kInvalidArgument)
             << "non-pivoting decomposition is not supported";
@@ -250,8 +250,8 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLuUnpackOut(
     bool unpack_pivots, at::Tensor& p, at::Tensor& l, at::Tensor& u) {
   TT_KERNEL(
       OpName::kLuUnpackOut, _,
-      (lu_data, lu_pivots, IgnoreInCacheKey(unpack_data),
-       IgnoreInCacheKey(unpack_pivots), p, l, u),
+      (lu_data, lu_pivots, IgnoreInCacheKey(unpack_data, "Legacy usage"),
+       IgnoreInCacheKey(unpack_pivots, "Legacy usage"), p, l, u),
       {
         if (unpack_data || unpack_pivots) {
           TT_CHECK_THROW(lu_data.dim() >= 2, error::kInvalidArgument)
@@ -451,19 +451,22 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
 std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuOut(
     const at::Tensor& a, bool pivot, at::Tensor& p, at::Tensor& l,
     at::Tensor& u) {
-  TT_KERNEL(OpName::kLinalgLuOut, _, (a, IgnoreInCacheKey(pivot), p, l, u), {
-    at::Tensor lu = at::empty_like(a);
-    Dimensions pivot_dims = CopyIntVector(a.sizes());
-    pivot_dims.pop_back();
-    int pivot_size = std::min(a.size(-2), a.size(-1));
-    pivot_dims[pivot_dims.size() - 1] = pivot_size;
-    at::Tensor pivots = at::empty(pivot_dims, a.options().dtype(at::kInt));
-    at::Tensor info = at::empty(pivot_dims, a.options().dtype(at::kInt));
-    AtenLinalgLuFactorExOut(a, pivot, /*check_errors=*/true, lu, pivots, info);
-    AtenLuUnpackOut(lu, pivots, /*unpack_data=*/true,
-                    /*unpack_pivots=*/true, p, l, u);
-    return {p, l, u};
-  });
+  TT_KERNEL(
+      OpName::kLinalgLuOut, _,
+      (a, IgnoreInCacheKey(pivot, "Legacy usage"), p, l, u), {
+        at::Tensor lu = at::empty_like(a);
+        Dimensions pivot_dims = CopyIntVector(a.sizes());
+        pivot_dims.pop_back();
+        int pivot_size = std::min(a.size(-2), a.size(-1));
+        pivot_dims[pivot_dims.size() - 1] = pivot_size;
+        at::Tensor pivots = at::empty(pivot_dims, a.options().dtype(at::kInt));
+        at::Tensor info = at::empty(pivot_dims, a.options().dtype(at::kInt));
+        AtenLinalgLuFactorExOut(a, pivot, /*check_errors=*/true, lu, pivots,
+                                info);
+        AtenLuUnpackOut(lu, pivots, /*unpack_data=*/true,
+                        /*unpack_pivots=*/true, p, l, u);
+        return {p, l, u};
+      });
 }
 
 }  // namespace torch_tpu

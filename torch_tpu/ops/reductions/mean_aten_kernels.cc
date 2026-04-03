@@ -66,8 +66,9 @@ at::Tensor& AtenMeanOut(const at::Tensor& self,
                         std::optional<c10::ScalarType> dtype, at::Tensor& out) {
   TT_KERNEL(
       OpName::kMeanOut, _,
-      (self, IgnoreInCacheKey(dim), IgnoreInCacheKey(keep_dim),
-       IgnoreInCacheKey(dtype), out),
+      (self, IgnoreInCacheKey(dim, "Legacy usage"),
+       IgnoreInCacheKey(keep_dim, "Legacy usage"),
+       IgnoreInCacheKey(dtype, "Legacy usage"), out),
       {
         TT_ASSIGN_OR_THROW(c10::ScalarType scalar_dtype,
                            GetOutputScalarType(out, dtype));

@@ -140,38 +140,41 @@ absl::StatusOr<Dimensions> SymIntsToDimensions(const at::Tensor& self,
 at::Tensor AtenReshapeAlias(const at::Tensor& self,
                             c10::SymIntArrayRef size_sym,
                             c10::SymIntArrayRef stride_sym) {
-  TT_KERNEL(OpName::kReshapeAlias, _,
-            (self, IgnoreInCacheKey(size_sym), IgnoreInCacheKey(stride_sym)), {
-              return AtenAsStrided(self, size_sym, stride_sym, c10::nullopt);
-            });
+  TT_KERNEL(
+      OpName::kReshapeAlias, _,
+      (self, IgnoreInCacheKey(size_sym, "Legacy usage"),
+       IgnoreInCacheKey(stride_sym, "Legacy usage")),
+      { return AtenAsStrided(self, size_sym, stride_sym, c10::nullopt); });
 }
 
 at::Tensor AtenView(const at::Tensor& self, c10::SymIntArrayRef size_sym) {
-  TT_KERNEL(OpName::kView, _, (self, IgnoreInCacheKey(size_sym)), {
-    // view is allowed to have one dimension as "-1", which needs to be resolved
-    // to a positive shape.
-    TT_ASSIGN_OR_THROW(Dimensions new_size,
-                       SymIntsToDimensions(self, size_sym));
+  TT_KERNEL(
+      OpName::kView, _, (self, IgnoreInCacheKey(size_sym, "Legacy usage")), {
+        // view is allowed to have one dimension as "-1", which needs to be
+        // resolved to a positive shape.
+        TT_ASSIGN_OR_THROW(Dimensions new_size,
+                           SymIntsToDimensions(self, size_sym));
 
-    // Use PyTorch's default logic for view stride computation.
-    std::optional<std::vector<int64_t>> new_stride =  // INT_VEC_OK=c10 API
-        at::detail::computeStride(self.sizes(), self.strides(), new_size);
-    TT_CHECK_THROW(new_stride.has_value(), error::kInvalidArgument)
-        << "output shape not view-compatible with input shape. Consider using "
-           "reshape() instead of view() to return a new contiguous tensor";
+        // Use PyTorch's default logic for view stride computation.
+        std::optional<std::vector<int64_t>> new_stride =  // INT_VEC_OK=c10 API
+            at::detail::computeStride(self.sizes(), self.strides(), new_size);
+        TT_CHECK_THROW(new_stride.has_value(), error::kInvalidArgument)
+            << "output shape not view-compatible with input shape. Consider "
+               "using "
+               "reshape() instead of view() to return a new contiguous tensor";
 
-    // Redispatch to AtenAsStrided() with the resolved shape and strides.
-    c10::SymIntArrayRef new_size_inferred_sym =
-        c10::fromIntArrayRefKnownNonNegative(new_size);
-    c10::SymIntArrayRef new_stride_sym =
-        c10::fromIntArrayRefKnownNonNegative(*new_stride);
-    at::Tensor tensor = AtenAsStrided(self, new_size_inferred_sym,
-                                      new_stride_sym, c10::nullopt);
-    if (self.is_conj() && !tensor.is_conj()) {
-      tensor = tensor.conj();
-    }
-    return tensor;
-  });
+        // Redispatch to AtenAsStrided() with the resolved shape and strides.
+        c10::SymIntArrayRef new_size_inferred_sym =
+            c10::fromIntArrayRefKnownNonNegative(new_size);
+        c10::SymIntArrayRef new_stride_sym =
+            c10::fromIntArrayRefKnownNonNegative(*new_stride);
+        at::Tensor tensor = AtenAsStrided(self, new_size_inferred_sym,
+                                          new_stride_sym, c10::nullopt);
+        if (self.is_conj() && !tensor.is_conj()) {
+          tensor = tensor.conj();
+        }
+        return tensor;
+      });
 }
 
 at::Tensor AtenViewAsReal(const at::Tensor& self) {

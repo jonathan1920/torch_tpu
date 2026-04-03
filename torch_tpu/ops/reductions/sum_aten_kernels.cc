@@ -39,8 +39,9 @@ at::Tensor& AtenSumIntListOut(const at::Tensor& self,
                               at::Tensor& out) {
   TT_KERNEL(
       OpName::kSumIntListOut, _,
-      (self, IgnoreInCacheKey(dim), IgnoreInCacheKey(keep_dim),
-       IgnoreInCacheKey(dtype), out),
+      (self, IgnoreInCacheKey(dim, "Legacy usage"),
+       IgnoreInCacheKey(keep_dim, "Legacy usage"),
+       IgnoreInCacheKey(dtype, "Legacy usage"), out),
       {
         c10::ScalarType scalar_dtype = dtype.value_or(out.scalar_type());
         if (self.numel() == 0) {

@@ -386,7 +386,7 @@ at::Tensor AtenReplicationPad2dBackward(const at::Tensor& grad_output,
                                         const at::Tensor& self,
                                         at::IntArrayRef padding) {
   TT_KERNEL(OpName::kReplicationPad2dBackward, _,
-            (grad_output, self, IgnoreInCacheKey(padding)), {
+            (grad_output, self, IgnoreInCacheKey(padding, "Legacy usage")), {
               Dimensions gidims(grad_output.sizes().begin(),
                                 grad_output.sizes().end());
               TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
@@ -431,7 +431,7 @@ at::Tensor AtenReplicationPad3dBackward(const at::Tensor& grad_output,
                                         at::IntArrayRef padding) {
   TT_KERNEL(
       OpName::kReplicationPad3dBackward, _,
-      (grad_output, self, IgnoreInCacheKey(padding)), {
+      (grad_output, self, IgnoreInCacheKey(padding, "Legacy usage")), {
         Dimensions gidims(grad_output.sizes().begin(),
                           grad_output.sizes().end());
         TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are guaranteed
