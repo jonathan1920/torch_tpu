@@ -66,9 +66,11 @@ jobs:
     runs-on: ${{ matrix.job_info.runner }}
     container:
       image: ${{ matrix.job_info.container }}
+    # TODO: b/494827820 - Use tag to include test targets instead of env var.
     env:
       TEST_TARGETS: >-
         //tests:errors_test_cov
+        //tests:errors_test_tpu
         //tests:ops_test_grad
         //tests:ops_test_perf
         //tests:ops_test_tpu
