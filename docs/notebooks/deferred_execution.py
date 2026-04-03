@@ -225,11 +225,11 @@ def _(mo):
 
     | Mode | Description |
     | :--- | :--- |
-    | `EagerMode.DEFER_AND_FUSE_WITH_O1` | **Default.** Defers all operations into a graph for fusion, except those that must be executed immediately. |
-    | `EagerMode.DEFER_AND_FUSE` | Uses more aggressive XLA optimizations for eager execution. |
+    | `EagerMode.DEFER_AND_FUSE_WITH_O1` | **Default.** Defers operations into fusion clusters, except those that must be executed immediately. |
+    | `EagerMode.DEFER_AND_FUSE` | **Optimized mode** Uses more aggressive XLA optimizations for eager execution. |
     | `EagerMode.DEFER_NEVER` | **Debug mode.** Every op is dispatched immediately, similar to how it's done in CUDA. |
     | `EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING` | **Extreme Debug mode.** Executes ops immediately and waits for completion before dispatching the next. |
-    | `EagerMode.INTERNAL_DEFER_ALL` | Strictly defers all operations. Used primarily for internal `torch.compile` workflows. |
+    | `EagerMode.INTERNAL_DEFER_ALL` | Strictly defers all operations. Used exclusively for internal `torch.compile` workflows. |
 
     > [!WARNING]
     > `EagerMode.DEFER_NEVER` makes execution **significantly slower** because it eliminates compiler fusions. Use it only for debugging.

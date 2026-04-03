@@ -69,10 +69,14 @@ _USE_TORCH_COMPILE = flags.DEFINE_bool(
 
 _EAGER_MODE = flags.DEFINE_enum(
     "eager_mode",
-    "DEFER_AND_FUSE_WITH_O1",
-    ["DEFER_AND_FUSE_WITH_O1", "DEFER_AND_FUSE", "DEFER_NEVER"],
-    "Eager mode for the model. Can be 'DEFER_AND_FUSE_WITH_O1',"
-    " 'DEFER_AND_FUSE' or 'DEFER_NEVER'.",
+    "DEFER_AND_FUSE",
+    [
+        "DEFER_AND_FUSE_WITH_O1",
+        "DEFER_AND_FUSE",
+        "DEFER_NEVER",
+        "DEFER_NEVER_AND_LAUNCH_BLOCKING",
+    ],
+    "Eager mode for the model.",
 )
 
 _COMPILE_OPTIM = flags.DEFINE_bool(
