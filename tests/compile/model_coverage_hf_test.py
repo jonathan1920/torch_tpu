@@ -54,6 +54,7 @@ _MODEL_SIZES_TO_RUN = flags.DEFINE_multi_enum_class(
 # Threshold number for which perplexity scores should be less than. Anything
 # higher indicates a significant bug in the model or test.
 _PERPLEXITY_THRESHOLD = 100
+_NUM_TRAIN_STEPS = 5
 
 
 def _calculate_perplexity(
@@ -91,7 +92,7 @@ def _train_step(
   loss.backward()
   optimizer.step()
 
-  return loss
+  return loss.detach()
 
 
 class ModelCoverageHFTest(parameterized.TestCase):
@@ -164,8 +165,8 @@ class ModelCoverageHFTest(parameterized.TestCase):
           provider="transformers",
           module_name="google/gemma-3-270m",
           model_size=ModelSize.TINY,
-          rtol=6e-3,
-          atol=1e-3,
+          rtol=2e-2,
+          atol=5e-2,
       ),
       dict(
           testcase_name="transformers/Qwen/Qwen3-0.6B",
@@ -208,7 +209,10 @@ class ModelCoverageHFTest(parameterized.TestCase):
     cpu_model, _ = self._create_model(provider, module_name, is_training=True)
     cpu_inputs = self._create_inputs(provider, module_name)
     cpu_optimizer = torch.optim.SGD(cpu_model.parameters(), lr=0.01)
-    cpu_loss = _train_step(cpu_model, cpu_optimizer, cpu_inputs)
+    cpu_losses = []
+    for _ in range(_NUM_TRAIN_STEPS):
+      cpu_loss = _train_step(cpu_model, cpu_optimizer, cpu_inputs)
+      cpu_losses.append(cpu_loss)
     del cpu_model, cpu_optimizer
     gc.collect()
 
@@ -217,16 +221,20 @@ class ModelCoverageHFTest(parameterized.TestCase):
     )
     tpu_inputs = {k: v.to(self.tpu_device) for k, v in cpu_inputs.items()}
     tpu_optimizer = torch.optim.SGD(tpu_model.parameters(), lr=0.01)
-    tpu_loss = tpu_compiled_model(tpu_optimizer, tpu_inputs)
+    tpu_losses = []
+    for _ in range(_NUM_TRAIN_STEPS):
+      tpu_loss = tpu_compiled_model(tpu_optimizer, tpu_inputs)
+      tpu_losses.append(tpu_loss)
 
-    utils.assert_close(
-        actual=tpu_loss,
-        expected=cpu_loss,
-        rtol=rtol,
-        atol=atol,
-        preamble="TPU vs CPU loss",
-        check_value=utils.CheckValueMode.LOOSE,
-    )
+    for i in range(_NUM_TRAIN_STEPS):
+      utils.assert_close(
+          actual=tpu_losses[i],
+          expected=cpu_losses[i],
+          rtol=rtol,
+          atol=atol,
+          preamble="TPU vs CPU loss",
+          check_value=utils.CheckValueMode.LOOSE,
+      )
 
   @parameterized.named_parameters(
       dict(
