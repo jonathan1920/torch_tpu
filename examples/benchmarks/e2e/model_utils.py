@@ -14,6 +14,7 @@
 
 import dataclasses
 import enum
+import functools
 from typing import Any
 from fairscale.nn.model_parallel import initialize as fairscale_init
 import llama_models.llama3.model as m
@@ -22,8 +23,8 @@ from torch.distributed import fsdp
 import torch.distributed.tensor as dt
 from torch.nn import parallel
 from torch_tpu._internal.utils import device_utils
-from torch_tpu._internal.utils import modeling_hf
 from examples.deepseek import model as deepseek_model
+from tests import module_registry
 from transformers import activations
 from transformers.models.bert import modeling_bert
 from transformers.models.qwen3 import configuration_qwen3
@@ -140,6 +141,11 @@ def _load_fsdp_model(
   return model
 
 
+@functools.cache
+def get_module_registry():
+  return module_registry.ModuleRegistry()
+
+
 def get_huggingface_llm_model(
     model_name: str,
     *,
@@ -153,8 +159,8 @@ def get_huggingface_llm_model(
 ) -> ModelAndInput:
   """Returns the huggingface LLM model.
 
-  See `get_model` in //torch_tpu/_internal/utils/modeling_hf.py for
-  the list of supported models.
+  See supported models in
+  `third_party/py/torch_tpu/examples/huggingface_transformers/model_configs`.
 
   Args:
       model_name: The name of the Hugging Face model to load.
@@ -172,17 +178,18 @@ def get_huggingface_llm_model(
       and example inputs suitable for benchmarking.
   """
 
-  model_cpu = modeling_hf.get_model(model_name, weights_dtype).model
-  example_inputs = {
-      "input_ids": torch.randint(
-          0,
-          model_cpu.config.vocab_size,
-          (batch_size, sequence_length),
-          device=device,
-          dtype=torch.int64,
-          requires_grad=False,
-      )
-  }
+  registry = get_module_registry()
+  module_spec = registry.get_module_spec(
+      "transformers", model_name, load_weights=False
+  )
+
+  with torch.device("cpu"):
+    model_cpu = module_spec.module_factory().to(weights_dtype)
+
+  _, example_inputs = module_spec.sample_inputs_factory(
+      (batch_size, sequence_length), str(device)
+  )
+
   if is_training:
     example_inputs["labels"] = torch.randint(
         0,
@@ -208,9 +215,8 @@ def get_huggingface_llm_model(
         gradient_as_bucket_view=False,
     )
   elif dist_strat == DistStrat.FSDP:
-    model_meta = modeling_hf.get_model(
-        model_name, weights_dtype, device="meta"
-    ).model
+    with torch.device("meta"):
+      model_meta = module_spec.module_factory().to(weights_dtype)
     model_meta.gradient_checkpointing_enable(
         gradient_checkpointing_kwargs={"use_reentrant": False}
     )

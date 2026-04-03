@@ -40,19 +40,6 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
-    name = "modeling_hf",
-    srcs = ["modeling_hf.py"],
-    data = [
-        "//examples/huggingface_transformers:model_configs_data",
-    ],
-    deps = [
-        "//shims/torch:pytorch",
-        "@pypi//transformers",
-        "@rules_python//python/runfiles",
-    ],
-)
-
-pytype_strict_library(
     name = "utils",
     srcs = ["utils.py"],
     tags = [

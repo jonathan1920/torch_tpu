@@ -357,8 +357,8 @@ pytype_strict_library(
     deps = [
         "//examples/deepseek",
         "//shims/torch:pytorch",
+        "//tests:module_registry",
         "//torch_tpu/_internal/utils:device_utils",
-        "//torch_tpu/_internal/utils:modeling_hf",
         "@pypi//fairscale",
         "@pypi//llama_models",
         "@pypi//transformers",
