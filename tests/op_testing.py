@@ -96,12 +96,6 @@ class TestMode(enum.Enum):
   PERF = "perf"  # Measure op performance.
 
 
-_TORCH_TPU_DEVICE: Final[flags.FlagHolder[str]] = flags.DEFINE_string(
-    "torch_tpu_device",
-    "tpu",
-    "TorchTPU device to test: [tpu, xla_cuda, xla_cpu]",
-)
-
 _TEST_MODE: Final[flags.FlagHolder[TestMode]] = flags.DEFINE_enum_class(
     "test_mode", TestMode.TORCH_TPU_VS_CPU, TestMode, "Mode to run the test in."
 )
@@ -178,18 +172,6 @@ _PERF_DIR: Final[flags.FlagHolder[str]] = flags.DEFINE_string(
     "Directory for storing the performance results. Must be a "
     "non-empty string in the perf mode.",
 )
-
-
-def torch_tpu_device() -> torch.device:
-  """Returns the TorchTPU device to test."""
-  if _TORCH_TPU_DEVICE.value == "xla_cuda":
-    return api._xla_cuda_device()  # pylint: disable=protected-access
-  elif _TORCH_TPU_DEVICE.value == "xla_cpu":
-    return api._xla_cpu_device()  # pylint: disable=protected-access
-  elif _TORCH_TPU_DEVICE.value == "tpu":
-    return api.tpu_device()
-  else:
-    raise ValueError(f"Unsupported TorchTPU device: {_TORCH_TPU_DEVICE.value}")
 
 
 class OpVariant(enum.Enum):
@@ -303,8 +285,6 @@ NUMERIC_DTYPES: Final[Sequence[torch.dtype]] = (
     *FLOAT_DTYPES,
     *INTEGRAL_DTYPES,
 )
-
-XLA_DEVICES: Final[Sequence[str]] = ("tpu", "xla_cpu", "xla_cuda")
 
 
 @functools.lru_cache(maxsize=None)
@@ -636,7 +616,7 @@ def to(
       # Translate device names to the desired device. For example, "cpu:0"
       # becomes "tpu:0" if the desired device is TPU.
       segs = obj.split(":", maxsplit=1)
-      if segs[0] in ("cuda", "cpu", "tpu", "gpu", "xla_cuda", "xla_cpu"):
+      if segs[0] in ("cuda", "cpu", "tpu", "gpu"):
         segs[0] = device_str
       return ":".join(segs)
     # By default, _pytree.tree_map() does NOT traverse into classes,
@@ -682,21 +662,6 @@ def _torch_tpu_vs_cpu_mode() -> bool:
 def _torch_tpu_vs_gpu_mode() -> bool:
   """Returns true if the test is running in torch_tpu_vs_gpu mode."""
   return _TEST_MODE.value == TestMode.TORCH_TPU_VS_GPU
-
-
-def _torch_tpu_tpu_device() -> bool:
-  """Returns true if the test is running using TPU device."""
-  return _TORCH_TPU_DEVICE.value == "tpu"
-
-
-def _torch_tpu_xla_cuda_device() -> bool:
-  """Returns true if the test is running using XLA CUDA device."""
-  return _TORCH_TPU_DEVICE.value == "xla_cuda"
-
-
-def _torch_tpu_xla_cpu_device() -> bool:
-  """Returns true if the test is running using XLA:CPU device."""
-  return _TORCH_TPU_DEVICE.value == "xla_cpu"
 
 
 def _perf_mode() -> bool:
@@ -1001,7 +966,7 @@ def _to_torch_tpu_printable_input(golden_input: OpInput) -> OpInput:
     Kwargs: {"device": "tpu"}
   which is not misleading.
   """
-  return to(golden_input, torch_tpu_device(), convert_tensors=False)
+  return to(golden_input, api.tpu_device(), convert_tensors=False)
 
 
 def print_op_input(op_input: OpInput, *, data: bool = True) -> None:
@@ -1174,8 +1139,6 @@ class TorchTpuTestBase(TestCase):
   dynamism_mark_dynamic_fn: MarkDynamicFn
 
   tpu_cpu_accuracy_overrides: AccuracyOverrides
-  xla_cpu_cpu_accuracy_overrides: AccuracyOverrides
-  xla_cuda_cpu_accuracy_overrides: AccuracyOverrides
   tpu_gpu_accuracy_overrides: AccuracyOverrides
   grad_accuracy_overrides: AccuracyOverrides
 
@@ -1209,18 +1172,12 @@ class TorchTpuTestBase(TestCase):
       self.fail(f"Unknown test mode: {_TEST_MODE.value}")
 
     if not _gen_gpu_golden_mode():
-      torch_tpu_device()  # Initialize the TorchTPU device.
+      api.tpu_device()  # Initialize the TorchTPU device.
 
   def set_accuracy_overrides(
       self,
       *,
       tpu_cpu_overrides: Mapping[
-          str, Mapping[torch.dtype, Mapping[str, Tolerance]]
-      ],
-      xla_cpu_cpu_overrides: Mapping[
-          str, Mapping[torch.dtype, Mapping[str, Tolerance]]
-      ],
-      xla_cuda_cpu_overrides: Mapping[
           str, Mapping[torch.dtype, Mapping[str, Tolerance]]
       ],
       tpu_gpu_overrides: Mapping[
@@ -1234,16 +1191,12 @@ class TorchTpuTestBase(TestCase):
 
     Args:
       tpu_cpu_overrides: Accuracy overrides for TorchTPU vs CPU.
-      xla_cpu_cpu_overrides: Accuracy overrides for XLA:CPU vs CPU.
-      xla_cuda_cpu_overrides: Accuracy overrides for XLA:CUDA vs CPU.
       tpu_gpu_overrides: Accuracy overrides for TorchTPU vs GPU.
       grad_overrides: Accuracy overrides for gradients.
 
     To be called by a subclass's setUp() method.
     """
     self.tpu_cpu_accuracy_overrides = tpu_cpu_overrides
-    self.xla_cpu_cpu_accuracy_overrides = xla_cpu_cpu_overrides
-    self.xla_cuda_cpu_accuracy_overrides = xla_cuda_cpu_overrides
     self.tpu_gpu_accuracy_overrides = tpu_gpu_overrides
     self.grad_accuracy_overrides = grad_overrides
 
@@ -1387,7 +1340,7 @@ class TorchTpuTestBase(TestCase):
       self.fail(message)
 
     try:
-      torch_tpu_result = to(tensor_from_device(torch_tpu_device()), "cpu")
+      torch_tpu_result = to(tensor_from_device(api.tpu_device()), "cpu")
     except Exception as e:  # pylint: disable=broad-except
       torch_tpu_thrown = e
     if cpu_thrown and not torch_tpu_thrown:
@@ -1601,7 +1554,7 @@ class TorchTpuTestBase(TestCase):
       logging.getLogger(tt_compile.TpuBackend.__module__).setLevel(
           logging.DEBUG
       )
-      backend = "tpu" if str(device) in XLA_DEVICES else "inductor"
+      backend = "tpu" if str(device) == "tpu" else "inductor"
       print(f"Compiling {op_name} for device {device} ...", flush=True)
       op_func = torch.compile(op_func, dynamic=False, backend=backend)
 
@@ -1862,14 +1815,7 @@ class TorchTpuTestBase(TestCase):
     if compute_grad:
       accuracy_overrides = self.grad_accuracy_overrides
     elif _torch_tpu_vs_cpu_mode():
-      if _torch_tpu_tpu_device():
-        accuracy_overrides = self.tpu_cpu_accuracy_overrides
-      elif _torch_tpu_xla_cuda_device():
-        accuracy_overrides = self.xla_cuda_cpu_accuracy_overrides
-      elif _torch_tpu_xla_cpu_device():
-        accuracy_overrides = self.xla_cpu_cpu_accuracy_overrides
-      else:
-        self.fail(f"unsupported device: {torch_tpu_device()}")
+      accuracy_overrides = self.tpu_cpu_accuracy_overrides
     else:
       accuracy_overrides = self.tpu_gpu_accuracy_overrides
 
@@ -1903,7 +1849,7 @@ class TorchTpuTestBase(TestCase):
           op_input=golden_input,
           compute_grad=compute_grad,
           use_compiled=use_compiled,
-          device=torch_tpu_device(),
+          device=api.tpu_device(),
           check_device=check_device,
           check_dynamism=check_dynamism,
       )

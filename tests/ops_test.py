@@ -582,116 +582,6 @@ def update_dict(d, u):
   return d
 
 
-# XLA:CPU overrides based on TPU overrides
-ACCURACY_OVERRIDES_XLA_CPU_VS_CPU: dict[
-    str, dict[torch.dtype, dict[str, float]]
-] = update_dict(
-    copy.deepcopy(ACCURACY_OVERRIDES_VS_CPU),
-    {
-        "_foreach_log1p": {
-            torch.float16: {"rtol": 1.4e-03, "atol": 4.9e-04},
-        },
-        "_log_softmax_backward_data": {
-            torch.bfloat16: {"rtol": 2e-2, "atol": 5e-1},
-        },
-        "_softmax_backward_data": {
-            torch.float16: {"atol": 3.6e-03, "rtol": 1e-2},
-        },
-        "addcmul": {
-            torch.float16: {"rtol": 2.1e-03, "atol": 7.9e-03},
-        },
-        "asinh": {
-            torch.float16: {"rtol": 2e-3, "atol": 2e-3},
-        },
-        "atanh": {
-            torch.float16: {"rtol": 1.1e-03, "atol": 4.9e-04},
-        },
-        "cumsum": {
-            torch.bfloat16: {"rtol": 5e-2, "atol": 5e-2},
-        },
-        "cdist": {
-            torch.bfloat16: {"rtol": 3e-2, "atol": 0.13},
-            torch.float16: {"rtol": 2e-2, "atol": 3e-3},
-        },
-        "lerp": {
-            torch.bfloat16: {"rtol": 3e-2, "atol": 1e-2},
-        },
-        "nn.functional.conv1d": {
-            torch.float16: {"rtol": 5e-2, "atol": 5e-2},
-        },
-        "log_softmax": {
-            torch.bfloat16: {"rtol": 1.0, "atol": 8e-3},
-        },
-        "log1p": {
-            torch.float16: {"rtol": 1.2e-03, "atol": 4.9e-04},
-        },
-        "mean": {
-            torch.bfloat16: {"rtol": 1e-2, "atol": 5e-2},
-        },
-        "native_layer_norm": {
-            torch.bfloat16: {"rtol": 5e-2, "atol": 5e-3},
-        },
-        "nn.functional.gelu": {
-            torch.bfloat16: {"rtol": 4e-1, "atol": 3e-3},
-        },
-        "nn.functional.elu": {
-            torch.bfloat16: {"rtol": 4e-1, "atol": 3e-3},
-        },
-        "nn.functional.embedding": {
-            torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
-        },
-        "nn.functional.group_norm": {
-            torch.bfloat16: {"rtol": 4e-1, "atol": 4e-2},
-            torch.float16: {"rtol": 2e-1, "atol": 3e-2},
-        },
-        "nn.functional.hardsigmoid": {
-            torch.float16: {"rtol": 4.3e-03, "atol": 4.9e-04},
-        },
-        "nn.functional.scaled_dot_product_attention": {
-            torch.float32: {"rtol": 1e-2, "atol": 3e-5},
-            torch.bfloat16: {"rtol": 2e-1, "atol": 5e-3},
-        },
-        "nn.functional.mse_loss": {
-            # TODO(b/495931205): why is error so high?
-            torch.bfloat16: {"atol": 5e-1, "rtol": 1e-2},
-        },
-        "nn.functional.softplus": {
-            torch.bfloat16: {"rtol": 1.6e-2, "atol": 1e-4},
-        },
-        "softmax": {torch.bfloat16: {"rtol": 3e-2, "atol": 5e-4}},
-        "sum": {
-            torch.bfloat16: {"rtol": 1e-2, "atol": 5e-2},
-        },
-        "var": {
-            torch.bfloat16: {"rtol": 2.3e-02, "atol": 1e-02},
-        },
-    },
-)
-
-# XLA:CUDA overrides based on TPU overrides
-ACCURACY_OVERRIDES_XLA_CUDA_VS_CPU: dict[
-    str, dict[torch.dtype, dict[str, float]]
-] = update_dict(
-    copy.deepcopy(ACCURACY_OVERRIDES_VS_CPU),
-    {
-        "_foreach_addcdiv": {
-            torch.bfloat16: {"rtol": 1.6e-2, "atol": 1e-2},
-        },
-        "_softmax_backward_data": {
-            torch.float16: {"rtol": 2e-2, "atol": 5e-3},
-        },
-        "addcmul": {
-            torch.float16: {"rtol": 2e-3, "atol": 3e-3},
-        },
-        "nn.functional.hardsigmoid": {
-            torch.float16: {"rtol": 5e-03, "atol": 1e-03}
-        },
-        "nn.functional.softplus": {
-            torch.bfloat16: {"rtol": 7.8e-3, "atol": 1e-4},
-        },
-    },
-)
-
 # Like ACCURACY_OVERRIDES_VS_CPU, but for TPU vs GPU instead.
 ACCURACY_OVERRIDES_VS_GPU = {
     # go/keep-sorted start
@@ -1608,8 +1498,6 @@ class TestOps(TorchTpuTestBase):
     super().setUp()
     self.set_accuracy_overrides(
         tpu_cpu_overrides=ACCURACY_OVERRIDES_VS_CPU,
-        xla_cpu_cpu_overrides=ACCURACY_OVERRIDES_XLA_CPU_VS_CPU,
-        xla_cuda_cpu_overrides=ACCURACY_OVERRIDES_XLA_CUDA_VS_CPU,
         tpu_gpu_overrides=ACCURACY_OVERRIDES_VS_GPU_COMPILED
         if op_testing.is_compiled_mode()
         else ACCURACY_OVERRIDES_VS_GPU,
@@ -2705,11 +2593,6 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_linalg_lu_factor_ex(self):
-    if op_testing._TORCH_TPU_DEVICE.value != "tpu":
-      self.skipTest(
-          "linalg.lu_factor_ex is not implemented on"
-          f" {op_testing._TORCH_TPU_DEVICE.value}."
-      )
     self.do_test_op(
         "linalg.lu_factor_ex",
         check_grad=False,
@@ -2753,11 +2636,6 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_linalg_solve_ex(self):
-    if op_testing._TORCH_TPU_DEVICE.value != "tpu":
-      self.skipTest(
-          "linalg.solve_ex is not implemented on"
-          f" {op_testing._TORCH_TPU_DEVICE.value}."
-      )
     self.do_test_op(
         "linalg.solve_ex",
         check_grad=False,
@@ -2771,11 +2649,6 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_linalg_lu_out(self):
-    if op_testing._TORCH_TPU_DEVICE.value != "tpu":
-      self.skipTest(
-          "linalg.lu is not implemented on"
-          f" {op_testing._TORCH_TPU_DEVICE.value}."
-      )
     self.do_test_op(
         "linalg.lu",
         check_grad=False,
@@ -2792,11 +2665,6 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_linalg_inv_ex_out(self):
-    if op_testing._TORCH_TPU_DEVICE.value != "tpu":
-      self.skipTest(
-          "linalg.inv is not implemented on"
-          f" {op_testing._TORCH_TPU_DEVICE.value}."
-      )
     self.do_test_op(
         "linalg.inv",
         check_grad=False,
@@ -3202,11 +3070,6 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_nn_functional_conv_transpose1d(self):
-    if op_testing._TORCH_TPU_DEVICE.value != "tpu":
-      self.skipTest(
-          "transposed convolution 1d is buggy on the xla/gpu path"
-          f" {op_testing._TORCH_TPU_DEVICE.value}."
-      )
     self.do_test_op(
         "nn.functional.conv_transpose1d",
         # TODO: look into making this STRICT.
@@ -3223,11 +3086,6 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_nn_functional_conv_transpose2d(self):
-    if op_testing._TORCH_TPU_DEVICE.value != "tpu":
-      self.skipTest(
-          "transposed convolution 2d is buggy on the xla/gpu path"
-          f" {op_testing._TORCH_TPU_DEVICE.value}."
-      )
     self.do_test_op(
         "nn.functional.conv_transpose2d",
         # TODO: look into making this STRICT.

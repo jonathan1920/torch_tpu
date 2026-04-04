@@ -107,11 +107,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       dtype,
   ):
     """Tests torch.nn.functional.conv_transpose1d."""
-    if op_testing._TORCH_TPU_DEVICE.value != "tpu":
-      self.skipTest(
-          "transposed convolution 1d is buggy on the xla/gpu path"
-          f" {op_testing._TORCH_TPU_DEVICE.value}."
-      )
     input_value = torch.randn(batch_size, in_channels, length, dtype=dtype)
     weight_value = torch.randn(
         in_channels,

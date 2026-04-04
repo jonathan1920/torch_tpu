@@ -113,10 +113,6 @@ pytype_strict_library(
 # * ops_test_dynamic: TPU only, bounds a dimension and compares TPU vs CPU.
 # * ops_test_tpu_vs_gpu_compiled: TPU only, torch.compile TpuBackend vs GPU inductor backend.
 
-#
-# TorchTPU can run on "tpu" or "xla_cuda" or "xla_cpu" devices using the --torch_tpu_device flag.
-#
-
 # We chose to manually maintain the duplicate tests instead of using a for-loop to generate the
 # targets because:
 #
@@ -129,7 +125,6 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["ops_test.py"],
     args = [
-        "--torch_tpu_device=tpu",
         "--print_op_inputs=1",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
@@ -160,7 +155,6 @@ torch_tpu_py_test(
     timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
     args = [
-        "--torch_tpu_device=tpu",
         "--compute_grad=True",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
@@ -189,7 +183,6 @@ torch_tpu_py_test(
     timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
     args = [
-        "--torch_tpu_device=tpu",
         "--use_compiled=True",
         "--test_mode=torch_tpu_vs_gpu",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
@@ -296,7 +289,6 @@ torch_tpu_py_test(
     timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
     args = [
-        "--torch_tpu_device=tpu",
         "--check_dynamism_using_seed=-1",
         "--print_op_inputs=1",
         "--max_samples_per_op_dtype=1",  # No need to test many samples to catch dynamism bugs.
