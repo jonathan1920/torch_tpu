@@ -57,10 +57,10 @@ absl::StatusOr<mlir::MlirOp> BuildAddcdivShlo(mlir::MlirOp self,
 at::Tensor& AtenAddcdivOut(const at::Tensor& self, const at::Tensor& tensor1,
                            const at::Tensor& tensor2, const at::Scalar& value,
                            at::Tensor& out) {
+  auto promoted_value = PromoteScalar(value);
   TT_KERNEL(
-      OpName::kAddcdivOut, _,
-      (self, tensor1, tensor2, IgnoreInCacheKey(value, "Legacy usage"), out), {
-        TT_ASSIGN_OR_THROW(at::Tensor value_tensor, MakeTensor(value));
+      OpName::kAddcdivOut, _, (self, tensor1, tensor2, promoted_value, out), {
+        TT_ASSIGN_OR_THROW(at::Tensor value_tensor, promoted_value.GetTensor());
 
         // Build the op.
         auto op_builder = [](FixedSizeSpan<mlir::MlirOp, 4> inputs)

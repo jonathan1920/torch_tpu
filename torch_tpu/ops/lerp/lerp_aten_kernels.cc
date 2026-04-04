@@ -122,7 +122,7 @@ at::Tensor& AtenLerpScalarOut(const at::Tensor& self, const at::Tensor& end,
                               const at::Scalar& weight, at::Tensor& out) {
   auto promoted_weight = PromoteScalar(weight);
   TT_KERNEL(OpName::kLerpScalarOut, _, (self, end, promoted_weight, out), {
-    TT_ASSIGN_OR_THROW(auto weight_tensor, promoted_weight.tensor());
+    TT_ASSIGN_OR_THROW(auto weight_tensor, promoted_weight.GetTensor());
     return AtenLerpTensorOut(self, end, weight_tensor, out);
   });
 }

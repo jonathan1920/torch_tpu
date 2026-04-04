@@ -20,6 +20,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <ios>
+#include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -139,46 +141,13 @@ std::string_view ParseNextArgName(std::string_view& args_str) {
 }
 
 PromotedScalar::PromotedScalar(Promoter promoter, at::Scalar scalar)
-    : promoter_(std::move(promoter)), scalar_(std::move(scalar)) {}
+    : state_(std::make_unique<State>(State{.promoter = std::move(promoter),
+                                           .scalar = std::move(scalar)})) {}
 
-PromotedScalar::PromotedScalar(PromotedScalar&& other)
-    : promoter_(std::move(other.promoter_)),
-      scalar_(std::move(other.scalar_)),
-      tensor_(std::move(other.tensor_)),
-      tensor_used_(other.tensor_used_) {
-  // Now that the object has been moved, it's the new object's responsibility to
-  // ensure the tensor is used. Setting other.tensor_used_ to true will prevent
-  // other's destructor from crashing.
-  other.tensor_used_ = true;
-}
-
-PromotedScalar& PromotedScalar::operator=(PromotedScalar&& other) {
-  if (this != &other) {
-    promoter_ = std::move(other.promoter_);
-    scalar_ = std::move(other.scalar_);
-    tensor_ = std::move(other.tensor_);
-    tensor_used_ = other.tensor_used_;
-    // Now that the object has been moved, it's the new object's responsibility
-    // to ensure the tensor is used. Setting other.tensor_used_ to true will
-    // prevent other's destructor from crashing.
-    other.tensor_used_ = true;
-  }
-  return *this;
-}
-
-PromotedScalar::~PromotedScalar() {
-  ABSL_CHECK(tensor_used_)  // CRASH_OK=catches TorchTPU bug.
-      << "Promoted scalar tensor was not used. Please use the result of "
-         "PromotedScalar::tensor() as opposed to the original Scalar in the op "
-         "lowering.";
-}
-
-const absl::StatusOr<at::Tensor>& PromotedScalar::tensor() const {
-  if (!tensor_.has_value()) {
-    tensor_ = std::move(promoter_)(scalar_);
-    tensor_used_ = true;
-  }
-  return *tensor_;
+absl::StatusOr<at::Tensor> PromotedScalar::GetTensor(
+    std::optional<at::ScalarType> scalar_type_opt) {
+  state_->tensor_used = true;
+  return state_->promoter(state_->scalar, scalar_type_opt);
 }
 
 std::string PromotedScalar::ToString() const {

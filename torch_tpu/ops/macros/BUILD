@@ -73,6 +73,10 @@ torch_tpu_cc_library(
         "//shims/torch:torch_headers",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:macro_utils",
+        "//torch_tpu/common:to_string",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
     ],
 )
@@ -80,13 +84,17 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "kernel_test",
     srcs = ["kernel_test.cc"],
+    notest_oss = "Fails due to TPU_LIBRARY_PATH not set.",
     deps = [
         ":kernel",
         "//shims/torch:aten_headers",
         "//shims/torch/c10/util:base_headers",
+        "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/ops:op_names",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

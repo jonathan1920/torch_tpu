@@ -76,6 +76,14 @@
 #define TT_NORMALIZED_FILE \
   ::torch_tpu::internal::NormalizeIfInsideBuildDirectory(__FILE__)
 
+// TT_IF_DEBUG(code) expands to code if compiled in debug mode, and expands to
+// nothing otherwise.
+#ifdef NDEBUG
+#define TT_IF_DEBUG(...)
+#else
+#define TT_IF_DEBUG(...) __VA_ARGS__
+#endif  // NDEBUG
+
 namespace torch_tpu {
 namespace internal {
 

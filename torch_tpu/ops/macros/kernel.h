@@ -17,12 +17,16 @@
 #ifndef TORCH_TPU_OPS_MACROS_KERNEL_H_
 #define TORCH_TPU_OPS_MACROS_KERNEL_H_
 
+#include <optional>
 #include <string_view>
 #include <type_traits>
+#include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/macro_utils.h"
 #include "torch_tpu/ops/macros/logging.h"
 
 // TT_KERNEL(op_name, param_keys, (arg1, arg2, ...), statements) wraps the
@@ -56,12 +60,27 @@
 //
 // See go/torch-tpu-op-easy for more details.
 //
-// Implementation note: the last argument ... is for the statements. We use
-// a variadic macro parameter as the statements may contain unprotected commas.
+// Implementation notes:
+//   - The last argument ... is for the statements. We use a variadic macro
+//     parameter as the statements may contain unprotected commas.
+//   - When compiled in debug mode, TT_KERNEL() checks that all PromotedScalar-
+//     typed arguments have their GetTensor() method called when the kernel
+//     finishes successfully. This prevents bugs where the kernel uses the
+//     original Scalar instead of the Tensor promoted from it. We don't do
+//     this check if the kernel throws an error, as it's possible for the
+//     error to happen before the kernel has a chance to call GetTensor() on
+//     some or all of the PromotedScalar arguments.
 
 #define TT_KERNEL(op_name, param_keys, args, ...)                              \
   do {                                                                         \
     TT_CHECK_AND_LOG_KERNEL_ARGS_(op_name, TT_REMOVE_PARENS_(args));           \
+    TT_IF_DEBUG(                                                               \
+        std::vector<                                                           \
+            const ::torch_tpu::internal::PromotedScalar::State* absl_nonnull>  \
+            _promoted_scalars;                                                 \
+        TT_COLLECT_PROMOTED_SCALAR_POINTERS_(_promoted_scalars,                \
+                                             TT_REMOVE_PARENS_(args));         \
+        bool _kernel_threw = false;)                                           \
     ::torch_tpu::ScopedPythonContextCapturer _capturer(op_name);               \
     if constexpr (std::string_view(#param_keys) == "_") {                      \
       constexpr bool _param_types_ok =                                         \
@@ -80,7 +99,11 @@
       try {                                                                    \
         __VA_ARGS__;                                                           \
       } catch (const ::torch_tpu::TtError& e) {                                \
+        TT_IF_DEBUG(_kernel_threw = true;)                                     \
         ::torch_tpu::TranslateToC10ErrorAndThrow(e);                           \
+      } catch (...) {                                                          \
+        TT_IF_DEBUG(_kernel_threw = true;)                                     \
+        throw; /* throw needed for implementing TT_KERNEL. */                  \
       }                                                                        \
     } else {                                                                   \
       TT_ASSIGN_OR_THROW(/* ERROR_COV_INFEASIBLE=in macro definition. */       \
@@ -89,10 +112,23 @@
       try {                                                                    \
         __VA_ARGS__;                                                           \
       } catch (const ::torch_tpu::TtError& e) {                                \
+        TT_IF_DEBUG(_kernel_threw = true;)                                     \
         ::torch_tpu::TranslateToC10ErrorAndThrow(e);                           \
+      } catch (...) {                                                          \
+        TT_IF_DEBUG(_kernel_threw = true;)                                     \
+        throw; /* throw needed for implementing TT_KERNEL. */                  \
       }                                                                        \
     }                                                                          \
+    TT_IF_DEBUG(if (!_kernel_threw) {                                          \
+      ::torch_tpu::internal::CheckTensorsUsed(_promoted_scalars);              \
+    })                                                                         \
   } while (false)
+
+// Collects pointers to all PromotedScalar-typed arguments into the given
+// vector.
+#define TT_COLLECT_PROMOTED_SCALAR_POINTERS_(scalars, ...)                    \
+  ::torch_tpu::internal::CollectPromotedScalarPointers(scalars __VA_OPT__(, ) \
+                                                           __VA_ARGS__)
 
 // Invokes MakeOpParamCacheKeys() with the given arguments, with the
 // stringified argument list as the first argument. E.g.
@@ -120,6 +156,65 @@
 
 namespace torch_tpu {
 namespace internal {
+
+// Variadic function CollectPromotedScalarPointers() collects pointers to all
+// PromotedScalar-typed arguments into the given vector.
+
+// Overloads for AppendPromotedScalarPointers:
+
+// Case: PromotedScalar
+inline void AppendPromotedScalarPointers(
+    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars,
+    const PromotedScalar& arg) {
+  promoted_scalars.push_back(arg.state_.get());
+}
+
+// Case: std::optional<PromotedScalar>
+inline void AppendPromotedScalarPointers(
+    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars,
+    const std::optional<PromotedScalar>& arg) {
+  if (arg.has_value()) {
+    AppendPromotedScalarPointers(promoted_scalars, *arg);
+  }
+}
+
+// Case: std::vector<PromotedScalar>
+void AppendPromotedScalarPointers(
+    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars,
+    const std::vector<PromotedScalar>& arg);
+
+// Case: IgnoredInCacheKey<T>
+template <typename T>
+inline void AppendPromotedScalarPointers(
+    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars,
+    const IgnoredInCacheKey<T>& arg) {
+  AppendPromotedScalarPointers(promoted_scalars, arg.value());
+}
+
+// Case: anything else (no-op)
+template <typename T>
+inline void AppendPromotedScalarPointers(
+    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars,
+    const T& arg) {}
+
+// Base case: 0 arguments to collect.
+inline void CollectPromotedScalarPointers(
+    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars) {}
+
+// Recursive case: collect pointers from the next argument and then call the
+// function recursively with the remaining arguments.
+template <typename T, typename... Args>
+inline void CollectPromotedScalarPointers(
+    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars,
+    const T& arg, const Args&... rest_args) {
+  AppendPromotedScalarPointers(promoted_scalars, arg);
+  CollectPromotedScalarPointers(promoted_scalars, rest_args...);
+}
+
+// Crashes if any of the given PromotedScalars was not used in the kernel.
+void CheckTensorsUsed(
+    const std::vector<const PromotedScalar::State* absl_nonnull>&
+        promoted_scalars);
 
 // A type that can't be used to do anything useful.
 //

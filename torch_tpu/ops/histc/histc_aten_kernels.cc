@@ -155,88 +155,100 @@ at::Tensor AtenHistc(const at::Tensor& self, const int64_t bins,
 at::Tensor& AtenHistcOut(const at::Tensor& self, const int64_t bins,
                          const at::Scalar& min, const at::Scalar& max,
                          at::Tensor& out) {
-  TT_KERNEL(OpName::kHistcOut, param_keys, (self, bins, min, max, out), {
-    TT_CHECK_THROW(!IsComplex(self), error::kInvalidArgument)
-        << "expected the first argument not to be complex, got "
-        << ToString(self.scalar_type());
+  auto promoted_min = PromoteScalar(min);
+  auto promoted_max = PromoteScalar(max);
+  TT_KERNEL(
+      OpName::kHistcOut, param_keys,
+      (self, bins, promoted_min, promoted_max, out), {
+        const c10::ScalarType out_dtype = self.scalar_type();
+        TT_ASSIGN_OR_THROW(at::Tensor min_val,
+                           promoted_min.GetTensor(out_dtype));
+        TT_ASSIGN_OR_THROW(at::Tensor max_val,
+                           promoted_max.GetTensor(out_dtype));
 
-    const int64_t numel = self.numel();
+        TT_CHECK_THROW(!IsComplex(self), error::kInvalidArgument)
+            << "expected the first argument not to be complex, got "
+            << ToString(self.scalar_type());
 
-    // If input is empty, return tensor of zeros.
-    if (numel == 0) {
-      out.zero_();
-      return out;
-    }
+        const int64_t numel = self.numel();
 
-    c10::ScalarType out_dtype = self.scalar_type();
-    TT_ASSIGN_OR_THROW(auto mlir_out_dtype,
-                       ConvertTo<mlir::ElementType>(out_dtype));
+        // If input is empty, return tensor of zeros.
+        if (numel == 0) {
+          out.zero_();
+          return out;
+        }
 
-    TT_ASSIGN_OR_THROW(at::Tensor min_val, MakeTensor(min, out_dtype));
-    TT_ASSIGN_OR_THROW(at::Tensor max_val, MakeTensor(max, out_dtype));
+        TT_ASSIGN_OR_THROW(auto mlir_out_dtype,
+                           ConvertTo<mlir::ElementType>(out_dtype));
 
-    TT_ASSIGN_OR_THROW(const bool min_eq_max, eq(min, max));
-    if (!(min_eq_max && numel > 0)) {
-      // Validate the bounds provided as arguments to torch.histc.
-      TT_THROW_IF_ERROR(ValidateBounds(min, max));
-    } else {
-      // Compute min/max from input data. This is done when min == max and numel
-      // > 0, which happens when the min and max are not provided as arguments
-      // to torch.histc and the input tensor is not empty. The PyTorch CPU and
-      // GPU kernels differ from the PyTorch documentation, which states that
-      // min/max are computed when min == max == 0. To maintain parity, the TPU
-      // kernel implementation follows the logic of the GPU/CPU kernels. See the
-      // PyTorch GPU kernel implementation for more details:
-      // https://github.com/pytorch/pytorch/blob/v2.9.1/aten/src/ATen/native/cuda/SummaryOps.cu#L328
-      auto op_builder =
-          [](mlir::MlirOp input) -> absl::StatusOr<MlirOpResults<2>> {
-        TT_ASSIGN_OR_RETURN(auto min_max_outputs, BuildHistcBoundsShlo(input));
-        return {{min_max_outputs.min, min_max_outputs.max}};
-      };
+        TT_ASSIGN_OR_THROW(const bool min_eq_max, eq(min, max));
+        if (!(min_eq_max && numel > 0)) {
+          // Validate the bounds provided as arguments to torch.histc.
+          TT_THROW_IF_ERROR(ValidateBounds(min, max));
+        } else {
+          // Compute min/max from input data. This is done when min == max and
+          // numel > 0, which happens when the min and max are not provided as
+          // arguments to torch.histc and the input tensor is not empty. The
+          // PyTorch CPU and GPU kernels differ from the PyTorch documentation,
+          // which states that min/max are computed when min == max == 0. To
+          // maintain parity, the TPU kernel implementation follows the logic of
+          // the GPU/CPU kernels. See the PyTorch GPU kernel implementation for
+          // more details:
+          // https://github.com/pytorch/pytorch/blob/v2.9.1/aten/src/ATen/native/cuda/SummaryOps.cu#L328
+          auto op_builder =
+              [](mlir::MlirOp input) -> absl::StatusOr<MlirOpResults<2>> {
+            TT_ASSIGN_OR_RETURN(auto min_max_outputs,
+                                BuildHistcBoundsShlo(input));
+            return {{min_max_outputs.min, min_max_outputs.max}};
+          };
 
-      TT_ASSIGN_OR_THROW(
-          (auto [input_min, input_max]),
-          (DispatchOp<1, 2>(
-              OpName::kHistcBounds, std::move(op_builder), self,
-              {.out_dtypes = {mlir_out_dtype, mlir_out_dtype},
-               .out_dims_list = {Dimensions(), Dimensions()},
-               .op_param_cache_keys = OpParamCacheKeys::Empty()})));
-      TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(input_min), min_val));
-      TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(input_max), max_val));
+          TT_ASSIGN_OR_THROW(
+              (auto [input_min, input_max]),
+              (DispatchOp<1, 2>(
+                  OpName::kHistcBounds, std::move(op_builder), self,
+                  {.out_dtypes = {mlir_out_dtype, mlir_out_dtype},
+                   .out_dims_list = {Dimensions(), Dimensions()},
+                   .op_param_cache_keys = OpParamCacheKeys::Empty()})));
+          TT_THROW_IF_ERROR(
+              AssignBufferToAtTensor(std::move(input_min), min_val));
+          TT_THROW_IF_ERROR(
+              AssignBufferToAtTensor(std::move(input_max), max_val));
 
-      // Validate computed bounds, as they may be invalid due to underflow and
-      // overflow. Because this needs an expensive transfer to CPU, this is only
-      // done when debug checks are enabled.
-      if (GetEnableDebugChecks()) {
-        TT_THROW_IF_ERROR(ValidateBounds(min_val.cpu().item(),
-                                         max_val.cpu().item(), min, max));
-      } else {
-        TORCH_WARN_ONCE(
-            "Bounds computed from input data are not validated by default on "
-            "TorchTPU (unlike CUDA/CPU) to prevent an expensive CPU transfer. "
-            "Set the TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS environment "
-            "variable to \"1\" to enable this check, which incurs a "
-            "performance penalty.");
-      }
-    }
+          // Validate computed bounds, as they may be invalid due to underflow
+          // and overflow. Because this needs an expensive transfer to CPU, this
+          // is only done when debug checks are enabled.
+          if (GetEnableDebugChecks()) {
+            TT_THROW_IF_ERROR(ValidateBounds(min_val.cpu().item(),
+                                             max_val.cpu().item(), min, max));
+          } else {
+            TORCH_WARN_ONCE(
+                "Bounds computed from input data are not validated by default "
+                "on "
+                "TorchTPU (unlike CUDA/CPU) to prevent an expensive CPU "
+                "transfer. "
+                "Set the TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS environment "
+                "variable to \"1\" to enable this check, which incurs a "
+                "performance penalty.");
+          }
+        }
 
-    // Perform the actual histogram computation.
-    auto op_builder = [bins](FixedSizeSpan<mlir::MlirOp, 3> inputs)
-        -> absl::StatusOr<mlir::MlirOp> {
-      auto& [input, min, max] = inputs;
-      return BuildHistcShlo(input, bins, min, max);
-    };
-    TT_ASSIGN_OR_THROW(
-        auto result_buf,
-        DispatchOp<3>(OpName::kHistcOut, std::move(op_builder),
-                      {self, min_val, max_val},
-                      {.out_dtype = mlir_out_dtype,
-                       .out_dims = {bins},
-                       .op_param_cache_keys = std::move(param_keys)}));
+        // Perform the actual histogram computation.
+        auto op_builder = [bins](FixedSizeSpan<mlir::MlirOp, 3> inputs)
+            -> absl::StatusOr<mlir::MlirOp> {
+          auto& [input, min, max] = inputs;
+          return BuildHistcShlo(input, bins, min, max);
+        };
+        TT_ASSIGN_OR_THROW(
+            auto result_buf,
+            DispatchOp<3>(OpName::kHistcOut, std::move(op_builder),
+                          {self, min_val, max_val},
+                          {.out_dtype = mlir_out_dtype,
+                           .out_dims = {bins},
+                           .op_param_cache_keys = std::move(param_keys)}));
 
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
-    return out;
-  });
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+        return out;
+      });
 }
 
 }  // namespace torch_tpu

@@ -52,7 +52,6 @@ torch_tpu_cc_test(
         ":op_dispatcher",
         "//shims/torch:aten_headers",
         "//torch_tpu/common:cache_key",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -16,15 +16,19 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/status/statusor.h"
+#include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/ones.h"
 #include "c10/util/Exception.h"
 #include "c10/util/StringUtil.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/op_names.h"
 
 namespace torch_tpu {
@@ -159,6 +163,90 @@ void Kernel6(int ndim, int size, int step) {
 }
 
 TEST(TtKernel, SupportsIgnoreInCacheKeyWithReason) { Kernel6(1, 2, 3); }
+
+// _promoted_scalars is defined only in debug mode. The "tensors promoted from
+// scalars are used" check is also done only in debug mode.
+#ifndef NDEBUG
+
+void KernelWithPromotedScalars(const at::Tensor& t, const at::Scalar& s,
+                               const std::optional<at::Scalar>& os,
+                               const at::ArrayRef<at::Scalar>& as, int ndim) {
+  auto promoted_s = PromoteScalar(s);
+  auto promoted_os = PromoteScalar(os);
+  auto promoted_as = PromoteScalar(as);
+  TT_KERNEL(OpName::kRelu, _,
+            (t, promoted_s, IgnoreInCacheKey(promoted_os, "testing"),
+             promoted_as, IgnoreInCacheKey(ndim, "testing")),
+            {
+              EXPECT_EQ(_promoted_scalars.size(),
+                        1 + (os.has_value() ? 1 : 0) + promoted_as.size());
+              // Mark all scalars as used to avoid crash.
+              promoted_s.GetTensor().IgnoreError();
+              if (promoted_os.has_value()) {
+                promoted_os->GetTensor().IgnoreError();
+              }
+              for (auto& a : promoted_as) {
+                a.GetTensor().IgnoreError();
+              }
+            });
+}
+
+// Verifies that TT_KERNEL() collects pointers to all PromotedScalar-typed
+// arguments.
+TEST(TtKernel, CollectsPromotedScalarPointers) {
+  const at::Tensor t = at::ones(1);
+  const at::Scalar s_val = 1.0;
+  const std::optional<at::Scalar> os_val = 2.0;
+  std::vector<at::Scalar> as_vals = {3.0, 4.0};
+  KernelWithPromotedScalars(t, s_val, os_val, as_vals, 1);
+}
+
+// Verifies that TT_KERNEL() collects pointers to all PromotedScalar-typed
+// arguments, even if some of them are nullopt.
+TEST(TtKernel, CollectsPromotedScalarPointersWithNullopt) {
+  const at::Tensor t = at::ones(1);
+  const at::Scalar s_val = 1.0;
+  const std::optional<at::Scalar> os_val;
+  std::vector<at::Scalar> as_vals = {3.0, 4.0};
+  KernelWithPromotedScalars(t, s_val, os_val, as_vals, 1);
+}
+
+void TestCheckTensorsUsedCrash(at::Scalar s) {
+  auto promoted_s = PromoteScalar(s);
+  TT_KERNEL(OpName::kRelu, _, (promoted_s),
+            {
+                // Scalar s is not used here.
+            });
+}
+
+// Verifies that TT_KERNEL() crashes if any of the PromotedScalar-typed
+// arguments is not used in the kernel when the kernel doesn't throw an error.
+TEST(TtKernelDeathTest, CheckTensorsUsedCrashesIfNotUsed) {
+  EXPECT_DEATH(TestCheckTensorsUsedCrash(1.0), "GetTensor");
+}
+
+#endif  // NDEBUG
+
+void TestCheckTensorsUsedWithException(at::Scalar s) {
+  auto promoted_s = PromoteScalar(s);
+  TT_KERNEL(OpName::kRelu, _, (promoted_s), {
+    // Throw without calling promoted_s.GetTensor() first.
+    TT_CHECK_THROW(false, error::kInvalidArgument) << "kernel error";
+  });
+}
+
+TEST(TtKernel, CheckTensorsUsedDoesNotCrashIfKernelThrows) {
+  bool thrown_c10_error = false;
+  try {
+    // This should throw.
+    TestCheckTensorsUsedWithException(1.0);
+  } catch (const c10::Error& e) {
+    thrown_c10_error = true;
+  }
+  // Since the kernel threw, TT_KERNEL() should not crash even though the
+  // PromotedScalar-typed argument was not used.
+  EXPECT_TRUE(thrown_c10_error);
+}
 
 }  // namespace
 }  // namespace torch_tpu

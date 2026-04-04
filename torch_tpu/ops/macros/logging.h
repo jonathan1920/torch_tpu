@@ -248,8 +248,6 @@ void CheckScalarInput() {
       kOpName == OpName::kAddReluTensor ||               //
       kOpName == OpName::kAddRelu_Scalar ||              //
       kOpName == OpName::kAddRelu_Tensor ||              //
-      kOpName == OpName::kAddcdivOut ||                  //
-      kOpName == OpName::kAddcmulOut ||                  //
       kOpName == OpName::kAddmmDtype ||                  //
       kOpName == OpName::kAddmmDtypeOut ||               //
       kOpName == OpName::kAddmmOut ||                    //
@@ -271,12 +269,8 @@ void CheckScalarInput() {
       kOpName == OpName::kExponential_ ||                //
       kOpName == OpName::kFill_Scalar ||                 //
       kOpName == OpName::kForeachAddList ||              //
-      kOpName == OpName::kForeachAddScalar ||            //
-      kOpName == OpName::kForeachAddScalarList ||        //
       kOpName == OpName::kForeachAddTensor ||            //
       kOpName == OpName::kForeachAdd_List ||             //
-      kOpName == OpName::kForeachAdd_Scalar ||           //
-      kOpName == OpName::kForeachAdd_ScalarList ||       //
       kOpName == OpName::kForeachAdd_Tensor ||           //
       kOpName == OpName::kForeachAddcdivScalar ||        //
       kOpName == OpName::kForeachAddcdivScalarList ||    //
@@ -302,18 +296,6 @@ void CheckScalarInput() {
       kOpName == OpName::kForeachLerpScalarList ||       //
       kOpName == OpName::kForeachLerp_Scalar ||          //
       kOpName == OpName::kForeachLerp_ScalarList ||      //
-      kOpName == OpName::kForeachMaximumScalar ||        //
-      kOpName == OpName::kForeachMaximumScalarList ||    //
-      kOpName == OpName::kForeachMaximum_Scalar ||       //
-      kOpName == OpName::kForeachMaximum_ScalarList ||   //
-      kOpName == OpName::kForeachMinimumScalar ||        //
-      kOpName == OpName::kForeachMinimumScalarList ||    //
-      kOpName == OpName::kForeachMinimum_Scalar ||       //
-      kOpName == OpName::kForeachMinimum_ScalarList ||   //
-      kOpName == OpName::kForeachMulScalar ||            //
-      kOpName == OpName::kForeachMulScalarList ||        //
-      kOpName == OpName::kForeachMul_Scalar ||           //
-      kOpName == OpName::kForeachMul_ScalarList ||       //
       kOpName == OpName::kForeachNormScalar ||           //
       kOpName == OpName::kForeachPowScalar ||            //
       kOpName == OpName::kForeachPowScalarAndTensor ||   //
@@ -332,7 +314,6 @@ void CheckScalarInput() {
       kOpName == OpName::kHardtanhOut ||                 //
       kOpName == OpName::kHardtanh_ ||                   //
       kOpName == OpName::kHistc ||                       //
-      kOpName == OpName::kHistcOut ||                    //
       kOpName == OpName::kIlshiftScalar ||               //
       kOpName == OpName::kIndexAddOut ||                 //
       kOpName == OpName::kIrshiftScalar ||               //

@@ -21,6 +21,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -30,6 +31,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -69,10 +71,15 @@ namespace internal {
 // A scalar value that is promoted to a tensor lazily.
 class PromotedScalar {
  public:
-  // Type of a invoke-once function that turns a Scalar into a Tensor.
-  // The `&&` enforces that the function is invoked at most once.
-  using Promoter =
-      absl::AnyInvocable<absl::StatusOr<at::Tensor>(const at::Scalar&) &&>;
+  // Type of a function that turns a Scalar into a Tensor.
+  using Promoter = absl::AnyInvocable<absl::StatusOr<at::Tensor>(
+      const at::Scalar&, std::optional<at::ScalarType>) const>;
+
+  struct State {
+    Promoter promoter;
+    at::Scalar scalar;
+    bool tensor_used = false;
+  };
 
   // Promotes the given scalar to a tensor. We make the promoter a parameter
   // rather than a hard-coded MakeTensor() to avoid a circular dependency
@@ -80,31 +87,28 @@ class PromotedScalar {
   PromotedScalar(Promoter promoter, at::Scalar scalar);
 
   // This class is move-only.
-  PromotedScalar(PromotedScalar&& other);
-  PromotedScalar& operator=(PromotedScalar&& other);
+  PromotedScalar(PromotedScalar&& other) = default;
+  PromotedScalar& operator=(PromotedScalar&& other) = default;
   PromotedScalar(const PromotedScalar&) = delete;
   PromotedScalar& operator=(const PromotedScalar&) = delete;
 
-  // Checks that the tensor has been read. This ensures that an op uses the
-  // promoted tensor rather than the scalar in its lowering.
-  ~PromotedScalar();
-
   // Returns the scalar value.
-  const at::Scalar& scalar() const { return scalar_; }
+  const at::Scalar& scalar() const { return state_->scalar; }
 
-  // Returns the tensor value.
-  const absl::StatusOr<at::Tensor>& tensor() const;
+  // Returns the tensor value. Must be called at least once when the op
+  // succeeds.
+  absl::StatusOr<at::Tensor> GetTensor(
+      std::optional<at::ScalarType> scalar_type_opt = std::nullopt);
 
   // Formats the scalar for logging.
   [[nodiscard]] std::string ToString() const;
 
  private:
-  mutable Promoter promoter_;
-  at::Scalar scalar_;
-  // Holds the tensor promoted from the scalar. Lazily initialized on the first
-  // call to tensor().
-  mutable std::optional<absl::StatusOr<at::Tensor>> tensor_;
-  mutable bool tensor_used_ = false;
+  friend void AppendPromotedScalarPointers(
+      std::vector<const State* absl_nonnull>& promoted_scalars,
+      const PromotedScalar& arg);
+
+  absl_nonnull std::unique_ptr<State> state_;
 };
 
 // Wrapper for a value that should be ignored in the cache key computation.
@@ -114,6 +118,8 @@ class IgnoredInCacheKey {
   using value_type = T;
 
   explicit IgnoredInCacheKey(const T& value) : value_ref_(value) {}
+
+  [[nodiscard]] const T& value() const { return value_ref_; }
 
   // Supports logging.
   friend auto ToString(const IgnoredInCacheKey& value) {

@@ -59,9 +59,10 @@ absl::StatusOr<mlir::MlirOp> BuildAddcmulShlo(mlir::MlirOp self,
 at::Tensor& AtenAddcmulOut(const at::Tensor& self, const at::Tensor& tensor1,
                            const at::Tensor& tensor2, const at::Scalar& value,
                            at::Tensor& out) {
+  auto promoted_value = PromoteScalar(value);
   TT_KERNEL(
-      OpName::kAddcmulOut, _,
-      (self, tensor1, tensor2, IgnoreInCacheKey(value, "Legacy usage"), out), {
+      OpName::kAddcmulOut, _, (self, tensor1, tensor2, promoted_value, out), {
+        TT_ASSIGN_OR_THROW(at::Tensor value_tensor, promoted_value.GetTensor());
         TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Bool &&
                            tensor1.scalar_type() != at::ScalarType::Bool &&
                            tensor2.scalar_type() != at::ScalarType::Bool,
@@ -70,8 +71,6 @@ at::Tensor& AtenAddcmulOut(const at::Tensor& self, const at::Tensor& tensor1,
             << "got input: " << ToString(self.scalar_type())
             << ", tensor1: " << ToString(tensor1.scalar_type())
             << ", tensor2: " << ToString(tensor2.scalar_type());
-
-        TT_ASSIGN_OR_THROW(at::Tensor value_tensor, MakeTensor(value));
 
         // Build the op.
         auto op_builder = [](FixedSizeSpan<mlir::MlirOp, 4> inputs)

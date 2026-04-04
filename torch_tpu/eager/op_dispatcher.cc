@@ -481,7 +481,10 @@ absl::StatusOr<at::Tensor> MakeTensor(
 
 internal::PromotedScalar PromoteScalar(at::Scalar scalar) {
   return internal::PromotedScalar(
-      [](const at::Scalar& scalar) { return MakeTensor(scalar); },
+      [](const at::Scalar& scalar,
+         std::optional<at::ScalarType> scalar_type_opt) {
+        return MakeTensor(scalar, scalar_type_opt);
+      },
       std::move(scalar));
 }
 
