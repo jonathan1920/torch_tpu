@@ -16,6 +16,7 @@
 
 #include "torch_tpu/pjrt/pjrt_state.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -118,9 +119,29 @@ absl::Status PjrtBackend::InitializeInternal() {
   TT_RET_CHECK(!addressable_devices.empty(), error::kInternal)
       << "no addressable PjRt devices found";
 
+  int world_size = 1;
+  if (auto world_size_or = GetWorldSizeFromEnvOnce(); world_size_or.ok()) {
+    world_size = *world_size_or;
+  }
+
+  const int device_count = client_->device_count();
+
+  // Initialize the global device count. This is used by the CompilationCache
+  // to determine the number of replicas of the XLA computation.
+  TT_RET_CHECK(world_size == 1 || world_size == device_count,
+               error::kInvalidArgument)
+      << "Invalid world_size configuration: expected 1 or " << device_count
+      << ", but got " << world_size
+      << ". Please check your environment variables.";
+
+  if (addressable_devices.size() > 1 && world_size == 1) {
+    ABSL_LOG(WARNING) << "Only using 1 device out of all the "
+                      << addressable_devices.size() << " addressable devices.";
+  }
+
   device_ = addressable_devices[0];
   device_type_ = device_type;
-  global_device_count_ = client_->device_count();
+  global_device_count_ = world_size;
   global_device_id_ = device_->global_device_id().value();
   return absl::OkStatus();
 }

@@ -17,11 +17,13 @@
 #include <cstdlib>
 
 #include "gtest/gtest.h"
+#include "absl/status/status_matchers.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 
 namespace torch_tpu {
 namespace {
 
+using ::absl_testing::StatusIs;
 using testing::ExitedWithCode;
 
 class PjRtInitTest : public ::testing::Test {
@@ -54,6 +56,21 @@ TEST_F(PjRtInitTest, InitializePjRtIsLazy) {
         std::exit(check_lazy() ? 0 : 1);
       },
       ExitedWithCode(0), "");
+}
+
+TEST_F(PjRtInitTest, InitializePjRtSetsCorrectDeviceCount) {
+  ASSERT_FALSE(PjrtBackend::GetInstance().IsInitialized());
+
+  PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+      {.device_type = "xla_cpu"});
+
+  auto* client = PjrtBackend::GetInstance().GetClient();
+  ASSERT_NE(client, nullptr);
+  EXPECT_TRUE(PjrtBackend::GetInstance().IsInitialized());
+
+  auto device_count_or = PjrtBackend::GetInstance().GetGlobalDeviceCount();
+  ASSERT_OK(device_count_or.status());
+  EXPECT_EQ(device_count_or.value(), 1);
 }
 
 }  // namespace

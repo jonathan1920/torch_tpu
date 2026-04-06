@@ -82,6 +82,7 @@ torch_tpu_cc_test(
     notest_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
         ":pjrt_state",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
