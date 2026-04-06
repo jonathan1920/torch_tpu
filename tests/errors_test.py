@@ -1406,6 +1406,19 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.topk(t, k=1, sorted=False)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # There are no other available devices on CPU runs, other than CPU.
+  def test_acos_out_on_cpu(self):
+    t = torch.ones(5, device=et.device())
+    out = torch.ones(5, device="cpu")
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="acos(): expected the output tensor to be on tpu, got cpu",
+        message_reviewed_by="wan",
+    ):
+      torch.acos(t, out=out)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
@@ -7464,6 +7477,54 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         message_reviewed_by="wan",
     ):
       torch.ops.aten.threshold_backward(grad_output, self_tensor, 0.5)
+
+  def test_silu_unsupported_dtype_int(self):
+    t = torch.ones(5, device=et.device(), dtype=torch.int32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "silu(): materialization failed with: expected the input dtype to"
+            " be floating point, got int32"
+        ),
+        cpu="\"silu_cpu\" not implemented for 'Int'",
+    ):
+      out = torch.nn.functional.silu(t)
+      out.cpu()
+
+  def test_acos_out_dtype_mismatch(self):
+    t = torch.ones(5, device=et.device())
+
+    # Call the out variant.
+    out = torch.ones(5, device=et.device(), dtype=torch.int32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="acos(): expected the output dtype to be float32, got int32",
+        cpu="result type Float can't be cast to the desired output type Int",
+        message_reviewed_by="wan",
+    ):
+      torch.acos(t, out=out)
+
+  def test_sign_unsupported_dtype_complex(self):
+    t = torch.tensor([1 + 1j], device=et.device())
+
+    # Call the out variant.
+    out = torch.ones(1, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "sign(): expected the input dtype not to be complex, got complex64;"
+            " use torch.sgn() instead"
+        ),
+        cpu=(
+            "Unlike NumPy, torch.sign is not intended to support complex"
+            " numbers. Please use torch.sgn instead."
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.sign(t, out=out)
 
 
 if __name__ == "__main__":

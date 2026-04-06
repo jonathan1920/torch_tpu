@@ -26,6 +26,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/ChloBuilder.h"
@@ -110,8 +111,13 @@ absl::StatusOr<mlir::MlirOp> BuildReluShlo(mlir::MlirOp input_op) {
 absl::StatusOr<mlir::MlirOp> BuildSiluShlo(mlir::MlirOp input_op) {
   // Only defined for floating point types
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input_op);
+
+  TT_ASSIGN_OR_RETURN(const at::ScalarType scalar_type,
+                      ConvertTo<c10::ScalarType>(input_type.getElementType()));
+
   TT_RET_CHECK(IsFloatType(input_type), error::kInvalidArgument)
-      << "SiLU input tensor element type must be floating point.";
+      << "expected the input dtype to be floating point, got "
+      << ToString(scalar_type);
 
   // Defined as silu(x) = x * sigmoid(x):
   mlir::MlirOp sigmoid_op = stablehlo::Logistic(input_op);

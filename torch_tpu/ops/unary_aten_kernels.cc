@@ -28,10 +28,12 @@
 #include "c10/core/DefaultDtype.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/macro_utils.h"  // IWYU pragma: keep
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -131,17 +133,18 @@ absl::Status UnaryOpInPlace(at::Tensor& self, OpName op_name,
 
 absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out, OpName op_name,
                         MlirUnaryOpBuilder op_builder, UnaryOpOptions options) {
-  TT_RET_CHECK(out.device().type() == GetPrivateUse1DeviceType(),
-               error::kFailedPrecondition)
-      << "out not on PrivateUse1";
+  TT_RET_CHECK(IsPrivateUse1Device(out), error::kInvalidArgument)
+      << "expected the output tensor to be on "
+      << GetPrivateUse1DeviceDebugName() << ", got " << out.device();
 
   at::IntArrayRef shape =
       options.out_dims.has_value() ? *options.out_dims : self.sizes();
   at::ScalarType dtype =
       options.out_dtype.has_value() ? *options.out_dtype : out.scalar_type();
+
   TT_RET_CHECK(out.scalar_type() == dtype, error::kInvalidArgument)
-      << "out tensor dtype expected to be " << dtype << ", got "
-      << out.scalar_type();
+      << "expected the output dtype to be " << ToString(dtype) << ", got "
+      << ToString(out.scalar_type());
 
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(
@@ -240,8 +243,9 @@ at::Tensor& AtenRelu_(at::Tensor& self) {
 
 at::Tensor& AtenSignOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kSignOut, _, (self, out), {
-    TT_CHECK_THROW(!self.is_complex(), error::kInvalidArgument)
-        << "does not support complex dtype. Please use torch.sgn() instead";
+    TT_CHECK_THROW(!IsComplex(self), error::kInvalidArgument)
+        << "expected the input dtype not to be complex, got "
+        << ToString(self.scalar_type()) << "; use torch.sgn() instead";
     TT_ASSIGN_OR_THROW(auto out_dtype,
                        ConvertTo<mlir::ElementType>(self.scalar_type()));
     TT_ASSIGN_OR_THROW(
