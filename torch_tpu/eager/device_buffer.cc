@@ -400,6 +400,10 @@ int64_t DeviceBufferList::num_elements(int64_t index) const {
 
 absl::Status DeviceBufferList::Synchronize() const {
   for (auto i = 0; i < size(); ++i) {
+    if (state(i) == DeviceBufferRefState::kZeroSize ||
+        state(i) == DeviceBufferRefState::kPlaceholder) {
+      continue;
+    }
     TT_ASSIGN_OR_RETURN(auto* pjrt_buffer, GetOrMaterializeBuffer(i));
     auto future = pjrt_buffer->GetReadyFuture();
     TT_RETURN_IF_ERROR(future.Await());

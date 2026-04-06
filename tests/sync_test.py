@@ -150,6 +150,20 @@ class SyncTest(absltest.TestCase):
     self.assertTrue(sync.is_materialized(x))
     self.assertTrue(sync.is_ready(x))
 
+  def test_sync_with_empty_tensor(self):
+    tensor = torch.ones(2, 0, 3, dtype=torch.int32, device="cpu")
+    tensor_tpu = tensor.to(api.tpu_device())
+    # Should not raise error.
+    sync.synchronize(tensor_tpu, wait=True)
+
+  def test_sync_list_with_empty_and_non_empty(self):
+    x = torch.ones(10, device=api.tpu_device())
+    y_cpu = torch.ones(10, 0, device="cpu")
+    y = y_cpu.to(api.tpu_device())
+    # Should not raise error.
+    sync.synchronize([x, y], wait=True)
+    self.assertTrue(sync.is_ready(x))
+
   def test_is_materialized_not_on_tpu(self):
     x = torch.ones(10, device=torch.device("cpu"))
     with self.assertRaisesRegex(
