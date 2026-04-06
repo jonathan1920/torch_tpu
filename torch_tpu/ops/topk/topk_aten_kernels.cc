@@ -21,7 +21,6 @@
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "ATen/core/TensorBase.h"
 #include "torch/csrc/autograd/generated/variable_factories.h"
 #include "torch_tpu/common/aten_utils.h"
@@ -52,24 +51,24 @@ std::tuple<at::Tensor&, at::Tensor&> AtenTopKValues(
           indices = torch::tensor(0);
           return {values, indices};
         }
-        const int64_t topk_dim = dim >= 0 ? dim : self.dim() + dim;
-        TT_CHECK_THROW(topk_dim >= 0, error::kInvalidArgument) << absl::StrCat(
-            "invalid argument dim: ", dim, " Input tensor rank: ", self.dim());
+
+        TT_ASSIGN_OR_THROW(const int64_t wrapped_dim,
+                           SafeWrapDim(dim, self.dim()));
         // TODO(b/435537869): Support sorted = false.
         TT_CHECK_THROW(sorted, error::kInvalidArgument)
-            << absl::StrCat("sorted must be true. Got sorted = ", sorted);
+            << "sorted=False is not yet supported";
 
         const auto self_sizes = self.sizes();
         TT_ASSIGN_OR_THROW(const auto elem_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
         Dimensions output_dims = CopyIntVector(self_sizes);
-        output_dims[topk_dim] = k;
+        output_dims[wrapped_dim] = k;
         auto op_builder =
-            [topk_dim, k,
+            [wrapped_dim, k,
              largest](mlir::MlirOp input) -> absl::StatusOr<MlirOpResults<2>> {
           TT_ASSIGN_OR_RETURN(
               auto topk_outputs,
-              BuildTopKShlo(input, k, topk_dim,
+              BuildTopKShlo(input, k, wrapped_dim,
                             largest ? TopKMode::kLargest : TopKMode::kSmallest,
                             TopKStableMode::kUnstable));
           return {{topk_outputs.values, topk_outputs.indices}};

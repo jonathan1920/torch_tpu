@@ -1393,6 +1393,19 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.ops.aten.threshold_backward(grad_output, self_tensor, 0.5)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # PyTorch native devices don't error on sorted=False.
+  # TODO: add support to topk() on sorted=False.
+  def test_topk_unsupported_sorted_false(self):
+    t = torch.ones(2, 2, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="topk(): sorted=False is not yet supported",
+        message_reviewed_by="wan",
+    ):
+      torch.topk(t, k=1, sorted=False)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
