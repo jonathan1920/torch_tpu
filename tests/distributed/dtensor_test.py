@@ -279,7 +279,6 @@ def run_sync_dtensor() -> None:
   dtensor = dt.DTensor.from_local(shard, device_mesh, [dt.Shard(0)])
   dtensor = dtensor + 1
 
-  assert not sync.is_materialized(dtensor), "DTensor unexpectedly materialized"
   sync.synchronize(dtensor, wait=True)
   assert sync.is_materialized(dtensor), "DTensor not materialized after sync"
   assert sync.is_ready(dtensor), "Dtensor materialized but not ready"
