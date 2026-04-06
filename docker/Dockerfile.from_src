@@ -16,7 +16,7 @@ ARG BASEIMAGE=python:3.12-slim-bookworm
 FROM $BASEIMAGE
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y curl gnupg nano git
+RUN apt-get update && apt-get install -y curl gnupg nano git libgoogle-perftools-dev
 
 # Ensure python3 is available in /usr/bin for Bazel shims and local scripts.
 # The python:slim images often put python in /usr/local/bin/python.
@@ -71,6 +71,7 @@ RUN cp -r /workspace/torch_tpu_src/examples /workspace/examples
 # Ensure /workspace is in the Python path and output is unbuffered
 ENV PYTHONPATH="/workspace"
 ENV PYTHONUNBUFFERED=1
+ENV LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc.so.4"
 
 # Default command
 CMD ["/bin/bash"]
