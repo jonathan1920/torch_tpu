@@ -17,6 +17,12 @@ load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test
 
 package(
     default_applicable_licenses = ["//:license"],
+    default_visibility = ["//:__subpackages__"],
+)
+
+filegroup(
+    name = "model_configs_data",
+    srcs = glob(["model_configs/**"]),
 )
 
 torch_tpu_py_test(

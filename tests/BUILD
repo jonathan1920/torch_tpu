@@ -23,6 +23,7 @@ pytype_strict_library(
     name = "module_registry",
     srcs = ["module_registry.py"],
     data = [
+        "//examples/huggingface_diffusers:model_configs_data",
         "//examples/huggingface_transformers:model_configs_data",
     ],
     visibility = ["//:__subpackages__"],
@@ -32,6 +33,7 @@ pytype_strict_library(
         "//shims/etils/epath",
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
+        "@pypi//diffusers:diffusers_lite",
         "@pypi//timm",
         "@pypi//torchvision",
         "@pypi//transformers",

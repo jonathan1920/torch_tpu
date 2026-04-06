@@ -30,11 +30,14 @@ import abc
 from collections.abc import Callable, Sequence
 from importlib import resources
 from importlib.resources import abc as resources_abc
+import inspect
 import pathlib
 from typing import Any, Iterator
 
 from absl import flags
 from absl import logging
+import diffusers
+from diffusers.models.auto_model import AutoModel
 from etils import epath
 import timm
 import torch
@@ -55,6 +58,13 @@ _HF_TIMM_WEIGHTS_DIR = flags.DEFINE_string(
 # "$DATA_ROOT/$WEIGHTS_SUBDIR/huggingface/timm"
     "",
     "Location of weights and config files for HuggingFace TIMM models.",
+)
+
+_HF_DIFFUSERS_WEIGHTS_DIR = flags.DEFINE_string(
+    "hf_diffusers_weights_dir",
+# "$DATA_ROOT/$WEIGHTS_SUBDIR/huggingface"
+    "",
+    "Location of weights and config files for HuggingFace Diffusers models.",
 )
 
 
@@ -102,7 +112,7 @@ class BaseProvider(abc.ABC):
 
   @abc.abstractmethod
   def get_module_spec(
-      self, name: str, *, load_weights: bool = False
+      self, name: str, *, load_weights: bool = False, **kwargs
   ) -> ModuleSpec:
     """Retrieves the specification for a specific model.
 
@@ -110,6 +120,7 @@ class BaseProvider(abc.ABC):
       name: The name of the model to retrieve.
       load_weights: If True, loads pre-trained weights. If False, initializes
         with random weights.
+      **kwargs: Additional provider-specific arguments.
 
     Returns:
       A ModuleSpec containing the model factory and input factory.
@@ -124,7 +135,7 @@ class TorchvisionProvider(BaseProvider):
     return torchvision.models.list_models()
 
   def get_module_spec(
-      self, name: str, *, load_weights: bool = False
+      self, name: str, *, load_weights: bool = False, **kwargs
   ) -> ModuleSpec:
     if load_weights:
       raise NotImplementedError(
@@ -152,7 +163,7 @@ class TimmProvider(BaseProvider):
     return timm.list_models()
 
   def get_module_spec(
-      self, name: str, *, load_weights: bool = False
+      self, name: str, *, load_weights: bool = False, **kwargs
   ) -> ModuleSpec:
     """Creates a ModuleSpec for a TIMM model.
 
@@ -163,6 +174,7 @@ class TimmProvider(BaseProvider):
       name: Name (str) of the timm model.
       load_weights: If True, loads pretrained weights. If False, initializes
         with random weights.
+      **kwargs: Additional keyword arguments.
 
     Returns:
       A ModuleSpec containing the model factory and input factory.
@@ -293,7 +305,7 @@ class TransformersProvider(BaseProvider):
     return modules
 
   def get_module_spec(
-      self, name: str, *, load_weights: bool = False
+      self, name: str, *, load_weights: bool = False, **kwargs
   ) -> ModuleSpec:
     """Creates a ModuleSpec for a Transformer model.
 
@@ -304,6 +316,7 @@ class TransformersProvider(BaseProvider):
       name: Name (str) of the hf transformer model.
       load_weights: If True, loads pretrained weights. If False, initializes
         with random weights.
+      **kwargs: Additional keyword arguments.
 
     Returns:
       A ModuleSpec containing the model factory and input factory.
@@ -361,6 +374,183 @@ class TransformersProvider(BaseProvider):
     return ModuleSpec(model_fn, _input_fn, preprocessor_fn, config)
 
 
+class DiffusersProvider(BaseProvider):
+  """Provider for Hugging Face Diffusers models.
+
+  Note:
+    This provider relies on local resource files for model configurations
+    rather than downloading directly from the Hugging Face Hub.
+  """
+
+  _FILES = resources.files("torch_tpu").joinpath(
+      "examples/huggingface_diffusers/model_configs"
+  )
+
+  def __init__(self):
+    weights_dir = _HF_DIFFUSERS_WEIGHTS_DIR.value
+    if weights_dir:
+      self._weights_dir = epath.Path(weights_dir)
+    else:
+      self._weights_dir = None
+
+  def list_modules(self) -> list[str]:
+    modules = []
+    for resource in _walk_package_resources(self._FILES):
+      if resource.is_file() and "model_index.json" in resource.name:
+        with resources.as_file(resource) as f:
+          modules.append(f"{f.parts[-3]}/{f.parts[-2]}")
+    return modules
+
+  def get_module_spec(
+      self,
+      name: str,
+      *,
+      load_weights: bool = False,
+      **kwargs,
+  ) -> ModuleSpec:
+    """Creates a ModuleSpec for a Diffuser model.
+
+    Args:
+      name: Name (str) of the hf diffuser model.
+      load_weights: If True, loads pretrained weights. If False, initializes
+        with random weights.
+      **kwargs: Additional keyword arguments. Supported arguments: - subfolder:
+        Subfolder of the model to load.
+
+    Returns:
+      A ModuleSpec containing the model factory and input factory.
+    """
+    subfolder = kwargs.get("subfolder")
+    d_type = torch.bfloat16
+
+    if load_weights:
+      model_path = str(self._weights_dir / name)
+      raw_config = AutoModel.load_config(model_path, subfolder=subfolder)
+      config_dict = dict(raw_config)
+    else:
+      model_dir = pathlib.Path(name)
+      if subfolder:
+        model_dir = model_dir / subfolder
+      with resources.as_file(
+          self._FILES.joinpath(str(model_dir / "config.json"))
+      ) as f:
+        raw_config = AutoModel.load_config(str(f.parent))
+        config_dict = dict(raw_config)
+
+    def _module_factory():
+      if load_weights:
+        return AutoModel.from_pretrained(
+            model_path,
+            torch_dtype=d_type,
+            subfolder=subfolder,
+        )
+      else:
+        class_name = config_dict.get("_class_name")
+        if not class_name:
+          raise ValueError(f"Config for {name} is missing '_class_name'.")
+        model_cls = getattr(diffusers, class_name)
+        return model_cls.from_config(config_dict).to(d_type)
+
+    def _input_factory(shape=None, device="cpu"):
+      batch_size = shape[0] if shape else 1
+      seq_len = shape[1] if shape and len(shape) > 1 else 77
+      cfg = config_dict
+
+      # Create dummy inputs using random noisy tensors
+      latent_channels = cfg.get("in_channels", 4)
+      latent_size = cfg.get("sample_size", 64)
+      noisy_latents = torch.randn(
+          (batch_size, latent_channels, latent_size, latent_size),
+          dtype=d_type,
+          device=device,
+      )
+
+      # standard num_train_timesteps for diffusion models is typically 1000
+      timesteps = torch.randint(
+          0, 1000, (batch_size,), device=device, dtype=torch.long
+      )
+
+      cross_attention_dim = cfg.get("cross_attention_dim", 2048)
+
+      # Encoder hidden states - These would be per token text embeddings
+      # returned by CLIP-ViT/L text encoder
+      dummy_encoder_hidden_states = torch.randn(
+          (batch_size, seq_len, cross_attention_dim),
+          dtype=d_type,
+          device=device,
+      )
+
+      # Dynamically get the model class to inspect its signature
+      class_name = cfg.get("_class_name")
+      if not class_name:
+        raise ValueError(
+            f"Config for {name} is missing '_class_name'. Cannot generate"
+            " inputs."
+        )
+      model_cls = getattr(diffusers, class_name)
+      forward_params = inspect.signature(model_cls.forward).parameters
+
+      # Dynamically determine the primary input key
+      if "sample" in forward_params:
+        primary_input_key = "sample"
+      elif "hidden_states" in forward_params:
+        primary_input_key = "hidden_states"
+      else:
+        # Fallback to the first non-'self' argument of the forward method.
+        non_self_params = [p for p in forward_params.keys() if p != "self"]
+        if non_self_params:
+          primary_input_key = non_self_params[0]
+        else:
+          raise ValueError(
+              f"Could not determine primary input key for {name}. No suitable"
+              " parameter found in forward signature."
+          )
+
+      kwargs = {
+          primary_input_key: noisy_latents,
+          "timestep": timesteps,
+          "encoder_hidden_states": dummy_encoder_hidden_states,
+          "return_dict": False,
+      }
+
+      # Create dummy additional conditioning inputs which would be expected in
+      # an SDXL pipeline.
+      if cfg.get("addition_embed_type") == "text_time":
+        proj_dim = cfg.get("projection_class_embeddings_input_dim", 2816)
+        time_dim = cfg.get("addition_time_embed_dim", 256)
+        text_embeds_dim = proj_dim - (6 * time_dim)
+
+        # Pooled text embeddings - A single embedding vector per batch
+        # representing the entire text sequence returned by OpenCLIP-ViT/G
+        dummy_pooled_embeds = torch.randn(
+            (batch_size, text_embeds_dim), dtype=d_type, device=device
+        )
+        # time_ids - Tensor of shape [batch_size, 6] providing crop information
+        # to the unet (nothing to do with timesteps).
+        # Represents: [orig_height, orig_width, crops_coords_top,
+        # crops_coords_left, target_height, target_width]
+        # Here, we initialize random values.
+        dummy_time_ids = torch.randn(
+            (batch_size, 6), dtype=d_type, device=device
+        )
+
+        kwargs["added_cond_kwargs"] = {
+            "text_embeds": dummy_pooled_embeds,
+            "time_ids": dummy_time_ids,
+        }
+
+      if "encoder_hidden_states" not in forward_params:
+        kwargs.pop("encoder_hidden_states", None)
+      if "added_cond_kwargs" not in forward_params:
+        kwargs.pop("added_cond_kwargs", None)
+      if "timestep" not in forward_params:
+        kwargs.pop("timestep", None)
+
+      return (), kwargs
+
+    return ModuleSpec(_module_factory, _input_factory, config=config_dict)
+
+
 class ModuleRegistry:
   """Central registry for managing multiple model providers."""
 
@@ -369,6 +559,7 @@ class ModuleRegistry:
         "torchvision": TorchvisionProvider(),
         "timm": TimmProvider(),
         "transformers": TransformersProvider(),
+        "diffusers": DiffusersProvider(),
     }
 
   def list_all_sources(self) -> list[str]:
@@ -404,7 +595,12 @@ class ModuleRegistry:
     return self._providers[source].list_modules()
 
   def get_module_spec(
-      self, source: str, name: str, *, load_weights: bool = False
+      self,
+      source: str,
+      name: str,
+      *,
+      load_weights: bool = False,
+      **kwargs,
   ) -> ModuleSpec:
     """Instantiates and returns the ModuleSpec for a specific model.
 
@@ -412,6 +608,7 @@ class ModuleRegistry:
       source: The provider key.
       name: The name of the model within that provider.
       load_weights: Whether to load pre-trained weights.
+      **kwargs: Additional provider-specific arguments.
 
     Returns:
       A ModuleSpec containing the model factory and input factory.
@@ -422,6 +619,5 @@ class ModuleRegistry:
     if source not in self._providers:
       raise ValueError(f"Source '{source}' not supported.")
 
-    return self._providers[source].get_module_spec(
-        name, load_weights=load_weights
-    )
+    provider = self._providers[source]
+    return provider.get_module_spec(name, load_weights=load_weights, **kwargs)

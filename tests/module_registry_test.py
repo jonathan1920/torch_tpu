@@ -45,6 +45,8 @@ class ModuleRegistryTest(absltest.TestCase):
     self.assertIn("timm/convnext_small", modules)
     self.assertIn("timm/resnet50d", modules)
     self.assertIn("transformers/google/gemma-3-270m", modules)
+    self.assertIn("diffusers/black-forest-labs/FLUX.1-schnell", modules)
+    self.assertIn("diffusers/stabilityai/stable-diffusion-xl-base-1.0", modules)
 
   def test_torchvision_list_modules(self):
     # torchvision doesn't return a stable set of models when running in Forge so
@@ -197,6 +199,56 @@ class ModuleRegistryTest(absltest.TestCase):
 
     self.assertEqual(outputs.logits[0].shape, expected_logits_shape)
     self.assertGreater(len(output_text), len(prompt))
+
+  def test_diffusers_get_module_spec_random_weights(self):
+    module_spec = self.module_registry.get_module_spec(
+        "diffusers",
+        "stabilityai/stable-diffusion-xl-base-1.0",
+        load_weights=False,
+        subfolder="unet",
+    )
+    model = module_spec.module_factory()
+
+    _, kwargs = module_spec.sample_inputs_factory()
+
+    self.assertIn("sample", kwargs)
+    self.assertIn("timestep", kwargs)
+    self.assertIn("encoder_hidden_states", kwargs)
+    # SDXL should have added_cond_kwargs
+    self.assertIn("added_cond_kwargs", kwargs)
+
+    self.assertEqual(kwargs["sample"].shape[1], model.config.in_channels)
+    self.assertEqual(kwargs["sample"].shape[2], model.config.sample_size)
+    self.assertEqual(
+        kwargs["encoder_hidden_states"].shape[-1],
+        model.config.cross_attention_dim,
+    )
+
+  def test_diffusers_get_module_spec_pretrained(self):
+    module_spec = self.module_registry.get_module_spec(
+        "diffusers",
+        "stabilityai/stable-diffusion-xl-base-1.0",
+        load_weights=True,
+        subfolder="unet",
+    )
+
+    # Check some of the config values for the pretrained model without loading
+    # the entire model
+    self.assertEqual(module_spec.config.get("sample_size"), 128)
+    self.assertEqual(module_spec.config.get("cross_attention_dim"), 2048)
+
+    _, kwargs = module_spec.sample_inputs_factory()
+
+    self.assertIn("sample", kwargs)
+    self.assertIn("timestep", kwargs)
+    self.assertIn("encoder_hidden_states", kwargs)
+    # SDXL should have added_cond_kwargs
+    self.assertIn("added_cond_kwargs", kwargs)
+
+    self.assertEqual(
+        kwargs["encoder_hidden_states"].shape[-1],
+        module_spec.config.get("cross_attention_dim"),
+    )
 
 
 if __name__ == "__main__":
