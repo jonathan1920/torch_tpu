@@ -203,6 +203,7 @@ common:helion_public_caching_readwrite --google_default_credentials
 common:ci --build_tests_only
 common:ci --config=remote_execution_readwrite
 common:ci --config=resultstore_base
+common:ci --remote_download_minimal
 common:ci --keep_going
 test:ci --test_output=errors
 
