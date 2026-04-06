@@ -784,13 +784,13 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     )
 
   @parameterized.named_parameters(
-      # TODO(lukeboyer): Add training mode back in once breakage is figured out.
+      # TODO(b/431285931) - Training known issue.
       test_utils.generate_layer_test_configs(
           _ALL_RUN_MODES,
           (False,),
           list(
               layer_configs.SdpaConfig.configs_with_backends(
-                  torch.nn.attention.SDPBackend.FLASH_ATTENTION,
+                  #   torch.nn.attention.SDPBackend.FLASH_ATTENTION, TODO(b/431285931) - Known issue.
                   torch.nn.attention.SDPBackend.EFFICIENT_ATTENTION,
                   torch.nn.attention.SDPBackend.MATH,
                   torch.nn.attention.SDPBackend.CUDNN_ATTENTION,
@@ -799,6 +799,13 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_sdpa_cuda(self, run_mode, is_training, layer_config):
+    same_heads = layer_config.q_num_heads == layer_config.kv_num_heads
+    if (
+        layer_config.backend
+        == torch.nn.attention.SDPBackend.EFFICIENT_ATTENTION
+        and not same_heads
+    ):
+      self.skipTest("Efficient attention doesn't support non-equal head dims.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.B200_1,
