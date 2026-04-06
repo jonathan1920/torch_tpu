@@ -1116,6 +1116,8 @@ std::string_view ToString(OpName op_name) {
       return "topk.values";
     case OpName::kTorchTpuInternalGatherAllSubgroups:
       return "_torchtpu_internal_gather_all_subgroups";
+    case OpName::kTorchTpuStatelessDropout:
+      return "stateless_dropout";
     case OpName::kTrilIndices:
       return "tril_indices";
     case OpName::kTrilOut:

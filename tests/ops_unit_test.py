@@ -5675,6 +5675,26 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         compute, rtol=rtol, atol=atol, check_value=utils.CheckValueMode.LOOSE
     )
 
+  def test_stateless_dropout(self):
+    torch.manual_seed(0)
+    input_tensor = torch.randn(
+        10,
+        10,
+        dtype=torch.float32,
+        device=api.tpu_device(),
+    )
+
+    rng_state = torch.get_device_module(api.tpu_device()).get_rng_state()
+    expected_out, expected_mask = torch.ops.aten.native_dropout(
+        input_tensor, 0.5, True
+    )
+    _, out, mask = torch.ops.torch_tpu.stateless_dropout(
+        rng_state, input_tensor, 0.5, True
+    )
+
+    self.assertEqual(expected_out.cpu(), out.cpu())
+    self.assertEqual(expected_mask.cpu(), mask.cpu())
+
 
 if __name__ == "__main__":
   absltest.main()
