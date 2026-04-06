@@ -19,7 +19,6 @@ import copy
 import enum
 from functools import partial
 from typing import Any, Callable, List, Sequence, Tuple
-
 from absl import logging
 import torch
 import torch.export
@@ -27,6 +26,7 @@ from torch.fx import node
 from torch.utils import _pytree
 from torch_tpu._internal import device_utils
 from torch_tpu._internal import execution_mode
+from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
 
 
@@ -367,6 +367,40 @@ def fx_to_mlir(
       the original output sequence from `output_tensors` by re-inserting `None`
       values.
   """
+  # Sync the RNG state before FX tracing to force materialization of deferred
+  # ops.
+  #
+  # Context: TorchTPU uses "deferred execution". Operations aren't
+  # computed instantly. Instead, they are added to a deferred graph.
+  # RNG state is treated as just another tensor in this graph.
+  #
+  # The "Graph Leaking" Problem:
+  # If a module was run in eager mode previously (e.g., a warmup step), the
+  # current global RNG state might be an unexecuted node sitting at the end of
+  # that old graph. If FX tracing accesses this state (e.g., via dropout
+  # kernels) without syncing, it accidentally connects your clean export graph
+  # to the old eager execution graph.
+  #
+  # Illustration of the leak:
+  # [Old Eager Graph] ---> (Pending RNG State) <--- [New FX Tracing Graph]
+  #                               ^
+  #                  FX grabs this, merging both graphs!
+  #                  (Leads to bloat and validation errors)
+  #
+  # The Solution:
+  # Syncing forces the TPU to compute the old graph, turning the RNG state
+  # back into a concrete, standalone tensor. This gives the FX tracer a
+  # clean slate.
+  #
+  # Safe state after sync:
+  # [Old Graph Executed] | (Concrete RNG State) ---> [Clean FX Tracing Graph]
+  tensor_args = [a for a in args if isinstance(a, torch.Tensor)]
+  if tensor_args:
+    sync.synchronize(
+        torch.get_device_module(tensor_args[0].device).get_rng_state(),
+        wait=True,
+    )
+
   # Run the module through the EagerLikeFxInterpreter with MLIR location
   # tracebacks enabled so that the MLIR we generate has file location info.
   with execution_mode.eager_mode(
