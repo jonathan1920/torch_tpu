@@ -14,6 +14,7 @@
 
 """Test for activation checkpointing with RNG state under compile mode."""
 
+from typing import Callable
 import unittest
 from absl.testing import absltest
 import torch
@@ -22,7 +23,75 @@ from torch_tpu import api
 from torch_tpu._internal.utils import utils
 
 
-class TestActivationCheckpointingRng(absltest.TestCase):
+class RandomOpsTest(absltest.TestCase):
+
+  def assert_outputs_not_close(
+      self,
+      runner: Callable[[], torch.Tensor],
+      atol: float = 1e-4,
+      rtol: float = 1e-6,
+      num_samples: int = 5,
+  ):
+    prev_out = None
+    for _ in range(num_samples):
+      out = runner()
+      out = out.cpu()
+      if prev_out is not None:
+        self.assertFalse(torch.allclose(out, prev_out, atol=atol, rtol=rtol))
+      prev_out = out
+
+  def test_dropout_compile(self):
+    torch.manual_seed(42)
+    device = api.tpu_device()
+
+    class MyModule(torch.nn.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.lin = torch.nn.Linear(5, 5)
+        self.dropout = torch.nn.Dropout(p=0.5)
+
+      def forward(self, x):
+        return self.dropout(self.lin(x))
+
+    module = MyModule().to(device)
+    compiled_module = torch.compile(module)
+    x = torch.randn(2, 5, device=device)
+
+    def runner():
+      nonlocal x
+      return compiled_module(x)
+
+    self.assert_outputs_not_close(runner)
+
+  def test_dropout_compile_with_former_eager_run(self):
+    torch.manual_seed(42)
+    device = api.tpu_device()
+
+    class MyModule(torch.nn.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.lin = torch.nn.Linear(5, 5)
+        self.dropout = torch.nn.Dropout(p=0.5)
+
+      def forward(self, x):
+        return self.dropout(self.lin(x))
+
+    module = MyModule().to(device)
+
+    # Run the module eagerly before torch.compile
+    out = module(torch.randn(2, 5, device=device))
+    del out
+
+    compiled_module = torch.compile(module)
+    x = torch.randn(2, 5, device=device)
+
+    def runner():
+      nonlocal x
+      return compiled_module(x)
+
+    self.assert_outputs_not_close(runner)
 
   @unittest.skip("b/496168350")
   def test_checkpoint_rng_compile(self):

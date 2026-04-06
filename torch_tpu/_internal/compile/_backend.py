@@ -30,6 +30,7 @@ The `torch.compile()` function has the following relevant arguments:
     Disables the compilation. No ops for us.
 """
 
+import copy
 import functools
 import operator
 from typing import Any, Callable, List, Sequence, TypeAlias
@@ -45,10 +46,11 @@ from torch.fx.passes import graph_transform_observer
 from torch.utils import _pytree
 from torch_tpu._internal import export as torch_tpu_export
 from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal.compile.fx_passes import rewrite_stateless_rng_ops
 from torch_tpu._internal.utils import utils
 
 GraphTransformObserver = graph_transform_observer.GraphTransformObserver
-
+rewrite_stateless_rng_ops = rewrite_stateless_rng_ops.rewrite_stateless_rng_ops
 
 _ExpectedTypes: TypeAlias = torch.Tensor | torch.nn.Module | torch.SymInt
 
@@ -159,10 +161,21 @@ class _TorchTpuCompiledExecutable:
     self._mlir_graph = value
 
   def __call__(self, *args):
+    if args:
+      device_module = torch.get_device_module(args[0].device)
+    else:
+      device_module = torch.tpu
+
+    # rewrite_stateless_rng_ops pass adds rng_state as the last argument.
+    args = (*args, device_module.get_rng_state())
+
     outputs = tpu_torch_compile.execute(self._executable, args)
     if self._map_output_fn is not None:
       outputs = self._map_output_fn(outputs)
 
+    # rewrite_stateless_rng_ops pass adds updated rng_state as the last output.
+    *outputs, rng_state = outputs
+    device_module.set_rng_state(rng_state)
     return outputs
 
   def __reduce__(self):
@@ -281,6 +294,13 @@ class TpuBackend:
           utils.InputMetadata(example_inputs),
       )
 
+    # Deepcopy the graph to avoid polluting the upstream Dynamo graph when we
+    # apply passes.
+    graph_module = torch.fx.GraphModule(
+        graph_module, copy.deepcopy(graph_module.graph)
+    )
+    original_input_count = len(example_inputs)
+
     # Decompose auto functionalized ops, we need to explicitly do this because
     # the default behaviour inserts flatten and unflatten ops at the boundaries
     # which then blocks buffer donation.
@@ -288,6 +308,19 @@ class TpuBackend:
     GraphTransformObserver(
         graph_module, "decompose_auto_functionalized"
     ).apply_graph_pass(post_grad.decompose_auto_functionalized)
+
+    # Rewrite stateless RNG ops.
+    GraphTransformObserver(
+        graph_module, "rewrite_stateless_rng_ops"
+    ).apply_graph_pass(rewrite_stateless_rng_ops)
+    # `rewrite_stateless_rng_ops` pass adds rng_state as the last argument.
+    # TODO(cnchan): Use ByteTensor when rng_state across backend APIs are
+    # consistent.
+    example_inputs = [
+        *example_inputs,
+        torch.zeros([16], dtype=torch.uint8),  # rng_state placeholder
+    ]
+
     graph_module.recompile()
 
     # Emit FX graph artifact for tlparse when TORCH_TRACE is set.
@@ -377,10 +410,10 @@ class TpuBackend:
     # Pre-compute indices for _TensorFilterExecutable for performance
     tensor_indices = tuple(
         i
-        for i, arg in enumerate(example_inputs)
+        for i, arg in enumerate(example_inputs[:original_input_count])
         if isinstance(arg, torch.Tensor)
     )
-    if len(tensor_indices) < len(example_inputs):
+    if len(tensor_indices) < len(example_inputs[:original_input_count]):
       return _TensorFilterExecutable(executable, tensor_indices)
 
     return executable

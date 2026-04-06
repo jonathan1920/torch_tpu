@@ -42,8 +42,8 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "dropout_test",
-    srcs = ["dropout_test.py"],
+    name = "random_ops_test",
+    srcs = ["random_ops_test.py"],
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
