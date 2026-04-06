@@ -25,6 +25,7 @@ from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multi
 _HF_LLAMA_3_2_1B_BENCHMARK_NAME = "hf_llama_3_2_1b"
 _HF_GEMMA_3_270M_BENCHMARK_NAME = "hf_gemma_3_270m"
 _META_LLAMA_3_2_8B_BENCHMARK_NAME = "meta_llama_3_2_8b"
+_HF_QWEN3_1_7B_BENCHMARK_NAME = "hf_qwen3_1_7b"
 
 
 class BenchmarkTest(test_utils.BenchmarkTest):
@@ -56,6 +57,33 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         ),
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.DEFER_NEVER_ONLY,
+          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_qwen3_1_7b_forward(self, run_mode):
+    """Tests the forward pass of Qwen3 1.7B."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="Qwen/Qwen3-1.7B",
+            sequence_length=4096,
+            batch_size=1,
+        ),
+    )
+    self.run_performance_benchmark_test(config, _HF_QWEN3_1_7B_BENCHMARK_NAME)
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
