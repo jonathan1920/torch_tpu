@@ -34,6 +34,7 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/op_name_stack.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -243,6 +244,7 @@ using OpInputs = internal::OpInputsTraits<kArity>::type;
 // kArity. If the number of outputs is unknown at compile time, use kDynamicSize
 // for kNumOutputs.
 template <int kArity, int kNumOutputs = 1>
+[[deprecated("Use DispatchOp() without the OpName parameter instead.")]]
 absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
     const OpName op_name, NAryMlirOpBuilder<kArity, kNumOutputs> op_builder,
     const OpInputs<kArity>& inputs, DispatchOpOptions<kNumOutputs> options) {
@@ -312,6 +314,22 @@ absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
           FixedSizeSpan<DeviceBufferRef, kNumOutputs>(absl::MakeSpan(results)));
     }
   }
+}
+
+// Dispatches an op with the given number of inputs (kArity) and given number of
+// outputs (kNumOutputs). This version retrieves the `OpName` from a
+// thread-local stack managed by `TT_KERNEL()`.
+template <int kArity, int kNumOutputs = 1>
+absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
+    NAryMlirOpBuilder<kArity, kNumOutputs> op_builder,
+    const OpInputs<kArity>& inputs, DispatchOpOptions<kNumOutputs> options) {
+  std::optional<OpName> op_name = internal::OpNameStack::MaybeTop();
+  ABSL_CHECK(op_name.has_value())  // CRASH_OK
+      << "DispatchOp() called without an active TT_KERNEL() context. "
+         "Move the call inside a TT_KERNEL(). Or, if there's a good reason for "
+         "not using TT_KERNEL(), use DispatchOp(op_name, ...) instead.";
+  return DispatchOp<kArity, kNumOutputs>(*op_name, std::move(op_builder),
+                                         inputs, std::move(options));
 }
 
 // Creates an at::Tensor from an at::Scalar.

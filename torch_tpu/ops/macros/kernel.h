@@ -27,6 +27,7 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/macro_utils.h"
+#include "torch_tpu/common/op_name_stack.h"
 #include "torch_tpu/ops/macros/logging.h"
 
 // TT_KERNEL(op_name, param_keys, (arg1, arg2, ...), statements) wraps the
@@ -73,6 +74,7 @@
 
 #define TT_KERNEL(op_name, param_keys, args, ...)                              \
   do {                                                                         \
+    ::torch_tpu::internal::ScopedOpName _scoped_op_name(op_name);              \
     TT_CHECK_AND_LOG_KERNEL_ARGS_(op_name, TT_REMOVE_PARENS_(args));           \
     TT_IF_DEBUG(                                                               \
         std::vector<                                                           \

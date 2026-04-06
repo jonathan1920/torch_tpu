@@ -745,6 +745,16 @@ torch_tpu_cc_library(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "op_name_stack",
+    srcs = ["op_name_stack.cc"],
+    hdrs = ["op_name_stack.h"],
+    deps = [
+        "//torch_tpu/ops:op_names",
+        "@com_google_absl//absl/log:absl_check",
+    ],
+)
+
 torch_tpu_cc_test(
     name = "cache_key_test",
     srcs = ["cache_key_test.cc"],
@@ -762,6 +772,16 @@ torch_tpu_cc_test(
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:stablehlo_ops",
         "@xla//xla:xla_data_proto_cc",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "op_name_stack_test",
+    srcs = ["op_name_stack_test.cc"],
+    deps = [
+        ":op_name_stack",
+        "//torch_tpu/ops:op_names",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

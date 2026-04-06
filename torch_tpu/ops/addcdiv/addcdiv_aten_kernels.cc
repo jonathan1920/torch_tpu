@@ -73,7 +73,7 @@ at::Tensor& AtenAddcdivOut(const at::Tensor& self, const at::Tensor& tensor1,
                            ConvertTo<mlir::ElementType>(out.scalar_type()));
         TT_ASSIGN_OR_THROW(
             auto result_buffer,
-            DispatchOp<4>(OpName::kAddcdivOut, std::move(op_builder),
+            DispatchOp<4>(std::move(op_builder),
                           {self, tensor1, tensor2, value_tensor},
                           {.out_dtype = out_dtype,
                            .out_dims = CopyIntVector(out.sizes()),

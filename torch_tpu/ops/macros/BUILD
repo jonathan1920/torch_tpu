@@ -74,6 +74,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:macro_utils",
+        "//torch_tpu/common:op_name_stack",
         "//torch_tpu/common:to_string",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:absl_check",

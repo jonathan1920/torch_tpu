@@ -390,6 +390,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:fixed_size_span",
+        "//torch_tpu/common:op_name_stack",
         "//torch_tpu/common:shape",
         "//torch_tpu/common:to_string",
         "//torch_tpu/ops:op_builder_utils",
