@@ -31,6 +31,7 @@
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -56,10 +57,16 @@ absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
 
   TT_RET_CHECK(self_type.getRank() == src_type.getRank(),
                error::kInvalidArgument)
-      << "self and src must have the same rank";
+      << "expected the self tensor of shape " << ToString(self_type.getShape())
+      << " to have the same rank as the src tensor of shape "
+      << ToString(src_type.getShape()) << ", got " << self_type.getRank()
+      << " vs. " << src_type.getRank();
   TT_RET_CHECK(self_type.getRank() == index_type.getRank(),
                error::kInvalidArgument)
-      << "self and index must have the same rank";
+      << "expected the self tensor of shape " << ToString(self_type.getShape())
+      << " to have the same rank as the index tensor of shape "
+      << ToString(index_type.getShape()) << ", got " << self_type.getRank()
+      << " vs. " << index_type.getRank();
 
   // If arguments are scalars, temporarily reshape them to rank 1.
   bool are_scalars = self_type.getRank() == 0;
@@ -72,7 +79,9 @@ absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
     index_type = GetTensorTypeOrDie(index);
   }
 
-  TT_RET_CHECK(dim >= 0 && dim < self_type.getRank(), error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Caught by the `SafeWrapDim()` function
+                 // call in the caller.
+      dim >= 0 && dim < self_type.getRank(), error::kInvalidArgument)
       << "dim must be in the range [0, self.getRank())";
 
   // Convert arguments to the computation type if necessary.

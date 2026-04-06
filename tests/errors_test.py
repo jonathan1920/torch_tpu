@@ -7527,6 +7527,52 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.sign(t, out=out)
 
+  def test_scatter_rank_src_rank_mismatch(self):
+    self_t = torch.ones(5, 5, device=et.device())
+    index = torch.zeros(5, 5, dtype=torch.int64, device=et.device())
+    src = torch.ones(5, device=et.device())
+
+    # Call the out overload.
+    out = torch.empty(5, 5, device=et.device())
+
+    # TODO: Error eagerly, i.e. without having to call the op builder.
+    with et.assert_raises_message(
+        (RuntimeError, IndexError),
+        tpu=(
+            "scatter(): materialization failed with: expected the self tensor"
+            " of shape [5, 5] to have the same rank as the src tensor of shape"
+            " [5], got 2 vs. 1"
+        ),
+        cpu=(
+            "Dimension out of range (expected to be in range of [-1, 0], but"
+            " got 1)"
+        ),
+    ):
+      torch.scatter(self_t, 0, index, src, out=out).cpu()
+
+  def test_scatter_index_rank_mismatch(self):
+    self_t = torch.ones(5, 5, device=et.device())
+    index = torch.zeros(5, dtype=torch.int64, device=et.device())
+    src = torch.ones(5, 5, device=et.device())
+
+    # Call the out overload.
+    out = torch.empty(5, 5, device=et.device())
+
+    # TODO: Error eagerly, i.e. without having to call the op builder.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "scatter(): materialization failed with: expected the self tensor"
+            " of shape [5, 5] to have the same rank as the index tensor of"
+            " shape [5], got 2 vs. 1"
+        ),
+        cpu=(
+            "Index tensor must have the same number of dimensions as self"
+            " tensor"
+        ),
+    ):
+      torch.scatter(self_t, 0, index, src, out=out).cpu()
+
 
 if __name__ == "__main__":
   absltest.main()
