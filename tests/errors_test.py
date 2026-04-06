@@ -6369,10 +6369,11 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "uniform_(): input tensor must be floating point or complex type,"
-            " got int32"
+            "uniform_(): expected the input dtype to be floating point or"
+            " complex, got int32"
         ),
         cpu="\"check_uniform_bounds\" not implemented for 'Int'",
+        message_reviewed_by="wan",
     ):
       torch.zeros(5, dtype=torch.int32, device=et.device()).uniform_()
 

@@ -19,6 +19,7 @@
 #include <optional>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "ATen/core/ATen_fwd.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dimension_types.h"
@@ -49,11 +50,13 @@ NAryMlirOpBuilder<1, 2> GetUniformFunctional(Dimensions dims,
   };
 }
 
-void CheckUniformPreconditions(const at::Tensor& self) {
-  TT_CHECK_THROW(self.is_floating_point() || self.is_complex(),
-                 error::kInvalidArgument)
-      << "input tensor must be floating point or complex type, got "
+absl::Status CheckUniformPreconditions(const at::Tensor& self) {
+  TT_RET_CHECK(IsFloatingPoint(self) || IsComplex(self),
+               error::kInvalidArgument)
+      << "expected the input dtype to be floating point or complex, got "
       << ToString(self.scalar_type());
+
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -64,7 +67,7 @@ at::Tensor& AtenUniform_(at::Tensor& self, double from, double to,
     if (self.numel() == 0) {
       return self;
     }
-    CheckUniformPreconditions(self);
+    TT_THROW_IF_ERROR(CheckUniformPreconditions(self));
     at::Tensor self_real = self.is_complex() ? AtenViewAsReal(self) : self;
     // Since we need to generate random bits, we query for the rng state tensor.
     TT_ASSIGN_OR_THROW(auto rng_input_state, GetRngState(generator));
