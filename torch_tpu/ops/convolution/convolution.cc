@@ -55,6 +55,48 @@ struct GroupedWeightParams {
   int64_t kernel_out_feat_dim;
 };
 
+struct SpatialPadding {
+  int64_t lo;
+  int64_t hi;
+};
+
+// Calculates the padding required for the adjoint (backward/transposed)
+// convolution to match a target output dimension.
+//
+// Adjoint convolution padding logic:
+// pad_total = output_dim + k_eff - 1 - ((input_dim - 1) * stride + 1)
+// pad_lo = k_eff - 1 - padding
+SpatialPadding CalculateAdjointPadding(int64_t input_dim, int64_t output_dim,
+                                       int64_t kernel, int64_t stride,
+                                       int64_t padding, int64_t dilation) {
+  int64_t k_eff = (kernel - 1) * dilation + 1;
+  int64_t pad_total = output_dim + k_eff - 1 - ((input_dim - 1) * stride + 1);
+  int64_t pad_lo = k_eff - 1 - padding;
+  return {pad_lo, pad_total - pad_lo};
+}
+
+// Calculates padding for backward weight calculation, accounting for
+// windows that don't perfectly align with the input end (overhang).
+//
+// In a strided convolution (stride > 1), the windows might not perfectly
+// align with the end of the padded input.
+// 'overhang' represents the trailing pixels in the padded input that were
+// ignored during the forward pass.
+// If we use symmetric padding in backward, these 'dead pixels' contribute
+// to the weight gradient calculation, causing the inferred gradient shape
+// to be larger than the original weight shape (e.g., 4x4 vs 3x3).
+// We add asymmetric padding to cancel out the overhang in the backward pass.
+SpatialPadding CalculateBackwardWeightPadding(int64_t input_dim,
+                                              int64_t grad_out_dim,
+                                              int64_t kernel, int64_t stride,
+                                              int64_t padding,
+                                              int64_t dilation) {
+  int64_t k_eff = (kernel - 1) * dilation + 1;
+  int64_t last_window_end = (grad_out_dim - 1) * stride + k_eff;
+  int64_t overhang = (input_dim + 2 * padding) - last_window_end;
+  return {padding, padding - overhang};
+}
+
 absl::StatusOr<mlir::MlirOp> BuildTransposedConvolution(
     mlir::MlirOp input, mlir::MlirOp weight, std::optional<mlir::MlirOp> bias,
     absl::Span<const int64_t> stride, absl::Span<const int64_t> padding,
@@ -155,10 +197,8 @@ absl::StatusOr<mlir::MlirOp> BuildTransposedConvolution(
     int64_t in_dim = input_type.getDimSize(2 + i);
     int64_t out_dim = output_dims[2 + i];
 
-    int64_t k_eff = (k - 1) * d + 1;
-    int64_t pad_total = out_dim + k_eff - 1 - ((in_dim - 1) * s + 1);
-    int64_t pad_lo = k_eff - 1 - p;
-    int64_t pad_hi = pad_total - pad_lo;
+    auto [pad_lo, pad_hi] =
+        CalculateAdjointPadding(in_dim, out_dim, k, s, p, d);
     symmetric_padding_dims.push_back(pad_lo);
     symmetric_padding_dims.push_back(pad_hi);
   }
@@ -592,13 +632,8 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardInput(
     int64_t in_dim = input_dims[2 + i];
     int64_t out_dim = grad_out_shape[2 + i];
 
-    int64_t k_eff = (k - 1) * d + 1;
-    int64_t pad_total = in_dim + k_eff - 1 - ((out_dim - 1) * s + 1);
-
-    // pad_lo + pad_hi = pad_total
-    // We know pad_lo = k_eff - 1 - p
-    int64_t pad_lo = k_eff - 1 - p;
-    int64_t pad_hi = pad_total - pad_lo;
+    auto [pad_lo, pad_hi] =
+        CalculateAdjointPadding(out_dim, in_dim, k, s, p, d);
 
     symmetric_padding_dims.push_back(pad_lo);
     symmetric_padding_dims.push_back(pad_hi);
@@ -725,23 +760,8 @@ absl::StatusOr<mlir::MlirOp> BuildConvolutionBackwardWeight(
     int64_t in_dim = input_shape[2 + i];
     int64_t out_dim = grad_shape[2 + i];
 
-    int64_t k_eff = (k - 1) * d + 1;
-
-    // In a strided convolution (stride > 1), the windows might not perfectly
-    // align with the end of the padded input.
-    // 'last_window_end' tracks the last pixel index during the forward pass.
-    int64_t last_window_end = (out_dim - 1) * s + k_eff;
-
-    // 'overhang' represents the trailing pixels in the padded input that were
-    // ignored during the forward pass.
-    // If we use symmetric padding in backward, these 'dead pixels' contribute
-    // to the weight gradient calculation, causing the inferred gradient shape
-    // to be larger than the original weight shape (e.g., 4x4 vs 3x3).
-    int64_t overhang = (in_dim + 2 * p) - last_window_end;
-
-    // Add asymmetric padding to cancel out the overhang in the backward pass
-    int64_t pad_lo = p;
-    int64_t pad_hi = p - overhang;
+    auto [pad_lo, pad_hi] =
+        CalculateBackwardWeightPadding(in_dim, out_dim, k, s, p, d);
 
     symmetric_padding_dims.push_back(pad_lo);
     symmetric_padding_dims.push_back(pad_hi);
