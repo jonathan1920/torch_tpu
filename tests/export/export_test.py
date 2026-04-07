@@ -73,7 +73,7 @@ class TestExportLinearMode(absltest.TestCase):
   def test_export_linear(self):
     sample_input = (torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]),)
     exported = torch.export.export(SimpleNN(), args=sample_input)
-    mlir = torch_tpu_export.exported_to_mlir(exported)
+    mlir = torch_tpu_export.exported_to_mlir(exported).mlir_bytes
     mlir_str = mlir.decode("utf-8")
 
     # Check for module name and main func
@@ -115,7 +115,7 @@ class ExportTest(absltest.TestCase):
     )
     exported = torch.export.export(SimpleModule(), args=sample_input)
     with override_tracebacks(None):  # override with nullopt
-      mlir = torch_tpu_export.exported_to_mlir(exported)
+      mlir = torch_tpu_export.exported_to_mlir(exported).mlir_bytes
     mlir_str = mlir.decode("utf-8")
 
     # Check for module name and main func
@@ -146,7 +146,7 @@ class ExportTest(absltest.TestCase):
     )
     exported = torch.export.export(SimpleModule(), args=sample_input)
     with override_tracebacks(False):  # disable tracebacks
-      mlir = torch_tpu_export.exported_to_mlir(exported)
+      mlir = torch_tpu_export.exported_to_mlir(exported).mlir_bytes
     mlir_str = mlir.decode("utf-8")
 
     # Check for module name and main func
@@ -178,7 +178,7 @@ class ExportTest(absltest.TestCase):
     exported = torch.export.export(SimpleModule(), args=sample_input)
     mlir = torch_tpu_export.exported_to_mlir(
         exported, print_config=torch_tpu_export.MlirPrintConfig.MLIR_PRETTY
-    )
+    ).mlir_bytes
 
     # Check for the location #loc(...) in mlir string
     mlir_str = mlir.decode("utf-8")
@@ -196,7 +196,7 @@ class ExportTest(absltest.TestCase):
     exported = torch.export.export(SimpleModule(), args=sample_input)
     mlir = torch_tpu_export.exported_to_mlir(
         exported, print_config=torch_tpu_export.MlirPrintConfig.MLIR_DEBUG_INFO
-    )
+    ).mlir_bytes
 
     # Check for the location #loc(...) in mlir string
     self.assertIn(b"loc(", mlir)
@@ -209,7 +209,7 @@ class ExportTest(absltest.TestCase):
     exported = torch.export.export(SimpleModule(), args=sample_input)
     mlir = torch_tpu_export.exported_to_mlir(
         exported, print_config=torch_tpu_export.MlirPrintConfig.MLIR_SERIALIZED
-    )
+    ).mlir_bytes
     # Check for the MLïR magic string that denotes bytecode.
     self.assertIn(b"ML\xefR", mlir)
 
@@ -222,7 +222,7 @@ class ExportTest(absltest.TestCase):
     mlir = torch_tpu_export.exported_to_mlir(
         exported,
         print_config=torch_tpu_export.MlirPrintConfig.MLIR_SERIALIZED_VERSIONED,
-    )
+    ).mlir_bytes
     # Check for the MLïR magic string that denotes bytecode.
     # Check for the StableHLO_v1.X.Y producer string to indicate versioned
     # StableHLO.

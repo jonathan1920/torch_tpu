@@ -16,18 +16,26 @@
 
 import contextlib
 import copy
+import dataclasses
 import enum
-from functools import partial
+import functools
 from typing import Any, Callable, List, Sequence, Tuple
 from absl import logging
 import torch
 import torch.export
 from torch.fx import node
-from torch.utils import _pytree
+import torch.utils._pytree as pytree
 from torch_tpu._internal import device_utils
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
+
+__all__ = [
+    "MlirPrintConfig",
+    "ExportedMlir",
+    "exported_to_mlir",
+    "fx_to_mlir",
+]
 
 
 def _extract_states_from_exported_program(exported_model):
@@ -83,15 +91,6 @@ def _extract_sample_arguments(exported: torch.export.ExportedProgram):
   return [_to_aval(arg.meta) for arg in args]
 
 
-def _to_list(obj: Any) -> List[Any]:
-  """Ensures a return value is a list."""
-  if isinstance(obj, list):
-    return obj
-  if isinstance(obj, tuple):
-    return list(obj)
-  return [obj]
-
-
 class MlirPrintConfig(enum.Enum):
   """Configuration for printing MLIR."""
 
@@ -99,6 +98,24 @@ class MlirPrintConfig(enum.Enum):
   MLIR_DEBUG_INFO = "MlirDebugInfo"
   MLIR_SERIALIZED = "MlirSerialized"
   MLIR_SERIALIZED_VERSIONED = "MlirVersionedSerialized"
+
+
+@dataclasses.dataclass(frozen=True)
+class ExportedMlir:
+  """Represents the MLIR representation of an FX graph module.
+
+  Attributes:
+    mlir_bytes: The MLIR module in bytecode or text format.
+    mlir_result_tensors: A flattened list of tensors that the MLIR graph will
+      actually produce as outputs.
+    reconstruct_fx_outputs_fn: A function that takes the flattened MLIR outputs
+      and reconstructs the original FX graph's output structure (e.g., restoring
+      `None` values or nested tuples).
+  """
+
+  mlir_bytes: bytes
+  mlir_result_tensors: List[torch.Tensor]
+  reconstruct_fx_outputs_fn: Callable[[Sequence[torch.Tensor]], Any]
 
 
 class EagerLikeFxInterpreter(torch.fx.Interpreter):
@@ -191,7 +208,7 @@ class EagerLikeFxInterpreter(torch.fx.Interpreter):
 def exported_to_mlir(
     exported: torch.export.ExportedProgram,
     print_config: MlirPrintConfig = MlirPrintConfig.MLIR_DEBUG_INFO,
-) -> bytes:
+) -> ExportedMlir:
   """Converts a `torch.export.ExportedProgram` into its MLIR representation.
 
   This function serves as a high-level wrapper around `fx_to_mlir` for exported
@@ -207,7 +224,8 @@ def exported_to_mlir(
       pretty-printed or with debug info.
 
   Returns:
-    The MLIR representation of the graph as a bytes string.
+    An `ExportedMlir` object containing the MLIR representation of the graph and
+    FX output reconstruction information.
   """
 
   sample_args = _extract_sample_arguments(exported)
@@ -223,101 +241,81 @@ def exported_to_mlir(
     )
 
   to_xla = lambda x: x.to(device)
-  args = _pytree.tree_map_only(torch.Tensor, to_xla, args)
+  args = pytree.tree_map_only(torch.Tensor, to_xla, args)
   module = exported.graph_module.to(device)
 
-  result, _, _ = fx_to_mlir(module, args=args, print_config=print_config)
-  return result
+  return fx_to_mlir(module, args=args, print_config=print_config)
 
 
-def _create_filtered_output_map(
-    outputs: List[torch.Tensor | None],
-) -> Tuple[List[torch.Tensor], List[int | None] | None]:
-  """Removes Nones and dedups outputs, returning a map-list for reconstruction.
+def _reconstruct_fx_outputs(
+    deduped_outputs: Sequence[torch.Tensor],
+    output_indices: List[int | None],
+    spec: pytree.TreeSpec,
+) -> Any:
+  """Restores the original FX output structure from flattened MLIR outputs."""
+  reconstructed_flat: List[torch.Tensor | None] = []
+  output_used = [False] * len(deduped_outputs)
+  for idx in output_indices:
+    if idx is None:
+      reconstructed_flat.append(None)
+    elif output_used[idx]:
+      reconstructed_flat.append(deduped_outputs[idx].clone())
+    else:
+      reconstructed_flat.append(deduped_outputs[idx])
+      output_used[idx] = True
 
-  This is necessary because MLIR graphs does not accept `None` in outputs, and
+  return pytree.tree_unflatten(reconstructed_flat, spec)
+
+
+def _process_fx_outputs(
+    outputs: Any,
+) -> Tuple[
+    List[torch.Tensor],
+    Callable[[Sequence[torch.Tensor]], Any],
+]:
+  """Removes Nones and dedups outputs.
+
+  This is necessary because MLIR graphs do not accept `None` in outputs, and
   we don't want to produce duplicate outputs for tensors that are the same. This
-  function filters `None` values from the output list and reduces to only unique
-  tensors,and produces a map tha can be used by `_map_output` to reconstruct the
-  original list, including `None` and duplicate values, after MLIR processing is
-  complete.
+  function filters `None` values and reduces to unique tensors. It returns a
+  tuple containing a list of result tensors and a function to reconstruct
+  the original FX output structure.
 
   Args:
-    outputs: A list of tensors, potentially containing `None`s and duplicates.
+    outputs: The outputs of the graph.
 
   Returns:
-    A tuple `(unique_nonnone_outputs, output_map)`:
-    - `unique_nonnone_outputs`: A list containing only unique, non-`None`
-      tensors from the input `outputs`, in the same relative order by first
-      appearance.
-    - `output_map`: A list used for reconstruction. Each element is
-      either `None` (if the original output at this position was `None`) or an
-      integer index into `non_none_outputs` (if the original output was a
-      tensor). If `outputs` is empty, this value is `None`.
+    A tuple containing a list of result tensors and a function to reconstruct
+    the original FX output structure.
+
+  Raises:
+    TypeError: If an element in the flattened outputs is not a `torch.Tensor`
+      or `None`.
   """
-  output_map: list[int | None] = []
-  unique_nonnone_outputs: list[torch.Tensor] = []
+  flat_outputs, spec = pytree.tree_flatten(outputs)
+  deduped_outputs: List[torch.Tensor] = []
+  output_indices: List[int | None] = []
   data_ptr_to_index: dict[int, int] = {}
-  node_index_counter: int = 0
-  for item in outputs:
+
+  for item in flat_outputs:
     if item is None:
-      # Found a None output. Mark it as such in the output map.
-      output_map.append(None)
-      continue
+      output_indices.append(None)
+    elif isinstance(item, torch.Tensor):
+      ptr = item.data_ptr()
+      if ptr not in data_ptr_to_index:
+        data_ptr_to_index[ptr] = len(deduped_outputs)
+        deduped_outputs.append(item)
+      output_indices.append(data_ptr_to_index[ptr])
+    else:
+      raise TypeError(
+          f"Expect FX graph output to be a Tensor or None, got {item}"
+      )
 
-    data_ptr = item.data_ptr()
-
-    if data_ptr in data_ptr_to_index:
-      # Found a repeated output. Use the existing index.
-      output_map.append(data_ptr_to_index[data_ptr])
-      continue
-
-    # Found a new, unique, non-None output.
-    output_map.append(node_index_counter)
-    data_ptr_to_index[data_ptr] = node_index_counter
-    unique_nonnone_outputs.append(item)
-    node_index_counter += 1
-
-  return unique_nonnone_outputs, output_map if output_map else None
-
-
-def _map_output(
-    outputs: Sequence[torch.Tensor],
-    output_map: Sequence[int | None] | None,
-) -> Sequence[torch.Tensor]:
-  """Reconstructs the original output sequence.
-
-  This function uses the `output_map` generated by
-  `_create_filtered_output_map` to re-insert `None` and duplicate values into a
-  sequence of unique, non-`None` tensors, restoring the original output
-  structure.
-
-  Args:
-    outputs: A sequence containing only unique, non-`None` tensors.
-    output_map: A sequence where items are either an index into `outputs` or
-      `None`. If an item is `None`, `None` is inserted at that position in the
-      result; otherwise, the item is an index used to retrieve the tensor from
-      `outputs`. If `output_map` itself is `None`, `outputs` is returned
-      unchanged.
-
-  Returns:
-    The reconstructed sequence of tensors, potentially containing `None`.
-  """
-  if output_map is not None:
-    output_used = [False] * len(outputs)
-    reconstructed_outputs: list[torch.Tensor | None] = []
-    for map_item in output_map:
-      if map_item is None:
-        reconstructed_outputs.append(None)
-      elif output_used[map_item]:
-        reconstructed_outputs.append(outputs[map_item].clone())
-      else:
-        output_used[map_item] = True
-        reconstructed_outputs.append(outputs[map_item])
-
-    outputs = tuple(reconstructed_outputs)
-    assert reconstructed_outputs, "Output map must have at least one output"
-  return outputs
+  return deduped_outputs, functools.partial(
+      _reconstruct_fx_outputs,
+      output_indices=output_indices,
+      spec=spec,
+  )
 
 
 @contextlib.contextmanager
@@ -336,16 +334,12 @@ def fx_to_mlir(
     args: List[torch.Tensor | Any],
     print_config: MlirPrintConfig = MlirPrintConfig.MLIR_PRETTY,
     donate_args: Sequence[int] | None = None,
-) -> Tuple[
-    bytes,
-    List[torch.Tensor],
-    Callable[[Sequence[torch.Tensor]], Sequence[torch.Tensor]] | None,
-]:
+) -> ExportedMlir:
   """Converts an FX graph module to MLIR using TorchTPU's defer mode.
 
   This function traces the given FX graph module by running it with an
   EagerLikeFxInterpreter in full defer mode
-  (`execution_mode.EagerMode.INTERNAL_DEFER_ALL`).
+  (`execution_mode.EagerMode.DEFER_ALL`).
   The
   resulting deferred graph is then converted to MLIR bytes.
 
@@ -354,19 +348,29 @@ def fx_to_mlir(
     args: A list of input arguments to trace the module. These will be run
       through an FX graph interpreter to identify the graph's output tensors.
     print_config: The desired MLIR output format.
-    allow_output_modification: If True, filters `None` from outputs and returns
-      a function to reconstruct them. If False, `None` outputs are not
-      permitted.
+    donate_args: The list of argument indices that are allowed to be donated.
 
   Returns:
-    A tuple `(mlir_bytes, output_map_fn)` where:
-    - `mlir_bytes`: The MLIR representation of the graph as bytes.
-    - `output_tensors`: The output tensors from the MLIR trace, with `None`
-      values removed.
-    - `output_map_fn`: A callable `fn(outputs) -> outputs` that reconstructs
-      the original output sequence from `output_tensors` by re-inserting `None`
-      values.
+    An `ExportedMlir` object containing the MLIR representation of the graph and
+    FX output reconstruction information.
   """
+  # Filter out non-tensor arguments.
+  argument_tensors = []
+  tensor_idx_map = {}
+  for i, arg in enumerate(args):
+    if isinstance(arg, torch.Tensor):
+      tensor_idx_map[i] = len(argument_tensors)
+      argument_tensors.append(arg)
+
+  # Remap donate_args to be indices into argument_tensors.
+  if donate_args:
+    donate_args = [
+        tensor_idx_map[i] for i in donate_args if i in tensor_idx_map
+    ]
+  else:
+    donate_args = []
+  del tensor_idx_map
+
   # Sync the RNG state before FX tracing to force materialization of deferred
   # ops.
   #
@@ -394,10 +398,9 @@ def fx_to_mlir(
   #
   # Safe state after sync:
   # [Old Graph Executed] | (Concrete RNG State) ---> [Clean FX Tracing Graph]
-  tensor_args = [a for a in args if isinstance(a, torch.Tensor)]
-  if tensor_args:
+  if argument_tensors:
     sync.synchronize(
-        torch.get_device_module(tensor_args[0].device).get_rng_state(),
+        torch.get_device_module(argument_tensors[0].device).get_rng_state(),
         wait=True,
     )
 
@@ -413,21 +416,19 @@ def fx_to_mlir(
     cloned_args = (
         x.clone() if isinstance(x, torch.Tensor) else x for x in args
     )
-    tpu_outputs = EagerLikeFxInterpreter(module).run(*cloned_args)
+    fx_outputs = EagerLikeFxInterpreter(module).run(*cloned_args)
 
-  tpu_outputs, output_map = _create_filtered_output_map(tpu_outputs)
-  output_none_map_fn = partial(_map_output, output_map=output_map)
+  result_tensors, reconstruct_fx_outputs_fn = _process_fx_outputs(fx_outputs)
+
   mlir_bytes = tpu_torch_compile.build_mlir(
-      result_tensors=_to_list(tpu_outputs),
-      argument_tensors=[
-          a for a in _to_list(args) if isinstance(a, torch.Tensor)
-      ],
+      result_tensors=result_tensors,
+      argument_tensors=argument_tensors,
       print_config=print_config.value,
-      donate_args=donate_args if donate_args else [],
+      donate_args=donate_args,
   )
 
-  return (
-      mlir_bytes,
-      tpu_outputs,
-      output_none_map_fn,
+  return ExportedMlir(
+      mlir_bytes=mlir_bytes,
+      mlir_result_tensors=result_tensors,
+      reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
   )

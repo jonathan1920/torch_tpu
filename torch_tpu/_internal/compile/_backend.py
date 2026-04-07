@@ -120,7 +120,7 @@ class _TorchTpuCompiledExecutable:
   def __init__(
       self,
       executable: tpu_torch_compile.PjRtLoadedExecutable,
-      map_output_fn: (
+      reconstruct_fx_outputs_fn: (
           Callable[[Sequence[torch.Tensor]], Sequence[torch.Tensor]] | None
       ),
   ):
@@ -128,15 +128,13 @@ class _TorchTpuCompiledExecutable:
 
     Args:
       executable: The result returned by `tpu_torch_compile.compile_mlir`.
-      executable_output_shapes: The output shapes of the executable.
-      executable_output_dtypes: The output dtypes of the executable.
-      map_output_fn: An optional callable that transforms the output from the
-        TPU executable back to the output structure expected by PyTorch. The
-        existing use case is to re-insert `None` values into the output list if
-        they were filtered out during MLIR conversion.
+      reconstruct_fx_outputs_fn: An optional callable that transforms the output
+        from the TPU executable back to the output structure expected by
+        PyTorch. The existing use case is to re-insert `None` values into the
+        output list if they were filtered out during MLIR conversion.
     """
     self._executable = executable
-    self._map_output_fn = map_output_fn
+    self._reconstruct_fx_outputs_fn = reconstruct_fx_outputs_fn
     self._tensor_arg_indices = None
     self._graph_module_debug_str: str | None = None
     self._mlir_graph: str | None = None
@@ -181,8 +179,8 @@ class _TorchTpuCompiledExecutable:
     executable_args = self._filter_tensor_args(args)
     outputs = tpu_torch_compile.execute(self._executable, executable_args)
 
-    if self._map_output_fn is not None:
-      outputs = self._map_output_fn(outputs)
+    if self._reconstruct_fx_outputs_fn is not None:
+      outputs = self._reconstruct_fx_outputs_fn(outputs)
 
     # rewrite_stateless_rng_ops pass adds updated rng_state as the last output.
     *outputs, rng_state = outputs
@@ -213,19 +211,19 @@ class _TorchTpuCompiledExecutable:
     serialized = tpu_torch_compile.serialize_executable(self._executable)
     return (
         _unpickle_compiled_executable,
-        (serialized, self._map_output_fn),
+        (serialized, self._reconstruct_fx_outputs_fn),
     )
 
 
 def _unpickle_compiled_executable(
     serialized_bytes: bytes,
-    map_output_fn,
+    reconstruct_fx_outputs_fn,
 ) -> _TorchTpuCompiledExecutable:
   """Reconstruct a _TorchTpuCompiledExecutable from serialized bytes."""
   executable = tpu_torch_compile.load_serialized_executable(serialized_bytes)
   return _TorchTpuCompiledExecutable(
       executable=executable,
-      map_output_fn=map_output_fn,
+      reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
   )
 
 
@@ -393,7 +391,7 @@ class TpuBackend:
         print_config = torch_tpu_export.MlirPrintConfig.MLIR_DEBUG_INFO
 
       with dynamo_timed("torchtpu_fx_to_mlir"):
-        mlir_graph, _, map_output_fn = torch_tpu_export.fx_to_mlir(
+        exported_mlir = torch_tpu_export.fx_to_mlir(
             graph_module,
             placeholder_args,
             print_config=print_config,
@@ -403,9 +401,9 @@ class TpuBackend:
     # Emit StableHLO artifact for tlparse when TORCH_TRACE is set.
     if tracing_enabled:
       mlir_str = (
-          mlir_graph.decode("utf-8")
-          if isinstance(mlir_graph, bytes)
-          else mlir_graph
+          exported_mlir.mlir_bytes.decode("utf-8")
+          if isinstance(exported_mlir.mlir_bytes, bytes)
+          else exported_mlir.mlir_bytes
       )
       trace_structured(
           "artifact",
@@ -418,11 +416,13 @@ class TpuBackend:
       )
 
     with dynamo_timed("torchtpu_pjrt_compile"):
-      cached_executable = tpu_torch_compile.compile_mlir(mlir_graph)
+      cached_executable = tpu_torch_compile.compile_mlir(
+          exported_mlir.mlir_bytes
+      )
 
     executable = _TorchTpuCompiledExecutable(
         executable=cached_executable,
-        map_output_fn=map_output_fn,
+        reconstruct_fx_outputs_fn=exported_mlir.reconstruct_fx_outputs_fn,
     )
 
     self._compiled_executables.append(executable)
@@ -431,6 +431,6 @@ class TpuBackend:
       # Do not use print_readable() as it include original line of code which is
       # too verbose.
       executable.graph_module_debug_str = str(graph_module.code)
-      executable.mlir_graph = mlir_graph
+      executable.mlir_graph = exported_mlir.mlir_bytes
 
     return executable
