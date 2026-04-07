@@ -399,6 +399,10 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
           TT_ASSIGN_OR_RETURN(mlir::ElementType out_dtype,
                               ConvertTo<mlir::ElementType>(t.scalar_type()));
 
+          TT_ASSIGN_OR_RETURN(OpParamCacheKeys step_keys,
+                              *OpParamCacheKeysBuilder(param_keys.Clone())
+                                   .SetParam("step", "L"));
+
           TT_ASSIGN_OR_RETURN(
               auto buffer,
               DispatchOp<2>(LinalgSolveTriangularBuilder(
@@ -407,7 +411,7 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
                             {lu, t},
                             {.out_dtype = out_dtype,
                              .out_dims = CopyIntVector(t.sizes()),
-                             .op_param_cache_keys = std::move(param_keys)}));
+                             .op_param_cache_keys = std::move(step_keys)}));
 
           TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(buffer), t));
           return absl::OkStatus();
@@ -417,6 +421,11 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
                                at::Tensor& t) -> absl::Status {
           TT_ASSIGN_OR_RETURN(mlir::ElementType out_dtype,
                               ConvertTo<mlir::ElementType>(t.scalar_type()));
+
+          TT_ASSIGN_OR_RETURN(OpParamCacheKeys step_keys,
+                              *OpParamCacheKeysBuilder(param_keys.Clone())
+                                   .SetParam("step", "U"));
+
           TT_ASSIGN_OR_RETURN(
               auto buffer,
               DispatchOp<2>(LinalgSolveTriangularBuilder(
@@ -425,7 +434,7 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
                             {lu, t},
                             {.out_dtype = out_dtype,
                              .out_dims = CopyIntVector(t.sizes()),
-                             .op_param_cache_keys = std::move(param_keys)}));
+                             .op_param_cache_keys = std::move(step_keys)}));
 
           TT_RETURN_IF_ERROR(AssignBufferToAtTensor(std::move(buffer), t));
           return absl::OkStatus();

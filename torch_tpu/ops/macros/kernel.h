@@ -249,6 +249,7 @@ class InvalidOpParamCacheKeys {
   absl::Status SetParam(std::string_view, const T&);
   operator OpParamCacheKeys&() &;    // NOLINT
   operator OpParamCacheKeys&&() &&;  // NOLINT
+  OpParamCacheKeys Clone() const;
 };
 
 // This helper returns std::true_type if any of the given arguments should
