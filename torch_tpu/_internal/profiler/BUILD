@@ -75,7 +75,7 @@ pybind_extension(
     # https://github.com/openxla/xla/tree/main/third_party/py/rules_pywrap.
     # These args are required to link extensions against common libs.
     common_lib_packages = [
-        "//torch_tpu/common",
+        "torch_tpu/common",
     ],
     wrap_py_init = True,
     deps = [
