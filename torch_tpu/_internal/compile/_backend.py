@@ -227,6 +227,42 @@ def _unpickle_compiled_executable(
   )
 
 
+def _split_str_for_logging(text, limit=13000) -> Sequence[str]:
+  """Splits a string longer than the log line char limit into multiple chunks."""
+  chunks = []
+  while len(text) > limit:
+    split_index = text.rfind("\n", 0, limit)
+    if split_index == -1:
+      split_index = limit
+    chunks.append(text[:split_index])
+    text = text[split_index + 1 :]
+  if text:
+    chunks.append(text)
+  return chunks
+
+
+def _log_gm_and_inputs(
+    loc: str,
+    pre_or_post: str,
+    gm: torch.fx.GraphModule,
+    inputs: Sequence[Any],
+) -> None:
+  """Logs the FX graph and example inputs."""
+  if not logging.vlog_is_on(logging.DEBUG):
+    return
+
+  inputs_chunks = _split_str_for_logging(str(utils.InputMetadata(inputs)))
+  gm_chunks = _split_str_for_logging(gm.print_readable(print_output=False))
+  preamble = f"[TpuBackend.{loc}] {pre_or_post}-AOT Autograd"
+  logging.debug("%s Graph:", preamble)
+  for c in gm_chunks:
+    logging.debug(c)
+  logging.debug("%s Inputs Length: %d", preamble, len(inputs))
+  logging.debug("%s Sample Inputs:", preamble)
+  for c in inputs_chunks:
+    logging.debug(c)
+
+
 class TpuBackend:
   """TPU backend for torch.compile() integratation."""
 
@@ -271,7 +307,7 @@ class TpuBackend:
     # without dynamism.
     _raise_on_symint(example_inputs)
 
-    logging.info("[TpuBackend] Compiling FX Graph")
+    _log_gm_and_inputs("__call__", "Pre", graph_module, example_inputs)
 
     donate_args = list()
     # "options" is part of the torch.compile API but it is not tied to any
@@ -311,16 +347,10 @@ class TpuBackend:
     Returns:
       A function that executes the compiled graph on the TPU.
     """
-    if logging.vlog_is_on(logging.DEBUG):
-      logging.debug(
-          "[TpuBackend.compile_graph_module] Graph:\n%s",
-          graph_module.print_readable(print_output=False),
-      )
-      logging.debug(
-          "[TpuBackend.compile_graph_module] Sample Inputs (len = %d): \n%s",
-          len(example_inputs),
-          utils.InputMetadata(example_inputs),
-      )
+
+    _log_gm_and_inputs(
+        "_compile_graph_module", "Post", graph_module, example_inputs
+    )
 
     # Deepcopy the graph to avoid polluting the upstream Dynamo graph when we
     # apply passes.
