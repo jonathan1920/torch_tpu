@@ -478,4 +478,26 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "dcp_test",
+    srcs = ["dcp_test.py"],
+    notest_oss = "fix hang in OSS",  # TODO
+    tags = [
+        "exclusive",  # copybara:comment(oss-only)
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
+        "requires-tpu-v5lite:8",
+    ],
+    deps = [
+        ":distributed_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/api",
+    ],
+)
+
 torch_tpu_package_end()
