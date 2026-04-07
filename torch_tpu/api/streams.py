@@ -99,10 +99,10 @@ class TpuEvent:
 
   def __init__(
       self,
-      enable_timing: bool = False,
-      blocking: bool = False,
-      interprocess: bool = False,
-      external: bool = False,
+      enable_timing: bool = False,  # pylint: disable=unused-argument
+      blocking: bool = False,  # pylint: disable=unused-argument
+      interprocess: bool = False,  # pylint: disable=unused-argument
+      external: bool = False,  # pylint: disable=unused-argument
   ):
     # Accepted for CUDA API compatibility; TPU currently ignores these flags.
     self._event_id: int | None = None
@@ -134,6 +134,9 @@ class TpuEvent:
     waits for this event without blocking the CPU. torch_tpu does not yet
     support multi-stream execution, so this is currently a no-op. For CPU-side
     blocking, use :meth:`synchronize`.
+
+    Args:
+      stream: Ignored. Present for CUDA API compatibility.
     """
     return
 
