@@ -21,6 +21,7 @@
 #include <string_view>
 #include <utility>
 
+#include "absl/log/absl_check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -41,6 +42,9 @@
 namespace torch_tpu {
 
 struct BinaryOpOptions {
+  // The op name for dispatching. If omitted, use the op name from the active
+  // TT_KERNEL() context.
+  std::optional<OpName> op_name = std::nullopt;
   bool reverse_operands = false;
   bool force_float_inputs =
       false;  // Force inputs to be floats, by casting if necessary.
@@ -53,10 +57,19 @@ namespace internal {
 
 absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(const at::Tensor& self,
                                                  const at::Scalar& other,
+                                                 MlirBinaryOpBuilder op_builder,
+                                                 BinaryOpOptions opts);
+[[deprecated("Use DispatchBinaryOp() without the OpName parameter instead.")]]
+absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(const at::Tensor& self,
+                                                 const at::Scalar& other,
                                                  OpName op_name,
                                                  MlirBinaryOpBuilder op_builder,
                                                  BinaryOpOptions opts);
 
+absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(
+    const at::Tensor& self, const at::Tensor& other,
+    MlirBinaryOpBuilder bin_op_builder, BinaryOpOptions opts);
+[[deprecated("Use DispatchBinaryOp() without the OpName parameter instead.")]]
 absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(
     const at::Tensor& self, const at::Tensor& other, OpName op_name,
     MlirBinaryOpBuilder bin_op_builder, BinaryOpOptions opts);
@@ -64,21 +77,33 @@ absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(
 }  // namespace internal
 
 template <typename OtherType>
-absl::StatusOr<at::Tensor> BinaryOp(OpName op_name, const at::Tensor& tensor,
+absl::StatusOr<at::Tensor> BinaryOp(const at::Tensor& tensor,
                                     const OtherType& other,
                                     MlirBinaryOpBuilder op_builder,
                                     BinaryOpOptions opts) {
-  TT_ASSIGN_OR_RETURN(
-      auto result_buf,
-      internal::DispatchBinaryOp(tensor, other, op_name, std::move(op_builder),
-                                 std::move(opts)));
+  TT_ASSIGN_OR_RETURN(auto result_buf, internal::DispatchBinaryOp(
+                                           tensor, other, std::move(op_builder),
+                                           std::move(opts)));
   return MakeTensor(std::move(result_buf));
 }
 
 template <typename OtherType>
-absl::Status BinaryOpOut(const OpName op_name, const at::Tensor& tensor,
-                         const OtherType& other, at::Tensor& out,
-                         MlirBinaryOpBuilder op_builder, BinaryOpOptions opts) {
+[[deprecated("Use BinaryOp() without the OpName parameter instead.")]]
+absl::StatusOr<at::Tensor> BinaryOp(OpName op_name, const at::Tensor& tensor,
+                                    const OtherType& other,
+                                    MlirBinaryOpBuilder op_builder,
+                                    BinaryOpOptions opts) {
+  ABSL_CHECK(!opts.op_name.has_value())  // CRASH_OK
+      << "Cannot set the op name in options when calling BinaryOp with an "
+         "explicit OpName parameter.";
+  opts.op_name = op_name;
+  return BinaryOp(tensor, other, std::move(op_builder), std::move(opts));
+}
+
+template <typename OtherType>
+absl::Status BinaryOpOut(const at::Tensor& tensor, const OtherType& other,
+                         at::Tensor& out, MlirBinaryOpBuilder op_builder,
+                         BinaryOpOptions opts) {
   TT_RET_CHECK(out.device().type() == GetPrivateUse1DeviceType(),
                error::kInvalidArgument)
       << "the out tensor is expected to be on tpu, got " << out.device().str();
@@ -87,10 +112,9 @@ absl::Status BinaryOpOut(const OpName op_name, const at::Tensor& tensor,
                         ConvertTo<mlir::ElementType>(out.scalar_type()));
     opts.output_dtype_override = output_dtype;
   }
-  TT_ASSIGN_OR_RETURN(
-      auto result_buf,
-      internal::DispatchBinaryOp(tensor, other, op_name, std::move(op_builder),
-                                 std::move(opts)));
+  TT_ASSIGN_OR_RETURN(auto result_buf, internal::DispatchBinaryOp(
+                                           tensor, other, std::move(op_builder),
+                                           std::move(opts)));
 
   // For in-place operations, the `out` tensor is an alias of the `tensor`
   // input. In this case, we must not resize it, but check that the shape
@@ -112,6 +136,19 @@ absl::Status BinaryOpOut(const OpName op_name, const at::Tensor& tensor,
   }
 
   return AssignBufferToAtTensor(std::move(result_buf), out);
+}
+
+template <typename OtherType>
+[[deprecated("Use BinaryOpOut() without the OpName parameter instead.")]]
+absl::Status BinaryOpOut(const OpName op_name, const at::Tensor& tensor,
+                         const OtherType& other, at::Tensor& out,
+                         MlirBinaryOpBuilder op_builder, BinaryOpOptions opts) {
+  ABSL_CHECK(!opts.op_name.has_value())  // CRASH_OK
+      << "Cannot set the op name in options when calling BinaryOpOut with an "
+         "explicit OpName parameter.";
+  opts.op_name = op_name;
+  return BinaryOpOut(tensor, other, out, std::move(op_builder),
+                     std::move(opts));
 }
 
 // NOLINTBEGIN

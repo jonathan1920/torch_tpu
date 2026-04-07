@@ -20,6 +20,7 @@
 #include <string_view>
 #include <utility>
 
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -65,33 +66,44 @@ namespace internal {
 
 absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(const at::Tensor& self,
                                                  const at::Scalar& other,
-                                                 OpName op_name,
                                                  MlirBinaryOpBuilder op_builder,
                                                  BinaryOpOptions opts) {
   // Lift the "other" scalar to a tensor, in either constant or variable mode.
 
   at::ScalarType result_type = at::result_type(self, other);
   TT_ASSIGN_OR_RETURN(at::Tensor other_tensor, MakeTensor(other, result_type));
-  return DispatchBinaryOp(self, other_tensor, op_name, std::move(op_builder),
+  return DispatchBinaryOp(self, other_tensor, std::move(op_builder),
                           std::move(opts));
 }
 
+absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(const at::Tensor& self,
+                                                 const at::Scalar& other,
+                                                 OpName op_name,
+                                                 MlirBinaryOpBuilder op_builder,
+                                                 BinaryOpOptions opts) {
+  ABSL_CHECK(!opts.op_name.has_value())  // CRASH_OK
+      << "Cannot set the op name in options when calling DispatchBinaryOp with "
+         "an explicit OpName parameter.";
+  opts.op_name = op_name;
+  return DispatchBinaryOp(self, other, std::move(op_builder), std::move(opts));
+}
+
 absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(
-    const at::Tensor& self, const at::Tensor& other, OpName op_name,
+    const at::Tensor& self, const at::Tensor& other,
     MlirBinaryOpBuilder bin_op_builder, BinaryOpOptions opts) {
   // Special case in which the LHS is a scalar allocated on the CPU.
   if (self.device().type() == c10::DeviceType::CPU && self.numel() == 1) {
     // MakeTensor uses a cache to deduplicate scalar tensors.
     TT_ASSIGN_OR_RETURN(at::Tensor self_tensor, MakeTensor(self.item()));
-    return DispatchBinaryOp(self_tensor, other, op_name,
-                            std::move(bin_op_builder), std::move(opts));
+    return DispatchBinaryOp(self_tensor, other, std::move(bin_op_builder),
+                            std::move(opts));
   }
   // Special case in which the RHS is a scalar allocated on the CPU.
   if (other.device().type() == c10::DeviceType::CPU && other.numel() == 1) {
     // MakeTensor uses a cache to deduplicate scalar tensors.
     TT_ASSIGN_OR_RETURN(at::Tensor other_tensor, MakeTensor(other.item()));
-    return DispatchBinaryOp(self, other_tensor, op_name,
-                            std::move(bin_op_builder), std::move(opts));
+    return DispatchBinaryOp(self, other_tensor, std::move(bin_op_builder),
+                            std::move(opts));
   }
 
   TT_ASSIGN_OR_RETURN(const Dimensions output_dims,
@@ -115,12 +127,24 @@ absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(
     return bin_op_builder(self, other);
   };
   return DispatchOp<2>(
-      op_name, std::move(op_builder), {self, other},
-      {.out_dtype = output_dtype,
+      std::move(op_builder), {self, other},
+      {.op_name = opts.op_name,
+       .out_dtype = output_dtype,
        .out_dims = output_dims,
        .computation_dtype = computation_dtype,
        .op_param_cache_keys = std::move(opts.op_param_cache_keys),
        .split_mode = opts.split_mode});
+}
+
+absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(
+    const at::Tensor& self, const at::Tensor& other, const OpName op_name,
+    MlirBinaryOpBuilder bin_op_builder, BinaryOpOptions opts) {
+  ABSL_CHECK(!opts.op_name.has_value())  // CRASH_OK
+      << "Cannot set the op name in options when calling DispatchBinaryOp with "
+         "an explicit OpName parameter.";
+  opts.op_name = op_name;
+  return DispatchBinaryOp(self, other, std::move(bin_op_builder),
+                          std::move(opts));
 }
 
 }  // namespace internal

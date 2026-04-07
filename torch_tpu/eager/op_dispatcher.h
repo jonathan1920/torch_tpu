@@ -104,6 +104,9 @@ template <int kNumOutputs>
 struct DispatchOpOptions {
   static_assert(kNumOutputs >= 2);
 
+  // The op name for dispatching. If omitted, use the op name from the active
+  // TT_KERNEL() context.
+  std::optional<OpName> op_name = std::nullopt;
   const FixedSizeSpan<const mlir::ElementType, kNumOutputs>& out_dtypes;
   const FixedSizeSpan<const absl::Span<const int64_t>, kNumOutputs>&
       out_dims_list;
@@ -121,6 +124,9 @@ struct DispatchOpOptions {
 // time.
 template <>
 struct DispatchOpOptions<kDynamicSize> {
+  // The op name for dispatching. If omitted, use the op name from the active
+  // TT_KERNEL() context.
+  std::optional<OpName> op_name = std::nullopt;
   const absl::Span<const mlir::ElementType>& out_dtypes;
   const absl::Span<const absl::Span<const int64_t>>& out_dims_list;
   std::optional<mlir::ElementType> computation_dtype;
@@ -132,6 +138,9 @@ struct DispatchOpOptions<kDynamicSize> {
 // Specialization for the case where the number of outputs is 1.
 template <>
 struct DispatchOpOptions<1> {
+  // The op name for dispatching. If omitted, use the op name from the active
+  // TT_KERNEL() context.
+  std::optional<OpName> op_name = std::nullopt;
   const mlir::ElementType& out_dtype;
   const absl::Span<const int64_t>& out_dims;
   std::optional<mlir::ElementType> computation_dtype;
@@ -212,8 +221,7 @@ void SetOpDispatchFailure(std::string op_base_name,
 // Don't use this directly when defining ops. Use DispatchOp<kNumInputs,
 // kNumOutputs> instead.
 absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
-    OpName op_name, MlirOpBuilder op_builder,
-    std::vector<DeviceBufferRef> inputs,
+    MlirOpBuilder op_builder, std::vector<DeviceBufferRef> inputs,
     DispatchOpOptions<kDynamicSize> options);
 
 template <int kArity>
@@ -244,10 +252,20 @@ using OpInputs = internal::OpInputsTraits<kArity>::type;
 // kArity. If the number of outputs is unknown at compile time, use kDynamicSize
 // for kNumOutputs.
 template <int kArity, int kNumOutputs = 1>
-[[deprecated("Use DispatchOp() without the OpName parameter instead.")]]
 absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
-    const OpName op_name, NAryMlirOpBuilder<kArity, kNumOutputs> op_builder,
+    NAryMlirOpBuilder<kArity, kNumOutputs> op_builder,
     const OpInputs<kArity>& inputs, DispatchOpOptions<kNumOutputs> options) {
+  // If the op name is provided in the options, respect the override. Otherwise,
+  // use the op name from the active TT_KERNEL() context.
+  if (!options.op_name.has_value()) {
+    options.op_name = internal::OpNameStack::MaybeTop();
+  }
+  ABSL_CHECK(options.op_name.has_value())  // CRASH_OK
+      << "DispatchOp() called without an active TT_KERNEL() context. "
+         "Move the call inside a TT_KERNEL(). Or, if there's a good reason for "
+         "not using TT_KERNEL(), use DispatchOp(..., {.op_name = ...}) "
+         "instead.";
+
   absl::Span<const at::Tensor> inputs_span;
   if constexpr (kArity == kDynamicSize) {
     inputs_span = inputs;
@@ -266,11 +284,11 @@ absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
     TT_ASSIGN_OR_RETURN(
         results,
         internal::DynamicDispatchOp(
-            op_name,
             ToMlirOpBuilder<kArity, kNumOutputs>(std::move(op_builder)),
             std::move(inputs_vec),
             // Convert DispatchOpOptions<1> to DispatchOpOptions<kDynamicSize>.
-            {.out_dtypes = {options.out_dtype},
+            {.op_name = options.op_name,
+             .out_dtypes = {options.out_dtype},
              .out_dims_list = {options.out_dims},
              .computation_dtype = options.computation_dtype,
              .op_param_cache_keys = std::move(options.op_param_cache_keys),
@@ -279,19 +297,18 @@ absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
     TT_ASSIGN_OR_RETURN(
         results,
         internal::DynamicDispatchOp(
-            op_name,
             ToMlirOpBuilder<kArity, kNumOutputs>(std::move(op_builder)),
             std::move(inputs_vec), std::move(options)));
-  } else {
+  } else {  // kNumOutputs >= 2 and is known at compile time.
     TT_ASSIGN_OR_RETURN(
         results,
         internal::DynamicDispatchOp(
-            op_name,
             ToMlirOpBuilder<kArity, kNumOutputs>(std::move(op_builder)),
             std::move(inputs_vec),
             // Convert DispatchOpOptions<kNumOutputs> to
             // DispatchOpOptions<kDynamicSize>.
-            {.out_dtypes = options.out_dtypes,
+            {.op_name = options.op_name,
+             .out_dtypes = options.out_dtypes,
              .out_dims_list = options.out_dims_list,
              .computation_dtype = options.computation_dtype,
              .op_param_cache_keys = std::move(options.op_param_cache_keys),
@@ -316,20 +333,17 @@ absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
   }
 }
 
-// Dispatches an op with the given number of inputs (kArity) and given number of
-// outputs (kNumOutputs). This version retrieves the `OpName` from a
-// thread-local stack managed by `TT_KERNEL()`.
 template <int kArity, int kNumOutputs = 1>
+[[deprecated("Use DispatchOp() without the OpName parameter instead.")]]
 absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
-    NAryMlirOpBuilder<kArity, kNumOutputs> op_builder,
+    const OpName op_name, NAryMlirOpBuilder<kArity, kNumOutputs> op_builder,
     const OpInputs<kArity>& inputs, DispatchOpOptions<kNumOutputs> options) {
-  std::optional<OpName> op_name = internal::OpNameStack::MaybeTop();
-  ABSL_CHECK(op_name.has_value())  // CRASH_OK
-      << "DispatchOp() called without an active TT_KERNEL() context. "
-         "Move the call inside a TT_KERNEL(). Or, if there's a good reason for "
-         "not using TT_KERNEL(), use DispatchOp(op_name, ...) instead.";
-  return DispatchOp<kArity, kNumOutputs>(*op_name, std::move(op_builder),
-                                         inputs, std::move(options));
+  ABSL_CHECK(!options.op_name.has_value())  // CRASH_OK
+      << "Cannot set the op name in options when calling DispatchOp with an "
+         "explicit OpName parameter.";
+  options.op_name = op_name;
+  return DispatchOp<kArity, kNumOutputs>(std::move(op_builder), inputs,
+                                         std::move(options));
 }
 
 // Creates an at::Tensor from an at::Scalar.

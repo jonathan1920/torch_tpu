@@ -350,9 +350,11 @@ class OpWindow {
 };
 
 absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
-    OpName op_name, MlirOpBuilder op_builder,
-    std::vector<DeviceBufferRef> inputs,
+    MlirOpBuilder op_builder, std::vector<DeviceBufferRef> inputs,
     DispatchOpOptions<kDynamicSize> options) {
+  ABSL_CHECK(options.op_name.has_value())  // CRASH_OK
+      << "DynamicDispatchOp() called without op_name in options.";
+  const OpName op_name = options.op_name.value();
   ABSL_VLOG(1) << "DispatchOp " << op_name;
   if (ABSL_VLOG_IS_ON(3)) {
     std::stringstream inputs_ss;

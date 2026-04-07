@@ -32,6 +32,9 @@
 namespace torch_tpu {
 
 struct UnaryOpOptions {
+  // The op name for dispatching. If omitted, use the op name from the active
+  // TT_KERNEL() context.
+  std::optional<OpName> op_name = std::nullopt;
   // Parameters (if any) that were used to construct op_builder and will be used
   // by the compilation cache.
   OpParamCacheKeys op_param_cache_keys;
@@ -47,11 +50,14 @@ struct UnaryOpOptions {
 // Safely applies a functional unary operation to the input tensor.
 // Args:
 //    self: The input tensor.
-//    op_name: The name of the operation.
 //    op_builder: The unary operation to apply.
 //    options: See ApplyOpOptions.
 // Returns:
 //   A new tensor with the result of the operation.
+absl::StatusOr<at::Tensor> UnaryOp(const at::Tensor& self,
+                                   MlirUnaryOpBuilder op_builder,
+                                   UnaryOpOptions options);
+[[deprecated("Use UnaryOp() without the OpName parameter instead.")]]
 absl::StatusOr<at::Tensor> UnaryOp(const at::Tensor& self, OpName op_name,
                                    MlirUnaryOpBuilder op_builder,
                                    UnaryOpOptions options);
@@ -59,6 +65,9 @@ absl::StatusOr<at::Tensor> UnaryOp(const at::Tensor& self, OpName op_name,
 // Like UnaryOpCallback, but the result overwrites the input.
 // Because of this overwrite, the output must have the shape and dtype of self.
 // Hence .out_dims and .out_dtype in options are ignored.
+absl::Status UnaryOpInPlace(at::Tensor& self, MlirUnaryOpBuilder op_builder,
+                            UnaryOpOptions options);
+[[deprecated("Use UnaryOpInPlace() without the OpName parameter instead.")]]
 absl::Status UnaryOpInPlace(at::Tensor& self, OpName op_name,
                             MlirUnaryOpBuilder op_builder,
                             UnaryOpOptions options);
@@ -66,6 +75,9 @@ absl::Status UnaryOpInPlace(at::Tensor& self, OpName op_name,
 // Like UnaryOpCallback, but the result overwrites the provided `out` tensor.
 // `out` is resized to `out_dims` and must have dtype `out_dtype`.
 // If they are not provided then the values from `self` are used.
+absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out,
+                        MlirUnaryOpBuilder op_builder, UnaryOpOptions options);
+[[deprecated("Use UnaryOpOut() without the OpName parameter instead.")]]
 absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out, OpName op_name,
                         MlirUnaryOpBuilder op_builder, UnaryOpOptions options);
 

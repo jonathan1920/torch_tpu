@@ -19,6 +19,7 @@
 #include <optional>
 #include <utility>
 
+#include "absl/log/absl_check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -95,7 +96,7 @@
 
 namespace torch_tpu {
 
-absl::StatusOr<at::Tensor> UnaryOp(const at::Tensor& self, OpName op_name,
+absl::StatusOr<at::Tensor> UnaryOp(const at::Tensor& self,
                                    MlirUnaryOpBuilder op_builder,
                                    UnaryOpOptions options) {
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
@@ -107,31 +108,51 @@ absl::StatusOr<at::Tensor> UnaryOp(const at::Tensor& self, OpName op_name,
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       DispatchOp<1>(
-          op_name, std::move(op_builder), self,
-          {.out_dtype = output_dtype,
+          std::move(op_builder), self,
+          {.op_name = options.op_name,
+           .out_dtype = output_dtype,
            .out_dims = output_dims,
            .computation_dtype = options.computation_dtype,
            .op_param_cache_keys = std::move(options.op_param_cache_keys)}));
   return MakeTensor(std::move(result_buf));
 }
+absl::StatusOr<at::Tensor> UnaryOp(const at::Tensor& self, OpName op_name,
+                                   MlirUnaryOpBuilder op_builder,
+                                   UnaryOpOptions options) {
+  ABSL_CHECK(!options.op_name.has_value())  // CRASH_OK
+      << "Cannot set the op name in options when calling UnaryOp with an "
+         "explicit OpName parameter.";
+  options.op_name = op_name;
+  return UnaryOp(self, std::move(op_builder), std::move(options));
+}
 
-absl::Status UnaryOpInPlace(at::Tensor& self, OpName op_name,
-                            MlirUnaryOpBuilder op_builder,
+absl::Status UnaryOpInPlace(at::Tensor& self, MlirUnaryOpBuilder op_builder,
                             UnaryOpOptions options) {
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       DispatchOp<1>(
-          op_name, std::move(op_builder), self,
-          {.out_dtype = output_dtype,
+          std::move(op_builder), self,
+          {.op_name = options.op_name,
+           .out_dtype = output_dtype,
            .out_dims = self.sizes(),
            .computation_dtype = options.computation_dtype,
            .op_param_cache_keys = std::move(options.op_param_cache_keys)}));
   return AssignBufferToAtTensor(std::move(result_buf), self);
 }
 
-absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out, OpName op_name,
+absl::Status UnaryOpInPlace(at::Tensor& self, OpName op_name,
+                            MlirUnaryOpBuilder op_builder,
+                            UnaryOpOptions options) {
+  ABSL_CHECK(!options.op_name.has_value())  // CRASH_OK
+      << "Cannot set the op name in options when calling UnaryOpInPlace with "
+         "an explicit OpName parameter.";
+  options.op_name = op_name;
+  return UnaryOpInPlace(self, std::move(op_builder), std::move(options));
+}
+
+absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out,
                         MlirUnaryOpBuilder op_builder, UnaryOpOptions options) {
   TT_RET_CHECK(IsPrivateUse1Device(out), error::kInvalidArgument)
       << "expected the output tensor to be on "
@@ -154,13 +175,23 @@ absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out, OpName op_name,
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       DispatchOp<1>(
-          op_name, std::move(op_builder), self,
-          {.out_dtype = output_dtype,
+          std::move(op_builder), self,
+          {.op_name = options.op_name,
+           .out_dtype = output_dtype,
            .out_dims = output_dims,
            .computation_dtype = options.computation_dtype,
            .op_param_cache_keys = std::move(options.op_param_cache_keys)}));
   at::native::resize_output(out, shape);
   return AssignBufferToAtTensor(std::move(result_buf), out);
+}
+
+absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out, OpName op_name,
+                        MlirUnaryOpBuilder op_builder, UnaryOpOptions options) {
+  ABSL_CHECK(!options.op_name.has_value())  // CRASH_OK
+      << "Cannot set the op name in options when calling UnaryOpOut with an "
+         "explicit OpName parameter.";
+  options.op_name = op_name;
+  return UnaryOpOut(self, out, std::move(op_builder), std::move(options));
 }
 
 // Returns the input dtype if it is a floating-point type.
