@@ -230,6 +230,10 @@ common:ci_tpu_on_v6 --test_tag_filters=-notest_oss,-nobuild_oss,-notap,-fails-on
 common:ci_tpu_on_v7 --config=ci_tpu_base
 common:ci_tpu_on_v7 --test_tag_filters=-notest_oss,-nobuild_oss,-notap,-fails-on-tpu-v7
 common:ci_tpu_on_v7 --local_test_jobs=1
+# Bypass the libtpu multi-process lock. Otherwise, we have to explicitly delete
+# /tmp/libtpu_lockfile to clean up the dirty state of previous crashed jobs to
+# unblock the current job.
+common:ci_tpu_on_v7 --test_env=ALLOW_MULTIPLE_LIBTPU_LOAD=true
 
 common:ci_tpu_nightly --config=ci_tpu_base
 
