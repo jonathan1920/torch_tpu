@@ -23,6 +23,7 @@
 #include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/distributed/slicebuilder/discovery.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
 
@@ -44,8 +45,11 @@ absl::StatusOr<absl_nonnull std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
     return client;
   }
   if (device_type == "xla_cpu") {
-    return xla::GetCApiClient("cpu",
-                              {{"cpu_device_count", static_cast<int64_t>(1)}});
+    int64_t cpu_device_count = 1;
+    if (auto world_size_or = GetWorldSizeFromEnvOnce(); world_size_or.ok()) {
+      cpu_device_count = *world_size_or;
+    }
+    return xla::GetCApiClient("cpu", {{"cpu_device_count", cpu_device_count}});
   }
   return TT_ERROR(error::kInvalidArgument)
          << "Unable to get PJRT client for unsupported device type: "

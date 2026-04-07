@@ -230,9 +230,6 @@ torch_tpu_cc_test(
         "cpp_link.mem": "16g",  # Needed for asan.
     },
     notest_oss = "Disabled during switch from opt-in to opt-out",
-    tags = [
-        "requires-tpu-v5lite",  # Needs PjRt client.
-    ],
     deps = [
         ":cache_key",
         ":dimension_types",
@@ -257,15 +254,11 @@ torch_tpu_cc_test(
     # Do not set the TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment variable.
     args = [
         "--expected_tier2_cache_name=",
-        "--world_size=1",
     ],
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
     notest_oss = "Disabled during switch from opt-in to opt-out",
-    tags = [
-        "requires-tpu-v5lite",  # Needs PjRt client.
-    ],
     deps = [
         ":tier2_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
@@ -281,7 +274,6 @@ torch_tpu_cc_test(
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
     args = [
         "--expected_tier2_cache_name=default",
-        "--world_size=1",
     ],
     # Do not set the TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment variable.
     env = {
@@ -292,9 +284,6 @@ torch_tpu_cc_test(
         "cpp_link.mem": "16g",  # Needed for asan.
     },
     notest_oss = "Disabled during switch from opt-in to opt-out",
-    tags = [
-        "requires-tpu-v5lite",  # Needs PjRt client.
-    ],
     deps = [
         ":tier2_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
@@ -311,16 +300,15 @@ torch_tpu_cc_test(
     # Do not set the TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE environment variable.
     args = [
         "--expected_tier2_cache_name=default",
-        "--world_size=4",
     ],
+    env = {
+        "WORLD_SIZE": "4",
+        "TORCH_TPU_TOPOLOGY": "2,2,1",
+    },
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    nopresubmit = "long Forge queue",
     notest_oss = "Disabled during switch from opt-in to opt-out",
-    tags = [
-        "requires-tpu-v5p:4",  # Needs PjRt client and multiple devices.
-    ],
     deps = [
         ":tier2_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
@@ -336,7 +324,6 @@ torch_tpu_cc_test(
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
     args = [
         "--expected_tier2_cache_name=",
-        "--world_size=1",
     ],
     env = {
         "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "disabled",
@@ -345,9 +332,6 @@ torch_tpu_cc_test(
         "cpp_link.mem": "16g",  # Needed for asan.
     },
     notest_oss = "Disabled during switch from opt-in to opt-out",
-    tags = [
-        "requires-tpu-v5lite",  # Needs PjRt client.
-    ],
     deps = [
         ":tier2_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
@@ -363,19 +347,16 @@ torch_tpu_cc_test(
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
     args = [
         "--expected_tier2_cache_name=",
-        "--world_size=4",
     ],
     env = {
         "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "disabled",
+        "WORLD_SIZE": "4",
+        "TORCH_TPU_TOPOLOGY": "2,2,1",
     },
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    nopresubmit = "long Forge queue",
     notest_oss = "Disabled during switch from opt-in to opt-out",
-    tags = [
-        "requires-tpu-v5p:4",  # Needs PjRt client and multiple devices.
-    ],
     deps = [
         ":tier2_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
@@ -391,7 +372,6 @@ torch_tpu_cc_test(
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
     args = [
         "--expected_tier2_cache_name=my_cache",
-        "--world_size=1",
     ],
     env = {
         "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "my_cache",
@@ -400,9 +380,6 @@ torch_tpu_cc_test(
         "cpp_link.mem": "16g",  # Needed for asan.
     },
     notest_oss = "Disabled during switch from opt-in to opt-out",
-    tags = [
-        "requires-tpu-v5lite",  # Needs PjRt client.
-    ],
     deps = [
         ":tier2_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
@@ -418,19 +395,16 @@ torch_tpu_cc_test(
     srcs = ["tier2_compilation_cache_enablement_test.cc"],
     args = [
         "--expected_tier2_cache_name=my_cache2",
-        "--world_size=4",
     ],
     env = {
         "TORCH_TPU_INTERNAL_TIER2_COMPILATION_CACHE": "my_cache2",
+        "WORLD_SIZE": "4",
+        "TORCH_TPU_TOPOLOGY": "2,2,1",
     },
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    nopresubmit = "long Forge queue",
     notest_oss = "Disabled during switch from opt-in to opt-out",
-    tags = [
-        "requires-tpu-v5p:4",  # Needs PjRt client and multiple devices.
-    ],
     deps = [
         ":tier2_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",

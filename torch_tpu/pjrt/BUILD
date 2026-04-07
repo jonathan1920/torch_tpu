@@ -37,6 +37,7 @@ torch_tpu_cc_library(
     ],
     deps = [
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/distributed/slicebuilder:discovery",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/status:statusor",
         "@xla//xla/pjrt:pjrt_client",

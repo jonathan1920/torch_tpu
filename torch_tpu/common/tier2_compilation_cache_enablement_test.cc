@@ -22,7 +22,6 @@
 #include "torch_tpu/common/tier2_compilation_cache.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 
-ABSL_FLAG(int, world_size, 1, "The world size to use for the test.");
 ABSL_FLAG(std::string, expected_tier2_cache_name, "",
           "The expected name of the tier-2 compilation cache, or empty if the "
           "cache is expected to be disabled.");
@@ -35,9 +34,10 @@ namespace {
 class TpuTestEnvironment : public testing::Environment {
  public:
   void SetUp() override {
-    // This must be done before testing GetFromTier2Cache(),.
+    // Use xla_cpu for testing to allow mocking multiple devices in a single
+    // process without needing real TPU hardware or multiple workers.
     PjrtBackend::GetInstance().SetPjRtInitializationOptions(
-        {.device_type = "tpu"});
+        {.device_type = "xla_cpu"});
     ABSL_CHECK_OK(PjrtBackend::GetInstance().EnsureInitialized());
   }
 };
