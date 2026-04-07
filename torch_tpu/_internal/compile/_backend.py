@@ -137,6 +137,7 @@ class _TorchTpuCompiledExecutable:
     """
     self._executable = executable
     self._map_output_fn = map_output_fn
+    self._tensor_arg_indices = None
     self._graph_module_debug_str: str | None = None
     self._mlir_graph: str | None = None
 
@@ -161,15 +162,25 @@ class _TorchTpuCompiledExecutable:
     self._mlir_graph = value
 
   def __call__(self, *args):
-    if args:
-      device_module = torch.get_device_module(args[0].device)
-    else:
+    # Find the device module based on tensor arguments. This is a mitigation
+    # for when torch.compile is run on xla_cpu or xla_gpu devices, and
+    # referencing api.tpu_device() would trigger a circular dependency.
+    # Remove this once api.tpu_device() becomes the canonical way to get the
+    # only TorchTPU device.
+    device_module = None
+    for arg in args:
+      if isinstance(arg, torch.Tensor):
+        device_module = torch.get_device_module(arg.device)
+        break
+    if device_module is None:
       device_module = torch.tpu
 
     # rewrite_stateless_rng_ops pass adds rng_state as the last argument.
     args = (*args, device_module.get_rng_state())
 
-    outputs = tpu_torch_compile.execute(self._executable, args)
+    executable_args = self._filter_tensor_args(args)
+    outputs = tpu_torch_compile.execute(self._executable, executable_args)
+
     if self._map_output_fn is not None:
       outputs = self._map_output_fn(outputs)
 
@@ -177,6 +188,25 @@ class _TorchTpuCompiledExecutable:
     *outputs, rng_state = outputs
     device_module.set_rng_state(rng_state)
     return outputs
+
+  def _filter_tensor_args(
+      self, args: tuple[Any, ...]
+  ) -> tuple[torch.Tensor, ...]:
+    """Filters out non-tensor arguments (e.g., concrete integers)."""
+    if self._tensor_arg_indices is None:
+      # Pre-compute indices for filtering out non-tensor args once.
+      # Assume args will have the same structure for subsequent calls.
+      self._tensor_arg_indices = tuple(
+          i for i, arg in enumerate(args) if isinstance(arg, torch.Tensor)
+      )
+
+    if len(self._tensor_arg_indices) == len(args):
+      return args
+
+    filtered = operator.itemgetter(*self._tensor_arg_indices)(args)
+    if len(self._tensor_arg_indices) == 1:
+      return (filtered,)
+    return filtered
 
   def __reduce__(self):
     """Enable pickling by serializing the PjRt executable to bytes."""
@@ -299,7 +329,6 @@ class TpuBackend:
     graph_module = torch.fx.GraphModule(
         graph_module, copy.deepcopy(graph_module.graph)
     )
-    original_input_count = len(example_inputs)
 
     # Decompose auto functionalized ops, we need to explicitly do this because
     # the default behaviour inserts flatten and unflatten ops at the boundaries
@@ -404,45 +433,4 @@ class TpuBackend:
       executable.graph_module_debug_str = str(graph_module.code)
       executable.mlir_graph = mlir_graph
 
-    # If there are non-tensor inputs (e.g. concrete ints from dynamic shapes),
-    # wrap the executable to filter them out at call time since
-    # tpu_torch_compile.execute() only accepts tensors.
-    # Pre-compute indices for _TensorFilterExecutable for performance
-    tensor_indices = tuple(
-        i
-        for i, arg in enumerate(example_inputs[:original_input_count])
-        if isinstance(arg, torch.Tensor)
-    )
-    if len(tensor_indices) < len(example_inputs[:original_input_count]):
-      return _TensorFilterExecutable(executable, tensor_indices)
-
     return executable
-
-
-class _TensorFilterExecutable:
-  """Wraps a compiled executable to filter out non-tensor args at call time.
-
-  Used when aot_autograd passes concrete integers alongside tensors.
-  Implemented as a class (not a closure) to support pickling.
-  """
-
-  def __init__(
-      self,
-      executable: _TorchTpuCompiledExecutable,
-      tensor_indices: tuple[int, ...] = (),
-  ):
-    self._executable = executable
-    self._tensor_indices = tensor_indices
-    # Precompute an itemgetter that does all index lookups in C.
-    # itemgetter returns a scalar for 1 key, so wrap it to always return a
-    # tuple.
-    _getter = operator.itemgetter(*tensor_indices)
-    self._itemgetter = (
-        (lambda args: (_getter(args),)) if len(tensor_indices) == 1 else _getter
-    )
-
-  def __call__(self, *args):
-    return self._executable(*self._itemgetter(args))
-
-  def __reduce__(self):
-    return (type(self), (self._executable, self._tensor_indices))
