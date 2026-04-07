@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end")
 load("//shims/py_rules:pytype.bzl", "pytype_library")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
@@ -154,27 +154,6 @@ pybind_extension(
         "@xla//xla/mlir/utils:error_util",
         "@xla//xla/pjrt:mlir_to_hlo",
         "@xla//xla/pjrt:pjrt_client",
-    ],
-)
-
-torch_tpu_py_test(
-    name = "trace_autograd_ops_test",
-    srcs = ["trace_autograd_ops_test.py"],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
-    notest_oss = "Disabled during switch from opt-in to opt-out",
-    strict = "true",
-    tags = [
-        "nomsan",  # TODO: fix the test in msan mode.
-        "requires-tpu-v5lite",
-    ],
-    deps = [
-        ":tpu_backend",
-        "//shims/absl_py/testing:absltest",
-        "//shims/absl_py/testing:parameterized",
-        "//shims/torch:pytorch",
-        "//torch_tpu/_internal/sync",
-        "//torch_tpu/_internal/utils",
-        "//torch_tpu/api",
     ],
 )
 

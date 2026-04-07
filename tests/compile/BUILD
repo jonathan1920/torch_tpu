@@ -283,4 +283,25 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "trace_autograd_ops_test",
+    srcs = ["trace_autograd_ops_test.py"],
+    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
+    notest_oss = "Disabled during switch from opt-in to opt-out",
+    strict = "true",
+    tags = [
+        "nomsan",  # TODO: fix the test in msan mode.
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/sync",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/api",
+    ],
+)
+
 torch_tpu_package_end()
