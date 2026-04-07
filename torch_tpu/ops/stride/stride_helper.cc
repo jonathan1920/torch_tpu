@@ -25,6 +25,7 @@
 #include "absl/types/span.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 
@@ -110,15 +111,17 @@ bool IsOverlapping(absl::Span<const int64_t> sizes,
   return false;
 }
 
-absl::Status ValidateStorageAndLayoutBytes(
+absl::Status CheckProvidedLayoutDataFitsInStorage(
     int64_t storage_numel, mlir::ElementType storage_element_type,
-    Dimensions sizes, Strides strides, int64_t offset,
+    Dimensions sizes, Strides strides, int64_t storage_offset,
     mlir::ElementType layout_element_type) {
-  TT_RET_CHECK(offset >= 0, error::kInvalidArgument)
-      << "storage offset must be non-negative";
+  TT_RET_CHECK(storage_offset >= 0, error::kInvalidArgument)
+      << "expected the given storage offset to be >= 0, got " << storage_offset;
 
   TT_RET_CHECK(sizes.size() == strides.size(), error::kInvalidArgument)
-      << "size and stride must have the same length";
+      << "expected the given sizes " << ToString(sizes) << " and strides "
+      << ToString(strides) << " to have the same length, got " << sizes.size()
+      << " vs. " << strides.size();
 
   const int64_t storage_element_bitwidth =
       TorchEquivalentBitwidth(storage_element_type);
@@ -130,7 +133,7 @@ absl::Status ValidateStorageAndLayoutBytes(
     storage_nbytes = storage_numel * (storage_element_bitwidth / 8);
   }
 
-  int64_t required_numel = offset + 1;
+  int64_t required_numel = storage_offset + 1;
   for (auto i = 0; i < sizes.size(); ++i) {
     if (sizes[i] == 0) {
       // Zero-sized views are always valid.
@@ -150,8 +153,9 @@ absl::Status ValidateStorageAndLayoutBytes(
   }
 
   TT_RET_CHECK(required_nbytes <= storage_nbytes, error::kInvalidArgument)
-      << "tensor would require at least " << required_nbytes
-      << " bytes, but only " << storage_nbytes << " are available";
+      << "expected the number of bytes required by the given arguments to be "
+         "<= "
+      << storage_nbytes << " (actual storage size), got " << required_nbytes;
 
   return absl::OkStatus();
 }

@@ -276,7 +276,9 @@ at::Tensor& AtenSignOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kSignOut, _, (self, out), {
     TT_CHECK_THROW(!IsComplex(self), error::kInvalidArgument)
         << "expected the input dtype not to be complex, got "
-        << ToString(self.scalar_type()) << "; use torch.sgn() instead";
+        << ToString(self.scalar_type())
+        << "; use torch.sgn() instead if you intend to normalize a complex "
+           "tensor to each complex element having magnitude 1";
     TT_ASSIGN_OR_THROW(auto out_dtype,
                        ConvertTo<mlir::ElementType>(self.scalar_type()));
     TT_ASSIGN_OR_THROW(

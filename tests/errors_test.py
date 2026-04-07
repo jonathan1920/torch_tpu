@@ -656,8 +656,11 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     source = torch.arange(8, device="tpu", dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        "set_(): tensor would require at least 64 bytes, but only 32 are"
-        " available",
+        tpu=(
+            "set_(): expected the number of bytes required by the given"
+            " arguments to be <= 32 (actual storage size), got 64"
+        ),
+        message_reviewed_by="wan",
     ):
       t.set_(source.untyped_storage(), storage_offset=0, size=[16], stride=[1])
 
@@ -7517,7 +7520,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         RuntimeError,
         tpu=(
             "sign(): expected the input dtype not to be complex, got complex64;"
-            " use torch.sgn() instead"
+            " use torch.sgn() instead if you intend to normalize a complex"
+            " tensor to each complex element having magnitude 1"
         ),
         cpu=(
             "Unlike NumPy, torch.sign is not intended to support complex"
@@ -7596,6 +7600,31 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       torch.ops.aten._softmax_backward_data(
           grad_output, output, 0, torch.float32, grad_input=grad_input
       ).cpu()
+
+  def test_as_strided_negative_offset(self):
+    t = torch.empty(5, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "as_strided(): expected the given storage offset to be >= 0, got -1"
+        ),
+        cpu="Tensor: invalid storage offset -1",
+        message_reviewed_by="wan",
+    ):
+      torch.as_strided(t, (1,), (1,), storage_offset=-1)
+
+  def test_as_strided_size_stride_mismatch(self):
+    t = torch.empty(5, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "as_strided(): expected the given sizes [1, 2] and strides [1] to"
+            " have the same length, got 2 vs. 1"
+        ),
+        cpu="mismatch in length of strides and shape",
+        message_reviewed_by="wan",
+    ):
+      torch.as_strided(t, (1, 2), (1,))
 
 
 if __name__ == "__main__":

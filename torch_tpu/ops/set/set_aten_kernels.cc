@@ -70,7 +70,9 @@ at::Tensor& AtenSet_SourceStorageOffset(at::Tensor& self, c10::Storage src,
                                         c10::SymInt storage_offset,
                                         c10::SymIntArrayRef size,
                                         c10::SymIntArrayRef stride) {
-  int64_t offset = storage_offset.guard_int(__FILE__, __LINE__);
+  int64_t concrete_storage_offset =
+      storage_offset.guard_int(__FILE__, __LINE__);
+
   Dimensions size_vec;
   for (const auto& s : size) {
     size_vec.push_back(s.guard_int(__FILE__, __LINE__));
@@ -79,29 +81,29 @@ at::Tensor& AtenSet_SourceStorageOffset(at::Tensor& self, c10::Storage src,
   for (const auto& s : stride) {
     stride_vec.push_back(s.guard_int(__FILE__, __LINE__));
   }
-  TT_KERNEL(OpName::kSet_SourceStorageOffset, _,
-            (self, IgnoreInCacheKey(src, "Legacy usage"),
-             IgnoreInCacheKey(offset, "Legacy usage"),
-             IgnoreInCacheKey(size_vec, "Legacy usage"),
-             IgnoreInCacheKey(stride_vec, "Legacy usage")),
-            {
-              c10::TensorImpl* impl = self.unsafeGetTensorImpl();
-              TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref,
-                                 GetBaseBufferFromStorage(src));
-              const int64_t storage_numel = buffer_ref.num_elements();
-              const mlir::ElementType storage_dtype = buffer_ref.element_type();
-              TT_ASSIGN_OR_THROW(
-                  const mlir::ElementType tensor_dtype,
-                  ConvertTo<mlir::ElementType>(self.scalar_type()));
-              impl->set_storage_keep_dtype(std::move(src));
-              TT_THROW_IF_ERROR(ValidateStorageAndLayoutBytes(
-                  storage_numel, storage_dtype, size_vec, stride_vec, offset,
-                  tensor_dtype));
-              impl->set_sizes_and_strides(/*sizes=*/size_vec,
-                                          /*strides=*/stride_vec,
-                                          /*storage_offset=*/offset);
-              return self;
-            });
+  TT_KERNEL(
+      OpName::kSet_SourceStorageOffset, _,
+      (self, IgnoreInCacheKey(src, "Legacy usage"),
+       IgnoreInCacheKey(concrete_storage_offset, "Legacy usage"),
+       IgnoreInCacheKey(size_vec, "Legacy usage"),
+       IgnoreInCacheKey(stride_vec, "Legacy usage")),
+      {
+        c10::TensorImpl* impl = self.unsafeGetTensorImpl();
+        TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref,
+                           GetBaseBufferFromStorage(src));
+        const int64_t storage_numel = buffer_ref.num_elements();
+        const mlir::ElementType storage_dtype = buffer_ref.element_type();
+        TT_ASSIGN_OR_THROW(const mlir::ElementType tensor_dtype,
+                           ConvertTo<mlir::ElementType>(self.scalar_type()));
+        impl->set_storage_keep_dtype(std::move(src));
+        TT_THROW_IF_ERROR(CheckProvidedLayoutDataFitsInStorage(
+            storage_numel, storage_dtype, size_vec, stride_vec,
+            concrete_storage_offset, tensor_dtype));
+        impl->set_sizes_and_strides(/*sizes=*/size_vec,
+                                    /*strides=*/stride_vec,
+                                    /*storage_offset=*/concrete_storage_offset);
+        return self;
+      });
 }
 
 at::Tensor& AtenSet_SourceTensor(at::Tensor& self, const at::Tensor& src) {

@@ -49,11 +49,11 @@ bool IsOverlapping(absl::Span<const int64_t> sizes,
                    absl::Span<const int64_t> strides,
                    bool allow_expanded = false);
 
-// Checks that the provided sizes, strides, and offset fit within the provided
-// number of storage bytes.
-absl::Status ValidateStorageAndLayoutBytes(
+// Checks that the provided sizes, strides, and storage offset fit within the
+// provided number of storage bytes.
+absl::Status CheckProvidedLayoutDataFitsInStorage(
     int64_t storage_numel, mlir::ElementType storage_element_type,
-    Dimensions sizes, Strides strides, int64_t offset,
+    Dimensions sizes, Strides strides, int64_t storage_offset,
     mlir::ElementType layout_element_type);
 
 }  // namespace torch_tpu

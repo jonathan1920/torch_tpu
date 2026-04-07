@@ -55,7 +55,7 @@ at::Tensor AtenAsStrided(const at::Tensor& self, c10::SymIntArrayRef size_sym,
   for (const auto& s : stride_sym)
     new_strides.push_back(s.guard_int(__FILE__, __LINE__));
 
-  int64_t new_offset =
+  int64_t new_storage_offset =
       storage_offset_sym_opt.has_value()
           ? storage_offset_sym_opt.value().guard_int(__FILE__, __LINE__)
           : self.storage_offset();
@@ -66,7 +66,7 @@ at::Tensor AtenAsStrided(const at::Tensor& self, c10::SymIntArrayRef size_sym,
              // doesn't lower to SHLO.
              IgnoreInCacheKey(new_sizes, "Legacy usage"),
              IgnoreInCacheKey(new_strides, "Legacy usage"),
-             IgnoreInCacheKey(new_offset, "Legacy usage")),
+             IgnoreInCacheKey(new_storage_offset, "Legacy usage")),
             {
               // Get the base buffer so we can check that the view is valid
               TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Cannot directly create an
@@ -83,9 +83,9 @@ at::Tensor AtenAsStrided(const at::Tensor& self, c10::SymIntArrayRef size_sym,
               TT_ASSIGN_OR_THROW(
                   mlir::ElementType tensor_element_type,
                   ConvertTo<mlir::ElementType>(self.scalar_type()));
-              TT_THROW_IF_ERROR(ValidateStorageAndLayoutBytes(
+              TT_THROW_IF_ERROR(CheckProvidedLayoutDataFitsInStorage(
                   storage_numel, storage_element_type, new_sizes, new_strides,
-                  new_offset, tensor_element_type));
+                  new_storage_offset, tensor_element_type));
 
               // View is valid, so we can create the new tensor.
               // as_strided creates a shallow view; a new tensor with the same
@@ -95,7 +95,7 @@ at::Tensor AtenAsStrided(const at::Tensor& self, c10::SymIntArrayRef size_sym,
                   c10::TensorImpl::VIEW, std::move(storage_copy),
                   self.key_set(), self.dtype()));
               tensor.unsafeGetTensorImpl()->set_sizes_and_strides(
-                  new_sizes, new_strides, new_offset);
+                  new_sizes, new_strides, new_storage_offset);
               return tensor;
             });
 }
