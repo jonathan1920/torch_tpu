@@ -27,6 +27,7 @@
 #include "mlir/Support/LLVM.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/reductions/sum.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -55,7 +56,8 @@ absl::StatusOr<mlir::MlirOp> BuildBroadcastedMaxShlo(mlir::MlirOp input_op,
             input_type.getElementType(), rb.getRegion(), rb.getOpBuilder());
       },
       /*dimensions_to_reduce=*/{dim});
-  TT_RET_CHECK(max_val_reduced.size() == 1, error::kInternal)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Internal OpenXLA error.
+      max_val_reduced.size() == 1, error::kInternal)
       << "Expected 1 result from reduce op, got " << max_val_reduced.size();
 
   TT_ASSIGN_OR_RETURN(mlir::MlirOp unsqueezed_op,
@@ -125,10 +127,16 @@ absl::StatusOr<MlirOpResults<1>> BuildSoftmaxBackwardDataShlo(
 
   TT_RET_CHECK(output_type.getShape() == grad_output_type.getShape(),
                error::kInvalidArgument)
-      << "grad_output and output must have the same shape.";
+      << "expected grad_output and output arguments to have the same shape, "
+         "got "
+      << ToString(grad_output_type.getShape()) << " vs. "
+      << ToString(output_type.getShape());
   TT_ASSIGN_OR_RETURN(dim, SafeWrapDim(dim, output_type.getRank()));
-  TT_RET_CHECK(dim < output_type.getRank(), error::kInvalidArgument)
-      << "dim must be in range [0, output_type.getRank())";
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Caught by the `SafeWrapDim()` function
+                 // call above.
+      0 <= dim && dim < output_type.getRank(), error::kInvalidArgument)
+      << "expected the dim argument to be in the range [0, "
+      << output_type.getRank() << " (rank of the output)], got " << dim;
   Dimensions all_but_dim;
   all_but_dim.reserve(output_type.getRank() - 1);
   for (int i = 0; i < output_type.getRank(); ++i) {

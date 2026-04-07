@@ -7573,6 +7573,30 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.scatter(self_t, 0, index, src, out=out).cpu()
 
+  def test_softmax_backward_data_shape_mismatch(self):
+    grad_output = torch.ones(5, 5, device=et.device())
+    output = torch.ones(5, device=et.device())
+
+    # Call the out overload.
+    grad_input = torch.empty(5, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "softmax_backward_data(): materialization failed with: expected"
+            " grad_output and output arguments to have the same shape, got [5,"
+            " 5] vs. [5]"
+        ),
+        cpu=(
+            "Expected tensor for argument #1 'grad' to have same size as tensor"
+            " for argument #2 'output'; but [5, 5] does not equal [5] (while"
+            " checking arguments for softmax_backward)"
+        ),
+    ):
+      torch.ops.aten._softmax_backward_data(
+          grad_output, output, 0, torch.float32, grad_input=grad_input
+      ).cpu()
+
 
 if __name__ == "__main__":
   absltest.main()
