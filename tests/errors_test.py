@@ -977,7 +977,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     pivots = torch.tensor(0, device=et.device(), dtype=torch.int32)
     b = torch.ones(4, 4, device=et.device())
 
-    # Call the out-of-place variant of linalg.lu_solve() op.
+    # Call the out overload of linalg.lu_solve() op.
     out = torch.empty(4, device=et.device())
 
     # TODO: b/485628812 also test CPU when the TPU kernel is fixed, raising an
@@ -996,7 +996,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     pivots = torch.ones(4, device=et.device(), dtype=torch.int32)
     b = torch.ones(4, 4, 4, device=et.device())
 
-    # Call the out-of-place variant of linalg.lu_solve() op.
+    # Call the out overload of linalg.lu_solve() op.
     out = torch.empty(4, 4, 4, device=et.device())
 
     with et.assert_raises_message(
@@ -1046,7 +1046,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
   def test_linalg_inv_ex_output_rank_mismatch(self):
     a = torch.ones(4, 4, device=et.device())
 
-    # Call the out-of-place variant of linalg.inv_ex() op.
+    # Call the out overload of linalg.inv_ex() op.
     out = (
         torch.ones(4, 4, 4, device=et.device()),
         torch.ones(4, 4, 4, device=et.device()),
@@ -5761,7 +5761,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       {"testcase_name": "argmax", "op": torch.argmax, "op_name": "argmax"},
   )
   def test_argmin_invalid_dtypes(self, op, op_name: str):
-    # We need to call the out-of-place variant of `argmin` (`argmax`) op, so
+    # We need to call the out overload of `argmin` (`argmax`) op, so
     # that we don't go through the fallback. Otherwise, the meta kernel will
     # catch this error before it reaches TorchTPU implementation.
     out = torch.empty(2, device=et.device(), dtype=torch.int64)
@@ -5818,7 +5818,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     lhs = torch.ones(3, 4, device=et.device(), dtype=torch.float32)
     rhs = torch.ones(4, 5, device=et.device(), dtype=torch.float64)
 
-    # Call the out-of-place variant of `mm()` op.
+    # Call the out overload of `mm()` op.
     out = torch.ones(3, 6, device=et.device())
 
     with et.assert_raises_message(
@@ -5839,7 +5839,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     not_a_matrix_tensor = torch.ones(3, 4, 5, device=et.device())
     matrix_tensor = torch.ones(4, 4, device=et.device())
 
-    # Call the out-of-place variant of `mm()` op.
+    # Call the out overload of `mm()` op.
     out = torch.ones(4, 4, device=et.device())
 
     with et.assert_raises_message(
@@ -5868,7 +5868,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     lhs = torch.ones(3, 4, device=et.device())
     rhs = torch.ones(5, 6, device=et.device())
 
-    # Call the out-of-place variant of `mm()` op.
+    # Call the out overload of `mm()` op.
     out = torch.ones(3, 6, device=et.device())
 
     with et.assert_raises_message(
@@ -5902,7 +5902,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_linalg_lu_factor_ex_rank_too_low(self):
     a = torch.ones(4, device=et.device())
 
-    # We need to call the out-of-place variant of linalg.lu_factor_ex() op, so
+    # We need to call the out overload of linalg.lu_factor_ex() op, so
     # that we don't go through the fallback. Otherwise, the meta kernel will
     # catch this error before it reaches TorchTPU implementation.
     out = (
@@ -5928,7 +5928,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     data = torch.ones(4, device=et.device())
     pivots = torch.ones(4, device=et.device(), dtype=torch.int32)
 
-    # Call the out-of-place variant of linalg.lu_unpack() op.
+    # Call the out overload of linalg.lu_unpack() op.
     out = _make_lu_unpack_outputs(p=(4,), l=(4,), u=(4,))
 
     with et.assert_raises_message(
@@ -5946,7 +5946,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     pivots = torch.ones(4, device=et.device(), dtype=torch.int32)
     b = torch.ones(4, device=et.device())
 
-    # Call the out-of-place variant of linalg.lu_solve() op.
+    # Call the out overload of linalg.lu_solve() op.
     out = torch.empty(4, device=et.device())
 
     with et.assert_raises_message(
@@ -5964,7 +5964,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     pivots = torch.ones(4, device=et.device(), dtype=torch.int32)
     b = torch.ones(4, device=et.device())
 
-    # Call the out-of-place variant of linalg.lu_solve() op.
+    # Call the out overload of linalg.lu_solve() op.
     out = torch.empty(4, device=et.device())
 
     with et.assert_raises_message(
@@ -5982,7 +5982,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     pivots = torch.ones(4, device=et.device(), dtype=torch.int32)
     b = torch.ones(3, 4, device=et.device())
 
-    # Call the out-of-place variant of linalg.lu_solve() op.
+    # Call the out overload of linalg.lu_solve() op.
     out = torch.empty(4, device=et.device())
 
     with et.assert_raises_message(
@@ -6003,7 +6003,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     pivots = torch.ones(2, 3, device=et.device(), dtype=torch.int32)
     b = torch.ones(3, 3, device=et.device())
 
-    # Call the out-of-place variant of linalg.lu_solve() op.
+    # Call the out overload of linalg.lu_solve() op.
     out = torch.empty(3, 3, device=et.device())
 
     with et.assert_raises_message(
@@ -6024,7 +6024,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     pivots = torch.ones(2, 3, device=et.device(), dtype=torch.int32)
     b = torch.ones(3, 3, 3, device=et.device())
 
-    # Call the out-of-place variant of linalg.lu_solve() op.
+    # Call the out overload of linalg.lu_solve() op.
     out = torch.empty(3, 3, 3, device=et.device())
 
     with et.assert_raises_message(
@@ -6045,7 +6045,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     pivots = torch.ones(4, device=et.device(), dtype=torch.int32)
     b = torch.ones(3, 3, device=et.device())
 
-    # Call the out-of-place variant of linalg.lu_solve() op.
+    # Call the out overload of linalg.lu_solve() op.
     out = torch.empty(3, 3, device=et.device())
 
     with et.assert_raises_message(
@@ -6134,7 +6134,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         torch.ones(2, device=et.device()),
     ]
 
-    # Call the out-of-place overload.
+    # Call the out overload.
     out = torch.empty(1, device=et.device())
 
     with et.assert_raises_message(
@@ -6383,7 +6383,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_linalg_inv_ex_1d(self):
     a = torch.ones(5, device=et.device())
 
-    # Call the out-of-place variant of linalg.inv_ex() op.
+    # Call the out overload of linalg.inv_ex() op.
     out = (
         torch.ones(4, 4, 4, device=et.device()),
         torch.ones(4, 4, 4, device=et.device()),
@@ -6403,7 +6403,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_linalg_inv_ex_non_square(self):
     a = torch.ones(3, 5, device=et.device())
 
-    # Call the out-of-place variant of linalg.inv_ex() op.
+    # Call the out overload of linalg.inv_ex() op.
     out = (
         torch.ones(4, 4, 4, device=et.device()),
         torch.ones(4, 4, 4, device=et.device()),
@@ -6534,7 +6534,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     dim = 0
     index = torch.tensor(0, device=et.device(), dtype=torch.int64)
 
-    # Call the out-of-place overload.
+    # Call the out overload.
     out = torch.empty(1, 1, device=et.device())
 
     # TODO: Error eagerly, i.e. without having to call the op builder.
@@ -6558,7 +6558,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     dim = 0
     index = torch.ones(1, 1, 1, device=et.device(), dtype=torch.int64)
 
-    # Call the out-of-place overload.
+    # Call the out overload.
     out = torch.empty(1, 1, device=et.device())
 
     # TODO: Error eagerly, i.e. without having to call the op builder.
