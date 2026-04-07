@@ -116,6 +116,12 @@ cc_library(
     }),
 )
 
+cc_library(
+    name = "kineto",
+    visibility = ["//visibility:public"],
+    deps = [":torch"],
+)
+
 py_library(
     name = "tensorboard_support",
     deps = [
