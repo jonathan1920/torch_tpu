@@ -73,7 +73,6 @@ at::Tensor& AtenThresholdOut(const at::Tensor& self,
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         (DispatchOp<3>(
-            OpName::kThresholdOut,
             [](FixedSizeSpan<mlir::MlirOp, 3> inputs) {
               return BuildThresholdShlo(inputs[0], inputs[1], inputs[2]);
             },
@@ -92,32 +91,32 @@ at::Tensor& AtenThresholdBackwardGradInput(const at::Tensor& grad_output,
                                            const at::Tensor& self,
                                            const at::Scalar& threshold,
                                            at::Tensor& grad_input) {
-  TT_KERNEL(
-      OpName::kThresholdBackwardGradInput, param_keys,
-      (grad_output, self, threshold, grad_input), {
-        TT_CHECK_THROW(!IsBool(self), error::kUnimplemented)
-            << "bool input dtype is not yet supported";
-        TT_CHECK_THROW(!IsComplex(self), error::kInvalidArgument)
-            << "expected the input dtype not to be complex, got "
-            << ToString(self.scalar_type());
-        TT_ASSIGN_OR_THROW(
-            auto result_buf,
-            (DispatchOp<3>(OpName::kThresholdBackwardGradInput,
-                           [](FixedSizeSpan<mlir::MlirOp, 3> inputs) {
-                             return BuildThresholdBackwardShlo(
-                                 inputs[0], inputs[1], inputs[2]);
-                           },
-                           {grad_output, self,
-                            at::scalar_tensor(threshold, self.options())},
-                           {.out_dtype = ConvertTo<mlir::ElementType>(
-                                             grad_input.scalar_type())
-                                             .value(),
-                            .out_dims = self.sizes(),
-                            .op_param_cache_keys = std::move(param_keys)})));
-        TT_THROW_IF_ERROR(
-            AssignBufferToAtTensor(std::move(result_buf), grad_input));
-        return grad_input;
-      });
+  TT_KERNEL(OpName::kThresholdBackwardGradInput, param_keys,
+            (grad_output, self, threshold, grad_input), {
+              TT_CHECK_THROW(!IsBool(self), error::kUnimplemented)
+                  << "bool input dtype is not yet supported";
+              TT_CHECK_THROW(!IsComplex(self), error::kInvalidArgument)
+                  << "expected the input dtype not to be complex, got "
+                  << ToString(self.scalar_type());
+              TT_ASSIGN_OR_THROW(
+                  const auto out_dtype,
+                  ConvertTo<mlir::ElementType>(grad_input.scalar_type()));
+              TT_ASSIGN_OR_THROW(
+                  auto result_buf,
+                  (DispatchOp<3>(
+                      [](FixedSizeSpan<mlir::MlirOp, 3> inputs) {
+                        return BuildThresholdBackwardShlo(inputs[0], inputs[1],
+                                                          inputs[2]);
+                      },
+                      {grad_output, self,
+                       at::scalar_tensor(threshold, self.options())},
+                      {.out_dtype = out_dtype,
+                       .out_dims = self.sizes(),
+                       .op_param_cache_keys = std::move(param_keys)})));
+              TT_THROW_IF_ERROR(
+                  AssignBufferToAtTensor(std::move(result_buf), grad_input));
+              return grad_input;
+            });
 }
 
 }  // namespace torch_tpu

@@ -41,10 +41,14 @@ namespace {
 
 absl::StatusOr<at::Tensor> GetNumNonZeroElements(const at::Tensor& self) {
   TT_ASSIGN_OR_RETURN(auto num_non_zero_elements,
-                      UnaryOp(self, OpName::kNonzeroSize,
+                      UnaryOp(self,
                               absl::bind_front(BuildNonzeroGetOutputSizeShlo,
                                                mlir::ElementType::I64),
-                              {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                              // Override the OpName passed to TT_KERNEL()
+                              // as this is not for implementing a specific op,
+                              // but rather a shared utility.
+                              {.op_name = OpName::kNonzeroSize,
+                               .op_param_cache_keys = OpParamCacheKeys::Empty(),
                                .out_dtype = c10::ScalarType::Long,
                                .out_dims = Dimensions()}));
   return num_non_zero_elements;
@@ -59,8 +63,7 @@ absl::StatusOr<at::Tensor> Nonzero(const at::Tensor& self,
   Dimensions out_dims = {num_non_zero_elements, self.dim()};
   TT_ASSIGN_OR_RETURN(
       auto result,
-      UnaryOp(self, OpName::kNonzero,
-              absl::bind_front(BuildNonzeroShlo, num_non_zero_elements),
+      UnaryOp(self, absl::bind_front(BuildNonzeroShlo, num_non_zero_elements),
               {.op_param_cache_keys = std::move(param_keys),
                .out_dtype = c10::ScalarType::Long,
                .out_dims = std::move(out_dims)}));
@@ -74,7 +77,7 @@ absl::Status NonzeroOut(const at::Tensor& self, at::Tensor& out,
       auto param_keys, TT_MAKE_OP_PARAM_CACHE_KEYS(num_non_zero_elements));
 
   Dimensions out_dims = {num_non_zero_elements, self.dim()};
-  return UnaryOpOut(self, out, OpName::kNonzeroOut,
+  return UnaryOpOut(self, out,
                     absl::bind_front(BuildNonzeroShlo, num_non_zero_elements),
                     {.op_param_cache_keys = std::move(param_keys),
                      .out_dtype = c10::ScalarType::Long,

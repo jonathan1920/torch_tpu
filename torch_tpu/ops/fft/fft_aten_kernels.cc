@@ -211,7 +211,7 @@ at::Tensor& AtenFftR2cOut(const at::Tensor& self, at::IntArrayRef dim,
 
         TT_ASSIGN_OR_THROW(
             auto result,
-            DispatchOp<1>(OpName::kFftR2cOut, std::move(op_builder), self,
+            DispatchOp<1>(std::move(op_builder), self,
                           {.out_dtype = output_dtype,
                            .out_dims = CopyIntVector(out.sizes()),
                            .op_param_cache_keys = std::move(param_keys)}));

@@ -106,13 +106,12 @@ at::Tensor& AtenLerpTensorOut(const at::Tensor& self, const at::Tensor& end,
 
     TT_ASSIGN_OR_THROW(
         auto result,
-        (DispatchOp<3>(OpName::kLerpTensorOut,
-                       GetLerpTensorOutFunctional(common_type),
-                       /*inputs=*/{self, end, weight},
-                       /*options=*/
-                       {.out_dtype = output_dtype,
-                        .out_dims = out.sizes(),
-                        .op_param_cache_keys = std::move(param_keys)})));
+        DispatchOp<3>(GetLerpTensorOutFunctional(common_type),
+                      /*inputs=*/{self, end, weight},
+                      /*options=*/
+                      {.out_dtype = output_dtype,
+                       .out_dims = out.sizes(),
+                       .op_param_cache_keys = std::move(param_keys)}));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(result, out));
     return out;
   });

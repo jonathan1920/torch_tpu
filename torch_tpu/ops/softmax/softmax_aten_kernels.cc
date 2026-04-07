@@ -88,12 +88,10 @@ absl::Status SoftmaxInternalOut(const at::Tensor& self, int64_t dim,
   TT_RET_CHECK(self.is_floating_point(), error::kUnimplemented)
       << "not implemented for input type " << ToString(self.scalar_type());
 
-  auto op_name = softmax_mode == SoftmaxMode::kSoftmax ? OpName::kSoftmaxOut
-                                                       : OpName::kLogSoftmaxOut;
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=all dtypes are supported.
       const mlir::ElementType computation_dtype,
       GetComputationDType(self, half_to_float));
-  return UnaryOpOut(self, out, op_name, GetSoftmaxFunctional(dim, softmax_mode),
+  return UnaryOpOut(self, out, GetSoftmaxFunctional(dim, softmax_mode),
                     {.op_param_cache_keys = std::move(param_keys),
                      .computation_dtype = computation_dtype});
 }
@@ -115,15 +113,10 @@ absl::StatusOr<DeviceBufferRef> SoftmaxBackwardDataInternalOut(
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=all dtypes are supported.
       const auto input_mlir_type, ConvertTo<mlir::ElementType>(input_dtype));
 
-  auto op_name = softmax_mode == SoftmaxMode::kSoftmax
-                     ? OpName::kSoftmaxBackwardDataOut
-                     : OpName::kLogSoftmaxBackwardDataOut;
-
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=errors should be covered
                         // inside.
       auto result,
       (DispatchOp<2>(
-          op_name,
           GetSoftmaxBackwardDataFunctional(dim, softmax_mode, precision),
           {grad_output, output},
           {.out_dtype = input_mlir_type,

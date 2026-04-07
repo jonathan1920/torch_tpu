@@ -52,7 +52,7 @@ at::Tensor& AtenFminOut(const at::Tensor& self, const at::Tensor& other,
                         at::Tensor& out) {
   TT_KERNEL(OpName::kFminOut, _, (self, other, out), {
     TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kFminOut, self, other, out, BuildFminShlo,
+        BinaryOpOut(self, other, out, BuildFminShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });

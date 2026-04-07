@@ -142,10 +142,9 @@ at::Tensor& AtenEluOut(const at::Tensor& input, const at::Scalar& alpha,
             (input, alpha, scale, input_scale, out), {
               TT_THROW_IF_ERROR(
                   CheckIsFloatingPoint(input, /* name= */ "input"));
-              TT_THROW_IF_ERROR(
-                  UnaryOpOut(input, out, OpName::kEluOut,
-                             GetEluFunctional(alpha, scale, input_scale),
-                             {.op_param_cache_keys = std::move(param_keys)}));
+              TT_THROW_IF_ERROR(UnaryOpOut(
+                  input, out, GetEluFunctional(alpha, scale, input_scale),
+                  {.op_param_cache_keys = std::move(param_keys)}));
               return out;
             });
 }
@@ -178,8 +177,7 @@ at::Tensor& AtenEluBackwardGradInput(
 
         TT_ASSIGN_OR_THROW(
             auto result,
-            DispatchOp<2>(OpName::kEluBackwardGradInput, std::move(op_builder),
-                          {grad_output, self_or_result},
+            DispatchOp<2>(std::move(op_builder), {grad_output, self_or_result},
                           /*options=*/
                           {.out_dtype = output_dtype,
                            .out_dims = output_shape,

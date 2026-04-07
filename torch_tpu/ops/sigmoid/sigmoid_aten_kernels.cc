@@ -70,7 +70,7 @@ absl::StatusOr<mlir::MlirOp> BuildSigmoidShlo(mlir::MlirOp input_op) {
 at::Tensor& AtenSigmoidOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kSigmoidOut, _, (self, out), {
     TT_THROW_IF_ERROR(
-        UnaryOpOut(self, out, OpName::kSigmoidOut, BuildSigmoidShlo,
+        UnaryOpOut(self, out, BuildSigmoidShlo,
                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
@@ -95,7 +95,6 @@ at::Tensor& AtenSigmoidBackwardGradInput(const at::Tensor& grad_output,
                              // inside.
             auto result,
             (DispatchOp<2>(
-                OpName::kSigmoidBackwardGradInput,
                 [](FixedSizeSpan<mlir::MlirOp, 2> inputs)
                     -> absl::StatusOr<mlir::MlirOp> {
                   auto& [grad_output_op, output_op] = inputs;

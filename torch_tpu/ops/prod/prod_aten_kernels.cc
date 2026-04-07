@@ -75,8 +75,7 @@ Dimensions GetSizesAfterProd(at::IntArrayRef self_size,
   return output_size;
 }
 
-absl::StatusOr<at::Tensor> AtenProdHelper(OpName op_name,
-                                          const at::Tensor& self,
+absl::StatusOr<at::Tensor> AtenProdHelper(const at::Tensor& self,
                                           std::optional<int64_t> dim,
                                           bool keep_dim,
                                           std::optional<at::ScalarType> dtype,
@@ -97,15 +96,14 @@ absl::StatusOr<at::Tensor> AtenProdHelper(OpName op_name,
       keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
   TT_ASSIGN_OR_RETURN(
       auto result,
-      UnaryOp(self, op_name,
-              absl::bind_front(BuildProdShlo, dim, mode, dtype_mlir_type),
+      UnaryOp(self, absl::bind_front(BuildProdShlo, dim, mode, dtype_mlir_type),
               {.op_param_cache_keys = std::move(param_keys),
                .out_dtype = inferred_dtype,
                .out_dims = std::move(output_dims)}));
   return result;
 }
 
-absl::Status AtenProdOutHelper(OpName op_name, const at::Tensor& self,
+absl::Status AtenProdOutHelper(const at::Tensor& self,
                                std::optional<int64_t> dim, bool keep_dim,
                                std::optional<at::ScalarType> dtype,
                                at::Tensor& out, OpParamCacheKeys param_keys) {
@@ -124,8 +122,7 @@ absl::Status AtenProdOutHelper(OpName op_name, const at::Tensor& self,
   ReductionMode mode =
       keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
   return UnaryOpOut(
-      self, out, op_name,
-      absl::bind_front(BuildProdShlo, dim, mode, dtype_element_type),
+      self, out, absl::bind_front(BuildProdShlo, dim, mode, dtype_element_type),
       {.op_param_cache_keys = std::move(param_keys),
        .out_dtype = inferred_dtype,
        .out_dims = std::move(output_dims)});
@@ -138,7 +135,7 @@ at::Tensor AtenProd(const at::Tensor& self,
   TT_KERNEL(OpName::kProd, param_keys, (self, dtype), {
     TT_ASSIGN_OR_THROW(
         at::Tensor result,
-        AtenProdHelper(OpName::kProd, self, /*dim=*/std::nullopt,
+        AtenProdHelper(self, /*dim=*/std::nullopt,
                        /*keep_dim=*/false, dtype, std::move(param_keys)));
     return result;
   });
@@ -149,9 +146,8 @@ at::Tensor& AtenProdDimOut(const at::Tensor& self, int64_t dim, bool keep_dim,
                            at::Tensor& out) {
   TT_KERNEL(OpName::kProdDimOut, param_keys, (self, dim, keep_dim, dtype, out),
             {
-              TT_THROW_IF_ERROR(AtenProdOutHelper(OpName::kProdDimOut, self,
-                                                  dim, keep_dim, dtype, out,
-                                                  std::move(param_keys)));
+              TT_THROW_IF_ERROR(AtenProdOutHelper(self, dim, keep_dim, dtype,
+                                                  out, std::move(param_keys)));
               return out;
             });
 }

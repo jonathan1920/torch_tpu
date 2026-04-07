@@ -155,8 +155,7 @@ at::Tensor AtenBinCount(const at::Tensor& self,
           };
           TT_ASSIGN_OR_THROW(
               auto result_buf,
-              DispatchOp<2>(OpName::kBinCount, std::move(op_builder),
-                            {self, *weights_},
+              DispatchOp<2>(std::move(op_builder), {self, *weights_},
                             {.out_dtype = output_dtype,
                              .out_dims = {nbins},
                              .op_param_cache_keys = std::move(param_keys)}));
@@ -175,7 +174,7 @@ at::Tensor AtenBinCount(const at::Tensor& self,
         };
         TT_ASSIGN_OR_THROW(
             auto result_buf,
-            DispatchOp<1>(OpName::kBinCount, std::move(op_builder), self,
+            DispatchOp<1>(std::move(op_builder), self,
                           {.out_dtype = output_dtype,
                            .out_dims = {nbins},
                            .op_param_cache_keys = std::move(param_keys)}));

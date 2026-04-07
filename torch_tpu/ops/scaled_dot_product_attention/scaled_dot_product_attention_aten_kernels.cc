@@ -217,11 +217,10 @@ absl::StatusOr<at::Tensor> ScaledDotProductFusedAttentionImpl(
 
   TT_ASSIGN_OR_RETURN(
       auto results,
-      (DispatchOp<3>(OpName::kScaledDotProductFusedAttentionOverrideable,
-                     std::move(op_builder), {query, key, value},
-                     {.out_dtype = out_dtype,
-                      .out_dims = out_dims,
-                      .op_param_cache_keys = std::move(param_keys)})));
+      DispatchOp<3>(std::move(op_builder), {query, key, value},
+                    {.out_dtype = out_dtype,
+                     .out_dims = out_dims,
+                     .op_param_cache_keys = std::move(param_keys)}));
   return MakeTensor(std::move(results));
 }
 
@@ -286,7 +285,6 @@ ScaledDotProductFusedAttentionBackwardImpl(const at::Tensor& grad_out,
   TT_ASSIGN_OR_RETURN(
       auto results,
       (DispatchOp<4, 3>(
-          OpName::kScaledDotProductFusedAttentionOverrideableBackward,
           std::move(op_builder), {grad_out, query, key, value},
           {.out_dtypes = {out_dtype, out_dtype, out_dtype},
            .out_dims_list = {query.sizes(), key.sizes(), value.sizes()},

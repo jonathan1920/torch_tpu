@@ -89,8 +89,7 @@ static absl::StatusOr<DeviceBufferRef> RaggedDotCommon(
     auto& [lhs, rhs, group_sizes] = inputs;
     return BuildRaggedDotShlo(lhs, rhs, group_sizes, out_dtype);
   };
-  return DispatchOp<3>(OpName::kRaggedDot, std::move(op_builder),
-                       {lhs, rhs, group_sizes},
+  return DispatchOp<3>(std::move(op_builder), {lhs, rhs, group_sizes},
                        {.out_dtype = out_dtype,
                         .out_dims = {lhs.size(0), rhs.size(2)},
                         .op_param_cache_keys = std::move(param_keys)});

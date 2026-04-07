@@ -59,9 +59,9 @@ absl::Status CheckNumericDtype(at::ScalarType scalar_type) {
 at::Tensor& AtenRoundOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kRoundOut, _, (self, out), {
     TT_THROW_IF_ERROR(CheckNumericDtype(self.scalar_type()));
-    TT_THROW_IF_ERROR(UnaryOpOut(
-        self, out, OpName::kRound, GetRoundFunctional(/*decimals=*/0),
-        {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    TT_THROW_IF_ERROR(
+        UnaryOpOut(self, out, GetRoundFunctional(/*decimals=*/0),
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
 }
@@ -74,9 +74,9 @@ at::Tensor& AtenRoundDecimalsOut(const at::Tensor& self, int64_t decimals,
         << "expected the input dtype not to be integer when the decimals "
            "argument is specified ("
         << decimals << "), got " << ToString(self.scalar_type());
-    TT_THROW_IF_ERROR(UnaryOpOut(
-        self, out, OpName::kRoundDecimalsOut, GetRoundFunctional(decimals),
-        {.op_param_cache_keys = std::move(param_keys)}));
+    TT_THROW_IF_ERROR(
+        UnaryOpOut(self, out, GetRoundFunctional(decimals),
+                   {.op_param_cache_keys = std::move(param_keys)}));
     return out;
   });
 }

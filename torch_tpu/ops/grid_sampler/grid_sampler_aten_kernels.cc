@@ -994,8 +994,7 @@ at::Tensor AtenGridSampler2d(const at::Tensor& input, const at::Tensor& grid,
 
         TT_ASSIGN_OR_THROW(
             auto out_buf,
-            (DispatchOp<2>(OpName::kGridSampler2d, std::move(op_builder),
-                           {input, grid},
+            (DispatchOp<2>(std::move(op_builder), {input, grid},
                            {.out_dtype = element_type,
                             .out_dims = output_dims,
                             .op_param_cache_keys = std::move(param_keys)})));
@@ -1040,8 +1039,7 @@ at::Tensor AtenGridSampler3d(const at::Tensor& input, const at::Tensor& grid,
         }();
         TT_ASSIGN_OR_THROW(
             auto out_buf,
-            (DispatchOp<2>(OpName::kGridSampler3d, std::move(op_builder),
-                           {input, grid},
+            (DispatchOp<2>(std::move(op_builder), {input, grid},
                            {.out_dtype = element_type,
                             .out_dims = output_dims,
                             .op_param_cache_keys = std::move(param_keys)})));

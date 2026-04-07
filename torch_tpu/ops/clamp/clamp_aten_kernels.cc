@@ -131,9 +131,9 @@ absl::StatusOr<Dimensions> ComputeOutputShape(const at::Tensor& self,
 }
 
 absl::StatusOr<DeviceBufferRef> AtenClampHelper(
-    OpName op_name, const at::Tensor& self,
-    const c10::optional<at::Scalar>& min, const c10::optional<at::Scalar>& max,
-    at::ScalarType output_scalar_type, OpParamCacheKeys param_keys) {
+    const at::Tensor& self, const c10::optional<at::Scalar>& min,
+    const c10::optional<at::Scalar>& max, at::ScalarType output_scalar_type,
+    OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(output_scalar_type));
   auto output_dims = self.sizes();
@@ -157,7 +157,7 @@ absl::StatusOr<DeviceBufferRef> AtenClampHelper(
       return BuildClampShlo(input, min_op, max_op);
     };
 
-    return DispatchOp<1>(op_name, std::move(op_builder), self,
+    return DispatchOp<1>(std::move(op_builder), self,
                          {.out_dtype = output_dtype,
                           .out_dims = output_dims,
                           .computation_dtype = computation_dtype,
@@ -172,7 +172,7 @@ absl::StatusOr<DeviceBufferRef> AtenClampHelper(
       return BuildClampShlo(input, min_op, std::nullopt);
     };
 
-    return DispatchOp<1>(op_name, std::move(op_builder), self,
+    return DispatchOp<1>(std::move(op_builder), self,
                          {.out_dtype = output_dtype,
                           .out_dims = output_dims,
                           .computation_dtype = computation_dtype,
@@ -187,7 +187,7 @@ absl::StatusOr<DeviceBufferRef> AtenClampHelper(
       return BuildClampShlo(input, std::nullopt, max_op);
     };
 
-    return DispatchOp<1>(op_name, std::move(op_builder), self,
+    return DispatchOp<1>(std::move(op_builder), self,
                          {.out_dtype = output_dtype,
                           .out_dims = output_dims,
                           .computation_dtype = computation_dtype,
@@ -198,7 +198,7 @@ absl::StatusOr<DeviceBufferRef> AtenClampHelper(
       return BuildClampShlo(input, std::nullopt, std::nullopt);
     };
 
-    return DispatchOp<1>(op_name, std::move(op_builder), self,
+    return DispatchOp<1>(std::move(op_builder), self,
                          {.out_dtype = output_dtype,
                           .out_dims = output_dims,
                           .computation_dtype = computation_dtype,
@@ -207,8 +207,7 @@ absl::StatusOr<DeviceBufferRef> AtenClampHelper(
 }
 
 absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
-    OpName op_name, const at::Tensor& self,
-    const c10::optional<at::Tensor>& min_,
+    const at::Tensor& self, const c10::optional<at::Tensor>& min_,
     const c10::optional<at::Tensor>& max_, at::ScalarType output_scalar_type,
     OpParamCacheKeys param_keys) {
   auto min = SanitizeOptionalTensor(min_);
@@ -231,7 +230,7 @@ absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
       return BuildClampShlo(self, min, max);
     };
 
-    return DispatchOp<3>(op_name, std::move(op_builder), {self, *min, *max},
+    return DispatchOp<3>(std::move(op_builder), {self, *min, *max},
                          {.out_dtype = output_dtype,
                           .out_dims = output_dims,
                           .computation_dtype = computation_dtype,
@@ -242,7 +241,7 @@ absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
       auto& [self, min] = inputs;
       return BuildClampShlo(self, min, std::nullopt);
     };
-    return DispatchOp<2>(op_name, std::move(op_builder), {self, *min},
+    return DispatchOp<2>(std::move(op_builder), {self, *min},
                          {.out_dtype = output_dtype,
                           .out_dims = output_dims,
                           .computation_dtype = computation_dtype,
@@ -253,7 +252,7 @@ absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
       auto& [input, max] = inputs;
       return BuildClampShlo(input, std::nullopt, max);
     };
-    return DispatchOp<2>(op_name, std::move(op_builder), {self, *max},
+    return DispatchOp<2>(std::move(op_builder), {self, *max},
                          {.out_dtype = output_dtype,
                           .out_dims = output_dims,
                           .computation_dtype = computation_dtype,
@@ -264,7 +263,7 @@ absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
       return BuildClampShlo(input, std::nullopt, std::nullopt);
     };
 
-    return DispatchOp<1>(op_name, std::move(op_builder), self,
+    return DispatchOp<1>(std::move(op_builder), self,
                          {.out_dtype = output_dtype,
                           .out_dims = output_dims,
                           .computation_dtype = computation_dtype,
@@ -279,10 +278,9 @@ at::Tensor& AtenClampOut(const at::Tensor& self,
                          const c10::optional<at::Scalar>& max,
                          at::Tensor& out) {
   TT_KERNEL(OpName::kClampOut, param_keys, (self, min, max, out), {
-    TT_ASSIGN_OR_THROW(
-        auto result_buf,
-        AtenClampHelper(OpName::kClampOut, self, min, max, out.scalar_type(),
-                        std::move(param_keys)));
+    TT_ASSIGN_OR_THROW(auto result_buf,
+                       AtenClampHelper(self, min, max, out.scalar_type(),
+                                       std::move(param_keys)));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
@@ -291,10 +289,9 @@ at::Tensor& AtenClampOut(const at::Tensor& self,
 at::Tensor& AtenClampMinOut(const at::Tensor& self, const at::Scalar& min,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kClampMinOut, param_keys, (self, min, out), {
-    TT_ASSIGN_OR_THROW(
-        auto result_buf,
-        AtenClampHelper(OpName::kClampMinOut, self, min, std::nullopt,
-                        out.scalar_type(), std::move(param_keys)));
+    TT_ASSIGN_OR_THROW(auto result_buf, AtenClampHelper(self, min, std::nullopt,
+                                                        out.scalar_type(),
+                                                        std::move(param_keys)));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
@@ -303,10 +300,9 @@ at::Tensor& AtenClampMinOut(const at::Tensor& self, const at::Scalar& min,
 at::Tensor& AtenClampMaxOut(const at::Tensor& self, const at::Scalar& max,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kClampMaxOut, param_keys, (self, max, out), {
-    TT_ASSIGN_OR_THROW(
-        auto result_buf,
-        AtenClampHelper(OpName::kClampMaxOut, self, std::nullopt, max,
-                        out.scalar_type(), std::move(param_keys)));
+    TT_ASSIGN_OR_THROW(auto result_buf, AtenClampHelper(self, std::nullopt, max,
+                                                        out.scalar_type(),
+                                                        std::move(param_keys)));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
@@ -317,10 +313,9 @@ at::Tensor& AtenClampTensorOut(const at::Tensor& self,
                                const c10::optional<at::Tensor>& max,
                                at::Tensor& out) {
   TT_KERNEL(OpName::kClampTensorOut, param_keys, (self, min, max, out), {
-    TT_ASSIGN_OR_THROW(
-        auto result_buf,
-        AtenClampTensorHelper(OpName::kClampTensorOut, self, min, max,
-                              out.scalar_type(), std::move(param_keys)));
+    TT_ASSIGN_OR_THROW(auto result_buf,
+                       AtenClampTensorHelper(self, min, max, out.scalar_type(),
+                                             std::move(param_keys)));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
@@ -329,10 +324,10 @@ at::Tensor& AtenClampTensorOut(const at::Tensor& self,
 at::Tensor& AtenClampMinTensorOut(const at::Tensor& self, const at::Tensor& min,
                                   at::Tensor& out) {
   TT_KERNEL(OpName::kClampMinTensorOut, param_keys, (self, min, out), {
-    TT_ASSIGN_OR_THROW(auto result_buf,
-                       AtenClampTensorHelper(
-                           OpName::kClampMinTensorOut, self, min, std::nullopt,
-                           out.scalar_type(), std::move(param_keys)));
+    TT_ASSIGN_OR_THROW(
+        auto result_buf,
+        AtenClampTensorHelper(self, min, std::nullopt, out.scalar_type(),
+                              std::move(param_keys)));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
@@ -343,8 +338,8 @@ at::Tensor& AtenClampMaxTensorOut(const at::Tensor& self, const at::Tensor& max,
   TT_KERNEL(OpName::kClampMaxTensorOut, param_keys, (self, max, out), {
     TT_ASSIGN_OR_THROW(
         auto result_buf,
-        AtenClampTensorHelper(OpName::kClampMaxTensorOut, self, std::nullopt,
-                              max, out.scalar_type(), std::move(param_keys)));
+        AtenClampTensorHelper(self, std::nullopt, max, out.scalar_type(),
+                              std::move(param_keys)));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });

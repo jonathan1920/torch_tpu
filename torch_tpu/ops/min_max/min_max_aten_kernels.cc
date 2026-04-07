@@ -57,8 +57,7 @@ absl::StatusOr<std::tuple<at::Tensor, at::Tensor>> AtenMinMaxDim(
     OpParamCacheKeys& op_param_cache_keys, at::Tensor& value,
     at::Tensor& indices) {
   ABSL_VLOG(3) << "[AtenMinMaxDim] start";
-  auto op_name =
-      (min_max_op == MinMaxOp::kMax) ? OpName::kMaxDimMax : OpName::kMinDimMin;
+
   TT_ASSIGN_OR_RETURN(const int64_t normalized_dim,
                       SafeWrapDim(dim, self.dim()));
 
@@ -85,7 +84,7 @@ absl::StatusOr<std::tuple<at::Tensor, at::Tensor>> AtenMinMaxDim(
   TT_ASSIGN_OR_RETURN(
       (auto [values_buf, indices_buf]),
       (DispatchOp<1, 2>(
-          op_name, std::move(op_builder), input,
+          std::move(op_builder), input,
           {
               .out_dtypes = {output_dtype, mlir::ElementType::I64},
               .out_dims_list = {output_dims, output_dims},
@@ -107,9 +106,9 @@ absl::Status CheckNotZeroElementTensor(const at::Tensor& tensor) {
 
 }  // namespace
 
-absl::Status ArgMinMax(OpName op_name, const at::Tensor& self,
-                       c10::optional<int64_t> dim, bool keep_dim, MinMaxOp op,
-                       at::Tensor& out, OpParamCacheKeys param_keys) {
+absl::Status ArgMinMax(const at::Tensor& self, c10::optional<int64_t> dim,
+                       bool keep_dim, MinMaxOp op, at::Tensor& out,
+                       OpParamCacheKeys param_keys) {
   TT_RET_CHECK(IsPrivateUse1Device(out), error::kInvalidArgument)
       << "expected output tensor to be on " << GetPrivateUse1DeviceDebugName()
       << ", got " << out.device();
@@ -164,7 +163,7 @@ absl::Status ArgMinMax(OpName op_name, const at::Tensor& self,
 
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
-      DispatchOp<1>(op_name, std::move(op_builder), input_tensor,
+      DispatchOp<1>(std::move(op_builder), input_tensor,
                     {.out_dtype = mlir::ElementType::I64,
                      .out_dims = std::move(out_dims),
                      .op_param_cache_keys = std::move(param_keys)}));
@@ -185,9 +184,8 @@ at::Tensor& AtenArgmaxOut(const at::Tensor& self, c10::optional<int64_t> dim,
                   auto param_keys,
                   *OpParamCacheKeysBuilder().SetParam("dim", dim));
 
-              TT_THROW_IF_ERROR(ArgMinMax(OpName::kArgMaxOut, self, dim,
-                                          keep_dim, MinMaxOp::kMax, out,
-                                          std::move(param_keys)));
+              TT_THROW_IF_ERROR(ArgMinMax(self, dim, keep_dim, MinMaxOp::kMax,
+                                          out, std::move(param_keys)));
               return out;
             });
 }
@@ -204,9 +202,8 @@ at::Tensor& AtenArgminOut(const at::Tensor& self, c10::optional<int64_t> dim,
                   auto param_keys,
                   *OpParamCacheKeysBuilder().SetParam("dim", dim));
 
-              TT_THROW_IF_ERROR(ArgMinMax(OpName::kArgMinOut, self, dim,
-                                          keep_dim, MinMaxOp::kMin, out,
-                                          std::move(param_keys)));
+              TT_THROW_IF_ERROR(ArgMinMax(self, dim, keep_dim, MinMaxOp::kMin,
+                                          out, std::move(param_keys)));
               return out;
             });
 }

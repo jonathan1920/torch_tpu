@@ -74,8 +74,7 @@ absl::StatusOr<DeviceBufferRef> IndexSelect(const at::Tensor& self, int64_t dim,
     return BuildIndexSelectShlo(self, dim, index);
   };
 
-  return DispatchOp<2>(OpName::kIndexSelect, std::move(index_select_op_builder),
-                       {self, index},
+  return DispatchOp<2>(std::move(index_select_op_builder), {self, index},
                        {.out_dtype = computation_dtype,
                         .out_dims = output_dims,
                         .op_param_cache_keys = std::move(param_keys)});

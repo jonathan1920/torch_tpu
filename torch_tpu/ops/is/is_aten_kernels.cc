@@ -31,7 +31,7 @@ at::Tensor AtenIsNan(const at::Tensor& self) {
   TT_KERNEL(OpName::kIsNan, _, (self), {
     TT_ASSIGN_OR_THROW(
         auto result,
-        ::torch_tpu::UnaryOp(self, OpName::kIsNan, BuildIsNanShlo,
+        ::torch_tpu::UnaryOp(self, BuildIsNanShlo,
                              {.op_param_cache_keys = OpParamCacheKeys::Empty(),
                               .out_dtype = c10::kBool}));
     return result;
@@ -41,7 +41,7 @@ at::Tensor AtenIsNan(const at::Tensor& self) {
 at::Tensor& AtenIsNegInfOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kIsNegInfOut, _, (self, out), {
     TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(
-        self, out, OpName::kIsNegInfOut, BuildIsNegInfShlo,
+        self, out, BuildIsNegInfShlo,
         {.op_param_cache_keys = OpParamCacheKeys::Empty(),
          .out_dtype = c10::kBool}));
     return out;
@@ -51,7 +51,7 @@ at::Tensor& AtenIsNegInfOut(const at::Tensor& self, at::Tensor& out) {
 at::Tensor& AtenIsPosInfOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kIsPosInfOut, _, (self, out), {
     TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(
-        self, out, OpName::kIsPosInfOut, BuildIsPosInfShlo,
+        self, out, BuildIsPosInfShlo,
         {.op_param_cache_keys = OpParamCacheKeys::Empty(),
          .out_dtype = c10::kBool}));
     return out;

@@ -53,7 +53,7 @@ absl::StatusOr<at::Tensor> GetUniqueCount(const at::Tensor& self, bool sorted) {
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   TT_ASSIGN_OR_RETURN(
       auto unique_count,
-      UnaryOp(self, OpName::kUnique2,
+      UnaryOp(self,
               [element_type,
                sorted](mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
                 return BuildUniqueGetOutputSizeShlo(element_type, input,
@@ -104,7 +104,7 @@ absl::StatusOr<std::tuple<at::Tensor, at::Tensor, at::Tensor>> Unique2(
 
   TT_ASSIGN_OR_RETURN(
       auto results,
-      (DispatchOp<1, 3>(OpName::kUnique2, std::move(shlo_builder), self,
+      (DispatchOp<1, 3>(std::move(shlo_builder), self,
                         {.out_dtypes = out_dtypes,
                          .out_dims_list = out_dims_list,
                          .op_param_cache_keys = std::move(param_keys)})));

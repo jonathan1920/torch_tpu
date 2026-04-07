@@ -74,8 +74,7 @@ at::Tensor& AtenTanhBackwardGradInput(const at::Tensor& grad_output,
 
         TT_ASSIGN_OR_THROW(
             auto result,
-            DispatchOp<2>(OpName::kTanhBackwardGradInput, std::move(op_builder),
-                          {grad_output, output},
+            DispatchOp<2>(std::move(op_builder), {grad_output, output},
                           /*options=*/
                           {.out_dtype = out_dtype,
                            .out_dims = output_shape,

@@ -281,13 +281,12 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNormBackward(
   };
 
   std::optional<DeviceBufferRefArray<3>> results;
-  TT_ASSIGN_OR_RETURN(
-      results,
-      (DispatchOp<kDynamicSize, 3>(
-          OpName::kNativeBatchNormBackward, std::move(op_builder), inputs,
-          {.out_dtypes = output_dtypes,
-           .out_dims_list = output_dims_list,
-           .op_param_cache_keys = std::move(param_keys)})));
+  TT_ASSIGN_OR_RETURN(results,
+                      (DispatchOp<kDynamicSize, 3>(
+                          std::move(op_builder), inputs,
+                          {.out_dtypes = output_dtypes,
+                           .out_dims_list = output_dims_list,
+                           .op_param_cache_keys = std::move(param_keys)})));
 
   return std::move(*results);
 }

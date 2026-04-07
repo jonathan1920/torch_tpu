@@ -47,9 +47,8 @@ namespace torch_tpu {
 namespace {
 
 absl::StatusOr<DeviceBufferRef> Scatter(
-    OpName op_name, const at::Tensor& self, int64_t dim,
-    const at::Tensor& index, const at::Tensor& src,
-    ScatterOp reduction_op = ScatterOp::kReplace) {
+    const at::Tensor& self, int64_t dim, const at::Tensor& index,
+    const at::Tensor& src, ScatterOp reduction_op = ScatterOp::kReplace) {
   TT_ASSIGN_OR_RETURN(dim, SafeWrapDim(dim, self.dim()));
 
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
@@ -68,7 +67,7 @@ absl::StatusOr<DeviceBufferRef> Scatter(
                       TT_MAKE_OP_PARAM_CACHE_KEYS(dim, reduction_op));
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
-      DispatchOp<3>(op_name, std::move(scatter_op_builder), {self, index, src},
+      DispatchOp<3>(std::move(scatter_op_builder), {self, index, src},
                     {.out_dtype = output_dtype,
                      .out_dims = output_dims,
                      .op_param_cache_keys = std::move(param_keys)}));
@@ -100,9 +99,8 @@ at::Tensor& AtenScatterSrcOut(const at::Tensor& self, int64_t dim,
                               at::Tensor& out) {
   TT_KERNEL(OpName::kScatterSrcOut, _,
             (self, IgnoreInCacheKey(dim, "Legacy usage"), index, src, out), {
-              TT_ASSIGN_OR_THROW(
-                  DeviceBufferRef result,
-                  Scatter(OpName::kScatterSrcOut, self, dim, index, src));
+              TT_ASSIGN_OR_THROW(DeviceBufferRef result,
+                                 Scatter(self, dim, index, src));
               TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
               return out;
             });
@@ -117,9 +115,8 @@ at::Tensor& AtenScatterValueOut(const at::Tensor& self, int64_t dim,
        IgnoreInCacheKey(value, "Legacy usage"), out),
       {
         auto value_tensor = TensorFromValue(self, value);
-        TT_ASSIGN_OR_THROW(
-            DeviceBufferRef result,
-            Scatter(OpName::kScatterValueOut, self, dim, index, value_tensor));
+        TT_ASSIGN_OR_THROW(DeviceBufferRef result,
+                           Scatter(self, dim, index, value_tensor));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
         return out;
       });
@@ -136,8 +133,7 @@ at::Tensor& AtenScatterReduceOut(const at::Tensor& self, int64_t dim,
               TT_ASSIGN_OR_THROW(ScatterOp scatter_op,
                                  ParseScatterOp(reduction_op));
               TT_ASSIGN_OR_THROW(DeviceBufferRef result,
-                                 Scatter(OpName::kScatterReduceOut, self, dim,
-                                         index, src, scatter_op));
+                                 Scatter(self, dim, index, src, scatter_op));
               TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
               return out;
             });
@@ -156,9 +152,9 @@ at::Tensor& AtenScatterValueReduceOut(const at::Tensor& self, int64_t dim,
               auto value_tensor = TensorFromValue(self, value);
               TT_ASSIGN_OR_THROW(ScatterOp scatter_op,
                                  ParseScatterOp(reduction_op));
-              TT_ASSIGN_OR_THROW(DeviceBufferRef result,
-                                 Scatter(OpName::kScatterValueReduceOut, self,
-                                         dim, index, value_tensor, scatter_op));
+              TT_ASSIGN_OR_THROW(
+                  DeviceBufferRef result,
+                  Scatter(self, dim, index, value_tensor, scatter_op));
               TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
               return out;
             });

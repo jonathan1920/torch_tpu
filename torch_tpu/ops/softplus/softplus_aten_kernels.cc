@@ -97,9 +97,9 @@ at::Tensor& AtenSoftplusOut(const at::Tensor& self, const at::Scalar& beta,
                    error::kUnimplemented)
         << "expected the input dtype to be floating-point, "
         << "got " << ToString(self.scalar_type());
-    TT_THROW_IF_ERROR(UnaryOpOut(
-        self, out, OpName::kSoftplusOut, GetSoftplusFunctional(beta, threshold),
-        {.op_param_cache_keys = std::move(param_keys)}));
+    TT_THROW_IF_ERROR(
+        UnaryOpOut(self, out, GetSoftplusFunctional(beta, threshold),
+                   {.op_param_cache_keys = std::move(param_keys)}));
     return out;
   });
 }
@@ -125,8 +125,7 @@ at::Tensor& AtenSoftplusBackwardGradInput(const at::Tensor& grad_output,
 
         TT_ASSIGN_OR_THROW(
             auto result_buf,
-            DispatchOp<2>(OpName::kSoftplusBackwardGradInput,
-                          std::move(op_builder), {grad_output, self},
+            DispatchOp<2>(std::move(op_builder), {grad_output, self},
                           {.out_dtype = out_dtype,
                            .out_dims = CopyIntVector(grad_input.sizes()),
                            .op_param_cache_keys = std::move(param_keys)}));

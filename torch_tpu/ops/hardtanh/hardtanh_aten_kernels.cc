@@ -82,7 +82,7 @@ at::Tensor AtenHardtanh(const at::Tensor& self, const at::Scalar& min_val,
     TT_ASSIGN_OR_THROW(auto op_builder,
                        AtenHardtanhHelper(self, min_val, max_val));
     TT_ASSIGN_OR_THROW(auto result,
-                       UnaryOp(self, OpName::kHardtanh, std::move(op_builder),
+                       UnaryOp(self, std::move(op_builder),
                                {.op_param_cache_keys = std::move(param_keys)}));
     return result;
   });
@@ -94,7 +94,7 @@ at::Tensor& AtenHardtanh_(at::Tensor& self, const at::Scalar& min_val,
     TT_ASSIGN_OR_THROW(auto op_builder,
                        AtenHardtanhHelper(self, min_val, max_val));
     TT_THROW_IF_ERROR(
-        UnaryOpInPlace(self, OpName::kHardtanh_, std::move(op_builder),
+        UnaryOpInPlace(self, std::move(op_builder),
                        {.op_param_cache_keys = std::move(param_keys)}));
     return self;
   });
@@ -106,7 +106,7 @@ at::Tensor& AtenHardtanhOut(const at::Tensor& self, const at::Scalar& min_val,
     TT_ASSIGN_OR_THROW(auto op_builder,
                        AtenHardtanhHelper(self, min_val, max_val));
     TT_THROW_IF_ERROR(
-        UnaryOpOut(self, out, OpName::kHardtanhOut, std::move(op_builder),
+        UnaryOpOut(self, out, std::move(op_builder),
                    {.op_param_cache_keys = std::move(param_keys)}));
     return out;
   });

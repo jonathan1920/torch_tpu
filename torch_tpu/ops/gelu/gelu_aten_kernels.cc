@@ -53,7 +53,7 @@ at::Tensor& AtenGeluOut(const at::Tensor& self, c10::string_view approximate,
                    error::kInvalidArgument)
         << "unsupported approximate argument: " << approximate;
     TT_THROW_IF_ERROR(
-        UnaryOpOut(self, out, OpName::kGeluOut, GetGeluFunctional(approximate),
+        UnaryOpOut(self, out, GetGeluFunctional(approximate),
                    {.op_param_cache_keys = std::move(param_keys)}));
     return out;
   });
@@ -82,8 +82,7 @@ at::Tensor& AtenGeluBackwardGradInput(const at::Tensor& grad_output,
 
         TT_ASSIGN_OR_THROW(
             auto result,
-            DispatchOp<2>(OpName::kGeluBackwardGradInput, std::move(op_builder),
-                          {grad_output, self},
+            DispatchOp<2>(std::move(op_builder), {grad_output, self},
                           /*options=*/
                           {.out_dtype = out_dtype,
                            .out_dims = output_shape,

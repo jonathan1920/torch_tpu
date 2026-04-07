@@ -802,7 +802,7 @@ at::Tensor& AtenUpsampleNearest1dBackwardGradInput(
 
         TT_ASSIGN_OR_THROW(
             auto grad_input_buf,
-            (DispatchOp<2>(OpName::kUpsampleNearest1dOut, std::move(op_builder),
+            (DispatchOp<2>(std::move(op_builder),
                            {grad_output, inverse_scale_factors[0]},
                            {.out_dtype = element_type,
                             .out_dims = CopyIntVector(input_shape),
@@ -850,7 +850,7 @@ at::Tensor& AtenUpsampleNearest2dBackwardGradInput(
 
         TT_ASSIGN_OR_THROW(
             auto grad_input_buf,
-            (DispatchOp<3>(OpName::kUpsampleNearest2dOut, std::move(op_builder),
+            (DispatchOp<3>(std::move(op_builder),
                            {grad_output, inverse_scale_factors[0],
                             inverse_scale_factors[1]},
                            {.out_dtype = element_type,
@@ -904,7 +904,7 @@ at::Tensor& AtenUpsampleNearest3dBackwardGradInput(
 
         TT_ASSIGN_OR_THROW(
             auto grad_input_buf,
-            (DispatchOp<4>(OpName::kUpsampleNearest3dOut, std::move(op_builder),
+            (DispatchOp<4>(std::move(op_builder),
                            {grad_output, inverse_scale_factors[0],
                             inverse_scale_factors[1], inverse_scale_factors[2]},
                            {.out_dtype = element_type,
@@ -950,8 +950,7 @@ at::Tensor& AtenUpsampleNearestExact1dBackwardGradInput(
 
         TT_ASSIGN_OR_THROW(
             auto grad_input_buf,
-            (DispatchOp<2>(OpName::kUpsampleNearestExact1dBackwardGradInput,
-                           std::move(op_builder),
+            (DispatchOp<2>(std::move(op_builder),
                            {grad_output, inverse_scale_factors[0]},
                            {.out_dtype = element_type,
                             .out_dims = CopyIntVector(input_shape),
@@ -999,8 +998,7 @@ at::Tensor& AtenUpsampleNearestExact2dBackwardGradInput(
 
         TT_ASSIGN_OR_THROW(
             auto grad_input_buf,
-            (DispatchOp<3>(OpName::kUpsampleNearestExact2dBackwardGradInput,
-                           std::move(op_builder),
+            (DispatchOp<3>(std::move(op_builder),
                            {grad_output, inverse_scale_factors[0],
                             inverse_scale_factors[1]},
                            {.out_dtype = element_type,
@@ -1054,8 +1052,7 @@ at::Tensor& AtenUpsampleNearestExact3dBackwardGradInput(
 
         TT_ASSIGN_OR_THROW(
             auto grad_input_buf,
-            (DispatchOp<4>(OpName::kUpsampleNearestExact3dBackwardGradInput,
-                           std::move(op_builder),
+            (DispatchOp<4>(std::move(op_builder),
                            {grad_output, inverse_scale_factors[0],
                             inverse_scale_factors[1], inverse_scale_factors[2]},
                            {.out_dtype = element_type,
@@ -1103,8 +1100,7 @@ at::Tensor& AtenUpsampleBilinear2dOut(const at::Tensor& self,
 
         TT_ASSIGN_OR_THROW(
             auto out_buf,
-            (DispatchOp<1>(OpName::kUpsampleBilinear2dOut,
-                           std::move(op_builder), {self},
+            (DispatchOp<1>(std::move(op_builder), {self},
                            {.out_dtype = element_type,
                             .out_dims = CopyIntVector(out.sizes()),
                             .op_param_cache_keys = std::move(param_keys)})));
@@ -1140,8 +1136,7 @@ at::Tensor& AtenUpsampleBilinear2dBackwardGradInput(
 
         TT_ASSIGN_OR_THROW(
             auto grad_input_buf,
-            (DispatchOp<1>(OpName::kUpsampleBilinear2dBackwardGradInput,
-                           std::move(op_builder), {grad_output},
+            (DispatchOp<1>(std::move(op_builder), {grad_output},
                            {.out_dtype = element_type,
                             .out_dims = CopyIntVector(input_size),
                             .op_param_cache_keys = std::move(param_keys)})));
@@ -1179,7 +1174,7 @@ at::Tensor& AtenUpsampleNearest1dOut(const at::Tensor& self,
 
         TT_ASSIGN_OR_THROW(
             auto out_buf,
-            (DispatchOp<2>(OpName::kUpsampleNearest1dOut, std::move(op_builder),
+            (DispatchOp<2>(std::move(op_builder),
                            {self, inverse_scale_factors[0]},
                            {.out_dtype = element_type,
                             .out_dims = CopyIntVector(out.sizes()),
@@ -1224,7 +1219,7 @@ at::Tensor& AtenUpsampleNearest2dOut(const at::Tensor& self,
         TT_ASSIGN_OR_THROW(
             auto out_buf,
             (DispatchOp<3>(
-                OpName::kUpsampleNearest2dOut, std::move(op_builder),
+                std::move(op_builder),
                 {self, inverse_scale_factors[0], inverse_scale_factors[1]},
                 {.out_dtype = element_type,
                  .out_dims = CopyIntVector(out.sizes()),
@@ -1268,7 +1263,7 @@ at::Tensor& AtenUpsampleNearest3dOut(const at::Tensor& self,
             ConstructScaleFactorArray(preprocessed_inverse_scale_factors));
         TT_ASSIGN_OR_THROW(
             auto out_buf,
-            (DispatchOp<4>(OpName::kUpsampleNearest3dOut, std::move(op_builder),
+            (DispatchOp<4>(std::move(op_builder),
                            {self, inverse_scale_factors[0],
                             inverse_scale_factors[1], inverse_scale_factors[2]},
                            {.out_dtype = element_type,
@@ -1309,8 +1304,7 @@ at::Tensor& AtenUpsampleNearestExact1dOut(const at::Tensor& self,
 
         TT_ASSIGN_OR_THROW(
             auto out_buf,
-            (DispatchOp<2>(OpName::kUpsampleNearestExact1dOut,
-                           std::move(op_builder),
+            (DispatchOp<2>(std::move(op_builder),
                            {self, inverse_scale_factors[0]},
                            {.out_dtype = element_type,
                             .out_dims = CopyIntVector(out.sizes()),
@@ -1352,7 +1346,7 @@ at::Tensor& AtenUpsampleNearestExact2dOut(const at::Tensor& self,
         TT_ASSIGN_OR_THROW(
             auto out_buf,
             (DispatchOp<3>(
-                OpName::kUpsampleNearestExact2dOut, std::move(op_builder),
+                std::move(op_builder),
                 {self, inverse_scale_factors[0], inverse_scale_factors[1]},
                 {.out_dtype = element_type,
                  .out_dims = CopyIntVector(out.sizes()),
@@ -1396,8 +1390,7 @@ at::Tensor& AtenUpsampleNearestExact3dOut(const at::Tensor& self,
             ConstructScaleFactorArray(preprocessed_inverse_scale_factors));
         TT_ASSIGN_OR_THROW(
             auto out_buf,
-            (DispatchOp<4>(OpName::kUpsampleNearestExact3dOut,
-                           std::move(op_builder),
+            (DispatchOp<4>(std::move(op_builder),
                            {self, inverse_scale_factors[0],
                             inverse_scale_factors[1], inverse_scale_factors[2]},
                            {.out_dtype = element_type,

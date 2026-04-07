@@ -379,8 +379,7 @@ absl::StatusOr<DeviceBufferRef> IndexPutWithBooleanMask(
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
-      DispatchOp<3>(OpName::kIndexPutImpl_, std::move(index_op_builder),
-                    {self, mask, values},
+      DispatchOp<3>(std::move(index_op_builder), {self, mask, values},
                     {.out_dtype = elem_type,
                      .out_dims = at::IntArrayRef(self.sizes()),
                      .op_param_cache_keys = std::move(param_keys)}));
@@ -463,8 +462,7 @@ absl::StatusOr<DeviceBufferRef> IndexPut(
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
-      DispatchOp<kDynamicSize>(OpName::kIndexPutImpl_,
-                               std::move(index_op_builder), all_tensors,
+      DispatchOp<kDynamicSize>(std::move(index_op_builder), all_tensors,
                                {.out_dtype = elem_type,
                                 .out_dims = at::IntArrayRef(self.sizes()),
                                 .op_param_cache_keys = std::move(param_keys)}));

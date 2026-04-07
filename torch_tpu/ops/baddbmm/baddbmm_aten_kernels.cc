@@ -156,11 +156,14 @@ absl::StatusOr<DeviceBufferRef> Baddbmm(
 
   TT_ASSIGN_OR_RETURN(
       auto result_buffer,
-      DispatchOp<3>(OpName::kBaddbmmOut, std::move(op_builder),
-                    {self, batch1, batch2},
-                    {.out_dtype = out_dtype_mlir,
-                     .out_dims = out_dims,
-                     .op_param_cache_keys = std::move(param_keys)}));
+      DispatchOp<3>(
+          std::move(op_builder), {self, batch1, batch2},
+          // It's OK for both calls to Baddbmm() to use the same OpName for
+          // dispatching, as the logic is the same for both.
+          {.op_name = OpName::kBaddbmmOut,
+           .out_dtype = out_dtype_mlir,
+           .out_dims = out_dims,
+           .op_param_cache_keys = std::move(param_keys)}));
   return result_buffer;
 }
 

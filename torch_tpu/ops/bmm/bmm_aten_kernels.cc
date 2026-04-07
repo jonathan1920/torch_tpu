@@ -107,7 +107,7 @@ absl::StatusOr<DeviceBufferRef> Bmm(const at::Tensor& self,
   };
   TT_ASSIGN_OR_RETURN(
       auto result_buffer,
-      DispatchOp<2>(OpName::kBmmDtypeOut, std::move(op_builder), {self, mat2},
+      DispatchOp<2>(std::move(op_builder), {self, mat2},
                     {.out_dtype = output_dtype_mlir,
                      .out_dims = output_dims_vec,
                      .op_param_cache_keys = std::move(param_keys)}));

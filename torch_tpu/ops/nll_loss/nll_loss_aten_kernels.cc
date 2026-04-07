@@ -127,7 +127,6 @@ std::tuple<at::Tensor&, at::Tensor&> AtenNllLossForwardOut(
         }
 
         TT_ASSIGN_OR_THROW(auto output_bufs, (DispatchOp<kDynamicSize, 2>(
-                                                 OpName::kNllLossForwardOut,
                                                  std::move(op_builder), inputs,
                                                  std::move(options))));
 
@@ -265,8 +264,7 @@ at::Tensor& AtenNllLossBackwardGradInput(
 
         TT_ASSIGN_OR_THROW(
             auto grad_input_buf,
-            (DispatchOp<kDynamicSize, 1>(OpName::kNllLossBackwardGradInput,
-                                         std::move(op_builder), inputs,
+            (DispatchOp<kDynamicSize, 1>(std::move(op_builder), inputs,
                                          std::move(options))));
 
         at::IntArrayRef output_sizes_array_ref(grad_input_buf.dimensions());

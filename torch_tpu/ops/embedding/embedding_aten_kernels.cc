@@ -159,7 +159,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> AtenEmbeddingBag(
         TT_ASSIGN_OR_THROW(
             (auto [output, offset2bag, bag_sizes, max_indices]),
             (DispatchOp<kDynamicSize, 4>(
-                OpName::kEmbeddingBag, std::move(op_builder), inputs,
+                std::move(op_builder), inputs,
                 {.out_dtypes = {weight_dtype, indices_dtype, offsets_dtype,
                                 indices_dtype},
                  .out_dims_list = {{batch_size, emb_dim},
@@ -220,8 +220,7 @@ at::Tensor& AtenEmbeddingRenorm_(at::Tensor& self, const at::Tensor& indices,
 
         TT_ASSIGN_OR_THROW(
             auto renorm_rows,
-            DispatchOp<2>(OpName::kEmbeddingRenorm_, std::move(fn),
-                          {self, indices},
+            DispatchOp<2>(std::move(fn), {self, indices},
                           {.out_dtype = element_type,
                            .out_dims = {output_dims},
                            .op_param_cache_keys = std::move(op_cache_keys)}));

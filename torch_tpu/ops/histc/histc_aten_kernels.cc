@@ -240,8 +240,7 @@ at::Tensor& AtenHistcOut(const at::Tensor& self, const int64_t bins,
         };
         TT_ASSIGN_OR_THROW(
             auto result_buf,
-            DispatchOp<3>(OpName::kHistcOut, std::move(op_builder),
-                          {self, min_val, max_val},
+            DispatchOp<3>(std::move(op_builder), {self, min_val, max_val},
                           {.out_dtype = mlir_out_dtype,
                            .out_dims = {bins},
                            .op_param_cache_keys = std::move(param_keys)}));

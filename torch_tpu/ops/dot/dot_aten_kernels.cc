@@ -60,7 +60,7 @@ absl::StatusOr<DeviceBufferRef> Dot(const at::Tensor& lhs,
   };
   TT_ASSIGN_OR_RETURN(
       auto result,
-      DispatchOp<2>(OpName::kDot, std::move(op_builder), {lhs, rhs},
+      DispatchOp<2>(std::move(op_builder), {lhs, rhs},
                     {.out_dtype = result_scalar_type,
                      .out_dims = {},
                      .op_param_cache_keys = std::move(param_keys)}));

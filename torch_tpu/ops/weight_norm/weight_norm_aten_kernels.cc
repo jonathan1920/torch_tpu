@@ -125,8 +125,7 @@ std::tuple<at::Tensor, at::Tensor> AtenWeightNormInterface(const at::Tensor& v,
 
     TT_ASSIGN_OR_THROW(
         (auto [weight_norm_buf, v_norm_buf]),
-        (DispatchOp<2, 2>(OpName::kWeightNormInterface, std::move(op_builder),
-                          {v, g},
+        (DispatchOp<2, 2>(std::move(op_builder), {v, g},
                           {.out_dtypes = {out_dtype, norm_dtype},
                            .out_dims_list = {CopyIntVector(v.sizes()),
                                              CopyIntVector(g.sizes())},

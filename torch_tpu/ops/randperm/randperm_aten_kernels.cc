@@ -114,8 +114,7 @@ at::Tensor& AtenRandpermGeneratorOut(c10::SymInt n,
 
     TT_ASSIGN_OR_THROW(
         auto output_buf,
-        (DispatchOp<1>(OpName::kRandpermGeneratorOut,
-                       std::move(randperm_op_builder), {rng_input_state},
+        (DispatchOp<1>(std::move(randperm_op_builder), {rng_input_state},
                        {.out_dtype = output_dtype,
                         .out_dims = out.sizes(),
                         .op_param_cache_keys = std::move(param_keys)})));

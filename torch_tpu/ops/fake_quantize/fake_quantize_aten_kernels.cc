@@ -98,8 +98,7 @@ FakeQuantizePerTensorAffineCachemaskHelper(const at::Tensor& self, double scale,
 
   TT_ASSIGN_OR_RETURN(
       (auto [output, mask]),
-      (DispatchOp<1, 2>(OpName::kFakeQuantizePerTensorAffineCachemask,
-                        std::move(op_builder), {self},
+      (DispatchOp<1, 2>(std::move(op_builder), {self},
                         {.out_dtypes = {output_dtype, mlir::ElementType::PRED},
                          .out_dims_list = {self.sizes(), self.sizes()},
                          .op_param_cache_keys = OpParamCacheKeys::Empty()})));

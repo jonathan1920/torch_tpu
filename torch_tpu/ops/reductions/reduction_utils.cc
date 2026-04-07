@@ -202,9 +202,12 @@ absl::StatusOr<at::Tensor> ApplySumReduction(const at::Tensor& self,
                       ConvertTo<mlir::ElementType>(out_dtype));
 
   return UnaryOp(
-      self, OpName::kSum,
+      self,
       GetSumFunctional(std::move(canonical_dims), reduction_mode, mlir_type),
-      {.op_param_cache_keys = std::move(param_keys),
+      // Use kSum instead of the OpName passed to TT_KERNEL() as this is not for
+      // implementing a specific op, but rather a general reduction utility.
+      {.op_name = OpName::kSum,
+       .op_param_cache_keys = std::move(param_keys),
        .out_dtype = out_dtype,
        .out_dims = std::move(output_dims)});
 }
@@ -222,9 +225,13 @@ absl::Status ApplySumReductionOut(const at::Tensor& self, at::Tensor& out,
                       ConvertTo<mlir::ElementType>(out_dtype));
 
   return UnaryOpOut(
-      self, out, OpName::kSumIntListOut,
+      self, out,
       GetSumFunctional(std::move(canonical_dims), reduction_mode, mlir_type),
-      {.op_param_cache_keys = std::move(param_keys),
+      // Use kSumIntListOut instead of the OpName passed to TT_KERNEL() as this
+      // is not for implementing a specific op, but rather a general reduction
+      // utility.
+      {.op_name = OpName::kSumIntListOut,
+       .op_param_cache_keys = std::move(param_keys),
        .out_dtype = out_dtype,
        .out_dims = std::move(output_dims)});
 }

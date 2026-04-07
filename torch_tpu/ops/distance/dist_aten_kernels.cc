@@ -282,7 +282,7 @@ at::Tensor AtenCdistForward(const at::Tensor& x1, const at::Tensor& x2,
 
     TT_ASSIGN_OR_THROW(
         auto result_buf,
-        DispatchOp<2>(OpName::kCdistForward, std::move(op_builder), {x1, x2},
+        DispatchOp<2>(std::move(op_builder), {x1, x2},
                       {.out_dtype = out_dtype,
                        .out_dims = output_shape,
                        .op_param_cache_keys = std::move(param_keys)}));
@@ -316,7 +316,7 @@ at::Tensor AtenPdistForward(const at::Tensor& self, double p) {
 
     TT_ASSIGN_OR_THROW(
         auto result_buf,
-        DispatchOp<1>(OpName::kPdistForward, std::move(op_builder), self,
+        DispatchOp<1>(std::move(op_builder), self,
                       {.out_dtype = out_dtype,
                        .out_dims = output_shape,
                        .op_param_cache_keys = std::move(param_keys)}));

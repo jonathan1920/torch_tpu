@@ -41,7 +41,7 @@ at::Tensor& AtenCumprodOut(const at::Tensor& self, int64_t dim,
       return out;
     }
 
-    TT_THROW_IF_ERROR(UnaryOpOut(self, out, OpName::kCumprodOut,
+    TT_THROW_IF_ERROR(UnaryOpOut(self, out,
                                  absl::bind_front(BuildCumprodShlo, dim, dtype),
                                  {.op_param_cache_keys = std::move(param_keys),
                                   .out_dtype = out.scalar_type()}));

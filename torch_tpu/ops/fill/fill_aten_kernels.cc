@@ -69,7 +69,7 @@ at::Tensor& AtenFillTensor_(at::Tensor& self, const at::Tensor& fill_value) {
 
     TT_ASSIGN_OR_THROW(
         auto result_buf,
-        DispatchOp<1>(OpName::kFill_Tensor, std::move(op_builder),
+        DispatchOp<1>(std::move(op_builder),
                       /*inputs=*/{fill_value},
                       {.out_dtype = out_mlir_element_type,
                        .out_dims = sizes,
@@ -100,7 +100,7 @@ at::Tensor& AtenFillScalar_(at::Tensor& self, const at::Scalar& fill_value) {
 
     TT_ASSIGN_OR_THROW(
         auto result_buf,
-        DispatchOp<0>(OpName::kFill_Scalar, std::move(op_builder),
+        DispatchOp<0>(std::move(op_builder),
                       /*inputs=*/{},
                       {.out_dtype = out_mlir_element_type,
                        .out_dims = sizes,

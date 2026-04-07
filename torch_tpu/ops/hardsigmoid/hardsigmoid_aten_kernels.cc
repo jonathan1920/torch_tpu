@@ -89,7 +89,7 @@ at::Tensor& AtenHardsigmoidOut(const at::Tensor& self, at::Tensor& out) {
         << "expected the input dtype to be floating point, got "
         << ToString(self.scalar_type());
     TT_THROW_IF_ERROR(
-        UnaryOpOut(self, out, OpName::kHardsigmoidOut, BuildHardsigmoidShlo,
+        UnaryOpOut(self, out, BuildHardsigmoidShlo,
                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
@@ -109,7 +109,6 @@ at::Tensor& AtenHardsigmoidBackwardGradInput(const at::Tensor& grad_output,
         TT_ASSIGN_OR_THROW(
             auto result,
             (DispatchOp<2>(
-                OpName::kHardsigmoidBackwardGradInput,
                 [](FixedSizeSpan<mlir::MlirOp, 2> inputs)
                     -> absl::StatusOr<mlir::MlirOp> {
                   auto& [grad_output_op, self_op] = inputs;

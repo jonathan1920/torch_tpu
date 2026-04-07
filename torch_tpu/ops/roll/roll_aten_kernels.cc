@@ -121,7 +121,7 @@ at::Tensor AtenRoll(const at::Tensor& self, at::IntArrayRef shifts,
 
     TT_ASSIGN_OR_THROW(
         auto out_buf,
-        (DispatchOp<1>(OpName::kRoll, std::move(op_builder), self,
+        (DispatchOp<1>(std::move(op_builder), self,
                        {.out_dtype = element_type,
                         .out_dims = CopyIntVector(self.sizes()),
                         .op_param_cache_keys = std::move(param_keys)})));

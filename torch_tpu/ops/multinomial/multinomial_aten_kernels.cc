@@ -81,7 +81,7 @@ absl::StatusOr<DeviceBufferRefArray<1>> Multinomial(
 
   TT_ASSIGN_OR_RETURN(
       DeviceBufferRefArray<1> result_buf,
-      DispatchOp<1>(OpName::kMultinomial, std::move(op_builder), self,
+      DispatchOp<1>(std::move(op_builder), self,
                     {.out_dtype = mlir::ElementType::I64,
                      .out_dims = GetOutputDimensions(self, num_samples),
                      .op_param_cache_keys = std::move(param_keys),

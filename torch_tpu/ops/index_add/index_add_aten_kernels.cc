@@ -106,8 +106,7 @@ absl::StatusOr<DeviceBufferRef> IndexAdd(const at::Tensor& self, int64_t dim,
 
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(out_scalar_type));
-  return DispatchOp<3>(OpName::kIndexAdd, std::move(index_add_op_builder),
-                       {self, index, source},
+  return DispatchOp<3>(std::move(index_add_op_builder), {self, index, source},
                        {.out_dtype = output_dtype,
                         .out_dims = CopyIntVector(self.sizes()),
                         .op_param_cache_keys = std::move(param_keys)});

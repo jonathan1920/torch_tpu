@@ -66,7 +66,7 @@ at::Tensor AtenFlip(const at::Tensor& self, at::IntArrayRef flip_dims) {
 
     TT_ASSIGN_OR_THROW(
         auto out_buf,
-        (DispatchOp<1>(OpName::kFlip, std::move(op_builder), self,
+        (DispatchOp<1>(std::move(op_builder), self,
                        {.out_dtype = element_type,
                         .out_dims = CopyIntVector(self.sizes()),
                         .op_param_cache_keys = std::move(param_keys)})));

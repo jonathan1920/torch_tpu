@@ -93,7 +93,7 @@ absl::StatusOr<DeviceBufferRef> Mm(const at::Tensor& lhs, const at::Tensor& rhs,
 
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
-      DispatchOp<2>(OpName::kMmOut, std::move(op_builder), {lhs, rhs},
+      DispatchOp<2>(std::move(op_builder), {lhs, rhs},
                     {.out_dtype = dtype,
                      .out_dims = output_dims,
                      .op_param_cache_keys = std::move(param_keys)}));

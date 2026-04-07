@@ -57,7 +57,7 @@
   at::Tensor& func_name##Out(const at::Tensor& self, at::Tensor& out) { \
     TT_KERNEL(op_name, _, (self, out), {                                \
       TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(                        \
-          self, out, op_name, op_builder,                               \
+          self, out, op_builder,                                        \
           {.op_param_cache_keys = OpParamCacheKeys::Empty()}));         \
       return out;                                                       \
     });                                                                 \
@@ -86,7 +86,7 @@
         return op_builder(input, out_mlir_type);                             \
       };                                                                     \
       TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(                             \
-          self, out, op_name, std::move(op_builder_with_out_dtype),          \
+          self, out, std::move(op_builder_with_out_dtype),                   \
           {.op_param_cache_keys = std::move(param_keys),                     \
            .out_dtype = out_dtype}));                                        \
       return out;                                                            \
@@ -238,7 +238,7 @@ TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kTanhOut, AtenTanh, BuildTanhShlo);
 at::Tensor& AtenAbsOut(const at ::Tensor& self, at ::Tensor& out) {
   TT_KERNEL(OpName::kAbsOut, _, (self, out), {
     TT_THROW_IF_ERROR(
-        UnaryOpOut(self, out, OpName::kAbsOut, BuildAbsShlo,
+        UnaryOpOut(self, out, BuildAbsShlo,
                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
@@ -247,7 +247,7 @@ at::Tensor& AtenAbsOut(const at ::Tensor& self, at ::Tensor& out) {
 at::Tensor& AtenNegOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kNegOut, _, (self, out), {
     TT_THROW_IF_ERROR(
-        UnaryOpOut(self, out, OpName::kNegOut, BuildNegShlo,
+        UnaryOpOut(self, out, BuildNegShlo,
                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });
@@ -257,7 +257,7 @@ at::Tensor AtenRelu(const at::Tensor& self) {
   TT_KERNEL(OpName::kRelu, _, (self), {
     TT_ASSIGN_OR_THROW(at::Tensor result,
                        ::torch_tpu::UnaryOp(
-                           self, OpName::kRelu, BuildReluShlo,
+                           self, BuildReluShlo,
                            {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return result;
   });
@@ -266,7 +266,7 @@ at::Tensor AtenRelu(const at::Tensor& self) {
 at::Tensor& AtenRelu_(at::Tensor& self) {
   TT_KERNEL(OpName::kRelu_, _, (self), {
     TT_THROW_IF_ERROR(
-        UnaryOpInPlace(self, OpName::kRelu_, BuildReluShlo,
+        UnaryOpInPlace(self, BuildReluShlo,
                        {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return self;
   });
@@ -281,7 +281,7 @@ at::Tensor& AtenSignOut(const at::Tensor& self, at::Tensor& out) {
                        ConvertTo<mlir::ElementType>(self.scalar_type()));
     TT_ASSIGN_OR_THROW(
         auto result_buf,
-        DispatchOp<1>(OpName::kSignOut, BuildSignShlo, self,
+        DispatchOp<1>(BuildSignShlo, self,
                       /*options=*/
                       {.out_dtype = out_dtype,
                        .out_dims = self.sizes(),
@@ -316,7 +316,7 @@ at::Tensor& AtenSignbitOut(const at::Tensor& self, at::Tensor& out) {
 
     TT_ASSIGN_OR_THROW(
         auto result_buf,
-        DispatchOp<1>(OpName::kSignbitOut, std::move(op_builder), self,
+        DispatchOp<1>(std::move(op_builder), self,
                       /*options=*/
                       {.out_dtype = output_dtype,
                        .out_dims = out.sizes(),
@@ -333,7 +333,7 @@ at::Tensor& AtenTruncOut(const at::Tensor& self, at::Tensor& out) {
                    error::kInvalidArgument)
         << "does not support boolean types";
     TT_THROW_IF_ERROR(
-        UnaryOpOut(self, out, OpName::kTruncOut, BuildTruncShlo,
+        UnaryOpOut(self, out, BuildTruncShlo,
                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });

@@ -143,7 +143,7 @@ at::Tensor AtenTake(const at::Tensor& self, const at::Tensor& index) {
     };
     TT_ASSIGN_OR_THROW(
         auto result,
-        DispatchOp<2>(OpName::kTake, std::move(op_builder),
+        DispatchOp<2>(std::move(op_builder),
                       /*inputs=*/{self, index},
                       {.out_dtype = out_dtype,
                        .out_dims = index.sizes(),

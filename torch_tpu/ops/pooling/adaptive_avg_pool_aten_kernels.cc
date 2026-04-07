@@ -564,9 +564,7 @@ at::Tensor& AtenAdaptiveAvgPool2dOut(const at::Tensor& self,
                                 /*ceil_mode=*/false,
                                 /*count_include_pad=*/true,
                                 /*divisor_override=*/std::nullopt, out,
-                                spatial_dim_count,
-                                /*op_name=*/OpName::kAdaptiveAvgPool2dOut,
-                                std::move(param_keys)));
+                                spatial_dim_count, std::move(param_keys)));
           return out;
         } else {
           // Otherwise, we need to use the general adaptive pooling
@@ -579,9 +577,12 @@ at::Tensor& AtenAdaptiveAvgPool2dOut(const at::Tensor& self,
 
           TT_ASSIGN_OR_THROW(
               auto result,
-              DispatchOp<1>(OpName::kAdaptiveAvgPool2d, std::move(op_builder),
-                            self,
-                            {.out_dtype = output_dtype,
+              DispatchOp<1>(std::move(op_builder), self,
+                            // Override the OpName passed to TT_KERNEL() as we
+                            // need a different computation than the one in the
+                            // true branch above.
+                            {.op_name = OpName::kAdaptiveAvgPool2d,
+                             .out_dtype = output_dtype,
                              .out_dims = CopyIntVector(out.sizes()),
                              .op_param_cache_keys = std::move(param_keys)}));
 
@@ -680,9 +681,7 @@ at::Tensor& AtenAdaptiveAvgPool3dOut(const at::Tensor& self,
                                 /*ceil_mode=*/false,
                                 /*count_include_pad=*/true,
                                 /*divisor_override=*/std::nullopt, out,
-                                spatial_dim_count,
-                                /*op_name=*/OpName::kAdaptiveAvgPool3dOut,
-                                std::move(param_keys)));
+                                spatial_dim_count, std::move(param_keys)));
           return out;
         } else {
           // Otherwise, we need to use the general adaptive pooling
@@ -695,9 +694,12 @@ at::Tensor& AtenAdaptiveAvgPool3dOut(const at::Tensor& self,
 
           TT_ASSIGN_OR_THROW(
               auto result,
-              DispatchOp<1>(OpName::kAdaptiveAvgPool3dOut,
-                            std::move(op_builder), self,
-                            {.out_dtype = output_dtype,
+              DispatchOp<1>(std::move(op_builder), self,
+                            // Override the OpName passed to TT_KERNEL() as we
+                            // need a different computation than the one in the
+                            // true branch above.
+                            {.op_name = OpName::kAdaptiveAvgPool3dOut,
+                             .out_dtype = output_dtype,
                              .out_dims = CopyIntVector(out.sizes()),
                              .op_param_cache_keys = std::move(param_keys)}));
 
@@ -750,8 +752,7 @@ at::Tensor AtenAdaptiveAvgPool2dBackward(const at::Tensor& grad_output,
         at::Tensor grad_input = at::empty(self.sizes(), self.options());
         TT_ASSIGN_OR_THROW(
             auto result,
-            (DispatchOp<2>(OpName::kAdaptiveAvgPool2dBackward,
-                           std::move(op_builder), {grad_output, self},
+            (DispatchOp<2>(std::move(op_builder), {grad_output, self},
                            {.out_dtype = output_dtype,
                             .out_dims = CopyIntVector(self.sizes()),
                             .op_param_cache_keys = std::move(param_keys)})));
@@ -778,8 +779,7 @@ at::Tensor& AtenAdaptiveAvgPool3dBackwardGradInput(
 
         TT_ASSIGN_OR_THROW(
             auto result,
-            (DispatchOp<2>(OpName::kAdaptiveAvgPool3dBackwardGradInput,
-                           std::move(op_builder), {grad_output, self},
+            (DispatchOp<2>(std::move(op_builder), {grad_output, self},
                            {.out_dtype = output_dtype,
                             .out_dims = CopyIntVector(self.sizes()),
                             .op_param_cache_keys = std::move(param_keys)})));

@@ -55,7 +55,7 @@ at::Tensor& AtenFmaxOut(const at::Tensor& self, const at::Tensor& other,
                         at::Tensor& out) {
   TT_KERNEL(OpName::kFmaxOut, _, (self, other, out), {
     TT_THROW_IF_ERROR(
-        BinaryOpOut(OpName::kFmaxOut, self, other, out, BuildFmaxShlo,
+        BinaryOpOut(self, other, out, BuildFmaxShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
     return out;
   });

@@ -104,8 +104,7 @@ absl::StatusOr<DeviceBufferRef> IndexCopy(const at::Tensor& self, int64_t dim,
                       ConvertTo<mlir::ElementType>(out.scalar_type()));
   absl::Span<const int64_t> output_dims = out.sizes();
 
-  return DispatchOp<3>(OpName::kIndexCopyOut, std::move(index_copy_op_builder),
-                       {self, index, source},
+  return DispatchOp<3>(std::move(index_copy_op_builder), {self, index, source},
                        {.out_dtype = output_dtype,
                         .out_dims = output_dims,
                         .op_param_cache_keys = std::move(param_keys)});

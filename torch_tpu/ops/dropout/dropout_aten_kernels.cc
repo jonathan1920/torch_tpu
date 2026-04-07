@@ -101,7 +101,7 @@ std::tuple<at::Tensor, at::Tensor> AtenDropout(const at::Tensor& input,
 
     TT_ASSIGN_OR_THROW(
         (auto [rng_output_state_buf, output_buf, mask_buf]),
-        (DispatchOp<2, 3>(OpName::kDropout, GetDropoutFunctional(input, p),
+        (DispatchOp<2, 3>(GetDropoutFunctional(input, p),
                           {rng_input_state, input},
                           {.out_dtypes = {mlir::ElementType::UI64, output_dtype,
                                           mlir::ElementType::PRED},
@@ -140,8 +140,7 @@ at::Tensor AtenNativeDropoutBackward(const at::Tensor& grad_output,
                            ConvertTo<mlir::ElementType>(output_scalar_type));
         TT_ASSIGN_OR_THROW(
             auto output_buf,
-            (DispatchOp<2, 1>(OpName::kNativeDropoutBackward,
-                              GetDropoutBackwardFunctional(scale),
+            (DispatchOp<2, 1>(GetDropoutBackwardFunctional(scale),
                               {grad_output, mask},
                               {.out_dtype = output_dtype,
                                .out_dims = grad_output.sizes(),

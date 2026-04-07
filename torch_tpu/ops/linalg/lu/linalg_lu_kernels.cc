@@ -216,7 +216,7 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuFactorExOut(
         TT_ASSIGN_OR_THROW(
             auto results,
             (DispatchOp<1, 2>(
-                OpName::kLinalgLuFactorExOut, LuDecompositionBuilder, {a_f32},
+                LuDecompositionBuilder, {a_f32},
                 {.out_dtypes = {out_mlir_type, mlir::ElementType::I32},
                  .out_dims_list = {a.sizes(), pivot_dims},
                  .op_param_cache_keys = OpParamCacheKeys::Empty()})));
@@ -401,8 +401,7 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
 
           TT_ASSIGN_OR_RETURN(
               auto buffer,
-              DispatchOp<2>(OpName::kLinalgLuSolveOut,
-                            LinalgSolveTriangularBuilder(
+              DispatchOp<2>(LinalgSolveTriangularBuilder(
                                 /*upper=*/false, /*left=*/left,
                                 /*unitriangular=*/true, /*adjoint=*/adjoint),
                             {lu, t},
@@ -420,8 +419,7 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
                               ConvertTo<mlir::ElementType>(t.scalar_type()));
           TT_ASSIGN_OR_RETURN(
               auto buffer,
-              DispatchOp<2>(OpName::kLinalgLuSolveOut,
-                            LinalgSolveTriangularBuilder(
+              DispatchOp<2>(LinalgSolveTriangularBuilder(
                                 /*upper=*/true, /*left=*/left,
                                 /*unitriangular=*/false, /*adjoint=*/adjoint),
                             {lu, t},

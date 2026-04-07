@@ -33,7 +33,7 @@ at::Tensor& AtenTriuOut(const at::Tensor& self, int64_t diagonal,
                         at::Tensor& out) {
   TT_KERNEL(OpName::kTriuOut, param_keys, (self, diagonal, out), {
     TT_THROW_IF_ERROR(UnaryOpOut(
-        self, out, OpName::kTriuOut,
+        self, out,
         absl::bind_front(BuildTriangularShlo, diagonal, TriangleType::kUpper),
         {.op_param_cache_keys = std::move(param_keys)}));
     return out;
@@ -44,7 +44,7 @@ at::Tensor& AtenTrilOut(const at::Tensor& self, int64_t diagonal,
                         at::Tensor& out) {
   TT_KERNEL(OpName::kTrilOut, param_keys, (self, diagonal, out), {
     TT_THROW_IF_ERROR(UnaryOpOut(
-        self, out, OpName::kTrilOut,
+        self, out,
         absl::bind_front(BuildTriangularShlo, diagonal, TriangleType::kLower),
         {.op_param_cache_keys = std::move(param_keys)}));
     return out;

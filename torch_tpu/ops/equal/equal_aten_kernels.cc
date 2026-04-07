@@ -97,7 +97,7 @@ bool AtenEqual(const at::Tensor& self, const at::Tensor& other) {
 
     TT_ASSIGN_OR_THROW(
         auto result_buf,
-        DispatchOp<2>(OpName::kEqual, std::move(op_builder), {self, other},
+        DispatchOp<2>(std::move(op_builder), {self, other},
                       {.out_dtype = mlir::ElementType::PRED,
                        .out_dims = {},
                        .op_param_cache_keys = std::move(param_keys)}));

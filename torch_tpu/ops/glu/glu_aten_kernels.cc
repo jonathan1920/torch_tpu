@@ -100,7 +100,7 @@ at::Tensor& AtenGluOut(const at::Tensor& self, int64_t dim, at::Tensor& out) {
     out_dims[dim] = out_dims[dim] / 2;
 
     TT_THROW_IF_ERROR(UnaryOpOut(
-        self, out, OpName::kGluOut, absl::bind_front(&BuildGluShlo, dim),
+        self, out, absl::bind_front(&BuildGluShlo, dim),
         {.op_param_cache_keys = std::move(params_key), .out_dims = out_dims}));
     return out;
   });

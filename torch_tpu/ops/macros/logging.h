@@ -266,6 +266,7 @@ void CheckScalarInput() {
       kOpName == OpName::kEluBackwardGradInput ||        //
       kOpName == OpName::kEluOut ||                      //
       kOpName == OpName::kEq ||                          //
+      kOpName == OpName::kEqScalarOut ||                 //
       kOpName == OpName::kExponential_ ||                //
       kOpName == OpName::kFill_Scalar ||                 //
       kOpName == OpName::kForeachAddList ||              //
@@ -309,7 +310,9 @@ void CheckScalarInput() {
       kOpName == OpName::kForeachSub_Scalar ||           //
       kOpName == OpName::kForeachSub_ScalarList ||       //
       kOpName == OpName::kGe ||                          //
+      kOpName == OpName::kGeScalarOut ||                 //
       kOpName == OpName::kGt ||                          //
+      kOpName == OpName::kGtScalarOut ||                 //
       kOpName == OpName::kHardtanh ||                    //
       kOpName == OpName::kHardtanhOut ||                 //
       kOpName == OpName::kHardtanh_ ||                   //
@@ -320,6 +323,7 @@ void CheckScalarInput() {
       kOpName == OpName::kIsInScalarTensorOut ||         //
       kOpName == OpName::kIsInTensorScalarOut ||         //
       kOpName == OpName::kLe ||                          //
+      kOpName == OpName::kLeScalarOut ||                 //
       kOpName == OpName::kLeakyReluOut ||                //
       kOpName == OpName::kLinalgVectorNormOut ||         //
       kOpName == OpName::kLinspaceOut ||                 //
@@ -327,11 +331,15 @@ void CheckScalarInput() {
       kOpName == OpName::kLogSoftmaxBackwardDataOut ||   //
       kOpName == OpName::kLshiftScalar ||                //
       kOpName == OpName::kLt ||                          //
+      kOpName == OpName::kLtScalarOut ||                 //
       kOpName == OpName::kMaskedFill_Scalar ||           //
       kOpName == OpName::kNativeBatchNormBackward ||     //
       kOpName == OpName::kNe ||                          //
+      kOpName == OpName::kNeScalarOut ||                 //
       kOpName == OpName::kPdistForward ||                //
       kOpName == OpName::kPow ||                         //
+      kOpName == OpName::kPowScalarOut ||                //
+      kOpName == OpName::kPowTensorScalarOut ||          //
       kOpName == OpName::kRemainder ||                   //
       kOpName == OpName::kRshiftScalar ||                //
       kOpName == OpName::kRsub ||                        //
@@ -341,6 +349,7 @@ void CheckScalarInput() {
       kOpName == OpName::kSoftplusBackwardGradInput ||   //
       kOpName == OpName::kSoftplusOut ||                 //
       kOpName == OpName::kSub ||                         //
+      kOpName == OpName::kSubOut ||                      //
       kOpName == OpName::kThresholdBackwardGradInput ||  //
       kOpName == OpName::kThresholdOut ||                //
       kOpName == OpName::kVar ||                         //

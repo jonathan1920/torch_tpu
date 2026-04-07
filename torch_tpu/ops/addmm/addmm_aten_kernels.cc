@@ -163,10 +163,14 @@ absl::StatusOr<DeviceBufferRef> AddMm(
 
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=No user triggerable errors.
       auto result_buffer,
-      DispatchOp<3>(OpName::kAddmm, std::move(op_builder), {self, mat1, mat2},
-                    {.out_dtype = output_dtype_mlir,
-                     .out_dims = output_dims_vec,
-                     .op_param_cache_keys = std::move(param_keys)}));
+      DispatchOp<3>(
+          std::move(op_builder), {self, mat1, mat2},
+          // It's OK for all 3 variants of Addmm to use the same OpName for
+          // dispatching, as the logic is the same for all 3.
+          {.op_name = OpName::kAddmm,
+           .out_dtype = output_dtype_mlir,
+           .out_dims = output_dims_vec,
+           .op_param_cache_keys = std::move(param_keys)}));
 
   return result_buffer;
 }

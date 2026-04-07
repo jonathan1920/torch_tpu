@@ -63,7 +63,7 @@ absl::StatusOr<DeviceBufferRef> LeakyReluShlo(const at::Tensor& self,
                         mlir::MlirOp self_op) -> absl::StatusOr<mlir::MlirOp> {
     return BuildLeakyReluShlo(self_op, negative_slope, out_dtype, result_shape);
   };
-  return DispatchOp<1>(OpName::kLeakyReluOut, std::move(op_builder), {self},
+  return DispatchOp<1>(std::move(op_builder), {self},
                        {.out_dtype = out_dtype,
                         .out_dims = result_shape,
                         .op_param_cache_keys = OpParamCacheKeys::Empty()});

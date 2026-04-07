@@ -455,7 +455,7 @@ absl::StatusOr<at::Tensor> BuildAvgPoolOutNd(
     const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,
     at::IntArrayRef padding, bool ceil_mode, bool count_include_pad,
     std::optional<int64_t> divisor_override, at::Tensor& out,
-    int64_t spatial_dim_count, OpName op_name, OpParamCacheKeys param_keys) {
+    int64_t spatial_dim_count, OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(auto out_type,
                       ConvertTo<mlir::ElementType>(out.scalar_type()));
 
@@ -471,7 +471,7 @@ absl::StatusOr<at::Tensor> BuildAvgPoolOutNd(
 
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
-      DispatchOp<1>(op_name, std::move(op_builder), self,
+      DispatchOp<1>(std::move(op_builder), self,
                     {.out_dtype = out_type,
                      .out_dims = CopyIntVector(out.sizes()),
                      .op_param_cache_keys = std::move(param_keys)}));
@@ -487,7 +487,7 @@ absl::StatusOr<at::Tensor> BuildAvgPoolBackwardGradInputNd(
     at::IntArrayRef kernel_size, at::IntArrayRef stride,
     at::IntArrayRef padding, bool ceil_mode, bool count_include_pad,
     std::optional<int64_t> divisor_override, at::Tensor& grad_input,
-    int64_t spatial_dim_count, OpName op_name, OpParamCacheKeys param_keys) {
+    int64_t spatial_dim_count, OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(grad_input.scalar_type()));
 
@@ -504,7 +504,7 @@ absl::StatusOr<at::Tensor> BuildAvgPoolBackwardGradInputNd(
 
   TT_ASSIGN_OR_RETURN(
       auto result,
-      (DispatchOp<2>(op_name, std::move(op_builder), {grad_output, self},
+      (DispatchOp<2>(std::move(op_builder), {grad_output, self},
                      {.out_dtype = output_dtype,
                       .out_dims = CopyIntVector(grad_input.sizes()),
                       .op_param_cache_keys = std::move(param_keys)})));
@@ -538,8 +538,7 @@ at::Tensor& AtenAvgPool2dOut(const at::Tensor& self,
             auto result,
             BuildAvgPoolOutNd(self, kernel_size, stride, padding, ceil_mode,
                               count_include_pad, divisor_override, out,
-                              /*spatial_dim_count=*/2, OpName::kAvgPool2dOut,
-                              std::move(param_keys)));
+                              /*spatial_dim_count=*/2, std::move(param_keys)));
         return out;
       });
 }
@@ -572,8 +571,7 @@ at::Tensor& AtenAvgPool3dOut(const at::Tensor& self,
             auto result,
             BuildAvgPoolOutNd(self, kernel_size, stride, padding, ceil_mode,
                               count_include_pad, divisor_override, out,
-                              /*spatial_dim_count=*/3, OpName::kAvgPool3dOut,
-                              std::move(param_keys)));
+                              /*spatial_dim_count=*/3, std::move(param_keys)));
         return out;
       });
 }
@@ -593,8 +591,7 @@ at::Tensor& AtenAvgPool2dBackwardGradInput(
             BuildAvgPoolBackwardGradInputNd(
                 grad_output, self, kernel_size, stride, padding, ceil_mode,
                 count_include_pad, divisor_override, grad_input,
-                /*spatial_dim_count=*/2, OpName::kAvgPool2dBackwardGradInput,
-                std::move(param_keys)));
+                /*spatial_dim_count=*/2, std::move(param_keys)));
         return grad_input;
       });
 }
@@ -614,8 +611,7 @@ at::Tensor& AtenAvgPool3dBackwardGradInput(
             BuildAvgPoolBackwardGradInputNd(
                 grad_output, self, kernel_size, stride, padding, ceil_mode,
                 count_include_pad, divisor_override, grad_input,
-                /*spatial_dim_count=*/3, OpName::kAvgPool3dBackwardGradInput,
-                std::move(param_keys)));
+                /*spatial_dim_count=*/3, std::move(param_keys)));
         return grad_input;
       });
 }

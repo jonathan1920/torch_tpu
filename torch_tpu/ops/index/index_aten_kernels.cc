@@ -193,8 +193,7 @@ at::Tensor& AtenIndexTensorOut(
         TT_ASSIGN_OR_THROW(
             auto result_buf,
             DispatchOp<kDynamicSize>(
-                OpName::kIndexTensorOut, std::move(index_op_builder),
-                self_and_indices,
+                std::move(index_op_builder), self_and_indices,
                 {.out_dtype = computation_dtype,
                  .out_dims = absl::Span<const int64_t>(output_dims),
                  .op_param_cache_keys = std::move(param_keys)}));

@@ -139,9 +139,9 @@ absl::StatusOr<DeviceBufferRef> Addmv(const at::Tensor& self,
       return BuildAddmvShloBetaZero(mat_op, vec_op, alpha.toDouble(), out_dtype,
                                     current_precision);
     };
-    TT_ASSIGN_OR_RETURN(auto result_buf,
-                        DispatchOp<2>(OpName::kAddmvOut, std::move(op_builder),
-                                      {mat, vec}, std::move(options)));
+    TT_ASSIGN_OR_RETURN(
+        auto result_buf,
+        DispatchOp<2>(std::move(op_builder), {mat, vec}, std::move(options)));
     return result_buf;
   }
 
@@ -153,8 +153,8 @@ absl::StatusOr<DeviceBufferRef> Addmv(const at::Tensor& self,
                           alpha.toDouble(), out_dtype, current_precision);
   };
   TT_ASSIGN_OR_RETURN(auto result_buf,
-                      DispatchOp<3>(OpName::kAddmvOut, std::move(op_builder),
-                                    {self, mat, vec}, std::move(options)));
+                      DispatchOp<3>(std::move(op_builder), {self, mat, vec},
+                                    std::move(options)));
   return result_buf;
 }
 

@@ -68,8 +68,7 @@ at::Tensor AtenWhereSelf(const at::Tensor& condition, const at::Tensor& self,
     // Dispatch the op
     TT_ASSIGN_OR_THROW(
         DeviceBufferRef result_buf,
-        DispatchOp<3>(OpName::kWhereSelf, std::move(op_builder),
-                      {condition, self, other},
+        DispatchOp<3>(std::move(op_builder), {condition, self, other},
                       {.out_dtype = elem_type,
                        .out_dims = output_dims,
                        .op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -115,8 +114,7 @@ at::Tensor& AtenWhereSelfOut(const at::Tensor& condition,
     // Dispatch the op.
     TT_ASSIGN_OR_THROW(
         DeviceBufferRef result_buf,
-        DispatchOp<3>(OpName::kWhereSelfOut, std::move(op_builder),
-                      {condition, self, other},
+        DispatchOp<3>(std::move(op_builder), {condition, self, other},
                       {.out_dtype = elem_type,
                        .out_dims = output_dims,
                        .op_param_cache_keys = OpParamCacheKeys::Empty()}));

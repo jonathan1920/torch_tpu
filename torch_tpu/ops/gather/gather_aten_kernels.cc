@@ -60,8 +60,7 @@ absl::StatusOr<DeviceBufferRef> Gather(const at::Tensor& self, int64_t dim,
 
   TT_ASSIGN_OR_RETURN(auto param_keys,
                       TT_MAKE_OP_PARAM_CACHE_KEYS(dim, sparse_grad));
-  return DispatchOp<2>(OpName::kGather, std::move(gather_op_builder),
-                       {self, index},
+  return DispatchOp<2>(std::move(gather_op_builder), {self, index},
                        {.out_dtype = output_dtype,
                         .out_dims = output_dims,
                         .op_param_cache_keys = std::move(param_keys)});

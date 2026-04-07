@@ -66,7 +66,7 @@ absl::Status PNormOut(const at::Tensor& self, double ord,
                           element_type);
   };
 
-  return UnaryOpOut(self, out, OpName::kLinalgVectorNormOut, fn,
+  return UnaryOpOut(self, out, fn,
                     {.op_param_cache_keys = std::move(op_cache_keys),
                      .out_dtype = out_dtype,
                      .out_dims = std::move(output_dims)});

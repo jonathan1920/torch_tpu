@@ -59,19 +59,9 @@ absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(const at::Tensor& self,
                                                  const at::Scalar& other,
                                                  MlirBinaryOpBuilder op_builder,
                                                  BinaryOpOptions opts);
-[[deprecated("Use DispatchBinaryOp() without the OpName parameter instead.")]]
-absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(const at::Tensor& self,
-                                                 const at::Scalar& other,
-                                                 OpName op_name,
-                                                 MlirBinaryOpBuilder op_builder,
-                                                 BinaryOpOptions opts);
 
 absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(
     const at::Tensor& self, const at::Tensor& other,
-    MlirBinaryOpBuilder bin_op_builder, BinaryOpOptions opts);
-[[deprecated("Use DispatchBinaryOp() without the OpName parameter instead.")]]
-absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(
-    const at::Tensor& self, const at::Tensor& other, OpName op_name,
     MlirBinaryOpBuilder bin_op_builder, BinaryOpOptions opts);
 
 }  // namespace internal
