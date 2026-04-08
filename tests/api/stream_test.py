@@ -156,7 +156,9 @@ class StreamsTest(absltest.TestCase):
     second_t_cpu.copy_(second_t_tpu, non_blocking=True)
     event.record()
     event.synchronize()
-    utils.assert_close(second_t_cpu, torch.full((size,), 2.0, dtype=torch.float32))
+    utils.assert_close(
+        second_t_cpu, torch.full((size,), 2.0, dtype=torch.float32)
+    )
 
 
 if __name__ == '__main__':

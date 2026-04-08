@@ -22,7 +22,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include <algorithm>
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
@@ -242,16 +241,13 @@ StreamState& GetStreamState() {
   return *state;
 }
 
-void PruneCompletedFutures(
-    std::vector<StreamState::SharedFuture>& futures) {
-  futures.erase(
-      std::remove_if(
-          futures.begin(), futures.end(),
-          [](const StreamState::SharedFuture& future) {
-            return future == nullptr ||
-                   !future->IsValid() || future->IsReady();
-          }),
-      futures.end());
+void PruneCompletedFutures(std::vector<StreamState::SharedFuture>& futures) {
+  futures.erase(std::remove_if(futures.begin(), futures.end(),
+                               [](const StreamState::SharedFuture& future) {
+                                 return future == nullptr ||
+                                        !future->IsValid() || future->IsReady();
+                               }),
+                futures.end());
 }
 }  // namespace
 
@@ -261,8 +257,7 @@ void PjrtBackend::MarkStreamActive(c10::DeviceIndex device_index,
   absl::MutexLock lock(state.mutex);
   auto& futures = state.pending_futures[device_index];
   PruneCompletedFutures(futures);
-  futures.push_back(
-      std::make_shared<xla::Future<void>>(std::move(future)));
+  futures.push_back(std::make_shared<xla::Future<void>>(std::move(future)));
 }
 
 // Blocks the calling thread until all previously enqueued operations on the
@@ -296,8 +291,9 @@ int64_t RecordEventSnapshot(c10::DeviceIndex device_index) {
   const int64_t event_id = state.next_snapshot_id++;
   auto it = state.pending_futures.find(device_index);
   std::vector<StreamState::SharedFuture> futures =
-      it != state.pending_futures.end() ? it->second
-                                        : std::vector<StreamState::SharedFuture>{};
+      it != state.pending_futures.end()
+          ? it->second
+          : std::vector<StreamState::SharedFuture>{};
   state.event_snapshots.emplace(event_id, std::move(futures));
   return event_id;
 }

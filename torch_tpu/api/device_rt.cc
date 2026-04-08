@@ -69,6 +69,17 @@ void InitRuntimeOptions(const std::string& device_type) {
   ABSL_LOG(INFO) << "PjRt runtime initialization deferred for " << device_type;
   CompilationCache::GetInstance().SetOptions({});
 }
+
+void WaitEventSnapshotPy(int64_t event_id) {
+  TT_THROW_IF_ERROR(WaitEventSnapshot(event_id)).SetPrepend()
+      << "failed waiting for event snapshot: ";
+}
+
+bool QueryEventSnapshotPy(int64_t event_id) {
+  TT_ASSIGN_OR_THROW(bool is_ready, QueryEventSnapshot(event_id),
+                     _.SetPrepend() << "failed querying event snapshot: ");
+  return is_ready;
+}
 }  // namespace
 
 PYBIND11_MODULE(_device_ops_backend, m) {
@@ -131,28 +142,16 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       "Records a fence over async d2h copies already enqueued on the "
       "specified device.");
 
-  m.def(
-      "_wait_event",
-      [](int64_t event_id) {
-        TT_THROW_IF_ERROR(WaitEventSnapshot(event_id)).SetPrepend()
-            << "failed waiting for event snapshot: ";
-      },
-      py::arg("event_id"), py::call_guard<py::gil_scoped_release>(),
-      "Blocks until the recorded event snapshot has completed.");
+  m.def("_wait_event", &WaitEventSnapshotPy, py::arg("event_id"),
+        py::call_guard<py::gil_scoped_release>(),
+        "Blocks until the recorded event snapshot has completed.");
+
+  m.def("_query_event", &QueryEventSnapshotPy, py::arg("event_id"),
+        "Returns whether the recorded event snapshot has completed.");
 
   m.def(
-      "_query_event",
-      [](int64_t event_id) {
-        TT_ASSIGN_OR_THROW(
-            bool is_ready, QueryEventSnapshot(event_id),
-            _.SetPrepend() << "failed querying event snapshot: ");
-        return is_ready;
-      },
-      py::arg("event_id"),
-      "Returns whether the recorded event snapshot has completed.");
-
-  m.def(
-      "_release_event", [](int64_t event_id) { ReleaseEventSnapshot(event_id); },
+      "_release_event",
+      [](int64_t event_id) { ReleaseEventSnapshot(event_id); },
       py::arg("event_id"), "Releases the recorded event snapshot.");
 
   m.def(

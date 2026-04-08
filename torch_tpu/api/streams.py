@@ -176,7 +176,7 @@ class TpuEvent:
 
   def __del__(self):
     # Best-effort cleanup only.
-    # TODO A C++ base event object would give us a safer lifetime model 
+    # TODO A C++ base event object would give us a safer lifetime model
     if self._event_id is None:
       return
     try:
