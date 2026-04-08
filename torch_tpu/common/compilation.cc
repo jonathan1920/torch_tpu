@@ -237,9 +237,12 @@ static absl::Status SetDefaultDeviceAssignment(
   options.set_device_assignment(da);
 
   // Enable SPMD partitioning in order to compile Pallas / Mosaic
-  // kernels with RDMAs. Since TorchTPU generates StableHLO without sharding
-  // annotations, the partitioning will be a no-op.
+  // kernels with RDMAs. Enable Shardy as it is needed for ragged_dot. Since
+  // TorchTPU generates StableHLO without sharding annotations, the partitioning
+  // will be a no-op.
   options.set_use_spmd_partitioning(true);
+  options.set_use_shardy_partitioner(true);
+
   return absl::OkStatus();
 }
 
