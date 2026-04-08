@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -61,6 +62,9 @@ absl::StatusOr<DeviceBufferRef> UpdateRngState(at::Tensor rng_state,
                                                int64_t position) {
   ABSL_VLOG(3) << "[UpdateRngState] rng_state: "
                << ", value: " << value << ", position: " << position;
+  ABSL_CHECK(position == 0 || position == 1)  // CRASH_OK
+      << "Position must be 0 or 1, got " << position;
+
   auto set_seed_builder =
       [value, position](mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
     auto& builder = input.getBuilder();
@@ -76,14 +80,15 @@ absl::StatusOr<DeviceBufferRef> UpdateRngState(at::Tensor rng_state,
     return mlir::stablehlo::DynamicUpdateSlice(input, value_1d, start_indices);
   };
 
-  TT_ASSIGN_OR_RETURN(auto params,
-                      TT_MAKE_OP_PARAM_CACHE_KEYS(value, position));
-
-  return DispatchOp<1>(OpName::kRngSetSeed, std::move(set_seed_builder),
-                       {rng_state},
-                       {.out_dtype = mlir::ElementType::UI64,
-                        .out_dims = {2},
-                        .op_param_cache_keys = std::move(params)});
+  TT_ASSIGN_OR_RETURN(auto params, TT_MAKE_OP_PARAM_CACHE_KEYS(value));
+  return DispatchOp<1>(
+      std::move(set_seed_builder), {rng_state},
+      // Override the op name as this is a subroutine rather than a top-level
+      // op.
+      {.op_name = position == 0 ? OpName::kRngSetSeed : OpName::kRngSetOffset,
+       .out_dtype = mlir::ElementType::UI64,
+       .out_dims = {2},
+       .op_param_cache_keys = std::move(params)});
 }
 
 absl::StatusOr<DeviceBufferRef> UpdateRngSeed(at::Tensor rng_state,
@@ -214,17 +219,19 @@ DeviceGeneratorImpl::DeviceGeneratorImpl(c10::DeviceIndex device_index,
 
 void DeviceGeneratorImpl::set_current_seed(uint64_t seed) {
   // set_current_seed() is invoked by PyTorch and behaves like an op.
-  TT_KERNEL(OpName::kRngSetSeed, _, (IgnoreInCacheKey(seed, "Legacy usage")), {
-    TT_ASSIGN_OR_THROW(auto rng_state_buffer, UpdateRngSeed(rng_state_, seed));
-    auto new_rng_state = MakeTensor(std::move(rng_state_buffer));
-    rng_state_ = new_rng_state;
-  });
+  TT_KERNEL(OpName::kRngSetSeed, _,
+            (IgnoreInCacheKey(seed, "delegates to UpdateRngSeed()")), {
+              TT_ASSIGN_OR_THROW(auto rng_state_buffer,
+                                 UpdateRngSeed(rng_state_, seed));
+              auto new_rng_state = MakeTensor(std::move(rng_state_buffer));
+              rng_state_ = new_rng_state;
+            });
 }
 
 void DeviceGeneratorImpl::set_offset(uint64_t offset) {
   // set_offset() is invoked by PyTorch and behaves like an op.
   TT_KERNEL(OpName::kRngSetOffset, _,
-            (IgnoreInCacheKey(offset, "Legacy usage")), {
+            (IgnoreInCacheKey(offset, "delegates to UpdateRngOffset()")), {
               TT_ASSIGN_OR_THROW(auto rng_state_buffer,
                                  UpdateRngOffset(rng_state_, offset));
               auto new_rng_state = MakeTensor(std::move(rng_state_buffer));
@@ -326,9 +333,11 @@ absl::StatusOr<at::Tensor> GetAndAdvanceRngState(
   };
   TT_ASSIGN_OR_RETURN(
       auto rng_output_state_buf,
-      (DispatchOp<1>(OpName::kRngStateUpdate, std::move(state_op_builder),
-                     {rng_input_state},
-                     {.out_dtype = mlir::ElementType::UI64,
+      (DispatchOp<1>(std::move(state_op_builder), {rng_input_state},
+                     // Override the op name as this is a subroutine rather than
+                     // a top-level op.
+                     {.op_name = OpName::kRngStateUpdate,
+                      .out_dtype = mlir::ElementType::UI64,
                       .out_dims = {2},
                       .op_param_cache_keys = std::move(state_param_keys)})));
 
