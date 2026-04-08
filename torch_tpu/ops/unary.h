@@ -71,8 +71,6 @@ TT_UNARY_BUILDER_FP_ONLY_(BuildErfShlo, mlir::chlo::Erf);
 TT_UNARY_BUILDER_FP_ONLY_(BuildExpShlo, mlir::stablehlo::Exp);
 TT_UNARY_BUILDER_FP_ONLY_(BuildExpm1Shlo, mlir::stablehlo::Expm1);
 TT_UNARY_BUILDER_FP_ONLY_(BuildLgammaShlo, mlir::chlo::Lgamma);
-TT_UNARY_BUILDER_FP_ONLY_(BuildLog1pShlo, mlir::stablehlo::Log1p);
-TT_UNARY_BUILDER_FP_ONLY_(BuildLogShlo, mlir::stablehlo::Log);
 TT_UNARY_BUILDER_FP_ONLY_(BuildRsqrtShlo, mlir::stablehlo::Rsqrt);
 TT_UNARY_BUILDER_FP_ONLY_(BuildSinShlo, mlir::stablehlo::Sine);
 TT_UNARY_BUILDER_FP_ONLY_(BuildSinhShlo, mlir::chlo::Sinh);
@@ -94,11 +92,19 @@ absl::StatusOr<mlir::MlirOp> BuildReluShlo(mlir::MlirOp input_op);
 absl::StatusOr<mlir::MlirOp> BuildSiluShlo(mlir::MlirOp input_op);
 absl::StatusOr<mlir::MlirOp> BuildTruncShlo(mlir::MlirOp input_op);
 absl::StatusOr<mlir::MlirOp> BuildLiftFreshShlo(mlir::MlirOp input_op);
+absl::StatusOr<mlir::MlirOp> BuildLogShlo(mlir::MlirOp input_op,
+                                          mlir::ElementType default_dtype);
+absl::StatusOr<mlir::MlirOp> BuildLog1pShlo(mlir::MlirOp input_op,
+                                            mlir::ElementType default_dtype);
 absl::StatusOr<mlir::MlirOp> BuildLog2Shlo(mlir::MlirOp input_op,
                                            mlir::ElementType default_mlir_type);
 absl::StatusOr<mlir::MlirOp> BuildLog10Shlo(
     mlir::MlirOp input_op, mlir::ElementType default_mlir_type);
 absl::StatusOr<mlir::MlirOp> BuildSignShlo(mlir::MlirOp input_op);
+absl::StatusOr<mlir::MlirOp> BuildErfcShlo(mlir::MlirOp input,
+                                           mlir::ElementType out_mlir_type);
+absl::StatusOr<mlir::MlirOp> BuildFracShlo(mlir::MlirOp input);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_UNARY_H_

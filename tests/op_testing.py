@@ -1015,6 +1015,10 @@ def _run_and_print_exception(func: Callable[[], None]) -> None:
   """Runs func() and prints the exception if one is raised."""
   try:
     func()
+  except unittest.case.SkipTest:
+    # Explicitly catching and re-raising unittest.case.SkipTest) is necessary to
+    # prevent skipped tests from cluttering the logs with misleading tracebacks.
+    raise
   except Exception:
     # Print the exception with the traceback to stderr.
     # absltest only prints the error message at the end of the test.

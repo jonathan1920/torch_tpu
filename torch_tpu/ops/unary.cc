@@ -22,6 +22,7 @@
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
+#include "ATen/OpMathType.h"
 #include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dtype.h"
@@ -41,20 +42,29 @@ namespace {
 
 absl::StatusOr<mlir::MlirOp> LogN(mlir::MlirOp input_op, int32_t n,
                                   mlir::ElementType default_dtype) {
-  TT_ASSIGN_OR_RETURN(mlir::MlirOp converted_input_op,
-                      ConvertIfInteger(input_op, default_dtype));
-  const mlir::RankedTensorType converted_input_type =
-      GetTensorTypeOrDie(converted_input_op);
+  at::ScalarType default_scalar_type = ConvertTo<at::ScalarType>(default_dtype);
+  // Similarly to CUDA, Half and BFloat16 inputs are promoted to to Float for
+  // the actual mathematical computation.
+  at::ScalarType computation_scalar_type =
+      at::toOpMathType(default_scalar_type);
+
+  TT_ASSIGN_OR_RETURN(mlir::ElementType computation_type,
+                      ConvertTo<mlir::ElementType>(computation_scalar_type));
+
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp computation_input_op,
+                      ConvertIfInteger(input_op, computation_type));
+  computation_input_op = mlir::stablehlo::ConvertElementType(
+      computation_input_op, computation_type);
 
   mlir::MlirBuilder& builder = input_op.getBuilder();
 
   // Defined as LogN(x) = log(x) / log(N):
-  mlir::MlirOp log_op = stablehlo::Log(converted_input_op);
-  mlir::MlirOp value_n =
-      MakeScalarConstant(builder, n, converted_input_type.getElementType());
+  mlir::MlirOp log_op = stablehlo::Log(computation_input_op);
+  mlir::MlirOp value_n = MakeScalarConstant(builder, n, computation_type);
   mlir::MlirOp log_of_n = stablehlo::Log(value_n);
   mlir::MlirOp result_op = mlir::chlo::BroadcastDiv(log_op, log_of_n);
-  return result_op;
+
+  return mlir::stablehlo::ConvertElementType(result_op, default_dtype);
 }
 
 }  // namespace
@@ -68,14 +78,49 @@ absl::StatusOr<mlir::MlirOp> BuildAbsShlo(mlir::MlirOp input) {
     return input;
   }
 
-  auto res = mlir::stablehlo::Abs(input);
-
-  // Given a complex input shlo.abs() returns a complex type even if the result
-  // is real, where aten::abs() returns a real value. Hence, the workaround
-  // below.
   if (llvm::isa<mlir::ComplexType>(element_type)) {
-    res = mlir::stablehlo::Real(res);
+    // For complex numbers, abs(z) = sqrt(real(z)^2 + imag(z)^2).
+    // To avoid overflow and underflow, we use:
+    //   abs(z) = max(|x|, |y|) * sqrt(1 + (min(|x|, |y|) / max(|x|, |y|))^2)
+    // Similarly to CUDA, we promote to float32 for the computation.
+    TT_ASSIGN_OR_RETURN(mlir::ElementType f32_type,
+                        ConvertTo<mlir::ElementType>(at::kFloat));
+    auto x = mlir::stablehlo::Real(input);
+    auto y = mlir::stablehlo::Imag(input);
+
+    x = mlir::stablehlo::ConvertElementType(x, f32_type);
+    y = mlir::stablehlo::ConvertElementType(y, f32_type);
+
+    auto abs_x = mlir::stablehlo::Abs(x);
+    auto abs_y = mlir::stablehlo::Abs(y);
+
+    auto max_abs = mlir::stablehlo::Max(abs_x, abs_y);
+    auto min_abs = mlir::stablehlo::Min(abs_x, abs_y);
+
+    // If max_abs is 0, then the result is 0.
+    // We avoid division by zero by using max(max_abs, epsilon).
+    auto epsilon = MakeScalarConstant(input.getBuilder(), 1e-30, f32_type);
+    TT_ASSIGN_OR_RETURN((auto [max_abs_b, epsilon_b]),
+                        ApplyBroadcastIfNeeded(max_abs, epsilon));
+    auto safe_max = mlir::stablehlo::Max(max_abs_b, epsilon_b);
+
+    auto ratio = mlir::stablehlo::Div(min_abs, safe_max);
+    auto ratio_sq = mlir::stablehlo::Mul(ratio, ratio);
+    auto one = MakeScalarConstant(input.getBuilder(), 1.0, f32_type);
+    TT_ASSIGN_OR_RETURN((auto [one_b, ratio_sq_b]),
+                        ApplyBroadcastIfNeeded(one, ratio_sq));
+    auto sum_sq = mlir::stablehlo::Add(one_b, ratio_sq_b);
+    auto sqrt_sum_sq = mlir::stablehlo::Sqrt(sum_sq);
+    auto res = mlir::stablehlo::Mul(max_abs, sqrt_sum_sq);
+
+    // PyTorch returns real result for abs(complex).
+    // The output type should be the base float type.
+    mlir::Type base_type =
+        llvm::cast<mlir::ComplexType>(element_type).getElementType();
+    return mlir::stablehlo::ConvertElementType(res, base_type);
   }
+
+  auto res = mlir::stablehlo::Abs(input);
 
   return res;
 }
@@ -149,6 +194,48 @@ absl::StatusOr<mlir::MlirOp> BuildLiftFreshShlo(mlir::MlirOp input_op) {
   return input_op;
 }
 
+absl::StatusOr<mlir::MlirOp> BuildLogShlo(mlir::MlirOp input_op,
+                                          mlir::ElementType default_dtype) {
+  at::ScalarType default_scalar_type = ConvertTo<at::ScalarType>(default_dtype);
+  // Similarly to CUDA, Half and BFloat16 inputs are promoted to to Float for
+  // the actual mathematical computation.
+  at::ScalarType computation_scalar_type =
+      at::toOpMathType(default_scalar_type);
+
+  TT_ASSIGN_OR_RETURN(mlir::ElementType computation_type,
+                      ConvertTo<mlir::ElementType>(computation_scalar_type));
+
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp computation_input_op,
+                      ConvertIfInteger(input_op, computation_type));
+  computation_input_op = mlir::stablehlo::ConvertElementType(
+      computation_input_op, computation_type);
+
+  mlir::MlirOp result_op = mlir::stablehlo::Log(computation_input_op);
+
+  return mlir::stablehlo::ConvertElementType(result_op, default_dtype);
+}
+
+absl::StatusOr<mlir::MlirOp> BuildLog1pShlo(mlir::MlirOp input_op,
+                                            mlir::ElementType default_dtype) {
+  at::ScalarType default_scalar_type = ConvertTo<at::ScalarType>(default_dtype);
+  // Similarly to CUDA, Half and BFloat16 inputs are promoted to to Float for
+  // the actual mathematical computation.
+  at::ScalarType computation_scalar_type =
+      at::toOpMathType(default_scalar_type);
+
+  TT_ASSIGN_OR_RETURN(mlir::ElementType computation_type,
+                      ConvertTo<mlir::ElementType>(computation_scalar_type));
+
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp computation_input_op,
+                      ConvertIfInteger(input_op, computation_type));
+  computation_input_op = mlir::stablehlo::ConvertElementType(
+      computation_input_op, computation_type);
+
+  mlir::MlirOp result_op = mlir::stablehlo::Log1p(computation_input_op);
+
+  return mlir::stablehlo::ConvertElementType(result_op, default_dtype);
+}
+
 absl::StatusOr<mlir::MlirOp> BuildLog2Shlo(
     mlir::MlirOp input_op, mlir::ElementType default_mlir_type) {
   return LogN(input_op, 2, default_mlir_type);
@@ -181,6 +268,17 @@ absl::StatusOr<mlir::MlirOp> BuildSignShlo(mlir::MlirOp input) {
     return mlir::stablehlo::ConvertElementType(output, element_type);
   }
   return mlir::stablehlo::Sign(input);
+}
+
+absl::StatusOr<mlir::MlirOp> BuildErfcShlo(mlir::MlirOp input,
+                                           mlir::ElementType out_mlir_type) {
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp op, ConvertIfInteger(input, out_mlir_type));
+  return mlir::chlo::Erfc(op);
+};
+
+absl::StatusOr<mlir::MlirOp> BuildFracShlo(mlir::MlirOp input) {
+  mlir::MlirOp floor_val = mlir::stablehlo::Floor(input);
+  return mlir::stablehlo::Subtract(input, floor_val);
 }
 
 }  // namespace torch_tpu

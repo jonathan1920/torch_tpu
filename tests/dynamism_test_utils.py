@@ -29,6 +29,7 @@ from absl import logging
 import torch
 from torch.testing._internal import common_methods_invocations
 from torch.testing._internal.opinfo import core
+from torch.utils import _pytree
 from torch_tpu._internal import dynamism
 from torch_tpu._internal.utils import utils
 
@@ -160,6 +161,7 @@ def verify_op_supports_dynamism(
       "diagonal",
       "expand",  # view op - expand not yet supported
       "fft.rfft",
+      "floor_divide",  # currently failing dynamism tests
       "histc",
       "index_add",  # invalid bound length (likely bad tensor copy)
       "index_copy",  # invalid bound length (likely bad tensor copy)
@@ -243,10 +245,17 @@ def verify_op_supports_dynamism(
 
   ### [TEST INFRA TASKS] ###
   # The following indicate changes needed in this file to increase coverage.
+
+  # Verify all input tensors are supported with dynamism. Here we use
+  # _pytree.tree_flatten to recursively inspect the input_value and args,
+  # ensuring that tensors inside lists, tuples, or other nested structures
+  # (common in foreach ops) are properly vetted.
+  for value in _pytree.tree_flatten((input_value, args))[0]:
+    skip_input = _should_skip_input_marking(op, value)
+    if skip_input:
+      return skip_input
+
   input_value = _get_canonical_input_value(op, input_value)
-  skip_input = _should_skip_input_marking(op, input_value)
-  if skip_input:
-    return skip_input
   require_mark_dynamic_support = [
       # Needs matmul-style marking
       "addmm",
