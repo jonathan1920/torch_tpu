@@ -49,8 +49,6 @@ inline constexpr char kMasterPortEnvVar[] = "MASTER_PORT";  // Set by launchers.
 // running on the same host.
 inline constexpr char kNprocEnvVar[] = "NPROC";
 inline constexpr char kRankEnvVar[] = "RANK";  // Set by launchers.
-inline constexpr char kTestTargetEnvVar[] = "TEST_TARGET";
-inline constexpr char kTestWorkspaceEnvVar[] = "TEST_WORKSPACE";
 // If set to "1", C++ stack traces are appended to error messages.
 // Shared with PyTorch:
 // https://docs.pytorch.org/docs/stable/debugging_environment_variables.html#pytorch-debug-environment-variables
