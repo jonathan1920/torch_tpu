@@ -4021,6 +4021,39 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     rtol, atol = (1.7e-6, 2.3e-6) if dtype == torch.complex64 else (None, None)
     self.assert_close_tpu_vs_cpu(test_fn, rtol=rtol, atol=atol)
 
+  @parameterized.named_parameters(
+      (f'{op}_{"include" if include_self else "no"}_self', op, include_self)
+      for op, include_self in itertools.product(
+          ["sum", "prod", "mean", "amax", "amin"], [True, False]
+      )
+  )
+  def test_scatter_reduce(self, reduce_op, include_self):
+    """Tests torch.ops.aten.scatter_reduce with various reduction ops."""
+
+    def test_fn(device: torch.device) -> torch.Tensor:
+      dtype = torch.float32
+
+      if reduce_op == "prod":
+        arg = torch.ones(3, 5, dtype=dtype, device=device)
+      elif reduce_op == "amin":
+        arg = torch.full((3, 5), 100.0, dtype=dtype, device=device)
+      elif reduce_op == "amax":
+        arg = torch.full((3, 5), -100.0, dtype=dtype, device=device)
+      else:  # sum, mean
+        arg = torch.zeros(3, 5, dtype=dtype, device=device)
+
+      index = torch.tensor([[0, 1, 2], [0, 1, 2]], device=device)
+      # src values: [[2.0, 4.0, 6.0], [8.0, 10.0, 12.0]]
+      src = (
+          torch.arange(6, device=device, dtype=dtype).reshape(2, 3) + 1.0
+      ) * 2.0
+
+      return arg.scatter_reduce(
+          1, index, src, reduce=reduce_op, include_self=include_self
+      )
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
   def test_scatter_src_larger_than_index(self):
     """Tests scatter where src is larger than index."""
 

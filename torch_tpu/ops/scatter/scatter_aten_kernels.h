@@ -22,6 +22,7 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "c10/util/string_view.h"
 
 namespace torch_tpu {
 
@@ -37,6 +38,12 @@ at::Tensor& AtenScatterReduceOut(const at::Tensor& self, int64_t dim,
                                  const at::Tensor& index, const at::Tensor& src,
                                  std::string_view reduction_op,
                                  at::Tensor& out);
+
+at::Tensor& AtenScatterReduceTwoOut(const at::Tensor& self, int64_t dim,
+                                    const at::Tensor& index,
+                                    const at::Tensor& src,
+                                    c10::string_view reduction,
+                                    bool include_self, at::Tensor& out);
 
 at::Tensor& AtenScatterValueReduceOut(const at::Tensor& self, int64_t dim,
                                       const at::Tensor& index,

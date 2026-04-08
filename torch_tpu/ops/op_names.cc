@@ -1036,6 +1036,8 @@ std::string_view ToString(OpName op_name) {
       return "scatter_add.out";
     case OpName::kScatterReduceOut:
       return "scatter.reduce_out";
+    case OpName::kScatterReduceTwoOut:
+      return "scatter_reduce.two_out";
     case OpName::kScatterSrcOut:
       return "scatter.src_out";
     case OpName::kScatterValueOut:

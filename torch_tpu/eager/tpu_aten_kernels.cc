@@ -617,6 +617,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
        AtenScaledDotProductFusedAttentionOverrideableBackward);
   Impl(m, OpName::kScatterAddOut, AtenScatterAddOut);
   Impl(m, OpName::kScatterReduceOut, AtenScatterReduceOut);
+  Impl(m, OpName::kScatterReduceTwoOut, AtenScatterReduceTwoOut);
   Impl(m, OpName::kScatterSrcOut, AtenScatterSrcOut);
   Impl(m, OpName::kScatterValueOut, AtenScatterValueOut);
   Impl(m, OpName::kScatterValueReduceOut, AtenScatterValueReduceOut);

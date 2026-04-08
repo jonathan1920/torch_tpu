@@ -529,6 +529,7 @@ enum class OpName {
   kScaledDotProductFusedAttentionOverrideableBackward,
   kScatterAddOut,
   kScatterReduceOut,
+  kScatterReduceTwoOut,
   kScatterSrcOut,
   kScatterValueOut,
   kScatterValueReduceOut,

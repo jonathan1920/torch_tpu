@@ -27,6 +27,7 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/full_like.h"
 #include "ATen/ops/result_type.h"
+#include "c10/util/string_view.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
@@ -48,7 +49,8 @@ namespace {
 
 absl::StatusOr<DeviceBufferRef> Scatter(
     const at::Tensor& self, int64_t dim, const at::Tensor& index,
-    const at::Tensor& src, ScatterOp reduction_op = ScatterOp::kReplace) {
+    const at::Tensor& src, ScatterOp reduction_op = ScatterOp::kReplace,
+    ScatterIncludeSelf include_self = ScatterIncludeSelf::kYes) {
   TT_ASSIGN_OR_RETURN(dim, SafeWrapDim(dim, self.dim()));
 
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
@@ -56,15 +58,15 @@ absl::StatusOr<DeviceBufferRef> Scatter(
   TT_ASSIGN_OR_RETURN(const auto promoted_dtype,
                       ConvertTo<mlir::ElementType>(at::result_type(self, src)));
   Dimensions output_dims = CopyIntVector(self.sizes());
-  auto scatter_op_builder = [dim, reduction_op, promoted_dtype](
+  auto scatter_op_builder = [dim, reduction_op, promoted_dtype, include_self](
                                 FixedSizeSpan<mlir::MlirOp, 3> inputs) {
     auto& [self, index, src] = inputs;
-    return BuildScatterShlo(self, dim, index, src, reduction_op,
-                            promoted_dtype);
+    return BuildScatterShlo(self, dim, index, src, reduction_op, promoted_dtype,
+                            include_self);
   };
 
-  TT_ASSIGN_OR_RETURN(auto param_keys,
-                      TT_MAKE_OP_PARAM_CACHE_KEYS(dim, reduction_op));
+  TT_ASSIGN_OR_RETURN(auto param_keys, TT_MAKE_OP_PARAM_CACHE_KEYS(
+                                           dim, reduction_op, include_self));
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       DispatchOp<3>(std::move(scatter_op_builder), {self, index, src},
@@ -74,15 +76,38 @@ absl::StatusOr<DeviceBufferRef> Scatter(
   return result_buf;
 }
 
-absl::StatusOr<ScatterOp> ParseScatterOp(std::string_view reduction_op) {
-  if (reduction_op == "add") {
-    return ScatterOp::kAdd;
-  } else if (reduction_op == "multiply") {
-    return ScatterOp::kMul;
+absl::StatusOr<ScatterOp> ParseScatterOp(
+    std::string_view reduction_op,
+    ScatterVersion version = ScatterVersion::kV1) {
+  if (version == ScatterVersion::kV2) {
+    // scatter_reduce.two op only supports sum, prod, mean, amax, and amin
+    if (reduction_op == "sum") {
+      return ScatterOp::kSum;
+    } else if (reduction_op == "prod") {
+      return ScatterOp::kProd;
+    } else if (reduction_op == "mean") {
+      return ScatterOp::kMean;
+    } else if (reduction_op == "amax") {
+      return ScatterOp::kAmax;
+    } else if (reduction_op == "amin") {
+      return ScatterOp::kAmin;
+    } else {
+      return TT_ERROR(error::kInvalidArgument)
+             << "expected the reduction_op to be 'sum', 'prod', 'mean', "
+                "'amax', or 'amin', got '"
+             << reduction_op << "'";
+    }
   } else {
-    return TT_ERROR(error::kInvalidArgument)
-           << "Unsupported reduction op: " << reduction_op
-           << ". Supported reductions are 'add' and 'multiply'.";
+    // scatter supports add and multiply.
+    if (reduction_op == "add") {
+      return ScatterOp::kAdd;
+    } else if (reduction_op == "multiply") {
+      return ScatterOp::kMul;
+    } else {
+      return TT_ERROR(error::kInvalidArgument)
+             << "expected the reduction_op to be 'add' or 'multiply', got '"
+             << reduction_op << "'";
+    }
   }
 }
 
@@ -137,6 +162,28 @@ at::Tensor& AtenScatterReduceOut(const at::Tensor& self, int64_t dim,
               TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
               return out;
             });
+}
+
+at::Tensor& AtenScatterReduceTwoOut(const at::Tensor& self, int64_t dim,
+                                    const at::Tensor& index,
+                                    const at::Tensor& src,
+                                    c10::string_view reduction,
+                                    bool include_self, at::Tensor& out) {
+  TT_KERNEL(
+      OpName::kScatterReduceTwoOut, _,
+      (self, IgnoreInCacheKey(dim, "delegates to Scatter()"), index, src,
+       IgnoreInCacheKey(reduction, "delegates to Scatter()"),
+       IgnoreInCacheKey(include_self, "delegates to Scatter()"), out),
+      {
+        TT_ASSIGN_OR_THROW(ScatterOp scatter_op,
+                           ParseScatterOp(reduction, ScatterVersion::kV2));
+        TT_ASSIGN_OR_THROW(DeviceBufferRef result,
+                           Scatter(self, dim, index, src, scatter_op,
+                                   include_self ? ScatterIncludeSelf::kYes
+                                                : ScatterIncludeSelf::kNo));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
+        return out;
+      });
 }
 
 at::Tensor& AtenScatterValueReduceOut(const at::Tensor& self, int64_t dim,

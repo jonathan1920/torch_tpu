@@ -3458,6 +3458,9 @@ class TestOps(TorchTpuTestBase):
   def test_scatter_add(self):
     self.do_test_op("scatter_add")
 
+  def test_scatter_reduce(self):
+    self.do_test_op("scatter_reduce")
+
   def test_select(self):
     self.do_test_op("select")
 

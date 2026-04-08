@@ -26,7 +26,17 @@
 
 namespace torch_tpu {
 
-enum class ScatterOp { kReplace, kAdd, kMul };
+enum class ScatterOp { kReplace, kAdd, kMul, kSum, kProd, kMean, kAmax, kAmin };
+
+// Whether to include the self tensor in the scatter operation.
+enum class ScatterIncludeSelf { kNo, kYes };
+
+// ScatterVersion distinguishes between legacy scatter aten ops and newer
+// scatter_reduce.two aten ops, which support different reduction modes.
+enum class ScatterVersion {
+  kV1,  // Supports 'add' and 'multiply'
+  kV2   // Supports 'sum', 'prod', 'mean', 'amax', 'amin'
+};
 
 [[nodiscard]] inline std::string FormatParamCacheKey(
     const ScatterOp scatter_op) {
@@ -37,12 +47,33 @@ enum class ScatterOp { kReplace, kAdd, kMul };
       return "add";
     case ScatterOp::kMul:
       return "multiply";
+    case ScatterOp::kSum:
+      return "sum";
+    case ScatterOp::kProd:
+      return "prod";
+    case ScatterOp::kMean:
+      return "mean";
+    case ScatterOp::kAmax:
+      return "amax";
+    case ScatterOp::kAmin:
+      return "amin";
+  }
+}
+
+[[nodiscard]] inline std::string FormatParamCacheKey(
+    const ScatterIncludeSelf include_self) {
+  switch (include_self) {
+    case ScatterIncludeSelf::kNo:
+      return "";
+    case ScatterIncludeSelf::kYes:
+      return "t";
   }
 }
 
 absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
     mlir::MlirOp self, int64_t dim, mlir::MlirOp index, mlir::MlirOp src,
-    ScatterOp scatter_op, mlir::ElementType computation_element_type);
+    ScatterOp scatter_op, mlir::ElementType computation_element_type,
+    ScatterIncludeSelf include_self = ScatterIncludeSelf::kYes);
 
 }  // namespace torch_tpu
 
