@@ -47,6 +47,9 @@ torch_tpu_cc_test(
 torch_tpu_cc_test(
     name = "op_dispatcher_test",
     srcs = ["op_dispatcher_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     notest_oss = "Fails due to TPU_LIBRARY_PATH not set.",
     deps = [
         ":op_dispatcher",
@@ -284,6 +287,9 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "safe_materialization_rule_test",
     srcs = ["safe_materialization_rule_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     notest_oss = "Disabled because lazy-init means this requires TPU_LIBRARY_PATH",
     deps = [
         ":device_buffer",
