@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+from unittest import mock
+
 from absl.testing import absltest
 import torch
 from torch.testing._internal import common_utils
@@ -67,6 +70,29 @@ class DeviceModuleTest(absltest.TestCase, common_utils.TestCase):
     self.assertTrue(_DevicePythonModule._get_dump_on_cache_miss())
     _DevicePythonModule._set_dump_on_cache_miss(False)
     self.assertFalse(_DevicePythonModule._get_dump_on_cache_miss())
+
+  def test_rng_validate_device_index(self):
+    # Test valid string and int.
+    _device_module._rng_validate_device_index("tpu", 0)
+    _device_module._rng_validate_device_index(0, 0)
+
+    # Test valid torch.device.
+    _device_module._rng_validate_device_index(
+        mock.MagicMock(spec=torch.device, type="tpu", index=0), 0
+    )
+
+    # Test invalid device type.
+    with self.assertRaisesRegex(
+        ValueError, "RNG state can only be accessed on TPU"
+    ):
+      _device_module._rng_validate_device_index("cpu", 0)
+
+    # Test invalid device index logs warning.
+    with mock.patch(
+        "torch_tpu.api._device_module.logging.warning"
+    ) as mock_warning:
+      _device_module._rng_validate_device_index(1, 0)
+      mock_warning.assert_called_once()
 
 
 if __name__ == "__main__":

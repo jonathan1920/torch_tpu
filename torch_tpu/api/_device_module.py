@@ -70,13 +70,12 @@ def _rng_validate_device_index(
     ValueError: If the device is not a TPU device or if the index does not
       match the current device index.
   """
-  provided_str, provided_idx = None, -1
+  provided_str, provided_idx = None, None
   if isinstance(device, str):
     provided_str = device
   elif isinstance(device, torch.device):
     provided_str = device.type
-    if provided_idx is not None:
-      provided_idx = device.index
+    provided_idx = device.index
   elif isinstance(device, int):
     provided_idx = device
   else:
