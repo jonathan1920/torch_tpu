@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "torch_tpu_cc_test", "torch_tpu_package_end", "torch_tpu_py_test")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -69,6 +69,18 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//torch_tpu/_internal/profiler",
         "@pypi//portpicker",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "xprof_callback_handler_test",
+    srcs = ["xprof_callback_handler_test.cc"],
+    deps = [
+        "//shims/torch",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/_internal/profiler:xprof_callback_handler",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

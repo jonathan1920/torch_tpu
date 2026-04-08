@@ -37,6 +37,19 @@ pytype_strict_library(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "xprof_callback_handler",
+    srcs = ["xprof_callback_handler.cc"],
+    hdrs = ["xprof_callback_handler.h"],
+    deps = [
+        "//shims/torch",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme_encode",
+    ],
+)
+
 # This library is not used directly, but is needed for go/cclean and Clangd.
 # Without this rule, cclean complains that profiler.cc has no rule depending on it.
 torch_tpu_cc_library(
