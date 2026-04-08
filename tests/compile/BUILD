@@ -42,6 +42,19 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "dtensor_test",
+    srcs = ["dtensor_test.py"],
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/api",
+    ],
+)
+
+torch_tpu_py_test(
     name = "random_ops_test",
     srcs = ["random_ops_test.py"],
     tags = [
