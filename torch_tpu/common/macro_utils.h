@@ -117,6 +117,7 @@ inline constexpr bool kDebugMode = true;
 // Checks if a string is a valid identifier.
 [[nodiscard]] inline constexpr bool IsValidIdentifier(
     std::string_view s) noexcept {
+  if (s == "true" || s == "false") return false;
   if (s.empty()) return false;
   for (char c : s) {
     if (!IsIdentifierChar(c)) return false;
@@ -127,7 +128,7 @@ inline constexpr bool kDebugMode = true;
 // Returns true if the string is a comma-separated list where each item is an
 // identifier name or "IgnoreInCacheKey(identifier, reason)". This must be
 // evaluated at compile time as we don't want to incur any runtime overhead.
-[[nodiscard]] inline constexpr bool ArgsAreIdentifiers(
+[[nodiscard]] inline consteval bool ArgsAreIdentifiers(
     const std::string_view csv_string) noexcept {
   if (csv_string.empty()) return true;
 

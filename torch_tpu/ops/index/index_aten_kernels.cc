@@ -162,8 +162,9 @@ at::Tensor& AtenIndexTensorOut(
         TT_ASSIGN_OR_THROW(Dimensions output_dims, GetOutputDims(self, info));
         // The indices_list_opt gets ignored in the cache key, but we still
         // want to record which dimensions are indexed.
+        const auto& dimensions = info.dimensions;
         TT_ASSIGN_OR_THROW(auto param_keys,
-                           TT_MAKE_OP_PARAM_CACHE_KEYS(info.dimensions));
+                           TT_MAKE_OP_PARAM_CACHE_KEYS(dimensions));
 
         ABSL_VLOG(2) << "[AtenIndexTensorOut] self: " << ToString(self);
         for (const auto& t : info.indices) {

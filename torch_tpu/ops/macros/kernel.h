@@ -144,10 +144,17 @@
 //
 // Implementation note: the __VA_OPT__(,) expands to nothing if the argument
 // list is empty, and expands to a comma otherwise.
-#define TT_MAKE_OP_PARAM_CACHE_KEYS(...)                 \
-  ::torch_tpu::internal::MakeOpParamCacheKeys<           \
-      ::torch_tpu::internal::EnforceSetParamType::kYes>( \
-      #__VA_ARGS__ __VA_OPT__(, ) __VA_ARGS__)
+#define TT_MAKE_OP_PARAM_CACHE_KEYS(...)                                       \
+  (                                                                            \
+      [] {                                                                     \
+        static_assert(::torch_tpu::internal::ArgsAreIdentifiers(#__VA_ARGS__), \
+                      "The op parameter list passed to "                       \
+                      "TT_MAKE_OP_PARAM_CACHE_KEYS() must contain "            \
+                      "only identifier names.");                               \
+      },                                                                       \
+      ::torch_tpu::internal::MakeOpParamCacheKeys<                             \
+          ::torch_tpu::internal::EnforceSetParamType::kYes>(                   \
+          #__VA_ARGS__ __VA_OPT__(, ) __VA_ARGS__))
 
 // Like TT_MAKE_OP_PARAM_CACHE_KEYS, but does not enforce that arguments should
 // be included in the cache key.

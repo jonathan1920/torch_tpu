@@ -318,9 +318,8 @@ absl::StatusOr<at::Tensor> GetAndAdvanceRngState(
                       GetBufferFromAtTensor(rng_input_state));
 
   // Dispatch the state update.
-  TT_ASSIGN_OR_RETURN(
-      auto state_param_keys,
-      TT_MAKE_OP_PARAM_CACHE_KEYS(num_elements, bit_width, "state_update"));
+  TT_ASSIGN_OR_RETURN(auto state_param_keys,
+                      TT_MAKE_OP_PARAM_CACHE_KEYS(num_elements, bit_width));
   auto state_op_builder = [num_elements,
                            bit_width](mlir::MlirOp rng_input_state) {
     return BuildRngStateUpdateShlo(rng_input_state, num_elements, bit_width);
