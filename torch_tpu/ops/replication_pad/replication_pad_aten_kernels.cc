@@ -230,7 +230,7 @@ absl::Status ReplicationPadHelper(
         mlir::MlirOp input, Dimensions padding, Dimensions output_shape,
         int num_pad_dimensions) const>
         shlo_builder_function,
-    OpName op_name, OpParamCacheKeys param_keys, const at::Tensor& self,
+    OpParamCacheKeys param_keys, const at::Tensor& self,
     at::IntArrayRef padding, at::Tensor& out, int num_pad_dimensions) {
   TT_RET_CHECK(self.scalar_type() != at::ScalarType::Bool,
                error::kInvalidArgument)
@@ -257,7 +257,7 @@ absl::Status ReplicationPadHelper(
 
   TT_ASSIGN_OR_RETURN(
       auto out_buf,
-      (DispatchOp<1>(op_name, std::move(op_builder), self,
+      (DispatchOp<1>(std::move(op_builder), self,
                      {.out_dtype = element_type,
                       .out_dims = CopyIntVector(out.sizes()),
                       .op_param_cache_keys = std::move(param_keys)})));
@@ -306,8 +306,7 @@ at::Tensor& AtenReplicationPad1dOut(const at::Tensor& self,
                                     at::IntArrayRef padding, at::Tensor& out) {
   TT_KERNEL(OpName::kReplicationPad1dOut, param_keys, (self, padding, out), {
     TT_THROW_IF_ERROR(ReplicationPadHelper(
-        BuildReplicationPadShlo, OpName::kReplicationPad1dOut,
-        std::move(param_keys), self, padding, out,
+        BuildReplicationPadShlo, std::move(param_keys), self, padding, out,
         /*num_pad_dimensions=*/1));
 
     return out;
@@ -318,8 +317,7 @@ at::Tensor& AtenReplicationPad2dOut(const at::Tensor& self,
                                     at::IntArrayRef padding, at::Tensor& out) {
   TT_KERNEL(OpName::kReplicationPad2dOut, param_keys, (self, padding, out), {
     TT_THROW_IF_ERROR(ReplicationPadHelper(
-        BuildReplicationPadShlo, OpName::kReplicationPad2dOut,
-        std::move(param_keys), self, padding, out,
+        BuildReplicationPadShlo, std::move(param_keys), self, padding, out,
         /*num_pad_dimensions=*/2));
 
     return out;
@@ -330,8 +328,7 @@ at::Tensor& AtenReplicationPad3dOut(const at::Tensor& self,
                                     at::IntArrayRef padding, at::Tensor& out) {
   TT_KERNEL(OpName::kReplicationPad3dOut, param_keys, (self, padding, out), {
     TT_THROW_IF_ERROR(ReplicationPadHelper(
-        BuildReplicationPadShlo, OpName::kReplicationPad3dOut,
-        std::move(param_keys), self, padding, out,
+        BuildReplicationPadShlo, std::move(param_keys), self, padding, out,
         /*num_pad_dimensions=*/3));
     return out;
   });
@@ -345,7 +342,6 @@ at::Tensor& AtenReplicationPad1dBackwardGradInput(const at::Tensor& grad_output,
             (grad_output, self, padding, grad_input), {
               TT_THROW_IF_ERROR(ReplicationPadHelper(
                   BuildReplicationPadBackwardShlo,
-                  OpName::kReplicationPad1dBackwardGradInput,
                   std::move(param_keys), grad_output, padding, grad_input,
                   /*num_pad_dimensions=*/1));
 
@@ -360,7 +356,6 @@ at::Tensor& AtenReplicationPad2dBackwardGradInput(const at::Tensor& grad_output,
             (grad_output, self, padding, grad_input), {
               TT_THROW_IF_ERROR(ReplicationPadHelper(
                   BuildReplicationPadBackwardShlo,
-                  OpName::kReplicationPad2dBackwardGradInput,
                   std::move(param_keys), grad_output, padding, grad_input,
                   /*num_pad_dimensions=*/2));
 
@@ -375,7 +370,6 @@ at::Tensor& AtenReplicationPad3dBackwardGradInput(const at::Tensor& grad_output,
             (grad_output, self, padding, grad_input), {
               TT_THROW_IF_ERROR(ReplicationPadHelper(
                   BuildReplicationPadBackwardShlo,
-                  OpName::kReplicationPad2dBackwardGradInput,
                   std::move(param_keys), grad_output, padding, grad_input,
                   /*num_pad_dimensions=*/3));
 
