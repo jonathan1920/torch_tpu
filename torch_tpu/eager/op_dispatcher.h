@@ -333,19 +333,6 @@ absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
   }
 }
 
-template <int kArity, int kNumOutputs = 1>
-[[deprecated("Use DispatchOp() without the OpName parameter instead.")]]
-absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
-    const OpName op_name, NAryMlirOpBuilder<kArity, kNumOutputs> op_builder,
-    const OpInputs<kArity>& inputs, DispatchOpOptions<kNumOutputs> options) {
-  ABSL_CHECK(!options.op_name.has_value())  // CRASH_OK
-      << "Cannot set the op name in options when calling DispatchOp with an "
-         "explicit OpName parameter.";
-  options.op_name = op_name;
-  return DispatchOp<kArity, kNumOutputs>(std::move(op_builder), inputs,
-                                         std::move(options));
-}
-
 // Creates an at::Tensor from an at::Scalar.
 //
 // There are two modes of operation for this:

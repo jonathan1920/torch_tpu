@@ -155,7 +155,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenNativeLayerNorm(
         TT_ASSIGN_OR_THROW(
             (auto [output_buf, mean_buf, rstd_buf]),
             (DispatchOp<kDynamicSize, 3>(
-                OpName::kLayerNorm, std::move(op_builder), inputs,
+                std::move(op_builder), inputs,
                 {.out_dtypes = {elem_dtype, stats_elem_dtype, stats_elem_dtype},
                  .out_dims_list = {output_dims, mean_rstd_buffer_shape,
                                    mean_rstd_buffer_shape},
@@ -236,7 +236,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenLayerNormBackward(
         TT_ASSIGN_OR_THROW(
             (auto [grad_input_buf, grad_weight_buf, grad_bias_buf]),
             (DispatchOp<kDynamicSize, 3>(
-                OpName::kLayerNormBackward, std::move(op_builder), inputs,
+                std::move(op_builder), inputs,
                 {.out_dtypes = {elem_dtype, elem_dtype, elem_dtype},
                  .out_dims_list = {input_dims, weight_grad_dims,
                                    bias_grad_dims},

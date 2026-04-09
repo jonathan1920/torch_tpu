@@ -378,7 +378,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenNativeGroupNormBackward(
         TT_ASSIGN_OR_THROW(
             (auto [d_input_buf, d_weight_buf, d_bias_buf]),
             (DispatchOp<kDynamicSize, 3>(
-                OpName::kNativeGroupNormBackward, std::move(op_builder),
+                std::move(op_builder),
                 /*inputs=*/inputs,
                 {.out_dtypes = {input_dtype, weight_dtype, input_dtype},
                  .out_dims_list = {input_dims, weight_grad_dims,

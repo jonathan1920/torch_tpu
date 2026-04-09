@@ -42,9 +42,11 @@
 
 namespace torch_tpu {
 
-absl::StatusOr<DeviceBufferRefArray<2>> SortHelper(
-    const OpName op_name, OpParamCacheKeys param_keys, const at::Tensor& self,
-    const bool stable, const int64_t dim, const bool descending) {
+absl::StatusOr<DeviceBufferRefArray<2>> SortHelper(OpParamCacheKeys param_keys,
+                                                   const at::Tensor& self,
+                                                   const bool stable,
+                                                   const int64_t dim,
+                                                   const bool descending) {
   TT_ASSIGN_OR_RETURN(const int64_t normalized_dim,
                       SafeWrapDim(dim, self.dim()));
   Dimensions output_dims = CopyIntVector(self.sizes());
@@ -59,7 +61,7 @@ absl::StatusOr<DeviceBufferRefArray<2>> SortHelper(
   };
   TT_ASSIGN_OR_RETURN(
       auto result_buffers,
-      (DispatchOp<1, 2>(op_name, std::move(op_builder), self,
+      (DispatchOp<1, 2>(std::move(op_builder), self,
                         {.out_dtypes = {elem_type, mlir::ElementType::I64},
                          .out_dims_list = {output_dims, output_dims},
                          .op_param_cache_keys = std::move(param_keys)})));
@@ -78,10 +80,9 @@ std::tuple<at::Tensor&, at::Tensor&> AtenSortValuesStable(
           return {values, indices};
         }
         bool stable = stable_opt.value_or(false);
-        TT_ASSIGN_OR_THROW(
-            (auto [values_buf, indices_buf]),
-            SortHelper(OpName::kSortValuesStable, std::move(param_keys), self,
-                       /*stable=*/stable, dim, descending));
+        TT_ASSIGN_OR_THROW((auto [values_buf, indices_buf]),
+                           SortHelper(std::move(param_keys), self,
+                                      /*stable=*/stable, dim, descending));
         TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(values_buf), values));
         TT_THROW_IF_ERROR(

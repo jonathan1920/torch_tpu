@@ -127,11 +127,13 @@ absl::StatusOr<Dimensions> GetOutputDimensions(const at::Tensor& input,
   return Dimensions{n, c, output_size[0], output_size[1]};
 }
 
-absl::StatusOr<DeviceBufferRef> AtenCol2Im(
-    const OpName op_name, const at::Tensor& input, at::IntArrayRef output_size,
-    at::IntArrayRef kernel_size, at::IntArrayRef dilation,
-    at::IntArrayRef padding, at::IntArrayRef stride,
-    OpParamCacheKeys param_keys) {
+absl::StatusOr<DeviceBufferRef> AtenCol2Im(const at::Tensor& input,
+                                           at::IntArrayRef output_size,
+                                           at::IntArrayRef kernel_size,
+                                           at::IntArrayRef dilation,
+                                           at::IntArrayRef padding,
+                                           at::IntArrayRef stride,
+                                           OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(Dimensions output_dims,
                       GetOutputDimensions(input, output_size, kernel_size,
                                           dilation, padding, stride));
@@ -152,7 +154,7 @@ absl::StatusOr<DeviceBufferRef> AtenCol2Im(
   TT_ASSIGN_OR_RETURN(const auto elem_type,
                       ConvertTo<mlir::ElementType>(input.scalar_type()));
 
-  return DispatchOp<1>(op_name, std::move(op_builder), {input},
+  return DispatchOp<1>(std::move(op_builder), {input},
                        {.out_dtype = elem_type,
                         .out_dims = output_dims,
                         .op_param_cache_keys = std::move(param_keys)});
@@ -167,8 +169,8 @@ at::Tensor AtenCol2Im(const at::Tensor& input, at::IntArrayRef output_size,
             (input, output_size, kernel_size, dilation, padding, stride), {
               TT_ASSIGN_OR_THROW(
                   DeviceBufferRef result,
-                  AtenCol2Im(OpName::kCol2Im, input, output_size, kernel_size,
-                             dilation, padding, stride, std::move(param_keys)));
+                  AtenCol2Im(input, output_size, kernel_size, dilation, padding,
+                             stride, std::move(param_keys)));
               return MakeTensor(std::move(result));
             });
 }
@@ -177,16 +179,15 @@ at::Tensor& AtenCol2ImOut(const at::Tensor& input, at::IntArrayRef output_size,
                           at::IntArrayRef kernel_size, at::IntArrayRef dilation,
                           at::IntArrayRef padding, at::IntArrayRef stride,
                           at::Tensor& out) {
-  TT_KERNEL(
-      OpName::kCol2ImOut, param_keys,
-      (input, output_size, kernel_size, dilation, padding, stride, out), {
-        TT_ASSIGN_OR_THROW(
-            DeviceBufferRef result,
-            AtenCol2Im(OpName::kCol2ImOut, input, output_size, kernel_size,
-                       dilation, padding, stride, std::move(param_keys)));
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
-        return out;
-      });
+  TT_KERNEL(OpName::kCol2ImOut, param_keys,
+            (input, output_size, kernel_size, dilation, padding, stride, out), {
+              TT_ASSIGN_OR_THROW(
+                  DeviceBufferRef result,
+                  AtenCol2Im(input, output_size, kernel_size, dilation, padding,
+                             stride, std::move(param_keys)));
+              TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
+              return out;
+            });
 }
 
 }  // namespace torch_tpu

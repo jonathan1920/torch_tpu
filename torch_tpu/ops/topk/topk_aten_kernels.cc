@@ -76,7 +76,7 @@ std::tuple<at::Tensor&, at::Tensor&> AtenTopKValues(
         TT_ASSIGN_OR_THROW(
             (auto [values_buf, indices_buf]),
             (DispatchOp<1, 2>(
-                OpName::kTopkValues, std::move(op_builder), self,
+                std::move(op_builder), self,
                 {.out_dtypes = {elem_type, mlir::ElementType::I64},
                  .out_dims_list = {output_dims, output_dims},
                  .op_param_cache_keys = std::move(param_keys)})));

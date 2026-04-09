@@ -107,9 +107,8 @@ absl::Status FromToInRange(int64_t from, int64_t to, at::ScalarType dtype) {
   return absl::OkStatus();
 }
 
-absl::Status Random(OpName op_name, at::Tensor& self,
-                    c10::optional<at::Generator> generator, int64_t from,
-                    c10::optional<int64_t> to_opt,
+absl::Status Random(at::Tensor& self, c10::optional<at::Generator> generator,
+                    int64_t from, c10::optional<int64_t> to_opt,
                     OpParamCacheKeys param_keys) {
   if (self.numel() == 0) {
     return absl::OkStatus();
@@ -128,8 +127,7 @@ absl::Status Random(OpName op_name, at::Tensor& self,
   auto dims = CopyIntVector(self.sizes());
   TT_ASSIGN_OR_RETURN(
       (auto [rng_output_state_buf, output_buf]),
-      (DispatchOp<1, 2>(op_name,
-                        GetRandomFunctional(dims, output_dtype, from, to),
+      (DispatchOp<1, 2>(GetRandomFunctional(dims, output_dtype, from, to),
                         {rng_input_state},
                         {.out_dtypes = {mlir::ElementType::UI64, output_dtype},
                          .out_dims_list = {{2}, self.sizes()},
@@ -148,8 +146,8 @@ absl::Status Random(OpName op_name, at::Tensor& self,
 at::Tensor& AtenRandom_(at::Tensor& self,
                         c10::optional<at::Generator> generator) {
   TT_KERNEL(OpName::kRandom_, param_keys, (self, generator), {
-    TT_THROW_IF_ERROR(Random(OpName::kRandom_, self, generator, 0, std::nullopt,
-                             std::move(param_keys)));
+    TT_THROW_IF_ERROR(
+        Random(self, generator, 0, std::nullopt, std::move(param_keys)));
     return self;
   });
 }
@@ -158,8 +156,7 @@ at::Tensor& AtenRandom_From(at::Tensor& self, int64_t from,
                             c10::optional<int64_t> to,
                             c10::optional<at::Generator> generator) {
   TT_KERNEL(OpName::kRandom_From, param_keys, (self, from, to, generator), {
-    TT_THROW_IF_ERROR(Random(OpName::kRandom_From, self, generator, from, to,
-                             std::move(param_keys)));
+    TT_THROW_IF_ERROR(Random(self, generator, from, to, std::move(param_keys)));
     return self;
   });
 }
@@ -167,8 +164,7 @@ at::Tensor& AtenRandom_From(at::Tensor& self, int64_t from,
 at::Tensor& AtenRandom_To(at::Tensor& self, int64_t to,
                           c10::optional<at::Generator> generator) {
   TT_KERNEL(OpName::kRandom_To, param_keys, (self, to, generator), {
-    TT_THROW_IF_ERROR(Random(OpName::kRandom_To, self, generator, 0, to,
-                             std::move(param_keys)));
+    TT_THROW_IF_ERROR(Random(self, generator, 0, to, std::move(param_keys)));
     return self;
   });
 }

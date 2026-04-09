@@ -44,8 +44,7 @@
 namespace torch_tpu {
 namespace {
 
-absl::StatusOr<DeviceBufferRef> AtenIsInHelper(OpName op_name,
-                                               const at::Tensor& elements,
+absl::StatusOr<DeviceBufferRef> AtenIsInHelper(const at::Tensor& elements,
                                                const at::Tensor& test_elements,
                                                bool assume_unique, bool invert,
                                                OpParamCacheKeys& param_keys) {
@@ -67,16 +66,14 @@ absl::StatusOr<DeviceBufferRef> AtenIsInHelper(OpName op_name,
   mlir::ElementType output_dtype =
       mlir::ElementType::PRED;  // The output is always Boolean.
 
-  return DispatchOp<2>(op_name, std::move(op_builder),
-                       {elements, test_elements},
+  return DispatchOp<2>(std::move(op_builder), {elements, test_elements},
                        {.out_dtype = output_dtype,
                         .out_dims = output_dims,
                         .computation_dtype = computation_dtype,
                         .op_param_cache_keys = std::move(param_keys)});
 }
 
-absl::StatusOr<DeviceBufferRef> AtenIsInHelper(OpName op_name,
-                                               const at::Tensor& elements,
+absl::StatusOr<DeviceBufferRef> AtenIsInHelper(const at::Tensor& elements,
                                                const at::Scalar& test_element,
                                                bool assume_unique, bool invert,
                                                OpParamCacheKeys& param_keys) {
@@ -101,7 +98,7 @@ absl::StatusOr<DeviceBufferRef> AtenIsInHelper(OpName op_name,
   mlir::ElementType output_dtype =
       mlir::ElementType::PRED;  // The output is always Boolean.
 
-  return DispatchOp<1>(op_name, std::move(op_builder), elements,
+  return DispatchOp<1>(std::move(op_builder), elements,
                        {.out_dtype = output_dtype,
                         .out_dims = output_dims,
                         .computation_dtype = computation_dtype,
@@ -140,10 +137,9 @@ at::Tensor& AtenIsInTensorTensorOut(const at::Tensor& elements,
   TT_KERNEL(
       OpName::kIsInTensorTensorOut, param_keys,
       (elements, test_elements, assume_unique, invert, out), {
-        TT_ASSIGN_OR_THROW(
-            auto result_buf,
-            AtenIsInHelper(OpName::kIsInTensorTensorOut, elements,
-                           test_elements, assume_unique, invert, param_keys));
+        TT_ASSIGN_OR_THROW(auto result_buf,
+                           AtenIsInHelper(elements, test_elements,
+                                          assume_unique, invert, param_keys));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });
@@ -156,10 +152,9 @@ at::Tensor& AtenIsInTensorScalarOut(const at::Tensor& elements,
   TT_KERNEL(
       OpName::kIsInTensorScalarOut, param_keys,
       (elements, test_element, assume_unique, invert, out), {
-        TT_ASSIGN_OR_THROW(
-            auto result_buf,
-            AtenIsInHelper(OpName::kIsInTensorScalarOut, elements, test_element,
-                           assume_unique, invert, param_keys));
+        TT_ASSIGN_OR_THROW(auto result_buf,
+                           AtenIsInHelper(elements, test_element, assume_unique,
+                                          invert, param_keys));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });

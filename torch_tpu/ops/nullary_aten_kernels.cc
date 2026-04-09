@@ -81,11 +81,10 @@ std::string LayoutToString(c10::optional<at::Layout> layout_opt) {
 
 }  // namespace
 
-at::Tensor ApplyNullaryOp(const OpName op_name, MlirNullaryOpBuilder op_builder,
+at::Tensor ApplyNullaryOp(MlirNullaryOpBuilder op_builder,
                           c10::ScalarType out_dtype, at::IntArrayRef out_dims,
                           OpParamCacheKeys op_param_cache_keys,
                           OpSplitMode split_mode) {
-  LogKernelStart(ToString(op_name), op_param_cache_keys);
   TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=all dtypes are supported.
       mlir::ElementType out_mlir_element_type,
       ConvertTo<mlir::ElementType>(out_dtype));
@@ -93,7 +92,7 @@ at::Tensor ApplyNullaryOp(const OpName op_name, MlirNullaryOpBuilder op_builder,
       ValidateTensorByteSize(out_dims, out_mlir_element_type));
   TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=errors should be covered inside.
       auto result_buf,
-      DispatchOp<0>(op_name, std::move(op_builder), /*inputs=*/{},
+      DispatchOp<0>(std::move(op_builder), /*inputs=*/{},
                     {.out_dtype = out_mlir_element_type,
                      .out_dims = out_dims,
                      .op_param_cache_keys = std::move(op_param_cache_keys),
@@ -101,13 +100,11 @@ at::Tensor ApplyNullaryOp(const OpName op_name, MlirNullaryOpBuilder op_builder,
   return MakeTensor(std::move(result_buf));
 }
 
-absl::Status ApplyNullaryOpOut(at::Tensor& out, const OpName op_name,
-                               MlirNullaryOpBuilder op_builder,
+absl::Status ApplyNullaryOpOut(at::Tensor& out, MlirNullaryOpBuilder op_builder,
                                c10::ScalarType out_dtype,
                                at::IntArrayRef out_dims,
                                OpParamCacheKeys op_param_cache_keys,
                                OpSplitMode split_mode) {
-  LogKernelStart(ToString(op_name), op_param_cache_keys);
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=all dtypes are supported.
       mlir::ElementType out_mlir_element_type,
       ConvertTo<mlir::ElementType>(out_dtype));
@@ -116,17 +113,17 @@ absl::Status ApplyNullaryOpOut(at::Tensor& out, const OpName op_name,
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch catches this first.
       out.device().type() == GetPrivateUse1DeviceType(),
       error::kFailedPrecondition)
-      << op_name << " out not on PrivateUse1";
+      << "the out tensor must be on TPU";
 
   at::native::resize_output(out, out_dims);
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=PyTorch catches this first.
       out.scalar_type() == out_dtype, error::kInvalidArgument)
-      << op_name << ": out tensor dtype mismatch. Expected " << out_dtype
-      << ", got " << out.scalar_type();
+      << "expected the out tensor dtype to be " << out_dtype << ", got "
+      << out.scalar_type();
 
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=errors should be covered inside.
       auto result_buf,
-      DispatchOp<0>(op_name, std::move(op_builder), /*inputs=*/{},
+      DispatchOp<0>(std::move(op_builder), /*inputs=*/{},
                     {.out_dtype = out_mlir_element_type,
                      .out_dims = out_dims,
                      .op_param_cache_keys = std::move(op_param_cache_keys),

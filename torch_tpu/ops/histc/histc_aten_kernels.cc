@@ -205,8 +205,12 @@ at::Tensor& AtenHistcOut(const at::Tensor& self, const int64_t bins,
           TT_ASSIGN_OR_THROW(
               (auto [input_min, input_max]),
               (DispatchOp<1, 2>(
-                  OpName::kHistcBounds, std::move(op_builder), self,
-                  {.out_dtypes = {mlir_out_dtype, mlir_out_dtype},
+                  std::move(op_builder), self,
+                  // Override the op name so that we can distinguish between
+                  // the bounds computation and the actual histogram
+                  // computation.
+                  {.op_name = OpName::kHistcBounds,
+                   .out_dtypes = {mlir_out_dtype, mlir_out_dtype},
                    .out_dims_list = {Dimensions(), Dimensions()},
                    .op_param_cache_keys = OpParamCacheKeys::Empty()})));
           TT_THROW_IF_ERROR(

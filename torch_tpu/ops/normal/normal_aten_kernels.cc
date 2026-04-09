@@ -158,8 +158,8 @@ absl::Status CheckNormalStdPreconditions(const at::Tensor& std,
 // Retrieves the rng_state tensor from the generator, dispatches the normal op,
 // updates the generator with the new rng_state, and returns the output tensor.
 absl::StatusOr<DeviceBufferRef> NormalLike(
-    const at::Tensor& self, OpName op_name, const at::Tensor& mean,
-    const at::Tensor& std, std::optional<at::Generator> generator) {
+    const at::Tensor& self, const at::Tensor& mean, const at::Tensor& std,
+    std::optional<at::Generator> generator) {
   at::Tensor self_real = self.is_complex() ? AtenViewAsReal(self) : self;
   at::Tensor mean_real =
       mean.is_complex()
@@ -186,7 +186,7 @@ absl::StatusOr<DeviceBufferRef> NormalLike(
   TT_ASSIGN_OR_RETURN(
       (auto [rng_output_state_buf, output_buf]),
       (DispatchOp<5, 2>(
-          OpName::kNormal_, std::move(builder),
+          std::move(builder),
           {self_real, rng_input_state, mean_real, std_real, std_scale},
           {.out_dtypes = {mlir::ElementType::UI64, mlir_type},
            .out_dims_list = {{2}, self_real.sizes()},
@@ -214,9 +214,8 @@ at::Tensor& AtenNormal_(at::Tensor& self, double mean, double std,
         TT_THROW_IF_ERROR(CheckNormalStdPreconditions(std));
         at::Tensor mean_tensor = at::scalar_tensor(mean, self.options());
         at::Tensor std_tensor = at::scalar_tensor(std, self.options());
-        TT_ASSIGN_OR_THROW(auto output_buf,
-                           NormalLike(self, OpName::kNormal_, mean_tensor,
-                                      std_tensor, generator));
+        TT_ASSIGN_OR_THROW(auto output_buf, NormalLike(self, mean_tensor,
+                                                       std_tensor, generator));
         if (self.is_complex()) {
           at::Tensor real_imag = AtenViewAsReal(self);
           TT_THROW_IF_ERROR(
@@ -241,8 +240,7 @@ at::Tensor AtenNormalFloatTensor(double mean, const at::Tensor& std,
                   CheckNormalStdPreconditions(std, /*allow_integer=*/false));
               at::Tensor mean_tensor = at::scalar_tensor(mean, std.options());
               TT_ASSIGN_OR_THROW(auto output_buf,
-                                 NormalLike(std, OpName::kNormalFloatTensor,
-                                            mean_tensor, std, generator));
+                                 NormalLike(std, mean_tensor, std, generator));
               return MakeTensor(std::move(output_buf));
             });
 }
@@ -263,8 +261,7 @@ at::Tensor& AtenNormalFloatTensorOut(double mean, const at::Tensor& std,
         TT_THROW_IF_ERROR(CheckNormalPreconditions(out, /*arg_name=*/"out"));
         at::Tensor mean_tensor = at::scalar_tensor(mean, out.options());
         TT_ASSIGN_OR_THROW(auto output_buf,
-                           NormalLike(out, OpName::kNormalFloatTensorOut,
-                                      mean_tensor, std, generator));
+                           NormalLike(out, mean_tensor, std, generator));
         if (out.is_complex()) {
           at::Tensor out_real_imag = AtenViewAsReal(out);
           TT_THROW_IF_ERROR(
@@ -287,8 +284,7 @@ at::Tensor AtenNormalTensorFloat(const at::Tensor& mean, double std,
               TT_THROW_IF_ERROR(CheckNormalStdPreconditions(std));
               at::Tensor std_tensor = at::scalar_tensor(std, mean.options());
               TT_ASSIGN_OR_THROW(auto output_buf,
-                                 NormalLike(mean, OpName::kNormalTensorFloat,
-                                            mean, std_tensor, generator));
+                                 NormalLike(mean, mean, std_tensor, generator));
               at::Tensor res = MakeTensor(std::move(output_buf));
               return mean.is_complex() ? AtenViewAsComplex(res) : res;
             });
@@ -308,8 +304,7 @@ at::Tensor& AtenNormalTensorFloatOut(const at::Tensor& mean, double std,
         TT_THROW_IF_ERROR(CheckNormalPreconditions(out, /*arg_name=*/"out"));
         at::Tensor std_tensor = at::scalar_tensor(std, out.options());
         TT_ASSIGN_OR_THROW(auto output_buf,
-                           NormalLike(out, OpName::kNormalTensorFloatOut, mean,
-                                      std_tensor, generator));
+                           NormalLike(out, mean, std_tensor, generator));
         if (out.is_complex()) {
           at::Tensor out_real_imag = AtenViewAsReal(out);
           TT_THROW_IF_ERROR(
@@ -336,8 +331,7 @@ at::Tensor AtenNormalTensorTensor(const at::Tensor& mean, const at::Tensor& std,
         const at::Tensor& b_mean = broadcasted[0];
         const at::Tensor& b_std = broadcasted[1];
         TT_ASSIGN_OR_THROW(auto output_buf,
-                           NormalLike(b_mean, OpName::kNormalTensorTensor,
-                                      b_mean, b_std, generator));
+                           NormalLike(b_mean, b_mean, b_std, generator));
         at::Tensor res = MakeTensor(std::move(output_buf));
         return b_mean.is_complex() ? AtenViewAsComplex(res) : res;
       });
@@ -362,8 +356,7 @@ at::Tensor& AtenNormalTensorTensorOut(const at::Tensor& mean,
         const at::Tensor& b_mean = broadcasted[0];
         const at::Tensor& b_std = broadcasted[1];
         TT_ASSIGN_OR_THROW(auto output_buf,
-                           NormalLike(out, OpName::kNormalTensorTensorOut,
-                                      b_mean, b_std, generator));
+                           NormalLike(out, b_mean, b_std, generator));
         if (out.is_complex()) {
           at::Tensor out_real_imag = AtenViewAsReal(out);
           TT_THROW_IF_ERROR(

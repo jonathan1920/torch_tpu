@@ -210,8 +210,8 @@ at::Tensor& AtenArangeStartOut(const at::Scalar& start, const at::Scalar& end,
 
     TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=inner checks are all
                         // infeasible.
-        ApplyNullaryOpOut(out, OpName::kArangeStartOut, std::move(op_builder),
-                          output_dtype, {num_elements}, std::move(param_keys)));
+        ApplyNullaryOpOut(out, std::move(op_builder), output_dtype,
+                          {num_elements}, std::move(param_keys)));
   });
   return out;
 }

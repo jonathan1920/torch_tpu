@@ -106,7 +106,6 @@ at::Tensor& AtenBernoulli_Float(at::Tensor& self, double p,
     TT_ASSIGN_OR_THROW(
         (auto [rng_output_state_buf, output_buf]),
         (DispatchOp<1, 2>(
-            OpName::kBernoulli_Float,
             GetBernoulliFloatFunctional(dims, output_dtype, p),
             {rng_input_state},
             {.out_dtypes = {mlir::ElementType::UI64, output_dtype},

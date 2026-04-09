@@ -57,28 +57,17 @@ struct UnaryOpOptions {
 absl::StatusOr<at::Tensor> UnaryOp(const at::Tensor& self,
                                    MlirUnaryOpBuilder op_builder,
                                    UnaryOpOptions options);
-[[deprecated("Use UnaryOp() without the OpName parameter instead.")]]
-absl::StatusOr<at::Tensor> UnaryOp(const at::Tensor& self, OpName op_name,
-                                   MlirUnaryOpBuilder op_builder,
-                                   UnaryOpOptions options);
 
 // Like UnaryOpCallback, but the result overwrites the input.
 // Because of this overwrite, the output must have the shape and dtype of self.
 // Hence .out_dims and .out_dtype in options are ignored.
 absl::Status UnaryOpInPlace(at::Tensor& self, MlirUnaryOpBuilder op_builder,
                             UnaryOpOptions options);
-[[deprecated("Use UnaryOpInPlace() without the OpName parameter instead.")]]
-absl::Status UnaryOpInPlace(at::Tensor& self, OpName op_name,
-                            MlirUnaryOpBuilder op_builder,
-                            UnaryOpOptions options);
 
 // Like UnaryOpCallback, but the result overwrites the provided `out` tensor.
 // `out` is resized to `out_dims` and must have dtype `out_dtype`.
 // If they are not provided then the values from `self` are used.
 absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out,
-                        MlirUnaryOpBuilder op_builder, UnaryOpOptions options);
-[[deprecated("Use UnaryOpOut() without the OpName parameter instead.")]]
-absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out, OpName op_name,
                         MlirUnaryOpBuilder op_builder, UnaryOpOptions options);
 
 // Declare callbacks for a unary ATEN op

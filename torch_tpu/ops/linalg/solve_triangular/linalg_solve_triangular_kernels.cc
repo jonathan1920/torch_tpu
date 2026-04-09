@@ -124,7 +124,6 @@ at::Tensor& AtenLinalgSolveTriangularOut(const at::Tensor& a,
               TT_ASSIGN_OR_THROW(
                   auto result_buffer,
                   DispatchOp<2>(
-                      OpName::kLinalgSolveTriangularOut,
                       LinalgSolveTriangularBuilder(upper, left, unitriangular),
                       {a, b},
                       {.out_dtype = out_dtype,
@@ -160,7 +159,6 @@ at::Tensor AtenLinalgSolveTriangular(const at::Tensor& a, const at::Tensor& b,
               TT_ASSIGN_OR_THROW(
                   auto result_buffer,
                   DispatchOp<2>(
-                      OpName::kLinalgSolveTriangular,
                       LinalgSolveTriangularBuilder(upper, left, unitriangular),
                       {a, b},
                       {.out_dtype = out_dtype,

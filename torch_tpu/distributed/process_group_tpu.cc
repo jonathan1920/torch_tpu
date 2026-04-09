@@ -377,8 +377,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allreduce(
 
     TT_ASSIGN_OR_THROW(
         auto result_buffer,
-        DispatchOp<1>(OpName::kDistributedAllReduce, std::move(op_builder),
-                      maybe_materialized_input_tensor,
+        DispatchOp<1>(std::move(op_builder), maybe_materialized_input_tensor,
                       {.out_dtype = output_dtype,
                        .out_dims = tensor.sizes(),
                        .op_param_cache_keys = std::move(param_keys),
@@ -523,8 +522,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather(
         TT_ASSIGN_OR_THROW(
             auto result_buffers,
             (DispatchOp<1, kDynamicSize>(
-                OpName::kDistributedAllGather, std::move(op_builder),
-                maybe_materialized_input_tensor,
+                std::move(op_builder), maybe_materialized_input_tensor,
                 {.out_dtypes = output_dtypes,
                  .out_dims_list = output_dims,
                  .op_param_cache_keys = std::move(param_keys),
@@ -635,8 +633,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::_allgather_base(
             ConvertTo<mlir::ElementType>(input_tensor.scalar_type()));
         TT_ASSIGN_OR_THROW(
             auto result_buffer,
-            DispatchOp<1>(OpName::kDistributedAllGatherIntoTensor,
-                          std::move(op_builder),
+            DispatchOp<1>(std::move(op_builder),
                           maybe_materialized_input_tensor,
                           {.out_dtype = output_dtype,
                            .out_dims = output_tensor.sizes(),
@@ -927,8 +924,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::_reduce_scatter_base(
 
         TT_ASSIGN_OR_THROW(
             auto result_buffer,
-            DispatchOp<1>(OpName::kDistributedReduceScatterTensor,
-                          std::move(op_builder),
+            DispatchOp<1>(std::move(op_builder),
                           maybe_materialized_input_concat_tensor,
                           {.out_dtype = out_dtype,
                            .out_dims = std::move(out_dims),
@@ -1042,8 +1038,7 @@ absl::StatusOr<DeviceBufferRef> ProcessGroupTpu::AllToAllBaseEqualSplits(
   // the output tensor shape will be the same as the input tensor shape.
   TT_ASSIGN_OR_RETURN(
       auto result_buffer,
-      DispatchOp<1>(OpName::kDistributedAllToAllSingle, std::move(op_builder),
-                    maybe_materialized_input_tensor,
+      DispatchOp<1>(std::move(op_builder), maybe_materialized_input_tensor,
                     {.out_dtype = output_dtype,
                      .out_dims = output.sizes(),
                      .op_param_cache_keys = std::move(param_keys),
@@ -1112,7 +1107,6 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall(
 
         TT_ASSIGN_OR_THROW(std::vector<DeviceBufferRef> result_buffers,
                            (DispatchOp<kDynamicSize, kDynamicSize>(
-                               OpName::kDistributedAllToAll,
                                std::move(op_builder), input_tensors,
                                {.out_dtypes = result_dtypes,
                                 .out_dims_list = result_dims_list,
@@ -1214,8 +1208,7 @@ DeviceGroupList ProcessGroupTpu::GatherAllSubgroups() {
 
     TT_ASSIGN_OR_THROW(
         auto result_buffer,
-        DispatchOp<1>(OpName::kTorchTpuInternalGatherAllSubgroups,
-                      std::move(op_builder), subgroups,
+        DispatchOp<1>(std::move(op_builder), subgroups,
                       {.out_dtype = output_dtype,
                        .out_dims = subgroups.sizes(),
                        .op_param_cache_keys = std::move(param_keys)}));

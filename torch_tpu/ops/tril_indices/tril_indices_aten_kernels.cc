@@ -78,8 +78,8 @@ at::Tensor AtenTrilIndices(int64_t row, int64_t col, int64_t offset,
             auto builder,
             GetTrilIndicesFunctional(row, col, offset, tril_size, dtype));
 
-        return ApplyNullaryOp(OpName::kTrilIndices, std::move(builder), dtype,
-                              {2, tril_size}, std::move(param_keys));
+        return ApplyNullaryOp(std::move(builder), dtype, {2, tril_size},
+                              std::move(param_keys));
       });
 }
 

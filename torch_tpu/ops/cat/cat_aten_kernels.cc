@@ -120,7 +120,7 @@ absl::StatusOr<CatShapeInfo> ValidateCatTensors(
 }
 
 absl::StatusOr<CatComputationResult> CatHelper(
-    OpName op_name, const at::ITensorListRef& tensors, const int64_t dim,
+    const at::ITensorListRef& tensors, const int64_t dim,
     OpParamCacheKeys param_keys,
     std::optional<at::ScalarType> output_dtype_override = std::nullopt) {
   ABSL_VLOG(1) << "====== [C++ KERNEL AtenCat] ======";
@@ -167,12 +167,12 @@ absl::StatusOr<CatComputationResult> CatHelper(
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(target_dtype));
 
-  TT_ASSIGN_OR_RETURN(auto result_buf,
-                      DispatchOp<kDynamicSize>(
-                          op_name, std::move(cat_op_builder), promoted_tensors,
-                          {.out_dtype = output_dtype,
-                           .out_dims = output_dims,
-                           .op_param_cache_keys = std::move(param_keys)}));
+  TT_ASSIGN_OR_RETURN(
+      auto result_buf,
+      DispatchOp<kDynamicSize>(std::move(cat_op_builder), promoted_tensors,
+                               {.out_dtype = output_dtype,
+                                .out_dims = output_dims,
+                                .op_param_cache_keys = std::move(param_keys)}));
   return CatComputationResult{
       .result_buf = std::move(result_buf),
       .promoted_dtype = target_dtype,
@@ -186,9 +186,9 @@ absl::StatusOr<CatComputationResult> CatHelper(
 at::Tensor& AtenCatOut(const at::ITensorListRef& tensors, int64_t dim,
                        at::Tensor& out) {
   TT_KERNEL(OpName::kCatOut, param_keys, (tensors, dim, out), {
-    TT_ASSIGN_OR_THROW(CatComputationResult cat_result,
-                       CatHelper(OpName::kCatOut, tensors, dim,
-                                 std::move(param_keys), out.scalar_type()));
+    TT_ASSIGN_OR_THROW(
+        CatComputationResult cat_result,
+        CatHelper(tensors, dim, std::move(param_keys), out.scalar_type()));
     TT_THROW_IF_ERROR(
         AssignBufferToAtTensor(std::move(cat_result.result_buf), out));
     ABSL_VLOG(1) << "[C++ KERNEL tpu_aten_cat_out] out(final): "

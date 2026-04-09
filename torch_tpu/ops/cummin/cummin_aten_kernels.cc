@@ -75,7 +75,7 @@ void AtenCumminHelper(const at::Tensor& self, at::Tensor& values,
     TT_ASSIGN_OR_THROW(
         (auto [values_buf, indices_buf]),
         (DispatchOp<1, 2>(
-            OpName::kCumminHelper, std::move(op_builder), self,
+            std::move(op_builder), self,
             {
                 .out_dtypes = {output_dtype, mlir::ElementType::I64},
                 .out_dims_list = {output_dims, output_dims},

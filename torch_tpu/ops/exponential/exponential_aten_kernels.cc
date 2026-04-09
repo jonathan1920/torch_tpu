@@ -102,7 +102,6 @@ at::Tensor& AtenExponential_(at::Tensor& self, double lambd,
     TT_ASSIGN_OR_THROW(
         (auto [rng_output_state_buf, output_buf]),
         (DispatchOp<1, 2>(
-            OpName::kExponential_,
             GetExponentialFunctional(dims, output_dtype, lambd),
             {rng_input_state},
             {.out_dtypes = {mlir::ElementType::UI64, output_dtype},

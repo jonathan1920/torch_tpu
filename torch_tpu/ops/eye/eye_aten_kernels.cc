@@ -77,9 +77,9 @@ at::Tensor& AtenEyeMOut(c10::SymInt n, c10::SymInt m, at::Tensor& out) {
     TT_ASSIGN_OR_THROW(auto op_builder,
                        GetEyeOpBuilder(n_int, m_int, output_dtype));
 
-    TT_THROW_IF_ERROR(ApplyNullaryOpOut(out, OpName::kEyeMOut,
-                                        std::move(op_builder), output_dtype,
-                                        {n_int, m_int}, std::move(param_keys)));
+    TT_THROW_IF_ERROR(ApplyNullaryOpOut(out, std::move(op_builder),
+                                        output_dtype, {n_int, m_int},
+                                        std::move(param_keys)));
     return out;
   });
 }

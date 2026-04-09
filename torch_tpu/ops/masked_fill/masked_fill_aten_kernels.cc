@@ -43,8 +43,7 @@ namespace torch_tpu {
 
 namespace {
 
-absl::StatusOr<DeviceBufferRef> MaskedFillScalar(const OpName op_name,
-                                                 const at::Tensor& input,
+absl::StatusOr<DeviceBufferRef> MaskedFillScalar(const at::Tensor& input,
                                                  const at::Tensor& mask,
                                                  const at::Scalar& scalar,
                                                  OpParamCacheKeys param_keys) {
@@ -63,14 +62,13 @@ absl::StatusOr<DeviceBufferRef> MaskedFillScalar(const OpName op_name,
   };
 
   const auto elem_type = output_mlir_dtype;
-  return DispatchOp<2>(op_name, std::move(op_builder), {input, mask},
+  return DispatchOp<2>(std::move(op_builder), {input, mask},
                        {.out_dtype = elem_type,
                         .out_dims = output_dims,
                         .op_param_cache_keys = std::move(param_keys)});
 }
 
-absl::StatusOr<DeviceBufferRef> MaskedFillTensor(const OpName op_name,
-                                                 const at::Tensor& input,
+absl::StatusOr<DeviceBufferRef> MaskedFillTensor(const at::Tensor& input,
                                                  const at::Tensor& mask,
                                                  const at::Tensor& value) {
   for (const int64_t dim : value.sizes()) {
@@ -92,7 +90,7 @@ absl::StatusOr<DeviceBufferRef> MaskedFillTensor(const OpName op_name,
   };
 
   const auto elem_type = output_mlir_type;
-  return DispatchOp<3>(op_name, std::move(op_builder), {input, mask, value},
+  return DispatchOp<3>(std::move(op_builder), {input, mask, value},
                        {.out_dtype = elem_type,
                         .out_dims = output_dims,
                         .op_param_cache_keys = OpParamCacheKeys::Empty()});
@@ -103,9 +101,9 @@ absl::StatusOr<DeviceBufferRef> MaskedFillTensor(const OpName op_name,
 at::Tensor& AtenMaskedFill_Scalar(at::Tensor& self, const at::Tensor& mask,
                                   const at::Scalar& value) {
   TT_KERNEL(OpName::kMaskedFill_Scalar, param_keys, (self, mask, value), {
-    TT_ASSIGN_OR_THROW(DeviceBufferRef result_buf,
-                       MaskedFillScalar(OpName::kMaskedFill_Scalar, self, mask,
-                                        value, std::move(param_keys)));
+    TT_ASSIGN_OR_THROW(
+        DeviceBufferRef result_buf,
+        MaskedFillScalar(self, mask, value, std::move(param_keys)));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), self));
 
     return self;
@@ -115,9 +113,8 @@ at::Tensor& AtenMaskedFill_Scalar(at::Tensor& self, const at::Tensor& mask,
 at::Tensor& AtenMaskedFill_Tensor(at::Tensor& self, const at::Tensor& mask,
                                   const at::Tensor& value) {
   TT_KERNEL(OpName::kMaskedFill_Tensor, _, (self, mask, value), {
-    TT_ASSIGN_OR_THROW(
-        DeviceBufferRef result_buf,
-        MaskedFillTensor(OpName::kMaskedFill_Tensor, self, mask, value));
+    TT_ASSIGN_OR_THROW(DeviceBufferRef result_buf,
+                       MaskedFillTensor(self, mask, value));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), self));
     return self;
   });

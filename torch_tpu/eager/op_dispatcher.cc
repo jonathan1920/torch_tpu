@@ -205,9 +205,12 @@ absl::StatusOr<DeviceBufferRef> MakeBuffer(
     return MakeConstant(builder, scalar, scalar_element_type);
   };
 
-  return DispatchOp<0>(OpName::kScalarTensor, std::move(op_builder),
+  return DispatchOp<0>(std::move(op_builder),
                        /*inputs=*/{},
-                       {.out_dtype = scalar_element_type,
+                       // Override the op name as this is a general utility
+                       // rather than a specific op.
+                       {.op_name = OpName::kScalarTensor,
+                        .out_dtype = scalar_element_type,
                         .out_dims = Dimensions{},
                         .op_param_cache_keys = std::move(op_param_cache_keys)});
 }

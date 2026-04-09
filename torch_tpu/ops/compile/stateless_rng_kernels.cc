@@ -93,8 +93,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> TorchTpuStatelessDropout(
         TT_ASSIGN_OR_THROW(
             (auto [rng_output_state_buf, output_buf, mask_buf]),
             (DispatchOp<2, 3>(
-                OpName::kTorchTpuStatelessDropout, std::move(op_builder),
-                {rng_state_u64, input},
+                std::move(op_builder), {rng_state_u64, input},
                 {.out_dtypes = {mlir::ElementType::UI64, output_dtype,
                                 mlir::ElementType::PRED},
                  .out_dims_list = {{2}, input.sizes(), input.sizes()},

@@ -100,6 +100,7 @@ std::vector<at::Tensor> PyCallCustomKernel(
         }
 
         DispatchOpOptions<kDynamicSize> options{
+            .op_name = OpName::kCustomKernel,
             .out_dtypes = output_dtypes,
             .out_dims_list = output_dims_list,
             .computation_dtype = std::nullopt,
@@ -115,8 +116,7 @@ std::vector<at::Tensor> PyCallCustomKernel(
         }
 
         absl::StatusOr<std::vector<DeviceBufferRef>> results_status =
-            DispatchOp<kDynamicSize, kDynamicSize>(OpName::kCustomKernel,
-                                                   std::move(custom_op_builder),
+            DispatchOp<kDynamicSize, kDynamicSize>(std::move(custom_op_builder),
                                                    inputs, std::move(options));
         TT_ASSIGN_OR_THROW(std::vector<DeviceBufferRef> results,
                            results_status);

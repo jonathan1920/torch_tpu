@@ -142,7 +142,7 @@ std::tuple<at::Tensor, at::Tensor> AtenFusedRmsNorm(
         TT_ASSIGN_OR_THROW(
             auto output_bufs,
             (DispatchOp<kDynamicSize, 2>(
-                OpName::kFusedRmsNorm, std::move(op_builder), inputs,
+                std::move(op_builder), inputs,
                 {.out_dtypes = {elem_dtype, rstd_elem_dtype},
                  .out_dims_list = {output_dims, rstd_buffer_shape},
                  .op_param_cache_keys = std::move(param_keys)})));
@@ -222,7 +222,7 @@ std::tuple<at::Tensor, at::Tensor> AtenFusedRmsNormBackward(
         TT_ASSIGN_OR_THROW(
             auto output_bufs,
             (DispatchOp<kDynamicSize, 2>(
-                OpName::kFusedRmsNormBackward, std::move(op_builder), inputs,
+                std::move(op_builder), inputs,
                 {.out_dtypes = {elem_dtype, elem_dtype},
                  .out_dims_list = {input_dims, weight_dims},
                  .op_param_cache_keys = std::move(param_keys)})));

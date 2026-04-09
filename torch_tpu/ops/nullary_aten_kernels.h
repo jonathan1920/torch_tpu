@@ -33,13 +33,12 @@
 
 namespace torch_tpu {
 
-at::Tensor ApplyNullaryOp(OpName op_name, MlirNullaryOpBuilder op_builder,
+at::Tensor ApplyNullaryOp(MlirNullaryOpBuilder op_builder,
                           c10::ScalarType out_dtype, at::IntArrayRef out_dims,
                           OpParamCacheKeys op_param_cache_keys,
                           OpSplitMode split_mode = OpSplitMode::kNone);
 
-absl::Status ApplyNullaryOpOut(at::Tensor& out, OpName op_name,
-                               MlirNullaryOpBuilder op_builder,
+absl::Status ApplyNullaryOpOut(at::Tensor& out, MlirNullaryOpBuilder op_builder,
                                c10::ScalarType out_dtype,
                                at::IntArrayRef out_dims,
                                OpParamCacheKeys op_param_cache_keys,

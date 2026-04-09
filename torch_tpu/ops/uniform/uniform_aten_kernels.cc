@@ -77,7 +77,6 @@ at::Tensor& AtenUniform_(at::Tensor& self, double from, double to,
     TT_ASSIGN_OR_THROW(
         (auto [rng_output_state_buf, output_buf]),
         (DispatchOp<1, 2>(
-            OpName::kUniform_,
             GetUniformFunctional(dims, output_dtype, from, to),
             {rng_input_state},
             {.out_dtypes = {mlir::ElementType::UI64, output_dtype},

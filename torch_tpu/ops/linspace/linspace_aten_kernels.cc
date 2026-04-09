@@ -243,9 +243,9 @@ at::Tensor& AtenLinspaceOut(const at::Scalar& start, const at::Scalar& end,
     TT_ASSIGN_OR_THROW(auto op_builder,
                        GetLinspaceOpBuilder(steps, start, end, output_dtype));
 
-    TT_THROW_IF_ERROR(ApplyNullaryOpOut(out, OpName::kLinspaceOut,
-                                        std::move(op_builder), output_dtype,
-                                        {steps}, std::move(param_keys)));
+    TT_THROW_IF_ERROR(ApplyNullaryOpOut(out, std::move(op_builder),
+                                        output_dtype, {steps},
+                                        std::move(param_keys)));
   });
   return out;
 }

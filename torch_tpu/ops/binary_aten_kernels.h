@@ -78,19 +78,6 @@ absl::StatusOr<at::Tensor> BinaryOp(const at::Tensor& tensor,
 }
 
 template <typename OtherType>
-[[deprecated("Use BinaryOp() without the OpName parameter instead.")]]
-absl::StatusOr<at::Tensor> BinaryOp(OpName op_name, const at::Tensor& tensor,
-                                    const OtherType& other,
-                                    MlirBinaryOpBuilder op_builder,
-                                    BinaryOpOptions opts) {
-  ABSL_CHECK(!opts.op_name.has_value())  // CRASH_OK
-      << "Cannot set the op name in options when calling BinaryOp with an "
-         "explicit OpName parameter.";
-  opts.op_name = op_name;
-  return BinaryOp(tensor, other, std::move(op_builder), std::move(opts));
-}
-
-template <typename OtherType>
 absl::Status BinaryOpOut(const at::Tensor& tensor, const OtherType& other,
                          at::Tensor& out, MlirBinaryOpBuilder op_builder,
                          BinaryOpOptions opts) {
@@ -126,19 +113,6 @@ absl::Status BinaryOpOut(const at::Tensor& tensor, const OtherType& other,
   }
 
   return AssignBufferToAtTensor(std::move(result_buf), out);
-}
-
-template <typename OtherType>
-[[deprecated("Use BinaryOpOut() without the OpName parameter instead.")]]
-absl::Status BinaryOpOut(const OpName op_name, const at::Tensor& tensor,
-                         const OtherType& other, at::Tensor& out,
-                         MlirBinaryOpBuilder op_builder, BinaryOpOptions opts) {
-  ABSL_CHECK(!opts.op_name.has_value())  // CRASH_OK
-      << "Cannot set the op name in options when calling BinaryOpOut with an "
-         "explicit OpName parameter.";
-  opts.op_name = op_name;
-  return BinaryOpOut(tensor, other, out, std::move(op_builder),
-                     std::move(opts));
 }
 
 // NOLINTBEGIN

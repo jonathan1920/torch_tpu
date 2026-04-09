@@ -90,7 +90,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
     };
     TT_ASSIGN_OR_RETURN(
         results, (DispatchOp<5, 3>(
-                     OpName::kNativeBatchNorm, std::move(op_builder),
+                     std::move(op_builder),
                      /*inputs=*/
                      {input, *weight, *bias, *running_mean, *running_variance},
                      {.out_dtypes = output_dtypes,
@@ -107,7 +107,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
     TT_ASSIGN_OR_RETURN(
         results,
         (DispatchOp<4, 3>(
-            OpName::kNativeBatchNorm, std::move(op_builder),
+            std::move(op_builder),
             /*inputs=*/{input, *bias, *running_mean, *running_variance},
             {.out_dtypes = output_dtypes,
              .out_dims_list = output_dims,
@@ -122,7 +122,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
     };
     TT_ASSIGN_OR_RETURN(
         results,
-        (DispatchOp<4, 3>(OpName::kNativeBatchNorm, std::move(op_builder),
+        (DispatchOp<4, 3>(std::move(op_builder),
                           {input, *weight, *running_mean, *running_variance},
                           {.out_dtypes = output_dtypes,
                            .out_dims_list = output_dims,
@@ -137,7 +137,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
     };
     TT_ASSIGN_OR_RETURN(
         results,
-        (DispatchOp<3, 3>(OpName::kNativeBatchNorm, std::move(op_builder),
+        (DispatchOp<3, 3>(std::move(op_builder),
                           /*inputs=*/{input, *running_mean, *running_variance},
                           {.out_dtypes = output_dtypes,
                            .out_dims_list = output_dims,
@@ -149,11 +149,11 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
                             training, momentum, eps, acc_dtype);
     };
     TT_ASSIGN_OR_RETURN(
-        results, (DispatchOp<1, 3>(
-                     OpName::kNativeBatchNorm, std::move(op_builder), input,
-                     {.out_dtypes = output_dtypes,
-                      .out_dims_list = output_dims,
-                      .op_param_cache_keys = std::move(param_keys)})));
+        results,
+        (DispatchOp<1, 3>(std::move(op_builder), input,
+                          {.out_dtypes = output_dtypes,
+                           .out_dims_list = output_dims,
+                           .op_param_cache_keys = std::move(param_keys)})));
   } else if (weight && bias && !running_mean && !running_variance) {
     auto op_builder = [training, momentum, eps,
                        acc_dtype](FixedSizeSpan<mlir::MlirOp, 3> inputs) {
@@ -164,8 +164,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> TpuBatchNorm(
     };
     TT_ASSIGN_OR_RETURN(
         results,
-        (DispatchOp<3, 3>(OpName::kNativeBatchNorm, std::move(op_builder),
-                          {input, *weight, *bias},
+        (DispatchOp<3, 3>(std::move(op_builder), {input, *weight, *bias},
                           {.out_dtypes = output_dtypes,
                            .out_dims_list = output_dims,
                            .op_param_cache_keys = std::move(param_keys)})));
