@@ -20,6 +20,7 @@ from torch_tpu._internal import dynamism
 from torch_tpu._internal.utils import utils
 from tests import op_testing
 
+
 # TODO: this is not concurrency safe, causes flaky test failures if there is
 # more than one test case in this file that uses this.
 # This is because the context windows for parallel-executing tests may overlap,
@@ -415,6 +416,63 @@ class DynamismTest(parameterized.TestCase):
     dynamism.mark_dynamic(x, 1, 2, 20)
     x = x + 1
     print(x.cpu())  # < -- sync(x) <-- fail, x is dynamic
+
+  def test_mean_dynamic_shapes_reduce_all(self):
+    """Tests mean op with dynamic shapes reducing all dims."""
+
+    def dyn_mean(x):
+      dynamism.mark_dynamic(x, 0, 2, 10)
+      return torch.mean(x)
+
+    x = torch.randn(7, 13, device="cpu").to(self.device)
+    res_x = dyn_mean(x)
+    with CompilationCounter(self.device) as counter:
+      res_x.cpu()
+    self.assertEqual(counter.num_cache_hits(), 0)
+
+    y = torch.randn(3, 13, device="cpu").to(self.device)
+    res_y = dyn_mean(y)
+    with CompilationCounter(self.device) as counter:
+      res_y.cpu()
+    self.assertEqual(counter.num_cache_hits(), 1)
+
+  def test_mean_dynamic_shapes_reduce_dynamic_dim(self):
+    """Tests mean op with dynamic shapes reducing the dynamic dim."""
+
+    def dyn_mean(x):
+      dynamism.mark_dynamic(x, 0, 2, 10)
+      return torch.mean(x, dim=0)
+
+    x = torch.randn(8, 17, device="cpu").to(self.device)
+    res_x = dyn_mean(x)
+    with CompilationCounter(self.device) as counter:
+      res_x.cpu()
+    self.assertEqual(counter.num_cache_hits(), 0)
+
+    y = torch.randn(4, 17, device="cpu").to(self.device)
+    res_y = dyn_mean(y)
+    with CompilationCounter(self.device) as counter:
+      res_y.cpu()
+    self.assertEqual(counter.num_cache_hits(), 1)
+
+  def test_mean_dynamic_shapes_reduce_static_dim(self):
+    """Tests mean op with dynamic shapes reducing a static dim."""
+
+    def dyn_mean(x):
+      dynamism.mark_dynamic(x, 0, 2, 10)
+      return torch.mean(x, dim=1)
+
+    x = torch.randn(9, 19, device="cpu").to(self.device)
+    res_x = dyn_mean(x)
+    with CompilationCounter(self.device) as counter:
+      res_x.cpu()
+    self.assertEqual(counter.num_cache_hits(), 0)
+
+    y = torch.randn(5, 19, device="cpu").to(self.device)
+    res_y = dyn_mean(y)
+    with CompilationCounter(self.device) as counter:
+      res_y.cpu()
+    self.assertEqual(counter.num_cache_hits(), 1)
 
 
 if __name__ == "__main__":

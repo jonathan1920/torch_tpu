@@ -19,19 +19,28 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <utility>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/full.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/ops/binary.h"
 #include "torch_tpu/ops/macros/kernel.h"
+#include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/reductions/reduction_utils.h"
 #include "torch_tpu/ops/reductions/reductions.h"
+#include "torch_tpu/ops/reductions/sum.h"
+#include "torch_tpu/ops/unary_aten_kernels.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {
 
@@ -46,17 +55,16 @@ absl::StatusOr<c10::ScalarType> GetOutputScalarType(
   return scalar_dtype;
 }
 
-// Divides the reduced tensor by the reduction factor (i.e. the input:output
-// ratio). If dim is specified then the reduction factor is the product of
-// the size along each summed dimension. Otherwise the reduction factor is
-// the number of elements in the input tensor.
-absl::Status DivideByReductionFactor(const at::Tensor& input_tensor,
-                                     at::Tensor& reduced_tensor,
-                                     c10::OptionalArrayRef<int64_t> dim) {
-  TT_ASSIGN_OR_RETURN(const int64_t reduction_factor,
-                      GetReductionFactor(input_tensor, dim));
-  reduced_tensor.div_(reduction_factor);
-  return absl::OkStatus();
+absl::StatusOr<mlir::MlirOp> BuildMeanShlo(
+    mlir::MlirOp input, absl::Span<const int64_t> canonical_dims,
+    ReductionMode reduction_mode, mlir::ElementType mlir_type) {
+  TT_ASSIGN_OR_RETURN(
+      mlir::MlirOp sum_op,
+      BuildSumShlo(input, canonical_dims, reduction_mode, mlir_type));
+  mlir::MlirOp num_elements =
+      GetNumElements(input, mlir::getElementType(input.getContext(), mlir_type),
+                     canonical_dims);
+  return BuildDivShlo(sum_op, num_elements);
 }
 
 }  // namespace
@@ -77,11 +85,33 @@ at::Tensor& AtenMeanOut(const at::Tensor& self,
           return out;
         }
 
-        TT_THROW_IF_ERROR(ApplySumReductionOut(
-            self, out, dim,
-            keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims,
-            scalar_dtype));
-        TT_THROW_IF_ERROR(DivideByReductionFactor(self, out, dim));
+        const ReductionMode reduction_mode =
+            keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
+        TT_ASSIGN_OR_THROW(Dimensions canonical_dims,
+                           CanonicalizeDims(self, dim));
+        Dimensions output_dims = GetSizesAfterReduction(
+            self.sizes(), reduction_mode, canonical_dims);
+
+        TT_ASSIGN_OR_THROW(const mlir::ElementType mlir_type,
+                           ConvertTo<mlir::ElementType>(scalar_dtype));
+
+        TT_ASSIGN_OR_THROW(
+            auto param_keys,
+            TT_MAKE_OP_PARAM_CACHE_KEYS(canonical_dims, keep_dim, dtype));
+
+        auto op_builder =
+            [canonical_dims = std::move(canonical_dims), reduction_mode,
+             mlir_type](mlir::MlirOp input_op) -> absl::StatusOr<mlir::MlirOp> {
+          return BuildMeanShlo(input_op, canonical_dims, reduction_mode,
+                               mlir_type);
+        };
+
+        TT_THROW_IF_ERROR(
+            UnaryOpOut(self, out, std::move(op_builder),
+                       {.op_name = OpName::kMeanOut,
+                        .op_param_cache_keys = std::move(param_keys),
+                        .out_dtype = scalar_dtype,
+                        .out_dims = std::move(output_dims)}));
         return out;
       });
 }
