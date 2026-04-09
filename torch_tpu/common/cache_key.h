@@ -221,7 +221,8 @@ template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
 
 [[nodiscard]] inline std::string FormatParamCacheKey(
     const c10::optional<at::Tensor>& value) {
-  return value.has_value() ? "t" : "";
+  // Encode both the presence and the definedness of the tensor.
+  return value.has_value() ? (value->defined() ? "t" : "u") : "";
 }
 
 [[nodiscard]] std::string FormatParamCacheKey(

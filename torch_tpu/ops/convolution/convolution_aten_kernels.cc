@@ -304,6 +304,9 @@ absl::StatusOr<DeviceBufferRef> Convolution(
   // non-null, but undefined.
   if (bias_opt.has_value() && bias_opt->defined()) {
     // Add a parameter to distinguish between binary and ternary convolution.
+    // This is not strictly necessary as both `.has_value()` and `->defined()`
+    // are already encoded in the parameter key for `bias_opt`. However, this
+    // explicit parameter makes the intent clearer.
     TT_RETURN_IF_ERROR(param_keys.SetParam("ternary", true));
     return ConvolutionTernary(input, weight, bias_opt.value(), stride, padding,
                               dilation, transposed, output_padding, groups,

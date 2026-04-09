@@ -23,6 +23,7 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/Dimname.h"
 #include "ATen/core/symbol.h"
+#include "ATen/ops/empty.h"
 #include "c10/core/ConstantSymNodeImpl.h"
 #include "c10/core/Device.h"
 #include "c10/core/SymInt.h"
@@ -216,14 +217,19 @@ TEST(OpParamCacheKeys, SetParamLayout) {
 
 TEST(OpParamCacheKeys, SetParamOptionalTensor) {
   c10::optional<at::Tensor> no_tensor = std::nullopt;
-  c10::optional<at::Tensor> tensor_opt = at::Tensor();
+  c10::optional<at::Tensor> undefined_tensor = at::Tensor();
+  c10::optional<at::Tensor> defined_tensor = at::empty({});
   auto params_or = *OpParamCacheKeysBuilder()
                         .SetParam("foo", no_tensor)
-                        .SetParam("bar", tensor_opt);
+                        .SetParam("bar", undefined_tensor)
+                        .SetParam("baz", defined_tensor);
   ASSERT_TRUE(params_or.ok());
   // foo should be omitted from the cache keys.
-  // bar should be formatted as "t" to indicate the presence of a tensor.
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("bar", "t")));
+  // bar should be formatted as "u" to indicate the presence of an undefined
+  // tensor. baz should be formatted as "t" to indicate the presence of a
+  // defined tensor.
+  EXPECT_THAT(params_or.value(),
+              ElementsAre(Pair("bar", "u"), Pair("baz", "t")));
 }
 
 TEST(OpParamCacheKeys, SetParamMemoryFormat) {
