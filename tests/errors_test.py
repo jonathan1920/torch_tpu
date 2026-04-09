@@ -1438,6 +1438,19 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
           grad_output, self_or_result, negative_slope=-1.0, self_is_result=True
       )
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # PyTorch CPU also supports float16.
+  # TODO: add support to float16 dtype for `view_as_complex()` op.
+  def test_view_as_complex_unsupported_dtypes_float16(self):
+    t1 = torch.ones(2, 3, 2, device=et.device(), dtype=torch.float16)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="view_as_complex(): float16 dtype is not yet supported",
+        message_reviewed_by="wan",
+    ):
+      torch.view_as_complex(t1)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
@@ -2456,29 +2469,14 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        cpu="view_as_real is only supported for complex tensors",
         tpu=(
-            "view_as_real(): expected complex dtypes (torch.complex64 and"
-            " torch.complex128), got float32"
+            "view_as_real(): expected the input dtype to be complex, got"
+            " float32"
         ),
+        cpu="view_as_real is only supported for complex tensors",
+        message_reviewed_by="wan",
     ):
       torch.view_as_real(t)
-
-  def test_view_as_complex_unsupported_dtypes(self):
-    device = et.device()
-    t1 = torch.ones(2, 3, 2, device=device, dtype=torch.float16)
-
-    if _TEST_MODE.value == "cpu":
-      # view_as_complex supports float16 on CPU.
-      torch.view_as_complex(t1)
-      return
-
-    with et.assert_raises_message(
-        RuntimeError,
-        "view_as_complex(): this op currently only supports float32 and float64"
-        " dtype as input, got float16",
-    ):
-      torch.view_as_complex(t1)
 
   def test_select_index_out_of_bounds(self):
     """Select function fails when index is out of bounds."""
@@ -7668,6 +7666,176 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         message_reviewed_by="gunhyun",
     ):
       self_tensor.scatter_reduce(1, index, src, reduce="invalid")
+
+  def test_view_invalid_negative_dimension(self):
+    t = torch.ones(5, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "view(): expected the given sizes [-2] to be >= -1, got 1 invalid"
+            " size: -2 at index 0"
+        ),
+        cpu="invalid shape dimension -2 at index 0 of shape [-2]",
+        message_reviewed_by="wan",
+    ):
+      t.view(-2)
+
+  def test_view_multiple_neg1(self):
+    t = torch.ones(5, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "view(): expected the given sizes [1, -1, 5, -1] to have up to 1"
+            " element equal to -1 (inferred dimension), got 2 occurrences of -1"
+            " at indices 1 and 3"
+        ),
+        cpu="only one dimension can be inferred",
+        message_reviewed_by="wan",
+    ):
+      t.view(1, -1, 5, -1)
+
+  def test_view_infer_dimension_0_numel(self):
+    t = torch.ones(0, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "view(): cannot infer the dimension for a 0-element view of shape"
+            " [0, -1] because it's ambiguous, i.e. it could be of any value"
+        ),
+        cpu=(
+            "cannot reshape tensor of 0 elements into shape [0, -1] because the"
+            " unspecified dimension size -1 can be any value and is ambiguous"
+        ),
+        message_reviewed_by="wan",
+    ):
+      t.view(0, -1)
+
+  def test_view_infer_dimension_not_multiple(self):
+    t = torch.ones(5, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "view(): expected the number of elements in the output view of"
+            " shape [-1, 2] to be a multiple of the number of elements in the"
+            " input of shape [5] in the presence of an inferred dimension (-1),"
+            " got 2, which is not a multiple of 5"
+        ),
+        cpu="shape '[-1, 2]' is invalid for input of size 5",
+        message_reviewed_by="wan",
+    ):
+      t.view(-1, 2)
+
+  def test_view_numel_mismatch(self):
+    t = torch.ones(5, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "view(): expected the input of shape [5] to have the same number of"
+            " elements as the output of shape [2], got 5 vs. 2"
+        ),
+        cpu="shape '[2]' is invalid for input of size 5",
+        message_reviewed_by="wan",
+    ):
+      t.view(2)
+
+  def test_view_not_compatible(self):
+    t = torch.ones(2, 3, device=et.device()).T
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "view(): cannot create a view of shape [6] from the input tensor of"
+            " shape [3, 2] and strides [1, 3]; consider creating a new tensor"
+            " using reshape() instead of taking a view"
+        ),
+        cpu=(
+            "view size is not compatible with input tensor's size and stride"
+            " (at least one dimension spans across two contiguous subspaces)."
+            " Use .reshape(...) instead."
+        ),
+        message_reviewed_by="wan",
+    ):
+      t.view(6)
+
+  def test_view_as_complex_unsupported_dtypes_int(self):
+    t = torch.ones(2, 3, 2, device=et.device(), dtype=torch.int32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "view_as_complex(): expected the input dtype to be float32 or"
+            " float64, got int32"
+        ),
+        cpu=(
+            "view_as_complex is only supported for half, float and double"
+            " tensors, but got a tensor of scalar type: Int"
+        ),
+    ):
+      torch.view_as_complex(t)
+
+  def test_view_as_complex_scalar(self):
+    t = torch.tensor(1.0, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "view_as_complex(): expected the input to be a tensor, got a scalar"
+        ),
+        cpu="Input tensor must have one or more dimensions",
+        message_reviewed_by="wan",
+    ):
+      torch.view_as_complex(t)
+
+  def test_view_as_complex_invalid_last_dim(self):
+    t = torch.ones(3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "view_as_complex(): expected the size of the last dimension of the"
+            " input tensor to be 2, got 3"
+        ),
+        cpu="Tensor must have a last dimension of size 2",
+        message_reviewed_by="wan",
+    ):
+      torch.view_as_complex(t)
+
+  def test_view_as_complex_invalid_last_stride(self):
+    t = torch.ones(2, 2, device=et.device()).T
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "view_as_complex(): expected the stride of the last dimension of"
+            " the input tensor to be 1, got 2"
+        ),
+        cpu="Tensor must have a last dimension with stride 1",
+        message_reviewed_by="wan",
+    ):
+      torch.view_as_complex(t)
+
+  def test_view_as_complex_invalid_stride(self):
+    t = torch.as_strided(torch.ones(5, device=et.device()), (2, 2), (3, 1))
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "view_as_complex(): expected the input strides [3, 1] to be even"
+            " numbers (except in the last dimension), got 1 odd stride: 3 at"
+            " index 0"
+        ),
+        cpu=(
+            "Tensor must have a stride divisible by 2 for all but last"
+            " dimension"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.view_as_complex(t)
 
 
 if __name__ == "__main__":

@@ -34,10 +34,14 @@ torch_tpu_cc_library(
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:to_string",
+        "//torch_tpu/common:utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops/as_strided:as_strided_aten_kernels",
         "//torch_tpu/ops/macros:kernel",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

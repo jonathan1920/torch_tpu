@@ -14,12 +14,19 @@
  * limitations under the License.
  */
 
+#include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "ATen/TensorUtils.h"
 #include "ATen/core/ATen_fwd.h"
 #include "c10/core/DispatchKey.h"
@@ -30,7 +37,6 @@
 #include "c10/util/ArrayRef.h"
 #include "c10/util/Optional.h"
 #include "c10/util/intrusive_ptr.h"
-#include "c10/util/irange.h"
 #include "c10/util/typeid.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
@@ -38,6 +44,7 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/as_strided/as_strided_aten_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
@@ -71,6 +78,69 @@ namespace torch_tpu {
 
 namespace {
 
+// Convenience function for building an error message with the same format.
+//
+// This function wraps a few other functions for creating error messages of the
+// same form. In summary, it applies the following steps:
+//
+//   1. Filter the indices [0, size) using `pred`
+//   2. Uses the filtered indices to build the "got" part of the error message
+//     - Appends values followed with their respective index
+//
+// Example:
+//   arr = [0, 2, 5, 1]
+//
+//   size = 4
+//   singular = "bad element"
+//   plural = "bad elements"
+//   pred = lambda i: arr[i] > 1
+//   to_value = lambda i: arr[i]
+//
+//   output = "2 bad elements: 2 at index 1 and 5 at index 3"
+//   error = "expected ..., got 2 bad elements: 2 at index 1 and 5 at index 3"
+template <typename Predicate, typename ToValue>
+std::string FilterIndicesAndBuildErrorStr(const size_t size,
+                                          const std::string_view singular,
+                                          const std::string_view plural,
+                                          const Predicate& pred,
+                                          const ToValue& to_value) {
+  auto bad_indices = FilterIndices(size, pred);
+  return absl::StrCat(FormatCount(bad_indices.size(), singular, plural), ": ",
+                      GetValueAtIndexErrorStr(bad_indices, to_value));
+}
+
+std::string GetInvalidDimensionIndexStr(absl::Span<const int64_t> sizes) {
+  return FilterIndicesAndBuildErrorStr(
+      sizes.size(),
+      /* singular= */ "invalid size",
+      /* plural= */ "invalid sizes",
+      /* pred= */ [sizes](const int64_t i) { return sizes[i] < -1; },
+      /* to_value= */ [sizes](const int64_t i) { return sizes[i]; });
+}
+
+std::string DropLastAndGetOddStridesStr(absl::Span<const int64_t> strides) {
+  // Drop last element.
+  strides.remove_suffix(1);
+
+  return FilterIndicesAndBuildErrorStr(
+      strides.size(),
+      /* singular= */ "odd stride",
+      /* plural= */ "odd strides",
+      /* pred= */ [strides](const int64_t i) { return strides[i] % 2 != 0; },
+      /* to_value= */ [strides](const int64_t i) { return strides[i]; });
+}
+
+// Returns a string of the comma-separated indices corresponding to -1 elements.
+std::string GetNegativeOneDimensionsIndexStr(absl::Span<const int64_t> sizes) {
+  const auto negative_one_indices = FilterIndices(
+      sizes.size(),
+      /* predicate= */ [sizes](const int64_t i) { return sizes[i] == -1; });
+
+  return SequenceToReadableStr(
+      absl::MakeConstSpan(negative_one_indices),
+      /* value_to_string= */ [](const int64_t i) { return ToString(i); });
+}
+
 // torch passes the target size for view (and reshape) as SymInts.
 // SymInts are used in torch's tracing logic; they record any writes against
 // them, and then c10::guard_int is used to resolve them to a concrete, readable
@@ -78,63 +148,80 @@ namespace {
 // Additionally, torch allows one dimension to be specified as -1, which means
 // "infer", by keeping the total number of elements the same between input
 // and output.
-absl::StatusOr<Dimensions> SymIntsToDimensions(const at::Tensor& self,
-                                               c10::SymIntArrayRef size_sym) {
-  // Reserve space for the output.
-  Dimensions new_size_vec;
-  new_size_vec.reserve(size_sym.size());
+absl::StatusOr<Dimensions> ViewSymIntsToDimensions(
+    const at::Tensor& self, c10::SymIntArrayRef size_sym) {
+  Dimensions out_sizes(size_sym.size());
+  absl::c_transform(size_sym, out_sizes.begin(), [](const c10::SymInt& sym) {
+    return sym.guard_int(__FILE__, __LINE__);
+  });
 
-  // Resolve symints and identify the -1 dimension.
-  int64_t negative_one_dim = -1;
-  int64_t new_size_product = 1;
-  for (const auto i : c10::irange(size_sym.size())) {
-    const c10::SymInt& s_int = size_sym[i];
-    const int64_t dim_size = s_int.guard_int(__FILE__, __LINE__);
-    TT_RET_CHECK(dim_size >= -1, error::kInvalidArgument)
-        << "dimensions must be non-negative, with at most one -1. Got "
-           "dimension with size: "
-        << dim_size;
-    if (dim_size == -1) {
-      TT_RET_CHECK(negative_one_dim == -1, error::kInvalidArgument)
-          << "can only infer one dimension (size -1), got reshape dimensions: "
-          << ToString(size_sym);
-      negative_one_dim = i;
-      new_size_vec.push_back(-1);  // Placeholder
-    } else {
-      TT_ASSIGN_OR_RETURN(
-          new_size_product, SafeMultiply(new_size_product, dim_size),
-          _.SetOverride() << "cannot infer dimension because the number of "
-                             "elements overflows as int64");
-      new_size_vec.push_back(dim_size);
+  TT_RET_CHECK(
+      absl::c_all_of(out_sizes, [](const int64_t size) { return size >= -1; }),
+      error::kInvalidArgument)
+      << "expected the given sizes " << ToString(out_sizes)
+      << " to be >= -1, got " << GetInvalidDimensionIndexStr(out_sizes);
+
+  const int64_t negative_one_count = absl::c_count(out_sizes, -1);
+  TT_RET_CHECK(negative_one_count <= 1, error::kInvalidArgument)
+      << "expected the given sizes " << ToString(out_sizes)
+      << " to have up to 1 element equal to -1 (inferred dimension), got "
+      << negative_one_count << " occurrences of -1 at indices "
+      << GetNegativeOneDimensionsIndexStr(out_sizes);
+
+  // Compute the number of elements in the output.
+  int64_t out_numel = 1;
+
+  for (const auto size : out_sizes) {
+    if (size == -1) {
+      continue;
     }
-  }
-  const int64_t self_numel = self.sym_numel().guard_int(__FILE__, __LINE__);
-  // Infer the -1 dimension if there is one.
-  if (negative_one_dim != -1) {
-    TT_RET_CHECK(new_size_product != 0, error::kInvalidArgument)
-        << "cannot infer dimension for input shape" << ToString(self.sizes())
-        << " and output shape " << ToString(new_size_vec)
-        << " because the new size has 0 total elements";
-    TT_RET_CHECK(self_numel % new_size_product == 0, error::kInvalidArgument)
-        << "cannot infer dimension for input shape " << ToString(self.sizes())
-        << " and output shape " << ToString(new_size_vec)
-        << " because the total number of input elements (" << self_numel
-        << ") is not a multiple of the product of the specified "
-        << "target elements (" << new_size_product << ")";
-    const int64_t inferred_dim_size = self_numel / new_size_product;
-    new_size_vec[negative_one_dim] = inferred_dim_size;
+
     TT_ASSIGN_OR_RETURN(
-        new_size_product, SafeMultiply(new_size_product, inferred_dim_size),
-        _.SetOverride()
-            << "cannot infer dimension for shape " << ToString(new_size_vec)
-            << " because the number of elements overflows as int64");
+        out_numel, SafeMultiply(out_numel, size),
+        _.SetOverride() << "the number of elements in the output view of shape "
+                        << ToString(out_sizes)
+                        << " cannot overflow a 64-bit integer");
   }
-  TT_RET_CHECK(self_numel == new_size_product, error::kInvalidArgument)
-      << "cannot reshape size " << ToString(self.sizes()) << " to shape "
-      << ToString(size_sym) << " because the number of elements does not match "
-      << "(" << self_numel << " != " << new_size_product << ")";
-  return new_size_vec;
+
+  const int64_t numel = self.sym_numel().guard_int(__FILE__, __LINE__);
+
+  // Infer the -1 dimension if there is one.
+  const auto negative_one_dimension_it = absl::c_find(out_sizes, -1);
+  if (negative_one_dimension_it != out_sizes.end()) {
+    TT_RET_CHECK(out_numel != 0, error::kInvalidArgument)
+        << "cannot infer the dimension for a 0-element view of shape "
+        << ToString(out_sizes)
+        << " because it's ambiguous, i.e. it could be of any value";
+    TT_RET_CHECK(numel % out_numel == 0, error::kInvalidArgument)
+        << "expected the number of elements in the output view of shape "
+        << ToString(out_sizes)
+        << " to be a multiple of the number of elements in the input of shape "
+        << ToString(self.sizes())
+        << " in the presence of an inferred dimension (-1), got " << out_numel
+        << ", which is not a multiple of " << numel;
+
+    const int64_t negative_one_dimension =
+        std::distance(out_sizes.begin(), negative_one_dimension_it);
+    const int64_t inferred_dim_size = numel / out_numel;
+    out_sizes[negative_one_dimension] = inferred_dim_size;
+
+    TT_ASSIGN_OR_RETURN(
+        out_numel, SafeMultiply(out_numel, inferred_dim_size),
+        _.SetOverride()
+            << "cannot infer the dimension for a view of shape "
+            << ToString(out_sizes)
+            << " because the number of elements would overflow a 64-bit "
+               "integer");
+  }
+
+  TT_RET_CHECK(numel == out_numel, error::kInvalidArgument)
+      << "expected the input of shape " << ToString(self.sizes())
+      << " to have the same number of elements as the output of shape "
+      << ToString(out_sizes) << ", got " << numel << " vs. " << out_numel;
+
+  return out_sizes;
 }
+
 }  // namespace
 
 at::Tensor AtenReshapeAlias(const at::Tensor& self,
@@ -153,15 +240,18 @@ at::Tensor AtenView(const at::Tensor& self, c10::SymIntArrayRef size_sym) {
         // view is allowed to have one dimension as "-1", which needs to be
         // resolved to a positive shape.
         TT_ASSIGN_OR_THROW(Dimensions new_size,
-                           SymIntsToDimensions(self, size_sym));
+                           ViewSymIntsToDimensions(self, size_sym));
 
         // Use PyTorch's default logic for view stride computation.
         std::optional<std::vector<int64_t>> new_stride =  // INT_VEC_OK=c10 API
             at::detail::computeStride(self.sizes(), self.strides(), new_size);
         TT_CHECK_THROW(new_stride.has_value(), error::kInvalidArgument)
-            << "output shape not view-compatible with input shape. Consider "
-               "using "
-               "reshape() instead of view() to return a new contiguous tensor";
+            << "cannot create a view of shape " << ToString(new_size)
+            << " from the input tensor of shape " << ToString(self.sizes())
+            << " and strides " << ToString(self.strides())
+            << "; consider creating a new tensor using reshape() instead of "
+               "taking "
+               "a view";
 
         // Redispatch to AtenAsStrided() with the resolved shape and strides.
         c10::SymIntArrayRef new_size_inferred_sym =
@@ -179,9 +269,8 @@ at::Tensor AtenView(const at::Tensor& self, c10::SymIntArrayRef size_sym) {
 
 at::Tensor AtenViewAsReal(const at::Tensor& self) {
   TT_KERNEL(OpName::kViewAsReal, _, (self), {
-    TT_CHECK_THROW(self.is_complex(), error::kInvalidArgument)
-        << "expected complex dtypes (torch.complex64 "
-           "and torch.complex128), got "
+    TT_CHECK_THROW(IsComplex(self), error::kInvalidArgument)
+        << "expected the input dtype to be complex, got "
         << ToString(self.scalar_type());
 
     Dimensions output_dims = CopyIntVector(self.sizes());
@@ -208,38 +297,42 @@ at::Tensor AtenViewAsReal(const at::Tensor& self) {
 
 at::Tensor AtenViewAsComplex(const at::Tensor& self) {
   TT_KERNEL(OpName::kViewAsComplex, _, (self), {
-    TT_CHECK_THROW(self.scalar_type() == at::ScalarType::Float ||
-                       self.scalar_type() == at::ScalarType::Double,
-                   error::kInvalidArgument)
-        << "this op currently only supports float32 and float64 dtype as "
-           "input, got "
-        << torch_tpu::ToString(self.scalar_type());
+    TT_CHECK_THROW(!IsHalf(self), error::kInvalidArgument)
+        << "float16 dtype is not yet supported";
+
+    TT_CHECK_THROW(IsFloatOrDouble(self), error::kInvalidArgument)
+        << "expected the input dtype to be float32 or float64, got "
+        << ToString(self.scalar_type());
 
     TT_CHECK_THROW(self.dim() > 0, error::kInvalidArgument)
-        << "complex tensors require at least 2 elements, and cannot be created "
-           "from single scalar floats, got "
-        << self.dim() << " element";
+        << "expected the input to be a tensor, got a scalar";
 
     TT_CHECK_THROW(self.size(-1) == 2, error::kInvalidArgument)
-        << "the last dimension of the input tensor should be 2, got "
+        << "expected the size of the last dimension of the input tensor to be "
+           "2, got "
         << self.size(-1);
 
     TT_CHECK_THROW(self.stride(-1) == 1, error::kInvalidArgument)
-        << "input tensor must have a stride of 1 for its last dimension, got "
+        << "expected the stride of the last dimension of the input tensor to "
+           "be 1, got "
         << self.stride(-1);
 
-    for (int i = 0; i < self.dim() - 1; ++i) {
-      TT_CHECK_THROW(self.stride(i) % 2 == 0, error::kInvalidArgument)
-          << "the stride of dimension " << i << " must be an even number, got "
-          << self.stride(i);
-    }
+    const absl::Span<const int64_t> strides = self.strides();
+
+    TT_CHECK_THROW(
+        absl::c_all_of(strides.first(strides.size() - 1),
+                       [](int64_t stride) { return stride % 2 == 0; }),
+        error::kInvalidArgument)
+        << "expected the input strides " << ToString(strides)
+        << " to be even numbers (except in the last dimension), got "
+        << DropLastAndGetOddStridesStr(strides);
 
     Dimensions output_dims = CopyIntVector(self.sizes());
     output_dims.pop_back();
     Strides output_strides;
     output_strides.reserve(self.dim() - 1);
     for (auto i = 0; i < self.dim() - 1; ++i) {
-      output_strides.push_back(self.stride(i) / 2);
+      output_strides.push_back(strides[i] / 2);
     }
     const int64_t output_storage_offset = self.storage_offset() / 2;
     at::ScalarType output_dtype = c10::toComplexType(self.scalar_type());

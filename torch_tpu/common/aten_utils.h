@@ -112,6 +112,11 @@ inline bool IsFloatOrDouble(const at::Tensor& tensor) {
          tensor.scalar_type() == at::ScalarType::Double;
 }
 
+// Returns whether `tensor` holds `float16` (half) data.
+inline bool IsHalf(const at::Tensor& tensor) {
+  return tensor.scalar_type() == at::ScalarType::Half;
+}
+
 // Returns whether `tensor` holds integer data.
 inline bool IsInteger(const at::Tensor& tensor) {
   return c10::isIntegralType(tensor.scalar_type(), /* includeBool= */ false);
