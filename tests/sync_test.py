@@ -18,10 +18,20 @@ import re
 from absl.testing import absltest
 import torch
 from torch_tpu import api
+from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 
 
 class SyncTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.old_eager_mode = execution_mode.get_eager_mode()
+    execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE)
+
+  def tearDown(self):
+    execution_mode.set_eager_mode(self.old_eager_mode)
+    super().tearDown()
 
   def test_sync_no_wait_tensor(self):
     x = torch.ones(10, device=api.tpu_device())

@@ -33,7 +33,7 @@ pytype_strict_library(
         "//shims/etils/epath",
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
-        "@pypi//diffusers",
+        "@pypi//diffusers:diffusers_lite",
         "@pypi//timm",
         "@pypi//torchvision",
         "@pypi//transformers",
@@ -725,6 +725,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/api",
     ],
