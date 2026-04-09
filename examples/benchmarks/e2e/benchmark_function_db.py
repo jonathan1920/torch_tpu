@@ -241,3 +241,24 @@ def get_ml_layer_train_step_function(
   return functools.partial(
       _ml_layer_train_step, step_fn=model_train_fn, device=device
   )
+
+
+def timm_forward_pass(
+    model: torch.nn.Module,
+    inputs: Any,
+    optimizer: torch.optim.Optimizer | None = None,
+) -> torch.Tensor:
+  """Performs a forward pass for a TIMM model.
+
+  Args:
+    model: The TIMM model.
+    inputs: The input tensors for the model.
+    optimizer: Unused.
+
+  Returns:
+    The output tensor from the model.
+  """
+  del optimizer  # Unused
+  with torch.inference_mode():
+    out = model(inputs)
+  return out

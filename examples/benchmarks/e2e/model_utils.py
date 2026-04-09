@@ -15,7 +15,7 @@
 import dataclasses
 import enum
 import functools
-from typing import Any
+from typing import Any, Sequence
 from fairscale.nn.model_parallel import initialize as fairscale_init
 import llama_models.llama3.model as m
 import torch
@@ -962,4 +962,46 @@ def get_ml_layer_model(
   if use_torch_compile and not is_training:
     model = device_utils.torch_compile(model, device.type)
 
+  return ModelAndInput(model=model, example_inputs=example_inputs)
+
+
+def get_timm_model(
+    model_name: str,
+    *,
+    device: torch.device,
+    weights_dtype: torch.dtype,
+    use_torch_compile: bool,
+    input_shape: Sequence[int],
+) -> ModelAndInput:
+  """Returns the huggingface LLM model.
+
+  See supported models in
+  `third_party/py/torch_tpu/examples/huggingface_transformers/model_configs`.
+
+  Args:
+      model_name: The name of the Hugging Face model to load.
+      device: The device to load the model and inputs on (e.g., 'tpu', 'cuda').
+      weights_dtype: The data type for the model weights (e.g., torch.float32,
+        torch.bfloat16).
+      use_torch_compile: Whether to wrap the model with `torch.compile`.
+      input_shape: shape of the inputs to the model.
+
+  Returns:
+      A ModelAndInput dataclass containing the loaded Hugging Face model
+      and example inputs suitable for benchmarking.
+  """
+
+  registry = get_module_registry()
+  module_spec = registry.get_module_spec("timm", model_name, load_weights=False)
+
+  with torch.device("cpu"):
+    model_cpu = module_spec.module_factory().to(weights_dtype)
+
+  input_args, _ = module_spec.sample_inputs_factory(input_shape, str(device))
+  example_inputs = input_args[0].to(weights_dtype)
+  model = model_cpu.to(device)
+  model.eval()
+
+  if use_torch_compile:
+    model = device_utils.torch_compile(model, device.type)
   return ModelAndInput(model=model, example_inputs=example_inputs)

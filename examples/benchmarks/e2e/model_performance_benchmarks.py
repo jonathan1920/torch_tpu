@@ -26,6 +26,7 @@ _HF_LLAMA_3_2_1B_BENCHMARK_NAME = "hf_llama_3_2_1b"
 _HF_GEMMA_3_270M_BENCHMARK_NAME = "hf_gemma_3_270m"
 _META_LLAMA_3_2_8B_BENCHMARK_NAME = "meta_llama_3_2_8b"
 _HF_QWEN3_1_7B_BENCHMARK_NAME = "hf_qwen3_1_7b"
+_TIMM_RESNET_50_BENCHMARK_NAME = "timm_resnet_50"
 
 
 class BenchmarkTest(test_utils.BenchmarkTest):
@@ -250,6 +251,32 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         grad_accumulation_steps=10,
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.DEFER_NEVER_ONLY,
+          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_timm_resnet_50_forward(self, run_mode):
+    """Tests the forward pass of resnet-50."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.TIMM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="timm/resnet50d",
+            custom_kwargs={"input_shape": (16, 3, 224, 224)},
+        ),
+    )
+    self.run_performance_benchmark_test(config, _TIMM_RESNET_50_BENCHMARK_NAME)
 
 
 if __name__ == "__main__":

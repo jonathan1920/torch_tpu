@@ -55,6 +55,7 @@ benchmark = [
     "llama-models",
     "tensorflow-datasets",
     "tensorboardX",
+    "timm",
 ]
 
 examples = [

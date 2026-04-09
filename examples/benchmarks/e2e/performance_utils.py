@@ -491,6 +491,8 @@ def _get_benchmark_function(
       return benchmark_function_db.get_ml_layer_train_step_function(
           device, benchmark_utils.is_torch_compile(config.run_mode)
       )
+  elif config.benchmark_category == benchmark_utils.BenchmarkCategory.TIMM:
+    return benchmark_function_db.timm_forward_pass
   else:
     raise ValueError(
         "No benchmark function found for category:"
@@ -555,6 +557,14 @@ def _get_model_and_input(
         use_torch_compile=use_torch_compile,
         batch_size=model_and_input_args.batch_size,
         sequence_length=model_and_input_args.sequence_length,
+        **model_and_input_args.custom_kwargs,
+    )
+  elif benchmark_category == benchmark_utils.BenchmarkCategory.TIMM:
+    return model_utils.get_timm_model(
+        model_name=model_and_input_args.model_name,
+        device=device,
+        weights_dtype=weights_dtype,
+        use_torch_compile=use_torch_compile,
         **model_and_input_args.custom_kwargs,
     )
   else:

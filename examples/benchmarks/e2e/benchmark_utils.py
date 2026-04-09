@@ -184,6 +184,7 @@ class BenchmarkCategory(enum.Enum):
   HUGGINGFACE_LLM = "huggingface_llm"
   META_LLAMA = "meta_llama"
   ML_LAYER = "ml_layer"
+  TIMM = "timm"
 
 
 @dataclasses.dataclass

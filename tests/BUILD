@@ -33,7 +33,7 @@ pytype_strict_library(
         "//shims/etils/epath",
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
-        "@pypi//diffusers:diffusers_lite",
+        "@pypi//diffusers",
         "@pypi//timm",
         "@pypi//torchvision",
         "@pypi//transformers",
