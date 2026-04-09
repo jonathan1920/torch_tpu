@@ -84,4 +84,30 @@ torch_tpu_cc_test(
     ],
 )
 
+torch_tpu_cc_test(
+    name = "tpu_profiler_plugin_test",
+    srcs = ["tpu_profiler_plugin_test.cc"],
+    deps = [
+        "//shims/torch:kineto",
+        "//torch_tpu/_internal/profiler:tpu_profiler_plugin_cc",
+        "//torch_tpu/common:utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "profiler_integration_test",
+    srcs = ["profiler_integration_test.py"],
+    main = "profiler_integration_test.py",
+    notest_oss = "Skipped until OSS migrates to torch 2.12 (TODO(b/499296481))",
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//shims/absl_py/logging",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/sync",
+        "//torch_tpu/api",
+    ],
+)
+
 torch_tpu_package_end()

@@ -182,7 +182,7 @@ absl::Status TpuProfilerSession::Stop(const std::string& filename) {
   tsl::Env* env = tsl::Env::Default();
 
   // Ensure the parent directory exists
-  std::string dirname = std::string(tsl::io::Dirname(filename));
+  std::string dirname(tsl::io::Dirname(filename));
   if (!dirname.empty()) {
     TT_RETURN_IF_ERROR(env->RecursivelyCreateDir(dirname))
         << "failed to create directory: " << dirname;

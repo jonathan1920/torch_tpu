@@ -154,3 +154,10 @@ def profile(
     yield None
   finally:
     stop_trace()
+
+
+def register_kineto_backend() -> None:
+  """Explicitly registers the Kineto backend for TPU profiling."""
+  # Registration happens via static initializers when the module is imported.
+  # This function serves as an explicit entry point to avoid unused imports.
+  pass

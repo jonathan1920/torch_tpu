@@ -50,12 +50,35 @@ torch_tpu_cc_library(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "tpu_profiler_plugin_cc",
+    srcs = ["tpu_profiler_plugin.cc"],
+    hdrs = [
+        "tpu_profiler_plugin.h",
+    ],
+    deps = [
+        ":xprof_callback_handler",
+        "//shims/torch:kineto",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/common:utils",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/synchronization",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/lib:profiler_session",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
 # This library is not used directly, but is needed for go/cclean and Clangd.
 # Without this rule, cclean complains that profiler.cc has no rule depending on it.
 torch_tpu_cc_library(
-    name = "profiler_cc",
+    name = "profiler_api_cc",
     srcs = [
-        "profiler.cc",
+        "profiler_api.cc",
     ],
     deps = [
         "//shims/pybind11",
@@ -82,7 +105,7 @@ torch_tpu_cc_library(
 pybind_extension(
     name = "_profiler_backend",
     srcs = [
-        "profiler.cc",
+        "profiler_api.cc",
     ],
     # Torch_tpu uses rules_pywrap in XLA for OSS builds:
     # https://github.com/openxla/xla/tree/main/third_party/py/rules_pywrap.
@@ -92,13 +115,12 @@ pybind_extension(
     ],
     wrap_py_init = True,
     deps = [
+        ":tpu_profiler_plugin_cc",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:utils",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",

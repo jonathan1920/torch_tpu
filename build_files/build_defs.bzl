@@ -47,6 +47,8 @@ _TORCH_TPU_COPTS = [
     "-fexceptions",
     # Make unused variable a build error.
     "-Werror=unused-variable",
+    # Use kineto backend for profiler.
+    "-DUSE_KINETO",
 ]
 
 def adjust_cc_options(copts, features):

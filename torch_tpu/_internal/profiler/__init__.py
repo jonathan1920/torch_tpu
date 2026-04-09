@@ -18,6 +18,7 @@
 from .profiler_api import (
     ProfilerActivity,
     profile,
+    register_kineto_backend,
     xprof_trace_handler,
 )
 
@@ -25,6 +26,7 @@ __all__ = [
     # go/keep-sorted start
     'ProfilerActivity',
     'profile',
+    'register_kineto_backend',
     'xprof_trace_handler',
     # go/keep-sorted end
 ]

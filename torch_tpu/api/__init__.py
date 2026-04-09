@@ -86,6 +86,11 @@ def _init_device_impl(device: str) -> torch.device:
     torch.distributed.Backend.register_backend(
         "tpu_dist", tpu_distributed.create_process_group, devices="tpu"
     )
+  # Lazily register the Kineto backend.
+  from torch_tpu._internal import profiler  # pylint: disable=g-import-not-at-top
+
+  profiler.register_kineto_backend()
+
   return device_d
 
 

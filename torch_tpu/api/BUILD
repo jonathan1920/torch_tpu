@@ -38,6 +38,7 @@ pytype_strict_library(
         "//torch_tpu",  # buildcleaner: keep
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/distributed:tpu_distributed",
+        "//torch_tpu/_internal/profiler",
         "//torch_tpu/_internal/sync",
     ],
 )
