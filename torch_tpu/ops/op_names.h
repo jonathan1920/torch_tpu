@@ -534,7 +534,7 @@ enum class OpName {
   kScatterSrcOut,
   kScatterValueOut,
   kScatterValueReduceOut,
-  kSetDimensionSize,
+  kSetDimensionLogicalSize,
   kSet_,
   kSet_SourceStorage,
   kSet_SourceStorageOffset,

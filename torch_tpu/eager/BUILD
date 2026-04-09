@@ -512,6 +512,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/dot:dot_aten_kernels",
         "//torch_tpu/ops/dot:vdot_aten_kernels",
         "//torch_tpu/ops/dropout:dropout_aten_kernels",
+        "//torch_tpu/ops/dynamic/set_dimension_logical_size",
         "//torch_tpu/ops/elu:elu_aten_kernels",
         "//torch_tpu/ops/embedding:embedding_aten_kernels",
         "//torch_tpu/ops/equal:equal_aten_kernels",

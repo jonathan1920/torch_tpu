@@ -55,6 +55,7 @@
 #include "torch_tpu/ops/dot/dot_aten_kernels.h"
 #include "torch_tpu/ops/dot/vdot_aten_kernels.h"
 #include "torch_tpu/ops/dropout/dropout_aten_kernels.h"
+#include "torch_tpu/ops/dynamic/set_dimension_logical_size/set_dimension_logical_size.h"
 #include "torch_tpu/ops/elu/elu_aten_kernels.h"
 #include "torch_tpu/ops/embedding/embedding_aten_kernels.h"
 #include "torch_tpu/ops/equal/equal_aten_kernels.h"
@@ -730,16 +731,34 @@ TORCH_LIBRARY(torch_tpu, m) {
   m.def(
       "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor group_sizes, *, "
       "Tensor(a!) out) -> Tensor(a!)");
-
   m.def(
       "stateless_dropout(Tensor rng_state, Tensor input, float p, "
       "bool? train) -> (Tensor, Tensor, Tensor)");
+  // This op is a torch_tpu custom op for use in torch.compile() mode to handle
+  // dynamic tensor shapes on TPU. It lowers down to
+  // stablehlo.set_dimension_size which XLA uses to determine the runtime size
+  // of the padded tensor dimension.
+  // Args:
+  //   input: The input tensor to set the dimension size of.
+  //   dim: The padded dimension to set the size of. Must be non-negative and
+  //     less than the input tensor's dimension.
+  //   size: The size tensor that contains the runtime size of the padded
+  //     dimension. Must be a 0-D tensor. The size is a tensor so as to avoid
+  //     re-compilation. TODO: Explore changing this to an int and
+  //     make the op handle the int to tensor promotion.
+  // Returns:
+  //   The input tensor with the first `size` elements of the specified
+  //   dimension being valid and the rest being undefined.
+  m.def(
+      "set_dimension_logical_size(Tensor input, int dim, Tensor size) -> "
+      "Tensor");
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
   Impl(m, OpName::kRaggedDot, AtenRaggedDot);
   Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
   Impl(m, OpName::kTorchTpuStatelessDropout, TorchTpuStatelessDropout);
+  Impl(m, OpName::kSetDimensionLogicalSize, SetDimensionLogicalSize);
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, CPU, m) {

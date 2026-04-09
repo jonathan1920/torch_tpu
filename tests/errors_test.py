@@ -1422,6 +1422,32 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.acos(t, out=out)
 
+  def test_set_dimension_logical_size_size_not_0d(self):
+    inp = torch.ones(2, 2, device=et.device())
+    size = torch.tensor([5], device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "set_dimension_logical_size(): expected a 0-dimensional tensor for"
+            " size, got 1-dimensional tensor"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.ops.torch_tpu.set_dimension_logical_size(inp, 0, size)
+
+  def test_set_dimension_logical_size_size_not_int(self):
+    inp = torch.ones(2, 2, device=et.device())
+    size = torch.tensor(5.0, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "set_dimension_logical_size(): expected an int32 tensor for size,"
+            " got float32"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch.ops.torch_tpu.set_dimension_logical_size(inp, 0, size)
+
   def test_leaky_relu_backward_negative_slope_with_self_is_result(self):
     grad_output = torch.ones(2, device=et.device())
     self_or_result = torch.ones(2, device=et.device())

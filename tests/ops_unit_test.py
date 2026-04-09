@@ -30,6 +30,7 @@ from scipy import stats
 import torch
 from torch_tpu import api
 from torch_tpu._internal import sync
+from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.utils import utils
 from tests import op_testing
 from tests import ops_test_data
@@ -4503,6 +4504,39 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
     self.assert_close(golden_result=expected.cpu(), torch_tpu_result=res.cpu())
     self.assert_close(golden_result=expected.cpu(), torch_tpu_result=out.cpu())
+
+  @absltest.skip("b/498564738")
+  def test_set_dimension_logical_size_on_tpu(self):
+    """Tests the torch_tpu.set_dimension_logical_size custom op on TPU."""
+    device = api.tpu_device()
+    x = torch.arange(100, device=device, dtype=torch.int32).reshape(10, 10)
+    size = torch.tensor(5, device=device, dtype=torch.int32)
+    out = torch.ops.torch_tpu.set_dimension_logical_size(x, 0, size)
+    self.assert_close(golden_result=x[:5].cpu(), torch_tpu_result=out[:5].cpu())
+
+  def test_set_dimension_logical_size_with_mlir_on_tpu(self):
+    """Tests the torch_tpu.set_dimension_logical_size custom op on TPU using MLIR."""
+    device = api.tpu_device()
+    x = torch.arange(25, device=device, dtype=torch.int32).reshape(5, 5)
+    y = torch.arange(25, device=device, dtype=torch.int32).reshape(5, 5)
+    size = torch.tensor(1, device=device, dtype=torch.int32)
+    golden_result = torch.matmul(x[:, : size.item()], y[: size.item(), :])
+    mlir_program = """
+module {
+  func.func @main(%arg0: tensor<5x5xi32>, %arg1: tensor<5x5xi32>, %arg2: tensor<i32>) -> tensor<5x5xi32> {
+    %0 = stablehlo.set_dimension_size %arg0, %arg2, dim=1 : (tensor<5x5xi32>, tensor<i32>) -> tensor<5x?xi32, #stablehlo.bounds<?, 5>>
+    %1 = stablehlo.set_dimension_size %arg1, %arg2, dim=0 : (tensor<5x5xi32>, tensor<i32>) -> tensor<?x5xi32, #stablehlo.bounds<5, ?>>
+    %2 = stablehlo.dot_general %0, %1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<5x?xi32, #stablehlo.bounds<?, 5>>, tensor<?x5xi32, #stablehlo.bounds<5, ?>>) -> tensor<5x5xi32>
+    return %2: tensor<5x5xi32>
+  }
+}
+"""
+    bytecode = tpu_torch_compile.serialize_mlir_text(mlir_program)
+    executable_key = tpu_torch_compile.compile_mlir(bytecode)
+    result = tpu_torch_compile.execute(executable_key, [x, y, size])
+    self.assert_close(
+        golden_result=golden_result.cpu(), torch_tpu_result=result[0].cpu()
+    )
 
 
 class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):

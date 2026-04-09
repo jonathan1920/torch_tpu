@@ -1046,8 +1046,8 @@ std::string_view ToString(OpName op_name) {
       return "scatter.value_out";
     case OpName::kScatterValueReduceOut:
       return "scatter.value_reduce_out";
-    case OpName::kSetDimensionSize:
-      return "set_dimension_size";
+    case OpName::kSetDimensionLogicalSize:
+      return "set_dimension_logical_size";
     case OpName::kSet_:
       return "set_";
     case OpName::kSet_SourceStorage:
