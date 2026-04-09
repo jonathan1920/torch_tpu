@@ -257,6 +257,34 @@ Shape GetPaddingShape(const Shape& shape,
 }
 }  // namespace
 
+OpParamCacheKeys::OpParamCacheKeys(OpParamCacheKeys&& other)
+    : valid_(other.valid_), name_to_value_(std::move(other.name_to_value_)) {
+  ABSL_CHECK(other.valid_)  // CRASH_OK
+      << "Moving from an invalid OpParamCacheKeys object. This is a TorchTPU "
+         "bug.";
+  other.valid_ = false;
+}
+
+OpParamCacheKeys& OpParamCacheKeys::operator=(OpParamCacheKeys&& other) {
+  ABSL_CHECK(other.valid_)  // CRASH_OK
+      << "Assigning from an invalid OpParamCacheKeys object. This is a "
+         "TorchTPU bug.";
+  if (this == &other) {
+    return *this;
+  }
+  valid_ = true;
+  name_to_value_ = std::move(other.name_to_value_);
+  other.valid_ = false;
+  return *this;
+}
+
+const OpParamCacheKeys::Map& OpParamCacheKeys::GetMapOrDie() const {
+  ABSL_CHECK(valid_)  // CRASH_OK
+      << "Accessing a moved-from OpParamCacheKeys object. This is a "
+         "TorchTPU bug.";
+  return name_to_value_;
+}
+
 bool ShapeDynamismMetadata::IsStaticShapeCompatible(
     absl::Span<const Shape> shapes) const {
   int64_t flattened_size = 0;

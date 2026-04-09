@@ -433,14 +433,14 @@ class [[nodiscard]] OpParamCacheKeys {
   // Make OpParamCacheKeys move-only, as copying may be expensive.
   OpParamCacheKeys(const OpParamCacheKeys&) = delete;
   OpParamCacheKeys& operator=(const OpParamCacheKeys&) = delete;
-  OpParamCacheKeys(OpParamCacheKeys&&) = default;
-  OpParamCacheKeys& operator=(OpParamCacheKeys&&) = default;
+  OpParamCacheKeys(OpParamCacheKeys&&);
+  OpParamCacheKeys& operator=(OpParamCacheKeys&&);
 
   // Shorthand for making an empty OpParamCacheKeys.
   static OpParamCacheKeys Empty() { return OpParamCacheKeys(Map()); }
 
   // Returns a copy of the OpParamCacheKeys.
-  OpParamCacheKeys Clone() const { return OpParamCacheKeys(name_to_value_); }
+  OpParamCacheKeys Clone() const { return OpParamCacheKeys(GetMapOrDie()); }
 
   // Sets a parameter in the OpParamCacheKeys.
   //
@@ -454,7 +454,7 @@ class [[nodiscard]] OpParamCacheKeys {
                   "explicitly.");
 
     std::string name_str(name);
-    const auto it = name_to_value_.find(name_str);
+    const auto it = GetMapOrDie().find(name_str);
     ABSL_CHECK(it == name_to_value_.end())  // CRASH_OK
         << "Duplicate parameter name '" << name
         << "' when computing param cache keys. This is a TorchTPU bug.";
@@ -474,17 +474,25 @@ class [[nodiscard]] OpParamCacheKeys {
     return absl::OkStatus();
   }
 
-  [[nodiscard]] const_iterator begin() const { return name_to_value_.cbegin(); }
-  [[nodiscard]] const_iterator end() const { return name_to_value_.cend(); }
+  [[nodiscard]] const_iterator begin() const { return GetMapOrDie().cbegin(); }
+  [[nodiscard]] const_iterator end() const { return GetMapOrDie().cend(); }
 
-  [[nodiscard]] size_type size() const { return name_to_value_.size(); }
-  [[nodiscard]] bool empty() const { return name_to_value_.empty(); }
+  [[nodiscard]] size_type size() const { return GetMapOrDie().size(); }
+  [[nodiscard]] bool empty() const { return GetMapOrDie().empty(); }
 
  private:
   // Makes an OpParamCacheKeys with the given name-to-string-key map.
   explicit OpParamCacheKeys(Map name_to_value)
       : name_to_value_(std::move(name_to_value)) {}
 
+  // Returns the name-to-string-key map. Crashes if the object is in an invalid
+  // state.
+  [[nodiscard]] const Map& GetMapOrDie() const;
+
+  // Whether the object is in a valid state. An object is initially valid,
+  // and becomes invalid if it's moved from. This prevents accidental use
+  // after a move.
+  bool valid_ = true;
   Map name_to_value_;
 };
 
@@ -534,8 +542,8 @@ class OpParamCacheKeys::Builder {
   // If the builder is in an error state, returns the first error encountered.
   // Otherwise returns the cache keys accumulated so far.
   //
-  // After this method is called, the builder is put into the default (empty)
-  // state.
+  // After this method is called, the builder is put into an invalid state and
+  // should not be used anymore.
   absl::StatusOr<OpParamCacheKeys> operator*();
 
   // Returns the current error state of the builder.
