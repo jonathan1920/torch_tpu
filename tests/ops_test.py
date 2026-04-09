@@ -2603,8 +2603,6 @@ class TestOps(TorchTpuTestBase):
   def test_leaky_relu(self):
     self.do_test_op(
         "nn.functional.leaky_relu",
-        # TODO: fix the error leaky_relu_backward.grad_input is unimplemented.
-        check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
     )

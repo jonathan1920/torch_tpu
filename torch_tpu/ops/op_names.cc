@@ -722,6 +722,8 @@ std::string_view ToString(OpName op_name) {
       return "le.Scalar_out";
     case OpName::kLeTensorOut:
       return "le.Tensor_out";
+    case OpName::kLeakyReluBackward:
+      return "leaky_relu_backward.grad_input";
     case OpName::kLeakyReluOut:
       return "leaky_relu.out";
     case OpName::kLerpScalarOut:

@@ -372,6 +372,7 @@ enum class OpName {
   kLeOut,
   kLeScalarOut,
   kLeTensorOut,
+  kLeakyReluBackward,
   kLeakyReluOut,
   kLerpScalarOut,
   kLerpTensorOut,

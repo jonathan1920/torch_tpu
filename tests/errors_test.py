@@ -1422,6 +1422,22 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.acos(t, out=out)
 
+  def test_leaky_relu_backward_negative_slope_with_self_is_result(self):
+    grad_output = torch.ones(2, device=et.device())
+    self_or_result = torch.ones(2, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        "In-place leakyReLu backward calculation is triggered with a negative"
+        " slope which is not supported. This is caused by calling in-place"
+        " forward function with a negative slope, please call out-of-place"
+        " version instead. File an issue at"
+        " https://github.com/pytorch/pytorch if you do require supporting"
+        " in-place leakRelu backward calculation with negative slope",
+    ):
+      torch.ops.aten.leaky_relu_backward(
+          grad_output, self_or_result, negative_slope=-1.0, self_is_result=True
+      )
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""

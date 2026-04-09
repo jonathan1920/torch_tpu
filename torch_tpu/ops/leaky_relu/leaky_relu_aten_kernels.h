@@ -25,6 +25,12 @@ namespace torch_tpu {
 at::Tensor& AtenLeakyReluOut(const at::Tensor& self,
                              const at::Scalar& negative_slope, at::Tensor& out);
 
+at::Tensor& AtenLeakyReluBackwardGradInput(const at::Tensor& grad_output,
+                                           const at::Tensor& self_or_result,
+                                           const at::Scalar& negative_slope,
+                                           bool self_is_result,
+                                           at::Tensor& grad_input);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_LEAKY_RELU_LEAKY_RELU_ATEN_KERNELS_H_
