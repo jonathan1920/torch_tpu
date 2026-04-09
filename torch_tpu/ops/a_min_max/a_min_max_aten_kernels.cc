@@ -72,20 +72,21 @@ absl::Status CheckAMinMaxInputs(const at::Tensor& self, at::Tensor& out) {
   return absl::OkStatus();
 }
 
-absl::Status AMinMax(const at::Tensor& self, at::IntArrayRef dims,
-                     bool keep_dim, AMinMaxOp a_min_max_op,
-                     OpParamCacheKeys& param_keys, at::Tensor& out) {
+absl::Status AMinMax(const at::Tensor& self, const at::IntArrayRef dims,
+                     const bool keep_dim, const AMinMaxOp a_min_max_op,
+                     at::Tensor& out) {
   TT_RETURN_IF_ERROR(CheckAMinMaxInputs(self, out));
-
+  TT_ASSIGN_OR_RETURN(auto param_keys,
+                      TT_MAKE_OP_PARAM_CACHE_KEYS(dims, keep_dim));
   if (self.dim() == 0) {
     out.copy_(self);
     return absl::OkStatus();
   }
 
-  c10::DimVector dims_ = at::native::make_dim_vector(
+  c10::DimVector dim_vec = at::native::make_dim_vector(
       dims.empty() ? std::nullopt : std::make_optional(dims), self.dim());
-  at::maybe_wrap_dims(dims_, self.dim());
-  auto out_shape = at::meta::get_reduction_shape(self, dims_, keep_dim,
+  at::maybe_wrap_dims(dim_vec, self.dim());
+  auto out_shape = at::meta::get_reduction_shape(self, dim_vec, keep_dim,
                                                  /*allow_empty_dims=*/false);
   Dimensions out_dims = CopyIntVector(out_shape);
 
@@ -94,14 +95,16 @@ absl::Status AMinMax(const at::Tensor& self, at::IntArrayRef dims,
   ReductionMode mode =
       keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
 
-  Dimensions reduction_dims = CopyIntVector(dims_);
+  Dimensions reduction_dims = CopyIntVector(dim_vec);
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
-      DispatchOp<1>(GetOpName(a_min_max_op),
-                    absl::bind_front(BuildAMinMaxShlo, reduction_dims, mode,
+      DispatchOp<1>(absl::bind_front(BuildAMinMaxShlo, reduction_dims, mode,
                                      a_min_max_op),
                     self,
-                    {.out_dtype = out_dtype,
+                    // Override the op name as opposed to using the one passed
+                    // to TT_KERNEL, as this is a shared utility function.
+                    {.op_name = GetOpName(a_min_max_op),
+                     .out_dtype = out_dtype,
                      .out_dims = std::move(out_dims),
                      .op_param_cache_keys = std::move(param_keys)}));
 
@@ -111,43 +114,50 @@ absl::Status AMinMax(const at::Tensor& self, at::IntArrayRef dims,
 
 }  // namespace
 
-at::Tensor& AtenAmaxOut(const at::Tensor& self, at::IntArrayRef dims,
-                        bool keep_dim, at::Tensor& out) {
-  TT_KERNEL(OpName::kAmax, param_keys, (self, dims, keep_dim, out), {
-    TT_THROW_IF_ERROR(
-        AMinMax(self, dims, keep_dim, AMinMaxOp::kAmax, param_keys, out));
-    return out;
-  });
+at::Tensor& AtenAmaxOut(const at::Tensor& self, const at::IntArrayRef dims,
+                        const bool keep_dim, at::Tensor& out) {
+  TT_KERNEL(
+      OpName::kAmaxOut, _,
+      (self, IgnoreInCacheKey(dims, "delegates to AMinMax"),
+       IgnoreInCacheKey(keep_dim, "delegates to AMinMax"), out),
+      {
+        TT_THROW_IF_ERROR(AMinMax(self, dims, keep_dim, AMinMaxOp::kAmax, out));
+        return out;
+      });
 }
 
-at::Tensor& AtenAminOut(const at::Tensor& self, at::IntArrayRef dims,
-                        bool keep_dim, at::Tensor& out) {
-  TT_KERNEL(OpName::kAmin, param_keys, (self, dims, keep_dim, out), {
-    TT_THROW_IF_ERROR(
-        AMinMax(self, dims, keep_dim, AMinMaxOp::kAmin, param_keys, out));
-    return out;
-  });
+at::Tensor& AtenAminOut(const at::Tensor& self, const at::IntArrayRef dims,
+                        const bool keep_dim, at::Tensor& out) {
+  TT_KERNEL(
+      OpName::kAminOut, _,
+      (self, IgnoreInCacheKey(dims, "delegates to AMinMax"),
+       IgnoreInCacheKey(keep_dim, "delegates to AMinMax"), out),
+      {
+        TT_THROW_IF_ERROR(AMinMax(self, dims, keep_dim, AMinMaxOp::kAmin, out));
+        return out;
+      });
 }
 
-std::tuple<at::Tensor&, at::Tensor&> AtenAminmaxOut(const at::Tensor& self,
-                                                    c10::optional<int64_t> dim,
-                                                    bool keep_dim,
-                                                    at::Tensor& min,
-                                                    at::Tensor& max) {
-  TT_KERNEL(OpName::kAminmaxOut, param_keys, (self, dim, keep_dim, min, max), {
-    // aminmax only supports one optional dimension, but the builder expects a
-    // vector of dimensions, so we build a vector here for the optional dim.
-    c10::DimVector dims_vec;
-    if (dim.has_value()) {
-      dims_vec.push_back(*dim);
-    }
-    at::IntArrayRef dims(dims_vec);
-    TT_THROW_IF_ERROR(
-        AMinMax(self, dims, keep_dim, AMinMaxOp::kAmin, param_keys, min));
-    TT_THROW_IF_ERROR(
-        AMinMax(self, dims, keep_dim, AMinMaxOp::kAmax, param_keys, max));
-    return std::forward_as_tuple(min, max);
-  });
+std::tuple<at::Tensor&, at::Tensor&> AtenAminmaxOut(
+    const at::Tensor& self, const c10::optional<int64_t> dim,
+    const bool keep_dim, at::Tensor& min, at::Tensor& max) {
+  TT_KERNEL(
+      OpName::kAminmaxOut, _,
+      (self, IgnoreInCacheKey(dim, "delegates to AMinMax"),
+       IgnoreInCacheKey(keep_dim, "delegates to AMinMax"), min, max),
+      {
+        // aminmax only supports one optional dimension, but the builder expects
+        // a vector of dimensions, so we build a vector here for the optional
+        // dim.
+        c10::DimVector dims_vec;
+        if (dim.has_value()) {
+          dims_vec.push_back(*dim);
+        }
+        at::IntArrayRef dims(dims_vec);
+        TT_THROW_IF_ERROR(AMinMax(self, dims, keep_dim, AMinMaxOp::kAmin, min));
+        TT_THROW_IF_ERROR(AMinMax(self, dims, keep_dim, AMinMaxOp::kAmax, max));
+        return std::forward_as_tuple(min, max);
+      });
 }
 
 }  // namespace torch_tpu
