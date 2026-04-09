@@ -139,6 +139,40 @@ class ExportTest(absltest.TestCase):
     current_location_regex = f"#loc1 = loc.*{current_filename}"
     self.assertRegex(mlir_str, current_location_regex)
 
+  def test_export_deduplication_different_views(self):
+    """Tests that export deduplication handles different views of the same memory correctly."""
+
+    class MyModule(torch.nn.Module):
+
+      def forward(self, x):
+        return x, x.view(torch.int32)
+
+    mod = MyModule()
+    x = torch.randn(5)
+
+    exported = torch.export.export(mod, args=(x,))
+    mlir = torch_tpu_export.exported_to_mlir(exported).mlir_bytes
+    mlir_str = mlir.decode("utf-8")
+
+    self.assertIn("-> (tensor<5xf32>, tensor<5xi32>)", mlir_str)
+
+  def test_export_deduplication_different_slices(self):
+    """Tests that export deduplication does not deduplicate different slices of the same buffer."""
+
+    class MyModule(torch.nn.Module):
+
+      def forward(self, x):
+        return x[0:2], x[1:3]
+
+    mod = MyModule()
+    x = torch.randn(4)
+
+    exported = torch.export.export(mod, args=(x,))
+    mlir = torch_tpu_export.exported_to_mlir(exported).mlir_bytes
+    mlir_str = mlir.decode("utf-8")
+
+    self.assertIn("-> (tensor<2xf32>, tensor<2xf32>)", mlir_str)
+
   def test_module_traceback_disabled(self):
     sample_input = (
         torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]),

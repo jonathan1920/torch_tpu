@@ -295,17 +295,32 @@ def _process_fx_outputs(
   flat_outputs, spec = pytree.tree_flatten(outputs)
   deduped_outputs: List[torch.Tensor] = []
   output_indices: List[int | None] = []
-  data_ptr_to_index: dict[int, int] = {}
+  # We deduplicate outputs based on a composite key: (data_ptr, dtype, shape).
+  # - data_ptr(): Identifies the starting memory address.
+  # - dtype: Differentiates views of the same memory interpreted as different
+  #   types.
+  # - shape: Differentiates views of the same memory with different shapes
+  #   (e.g., overlapping slices).
+  #
+  # This prevents false deduplication where different views of the same storage
+  # share the same base address but represent different data structures (e.g.,
+  # overlapping views from `unbind` or complex tensor operations).
+  #
+  # Note: If two slices of the same buffer have the same dtype and shape but
+  # different offsets, their data_ptr() will be different (since data_ptr()
+  # includes the storage offset), so they will not be falsely deduplicated.
+  index_by_dedupe_key: dict[tuple[int, torch.dtype, torch.Size], int] = {}
 
   for item in flat_outputs:
     if item is None:
       output_indices.append(None)
     elif isinstance(item, torch.Tensor):
       ptr = item.data_ptr()
-      if ptr not in data_ptr_to_index:
-        data_ptr_to_index[ptr] = len(deduped_outputs)
+      key = (ptr, item.dtype, item.shape)
+      if key not in index_by_dedupe_key:
+        index_by_dedupe_key[key] = len(deduped_outputs)
         deduped_outputs.append(item)
-      output_indices.append(data_ptr_to_index[ptr])
+      output_indices.append(index_by_dedupe_key[key])
     else:
       raise TypeError(
           f"Expect FX graph output to be a Tensor or None, got {item}"
