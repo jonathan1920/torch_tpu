@@ -4789,7 +4789,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         RuntimeError,
         tpu=(
             "foreach_abs_(): expected all 4 tensors in the self list not to be"
-            " complex, got 2 complex tensors: complex64 at index 1, and"
+            " complex, got 2 complex tensors: complex64 at index 1 and"
             " complex64 at index 2"
         ),
         cpu="In-place abs is not supported for complex tensors.",
@@ -4933,7 +4933,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         RuntimeError,
         tpu=(
             "foreach_sqrt_(): expected all 4 tensors in the self list not to be"
-            " integral, got 2 integral tensors: int32 at index 0, and int32 at"
+            " integral, got 2 integral tensors: int32 at index 0 and int32 at"
             " index 2"
         ),
         cpu="result type Float can't be cast to the desired output type Int",
@@ -4963,7 +4963,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
             "foreach_addcdiv(): expected at least one non-integral tensor in"
             " each of the 3 dividend (second tensor list) and divisor (third"
             " tensor list) pairs, got 2 integral dividend-divisor tensor pairs:"
-            " (int32, uint8) at index 0, and (int32, uint8) at index 1"
+            " (int32, uint8) at index 0 and (int32, uint8) at index 1"
         ),
         cpu=(
             "Integer division with addcdiv is no longer supported, and in a"

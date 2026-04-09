@@ -25,7 +25,9 @@
 #include <string>
 #include <string_view>
 
+#include "absl/algorithm/container.h"
 #include "torch/headeronly/util/complex.h"
+#include "torch_tpu/common/dimension_types.h"
 
 // 1 if this is a Google-internal version of torch_tpu. Otherwise 0.
 #define TT_IS_INTERNAL_TORCH_TPU 0
@@ -52,6 +54,20 @@ inline void HashCombine(std::size_t& seed, const T& v) {
 
 // Format percentage.
 std::string PercAsStr(uint64_t num, uint64_t den);
+
+// Filter indices [0, until] using the given `predicate`.
+template <typename Predicate>
+Indices FilterIndices(size_t until, const Predicate& predicate) {
+  Indices indices(until, 0);
+
+  absl::c_iota(indices, 0);
+  // Move indices where `predicate(i)` is `true`, first.
+  auto filtered_indices_end = absl::c_stable_partition(indices, predicate);
+  // Remove all indices after the last `true` index.
+  indices.erase(filtered_indices_end, indices.end());
+
+  return indices;
+}
 
 }  // namespace torch_tpu
 

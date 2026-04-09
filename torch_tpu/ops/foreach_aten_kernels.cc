@@ -22,18 +22,15 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
@@ -46,6 +43,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -263,37 +261,6 @@ inline absl::Status CheckNotBool(const at::Scalar& scalar,
   return absl::OkStatus();
 }
 
-template <typename Predicate>
-Indices FilterIndices(size_t size, const Predicate& predicate) {
-  Indices indices(size, 0);
-
-  absl::c_iota(indices, 0);
-  // Move indices where `predicate(i)` is `true`, first.
-  auto filtered_indices_end = absl::c_stable_partition(indices, predicate);
-  // Remove all indices after the last `true` index.
-  indices.erase(filtered_indices_end, indices.end());
-
-  return indices;
-}
-
-template <typename ValueIndexToString>
-std::string GetBadValuesString(
-    absl::Span<const int64_t> bad_indices,
-    const ValueIndexToString& value_index_to_string) {
-  std::vector<std::string> strings(bad_indices.size());
-
-  absl::c_transform(
-      bad_indices, strings.begin(), [&value_index_to_string](const int64_t i) {
-        return absl::StrCat(value_index_to_string(i), " at index ", i);
-      });
-
-  std::string last = strings.back();
-  strings.pop_back();
-
-  return absl::StrCat(absl::StrJoin(strings, /* separator= */ ", "),
-                      strings.empty() ? "" : ", and ", last);
-};
-
 absl::Status CheckNotBool(at::ArrayRef<at::Scalar> scalars,
                           const std::string_view arg_name) {
   const Indices& bool_indices =
@@ -305,7 +272,8 @@ absl::Status CheckNotBool(at::ArrayRef<at::Scalar> scalars,
       << " list not to be bool, got "
       << FormatCount(bool_indices.size(), /* singular= */ "bool scalar",
                      /* plural= */ "bool scalars")
-      << ": " << GetBadValuesString(bool_indices, [scalars](const int64_t i) {
+      << ": "
+      << GetValueAtIndexErrorStr(bool_indices, [scalars](const int64_t i) {
            return ToString(scalars[i]);
          });
 
@@ -327,7 +295,8 @@ absl::Status CheckTensorsNotTypeImpl(at::TensorList tensors,
       << FormatCount(bad_indices.size(),
                      /* singular= */ absl::StrCat(type_name, " tensor"),
                      /* plural= */ absl::StrCat(type_name, " tensors"))
-      << ": " << GetBadValuesString(bad_indices, [tensors](const int64_t i) {
+      << ": "
+      << GetValueAtIndexErrorStr(bad_indices, [tensors](const int64_t i) {
            return ToString(tensors[i].scalar_type());
          });
 
@@ -375,7 +344,8 @@ absl::Status CheckPairwiseAddcdivAtLeastOneNotIntegral(
                      /* singular= */ "integral dividend-divisor tensor pair",
                      /* plural= */ "integral dividend-divisor tensor pairs")
       << ": "
-      << GetBadValuesString(bad_indices, [tensors1, tensors2](const int64_t i) {
+      << GetValueAtIndexErrorStr(bad_indices, [tensors1,
+                                               tensors2](const int64_t i) {
            return absl::StrCat("(", ToString(tensors1[i].scalar_type()), ", ",
                                ToString(tensors2[i].scalar_type()), ")");
          });

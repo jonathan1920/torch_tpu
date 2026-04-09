@@ -19,18 +19,22 @@
 
 // Utilities for reporting errors in C++ code.
 
+#include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/base/optimization.h"
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
 #include "c10/core/Device.h"
@@ -38,6 +42,7 @@
 #include "c10/util/StringUtil.h"
 #include "torch_tpu/common/macro_utils.h"  // IWYU pragma: keep
 #include "torch_tpu/common/status_builder.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/python_context.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
@@ -130,6 +135,74 @@ void CheckDeviceIsTpu(c10::optional<at::Device> device_opt,
                                              const std::string_view singular,
                                              const std::string_view plural) {
   return absl::StrCat(count, " ", count == 1 ? singular : plural);
+}
+
+// Format a list of indices as a comma-separated error string.
+//
+// This function should be used for building better error messages. It describes
+// the invalid values with their corresponding indices in an array.
+//
+// Example:
+//   indices = [0, 2]
+//   index_to_string = lambda tensor: ToString(tensor.scalar_type())
+//
+//   output = "int32 at index 0, and int32 at index 2"
+template <typename ToValue>
+[[nodiscard]] std::string GetValueAtIndexErrorStr(
+    absl::Span<const int64_t> indices, const ToValue& to_value) {
+  return SequenceToReadableStr(
+      absl::MakeConstSpan(indices), [&to_value](const int64_t i) {
+        return absl::StrCat(to_value(i), " at index ", i);
+      });
+};
+
+// Formats a list of `values` into a readable string.
+//
+// This function returns a string of all `values` joined together appropriately.
+// In other words:
+//
+//   - If `values.size() == 1`: it returns the string of the first element
+//
+//   - If `values.size() == 2`: it joins the elements with ' and '
+//
+//   - Otherwise, it uses serial comma, i.e. elements, except the last one, are
+//     joined by a comma. The last one is joined with ', and '.
+//
+// Examples:
+//   - {1}          -> "1"
+//   - {1, 2}       -> "1 and 2"
+//   - {1, 2, 3, 4} -> "1, 2, 3, and 4"
+template <typename Value, typename ValueToString>
+[[nodiscard]] std::string SequenceToReadableStr(
+    absl::Span<const Value> values, const ValueToString& value_to_string) {
+  ABSL_CHECK(  // CRASH_OK=Building an error message requires at least 1 value
+               // to show.
+      !values.empty());
+  const size_t size = values.size();
+
+  std::vector<std::string> strings(size);
+  absl::c_transform(values, strings.begin(), value_to_string);
+
+  switch (size) {
+    case 1:
+      return strings.front();
+
+    case 2:
+      return absl::StrCat(strings[0], " and ", strings[1]);
+
+    default:
+      return absl::StrCat(
+          absl::StrJoin(absl::MakeSpan(strings).subspan(0, size - 1),
+                        /* separator= */ ", "),
+          ", and ", strings.back());
+  }
+}
+
+template <typename Value>
+[[nodiscard]] std::string SequenceToReadableStr(
+    absl::Span<const Value> values) {
+  return SequenceToReadableStr(
+      values, [](const Value& value) { return ToString(value); });
 }
 
 // Retrieves the status from a Status or StatusOr. Useful for contexts where we

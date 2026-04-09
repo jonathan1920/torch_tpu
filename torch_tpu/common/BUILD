@@ -115,6 +115,7 @@ torch_tpu_cc_library(
         ":env_vars",
         ":macro_utils",
         ":status_builder",
+        ":to_string",
         ":utils",
         "//shims/torch",
         "//shims/torch:aten_headers",
@@ -545,8 +546,10 @@ torch_tpu_cc_library(
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
     deps = [
+        ":dimension_types",
         "//shims/torch:torch_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
