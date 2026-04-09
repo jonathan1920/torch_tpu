@@ -92,16 +92,22 @@ class SyncTest(absltest.TestCase):
     z = x + y
 
     # Nothing is materialized or ready.
-    for tensor in [x, y, z]:
-      self.assertFalse(sync.is_materialized(tensor))
-      self.assertFalse(sync.is_ready(tensor))
+    self.assertFalse(sync.is_materialized(x))
+    self.assertFalse(sync.is_ready(x))
+    self.assertFalse(sync.is_materialized(y))
+    self.assertFalse(sync.is_ready(y))
+    self.assertFalse(sync.is_materialized(z))
+    self.assertFalse(sync.is_ready(z))
 
     sync.synchronize([x, y, z], wait=True)
 
     # Everything is materialized and ready.
-    for tensor in [x, y, z]:
-      self.assertTrue(sync.is_materialized(tensor))
-      self.assertTrue(sync.is_ready(tensor))
+    self.assertTrue(sync.is_materialized(x))
+    self.assertTrue(sync.is_ready(x))
+    self.assertTrue(sync.is_materialized(y))
+    self.assertTrue(sync.is_ready(y))
+    self.assertTrue(sync.is_materialized(z))
+    self.assertTrue(sync.is_ready(z))
 
   def test_sync_no_wait_all(self):
     x = torch.ones(10, device=api.tpu_device())
@@ -109,32 +115,76 @@ class SyncTest(absltest.TestCase):
     z = torch.ones(12, device=api.tpu_device())
 
     # Nothing is materialized or ready.
-    for tensor in [x, y, z]:
-      self.assertFalse(sync.is_materialized(tensor))
-      self.assertFalse(sync.is_ready(tensor))
+    self.assertFalse(sync.is_materialized(x))
+    self.assertFalse(sync.is_ready(x))
+    self.assertFalse(sync.is_materialized(y))
+    self.assertFalse(sync.is_ready(y))
+    self.assertFalse(sync.is_materialized(z))
+    self.assertFalse(sync.is_ready(z))
 
     sync.synchronize(wait=False)
 
     # Everything is materialized, but may or may not be ready.
-    for tensor in [x, y, z]:
-      self.assertTrue(sync.is_materialized(tensor))
+    self.assertTrue(sync.is_materialized(x))
+    self.assertTrue(sync.is_materialized(y))
+    self.assertTrue(sync.is_materialized(z))
 
-  def test_sync_and_wait_all(self):
+  def test_sync_and_wait_all_materialized(self):
     x = torch.ones(10, device=api.tpu_device())
     y = torch.ones(11, device=api.tpu_device())
     z = torch.ones(12, device=api.tpu_device())
 
-    # Nothing is materialized or ready.
-    for tensor in [x, y, z]:
-      self.assertFalse(sync.is_materialized(tensor))
-      self.assertFalse(sync.is_ready(tensor))
+    self.assertFalse(sync.is_materialized(x))
+    self.assertFalse(sync.is_materialized(y))
+    self.assertFalse(sync.is_materialized(z))
 
     sync.synchronize(wait=True)
 
-    # Everything is materialized and ready.
-    for tensor in [x, y, z]:
-      self.assertTrue(sync.is_materialized(tensor))
-      self.assertTrue(sync.is_ready(tensor))
+    self.assertTrue(sync.is_materialized(x))
+    self.assertTrue(sync.is_materialized(y))
+    self.assertTrue(sync.is_materialized(z))
+
+  def test_sync_and_wait_all_ready(self):
+    x = torch.ones(10, device=api.tpu_device())
+    y = torch.ones(11, device=api.tpu_device())
+    z = torch.ones(12, device=api.tpu_device())
+
+    self.assertFalse(sync.is_ready(x))
+    self.assertFalse(sync.is_ready(y))
+    self.assertFalse(sync.is_ready(z))
+
+    sync.synchronize(wait=True)
+
+    self.assertTrue(sync.is_ready(x))
+    self.assertTrue(sync.is_ready(y))
+    self.assertTrue(sync.is_ready(z))
+
+  def test_synchronize_device_materialized(self):
+    x = torch.ones(10, device=api.tpu_device())
+    y = torch.ones(11, device=api.tpu_device())
+
+    self.assertFalse(sync.is_materialized(x))
+    self.assertFalse(sync.is_materialized(y))
+
+    # torch.tpu.synchronize() maps to _device_ops_backend._synchronize(None)
+    # which maps to TpuDeviceGuardImpl::synchronizeDevice()
+    # which calls SynchronizeAll(true) and SynchronizeStream()
+    torch.tpu.synchronize()
+
+    self.assertTrue(sync.is_materialized(x))
+    self.assertTrue(sync.is_materialized(y))
+
+  def test_synchronize_device_ready(self):
+    x = torch.ones(10, device=api.tpu_device())
+    y = torch.ones(11, device=api.tpu_device())
+
+    self.assertFalse(sync.is_ready(x))
+    self.assertFalse(sync.is_ready(y))
+
+    torch.tpu.synchronize()
+
+    self.assertTrue(sync.is_ready(x))
+    self.assertTrue(sync.is_ready(y))
 
   def test_host_to_device_is_materialized(self):
     x = torch.ones(128, device="cpu").to(api.tpu_device())

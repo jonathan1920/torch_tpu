@@ -38,6 +38,7 @@
 #include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch/headeronly/macros/Export.h"
+#include "torch_tpu/_internal/sync/sync.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -75,6 +76,7 @@ struct TpuDeviceGuardImpl final : public c10::impl::DeviceGuardImplInterface {
   c10::DeviceIndex deviceCount() const noexcept override;
   bool queryStream(const c10::Stream& stream) const override;
   void synchronizeStream(const c10::Stream& stream) const override;
+  void synchronizeDevice(c10::DeviceIndex device_index) const override;
   void synchronizeEvent(void* event) const override;
 
  private:
@@ -189,6 +191,11 @@ bool TpuDeviceGuardImpl::queryStream(const c10::Stream& stream) const {
 }
 void TpuDeviceGuardImpl::synchronizeStream(const c10::Stream& stream) const {
   PjrtBackend::GetInstance().SynchronizeStream(stream.device_index());
+}
+void TpuDeviceGuardImpl::synchronizeDevice(
+    const c10::DeviceIndex device_index) const {
+  TT_THROW_IF_ERROR(SynchronizeAll(WaitOnExecution::kYes));
+  PjrtBackend::GetInstance().SynchronizeStream(device_index);
 }
 void TpuDeviceGuardImpl::destroyEvent(
     void* event, const c10::DeviceIndex device_index) const noexcept {

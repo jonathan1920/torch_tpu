@@ -45,6 +45,37 @@ namespace torch_tpu {
 namespace py = pybind11;
 
 namespace {
+
+void SynchronizePy(std::optional<int> device_index) {
+  const c10::impl::DeviceGuardImplInterface* impl =
+      c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
+  TT_CHECK_THROW(impl != nullptr, error::kInternal)
+      << "TPU DeviceGuardImpl not found";
+
+  c10::DeviceIndex index;
+  if (device_index.has_value()) {
+    index = static_cast<c10::DeviceIndex>(*device_index);
+  } else {
+    index = impl->getDevice().index();
+  }
+  impl->synchronizeDevice(index);
+}
+
+int64_t RecordEventPy(std::optional<int> device_index) {
+  const c10::impl::DeviceGuardImplInterface* impl =
+      c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
+  TT_CHECK_THROW(impl != nullptr, error::kInternal)
+      << "TPU DeviceGuardImpl not found";
+
+  c10::DeviceIndex index;
+  if (device_index.has_value()) {
+    index = static_cast<c10::DeviceIndex>(*device_index);
+  } else {
+    index = impl->getDevice().index();
+  }
+  return RecordEventSnapshot(index);
+}
+
 void SetRngStatePy(at::Tensor state, int device_index) {
   const at::Generator& gen = GetDefaultDeviceGenerator(device_index);
   if (state.dtype() == at::kByte) {
@@ -107,40 +138,14 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       },
       "Shuts down the PjRt runtime.");
 
-  m.def(
-      "_synchronize",
-      [](std::optional<int> device_index) {
-        c10::DeviceIndex index;
-        if (device_index.has_value()) {
-          index = static_cast<c10::DeviceIndex>(*device_index);
-        } else {
-          index = c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType())
-                      ->getDevice()
-                      .index();
-        }
-        PjrtBackend::GetInstance().SynchronizeStream(index);
-      },
-      py::arg("device_index") = py::none(),
-      py::call_guard<py::gil_scoped_release>(),
-      "Blocks until all async d2h copies on the specified device have "
-      "completed.");
+  m.def("_synchronize", &SynchronizePy, py::arg("device_index") = py::none(),
+        py::call_guard<py::gil_scoped_release>(),
+        "Blocks until all async d2h copies and deferred operations on the "
+        "specified device have completed.");
 
-  m.def(
-      "_record_event",
-      [](std::optional<int> device_index) {
-        c10::DeviceIndex index;
-        if (device_index.has_value()) {
-          index = static_cast<c10::DeviceIndex>(*device_index);
-        } else {
-          index = c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType())
-                      ->getDevice()
-                      .index();
-        }
-        return RecordEventSnapshot(index);
-      },
-      py::arg("device_index") = py::none(),
-      "Records a fence over async d2h copies already enqueued on the "
-      "specified device.");
+  m.def("_record_event", &RecordEventPy, py::arg("device_index") = py::none(),
+        "Records a fence over async d2h copies already enqueued on the "
+        "specified device.");
 
   m.def("_wait_event", &WaitEventSnapshotPy, py::arg("event_id"),
         py::call_guard<py::gil_scoped_release>(),

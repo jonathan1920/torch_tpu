@@ -48,6 +48,25 @@ namespace torch_tpu {
 // will re-execute the view logic (using the cached compilation).
 absl::Status SynchronizeTensors(absl::Span<const at::Tensor> tensors);
 
+// Whether to wait for execution to complete.
+enum class WaitOnExecution {
+  // Only ensures that all deferred operations have been scheduled for
+  // execution on the device.
+  kNo,
+  // Blocks the calling thread until all deferred operations have completed
+  // execution on the device.
+  kYes,
+};
+
+// Materializes all deferred operations across all subgraphs and optionally
+// waits for their execution to complete on the device.
+//
+// This function is thread-safe and can be called from multiple threads
+// concurrently. It snapshots the current state of all subgraphs at the time of
+// the call; any operations dispatched to the execution engine after this
+// function begins may not be included in the synchronization barrier.
+absl::Status SynchronizeAll(WaitOnExecution wait = WaitOnExecution::kNo);
+
 // Checks if the tensor is materialized; that is, if it has a PjRtBuffer
 // associated with it.
 //

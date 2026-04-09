@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -92,24 +93,13 @@ void PySync(const std::vector<at::Tensor>& tensors, bool wait) {
 }
 
 void PySyncAll(bool wait) {
-  // Merge all subgraphs and get all the leaf nodes.
-  auto leaf_nodes = SubgraphRegistry::GetInstance().MergeAll()->GetLeafNodes();
-
-  if (leaf_nodes.empty()) {
-    return;
-  }
-
+  std::optional<py::gil_scoped_release> release;
   if (wait) {
     // See the comments in PySync for why we need to release the GIL.
-    py::gil_scoped_release release;
-
-    TT_THROW_IF_ERROR(Materialize(leaf_nodes));
-    for (const auto& leaf_node : leaf_nodes) {
-      TT_THROW_IF_ERROR(leaf_node->Synchronize());
-    }
-  } else {
-    TT_THROW_IF_ERROR(Materialize(leaf_nodes));
+    release.emplace();
   }
+  TT_THROW_IF_ERROR(
+      SynchronizeAll(wait ? WaitOnExecution::kYes : WaitOnExecution::kNo));
 }
 
 bool PyIsMaterialized(const at::Tensor& tensor) {

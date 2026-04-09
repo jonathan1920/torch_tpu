@@ -54,6 +54,25 @@ absl::Status SynchronizeTensors(absl::Span<const at::Tensor> tensors) {
   return absl::OkStatus();
 }
 
+absl::Status SynchronizeAll(const WaitOnExecution wait) {
+  const std::vector<SharedDeviceBufferList> leaf_nodes =
+      SubgraphRegistry::GetInstance().MergeAll()->GetLeafNodes();
+
+  if (leaf_nodes.empty()) {
+    return absl::OkStatus();
+  }
+
+  TT_RETURN_IF_ERROR(Materialize(leaf_nodes));
+
+  if (wait == WaitOnExecution::kYes) {
+    for (const auto& leaf_node : leaf_nodes) {
+      TT_RETURN_IF_ERROR(leaf_node->Synchronize());
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> IsMaterialized(const at::Tensor& tensor) {
   // Since view tensors are ephemeral and re-materialized every time, there's
   // no point in checking whether the view is materialized.
