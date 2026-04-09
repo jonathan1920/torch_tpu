@@ -348,7 +348,6 @@ def fx_to_mlir(
     module: torch.fx.GraphModule,
     args: List[torch.Tensor | Any],
     print_config: MlirPrintConfig = MlirPrintConfig.MLIR_PRETTY,
-    donate_args: Sequence[int] | None = None,
 ) -> ExportedMlir:
   """Converts an FX graph module to MLIR using TorchTPU's defer mode.
 
@@ -363,28 +362,13 @@ def fx_to_mlir(
     args: A list of input arguments to trace the module. These will be run
       through an FX graph interpreter to identify the graph's output tensors.
     print_config: The desired MLIR output format.
-    donate_args: The list of argument indices that are allowed to be donated.
 
   Returns:
     An `ExportedMlir` object containing the MLIR representation of the graph and
     FX output reconstruction information.
   """
   # Filter out non-tensor arguments.
-  argument_tensors = []
-  tensor_idx_map = {}
-  for i, arg in enumerate(args):
-    if isinstance(arg, torch.Tensor):
-      tensor_idx_map[i] = len(argument_tensors)
-      argument_tensors.append(arg)
-
-  # Remap donate_args to be indices into argument_tensors.
-  if donate_args:
-    donate_args = [
-        tensor_idx_map[i] for i in donate_args if i in tensor_idx_map
-    ]
-  else:
-    donate_args = []
-  del tensor_idx_map
+  argument_tensors = [a for a in args if isinstance(a, torch.Tensor)]
 
   # Sync the RNG state before FX tracing to force materialization of deferred
   # ops.
@@ -439,7 +423,6 @@ def fx_to_mlir(
       result_tensors=result_tensors,
       argument_tensors=argument_tensors,
       print_config=print_config.value,
-      donate_args=donate_args,
   )
 
   return ExportedMlir(

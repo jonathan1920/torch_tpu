@@ -16,7 +16,7 @@
 
 import os
 import pickle
-from typing import List, Optional
+from typing import List
 from unittest import mock
 
 from absl.testing import absltest
@@ -39,7 +39,6 @@ class FunctionTest(absltest.TestCase):
       self,
       func,
       inputs: List[torch.Tensor],
-      donate_args: Optional[List[int]] = None,
       debug: bool = True,
   ) -> compile_lib.TpuBackend:
     """Runs the given function on CPU, TPU eager mode, and TPU compiled mode and compares the results.
@@ -47,8 +46,6 @@ class FunctionTest(absltest.TestCase):
     Args:
       func: The function to test.
       inputs: A list of tensor inputs for the function.
-      donate_args: A list of indices of the input tensors that should be donated
-        to the TPU backend.
       debug: Whether to enable debug mode for the TPU backend.
 
     Returns:
@@ -76,8 +73,7 @@ class FunctionTest(absltest.TestCase):
 
     # TPU compiled
     tpu_backend = compile_lib.TpuBackend(debug=debug)
-    options = {"donate_args": donate_args} if donate_args else {}
-    compiled = torch.compile(func, backend=tpu_backend, options=options)
+    compiled = torch.compile(func, backend=tpu_backend)
     tpu_compiled_result = _backend.to_device(compiled(*inputs_tpu), "cpu")
     if isinstance(result_cpu, torch.Tensor):
       assert isinstance(tpu_compiled_result, torch.Tensor)
@@ -147,22 +143,6 @@ class FunctionTest(absltest.TestCase):
         torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6]),
     ]
     self._run_and_compare(simple, inputs_val)
-
-  def test_super_simple_donate(self):
-    # Check that the buffer is correctly donated and can't be used after the
-    # compiled function is executed.
-    def simple(x, y):
-      a = 0.3 * x + 0.5 * y
-      return a
-
-    x = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]).to(api.tpu_device())
-    y = torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6]).to(api.tpu_device())
-    self._run_and_compare(simple, [x, y], donate_args=[1])
-    x.cpu()
-    with self.assertRaisesRegex(
-        RuntimeError, "INVALID_ARGUMENT: Buffer has been deleted or donated"
-    ):
-      y.cpu()
 
   @absltest.skip("compile_mlir fails with incorrect input order error")
   def test_to_copy(self):
@@ -539,7 +519,7 @@ class FunctionTest(absltest.TestCase):
     backend = compile_lib.TpuBackend()
     gm = torch.fx.symbolic_trace(model)
     # Get the raw executable
-    compiled_fn = backend._compile_graph_module(gm, [x], donate_args=[])
+    compiled_fn = backend._compile_graph_module(gm, [x])
 
     # Run before pickle
     result_before = compiled_fn(x)  # pylint: disable=unused-variable

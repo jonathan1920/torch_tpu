@@ -309,18 +309,8 @@ class TpuBackend:
 
     _log_gm_and_inputs("__call__", "Pre", graph_module, example_inputs)
 
-    donate_args = list()
-    # "options" is part of the torch.compile API but it is not tied to any
-    # specific backend and therefore we can extend it with our own fields.
-    if "options" in kwargs:
-      options = kwargs["options"]
-      if "donate_args" in options:
-        donate_args = options["donate_args"]
-
     return aot_autograd(
-        fw_compiler=functools.partial(
-            self._compile_graph_module, donate_args=donate_args
-        ),
+        fw_compiler=functools.partial(self._compile_graph_module),
         # This is to avoid inplace generating graph modules that contains
         # inplace update.
         keep_inference_input_mutations=False,
@@ -330,7 +320,6 @@ class TpuBackend:
       self,
       graph_module: torch.fx.GraphModule,
       example_inputs: List[torch.Tensor],
-      donate_args: Sequence[int],
   ) -> Callable[[torch.fx.GraphModule, List[torch.Tensor]], Callable[..., Any]]:
     """Compiles the graph_module with the given inputs for TPU.
 
@@ -342,7 +331,6 @@ class TpuBackend:
       graph_module: The FX graph module to compile.
       example_inputs: Example inputs to the FX graph for tracing (not the actual
         inputs).
-      donate_args: The list of argument indices that are allowed to be donated.
 
     Returns:
       A function that executes the compiled graph on the TPU.
@@ -425,7 +413,6 @@ class TpuBackend:
             graph_module,
             placeholder_args,
             print_config=print_config,
-            donate_args=donate_args,
         )
 
     # Emit StableHLO artifact for tlparse when TORCH_TRACE is set.

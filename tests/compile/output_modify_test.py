@@ -67,9 +67,7 @@ def _run_tpu_backend_with_injected_test_case(
     # outputs including None.
     logging.info("after injecting test case %s", gm.code)
     # Use the modified graph to test our code
-    executable = tpu_backend._compile_graph_module(
-        gm, example_inputs, donate_args=[]
-    )
+    executable = tpu_backend._compile_graph_module(gm, example_inputs)
 
     # 3. If needed, transform the results from executable() before returning.
     # For example, if inject_test_case added a None to the output which

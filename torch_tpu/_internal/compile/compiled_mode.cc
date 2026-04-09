@@ -69,8 +69,7 @@ absl::StatusOr<at::Tensor> MakePlaceholder(absl::Span<const int64_t> sizes,
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
     mlir::MLIRContext& mlir_context, const std::vector<at::Tensor>& arg_tensors,
-    const std::vector<at::Tensor>& result_tensors,
-    absl::Span<const int64_t> donate_args) {
+    const std::vector<at::Tensor>& result_tensors) {
   // Use artificial python context for compiled mode to that modules have better
   // names when dumped. Currently this will always point to `_export_to_fx`, and
   // can be improved in the future, but it is useful for distinguishing torch
@@ -121,10 +120,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
       << "failed to validate and reorder inputs: ";
   TT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                       traversal.BuildMlirModule(mlir_context));
-
-  if (!donate_args.empty()) {
-    AnnotateBufferDonations(mlir_module.get(), donate_args);
-  }
 
   return mlir_module;
 }
