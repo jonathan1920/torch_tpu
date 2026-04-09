@@ -16,7 +16,7 @@
 
 #include "torch_tpu/distributed/process_group_tpu.h"
 
-#include <chrono>
+#include <chrono>  // NOLINT - needed for PyTorch API
 #include <cstddef>
 #include <cstdint>
 #include <set>
@@ -106,9 +106,7 @@ class TpuWork : public c10d::Work {
 
   bool isSuccess() const override { return true; }
 
-  bool wait(std::chrono::milliseconds timeout = kNoTimeout) override {
-    return true;
-  }
+  bool wait(std::chrono::milliseconds timeout) override { return true; }
 
   std::vector<at::Tensor> result() override { return results_; }
 

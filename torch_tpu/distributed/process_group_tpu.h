@@ -72,29 +72,29 @@ class ProcessGroupTpu : public c10d::Backend {
 
   c10::intrusive_ptr<c10d::Work> allreduce(
       std::vector<at::Tensor>& tensors,
-      const c10d::AllreduceOptions& opts = c10d::AllreduceOptions()) override;
+      const c10d::AllreduceOptions& opts) override;
 
   c10::intrusive_ptr<c10d::Work> broadcast(
       std::vector<at::Tensor>& tensors,
-      const c10d::BroadcastOptions& opts = c10d::BroadcastOptions()) override;
+      const c10d::BroadcastOptions& opts) override;
 
   c10::intrusive_ptr<c10d::Work> allgather(
       std::vector<std::vector<at::Tensor>>& output_tensors,
       std::vector<at::Tensor>& input_tensors,
-      const c10d::AllgatherOptions& opts = c10d::AllgatherOptions()) override;
+      const c10d::AllgatherOptions& opts) override;
 
   c10::intrusive_ptr<c10d::Work> _allgather_base(
       at::Tensor& output_tensor, at::Tensor& input_tensor,
-      const c10d::AllgatherOptions& opts = c10d::AllgatherOptions()) override;
+      const c10d::AllgatherOptions& opts) override;
 
   c10::intrusive_ptr<c10d::Work> allgather_into_tensor_coalesced(
       std::vector<at::Tensor>& outputs, std::vector<at::Tensor>& inputs,
-      const c10d::AllgatherOptions& opts = c10d::AllgatherOptions()) override;
+      const c10d::AllgatherOptions& opts) override;
 
   c10::intrusive_ptr<c10d::Work> gather(
       std::vector<std::vector<at::Tensor>>& output_tensors,
       std::vector<at::Tensor>& input_tensors,
-      const c10d::GatherOptions& opts = c10d::GatherOptions()) override;
+      const c10d::GatherOptions& opts) override;
 
   // Scatters a list of tensors from the root process to other processes
   // in the group such that each process gets exactly one tensor.
@@ -110,18 +110,16 @@ class ProcessGroupTpu : public c10d::Backend {
   c10::intrusive_ptr<c10d::Work> scatter(
       std::vector<at::Tensor>& outputs,
       std::vector<std::vector<at::Tensor>>& inputs,
-      const c10d::ScatterOptions& opts = c10d::ScatterOptions()) override;
+      const c10d::ScatterOptions& opts) override;
 
   c10::intrusive_ptr<c10d::Work> reduce_scatter(
       std::vector<at::Tensor>& output_tensors,
       std::vector<std::vector<at::Tensor>>& input_tensors,
-      const c10d::ReduceScatterOptions& opts =
-          c10d::ReduceScatterOptions()) override;
+      const c10d::ReduceScatterOptions& opts) override;
 
   c10::intrusive_ptr<c10d::Work> _reduce_scatter_base(
       at::Tensor& output, at::Tensor& input,
-      const c10d::ReduceScatterOptions& opts =
-          c10d::ReduceScatterOptions()) override;
+      const c10d::ReduceScatterOptions& opts) override;
 
   // Coalesces multiple independent reduce_scatter operations.
   // This is not used directly by any torch.distributed collective op.
@@ -135,8 +133,7 @@ class ProcessGroupTpu : public c10d::Backend {
   //      whether or not to return the result asynchronously.
   c10::intrusive_ptr<c10d::Work> reduce_scatter_tensor_coalesced(
       std::vector<at::Tensor>& outputs, std::vector<at::Tensor>& inputs,
-      const c10d::ReduceScatterOptions& opts =
-          c10d::ReduceScatterOptions()) override;
+      const c10d::ReduceScatterOptions& opts) override;
 
   // Splits the input tensor and then scatters the split list to all processes
   // in the group. Later the received tensors are concatenated from all the
@@ -196,7 +193,7 @@ class ProcessGroupTpu : public c10d::Backend {
       at::Tensor& output, at::Tensor& input,
       std::vector<int64_t>& output_split_sizes,  // INT_VEC_OK
       std::vector<int64_t>& input_split_sizes,   // INT_VEC_OK
-      const c10d::AllToAllOptions& opts = c10d::AllToAllOptions()) override;
+      const c10d::AllToAllOptions& opts) override;
 
   // Scatters list of input tensors to all processes in a group and returns
   // gathered list of tensors in output list.
@@ -226,10 +223,10 @@ class ProcessGroupTpu : public c10d::Backend {
   c10::intrusive_ptr<c10d::Work> alltoall(
       std::vector<at::Tensor>& output_tensors,
       std::vector<at::Tensor>& input_tensors,
-      const c10d::AllToAllOptions& opts = c10d::AllToAllOptions()) override;
+      const c10d::AllToAllOptions& opts) override;
 
   c10::intrusive_ptr<c10d::Work> barrier(
-      const c10d::BarrierOptions& opts = c10d::BarrierOptions()) override;
+      const c10d::BarrierOptions& opts) override;
 
  private:
   // Differently from PyTorch distributed APIs, XLA requires that all processes
