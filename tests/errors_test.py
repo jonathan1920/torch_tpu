@@ -22,7 +22,9 @@ from absl.testing import parameterized
 import torch
 from torch_tpu._internal import dynamism
 from torch_tpu._internal import env
+from torch_tpu._internal import execution_mode
 from torch_tpu._internal import testing as tt_testing
+from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.pallas import tpu_torch_pallas
 from tests import error_testing as et
 
@@ -1476,6 +1478,90 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
         message_reviewed_by="wan",
     ):
       torch.view_as_complex(t1)
+
+  def test_get_pad_module_mlir_mismatched_bounds_size(self):
+    tensor_info = [([1, 4], torch.int64)]
+    bounds_list = [([1], [8, 16])]
+
+    with self.assertRaisesRegex(
+        RuntimeError,
+        "dimension indices and upper bounds must have the same size, got 1"
+        " and 2",
+    ):
+      tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
+
+  def test_get_pad_module_mlir_dim_out_of_bounds(self):
+    tensor_info = [([1, 4], torch.int64)]
+    bounds_list = [([2], [8])]
+
+    with self.assertRaisesRegex(
+        RuntimeError,
+        r"dimension index must be within bounds \[0, 1\], got 2 for input"
+        r" tensor 0 with shape \[1, 4\]",
+    ):
+      tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
+
+  def test_get_pad_module_mlir_invalid_upper_bound(self):
+    tensor_info = [([1, 4], torch.int64)]
+    bounds_list = [([1], [2])]
+
+    with self.assertRaisesRegex(
+        RuntimeError,
+        r"upper bound must be greater than or equal to the static shape's"
+        r" dimension size, got upper bound 2 for dimension 1 for input tensor 0"
+        r" with shape \[1, 4\]",
+    ):
+      tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
+
+  def test_execute_output_shapes_too_many(self):
+    with execution_mode.eager_mode(execution_mode.EagerMode.INTERNAL_DEFER_ALL):
+      x = torch.ones(10, device="cpu").to(device=et.device())
+      y = torch.ones(10, device="cpu").to(device=et.device())
+      z = x + y
+
+    mlir = tpu_torch_compile.build_mlir([z], [x, y])
+    executable = tpu_torch_compile.compile_mlir(mlir)
+
+    with self.assertRaisesRegex(
+        RuntimeError,
+        "output shapes must be specified for all outputs or none, got 2 output"
+        " shapes for 1 output tensors",
+    ):
+      tpu_torch_compile.execute(executable, [x, y], [[5], [5]])
+
+  def test_execute_output_shapes_rank_mismatch(self):
+    with execution_mode.eager_mode(execution_mode.EagerMode.INTERNAL_DEFER_ALL):
+      x = torch.ones(10, device="cpu").to(device=et.device())
+      y = torch.ones(10, device="cpu").to(device=et.device())
+      z = x + y
+
+    mlir = tpu_torch_compile.build_mlir([z], [x, y])
+    executable = tpu_torch_compile.compile_mlir(mlir)
+
+    with self.assertRaisesRegex(
+        RuntimeError,
+        "output shape number of dimensions must match the statically inferred"
+        " dimensions, got output"
+        " shape dimensions 2 and inferred dimensions 1 for output tensor 0",
+    ):
+      tpu_torch_compile.execute(executable, [x, y], [[5, 2]])
+
+  def test_execute_output_shapes_exceeds_bound(self):
+    with execution_mode.eager_mode(execution_mode.EagerMode.INTERNAL_DEFER_ALL):
+      x = torch.ones(10, device="cpu").to(device=et.device())
+      y = torch.ones(10, device="cpu").to(device=et.device())
+      z = x + y
+
+    mlir = tpu_torch_compile.build_mlir([z], [x, y])
+    executable = tpu_torch_compile.compile_mlir(mlir)
+
+    with self.assertRaisesRegex(
+        RuntimeError,
+        r"output shape dimension must not exceed the statically inferred"
+        r" bound, "
+        r"got output shape \[15\] and inferred shape \[10\]",
+    ):
+      tpu_torch_compile.execute(executable, [x, y], [[15]])
 
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
