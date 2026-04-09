@@ -42,6 +42,9 @@ _RUN_MODE = flags.DEFINE_enum(
     ["static", "bd", "both"],
     "The run mode for inference.",
 )
+_COMPILE = flags.DEFINE_boolean(
+    "compile", False, "Whether to compile the model."
+)
 _DECODE_STEPS = flags.DEFINE_integer(
     "decode_steps", 4, "Number of decode steps to run."
 )
@@ -193,12 +196,13 @@ def _create_decode_attention_mask(
       (1, 1, 1, kv_len), dtype=dtype, device=native_device
   )
   attention_mask_dict = {"full_attention": attention_mask_tensor}
-  dynamism.mark_dynamic(
-      attention_mask_tensor,
-      dimension=3,
-      lower_bound=initial_seq_len,
-      upper_bound=initial_seq_len + _PADDING_LENGTH.value + 1,
-  )
+  if not _COMPILE.value:
+    dynamism.mark_dynamic(
+        attention_mask_tensor,
+        dimension=3,
+        lower_bound=initial_seq_len,
+        upper_bound=initial_seq_len + _PADDING_LENGTH.value + 1,
+    )
 
   return attention_mask_dict
 
@@ -228,12 +232,13 @@ def model_generate(
 
   run_type = "Static"
   if use_bounded_dynamism:
-    past_key_values = _dynamic_patch_cache(
-        past_key_values,
-        bounded_dim=2,
-        lower_bound=seq_len,
-        upper_bound=seq_len + _PADDING_LENGTH.value,
-    )
+    if not _COMPILE.value:
+      past_key_values = _dynamic_patch_cache(
+          past_key_values,
+          bounded_dim=2,
+          lower_bound=seq_len,
+          upper_bound=seq_len + _PADDING_LENGTH.value,
+      )
     run_type = "BD"
 
   model_kwargs = {
@@ -259,6 +264,9 @@ def model_generate(
       logits = output.logits.to("cpu")
       all_logits.append(logits)
     output_tokens.append(next_token.to("cpu"))
+
+    if _COMPILE.value:
+      model = torch.compile(model, backend="tpu")
 
     # Decode
     for i in range(decode_steps):
