@@ -361,6 +361,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/min_max:min_max_aten_kernels",
         "//torch_tpu/ops/round",
         "//torch_tpu/ops/sigmoid:sigmoid_aten_kernels",
+        "//torch_tpu/ops/to_copy",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",

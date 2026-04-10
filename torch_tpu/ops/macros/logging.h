@@ -281,10 +281,6 @@ void CheckScalarInput() {
       kOpName == OpName::kForeachClampMinScalarList ||   //
       kOpName == OpName::kForeachClampMin_Scalar ||      //
       kOpName == OpName::kForeachClampMin_ScalarList ||  //
-      kOpName == OpName::kForeachDivScalar ||            //
-      kOpName == OpName::kForeachDivScalarList ||        //
-      kOpName == OpName::kForeachDiv_Scalar ||           //
-      kOpName == OpName::kForeachDiv_ScalarList ||       //
       kOpName == OpName::kForeachNormScalar ||           //
       kOpName == OpName::kForeachPowScalar ||            //
       kOpName == OpName::kForeachPowScalarAndTensor ||   //
@@ -292,11 +288,7 @@ void CheckScalarInput() {
       kOpName == OpName::kForeachPow_Scalar ||           //
       kOpName == OpName::kForeachPow_ScalarList ||       //
       kOpName == OpName::kForeachSubList ||              //
-      kOpName == OpName::kForeachSubScalar ||            //
-      kOpName == OpName::kForeachSubScalarList ||        //
       kOpName == OpName::kForeachSub_List ||             //
-      kOpName == OpName::kForeachSub_Scalar ||           //
-      kOpName == OpName::kForeachSub_ScalarList ||       //
       kOpName == OpName::kGe ||                          //
       kOpName == OpName::kGeScalarOut ||                 //
       kOpName == OpName::kGt ||                          //
