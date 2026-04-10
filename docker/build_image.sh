@@ -57,3 +57,22 @@ echo "===> Done! Image '${IMAGE_TAG}' built successfully."
 echo "Repository source is available at /workspace/torch_tpu_src"
 echo "Examples are available at /workspace/examples"
 echo "You can run it with: docker run -it ${IMAGE_TAG}"
+
+
+if [[ "${UPLOAD_IMAGE_TO_GCR}" == "true" ]]; then
+  echo "===> Uploading image to GCR..."
+    DOCKER_TAG_DATE="nightly-$(date +%Y%m%d)"
+    DOCKER_TAG_LATEST="nightly-latest"
+    AR_REPO="us-docker.pkg.dev/ml-oss-artifacts-transient/torch-tpu-docker-container/torch-tpu"
+
+    echo "Tagging for date specifically: ${AR_REPO}:${DOCKER_TAG_DATE}"
+    docker tag torch-tpu-local "${AR_REPO}:${DOCKER_TAG_DATE}"
+
+    echo "Tagging as rolling latest: ${AR_REPO}:${DOCKER_TAG_LATEST}"
+    docker tag torch-tpu-local "${AR_REPO}:${DOCKER_TAG_LATEST}"
+
+    echo "Pushing images to Artifact Registry..."
+    docker push "${AR_REPO}:${DOCKER_TAG_DATE}"
+    docker push "${AR_REPO}:${DOCKER_TAG_LATEST}"
+  echo "===> Done!"
+fi
