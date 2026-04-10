@@ -285,10 +285,6 @@ void CheckScalarInput() {
       kOpName == OpName::kForeachDivScalarList ||        //
       kOpName == OpName::kForeachDiv_Scalar ||           //
       kOpName == OpName::kForeachDiv_ScalarList ||       //
-      kOpName == OpName::kForeachLerpScalar ||           //
-      kOpName == OpName::kForeachLerpScalarList ||       //
-      kOpName == OpName::kForeachLerp_Scalar ||          //
-      kOpName == OpName::kForeachLerp_ScalarList ||      //
       kOpName == OpName::kForeachNormScalar ||           //
       kOpName == OpName::kForeachPowScalar ||            //
       kOpName == OpName::kForeachPowScalarAndTensor ||   //

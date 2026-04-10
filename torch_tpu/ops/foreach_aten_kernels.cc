@@ -184,6 +184,37 @@ absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildForeachAddcmulShlo(
   return results;
 }
 
+absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildForeachLerpShlo(
+    absl::Span<const mlir::MlirOp> self, absl::Span<const mlir::MlirOp> other,
+    absl::Span<const mlir::MlirOp> weight,
+    absl::Span<const mlir::ElementType> out_dtypes,
+    mlir::MlirBuilder& builder) {
+  mlir::SmallVector<mlir::MlirOp> results;
+  results.reserve(self.size());
+  for (auto i = 0; i < self.size(); ++i) {
+    mlir::MlirOp current_self = self[i];
+    mlir::MlirOp current_other = other[i];
+    mlir::MlirOp current_weight = weight[i];
+
+    TT_ASSIGN_OR_RETURN(current_self,
+                        CastIfNeeded(current_self, out_dtypes[i]));
+    TT_ASSIGN_OR_RETURN(current_other,
+                        CastIfNeeded(current_other, out_dtypes[i]));
+    TT_ASSIGN_OR_RETURN(current_weight,
+                        CastIfNeeded(current_weight, out_dtypes[i]));
+
+    // lerp(start, end, weight) = start + weight * (end - start)
+    TT_ASSIGN_OR_RETURN(mlir::MlirOp diff,
+                        BuildSubShlo(current_other, current_self));
+    TT_ASSIGN_OR_RETURN(mlir::MlirOp weighted_diff,
+                        BuildMulShlo(current_weight, diff));
+    TT_ASSIGN_OR_RETURN(mlir::MlirOp result,
+                        BuildAddShlo(current_self, weighted_diff));
+    results.push_back(result);
+  }
+  return results;
+}
+
 std::vector<at::Tensor> ForeachConvertToTensor(
     std::vector<DeviceBufferRef> result_buffers) {
   std::vector<at::Tensor> result;
@@ -634,6 +665,49 @@ std::vector<DeviceBufferRef> ForeachAddcmul(at::TensorList self,
       // Share the same OpName for all calls ForeachAddcmul(), as the
       // Shlo is the same.
       .op_name = OpName::kForeachAddcmulTensor,
+      .out_dtypes = out_dtypes_span,
+      .out_dims_list = out_dims_list,
+      .op_param_cache_keys = OpParamCacheKeys::Empty(),
+  };
+
+  TT_ASSIGN_OR_THROW(auto result_buffers,
+                     (DispatchOp<kDynamicSize, kDynamicSize>(
+                         std::move(op_builder), inputs, std::move(options))));
+  return result_buffers;
+}
+
+std::vector<DeviceBufferRef> ForeachLerp(at::TensorList self,
+                                         at::TensorList other,
+                                         at::TensorList weight,
+                                         UniqueDtypeVec out_dtypes) {
+  size_t num_tensors = self.size();
+  const DtypeSpan out_dtypes_span = *out_dtypes;
+
+  std::vector<at::Tensor> inputs;
+  inputs.reserve(3 * num_tensors);
+  inputs.insert(inputs.end(), self.begin(), self.end());
+  inputs.insert(inputs.end(), other.begin(), other.end());
+  inputs.insert(inputs.end(), weight.begin(), weight.end());
+
+  auto op_builder = [num_tensors, out_dtypes = std::move(out_dtypes),
+                     out_dtypes_span](absl::Span<mlir::MlirOp> inputs,
+                                      mlir::MlirBuilder& builder)
+      -> absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> {
+    absl::Span<mlir::MlirOp> self_ops = inputs.subspan(0, num_tensors);
+    absl::Span<mlir::MlirOp> other_ops =
+        inputs.subspan(num_tensors, num_tensors);
+    absl::Span<mlir::MlirOp> weight_ops =
+        inputs.subspan(2 * num_tensors, num_tensors);
+
+    return BuildForeachLerpShlo(self_ops, other_ops, weight_ops,
+                                out_dtypes_span, builder);
+  };
+
+  const auto out_dims_list = GetDimsList(self);
+  DispatchOpOptions<kDynamicSize> options = {
+      // Share the same OpName for all ForeachLerp() calls, as the underlying
+      // Shlo is the same.
+      .op_name = OpName::kForeachLerpScalar,
       .out_dtypes = out_dtypes_span,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = OpParamCacheKeys::Empty(),
@@ -1926,60 +2000,101 @@ std::vector<at::Tensor> AtenForeachLerpList(at::TensorList self,
                                             at::TensorList other,
                                             at::TensorList weight) {
   TT_KERNEL(OpName::kForeachLerpList, _, (self, other, weight), {
-    auto diff = AtenForeachSubList(other, self, 1.0);
-    auto weighted_diff = AtenForeachMulList(weight, diff);
-    return AtenForeachAddList(self, weighted_diff, 1.0);
+    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+    return ForeachConvertToTensor(
+        ForeachLerp(self, other, weight, std::move(out_dtypes)));
   });
 }
 
 std::vector<at::Tensor> AtenForeachLerpScalar(at::TensorList self,
                                               at::TensorList other,
                                               const at::Scalar& weight) {
-  TT_KERNEL(OpName::kForeachLerpScalar, _,
-            (self, other, IgnoreInCacheKey(weight, "Legacy usage")), {
-              auto diff = AtenForeachSubList(other, self, 1.0);
-              auto weighted_diff = AtenForeachMulScalar(diff, weight);
-              return AtenForeachAddList(self, weighted_diff, 1.0);
-            });
+  auto promoted_weight = PromoteScalar(weight);
+  TT_KERNEL(OpName::kForeachLerpScalar, _, (self, other, promoted_weight), {
+    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+    std::vector<at::Tensor> weight_list;
+    weight_list.reserve(self.size());
+    for (size_t i = 0; i < self.size(); ++i) {
+      at::ScalarType scalar_type = ConvertTo<at::ScalarType>((*out_dtypes)[i]);
+      TT_ASSIGN_OR_THROW(at::Tensor weight_tensor,
+                         promoted_weight.GetTensor(scalar_type));
+      weight_list.push_back(weight_tensor);
+    }
+    return ForeachConvertToTensor(
+        ForeachLerp(self, other, weight_list, std::move(out_dtypes)));
+  });
 }
 
 std::vector<at::Tensor> AtenForeachLerpScalarList(
     at::TensorList self, at::TensorList other,
     at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachLerpScalarList, _,
-            (self, other, IgnoreInCacheKey(scalars, "Legacy usage")), {
-              auto diff = AtenForeachSubList(other, self, 1.0);
-              auto weighted_diff = AtenForeachMulScalarList(diff, scalars);
-              return AtenForeachAddList(self, weighted_diff, 1.0);
+  auto promoted_scalars = PromoteScalar(scalars);
+  TT_KERNEL(OpName::kForeachLerpScalarList, _, (self, other, promoted_scalars),
+            {
+              TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+              TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+              std::vector<at::Tensor> weight_list;
+              weight_list.reserve(self.size());
+              for (size_t i = 0; i < self.size(); ++i) {
+                at::ScalarType scalar_type =
+                    ConvertTo<at::ScalarType>((*out_dtypes)[i]);
+                TT_ASSIGN_OR_THROW(at::Tensor weight_tensor,
+                                   promoted_scalars[i].GetTensor(scalar_type));
+                weight_list.push_back(weight_tensor);
+              }
+              return ForeachConvertToTensor(
+                  ForeachLerp(self, other, weight_list, std::move(out_dtypes)));
             });
 }
 
 void AtenForeachLerp_List(at::TensorList self, at::TensorList other,
                           at::TensorList weight) {
   TT_KERNEL(OpName::kForeachLerp_List, _, (self, other, weight), {
-    auto diff = AtenForeachSubList(other, self, 1.0);
-    auto weighted_diff = AtenForeachMulList(diff, weight);
-    AtenForeachAdd_List(self, weighted_diff, 1.0);
+    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(
+        ForeachLerp(self, other, weight, std::move(out_dtypes)), self));
   });
 }
 
 void AtenForeachLerp_Scalar(at::TensorList self, at::TensorList other,
                             const at::Scalar& weight) {
-  TT_KERNEL(OpName::kForeachLerp_Scalar, _,
-            (self, other, IgnoreInCacheKey(weight, "Legacy usage")), {
-              auto diff = AtenForeachSubList(other, self, 1.0);
-              auto weighted_diff = AtenForeachMulScalar(diff, weight);
-              AtenForeachAdd_List(self, weighted_diff, 1.0);
-            });
+  auto promoted_weight = PromoteScalar(weight);
+  TT_KERNEL(OpName::kForeachLerp_Scalar, _, (self, other, promoted_weight), {
+    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+    std::vector<at::Tensor> weight_list;
+    weight_list.reserve(self.size());
+    for (size_t i = 0; i < self.size(); ++i) {
+      TT_ASSIGN_OR_THROW(at::Tensor weight_tensor,
+                         promoted_weight.GetTensor(self[i].scalar_type()));
+      weight_list.push_back(weight_tensor);
+    }
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(
+        ForeachLerp(self, other, weight_list, std::move(out_dtypes)), self));
+  });
 }
 
 void AtenForeachLerp_ScalarList(at::TensorList self, at::TensorList other,
                                 at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachLerp_ScalarList, _,
-            (self, other, IgnoreInCacheKey(scalars, "Legacy usage")), {
-              auto diff = AtenForeachSubList(other, self, 1.0);
-              auto weighted_diff = AtenForeachMulScalarList(diff, scalars);
-              AtenForeachAdd_List(self, weighted_diff, 1.0);
+  auto promoted_scalars = PromoteScalar(scalars);
+  TT_KERNEL(OpName::kForeachLerp_ScalarList, _, (self, other, promoted_scalars),
+            {
+              TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+              TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+              std::vector<at::Tensor> weight_list;
+              weight_list.reserve(self.size());
+              for (size_t i = 0; i < self.size(); ++i) {
+                TT_ASSIGN_OR_THROW(
+                    at::Tensor weight_tensor,
+                    promoted_scalars[i].GetTensor(self[i].scalar_type()));
+                weight_list.push_back(weight_tensor);
+              }
+              TT_THROW_IF_ERROR(ForeachAssignToTensor(
+                  ForeachLerp(self, other, weight_list, std::move(out_dtypes)),
+                  self));
             });
 }
 
