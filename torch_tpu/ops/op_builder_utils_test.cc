@@ -701,25 +701,33 @@ INSTANTIATE_TEST_SUITE_P(
           /*static_input_shape=*/{1, 10},
           /*static_output_shape=*/{1, 1, 10, 1},
           /*expected_bounded_output_shape=*/{1, 1, 1024, 1},
-          /*expected_output_bounded=*/{false, false, true, false}}}),
+          /*expected_output_bounded=*/{false, false, true, false}},
+         {"CollapseMultipleBoundedDimsToMultipleBoundedDims",
+          /*bounded_input_shape=*/{2, 10, 5, 10},
+          /*bound_dims=*/{1, 3},
+          /*static_input_shape=*/{2, 3, 5, 6},
+          /*static_output_shape=*/{6, 30},
+          /*expected_bounded_output_shape=*/{20, 50},
+          /*expected_output_bounded=*/{true, true}},
+         {"CollapseMultipleBoundedDimstoSingleBoundedDim",
+          /*bounded_input_shape=*/{2, 10, 5, 10},
+          /*bound_dims=*/{1, 3},
+          /*static_input_shape=*/{2, 3, 5, 6},
+          /*static_output_shape=*/{2, 90},
+          /*expected_bounded_output_shape=*/{2, 500},
+          /*expected_output_bounded=*/{false, true}},
+         {"ExpandMultipleBoundedDimtoMultipleBoundedDims",
+          /*bounded_input_shape=*/{2, 10, 20},
+          /*bound_dims=*/{1, 2},
+          /*static_input_shape=*/{2, 3, 6},
+          /*static_output_shape=*/{2, 3, 1, 6, 1, 1},
+          /*expected_bounded_output_shape=*/{2, 10, 1, 20, 1, 1},
+          /*expected_output_bounded=*/
+          {false, true, false, true, false, false}}}),
     [](const testing::TestParamInfo<
         DynamicReshapeFromStaticDimensionsTest::ParamType>& info) {
       return info.param.test_name;
     });
-
-TEST(DynamicReshapeFromStaticDimensions, ErrorMultipleDynamicDims) {
-  Dimensions bounded_input_shape = {2, 13, 5};
-  Dimensions static_input_shape = {2, 3, 5};
-  Dimensions static_output_shape = {6, 5};
-  OpBuilderUtilsBuilder op_builder_utils_builder;
-  ReshapeTestResult result =
-      BuildReshapeGraph(bounded_input_shape, {0, 1}, static_input_shape,
-                        static_output_shape, op_builder_utils_builder);
-  ASSERT_FALSE(result.reshaped_op.ok());
-  EXPECT_EQ(result.reshaped_op.status().code(), error::kUnimplemented);
-  EXPECT_THAT(result.reshaped_op.status().message(),
-              testing::HasSubstr("more than one dynamic dimension"));
-}
 
 TEST(DynamicReshapeFromStaticDimensions, ErrorReassociationNotFound) {
   Dimensions bounded_input_shape = {2, 3, 5, 10};

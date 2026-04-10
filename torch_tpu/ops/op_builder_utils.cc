@@ -1037,6 +1037,110 @@ GetReassociationIndicesForReshape(const Dimensions& static_shape_before,
   return std::nullopt;
 }
 
+absl::Status HandleCollapseReshape(
+    mlir::MlirOp op, const ReshapeReassociation& reassociation,
+    const mlir::stablehlo::Dimensions& op_dims,
+    const Dimensions& static_shape_after,
+    mlir::SmallVector<mlir::stablehlo::DimensionInfo>& output_dims) {
+  // Collapse: reassociation[output_idx] gives {input_idx, ...}
+  // Ex: [1, 2, 3, 4] -> [1, 2, 12]
+  // reassociation[outputIdx = 0] = inputIdx 0
+  // reassociation[outputIdx = 1] = inputIdx 1
+  // reassociation[outputIdx = 2] = inputIdx 2, 3
+  for (int64_t outputIdx = 0; outputIdx < reassociation.reassociation.size();
+       ++outputIdx) {
+    const auto& group = reassociation.reassociation[outputIdx];
+    bool contains_dynamic_input = false;
+    for (int64_t inputIdx : group) {
+      if (op_dims[inputIdx].boundOp.has_value()) {
+        contains_dynamic_input = true;
+        break;
+      }
+    }
+    if (!contains_dynamic_input) continue;
+
+    const int64_t output_group_bounded_size = std::accumulate(
+        group.begin(), group.end(), 1L, [&](int64_t acc, int64_t inputIdx) {
+          return acc * op_dims[inputIdx].size;
+        });
+    int64_t output_bound_dim = outputIdx;
+    int64_t output_dyn_bound = output_group_bounded_size;
+
+    ABSL_CHECK(  // CRASH_OK=should not happen, would imply a bug in the code
+        static_shape_after[output_bound_dim] <= output_dyn_bound)
+        << "output static shape at bound dim " << output_bound_dim
+        << " for output shape [" << absl::StrJoin(static_shape_after, ",")
+        << "] is greater than the inferred bound of " << output_dyn_bound;
+
+    output_dims[output_bound_dim] = {.size = output_dyn_bound,
+                                     .boundOp = op.getValue()};
+
+    ABSL_VLOG(3) << "[HandleCollapseReshape] outputIdx: " << outputIdx
+                 << " output_dyn_bound: " << output_dyn_bound;
+  }
+  return absl::OkStatus();
+}
+
+absl::Status HandleExpandReshape(
+    mlir::MlirOp op, const ReshapeReassociation& reassociation,
+    const mlir::stablehlo::Dimensions& op_dims,
+    const Dimensions& static_shape_before, const Dimensions& static_shape_after,
+    mlir::SmallVector<mlir::stablehlo::DimensionInfo>& output_dims) {
+  // Expansion: reassociation[input_idx] gives {output_idx, ...}
+  // Ex: [1, 2, 12] -> [1, 2, 3, 4]
+  // reassociation[inputIdx = 0] = outputIdx 0
+  // reassociation[inputIdx = 1] = outputIdx 1
+  // reassociation[inputIdx = 2] = outputIdx 2, 3
+  for (int64_t inputIdx = 0; inputIdx < op_dims.size(); ++inputIdx) {
+    if (!op_dims[inputIdx].boundOp.has_value()) continue;
+
+    ABSL_CHECK(  // CRASH_OK=would imply a bug in
+                 // getReassociationIndicesForReshape
+        inputIdx < reassociation.reassociation.size())
+        << "invalid reassociation map, input bound dim " << inputIdx
+        << " is out of bounds for reassociation "
+        << ShapeTransitionToString(static_shape_before, static_shape_after);
+    const auto& outputGroup = (reassociation.reassociation)[inputIdx];
+    int64_t output_bound_dim = -1;
+    int64_t output_dyn_bound = -1;
+
+    if (outputGroup.size() == 1) {
+      output_bound_dim = outputGroup[0];
+      output_dyn_bound =
+          op_dims[inputIdx].size;  // Bound is directly transferred
+    } else {
+      Dimensions non_one_output_dims;
+      absl::c_copy_if(
+          outputGroup, std::back_inserter(non_one_output_dims),
+          [&](int64_t dim) { return static_shape_after[dim] != 1; });
+      if (non_one_output_dims.size() == 1) {
+        output_bound_dim = non_one_output_dims[0];
+        output_dyn_bound =
+            op_dims[inputIdx].size;  // Bound is directly transferred
+      } else {
+        return TT_ERROR(error::kInvalidArgument)
+               << "unflatten ambiguous as input bound dim " << inputIdx
+               << " expands to multiple non one output dims "
+               << absl::StrJoin(non_one_output_dims, ",")
+               << " for reassociation "
+               << ShapeTransitionToString(static_shape_before,
+                                          static_shape_after);
+      }
+    }
+    ABSL_CHECK(  // CRASH_OK=should not happen, would imply a bug in the code
+        static_shape_after[output_bound_dim] <= output_dyn_bound)
+        << "output static shape at bound dim " << output_bound_dim
+        << " for output shape [" << absl::StrJoin(static_shape_after, ",")
+        << "] is greater than the inferred bound of " << output_dyn_bound;
+    output_dims[output_bound_dim] = {.size = output_dyn_bound,
+                                     .boundOp = op.getValue()};
+    ABSL_VLOG(3) << "[HandleExpandReshape] output_bound_dim: "
+                 << output_bound_dim
+                 << " output_dyn_bound: " << op_dims[inputIdx].size;
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 // Returns a string representation of the reassociation indices for debugging.
@@ -1124,12 +1228,6 @@ absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
       << static_shape_before.size()
       << " for static_shape_before: " << ToString(static_shape_before);
 
-  // TODO: Explore making this work with multiple dynamic dimensions
-  TT_RET_CHECK(type.getNumDynamicDims() == 1, error::kUnimplemented)
-      << "reshape not supported on tensor with more than one dynamic "
-         "dimension: "
-      << mlir::debugString(type);
-
   // Determine the reassociation indices from the static shapes.
   // This is used to determine the output dimension that needs to be bounded
   // and the bound value.
@@ -1143,117 +1241,23 @@ absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
                  << mlir::debugString(type);
     return Flatten(op);
   }
-
-  mlir::stablehlo::Dimensions op_dims = GetDimensions(op);
-  auto it = absl::c_find_if(
-      op_dims, [](const auto& dim) { return dim.boundOp.has_value(); });
-  size_t input_bound_dim = it - op_dims.begin();
-
   ABSL_VLOG(3) << "[ReshapeFromStaticDimensions] "
                << ReassociationToString(reassociation);
 
-  int64_t output_bound_dim = -1;
-  int64_t output_dyn_bound = -1;
+  mlir::stablehlo::Dimensions op_dims = GetDimensions(op);
 
-  if (reassociation.type == ReshapeType::kCollapse) {
-    // Collapse: reassociation[output_idx] gives {input_idx, ...}
-    // Ex: [1, 2, 3, 4] -> [1, 2, 12]
-    // reassociation[outputIdx = 0] = inputIdx 0
-    // reassociation[outputIdx = 1] = inputIdx 1
-    // reassociation[outputIdx = 2] = inputIdx 2, 3
-    // if input_bound_dim = 1, then output_bound_dim = 1
-    // if input_bound_dim = 2 or 3, then output_bound_dim = 2,
-    // output_dyn_bound = product of bounds of input dims 2 and 3
-    for (int outputIdx = 0; outputIdx < reassociation.reassociation.size();
-         ++outputIdx) {
-      const auto& group = reassociation.reassociation[outputIdx];
-      bool contains_input_dyn = absl::c_linear_search(group, input_bound_dim);
-      if (!contains_input_dyn) continue;
-
-      ABSL_CHECK(output_bound_dim == -1)  // CRASH_OK=would imply a bug in
-                                          // getReassociationIndicesForReshape
-          << "multiple valid bound propagations found for input bound dim "
-          << input_bound_dim << " for reassociation "
-          << ReassociationToString(reassociation);
-
-      const size_t output_group_bounded_size = std::accumulate(
-          group.begin(), group.end(), 1L, [&](size_t acc, size_t inputIdx) {
-            return acc * op_dims[inputIdx].size;
-          });
-      output_bound_dim = outputIdx;
-      output_dyn_bound = output_group_bounded_size;
-
-      ABSL_VLOG(3) << "[ReshapeFromStaticDimensions] output_bound_dim: "
-                   << output_bound_dim
-                   << " output_dyn_bound: " << output_dyn_bound;
-    }
-  } else {
-    // Expansion: reassociation[input_idx] gives {output_idx, ...}
-    // Ex: [1, 2, 12] -> [1, 2, 3, 4]
-    // reassociation[inputIdx = 0] = outputIdx 0
-    // reassociation[inputIdx = 1] = outputIdx 1
-    // reassociation[inputIdx = 2] = outputIdx 2, 3
-    // if input_bound_dim = 0, then output_bound_dim = 0
-    // if input_bound_dim = 1, then output_bound_dim = 1
-    // if input_bound_dim = 2, ambiguous, not supported (cannot transfer
-    // output bound from one input dim to multiple output dims)
-    ABSL_CHECK(  // CRASH_OK=would imply a bug in
-                 // getReassociationIndicesForReshape
-        input_bound_dim < reassociation.reassociation.size())
-        << "invalid reassociation map, input bound dim " << input_bound_dim
-        << " is out of bounds for reassociation "
-        << ShapeTransitionToString(static_shape_before, static_shape_after);
-
-    const auto& outputGroup = (reassociation.reassociation)[input_bound_dim];
-
-    if (outputGroup.size() == 1) {
-      output_bound_dim = outputGroup[0];
-      output_dyn_bound =
-          op_dims[input_bound_dim].size;  // Bound is directly transferred
-    } else {
-      Dimensions non_one_output_dims;
-      absl::c_copy_if(
-          outputGroup, std::back_inserter(non_one_output_dims),
-          [&](int64_t dim) { return static_shape_after[dim] != 1; });
-      if (non_one_output_dims.size() == 1) {
-        output_bound_dim = non_one_output_dims[0];
-        output_dyn_bound =
-            op_dims[input_bound_dim].size;  // Bound is directly transferred
-      } else {
-        return TT_ERROR(error::kInvalidArgument)
-               << "unflatten ambiguous as input bound dim " << input_bound_dim
-               << " expands to multiple non one output dims "
-               << absl::StrJoin(non_one_output_dims, ",")
-               << " for reassociation "
-               << ShapeTransitionToString(static_shape_before,
-                                          static_shape_after);
-      }
-    }
-    ABSL_VLOG(3) << "[ReshapeFromStaticDimensions] output_bound_dim: "
-                 << output_bound_dim
-                 << " output_dyn_bound: " << output_dyn_bound;
+  mlir::SmallVector<mlir::stablehlo::DimensionInfo> output_dims(
+      static_shape_after.size());
+  for (int64_t i = 0; i < static_shape_after.size(); ++i) {
+    output_dims[i] = {.size = static_shape_after[i]};
   }
-
-  ABSL_CHECK(  // CRASH_OK=if reassociation is valid, then we either error out
-               // above or set output_bound_dim
-      output_bound_dim != -1)
-      << "unable to determine valid reassociation for bounded dynamism: "
-      << ShapeTransitionToString(static_shape_before, static_shape_after);
-
-  ABSL_CHECK(  // CRASH_OK=should not happen, would imply a bug in the code
-      static_shape_after[output_bound_dim] <= output_dyn_bound)
-      << "output static shape at bound dim " << output_bound_dim
-      << " for output shape [" << absl::StrJoin(static_shape_after, ",")
-      << "] is greater than the inferred bound of " << output_dyn_bound;
-
-  mlir::SmallVector<mlir::stablehlo::DimensionInfo> output_dims;
-  for (int i = 0; i < static_shape_after.size(); ++i) {
-    if (i == output_bound_dim) {
-      output_dims.push_back(
-          {.size = output_dyn_bound, .boundOp = op.getValue()});
-    } else {
-      output_dims.push_back({.size = static_shape_after[i]});
-    }
+  if (reassociation.type == ReshapeType::kCollapse) {
+    TT_RETURN_IF_ERROR(HandleCollapseReshape(op, reassociation, op_dims,
+                                             static_shape_after, output_dims));
+  } else {
+    TT_RETURN_IF_ERROR(HandleExpandReshape(op, reassociation, op_dims,
+                                           static_shape_before,
+                                           static_shape_after, output_dims));
   }
 
   mlir::RankedTensorType dynamic_shape_after =
