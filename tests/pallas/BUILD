@@ -26,7 +26,6 @@ torch_tpu_py_test(
     env = {"TPU_PREMAPPED_BUFFER_SIZE": "0"},
     tags = ["requires-tpu-v5lite"],
     deps = [
-        "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/jax:pallas",
         "//shims/torch:pytorch",

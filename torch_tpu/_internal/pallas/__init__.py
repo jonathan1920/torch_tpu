@@ -13,13 +13,12 @@
 # limitations under the License.
 """Pallas API for Torch-TPU."""
 
-from .pallas import custom_jax_kernel, custom_kernel
+from .pallas import custom_jax_kernel
 
 
 # PEP 8 requires this to be a list of strings, not a tuple or a list of objects.
 __all__ = [
     # go/keep-sorted start
     "custom_jax_kernel",
-    "custom_kernel",
     # go/keep-sorted end
 ]

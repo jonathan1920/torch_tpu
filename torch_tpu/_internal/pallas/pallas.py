@@ -19,7 +19,6 @@ of these APIs requires that your environment also has JAX/Pallas installed.
 """
 
 from collections.abc import Mapping
-import functools
 from typing import Any, Callable, Sequence
 from absl import logging
 import frozendict
@@ -33,7 +32,6 @@ try:
   # protect against this, see @requires_jax in PT/XLA repo.
   import jax
   import jax.export
-  from jax.experimental import pallas as pl
 except ImportError as ex:
   raise ImportError(
       "JAX/Pallas is not available. Please install JAX to use this API."
@@ -344,83 +342,6 @@ class JaxCallable:
         input_output_aliases=self.input_output_aliases,
     )
     return out_tree.unflatten(results)
-
-
-def custom_kernel(
-    output_shapes: Callable[..., _KernelResultT] | _KernelResultT,
-    pallas_kernel: Callable[..., Any] | None = None,
-    **pl_kwargs,
-) -> (
-    Callable[..., _KernelResultT]
-    | Callable[[Callable[..., Any]], Callable[..., _KernelResultT]]
-):
-  """A decorator that imports a Pallas kernel into for use with torch_tpu.
-
-  ```py
-  @pallas.custom_kernel(lambda x, y: torch.empty_like(x))
-  def add_vectors(x_ref, y_ref, o_ref):
-    x, y = x_ref[...], y_ref[...]
-    o_ref[...] = x + y
-
-  x = torch.ones(10)
-  y = torch.ones(10)
-  z = add_vectors(x, y)
-  ```
-
-  Args:
-    output_shapes: A tensor or tensor list, or a function that takes the input
-      arguments and returns the output shapes of the Pallas kernel. Note, only
-      the tensor's shape and dtype information is used, the data is not used.
-    pallas_kernel: The pallas kernel to compile. If None then return a decorator
-      that expects a pallas_kernel argument.
-    **pl_kwargs: Additional keyword arguments to configure the inner
-      pallas_call, like `grid`, `in_specs`, `out_specs`, `input_output_aliases`,
-      etc.
-
-  Returns:
-    A decorator that takes a pallas kernel function and returns a callable that
-    can be used to call the kernel on torch.Tensor inputs.
-  """
-
-  def get_output_shapes(*args, **kwargs):
-    if callable(output_shapes):
-      return output_shapes(*args, **kwargs)
-    return output_shapes
-
-  def decorator(
-      pallas_kernel: Callable[..., None],
-  ) -> Callable[..., _KernelResultT]:
-    # Prefer explicit name if specified in kwargs (pallas_call allows this)
-    # If that isn't specified, we use the function name if available, with
-    # "kernel" as a fallback name.
-    name = pl_kwargs.get("name", getattr(pallas_kernel, "__name__", "kernel"))
-    name_key = f"{name}_{id(pallas_kernel)}"  # distinguish funcs with same name
-    trace_key = _get_kernel_invocation_key(name_key, [], pl_kwargs)
-
-    # Make a JAX callable for the wrapped pallas kernel.
-    # Unfortunately for Pallas kernels we need to defer until call time to
-    # build the JAX Callable since the output is a function of the input that
-    # isn't known until call time.
-    @functools.wraps(pallas_kernel)
-    def wrapped_call(*args, **kwargs) -> _KernelResultT:
-      out_shapes = get_output_shapes(*args, **kwargs)
-      jax_out_shapes = jax_placeholders(out_shapes)
-      pl_fn_jit = jax.jit(
-          pl.pallas_call(pallas_kernel, out_shape=jax_out_shapes, **pl_kwargs),
-      )
-      jax_callable = JaxCallable(
-          name=name,
-          jit_fn=pl_fn_jit,
-          trace_key=trace_key,
-          input_output_aliases=pl_kwargs.get("input_output_aliases", None),
-      )
-      return jax_callable(*args, **kwargs)
-
-    return wrapped_call
-
-  if pallas_kernel is None:
-    return decorator
-  return decorator(pallas_kernel)
 
 
 def custom_jax_kernel(
