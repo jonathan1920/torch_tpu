@@ -157,6 +157,7 @@ class DynamismTest(parameterized.TestCase):
   def setUp(self):
     super().setUp()
     self.device = api.tpu_device()
+    torch.tpu._clear_cache()
 
   def _run_bounded_dynamism_test(self, fn, mark_dynamic_fn, *args):
     expected = fn(*args)
