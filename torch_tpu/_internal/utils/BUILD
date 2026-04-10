@@ -72,6 +72,7 @@ torch_tpu_py_test(
     deps = [
         ":hardware",
         "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
     ],
 )
 

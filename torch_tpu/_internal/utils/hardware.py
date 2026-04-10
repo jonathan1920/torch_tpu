@@ -21,7 +21,7 @@ variables, then we use this to decode their topology given the generation of the
 device and the world size.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Set
 import os
 import pathlib
 from typing import Final
@@ -84,6 +84,13 @@ _PCI_DEVICE_ID_TO_NAME: Final[Mapping[str, str]] = immutabledict.immutabledict({
     "0x006f": "TPU v6e",
     "0x0076": "TPU v7",
 })
+
+# GPU device names
+_NVIDIA_GPU_DEVICES: Final[Set[str]] = frozenset([
+    "/dev/nvidia0",
+    "/dev/nvidiactl",  # Docker/Kubernetes
+    "/dev/dxg",  # WSL2
+])
 
 
 def get_tpu_device_name() -> str:
@@ -194,3 +201,9 @@ def get_tpu_topology(world_size: int | None = None) -> str | None:
       raise RuntimeError(f"No TPU topology found for count: {target_size}")
 
   return None
+
+
+def has_nvidia_gpu() -> bool:
+  """True if there's a visible nvidia gpu available on device, False otherwise."""
+
+  return any(os.path.exists(d) for d in _NVIDIA_GPU_DEVICES)

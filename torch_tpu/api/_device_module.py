@@ -135,8 +135,7 @@ class _DeviceModule:
     if cls._device_type == "xla_cpu":
       return True
     if cls._device_type == "xla_cuda":
-      # TODO(jparkerh): detect GPUs without full init.
-      return True
+      return hardware.has_nvidia_gpu()
     return False
 
   @classmethod

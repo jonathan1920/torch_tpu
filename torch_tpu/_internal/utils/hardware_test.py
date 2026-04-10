@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import pathlib
 from unittest import mock
 from absl.testing import absltest
+from absl.testing import parameterized
 from torch_tpu._internal.utils import hardware
 
 
@@ -106,6 +108,24 @@ class TpuTopologyMockTest(absltest.TestCase):
     with mock.patch.object(pathlib, "Path", side_effect=get_path_mock):
       topology = hardware.get_tpu_topology()
       self.assertEqual(topology, expected_topology)
+
+
+class NvidiaGpuMockTest(parameterized.TestCase):
+
+  @parameterized.parameters(
+      ("/dev/nvidia0",),
+      ("/dev/nvidiactl",),
+      ("/dev/dxg",),
+  )
+  @mock.patch.object(os.path, "exists")
+  def test_has_nvidia_gpu_true(self, path_to_exist, mock_exists):
+    mock_exists.side_effect = lambda path: path == path_to_exist
+    self.assertTrue(hardware.has_nvidia_gpu())
+
+  @mock.patch.object(os.path, "exists")
+  def test_has_nvidia_gpu_false(self, mock_exists):
+    mock_exists.return_value = False
+    self.assertFalse(hardware.has_nvidia_gpu())
 
 
 if __name__ == "__main__":
