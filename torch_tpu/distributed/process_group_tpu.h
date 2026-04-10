@@ -26,14 +26,18 @@
 // "non-functional" ones, but as some point we may want to specialize.
 
 #include <cstdint>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "ATen/core/TensorBody.h"
+#include "ATen/core/ivalue_inl.h"
 #include "c10/util/intrusive_ptr.h"
 #include "torch/csrc/distributed/c10d/Backend.hpp"
 #include "torch/csrc/distributed/c10d/Store.hpp"
@@ -43,6 +47,8 @@
 #include "torch_tpu/distributed/types.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/ops/op_names.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/shape.h"
 
 namespace torch_tpu {
 
@@ -228,6 +234,12 @@ class ProcessGroupTpu : public c10d::Backend {
   c10::intrusive_ptr<c10d::Work> barrier(
       const c10d::BarrierOptions& opts) override;
 
+  c10::intrusive_ptr<c10d::Work> send(std::vector<at::Tensor>& tensors,
+                                      int dst_rank, int tag) override;
+
+  c10::intrusive_ptr<c10d::Work> recv(std::vector<at::Tensor>& tensors,
+                                      int src_rank, int tag) override;
+
  private:
   // Differently from PyTorch distributed APIs, XLA requires that all processes
   // supply *all* the device id subgroups (in replica_groups attribute), even
@@ -262,6 +274,22 @@ class ProcessGroupTpu : public c10d::Backend {
       const std::vector<int64_t>& input_split_sizes);  // INT_VEC_OK
 
  private:
+  using CrossHostReceiveBuffersResult =
+      std::pair<std::vector<std::unique_ptr<xla::PjRtBuffer>>,
+                c10::intrusive_ptr<c10::ivalue::Future>>;
+
+  // Extracts receive descriptors from store_ and sends buffers to a
+  // remote device.
+  absl::StatusOr<c10::intrusive_ptr<c10::ivalue::Future>> CrossHostSendBuffers(
+      std::vector<xla::PjRtBuffer*>& buffers,
+      absl::Span<const xla::CrossHostTransferKey> transfer_keys);
+
+  // Populates store_ with receive descriptors and places buffers
+  // from a cross-host send onto device.
+  absl::StatusOr<CrossHostReceiveBuffersResult> CrossHostReceiveBuffers(
+      absl::Span<const xla::Shape> shapes,
+      absl::Span<const xla::CrossHostTransferKey> transfer_keys);
+
   c10::intrusive_ptr<c10d::Store> store_;
 
   std::vector<int64_t> device_ids_;  // All the TPUs in the slice. INT_VEC_OK

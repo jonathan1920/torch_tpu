@@ -16,9 +16,12 @@
 
 #include "torch_tpu/distributed/process_group_tpu.h"
 
+#include <atomic>
 #include <chrono>  // NOLINT - needed for PyTorch API
 #include <cstddef>
 #include <cstdint>
+#include <exception>
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -32,6 +35,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -78,6 +82,9 @@
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/runtime/device_id.h"
+#include "xla/shape.h"
 
 ABSL_FLAG(bool, torch_tpu_internal_materialize_collective_tensors, true,
           "Split the execution graph before and after collectives.");
@@ -89,9 +96,28 @@ namespace {
 class TpuWork : public c10d::Work {
  public:
   explicit TpuWork(std::vector<at::Tensor> result_tensors, int rank = -1,
-                   c10d::OpType op_type = c10d::OpType::UNKNOWN)
-      : Work(rank, op_type) {
-    results_ = std::move(result_tensors);
+                   c10d::OpType op_type = c10d::OpType::UNKNOWN,
+                   c10::intrusive_ptr<c10::ivalue::Future> future = nullptr)
+      : Work(rank, op_type), results_(std::move(result_tensors)) {
+    results_future_ = c10::make_intrusive<c10::ivalue::Future>(
+        c10::ListType::create(c10::TensorType::get()));
+
+    // If the future is null, mark the results future as completed. Otherwise,
+    // add a callback to mark the results future as completed when the future
+    // is completed.
+    if (future) {
+      future->addCallback([this](c10::ivalue::Future& future) {
+        if (future.hasError()) {
+          results_future_->setError(std::make_exception_ptr(TtError(
+              TT_ERROR(error::kInternal) << future.tryRetrieveErrorMessage(),
+              TT_SOURCE_LOCATION)));
+        } else {
+          results_future_->markCompleted(c10::IValue(results_));
+        }
+      });
+    } else {
+      results_future_->markCompleted(c10::IValue(results_));
+    }
   }
 
   // This class is neither copyable nor movable.
@@ -100,27 +126,29 @@ class TpuWork : public c10d::Work {
   TpuWork(TpuWork&&) = delete;
   TpuWork& operator=(TpuWork&&) = delete;
 
-  // NOTE: We implement TpuWork to match the PyTorch API surface, but at the
-  // moment our collective results always appear as completed
-  bool isCompleted() override { return true; }
+  // NOTE: We implement TpuWork to match the PyTorch API surface.
+  bool isCompleted() override { return results_future_->completed(); }
 
-  bool isSuccess() const override { return true; }
+  bool isSuccess() const override {
+    return results_future_->completed() && !results_future_->hasError();
+  }
 
-  bool wait(std::chrono::milliseconds timeout) override { return true; }
+  bool wait(std::chrono::milliseconds timeout = kNoTimeout) override {
+    results_future_->wait();
+    return true;
+  }
 
   std::vector<at::Tensor> result() override { return results_; }
 
   void abort() override {}
 
   c10::intrusive_ptr<c10::ivalue::Future> getFuture() override {
-    auto future = c10::make_intrusive<c10::ivalue::Future>(
-        c10::ListType::create(c10::TensorType::get()));
-    future->markCompleted(c10::IValue(results_));
-    return future;
+    return results_future_;
   }
 
  private:
   std::vector<at::Tensor> results_;
+  c10::intrusive_ptr<c10::ivalue::Future> results_future_;
 
   friend class ::torch_tpu::ProcessGroupTpu;  // To allow changing op type.
 };
@@ -265,7 +293,158 @@ OpSplitMode GetCollectiveSplitMode() {
   return OpSplitMode::kNone;
 }
 
+xla::CrossHostTransferKey GetCrossHostTransferKey(int tag,
+                                                  size_t tensor_index = 0) {
+  uint64_t key = static_cast<uint32_t>(tag);
+  key |= (static_cast<uint64_t>(tensor_index) << 32);
+  return xla::CrossHostTransferKey(static_cast<int64_t>(key));
+}
+
+std::string GetCrossHostTransferDescriptorStoreKey(
+    xla::CrossHostTransferKey key) {
+  static constexpr std::string_view kKeyPrefix =
+      "cross_host_transfer_descriptor:";
+  return absl::StrCat(kKeyPrefix, key.value());
+}
+
 }  // namespace
+
+absl::StatusOr<c10::intrusive_ptr<c10::ivalue::Future>>
+ProcessGroupTpu::CrossHostSendBuffers(
+    std::vector<xla::PjRtBuffer*>& buffers,
+    absl::Span<const xla::CrossHostTransferKey> transfer_keys) {
+  TT_RET_CHECK(transfer_keys.size() == buffers.size(), error::kInvalidArgument)
+      << "expected transfer keys to be the same size as buffers, got "
+      << transfer_keys.size() << " transfer keys and " << buffers.size()
+      << " buffers";
+
+  auto all_sent_future =
+      c10::make_intrusive<c10::ivalue::Future>(c10::NoneType::get());
+
+  if (buffers.empty()) {
+    all_sent_future->markCompleted(c10::IValue());
+    return all_sent_future;
+  }
+
+  // Map transfer keys to their corresponding store keys to retrieve the
+  // serialized descriptors generated by the remote host.
+  std::vector<std::string> descriptor_keys;
+  descriptor_keys.reserve(transfer_keys.size());
+  for (const auto& transfer_key : transfer_keys) {
+    descriptor_keys.push_back(
+        GetCrossHostTransferDescriptorStoreKey(transfer_key));
+  }
+
+  // Retrieve descriptors from the distributed store. This is a blocking call
+  // that waits until the remote receiver has posted its descriptors.
+  std::vector<std::vector<uint8_t>> descriptors;
+  try {
+    descriptors = store_->multiGet(descriptor_keys);
+  } catch (const std::exception& e) {
+    all_sent_future->setError(std::current_exception());
+  }
+
+  auto remaining_sends = std::make_shared<std::atomic<size_t>>(buffers.size());
+  for (size_t i = 0; i < descriptors.size(); ++i) {
+    const std::string descriptor(descriptors[i].begin(), descriptors[i].end());
+
+    buffers[i]->CopyToRemoteDevice(
+        std::move(descriptor),
+        [all_sent_future, remaining_sends](absl::Status status,
+                                           bool sends_were_enqueued) {
+          // If the aggregate future has already been resolved (likely due to a
+          // failure in a parallel callback), exit immediately.
+          if (all_sent_future->completed()) {
+            return;
+          }
+
+          if (!status.ok()) {
+            all_sent_future->setError(std::make_exception_ptr(
+                TtError(TT_ERROR(error::kInternal)
+                            << "PjRtBuffer::CopyToRemoteDevice: " << status,
+                        TT_SOURCE_LOCATION)));
+          } else if (!sends_were_enqueued) {
+            all_sent_future->setError(std::make_exception_ptr(TtError(
+                TT_ERROR(error::kInternal) << "PjRtBuffer::CopyToRemoteDevice: "
+                                              "sends were not enqueued",
+                TT_SOURCE_LOCATION)));
+          } else if (remaining_sends->fetch_sub(1) == 1) {
+            // fetch_sub returns the value before subtraction. If it was 1,
+            // this is the final transfer to complete successfully.
+            all_sent_future->markCompleted(c10::IValue());
+          }
+        });
+  }
+  return all_sent_future;
+}
+
+absl::StatusOr<ProcessGroupTpu::CrossHostReceiveBuffersResult>
+ProcessGroupTpu::CrossHostReceiveBuffers(
+    absl::Span<const xla::Shape> shapes,
+    absl::Span<const xla::CrossHostTransferKey> transfer_keys) {
+  auto setup_future =
+      c10::make_intrusive<c10::ivalue::Future>(c10::NoneType::get());
+
+  auto notifier =
+      [this, setup_future,
+       transfer_keys = std::vector<xla::CrossHostTransferKey>(
+           transfer_keys.begin(), transfer_keys.end())](
+          absl::StatusOr<xla::PjRtCrossHostRecvState> recv_state) -> void {
+    if (!recv_state.ok()) {
+      setup_future->setError(std::make_exception_ptr(TtError(
+          TT_ERROR(error::kInternal)
+              << "xla::PjRtClient::MakeCrossHostReceiveBuffers: invalid "
+                 "recv_state: "
+              << recv_state.status(),
+          TT_SOURCE_LOCATION)));
+      return;
+    }
+
+    if (recv_state->descriptors.size() != transfer_keys.size()) {
+      setup_future->setError(std::make_exception_ptr(TtError(
+          TT_ERROR(error::kInternal)
+              << "xla::PjRtClient::MakeCrossHostReceiveBuffers: expected "
+                 "descriptors to be the same size as transfer keys, got "
+              << recv_state->descriptors.size() << " descriptors and "
+              << transfer_keys.size() << " keys",
+          TT_SOURCE_LOCATION)));
+      return;
+    }
+
+    // Collect the serialized descriptors and push them to the distributed
+    // store. This act signals the sender that the receiver is ready.
+    std::vector<std::string> descriptor_keys;
+    std::vector<std::vector<uint8_t>> descriptors;
+    descriptor_keys.reserve(transfer_keys.size());
+    descriptors.reserve(transfer_keys.size());
+
+    for (int i = 0; i < transfer_keys.size(); ++i) {
+      descriptor_keys.push_back(
+          GetCrossHostTransferDescriptorStoreKey(transfer_keys[i]));
+
+      std::string_view descriptor =
+          recv_state->descriptors[i].serialized_descriptors.front();
+      descriptors.push_back(
+          std::vector<uint8_t>(descriptor.begin(), descriptor.end()));
+    }
+
+    // Update the store to unblock the sender's multiGet call.
+    try {
+      this->store_->multiSet(descriptor_keys, descriptors);
+      setup_future->markCompleted(c10::IValue());
+    } catch (const std::exception& e) {
+      setup_future->setError(std::current_exception());
+    }
+  };
+
+  // Initiate the receive process on the PJRT client. The resulting buffers
+  // will be populated once the remote sender initiates its transfer.
+  TT_ASSIGN_OR_RETURN(
+      auto buffers,
+      PjrtBackend::GetInstance().GetClient()->MakeCrossHostReceiveBuffers(
+          shapes, PjrtBackend::GetInstance().GetDevice(), std::move(notifier)));
+  return std::make_pair(std::move(buffers), std::move(setup_future));
+}
 
 ProcessGroupTpu::ProcessGroupTpu(c10::intrusive_ptr<c10d::Store> store,
                                  int rank, int group_size)
@@ -453,6 +632,93 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::broadcast(
               }
               return work_ptr;
             });
+}
+
+c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::send(
+    std::vector<at::Tensor>& tensors, int dst_rank, int tag) {
+  TT_KERNEL(
+      OpName::kDistributedSend, _,
+      (tensors, IgnoreInCacheKey(dst_rank, "no op being dispatched"),
+       IgnoreInCacheKey(tag, "no op being dispatched")),
+      {
+        // The dst_rank is implicitly handled by the distributed store keys.
+        // The receiver is responsible for creating and posting the descriptors.
+        std::vector<xla::PjRtBuffer*> pjrt_buffers;
+        std::vector<xla::CrossHostTransferKey> transfer_keys;
+
+        pjrt_buffers.reserve(tensors.size());
+        transfer_keys.reserve(tensors.size());
+
+        for (size_t i = 0; i < tensors.size(); ++i) {
+          const auto& tensor = tensors[i];
+          // Extract the underlying hardware buffer from the tensor.
+          TT_ASSIGN_OR_THROW(const DeviceBufferRef device_buffer,
+                             GetMaterialized(tensor));
+          TT_ASSIGN_OR_THROW(xla::PjRtBuffer * pjrt_buffer,
+                             device_buffer.GetOrMaterializeBuffer());
+
+          pjrt_buffers.push_back(pjrt_buffer);
+          transfer_keys.push_back(GetCrossHostTransferKey(tag, i));
+        }
+
+        // Initiate the cross-host send logic, which will block until
+        // descriptors from the receiver are available in the store and then
+        // begin the asynchronous transfer.
+        TT_ASSIGN_OR_THROW(auto send_future,
+                           CrossHostSendBuffers(pjrt_buffers, transfer_keys));
+
+        return c10::make_intrusive<TpuWork>(
+            tensors, getRank(), c10d::OpType::SEND, std::move(send_future));
+      });
+}
+
+c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::recv(
+    std::vector<at::Tensor>& tensors, int src_rank, int tag) {
+  TT_KERNEL(
+      OpName::kDistributedRecv, _,
+      (tensors, IgnoreInCacheKey(src_rank, "no op being dispatched"),
+       IgnoreInCacheKey(tag, "no op being dispatched")),
+      {
+        std::vector<xla::Shape> recv_shapes;
+        std::vector<xla::CrossHostTransferKey> transfer_keys;
+
+        transfer_keys.reserve(tensors.size());
+        recv_shapes.reserve(tensors.size());
+
+        for (size_t i = 0; i < tensors.size(); ++i) {
+          const auto& tensor = tensors[i];
+          TT_ASSIGN_OR_THROW(auto xla_dtype, ConvertTo<xla::PrimitiveType>(
+                                                 tensor.scalar_type()));
+          xla::Shape xla_shape =
+              xla::ShapeUtil::MakeShape(xla_dtype, tensor.sizes());
+          recv_shapes.push_back(std::move(xla_shape));
+          transfer_keys.push_back(GetCrossHostTransferKey(tag, i));
+        }
+
+        // Initiate the receive process. This creates placeholder buffers and
+        // posts their network descriptors to the distributed store for the
+        // sender to find.
+        TT_ASSIGN_OR_THROW(
+            (auto [recv_buffers, setup_future]),
+            CrossHostReceiveBuffers(recv_shapes, std::move(transfer_keys)));
+
+        // Bind the incoming PJRT buffer back to the tensors.
+        for (size_t i = 0; i < tensors.size(); ++i) {
+          auto& tensor = tensors[i];
+          std::unique_ptr<xla::PjRtBuffer> buffer = std::move(recv_buffers[i]);
+          auto buffer_ready_future = buffer->GetReadyFuture();
+
+          TT_ASSIGN_OR_THROW(
+              auto device_buffer,
+              DeviceBufferList::CreateMaterializedNonAvailable(
+                  std::move(buffer), std::move(buffer_ready_future)));
+
+          TT_THROW_IF_ERROR(
+              AssignBufferToAtTensor(std::move(device_buffer), tensor));
+        }
+        return c10::make_intrusive<TpuWork>(
+            tensors, getRank(), c10d::OpType::RECV, std::move(setup_future));
+      });
 }
 
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather(
@@ -974,48 +1240,47 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall_base(
     std::vector<int64_t>& output_split_sizes,  // INT_VEC_OK
     std::vector<int64_t>& input_split_sizes,   // INT_VEC_OK
     const c10d::AllToAllOptions& opts) {
-  TT_KERNEL(OpName::kDistributedAllToAllSingle, _,
-            (output, input,
-             IgnoreInCacheKey(output_split_sizes, "Legacy usage"),
-             IgnoreInCacheKey(input_split_sizes, "Legacy usage"), opts),
-            {
-              const int64_t rank = getRank();
-              const bool async = opts.asyncOp;
-              const int64_t group_size = subgroup_device_ids_[0].size();
+  TT_KERNEL(
+      OpName::kDistributedAllToAllSingle, _,
+      (output, input, IgnoreInCacheKey(output_split_sizes, "Legacy usage"),
+       IgnoreInCacheKey(input_split_sizes, "Legacy usage"), opts),
+      {
+        const int64_t rank = getRank();
+        const bool async = opts.asyncOp;
+        const int64_t group_size = subgroup_device_ids_[0].size();
 
-              // Check on input and output dtypes already done in the PyTorch
-              // layer. Hence, we do not need to check for dtypes here.
+        // Check on input and output dtypes already done in the PyTorch
+        // layer. Hence, we do not need to check for dtypes here.
 
-              TT_THROW_IF_ERROR(CheckSplitSizesForAllToAllSingle(
-                  input_split_sizes, input, group_size));
-              TT_THROW_IF_ERROR(CheckSplitSizesForAllToAllSingle(
-                  output_split_sizes, output, group_size));
+        TT_THROW_IF_ERROR(CheckSplitSizesForAllToAllSingle(input_split_sizes,
+                                                           input, group_size));
+        TT_THROW_IF_ERROR(CheckSplitSizesForAllToAllSingle(output_split_sizes,
+                                                           output, group_size));
 
-              const bool equal_input_splits = IsEqualSplits(input_split_sizes);
-              const bool equal_output_splits =
-                  IsEqualSplits(output_split_sizes);
+        const bool equal_input_splits = IsEqualSplits(input_split_sizes);
+        const bool equal_output_splits = IsEqualSplits(output_split_sizes);
 
-              if (equal_input_splits && equal_output_splits) {
-                TT_ASSIGN_OR_THROW(DeviceBufferRef result_buf,
-                                   AllToAllBaseEqualSplits(output, input));
-                TT_THROW_IF_ERROR(
-                    AssignBufferToAtTensor(std::move(result_buf), output));
-              } else {
-                TT_ASSIGN_OR_THROW(
-                    DeviceBufferRef result_buf,
-                    AllToAllBaseUnevenSplits(output, input, output_split_sizes,
-                                             input_split_sizes));
-                TT_THROW_IF_ERROR(
-                    AssignBufferToAtTensor(std::move(result_buf), output));
-              }
+        if (equal_input_splits && equal_output_splits) {
+          TT_ASSIGN_OR_THROW(DeviceBufferRef result_buf,
+                             AllToAllBaseEqualSplits(output, input));
+          TT_THROW_IF_ERROR(
+              AssignBufferToAtTensor(std::move(result_buf), output));
+        } else {
+          TT_ASSIGN_OR_THROW(
+              DeviceBufferRef result_buf,
+              AllToAllBaseUnevenSplits(output, input, output_split_sizes,
+                                       input_split_sizes));
+          TT_THROW_IF_ERROR(
+              AssignBufferToAtTensor(std::move(result_buf), output));
+        }
 
-              if (async) {
-                return c10::make_intrusive<TpuWork>(
-                    std::vector<at::Tensor>{output}, rank,
-                    c10d::OpType::ALLTOALL_BASE);
-              }
-              return nullptr;
-            });
+        if (async) {
+          return c10::make_intrusive<TpuWork>(std::vector<at::Tensor>{output},
+                                              rank,
+                                              c10d::OpType::ALLTOALL_BASE);
+        }
+        return nullptr;
+      });
 }
 
 absl::StatusOr<DeviceBufferRef> ProcessGroupTpu::AllToAllBaseEqualSplits(

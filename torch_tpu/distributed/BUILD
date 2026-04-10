@@ -68,6 +68,9 @@ torch_tpu_cc_library(
         "@llvm-project//mlir:Support",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
+        "@xla//xla:shape_util",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/runtime:device_id",
     ],
     alwayslink = True,
 )

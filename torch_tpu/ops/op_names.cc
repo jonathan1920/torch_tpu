@@ -240,6 +240,8 @@ std::string_view ToString(OpName op_name) {
       return "distributed.broadcast";
     case OpName::kDistributedGather:
       return "distributed.gather";
+    case OpName::kDistributedRecv:
+      return "distributed.recv";
     case OpName::kDistributedReduceScatter:
       return "distributed.reduce_scatter";
     case OpName::kDistributedReduceScatterTensor:
@@ -248,6 +250,8 @@ std::string_view ToString(OpName op_name) {
       return "distributed.reduce_scatter_tensor_coalesced";
     case OpName::kDistributedScatter:
       return "distributed.scatter";
+    case OpName::kDistributedSend:
+      return "distributed.send";
     case OpName::kDiv:
       return "div";
     case OpName::kDivOut:
