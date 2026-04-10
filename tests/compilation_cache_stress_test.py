@@ -50,10 +50,10 @@ module {{
   }}
 }}
 """
-      # Serialize to bytecode as required by PyCompileMlir.
-      bytecode = tpu_torch_compile.serialize_mlir_text(mlir_text)
+      # Parse the MLIR text into an MLIR module.
+      mlir_module = tpu_torch_compile.parse_mlir_text(mlir_text)
       # Trigger background compilation.
-      tpu_torch_compile.compile_mlir(bytecode, fast_compile=False)
+      tpu_torch_compile.compile_mlir(mlir_module, fast_compile=False)
 
     def evict_cache():
       for _ in range(num_iterations * 2):

@@ -18,7 +18,6 @@ from collections.abc import Callable, Mapping, Sequence
 import contextlib
 import copy
 import dataclasses
-import enum
 import functools
 from typing import Any
 
@@ -33,7 +32,6 @@ from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
 
 __all__ = [
-    "MlirPrintConfig",
     "ExportedMlir",
     "exported_to_mlir",
     "fx_to_mlir",
@@ -93,21 +91,12 @@ def _extract_sample_arguments(exported: torch.export.ExportedProgram):
   return [_to_aval(arg.meta) for arg in args]
 
 
-class MlirPrintConfig(enum.Enum):
-  """Configuration for printing MLIR."""
-
-  MLIR_PRETTY = "MlirPretty"
-  MLIR_DEBUG_INFO = "MlirDebugInfo"
-  MLIR_SERIALIZED = "MlirSerialized"
-  MLIR_SERIALIZED_VERSIONED = "MlirVersionedSerialized"
-
-
 @dataclasses.dataclass(frozen=True)
 class ExportedMlir:
   """Represents the MLIR representation of an FX graph module.
 
   Attributes:
-    mlir_bytes: The MLIR module in bytecode or text format.
+    module: The ContextedModule instance.
     mlir_result_tensors: A flattened list of tensors that the MLIR graph will
       actually produce as outputs.
     reconstruct_fx_outputs_fn: A function that takes the flattened MLIR outputs
@@ -115,11 +104,25 @@ class ExportedMlir:
       `None` values or nested tuples).
   """
 
-  mlir_bytes: bytes
+  module: tpu_torch_compile.ContextedModule
   mlir_result_tensors: list[torch.Tensor]
   reconstruct_fx_outputs_fn: Callable[
       [Sequence[Any], Sequence[torch.Tensor]], Any
   ]
+
+  def serialize_text(self, enable_debug_info: bool = False) -> str:
+    """Returns the MLIR representation of the graph as text."""
+    return tpu_torch_compile.serialize_mlir_text(
+        self.module, enable_debug_info=enable_debug_info
+    )
+
+  def serialize_bytecode(self) -> bytes:
+    """Returns the MLIR representation of the graph as bytecode."""
+    return tpu_torch_compile.serialize_mlir_bytecode(self.module)
+
+  def serialize_portable_artifact(self) -> bytes:
+    """Returns the MLIR representation of the graph as a versioned portable artifact."""
+    return tpu_torch_compile.serialize_mlir_portable_artifact(self.module)
 
 
 class EagerLikeFxInterpreter(torch.fx.Interpreter):
@@ -211,7 +214,6 @@ class EagerLikeFxInterpreter(torch.fx.Interpreter):
 
 def exported_to_mlir(
     exported: torch.export.ExportedProgram,
-    print_config: MlirPrintConfig = MlirPrintConfig.MLIR_DEBUG_INFO,
 ) -> ExportedMlir:
   """Converts a `torch.export.ExportedProgram` into its MLIR representation.
 
@@ -224,8 +226,6 @@ def exported_to_mlir(
 
   Args:
     exported: The `torch.export.ExportedProgram` to convert.
-    print_config: An enum specifying the format of the output MLIR, such as
-      pretty-printed or with debug info.
 
   Returns:
     An `ExportedMlir` object containing the MLIR representation of the graph and
@@ -248,7 +248,7 @@ def exported_to_mlir(
   args = pytree.tree_map_only(torch.Tensor, to_xla, args)
   module = exported.graph_module.to(device)
 
-  return fx_to_mlir(module, args=args, print_config=print_config)
+  return fx_to_mlir(module, args=args)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -417,7 +417,6 @@ def enable_tracebacks():
 def fx_to_mlir(
     module: torch.fx.GraphModule,
     args: list[torch.Tensor | Any],
-    print_config: MlirPrintConfig = MlirPrintConfig.MLIR_PRETTY,
 ) -> ExportedMlir:
   """Converts an FX graph module to MLIR using TorchTPU's defer mode.
 
@@ -431,7 +430,6 @@ def fx_to_mlir(
     module: The `torch.fx.GraphModule` to be converted to MLIR.
     args: A list of input arguments to trace the module. These will be run
       through an FX graph interpreter to identify the graph's output tensors.
-    print_config: The desired MLIR output format.
 
   Returns:
     An `ExportedMlir` object containing the MLIR representation of the graph and
@@ -491,14 +489,13 @@ def fx_to_mlir(
       module, fx_outputs
   )
 
-  mlir_bytes = tpu_torch_compile.build_mlir(
+  mlir_module = tpu_torch_compile.build_mlir(
       result_tensors=result_tensors,
       argument_tensors=argument_tensors,
-      print_config=print_config.value,
   )
 
   return ExportedMlir(
-      mlir_bytes=mlir_bytes,
+      module=mlir_module,
       mlir_result_tensors=result_tensors,
       reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
   )

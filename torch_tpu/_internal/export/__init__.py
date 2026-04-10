@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .export import MlirPrintConfig, exported_to_mlir, fx_to_mlir
+from torch_tpu._internal.export import export as export_lib
 
-# PEP 8 requires this to be a list of strings, not a tuple or a list of objects.
+exported_to_mlir = export_lib.exported_to_mlir
+fx_to_mlir = export_lib.fx_to_mlir
+
 __all__ = [
     # go/keep-sorted start
-    "MlirPrintConfig",
     "exported_to_mlir",
     "fx_to_mlir",
     # go/keep-sorted end

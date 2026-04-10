@@ -4531,8 +4531,8 @@ module {
   }
 }
 """
-    bytecode = tpu_torch_compile.serialize_mlir_text(mlir_program)
-    executable_key = tpu_torch_compile.compile_mlir(bytecode)
+    module = tpu_torch_compile.parse_mlir_text(mlir_program)
+    executable_key = tpu_torch_compile.compile_mlir(module)
     result = tpu_torch_compile.execute(executable_key, [x, y, size])
     self.assert_close(
         golden_result=golden_result.cpu(), torch_tpu_result=result[0].cpu()

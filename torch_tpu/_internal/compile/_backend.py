@@ -139,7 +139,7 @@ class _TorchTpuCompiledExecutable:
     self._reconstruct_fx_outputs_fn = reconstruct_fx_outputs_fn
     self._tensor_arg_indices = None
     self._graph_module_debug_str: str | None = None
-    self._mlir_graph: str | None = None
+    self._mlir_text: str | None = None
 
   @property
   def graph_module_debug_str(self) -> str | None:
@@ -152,14 +152,14 @@ class _TorchTpuCompiledExecutable:
     self._graph_module_debug_str = value
 
   @property
-  def mlir_graph(self) -> str | None:
-    if self._mlir_graph is None:
+  def mlir_text(self) -> str | None:
+    if self._mlir_text is None:
       logging.info(UNSET_GRAPH_HELPER_STR)
-    return self._mlir_graph
+    return self._mlir_text
 
-  @mlir_graph.setter
-  def mlir_graph(self, value: str) -> None:
-    self._mlir_graph = value
+  @mlir_text.setter
+  def mlir_text(self, value: str) -> None:
+    self._mlir_text = value
 
   def __call__(self, *args):
     # Find the device module based on tensor arguments. This is a mitigation
@@ -404,52 +404,40 @@ class TpuBackend:
           for arg in example_inputs
       ]
 
-      # Use debug info format when TORCH_TRACE is set so the artifact has
-      # human-readable MLIR with source location annotations.
-      print_config = torch_tpu_export.MlirPrintConfig.MLIR_SERIALIZED
-      if self._debug or tracing_enabled:
-        print_config = torch_tpu_export.MlirPrintConfig.MLIR_DEBUG_INFO
-
       with dynamo_timed("torchtpu_fx_to_mlir"):
         exported_mlir = torch_tpu_export.fx_to_mlir(
             graph_module,
             placeholder_args,
-            print_config=print_config,
         )
 
     # Emit StableHLO artifact for tlparse when TORCH_TRACE is set.
     if tracing_enabled:
-      mlir_str = (
-          exported_mlir.mlir_bytes.decode("utf-8")
-          if isinstance(exported_mlir.mlir_bytes, bytes)
-          else exported_mlir.mlir_bytes
-      )
+      mlir_text = exported_mlir.serialize_text(enable_debug_info=self._debug)
       trace_structured(
           "artifact",
           metadata_fn=lambda: {
               "name": "torchtpu_stablehlo_graph",
               "encoding": "string",
           },
-          payload_fn=lambda: mlir_str,
+          payload_fn=lambda: mlir_text,
           expect_trace_id=True,
       )
 
     with dynamo_timed("torchtpu_pjrt_compile"):
-      cached_executable = tpu_torch_compile.compile_mlir(
-          exported_mlir.mlir_bytes
-      )
+      cached_executable = tpu_torch_compile.compile_mlir(exported_mlir.module)
 
     executable = _TorchTpuCompiledExecutable(
         executable=cached_executable,
         reconstruct_fx_outputs_fn=exported_mlir.reconstruct_fx_outputs_fn,
     )
-
     self._compiled_executables.append(executable)
 
     if self._debug:
       # Do not use print_readable() as it include original line of code which is
       # too verbose.
       executable.graph_module_debug_str = str(graph_module.code)
-      executable.mlir_graph = exported_mlir.mlir_bytes
+      executable.mlir_text = exported_mlir.serialize_text(
+          enable_debug_info=True
+      )
 
     return executable

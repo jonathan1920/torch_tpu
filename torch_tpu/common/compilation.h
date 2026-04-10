@@ -80,6 +80,9 @@ using LoadedExecutableBuilder = absl::AnyInvocable<
 // directly.
 class ContextedModule {
  public:
+  explicit ContextedModule(std::unique_ptr<mlir::MLIRContext> context,
+                           mlir::OwningOpRef<mlir::ModuleOp> module);
+
   // This class is move-only.
   ContextedModule(const ContextedModule&) = delete;
   ContextedModule& operator=(const ContextedModule&) = delete;
@@ -103,8 +106,6 @@ class ContextedModule {
 
  private:
   ContextedModule() = delete;
-  ContextedModule(std::unique_ptr<mlir::MLIRContext> context,
-                  mlir::OwningOpRef<mlir::ModuleOp> module);
 
   // The MLIR context for the module. This must outlive the module.
   // We use a unique_ptr to allow for moving, as MLIRContext is not

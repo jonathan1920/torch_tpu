@@ -56,12 +56,12 @@ class CompileApiTest(absltest.TestCase):
     result_tensors = [z]
     argument_tensors = [x, y]
     mlir = tpu_torch_compile.build_mlir(result_tensors, argument_tensors)
-    mlir_str = str(mlir)
+    mlir_text = tpu_torch_compile.serialize_mlir_text(mlir)
     self.assertIn(
         'func.func @main(%arg0: tensor<10xf32>, %arg1: tensor<10xf32>)',
-        mlir_str,
+        mlir_text,
     )
-    self.assertIn('stablehlo.add', mlir_str)
+    self.assertIn('stablehlo.add', mlir_text)
 
   def test_extra_input_to_build_mlir(self):
     with eager_mode_defer_all():
@@ -72,9 +72,9 @@ class CompileApiTest(absltest.TestCase):
     result_tensors = [z]
     argument_tensors = [x, y, extra]
     mlir = tpu_torch_compile.build_mlir(result_tensors, argument_tensors)
-    mlir_str = str(mlir)
-    self.assertIn('func @main', mlir_str)
-    self.assertIn('%arg2', mlir_str)
+    mlir_text = tpu_torch_compile.serialize_mlir_text(mlir)
+    self.assertIn('func @main', mlir_text)
+    self.assertIn('%arg2', mlir_text)
 
   def test_missing_input_to_build_mlir(self):
     with eager_mode_defer_all():
@@ -159,11 +159,8 @@ class CompileApiTest(absltest.TestCase):
     tensor_info = [([1, 4], torch.int64)]
     bounds_list = [([1], [8])]
 
-    mlir_bytes = tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
-    self.assertIsInstance(mlir_bytes, bytes)
-    self.assertNotEmpty(mlir_bytes)
-
-    mlir_text = tpu_torch_compile.print_mlir_bytecode(mlir_bytes)
+    mlir = tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
+    mlir_text = tpu_torch_compile.serialize_mlir_text(mlir)
 
     expected_mlir = """module @pad_module {
   func.func @main(%arg0: tensor<1x4xi64>) -> (tensor<1x8xi64>, tensor<i32>) {

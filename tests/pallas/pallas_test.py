@@ -399,7 +399,7 @@ class TestPallasKernels(absltest.TestCase):
     self.assertLen(executables, 1)
     self.assertIn(
         "jax.buffer_donor",
-        str(executables[0].mlir_graph),
+        executables[0].mlir_text,
     )
 
     # The pre-donation value of x can no longer be used if we are in deferred

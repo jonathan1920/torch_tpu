@@ -117,7 +117,8 @@ absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
 // by the FX graph, including their order. Otherwise, the compilation might
 // fail or the materialized tensors might be wrong.
 absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
-    xla::MaybeOwningMlirModule module, CompilationMode compilation_mode);
+    xla::MaybeOwningMlirModule module,
+    CompilationMode compilation_mode = CompilationMode::kFastRuntime);
 
 // torch.compile integration: this is called to invoke the compiled executable
 // returned by CompileMlirExecutable, and return new Tensors with the results.

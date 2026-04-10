@@ -71,13 +71,13 @@ def run_all_reduce_with_torch_compile() -> None:
 
   # debug mode enabled so expect graphs to be set and in plaintext
   assert "torch.ops.aten.abs" not in v[0].graph_module_debug_str
-  assert "stablehlo.abs" not in str(v[0].mlir_graph)
+  assert "stablehlo.abs" not in v[0].mlir_text
 
   assert "torch.ops.aten.abs" in v[1].graph_module_debug_str
-  assert "stablehlo.abs" in str(v[1].mlir_graph)
+  assert "stablehlo.abs" in v[1].mlir_text
 
   assert v[0].graph_module_debug_str != v[1].graph_module_debug_str
-  assert v[0].mlir_graph != v[1].mlir_graph
+  assert v[0].mlir_text != v[1].mlir_text
 
 
 class MultiTpuTorchCompileTest(absltest.TestCase):

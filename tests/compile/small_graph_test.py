@@ -231,11 +231,11 @@ class FunctionTest(absltest.TestCase):
 
     # debug mode enabled so expect graphs to be set and in plaintext
     self.assertIn("torch.ops.aten.abs", v[0].graph_module_debug_str)
-    self.assertIn("stablehlo.abs", str(v[0].mlir_graph))
+    self.assertIn("stablehlo.abs", v[0].mlir_text)
     self.assertNotEqual(
         v[0].graph_module_debug_str, v[1].graph_module_debug_str
     )
-    self.assertNotEqual(v[0].mlir_graph, v[1].mlir_graph)
+    self.assertNotEqual(v[0].mlir_text, v[1].mlir_text)
 
   def test_data_dependent_dynamic_op(self):
     """Test that a dynamo will break on data dependent ops.
@@ -422,7 +422,7 @@ class FunctionTest(absltest.TestCase):
     v = tpu_backend._compiled_executables
     self.assertLen(v, 1)
     self.assertIn("torch.ops.aten.ones_like", v[0].graph_module_debug_str)
-    self.assertIn("stablehlo.multiply", str(v[0].mlir_graph))
+    self.assertIn("stablehlo.multiply", v[0].mlir_text)
 
   def test_embedded_constants(self):
     # Need to explicitly specify device to get eager eval result
@@ -604,7 +604,7 @@ class ModuleTest(absltest.TestCase):
     )
     v = self._run_and_compare(SimpleModule, inputs)
     self.assertLen(v, 1)
-    self.assertIn("stablehlo.multiply", str(v[0].mlir_graph))
+    self.assertIn("stablehlo.multiply", v[0].mlir_text)
     self.assertIn("def forward(self,", v[0].graph_module_debug_str)
 
 

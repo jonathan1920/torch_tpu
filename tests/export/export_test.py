@@ -14,7 +14,6 @@
 
 """Small graph test for TPU backend."""
 
-
 import contextlib
 import os
 
@@ -73,32 +72,32 @@ class TestExportLinearMode(absltest.TestCase):
   def test_export_linear(self):
     sample_input = (torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]),)
     exported = torch.export.export(SimpleNN(), args=sample_input)
-    mlir = torch_tpu_export.exported_to_mlir(exported).mlir_bytes
-    mlir_str = mlir.decode("utf-8")
+    exported_mlir = torch_tpu_export.exported_to_mlir(exported)
+    mlir_text = exported_mlir.serialize_text(enable_debug_info=True)
 
     # Check for module name and main func
     self.assertRegex(
-        mlir_str,
+        mlir_text,
         r"module @tt_jit_export_test_L[0-9]+C[0-9]+_forward_add",
     )
     self.assertIn(
         "func.func @main(%arg0: tensor<8x8xf32> loc(unknown), %arg1:"
         " tensor<8xf32> loc(unknown), %arg2: tensor<8xf32> loc(unknown)) ->"
         " tensor<8xf32>",
-        mlir_str,
+        mlir_text,
     )
 
     # Check for StableHLO ops
-    self.assertIn("stablehlo.add", mlir_str)
-    self.assertIn("stablehlo.multiply", mlir_str)
+    self.assertIn("stablehlo.add", mlir_text)
+    self.assertIn("stablehlo.multiply", mlir_text)
 
     # Check for namescope / opname
-    self.assertIn('loc("addmm/as_strided"', mlir_str)
-    self.assertIn('loc("addmm/addmm"', mlir_str)
+    self.assertIn('loc("addmm/as_strided"', mlir_text)
+    self.assertIn('loc("addmm/addmm"', mlir_text)
 
     # Check for file info
     current_filename = os.path.basename(__file__)
-    self.assertIn(current_filename, mlir_str)
+    self.assertIn(current_filename, mlir_text)
 
 
 class ExportTest(absltest.TestCase):
@@ -115,12 +114,12 @@ class ExportTest(absltest.TestCase):
     )
     exported = torch.export.export(SimpleModule(), args=sample_input)
     with override_tracebacks(None):  # override with nullopt
-      mlir = torch_tpu_export.exported_to_mlir(exported).mlir_bytes
-    mlir_str = mlir.decode("utf-8")
+      exported_mlir = torch_tpu_export.exported_to_mlir(exported)
+    mlir_text = exported_mlir.serialize_text(enable_debug_info=True)
 
     # Check for module name and main func
     self.assertRegex(
-        mlir_str,
+        mlir_text,
         r"module @tt_jit_export_test_L[0-9]+C[0-9]+_forward_add",
     )
     self.assertIn(
@@ -128,16 +127,16 @@ class ExportTest(absltest.TestCase):
         " tensor<5xf32> loc(unknown), %arg2: tensor<5xf32> loc(unknown), %arg3:"
         " tensor<5xf32> loc(unknown), %arg4: tensor<5xf32> loc(unknown)) ->"
         " tensor<5xf32>",
-        mlir_str,
+        mlir_text,
     )
 
     # Default export should include debuginfo.
-    # Check that the current filename is in the MLIR string with debuginfo.
+    # Check that the current filename is in the MLIR text with debuginfo.
     # Currently checking for #loc1 so we don't match this filename higher up in
     # the stack trace.
     current_filename = os.path.basename(__file__)
     current_location_regex = f"#loc1 = loc.*{current_filename}"
-    self.assertRegex(mlir_str, current_location_regex)
+    self.assertRegex(mlir_text, current_location_regex)
 
   def test_export_deduplication_different_views(self):
     """Tests that export deduplication handles different views of the same memory correctly."""
@@ -151,10 +150,8 @@ class ExportTest(absltest.TestCase):
     x = torch.randn(5)
 
     exported = torch.export.export(mod, args=(x,))
-    mlir = torch_tpu_export.exported_to_mlir(exported).mlir_bytes
-    mlir_str = mlir.decode("utf-8")
-
-    self.assertIn("-> (tensor<5xf32>, tensor<5xi32>)", mlir_str)
+    mlir_text = torch_tpu_export.exported_to_mlir(exported).serialize_text()
+    self.assertIn("-> (tensor<5xf32>, tensor<5xi32>)", mlir_text)
 
   def test_export_deduplication_different_slices(self):
     """Tests that export deduplication does not deduplicate different slices of the same buffer."""
@@ -168,10 +165,9 @@ class ExportTest(absltest.TestCase):
     x = torch.randn(4)
 
     exported = torch.export.export(mod, args=(x,))
-    mlir = torch_tpu_export.exported_to_mlir(exported).mlir_bytes
-    mlir_str = mlir.decode("utf-8")
+    mlir_text = torch_tpu_export.exported_to_mlir(exported).serialize_text()
 
-    self.assertIn("-> (tensor<2xf32>, tensor<2xf32>)", mlir_str)
+    self.assertIn("-> (tensor<2xf32>, tensor<2xf32>)", mlir_text)
 
   def test_module_traceback_disabled(self):
     sample_input = (
@@ -180,88 +176,82 @@ class ExportTest(absltest.TestCase):
     )
     exported = torch.export.export(SimpleModule(), args=sample_input)
     with override_tracebacks(False):  # disable tracebacks
-      mlir = torch_tpu_export.exported_to_mlir(exported).mlir_bytes
-    mlir_str = mlir.decode("utf-8")
+      exported_mlir = torch_tpu_export.exported_to_mlir(exported)
+    mlir_text = exported_mlir.serialize_text(enable_debug_info=True)
 
     # Check for module name and main func
-    self.assertIn("module @tt_jit_add", mlir_str)
+    self.assertIn("module @tt_jit_add", mlir_text)
     self.assertIn(
         "func.func @main(%arg0: tensor<5xf32> loc(unknown), %arg1:"
         " tensor<5xf32> loc(unknown), %arg2: tensor<5xf32> loc(unknown), %arg3:"
         " tensor<5xf32> loc(unknown), %arg4: tensor<5xf32> loc(unknown)) ->"
         " tensor<5xf32>",
-        mlir_str,
+        mlir_text,
     )
 
     # If tracebacks are explicitly disabled, we should not see any location
-    # information in the MLIR string.
+    # information in the MLIR text.
     # Expect to see op names and redispatches even if tracebacks are disabled.
-    self.assertIn('loc("add/add"', mlir_str)
-    self.assertIn('loc("mul/mul"', mlir_str)
+    self.assertIn('loc("add/add"', mlir_text)
+    self.assertIn('loc("mul/mul"', mlir_text)
 
     # Expect no python filenames if tracebacks are disabled.
     current_filename = os.path.basename(__file__)
-    self.assertNotIn(current_filename, mlir_str)
-    self.assertNotRegex(mlir_str, r"loc.*\.py")
+    self.assertNotIn(current_filename, mlir_text)
+    self.assertNotRegex(mlir_text, r"loc.*\.py")
 
-  def test_export_pretty(self):
+  def test_serialize_text_no_debug_info(self):
     sample_input = (
         torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]),
         torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6]),
     )
     exported = torch.export.export(SimpleModule(), args=sample_input)
-    mlir = torch_tpu_export.exported_to_mlir(
-        exported, print_config=torch_tpu_export.MlirPrintConfig.MLIR_PRETTY
-    ).mlir_bytes
+    exported_mlir = torch_tpu_export.exported_to_mlir(exported)
 
-    # Check for the location #loc(...) in mlir string
-    mlir_str = mlir.decode("utf-8")
+    # Check for the absence of location #loc(...) in mlir text
+    mlir_text = exported_mlir.serialize_text(enable_debug_info=False)
 
     # Check for module name and main func
-    self.assertIn("module @tt_jit", mlir_str)
-    self.assertIn("func @main", mlir_str)
-    self.assertNotIn("loc(", mlir_str)
+    self.assertIn("module @tt_jit", mlir_text)
+    self.assertIn("func @main", mlir_text)
+    self.assertNotIn("loc(", mlir_text)
 
-  def test_export_debuginfo(self):
+  def test_serialize_text_debug_info(self):
     sample_input = (
         torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]),
         torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6]),
     )
     exported = torch.export.export(SimpleModule(), args=sample_input)
-    mlir = torch_tpu_export.exported_to_mlir(
-        exported, print_config=torch_tpu_export.MlirPrintConfig.MLIR_DEBUG_INFO
-    ).mlir_bytes
+    exported_mlir = torch_tpu_export.exported_to_mlir(exported)
+    mlir_text = exported_mlir.serialize_text(enable_debug_info=True)
 
-    # Check for the location #loc(...) in mlir string
-    self.assertIn(b"loc(", mlir)
+    # Check for the presence of location #loc(...) in mlir text
+    self.assertIn("loc(", mlir_text)
 
-  def test_export_serialized(self):
+  def test_serialize_bytecode(self):
     sample_input = (
         torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]),
         torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6]),
     )
     exported = torch.export.export(SimpleModule(), args=sample_input)
-    mlir = torch_tpu_export.exported_to_mlir(
-        exported, print_config=torch_tpu_export.MlirPrintConfig.MLIR_SERIALIZED
-    ).mlir_bytes
+    exported_mlir = torch_tpu_export.exported_to_mlir(exported)
+    mlir_bytecode = exported_mlir.serialize_bytecode()
     # Check for the MLïR magic string that denotes bytecode.
-    self.assertIn(b"ML\xefR", mlir)
+    self.assertIn(b"ML\xefR", mlir_bytecode)
 
-  def test_export_serialized_versioned(self):
+  def test_serialize_portable_artifact(self):
     sample_input = (
         torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]),
         torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6]),
     )
     exported = torch.export.export(SimpleModule(), args=sample_input)
-    mlir = torch_tpu_export.exported_to_mlir(
-        exported,
-        print_config=torch_tpu_export.MlirPrintConfig.MLIR_SERIALIZED_VERSIONED,
-    ).mlir_bytes
+    exported_mlir = torch_tpu_export.exported_to_mlir(exported)
+    mlir_portable_artifact = exported_mlir.serialize_portable_artifact()
     # Check for the MLïR magic string that denotes bytecode.
     # Check for the StableHLO_v1.X.Y producer string to indicate versioned
     # StableHLO.
-    self.assertIn(b"ML\xefR", mlir)
-    self.assertIn(b"StableHLO_v1.", mlir)
+    self.assertIn(b"ML\xefR", mlir_portable_artifact)
+    self.assertIn(b"StableHLO_v1.", mlir_portable_artifact)
 
 
 if __name__ == "__main__":

@@ -99,12 +99,12 @@ class StableHloCompileTimeTestBase(absltest.TestCase):
     This helper function orchestrates the end-to-end process of compiling an
     MLIR module and measuring its performance. It performs the following steps:
 
-    1.  Converts the input "stablehlo_str" into bytecode using the
-        "serialize_mlir_text" C++ binding. This step also implicitly
-        performs full syntax parsing and semantic verification of the MLIR.
-    2.  Submits the resulting bytecode to the "compile_mlir" C++ binding for
-        compilation.
-    3.  Measures the wall-clock time of the "compile_mlir" call.
+    1.  Parses the input "stablehlo_str" using the `parse_mlir_text` C++
+        binding. This step performs full syntax parsing and semantic
+        verification of the MLIR.
+    2.  Submits the resulting MLIR module to the `compile_mlir` C++
+        binding for compilation.
+    3.  Measures the wall-clock time of the `compile_mlir` call.
     4.  Verifies success by asserting that compilation returns a non-None
         PjRtLoadedExecutable.
 
@@ -123,21 +123,21 @@ class StableHloCompileTimeTestBase(absltest.TestCase):
     logging.info("SHLO String (text format): %d bytes", len(stablehlo_str))
 
     try:
-      stablehlo_bytecode = tpu_torch_compile.serialize_mlir_text(stablehlo_str)
+      mlir_module = tpu_torch_compile.parse_mlir_text(stablehlo_str)
     except RuntimeError as e:
       self.fail(
-          "MLIR serialization failed with an error: "
+          "MLIR parsing failed with an error: "
           f"{e}\n--- Input MLIR String ---\n{stablehlo_str}"
       )
 
-    logging.info("SHLO String (bytecode): %d bytes", len(stablehlo_bytecode))
+    logging.info("MLIR parsing successful.")
 
     try:
       start_time = time.monotonic()
-      # compile_mlir() is synchronous, so the elapsed time includes the
+      # compile() is synchronous, so the elapsed time includes the
       # compilation time.
       executable = tpu_torch_compile.compile_mlir(
-          stablehlo_bytecode, fast_compile=eager
+          mlir_module, fast_compile=eager
       )
       elapsed_time = time.monotonic() - start_time
     except RuntimeError as e:

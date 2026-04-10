@@ -664,8 +664,8 @@ def format_model(
   if shlo:
     if isinstance(model, torch.fx.GraphModule):
       exported = torch.export.export(model, args=(*input_tensors,))
-      shlo = torch_tpu_export.exported_to_mlir(exported).mlir_bytes
-      result += shlo.decode("utf-8") + "\n"
+      mlir_text = torch_tpu_export.exported_to_mlir(exported).serialize_text()
+      result += mlir_text + "\n"
     else:
       with execution_mode.eager_mode(
           execution_mode.EagerMode.INTERNAL_DEFER_ALL

@@ -56,6 +56,7 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/hlo/translate/register.h"
 #include "xla/mlir/utils/error_util.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/shape.h"
@@ -137,13 +138,11 @@ at::Tensor PyMakePlaceholderLike(const at::Tensor& arg_tensor) {
                            arg_tensor.requires_grad());
 }
 
-// Returns MLIR module corresponding to the graph terminating at result_tensors
-// and taking argument_tensors as inputs.
-//
-// Supports `MlirPrintConfig` options.
-py::bytes PyExtractMlirModule(const std::vector<at::Tensor>& result_tensors,
-                              const std::vector<at::Tensor>& argument_tensors,
-                              const std::string& print_config) {  // INT_VEC_OK
+// Returns a ContextedModule corresponding to the graph terminating at
+// result_tensors and taking argument_tensors as inputs.
+std::shared_ptr<ContextedModule> PyBuildMlir(
+    const std::vector<at::Tensor>& result_tensors,
+    const std::vector<at::Tensor>& argument_tensors) {  // INT_VEC_OK
   TT_ASSIGN_OR_THROW(ContextedModule module,
                      ContextedModule::Make([&](mlir::MLIRContext& context) {
                        return ExtractMlirFromGraph(context, argument_tensors,
@@ -158,18 +157,11 @@ py::bytes PyExtractMlirModule(const std::vector<at::Tensor>& result_tensors,
         << diag_handler.ConsumeStatus().message() << "\n"
         << DebugString(module.get(), DebugStringOptions::kEnableDebugInfo));
   }
-  std::string mlir_str =
-      PrintMlirModule(module.get(), PyToMlirPrintConfig(print_config));
-  return py::bytes(mlir_str.data(), mlir_str.size());
+  return std::make_shared<ContextedModule>(std::move(module));
 }
 
-// Parses a string containing MLIR, verifies it, and serializes it to bytecode.
-// This function will throw a RuntimeError in Python if:
-//  1. The input mlir_text is not syntactically valid MLIR.
-//  2. The MLIR is semantically invalid (e.g., type mismatches) and fails
-//     verification.
-//  3. An internal error occurs during the final bytecode serialization.
-py::bytes PySerializeMlirTextModule(const std::string& mlir_text) {
+// Parses MLIR text, verifies it, and returns a ContextedModule.
+std::shared_ptr<ContextedModule> PyParseMlirText(const std::string& mlir_text) {
   TT_ASSIGN_OR_THROW(
       ContextedModule module,
       ContextedModule::Make(
@@ -190,15 +182,7 @@ py::bytes PySerializeMlirTextModule(const std::string& mlir_text) {
         << "MLIR module is invalid.\n"
         << DebugString(module.get(), DebugStringOptions::kEnableDebugInfo));
   }
-
-  std::string bytecode_str;
-  llvm::raw_string_ostream os(bytecode_str);
-  if (mlir::failed(mlir::writeBytecodeToFile(module.get(), os))) {
-    TT_THROW_IF_ERROR(TT_ERROR(error::kInternal)
-                      << "Failed to serialize MLIR module to bytecode.");
-  }
-
-  return py::bytes(bytecode_str);
+  return std::make_shared<ContextedModule>(std::move(module));
 }
 
 py::str PyPrintMlirBytecode(const py::bytes& bytecode) {
@@ -226,16 +210,37 @@ py::str PyPrintMlirBytecode(const py::bytes& bytecode) {
   return py::str(mlir_str);
 }
 
+// Serializes a ContextedModule to MLIR text.
+std::string PySerializeMlirText(std::shared_ptr<ContextedModule> module,
+                                bool enable_debug_info) {
+  return DebugString(module->get(),
+                     enable_debug_info ? DebugStringOptions::kEnableDebugInfo
+                                       : DebugStringOptions::kDisableDebugInfo);
+}
+
+// Serializes a ContextedModule to bytecode.
+py::bytes PySerializeMlirBytecode(std::shared_ptr<ContextedModule> module) {
+  TT_ASSIGN_OR_THROW(std::string bytecode, SerializeBytecode(module->get()));
+  return py::bytes(std::move(bytecode));
+}
+
+// Serializes a ContextedModule to a versioned portable artifact.
+py::bytes PySerializePortableArtifact(std::shared_ptr<ContextedModule> module) {
+  TT_ASSIGN_OR_THROW(std::string bytecode,
+                     SerializePortableArtifact(module->get()));
+  return py::bytes(std::move(bytecode));
+}
+
 // Compiles an MLIR module.
 // Args:
-//   mlir_module: The serialized MLIR module.
-//   eager: If true, use the compiler profile optimized for eager execution;
-//          otherwise, use the profile optimized for torch.compile.
+//   module: The ContextedModule to compile.
+//   fast_compile: If true, use the compiler profile optimized for eager
+//         execution; otherwise, use the profile optimized for
+//         torch.compile.
 // Returns:
 //   The compiled executable.
-SharedLoadedExecutable PyCompileMlir(py::bytes& mlir_module,
+SharedLoadedExecutable PyCompileMlir(std::shared_ptr<ContextedModule> module,
                                      const bool fast_compile) {
-  const auto module_bytecode = py::cast<std::string_view>(mlir_module);
   ScopedPythonContextCapturer capturer(OpName::kCompileMlir);
   // Provide the current python context to the compilation function so that
   // it can generate readable Mlir module names.
@@ -243,7 +248,7 @@ SharedLoadedExecutable PyCompileMlir(py::bytes& mlir_module,
       ScopedPythonContextCapturer::GetContext());
   TT_ASSIGN_OR_THROW(
       auto executable,
-      CompileMlirExecutable(module_bytecode,
+      CompileMlirExecutable(xla::MaybeOwningMlirModule(module->get()),
                             fast_compile ? CompilationMode::kFastCompile
                                          : CompilationMode::kFastRuntime));
   return executable;
@@ -347,18 +352,18 @@ void PySetMlirTracebacksEnabled(bool enabled) {
 //   }
 // }
 
-py::bytes PyGetPadModuleMlir(
+std::shared_ptr<ContextedModule> PyGetPadModuleMlir(
     const std::vector<
         std::pair<std::vector<int64_t>, at::ScalarType>>&  // INT_VEC_OK
         tensor_info,
     const std::vector<
         std::pair<std::vector<int64_t>, std::vector<int64_t>>>&  // INT_VEC_OK
         bounds_list) {
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   mlir::DialectRegistry registry;
   xla::RegisterMlirToHloDependentDialects(registry);
-  context.appendDialectRegistry(registry);
-  context.loadAllAvailableDialects();
+  context->appendDialectRegistry(registry);
+  context->loadAllAvailableDialects();
 
   std::vector<Shape> shapes;
   shapes.reserve(tensor_info.size());
@@ -405,15 +410,10 @@ py::bytes PyGetPadModuleMlir(
   }
 
   TT_ASSIGN_OR_THROW(mlir::OwningOpRef<mlir::ModuleOp> module,
-                     GetPadModule(context, shapes));
+                     GetPadModule(*context, shapes));
 
-  std::string mlir_str;
-  llvm::raw_string_ostream os(mlir_str);
-  if (mlir::failed(mlir::writeBytecodeToFile(module.get(), os))) {
-    TT_THROW_IF_ERROR(TT_ERROR(error::kInternal)
-                      << "failed to serialize MLIR module to bytecode");
-  }
-  return py::bytes(mlir_str);
+  return std::make_shared<torch_tpu::ContextedModule>(std::move(context),
+                                                      std::move(module));
 }
 
 py::bytes PySerializeExecutable(const SharedLoadedExecutable& executable) {
@@ -438,6 +438,9 @@ SharedLoadedExecutable PyLoadSerializedExecutable(py::bytes& serialized_bytes) {
 }
 
 PYBIND11_MODULE(tpu_torch_compile, m) {
+  py::class_<torch_tpu::ContextedModule,
+             std::shared_ptr<torch_tpu::ContextedModule>>(m, "ContextedModule");
+
   py::class_<xla::PjRtLoadedExecutable,  // NOLINT(bugprone-unused-raii)
              std::shared_ptr<xla::PjRtLoadedExecutable>>(
       m, "PjRtLoadedExecutable");
@@ -459,15 +462,21 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   m.def("placeholder", PyMakePlaceholder, py::arg("sizes"), py::arg("dtype"),
         py::arg("requires_grad"));
   m.def("placeholder_like", PyMakePlaceholderLike, py::arg("arg_tensor"));
-  m.def("build_mlir", PyExtractMlirModule, py::arg("result_tensors"),
-        py::arg("argument_tensors"),
-        py::arg("print_config") = "MlirPretty");  // INT_VEC_OK
+  m.def("build_mlir", PyBuildMlir, py::arg("result_tensors"),
+        py::arg("argument_tensors"));  // INT_VEC_OK
   // Returns: PjRtLoadedExecutable
-  m.def("compile_mlir", PyCompileMlir, py::arg("mlir_module_bytecode"),
+  m.def("compile_mlir", PyCompileMlir, py::arg("module"),
         py::arg("fast_compile") = false);
-  m.def("serialize_mlir_text", PySerializeMlirTextModule, py::arg("mlir_text"),
-        "Parses a StableHLO MLIR text string and returns its serialized "
-        "bytecode.");
+  m.def("parse_mlir_text", PyParseMlirText, py::arg("mlir_text"),
+        "Parses a StableHLO MLIR text string and returns a ContextedModule.");
+  m.def("serialize_mlir_text", PySerializeMlirText, py::arg("module"),
+        py::arg("enable_debug_info") = false,
+        "Serializes a ContextedModule to MLIR text.");
+  m.def("serialize_mlir_bytecode", PySerializeMlirBytecode, py::arg("module"),
+        "Serializes a ContextedModule to bytecode.");
+  m.def("serialize_mlir_portable_artifact", PySerializePortableArtifact,
+        py::arg("module"),
+        "Serializes a ContextedModule to a versioned portable artifact.");
   m.def("print_mlir_bytecode", PyPrintMlirBytecode, py::arg("bytecode"),
         "Prints an MLIR bytecode as human-readable string without location "
         "information.");
