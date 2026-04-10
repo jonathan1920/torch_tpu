@@ -21,8 +21,8 @@ from torch_tpu import api
 class DTensorTest(absltest.TestCase):
 
   def setUp(self):
-    self._world_size = 2
     super().setUp()
+    self._world_size = 2
     torch.distributed.init_process_group(
         backend="fake", store=FakeStore(), rank=0, world_size=self._world_size
     )
@@ -32,10 +32,6 @@ class DTensorTest(absltest.TestCase):
     torch.distributed.destroy_process_group()
     super().tearDown()
 
-  @absltest.skip(
-      "b/499316489 -- issue with handling DeviceMesh/FakeScriptObject"
-      " inputs/outputs during compile"
-  )
   def test_dtensor_basic(self):
     mesh = torch.distributed.tensor.DeviceMesh(
         "tpu", torch.arange(self._world_size)

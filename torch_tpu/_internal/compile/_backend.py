@@ -30,10 +30,11 @@ The `torch.compile()` function has the following relevant arguments:
     Disables the compilation. No ops for us.
 """
 
+from collections.abc import Sequence
 import copy
 import functools
 import operator
-from typing import Any, Callable, List, Sequence, TypeAlias
+from typing import Any, Callable, List, TypeAlias
 from absl import logging
 import torch
 from torch._dynamo.backends.common import aot_autograd
@@ -121,7 +122,8 @@ class _TorchTpuCompiledExecutable:
       self,
       executable: tpu_torch_compile.PjRtLoadedExecutable,
       reconstruct_fx_outputs_fn: (
-          Callable[[Sequence[torch.Tensor]], Sequence[torch.Tensor]] | None
+          Callable[[Sequence[Any], Sequence[torch.Tensor]], Sequence[Any]]
+          | None
       ),
   ):
     """Initializes the compiled executable wrapper.
@@ -180,7 +182,7 @@ class _TorchTpuCompiledExecutable:
     outputs = tpu_torch_compile.execute(self._executable, executable_args)
 
     if self._reconstruct_fx_outputs_fn is not None:
-      outputs = self._reconstruct_fx_outputs_fn(outputs)
+      outputs = self._reconstruct_fx_outputs_fn(args, outputs)
 
     # rewrite_stateless_rng_ops pass adds updated rng_state as the last output.
     *outputs, rng_state = outputs

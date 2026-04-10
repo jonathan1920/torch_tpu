@@ -14,12 +14,14 @@
 
 """TorchTPU support for torch.export to MLIR."""
 
+from collections.abc import Callable, Mapping, Sequence
 import contextlib
 import copy
 import dataclasses
 import enum
 import functools
-from typing import Any, Callable, List, Sequence, Tuple
+from typing import Any
+
 from absl import logging
 import torch
 import torch.export
@@ -114,8 +116,10 @@ class ExportedMlir:
   """
 
   mlir_bytes: bytes
-  mlir_result_tensors: List[torch.Tensor]
-  reconstruct_fx_outputs_fn: Callable[[Sequence[torch.Tensor]], Any]
+  mlir_result_tensors: list[torch.Tensor]
+  reconstruct_fx_outputs_fn: Callable[
+      [Sequence[Any], Sequence[torch.Tensor]], Any
+  ]
 
 
 class EagerLikeFxInterpreter(torch.fx.Interpreter):
@@ -247,41 +251,104 @@ def exported_to_mlir(
   return fx_to_mlir(module, args=args, print_config=print_config)
 
 
+@dataclasses.dataclass(frozen=True)
+class _DedupedTensorOutput:
+  tensor_idx: int
+
+
+@dataclasses.dataclass(frozen=True)
+class _NonTensorPassthrough:
+  input_idx: int
+
+
 def _reconstruct_fx_outputs(
+    inputs: Sequence[Any],
     deduped_outputs: Sequence[torch.Tensor],
-    output_indices: List[int | None],
+    output_map: Sequence[_DedupedTensorOutput | _NonTensorPassthrough | None],
     spec: pytree.TreeSpec,
 ) -> Any:
   """Restores the original FX output structure from flattened MLIR outputs."""
-  reconstructed_flat: List[torch.Tensor | None] = []
+  reconstructed_flat: list[Any] = []
   output_used = [False] * len(deduped_outputs)
-  for idx in output_indices:
-    if idx is None:
+  for item in output_map:
+    if isinstance(item, _DedupedTensorOutput):
+      idx = item.tensor_idx
+      if output_used[idx]:
+        reconstructed_flat.append(deduped_outputs[idx].clone())
+      else:
+        reconstructed_flat.append(deduped_outputs[idx])
+        output_used[idx] = True
+    elif isinstance(item, _NonTensorPassthrough):
+      reconstructed_flat.append(inputs[item.input_idx])
+    elif item is None:
       reconstructed_flat.append(None)
-    elif output_used[idx]:
-      reconstructed_flat.append(deduped_outputs[idx].clone())
-    else:
-      reconstructed_flat.append(deduped_outputs[idx])
-      output_used[idx] = True
 
   return pytree.tree_unflatten(reconstructed_flat, spec)
 
 
-def _process_fx_outputs(
-    outputs: Any,
-) -> Tuple[
-    List[torch.Tensor],
-    Callable[[Sequence[torch.Tensor]], Any],
-]:
-  """Removes Nones and dedups outputs.
+def _map_unused_fake_inputs_to_outputs(
+    gm: torch.fx.GraphModule,
+) -> Mapping[int, int]:
+  """Maps indices of fake inputs that are directly passed through to outputs.
 
-  This is necessary because MLIR graphs do not accept `None` in outputs, and
-  we don't want to produce duplicate outputs for tensors that are the same. This
-  function filters `None` values and reduces to unique tensors. It returns a
-  tuple containing a list of result tensors and a function to reconstruct
-  the original FX output structure.
+  This function inspects the given `GraphModule` to find "placeholder" nodes
+  (inputs) that are also present in the output tuple. Specifically, it looks
+  for `FakeScriptObject` instances that are passed from input to output without
+  any intervening operations. This is useful for identifying outputs that don't
+  correspond to actual computation results but are just forwarded inputs.
 
   Args:
+    gm: The `torch.fx.GraphModule` to analyze.
+
+  Returns:
+    A dictionary mapping the index of an output in the flattened output tuple
+    to the index of the corresponding input placeholder.
+  """
+  placeholders = list(enumerate(gm.graph.find_nodes(op="placeholder")))
+  (graph_output_node,) = gm.graph.find_nodes(op="output")
+
+  flattened_output_args, _ = pytree.tree_flatten(graph_output_node.args[0])
+  output_nodes = list(enumerate(flattened_output_args))
+  output_to_input_map = dict()
+
+  for input_idx, input_node in placeholders:
+    # TODO(aarfaian): Consider handling things beyond FakeScriptObject.
+    if not isinstance(
+        input_node.meta.get("val"),
+        # pylint: disable=protected-access
+        torch._library.fake_class_registry.FakeScriptObject,
+        # pylint: enable=protected-access
+    ):
+      continue
+
+    for output_idx, output_node in output_nodes:
+      if input_node != output_node:
+        continue
+
+      output_to_input_map[output_idx] = input_idx
+
+  return output_to_input_map
+
+
+def _process_fx_outputs(
+    gm: torch.fx.GraphModule,
+    outputs: Any,
+) -> tuple[
+    list[torch.Tensor],
+    Callable[[Sequence[Any], Sequence[torch.Tensor]], Any],
+]:
+  """Removes Nones, maps passthrough values, and dedups outputs.
+
+  This is necessary because MLIR graphs do not support `None` values in the
+  graph outputs, and we don't want to produce duplicate outputs for tensors that
+  are the same.  Additionally, in some cases (e.g. DTensor) we will see some
+  non-Tensor inputs that are passed through to the output tuple as well. This
+  function filters `None` values, maps passthrough values, and reduces to unique
+  tensors. It returns a tuple containing a list of result tensors and a function
+  to reconstruct the original FX output structure.
+
+  Args:
+    gm: The original torch.fx.GraphModule instance.
     outputs: The outputs of the graph.
 
   Returns:
@@ -292,9 +359,10 @@ def _process_fx_outputs(
     TypeError: If an element in the flattened outputs is not a `torch.Tensor`
       or `None`.
   """
+  output_to_input_map = _map_unused_fake_inputs_to_outputs(gm)
   flat_outputs, spec = pytree.tree_flatten(outputs)
-  deduped_outputs: List[torch.Tensor] = []
-  output_indices: List[int | None] = []
+  deduped_outputs: list[torch.Tensor] = []
+  output_map: list[_DedupedTensorOutput | _NonTensorPassthrough | None] = []
   # We deduplicate outputs based on a composite key: (data_ptr, dtype, shape).
   # - data_ptr(): Identifies the starting memory address.
   # - dtype: Differentiates views of the same memory interpreted as different
@@ -311,24 +379,26 @@ def _process_fx_outputs(
   # includes the storage offset), so they will not be falsely deduplicated.
   index_by_dedupe_key: dict[tuple[int, torch.dtype, torch.Size], int] = {}
 
-  for item in flat_outputs:
+  for idx, item in enumerate(flat_outputs):
     if item is None:
-      output_indices.append(None)
+      output_map.append(None)
     elif isinstance(item, torch.Tensor):
-      ptr = item.data_ptr()
-      key = (ptr, item.dtype, item.shape)
+      key = (item.data_ptr(), item.dtype, item.shape)
       if key not in index_by_dedupe_key:
         index_by_dedupe_key[key] = len(deduped_outputs)
         deduped_outputs.append(item)
-      output_indices.append(index_by_dedupe_key[key])
+      output_map.append(_DedupedTensorOutput(index_by_dedupe_key[key]))
+    elif idx in output_to_input_map:
+      output_map.append(_NonTensorPassthrough(output_to_input_map[idx]))
     else:
       raise TypeError(
-          f"Expect FX graph output to be a Tensor or None, got {item}"
+          "Expected FX graph output to be a Tensor, None, or FakeScriptObject"
+          f" but got {item}"
       )
 
   return deduped_outputs, functools.partial(
       _reconstruct_fx_outputs,
-      output_indices=output_indices,
+      output_map=output_map,
       spec=spec,
   )
 
@@ -346,7 +416,7 @@ def enable_tracebacks():
 
 def fx_to_mlir(
     module: torch.fx.GraphModule,
-    args: List[torch.Tensor | Any],
+    args: list[torch.Tensor | Any],
     print_config: MlirPrintConfig = MlirPrintConfig.MLIR_PRETTY,
 ) -> ExportedMlir:
   """Converts an FX graph module to MLIR using TorchTPU's defer mode.
@@ -417,7 +487,9 @@ def fx_to_mlir(
     )
     fx_outputs = EagerLikeFxInterpreter(module).run(*cloned_args)
 
-  result_tensors, reconstruct_fx_outputs_fn = _process_fx_outputs(fx_outputs)
+  result_tensors, reconstruct_fx_outputs_fn = _process_fx_outputs(
+      module, fx_outputs
+  )
 
   mlir_bytes = tpu_torch_compile.build_mlir(
       result_tensors=result_tensors,
