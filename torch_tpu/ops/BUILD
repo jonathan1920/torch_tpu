@@ -334,6 +334,7 @@ torch_tpu_cc_library(
         "foreach_aten_kernels.h",
     ],
     deps = [
+        ":binary",
         ":binary_aten_kernels",
         ":nullary_aten_kernels",
         ":op_builder_utils",

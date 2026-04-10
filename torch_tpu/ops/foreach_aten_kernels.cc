@@ -47,6 +47,7 @@
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
+#include "torch_tpu/ops/binary.h"
 #include "torch_tpu/ops/binary_aten_kernels.h"
 #include "torch_tpu/ops/clamp/clamp_aten_kernels.h"
 #include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
@@ -110,6 +111,40 @@ absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildForeachShlo(
     current_other = broadcasted_ops[1];
 
     mlir::MlirOp result = tensor_transform(current_self, current_other);
+    results.push_back(result);
+  }
+  return results;
+}
+
+absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildForeachAddcdivShlo(
+    absl::Span<const mlir::MlirOp> self, absl::Span<const mlir::MlirOp> tensor1,
+    absl::Span<const mlir::MlirOp> tensor2,
+    absl::Span<const mlir::MlirOp> value,
+    absl::Span<const mlir::ElementType> out_dtypes,
+    mlir::MlirBuilder& builder) {
+  mlir::SmallVector<mlir::MlirOp> results;
+  results.reserve(self.size());
+  for (auto i = 0; i < self.size(); ++i) {
+    mlir::MlirOp current_self = self[i];
+    mlir::MlirOp current_tensor1 = tensor1[i];
+    mlir::MlirOp current_tensor2 = tensor2[i];
+    mlir::MlirOp current_value = value[i];
+
+    TT_ASSIGN_OR_RETURN(current_self,
+                        CastIfNeeded(current_self, out_dtypes[i]));
+    TT_ASSIGN_OR_RETURN(current_tensor1,
+                        CastIfNeeded(current_tensor1, out_dtypes[i]));
+    TT_ASSIGN_OR_RETURN(current_tensor2,
+                        CastIfNeeded(current_tensor2, out_dtypes[i]));
+    TT_ASSIGN_OR_RETURN(current_value,
+                        CastIfNeeded(current_value, out_dtypes[i]));
+
+    TT_ASSIGN_OR_RETURN(mlir::MlirOp div,
+                        BuildDivShlo(current_tensor1, current_tensor2));
+    TT_ASSIGN_OR_RETURN(mlir::MlirOp value_div,
+                        BuildMulShlo(current_value, div));
+    TT_ASSIGN_OR_RETURN(mlir::MlirOp result,
+                        BuildAddShlo(current_self, value_div));
     results.push_back(result);
   }
   return results;
@@ -476,6 +511,53 @@ std::vector<DeviceBufferRef> ForeachAddList(at::TensorList self,
       .out_dims_list = absl::MakeConstSpan(out_dims_list),
       .op_param_cache_keys = std::move(param_keys),
   };
+  TT_ASSIGN_OR_THROW(auto result_buffers,
+                     (DispatchOp<kDynamicSize, kDynamicSize>(
+                         std::move(op_builder), inputs, std::move(options))));
+  return result_buffers;
+}
+
+std::vector<DeviceBufferRef> ForeachAddcdiv(at::TensorList self,
+                                            at::TensorList tensor1,
+                                            at::TensorList tensor2,
+                                            at::TensorList value,
+                                            UniqueDtypeVec out_dtypes) {
+  size_t num_tensors = self.size();
+  const DtypeSpan out_dtypes_span = *out_dtypes;
+
+  std::vector<at::Tensor> inputs;
+  inputs.reserve(4 * num_tensors);
+  inputs.insert(inputs.end(), self.begin(), self.end());
+  inputs.insert(inputs.end(), tensor1.begin(), tensor1.end());
+  inputs.insert(inputs.end(), tensor2.begin(), tensor2.end());
+  inputs.insert(inputs.end(), value.begin(), value.end());
+
+  auto op_builder = [num_tensors, out_dtypes = std::move(out_dtypes),
+                     out_dtypes_span](absl::Span<mlir::MlirOp> inputs,
+                                      mlir::MlirBuilder& builder)
+      -> absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> {
+    absl::Span<mlir::MlirOp> self_ops = inputs.subspan(0, num_tensors);
+    absl::Span<mlir::MlirOp> tensor1_ops =
+        inputs.subspan(num_tensors, num_tensors);
+    absl::Span<mlir::MlirOp> tensor2_ops =
+        inputs.subspan(2 * num_tensors, num_tensors);
+    absl::Span<mlir::MlirOp> value_ops =
+        inputs.subspan(3 * num_tensors, num_tensors);
+
+    return BuildForeachAddcdivShlo(self_ops, tensor1_ops, tensor2_ops,
+                                   value_ops, out_dtypes_span, builder);
+  };
+
+  const auto out_dims_list = GetDimsList(self);
+  DispatchOpOptions<kDynamicSize> options = {
+      // Share the same OpName for all calls, as the underlying Shlo is the
+      // same.
+      .op_name = OpName::kForeachAddcdivTensor,
+      .out_dtypes = out_dtypes_span,
+      .out_dims_list = out_dims_list,
+      .op_param_cache_keys = OpParamCacheKeys::Empty(),
+  };
+
   TT_ASSIGN_OR_THROW(auto result_buffers,
                      (DispatchOp<kDynamicSize, kDynamicSize>(
                          std::move(op_builder), inputs, std::move(options))));
@@ -1425,33 +1507,52 @@ std::vector<at::Tensor> AtenForeachAddcdivScalar(at::TensorList self,
                                                  at::TensorList tensor1,
                                                  at::TensorList tensor2,
                                                  const at::Scalar& value) {
+  auto promoted_value = PromoteScalar(value);
   TT_KERNEL(
       OpName::kForeachAddcdivScalar, _,
-      (self, tensor1, tensor2, IgnoreInCacheKey(value, "Legacy usage")), {
+      (self, tensor1, tensor2, promoted_value), {
         // _foreach_div supports two integral tensors, but _foreach_addcdiv
         // doesn't.
         TT_THROW_IF_ERROR(
             CheckPairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
-        std::vector<at::Tensor> quotient = AtenForeachDivList(tensor1, tensor2);
-        std::vector<at::Tensor> product = AtenForeachMulScalar(quotient, value);
-        return AtenForeachAddList(self, product, 1.0);
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+        std::vector<at::Tensor> value_list;
+        value_list.reserve(self.size());
+        for (size_t i = 0; i < self.size(); ++i) {
+          at::ScalarType scalar_type =
+              ConvertTo<at::ScalarType>((*out_dtypes)[i]);
+          TT_ASSIGN_OR_THROW(at::Tensor value_tensor,
+                             promoted_value.GetTensor(scalar_type));
+          value_list.push_back(value_tensor);
+        }
+        return ForeachConvertToTensor(ForeachAddcdiv(
+            self, tensor1, tensor2, value_list, std::move(out_dtypes)));
       });
 }
 
 std::vector<at::Tensor> AtenForeachAddcdivScalarList(
     at::TensorList self, at::TensorList tensor1, at::TensorList tensor2,
     at::ArrayRef<at::Scalar> scalars) {
+  auto promoted_scalars = PromoteScalar(scalars);
   TT_KERNEL(
       OpName::kForeachAddcdivScalarList, _,
-      (self, tensor1, tensor2, IgnoreInCacheKey(scalars, "Legacy usage")), {
+      (self, tensor1, tensor2, promoted_scalars), {
         // _foreach_div supports two integral tensors, but
         // _foreach_addcdiv doesn't.
         TT_THROW_IF_ERROR(
             CheckPairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
-        std::vector<at::Tensor> quotient = AtenForeachDivList(tensor1, tensor2);
-        std::vector<at::Tensor> product =
-            AtenForeachMulScalarList(quotient, scalars);
-        return AtenForeachAddList(self, product, 1.0);
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+        std::vector<at::Tensor> value_list;
+        value_list.reserve(self.size());
+        for (size_t i = 0; i < self.size(); ++i) {
+          at::ScalarType scalar_type =
+              ConvertTo<at::ScalarType>((*out_dtypes)[i]);
+          TT_ASSIGN_OR_THROW(at::Tensor value_tensor,
+                             promoted_scalars[i].GetTensor(scalar_type));
+          value_list.push_back(value_tensor);
+        }
+        return ForeachConvertToTensor(ForeachAddcdiv(
+            self, tensor1, tensor2, value_list, std::move(out_dtypes)));
       });
 }
 
@@ -1465,43 +1566,63 @@ std::vector<at::Tensor> AtenForeachAddcdivTensor(at::TensorList self,
         // doesn't.
         TT_THROW_IF_ERROR(
             CheckPairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
-        std::vector<at::Tensor> quotient = AtenForeachDivList(tensor1, tensor2);
-        std::vector<at::Tensor> product =
-            AtenForeachMulTensor(quotient, scalars);
-        return AtenForeachAddList(self, product, 1.0);
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+        std::vector<at::Tensor> value_list(self.size(), scalars);
+        return ForeachConvertToTensor(ForeachAddcdiv(
+            self, tensor1, tensor2, value_list, std::move(out_dtypes)));
       });
 }
 
 void AtenForeachAddcdiv_Scalar(at::TensorList self, at::TensorList tensor1,
                                at::TensorList tensor2,
                                const at::Scalar& value) {
+  auto promoted_value = PromoteScalar(value);
   TT_KERNEL(
       OpName::kForeachAddcdiv_Scalar, _,
-      (self, tensor1, tensor2, IgnoreInCacheKey(value, "Legacy usage")), {
+      (self, tensor1, tensor2, promoted_value), {
         // _foreach_div supports two integral tensors, but _foreach_addcdiv
         // doesn't.
         TT_THROW_IF_ERROR(
             CheckPairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
-        std::vector<at::Tensor> quotient = AtenForeachDivList(tensor1, tensor2);
-        std::vector<at::Tensor> product = AtenForeachMulScalar(quotient, value);
-        AtenForeachAdd_List(self, product, 1.0);
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+        std::vector<at::Tensor> value_list;
+        value_list.reserve(self.size());
+        for (size_t i = 0; i < self.size(); ++i) {
+          TT_ASSIGN_OR_THROW(at::Tensor value_tensor,
+                             promoted_value.GetTensor(self[i].scalar_type()));
+          value_list.push_back(value_tensor);
+        }
+        TT_THROW_IF_ERROR(ForeachAssignToTensor(
+            ForeachAddcdiv(self, tensor1, tensor2, value_list,
+                           std::move(out_dtypes)),
+            self));
       });
 }
 
 void AtenForeachAddcdiv_ScalarList(at::TensorList self, at::TensorList tensor1,
                                    at::TensorList tensor2,
                                    at::ArrayRef<at::Scalar> scalars) {
+  auto promoted_scalars = PromoteScalar(scalars);
   TT_KERNEL(
       OpName::kForeachAddcdiv_ScalarList, _,
-      (self, tensor1, tensor2, IgnoreInCacheKey(scalars, "Legacy usage")), {
+      (self, tensor1, tensor2, promoted_scalars), {
         // _foreach_div supports two integral tensors, but
         // _foreach_addcdiv doesn't.
         TT_THROW_IF_ERROR(
             CheckPairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
-        std::vector<at::Tensor> quotient = AtenForeachDivList(tensor1, tensor2);
-        std::vector<at::Tensor> product =
-            AtenForeachMulScalarList(quotient, scalars);
-        AtenForeachAdd_List(self, product, 1.0);
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+        std::vector<at::Tensor> value_list;
+        value_list.reserve(self.size());
+        for (size_t i = 0; i < self.size(); ++i) {
+          TT_ASSIGN_OR_THROW(
+              at::Tensor value_tensor,
+              promoted_scalars[i].GetTensor(self[i].scalar_type()));
+          value_list.push_back(value_tensor);
+        }
+        TT_THROW_IF_ERROR(ForeachAssignToTensor(
+            ForeachAddcdiv(self, tensor1, tensor2, value_list,
+                           std::move(out_dtypes)),
+            self));
       });
 }
 
@@ -1514,10 +1635,12 @@ void AtenForeachAddcdiv_Tensor(at::TensorList self, at::TensorList tensor1,
         // doesn't.
         TT_THROW_IF_ERROR(
             CheckPairwiseAddcdivAtLeastOneNotIntegral(tensor1, tensor2));
-        std::vector<at::Tensor> quotient = AtenForeachDivList(tensor1, tensor2);
-        std::vector<at::Tensor> product =
-            AtenForeachMulTensor(quotient, scalars);
-        AtenForeachAdd_List(self, product, 1.0);
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+        std::vector<at::Tensor> value_list(self.size(), scalars);
+        TT_THROW_IF_ERROR(ForeachAssignToTensor(
+            ForeachAddcdiv(self, tensor1, tensor2, value_list,
+                           std::move(out_dtypes)),
+            self));
       });
 }
 
