@@ -966,13 +966,14 @@ at::Tensor& AtenPolarOut(const at::Tensor& abs, const at::Tensor& angle,
 
 at::Tensor& AtenPowScalarOut(const at::Scalar& self, const at::Tensor& exponent,
                              at::Tensor& out) {
-  TT_KERNEL(OpName::kPowScalarOut, _,
-            (IgnoreInCacheKey(self, "Legacy usage"), exponent, out), {
+  auto promoted_self = PromoteScalar(self);
+  TT_KERNEL(OpName::kPowScalarOut, _, (promoted_self, exponent, out),
+            {
               TT_THROW_IF_ERROR(CheckPowInputs(self, exponent));
               // Can't use reverse_operands here because a^b != b^a.
               // Cast to out tensor dtype to be consistent with PyTorch.
               TT_ASSIGN_OR_THROW(at::Tensor self_tensor,
-                                 MakeTensor(self, out.scalar_type()));
+                                 promoted_self.GetTensor(out.scalar_type()));
               TT_THROW_IF_ERROR(BinaryOpOut(
                   self_tensor, exponent, out, BuildPowShlo,
                   // Use kPowOut for cache key as the builder logic is the same
@@ -986,20 +987,20 @@ at::Tensor& AtenPowScalarOut(const at::Scalar& self, const at::Tensor& exponent,
 at::Tensor& AtenPowTensorScalarOut(const at::Tensor& self,
                                    const at::Scalar& exponent,
                                    at::Tensor& out) {
-  TT_KERNEL(OpName::kPowTensorScalarOut, _,
-            (self, IgnoreInCacheKey(exponent, "Legacy usage"), out), {
-              TT_THROW_IF_ERROR(CheckPowInputs(self, exponent));
-              // Cast to self dtype to be consistent with PyTorch.
-              TT_ASSIGN_OR_THROW(at::Tensor exponent_tensor,
-                                 MakeTensor(exponent, self.scalar_type()));
-              TT_THROW_IF_ERROR(BinaryOpOut(
-                  self, exponent, out, BuildPowShlo,
-                  // Use kPowOut for cache key as the builder logic is the same
-                  // as for AtenPowTensorTensorOut.
-                  {.op_name = OpName::kPowOut,
-                   .op_param_cache_keys = OpParamCacheKeys::Empty()}));
-              return out;
-            });
+  auto promoted_exponent = PromoteScalar(exponent);
+  TT_KERNEL(OpName::kPowTensorScalarOut, _, (self, promoted_exponent, out), {
+    TT_THROW_IF_ERROR(CheckPowInputs(self, exponent));
+    // Cast to self dtype to be consistent with PyTorch.
+    TT_ASSIGN_OR_THROW(at::Tensor exponent_tensor,
+                       promoted_exponent.GetTensor(self.scalar_type()));
+    TT_THROW_IF_ERROR(
+        BinaryOpOut(self, exponent, out, BuildPowShlo,
+                    // Use kPowOut for cache key as the builder logic is the
+                    // same as for AtenPowTensorTensorOut.
+                    {.op_name = OpName::kPowOut,
+                     .op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    return out;
+  });
 }
 
 at::Tensor& AtenPowTensorTensorOut(const at::Tensor& self,

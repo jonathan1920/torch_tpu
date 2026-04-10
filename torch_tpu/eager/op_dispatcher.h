@@ -351,6 +351,7 @@ absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
 //    the executable can be reused in the future even if the scalar value
 //    changes. To prevent redundant host-to-device transfers, created
 //    DeviceBufferRefs are cached and reused.
+[[deprecated("Use PromoteScalar() instead.")]]
 absl::StatusOr<at::Tensor> MakeTensor(
     const at::Scalar& scalar,
     c10::optional<at::ScalarType> scalar_type_opt = std::nullopt);

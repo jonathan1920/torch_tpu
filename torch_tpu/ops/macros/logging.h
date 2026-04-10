@@ -339,8 +339,6 @@ void CheckScalarInput() {
       kOpName == OpName::kNeScalarOut ||                 //
       kOpName == OpName::kPdistForward ||                //
       kOpName == OpName::kPow ||                         //
-      kOpName == OpName::kPowScalarOut ||                //
-      kOpName == OpName::kPowTensorScalarOut ||          //
       kOpName == OpName::kRemainder ||                   //
       kOpName == OpName::kRshiftScalar ||                //
       kOpName == OpName::kRsub ||                        //
