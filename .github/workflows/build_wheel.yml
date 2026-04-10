@@ -129,7 +129,7 @@ jobs:
           mkdir dist
           gcloud storage cp "${{ needs.build_wheels.outputs.gcs-path }}/*.whl" dist/
       - name: Wait For Connection
-        uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
+        uses: google-ml-infra/actions/ci_connection@08e5394bb8179c66a50ac783fb8b2501a034c06f
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
       - name: Run tests

@@ -85,7 +85,7 @@ jobs:
       # Step 2: Add a waiting step.
       # See go/ml-github-actions:connect#add-waiting-step.
       - name: Wait For Connection
-        uses: google-ml-infra/actions/ci_connection@9f8d7d8d9954430d0fef4a8cce2cb4e3844c200d
+        uses: google-ml-infra/actions/ci_connection@08e5394bb8179c66a50ac783fb8b2501a034c06f
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
       # Run Bazel build.
