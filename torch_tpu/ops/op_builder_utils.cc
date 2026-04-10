@@ -41,6 +41,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/IR/Attributes.h"
@@ -71,12 +72,14 @@
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/python_context.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "stablehlo/dialect/Version.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/ChloBuilder.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "stablehlo/transforms/StablehloBroadcastLowering.h"
 #include "xla/mlir/utils/error_util.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 
@@ -130,6 +133,28 @@ std::string DebugString(mlir::Operation* absl_nonnull op,
       opts == DebugStringOptions::kEnableDebugInfo ? true : false;
   op->print(stream, mlir::OpPrintingFlags().enableDebugInfo(enable_debug_info));
   return result;
+}
+
+absl::StatusOr<std::string> SerializeBytecode(mlir::ModuleOp module) {
+  std::string bytecode_str;
+  llvm::raw_string_ostream os(bytecode_str);
+  TT_RET_CHECK(mlir::succeeded(mlir::writeBytecodeToFile(module, os)),
+               error::kInternal)
+      << "Failed to serialize MLIR module to bytecode.";
+  return bytecode_str;
+}
+
+absl::StatusOr<std::string> SerializePortableArtifact(mlir::ModuleOp module) {
+  std::string portable_artifact_str;
+  llvm::raw_string_ostream os(portable_artifact_str);
+  TT_ASSIGN_OR_RETURN(
+      const std::string serialized,
+      xla::SerializeUsingVersionedStablehlo(
+          module, mlir::vhlo::Version::fromCompatibilityRequirement(
+                      mlir::vhlo::Version::CompatibilityRequirement::WEEK_4)
+                      .toString()),
+      _.SetPrepend() << "Failed to serialize MLIR module to StableHLO: ");
+  return serialized;
 }
 
 mlir::RankedTensorType GetTensorTypeOrDie(const mlir::MlirOp& input) {

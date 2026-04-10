@@ -72,6 +72,7 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -83,9 +84,11 @@ torch_tpu_cc_library(
         "@stablehlo//:stablehlo_broadcast_lowering",
         "@stablehlo//:stablehlo_builder",
         "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:version",
         "@tsl//tsl/platform:path",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/mlir/utils:error_util",
+        "@xla//xla/pjrt:mlir_to_hlo",
     ],
 )
 

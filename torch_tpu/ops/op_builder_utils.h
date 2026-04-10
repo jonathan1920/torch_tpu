@@ -183,6 +183,12 @@ mlir::stablehlo::Dimensions GetDimensions(mlir::Value value);
 // Returns the dimensions of the input op with bounded information if present.
 mlir::stablehlo::Dimensions GetDimensions(mlir::MlirOp input);
 
+// Returns the bytecode of the module.
+absl::StatusOr<std::string> SerializeBytecode(mlir::ModuleOp module);
+
+// Returns the portable artifact (serialized Versioned StableHLO) of the module.
+absl::StatusOr<std::string> SerializePortableArtifact(mlir::ModuleOp module);
+
 // Returns a debugstring of the current operation or module
 [[nodiscard]] std::string DebugString(
     mlir::Operation* absl_nonnull op,

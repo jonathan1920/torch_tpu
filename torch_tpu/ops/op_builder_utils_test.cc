@@ -952,5 +952,37 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param.test_name;
     });
 
+TEST(OpBuilderUtils, SerializeBytecode) {
+  OpBuilderUtilsBuilder op_builder_utils_builder;
+  mlir::ModuleBuilder& mb = op_builder_utils_builder.get();
+  mlir::func::FunctionBuilder fb(mb, "main");
+  mlir::func::Return(fb, {});
+  mlir::OwningOpRef<mlir::ModuleOp> module = mb.build();
+
+  auto bytecode_or = SerializeBytecode(module.get());
+  ASSERT_TRUE(bytecode_or.ok());
+  std::string bytecode = bytecode_or.value();
+
+  // Check for the MLIR magic string that denotes bytecode.
+  EXPECT_THAT(bytecode, testing::HasSubstr("\x4D\x4C\xEF\x52"));
+}
+
+TEST(OpBuilderUtils, SerializePortableArtifact) {
+  OpBuilderUtilsBuilder op_builder_utils_builder;
+  mlir::ModuleBuilder& mb = op_builder_utils_builder.get();
+  mlir::func::FunctionBuilder fb(mb, "main");
+  mlir::func::Return(fb, {});
+  mlir::OwningOpRef<mlir::ModuleOp> module = mb.build();
+
+  auto artifact_or = SerializePortableArtifact(module.get());
+  ASSERT_TRUE(artifact_or.ok());
+  std::string artifact = artifact_or.value();
+
+  // Check for the MLIR magic string that denotes bytecode.
+  EXPECT_THAT(artifact, testing::HasSubstr("\x4D\x4C\xEF\x52"));
+  // Check for the StableHLO_v1 producer string to indicate versioned StableHLO.
+  EXPECT_THAT(artifact, testing::HasSubstr("StableHLO_v1."));
+}
+
 }  // namespace
 }  // namespace torch_tpu
