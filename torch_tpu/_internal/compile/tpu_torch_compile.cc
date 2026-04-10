@@ -26,8 +26,6 @@
 #include "absl/status/statusor.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -52,12 +50,10 @@
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
-#include "stablehlo/dialect/Version.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/hlo/translate/register.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
-#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -66,62 +62,6 @@ namespace torch_tpu {
 namespace py = pybind11;
 
 namespace {
-
-// Enum class for supported MLIR printing configurations.
-enum class MlirPrintConfig {
-  kMlirPretty,
-  kMlirDebugInfo,
-  kMlirSerialized,
-  kMlirVersionedSerialized,
-};
-
-// Converts between torch_tpu.export.MlirPrintConfig and the C++ enum class.
-MlirPrintConfig PyToMlirPrintConfig(const std::string& print_config) {
-  if (print_config == "MlirPretty") {
-    return MlirPrintConfig::kMlirPretty;
-  } else if (print_config == "MlirDebugInfo") {
-    return MlirPrintConfig::kMlirDebugInfo;
-  } else if (print_config == "MlirSerialized") {
-    return MlirPrintConfig::kMlirSerialized;
-  } else if (print_config == "MlirVersionedSerialized") {
-    return MlirPrintConfig::kMlirVersionedSerialized;
-  }
-  TT_THROW_IF_ERROR(TT_ERROR(error::kInvalidArgument)
-                    << "Unknown MLIR print config.");
-  llvm_unreachable("throws");
-}
-
-// Serializes MLIR module to pass back to python.
-// Supports `MlirPrintConfig` options.
-std::string PrintMlirModule(mlir::ModuleOp module,
-                            MlirPrintConfig print_config) {
-  switch (print_config) {
-    case MlirPrintConfig::kMlirPretty:
-      return DebugString(module, DebugStringOptions::kDisableDebugInfo);
-    case MlirPrintConfig::kMlirDebugInfo:
-      return DebugString(module, DebugStringOptions::kEnableDebugInfo);
-    case MlirPrintConfig::kMlirSerialized: {
-      std::string mlir_str;
-      llvm::raw_string_ostream os(mlir_str);
-      if (mlir::failed(mlir::writeBytecodeToFile(module, os))) {
-        TT_THROW_IF_ERROR(TT_ERROR(error::kInternal)
-                          << "Failed to serialize MLIR module to bytecode.");
-      }
-      return mlir_str;
-    }
-    case MlirPrintConfig::kMlirVersionedSerialized: {
-      TT_ASSIGN_OR_THROW(
-          auto mlir_str,
-          xla::SerializeUsingVersionedStablehlo(
-              module, mlir::vhlo::Version::fromCompatibilityRequirement(
-                          mlir::vhlo::Version::CompatibilityRequirement::WEEK_4)
-                          .toString()));
-      return mlir_str;
-    }
-  }
-  llvm::report_fatal_error(
-      "[PrintMlirModule] Unreachable, unknown MlirPrintConfig");
-}
 
 at::Tensor PyMakePlaceholder(const std::vector<int64_t>& sizes,  // INT_VEC_OK
                              at::ScalarType dtype, bool requires_grad) {
@@ -183,31 +123,6 @@ std::shared_ptr<ContextedModule> PyParseMlirText(const std::string& mlir_text) {
         << DebugString(module.get(), DebugStringOptions::kEnableDebugInfo));
   }
   return std::make_shared<ContextedModule>(std::move(module));
-}
-
-py::str PyPrintMlirBytecode(const py::bytes& bytecode) {
-  const auto bytecode_view = py::cast<std::string_view>(bytecode);
-  TT_ASSIGN_OR_THROW(
-      ContextedModule module,
-      ContextedModule::Make(
-          [&](mlir::MLIRContext& context)
-              -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
-            return mlir::parseSourceString<mlir::ModuleOp>(
-                llvm::StringRef(bytecode_view.data(), bytecode_view.size()),
-                mlir::ParserConfig{&context});
-          }));
-  if (!module.get()) {
-    TT_THROW_IF_ERROR(TT_ERROR(error::kInvalidArgument)
-                      << "Failed to parse MLIR bytecode.");
-  }
-
-  std::string mlir_str;
-  llvm::raw_string_ostream os(mlir_str);
-  mlir::OpPrintingFlags flags;
-  flags.enableDebugInfo(false, /*prettyForm=*/false);
-  module.get()->print(os, flags);
-
-  return py::str(mlir_str);
 }
 
 // Serializes a ContextedModule to MLIR text.
@@ -477,9 +392,6 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   m.def("serialize_mlir_portable_artifact", PySerializePortableArtifact,
         py::arg("module"),
         "Serializes a ContextedModule to a versioned portable artifact.");
-  m.def("print_mlir_bytecode", PyPrintMlirBytecode, py::arg("bytecode"),
-        "Prints an MLIR bytecode as human-readable string without location "
-        "information.");
   m.def("get_pad_module_mlir", PyGetPadModuleMlir, py::arg("tensor_info"),
         py::arg("bounds_list"),
         "Returns the MLIR module for a pad subgraph as bytecode.\n\n"
