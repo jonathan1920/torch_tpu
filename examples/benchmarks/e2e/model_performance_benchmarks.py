@@ -230,10 +230,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_fsdp_llama_3_2_1b_train_1_step(self, run_mode):
     """Tests training Llama-3.2-1B distributed with FSDP."""
-    # TODO: b/499316489 - Re-enable FSDP + torch.compile training test for Llama
-    # 3.2 1B.
-    if run_mode == benchmark_utils.RunMode.COMPILED:
-      self.skipTest("FSDP is currently failing with torch.compile.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_2X2X1,
