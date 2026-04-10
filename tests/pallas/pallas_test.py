@@ -23,8 +23,17 @@ import jax.export
 import torch
 from torch_tpu import api
 from torch_tpu._internal import compile
+from torch_tpu._internal import execution_mode
 from torch_tpu._internal import pallas
 from torch_tpu._internal.utils import utils
+
+
+def _is_deferred_mode():
+  return execution_mode.get_eager_mode() in (
+      execution_mode.EagerMode.DEFER_AND_FUSE_WITH_O1,
+      execution_mode.EagerMode.DEFER_AND_FUSE,
+      execution_mode.EagerMode.INTERNAL_DEFER_ALL,
+  )
 
 
 @pallas.custom_kernel(lambda x, y: torch.empty_like(x))
@@ -266,10 +275,14 @@ class TestPallasKernels(absltest.TestCase):
     z = aliasing_add_vectors(x, y)
     z.cpu()  # force execution
 
-    # The pre-donation value of x can no longer be used.
-    with self.assertRaisesRegex(
-        RuntimeError, "INVALID_ARGUMENT: Buffer has been deleted or donated"
-    ):
+    # The pre-donation value of x can no longer be used if we are in deferred
+    # mode.
+    if _is_deferred_mode():
+      with self.assertRaisesRegex(
+          RuntimeError, "INVALID_ARGUMENT: Buffer has been deleted or donated"
+      ):
+        pre_x_sum.cpu()
+    else:
       pre_x_sum.cpu()
 
   def test_pallas_kernel_compiled_mode(self):
@@ -410,10 +423,14 @@ class TestPallasKernels(absltest.TestCase):
         str(executables[0].mlir_graph),
     )
 
-    # The pre-donation value of x can no longer be used.
-    with self.assertRaisesRegex(
-        RuntimeError, "INVALID_ARGUMENT: Buffer has been deleted or donated"
-    ):
+    # The pre-donation value of x can no longer be used if we are in deferred
+    # mode.
+    if _is_deferred_mode():
+      with self.assertRaisesRegex(
+          RuntimeError, "INVALID_ARGUMENT: Buffer has been deleted or donated"
+      ):
+        pre_x_sum.cpu()
+    else:
       pre_x_sum.cpu()
 
   def test_kernel_compile_both_donated_and_non_donated_ops(
