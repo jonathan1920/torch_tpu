@@ -80,6 +80,7 @@ torch_tpu_cc_library(
         "@stablehlo//:stablehlo_serialization",
         "@tsl//tsl/platform:path",
         "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/pjrt:maybe_owning_mlir_module",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",  # buildcleaner: keep

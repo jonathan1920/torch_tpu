@@ -48,6 +48,7 @@
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla_data.pb.h"
@@ -127,21 +128,34 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
 absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
     const std::string_view mlir_module_bytecode,
     const CompilationMode compilation_mode) {
-  MlirComputationBuilder computation_builder =
-      [&](mlir::MLIRContext& mlir_context) {
-        return mlir::stablehlo::deserializePortableArtifact(
-            {mlir_module_bytecode.data(), mlir_module_bytecode.size()},
-            &mlir_context);
-      };
+  TT_ASSIGN_OR_RETURN(
+      ContextedModule module,
+      ContextedModule::Make(
+          [&](mlir::MLIRContext& mlir_context)
+              -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
+            return mlir::stablehlo::deserializePortableArtifact(
+                {mlir_module_bytecode.data(), mlir_module_bytecode.size()},
+                &mlir_context);
+          }));
+  return CompileMlirExecutable(std::move(module).ToMaybeOwningMlirModule(),
+                               compilation_mode);
+}
 
+absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
+    xla::MaybeOwningMlirModule module, const CompilationMode compilation_mode) {
   TT_ASSIGN_OR_RETURN(UniqueCompileOptions compile_options,
                       MakeCompilerOptions(compilation_mode));
   xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   TT_RET_CHECK(client, error::kFailedPrecondition)
       << "PjRtClient must be initialized";
-  TT_ASSIGN_OR_RETURN(
-      LoadedExecutableBuilder executable_builder,
-      MlirComputationBuilderToExecutableBuilder(computation_builder));
+
+  LoadedExecutableBuilder executable_builder =
+      [module = std::move(module)](
+          xla::PjRtClient& client,
+          UniqueCompileOptions compile_options) mutable {
+        return client.CompileAndLoad(std::move(module),
+                                     std::move(*compile_options));
+      };
   return Compile(*client, std::move(executable_builder),
                  std::move(compile_options));
 }
