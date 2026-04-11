@@ -70,6 +70,8 @@ genrule(
         "//shims/torch:pytorch",
         "//shims/torch:tensorboard_support",
         "//shims/torch:testing_internal",
+        "//torch_tpu/_internal/compile/dynamic:sym_shape_manager",
+        "//torch_tpu/_internal/compile/dynamic:symbol_bounds",
         "//torch_tpu/_internal/utils:test_fixtures",
     ],
     outs = ["wheel_extra_test_deps.zip"],
