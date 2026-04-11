@@ -30,7 +30,6 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -274,10 +273,6 @@ class ProcessGroupTpu : public c10d::Backend {
       const std::vector<int64_t>& input_split_sizes);  // INT_VEC_OK
 
  private:
-  using CrossHostReceiveBuffersResult =
-      std::pair<std::vector<std::unique_ptr<xla::PjRtBuffer>>,
-                c10::intrusive_ptr<c10::ivalue::Future>>;
-
   // Extracts receive descriptors from store_ and sends buffers to a
   // remote device.
   absl::StatusOr<c10::intrusive_ptr<c10::ivalue::Future>> CrossHostSendBuffers(
@@ -286,7 +281,8 @@ class ProcessGroupTpu : public c10d::Backend {
 
   // Populates store_ with receive descriptors and places buffers
   // from a cross-host send onto device.
-  absl::StatusOr<CrossHostReceiveBuffersResult> CrossHostReceiveBuffers(
+  absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>>
+  CrossHostReceiveBuffers(
       absl::Span<const xla::Shape> shapes,
       absl::Span<const xla::CrossHostTransferKey> transfer_keys);
 

@@ -22,7 +22,6 @@
 #include <cstdint>
 #include <exception>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -384,7 +383,7 @@ ProcessGroupTpu::CrossHostSendBuffers(
   return all_sent_future;
 }
 
-absl::StatusOr<ProcessGroupTpu::CrossHostReceiveBuffersResult>
+absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>>
 ProcessGroupTpu::CrossHostReceiveBuffers(
     absl::Span<const xla::Shape> shapes,
     absl::Span<const xla::CrossHostTransferKey> transfer_keys) {
@@ -449,7 +448,12 @@ ProcessGroupTpu::CrossHostReceiveBuffers(
       auto buffers,
       PjrtBackend::GetInstance().GetClient()->MakeCrossHostReceiveBuffers(
           shapes, PjrtBackend::GetInstance().GetDevice(), std::move(notifier)));
-  return std::make_pair(std::move(buffers), std::move(setup_future));
+
+  // Wait for the buffer to be ready to transfer and descriptors to be
+  // posted to the store. This ensures the enqueueing order of send and receive
+  // can be maintained from the caller's perspective.
+  setup_future->waitAndThrow();
+  return buffers;
 }
 
 ProcessGroupTpu::ProcessGroupTpu(c10::intrusive_ptr<c10d::Store> store,
@@ -708,7 +712,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::recv(
         // posts their network descriptors to the distributed store for the
         // sender to find.
         TT_ASSIGN_OR_THROW(
-            (auto [recv_buffers, setup_future]),
+            auto recv_buffers,
             CrossHostReceiveBuffers(recv_shapes, std::move(transfer_keys)));
 
         // Bind the incoming PJRT buffer back to the tensors.
@@ -725,8 +729,9 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::recv(
           TT_THROW_IF_ERROR(
               AssignBufferToAtTensor(std::move(device_buffer), tensor));
         }
-        return c10::make_intrusive<TpuWork>(
-            tensors, getRank(), c10d::OpType::RECV, std::move(setup_future));
+
+        return c10::make_intrusive<TpuWork>(tensors, getRank(),
+                                            c10d::OpType::RECV);
       });
 }
 
