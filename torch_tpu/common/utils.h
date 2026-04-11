@@ -45,7 +45,13 @@ namespace torch_tpu {
 // limitation on a maximum line length.
 void LogLines(std::string_view s);
 
-// The following hash function is suggested by Gemini and by a Google search.
+// This function is deterministic within a single binary execution. However, the
+// resulting seed is NOT guaranteed to be stable across different standard
+// library implementations (e.g., libc++ vs. libstdc++), different compiler
+// versions, or different CPU architectures.
+//
+// In a distributed P2P context, this is safe as long as all participating nodes
+// are running identical binaries.
 template <typename T>
 inline void HashCombine(std::size_t& seed, const T& v) {
   std::hash<T> hasher;

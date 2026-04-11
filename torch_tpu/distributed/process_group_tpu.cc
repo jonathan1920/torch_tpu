@@ -65,6 +65,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/distributed/allgather.h"
 #include "torch_tpu/distributed/allreduce.h"
 #include "torch_tpu/distributed/alltoall.h"
@@ -293,11 +294,16 @@ OpSplitMode GetCollectiveSplitMode() {
   return OpSplitMode::kNone;
 }
 
-xla::CrossHostTransferKey GetCrossHostTransferKey(int tag,
+xla::CrossHostTransferKey GetCrossHostTransferKey(int64_t src_device_id,
+                                                  int64_t dst_device_id,
+                                                  int tag,
                                                   size_t tensor_index = 0) {
-  uint64_t key = static_cast<uint32_t>(tag);
-  key |= (static_cast<uint64_t>(tensor_index) << 32);
-  return xla::CrossHostTransferKey(static_cast<int64_t>(key));
+  uint64_t seed = 0;
+  torch_tpu::HashCombine(seed, static_cast<uint64_t>(src_device_id));
+  torch_tpu::HashCombine(seed, static_cast<uint64_t>(dst_device_id));
+  torch_tpu::HashCombine(seed, static_cast<uint64_t>(tag));
+  torch_tpu::HashCombine(seed, static_cast<uint64_t>(tensor_index));
+  return xla::CrossHostTransferKey(static_cast<int64_t>(seed));
 }
 
 std::string GetCrossHostTransferDescriptorStoreKey(
@@ -641,14 +647,14 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::send(
       (tensors, IgnoreInCacheKey(dst_rank, "no op being dispatched"),
        IgnoreInCacheKey(tag, "no op being dispatched")),
       {
-        // The dst_rank is implicitly handled by the distributed store keys.
-        // The receiver is responsible for creating and posting the descriptors.
         std::vector<xla::PjRtBuffer*> pjrt_buffers;
         std::vector<xla::CrossHostTransferKey> transfer_keys;
 
         pjrt_buffers.reserve(tensors.size());
         transfer_keys.reserve(tensors.size());
 
+        int64_t src_device_id = addressable_device_id_;
+        int64_t dst_device_id = rank_to_device_id_[dst_rank];
         for (size_t i = 0; i < tensors.size(); ++i) {
           const auto& tensor = tensors[i];
           // Extract the underlying hardware buffer from the tensor.
@@ -658,7 +664,8 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::send(
                              device_buffer.GetOrMaterializeBuffer());
 
           pjrt_buffers.push_back(pjrt_buffer);
-          transfer_keys.push_back(GetCrossHostTransferKey(tag, i));
+          transfer_keys.push_back(
+              GetCrossHostTransferKey(src_device_id, dst_device_id, tag, i));
         }
 
         // Initiate the cross-host send logic, which will block until
@@ -681,10 +688,11 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::recv(
       {
         std::vector<xla::Shape> recv_shapes;
         std::vector<xla::CrossHostTransferKey> transfer_keys;
-
         transfer_keys.reserve(tensors.size());
         recv_shapes.reserve(tensors.size());
 
+        int64_t src_device_id = rank_to_device_id_[src_rank];
+        int64_t dst_device_id = addressable_device_id_;
         for (size_t i = 0; i < tensors.size(); ++i) {
           const auto& tensor = tensors[i];
           TT_ASSIGN_OR_THROW(auto xla_dtype, ConvertTo<xla::PrimitiveType>(
@@ -692,7 +700,8 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::recv(
           xla::Shape xla_shape =
               xla::ShapeUtil::MakeShape(xla_dtype, tensor.sizes());
           recv_shapes.push_back(std::move(xla_shape));
-          transfer_keys.push_back(GetCrossHostTransferKey(tag, i));
+          transfer_keys.push_back(
+              GetCrossHostTransferKey(src_device_id, dst_device_id, tag, i));
         }
 
         // Initiate the receive process. This creates placeholder buffers and

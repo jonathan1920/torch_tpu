@@ -518,6 +518,36 @@ def run_isend_irecv() -> None:
       raise RuntimeError(f"isend failed on rank {rank}")
 
 
+def run_send_recv_same_tag():
+  """Tests send and recv with the same tag for different src and dst ranks."""
+  _ = api.tpu_device()
+  dist.init_process_group(backend="tpu_dist")
+
+  rank = dist.get_rank()
+  world_size = dist.get_world_size()
+  if world_size < 2:
+    return
+
+  # Use the same tag for all send/recv pairs to check if tag uniqueness is not
+  # required when src and dst ranks are different.
+  p2p_tag = 0
+
+  ranks = list(range(world_size))
+  for [src_rank, dst_rank] in zip(ranks[0::2], ranks[1::2]):
+    tensor_shape = (32, 32)
+    tensor_value = float(src_rank) ** 2 + float(dst_rank)
+
+    if rank == src_rank:
+      x = torch.full(tensor_shape, tensor_value, device="tpu")
+      torch.distributed.send(x, dst=dst_rank, tag=p2p_tag)
+    elif rank == dst_rank:
+      recv_buffer = torch.zeros(tensor_shape, device="tpu")
+      torch.distributed.recv(recv_buffer, src=src_rank, tag=p2p_tag)
+
+      expected = torch.full(tensor_shape, tensor_value)
+      utils.assert_close(recv_buffer.cpu(), expected)
+
+
 def run_collectives_with_non_uniform_deferred_ops() -> None:
   """Tests collective functionality with non-uniform (per-rank) deferred ops."""
   rank = int(os.environ["RANK"])
@@ -897,6 +927,14 @@ class CollectiveOpsTest(absltest.TestCase):
         nproc_per_node=self._world_size,
         fn=singlehost_wrapper.tpu_env_wrapper(
             run_isend_irecv, world_size=self._world_size
+        ),
+    )
+
+  def test_send_recv_same_tag(self):
+    distributed_utils.dist_run(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_send_recv_same_tag, world_size=self._world_size
         ),
     )
 
