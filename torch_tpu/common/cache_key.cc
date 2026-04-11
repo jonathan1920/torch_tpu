@@ -140,6 +140,8 @@ std::string_view ParseNextArgName(std::string_view& args_str) {
   return name;
 }
 
+}  // namespace internal
+
 PromotedScalar::PromotedScalar(Promoter promoter, at::Scalar scalar)
     : state_(std::make_unique<State>(State{.promoter = std::move(promoter),
                                            .scalar = std::move(scalar)})) {}
@@ -153,8 +155,6 @@ absl::StatusOr<at::Tensor> PromotedScalar::GetTensor(
 std::string PromotedScalar::ToString() const {
   return torch_tpu::ToString(scalar());
 }
-
-}  // namespace internal
 
 absl::StatusOr<OpParamCacheKeys> OpParamCacheKeys::Builder::operator*() {
   if (first_error_.ok()) {

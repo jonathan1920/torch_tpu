@@ -357,14 +357,14 @@ absl::StatusOr<at::Tensor> MakeTensor(
     c10::optional<at::ScalarType> scalar_type_opt = std::nullopt);
 
 // Promotes the given scalar to a tensor lazily.
-[[nodiscard]] internal::PromotedScalar PromoteScalar(at::Scalar scalar);
+[[nodiscard]] PromotedScalar PromoteScalar(at::Scalar scalar);
 
 // Promotes the given optional scalar to an optional tensor lazily.
-[[nodiscard]] std::optional<internal::PromotedScalar> PromoteScalar(
+[[nodiscard]] std::optional<PromotedScalar> PromoteScalar(
     std::optional<at::Scalar> scalar);
 
 // Promotes the given scalars to tensors lazily.
-[[nodiscard]] std::vector<internal::PromotedScalar> PromoteScalar(
+[[nodiscard]] std::vector<PromotedScalar> PromoteScalar(
     at::ArrayRef<at::Scalar> scalars);
 
 }  // namespace torch_tpu

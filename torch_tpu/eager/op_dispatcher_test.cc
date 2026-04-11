@@ -64,12 +64,12 @@ TEST(PromoteScalar, Array) {
 TEST(FormatParamCacheKey, OptionalPromotedScalar) {
   at::Scalar s(1.0);
   auto ps = PromoteScalar(s);
-  std::optional<internal::PromotedScalar> ops = std::move(ps);
+  std::optional<PromotedScalar> ops = std::move(ps);
   EXPECT_EQ(internal::FormatParamCacheKey(ops), "s");
   // Call tensor() to avoid dtor crash.
   ops->GetTensor().IgnoreError();
 
-  std::optional<internal::PromotedScalar> empty;
+  std::optional<PromotedScalar> empty;
   EXPECT_EQ(internal::FormatParamCacheKey(empty), "");
 }
 

@@ -77,8 +77,7 @@
     ::torch_tpu::internal::ScopedOpName _scoped_op_name(op_name);              \
     TT_CHECK_AND_LOG_KERNEL_ARGS_(op_name, TT_REMOVE_PARENS_(args));           \
     TT_IF_DEBUG(                                                               \
-        std::vector<                                                           \
-            const ::torch_tpu::internal::PromotedScalar::State* absl_nonnull>  \
+        std::vector<const ::torch_tpu::PromotedScalar::State* absl_nonnull>    \
             _promoted_scalars;                                                 \
         TT_COLLECT_PROMOTED_SCALAR_POINTERS_(_promoted_scalars,                \
                                              TT_REMOVE_PARENS_(args));         \

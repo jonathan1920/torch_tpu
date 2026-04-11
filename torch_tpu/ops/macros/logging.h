@@ -601,22 +601,20 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
   } else if constexpr (is_ignored_in_cache_key<T>::value) {
     // The argument is IgnoreInCacheKey(x), so we check the type of x.
     CheckKernelArgType<kOpName, typename T::value_type>(context, arg_idx);
-  } else if constexpr (std::is_same_v<T, internal::PromotedScalar>) {
+  } else if constexpr (std::is_same_v<T, PromotedScalar>) {
     CheckScalarInput<kOpName, UsesScalarInput::kNo>();
     // The argument is a PromotedScalar, so we check it matches an at::Scalar
     // parameter in the kernel function signature.
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "at::Scalar")  // CRASH_OK
         << message();
-  } else if constexpr (std::is_same_v<
-                           T, std::optional<internal::PromotedScalar>>) {
+  } else if constexpr (std::is_same_v<T, std::optional<PromotedScalar>>) {
     CheckScalarInput<kOpName, UsesScalarInput::kNo>();
     // The argument is an optional PromotedScalar, so we check it matches an
     // optional at::Scalar parameter in the kernel function signature.
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
                   "std::optional<at::Scalar>")
         << message();
-  } else if constexpr (std::is_same_v<T,
-                                      std::vector<internal::PromotedScalar>>) {
+  } else if constexpr (std::is_same_v<T, std::vector<PromotedScalar>>) {
     CheckScalarInput<kOpName, UsesScalarInput::kNo>();
     // The argument is a vector of PromotedScalar, so we check it matches an
     // ArrayRef of at::Scalar parameter in the kernel function signature.

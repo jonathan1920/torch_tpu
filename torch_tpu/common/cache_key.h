@@ -66,20 +66,33 @@
 
 namespace torch_tpu {
 
+class PromotedScalar;
+
 namespace internal {
 
-// A scalar value that is promoted to a tensor lazily.
-class PromotedScalar {
- public:
+struct PromotedScalarState {
   // Type of a function that turns a Scalar into a Tensor.
   using Promoter = absl::AnyInvocable<absl::StatusOr<at::Tensor>(
       const at::Scalar&, std::optional<at::ScalarType>) const>;
 
-  struct State {
-    Promoter promoter;
-    at::Scalar scalar;
-    bool tensor_used = false;
-  };
+  Promoter promoter;
+  at::Scalar scalar;
+  bool tensor_used = false;
+};
+
+void AppendPromotedScalarPointers(
+    std::vector<const PromotedScalarState* absl_nonnull>& promoted_scalars,
+    const PromotedScalar& arg);
+
+}  // namespace internal
+
+// A scalar value that is promoted to a tensor lazily.
+class PromotedScalar {
+ public:
+  using State = internal::PromotedScalarState;
+
+  // Type of a function that turns a Scalar into a Tensor.
+  using Promoter = State::Promoter;
 
   // Promotes the given scalar to a tensor. We make the promoter a parameter
   // rather than a hard-coded MakeTensor() to avoid a circular dependency
@@ -104,12 +117,14 @@ class PromotedScalar {
   [[nodiscard]] std::string ToString() const;
 
  private:
-  friend void AppendPromotedScalarPointers(
+  friend void internal::AppendPromotedScalarPointers(
       std::vector<const State* absl_nonnull>& promoted_scalars,
       const PromotedScalar& arg);
 
   absl_nonnull std::unique_ptr<State> state_;
 };
+
+namespace internal {
 
 // Wrapper for a value that should be ignored in the cache key computation.
 template <typename T>

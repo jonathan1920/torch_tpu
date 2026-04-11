@@ -484,8 +484,8 @@ absl::StatusOr<at::Tensor> MakeTensor(
   return MakeTensor(std::move(buffer));
 }
 
-internal::PromotedScalar PromoteScalar(at::Scalar scalar) {
-  return internal::PromotedScalar(
+PromotedScalar PromoteScalar(at::Scalar scalar) {
+  return PromotedScalar(
       [](const at::Scalar& scalar,
          std::optional<at::ScalarType> scalar_type_opt)
           -> absl::StatusOr<at::Tensor> {
@@ -496,17 +496,15 @@ internal::PromotedScalar PromoteScalar(at::Scalar scalar) {
       std::move(scalar));
 }
 
-std::optional<internal::PromotedScalar> PromoteScalar(
-    std::optional<at::Scalar> scalar) {
+std::optional<PromotedScalar> PromoteScalar(std::optional<at::Scalar> scalar) {
   if (!scalar.has_value()) {
     return std::nullopt;
   }
   return PromoteScalar(scalar.value());
 }
 
-std::vector<internal::PromotedScalar> PromoteScalar(
-    at::ArrayRef<at::Scalar> scalars) {
-  std::vector<internal::PromotedScalar> promoted_scalars;
+std::vector<PromotedScalar> PromoteScalar(at::ArrayRef<at::Scalar> scalars) {
+  std::vector<PromotedScalar> promoted_scalars;
   promoted_scalars.reserve(scalars.size());
   for (const auto& scalar : scalars) {
     promoted_scalars.push_back(PromoteScalar(scalar));
