@@ -254,6 +254,7 @@ def _check_and_adjust_test_tags(name, size, timeout, nobuild, notap, nopresubmit
     if "oss_ready_cpu" in tags or "oss_ready_tpu" in tags:
         fail("The 'oss_ready_cpu' and 'oss_ready_tpu' tags no longer have any " +
              "effect. Tests are enabled by default in OSS.")
+
     process_accelerator_tags(tags)
 
 def torch_tpu_cc_test(

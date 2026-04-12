@@ -20,9 +20,21 @@ def add_internal_filesystem_dependencies():
 def process_accelerator_tags(tags):
     """process_accelerator_tags shim.
 
-    This macro currently does nothing in OSS.
+    This macro adds a generic "wild card" accelerator tag ("requires-tpu" or
+    "requires-gpu") to all tests that require an accelerator, to make it easier
+    to filter tests by accelerator in the bazel config.
 
     Args:
       tags: The tags to add to the test.
     """
-    _ = tags  # @unused
+
+    # Bazel doesn't support filtering tags with wildcards, so this aggregates
+    # all the (OSS) TPU and GPU tags into requires-gpu and requires-tpu; we
+    # assume that there are no tests that require both a GPU and a TPU.
+    has_tpu = any([t.startswith("requires-tpu") for t in tags])
+    has_gpu = any([t.startswith("requires-gpu") for t in tags])
+
+    if has_tpu and "requires-tpu" not in tags:
+        tags.append("requires-tpu")
+    if has_gpu and "requires-gpu" not in tags:
+        tags.append("requires-gpu")

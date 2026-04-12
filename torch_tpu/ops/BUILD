@@ -481,6 +481,8 @@ sh_test(
         "@pypi_libtpu//:whl",
     ],
     tags = [
+        # This is normally added by the torch_tpu_... rules
+        "requires-tpu",
         "requires-tpu-v5lite",
     ],
 )

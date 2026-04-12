@@ -209,11 +209,11 @@ test:ci --test_output=errors
 
 # Settings specific to CPU CI runs.
 common:ci_cpu --config=ci
-common:ci_cpu --build_tag_filters=-nobuild_oss,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only,-requires-gpu-nvidia,-requires-tpu-v5lite,-requires-tpu-v5lite:8,-requires-tpu-v5p,-requires-tpu-v5p:4,-requires-tpu-v6e,-requires-tpu-v7x,-requires-tpu-v7x:4
+common:ci_cpu --build_tag_filters=-nobuild_oss,-requires-gpu,-requires-tpu
 
 # We exclude tests tagged "notap" as it indicates that the test should be skipped from CI.
 # Also exclude anything with `-notest_oss` (which implies `-nobuild_oss`)
-common:ci_cpu --test_tag_filters=-nobuild_oss,-notest_oss,-notap,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only,-requires-gpu-nvidia,-requires-tpu-v5lite,-requires-tpu-v5lite:8,-requires-tpu-v5p,-requires-tpu-v5p:4,-requires-tpu-v6e,-requires-tpu-v7x,-requires-tpu-v7x:4
+common:ci_cpu --test_tag_filters=-nobuild_oss,-notest_oss,-notap,-requires-gpu,-requires-tpu
 
 # Settings specific to TPU CI runs.
 common:ci_tpu_base --config=ci
@@ -285,6 +285,6 @@ test:wheel_test_tpu --spawn_strategy=local
 # We need to re-specify all of these tag filters because when specified more
 # than once, they don't compose and we want to be able to also exclude
 # wheel_test_excluded
-common:wheel_test_cpu --test_tag_filters=-nobuild_oss,-notest_oss,-notap,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm60-only,-requires-gpu-nvidia,-requires-tpu-v5lite,-requires-tpu-v5lite:8,-requires-tpu-v5p,-requires-tpu-v5p:4,-requires-tpu-v6e,-requires-tpu-v7x,-requires-tpu-v7x:4,-wheel_test_excluded
+common:wheel_test_cpu --test_tag_filters=-nobuild_oss,-notest_oss,-notap,-requires-gpu,-requires-tpu,-wheel_test_excluded
 
 common:wheel_test_tpu --test_tag_filters=-notest_oss,-nobuild_oss,-notap,-wheel_test_excluded
