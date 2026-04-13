@@ -60,10 +60,12 @@ cc_library(
         # Standard paths
         "include",
         "include/torch/csrc/api/include",
+        "include/kineto",
 
         # Source/Develop paths
         "torch/include",
         "torch/include/torch/csrc/api/include",
+        "torch/include/kineto",
 
         # Local pybind11 path
         "third_party/pybind11/include",
