@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
@@ -118,31 +118,6 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//shims/torch:testing_internal",
-    ],
-)
-
-# This library is not used directly, but is needed for go/cclean. Without
-# this rule, cclean complains that tpu_rt.cc has no rule depending on it.
-torch_tpu_cc_library(
-    name = "device_rt",
-    srcs = ["device_rt.cc"],
-    deps = [
-        "//shims/pybind11",
-        "//shims/torch",
-        "//shims/torch:aten",
-        "//shims/torch:aten_headers",
-        "//shims/torch:torch_headers",
-        "//shims/torch/c10/core:base_headers",
-        "//torch_tpu/common:compilation_cache",
-        "//torch_tpu/common:discovery",
-        "//torch_tpu/common:error_utils",
-        "//torch_tpu/eager:device_gen_impl",
-        "//torch_tpu/eager:device_types",
-        "//torch_tpu/eager:tensor_to_buffer",
-        "//torch_tpu/eager:tpu_hooks",
-        "//torch_tpu/pjrt:pjrt_state",
-        "@com_google_absl//absl/log:absl_log",
-        "@xla//xla/pjrt:pjrt_client",
     ],
 )
 
