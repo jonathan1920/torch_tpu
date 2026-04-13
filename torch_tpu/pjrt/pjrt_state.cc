@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -32,18 +33,99 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "c10/core/Device.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/common/environment.h"
 #include "torch_tpu/pjrt/pjrt_client.h"
+#include "xla/backends/profiler/plugin/plugin_tracer.h"
+#include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/future.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/tsl/framework/allocator.h"
+#include "tsl/profiler/lib/profiler_factory.h"
+#include "tsl/profiler/lib/profiler_interface.h"
 
 namespace torch_tpu {
+namespace {
+
+bool IsRunningInTest() {
+  return GetEnvOnce<kTestWorkspaceEnvVar>().has_value() ||
+         GetEnvOnce<kTestTargetEnvVar>().has_value();
+}
+
+// Creates a PluginTracer instance to collect TPU profile metrics.
+// Returns nullptr in statically-linked test environments to prevent TSL global
+// mutex deadlocks.
+std::unique_ptr<tsl::profiler::ProfilerInterface> absl_nullable
+CreateTpuProfiler(const PLUGIN_Profiler_Api* absl_nonnull profiler_api,
+                  const tensorflow::ProfileOptions& opts) {
+  // In test environments (e.g. running on simulators with shared symbols),
+  // the mock libtpu plugin is often linked statically into the framework
+  // binary.
+  //
+  // When the framework starts tracing, it calls
+  // `tsl::profiler::CreateProfilers`, which acquires a global non-recursive
+  // mutex in TSL.
+  //
+  // 1. Framework acquires Global Mutex A.
+  // 2. Calls this factory lambda to create `PluginTracer`.
+  // 3. `PluginTracer` constructor calls the plugin (mock libtpu).
+  // 4. The mock plugin attempts to initialize its own profilers by calling
+  //    `tsl::profiler::CreateProfilers` again (nested call).
+  // 5. The nested call tries to acquire Global Mutex A and deadlocks!
+  //
+  // Since we cannot modify TSL (to make it re-entrant safe or using
+  // recursive mutexes) and we cannot modify the mock plugin (to stop it
+  // from calling out), the only safe solution in this statically-linked
+  // environment is to SKIP creating the `PluginTracer` in tests.
+  if (IsRunningInTest()) {
+    ABSL_LOG(WARNING)
+        << "Skipping PluginTracer in test environment to avoid shared "
+           "TSL mutex deadlock.";
+    return nullptr;
+  }
+  return std::make_unique<xla::profiler::PluginTracer>(profiler_api, opts);
+}
+
+// Dynamically discovers the PJRT Profiler Extension within the given plugin
+// and registers the factory to collect performance metrics
+void MaybeRegisterProfiler(std::string_view plugin_name) {
+  // Retrieve the core PJRT C-API interface for this plugin (e.g. libtpu).
+  absl::StatusOr<const PJRT_Api*> api = pjrt::PjrtApi(plugin_name);
+  if (!api.ok() || *api == nullptr) {
+    return;
+  }
+
+  // Attempt to discover the standard PJRT Profiler Extension within the plugin.
+  auto* profiler_ext = pjrt::FindExtension<PJRT_Profiler_Extension>(
+      *api, PJRT_Extension_Type::PJRT_Extension_Type_Profiler);
+  if (profiler_ext == nullptr || profiler_ext->profiler_api == nullptr) {
+    ABSL_VLOG(1) << "PJRT Profiler Extension not found for plugin: "
+                 << plugin_name;
+    return;
+  }
+
+  // Ensure that the profiler factory is registered exactly once per process,
+  // even if multiple client initializations occur concurrently.
+  static const bool factory_registered = [profiler_ext]() {
+    const PLUGIN_Profiler_Api* profiler_api = profiler_ext->profiler_api;
+    tsl::profiler::RegisterProfilerFactory(
+        [profiler_api](const tensorflow::ProfileOptions& opts) {
+          return CreateTpuProfiler(profiler_api, opts);
+        });
+    return true;
+  }();
+  static_cast<void>(factory_registered);
+}
+
+}  // namespace
 
 PjrtBackend& PjrtBackend::GetInstance() {
   static absl::NoDestructor<PjrtBackend> instance;
@@ -115,6 +197,10 @@ absl::Status PjrtBackend::InitializeInternal() {
       << "PjRtClient is null after initialization";
   TT_RET_CHECK(!client_->devices().empty(), error::kNotFound)
       << "no PjRt devices found after client initialization";
+
+  if (options_.device_type == "tpu") {
+    MaybeRegisterProfiler(plugin_name);
+  }
 
   const auto& addressable_devices = client_->addressable_devices();
   TT_RET_CHECK(!addressable_devices.empty(), error::kInternal)
