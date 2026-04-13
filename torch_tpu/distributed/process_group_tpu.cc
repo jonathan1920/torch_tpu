@@ -135,6 +135,8 @@ class TpuWork : public c10d::Work {
 
   bool wait(std::chrono::milliseconds timeout = kNoTimeout) override {
     results_future_->wait();
+    TT_CHECK_THROW(!results_future_->hasError(), error::kInternal)
+        << results_future_->tryRetrieveErrorMessage();
     return true;
   }
 
@@ -644,95 +646,79 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::broadcast(
             });
 }
 
-c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::send(
+c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::experimental_send(
     std::vector<at::Tensor>& tensors, int dst_rank, int tag) {
-  TT_KERNEL(
-      OpName::kDistributedSend, _,
-      (tensors, IgnoreInCacheKey(dst_rank, "no op being dispatched"),
-       IgnoreInCacheKey(tag, "no op being dispatched")),
-      {
-        std::vector<xla::PjRtBuffer*> pjrt_buffers;
-        std::vector<xla::CrossHostTransferKey> transfer_keys;
+  std::vector<xla::PjRtBuffer*> pjrt_buffers;
+  std::vector<xla::CrossHostTransferKey> transfer_keys;
 
-        pjrt_buffers.reserve(tensors.size());
-        transfer_keys.reserve(tensors.size());
+  pjrt_buffers.reserve(tensors.size());
+  transfer_keys.reserve(tensors.size());
 
-        int64_t src_device_id = addressable_device_id_;
-        int64_t dst_device_id = rank_to_device_id_[dst_rank];
-        for (size_t i = 0; i < tensors.size(); ++i) {
-          const auto& tensor = tensors[i];
-          // Extract the underlying hardware buffer from the tensor.
-          TT_ASSIGN_OR_THROW(const DeviceBufferRef device_buffer,
-                             GetMaterialized(tensor));
-          TT_ASSIGN_OR_THROW(xla::PjRtBuffer * pjrt_buffer,
-                             device_buffer.GetOrMaterializeBuffer());
+  int64_t src_device_id = addressable_device_id_;
+  int64_t dst_device_id = rank_to_device_id_[dst_rank];
+  for (size_t i = 0; i < tensors.size(); ++i) {
+    const auto& tensor = tensors[i];
+    // Extract the underlying hardware buffer from the tensor.
+    TT_ASSIGN_OR_THROW(const DeviceBufferRef device_buffer,
+                       GetMaterialized(tensor));
+    TT_ASSIGN_OR_THROW(xla::PjRtBuffer * pjrt_buffer,
+                       device_buffer.GetOrMaterializeBuffer());
 
-          pjrt_buffers.push_back(pjrt_buffer);
-          transfer_keys.push_back(
-              GetCrossHostTransferKey(src_device_id, dst_device_id, tag, i));
-        }
+    pjrt_buffers.push_back(pjrt_buffer);
+    transfer_keys.push_back(
+        GetCrossHostTransferKey(src_device_id, dst_device_id, tag, i));
+  }
 
-        // Initiate the cross-host send logic, which will block until
-        // descriptors from the receiver are available in the store and then
-        // begin the asynchronous transfer.
-        TT_ASSIGN_OR_THROW(auto send_future,
-                           CrossHostSendBuffers(pjrt_buffers, transfer_keys));
+  // Initiate the cross-host send logic, which will block until
+  // descriptors from the receiver are available in the store and then
+  // begin the asynchronous transfer.
+  TT_ASSIGN_OR_THROW(auto send_future,
+                     CrossHostSendBuffers(pjrt_buffers, transfer_keys));
 
-        return c10::make_intrusive<TpuWork>(
-            tensors, getRank(), c10d::OpType::SEND, std::move(send_future));
-      });
+  return c10::make_intrusive<TpuWork>(tensors, getRank(), c10d::OpType::SEND,
+                                      std::move(send_future));
 }
 
-c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::recv(
+c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::experimental_recv(
     std::vector<at::Tensor>& tensors, int src_rank, int tag) {
-  TT_KERNEL(
-      OpName::kDistributedRecv, _,
-      (tensors, IgnoreInCacheKey(src_rank, "no op being dispatched"),
-       IgnoreInCacheKey(tag, "no op being dispatched")),
-      {
-        std::vector<xla::Shape> recv_shapes;
-        std::vector<xla::CrossHostTransferKey> transfer_keys;
-        transfer_keys.reserve(tensors.size());
-        recv_shapes.reserve(tensors.size());
+  std::vector<xla::Shape> recv_shapes;
+  std::vector<xla::CrossHostTransferKey> transfer_keys;
+  transfer_keys.reserve(tensors.size());
+  recv_shapes.reserve(tensors.size());
 
-        int64_t src_device_id = rank_to_device_id_[src_rank];
-        int64_t dst_device_id = addressable_device_id_;
-        for (size_t i = 0; i < tensors.size(); ++i) {
-          const auto& tensor = tensors[i];
-          TT_ASSIGN_OR_THROW(auto xla_dtype, ConvertTo<xla::PrimitiveType>(
-                                                 tensor.scalar_type()));
-          xla::Shape xla_shape =
-              xla::ShapeUtil::MakeShape(xla_dtype, tensor.sizes());
-          recv_shapes.push_back(std::move(xla_shape));
-          transfer_keys.push_back(
-              GetCrossHostTransferKey(src_device_id, dst_device_id, tag, i));
-        }
+  int64_t src_device_id = rank_to_device_id_[src_rank];
+  int64_t dst_device_id = addressable_device_id_;
+  for (size_t i = 0; i < tensors.size(); ++i) {
+    const auto& tensor = tensors[i];
+    TT_ASSIGN_OR_THROW(auto xla_dtype,
+                       ConvertTo<xla::PrimitiveType>(tensor.scalar_type()));
+    xla::Shape xla_shape = xla::ShapeUtil::MakeShape(xla_dtype, tensor.sizes());
+    recv_shapes.push_back(std::move(xla_shape));
+    transfer_keys.push_back(
+        GetCrossHostTransferKey(src_device_id, dst_device_id, tag, i));
+  }
 
-        // Initiate the receive process. This creates placeholder buffers and
-        // posts their network descriptors to the distributed store for the
-        // sender to find.
-        TT_ASSIGN_OR_THROW(
-            auto recv_buffers,
-            CrossHostReceiveBuffers(recv_shapes, std::move(transfer_keys)));
+  // Initiate the receive process. This creates placeholder buffers and
+  // posts their network descriptors to the distributed store for the
+  // sender to find.
+  TT_ASSIGN_OR_THROW(
+      auto recv_buffers,
+      CrossHostReceiveBuffers(recv_shapes, std::move(transfer_keys)));
 
-        // Bind the incoming PJRT buffer back to the tensors.
-        for (size_t i = 0; i < tensors.size(); ++i) {
-          auto& tensor = tensors[i];
-          std::unique_ptr<xla::PjRtBuffer> buffer = std::move(recv_buffers[i]);
-          auto buffer_ready_future = buffer->GetReadyFuture();
+  // Bind the incoming PJRT buffer back to the tensors.
+  for (size_t i = 0; i < tensors.size(); ++i) {
+    auto& tensor = tensors[i];
+    std::unique_ptr<xla::PjRtBuffer> buffer = std::move(recv_buffers[i]);
+    auto buffer_ready_future = buffer->GetReadyFuture();
 
-          TT_ASSIGN_OR_THROW(
-              auto device_buffer,
-              DeviceBufferList::CreateMaterializedNonAvailable(
-                  std::move(buffer), std::move(buffer_ready_future)));
+    TT_ASSIGN_OR_THROW(auto device_buffer,
+                       DeviceBufferList::CreateMaterializedNonAvailable(
+                           std::move(buffer), std::move(buffer_ready_future)));
 
-          TT_THROW_IF_ERROR(
-              AssignBufferToAtTensor(std::move(device_buffer), tensor));
-        }
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(device_buffer), tensor));
+  }
 
-        return c10::make_intrusive<TpuWork>(tensors, getRank(),
-                                            c10d::OpType::RECV);
-      });
+  return c10::make_intrusive<TpuWork>(tensors, getRank(), c10d::OpType::RECV);
 }
 
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather(

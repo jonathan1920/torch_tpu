@@ -58,4 +58,23 @@ torch_tpu_cc_library(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "send_recv_kernels",
+    srcs = ["send_recv_kernels.cc"],
+    hdrs = ["send_recv_kernels.h"],
+    deps = [
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/util:base_headers",
+        "//shims/torch/torch/headeronly:torch_headeronly",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/distributed:process_group_tpu",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops/macros:kernel",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 torch_tpu_package_end()

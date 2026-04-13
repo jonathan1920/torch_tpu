@@ -60,6 +60,7 @@
 #include "torch_tpu/ops/embedding/embedding_aten_kernels.h"
 #include "torch_tpu/ops/equal/equal_aten_kernels.h"
 #include "torch_tpu/ops/experimental/ragged_dot_aten_kernels.h"
+#include "torch_tpu/ops/experimental/send_recv_kernels.h"
 #include "torch_tpu/ops/exponential/exponential_aten_kernels.h"
 #include "torch_tpu/ops/eye/eye_aten_kernels.h"
 #include "torch_tpu/ops/fake_quantize/fake_quantize_aten_kernels.h"
@@ -752,6 +753,12 @@ TORCH_LIBRARY(torch_tpu, m) {
   m.def(
       "set_dimension_logical_size(Tensor input, int dim, Tensor size) -> "
       "Tensor");
+
+  // Experimental P2P communication ops for ProcessGroupTpu.
+  // Isolated from the public torch.distributed API to safely prototype new
+  // behaviors.
+  m.def("experimental_send(Tensor[] tensors, int dst, int tag) -> Any");
+  m.def("experimental_recv(Tensor[] tensors, int src, int tag) -> Any");
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
@@ -759,6 +766,8 @@ TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
   Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
   Impl(m, OpName::kTorchTpuStatelessDropout, TorchTpuStatelessDropout);
   Impl(m, OpName::kSetDimensionLogicalSize, SetDimensionLogicalSize);
+  Impl(m, OpName::kExperimentalSend, TorchTpuExperimentalSend);
+  Impl(m, OpName::kExperimentalRecv, TorchTpuExperimentalRecv);
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, CPU, m) {

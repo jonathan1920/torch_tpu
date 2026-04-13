@@ -233,11 +233,17 @@ class ProcessGroupTpu : public c10d::Backend {
   c10::intrusive_ptr<c10d::Work> barrier(
       const c10d::BarrierOptions& opts) override;
 
-  c10::intrusive_ptr<c10d::Work> send(std::vector<at::Tensor>& tensors,
-                                      int dst_rank, int tag) override;
+  // Experimental P2P send. Mirrors the semantics of c10d::Backend::send,
+  // but is kept isolated from the public torch.distributed API to safely
+  // prototype TPU-specific behaviors.
+  c10::intrusive_ptr<c10d::Work> experimental_send(
+      std::vector<at::Tensor>& tensors, int dst_rank, int tag);
 
-  c10::intrusive_ptr<c10d::Work> recv(std::vector<at::Tensor>& tensors,
-                                      int src_rank, int tag) override;
+  // Experimental P2P recv. Mirrors the semantics of c10d::Backend::recv,
+  // but is kept isolated from the public torch.distributed API to safely
+  // prototype TPU-specific behaviors.
+  c10::intrusive_ptr<c10d::Work> experimental_recv(
+      std::vector<at::Tensor>& tensors, int src_rank, int tag);
 
  private:
   // Differently from PyTorch distributed APIs, XLA requires that all processes
