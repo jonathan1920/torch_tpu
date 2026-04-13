@@ -807,6 +807,16 @@ torch_tpu_cc_library(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "contain",
+    srcs = ["contain_oss.cc"],
+    hdrs = ["contain.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
 torch_tpu_cc_test(
     name = "compilation_test",
     srcs = ["compilation_test.cc"],
@@ -861,7 +871,10 @@ torch_tpu_cc_test(
     ],
 )
 
-exports_files(["run_cc_tpu_test.sh"])
+exports_files([
+    "run_cc_tpu_test.sh",
+    "contain.h",
+])
 
 # TODO: b/479574836 - Using this test as a hack to run compilation_test.cc in TPU CI.
 # This test should be removed once either an equivalent C++ libtpu API is available or
