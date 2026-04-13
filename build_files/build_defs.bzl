@@ -119,7 +119,6 @@ def _is_cuda_test(tags):
 # TODO(b/495860371): Switch to a set when we are using bazel >= 7.7
 _BUILD_TEST_ALLOWED_TAGS = [
     "nobuild_oss",
-    "notest_oss",
 ]
 
 def _check_and_adjust_test_tags(name, size, timeout, nobuild, notap, nopresubmit, nolocal, notest_oss, nobuild_oss, tags):
@@ -208,8 +207,12 @@ def _check_and_adjust_test_tags(name, size, timeout, nobuild, notap, nopresubmit
         fail("Tests with size 'enormous' or timeout 'eternal' are always skipped by TAP. " +
              "Please add a 'notap' argument to torch_tpu_*_test() to make the fact explicit.")
 
-    # Add a build_test for notap test unless nobuild is set.
-    if "notap" in tags and nobuild == None:  # NOTAP_OK=for implementing notap logic
+    # Add a build_test for notap and notest_oss test unless nobuild is set.
+    # Targets with notest_oss cannot be built in OSS because flag `--build_tests_only` is active.
+    # Instead of removing `--build_tests_only` to include all unused binaries/libraries in OSS
+    # builds, we generate a companion _build_test target for notest_oss tests.
+    # Trim the unnecessary _build_test targets if needed.
+    if ("notap" in tags or "notest_oss" in tags) and nobuild == None:  # NOTAP_OK=for implementing notap logic
         build_test_tags = [tag for tag in tags if tag in _BUILD_TEST_ALLOWED_TAGS]
 
         # The torch_tpu.cuda build only runs tests with requires-gpu-* tags.
