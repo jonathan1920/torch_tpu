@@ -222,13 +222,13 @@ common:ci_tpu_base --spawn_strategy=standalone,local
 
 common:ci_tpu --config=ci_tpu_base
 # We exclude tests tagged "notap" as it indicates that the test should be skipped from CI.
-common:ci_tpu --test_tag_filters=-notest_oss,-nobuild_oss,-notap
+common:ci_tpu --test_tag_filters=requires-tpu,-notest_oss,-nobuild_oss,-notap
 
 common:ci_tpu_on_v6 --config=ci_tpu_base
-common:ci_tpu_on_v6 --test_tag_filters=-notest_oss,-nobuild_oss,-notap,-fails-on-tpu-v6
+common:ci_tpu_on_v6 --test_tag_filters=requires-tpu,-notest_oss,-nobuild_oss,-notap,-fails-on-tpu-v6
 
 common:ci_tpu_on_v7 --config=ci_tpu_base
-common:ci_tpu_on_v7 --test_tag_filters=-notest_oss,-nobuild_oss,-notap,-fails-on-tpu-v7
+common:ci_tpu_on_v7 --test_tag_filters=requires-tpu,-notest_oss,-nobuild_oss,-notap,-fails-on-tpu-v7
 common:ci_tpu_on_v7 --local_test_jobs=1
 # Bypass the libtpu multi-process lock. Otherwise, we have to explicitly delete
 # /tmp/libtpu_lockfile to clean up the dirty state of previous crashed jobs to
@@ -287,4 +287,4 @@ test:wheel_test_tpu --spawn_strategy=local
 # wheel_test_excluded
 common:wheel_test_cpu --test_tag_filters=-nobuild_oss,-notest_oss,-notap,-requires-gpu,-requires-tpu,-wheel_test_excluded
 
-common:wheel_test_tpu --test_tag_filters=-notest_oss,-nobuild_oss,-notap,-wheel_test_excluded
+common:wheel_test_tpu --test_tag_filters=requires-tpu,-notest_oss,-nobuild_oss,-notap,-wheel_test_excluded
