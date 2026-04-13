@@ -43,7 +43,7 @@ torch_tpu_py_test(
     srcs = ["pallas_communication_test.py"],
     env = {"TPU_PREMAPPED_BUFFER_SIZE": "0"},
     # TODO(b/497890629): Enable in OSS
-    notest_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "fix hang in OSS",  # TODO
     tags = [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
@@ -56,6 +56,7 @@ torch_tpu_py_test(
         "//shims/jax:pallas",
         "//shims/jax:pallas_tpu",
         "//shims/torch:pytorch",
+        "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/distributed:tpu_distributed",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/pallas",

@@ -24,13 +24,13 @@ from jax.experimental.pallas import tpu as pltpu
 import jax.export
 import torch
 from torch import distributed as dist
-from torch.google import distributed as g3_distributed
 import torch.multiprocessing as mp
 from torch_tpu import api
 from torch_tpu._internal import pallas
 from torch_tpu._internal.distributed import tpu_distributed
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import utils
+from tests.distributed import distributed_utils
 
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
@@ -110,9 +110,10 @@ def create_roll_op(world_size, rank):
   return torch_kernel_op
 
 
-def run(world_size, do_compile):
+def _run(do_compile):
   device = api.tpu_device()
   dist.init_process_group(backend="tpu_dist")
+  world_size = dist.get_world_size()
   rank = dist.get_rank()
 
   num_per_device = 8
@@ -153,29 +154,24 @@ def run(world_size, do_compile):
   utils.assert_close(y, y_expected)
 
 
-def _run_torch_tpu_worker(do_compile):
-  run(8, do_compile)
-
-
 class TestPallasCommunicationKernels(absltest.TestCase):
+  _world_size = 8
 
   def test_kernel_communication(self):
-
-    g3_distributed.torchrun(
-        singlehost_wrapper.tpu_env_wrapper(
-            functools.partial(_run_torch_tpu_worker, False), world_size=8
+    distributed_utils.dist_run(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            functools.partial(_run, False), world_size=self._world_size
         ),
-        nproc_per_node=8,
-    )()
+    )
 
   def test_kernel_communication_compiled(self):
-
-    g3_distributed.torchrun(
-        singlehost_wrapper.tpu_env_wrapper(
-            functools.partial(_run_torch_tpu_worker, True), world_size=8
+    distributed_utils.dist_run(
+        nproc_per_node=self._world_size,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            functools.partial(_run, True), world_size=self._world_size
         ),
-        nproc_per_node=8,
-    )()
+    )
 
 
 if __name__ == "__main__":
