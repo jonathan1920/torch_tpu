@@ -117,6 +117,10 @@ class Traversal {
       std::vector<DeviceBufferRef> outputs,
       const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
           stopping_points = {});
+  static absl::StatusOr<Traversal> Create(
+      absl::Span<const SharedDeviceBufferList> output_nodes,
+      const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+          stopping_points = {});
 
   // Creates a traversal such that:
   //

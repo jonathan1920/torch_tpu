@@ -110,21 +110,17 @@ absl::StatusOr<Traversal> GetTraversal(
     absl::Span<const DeviceBufferRef> buffer_refs) {
   TT_RET_CHECK(!buffer_refs.empty(), error::kInvalidArgument)
       << "tensors must not be empty";
-  absl::flat_hash_set<SharedDeviceBufferList> nodes_to_traverse;
-  std::vector<DeviceBufferRef> refs_to_traverse;
+  absl::flat_hash_set<const DeviceBufferList*> nodes_to_traverse_set;
+  std::vector<SharedDeviceBufferList> nodes_to_traverse;
   for (const DeviceBufferRef& buffer_ref : buffer_refs) {
     switch (buffer_ref.state()) {
       case DeviceBufferRefState::kZeroSize:
         continue;
       case DeviceBufferRefState::kMaterialized:
       case DeviceBufferRefState::kDeferred: {
-        if (nodes_to_traverse.insert(buffer_ref.device_buffer_list()).second) {
-          for (int i = 0; i < buffer_ref.device_buffer_list()->size(); ++i) {
-            TT_ASSIGN_OR_RETURN(
-                DeviceBufferRef ref,
-                DeviceBufferRef::Create(buffer_ref.device_buffer_list(), i));
-            refs_to_traverse.push_back(std::move(ref));
-          }
+        if (nodes_to_traverse_set.insert(buffer_ref.device_buffer_list().get())
+                .second) {
+          nodes_to_traverse.push_back(buffer_ref.device_buffer_list());
         }
         continue;
       }
@@ -140,7 +136,7 @@ absl::StatusOr<Traversal> GetTraversal(
   }
 
   TT_ASSIGN_OR_RETURN(Traversal traversal,
-                      Traversal::Create(std::move(refs_to_traverse)));
+                      Traversal::Create(nodes_to_traverse));
   ABSL_VLOG(2) << "[GetTraversal] Traversal created";
   return traversal;
 }

@@ -443,20 +443,11 @@ class MaterializationWorker {
       return std::vector<ExecutionTask>();
     }
 
-    std::vector<DeviceBufferRef> refs;
-    for (const auto& node : all_nodes) {
-      for (int64_t i = 0; i < node->size(); ++i) {
-        TT_ASSIGN_OR_RETURN(DeviceBufferRef ref,
-                            DeviceBufferRef::Create(node, i));
-        refs.push_back(std::move(ref));
-      }
-    }
-
     ABSL_VLOG(1) << "[MaterializationWorker] Creating traversal";
     absl::StatusOr<Traversal> traversal;
     {
       tsl::profiler::TraceMe t("Traversal::Create");
-      TT_ASSIGN_OR_RETURN(traversal, Traversal::Create(std::move(refs)));
+      TT_ASSIGN_OR_RETURN(traversal, Traversal::Create(all_nodes));
     }
 
     ABSL_VLOG(3) << "[MaterializationWorker] Traversal created: "

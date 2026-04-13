@@ -164,17 +164,10 @@ absl::StatusOr<std::vector<Traversal>> SplitTraversal(
 
   // Split traversal into one node per materialization point, maintaining the
   // creation index order established above.
-  std::vector<DeviceBufferRef> traversal_outputs;
   for (const auto& node : traversal.execution_order()) {
     if (!materialization_nodes_set.contains(node.get())) continue;
-    traversal_outputs.clear();
-    for (auto i = 0; i < node->size(); ++i) {
-      TT_ASSIGN_OR_RETURN(auto buffer_ref, DeviceBufferRef::Create(node, i));
-      traversal_outputs.push_back(std::move(buffer_ref));
-    }
     TT_ASSIGN_OR_RETURN(auto new_traversal,
-                        Traversal::Create(std::move(traversal_outputs),
-                                          materialization_nodes_set));
+                        Traversal::Create({node}, materialization_nodes_set));
     traversals.push_back(std::move(new_traversal));
   }
   return traversals;

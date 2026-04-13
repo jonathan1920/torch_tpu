@@ -194,6 +194,20 @@ absl::StatusOr<Traversal> Traversal::Create(
   return traversal;
 }
 
+absl::StatusOr<Traversal> Traversal::Create(
+    absl::Span<const SharedDeviceBufferList> output_nodes,
+    const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        stopping_points) {
+  std::vector<DeviceBufferRef> outputs_ref;
+  for (const auto& output : output_nodes) {
+    for (auto i = 0; i < output->size(); ++i) {
+      TT_ASSIGN_OR_RETURN(auto output_ref, DeviceBufferRef::Create(output, i));
+      outputs_ref.push_back(std::move(output_ref));
+    }
+  }
+  return Create(std::move(outputs_ref), stopping_points);
+}
+
 absl::StatusOr<Traversal> Traversal::CreateFromLinearRegion(
     absl::Span<const SharedDeviceBufferList> region) {
   ABSL_VLOG(1) << "[Traversal::CreateFromLinearRegion] Creating Traversal";
@@ -212,15 +226,7 @@ absl::StatusOr<Traversal> Traversal::CreateFromLinearRegion(
   // but we use only its execution order and its inputs, since its outputs are
   // not what we want.
   {
-    std::vector<DeviceBufferRef> all_node_outputs;
-    all_node_outputs.reserve(region.size());
-    for (auto& node : region) {
-      for (auto i = 0; i < node->size(); ++i) {
-        TT_ASSIGN_OR_RETURN(auto output, DeviceBufferRef::Create(node, i));
-        all_node_outputs.push_back(std::move(output));
-      }
-    }
-    TT_ASSIGN_OR_RETURN(Traversal tmp_traversal, Create(all_node_outputs));
+    TT_ASSIGN_OR_RETURN(Traversal tmp_traversal, Create(region));
     execution_order = std::move(tmp_traversal.execution_order_);
     inputs = std::move(tmp_traversal.inputs_);
   }
