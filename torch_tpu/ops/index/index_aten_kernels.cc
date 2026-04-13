@@ -156,7 +156,33 @@ at::Tensor& AtenIndexTensorOut(
         // If the indices are a single boolean tensor, use masked_select.
         if (info.indices.size() == 1 &&
             info.indices[0].scalar_type() == at::kBool) {
-          return AtenMaskedSelectOut(self, info.indices[0], out);
+          // We need to align the indexing dimensions to the left first.
+          auto indexing_tensor = info.indices[0];
+
+          TT_CHECK_THROW(indexing_tensor.dim() <= self.dim(),
+                         error::kIndexError)
+              << "expected the size of the indices to be <= " << self.dim()
+              << " (number of input dimensions), got " << indexing_tensor.dim();
+
+          Dimensions trailing_dims(self.sizes().begin() + indexing_tensor.dim(),
+                                   self.sizes().end());
+
+          if (!trailing_dims.empty()) {
+            Dimensions unsqueezed_index_shape =
+                CopyIntVector(indexing_tensor.sizes());
+            unsqueezed_index_shape.insert(unsqueezed_index_shape.end(),
+                                          self.dim() - indexing_tensor.dim(),
+                                          1);
+            indexing_tensor = indexing_tensor.reshape(unsqueezed_index_shape);
+          }
+
+          AtenMaskedSelectOut(self, indexing_tensor, out);
+          if (!trailing_dims.empty()) {
+            trailing_dims.insert(trailing_dims.begin(), -1);
+            out = out.reshape(trailing_dims);
+            return out;
+          }
+          return out;
         }
 
         TT_ASSIGN_OR_THROW(Dimensions output_dims, GetOutputDims(self, info));

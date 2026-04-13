@@ -2312,6 +2312,28 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(single_tensor_bool_indexing_with)
 
+  def test_boolean_indexing_with_same_rank_mask(self):
+    x = torch.rand(8, 128, 128)
+    mask = torch.rand(8, 128, 128) > 0.5
+
+    def boolean_indexing_with_same_rank_mask(device):
+      x_tpu = x.to(device)
+      mask_tpu = mask.to(device)
+      return x_tpu[mask_tpu]
+
+    self.assert_close_tpu_vs_cpu(boolean_indexing_with_same_rank_mask)
+
+  def test_boolean_indexing_with_smaller_rank_mask(self):
+    x = torch.rand(8, 128, 128)
+    mask = torch.rand(8, 128) > 0.5
+
+    def boolean_indexing_with_smaller_rank_mask(device):
+      x_tpu = x.to(device)
+      mask_tpu = mask.to(device)
+      return x_tpu[mask_tpu]
+
+    self.assert_close_tpu_vs_cpu(boolean_indexing_with_smaller_rank_mask)
+
   def test_is_nonzero(self):
     def assert_is_nonzero_equal_on_cpu_vs_tpu(tensor: torch.Tensor):
       cpu_result = torch.is_nonzero(tensor.to("cpu"))
