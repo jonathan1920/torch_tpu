@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load(
+    "//build_files:build_defs.bzl",
+    "if_oss",
+    "torch_tpu_package_end",
+    "torch_tpu_py_test",
+)
 load("//shims/mpm:genmpm.bzl", "genmpm")
 load("//shims/pkg:pkg.bzl", "pkg_binary_with_runfiles")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
@@ -115,7 +120,10 @@ torch_tpu_py_test(
     notap = "Tested on guitar workflow.",
     shard_count = 4,
     strict = True,
-    tags = [
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "cpu:4",
         # This makes sure that we have enough host RAM to load weights from host to device HBM.
         "requires-accel-hbm",
@@ -123,7 +131,6 @@ torch_tpu_py_test(
         "nofastbuild",  # Benchmark.
         # Needed for getting xprof links
         "requires-net:external",
-        "exclusive",  # copybara:comment(oss-only)
     ],
     deps = [
         ":benchmark_utils",

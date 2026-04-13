@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load(
+    "//build_files:build_defs.bzl",
+    "if_oss",
+    "torch_tpu_package_end",
+    "torch_tpu_py_test",
+)
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
@@ -57,8 +62,10 @@ torch_tpu_py_test(
     name = "multi_tpu_test",
     srcs = ["multi_tpu_test.py"],
     notest_oss = "fix hang in OSS",  # TODO
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -83,8 +90,10 @@ torch_tpu_py_test(
     },
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the timeout in test_broadcast_objects.
@@ -115,8 +124,10 @@ torch_tpu_py_test(
     main = "collective_ops_test.py",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/495533335): fix out-of-order in msan mode.
         "notsan",  # TODO(b/495533335): fix out-of-order in tsan mode.
@@ -144,8 +155,10 @@ torch_tpu_py_test(
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -172,8 +185,10 @@ torch_tpu_py_test(
     main = "collective_errors_test.py",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -195,8 +210,10 @@ torch_tpu_py_test(
     srcs = ["alltoall_collective_test.py"],
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 4,
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -224,8 +241,10 @@ torch_tpu_py_test(
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -252,8 +271,10 @@ torch_tpu_py_test(
     main = "alltoall_collective_errors_test.py",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 8,
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -278,8 +299,10 @@ torch_tpu_py_test(
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
     notest_oss = "fix hang in OSS",  # TODO
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -306,8 +329,10 @@ torch_tpu_py_test(
     env = {"TORCH_SHOW_CPP_STACKTRACES": "1"},
     main = "all_gather_errors_test.py",
     notest_oss = "fix hang in OSS",  # TODO
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -329,8 +354,10 @@ torch_tpu_py_test(
     name = "scatter_test",
     srcs = ["scatter_test.py"],
     notest_oss = "fix hang in OSS",  # TODO
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -356,8 +383,10 @@ torch_tpu_py_test(
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 3,
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -384,8 +413,10 @@ torch_tpu_py_test(
     main = "scatter_errors_test.py",
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 3,
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -407,8 +438,10 @@ torch_tpu_py_test(
     srcs = ["subgroup_collectives_test.py"],
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 4,
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -431,8 +464,10 @@ torch_tpu_py_test(
     srcs = ["dtensor_test.py"],
     notest_oss = "fix hang in OSS",  # TODO
     shard_count = 10,
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -458,8 +493,10 @@ torch_tpu_py_test(
     ],
     main = "fairscale_tp_test.py",
     notest_oss = "fix hang in OSS",  # TODO
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -482,8 +519,10 @@ torch_tpu_py_test(
     name = "dcp_test",
     srcs = ["dcp_test.py"],
     notest_oss = "fix hang in OSS",  # TODO
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.
@@ -504,8 +543,10 @@ torch_tpu_py_test(
     name = "ragged_dot_test",
     srcs = ["ragged_dot_test.py"],
     notest_oss = "fix hang in OSS",  # TODO
-    tags = [
-        "exclusive",  # copybara:comment(oss-only)
+    tags = if_oss(
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO(b/497035517): fix the test in asan mode.
         "nomsan",  # TODO(b/497035517): fix the test in msan mode.
         "notsan",  # TODO(b/497035517): fix the test in tsan mode.

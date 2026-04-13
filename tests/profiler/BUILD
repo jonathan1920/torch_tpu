@@ -26,7 +26,6 @@ torch_tpu_py_test(
     tags = [
         "requires-tpu-v5lite",
     ],
-    target_compatible_with = ["@platforms//:incompatible"],  # copybara:comment(oss-only)
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -46,7 +45,6 @@ torch_tpu_py_test(
     tags = [
         "requires-tpu-v5lite",
     ],
-    target_compatible_with = ["@platforms//:incompatible"],  # copybara:comment(oss-only)
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",

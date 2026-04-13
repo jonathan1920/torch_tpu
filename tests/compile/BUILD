@@ -1,4 +1,9 @@
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load(
+    "//build_files:build_defs.bzl",
+    "if_oss",
+    "torch_tpu_package_end",
+    "torch_tpu_py_test",
+)
 
 # Copyright 2025 Google LLC
 #
@@ -93,10 +98,12 @@ torch_tpu_py_test(
         "ACCELERATOR_TYPE": "v5litepod-8",  # Needed for OSS.
     },
     shard_count = 1,
-    tags = [
+    tags = if_oss(
         # In OSS, we have to run the test exclusively to avoid the
         # "TPU initialization failed ... Device or resource busy" error.
-        "exclusive",  # copybara:comment(oss-only)
+        ["exclusive"],
+        [],
+    ) + [
         "noasan",  # TODO: fix the test in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
         "requires-tpu-v5lite:8",

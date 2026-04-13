@@ -13,7 +13,11 @@
 # limitations under the License.
 
 load("@rules_license//rules:license.bzl", "license")
-load("//build_files:build_defs.bzl", "torch_tpu_package_end")
+load(
+    "//build_files:build_defs.bzl",
+    "if_oss",
+    "torch_tpu_package_end",
+)
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 licenses(["notice"])
@@ -35,8 +39,10 @@ pytype_strict_library(
     srcs = [
         "__init__.py",
     ],
-    deps = [
-        "//shims/libtpu",  # copybara:comment(oss-only)
+    deps = if_oss(
+        ["//shims/libtpu"],
+        [],
+    ) + [
         "//torch_tpu/_internal:testing",  # buildcleaner: keep
     ],
 )

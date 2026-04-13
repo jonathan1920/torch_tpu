@@ -51,6 +51,18 @@ _TORCH_TPU_COPTS = [
     "-DUSE_KINETO",
 ]
 
+def is_oss():
+    """Returns whether this is an OSS version of torch_tpu."""
+
+    return True  # copybara:comment(oss-only)
+    # copybara:uncomment return False
+
+def if_oss(oss_value, internal_value = None):
+    """Returns a value based on whether this is an OSS version of torch_tpu."""
+    if is_oss():
+        return oss_value
+    return internal_value
+
 def adjust_cc_options(copts, features):
     """Adjusts the C/C++ build options for torch_tpu.
 
@@ -428,7 +440,8 @@ def torch_tpu_py_test(
     )
 
     # Remove internal-only attributes
-    kwargs.pop("linking_mode", None)  # copybara:comment(oss-only)
+    if is_oss():
+        kwargs.pop("linking_mode", None)
 
     # Add env and LD_LIBRARY_PATH for wheel based testing.
     # Define the necessary library paths
@@ -452,13 +465,10 @@ def torch_tpu_py_test(
         env_with_wheel["LD_LIBRARY_PATH"] = new_paths_str
 
     # 4. Use select to swap between the wheel and non-wheel envs
-    # copybara:uncomment test_env = existing_env
-    # copybara:comment_begin(oss-only)
-    test_env = select({
+    test_env = if_oss(select({
         "//:wheel_test_enabled": env_with_wheel,
         "//conditions:default": existing_env,
-    })
-    # copybara:comment_end
+    }), existing_env)
 
     deps_to_add = []
     if use_pywrap_rules():
@@ -466,13 +476,13 @@ def torch_tpu_py_test(
 
     current_deps = kwargs.pop("deps", [])
 
-    # copybara:uncomment all_deps = current_deps + deps_to_add
-    # copybara:comment_begin(oss-only)
-    all_deps = select({
-        "//:wheel_test_enabled": ["//:torch_tpu_py_import"],
-        "//conditions:default": current_deps + deps_to_add,
-    })
-    # copybara:comment_end
+    all_deps = if_oss(
+        select({
+            "//:wheel_test_enabled": ["//:torch_tpu_py_import"],
+            "//conditions:default": current_deps + deps_to_add,
+        }),
+        current_deps + deps_to_add,
+    )
 
     if platform:
         rule = py_platform_test

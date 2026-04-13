@@ -13,7 +13,12 @@
 # limitations under the License.
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load(
+    "//build_files:build_defs.bzl",
+    "if_oss",
+    "torch_tpu_package_end",
+    "torch_tpu_py_test",
+)
 load("//shims/py_rules:pytype.bzl", "pytype_strict_binary")
 load("//shims/pynball:build_defs.bzl", "ipynb_deps")
 
@@ -106,7 +111,7 @@ torch_tpu_py_test(
     main = "qwen3_kv_cache_bd.py",
     notap = "manual test",
     notest_oss = "Disabled during switch from opt-in to opt-out",
-    # copybara:uncomment platform = "//buildenv/platforms/forge/gpu/gb200",
+    platform = if_oss(None, "//buildenv/platforms/forge/gpu/gb200"),
     tags = [
         "cpu:1",
         "requires-net:external",
