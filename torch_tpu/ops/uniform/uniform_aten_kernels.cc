@@ -70,7 +70,9 @@ at::Tensor& AtenUniform_(at::Tensor& self, double from, double to,
     TT_THROW_IF_ERROR(CheckUniformPreconditions(self));
     at::Tensor self_real = self.is_complex() ? AtenViewAsReal(self) : self;
     // Since we need to generate random bits, we query for the rng state tensor.
-    TT_ASSIGN_OR_THROW(auto rng_input_state, GetRngState(generator));
+    TT_ASSIGN_OR_THROW(at::Tensor rng_input_state,
+                       GetDeviceRngState(generator));
+
     TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
                        ConvertTo<mlir::ElementType>(self_real.scalar_type()));
     auto dims = CopyIntVector(self_real.sizes());
@@ -90,7 +92,7 @@ at::Tensor& AtenUniform_(at::Tensor& self, double from, double to,
     // we give it back to the generator, so that it can be used by other ops in
     // the same graph.
     auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
-    TT_THROW_IF_ERROR(UpdateRngState(generator, rng_output_state));
+    TT_THROW_IF_ERROR(SetDeviceRngState(generator, rng_output_state));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), self_real));
     return self;
   });

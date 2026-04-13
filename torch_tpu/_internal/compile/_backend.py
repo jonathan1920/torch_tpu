@@ -162,21 +162,26 @@ class _TorchTpuCompiledExecutable:
     self._mlir_text = value
 
   def __call__(self, *args):
+    # Avoid circular dependency.
+    from torch_tpu import api  # pylint: disable=g-import-not-at-top # pytype: disable=import-error
+
     # Find the device module based on tensor arguments. This is a mitigation
     # for when torch.compile is run on xla_cpu or xla_gpu devices, and
     # referencing api.tpu_device() would trigger a circular dependency.
     # Remove this once api.tpu_device() becomes the canonical way to get the
     # only TorchTPU device.
-    device_module = None
-    for arg in args:
-      if isinstance(arg, torch.Tensor):
-        device_module = torch.get_device_module(arg.device)
-        break
-    if device_module is None:
+    first_tensor = next(
+        (arg for arg in args if isinstance(arg, torch.Tensor)), None
+    )
+    if first_tensor is not None:
+      device_module = torch.get_device_module(first_tensor.device)
+      device = first_tensor.device
+    else:
       device_module = torch.tpu
+      device = api.tpu_device()  # pytype: disable=module-attr
 
     # rewrite_stateless_rng_ops pass adds rng_state as the last argument.
-    args = (*args, device_module.get_rng_state())
+    args = (*args, device_module.get_rng_state().to(device))
 
     executable_args = self._filter_tensor_args(args)
     outputs = tpu_torch_compile.execute(self._executable, executable_args)
@@ -186,7 +191,7 @@ class _TorchTpuCompiledExecutable:
 
     # rewrite_stateless_rng_ops pass adds updated rng_state as the last output.
     *outputs, rng_state = outputs
-    device_module.set_rng_state(rng_state)
+    device_module.set_rng_state(rng_state.to("cpu"))
     return outputs
 
   def _filter_tensor_args(

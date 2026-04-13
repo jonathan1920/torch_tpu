@@ -143,6 +143,7 @@ absl::StatusOr<MlirOpResults<2>> BuildRandomShlo(mlir::MlirOp state,
       mlir::stablehlo::RngAlgorithmAttr::get(
           op_builder.getContext(), mlir::stablehlo::RngAlgorithm::DEFAULT),
       state.getValue());
+
   mlir::MlirOp rng_output_state =
       mlir::MlirOp(builder, rng_op.getOutputState());
   mlir::MlirOp rng_output_op = mlir::MlirOp(builder, rng_op.getOutput());

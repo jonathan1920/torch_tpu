@@ -83,18 +83,9 @@ std::tuple<at::Tensor, at::Tensor> AtenDropout(const at::Tensor& input,
                             std::nullopt, std::nullopt, std::nullopt)};
     }
 
-    // Query the generator state from the default device generator.
-    auto gen = at::get_generator_or_default<DeviceGeneratorImpl>(
-        std::nullopt, GetDefaultDeviceGenerator());
-    auto rng_input_state = at::Tensor(gen->get_state());
-    TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=This error is caught before, when
-                     // we try to set the generator state.
-        rng_input_state.dim() == 1 && rng_input_state.size(0) == 2,
-        error::kFailedPrecondition)
-        << "expected the inner state of the generator for the '"
-        << gen->device() << "' device to be a 1D tensor of shape [2], got "
-        << rng_input_state.dim() << "D of shape "
-        << ToString(rng_input_state.sizes());
+    // Retrieve the rng_state tensor from the default device generator.
+    TT_ASSIGN_OR_THROW(at::Tensor rng_input_state,
+                       GetDeviceRngState(std::nullopt));
 
     TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
                        ConvertTo<mlir::ElementType>(input.scalar_type()));
@@ -109,7 +100,8 @@ std::tuple<at::Tensor, at::Tensor> AtenDropout(const at::Tensor& input,
                            .op_param_cache_keys = std::move(param_keys)})));
 
     auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
-    gen->set_state(*rng_output_state.unsafeGetTensorImpl());
+    TT_THROW_IF_ERROR(
+        SetDeviceRngState(/*generator=*/std::nullopt, rng_output_state));
 
     return {MakeTensor(std::move(output_buf)), MakeTensor(std::move(mask_buf))};
   });

@@ -142,7 +142,6 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:tpu_hooks",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/time",
         "@xla//xla/pjrt:pjrt_client",
     ],
 )

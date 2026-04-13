@@ -718,6 +718,18 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "rng_test",
+    srcs = ["rng_test.py"],
+    main = "rng_test.py",
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/api",
+    ],
+)
+
+torch_tpu_py_test(
     name = "sync_test",
     srcs = ["sync_test.py"],
     main = "sync_test.py",

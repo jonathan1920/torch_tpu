@@ -102,8 +102,8 @@ at::Tensor& AtenRandpermGeneratorOut(c10::SymInt n,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
 
     // Query the current RNG state and advance it.
-    TT_ASSIGN_OR_THROW(auto rng_input_state,
-                       GetAndAdvanceRngState(generator, n_int, 64));
+    TT_ASSIGN_OR_THROW(at::Tensor rng_input_state,
+                       GetAndAdvanceDeviceRngState(generator, n_int, 64));
 
     // Dispatch the actual randperm.
     auto randperm_op_builder =

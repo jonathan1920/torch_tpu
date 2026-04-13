@@ -60,36 +60,42 @@ class DeviceGeneratorImpl : public c10::GeneratorImpl {
       const c10::intrusive_ptr<c10::GeneratorImpl>& new_state) override;
   c10::intrusive_ptr<c10::GeneratorImpl> graphsafe_get_state() const override;
 
+  // Validates the shape, dtype, and device of the RNG state tensor.
+  absl::Status CheckDeviceRngState(const at::Tensor& rng_state) const;
+
   static c10::DeviceType device_type();
+  at::Tensor DeviceRngState() const;
 
  private:
   DeviceGeneratorImpl* clone_impl() const override;
 
-  // 1D tensor of two elements: {seed, offset}
-  at::Tensor rng_state_;  // UNINITIALIZED_TENSOR_OK
+  // 1D uint64 tensor of 2 elements: {seed, offset}
+  at::Tensor device_rng_state_ui64_;  // UNINITIALIZED_TENSOR_OK
 };
 
 // Convenience functions.
 
 // Returns the default generator for the given device index. If idx is -1,
 // returns the default generator for the current device.
-const at::Generator& GetDefaultDeviceGenerator(c10::DeviceIndex idx = -1);
+at::Generator& GetDefaultDeviceGenerator(c10::DeviceIndex idx = -1);
 
-// Returns the rng_state tensor from the given generator, or from the
-// default generator if not specified.
-absl::StatusOr<at::Tensor> GetRngState(c10::optional<at::Generator> generator);
+// Returns the device-resident rng_state tensor from the given generator,
+// or from the default generator if not specified.
+absl::StatusOr<at::Tensor> GetDeviceRngState(
+    c10::optional<at::Generator> generator);
 
-// Returns the current rng_state tensor from the given generator, or from the
-// default generator if not specified. This also advances the generator's state
-// by the amount specified (num_elements * bit_width).
-absl::StatusOr<at::Tensor> GetAndAdvanceRngState(
+// Returns the current device-resident rng_state tensor from the given
+// generator, or from the default generator if not specified. This also
+// advances the generator's state by the amount specified
+// (num_elements * bit_width).
+absl::StatusOr<at::Tensor> GetAndAdvanceDeviceRngState(
     c10::optional<at::Generator> generator, int64_t num_elements,
     int64_t bit_width = 64);
 
-// Updates the rng_state tensor for the given generator, or for the default
-// generator if not specified.
-absl::Status UpdateRngState(c10::optional<at::Generator> generator,
-                            at::Tensor& rng_state);
+// Updates the internal device-resident rng_state tensor for the given
+// generator Using a device-to-device copy.
+absl::Status SetDeviceRngState(c10::optional<at::Generator> generator,
+                               const at::Tensor& rng_state);
 
 // Creates a new generator for the given device index. If idx is -1, creates a
 // new generator for the current device.

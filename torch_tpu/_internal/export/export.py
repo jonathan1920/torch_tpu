@@ -28,7 +28,6 @@ from torch.fx import node
 import torch.utils._pytree as pytree
 from torch_tpu._internal import device_utils
 from torch_tpu._internal import execution_mode
-from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
 
 __all__ = [
@@ -466,10 +465,10 @@ def fx_to_mlir(
   # Safe state after sync:
   # [Old Graph Executed] | (Concrete RNG State) ---> [Clean FX Tracing Graph]
   if argument_tensors:
-    sync.synchronize(
-        torch.get_device_module(argument_tensors[0].device).get_rng_state(),
-        wait=True,
-    )
+    rng_state = torch.get_device_module(
+        argument_tensors[0].device
+    ).get_rng_state()  # get_rng_state() syncs and returns tensor on CPU.
+    del rng_state
 
   # Run the module through the EagerLikeFxInterpreter with MLIR location
   # tracebacks enabled so that the MLIR we generate has file location info.

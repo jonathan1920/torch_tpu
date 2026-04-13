@@ -125,6 +125,7 @@ absl::StatusOr<MlirOpResults<2>> BuildUniformShlo(
   auto rng_bits_op = stablehlo::RngBitGeneratorOp::create(
       op_builder, rng_input_state.getValue().getLoc(), rng_input_state_type,
       rng_bits_type, rng_alg, rng_input_state.getValue());
+
   mlir::MlirOp rng_output_state =
       mlir::MlirOp(builder, rng_bits_op.getOutputState());
   mlir::MlirOp rng_output_op = mlir::MlirOp(builder, rng_bits_op.getOutput());

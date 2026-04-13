@@ -1023,7 +1023,7 @@ absl::StatusOr<mlir::MlirOp> BuildRngStateUpdateShlo(mlir::MlirOp state,
       MakeConstant(builder, increment_val, mlir::ElementType::UI64, {1});
   mlir::MlirOp new_offset = mlir::stablehlo::Add(state_offset, increment);
 
-  return mlir::stablehlo::Concatenate(builder, {state_seed, new_offset}, 0);
+  return {{mlir::stablehlo::Concatenate(builder, {state_seed, new_offset}, 0)}};
 }
 
 //////

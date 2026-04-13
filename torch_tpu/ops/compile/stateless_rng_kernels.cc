@@ -20,7 +20,6 @@
 #include <tuple>
 #include <utility>
 
-#include "absl/status/status.h"
 #include "ATen/Context.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/Generator.h"
@@ -33,8 +32,8 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
-#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/dropout/dropout.h"
@@ -46,27 +45,16 @@
 
 namespace torch_tpu {
 
-namespace {
-
-absl::Status ValidateRngState(const at::Tensor& rng_state) {
-  TT_RET_CHECK(rng_state.dim() == 1 && rng_state.size(0) == 2,
-               error::kFailedPrecondition)
-      << "expected the inner state of the generator for the '"
-      << rng_state.device() << "' device to be a 1D tensor of shape [2], got "
-      << rng_state.dim() << "D of shape " << ToString(rng_state.sizes());
-  return absl::OkStatus();
-}
-
-}  // namespace
-
 std::tuple<at::Tensor, at::Tensor, at::Tensor> TorchTpuStatelessDropout(
     const at::Tensor& rng_state, const at::Tensor& input, double p,
     c10::optional<bool> train) {
   TT_KERNEL(
       OpName::kTorchTpuStatelessDropout, param_keys,
       (rng_state, input, p, train), {
-        auto rng_state_u64 = rng_state.view(at::kUInt64);
-        TT_THROW_IF_ERROR(ValidateRngState(rng_state_u64));
+        at::Tensor rng_state_u64 = rng_state.view(at::kUInt64);
+        auto gen_impl = at::get_generator_or_default<DeviceGeneratorImpl>(
+            std::nullopt, GetDefaultDeviceGenerator(input.get_device()));
+        TT_THROW_IF_ERROR(gen_impl->CheckDeviceRngState(rng_state_u64));
 
         if (!train.has_value() || p <= 0.0) {
           return {rng_state, input,

@@ -55,8 +55,8 @@ absl::StatusOr<MlirOpResults<3>> BuildDropoutTrainShlo(
   auto rng_op = mlir::stablehlo::RngBitGeneratorOp::create(
       op_builder, input.getValue().getLoc(), rng_input_state_type,
       input_type_uint64, algorithm, rng_input_state.getValue());
-  mlir::MlirOp rng_output_state =
-      mlir::MlirOp(builder, rng_op.getOutputState());
+
+  auto rng_output_state = mlir::MlirOp(builder, rng_op.getOutputState());
   mlir::MlirOp rng_output_op = mlir::MlirOp(builder, rng_op.getOutput());
   const mlir::RankedTensorType rng_output_op_type =
       GetTensorTypeOrDie(rng_output_op);

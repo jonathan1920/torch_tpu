@@ -181,7 +181,8 @@ absl::StatusOr<DeviceBufferRef> NormalLike(
   TT_ASSIGN_OR_RETURN(auto mlir_type,
                       ConvertTo<mlir::ElementType>(self_real.scalar_type()));
   // Retrieve the rng_state tensor from the generator.
-  TT_ASSIGN_OR_RETURN(auto rng_input_state, GetRngState(generator));
+  TT_ASSIGN_OR_RETURN(at::Tensor rng_input_state, GetDeviceRngState(generator));
+
   TT_ASSIGN_OR_RETURN(auto builder, GetNormalFunctional());
   TT_ASSIGN_OR_RETURN(
       (auto [rng_output_state_buf, output_buf]),
@@ -196,7 +197,7 @@ absl::StatusOr<DeviceBufferRef> NormalLike(
   // give it back to the generator, so that it can be used by other ops in the
   // same graph.
   auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
-  TT_RETURN_IF_ERROR(UpdateRngState(generator, rng_output_state));
+  TT_RETURN_IF_ERROR(SetDeviceRngState(generator, rng_output_state));
   return output_buf;
 }
 
@@ -275,19 +276,19 @@ at::Tensor& AtenNormalFloatTensorOut(double mean, const at::Tensor& std,
 
 at::Tensor AtenNormalTensorFloat(const at::Tensor& mean, double std,
                                  std::optional<at::Generator> generator) {
-  TT_KERNEL(OpName::kNormalTensorFloat, _,
-            (mean, IgnoreInCacheKey(std, "Legacy usage"),
-             IgnoreInCacheKey(generator, "Legacy usage")),
-            {
-              TT_THROW_IF_ERROR(
-                  CheckNormalPreconditions(mean, /*arg_name=*/"mean"));
-              TT_THROW_IF_ERROR(CheckNormalStdPreconditions(std));
-              at::Tensor std_tensor = at::scalar_tensor(std, mean.options());
-              TT_ASSIGN_OR_THROW(auto output_buf,
-                                 NormalLike(mean, mean, std_tensor, generator));
-              at::Tensor res = MakeTensor(std::move(output_buf));
-              return mean.is_complex() ? AtenViewAsComplex(res) : res;
-            });
+  TT_KERNEL(
+      OpName::kNormalTensorFloat, _,
+      (mean, IgnoreInCacheKey(std, "Legacy usage"),
+       IgnoreInCacheKey(generator, "Legacy usage")),
+      {
+        TT_THROW_IF_ERROR(CheckNormalPreconditions(mean, /*arg_name=*/"mean"));
+        TT_THROW_IF_ERROR(CheckNormalStdPreconditions(std));
+        at::Tensor std_tensor = at::scalar_tensor(std, mean.options());
+        TT_ASSIGN_OR_THROW(auto output_buf,
+                           NormalLike(mean, mean, std_tensor, generator));
+        at::Tensor res = MakeTensor(std::move(output_buf));
+        return mean.is_complex() ? AtenViewAsComplex(res) : res;
+      });
 }
 
 at::Tensor& AtenNormalTensorFloatOut(const at::Tensor& mean, double std,

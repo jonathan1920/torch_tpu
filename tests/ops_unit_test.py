@@ -2082,20 +2082,25 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_device_gen(self):
     gen = torch.Generator(device=api.tpu_device())
     self.assertEqual(gen.device.type, api.tpu_device().type)
+
     gen.manual_seed(42)
     state = gen.get_state()
-    self.assertEqual(state.shape, (2,))
-    self.assertEqual(state[0], 42)
-    self.assertEqual(state[1], 0)
+
+    self.assertEqual(state.dtype, torch.uint8)
+    self.assertEqual(state[0].item(), 42)
+    self.assertEqual(state[1:8].sum().item(), 0)
+
     gen2 = gen.clone_state()
-    gen.set_state(
-        torch.tensor([4, 3], device=api.tpu_device(), dtype=torch.uint64)
-    )
+
+    new_state = torch.zeros(16, device="cpu", dtype=torch.uint8)
+    new_state[0] = 4
+    new_state[8] = 3
+    gen.set_state(new_state)
+
     state2 = gen.get_state()
-    self.assertEqual(state2[0], 4)
-    self.assertEqual(state2[1], 3)
-    self.assertEqual(gen2.get_state()[0], 42)
-    self.assertEqual(gen2.get_state()[1], 0)
+    self.assertEqual(state2[0].item(), 4)
+    self.assertEqual(state2[8].item(), 3)
+    self.assertEqual(gen2.get_state()[0].item(), 42)
 
   def test_floor_divide_scalar(self):
     sample_input = (
@@ -4221,8 +4226,8 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     golden_sequence = [8, 7, 0, 5, 9, 4, 6, 3, 1, 2]
     res = torch.randperm(10, generator=gen, device=device)
     self.assertEqual(res.cpu().tolist(), golden_sequence)
-    _, offset = gen.get_state()
-    self.assertEqual(offset.item(), 5)
+    state = gen.get_state()
+    self.assertEqual(state[8].item(), 5)
 
   def test_randperm_dtypes(self):
     device = api.tpu_device()
@@ -5752,6 +5757,9 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
 
     rng_state = torch.get_device_module(api.tpu_device()).get_rng_state()
+    # rng_state by spec is on CPU, move it to TPU.
+    rng_state = rng_state.to(api.tpu_device())
+
     expected_out, expected_mask = torch.ops.aten.native_dropout(
         input_tensor, 0.5, True
     )

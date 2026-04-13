@@ -258,18 +258,20 @@ class SyncTest(absltest.TestCase):
     expected_graphviz_string = """Graphviz string: (try pasting in http://graphviz/ to see the graph)
 digraph {
   // Vertices:
-  0 [shape="box", label=" float32[]"];
+  0 [shape="box", label=" float32[] (materialized)"];
   1 [label="fill_.Scalar"];
   2 [shape="box", label=" uint64[2]"];
-  3 [label="set_seed"];
+  3 [label="set_current_seed"];
   4 [shape="box", label=" uint64[2]"];
-  5 [label="uniform_"];
+  5 [label="set_offset"];
   6 [shape="box", label=" uint64[2]"];
-  7 [shape="box", label="x: float32[2, 3]"];
-  8 [label="sum"];
-  9 [shape="box", label="z: float32[]"];
-  10 [label="pow.out"];
-  11 [shape="box", label="y: float32[2, 3]"];
+  7 [label="uniform_"];
+  8 [shape="box", label=" uint64[2]"];
+  9 [shape="box", label="x: float32[2, 3]"];
+  10 [label="sum.IntList_out"];
+  11 [shape="box", label="z: float32[]"];
+  12 [label="pow.out"];
+  13 [shape="box", label="y: float32[2, 3]"];
 
   // Edges:
   1 -> 2
@@ -277,12 +279,14 @@ digraph {
   3 -> 4
   4 -> 5
   5 -> 6
-  5 -> 7
+  6 -> 7
   7 -> 8
-  8 -> 9
-  7 -> 10
-  0 -> 10
+  7 -> 9
+  9 -> 10
   10 -> 11
+  9 -> 12
+  0 -> 12
+  12 -> 13
 }
 """
 

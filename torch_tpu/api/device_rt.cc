@@ -19,10 +19,8 @@
 #include <string>
 
 #include "absl/log/absl_log.h"
-#include "absl/time/time.h"
 #include "ATen/core/Generator.h"
 #include "c10/core/Device.h"
-#include "c10/core/ScalarType.h"
 #include "c10/core/TensorImpl.h"
 #include "c10/core/impl/DeviceGuardImplInterface.h"
 #include "torch/csrc/utils/pybind.h"  // IWYU pragma: keep, needed for at::Tensor mapping
@@ -74,18 +72,6 @@ int64_t RecordEventPy(std::optional<int> device_index) {
     index = impl->getDevice().index();
   }
   return RecordEventSnapshot(index);
-}
-
-void SetRngStatePy(at::Tensor state, int device_index) {
-  const at::Generator& gen = GetDefaultDeviceGenerator(device_index);
-  if (state.dtype() == at::kByte) {
-    state = state.view(at::kUInt64);
-  }
-  if (state.device() != gen.device()) {
-    state = state.to(gen.device());
-  }
-  TT_THROW_IF_ERROR(UpdateRngState(gen, state)).SetPrepend()
-      << "failed to set RNG state: ";
 }
 
 void InitRuntimeOptions(const std::string& device_type) {
@@ -241,17 +227,27 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       "manual_seed_all", [](uint64_t seed) { SetManualSeedAll(seed); },
       py::arg("seed"),
       "Manually set the seed for all generators (one per device).");
+
   m.def(
       "get_rng_state",
       [](int device_index) -> at::Tensor {
-        TT_ASSIGN_OR_THROW(at::Tensor state,
-                           GetRngState(GetDefaultDeviceGenerator(device_index)),
-                           _.SetPrepend() << "failed to get RNG state: ");
-        return state.view(at::kByte);
+        // Gets the current internal state of the generator for a given device
+        // index. The internal state is returned as a CPU byte tensor.
+        const at::Generator& gen = GetDefaultDeviceGenerator(device_index);
+        return gen.get_state();
       },
       py::arg("device_index"), "Get RNG state for the given device index.");
-  m.def("set_rng_state", &SetRngStatePy, py::arg("state"),
-        py::arg("device_index"), "Set RNG state for the given device index.");
+
+  m.def(
+      "set_rng_state",
+      [](at::Tensor state, int device_index) {
+        // Sets the internal state of the generator for a given device index.
+        // The new internal state must be a CPU byte tensor.
+        at::Generator& gen = GetDefaultDeviceGenerator(device_index);
+        gen.set_state(state);
+      },
+      py::arg("state"), py::arg("device_index"),
+      "Set RNG state for the given device index.");
 
   py::class_<CacheEntryStats>(m, "CacheEntryStats")
       .def_property_readonly(
