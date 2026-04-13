@@ -14,6 +14,7 @@
 
 load(
     "//build_files:build_defs.bzl",
+    "oss_target",
     "torch_tpu_cc_library",
     "torch_tpu_cc_test",
     "torch_tpu_package_end",
@@ -471,8 +472,8 @@ torch_tpu_cc_test(
 # Using this test as a hack to run custom_kernels_test.cc in TPU CI.
 # This test should be removed once either an equivalent C++ libtpu API is available or
 # custom_kernels_test.cc is converted to a Python test.
-# copybara:comment_begin(oss-only)
-sh_test(
+oss_target(
+    sh_test,
     name = "oss_custom_kernels_test",
     srcs = ["//torch_tpu/common:run_cc_tpu_test.sh"],
     args = ["$(location :custom_kernels_test)"],
@@ -486,6 +487,5 @@ sh_test(
         "requires-tpu-v5lite",
     ],
 )
-# copybara:comment_end
 
 torch_tpu_package_end()

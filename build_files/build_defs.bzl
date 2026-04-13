@@ -63,6 +63,12 @@ def if_oss(oss_value, internal_value = None):
         return oss_value
     return internal_value
 
+def oss_target(rule_func, name, **kwargs):
+    """Returns a target that is defined only in OSS."""
+    if is_oss():
+        return rule_func(name = name, **kwargs)
+    return None
+
 def adjust_cc_options(copts, features):
     """Adjusts the C/C++ build options for torch_tpu.
 
