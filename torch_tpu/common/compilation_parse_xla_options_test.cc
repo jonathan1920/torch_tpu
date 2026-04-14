@@ -79,7 +79,8 @@ TEST(ApplyCompilerOptionOverrides, AppendsNonExistingOptions) {
       {"xla_ghi", "SAFE"},
       // go/keep-sorted end
   };
-  ASSERT_OK(ApplyCompilerOptionOverrides(std::move(overrides), options));
+  ASSERT_EQ(ApplyCompilerOptionOverrides(std::move(overrides), options),
+            absl::OkStatus());
   EXPECT_THAT(options.env_option_overrides,
               ElementsAre(Pair("xla_abc", true), Pair("xla_xyz", 42),
                           Pair("xla_def", std::string("AUTO")),
@@ -100,7 +101,8 @@ TEST(ApplyCompilerOptionOverrides, ReplacesExistingOptions) {
       {"xla_xyz", "SAFE"},
       // go/keep-sorted end
   };
-  ASSERT_OK(ApplyCompilerOptionOverrides(std::move(overrides), options));
+  ASSERT_EQ(ApplyCompilerOptionOverrides(std::move(overrides), options),
+            absl::OkStatus());
   EXPECT_THAT(options.env_option_overrides,
               ElementsAre(Pair("xla_abc", std::string("AUTO")),
                           Pair("xla_xyz", std::string("SAFE"))));
@@ -120,7 +122,8 @@ TEST(ApplyCompilerOptionOverrides, HandlesExistingAndNewOptions) {
       {"xla_def", "SAFE"},
       // go/keep-sorted end
   };
-  ASSERT_OK(ApplyCompilerOptionOverrides(std::move(overrides), options));
+  ASSERT_EQ(ApplyCompilerOptionOverrides(std::move(overrides), options),
+            absl::OkStatus());
   EXPECT_THAT(
       options.env_option_overrides,
       ElementsAre(Pair("xla_abc", std::string("AUTO")), Pair("xla_xyz", 42),

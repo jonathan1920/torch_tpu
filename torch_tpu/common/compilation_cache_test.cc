@@ -216,7 +216,7 @@ TEST_F(CompilationCacheInitTest, LazyInitialization) {
     return mlir::OwningOpRef<mlir::ModuleOp>(
         mlir::ModuleOp::create(mlir::UnknownLoc::get(&ctx)));
   });
-  ASSERT_OK(contexted_module_or.status());
+  ASSERT_EQ(contexted_module_or.status(), absl::OkStatus());
   cache.EnqueueCompilation(key, *std::move(contexted_module_or),
                            std::make_unique<xla::CompileOptions>());
   EXPECT_TRUE(CompilationCache::GetInstance().IsInitialized());

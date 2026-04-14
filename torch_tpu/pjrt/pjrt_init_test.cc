@@ -17,13 +17,12 @@
 #include <cstdlib>
 
 #include "gtest/gtest.h"
-#include "absl/status/status_matchers.h"
+#include "absl/status/status.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 
 namespace torch_tpu {
 namespace {
 
-using ::absl_testing::StatusIs;
 using testing::ExitedWithCode;
 
 class PjRtInitTest : public ::testing::Test {
@@ -69,7 +68,7 @@ TEST_F(PjRtInitTest, InitializePjRtSetsCorrectDeviceCount) {
   EXPECT_TRUE(PjrtBackend::GetInstance().IsInitialized());
 
   auto device_count_or = PjrtBackend::GetInstance().GetGlobalDeviceCount();
-  ASSERT_OK(device_count_or.status());
+  ASSERT_EQ(device_count_or.status(), absl::OkStatus());
   EXPECT_EQ(device_count_or.value(), 1);
 }
 
