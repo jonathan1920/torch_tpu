@@ -51,7 +51,11 @@ inline constexpr char kNprocEnvVar[] = "NPROC";
 inline constexpr char kRankEnvVar[] = "RANK";  // Set by launchers.
 // Set by the Bazel build system during unit test execution.
 inline constexpr char kTestTargetEnvVar[] = "TEST_TARGET";
+// Set by Bazel test runner.
+inline constexpr char kTestTmpdirEnvVar[] = "TEST_TMPDIR";
 inline constexpr char kTestWorkspaceEnvVar[] = "TEST_WORKSPACE";
+// Standard temporary directory.
+inline constexpr char kTmpdirEnvVar[] = "TMPDIR";
 // If set to "1", C++ stack traces are appended to error messages.
 // Shared with PyTorch:
 // https://docs.pytorch.org/docs/stable/debugging_environment_variables.html#pytorch-debug-environment-variables
@@ -104,6 +108,8 @@ inline constexpr char kTpuProcessAddressesEnvVar[] =
     "TPU_PROCESS_ADDRESSES";  // Set by Google Cloud.
 inline constexpr char kTpuProcessPortEnvVar[] =
     "TPU_PROCESS_PORT";  // Read by Google Cloud.
+// The output directory for TPU profiler XPlane files.
+inline constexpr char kTpuProfilerOutputDirEnvVar[] = "TPU_PROFILER_OUTPUT_DIR";
 inline constexpr char kTpuSlicebuilderAddressesEnvVar[] =
     "TORCH_TPU_SLICEBUILDER_ADDRESSES";  // Set by Torch TPU specific launchers.
 inline constexpr char kTpuTopologyEnvVar[] =

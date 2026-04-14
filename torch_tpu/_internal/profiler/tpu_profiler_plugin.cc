@@ -16,24 +16,35 @@
 
 #include "torch_tpu/_internal/profiler/tpu_profiler_plugin.h"
 
-#include <cstdlib>
+#include <unistd.h>
+
+#include <cstdio>
 #include <fstream>
 #include <ios>
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include <kineto/ActivityType.h>
 #include <kineto/Config.h>
 #include <kineto/IActivityProfiler.h>
 #include <kineto/output_base.h>
 #include "torch_tpu/_internal/profiler/xprof_callback_handler.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/utils.h"
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -46,6 +57,80 @@
 namespace torch_tpu {
 
 #if TT_IS_INTERNAL_TORCH_TPU
+
+namespace {
+
+// Resolves the base output directory for profiling artifacts.
+std::string GetBaseOutputDir(std::string_view run_dir) {
+  const auto& env_output_dir_opt = GetEnvOnce<kTpuProfilerOutputDirEnvVar>();
+  if (env_output_dir_opt.has_value() && !env_output_dir_opt->empty()) {
+    return *env_output_dir_opt;
+  }
+
+  std::string base_dir = std::string(run_dir);
+
+  const auto& env_test_tmpdir_opt = GetEnvOnce<kTestTmpdirEnvVar>();
+  const auto& env_tmpdir_opt = GetEnvOnce<kTmpdirEnvVar>();
+
+  std::string env_tmp;
+  if (env_test_tmpdir_opt.has_value() && !env_test_tmpdir_opt->empty()) {
+    env_tmp = *env_test_tmpdir_opt;
+  } else if (env_tmpdir_opt.has_value() && !env_tmpdir_opt->empty()) {
+    env_tmp = *env_tmpdir_opt;
+  }
+
+  if (base_dir.empty() || base_dir == "/tmp") {
+    return !env_tmp.empty() ? env_tmp : "/tmp";
+  }
+  return base_dir;
+}
+
+// Helper to determine the output path for the XPlane file.
+// It follows the TensorBoard XProf convention used in TensorFlow/XLA to save
+// data under <run_dir>/plugins/profile/<timestamp>/<hostname>.xplane.pb.
+// The <timestamp> format is YYYY_MM_DD_HH_MM_SS in the local time zone,
+// matching XLA's behavior.
+//
+// The base directory is determined in order of priority:
+// 1. TPU_PROFILER_OUTPUT_DIR environment variable (if set and non-empty).
+// 2. The provided `run_dir` (if not empty and not "/tmp").
+// 3. TEST_TMPDIR environment variable (if set).
+// 4. TMPDIR environment variable (if set).
+// 5. Default to "/tmp".
+absl::StatusOr<std::string> GetXPlaneOutputPath(std::string_view run_dir) {
+  std::string base_dir = GetBaseOutputDir(run_dir);
+
+  absl::Time now = absl::Now();
+  // Match %E4Y format used in
+  // tensorflow/compiler/xla/tsl/profiler/rpc/client/save_profile.cc
+  std::string timestamp =
+      absl::FormatTime("%E4Y_%m_%d_%H_%M_%S", now, absl::LocalTimeZone());
+
+  char hostname[1024];
+  if (gethostname(hostname, sizeof(hostname)) != 0) {
+    snprintf(hostname, sizeof(hostname), "localhost");
+  }
+  hostname[sizeof(hostname) - 1] = '\0';
+
+  std::string profile_dir =
+      tsl::io::JoinPath(base_dir, "plugins", "profile", timestamp);
+
+  tsl::Env* env = tsl::Env::Default();
+  absl::Status status = env->RecursivelyCreateDir(profile_dir);
+  if (!status.ok()) {
+    ABSL_LOG(ERROR) << "Failed to create directory: " << profile_dir
+                    << " error: " << status;
+    return status;
+  }
+
+  std::string file_name = absl::StrCat(hostname, ".xplane.pb");
+  // Windows file names do not support colons.
+  absl::StrReplaceAll({{":", "_"}}, &file_name);
+
+  return tsl::io::JoinPath(profile_dir, file_name);
+}
+
+}  // namespace
 
 TpuKinetoProfilerSession::TpuKinetoProfilerSession(
     const libkineto::Config& config,
@@ -105,24 +190,28 @@ void TpuKinetoProfilerSession::stop() {
     std::string run_dir =
         std::string(tsl::io::Dirname(config_.activitiesLogFile()));
 
-    std::string output_path = "/tmp/xplane.pb";
-    const char* tpu_xplane_path =
-        std::getenv("TPU_XPLANE_PATH");  // GETENV_OK=test override
-    if (tpu_xplane_path != nullptr) {
-      output_path = tpu_xplane_path;
-    } else if (!run_dir.empty()) {
-      output_path = tsl::io::JoinPath(run_dir, "xplane.pb");
-    }
-
-    std::ofstream f(output_path, std::ios::binary);
-    ABSL_VLOG(1) << "Attempting to write XPlane to " << output_path;
-    if (!f) {
-      errors_.push_back("Failed to open XSpace output file: " + output_path);
-      ABSL_LOG(ERROR) << "Failed to open XSpace output file: " << output_path;
+    absl::StatusOr<std::string> resolved_path = GetXPlaneOutputPath(run_dir);
+    if (!resolved_path.ok()) {
+      errors_.push_back("Failed to get XPlane output path: " +
+                        resolved_path.status().ToString());
+      ABSL_LOG(ERROR) << "Failed to get XPlane output path: "
+                      << resolved_path.status();
     } else {
-      xspace_.SerializeToOstream(&f);
-      f.close();
-      ABSL_LOG(INFO) << "Successfully wrote XPlane to " << output_path;
+      std::string output_path = *resolved_path;
+      std::ofstream f(output_path, std::ios::binary);
+      ABSL_VLOG(1) << "Attempting to write XPlane to " << output_path;
+      if (!f) {
+        errors_.push_back("Failed to open XSpace output file: " + output_path);
+        ABSL_LOG(ERROR) << "Failed to open XSpace output file: " << output_path;
+      } else {
+        if (xspace_.SerializeToOstream(&f)) {
+          ABSL_LOG(INFO) << "Successfully wrote XPlane to " << output_path;
+        } else {
+          errors_.push_back("Failed to write XSpace to file: " + output_path);
+          ABSL_LOG(ERROR) << "Failed to write XSpace to file: " << output_path;
+        }
+        f.close();
+      }
     }
   }
   session_.reset();

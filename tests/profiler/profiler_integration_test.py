@@ -14,9 +14,9 @@
 import json
 import os
 import pathlib
+import shutil
 import threading
 import time
-from unittest import mock
 
 from absl import logging
 from absl.testing import absltest
@@ -24,6 +24,11 @@ import torch
 from torch.autograd import profiler
 from torch_tpu import api as tpu_api
 from torch_tpu._internal import sync as tpu_sync
+
+
+def _get_profile_dir() -> pathlib.Path:
+  tmpdir = os.environ.get("TEST_TMPDIR") or os.environ.get("TMPDIR") or "/tmp"
+  return pathlib.Path(tmpdir) / "plugins" / "profile"
 
 
 class ComplexLoopedModel(torch.nn.Module):
@@ -62,14 +67,26 @@ class ComplexLoopedModel(torch.nn.Module):
     return self.fc_out(x)
 
 
+def _cleanup_profile_dir() -> None:
+  try:
+    shutil.rmtree(_get_profile_dir())
+  except FileNotFoundError:
+    pass
+
+
 class ProfilerIntegrationTest(absltest.TestCase):
+
+  def _get_and_copy_xplane(self, destination_path: pathlib.Path) -> None:
+    profile_dir = _get_profile_dir()
+    xplane_files = list(profile_dir.glob("**/*.xplane.pb"))
+    self.assertNotEmpty(xplane_files, f"No xplane file found in {profile_dir}")
+
+    shutil.copy(xplane_files[0], destination_path)
+    logging.info("Copied XPlane to %s", destination_path)
 
   def test_native_profiler(self):
     """Tests the StartTrace and StopTrace functionality integrated with PyTorch Kineto."""
-    try:
-      device = tpu_api.tpu_device()
-    except RuntimeError as e:
-      self.fail(f"Failed to get TPU device: {e!r}")
+    device = tpu_api.tpu_device()
 
     a = torch.ones((16, 16)).to(device)
     b = torch.ones((16, 16)).to(device)
@@ -82,15 +99,8 @@ class ProfilerIntegrationTest(absltest.TestCase):
       output_dir = self.create_tempdir("trace_integration_tpu").full_path
 
     tpu_xplane_path = pathlib.Path(output_dir) / "xplane.pb"
-    self.enter_context(
-        mock.patch.dict(
-            os.environ,
-            {
-                "TPU_PROFILER_OUTPUT_DIR": output_dir,
-                "TPU_XPLANE_PATH": str(tpu_xplane_path),
-            },
-        )
-    )
+
+    _cleanup_profile_dir()
 
     with torch.profiler.profile(
         activities=[
@@ -104,36 +114,81 @@ class ProfilerIntegrationTest(absltest.TestCase):
       tpu_sync.synchronize(c)
       prof.step()
 
+    self._get_and_copy_xplane(tpu_xplane_path)
+
+    # Data processing and setup logic
     traces = list(pathlib.Path(output_dir).glob("*.pt.trace.json"))
-    self.assertTrue(traces, "Trace file should be created")
 
-    trace_path = traces[0]
-    with open(trace_path, "r") as f:
-      trace_data = json.load(f)
+    trace_data = {}
+    if traces:
+      trace_path = traces[0]
+      with open(trace_path, "r") as f:
+        trace_data = json.load(f)
 
-    self.assertIn("traceEvents", trace_data)
-    events = trace_data["traceEvents"]
-
-    # We expect some TPU events (Kineto logs GenericTraceActivity as 'Trace')
+    events = trace_data.get("traceEvents", [])
     tpu_events = [e for e in events if e.get("cat") == "Trace"]
-    cats = set([e.get("cat") for e in events if "cat" in e])
-    self.assertNotEmpty(
-        tpu_events,
-        msg=f"Missing kernel tpu events. Found categories: {cats}",
+    cats = set(e.get("cat") for e in events if "cat" in e)
+
+    xplane_exists = tpu_xplane_path.exists()
+    xplane_contents = (
+        list(pathlib.Path(output_dir).glob("*.*")) if not xplane_exists else []
     )
 
+    # Subtests containing only assertions
+    with self.subTest(msg="Kineto JSON Trace"):
+      self.assertNotEmpty(traces, "Trace file should be created")
+      self.assertIn("traceEvents", trace_data)
+      self.assertNotEmpty(
+          tpu_events,
+          msg=f"Missing kernel tpu events. Found categories: {cats}",
+      )
+
+    with self.subTest(msg="TPU XPlane Output"):
+      self.assertTrue(
+          xplane_exists,
+          f"XPlane missing! contents: {xplane_contents}",
+      )
+
+  def test_automatic_xplane_path(self):
+    device = tpu_api.tpu_device()
+
+    a = torch.ones((16, 16)).to(device)
+    b = torch.ones((16, 16)).to(device)
+    c = a @ b
+    tpu_sync.synchronize(c)
+
+    output_dir = self.create_tempdir("auto_xplane").full_path
+
+    _cleanup_profile_dir()
+    profile_dir = _get_profile_dir()
+
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.PrivateUse1,
+        ],
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
+    ) as prof:
+      c = a @ b
+      tpu_sync.synchronize(c)
+      prof.step()
+
     self.assertTrue(
-        tpu_xplane_path.exists(),
-        "XPlane missing! contents:"
-        f" {list(pathlib.Path(output_dir).glob('*.*'))}",
+        profile_dir.exists(),
+        "plugins/profile directory should exist under the base directory",
+    )
+
+    timestamp_dirs = list(profile_dir.glob("*"))
+    self.assertNotEmpty(timestamp_dirs, "Should have a timestamp directory")
+
+    xplane_files = list(timestamp_dirs[0].glob("*.xplane.pb"))
+    self.assertNotEmpty(
+        xplane_files, "Should have a .xplane.pb file in timestamp directory"
     )
 
   def test_full_pipeline_profiling(self):
     cpu_device = torch.device("cpu")
-    try:
-      tpu_device = tpu_api.tpu_device()
-    except RuntimeError as e:
-      self.skipTest(f"Failed to get TPU device: {e!r}")
+    tpu_device = tpu_api.tpu_device()
 
     model_tpu = ComplexLoopedModel().to(tpu_device)
     model_cpu = ComplexLoopedModel().to(cpu_device)
@@ -151,16 +206,7 @@ class ProfilerIntegrationTest(absltest.TestCase):
         torch.profiler.ProfilerActivity.PrivateUse1,
     ]
 
-    tpu_xplane_path = output_dir / "xplane.pb"
-    self.enter_context(
-        mock.patch.dict(
-            os.environ,
-            {
-                "TPU_PROFILER_OUTPUT_DIR": str(output_dir),
-                "TPU_XPLANE_PATH": str(tpu_xplane_path),
-            },
-        )
-    )
+    _cleanup_profile_dir()
 
     with torch.profiler.profile(
         activities=activities,
@@ -180,9 +226,10 @@ class ProfilerIntegrationTest(absltest.TestCase):
         with profiler.record_function("model2_inference_cpu"):
           model_cpu(output1_cpu)
 
-    # We still check XPlane existence
+    self._get_and_copy_xplane(output_dir / "xplane.pb")
+
     self.assertTrue(
-        tpu_xplane_path.exists(),
+        (output_dir / "xplane.pb").exists(),
         f"XPlane missing! contents: {list(output_dir.glob('*.*'))}",
     )
 
