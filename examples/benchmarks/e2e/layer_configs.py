@@ -579,3 +579,41 @@ class DeepSeekConfig:
 
 
 DEEPSEEK_CONFIGS = (DeepSeekConfig(batch_size=1, seq_len=128),)
+
+
+@dataclasses.dataclass
+class Llama3TransformerBlockConfig:
+  batch_size: int
+  seq_len: int
+  dim: int
+  n_heads: int
+  n_kv_heads: int
+  vocab_size: int
+  max_seq_len: int
+  multiple_of: int
+  ffn_dim_multiplier: float = 1.0
+
+
+LLAMA3_TRANSFORMER_BLOCK_CONFIGS = (
+    Llama3TransformerBlockConfig(
+        batch_size=2,
+        seq_len=8,
+        dim=64,
+        n_heads=4,
+        n_kv_heads=4,
+        vocab_size=32,
+        max_seq_len=16,
+        multiple_of=16,
+    ),
+    Llama3TransformerBlockConfig(
+        batch_size=1,
+        seq_len=8192,
+        dim=4096,
+        n_heads=32,
+        n_kv_heads=8,
+        vocab_size=128256,
+        max_seq_len=131072,
+        multiple_of=1024,
+        ffn_dim_multiplier=1.3,
+    ),
+)

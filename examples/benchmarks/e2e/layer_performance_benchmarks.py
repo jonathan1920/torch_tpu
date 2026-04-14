@@ -57,6 +57,7 @@ _DEEPSEEK_PARALLEL_EMBEDDING_BENCHMARK_NAME = "deepseek_parallel_embedding"
 _DEEPSEEK_RMSNORM_BENCHMARK_NAME = "deepseek_rms_norm"
 _DEEPSEEK_EXPERT_BENCHMARK_NAME = "deepseek_expert"
 _SDPA_LAYER_BENCHMARK_NAME = "sdpa"
+_LLAMA3_TRANSFORMER_BLOCK_BENCHMARK_NAME = "llama3_transformer_block"
 
 
 class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
@@ -832,6 +833,44 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
     self.run_performance_benchmark_test(
         config, _SDPA_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          _ALL_RUN_MODES,
+          (True, False),
+          layer_configs.LLAMA3_TRANSFORMER_BLOCK_CONFIGS,
+      )
+  )
+  def test_torchtitan_llama3_transformer_block(
+      self, run_mode, is_training, layer_config
+  ):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="Llama3TransformerBlock",
+            batch_size=layer_config.batch_size,
+            sequence_length=layer_config.seq_len,
+            custom_kwargs={
+                "dim": layer_config.dim,
+                "n_heads": layer_config.n_heads,
+                "n_kv_heads": layer_config.n_kv_heads,
+                "vocab_size": layer_config.vocab_size,
+                "max_seq_len": layer_config.max_seq_len,
+                "multiple_of": layer_config.multiple_of,
+                "ffn_dim_multiplier": layer_config.ffn_dim_multiplier,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _LLAMA3_TRANSFORMER_BLOCK_BENCHMARK_NAME, microbenchmark_name
     )
 
 
