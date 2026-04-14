@@ -13,7 +13,9 @@
 # limitations under the License.
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@pypi//:requirements.bzl", "all_requirements")
+load("@pypi//:requirements.bzl", "all_requirements", "requirement")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
+load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@xla//third_party/py:py_import.bzl", "py_import")
 load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
 
@@ -55,28 +57,59 @@ filegroup(
     srcs = glob(["dist/*.whl"]),
 )
 
-# Wheel deps not included with the wheel that are needed for testing.
+# Combined config setting for ease of use in selects
+config_setting(
+    name = "wheel_test_with_local_torch",
+    define_values = {"TORCH_SOURCE": "local"},
+    flag_values = {":test_wheel": "True"},
+)
+
+filegroup(
+    name = "torch_libs_mapped",
+    srcs = [
+        "@local_torch//:libc10_file",
+        "@local_torch//:libshm_file",
+        "@local_torch//:libtorch_cpu_file",
+        "@local_torch//:libtorch_file",
+        "@local_torch//:libtorch_global_deps_file",
+        "@local_torch//:libtorch_python_file",
+    ],
+)
+
+filegroup(
+    name = "torch_py_mapped",
+    srcs = ["@local_torch//:torch_py_files"],
+)
+
+# 3. Assemble everything into the final zip using a robust procedural approach
 genrule(
     name = "wheel_extra_test_deps",
     testonly = True,
     srcs = [
-        "//tests/distributed:distributed_utils",
-        "//tests:dynamism_test_utils",
-        "//tests:error_testing",
-        "//tests:op_testing",
-        "//tests/compile:stablehlo_compile_testing",
+        "//shims/etils",
         "//shims/etils/epath",
         "//shims/safetensors",
         "//shims/torch:pytorch",
         "//shims/torch:tensorboard_support",
         "//shims/torch:testing_internal",
+        "//tests:dynamism_test_utils",
+        "//tests:error_testing",
+        "//tests:op_testing",
+        "//tests/compile:stablehlo_compile_testing",
+        "//tests/distributed:distributed_utils",
         "//torch_tpu/_internal/compile/dynamic:sym_shape_manager",
         "//torch_tpu/_internal/compile/dynamic:symbol_bounds",
         "//torch_tpu/_internal/utils:test_fixtures",
-    ],
+    ] + select({
+        "//ci/wheel:use_local_torch": [
+            ":torch_libs_mapped",
+            ":torch_py_mapped",
+        ],
+        "//conditions:default": [],
+    }),
     outs = ["wheel_extra_test_deps.zip"],
-    cmd = "$(location @bazel_tools//tools/zip:zipper) c $@ $(SRCS)",
-    tools = ["@bazel_tools//tools/zip:zipper"],
+    cmd = "$(location //bazel:assemble_wheel_deps) $@ $(SRCS)",
+    tools = ["//bazel:assemble_wheel_deps"],
 )
 
 py_import(
@@ -88,7 +121,16 @@ py_import(
     }),
     zip_deps = [":wheel_extra_test_deps"],
     # Add requirements coming from pip_parse from workspace
-    deps = all_requirements,
+    deps = select({
+        "//ci/wheel:use_local_torch": [
+            "@local_torch//:torch",
+        ] + [
+            req
+            for req in all_requirements
+            if req != requirement("torch")
+        ],
+        "//conditions:default": all_requirements,
+    }),
 )
 
 genrule(

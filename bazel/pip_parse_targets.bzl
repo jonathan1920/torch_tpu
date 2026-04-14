@@ -19,6 +19,7 @@ load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 def define_extra_torch_targets():
+    """Defines additional targets for the PyTorch distribution inside site-packages."""
     cc_library(
         name = "torch_headers",
         hdrs = native.glob(
@@ -28,11 +29,7 @@ def define_extra_torch_targets():
                 "site-packages/torch/include/*.h",
                 "site-packages/torch/include/*.hpp",
             ],
-            exclude = [
-                # Proto headers that shouldn't be bundled with torch
-                "site-packages/torch/include/google/**",
-                # Handled by torch_csrc_api_headers
-            ],
+            exclude = [],
         ),
         # NOTE: There's a Bazel bug with strip_include_prefix where it
         # incorrectly thinks files provided by another target using
@@ -42,6 +39,9 @@ def define_extra_torch_targets():
         includes = [
             "site-packages/torch/include",
             "site-packages/torch/include/torch/csrc/api/include",
+        ],
+        deps = [
+            "@com_google_protobuf//:protobuf",
         ],
     )
 

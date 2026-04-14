@@ -375,6 +375,19 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+def _prepend_to_env(env, key, value):
+    """Prepends a value to an environment variable in a dictionary.
+
+    Args:
+        env: The dictionary of environment variables.
+        key: The key of the environment variable.
+        value: The value to prepend.
+    """
+    if key in env:
+        env[key] = value + ":" + env[key]
+    else:
+        env[key] = value
+
 def torch_tpu_py_test(
         name,
         args = None,
@@ -467,14 +480,28 @@ def torch_tpu_py_test(
 
     # 3. Create the specialized environment for wheel testing
     existing_env = kwargs.pop("env", {})
+
+    # Standard wheel test environment (No local source)
     env_with_wheel = dict(existing_env)
-    if "LD_LIBRARY_PATH" in existing_env:
-        env_with_wheel["LD_LIBRARY_PATH"] = new_paths_str + ":" + existing_env["LD_LIBRARY_PATH"]
-    else:
-        env_with_wheel["LD_LIBRARY_PATH"] = new_paths_str
+    _prepend_to_env(env_with_wheel, "LD_LIBRARY_PATH", new_paths_str)
+
+    # Local Torch + Wheel test environment
+    # We include local paths for LD_LIBRARY_PATH and PYTHONPATH
+    env_with_local_torch = dict(existing_env)
+
+    local_torch_lib = "torch_tpu_py_import_unpacked_wheel/torch/lib"
+    local_torch_lib_alt = "__main__/torch_tpu_py_import_unpacked_wheel/torch/lib"
+    local_paths = [local_torch_lib, local_torch_lib_alt]
+    local_ld_path = ":".join(local_paths) + ":" + new_paths_str
+    _prepend_to_env(env_with_local_torch, "LD_LIBRARY_PATH", local_ld_path)
+
+    local_torch_python = "../local_torch/site-packages"
+    unpacked_wheel_path = "../torch_tpu_py_import_unpacked_wheel"
+    _prepend_to_env(env_with_local_torch, "PYTHONPATH", ":".join([unpacked_wheel_path, local_torch_python]))
 
     # 4. Use select to swap between the wheel and non-wheel envs
     test_env = if_oss(select({
+        "//:wheel_test_with_local_torch": env_with_local_torch,
         "//:wheel_test_enabled": env_with_wheel,
         "//conditions:default": existing_env,
     }), existing_env)
