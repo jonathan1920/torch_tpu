@@ -105,6 +105,7 @@ pytype_strict_library(
     deps = [
         ":benchmark_utils",
         ":performance_utils",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:parameterized",
     ],
 )

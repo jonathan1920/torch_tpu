@@ -14,8 +14,6 @@
 
 """Benchmarks for model performance."""
 
-import dataclasses
-
 from absl.testing import absltest
 from absl.testing import parameterized
 import torch

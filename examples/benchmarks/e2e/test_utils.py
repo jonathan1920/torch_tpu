@@ -17,6 +17,7 @@
 import dataclasses
 from typing import Any, Sequence
 
+from absl import flags
 from absl.testing import parameterized
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import performance_utils
@@ -40,6 +41,12 @@ def get_base_test_name(
 
 class BenchmarkTest(parameterized.TestCase):
   """Tests for end-to-end performance benchmarks."""
+
+  def setUp(self):
+    super().setUp()
+    # TODO(b/502604749): Remove this flag after we figure out a way to
+    # clear the repeated sequence op window between tests.
+    flags.FLAGS.torch_tpu_internal_detect_repeated_ops = ""
 
   def run_performance_benchmark_test(
       self,
