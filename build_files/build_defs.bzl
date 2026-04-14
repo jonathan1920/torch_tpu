@@ -69,6 +69,12 @@ def oss_target(rule_func, name, **kwargs):
         return rule_func(name = name, **kwargs)
     return None
 
+def internal_target(rule_func, name, **kwargs):
+    """Returns a target that is defined only in the internal version of torch_tpu."""
+    if not is_oss():
+        return rule_func(name = name, **kwargs)
+    return None
+
 def adjust_cc_options(copts, features):
     """Adjusts the C/C++ build options for torch_tpu.
 
@@ -127,11 +133,33 @@ _BUILD_TEST_ALLOWED_TAGS = [
     "nobuild_oss",
 ]
 
-def _check_and_adjust_test_tags(name, size, timeout, nobuild, notap, nopresubmit, nolocal, notest_oss, nobuild_oss, tags):
-    """Validates the test tags.
+def _sort_inplace(a_list):
+    """Sorts a list in place and returns it."""
+    sorted_list = sorted(a_list)
+    for i in range(len(a_list)):
+        a_list[i] = sorted_list[i]
+    return a_list
+
+def _check_and_adjust_test_tags(
+        name,
+        is_oss,  # @unused - TODO: use this to determine whether to add a build_test.
+        size,
+        timeout,
+        nobuild,
+        notap,
+        nopresubmit,
+        nolocal,
+        notest_oss,
+        nobuild_oss,
+        tags):
+    """Validates and adjusts the test tags and calculates build test requirements.
 
     Args:
         name: The name of the test.
+        is_oss: Whether the build is for an OSS version of torch_tpu. Normally, this parameter
+            will be set to `is_oss()`. However, in tests for this .bzl file it can be set to the
+            opposite of `is_oss()` to test the other version. This solves the problem that we
+            cannot yet run the .bzl tests in OSS.
         size: The size of the test.
         timeout: The timeout of the test.
         nobuild: If given as a string, will not generate a build_test for the test.
@@ -152,8 +180,16 @@ def _check_and_adjust_test_tags(name, size, timeout, nobuild, notap, nopresubmit
             run in OSS. The string provided should be a reason explaining why
             building was disabled. You should strongly prefer notest_oss to
             this!
-
         tags: The tags to add to the test.
+
+    Returns:
+        A struct with fields:
+            create_build_test: Boolean, whether to create a build test.
+            build_test_tags: List of tags for the build test.
+
+    Side effects:
+        Updates the `tags` list with desired tags and sorts it. The sorting is just to
+        normalize the list for easy testing.
     """
 
     # Adjust tags for nobuild.
@@ -217,8 +253,11 @@ def _check_and_adjust_test_tags(name, size, timeout, nobuild, notap, nopresubmit
     # Targets with notest_oss cannot be built in OSS because flag `--build_tests_only` is active.
     # Instead of removing `--build_tests_only` to include all unused binaries/libraries in OSS
     # builds, we generate a companion _build_test target for notest_oss tests.
-    # Trim the unnecessary _build_test targets if needed.
+    # TODO: Trim the unnecessary _build_test targets in the internal build.
+    create_build_test = False
+    build_test_tags = []
     if ("notap" in tags or "notest_oss" in tags) and nobuild == None:  # NOTAP_OK=for implementing notap logic
+        create_build_test = True
         build_test_tags = [tag for tag in tags if tag in _BUILD_TEST_ALLOWED_TAGS]
 
         # The torch_tpu.cuda build only runs tests with requires-gpu-* tags.
@@ -226,12 +265,6 @@ def _check_and_adjust_test_tags(name, size, timeout, nobuild, notap, nopresubmit
         # up by the torch_tpu.cuda build, we must add a requires-gpu-* tag to the build_test.
         if _is_cuda_test(tags):
             build_test_tags.append("requires-gpu-nvidia")
-
-        build_test(
-            name = name + "_build_test",
-            targets = [":" + name],
-            tags = build_test_tags,
-        )
 
     # Adjust tags for nopresubmit.
     if nopresubmit != None:
@@ -277,6 +310,41 @@ def _check_and_adjust_test_tags(name, size, timeout, nobuild, notap, nopresubmit
              "effect. Tests are enabled by default in OSS.")
 
     process_accelerator_tags(tags)
+    _sort_inplace(tags)
+
+    return struct(
+        create_build_test = create_build_test,
+        build_test_tags = build_test_tags,
+    )
+
+def check_and_adjust_test_tags_for_testing(
+        is_oss,
+        name = "test",
+        size = "small",
+        timeout = "short",
+        nobuild = None,
+        notap = None,
+        nopresubmit = None,
+        nolocal = None,
+        notest_oss = None,
+        nobuild_oss = None,
+        tags = None):
+    """Public wrapper for testing."""
+    if tags == None:
+        tags = []
+    return _check_and_adjust_test_tags(
+        name = name,
+        is_oss = is_oss,
+        size = size,
+        timeout = timeout,
+        nobuild = nobuild,
+        notap = notap,
+        nopresubmit = nopresubmit,
+        nolocal = nolocal,
+        notest_oss = notest_oss,
+        nobuild_oss = nobuild_oss,
+        tags = tags,
+    )
 
 def torch_tpu_cc_test(
         name,
@@ -345,8 +413,9 @@ def torch_tpu_cc_test(
         args = args + ["--gunit_fail_if_no_test_linked"]
     tags = tags or []
 
-    _check_and_adjust_test_tags(
+    result = _check_and_adjust_test_tags(
         name = name,
+        is_oss = is_oss(),
         size = size,
         timeout = timeout,
         nobuild = nobuild,
@@ -357,6 +426,12 @@ def torch_tpu_cc_test(
         nobuild_oss = nobuild_oss,
         tags = tags,
     )
+    if result.create_build_test:
+        build_test(
+            name = name + "_build_test",
+            targets = [":" + name],
+            tags = result.build_test_tags,
+        )
     cc_test(
         name = name,
         size = size,
@@ -448,8 +523,9 @@ def torch_tpu_py_test(
         args = args + ["--test_randomize_ordering_seed=random"]
 
     tags = tags or []
-    _check_and_adjust_test_tags(
+    result = _check_and_adjust_test_tags(
         name = name,
+        is_oss = is_oss(),
         size = size,
         timeout = timeout,
         nobuild = nobuild,
@@ -460,6 +536,12 @@ def torch_tpu_py_test(
         nobuild_oss = nobuild_oss,
         tags = tags,
     )
+    if result.create_build_test:
+        build_test(
+            name = name + "_build_test",
+            targets = [":" + name],
+            tags = result.build_test_tags,
+        )
 
     # Remove internal-only attributes
     if is_oss():
