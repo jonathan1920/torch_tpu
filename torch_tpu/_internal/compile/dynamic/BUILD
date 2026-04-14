@@ -48,4 +48,16 @@ pytype_library(
     ],
 )
 
+pytype_library(
+    name = "graph_transformations",
+    srcs = [
+        "graph_transformations.py",
+    ],
+    deps = [
+        ":sym_shape_manager",
+        ":symbol_bounds",
+        "//shims/torch:pytorch",
+    ],
+)
+
 torch_tpu_package_end()
