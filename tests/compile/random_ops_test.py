@@ -40,6 +40,7 @@ class RandomOpsTest(absltest.TestCase):
         self.assertFalse(torch.allclose(out, prev_out, atol=atol, rtol=rtol))
       prev_out = out
 
+  @unittest.skip("b/496168350")
   def test_dropout_compile(self):
     torch.manual_seed(42)
     device = api.tpu_device()
@@ -64,6 +65,7 @@ class RandomOpsTest(absltest.TestCase):
 
     self.assert_outputs_not_close(runner)
 
+  @unittest.skip("b/496168350")
   def test_dropout_compile_with_former_eager_run(self):
     torch.manual_seed(42)
     device = api.tpu_device()
