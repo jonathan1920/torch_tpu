@@ -31,7 +31,7 @@ EagerMode GetDefaultEagerMode() {
   } else if (GetEnvOnce<kTpuDeferAndFuse>() == "1") {
     return EagerMode::kDeferAndFuse;
   } else {
-    return EagerMode::kDeferAndFuseWithO1;
+    return EagerMode::kDeferNever;
   }
 }
 

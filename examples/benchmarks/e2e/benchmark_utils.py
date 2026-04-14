@@ -163,12 +163,13 @@ class RunMode(enum.Enum):
   eager_default and eager_optimized.
   """
 
-  EAGER_DEFAULT = (  # Run the model in eager mode with DeferAndFuseWithO1.
+  EAGER_DEFAULT = (  # Run the model in eager mode with DeferNever.
       "eager_default"
   )
   EAGER_OPTIMIZED = (  # Run the model in eager mode with DeferAndFuse.
       "eager_optimized"
   )
+  # TODO: Remove DEFER_NEVER_ONLY since EAGER_DEFAULT does the same thing.
   DEFER_NEVER_ONLY = (  # Run the model in eager mode with DeferNever.
       "defer_never_only"
   )

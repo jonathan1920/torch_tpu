@@ -809,7 +809,7 @@ TEST(ErrorDeathTest, GetEnableDebugChecksEnabledByDefaultInDebugMode) {
 }
 
 TEST(GetEnableDebugChecks, IsDisabledInDefaultEagerMode) {
-  SetEagerMode(EagerMode::kDeferAndFuseWithO1);
+  SetEagerMode(EagerMode::kDeferNever);
   EXPECT_FALSE(GetEnableDebugChecks());
 }
 
@@ -852,7 +852,7 @@ TEST(GetEnableDebugChecksDeathTest, CanBeDisabledByEnvVarInDebugMode) {
 }
 
 TEST(GetEnableDebugChecks, DependsOnCurrentEagerMode) {
-  SetEagerMode(EagerMode::kDeferAndFuseWithO1);
+  SetEagerMode(EagerMode::kDeferNever);
   EXPECT_FALSE(GetEnableDebugChecks());
   SetEagerMode(EagerMode::kDeferNeverAndLaunchBlocking);
   EXPECT_TRUE(GetEnableDebugChecks());
