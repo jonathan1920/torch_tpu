@@ -129,11 +129,10 @@ def _is_cuda_test(tags):
             return True
     return False
 
-# Tags that should propagate to the build_test target
-# TODO(b/495860371): Switch to a set when we are using bazel >= 7.7
-_BUILD_TEST_ALLOWED_TAGS = [
-    "nobuild_oss",
-]
+# Tags that should propagate to the build_test target.
+_BUILD_TEST_ALLOWED_TAGS = (
+    "nobuild",
+)
 
 def _sort_inplace(a_list):
     """Sorts a list in place and returns it."""
@@ -202,7 +201,6 @@ def _check_and_adjust_test_tags(
             fail("nobuild must be a non-empty string documenting why the test " +
                  "should be skipped in build.")
         tags.append("nobuild")  # So that we know that this test shouldn't have a build_test.
-        tags.append("nobuild_oss")  # nobuild implies nobuild_oss.
 
     # Adjust tags for nobuild_oss and notest_oss
     #
@@ -211,8 +209,10 @@ def _check_and_adjust_test_tags(
         if type(nobuild_oss) != "string" or not nobuild_oss:
             fail("nobuild_oss must be a non-empty string documenting why the test " +
                  "should be skipped in OSS build.")
-        if "nobuild_oss" not in tags:
-            tags.append("nobuild_oss")
+
+        # nobuild_oss should only affect the OSS build.
+        if is_oss and "nobuild" not in tags:
+            tags.append("nobuild")
 
         # We want to allow both notest_oss and nobuild_oss to be set because
         # sometimes the reason for disabling build is different from the reason
@@ -263,7 +263,7 @@ def _check_and_adjust_test_tags(
     create_build_test = False
     build_test_tags = []
     if is_oss:
-        create_build_test = "notest_oss" in tags and "nobuild_oss" not in tags
+        create_build_test = "notest_oss" in tags and "nobuild" not in tags
     else:
         create_build_test = "notap" in tags and "nobuild" not in tags  # NOTAP_OK=for implementing notap logic
     if create_build_test:

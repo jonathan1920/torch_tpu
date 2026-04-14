@@ -28,7 +28,7 @@ def _test_nobuild(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nobuild", "nobuild_oss"], "tags: %s" % tags)
+    asserts.true(env, tags == ["nobuild"], "tags: %s" % tags)
     asserts.false(env, result.create_build_test)
     return unittest.end(env)
 
@@ -97,7 +97,7 @@ def _test_internal_nobuild_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nobuild_oss", "notest_oss"], "tags: %s" % tags)
+    asserts.true(env, tags == ["notest_oss"], "tags: %s" % tags)
 
     # In an internal build, nobuild_oss has no effect and thus does not make
     # it necessary to generate a build_test.
@@ -115,7 +115,7 @@ def _test_oss_nobuild_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nobuild_oss", "notest_oss"], "tags: %s" % tags)
+    asserts.true(env, tags == ["nobuild", "notest_oss"], "tags: %s" % tags)
 
     # In an OSS build, nobuild_oss should disable generating the build_test.
     asserts.false(env, result.create_build_test)
@@ -198,7 +198,7 @@ def _test_internal_notap_nobuild(ctx):
 
     asserts.true(
         env,
-        tags == ["manual", "nobuild", "nobuild_oss", "notap", "notest_oss"],  # NOTAP_OK=tests
+        tags == ["manual", "nobuild", "notap", "notest_oss"],  # NOTAP_OK=tests
         "tags: %s" % tags,
     )
     asserts.false(env, result.create_build_test)
@@ -217,7 +217,7 @@ def _test_oss_notest_oss_nobuild_oss(ctx):
 
     asserts.true(
         env,
-        tags == ["nobuild_oss", "notest_oss"],
+        tags == ["nobuild", "notest_oss"],
         "tags: %s" % tags,
     )
     asserts.false(env, result.create_build_test)
