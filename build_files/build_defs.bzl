@@ -165,7 +165,7 @@ def _check_and_adjust_test_tags(
         nobuild: If given as a string, will not generate a build_test for the test.
         notap: If given as a string, the test will be excluded from TAP, the string will be used
             as the reason, and a build_test named `<name>_build_test` will be added for the test
-            to ensure it is buildable.
+            to ensure it is buildable. This implies notest_oss.
         nopresubmit: If given as a string, the test will be excluded from presubmit, and the
             string will be used as the reason.
         nolocal: By default, we tag a test as "manual" if either notap or nopresubmit is
@@ -239,6 +239,8 @@ def _check_and_adjust_test_tags(
             fail("notap must be a non-empty string documenting why the test " +
                  "should be skipped on TAP.")
         tags.append("notap")  # NOTAP_OK=for implementing notap logic
+        if "notest_oss" not in tags:
+            tags.append("notest_oss")  # notap implies notest_oss.
 
         if nopresubmit != None:
             fail("notap and nopresubmit cannot both be set.")
@@ -382,7 +384,7 @@ def torch_tpu_cc_test(
         nobuild: If given as a string, will not generate a build_test for the test.
         notap: If given as a string, the test will be excluded from TAP, the string will be used
             as the reason, and a build_test named `<name>_build_test` will be added for the test
-            to ensure it is buildable.
+            to ensure it is buildable. This implies notest_oss.
         nopresubmit: If given as a string, the test will be excluded from presubmit, and the
             string will be used as the reason.
         nolocal: By default, we tag a test as "manual" if either notap or nopresubmit is
@@ -498,7 +500,7 @@ def torch_tpu_py_test(
         nobuild: If given as a string, will not generate a build_test for the test.
         notap: If given as a string, the test will be excluded from TAP, the string will be used
             as the reason, and a build_test named `<name>_build_test` will be added for the test
-            to ensure it is buildable.
+            to ensure it is buildable. This implies notest_oss.
         nopresubmit: If given as a string, the test will be excluded from presubmit, and the
             string will be used as the reason.
         nolocal: By default, we tag a test as "manual" if either notap or nopresubmit is

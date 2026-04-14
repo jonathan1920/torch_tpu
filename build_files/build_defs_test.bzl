@@ -45,7 +45,7 @@ def _test_notap(ctx):
 
     asserts.true(
         env,
-        tags == ["manual", "notap"],  # NOTAP_OK=tests
+        tags == ["manual", "notap", "notest_oss"],  # NOTAP_OK=tests
         "tags: %s" % tags,
     )
     asserts.true(env, result.create_build_test)
@@ -139,7 +139,7 @@ def _test_cuda_build_test(ctx):
 
     asserts.true(
         env,
-        tags == ["manual", "notap", "requires-gpu-a100"],  # NOTAP_OK=tests
+        tags == ["manual", "notap", "notest_oss", "requires-gpu-a100"],  # NOTAP_OK=tests
         "tags: %s" % tags,
     )
     asserts.true(env, result.create_build_test)
