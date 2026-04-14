@@ -325,7 +325,6 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "view_sequence_test",
     srcs = ["view_sequence_test.cc"],
-    nobuild_oss = "ASSERT_OK_AND_ASSIGN fails in OSS",  # TODO(b/491622189)
     deps = [
         ":bitcast_primitive",
         ":broadcast_primitive",
@@ -346,6 +345,7 @@ torch_tpu_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@stablehlo//:attr_type_builder_util",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

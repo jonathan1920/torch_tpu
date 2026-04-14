@@ -65,7 +65,7 @@ torch_tpu_cc_test(
     exec_properties = {
         "cpp_link.mem": "16g",  # Needed for asan.
     },
-    nobuild_oss = "Disabled during switch from opt-in to opt-out",
+    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
     deps = [
         ":device_buffer",
         ":materialize",
@@ -81,12 +81,12 @@ torch_tpu_cc_test(
         "//torch_tpu/ops:python_context",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

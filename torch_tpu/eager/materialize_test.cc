@@ -22,7 +22,6 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "ATen/core/TensorBody.h"
@@ -39,6 +38,7 @@
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace torch_tpu {
 namespace {
@@ -49,7 +49,7 @@ class MaterializeTest : public testing::Test {
     const std::string device_type = "xla_cpu";
     PjrtBackend::GetInstance().SetPjRtInitializationOptions(
         {.device_type = device_type});
-    ASSERT_OK(AddTpuHooks());
+    ASSERT_EQ(AddTpuHooks(), absl::OkStatus());
     RegisterTpuAllocator();
     CompilationCache::GetInstance().SetOptions({});
   }
@@ -63,8 +63,8 @@ TEST_F(MaterializeTest, EmptyListNoOpSuccess) {
 
 TEST_F(MaterializeTest, MaterializedBufferNoOpSuccess) {
   const mlir::ElementType dtype = mlir::ElementType::F32;
-  ASSERT_OK_AND_ASSIGN(DeviceBufferRef ref,
-                       DeviceBufferList::CreateZeroSize({0}, dtype));
+  TF_ASSERT_OK_AND_ASSIGN(DeviceBufferRef ref,
+                          DeviceBufferList::CreateZeroSize({0}, dtype));
   EXPECT_EQ(ref.state(), DeviceBufferRefState::kZeroSize);
   EXPECT_EQ(Materialize(ref), absl::OkStatus());
   EXPECT_EQ(ref.state(), DeviceBufferRefState::kZeroSize);
@@ -78,8 +78,9 @@ TEST_F(MaterializeTest, AddLeafNodes) {
   // arg -> target
   //               \ -> leaf_b
   // ```
-  ASSERT_OK_AND_ASSIGN(DeviceBufferRef arg, DeviceBufferList::CreateZeroSize(
-                                                {0}, mlir::ElementType::F32));
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceBufferRef arg,
+      DeviceBufferList::CreateZeroSize({0}, mlir::ElementType::F32));
 
   const Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -91,17 +92,17 @@ TEST_F(MaterializeTest, AddLeafNodes) {
         BuildFillUninitialized(builder, shape.dtype(), shape.dimensions())};
   };
 
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::vector<DeviceBufferRef> target_refs,
       DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {arg},
                                        OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef target_ref = target_refs[0];
 
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::vector<DeviceBufferRef> leaf_a_refs,
       DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {target_ref},
                                        OpParamCacheKeys::Empty(), {shape}));
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::vector<DeviceBufferRef> leaf_b_refs,
       DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {target_ref},
                                        OpParamCacheKeys::Empty(), {shape}));
@@ -135,19 +136,20 @@ TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
   // Create a graph (letter indicates creation order):
   //    / -> b -> c (has Tensor)
   //  a ---> d -> e (has Tensor)
-  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> refs_a,
-                       DeviceBufferList::CreateDeferred(
-                           OpName::kEmpty, builder,
-                           /*inputs=*/{}, OpParamCacheKeys::Empty(), {shape}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<DeviceBufferRef> refs_a,
+      DeviceBufferList::CreateDeferred(OpName::kEmpty, builder,
+                                       /*inputs=*/{}, OpParamCacheKeys::Empty(),
+                                       {shape}));
   DeviceBufferRef ref_a = refs_a[0];
 
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::vector<DeviceBufferRef> refs_b,
       DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {ref_a},
                                        OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef ref_b = refs_b[0];
 
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::vector<DeviceBufferRef> refs_c,
       DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {ref_b},
                                        OpParamCacheKeys::Empty(), {shape}));
@@ -157,13 +159,13 @@ TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
   // (a leaf node with no tensors would ordinarily be dropped immediately).
   at::Tensor c = MakeTensor(ref_c);
 
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::vector<DeviceBufferRef> refs_d,
       DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {ref_a},
                                        OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef ref_d = refs_d[0];
 
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::vector<DeviceBufferRef> refs_e,
       DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {ref_d},
                                        OpParamCacheKeys::Empty(), {shape}));

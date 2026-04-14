@@ -19,8 +19,8 @@
 #include <utility>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/IR/DialectRegistry.h"
@@ -38,6 +38,7 @@
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace torch_tpu {
 namespace {
@@ -65,11 +66,11 @@ TEST(DynamismOpsTest, GetTraversalOutputDimensionsNoBoundedInput) {
   DynamismOpsBuilder ops_builder;
 
   // Create Input DeviceBufferRefs.
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       DeviceBufferRef input1,
       DeviceBufferList::MakePlaceholder({5, 10}, mlir::ElementType::F32));
 
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       DeviceBufferRef input2,
       DeviceBufferList::MakePlaceholder({5, 10}, mlir::ElementType::F32));
 
@@ -82,21 +83,21 @@ TEST(DynamismOpsTest, GetTraversalOutputDimensionsNoBoundedInput) {
     TT_ASSIGN_OR_RETURN(auto output, BuildAddShlo(inputs[0], inputs[1]));
     return DynamicMlirOpResults{output};
   };
-  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> add_deferred_refs,
-                       DeviceBufferList::CreateDeferred(
-                           OpName::kAdd, std::move(builder), add_inputs,
-                           OpParamCacheKeys::Empty(), {add_output_shape}));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> add_deferred_refs,
+                          DeviceBufferList::CreateDeferred(
+                              OpName::kAdd, std::move(builder), add_inputs,
+                              OpParamCacheKeys::Empty(), {add_output_shape}));
   ASSERT_EQ(add_deferred_refs.size(), 1);
   SharedDeviceBufferList add_node = add_deferred_refs[0].device_buffer_list();
   DeviceBufferRef add_output = add_deferred_refs[0];
 
   std::vector<DeviceBufferRef> outputs = {add_output};
 
-  ASSERT_OK_AND_ASSIGN(auto traversal,
-                       Traversal::Create(outputs, /*stopping_points=*/{}));
+  TF_ASSERT_OK_AND_ASSIGN(auto traversal,
+                          Traversal::Create(outputs, /*stopping_points=*/{}));
 
   // Call GetTraversalOutputDimensions.
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       auto outputs_to_dims,
       GetTraversalOutputDimensions(ops_builder.getContext(), traversal));
 
@@ -115,16 +116,18 @@ TEST(DynamismOpsTest, GetTraversalOutputDimensionsWithBoundedInput) {
   DynamismOpsBuilder ops_builder;
 
   // Create Input DeviceBufferRefs.
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       DeviceBufferRef input1,
       DeviceBufferList::MakePlaceholder({5, 10}, mlir::ElementType::F32));
-  ASSERT_OK(input1.MarkDynamic(/*dimension=*/1, /*lower_bound=*/10,
-                               /*upper_bound=*/100));
-  ASSERT_OK_AND_ASSIGN(
+  ASSERT_EQ(input1.MarkDynamic(/*dimension=*/1, /*lower_bound=*/10,
+                               /*upper_bound=*/100),
+            absl::OkStatus());
+  TF_ASSERT_OK_AND_ASSIGN(
       DeviceBufferRef input2,
       DeviceBufferList::MakePlaceholder({5, 10}, mlir::ElementType::F32));
-  ASSERT_OK(input2.MarkDynamic(/*dimension=*/1, /*lower_bound=*/2,
-                               /*upper_bound=*/100));
+  ASSERT_EQ(input2.MarkDynamic(/*dimension=*/1, /*lower_bound=*/2,
+                               /*upper_bound=*/100),
+            absl::OkStatus());
 
   // Create a Deferred Op that uses the inputs.
   std::vector<DeviceBufferRef> add_inputs = {input1, input2};
@@ -135,21 +138,21 @@ TEST(DynamismOpsTest, GetTraversalOutputDimensionsWithBoundedInput) {
     TT_ASSIGN_OR_RETURN(auto output, BuildAddShlo(inputs[0], inputs[1]));
     return DynamicMlirOpResults{output};
   };
-  ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> add_deferred_refs,
-                       DeviceBufferList::CreateDeferred(
-                           OpName::kAdd, std::move(builder), add_inputs,
-                           OpParamCacheKeys::Empty(), {add_output_shape}));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<DeviceBufferRef> add_deferred_refs,
+                          DeviceBufferList::CreateDeferred(
+                              OpName::kAdd, std::move(builder), add_inputs,
+                              OpParamCacheKeys::Empty(), {add_output_shape}));
   ASSERT_EQ(add_deferred_refs.size(), 1);
   SharedDeviceBufferList add_node = add_deferred_refs[0].device_buffer_list();
   DeviceBufferRef add_output = add_deferred_refs[0];
 
   std::vector<DeviceBufferRef> outputs = {add_output};
 
-  ASSERT_OK_AND_ASSIGN(auto traversal,
-                       Traversal::Create(outputs, /*stopping_points=*/{}));
+  TF_ASSERT_OK_AND_ASSIGN(auto traversal,
+                          Traversal::Create(outputs, /*stopping_points=*/{}));
 
   // Call GetTraversalOutputDimensions.
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       auto outputs_to_dims,
       GetTraversalOutputDimensions(ops_builder.getContext(), traversal));
   ASSERT_EQ(outputs_to_dims.size(), 1);
