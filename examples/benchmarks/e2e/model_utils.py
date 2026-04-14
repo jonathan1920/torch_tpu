@@ -25,7 +25,6 @@ from torch.nn import parallel
 from torch_tpu._internal.utils import device_utils
 from examples.deepseek import model as deepseek_model
 from tests import module_registry
-from torchtitan.models.llama3.model import model as llama3_model
 from transformers import activations
 from transformers.models.bert import modeling_bert
 from transformers.models.qwen3 import configuration_qwen3
@@ -555,44 +554,6 @@ def get_ml_layer_model(
         (batch_size, sequence_length, num_features),
         dtype=weights_dtype,
         device=device,
-    )
-
-  elif model_name == "Llama3TransformerBlock":
-    args = llama3_model.TransformerModelArgs(
-        dim=kwargs["dim"],
-        n_layers=1,
-        n_heads=kwargs["n_heads"],
-        n_kv_heads=kwargs["n_kv_heads"],
-        vocab_size=kwargs["vocab_size"],
-        max_seq_len=kwargs["max_seq_len"],
-        multiple_of=kwargs["multiple_of"],
-        ffn_dim_multiplier=kwargs.get("ffn_dim_multiplier", None),
-    )
-    model = llama3_model.TransformerBlock(layer_id=0, model_args=args)
-    model.init_weights()
-
-    freqs_cis = llama3_model.precompute_freqs_cis(
-        args.dim // args.n_heads, sequence_length, theta=args.rope_theta
-    )
-
-    example_inputs = torch.randn(
-        (batch_size, sequence_length, args.dim),
-        dtype=weights_dtype,
-        device=device,
-    )
-
-    class Llama3TransformerBlockWrapper(torch.nn.Module):
-
-      def __init__(self, m, freqs_cis):
-        super().__init__()
-        self.m = m
-        self.freqs_cis = freqs_cis.to(device)
-
-      def forward(self, x):
-        return self.m(x, self.freqs_cis, None)
-
-    model = Llama3TransformerBlockWrapper(model, freqs_cis).to(
-        dtype=weights_dtype
     )
 
   elif model_name == "BertLayer":

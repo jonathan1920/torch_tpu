@@ -231,12 +231,10 @@ torch_tpu_py_test(
         ":layer_configs",
         ":performance_utils",
         ":test_utils",
-        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
-        # Required transitively by torchtitan imports in model_utils.py
-        "//shims/torchtitan/experiments/tpu:utils",  # buildcleaner: keep
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
 )
 
@@ -367,7 +365,6 @@ pytype_strict_library(
     deps = [
         "//examples/deepseek",
         "//shims/torch:pytorch",
-        "//shims/torchtitan/models",
         "//tests:module_registry",
         "//torch_tpu/_internal/utils:device_utils",
         "@pypi//fairscale",
