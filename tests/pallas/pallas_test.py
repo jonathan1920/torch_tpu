@@ -29,7 +29,6 @@ from torch_tpu._internal.utils import utils
 
 def _is_deferred_mode():
   return execution_mode.get_eager_mode() in (
-      execution_mode.EagerMode.DEFER_AND_FUSE_WITH_O1,
       execution_mode.EagerMode.DEFER_AND_FUSE,
       execution_mode.EagerMode.INTERNAL_DEFER_ALL,
   )

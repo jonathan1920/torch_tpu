@@ -135,7 +135,6 @@ def _run_mode_context(run_mode: benchmark_utils.RunMode, device: torch.device):
   match run_mode:
     case (
         benchmark_utils.RunMode.EAGER_DEFAULT
-        | benchmark_utils.RunMode.DEFER_NEVER_ONLY
     ):
       new_eager_mode = execution_mode.EagerMode.DEFER_NEVER
 

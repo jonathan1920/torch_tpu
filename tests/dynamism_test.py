@@ -64,8 +64,8 @@ class DynamismApiTest(absltest.TestCase):
   def setUp(self):
     super().setUp()
     self.device = api.tpu_device()
-    # Dynamism in eager mode works only when EagerMode.DEFER_AND_FUSE or
-    # EagerMode.DEFER_AND_FUSE_WITH_O1 are selected.
+    # Dynamism in eager mode works only when EagerMode.DEFER_AND_FUSE is
+    # selected.
     self.old_eager_mode = execution_mode.get_eager_mode()
     execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE)
 
@@ -167,8 +167,8 @@ class DynamismTest(parameterized.TestCase):
     super().setUp()
     self.device = api.tpu_device()
     torch.tpu._clear_cache()
-    # Dynamism in eager mode works only when EagerMode.DEFER_AND_FUSE or
-    # EagerMode.DEFER_AND_FUSE_WITH_O1 are selected.
+    # Dynamism in eager mode works only when EagerMode.DEFER_AND_FUSE is
+    # selected.
     self.old_eager_mode = execution_mode.get_eager_mode()
     execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE)
 

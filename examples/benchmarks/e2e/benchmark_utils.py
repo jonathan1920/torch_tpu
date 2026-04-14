@@ -169,10 +169,6 @@ class RunMode(enum.Enum):
   EAGER_OPTIMIZED = (  # Run the model in eager mode with DeferAndFuse.
       "eager_optimized"
   )
-  # TODO: Remove DEFER_NEVER_ONLY since EAGER_DEFAULT does the same thing.
-  DEFER_NEVER_ONLY = (  # Run the model in eager mode with DeferNever.
-      "defer_never_only"
-  )
   EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING = (  # Run the model in eager mode with DeferNeverAndLaunchBlocking.
       "eager_defer_never_and_launch_blocking"
   )

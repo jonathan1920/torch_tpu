@@ -208,7 +208,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## **Debugging Mode: `EagerMode.DEFER_NEVER`**
+    ## **Debugging Mode: `EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING`**
 
     If your model produces `NaN`s or `Inf`s, deferred execution makes debugging hard because the error only surfaces at the next materialization point — not the line that caused it.
 
@@ -217,22 +217,21 @@ def _(mo):
     ```python
     from torch_tpu._internal import execution_mode as em
 
-    # Force every operation to materialize immediately
-    with em.eager_mode(em.EagerMode.DEFER_NEVER):
+    # Force every operation to execute synchronously
+    with em.eager_mode(em.EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING):
         # Now you can pinpoint the exact line where a NaN is generated
         output = model(input_data)
     ```
 
     | Mode | Description |
     | :--- | :--- |
-    | `EagerMode.DEFER_AND_FUSE` | **Optimized mode** Defers operations into fusion clusters, except those that must be executed immediately. |
     | `EagerMode.DEFER_NEVER` | **Default.** Every op is dispatched immediately, similar to how it's done in CUDA. |
     | `EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING` | **Debug mode.** Executes ops immediately and waits for completion before dispatching the next. |
+    | `EagerMode.DEFER_AND_FUSE` | **Optimized mode** Defers operations into fusion clusters, except those that must be executed immediately. |
     | `EagerMode.INTERNAL_DEFER_ALL` | Strictly defers all operations. Used exclusively for internal `torch.compile` workflows. |
-    | `EagerMode.DEFER_AND_FUSE_WITH_O1` | **Deprecated.** Defers operations into fusion clusters, except those that must be executed immediately. Uses XLA O1. |
 
     > [!WARNING]
-    > `EagerMode.DEFER_NEVER` makes execution **significantly slower** because it eliminates compiler fusions. Use it only for debugging.
+    > `EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING` makes execution **significantly slower** because it eliminates compiler fusions. Use it only for debugging.
     """)
   return
 

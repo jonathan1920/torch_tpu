@@ -21,8 +21,6 @@ namespace torch_tpu {
 
 // The op defer mode.
 enum class EagerMode {
-  // DEPRECATED.
-  kDeferAndFuseWithO1,
   // kDeferAndFuse defers all ops except those that cannot be deferred.  This
   // provides a higher performance eager mode.
   kDeferAndFuse,

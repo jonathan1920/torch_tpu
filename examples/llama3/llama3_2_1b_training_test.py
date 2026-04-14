@@ -57,7 +57,6 @@ _EAGER_MODE = flags.DEFINE_enum(
     "eager_mode",
     "DEFER_AND_FUSE",
     [
-        "DEFER_AND_FUSE_WITH_O1",
         "DEFER_AND_FUSE",
         "DEFER_NEVER",
         "DEFER_NEVER_AND_LAUNCH_BLOCKING",
@@ -102,12 +101,12 @@ def get_torch_device() -> torch.device:
 
 # %%
 def get_eager_mode() -> execution_mode.EagerMode:
-  if _EAGER_MODE.value == "DEFER_AND_FUSE_WITH_O1":
-    return execution_mode.EagerMode.DEFER_AND_FUSE_WITH_O1
-  elif _EAGER_MODE.value == "DEFER_AND_FUSE":
+  if _EAGER_MODE.value == "DEFER_AND_FUSE":
     return execution_mode.EagerMode.DEFER_AND_FUSE
   elif _EAGER_MODE.value == "DEFER_NEVER":
     return execution_mode.EagerMode.DEFER_NEVER
+  elif _EAGER_MODE.value == "DEFER_NEVER_AND_LAUNCH_BLOCKING":
+    return execution_mode.EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING
   else:
     raise ValueError(f"Unsupported defer mode: {_EAGER_MODE.value}")
 

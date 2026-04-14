@@ -36,7 +36,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.DEFER_NEVER_ONLY,
           benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
           benchmark_utils.RunMode.COMPILED,
       ])
@@ -63,7 +62,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.DEFER_NEVER_ONLY,
           benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
           benchmark_utils.RunMode.COMPILED,
       ])
@@ -90,7 +88,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.DEFER_NEVER_ONLY,
           benchmark_utils.RunMode.COMPILED,
       ])
   )
@@ -118,7 +115,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.DEFER_NEVER_ONLY,
           benchmark_utils.RunMode.COMPILED,
       ])
   )
@@ -144,7 +140,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.DEFER_NEVER_ONLY,
           benchmark_utils.RunMode.COMPILED,
       ])
   )
@@ -170,7 +165,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.DEFER_NEVER_ONLY,
       ])
   )
   def test_distributed_meta_llama_3_2_8b_forward(self, run_mode):
@@ -197,7 +191,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.DEFER_NEVER_ONLY,
       ])
   )
   def test_ddp_llama_3_2_1b_train_1_step(self, run_mode):
@@ -224,7 +217,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.DEFER_NEVER_ONLY,
           benchmark_utils.RunMode.COMPILED,
       ])
   )
@@ -252,7 +244,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.DEFER_NEVER_ONLY,
           benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
           benchmark_utils.RunMode.COMPILED,
       ])
