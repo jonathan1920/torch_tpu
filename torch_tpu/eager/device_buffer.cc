@@ -28,12 +28,14 @@
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/hash/hash.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "ATen/core/ATen_fwd.h"
 #include "c10/core/Allocator.h"
 #include "c10/core/Device.h"
@@ -49,8 +51,10 @@
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/python_context.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/primitive_util.h"
@@ -541,6 +545,71 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
     device_buffer_refs.push_back(DeviceBufferRef(device_buffer, i));
   }
   return device_buffer_refs;
+}
+
+absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateConstant(
+    std::vector<char> cpu_tensor_data, Dimensions dimensions,
+    mlir::ElementType element_type) {
+  // Create the components of the DeferredOp.
+  auto op_name = OpName::kTorchTpuInternalConstant;
+  ScopedPythonContextCapturer capturer(op_name);
+
+  // Create the cache keys for the op parameters.
+  // Since a change in data causes recompilation, we include the hash of the
+  // tensor data as part of the cache key.
+  auto op_param_cache_keys = OpParamCacheKeys::Empty();
+  TT_RETURN_IF_ERROR(
+      op_param_cache_keys.SetParam("data", absl::HashOf(cpu_tensor_data)));
+  TT_RETURN_IF_ERROR(op_param_cache_keys.SetParam("dimensions", dimensions));
+  TT_RETURN_IF_ERROR(
+      op_param_cache_keys.SetParam("element_type", element_type));
+
+  // The op returns a single tensor with the given shape and dtype.
+  std::vector<Shape> output_shapes;
+  output_shapes.push_back(Shape(dimensions, element_type));  // intentional copy
+
+  auto op_builder = [cpu_tensor_data = std::move(cpu_tensor_data), element_type,
+                     dimensions = std::move(dimensions)](
+                        mlir::MlirBuilder& builder,
+                        absl::Span<mlir::MlirOp> inputs)
+      -> absl::StatusOr<DynamicMlirOpResults> {
+    TT_RET_CHECK(inputs.empty(), error::kInvalidArgument)
+        << "unexpected input to constant op";
+
+    auto ranked_tensor_type =
+        mlir::makeTensorType(builder.getContext(), dimensions, element_type);
+
+    if (element_type == mlir::ElementType::PRED) {
+      // Special case for boolean tensors.
+      // PyTorch stores booleans as one-per-byte on CPU, but XLA uses packed
+      // 1-bit booleans.
+      // So we just make a constant byte (UI8) tensor and use
+      // stablehlo.convert, which will do the packing.
+      auto shaped_byte_tensor_type = mlir::makeTensorType(
+          builder.getContext(), dimensions, mlir::ElementType::UI8);
+      auto shaped_byte_constant = mlir::stablehlo::Constant(
+          builder, mlir::DenseIntElementsAttr::get(shaped_byte_tensor_type,
+                                                   cpu_tensor_data));
+      return DynamicMlirOpResults{
+          mlir::stablehlo::Convert(ranked_tensor_type, shaped_byte_constant)};
+    }
+
+    auto dense_elements_attr = mlir::DenseIntElementsAttr::getFromRawBuffer(
+        ranked_tensor_type, cpu_tensor_data);
+    return DynamicMlirOpResults{
+        mlir::stablehlo::Constant(builder, dense_elements_attr)};
+  };
+
+  // OpSplitMode is kNone; we don't need to split around a constant.
+  // No device inputs, so no aliased inputs.
+  TT_ASSIGN_OR_RETURN(
+      auto results,
+      DeviceBufferList::CreateDeferred(
+          op_name, std::move(op_builder), /*inputs=*/{},
+          std::move(op_param_cache_keys), std::move(output_shapes)));
+  TT_RET_CHECK(results.size() == 1, error::kInternal)
+      << "CreateConstant should return exactly one output";
+  return std::move(results[0]);
 }
 
 absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateEmpty(

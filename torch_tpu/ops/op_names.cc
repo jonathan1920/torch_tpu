@@ -1122,6 +1122,8 @@ std::string_view ToString(OpName op_name) {
       return "_to_copy";
     case OpName::kTopkValues:
       return "topk.values";
+    case OpName::kTorchTpuInternalConstant:
+      return "_torchtpu_internal_constant";
     case OpName::kTorchTpuInternalGatherAllSubgroups:
       return "_torchtpu_internal_gather_all_subgroups";
     case OpName::kTorchTpuStatelessDropout:

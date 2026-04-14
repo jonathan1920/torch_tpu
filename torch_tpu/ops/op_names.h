@@ -572,6 +572,7 @@ enum class OpName {
   kTo,
   kToCopy,
   kTopkValues,
+  kTorchTpuInternalConstant,
   kTorchTpuInternalGatherAllSubgroups,
   kTorchTpuStatelessDropout,
   kTrilIndices,

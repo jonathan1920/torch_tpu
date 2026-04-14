@@ -726,6 +726,19 @@ class DeviceBufferList {
       OpSplitMode split_mode = OpSplitMode::kNone,
       Indices donated_indices = {});
 
+  // Creates a deferred DeviceBufferList containing a constant tensor value,
+  // based on a 1D byte array.
+  // Under the hood, this uses `mlir::DenseElementsAttr::getFromRawBuffer`,
+  // with special handling for booleans and complex numbers (which have
+  // differing layout requirements between PyTorch and XLA).
+  // This value will be "baked into" the MLIR for XLA compilation, allowing for
+  // greater optimization potential.
+  // However, this means that any future execution which have a different value
+  // for the constant will require a re-compilation.
+  static absl::StatusOr<DeviceBufferRef> CreateConstant(
+      std::vector<char> cpu_tensor_data, Dimensions dimensions,
+      mlir::ElementType element_type);
+
   // Creates a DeviceBufferList as if by using the torch.empty() operation
   // with fill_uninitialized_memory=True.
   // This will be a DeferredOp that fills the buffer with NaNs for floats
