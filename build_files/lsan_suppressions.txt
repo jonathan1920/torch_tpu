@@ -1,0 +1,24 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Suppressions for known third-party leaks in torch_tpu tests.
+
+# Leaks in safetensors/pyo3 (initialization leaks)
+leak:_safetensors_rust_rs
+leak:pyo3::impl_::trampoline::module_init
+leak:pyo3::pyclass::create_type_object
+
+# Leaks in PyTorch (symbolic shapes/dynamism)
+leak:torch::impl::PythonSymNodeImpl
+leak:at::detail::empty_symint_meta

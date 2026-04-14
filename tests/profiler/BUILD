@@ -95,6 +95,7 @@ torch_tpu_cc_test(
 
 torch_tpu_py_test(
     name = "profiler_integration_test",
+    timeout = "long",
     srcs = ["profiler_integration_test.py"],
     main = "profiler_integration_test.py",
     notest_oss = "Skipped until OSS migrates to torch 2.12 (TODO(b/499296481))",

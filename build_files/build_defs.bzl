@@ -51,6 +51,8 @@ _TORCH_TPU_COPTS = [
     "-DUSE_KINETO",
 ]
 
+_LSAN_SUPPRESSIONS = "//build_files:lsan_suppressions.txt"
+
 def is_oss():
     """Returns whether this is an OSS version of torch_tpu."""
 
@@ -582,6 +584,27 @@ def torch_tpu_py_test(
     local_torch_python = "../local_torch/site-packages"
     unpacked_wheel_path = "../torch_tpu_py_import_unpacked_wheel"
     _prepend_to_env(env_with_local_torch, "PYTHONPATH", ":".join([unpacked_wheel_path, local_torch_python]))
+
+    # Add LSAN suppressions for known third-party leaks (e.g., safetensors, pyo3)
+    # that are outside the project's control.
+    current_data = kwargs.pop("data", [])
+    if _LSAN_SUPPRESSIONS not in current_data:
+        current_data.append(_LSAN_SUPPRESSIONS)
+    kwargs["data"] = current_data
+
+    # We use LSAN_OPTIONS to pass the suppressions file.
+    # Note: ASAN_OPTIONS=detect_leaks=1 is usually the default in ASAN configs.
+    lsan_supps = "$(location %s)" % _LSAN_SUPPRESSIONS
+
+    def _add_lsan_options(env):
+        opts = env.get("LSAN_OPTIONS", "")
+        if opts != "":
+            opts += " "
+        env["LSAN_OPTIONS"] = opts + "suppressions=" + lsan_supps
+
+    _add_lsan_options(existing_env)
+    _add_lsan_options(env_with_wheel)
+    _add_lsan_options(env_with_local_torch)
 
     # 4. Use select to swap between the wheel and non-wheel envs
     test_env = if_oss(select({
