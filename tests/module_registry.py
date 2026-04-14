@@ -285,8 +285,8 @@ class TransformersProvider(BaseProvider):
     rather than downloading directly from the Hugging Face Hub.
   """
 
-  _FILES = resources.files("torch_tpu").joinpath(
-      "examples/huggingface_transformers/model_configs"
+  _FILES = resources.files("examples").joinpath(
+      "huggingface_transformers/model_configs"
   )
 
   def __init__(self):
@@ -382,8 +382,8 @@ class DiffusersProvider(BaseProvider):
     rather than downloading directly from the Hugging Face Hub.
   """
 
-  _FILES = resources.files("torch_tpu").joinpath(
-      "examples/huggingface_diffusers/model_configs"
+  _FILES = resources.files("examples").joinpath(
+      "huggingface_diffusers/model_configs"
   )
 
   def __init__(self):
