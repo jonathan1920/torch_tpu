@@ -786,6 +786,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/dynamism",
+        "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
     ],

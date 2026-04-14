@@ -17,6 +17,7 @@ from absl.testing import parameterized
 import torch
 from torch_tpu import api
 from torch_tpu._internal import dynamism
+from torch_tpu._internal import execution_mode
 from torch_tpu._internal.utils import utils
 from tests import op_testing
 
@@ -63,6 +64,14 @@ class DynamismApiTest(absltest.TestCase):
   def setUp(self):
     super().setUp()
     self.device = api.tpu_device()
+    # Dynamism in eager mode works only when EagerMode.DEFER_AND_FUSE or
+    # EagerMode.DEFER_AND_FUSE_WITH_O1 are selected.
+    self.old_eager_mode = execution_mode.get_eager_mode()
+    execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE)
+
+  def tearDown(self):
+    execution_mode.set_eager_mode(self.old_eager_mode)
+    super().tearDown()
 
   def test_mark_get_dynamism_info(self):
     x = torch.ones(10, device=self.device)
@@ -158,6 +167,14 @@ class DynamismTest(parameterized.TestCase):
     super().setUp()
     self.device = api.tpu_device()
     torch.tpu._clear_cache()
+    # Dynamism in eager mode works only when EagerMode.DEFER_AND_FUSE or
+    # EagerMode.DEFER_AND_FUSE_WITH_O1 are selected.
+    self.old_eager_mode = execution_mode.get_eager_mode()
+    execution_mode.set_eager_mode(execution_mode.EagerMode.DEFER_AND_FUSE)
+
+  def tearDown(self):
+    execution_mode.set_eager_mode(self.old_eager_mode)
+    super().tearDown()
 
   def _run_bounded_dynamism_test(self, fn, mark_dynamic_fn, *args):
     expected = fn(*args)
