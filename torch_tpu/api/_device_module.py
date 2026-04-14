@@ -128,6 +128,49 @@ class _DeviceModule:
     return cls._current_device
 
   @classmethod
+  def set_device(
+      cls, device: int | str | torch.device
+  ) -> None:  # This is in torch/cuda/__init__.py.
+    """Sets the current device.
+
+    For TPUs, this method primarily validates that the given device index
+    matches the device index assigned to the current process. Unlike CUDA,
+    switching the active device within a single process is not supported.
+
+    Args:
+      device: The device to set. Can be an int (device index), "tpu", or a
+        `torch.device("tpu")` object.
+
+    Raises:
+      ValueError: If the provided device index does not match the current
+        device index.
+      TypeError: If the device type is not recognized.
+    """
+    current_idx = cls.current_device()
+    provided_idx = None
+    if isinstance(device, str):
+      if device != "tpu":
+        raise ValueError(f"Invalid device string {device}")
+      provided_idx = current_idx  # Assume current device if only "tpu" is given
+    elif isinstance(device, torch.device):
+      if device.type != "tpu":
+        raise ValueError(f"Invalid device type {device.type}")
+      provided_idx = device.index if device.index is not None else current_idx
+    elif isinstance(device, int):
+      provided_idx = device
+    else:
+      raise TypeError(f"Got unrecognized device type, {device}")
+
+    if provided_idx != current_idx:
+      raise ValueError(
+          f"Cannot set TPU device to index {provided_idx}, current process is "
+          f"bound to device index {current_idx}. Changing the active TPU "
+          "device within a process is not supported."
+      )
+    # No actual device switching occurs, so we just return.
+    return
+
+  @classmethod
   def is_available(cls) -> bool:  # This is in torch/cuda/__init__.py.
     """Returns if the TPU backend is currently available."""
     if cls._device_type == "tpu":

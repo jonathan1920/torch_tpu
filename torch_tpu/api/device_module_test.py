@@ -94,6 +94,34 @@ class DeviceModuleTest(absltest.TestCase, common_utils.TestCase):
       _device_module._rng_validate_device_index(1, 0)
       mock_warning.assert_called_once()
 
+  @mock.patch.object(_DevicePythonModule, "current_device", return_value=0)
+  def test_set_device_valid(self, _):
+    # Test valid int
+    _DevicePythonModule.set_device(0)
+
+    # Test valid string
+    _DevicePythonModule.set_device("tpu")
+
+  @mock.patch.object(_DevicePythonModule, "current_device", return_value=0)
+  def test_set_device_invalid_index(self, _):
+    with self.assertRaisesRegex(ValueError, "Cannot set TPU device to index 1"):
+      _DevicePythonModule.set_device(1)
+
+  @mock.patch.object(_DevicePythonModule, "current_device", return_value=0)
+  def test_set_device_invalid_string(self, _):
+    with self.assertRaisesRegex(ValueError, "Invalid device string cpu"):
+      _DevicePythonModule.set_device("cpu")
+
+  @mock.patch.object(_DevicePythonModule, "current_device", return_value=0)
+  def test_set_device_invalid_device_type(self, _):
+    with self.assertRaisesRegex(ValueError, "Invalid device type cpu"):
+      _DevicePythonModule.set_device(torch.device("cpu"))
+
+  @mock.patch.object(_DevicePythonModule, "current_device", return_value=0)
+  def test_set_device_invalid_type(self, _):
+    with self.assertRaisesRegex(TypeError, "Got unrecognized device type"):
+      _DevicePythonModule.set_device(1.0)
+
 
 if __name__ == "__main__":
   absltest.main()
