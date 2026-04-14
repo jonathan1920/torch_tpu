@@ -32,12 +32,12 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "graph_transformations_test",
     srcs = ["graph_transformations_test.py"],
-    notest_oss = "Disabled because of an error, see b/502544526",
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compile/dynamic:graph_transformations",
         "//torch_tpu/_internal/compile/dynamic:sym_shape_manager",
+        "//torch_tpu/api",  # buildcleaner: keep
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )
