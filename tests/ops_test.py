@@ -1926,8 +1926,6 @@ class TestOps(TorchTpuTestBase):
   def test_cumprod(self):
     self.do_test_op(
         "cumprod",
-        # TODO: fix the error flip is unimplemented.
-        check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
     )
@@ -1935,15 +1933,11 @@ class TestOps(TorchTpuTestBase):
   def test_cummax(self):
     self.do_test_op(
         "cummax",
-        # TODO: fix the error flip is unimplemented.
-        check_grad=False,
     )
 
   def test_cumsum(self):
     self.do_test_op(
         "cumsum",
-        # TODO: fix the error flip is unimplemented.
-        check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
     )
@@ -1951,8 +1945,6 @@ class TestOps(TorchTpuTestBase):
   def test_cummin(self):
     self.do_test_op(
         "cummin",
-        # TODO: fix the error flip is unimplemented.
-        check_grad=False,
     )
 
   def test_diagonal(self):
