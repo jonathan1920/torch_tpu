@@ -28,7 +28,7 @@ def _test_nobuild(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nobuild"], "tags: %s" % tags)
+    asserts.true(env, tags == ["nobuild", "nobuild_oss"], "tags: %s" % tags)
     asserts.false(env, result.create_build_test)
     return unittest.end(env)
 
