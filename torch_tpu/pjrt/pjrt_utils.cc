@@ -166,6 +166,10 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
   } else {
     ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] Backing tensor present, "
                     "creating non-available DeviceBufferRef.";
+    PjrtBackend::GetInstance().MarkStreamActive(
+        static_cast<c10::DeviceIndex>(
+            buffer->device()->local_hardware_id().value()),
+        future);
     TT_ASSIGN_OR_RETURN(auto tmp_buffer_ref,
                         DeviceBufferList::CreateMaterializedNonAvailable(
                             std::move(buffer), std::move(future)));

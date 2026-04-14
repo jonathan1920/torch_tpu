@@ -868,4 +868,16 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "h2d_sync_test",
+    srcs = ["h2d_sync_test.py"],
+    main = "h2d_sync_test.py",
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/api",
+    ],
+)
+
 torch_tpu_package_end()
