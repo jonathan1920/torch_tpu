@@ -144,7 +144,7 @@ def _sort_inplace(a_list):
 
 def _check_and_adjust_test_tags(
         name,
-        is_oss,  # @unused - TODO: use this to determine whether to add a build_test.
+        is_oss,
         size,
         timeout,
         nobuild,
@@ -260,11 +260,13 @@ def _check_and_adjust_test_tags(
     # Targets with notest_oss cannot be built in OSS because flag `--build_tests_only` is active.
     # Instead of removing `--build_tests_only` to include all unused binaries/libraries in OSS
     # builds, we generate a companion _build_test target for notest_oss tests.
-    # TODO: Trim the unnecessary _build_test targets in the internal build.
     create_build_test = False
     build_test_tags = []
-    if ("notap" in tags or "notest_oss" in tags) and nobuild == None:  # NOTAP_OK=for implementing notap logic
-        create_build_test = True
+    if is_oss:
+        create_build_test = "notest_oss" in tags and "nobuild_oss" not in tags
+    else:
+        create_build_test = "notap" in tags and "nobuild" not in tags  # NOTAP_OK=for implementing notap logic
+    if create_build_test:
         build_test_tags = [tag for tag in tags if tag in _BUILD_TEST_ALLOWED_TAGS]
 
         # The torch_tpu.cuda build only runs tests with requires-gpu-* tags.
