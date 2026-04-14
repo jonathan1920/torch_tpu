@@ -92,6 +92,7 @@ def define_torch_local(name, is_source_mode = True):
         ]) + ["site-packages"] + ([
             py_library_source_mapping("torch/include"),
             py_library_source_mapping("torch/include/torch/csrc/api/include"),
+            py_library_source_mapping("torch/include/kineto"),
         ] if not is_source_mode else []),
         deps = [
             ":kineto_headers_internal",
