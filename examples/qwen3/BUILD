@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
     "//build_files:build_defs.bzl",
     "if_oss",
@@ -131,18 +130,6 @@ torch_tpu_py_test(
         "//torch_tpu/api",
         "@pypi//transformers",
         "@rules_python//python/runfiles",
-    ],
-)
-
-build_test(
-    name = "build_test",
-    tags = [
-        "nobuild_oss",  # Disabled during switch from opt-in to opt-out
-    ],
-    targets = [
-        # In addition to any existing tests, include the following:
-        ":qwen3_kv_cache_bd_b200",
-        ":qwen3_kv_cache_bd_b200_basic",
     ],
 )
 
