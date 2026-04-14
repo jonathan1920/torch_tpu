@@ -45,7 +45,7 @@ def _test_notap(ctx):
 
     asserts.true(
         env,
-        tags == ["manual", "notap", "notest_oss"],  # NOTAP_OK=tests
+        tags == ["manual", "notap", "notest"],  # NOTAP_OK=tests
         "tags: %s" % tags,
     )
     asserts.true(env, result.create_build_test)
@@ -97,7 +97,7 @@ def _test_internal_nobuild_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["notest_oss"], "tags: %s" % tags)
+    asserts.true(env, tags == ["notest"], "tags: %s" % tags)
 
     # In an internal build, nobuild_oss has no effect and thus does not make
     # it necessary to generate a build_test.
@@ -115,7 +115,7 @@ def _test_oss_nobuild_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nobuild", "notest_oss"], "tags: %s" % tags)
+    asserts.true(env, tags == ["nobuild", "notest"], "tags: %s" % tags)
 
     # In an OSS build, nobuild_oss should disable generating the build_test.
     asserts.false(env, result.create_build_test)
@@ -132,7 +132,7 @@ def _test_internal_notest_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["notest_oss"], "tags: %s" % tags)
+    asserts.true(env, tags == ["notest"], "tags: %s" % tags)
 
     # In an internal build, notest_oss has no effect and thus does not make
     # it necessary to generate a build_test.
@@ -150,7 +150,7 @@ def _test_oss_notest_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["notest_oss"], "tags: %s" % tags)
+    asserts.true(env, tags == ["notest"], "tags: %s" % tags)
 
     # In an OSS build, notest_oss should enable generating the build_test.
     asserts.true(env, result.create_build_test)
@@ -174,7 +174,7 @@ def _test_cuda_build_test(ctx):
 
     asserts.true(
         env,
-        tags == ["manual", "notap", "notest_oss", "requires-gpu-a100"],  # NOTAP_OK=tests
+        tags == ["manual", "notap", "notest", "requires-gpu-a100"],  # NOTAP_OK=tests
         "tags: %s" % tags,
     )
     asserts.true(env, result.create_build_test)
@@ -198,7 +198,7 @@ def _test_internal_notap_nobuild(ctx):
 
     asserts.true(
         env,
-        tags == ["manual", "nobuild", "notap", "notest_oss"],  # NOTAP_OK=tests
+        tags == ["manual", "nobuild", "notap", "notest"],  # NOTAP_OK=tests
         "tags: %s" % tags,
     )
     asserts.false(env, result.create_build_test)
@@ -217,7 +217,7 @@ def _test_oss_notest_oss_nobuild_oss(ctx):
 
     asserts.true(
         env,
-        tags == ["nobuild", "notest_oss"],
+        tags == ["nobuild", "notest"],
         "tags: %s" % tags,
     )
     asserts.false(env, result.create_build_test)

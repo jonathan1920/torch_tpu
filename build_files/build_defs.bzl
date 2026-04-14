@@ -230,7 +230,7 @@ def _check_and_adjust_test_tags(
         if type(notest_oss) != "string" or not notest_oss:
             fail("notest_oss must be a non-empty string documenting why the test " +
                  "should be skipped in OSS tests.")
-        tags.append("notest_oss")
+        tags.append("notest")
 
     # Adjust tags for notap.
     #
@@ -244,8 +244,8 @@ def _check_and_adjust_test_tags(
             fail("notap must be a non-empty string documenting why the test " +
                  "should be skipped on TAP.")
         tags.append("notap")  # NOTAP_OK=for implementing notap logic
-        if "notest_oss" not in tags:
-            tags.append("notest_oss")  # notap implies notest_oss.
+        if "notest" not in tags:
+            tags.append("notest")  # notap implies notest_oss.
 
         if nopresubmit != None:
             fail("notap and nopresubmit cannot both be set.")
@@ -263,7 +263,7 @@ def _check_and_adjust_test_tags(
     create_build_test = False
     build_test_tags = []
     if is_oss:
-        create_build_test = "notest_oss" in tags and "nobuild" not in tags
+        create_build_test = "notest" in tags and "nobuild" not in tags
     else:
         create_build_test = "notap" in tags and "nobuild" not in tags  # NOTAP_OK=for implementing notap logic
     if create_build_test:
