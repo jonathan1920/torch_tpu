@@ -60,4 +60,24 @@ pytype_library(
     ],
 )
 
+pytype_library(
+    name = "compiler",
+    srcs = [
+        "__init__.py",
+        "compiler.py",
+    ],
+    visibility = [
+        "//:__subpackages__",
+        "//learning/agents/tern/torch_agent:__subpackages__",
+    ],
+    deps = [
+        ":graph_transformations",
+        ":sym_shape_manager",
+        ":symbol_bounds",
+        "//shims/absl_py/logging",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile:tpu_torch_compile",
+    ],
+)
+
 torch_tpu_package_end()
