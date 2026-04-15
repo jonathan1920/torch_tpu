@@ -2873,8 +2873,6 @@ class TestOps(TorchTpuTestBase):
                 + INTEGRAL_DTYPES
             ),
         },
-        # TODO: fix failure on TPU.
-        check_grad=False,
     )
 
   def test_max_pool3d(self):
@@ -2898,8 +2896,6 @@ class TestOps(TorchTpuTestBase):
                 + INTEGRAL_DTYPES
             ),
         },
-        # TODO: fix failure on TPU.
-        check_grad=False,
     )
 
   def test_mean(self):

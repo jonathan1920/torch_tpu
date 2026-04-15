@@ -366,15 +366,18 @@ absl::StatusOr<mlir::MlirOp> BuildMaxPoolWithIndicesBackwardShlo(
                       CreateBatchInput(input, spatial_dim_count));
   TT_ASSIGN_OR_RETURN(auto batch_grad_output_info,
                       CreateBatchInput(grad_output, spatial_dim_count));
+  TT_ASSIGN_OR_RETURN(auto batch_indices_info,
+                      CreateBatchInput(indices, spatial_dim_count));
   mlir::MlirOp batch_input = batch_input_info.batch_input;
   mlir::MlirOp batch_grad_output = batch_grad_output_info.batch_input;
+  mlir::MlirOp batch_indices = batch_indices_info.batch_input;
 
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(batch_input);
   auto input_shape = input_type.getShape();
   auto num_dims = input_type.getRank();
 
   // STEP 2. Compute the global indices of the input tensor
-  auto indices_type = GetTensorTypeOrDie(indices);
+  auto indices_type = GetTensorTypeOrDie(batch_indices);
   auto idx_element_type = indices_type.getElementType();
   const int64_t num_updates = indices_type.getNumElements();
 
@@ -410,7 +413,7 @@ absl::StatusOr<mlir::MlirOp> BuildMaxPoolWithIndicesBackwardShlo(
 
   // Global indices = relative indices + offsets.
   mlir::MlirOp global_indices =
-      mlir::stablehlo::Add(indices, offsets_broadcasted);
+      mlir::stablehlo::Add(batch_indices, offsets_broadcasted);
 
   // Flatten global_indices to [num_updates, 1]
   mlir::MlirOp scatter_indices =
