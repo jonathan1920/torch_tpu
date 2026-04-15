@@ -217,7 +217,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
+          # TODO(b/502598781): Re-enable the compiled mode.
+          # benchmark_utils.RunMode.COMPILED,
       ])
   )
   def test_fsdp_llama_3_2_1b_train_1_step(self, run_mode):
