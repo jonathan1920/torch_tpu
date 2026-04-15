@@ -4515,6 +4515,38 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         ),
     )
 
+  @parameterized.product(
+      input_dtype=[
+          torch.float32,
+          torch.bfloat16,
+          torch.float16,
+      ],
+      target_dtype=[
+          torch.float32,
+      ],
+  )
+  def test_mm_dtype(self, input_dtype, target_dtype):
+    """Tests torch.ops.aten.mm.dtype with various dtypes."""
+    lhs = torch.randn(2, 3, dtype=input_dtype)
+    rhs = torch.randn(3, 4, dtype=input_dtype)
+
+    def test_fn(device):
+      l = lhs.to(device)
+      r = rhs.to(device)
+
+      if device == "cpu":
+        # CPU backend does not support mm.dtype directly
+        return torch.mm(l.to(target_dtype), r.to(target_dtype))
+      else:
+        return torch.ops.aten.mm.dtype(l, r, target_dtype)
+
+    self.assert_close_tpu_vs_cpu(
+        test_fn,
+        check_value=CheckValueMode.LOOSE,
+        rtol=2e-2,
+        atol=6e-3,
+    )
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""

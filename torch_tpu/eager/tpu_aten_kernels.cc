@@ -529,6 +529,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kMinDimMin, AtenMinDimMin);
   Impl(m, OpName::kMinUnaryOut, AtenMinUnaryOut);
   Impl(m, OpName::kMinimumOut, AtenMinimumOut);
+  Impl(m, OpName::kMmDtype, AtenMmDtype);
+  Impl(m, OpName::kMmDtypeOut, AtenMmDtypeOut);
   Impl(m, OpName::kMmOut, AtenMmOut);
   Impl(m, OpName::kMseLossBackward, AtenMseLossBackward);
   Impl(m, OpName::kMseLossOut, AtenMseLossOut);

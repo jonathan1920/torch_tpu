@@ -23,7 +23,6 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -33,9 +32,8 @@ namespace torch_tpu {
 
 namespace stablehlo = mlir::stablehlo;
 
-absl::StatusOr<mlir::MlirOp> BuildMmShlo(FixedSizeSpan<mlir::MlirOp, 2> inputs,
+absl::StatusOr<mlir::MlirOp> BuildMmShlo(mlir::MlirOp lhs, mlir::MlirOp rhs,
                                          mlir::stablehlo::Precision precision) {
-  auto& [lhs, rhs] = inputs;
   mlir::MlirBuilder& builder = lhs.getBuilder();
   mlir::MLIRContext& ctx = builder.getContext();
   const mlir::RankedTensorType lhs_tensor_type = GetTensorTypeOrDie(lhs);

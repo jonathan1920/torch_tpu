@@ -17,6 +17,7 @@
 #include "torch_tpu/ops/mm/mm_aten_kernels.h"
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -25,6 +26,7 @@
 #include "absl/types/span.h"
 #include "ATen/core/TensorBody.h"
 #include "ATen/native/Resize.h"
+#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -35,11 +37,13 @@
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/mm/mm.h"
+#include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/precision_context.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 
 namespace torch_tpu {
 namespace {
@@ -54,14 +58,37 @@ absl::Status CheckIsMatrix(const at::Tensor& tensor,
 }
 
 absl::Status CheckMmOutInputs(const at::Tensor& lhs, const at::Tensor& rhs,
-                              at::Tensor& out) {
+                              at::Tensor& out,
+                              std::optional<at::ScalarType> out_dtype) {
   // DType checks.
   TT_RET_CHECK(lhs.scalar_type() == rhs.scalar_type(), error::kInvalidArgument)
       << "expected the two arguments to have the same dtype, got "
       << ToString(lhs.scalar_type()) << " vs " << ToString(rhs.scalar_type());
-  TT_RET_CHECK(lhs.scalar_type() == out.scalar_type(), error::kInvalidArgument)
-      << "expected the inputs and the output to have the same dtype, got "
-      << ToString(lhs.scalar_type()) << " vs " << ToString(out.scalar_type());
+
+  if (out_dtype.has_value()) {
+    auto out_scalar_type = out_dtype.value();
+    TT_RET_CHECK(out_scalar_type == out.scalar_type(), error::kInvalidArgument)
+        << "expected out_dtype to be the same as the dtype of the out tensor, "
+           "got out_dtype "
+        << ToString(out_scalar_type) << " vs out tensor dtype "
+        << ToString(out.scalar_type());
+    TT_RET_CHECK(out_scalar_type == lhs.scalar_type() ||
+                     (out_scalar_type == at::ScalarType::Float &&
+                      (lhs.scalar_type() == at::ScalarType::Half ||
+                       lhs.scalar_type() == at::ScalarType::BFloat16)),
+                 error::kInvalidArgument)
+        << "expected out_dtype to be the same as input dtype or "
+        << "fp32 for fp16/bf16 inputs, "
+        << "got out_dtype " << ToString(out_scalar_type) << " vs inputs dtype "
+        << ToString(lhs.scalar_type());
+  } else {
+    // For mm, the inputs and output should have the same dtype
+    TT_RET_CHECK(out.scalar_type() == lhs.scalar_type(),
+                 error::kInvalidArgument)
+        << "expected the output to have the same dtype as inputs,"
+        << " got out dtype " << ToString(out.scalar_type())
+        << " vs inputs dtype " << ToString(lhs.scalar_type());
+  }
 
   // Dimension checks.
   TT_RETURN_IF_ERROR(CheckIsMatrix(lhs, /* arg_name= */ "first"));
@@ -75,32 +102,74 @@ absl::Status CheckMmOutInputs(const at::Tensor& lhs, const at::Tensor& rhs,
   return absl::OkStatus();
 }
 
-absl::StatusOr<DeviceBufferRef> Mm(const at::Tensor& lhs, const at::Tensor& rhs,
-                                   at::Tensor& out,
-                                   OpParamCacheKeys param_keys) {
-  TT_RETURN_IF_ERROR(CheckMmOutInputs(lhs, rhs, out));
+absl::StatusOr<DeviceBufferRef> Mm(
+    const at::Tensor& lhs, const at::Tensor& rhs, at::Tensor& out,
+    OpParamCacheKeys param_keys,
+    std::optional<at::ScalarType> out_dtype = std::nullopt) {
+  TT_RETURN_IF_ERROR(CheckMmOutInputs(lhs, rhs, out, out_dtype));
   int64_t output_dims[2] = {lhs.size(0), rhs.size(1)};
-  mlir::ElementType dtype =
-      ConvertTo<mlir::ElementType>(lhs.scalar_type()).value();
+
+  // if out_dtype is not specified, use the scalar type of the inputs
+  at::ScalarType target_scalar_type =
+      out_dtype.has_value() ? out_dtype.value() : lhs.scalar_type();
+  TT_ASSIGN_OR_RETURN(mlir::ElementType target_elem_dtype,
+                      ConvertTo<mlir::ElementType>(target_scalar_type));
 
   const auto current_precision = GetPrecision();
   TT_ASSIGN_OR_RETURN(param_keys,
                       *OpParamCacheKeys::Builder(std::move(param_keys))
                            .SetParam("precision", current_precision));
-  auto op_builder = [current_precision](FixedSizeSpan<mlir::MlirOp, 2> inputs) {
-    return BuildMmShlo(inputs, current_precision);
+  bool needs_conversion = (lhs.scalar_type() != target_scalar_type);
+
+  auto op_builder = [current_precision, target_elem_dtype,
+                     needs_conversion](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+      -> absl::StatusOr<mlir::MlirOp> {
+    mlir::MlirOp lhs_op = inputs[0];
+    mlir::MlirOp rhs_op = inputs[1];
+
+    if (needs_conversion) {
+      lhs_op = mlir::stablehlo::ConvertElementType(lhs_op, target_elem_dtype);
+      rhs_op = mlir::stablehlo::ConvertElementType(rhs_op, target_elem_dtype);
+    }
+
+    return BuildMmShlo(lhs_op, rhs_op, current_precision);
   };
 
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       DispatchOp<2>(std::move(op_builder), {lhs, rhs},
-                    {.out_dtype = dtype,
+                    {.out_dtype = target_elem_dtype,
                      .out_dims = output_dims,
                      .op_param_cache_keys = std::move(param_keys)}));
   return result_buf;
 }
 
 }  // namespace
+
+at::Tensor AtenMmDtype(const at::Tensor& lhs, const at::Tensor& rhs,
+                       at::ScalarType out_dtype) {
+  TT_KERNEL(OpName::kMmDtype, param_keys, (lhs, rhs, out_dtype), {
+    int64_t output_dims[2] = {lhs.size(0), rhs.size(1)};
+    at::Tensor out = MakeEmptyTensor(output_dims, out_dtype, lhs.device());
+
+    TT_ASSIGN_OR_THROW(auto result_buf,
+                       Mm(lhs, rhs, out, std::move(param_keys), out_dtype));
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+    return out;
+  });
+}
+
+at::Tensor& AtenMmDtypeOut(const at::Tensor& lhs, const at::Tensor& rhs,
+                           at::ScalarType out_dtype, at::Tensor& out) {
+  TT_KERNEL(OpName::kMmDtypeOut, param_keys, (lhs, rhs, out_dtype, out), {
+    TT_ASSIGN_OR_THROW(auto result_buf,
+                       Mm(lhs, rhs, out, std::move(param_keys), out_dtype));
+    int64_t output_dims[2] = {lhs.size(0), rhs.size(1)};
+    at::native::resize_output(out, output_dims);
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+    return out;
+  });
+}
 
 at::Tensor& AtenMmOut(const at::Tensor& lhs, const at::Tensor& rhs,
                       at::Tensor& out) {

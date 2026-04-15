@@ -838,6 +838,10 @@ std::string_view ToString(OpName op_name) {
       return "minimum";
     case OpName::kMinimumOut:
       return "minimum.out";
+    case OpName::kMmDtype:
+      return "mm.dtype";
+    case OpName::kMmDtypeOut:
+      return "mm.dtype_out";
     case OpName::kMmOut:
       return "mm.out";
     case OpName::kMseLossBackward:

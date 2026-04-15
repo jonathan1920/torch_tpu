@@ -1563,6 +1563,36 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       tpu_torch_compile.execute(executable, [x, y], [[15]])
 
+  def test_mm_dtype_outdtype_mismatch(self):
+    lhs = torch.ones(3, 4, device=et.device(), dtype=torch.int32)
+    rhs = torch.ones(4, 5, device=et.device(), dtype=torch.int32)
+    out = torch.ones(3, 5, device=et.device(), dtype=torch.int64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "mm(): expected out_dtype to be the same as the dtype of the out "
+            "tensor, got out_dtype int32 vs out tensor dtype int64"
+        ),
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten.mm.dtype_out(lhs, rhs, out_dtype=torch.int32, out=out)
+
+  def test_mm_dtype_output_dtype_mismatch_fp32(self):
+    lhs = torch.ones(3, 4, device=et.device(), dtype=torch.float16)
+    rhs = torch.ones(4, 5, device=et.device(), dtype=torch.float16)
+    out = torch.ones(3, 5, device=et.device(), dtype=torch.float64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "mm(): expected out_dtype to be the same as input dtype or fp32 for"
+            " fp16/bf16 inputs, got out_dtype float64 vs inputs dtype float16"
+        ),
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten.mm.dtype_out(lhs, rhs, out_dtype=torch.float64, out=out)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
@@ -5932,8 +5962,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "mm(): expected the inputs and the output to have the same dtype,"
-            " got float32 vs float64"
+            "mm(): expected the output to have the same dtype as inputs,"
+            " got out dtype float64 vs inputs dtype float32"
         ),
         cpu="Expected out tensor to have dtype float, but got double instead",
         message_reviewed_by="wan",

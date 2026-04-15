@@ -430,6 +430,8 @@ enum class OpName {
   kMinUnaryOut,
   kMinimum,
   kMinimumOut,
+  kMmDtype,
+  kMmDtypeOut,
   kMmOut,
   kMseLossBackward,
   kMseLossOut,
