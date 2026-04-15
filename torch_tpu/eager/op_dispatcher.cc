@@ -51,6 +51,7 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
@@ -68,9 +69,6 @@
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "tsl/profiler/lib/traceme.h"
 
-ABSL_FLAG(std::string, torch_tpu_internal_detect_repeated_ops, "safe",
-          "Look for repeated sequences of ops and compile them as a whole. "
-          "Possible values are \"safe\", \"aggressive\", or \"\" if not used");
 ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 
 namespace torch_tpu {
@@ -78,6 +76,8 @@ namespace {
 
 constexpr int kMinRepeatedSubsequenceLength = 10;
 constexpr int kMaxRepeatedSubsequenceLength = 128;
+constexpr std::string_view kRepeatedOpSafeMode = "safe";
+constexpr std::string_view kRepeatedOpAggressiveMode = "aggressive";
 
 // The result of trying to skip a list of (potentially) zero-sized outputs.
 struct SkipIfAllZeroSizedResult {
@@ -445,8 +445,10 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
     }
 
     const std::string& detect_repeated_ops =
-        absl::GetFlag(FLAGS_torch_tpu_internal_detect_repeated_ops);
-    if (!detect_repeated_ops.empty()) {
+        GetEnvOnce<kTorchTpuInternalDetectRepeatedOpsEnvVar>().value_or(
+            std::string(kRepeatedOpSafeMode));
+    if (detect_repeated_ops == kRepeatedOpSafeMode ||
+        detect_repeated_ops == kRepeatedOpAggressiveMode) {
       // Note that view operations (like reshapes and transposes) don't go
       // through the op_dispatcher sequence. So the heuristic below considers
       // only non-view ops.
@@ -459,9 +461,10 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
       ABSL_CHECK(op != nullptr);  // CRASH_OK
       op_window.Append(*op);
       if (op_window.FindRepeatedSequence()) {
-        auto materialization_mode = (detect_repeated_ops == "aggressive")
-                                        ? MaterializationMode::kFullGraph
-                                        : MaterializationMode::kSplitGraph;
+        auto materialization_mode =
+            (detect_repeated_ops == kRepeatedOpAggressiveMode)
+                ? MaterializationMode::kFullGraph
+                : MaterializationMode::kSplitGraph;
         TT_RETURN_IF_ERROR(
             Materialize(results[0].device_buffer_list(), materialization_mode));
       }
