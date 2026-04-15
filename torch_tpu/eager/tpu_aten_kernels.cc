@@ -435,6 +435,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kForeachZero_, AtenForeachZero_);
   Impl(m, OpName::kFusedRmsNorm, AtenFusedRmsNorm);
   Impl(m, OpName::kFusedRmsNormBackward, AtenFusedRmsNormBackward);
+  Impl(m, OpName::kGather, AtenGather);
   Impl(m, OpName::kGatherOut, AtenGatherOut);
   Impl(m, OpName::kGeScalarOut, AtenGeScalarOut);
   Impl(m, OpName::kGeTensorOut, AtenGeTensorOut);

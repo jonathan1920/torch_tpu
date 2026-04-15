@@ -44,7 +44,8 @@ namespace {
 
 absl::StatusOr<DeviceBufferRef> Gather(const at::Tensor& self, int64_t dim,
                                        const at::Tensor& index,
-                                       bool sparse_grad) {
+                                       bool sparse_grad,
+                                       OpParamCacheKeys&& param_keys) {
   TT_RET_CHECK(sparse_grad == false, error::kUnimplemented)
       << "sparse_grad is not yet supported";
 
@@ -58,8 +59,6 @@ absl::StatusOr<DeviceBufferRef> Gather(const at::Tensor& self, int64_t dim,
         return BuildGatherShlo(self, dim, index, sparse_grad, output_dtype);
       };
 
-  TT_ASSIGN_OR_RETURN(auto param_keys,
-                      TT_MAKE_OP_PARAM_CACHE_KEYS(dim, sparse_grad));
   return DispatchOp<2>(std::move(gather_op_builder), {self, index},
                        {.out_dtype = output_dtype,
                         .out_dims = output_dims,
@@ -68,18 +67,25 @@ absl::StatusOr<DeviceBufferRef> Gather(const at::Tensor& self, int64_t dim,
 
 }  // namespace
 
+at::Tensor AtenGather(const at::Tensor& self, int64_t dim,
+                      const at::Tensor& index, bool sparse_grad) {
+  TT_KERNEL(OpName::kGather, param_keys, (self, dim, index, sparse_grad), {
+    TT_ASSIGN_OR_THROW(auto result, Gather(self, dim, index, sparse_grad,
+                                           std::move(param_keys)));
+    return MakeTensor(std::move(result));
+  });
+}
+
 at::Tensor& AtenGatherOut(const at::Tensor& self, int64_t dim,
                           const at::Tensor& index, bool sparse_grad,
                           at::Tensor& out) {
-  TT_KERNEL(OpName::kGatherOut, _,
-            (self, IgnoreInCacheKey(dim, "Legacy usage"), index,
-             IgnoreInCacheKey(sparse_grad, "Legacy usage"), out),
-            {
-              TT_ASSIGN_OR_THROW(auto result,
-                                 Gather(self, dim, index, sparse_grad));
-              TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
-              return out;
-            });
+  TT_KERNEL(
+      OpName::kGatherOut, param_keys, (self, dim, index, sparse_grad, out), {
+        TT_ASSIGN_OR_THROW(auto result, Gather(self, dim, index, sparse_grad,
+                                               std::move(param_keys)));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
+        return out;
+      });
 }
 
 }  // namespace torch_tpu

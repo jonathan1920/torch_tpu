@@ -2473,12 +2473,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_gather(self):
-    self.do_test_op(
-        "gather",
-        # TODO: fix the error that function SumBackward0 returned an invalid
-        # gradient.
-        check_grad=False,
-    )
+    self.do_test_op("gather")
 
   def test_ge(self):
     self.do_test_op("ge")

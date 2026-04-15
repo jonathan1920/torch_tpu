@@ -24,11 +24,10 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "mlir/IR/Builders.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
-#include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dimension_types.h"
@@ -44,47 +43,53 @@ namespace torch_tpu {
 
 namespace stablehlo = mlir::stablehlo;
 
-absl::Status CheckGatherInputs(absl::Span<const int64_t> self, int64_t dim,
-                               absl::Span<const int64_t> index,
+absl::Status CheckGatherInputs(absl::Span<const int64_t> self_dims, int64_t dim,
+                               absl::Span<const int64_t> index_dims,
                                bool sparse_grad) {
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Error is caught by caller `Gather`
                  // function.
       sparse_grad == false, error::kUnimplemented)
       << "sparse_grad is not yet supported";
 
-  const int64_t self_rank = self.size();
-  const int64_t index_rank = index.size();
+  const int64_t self_rank = self_dims.size();
+  const int64_t index_rank = index_dims.size();
 
   // self and index should have the same rank, except when one of them is a
   // scalar and the other is a vector.
   if (self_rank == 0 || index_rank == 0) {
-    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=SafeWrapDim function (called before
-                   // this one) catches this error first.
-        dim == 0, error::kInvalidArgument)
-        << "expected the dim argument to be 0 when either the input or the "
-           "index tensors are scalars, got "
-        << dim;
-    TT_RET_CHECK(self_rank <= 1, error::kInvalidArgument)
-        << "expected the input to be a scalar or a 1D tensor when the index "
-           "tensor is a scalar, got "
-        << self_rank << "D of shape " << ToString(self);
-    TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=SafeWrapDim function (called before
-                   // this one) catches 0-dimensional self tensor cases.
-        index_rank <= 1, error::kInvalidArgument)
-        << "expected the index tensor to be a scalar or a 1D tensor when the "
-           "input tensor is a scalar, got "
-        << index_rank << "D of shape " << ToString(index);
+    // PyTorch allows 0D input with 1D index (if index size is 1)
+    // and vice versa.
+    if (self_rank == 0 && index_rank > 0) {
+      TT_RET_CHECK(index_rank == 1 && index_dims[0] <= 1,
+                   error::kInvalidArgument)
+          << "expected the input and the index tensor to have the same number "
+          << "of dimensions, got 0D vs " << index_rank << "D";
+    } else if (index_rank == 0 && self_rank > 0) {
+      TT_RET_CHECK(self_rank == 1 && self_dims[0] <= 1, error::kInvalidArgument)
+          << "expected the input to be a 1D tensor with size at most 1 when "
+             "index is 0D, got "
+          << self_rank << "D with shape {" << self_dims[0] << "}";
+    }
   } else {
     TT_RET_CHECK(self_rank == index_rank, error::kInvalidArgument)
         << "expected the input and the index tensor to have the same number of "
            "dimensions, got "
-        << ToString(self) << " vs " << ToString(index);
+        << self_rank << "D vs " << index_rank << "D";
 
     TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=SafeWrapDim function (called before
                    // this one) catches this error first.
         dim >= 0 && dim < self_rank, error::kInvalidArgument)
         << "expected the dim argument to be in the range [0, " << self_rank
         << "), got " << dim;
+
+    for (auto d = 0; d < self_rank; ++d) {
+      if (d != dim) {
+        TT_RET_CHECK(index_dims[d] <= self_dims[d], error::kInvalidArgument)
+            << "expected the index tensor to have size less than or equal to "
+               "the input tensor at dimension "
+            << d << ", got " << index_dims[d] << " vs " << self_dims[d];
+      }
+    }
   }
 
   return absl::OkStatus();
@@ -109,7 +114,20 @@ absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
   // scalar and the other is a vector.
   if (self_type.getRank() == 0 || index_type.getRank() == 0) {
     if (self_type.getRank() != index_type.getRank()) {
-      self = mlir::stablehlo::Reshape(self, index_type.getShape());
+      if (self_type.getRank() == 0 && index_type.getRank() == 1 &&
+          index_type.getShape()[0] == 0) {
+        // Gathering from a scalar with an empty index results in an empty
+        // tensor.
+        mlir::MlirBuilder& builder = self.getBuilder();
+        mlir::Type element_type = self_type.getElementType();
+        auto result_type = mlir::RankedTensorType::get({0}, element_type);
+        // Create an empty DenseElementsAttr for the constant.
+        auto empty_attr = mlir::DenseElementsAttr::get(
+            result_type, llvm::ArrayRef<mlir::Attribute>());
+        return stablehlo::Constant(builder, empty_attr);
+      } else {
+        self = stablehlo::Reshape(self, index_type.getShape());
+      }
     }
     return self;
   }
@@ -119,7 +137,7 @@ absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
       mlir::getElementType(self.getContext(), computation_element_type);
   ABSL_VLOG(2) << "computation_type: " << mlir::debugString(computation_type);
   if (self_type.getElementType() != computation_type) {
-    self = mlir::stablehlo::ConvertElementType(self, computation_type);
+    self = stablehlo::ConvertElementType(self, computation_type);
   }
 
   mlir::MlirBuilder& builder = self.getBuilder();
@@ -137,7 +155,7 @@ absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
   for (int d = 0; d < self_type.getRank(); ++d) {
     if (d == dim) {
       mlir::MlirOp expanded_index =
-          mlir::stablehlo::Reshape(index, expanded_index_shape);
+          stablehlo::Reshape(index, expanded_index_shape);
       parts.push_back(expanded_index);
     } else {
       mlir::MlirOp j_part = stablehlo::Iota(
@@ -145,7 +163,7 @@ absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
           makeTensorType(builder.getContext(), index_type.getShape(),
                          index_element_type),
           /*iota_dimension=*/d);
-      j_part = mlir::stablehlo::Reshape(j_part, expanded_index_shape);
+      j_part = stablehlo::Reshape(j_part, expanded_index_shape);
       parts.push_back(j_part);
     }
   }
@@ -169,8 +187,7 @@ absl::StatusOr<mlir::MlirOp> BuildGatherShlo(
   auto result = stablehlo::Gather(self, gather_indices,
                                   gather_dimension_numbers, slice_sizes,
                                   /*indices_are_sorted=*/false);
-  return mlir::stablehlo::ConvertElementType(result,
-                                             self_type.getElementType());
+  return stablehlo::ConvertElementType(result, self_type.getElementType());
 }
 
 }  // namespace torch_tpu

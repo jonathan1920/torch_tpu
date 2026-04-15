@@ -120,6 +120,24 @@ absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
                << ", scatter_op: " << FormatParamCacheKey(scatter_op)
                << ", include_self: " << FormatParamCacheKey(include_self);
 
+  // If arguments are scalars, temporarily reshape them to rank 1.
+  bool are_scalars = self_type.getRank() == 0 || src_type.getRank() == 0 ||
+                     index_type.getRank() == 0;
+  if (are_scalars) {
+    if (self_type.getRank() == 0) {
+      self = mlir::stablehlo::Reshape(self, {1});
+      self_type = GetTensorTypeOrDie(self);
+    }
+    if (src_type.getRank() == 0) {
+      src = mlir::stablehlo::Reshape(src, {1});
+      src_type = GetTensorTypeOrDie(src);
+    }
+    if (index_type.getRank() == 0) {
+      index = mlir::stablehlo::Reshape(index, {1});
+      index_type = GetTensorTypeOrDie(index);
+    }
+  }
+
   TT_RET_CHECK(self_type.getRank() == src_type.getRank(),
                error::kInvalidArgument)
       << "expected the self tensor of shape " << ToString(self_type.getShape())
@@ -132,17 +150,6 @@ absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
       << " to have the same rank as the index tensor of shape "
       << ToString(index_type.getShape()) << ", got " << self_type.getRank()
       << " vs. " << index_type.getRank();
-
-  // If arguments are scalars, temporarily reshape them to rank 1.
-  bool are_scalars = self_type.getRank() == 0;
-  if (are_scalars) {
-    self = mlir::stablehlo::Reshape(self, {1});
-    self_type = GetTensorTypeOrDie(self);
-    src = mlir::stablehlo::Reshape(src, {1});
-    src_type = GetTensorTypeOrDie(src);
-    index = mlir::stablehlo::Reshape(index, {1});
-    index_type = GetTensorTypeOrDie(index);
-  }
 
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Caught by the `SafeWrapDim()` function
                  // call in the caller.

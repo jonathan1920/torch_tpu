@@ -6667,9 +6667,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "gather(): materialization failed with: expected the input to be a"
-            " scalar or a 1D tensor when the index tensor is a scalar, got 2D"
-            " of shape [2, 2]"
+            "gather(): materialization failed with: expected 1D input with size"
+            " at most 1 when index is 0D, got 2D with shape {2}"
         ),
         cpu=(
             "Index tensor must have the same number of dimensions as input"
@@ -6692,8 +6691,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         RuntimeError,
         tpu=(
             "gather(): materialization failed with: expected the input and the"
-            " index tensor to have the same number of dimensions, got [2, 2] vs"
-            " [1, 1, 1]"
+            " index tensor to have the same number of dimensions, got 2D vs 3D"
         ),
         cpu=(
             "Index tensor must have the same number of dimensions as input"
@@ -6702,6 +6700,45 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       # cpu() is needed because the error is triggered inside the op builder.
       torch.gather(inp, dim, index, out=out).cpu()
+
+  def test_gather_0d_input_on_2d_index(self):
+    inp = torch.tensor(1.0, device=et.device())
+    dim = 0
+    index = torch.ones(2, 2, device=et.device(), dtype=torch.int64)
+
+    # TODO: Error eagerly, i.e. without having to call the op builder.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "gather(): materialization failed with: expected the input and the"
+            " index tensor to have the same number of dimensions, got 0D vs 2D"
+        ),
+        cpu=(
+            "Index tensor must have the same number of dimensions as input"
+            " tensor"
+        ),
+    ):
+      torch.gather(inp, dim, index).cpu()
+
+  def test_gather_size_mismatch(self):
+    inp = torch.ones(2, 3, device=et.device())
+    dim = 0
+    index = torch.ones(2, 4, device=et.device(), dtype=torch.int64)
+
+    # TODO: Error eagerly, i.e. without having to call the op builder.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "gather(): materialization failed with: expected the index tensor"
+            " to have size less than or equal to the input tensor at dimension"
+            " 1, got 4 vs 3"
+        ),
+        cpu=(
+            "Size does not match at dimension 1 expected index [2, 4] to be no"
+            " larger than self [2, 3] apart from dimension 0"
+        ),
+    ):
+      torch.gather(inp, dim, index).cpu()
 
   def test_lerp_int(self):
     t = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
@@ -7702,6 +7739,38 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         ),
     ):
       torch.scatter(self_t, 0, index, src, out=out).cpu()
+
+  def test_scatter_scalar_self_rank1_index(self):
+    self_t = torch.tensor(1.0, device=et.device())
+    index = torch.tensor([0], dtype=torch.int64, device=et.device())
+    src = torch.tensor([2.0], device=et.device())
+
+    if et.device().type == "tpu":
+      # TPU is more permissive for scalars to support gather_backward.
+      torch.scatter(self_t, 0, index, src).cpu()
+    else:
+      with et.assert_raises_message(
+          RuntimeError,
+          cpu=(
+              "Index tensor must have the same number of dimensions as input"
+              " tensor"
+          ),
+      ):
+        torch.scatter(self_t, 0, index, src).cpu()
+
+  def test_scatter_rank2_self_scalar_src_tensor(self):
+    self_t = torch.zeros(5, 5, device=et.device())
+    index = torch.zeros(5, 5, dtype=torch.int64, device=et.device())
+    src = torch.tensor(1.0, device=et.device())
+
+    # PyTorch does NOT allow a 0D tensor as src for scatter if index is not 0D.
+    # It only allows Python scalars (via a different overload).
+    # Both TPU and CPU now raise the same eager error message.
+    with et.assert_raises_message(
+        RuntimeError,
+        "Index tensor must have the same number of dimensions as src tensor",
+    ):
+      torch.scatter(self_t, 0, index, src).cpu()
 
   def test_softmax_backward_data_shape_mismatch(self):
     grad_output = torch.ones(5, 5, device=et.device())

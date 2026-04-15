@@ -80,6 +80,40 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   add it here.
   """
 
+  def test_gather_scalar_grad(self):
+    del self  # self is unused in this test.
+    device = api.tpu_device()
+    input_val = 4.901_066_981_864_172
+    input_tensor_tpu = torch.tensor(
+        input_val, requires_grad=True, device=device
+    )
+    dim = 0
+    index_tpu = torch.tensor([0], device=device, dtype=torch.int64)
+
+    output_tpu = torch.gather(input_tensor_tpu, dim, index_tpu)
+    output_tpu.sum().backward()
+
+    input_tensor_cpu = torch.tensor(input_val, requires_grad=True, device="cpu")
+    index_cpu = torch.tensor([0], device="cpu", dtype=torch.int64)
+    output_cpu = torch.gather(input_tensor_cpu, dim, index_cpu)
+    output_cpu.sum().backward()
+
+    utils.assert_close(input_tensor_tpu.grad.cpu(), input_tensor_cpu.grad)
+
+  def test_gather_scalar_multi_index_grad(self):
+    del self  # self is unused in this test.
+    device = api.tpu_device()
+    input_val = 4.901_066_981_864_172
+    self_tpu = torch.tensor([input_val], requires_grad=True, device=device)
+    index_tpu = torch.tensor([0, 0], device=device, dtype=torch.int64)
+    dim = 0
+
+    output_tpu = torch.gather(self_tpu, dim, index_tpu)
+    output_tpu.sum().backward()
+
+    expected_grad = torch.tensor([2.0])
+    utils.assert_close(self_tpu.grad.cpu(), expected_grad)
+
   @parameterized.product(
       batch_size=[1, 2],
       in_channels=[4],
