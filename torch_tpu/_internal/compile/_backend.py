@@ -34,6 +34,7 @@ from collections.abc import Sequence
 import functools
 import operator
 from typing import Any, Callable, List, TypeAlias
+from absl import flags
 from absl import logging
 import torch
 from torch._dynamo.backends.common import aot_autograd
@@ -46,7 +47,16 @@ from torch.fx.passes import graph_transform_observer
 from torch.utils import _pytree
 from torch_tpu._internal import export as torch_tpu_export
 from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal.compile.dynamic import compiler as dynamic_compiler
 from torch_tpu._internal.utils import utils
+
+_ENABLE_COMPILED_MODE_DYNAMISM = flags.DEFINE_boolean(
+    "torch_tpu_internal_compiled_mode_dynamism",
+    False,
+    "This is a temporary dev flag as the feature is not ready for production "
+    "use. Once ready, this flag will be removed along with assertion check on "
+    "SymInt.",
+)
 
 GraphTransformObserver = graph_transform_observer.GraphTransformObserver
 
@@ -99,6 +109,19 @@ def _raise_on_symint(
     )
 
   return _pytree.tree_map_only(torch.SymInt, _raise, x)
+
+
+def _has_symints(inputs: Sequence[Any]) -> bool:
+  """Checks if any of the inputs are or contain torch.SymInt."""
+  flattened_inputs, _ = _pytree.tree_flatten(inputs)
+  for arg in flattened_inputs:
+    if isinstance(arg, torch.SymInt):
+      return True
+    if isinstance(arg, torch.Tensor):
+      for dim in arg.shape:
+        if isinstance(dim, torch.SymInt):
+          return True
+  return False
 
 
 UNSET_GRAPH_HELPER_STR = (
@@ -158,9 +181,15 @@ class _TorchTpuCompiledExecutable:
   def mlir_text(self, value: str) -> None:
     self._mlir_text = value
 
-  def __call__(self, *args):
+  def __call__(
+      self, *args: Any, output_shapes: Sequence[list[int]] | None = None
+  ) -> Any:
+    if output_shapes is None:
+      output_shapes = []
     executable_args = self._filter_tensor_args(args)
-    outputs = tpu_torch_compile.execute(self._executable, executable_args)
+    outputs = tpu_torch_compile.execute(
+        self._executable, executable_args, output_shapes
+    )
 
     if self._reconstruct_fx_outputs_fn is not None:
       outputs = self._reconstruct_fx_outputs_fn(args, outputs)
@@ -285,12 +314,19 @@ class TpuBackend:
     #
     # TODO: Figure out how to remove symint from the graph and recompile
     # without dynamism.
-    _raise_on_symint(example_inputs)
+    if not _ENABLE_COMPILED_MODE_DYNAMISM.value:
+      _raise_on_symint(example_inputs)
 
     _log_gm_and_inputs("__call__", "Pre", graph_module, example_inputs)
 
+    has_symints = _has_symints(example_inputs)
+    if has_symints:
+      compiler = dynamic_compiler.DynamicCompiler(self)
+    else:
+      compiler = functools.partial(self._compile_graph_module)
+
     return aot_autograd(
-        fw_compiler=functools.partial(self._compile_graph_module),
+        fw_compiler=compiler,
         # This is to avoid inplace generating graph modules that contains
         # inplace update.
         keep_inference_input_mutations=False,

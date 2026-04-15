@@ -20,6 +20,24 @@ package(
 )
 
 torch_tpu_py_test(
+    name = "compile_test",
+    srcs = ["compile_test.py"],
+    args = [
+        "--torch_tpu_internal_compiled_mode_dynamism",
+    ],
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/api",
+    ],
+)
+
+torch_tpu_py_test(
     name = "sym_shape_manager_test",
     srcs = ["sym_shape_manager_test.py"],
     deps = [
