@@ -162,8 +162,8 @@ def _(mo):
         *How PyTorch ops become TPU machine code*
     *   **[The Compilation Cache](?file=compilation_cache.py)**
         *How compiled graphs are cached and reused*
-    *   **[The Deferred Execution Model](?file=deferred_execution.py)**
-        *DeviceBufferRef, promises, and materialization triggers*
+    *   **[Eager Mode](?file=eager_mode.py)**
+        *Guide to Fused Eager execution and debugging modes.*
     *   **[Strict SPMD Synchronization](?file=spmd_synchronization.py)**
         *Why all ranks must execute the same graph*
     """)
