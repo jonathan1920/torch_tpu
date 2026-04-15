@@ -170,12 +170,10 @@ def define_torch_local(name, is_source_mode = True):
         experimental_venvs_site_packages = "@rules_python//python/config_settings:venvs_site_packages",
         visibility = ["//visibility:public"],
         deps = [
-            "@pypi//filelock",
             "@pypi//fsspec",
             "@pypi//jinja2",
             "@pypi//networkx",
             "@pypi//numpy",
-            "@pypi//setuptools",
             "@pypi//sympy",
             "@pypi//typing_extensions",
         ],
