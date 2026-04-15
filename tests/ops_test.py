@@ -1993,9 +1993,12 @@ class TestOps(TorchTpuTestBase):
   def test_embedding(self):
     self.do_test_op(
         "nn.functional.embedding",
-        check_grad=False,
         # TODO: fix embedding() failing with complex dtypes.
         exclude_dtypes=COMPLEX_DTYPES,
+        # TODO: add support for sparse embeddings.
+        skip_if=lambda device, variant, op_input: op_input.kwargs.get(
+            "sparse", False
+        ),
     )
 
   def test_embedding_bag(self):
