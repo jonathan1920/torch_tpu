@@ -867,7 +867,9 @@ idna==3.10 \
 immutabledict==4.3.1 \
     --hash=sha256:c9facdc0ff30fdb8e35bd16532026cac472a549e182c94fa201b51b25e4bf7bf \
     --hash=sha256:f844a669106cfdc73f47b1a9da003782fb17dc955a54c80972e0d93d1c63c514
-    # via tensorflow-datasets
+    # via
+    #   torch-tpu (pyproject.toml)
+    #   tensorflow-datasets
 importlib-metadata==9.0.0 \
     --hash=sha256:2d21d1cc5a017bd0559e36150c21c830ab1dc304dedd1b7ea85d20f45ef3edd7 \
     --hash=sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc
@@ -2734,7 +2736,7 @@ torch==2.10.0+cpu \
     #   peft
     #   timm
     #   torchvision
-torchvision==0.25.0 \
+torchvision==0.25.0 ; sys_platform == 'darwin' \
     --hash=sha256:0b5e7f50002a8145a98c5694a018e738c50e2972608310c7e88e1bd4c058f6ce \
     --hash=sha256:0d9a3f925a081dd2ebb0b791249b687c2ef2c2717d027946654607494b9b64b6 \
     --hash=sha256:146d02c9876858420adf41f3189fe90e3d6a409cbfa65454c09f25fb33bf7266 \
@@ -2763,6 +2765,31 @@ torchvision==0.25.0 \
     --hash=sha256:f25aa9e380865b11ea6e9d99d84df86b9cc959f1a007cd966fc6f1ab2ed0e248 \
     --hash=sha256:f49964f96644dbac2506dffe1a0a7ec0f2bf8cf7a588c3319fed26e6329ffdf3 \
     --hash=sha256:f9c55ae8d673ab493325d1267cbd285bb94d56f99626c00ac4644de32a59ede3
+    # via
+    #   torch-tpu (pyproject.toml)
+    #   timm
+torchvision==0.25.0+cpu ; sys_platform != 'darwin' \
+    --hash=sha256:0c2d0da9bc011a0fde1d125af396a8fbe94d99becf9d313764f24ca7657a3448 \
+    --hash=sha256:2d444009c0956669ada149f61ed78f257c1cc96d259efa6acf3929ca96ceb3f0 \
+    --hash=sha256:3e2ae9981e32a5b9db685659d5c7af0f04b159ff20394650a90124baf6ada51a \
+    --hash=sha256:499eae1e535766391b6ee2d1e6e841239c20e2e6d88203a15b8f9f8d60a1f8bd \
+    --hash=sha256:4d72a57a8f0b5146e26dac1fbfa2c905280cd04f5fcb23b9c56253506b683aeb \
+    --hash=sha256:59be99d1c470ef470b134468aa6afa6f968081a503acb4ee883d70332f822e35 \
+    --hash=sha256:727334e9a721cfc1ac296ce0bf9e69d9486821bfa5b1e75a8feb6f78041db481 \
+    --hash=sha256:73ce04dea64914ff1110008311204c366107d651d3b04faa0dbee77efb7133b7 \
+    --hash=sha256:783c8fc580bbfc159bff52f4f72cdd538e42b32956e70dffa42b940db114e151 \
+    --hash=sha256:7d47d544899fabac52ebe0d4812975608fd7ab79a3d7fb6383275eb667e33f53 \
+    --hash=sha256:7f851245a2687743742157988ed9c42c6e312b95bbe6cfcac9e7d0d0c28ae62f \
+    --hash=sha256:813f0106eb3e268f3783da67b882458e544c6fb72f946e6ca64b5ed4e62c6a77 \
+    --hash=sha256:90eec299e1f82cfaf080ccb789df3838cb9a54b57e2ebe33852cd392c692de5c \
+    --hash=sha256:9212210f417888e6261c040495180f053084812cf873dedba9fc51ff4b24b2d3 \
+    --hash=sha256:9511339b3b5eb75229e0b5041202e8aed9bef3b1de3a715b9fb319c9e97688fd \
+    --hash=sha256:aa016ab73e06a886f72edc8929ed2ed4c85aaaa6e10500ecdef921b03129b19e \
+    --hash=sha256:c1be164e93c68b2dbf460fd58975377c892dbcf3358fb72941709c3857351bba \
+    --hash=sha256:c7eb5f219fdfaf1f65e68c00eb81172ab4fa08a9874dae9dad2bca360da34d0f \
+    --hash=sha256:e985e12a9a232618e5a43476de5689e4b14989f5da6b93909c57afa57ec27012 \
+    --hash=sha256:fb9f07f6a10f0ac24ac482ae68c6df99110b74a0d80a4c64fddc9753267d8815 \
+    --hash=sha256:fe54cbd5942cd0b26a90f1748f0d4421caf67be35c281c6c3b8573733a03d630
     # via
     #   torch-tpu (pyproject.toml)
     #   timm
