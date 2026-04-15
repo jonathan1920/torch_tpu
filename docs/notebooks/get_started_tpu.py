@@ -15,7 +15,7 @@
 # pylint: skip-file
 import marimo
 
-__generated_with = "0.19.8"
+__generated_with = "0.21.1"
 app = marimo.App(width="medium")
 
 
@@ -31,13 +31,42 @@ def _(mo):
   mo.md(r"""
     # Get Started with TorchTPU
 
-    This tutorial will guide you through your first successful computation on Google TPU hardware using the `torch-tpu` backend.
+    This tutorial will guide you through your first successful computation on Google TPU hardware using the `torch_tpu` backend.
 
-    ### Prerequisites
-    Before running this notebook, ensure your environment is ready:
-    1. **Hardware**: You are running on a TPU VM (e.g., v6e).
-    2. **Driver**: `libtpu` is installed.
-    3. **Backend**: `torch_tpu` is installed.
+    ## 1. Installation and Setup
+
+    Before running this notebook, ensure you are running on a [Google Cloud TPU VM](https://docs.cloud.google.com/tpu/docs/intro-to-tpu?hl=en) (e.g., v6e).
+
+    Install TorchTPU and its dependencies on your TPU VM. Components must be installed in this order to ensure the PyTorch dispatcher and TPU drivers align correctly.
+
+    #### Step 1: Initialize Python 3.12
+
+    ```bash
+    sudo apt update && sudo apt install -y python3.12 python3.12-venv
+    python3.12 -m venv env
+    source env/bin/activate
+    ```
+
+    #### Step 2: Install TorchTPU & Dependencies
+
+    ```bash
+    # 1. Authenticate to get access to whl
+    pip install keyrings.google-artifactregistry-auth
+    gcloud auth login
+    gcloud auth application-default login
+
+    # 2. Install torch_tpu, PyTorch 2.10 CPU will install automatically, do not install manually.
+    pip install --pre --index-url "https://oauth2accesstoken:$(gcloud auth print-access-token)@us-python.pkg.dev/ml-oss-artifacts-transient/torch-tpu-virtual-registry/simple/" torch_tpu
+
+    # 3. Install optional utilities
+    pip install portpicker marimo scikit-learn pandas
+
+    # 4. Optional for Pallas kernels
+    pip install jax
+
+    # 5. Optional for xProf
+    pip install tensorboard
+    ```
     """)
   return
 
@@ -45,11 +74,11 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## 1. Initialization: The Hardware Handshake
+    ## 2. Hardware Initialization
 
-    Unlike a GPU, the TPU backend must be explicitly initialized. This triggers the **PjRt handshake**, which discovers the hardware and registers the "tpu" device string.
+    Similar to a CPU or GPU, the TPU backend must be explicitly initialized. This registers the "tpu" device string with PyTorch.
 
-    **Note:** This MUST be called before creating any tensors.
+    **Note:** This must be called before moving any tensors to the TPU.
     """)
   return
 
@@ -57,78 +86,80 @@ def _(mo):
 @app.cell
 def _():
   import torch
-  from tpu_utils import safe_init
+  import torch_tpu
+  from torch_tpu import api
 
-  # Self-healing hardware initialization
-  device = safe_init()
+  # device = torch.device("cuda") Remove this from your current code
 
-  # Verify the device
-  print(f"Connected to: {device}")
+  # Initialize the TPU device
+  # This registers the "tpu" device string in PyTorch.
+  device = api.tpu_device()
+
+  print(f"TPU Initialization complete. Primary device: {device}")
   return device, torch
 
 
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## 2. Deferred Execution: Creating Tensors
+    ## 3. Working with Tensors
 
-    TorchTPU uses **Deferred Execution**. Tensors created on TPU are "promises" in a graph. No math happens until you specifically ask for the data.
+    Once initialized, you can interact with the TPU much like you would with a GPU. You can move existing CPU tensors to the TPU or create new tensors directly on the hardware.
+
+    You have two standard ways to specify the TPU device:
+    1. Using the `device` object returned by the API.
+    2. Using the `"tpu"` string identifier.
     """)
   return
 
 
 @app.cell
 def _(device, torch):
-  # These are recorded as graph nodes, not physical allocations.
-  a = torch.ones((1024, 1024), device=device, dtype=torch.bfloat16)
-  b = torch.randn((1024, 1024), device=device, dtype=torch.bfloat16)
+  # 1. Create a tensor on the CPU
+  cpu_tensor = torch.ones((5, 5))
 
-  print("Graph updated with 'ones' and 'randn' operations.")
-  return a, b
+  # 2. Move it to the TPU
+  tpu_tensor = cpu_tensor.to(device)  # Using the device object
+  # OR
+  tpu_tensor_alt = cpu_tensor.to("tpu")  # Using the "tpu" string
 
+  # 3. Create a tensor directly on the TPU
+  direct_tpu_tensor = torch.randn((5, 5), device="tpu")
 
-@app.cell(hide_code=True)
-def _(mo):
-  mo.md(r"""
-    ## 3. Performing Computation
-
-    We will now perform a Matrix Multiplication. This is also deferred and will be optimized by the XLA compiler later.
-    """)
-  return
-
-
-@app.cell
-def _(a, b, torch):
-  # This adds a 'Dot' operation to our DAG recipe.
-  c = torch.matmul(a, b)
-  print("Matmul operation added to the deferred graph.")
-  return (c,)
+  print(f"cpu_tensor is on: {cpu_tensor.device}")
+  print(f"tpu_tensor is on: {tpu_tensor.device}")
+  print(f"direct_tpu_tensor is on: {direct_tpu_tensor.device}")
+  return direct_tpu_tensor, tpu_tensor
 
 
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## 4. Materialization: The Execution Trigger
+    ## 4. Computation and Materialization
 
-    To see the result, we call `.cpu()`. This triggers the **XLA Compiler** to fuse the operations and run them on the hardware in one optimized block.
+    Performing math on the TPU is seamless. When you perform operations on TPU tensors, the computation happens on the hardware. To retrieve the data back to the CPU for printing or interaction with standard Python libraries, use the `.cpu()` method.
     """)
   return
 
 
 @app.cell
-def _(c):
-  # This triggers Compilation and Hardware Execution
-  final_result = c.cpu()
+def _(direct_tpu_tensor, tpu_tensor):
+  # Perform a simple operation on the TPU
+  result_on_tpu = tpu_tensor + direct_tpu_tensor
 
-  print(f"Result Checksum (Sum): {final_result.sum():.4f}")
-  return (final_result,)
+  # Bring the result back to the CPU to print or use in other libraries
+  result_on_cpu = result_on_tpu.cpu()
+
+  print("Computation complete.")
+  print(f"Result Checksum (Sum): {result_on_cpu.sum():.4f}")
+  return
 
 
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
     ### 🎉 Success!
-    You have successfully run a deferred computation on a TPU.
+    You have successfully initialized the TPU, mapped tensors to the device, performed a calculation, and retrieved the results.
     """)
   return
 

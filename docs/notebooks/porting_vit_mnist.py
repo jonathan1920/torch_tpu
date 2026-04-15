@@ -15,54 +15,41 @@
 # pylint: skip-file
 import marimo
 
-__generated_with = "0.19.9"
+__generated_with = "0.21.1"
 app = marimo.App(width="medium")
 
 
 @app.cell(hide_code=True)
 def _():
   import marimo as mo
-
-  return (mo,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-  mo.md(r"""
-    # Porting a Vision Transformer (ViT) to TorchTPU
-
-    This tutorial demonstrates how to port a Vision Transformer (ViT) model to the TorchTPU backend. We'll implement a "Tiny ViT" optimized for TPU performance and train it on the MNIST dataset.
-    """)
-  return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-  mo.md(r"""
-    ## 1. The Dispatcher Shim
-    First, we implement a shim to prevent crashes when libraries attempt to look up `torchvision` operators that might not be present in the environment.
-    """)
-  return
-
-
-@app.cell
-def _():
   import torch
-  # Prevents crashes when libraries attempt to look up torchvision operators
-  try:
-    torch.library.Library("torchvision", "DEF").define(
-        "nms(Tensor dets, Tensor scores, float iou_threshold) -> Tensor"
-    )
-  except Exception:
-    pass
-  return (torch,)
+  import warnings
+  # Suppress internal PJRT warnings about non-leaf grad access during training
+  warnings.filterwarnings(
+      "ignore",
+      message=(
+          "The .grad attribute of a Tensor that is not a leaf Tensor is being"
+          " accessed"
+      ),
+  )
+  return mo, torch, warnings
 
 
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## 2. Model Architecture (Optimized for TPU)
-    We define the `TpuViT` architecture using a `Conv2d` patch embedding — the standard ViT approach where a single convolution with `kernel_size=patch_size` and `stride=patch_size` extracts and projects all patches in one operation.
+    # Training a Vision Transformer (ViT) with TorchTPU
+
+    This tutorial demonstrates how to train a standard Vision Transformer (ViT) model on the TorchTPU backend. We'll implement a "Tiny ViT" optimized for TPU performance and train it on the MNIST dataset.
+    """)
+  return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+  mo.md(r"""
+    ## 1. Model Architecture (Optimized for TPU)
+    We define a standard VIT architecture.
     """)
   return
 
@@ -149,8 +136,8 @@ def _(torch):
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## 3. Pure Tensor Data Preparation
-    We fetch the MNIST dataset and prepare it as pure Torch tensors. We resize the images to 32x32 to match our model's expected input size.
+    ## 2. Data Preparation
+    We fetch the MNIST dataset and prepare it as PyTorch tensors. We resize the images to 32x32 to match our model's expected input size.
     """)
   return
 
@@ -185,48 +172,60 @@ def _(F, torch):
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## 4. Training Loop
-    Finally, we initialize the TPU device using `safe_init`, move the model to the device, and run the training loop.
+    ## 3. Training Loop
+    Finally, we initialize the TPU device, move the model to the device, and run the training loop.
     """)
   return
 
 
 @app.cell
 def _():
-  from tpu_utils import safe_init
+  import torch_tpu
+  from torch_tpu import api
 
-  # Self-healing hardware initialization
-  device = safe_init()
+  device = api.tpu_device()
   print(f"Executing on: {device}")
   return (device,)
 
 
 @app.cell
-def _(TpuViT, X_tensor, Y_tensor, device, nn, torch):
+def _(TpuViT, X_tensor, Y_tensor, nn, torch):
   # Move model to TPU (float32 — required by SDP attention fast path)
-  model = TpuViT().to(device)
+  model = TpuViT().to("tpu")
   optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
   criterion = nn.CrossEntropyLoss()
 
   print("Starting training loop...")
   model.train()
   for epoch in range(
-      4
-  ):  # Change to at least 15 to see the model start to converge.
+      5
+  ):  # Change to at least 30 to see the model start to converge.
     idx = 0
     batch_size = 32
+
+    # We accumulate loss using .detach() to avoid materializing the tensor back
+    # to the CPU during every iteration. This avoids stalling the CPU and
+    # amortizes the expensive TPU -> CPU DMA transfer.
+    epoch_loss = 0.0
+
     while idx < len(X_tensor):
-      inputs = X_tensor[idx : idx + batch_size].to(device)
-      targets = Y_tensor[idx : idx + batch_size].to(device)
+      inputs = X_tensor[idx : idx + batch_size].to("tpu")
+      targets = Y_tensor[idx : idx + batch_size].to("tpu")
 
       optimizer.zero_grad()
       outputs = model(inputs)
       loss = criterion(outputs, targets)
       loss.backward()
       optimizer.step()
+
+      # Detach the loss tensor and accumulate to avoid frequent host-device syncs
+      epoch_loss += loss.detach()
+
       idx += batch_size
 
-    print(f"Epoch {epoch} complete. Last Loss: {loss.item():.4f}")
+    # Materialize the aggregated loss once per epoch
+    avg_loss = (epoch_loss / (len(X_tensor) / batch_size)).item()
+    print(f"Epoch {epoch} complete. Average Loss: {avg_loss:.4f}")
 
   print("\n" + "=" * 40)
   print("Verification complete: torchtpu is functional")
@@ -237,8 +236,8 @@ def _(TpuViT, X_tensor, Y_tensor, device, nn, torch):
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## 5. Inference Demo
-    Now that the model is trained, let's run inference on a single test image and see what the model predicts.
+    ## 4. Inference Demo
+    Now that the model is trained, let's run inference on a single test image and see what the model predicts. Adjust the epochs as needed to improve accuracy.
     """)
   return
 
