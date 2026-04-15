@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <ostream>
 #include <sstream>
@@ -581,12 +582,24 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateConstant(
 
     if (element_type == mlir::ElementType::PRED) {
       // Special case for boolean tensors.
+      //
       // PyTorch stores booleans as one-per-byte on CPU, but XLA uses packed
-      // 1-bit booleans.
-      // So we just make a constant byte (UI8) tensor and use
+      // 1-bit booleans. So we just make a constant byte tensor and use
       // stablehlo.convert, which will do the packing.
+      //
+      // DenseIntElementsAttr::get has an assertion that checks if the
+      // signedness of the data, as indicated by
+      // std::numeric_limits<char>::is_signed, matches the signedness of the
+      // element type. However, whether or not char is signed is implementation
+      // defined, which can cause assertion failures in some environments.
+      // So we match the signedness of the byte tensor (using I8 or UI8) to the
+      // signedness of char according to the current implementation.
+      const auto byte_element_type = std::numeric_limits<char>::is_signed
+                                         ? mlir::ElementType::I8
+                                         : mlir::ElementType::UI8;
+
       auto shaped_byte_tensor_type = mlir::makeTensorType(
-          builder.getContext(), dimensions, mlir::ElementType::UI8);
+          builder.getContext(), dimensions, byte_element_type);
       auto shaped_byte_constant = mlir::stablehlo::Constant(
           builder, mlir::DenseIntElementsAttr::get(shaped_byte_tensor_type,
                                                    cpu_tensor_data));
@@ -594,7 +607,7 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateConstant(
           mlir::stablehlo::Convert(ranked_tensor_type, shaped_byte_constant)};
     }
 
-    auto dense_elements_attr = mlir::DenseIntElementsAttr::getFromRawBuffer(
+    auto dense_elements_attr = mlir::DenseElementsAttr::getFromRawBuffer(
         ranked_tensor_type, cpu_tensor_data);
     return DynamicMlirOpResults{
         mlir::stablehlo::Constant(builder, dense_elements_attr)};
