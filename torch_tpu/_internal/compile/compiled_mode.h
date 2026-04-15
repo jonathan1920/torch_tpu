@@ -21,6 +21,7 @@
 #include <string_view>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -139,6 +140,17 @@ std::vector<at::Tensor> ExecuteCompiledModel(
     absl::Span<const at::Tensor> argument_tensors,
     absl::Span<const std::vector<int64_t>>  // INT_VEC_OK
         output_shapes);
+
+// Creates a TPU tensor that represents the constant value of the CPU tensor.
+// This makes a copy of the CPU tensor data.
+absl::StatusOr<at::Tensor> MakeConstantTensor(const at::Tensor& cpu_tensor);
+
+// Updates tpu_dst_tensor to be a tensor with the constant value of the CPU
+// tensor. This makes a copy of the CPU tensor data.
+// Errors if the tensors are of different shapes or element types, or are not
+// on the correct device respectively.
+absl::Status AssignConstantTensor(const at::Tensor& cpu_src_tensor,
+                                  const at::Tensor& tpu_dst_tensor);
 
 }  // namespace torch_tpu
 

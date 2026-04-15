@@ -18,12 +18,14 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -35,6 +37,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
@@ -246,6 +249,58 @@ std::vector<at::Tensor> ExecuteCompiledModel(
   }
 
   return output_tensors;
+}
+
+absl::StatusOr<at::Tensor> MakeConstantTensor(const at::Tensor& cpu_tensor) {
+  TT_RET_CHECK(cpu_tensor.is_cpu(), error::kInvalidArgument)
+      << "the input to MakeConstantTensor must be a CPU tensor";
+  // Ensure that the input tensor is a contiguous, 1D array of bytes.
+  // If the input tensor is already a 1D array of bytes, this will be a no-op.
+  at::Tensor contiguous_cpu_bytes_tensor =
+      cpu_tensor.flatten().view(at::ScalarType::Byte);
+  if (!contiguous_cpu_bytes_tensor.is_contiguous()) {
+    contiguous_cpu_bytes_tensor = contiguous_cpu_bytes_tensor.contiguous();
+  }
+
+  // Memcpy the bytes into a vector. We have to do this so that dropping the
+  // tensor does not invalidate the DeferredOp we will create.
+  const void* const cpu_bytes_ptr = contiguous_cpu_bytes_tensor.data_ptr();
+  const size_t num_bytes = contiguous_cpu_bytes_tensor.storage().nbytes();
+  std::vector<char> cpu_bytes_copy(num_bytes);
+  std::memcpy(cpu_bytes_copy.data(), cpu_bytes_ptr, num_bytes);
+
+  // Create a DeferredOp that represents the 1D array of bytes as a constant.
+  Dimensions dimensions = CopyIntVector(cpu_tensor.sizes());
+  TT_ASSIGN_OR_RETURN(mlir::ElementType element_type,
+                      ConvertTo<mlir::ElementType>(cpu_tensor.scalar_type()));
+  TT_ASSIGN_OR_RETURN(
+      DeviceBufferRef buffer_ref,
+      DeviceBufferList::CreateConstant(std::move(cpu_bytes_copy),
+                                       std::move(dimensions), element_type));
+
+  return MakeTensor(std::move(buffer_ref));
+}
+
+absl::Status AssignConstantTensor(const at::Tensor& cpu_src_tensor,
+                                  const at::Tensor& tpu_dst_tensor) {
+  TT_RET_CHECK(cpu_src_tensor.is_cpu(), error::kInvalidArgument)
+      << "cpu_src_tensor must be a CPU tensor";
+  TT_RET_CHECK(cpu_src_tensor.sizes() == tpu_dst_tensor.sizes(),
+               error::kInvalidArgument)
+      << "cpu_src_tensor and tpu_dst_tensor must have the same shape";
+  TT_RET_CHECK(cpu_src_tensor.scalar_type() == tpu_dst_tensor.scalar_type(),
+               error::kInvalidArgument)
+      << "cpu_src_tensor and tpu_dst_tensor must have the same scalar "
+         "type";
+
+  // Make a temporary constant tensor on the CPU.
+  TT_ASSIGN_OR_RETURN(at::Tensor constant_tensor,
+                      MakeConstantTensor(cpu_src_tensor));
+
+  // Copy the constant tensor into the destination tensor. This will preserve
+  // the layout metadata (strides, offset) of tpu_dst_tensor.
+  tpu_dst_tensor.copy_(constant_tensor);
+  return absl::OkStatus();
 }
 
 }  // namespace torch_tpu

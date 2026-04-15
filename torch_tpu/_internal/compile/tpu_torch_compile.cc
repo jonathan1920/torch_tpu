@@ -55,6 +55,7 @@
 #include "xla/mlir/utils/error_util.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 
@@ -306,6 +307,16 @@ SharedLoadedExecutable PyLoadSerializedExecutable(py::bytes& serialized_bytes) {
   return executable;
 }
 
+at::Tensor PyMakeConstantTensor(const at::Tensor& cpu_tensor) {
+  TT_ASSIGN_OR_THROW(at::Tensor tpu_tensor, MakeConstantTensor(cpu_tensor));
+  return tpu_tensor;
+}
+
+void PyAssignConstantTensor(const at::Tensor& cpu_src_tensor,
+                            const at::Tensor& tpu_dst_tensor) {
+  TT_THROW_IF_ERROR(AssignConstantTensor(cpu_src_tensor, tpu_dst_tensor));
+}
+
 PYBIND11_MODULE(tpu_torch_compile, m) {
   py::class_<torch_tpu::ContextedModule,
              std::shared_ptr<torch_tpu::ContextedModule>>(m, "ContextedModule");
@@ -363,6 +374,13 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   m.def("load_serialized_executable", PyLoadSerializedExecutable,
         py::arg("serialized_bytes"),
         "Loads a PjRtLoadedExecutable from serialized bytes.");
+  m.def("make_constant_tensor", PyMakeConstantTensor, py::arg("cpu_tensor"),
+        "Creates a TPU tensor that represents the constant value of the CPU "
+        "tensor.");
+  m.def("assign_constant_tensor", PyAssignConstantTensor,
+        py::arg("cpu_src_tensor"), py::arg("tpu_dst_tensor"),
+        "Updates a TPU tensor to be a tensor with the constant value of the "
+        "CPU tensor.");
 }
 
 }  // namespace torch_tpu
