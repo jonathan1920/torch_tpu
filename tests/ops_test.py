@@ -1410,6 +1410,10 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.bfloat16: {"rtol": 2e-2, "atol": 5e-1},
                 torch.float16: {"rtol": 5.9e-3, "atol": 4e-2},
             },
+            "matmul": {
+                torch.float16: {"rtol": 1e-1, "atol": 1e-1},
+                torch.float32: {"rtol": 1e-1, "atol": 1e-1},
+            },
             "mm": {
                 torch.float16: {"rtol": 1e-1, "atol": 7e-2},
                 torch.float32: {"rtol": 9e-1, "atol": 6e-2},
@@ -2805,8 +2809,6 @@ class TestOps(TorchTpuTestBase):
   def test_matmul(self):
     self.do_test_op(
         "matmul",
-        # TODO: fix huge errors in grad.
-        check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
         # TODO: TPU supports bool dtypes but not all CPU and GPU lowerings do.
