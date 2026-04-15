@@ -16,6 +16,7 @@
 
 #include "torch_tpu/_internal/compile/compiled_mode.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 #include <utility>
@@ -51,6 +52,7 @@
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
@@ -160,12 +162,73 @@ absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
                  std::move(compile_options));
 }
 
+namespace {
+
+absl::StatusOr<std::vector<Shape>> GetOutputShapes(
+    const SharedLoadedExecutable& executable,
+    absl::Span<const std::vector<int64_t>>  // INT_VEC_OK
+        output_shapes) {
+  // Get the flattened output shapes from the executable.
+  // Executables can return tuples, we want individual tensor shapes.
+  TT_ASSIGN_OR_RETURN(std::vector<xla::Shape> output_shapes_vec,
+                      executable->GetOutputShapes());
+  std::vector<const xla::Shape*> output_shapes_flat_vec;
+  for (const auto& output_shape : output_shapes_vec) {
+    xla::ShapeUtil::FlattenTupleShape(output_shape, output_shapes_flat_vec);
+  }
+
+  // Determine output shapes from the executable.
+  std::vector<Shape> result_shapes_vec;
+  result_shapes_vec.reserve(output_shapes_flat_vec.size());
+
+  if (!output_shapes.empty()) {
+    TT_RET_CHECK(output_shapes.size() == output_shapes_flat_vec.size(),
+                 error::kInvalidArgument)
+        << "output shapes must be specified for all outputs or none, "
+        << "got " << output_shapes.size() << " output shapes for "
+        << output_shapes_flat_vec.size() << " output tensors";
+  }
+
+  for (size_t i = 0; i < output_shapes_flat_vec.size(); ++i) {
+    const xla::Shape* output_shape = output_shapes_flat_vec[i];
+    TT_ASSIGN_OR_RETURN(Shape result_shape, MakeShape(*output_shape));
+    if (!output_shapes.empty()) {
+      const auto& shape = output_shapes[i];
+      TT_RET_CHECK(shape.size() == result_shape.dimensions().size(),
+                   error::kInvalidArgument)
+          << "output shape number of dimensions must match the statically "
+             "inferred dimensions, got output shape dimensions "
+          << shape.size() << " and inferred dimensions "
+          << result_shape.dimensions().size() << " for output tensor " << i;
+
+      for (size_t j = 0; j < shape.size(); ++j) {
+        TT_RET_CHECK(shape[j] <= result_shape.dimensions()[j],
+                     error::kInvalidArgument)
+            << "output shape dimension must not exceed the statically "
+               "inferred bound, got output shape "
+            << ToString(shape) << " and inferred shape "
+            << ToString(result_shape.dimensions());
+      }
+
+      result_shape.dimensions().assign(shape.begin(), shape.end());
+    }
+    result_shapes_vec.push_back(result_shape);
+  }
+
+  return result_shapes_vec;
+}
+
+}  // namespace
+
 // This is bound to Python function tpu_torch_compile.execute(), and thus
 // allowed to throw exceptions.
 std::vector<at::Tensor> ExecuteCompiledModel(
     const SharedLoadedExecutable& executable,
     absl::Span<const at::Tensor> argument_tensors,
-    absl::Span<const Shape> output_shapes) {
+    absl::Span<const std::vector<int64_t>>  // INT_VEC_OK
+        output_shapes) {
+  TT_ASSIGN_OR_THROW(std::vector<Shape> result_shapes_vec,
+                     GetOutputShapes(executable, output_shapes));
   // Get the materialized buffers for the argument tensors.
   TT_ASSIGN_OR_THROW(std::vector<DeviceBufferRef> argument_buffer_refs,
                      GetMaterialized(argument_tensors));
@@ -173,7 +236,7 @@ std::vector<at::Tensor> ExecuteCompiledModel(
   TT_ASSIGN_OR_THROW(
       std::vector<DeviceBufferRef> result_buffer_refs,
       EnqueueExecutable(executable, std::move(argument_buffer_refs),
-                        output_shapes));
+                        result_shapes_vec));
 
   auto num_outputs = result_buffer_refs.size();
   std::vector<at::Tensor> output_tensors;

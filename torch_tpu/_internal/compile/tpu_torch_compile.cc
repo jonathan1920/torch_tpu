@@ -184,53 +184,7 @@ std::vector<at::Tensor> PyExecuteCompiledModel(
     const SharedLoadedExecutable& executable,
     const std::vector<at::Tensor>& argument_tensors,
     const std::vector<std::vector<int64_t>>& output_shapes) {  // INT_VEC_OK
-  // Get the flattened output shapes from the executable.
-  // Executables can return tuples, we want individual tensor shapes.
-  TT_ASSIGN_OR_THROW(std::vector<xla::Shape> output_shapes_vec,
-                     executable->GetOutputShapes());
-  std::vector<const xla::Shape*> output_shapes_flat_vec;
-  for (const auto& output_shape : output_shapes_vec) {
-    xla::ShapeUtil::FlattenTupleShape(output_shape, output_shapes_flat_vec);
-  }
-
-  // Determine output shapes from the executable.
-  std::vector<Shape> result_shapes_vec;
-  result_shapes_vec.reserve(output_shapes_flat_vec.size());
-
-  if (!output_shapes.empty()) {
-    TT_CHECK_THROW(output_shapes.size() == output_shapes_flat_vec.size(),
-                   error::kInvalidArgument)
-        << "output shapes must be specified for all outputs or none, "
-        << "got " << output_shapes.size() << " output shapes for "
-        << output_shapes_flat_vec.size() << " output tensors";
-  }
-
-  for (size_t i = 0; i < output_shapes_flat_vec.size(); ++i) {
-    const xla::Shape* output_shape = output_shapes_flat_vec[i];
-    TT_ASSIGN_OR_THROW(Shape result_shape, MakeShape(*output_shape));
-    if (!output_shapes.empty()) {
-      const auto& shape = output_shapes[i];
-      TT_CHECK_THROW(shape.size() == result_shape.dimensions().size(),
-                     error::kInvalidArgument)
-          << "output shape number of dimensions must match the statically "
-             "inferred dimensions, got output shape dimensions "
-          << shape.size() << " and inferred dimensions "
-          << result_shape.dimensions().size() << " for output tensor " << i;
-
-      for (size_t j = 0; j < shape.size(); ++j) {
-        TT_CHECK_THROW(shape[j] <= result_shape.dimensions()[j],
-                       error::kInvalidArgument)
-            << "output shape dimension must not exceed the statically "
-               "inferred bound, got output shape "
-            << ToString(shape) << " and inferred shape "
-            << ToString(result_shape.dimensions());
-      }
-
-      result_shape.dimensions().assign(shape.begin(), shape.end());
-    }
-    result_shapes_vec.push_back(result_shape);
-  }
-  return ExecuteCompiledModel(executable, argument_tensors, result_shapes_vec);
+  return ExecuteCompiledModel(executable, argument_tensors, output_shapes);
 }
 
 bool PyGetMlirTracebacksEnabled() {

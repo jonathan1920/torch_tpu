@@ -25,7 +25,9 @@ from absl.testing import parameterized
 import torch
 import torch._inductor.config as inductor_config
 from torch_tpu import api
+from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
+from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.utils import log_utils
 
 from torch_tpu._internal.shims.xprof import traceme
@@ -168,6 +170,35 @@ class SchedOverheadTest(parameterized.TestCase):
     self.logs.append(
         f"No H2D: Run for sz={sz} took {time_per_step * 1000} ms per step,"
         f" tracing time: {cpu_total_time * 1000} ms, XProf URL: {xprof_url}"
+    )
+
+  @parameterized.parameters((1), (16), (1024))
+  def test_execute_queueing_overhead_benchmark(self, num_outputs):
+    device = get_torch_device()
+    with execution_mode.eager_mode(execution_mode.EagerMode.INTERNAL_DEFER_ALL):
+      x = torch.ones(10, device="cpu").to(device=device)
+      y = torch.ones(10, device="cpu").to(device=device)
+      z = x + y
+
+    result_tensors = [z] * num_outputs
+    argument_tensors = [x, y]
+
+    mlir = tpu_torch_compile.build_mlir(result_tensors, argument_tensors)
+    executable = tpu_torch_compile.compile_mlir(mlir)
+
+    # Warmup
+    for _ in range(_NUM_WARMUP_STEPS.value):
+      _ = tpu_torch_compile.execute(executable, [x, y])
+
+    loop_start_time = time.time()
+    for _ in range(_NUM_STEPS.value):
+      _ = tpu_torch_compile.execute(executable, [x, y])
+    time_per_step = (time.time() - loop_start_time) / _NUM_STEPS.value
+
+    avg_time_us = time_per_step * 1e6
+    self.logs.append(
+        f"PyExecuteCompiledModel overhead for {num_outputs} outputs:"
+        f" {avg_time_us:.2f} us"
     )
 
 

@@ -137,7 +137,8 @@ absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
 std::vector<at::Tensor> ExecuteCompiledModel(
     const SharedLoadedExecutable& executable,
     absl::Span<const at::Tensor> argument_tensors,
-    absl::Span<const Shape> output_shapes);
+    absl::Span<const std::vector<int64_t>>  // INT_VEC_OK
+        output_shapes);
 
 }  // namespace torch_tpu
 
