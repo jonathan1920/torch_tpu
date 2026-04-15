@@ -3441,8 +3441,6 @@ class TestOps(TorchTpuTestBase):
   def test_scatter(self):
     self.do_test_op(
         "scatter",
-        # TODO: fix CHLO failure.
-        check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
     )
