@@ -32,6 +32,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/unary.h"
 #include "torch_tpu/ops/unary_aten_kernels.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -43,7 +44,7 @@ namespace {
 
 // Sigmoid backward formula:
 // d(sigmoid(x))/dx = sigmoid(x) * (1 - sigmoid(x))
-// So, grad_input = grad_output * output * (1 - output),
+// So, grad_input = grad_output * conj(output * (1 - output)),
 // where output = sigmoid(x).
 absl::StatusOr<mlir::MlirOp> BuildSigmoidBackwardShlo(mlir::MlirOp grad_output,
                                                       mlir::MlirOp output) {
@@ -54,7 +55,11 @@ absl::StatusOr<mlir::MlirOp> BuildSigmoidBackwardShlo(mlir::MlirOp grad_output,
       MakeConstant(grad_output.getBuilder(), 1, element_type, type.getShape());
   auto sub = mlir::stablehlo::Subtract(one, output);
   auto mul = mlir::stablehlo::Mul(output, sub);
-  return mlir::stablehlo::Mul(grad_output, mul);
+
+  // For complex numbers, the gradient is grad_output * conj(f'(x))
+  TT_ASSIGN_OR_RETURN(auto conj_mul, BuildConjPhysicalShlo(mul));
+
+  return mlir::stablehlo::Mul(grad_output, conj_mul);
 }
 
 }  // namespace

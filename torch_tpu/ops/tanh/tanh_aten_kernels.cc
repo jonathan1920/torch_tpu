@@ -31,6 +31,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/unary.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
@@ -40,7 +41,7 @@ namespace torch_tpu {
 namespace {
 
 // Builds the StableHLO graph for the backward pass of tanh.
-// The formula is: grad_input = grad_output * (1 - output^2),
+// The formula is: grad_input = grad_output * conj(1 - output^2),
 // where output = tanh(input).
 absl::StatusOr<mlir::MlirOp> BuildTanhBackwardGradInputShlo(
     mlir::MlirOp grad_output_op, mlir::MlirOp output_op) {
@@ -51,8 +52,13 @@ absl::StatusOr<mlir::MlirOp> BuildTanhBackwardGradInputShlo(
   auto one_op = MakeConstantLike(output_op, 1.0);
   auto one_minus_output_squared =
       mlir::stablehlo::Subtract(one_op, output_squared);
-  // Calculate grad_output * (1.0 - output_squared)
-  return mlir::stablehlo::Mul(grad_output_op, one_minus_output_squared);
+
+  // For complex numbers, the gradient is grad_output * conj(1 - output^2)
+  TT_ASSIGN_OR_RETURN(auto conj_one_minus_output_squared,
+                      BuildConjPhysicalShlo(one_minus_output_squared));
+
+  // Calculate grad_output * conj(1.0 - output_squared)
+  return mlir::stablehlo::Mul(grad_output_op, conj_one_minus_output_squared);
 }
 }  // namespace
 
