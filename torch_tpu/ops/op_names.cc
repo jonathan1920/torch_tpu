@@ -1024,8 +1024,6 @@ std::string_view ToString(OpName op_name) {
       return "__rshift__.Scalar";
     case OpName::kRshiftTensor:
       return "__rshift__.Tensor";
-    case OpName::kRsqrOut:
-      return "rsqr.out";
     case OpName::kRsqrtOut:
       return "rsqrt.out";
     case OpName::kRsub:
@@ -1094,8 +1092,6 @@ std::string_view ToString(OpName op_name) {
       return "sort.values_stable";
     case OpName::kSplitWithSizesCopyOut:
       return "split_with_sizes_copy.out";
-    case OpName::kSqrOut:
-      return "sqr.out";
     case OpName::kSqrtOut:
       return "sqrt.out";
     case OpName::kSub:

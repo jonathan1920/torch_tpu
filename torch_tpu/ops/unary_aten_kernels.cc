@@ -227,10 +227,10 @@ TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kLog2Out, AtenLog2, BuildLog2Shlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kLogOut, AtenLog, BuildLogShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kReciprocalOut, AtenReciprocal,
                                  BuildReciprocalShlo);
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kRsqrOut, AtenRsqrt, BuildRsqrtShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kRsqrtOut, AtenRsqrt, BuildRsqrtShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kSinOut, AtenSin, BuildSinShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kSinhOut, AtenSinh, BuildSinhShlo);
-TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kSqrOut, AtenSqrt, BuildSqrtShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kSqrtOut, AtenSqrt, BuildSqrtShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kTanOut, AtenTan, BuildTanShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kTanhOut, AtenTanh, BuildTanhShlo);
 // go/keep-sorted end

@@ -80,6 +80,21 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   add it here.
   """
 
+  def test_rsqrt_complex_grad(self):
+    device = api.tpu_device()
+    x = torch.randn(
+        2, 2, dtype=torch.complex64, device=device, requires_grad=True
+    )
+    y = torch.rsqrt(x)
+    y.abs().sum().backward()
+    print(f"rsqrt(complex64) grad: {x.grad}")
+
+  def test_rsqrt_complex(self):
+    device = api.tpu_device()
+    x = torch.randn(2, 2, dtype=torch.complex64, device=device)
+    y = torch.rsqrt(x)
+    print(f"rsqrt(complex64) result: {y}")
+
   def test_gather_scalar_grad(self):
     del self  # self is unused in this test.
     device = api.tpu_device()
