@@ -48,6 +48,7 @@ from torch.utils import _pytree
 from torch_tpu._internal import export as torch_tpu_export
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.dynamic import compiler as dynamic_compiler
+from torch_tpu._internal.compile.fx_passes import mark_embedded_constants
 from torch_tpu._internal.utils import utils
 
 _ENABLE_COMPILED_MODE_DYNAMISM = flags.DEFINE_boolean(
@@ -363,7 +364,11 @@ class TpuBackend:
     GraphTransformObserver(
         graph_module, "decompose_auto_functionalized"
     ).apply_graph_pass(post_grad.decompose_auto_functionalized)
+    GraphTransformObserver(
+        graph_module, "mark_embedded_constants"
+    ).apply_graph_pass(mark_embedded_constants.apply)
 
+    graph_module.graph.lint()
     graph_module.recompile()
 
     # Emit FX graph artifact for tlparse when TORCH_TRACE is set.

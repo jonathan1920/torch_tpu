@@ -28,4 +28,13 @@ pytype_strict_library(
     ],
 )
 
+pytype_strict_library(
+    name = "mark_embedded_constants",
+    srcs = ["mark_embedded_constants.py"],
+    deps = [
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile:tpu_torch_compile",
+    ],
+)
+
 torch_tpu_package_end()
