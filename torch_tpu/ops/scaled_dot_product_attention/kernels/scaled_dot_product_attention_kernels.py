@@ -16,6 +16,7 @@
 
 import dataclasses
 import functools
+from typing import cast
 
 import jax
 import jax.nn as jnn
@@ -659,10 +660,11 @@ class SDPAKernelSplashAttention:
       block_size=_BLOCK_SIZE,
   ):
     """Forward implementation for Splash Attention."""
-    del attn_mask, dropout_p, scale, enable_gqa
+    del attn_mask, dropout_p, scale
 
     _, _, q_seq_len, head_dim_qk = query.shape
     _, _, kv_seq_len, _ = key.shape
+    _, _, _, v_head_dim = value.shape
     q = query / jnp.sqrt(head_dim_qk)
 
     # Splash Attention for a single batch expects 3D inputs:
@@ -699,15 +701,77 @@ class SDPAKernelSplashAttention:
     )
 
     def splash_attention_forward_single_batch(q, k, v):
-      return mha_kernel(q, k, v)
+      num_q_heads = q.shape[0]
+      num_kv_heads = k.shape[0]
+
+      if enable_gqa:
+        groups = num_kv_heads
+        query_heads_per_group = num_q_heads // groups
+        kv_heads_per_group = num_kv_heads // groups
+
+        q_grouped = q.reshape(
+            groups, query_heads_per_group, q_seq_len, head_dim_qk
+        )
+        k_grouped = k.reshape(
+            groups, kv_heads_per_group, kv_seq_len, head_dim_qk
+        )
+        v_grouped = v.reshape(
+            groups, kv_heads_per_group, kv_seq_len, v_head_dim
+        )
+
+        def process_group(q_g, k_g, v_g):
+          # q_g: [query_heads_per_group, q_seq_len, head_dim_qk]
+          # k_g: [kv_heads_per_group, kv_seq_len, head_dim_qk]
+          # v_g: [kv_heads_per_group, kv_seq_len, v_head_dim]
+
+          def process_head(q_h_sub):
+            # q_h_sub: [1, q_seq_len, head_dim_qk]
+            return mha_kernel(q_h_sub, k_g, v_g)
+
+          # 3rd inner vmap to force the inner kernel to see a static head
+          # dimension of exactly 1. This is required to bypass symbolic shape
+          # lookup crashes (KeyError/ValueError on _DimExpr) during Pallas
+          # lowering with dynamic shapes. Due to vmap vectorization, this
+          # shouldn't have any perf overhead.
+          q_g_expanded = q_g.reshape(
+              query_heads_per_group, 1, q_seq_len, head_dim_qk
+          )
+          # Cast the result to Array to reassure pytype.
+          out_heads = cast(jax.Array, jax.vmap(process_head)(q_g_expanded))
+          return out_heads.reshape(query_heads_per_group, q_seq_len, v_head_dim)
+
+        out_grouped = jax.vmap(process_group)(q_grouped, k_grouped, v_grouped)
+        return out_grouped.reshape(num_q_heads, q_seq_len, v_head_dim)
+      else:
+        return mha_kernel(q, k, v)
 
     out = jax.vmap(splash_attention_forward_single_batch)(q, key, value)
     return out
 
   @staticmethod
-  def get_shapes(dtype, input_sizes: InputSizes | None, block_size=_BLOCK_SIZE):
+  def get_shapes(
+      dtype,
+      input_sizes: InputSizes | None,
+      block_size=_BLOCK_SIZE,
+      enable_gqa=False,
+  ):
     """Determines input and output shapes."""
     if input_sizes is None:
+      constraints = (
+          "batch_size >= 1",
+          f"q_seq_len >= {block_size}",
+          f"kv_seq_len >= {block_size}",
+          f"mod(q_seq_len, {block_size}) == 0",
+          f"mod(kv_seq_len, {block_size}) == 0",
+          "qk_head_dim == v_head_dim",
+          "v_head_dim >= 128",
+      )
+      constraints += (
+          "mod(num_q_heads, num_kv_heads) == 0"
+          if enable_gqa
+          else "num_q_heads == num_kv_heads",
+      )
+
       (
           batch_size_sym,
           num_q_heads_sym,
@@ -724,16 +788,7 @@ class SDPAKernelSplashAttention:
               kv_seq_len,
               qk_head_dim,
               v_head_dim""",
-          constraints=(
-              "batch_size >= 1",
-              f"q_seq_len >= {block_size}",
-              f"kv_seq_len >= {block_size}",
-              f"mod(q_seq_len, {block_size}) == 0",
-              f"mod(kv_seq_len, {block_size}) == 0",
-              "qk_head_dim == v_head_dim",
-              "v_head_dim >= 128",
-              "num_q_heads == num_kv_heads",
-          ),
+          constraints=constraints,
       )
       q_shape = (
           batch_size_sym,
@@ -807,6 +862,7 @@ class SDPAKernelSplashAttention:
         dtype,
         input_sizes,
         block_size,
+        enable_gqa=kwargs.get("enable_gqa", False),
     )
 
     f_p = functools.partial(

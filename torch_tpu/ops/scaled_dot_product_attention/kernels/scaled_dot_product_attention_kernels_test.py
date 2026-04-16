@@ -181,6 +181,40 @@ class ScaledDotProductAttentionGenerateTest(parameterized.TestCase):
         dtype=dtype,
     )
 
+  @parameterized.product(
+      is_causal=[True, False],
+      dtype=[jnp.float32, jnp.bfloat16],
+      kv_heads=[1, 2],
+  )
+  def test_forward_export_splasgqa(self, is_causal, dtype, kv_heads):
+    # pylint: disable-next=invalid-name
+    self.Hq = 8  # Number of Q heads.
+    self.H = kv_heads  # Number of KV heads.
+    enable_gqa = (self.Hq / self.H) > 1
+    input_sizes = self.get_input_sizes()
+
+    logging.info(
+        "Running test_forward_export_splash_gqa with dtype=%s is_causal=%s &"
+        " enable_gqa=%d",
+        dtype,
+        is_causal,
+        enable_gqa,
+    )
+    self._test_kernel(
+        functools.partial(
+            kernels.SDPAKernelReferenceTorch.forward,
+            is_causal=is_causal,
+        ),
+        kernels.SDPAKernelSplashAttention.export_forward(
+            dtype=dtype,
+            is_causal=is_causal,
+            input_sizes=input_sizes,
+            enable_gqa=enable_gqa,
+        ).call,
+        kernel_type="splash",
+        dtype=dtype,
+    )
+
   def test_backward_export(self):
     input_sizes = self.get_input_sizes()
 
