@@ -26,6 +26,10 @@ pytype_strict_library(
     srcs = [
         "flash_attention.py",
         "scaled_dot_product_attention_kernels.py",
+        "splash/base.py",
+        "splash/splash_attention.py",
+        "splash/splash_attention_mask.py",
+        "splash/splash_attention_mask_info.py",
     ],
     tags = [
         "ignore_for_dep=third_party.py.jax._src.pallas.core",
@@ -60,6 +64,7 @@ torch_tpu_py_test(
     name = "scaled_dot_product_attention_kernels_test",
     srcs = ["scaled_dot_product_attention_kernels_test.py"],
     notest_oss = "Disabled during switch from opt-in to opt-out",
+    shard_count = 10,
     tags = [
         # TODO(b/493270350): Investigate if the test should be enabled for asan.
         "noasan",
@@ -71,6 +76,7 @@ torch_tpu_py_test(
         ":scaled_dot_product_attention_kernels",
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
         "@pypi//jax",
         "@pypi//numpy",
     ],

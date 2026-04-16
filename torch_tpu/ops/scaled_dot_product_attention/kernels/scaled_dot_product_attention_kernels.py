@@ -24,11 +24,13 @@ import numpy as np
 import torch
 
 from . import flash_attention
+from .splash import splash_attention
 
 try:
   # Works whenever we have an updated jaxlib, i.e. g3 and when oss goes out.
   import jax.experimental.pallas  # pylint: disable=g-import-not-at-top
 
+  pallas_costEstimate = jax.experimental.pallas.CostEstimate
   pallas_export_experimental = (
       jax.experimental.pallas.pallas_export_experimental
   )
@@ -37,6 +39,7 @@ except AttributeError:
   import jax._src.pallas.core as pallas_core  # pylint: disable=g-import-not-at-top
 
   pallas_export_experimental = pallas_core.pallas_export_experimental
+  pallas_costEstimate = pallas_core.CostEstimate
 
 DEFAULT_MASKED_VALUE = -1e30
 _BLOCK_SIZE = 512
@@ -60,10 +63,14 @@ class InputSizes:
 
 # Convert JAX arrays to Torch tensors.
 def to_torch(x):
+  if hasattr(x, "dtype") and x.dtype == jnp.bfloat16:
+    return torch.from_numpy(np.array(x, dtype=np.float32)).to(torch.bfloat16)
   return torch.from_numpy(np.array(x))
 
 
 def to_jax(x):
+  if hasattr(x, "dtype") and x.dtype == torch.bfloat16:
+    return jnp.array(x.to(torch.float32).numpy()).astype(jnp.bfloat16)
   return jnp.array(x.numpy())
 
 
@@ -629,3 +636,188 @@ class SDPAKernelFlashAttention:
       return jax.export.export(jax.jit(f_p), platforms=["tpu"])(
           out_dtype, q_dtype, k_dtype, v_dtype
       )
+
+########################################################################
+## Splash Attention Kernels ##
+########################################################################
+
+
+class SDPAKernelSplashAttention:
+  """Splash Attention implementation of SDPA."""
+
+  @classmethod
+  def forward(
+      cls,
+      query,
+      key,
+      value,
+      attn_mask=None,
+      dropout_p=0.0,
+      is_causal=False,
+      scale=None,
+      enable_gqa=False,
+      block_size=_BLOCK_SIZE,
+  ):
+    """Forward implementation for Splash Attention."""
+    del attn_mask, dropout_p, scale, enable_gqa
+
+    _, _, q_seq_len, head_dim_qk = query.shape
+    _, _, kv_seq_len, _ = key.shape
+    q = query / jnp.sqrt(head_dim_qk)
+
+    # Splash Attention for a single batch expects 3D inputs:
+    #   [num_heads, seq_len, head_dim]
+    # We vmap over the batch dimension (axis 0).
+
+    mask = (
+        splash_attention.mask_lib.CausalMask((q_seq_len, kv_seq_len))
+        if is_causal
+        else splash_attention.mask_lib.FullMask((q_seq_len, kv_seq_len))
+    )
+
+    config = splash_attention.SplashConfig(
+        block_q=block_size,
+        block_kv=block_size,
+        block_kv_compute=block_size,
+        block_q_dkv=block_size,
+        block_kv_dkv=block_size,
+        block_kv_dkv_compute=block_size,
+        block_q_dq=block_size,
+        block_kv_dq=block_size,
+        # The cost estimate is added to avoid the computations of the default
+        # cost estimate in Splash Attention kernel, since those only
+        # work for static shapes.
+        fwd_cost_estimate=pallas_costEstimate(
+            flops=0,
+            transcendentals=0,
+            bytes_accessed=0,
+        ),
+    )
+
+    mha_kernel = splash_attention.make_splash_mha_single_device(
+        mask, config=config, mask_value=DEFAULT_MASKED_VALUE
+    )
+
+    def splash_attention_forward_single_batch(q, k, v):
+      return mha_kernel(q, k, v)
+
+    out = jax.vmap(splash_attention_forward_single_batch)(q, key, value)
+    return out
+
+  @staticmethod
+  def get_shapes(dtype, input_sizes: InputSizes | None, block_size=_BLOCK_SIZE):
+    """Determines input and output shapes."""
+    if input_sizes is None:
+      (
+          batch_size_sym,
+          num_q_heads_sym,
+          num_kv_heads_sym,
+          q_seq_len_sym,
+          kv_seq_len_sym,
+          qk_head_dim_sym,
+          v_head_dim_sym,
+      ) = jax.export.symbolic_shape(
+          """batch_size,
+              num_q_heads,
+              num_kv_heads,
+              q_seq_len,
+              kv_seq_len,
+              qk_head_dim,
+              v_head_dim""",
+          constraints=(
+              "batch_size >= 1",
+              f"q_seq_len >= {block_size}",
+              f"kv_seq_len >= {block_size}",
+              f"mod(q_seq_len, {block_size}) == 0",
+              f"mod(kv_seq_len, {block_size}) == 0",
+              "qk_head_dim == v_head_dim",
+              "v_head_dim >= 128",
+              "num_q_heads == num_kv_heads",
+          ),
+      )
+      q_shape = (
+          batch_size_sym,
+          num_q_heads_sym,
+          q_seq_len_sym,
+          qk_head_dim_sym,
+      )
+      k_shape = (
+          batch_size_sym,
+          num_kv_heads_sym,
+          kv_seq_len_sym,
+          qk_head_dim_sym,
+      )
+      v_shape = (
+          batch_size_sym,
+          num_kv_heads_sym,
+          kv_seq_len_sym,
+          v_head_dim_sym,
+      )
+      out_shape = (
+          batch_size_sym,
+          num_q_heads_sym,
+          q_seq_len_sym,
+          v_head_dim_sym,
+      )
+    else:
+      q_shape = (
+          input_sizes.batch_size,
+          input_sizes.q_num_heads,
+          input_sizes.q_seq_len,
+          input_sizes.qk_head_dim,
+      )
+      k_shape = (
+          input_sizes.batch_size,
+          input_sizes.kv_num_heads,
+          input_sizes.kv_seq_len,
+          input_sizes.qk_head_dim,
+      )
+      v_shape = (
+          input_sizes.batch_size,
+          input_sizes.kv_num_heads,
+          input_sizes.kv_seq_len,
+          input_sizes.v_head_dim,
+      )
+      out_shape = (
+          input_sizes.batch_size,
+          input_sizes.q_num_heads,
+          input_sizes.q_seq_len,
+          input_sizes.v_head_dim,
+      )
+
+    q_dtype = jax.ShapeDtypeStruct(q_shape, dtype)
+    k_dtype = jax.ShapeDtypeStruct(k_shape, dtype)
+    v_dtype = jax.ShapeDtypeStruct(v_shape, dtype)
+    grad_out_dtype = jax.ShapeDtypeStruct(out_shape, dtype)
+
+    return q_dtype, k_dtype, v_dtype, grad_out_dtype
+
+  @classmethod
+  def export_forward(
+      cls,
+      *,
+      dtype,
+      is_causal,
+      input_sizes: InputSizes,
+      block_size=_BLOCK_SIZE,
+      **kwargs,
+  ):
+    """Exports Splash Attention forward to MLIR."""
+    q_dtype, k_dtype, v_dtype, _ = cls.get_shapes(
+        dtype,
+        input_sizes,
+        block_size,
+    )
+
+    f_p = functools.partial(
+        cls.forward, is_causal=is_causal, block_size=block_size, **kwargs
+    )
+    with pallas_export_experimental(dynamic_shapes=True):
+      return jax.export.export(jax.jit(f_p), platforms=["tpu"])(
+          q_dtype, k_dtype, v_dtype
+      )
+
+  @classmethod
+  def export_backward(cls, *, dtype, is_causal, **kwargs):
+    """Exports Splash Attention backward to MLIR."""
+    raise NotImplementedError("Splash Attention backward is not implemented.")

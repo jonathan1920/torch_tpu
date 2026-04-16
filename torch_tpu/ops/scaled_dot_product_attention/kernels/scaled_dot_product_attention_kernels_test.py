@@ -15,6 +15,7 @@
 import functools
 from absl import logging
 from absl.testing import absltest
+from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -27,7 +28,7 @@ KERNEL_TYPE = "flash"
 USE_DYNAMIC_KERNEL = True
 
 
-class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
+class ScaledDotProductAttentionGenerateTest(parameterized.TestCase):
   # pylint: disable=invalid-name
   B = 16
   Hq = 16
@@ -38,36 +39,36 @@ class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
   Ev = E
   # pylint: enable=invalid-name
 
-  def _test_kernel(self, base_fn, test_fn, kernel_type):
-    if kernel_type == "flash":
+  def _test_kernel(self, base_fn, test_fn, kernel_type, dtype=jnp.float32):
+    if kernel_type in ["flash", "splash"]:
       if ALL_ONES_Q:
-        q = jnp.ones(shape=(self.B, self.Hq, self.L, self.E), dtype=jnp.float32)
+        q = jnp.ones(shape=(self.B, self.Hq, self.L, self.E), dtype=dtype)
       else:
         q = jax.random.normal(
             jax.random.PRNGKey(0), shape=(self.B, self.Hq, self.L, self.E)
-        )
+        ).astype(dtype)
       if ALL_ONES_K:
-        k = jnp.ones(shape=(self.B, self.H, self.S, self.E), dtype=jnp.float32)
+        k = jnp.ones(shape=(self.B, self.H, self.S, self.E), dtype=dtype)
       else:
         k = jax.random.normal(
             jax.random.PRNGKey(1), shape=(self.B, self.H, self.S, self.E)
-        )
+        ).astype(dtype)
       if ALL_ONES_V:
-        v = jnp.ones(shape=(self.B, self.H, self.S, self.Ev), dtype=jnp.float32)
+        v = jnp.ones(shape=(self.B, self.H, self.S, self.Ev), dtype=dtype)
       else:
         v = jax.random.normal(
             jax.random.PRNGKey(2), shape=(self.B, self.H, self.S, self.Ev)
-        )
+        ).astype(dtype)
     else:
       q = jax.random.normal(
           jax.random.PRNGKey(0), shape=(self.B, self.Hq, self.L, self.E)
-      )
+      ).astype(dtype)
       k = jax.random.normal(
           jax.random.PRNGKey(1), shape=(self.B, self.H, self.S, self.E)
-      )
+      ).astype(dtype)
       v = jax.random.normal(
           jax.random.PRNGKey(2), shape=(self.B, self.H, self.S, self.Ev)
-      )
+      ).astype(dtype)
 
     out_base = base_fn(q, k, v)
     out_test = test_fn(q, k, v)
@@ -148,6 +149,36 @@ class ScaledDotProductAttentionGenerateTest(absltest.TestCase):
             is_causal=True,
         ),
         kernel_type="ref",
+    )
+
+  @parameterized.parameters(
+      (True, jnp.float32),
+      (False, jnp.float32),
+      (True, jnp.bfloat16),
+      (False, jnp.bfloat16),
+  )
+  def test_forward_export_splash(self, is_causal, dtype):
+    # pylint: disable-next=invalid-name
+    self.H = self.Hq  # Splash only supports MHA
+    input_sizes = self.get_input_sizes()
+
+    logging.info(
+        "Running test_forward_export_splash with dtype=%s is_causal=%s",
+        dtype,
+        is_causal,
+    )
+    self._test_kernel(
+        functools.partial(
+            kernels.SDPAKernelReferenceTorch.forward,
+            is_causal=is_causal,
+        ),
+        kernels.SDPAKernelSplashAttention.export_forward(
+            dtype=dtype,
+            is_causal=is_causal,
+            input_sizes=input_sizes,
+        ).call,
+        kernel_type="splash",
+        dtype=dtype,
     )
 
   def test_backward_export(self):
