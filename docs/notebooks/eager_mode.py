@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # pylint: skip-file
-"""This notebook explains the Fused Eager execution model of TorchTPU."""
+"""This notebook explains the execution modes of TorchTPU."""
 
 import marimo
 
@@ -30,110 +30,9 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    # **Fused Eager**
+    # **Eager Mode and Execution Control**
 
-    This guide provides an overview of TorchTPU's most fundamental architectural concept: **Fused Eager**. Fused Eager enables high-performance execution by grouping multiple operations together, allowing the XLA compiler to optimize across operation boundaries.
-    """)
-  return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-  mo.md(r"""
-    ## **Eager vs. Fused Eager**
-
-    ### **Strict Eager Execution (CUDA/CPU)**
-    In a standard CPU or CUDA backend, operations are executed one by one as they are called. When you execute `z = x + y`, the backend:
-    1. Immediately dispatches a kernel to perform the addition.
-    2. The result is available as soon as the kernel finishes running.
-
-    ### **Fused Eager (TorchTPU)**
-    TorchTPU defaults to **Fused Eager**. Instead of running every operation individually, it:
-    1. **Fusion:** Records operations to be executed together as a group.
-    2. **Optimization:** Uses the XLA compiler to optimize the entire group of operations at once.
-    3. **Efficient Execution:** Dispatches highly optimized hardware kernels that combine multiple logical operations, reducing memory traffic and maximizing TPU hardware utilization.
-    """)
-  return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-  mo.md(r"""
-    ## **Factory Methods: How Tensors Are Created**
-
-    Different tensor creation methods produce different internal behaviors:
-
-    | Method | Behavior |
-    | :--- | :--- |
-    | `torch.ones(...)`, `torch.zeros(...)`, `torch.arange(...)` | These are fused into subsequent operations. |
-    | `torch.empty(...)` | Starts in the **Fused Eager** state. |
-    | `cpu_tensor.to(device)` | Copies data from CPU to TPU HBM immediately. |
-    """)
-  return
-
-
-@app.cell
-def factory_demo():
-  import torch
-  from torch_tpu import api
-  import tpu_utils
-
-  device = api.tpu_device()
-
-  # This is fused — no physical TPU compute is used yet
-  t1 = torch.ones((10, 10), device="tpu", dtype=torch.bfloat16)
-  print(f"t1 shape: {t1.shape}, dtype: {t1.dtype}")
-  print("  (Fused — no TPU compute has happened yet)")
-
-  # This is also fused — still no hardware execution
-  t2 = torch.arange(100, device="tpu", dtype=torch.bfloat16)
-  t3 = t1 + t2.reshape(10, 10)
-  print(f"\nt3 shape: {t3.shape}")
-  print("  (Still fused — the operations are waiting to be optimized)")
-
-  # Transferring to CPU triggers the execution of the fused operations
-  result = t3.cpu()
-  print(f"\nresult shape: {result.shape}")
-  print(
-      "  (Executed — fused operations were optimized and executed, data copied"
-      " to CPU)"
-  )
-  return (torch,)
-
-
-@app.cell
-def item_demo(torch):
-  print("\n--- .item() Execution Demo ---")
-
-  # Create two scalar tensors
-  v1 = torch.tensor(5.0, device="tpu", dtype=torch.bfloat16)
-  v2 = torch.tensor(3.0, device="tpu", dtype=torch.bfloat16)
-  print("  (Scalars created — fused)")
-
-  # Perform a comparison
-  cond = v1 > v2
-  print("  (Comparison recorded — fused)")
-
-  # Using .item() triggers execution to get the python boolean
-  is_greater = cond.item()
-  print(f"  (Executed via .item() — Result: {is_greater})")
-
-  # Using the tensor in an `if` statement implicitly triggers execution
-  print("  (Evaluating `if cond:`...)")
-  if cond:
-    print("  (Executed implicitly via control flow)")
-  return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-  mo.md(r"""
-    ## **View Operations**
-
-    Many operations like `view()`, `transpose()`, and `permute()` are fused with subsequent operations.
-
-    > [!WARNING]
-    > **Performance Impact of Views:** While views themselves are efficient, they can influence how the XLA compiler fuses subsequent operations. If a view dramatically changes the memory layout, it may require the compiler to insert a layout transformation before the next computationally intensive kernel (like a `matmul` or `conv`).
+    This guide provides an overview of TorchTPU's execution modes. TorchTPU supports multiple ways to dispatch operations to the hardware, ranging from standard eager execution to highly optimized fused execution.
     """)
   return
 
@@ -143,39 +42,57 @@ def _(mo):
   mo.md(r"""
     ## **Execution Modes**
 
-    While **Fused Eager** is the default for performance, TorchTPU provides other execution modes for debugging. If your model produces `NaN`s or `Inf`s, Fused Eager can make debugging difficult because the error only surfaces when the fused block is executed — not necessarily at the exact line that caused it.
+    TorchTPU provides three primary execution modes. By default, it operates in **Strict Eager** mode, which behaves similarly to standard PyTorch on CUDA.
 
-    You can change the execution mode using `eager_mode`:
+    | Mode | Constant | Description |
+    | :--- | :--- | :--- |
+    | **Strict Eager** | `EagerMode.DEFER_NEVER` | **The default mode.** Operations are dispatched to the hardware immediately. Simplest for debugging and aligns with CUDA behavior. |
+    | **Fused Eager** | `EagerMode.DEFER_AND_FUSE` | **Optimized mode.** Groups multiple operations together, allowing the XLA compiler to optimize across operation boundaries for high performance. |
+    | **Debug Eager** | `EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING` | **Synchronous mode.** Executes operations immediately and waits for completion. Best for pinpointing exactly which line caused a hardware error. |
+
+    ### **Switching Modes**
+    You can change the execution mode globally or locally using the `eager_mode` context manager:
 
     ```python
     from torch_tpu._internal import execution_mode as em
 
-    # Force every operation to execute immediately for easier debugging
-    with em.eager_mode(em.EagerMode.DEFER_NEVER):
-        # Now you can pinpoint the exact line where an error occurs
+    # Enable Fused Eager for a specific block of code
+    with em.eager_mode(em.EagerMode.DEFER_AND_FUSE):
         output = model(input_data)
     ```
-
-    | Mode | Concept | Description |
-    | :--- | :--- | :--- |
-    | `EagerMode.DEFER_AND_FUSE` | **Fused Eager** | **The default mode.** Fuses operations and uses aggressive XLA optimizations for high performance. |
-    | `EagerMode.DEFER_NEVER` | **Strict Eager** | Every operation is dispatched immediately. Useful for basic debugging. |
-    | `EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING` | **Debug Eager** | Executes operations immediately and waits for completion. Best for pinpointing errors. |
-
-    > [!WARNING]
-    > **Strict Eager** and **Debug Eager** modes are significantly slower because they eliminate compiler fusions. Use them only for debugging.
     """)
   return
 
 
 @app.cell
-def modes_demo(torch):
+def init():
+  import torch
+  from torch_tpu import api
   from torch_tpu._internal import execution_mode as em
+
+  # Standard hardware initialization
+  api.tpu_device()
+  return em, torch
+
+
+@app.cell(hide_code=True)
+def _(mo):
+  mo.md(r"""
+    ## **Demonstrating the Difference**
+
+    In **Strict Eager** (default), operations happen one by one. In **Fused Eager**, operations are recorded into a graph and only executed when necessary (materialization) or when a large enough block is formed.
+    """)
+  return
+
+
+@app.cell
+def modes_demo(em, torch):
   from torch_tpu._internal.sync import sync
 
   def check_fusion(mode_name, mode):
     print(f"--- Mode: {mode_name} ---")
     with em.eager_mode(mode):
+      # Perform a simple calculation
       x = torch.ones((2, 2), device="tpu")
       y = x + 1
       z = y * 2
@@ -186,29 +103,56 @@ def modes_demo(torch):
       has_add = "stablehlo.add" in mlir
       has_mul = "stablehlo.multiply" in mlir
 
-      print(f"  Graph contains fused 'add': {has_add}")
-      print(f"  Graph contains fused 'multiply': {has_mul}")
-      if has_add and has_mul:
-        print("  Result: Operations are FUSED into a single graph.")
+      print(f"  Graph contains 'add' op: {has_add}")
+      print(f"  Graph contains 'multiply' op: {has_mul}")
+
+      if mode == em.EagerMode.DEFER_AND_FUSE:
+        print(
+            "  Status: Operations are FUSED into a single graph for"
+            " optimization."
+        )
       else:
-        print("  Result: Operations were EXECUTED immediately (not fused).")
+        print(
+            "  Status: Operations were DISPATCHED immediately (standard eager)."
+        )
     print()
 
-  check_fusion("Fused Eager (DEFER_AND_FUSE)", em.EagerMode.DEFER_AND_FUSE)
+  # Default Behavior
   check_fusion("Strict Eager (DEFER_NEVER)", em.EagerMode.DEFER_NEVER)
+
+  # Performance Behavior
+  check_fusion("Fused Eager (DEFER_AND_FUSE)", em.EagerMode.DEFER_AND_FUSE)
+
   return
 
 
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## **Why Fused Eager Matters**
+    ## **Why Use Fused Eager?**
 
-    **Fused Eager** is TorchTPU's key performance advantage:
+    While **Strict Eager** is the most intuitive for development, **Fused Eager** (`DEFER_AND_FUSE`) provides significant performance advantages for production training:
 
-    1. **Fusion & Optimization:** The XLA compiler optimizes groups of operations together, enabling aggressive fusion that reduces memory traffic and maximizes TPU utilization.
-    2. **Memory Efficiency:** Fusing operations allows the compiler to optimize intermediate memory usage, often eliminating the need to store intermediate tensors.
-    3. **Reduced Overhead:** Grouping operations reduces the overhead of dispatching many small kernels, leading to better end-to-end performance.
+    1. **Fusion & Optimization:** Grouping operations allows XLA to reduce memory traffic by fusing multiple logical steps (like a `Linear` layer followed by a `ReLU`) into a single hardware kernel.
+    2. **Memory Efficiency:** Intermediate results in a fused block often don't need to be stored in physical TPU memory (HBM), reducing the memory footprint.
+    3. **Reduced Dispatch Overhead:** It minimizes the "chatter" between the CPU and TPU by sending larger, more meaningful chunks of work at once.
+
+    > [!TIP]
+    > For the absolute best performance, consider using `torch.compile(model, backend="tpu")`, which uses an even more aggressive Ahead-of-Time (AOT) compilation strategy.
+    """)
+  return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+  mo.md(r"""
+    ## **Factory Methods and Materialization**
+
+    Even in **Fused Eager** mode, certain operations trigger immediate execution (materialization):
+
+    *   **`.item()`, `.cpu()`, `.tolist()`:** These force the data to be synchronized with the host CPU.
+    *   **`print(tensor)`:** To display values, the data must be materialized.
+    *   **Data-dependent control flow:** `if (tensor > 0).all():` implicitly materializes the tensor.
     """)
   return
 
