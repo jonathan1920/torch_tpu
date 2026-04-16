@@ -88,14 +88,12 @@
 //     executed. It contains a list of DeviceBufferRefs that represent the
 //     inputs to the operation.
 //
-// While "materialized" and "deferred" are the most common states, two special
-// "dataless" cases also exist:
-//   - A tensor that represents zero bytes, e.g. `torch.tensor([])`, doesn't
-//     need either a physical buffer or a deferred operation; it's just nothing.
-//   - To support full-graph compiled mode, we know the shapes and dtypes of
-//     inputs in advance, but we need to trace the FX graph without real data.
-//     For this, we define a "placeholder" state, which represents a tensor that
-//     will be provided in the future when the compiled function is executed.
+// While "materialized" and "deferred" are the most common states, one special
+// "dataless" case also exists. To support full-graph compiled mode, we know the
+// shapes and dtypes of inputs in advance, but we need to trace the FX graph
+// without real data. For this, we define a "placeholder" state, which
+// represents a tensor that will be provided in the future when the compiled
+// function is executed.
 //
 // This is generally a low-level implementation detail that should be invisible
 // to most users of PyTorch or libtorch; the at::Tensors at the surface level
@@ -109,10 +107,8 @@
 namespace torch_tpu {
 
 // The current evaluation state of a referenced buffer in a DeviceBufferList.
-// Valid state transitions are:
-//   kDeferred -> kMaterialized: executing a deferred op.
-//   kZeroSize -> kMaterialized: providing a zero-sized PjRtBuffer (pointless,
-//                               but harmless).
+// The only valid state transition is kDeferred -> kMaterialized, which occurs
+// when a DeferredOp is executed.
 // kMaterialized is an absorbing state. Once the data exists, it is immutable.
 // kPlaceholder DeviceBufferRefs cannot change state; they can be used for
 // compilation, but later executions will use different kMaterialized buffers.
@@ -121,8 +117,6 @@ enum class DeviceBufferRefState {
   kMaterialized,
   // The reference is to a deferred operation that has not been applied.
   kDeferred,
-  // The reference represents a zero-element tensor.
-  kZeroSize,
   // The reference represents a tensor for the purposes of compiled mode, but
   // doesn't actually have any data on-device. All compiled mode leaf inputs
   // must be placeholders, but eager mode tensors should never be placeholders.
@@ -662,9 +656,9 @@ class MaterializedBuffers {
 //
 // Unlike CUDA, where one c10::DataPtr is always a physical data buffer
 // (possibly containing uninitialized memory), a torch_tpu DeviceBufferList
-// can represent a set of bufferless tensors (either zero-sized or compiled mode
-// placeholders), a deferred operation (no data, but an operation to compute
-// it), or a set of materialized tensors (with PjRtBuffers).
+// can represent a set of bufferless tensors (compiled mode placeholders), a
+// deferred operation (no data, but an operation to compute it), or a set of
+// materialized tensors (with PjRtBuffers).
 //
 // While CUDA can allocate a buffer of uninitialized memory, XLA requires
 // specifying buffer values on initialization; accordingly, a DeviceBufferList
@@ -746,8 +740,8 @@ class DeviceBufferList {
   static absl::StatusOr<DeviceBufferRef> CreateEmpty(
       Dimensions dimensions, mlir::ElementType element_type);
 
-  // Creates a DeviceBufferList that has no data because it is zero-sized.
-  // Errors if the dimensions do not have a 0 dimension.
+  // Creates a DeviceBufferList with a constant value of "no data".
+  // Equivalent to CreateConstant with an empty cpu_tensor_data vector.
   static absl::StatusOr<DeviceBufferRef> CreateZeroSize(
       Dimensions dimensions, mlir::ElementType element_type);
 
@@ -809,17 +803,6 @@ class DeviceBufferList {
 
   // The current state of the indexed buffer, as an enum.
   [[nodiscard]] DeviceBufferRefState state(int64_t index) const;
-
-  [[nodiscard]] bool IsMaterializedOrZeroState() const {
-    for (auto i = 0; i < size(); ++i) {
-      auto s = state(i);
-      if (s != DeviceBufferRefState::kMaterialized &&
-          s != DeviceBufferRefState::kZeroSize) {
-        return false;
-      }
-    }
-    return true;
-  }
 
   // The logical dimensions of the indexed buffer.
   [[nodiscard]] absl::Span<const int64_t> dimensions(int64_t index) const;
@@ -921,12 +904,8 @@ class DeviceBufferList {
   // DeviceBufferListss should only ever be accessed via DeviceBufferRef, which
   // is returned by the Create* functions.
   //
-  // If dimensions has a 0 dimension, the buffer is zero-sized, meaning that
-  // there is no data to contain. This will be used as a constant in a
-  // deferred graph, and no actual PjRtBuffer is necessary to hold zero data.
-  //
-  // Otherwise, the buffer is a compiled mode placeholder, representing data
-  // that the compiled executable will expect to be provided as an argument.
+  // The buffer is a compiled mode placeholder, representing data that the
+  // compiled executable will expect to be provided as an argument.
   DeviceBufferList(Dimensions dimensions, const mlir::ElementType element_type)
       : subgraph_(nullptr) {
     shapes_.emplace_back(std::move(dimensions), element_type);
@@ -936,7 +915,7 @@ class DeviceBufferList {
   }
 
   // The data backing the DeviceBufferList.
-  //   std::monostate: all zero-sized and/or placeholder buffers.
+  //   std::monostate: compiled mode placeholder buffers.
   //   DeferredOp: a deferred operation, with no actual data but an op_builder
   //     to materialize it when needed.
   //   MaterializedBuffers: materialized buffers, which may or may not yet be

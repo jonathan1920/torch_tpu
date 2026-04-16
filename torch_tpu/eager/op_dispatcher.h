@@ -215,9 +215,7 @@ namespace internal {
 void SetOpDispatchFailure(std::string op_base_name,
                           std::string failure_message);
 
-// Dispatches an op. If **all** outputs are zero-sized, new DeviceBufferRefs
-// will be returned immediately. Otherwise, the op will be dispatched as normal.
-//
+// Dispatches an op.
 // Don't use this directly when defining ops. Use DispatchOp<kNumInputs,
 // kNumOutputs> instead.
 absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(

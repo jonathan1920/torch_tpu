@@ -97,8 +97,8 @@ TEST(SplitUtilsTest, ApplySplitPoints) {
   ASSERT_THAT(traversals[0].outputs(), testing::SizeIs(1));
   EXPECT_EQ(traversals[0].outputs()[0], ref_b);
 
-  ASSERT_THAT(traversals[1].inputs(), testing::SizeIs(1));
-  EXPECT_EQ(traversals[1].inputs()[0], ref_b);
+  ASSERT_THAT(traversals[1].arguments(), testing::SizeIs(1));
+  EXPECT_EQ(traversals[1].arguments()[0], ref_b);
   EXPECT_THAT(traversals[1].execution_order(), testing::SizeIs(1));
   ASSERT_THAT(traversals[1].outputs(), testing::SizeIs(1));
   EXPECT_EQ(traversals[1].outputs()[0], ref_d);

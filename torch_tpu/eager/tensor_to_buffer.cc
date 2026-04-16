@@ -198,7 +198,7 @@ absl::Status AssignBufferToAtTensor(DeviceBufferRef result_buf,
                       ConvertTo<mlir::ElementType>(tensor.scalar_type()));
   ABSL_CHECK_EQ(result_buf.element_type(), tensor_element_type);  // CRASH_OK
 
-  if (result_buf.state() == DeviceBufferRefState::kZeroSize) {
+  if (result_buf.num_elements() == 0) {
     // Writing 0 elements is a no-op.
     return absl::OkStatus();
   }
@@ -379,9 +379,9 @@ absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(
   // of nothing is valid.
   if (tensor.numel() < 1) {
     ABSL_VLOG(1) << "[GetBufferFromAtTensor] Tensor is a zero-sized view, "
-                    "returning empty buffer.";
-    return DeviceBufferList::CreateEmpty(CopyIntVector(tensor.sizes()),
-                                         tensor_element_type);
+                    "returning zero-sized constant.";
+    return DeviceBufferList::CreateZeroSize(CopyIntVector(tensor.sizes()),
+                                            tensor_element_type);
   }
 
   // We need to apply a view decomposition.

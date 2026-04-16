@@ -205,16 +205,35 @@ class SyncTest(absltest.TestCase):
 
     self.assertTrue(sync.is_ready(x))
 
-  def test_zero_size_always_ready(self):
-    x = torch.ones(1024, 0, 1024, device=api.tpu_device())
-    self.assertTrue(sync.is_materialized(x))
-    self.assertTrue(sync.is_ready(x))
+  def test_sync_with_zero_sized_tensor_on_tpu(self):
+    # Create a zero-sized tensor on the TPU.
+    tensor = torch.ones(2, 0, 3, dtype=torch.int32, device=api.tpu_device())
 
-  def test_sync_with_empty_tensor(self):
-    tensor = torch.ones(2, 0, 3, dtype=torch.int32, device="cpu")
-    tensor_tpu = tensor.to(api.tpu_device())
-    # Should not raise error.
-    sync.synchronize(tensor_tpu, wait=True)
+    # It is in a deferred state (constant zero-sized).
+    self.assertFalse(sync.is_materialized(tensor))
+    self.assertFalse(sync.is_ready(tensor))
+
+    sync.synchronize(tensor, wait=True)
+
+    # After synchronization, it should be materialized and ready.
+    self.assertTrue(sync.is_materialized(tensor))
+    self.assertTrue(sync.is_ready(tensor))
+
+  def test_sync_with_materialized_zero_sized_tensor(self):
+    # Create a zero-sized tensor on the CPU.
+    tensor_cpu = torch.ones(2, 0, 3, dtype=torch.int32, device="cpu")
+
+    # Send it to the TPU. This should create a deferred zero-sized constant
+    # instead of actually transferring 0 bytes.
+    tensor = tensor_cpu.to(api.tpu_device())
+    self.assertFalse(sync.is_materialized(tensor))
+    self.assertFalse(sync.is_ready(tensor))
+
+    sync.synchronize(tensor, wait=True)
+
+    # After synchronization, it should be materialized and ready.
+    self.assertTrue(sync.is_materialized(tensor))
+    self.assertTrue(sync.is_ready(tensor))
 
   def test_sync_list_with_empty_and_non_empty(self):
     x = torch.ones(10, device=api.tpu_device())

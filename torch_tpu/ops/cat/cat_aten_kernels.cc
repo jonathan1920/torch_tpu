@@ -16,6 +16,7 @@
 
 #include "torch_tpu/ops/cat/cat_aten_kernels.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -146,6 +147,23 @@ absl::StatusOr<CatComputationResult> CatHelper(
         << ToString(target_dtype);
     target_dtype = *output_dtype_override;
   }
+  TT_ASSIGN_OR_RETURN(const auto output_dtype,
+                      ConvertTo<mlir::ElementType>(target_dtype));
+
+  if (std::any_of(output_dims.begin(), output_dims.end(),
+                  [](int64_t size) { return size == 0; })) {
+    // If the concatenation is exclusively 0-element tensors, then the result is
+    // also a 0-element tensor, and we can skip stablehlo::ConcatenateOp().
+    TT_ASSIGN_OR_RETURN(
+        DeviceBufferRef result_buf,
+        DeviceBufferList::CreateZeroSize(output_dims, output_dtype));
+    return CatComputationResult{
+        .result_buf = std::move(result_buf),
+        .promoted_dtype = target_dtype,
+        .num_dims = num_dims,
+        .output_dims = std::move(output_dims),
+    };
+  }
 
   std::vector<at::Tensor> promoted_tensors;
   promoted_tensors.reserve(tensors.size());
@@ -163,9 +181,6 @@ absl::StatusOr<CatComputationResult> CatHelper(
                                       mlir::MlirBuilder& builder) {
     return BuildCatShlo(inputs, wrapped_dim);
   };
-
-  TT_ASSIGN_OR_RETURN(const auto output_dtype,
-                      ConvertTo<mlir::ElementType>(target_dtype));
 
   TT_ASSIGN_OR_RETURN(
       auto result_buf,

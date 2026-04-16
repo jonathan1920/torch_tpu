@@ -87,7 +87,7 @@ class CompileApiTest(absltest.TestCase):
     with self.assertRaises(RuntimeError) as err:
       tpu_torch_compile.build_mlir(result_tensors, argument_tensors)
     self.assertIn(
-        'identified an input that was not provided',
+        'identified an argument that was not provided',
         str(err.exception),
     )
 

@@ -48,41 +48,34 @@
 // guarantees that the graph is acyclic.
 //
 // In order to compile the graph with one or more outputs, we need to identify
-// its set of inputs, and the full structure of the dependencies between inputs
-// and the outputs.
+// its set of arguments, and the full structure of the dependencies between
+// arguments and the outputs.
 //
-// Input nodes are leaves (i.e. they have no outgoing pointers), which includes
-// these DeviceBufferRef states:
+// Arguments nodes are any referenced DeviceBufferRef that is not in the
+// kDeferred state. This includes:
 //   - kMaterialized: the DeviceBufferRef references a materialized PjRtBuffer.
-//                    This PjRtBuffer must be passed to the final compiled
-//                    PjRtLoadedExecutable as an argument at execution time.
-//   - kZeroSize:     the DeviceBufferRef represents zero data. This means it
-//                    functions as a constant. This is an input/leaf node, but
-//                    is not an argument, and will be "baked in" to the final
-//                    compiled executable rather than passed in as a parameter.
 //   - kPlaceholder:  The DeviceBufferRef is a placeholder for a future
 //                    argument. This can be used in compiled mode to create an
 //                    executable without actually loading data on-device.
-//                    Future executions are expected to provide a kMaterialized
-//                    DeviceBufferRef for the placeholder.
+// Calling the compiled executable will require a kMaterialized DeviceBufferRef
+// for each argument.
 //
-// In eager mode, the outputs are known at traversal time, but the inputs need
-// to be identified. In this case, we traverse the graph from the outputs to
-// the inputs (using Create), building the list of arguments in a
+// In eager mode, the outputs are known at traversal time, but the arguments
+// need to be identified. In this case, we traverse the graph from the outputs
+// to the arguments (using Create), building the list of arguments in a
 // deterministic but unspecified order. Once the Traversal is complete, the
 // main function can be built (using BuildMlirFunction), compiled
-// (see compilation_cache.h) and then executed (filtering inputs to only the
-// argument PjRtBuffers needed for execution).
+// (see compilation_cache.h) and then executed.
 //
-// In compiled mode, we know both the inputs and outputs at traversal time, but
-// not the graph relationship between them.
+// In compiled mode, we know both the arguments and outputs at traversal time,
+// but not the graph relationship between them.
 // Additionally, DAG traversal orderings are not unique. To ensure that the
-// Python-level input ordering is aligned with the PjRtLoadedExecutable
-// argument ordering, we need to explicitly reorder the list of inputs, using
-// ValidateAndReorderInputs. Once reordered, the compilation can use
+// Python-level argument ordering is aligned with the PjRtLoadedExecutable
+// argument ordering, we need to explicitly reorder the list of arguments, using
+// ValidateAndReorderArguments. Once reordered, the compilation can use
 // BuildMlirFunction.
 // Because compiled mode does not immediately execute the compiled executable,
-// it is valid to compile using compilation placeholder inputs, and
+// it is valid to compile using compilation placeholder arguments, and
 // only later provide materialized arguments when actually executing (see
 // "compiled_mode.cc" and "tpu_torch_compile.cc" for this interface).
 
@@ -106,13 +99,11 @@ class Traversal {
   Traversal& operator=(Traversal&&) = default;
 
   // Traverses the deferred operations from outputs (roots of the directed
-  // acyclic graph) to inputs (leaves of the directed acyclic graph), inferring
-  // arguments to be all non-constant inputs/leaves in a deterministic but
-  // unspecified order. Optional parameter `stopping_points` can be used to
-  // supply DeviceBufferLists that should stop the traversal and, hence, be
-  // treated as inputs (even though they may be associated to deferred ops).
-  // We call the union of the graph's inputs and `stopping_points` the
-  // traversal's "extended inputs".
+  // acyclic graph) to arguments (leaves of the directed acyclic graph),
+  // recording arguments in a deterministic but unspecified order.
+  // Optional parameter `stopping_points` can be used to supply
+  // DeviceBufferLists that should stop the traversal and, hence, be
+  // treated as arguments (even though they may be associated to deferred ops).
   static absl::StatusOr<Traversal> Create(
       std::vector<DeviceBufferRef> outputs,
       const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
@@ -127,8 +118,8 @@ class Traversal {
   // * the traversal execution order is the same as the ops are listed in
   //   `region`;
   //
-  // * the traversal inputs are the op inputs in `region` that are not defined
-  //   by any other op in `region`;
+  // * the traversal arguments are the op arguments in `region` that are not
+  //   defined by any other op in `region`;
   //
   // * the traversal outputs are the op outputs in `region` that are not
   //   consumed by any other op in `region`.
@@ -142,21 +133,23 @@ class Traversal {
     return *cache_key_;
   }
 
-  // Validates that the provided inputs are a valid reordering of the
-  // Traversal's inputs, and if they are, overwrites the previous inputs_ with
-  // these new inputs. This is used by compiled_mode.cc to align argument
+  // Validates that the provided arguments are a valid reordering of the
+  // Traversal's arguments, and if they are, overwrites the previous arguments_
+  // with the new order. This is used by compiled_mode.cc to align argument
   // ordering between Python and PjRt interfaces.
-  // The provided inputs must be the same set of DeviceBufferRefs as the
-  // existing inputs_, but may be in a different order.
-  absl::Status ValidateAndReorderInputs(std::vector<DeviceBufferRef> inputs);
+  // The provided arguments must be a superset of DeviceBufferRefs as the
+  // existing arguments_, but may be in a different order, and may contain
+  // additional (unused) arguments.
+  absl::Status ValidateAndReorderArguments(
+      std::vector<DeviceBufferRef> arguments);
 
-  // Returns the graph inputs (non-deferred leaf nodes).
-  [[nodiscard]] absl::Span<const DeviceBufferRef> inputs() const {
-    return inputs_;
+  // Returns the graph arguments.
+  [[nodiscard]] absl::Span<const DeviceBufferRef> arguments() const {
+    return arguments_;
   }
 
   // Returns a topological sort of the deferred ops in the graph needed for
-  // computing the outputs. This contains all nodes between the extended inputs
+  // computing the outputs. This contains all nodes between the arguments
   // (not inclusive) and the outputs (inclusive).
   //
   // Invariant: all nodes in this span are deferred ops.
@@ -185,13 +178,13 @@ class Traversal {
   absl::StatusOr<CompiledKernel> Compile(
       CompilationMode compilation_mode) const;
 
-  // Returns true if any input to the traversal has bounded dynamic dimensions
-  // marked.
+  // Returns true if any argument to the traversal has bounded dynamic
+  // dimensions marked.
   [[nodiscard]] bool IsBoundedDynamic() const;
 
   // The core components of a Traversal, returned by IntoParts().
   struct Parts {
-    std::vector<DeviceBufferRef> inputs;
+    std::vector<DeviceBufferRef> arguments;
     std::vector<SharedDeviceBufferList> execution_order;
     std::vector<DeviceBufferRef> outputs;
   };
@@ -200,7 +193,7 @@ class Traversal {
   // invalid) Traversal behind. This is used once the invariants upheld by the
   // Traversal are no longer required.
   [[nodiscard]] Parts IntoParts() {
-    return {std::move(inputs_), std::move(execution_order_),
+    return {std::move(arguments_), std::move(execution_order_),
             std::move(outputs_)};
   }
 
@@ -226,29 +219,30 @@ class Traversal {
  private:
   // Private constructor, only called by Traversal::Create().
   // Definitions:
-  //   - inputs:    non-deferred nodes in the graph. These are always leaf
-  //                nodes, as only deferred nodes can have input edges.
+  //   - arguments_:      the materialized and placeholder nodes in the graph.
+  //                      When using stopping_points (see Traversal::Create),
+  //                      these may include deferred nodes as well, which are
+  //                      pending execution by an earlier Traversal in a
+  //                      sequence of computation graphs.
   //   - execution_order: deferred nodes in the graph. These may be leaf nodes
-  //   (for
-  //                nullary ops), but are more commonly branch or root nodes.
-  //   - outputs:   the final outputs of the computation. These can be any
-  //                nodes in the graph, but are most commonly root nodes.
+  //                      (for nullary ops), but are more commonly branch or
+  //                      root nodes.
+  //   - outputs_:        the final outputs of the computation. These can be any
+  //                      nodes in the graph, but are most commonly root nodes.
   //
   // Properties:
-  //   - All tensors (if any) in inputs are unique
-  //   - No tensor in inputs is a deferred node (kDeferred state); only
-  //     kMaterialized, kZeroSized, and kPlaceholder.
+  //   - All tensors (if any) in arguments_ are unique
   //   - All tensors (if any) in execution_order are unique.
   //   - All tensors (if any) in execution_order are deferred nodes (kDeferred
-  //   state).
-  //   - Each deferred node in execution_order only depends on tensors in inputs
-  //     and/or lower-indexed execution_order nodes.
+  //     state).
+  //   - Each deferred node in execution_order only depends on tensors in
+  //     arguments_ and/or lower-indexed execution_order nodes.
   //   - All tensors in outputs are unique, and there is at least one output.
-  //   - Each tensor in outputs is present in either inputs or execution_order.
-  Traversal(std::vector<DeviceBufferRef> inputs,
+  //   - Each tensor in outputs is in either arguments_ or execution_order.
+  Traversal(std::vector<DeviceBufferRef> arguments,
             std::vector<SharedDeviceBufferList> execution_order,
             std::vector<DeviceBufferRef> outputs)
-      : inputs_(std::move(inputs)),
+      : arguments_(std::move(arguments)),
         execution_order_(std::move(execution_order)),
         outputs_(std::move(outputs)) {}
 
@@ -257,26 +251,13 @@ class Traversal {
   // Validates that the traversal is sound.
   absl::Status Validate() const;
 
-  // Returns zero-sized constants that are not explicit inputs in compiled mode.
-  // In eager mode, this will return an empty span as zero-sized constants are
-  // always considered to be graph inputs.
-  [[nodiscard]] absl::Span<const DeviceBufferRef> non_input_zero_sized_consts()
-      const {
-    return non_input_zero_sized_consts_;
-  }
-
-  // The inputs to the Traversal are all DeviceBufferRefs which are leaf nodes
-  // in the graph. This includes arguments (kMaterialized or kPlaceholder)
-  // zero-sized constants (kZeroSized).
-  std::vector<DeviceBufferRef> inputs_;
-  // In eager mode, zero-sized constants are treated as graph inputs.
-  // In compiled mode, these may not necessarily be graph inputs as the inputs
-  // are what is dictated by the FX graph. In order to maintain the input
-  // equivalency invariant between our traversal and the FX graph we track these
-  // separately. This will only be populated in compiled mode.
-  std::vector<DeviceBufferRef> non_input_zero_sized_consts_;
+  // The arguments to the Traversal are all DeviceBufferRefs which are in either
+  // the kMaterialized or kPlaceholder state.
+  std::vector<DeviceBufferRef> arguments_;
   // A execution_order traversal of the deferred ops in the graph.
-  // Each op only depends on arguments, constants, and lower-indexed ops.
+  // Each op only depends on arguments and lower-indexed ops.
+  // Nullary ops, which are typically either factory ops like torch.ones or
+  // compiled mode constants, appear here.
   std::vector<SharedDeviceBufferList> execution_order_;
   // The tensor outputs of the Traversal. These may be in any state, but the
   // list is non-empty and all outputs are unique.
@@ -284,7 +265,8 @@ class Traversal {
   // The compilation cache key this Traversal; lazily computed.
   mutable std::optional<CompilationCacheKey> cache_key_;
 
-  // The acceptable dynamic bounds for each dimension in the traversal's inputs.
+  // The acceptable dynamic bounds for each dimension in the traversal's
+  // arguments.
   // Lazily computed.
   mutable std::optional<ShapeDynamismMetadata> shape_dynamism_metadata_;
 

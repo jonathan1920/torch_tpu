@@ -69,12 +69,6 @@ def is_ready(tensor: torch.Tensor) -> bool:
   )
 
 
-def is_bufferless_zero_size(tensor: torch.Tensor) -> bool:
-  return _tpu_torch_sync._is_bufferless_zero_size(  # pylint: disable=protected-access
-      _maybe_unwrap(tensor)
-  )
-
-
 def _dump_computation(
     str_to_dump: str,
     file_name: str,

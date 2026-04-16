@@ -61,13 +61,13 @@ TEST_F(MaterializeTest, EmptyListNoOpSuccess) {
   EXPECT_EQ(Materialize(absl::Span<const DeviceBufferRef>()), absl::OkStatus());
 }
 
-TEST_F(MaterializeTest, MaterializedBufferNoOpSuccess) {
+TEST_F(MaterializeTest, MaterializedZeroSizeBufferSuccess) {
   const mlir::ElementType dtype = mlir::ElementType::F32;
   TF_ASSERT_OK_AND_ASSIGN(DeviceBufferRef ref,
                           DeviceBufferList::CreateZeroSize({0}, dtype));
-  EXPECT_EQ(ref.state(), DeviceBufferRefState::kZeroSize);
+  EXPECT_EQ(ref.state(), DeviceBufferRefState::kDeferred);
   EXPECT_EQ(Materialize(ref), absl::OkStatus());
-  EXPECT_EQ(ref.state(), DeviceBufferRefState::kZeroSize);
+  EXPECT_EQ(ref.state(), DeviceBufferRefState::kMaterialized);
 }
 
 TEST_F(MaterializeTest, AddLeafNodes) {

@@ -39,7 +39,6 @@
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseSet.h"
-#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -77,8 +76,8 @@ absl::StatusOr<Traversal> Traversal::Create(
   ABSL_VLOG(1) << "[Traversal::Create] creating Traversal";
   tsl::profiler::TraceMe t([] { return "Traversal::Create"; });
 
-  // This will contain the traversal inputs.
-  std::vector<DeviceBufferRef> inputs;
+  // This will contain the traversal arguments.
+  std::vector<DeviceBufferRef> arguments;
   // This will contain a topological sort of the internal traversal nodes.
   std::vector<SharedDeviceBufferList> execution_order;
   // A stack of deferred nodes to process in depth first, by traversing reverse
@@ -90,8 +89,8 @@ absl::StatusOr<Traversal> Traversal::Create(
   // processed too.
   enum class Color { kGray, kBlack };
   absl::flat_hash_map<const DeviceBufferList*, Color> visited_deferred;
-  // Tracks inputs already visited.
-  absl::flat_hash_set<DeviceBufferRef> visited_inputs;
+  // Tracks arguments already visited.
+  absl::flat_hash_set<DeviceBufferRef> visited_arguments;
 
   // Populate the stack with the nodes feeding the graph outputs.
   for (const auto& output : outputs) {
@@ -104,8 +103,8 @@ absl::StatusOr<Traversal> Traversal::Create(
         stack.push(node);
       }
     } else {
-      if (visited_inputs.insert(output).second) {
-        inputs.push_back(output);
+      if (visited_arguments.insert(output).second) {
+        arguments.push_back(output);
       }
     }
   }
@@ -151,9 +150,9 @@ absl::StatusOr<Traversal> Traversal::Create(
             visited_deferred.insert(
                 std::make_pair(input_node.get(), Color::kGray));
           } else {
-            // A stopping point. Treat it as a graph input.
-            if (visited_inputs.insert(input).second) {
-              inputs.push_back(input);
+            // A stopping point. Treat it as a graph argument.
+            if (visited_arguments.insert(input).second) {
+              arguments.push_back(input);
             }
           }
 
@@ -163,9 +162,9 @@ absl::StatusOr<Traversal> Traversal::Create(
         }
 
       } else {
-        // A node without a deferred op is always treated as a graph input.
-        if (visited_inputs.insert(input).second) {
-          inputs.push_back(input);
+        // A node without a deferred op is always treated as a graph argument.
+        if (visited_arguments.insert(input).second) {
+          arguments.push_back(input);
         }
       }
     }
@@ -183,7 +182,7 @@ absl::StatusOr<Traversal> Traversal::Create(
       stack.pop();
     }
   }
-  auto traversal = Traversal(std::move(inputs), std::move(execution_order),
+  auto traversal = Traversal(std::move(arguments), std::move(execution_order),
                              std::move(outputs));
 #ifndef NDEBUG
   if (auto status = traversal.Validate(); !status.ok()) {
@@ -213,8 +212,8 @@ absl::StatusOr<Traversal> Traversal::CreateFromLinearRegion(
   ABSL_VLOG(1) << "[Traversal::CreateFromLinearRegion] Creating Traversal";
   tsl::profiler::TraceMe t([] { return "Traversal::CreateFromLinearRegion"; });
 
-  // This will contain the traversal inputs.
-  std::vector<DeviceBufferRef> inputs;
+  // This will contain the traversal arguments.
+  std::vector<DeviceBufferRef> arguments;
   // This will contain the traversal outputs.
   std::vector<DeviceBufferRef> outputs;
   // This will contain a sort of the internal traversal nodes.
@@ -228,7 +227,7 @@ absl::StatusOr<Traversal> Traversal::CreateFromLinearRegion(
   {
     TT_ASSIGN_OR_RETURN(Traversal tmp_traversal, Create(region));
     execution_order = std::move(tmp_traversal.execution_order_);
-    inputs = std::move(tmp_traversal.inputs_);
+    arguments = std::move(tmp_traversal.arguments_);
   }
 
   // Set of all buffers consumed as inputs by ops within the region.
@@ -271,7 +270,7 @@ absl::StatusOr<Traversal> Traversal::CreateFromLinearRegion(
     }
   }
 
-  auto traversal = Traversal(std::move(inputs), std::move(execution_order),
+  auto traversal = Traversal(std::move(arguments), std::move(execution_order),
                              std::move(outputs));
 #ifndef NDEBUG
   if (auto status = traversal.Validate(); !status.ok()) {
@@ -287,24 +286,14 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
   // We will be building a GraphSignature object as a simplified
   // representation of the Traversal graph for the purposes of hashing.
   GraphSignature graph;
-  // TODO(aarfaian): the concept between true and de-facto inputs (stemming from
-  // the fact that eager mode always treats zero-sized constants as inputs,
-  // where compile mode may not necessarily behave the same) needs to be
-  // revisited with regard to variable naming here and throughout the rest of
-  // the Traversal implementation.
 
   absl::flat_hash_map<DeviceBufferRef, int> tensor_index_map;
 
-  // Add all inputs to tensor-indexed properties.
-  for (const DeviceBufferRef& input : inputs()) {
-    tensor_index_map[input] =
-        graph.AddInput(input.dimensions(), input.element_type());
+  // Add all arguments to tensor-indexed properties.
+  for (const DeviceBufferRef& argument : arguments()) {
+    tensor_index_map[argument] =
+        graph.AddInput(argument.dimensions(), argument.element_type());
   }
-  for (const DeviceBufferRef& zsc : non_input_zero_sized_consts()) {
-    tensor_index_map[zsc] =
-        graph.AddInput(zsc.dimensions(), zsc.element_type());
-  }
-
   for (const SharedDeviceBufferList& node : execution_order()) {
     const DeferredOp* absl_nullable maybe_deferred_op = node->deferred_op();
     ABSL_VLOG(1) << "[Traversal::BuildCacheKey] node: " << node.get()
@@ -335,58 +324,57 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
   return graph.cache_key();
 }
 
-absl::Status Traversal::ValidateAndReorderInputs(
-    std::vector<DeviceBufferRef> inputs) {
-  ABSL_VLOG(1) << "[Traversal::ValidateAndReorderInputs] validating "
-                  "consistency of provided inputs";
-  // Check to make sure that inputs (the argument) is just a reordering of
-  // inputs_ (the previous list of inputs).
-  // Build a hashmap of the previous inputs, and mark all of them as unused.
-  absl::flat_hash_map<DeviceBufferRef, bool> prev_inputs;
-  for (const DeviceBufferRef& prev_input : inputs_) {
-    // By construction, Traversal::inputs_ should be unique.
+absl::Status Traversal::ValidateAndReorderArguments(
+    std::vector<DeviceBufferRef> arguments) {
+  ABSL_VLOG(1) << "[Traversal::ValidateAndReorderArguments] validating "
+                  "consistency of provided arguments";
+  // Check to make sure that the new arguments are just a reordering of
+  // arguments_ (the previous list of arguments).
+  // Build a hashmap of the previous arguments, and mark all of them as unused.
+  absl::flat_hash_map<DeviceBufferRef, bool> prev_arguments;
+  for (const DeviceBufferRef& prev_argument : arguments_) {
+    // By construction, Traversal::arguments_ should be unique.
     ABSL_CHECK(  // CRASH_OK
-        prev_inputs.insert_or_assign(prev_input, false).second)
-        << "Traversal::inputs_ has a duplicate input: "
-        << prev_input.DebugString();
+        prev_arguments.insert_or_assign(prev_argument, false).second)
+        << "Traversal::arguments_ has a duplicate argument: "
+        << prev_argument.DebugString();
   }
 
-  // Checks that all provided inputs are non-deferred, are non-duplicates, and
-  // marks them as used.
-  for (const DeviceBufferRef& input : inputs) {
+  // Checks that all provided arguments are non-deferred, are non-duplicates,
+  // and marks them as used.
+  for (const DeviceBufferRef& input : arguments) {
     TT_RET_CHECK(input.state() != DeviceBufferRefState::kDeferred,
                  error::kInvalidArgument)
-        << "found a deferred input, which is not allowed: "
+        << "found a deferred argument, which is not allowed: "
         << input.DebugString();
-    auto it = prev_inputs.find(input);
-    if (it == prev_inputs.end()) {
-      // Allow unused inputs.
-      continue;
+    if (auto it = prev_arguments.find(input); it != prev_arguments.end()) {
+      // The first time we see a previous argument in the new arguments, mark
+      // it as used.
+      // If we see it again, then the new arguments has a duplicate and is
+      // invalid.
+      TT_RET_CHECK(!it->second, error::kInvalidArgument)
+          << "identified a duplicate input: " << input.DebugString();
+      it->second = true;
+    } else {
+      // Found an new argument not part of the previous arguments.
+      // Include it and mark it as used, so that we can detect duplicates.
+      ABSL_VLOG(2) << "[Traversal::ValidateAndReorderArguments] found a new "
+                      "argument not part of the previous arguments: "
+                   << input.DebugString();
+      prev_arguments[input] = true;
     }
-    TT_RET_CHECK(!it->second, error::kInvalidArgument)
-        << "identified a duplicate input: " << input.DebugString();
-    it->second = true;
   }
 
-  // Check that all previous inputs are included in the new inputs.
-  for (const auto& [input, used] : prev_inputs) {
-    // If the graph has any zero-sized constants the traversal will include
-    // these as inputs by default. However, in compiled mode these inputs may
-    // not necessarily be included in the set of inputs expected by the FX
-    // graph. If we run across any zero-sized constants here that aren't already
-    // marked as used then they are not "true" inputs and we can handle them
-    // separately. This allows us to maintain the invariant that FX graph and
-    // our own traversed inputs are always the same.
-    if (!used && input.state() == DeviceBufferRefState::kZeroSize) {
-      non_input_zero_sized_consts_.push_back(input);
-      continue;
-    }
+  // Check that there are no previous arguments missing in the new arguments.
+  for (const auto& [arg, used] : prev_arguments) {
     TT_RET_CHECK(used, error::kInvalidArgument)
-        << "identified an input that was not provided: " << input.DebugString();
+        << "identified an argument that was not provided: "
+        << arg.DebugString();
   }
-  inputs_ = std::move(inputs);
-  ABSL_VLOG(1) << "[Traversal::ValidateAndReorderInputs] New inputs are valid. "
-                  "Reordering inputs to match.";
+  arguments_ = std::move(arguments);
+  ABSL_VLOG(1)
+      << "[Traversal::ValidateAndReorderArguments] New inputs are valid. "
+         "Reordering inputs to match.";
   return absl::OkStatus();
 }
 
@@ -402,28 +390,22 @@ absl::StatusOr<mlir::MlirOp> Traversal::GetMlirOpForProcessedBuffer(
 
 namespace {
 
-mlir::MlirOp BufferToArgument(mlir::func::FunctionBuilder& fb,
-                              const DeviceBufferRef& input) {
-  if (input.state() == DeviceBufferRefState::kZeroSize) {
-    auto type = makeTensorType(fb.getContext(), input.dimensions(),
-                               input.element_type());
-    // In compiled mode we can still have zero-sized tensors as explicit
-    // inputs and we handle those here.
-    return MakeConstant(fb, mlir::ArrayRef<int64_t>{}, type);
-  }
-  Dimensions dimensions = CopyIntVector(input.dimensions());
-  // If input has bounded dynamic dimensions, we assume we will receive an
+mlir::MlirOp CreateArgumentOp(mlir::func::FunctionBuilder& fb,
+                              const DeviceBufferRef& argument) {
+  Dimensions dimensions = CopyIntVector(argument.dimensions());
+  // If argument has bounded dynamic dimensions, we assume we will receive an
   // input padded to the upper bound, along with the dimension sizes.
   // We use a set_dimension_size op to
   // convert to a dynamic tensor and use that downstream.
-  for (const auto& dynamic_dim : input.dynamic_dimensions()) {
+  for (const auto& dynamic_dim : argument.dynamic_dimensions()) {
     dimensions[dynamic_dim.dimension] = dynamic_dim.upper_bound;
   }
-  auto type = makeTensorType(fb.getContext(), dimensions, input.element_type());
+  auto type =
+      makeTensorType(fb.getContext(), dimensions, argument.element_type());
   auto dimension_size_type =
       makeTensorType(fb.getContext(), {}, mlir::ElementType::I32);
   auto result = mlir::func::Argument(fb, type);
-  for (const auto& dynamic_dim : input.dynamic_dimensions()) {
+  for (const auto& dynamic_dim : argument.dynamic_dimensions()) {
     mlir::MlirOp dimension_size = mlir::func::Argument(fb, dimension_size_type);
     result = mlir::stablehlo::SetDimensionSize(result, dimension_size,
                                                dynamic_dim.dimension);
@@ -446,7 +428,7 @@ const PythonContext* absl_nullable Traversal::GetPythonContext() const {
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
     mlir::MLIRContext& mlir_context) const {
   // Read the traversal's values.
-  absl::Span<const DeviceBufferRef> inputs = this->inputs();
+  absl::Span<const DeviceBufferRef> arguments = this->arguments();
   absl::Span<const SharedDeviceBufferList> execution_order =
       this->execution_order();
   absl::Span<const DeviceBufferRef> outputs = this->outputs();
@@ -461,20 +443,12 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
   // Add a function parameter for each argument DeviceBufferRef.
   RefToOpMap ref_to_op_map;
   ABSL_VLOG(2) << "[Traversal::BuildMlirModule] building MLIR ops for "
-               << inputs.size() << " inputs";
-  for (const DeviceBufferRef& input : inputs) {
-    ref_to_op_map[input] = BufferToArgument(fb, input);
+               << arguments.size() << " arguments";
+  for (const DeviceBufferRef& argument : arguments) {
+    ref_to_op_map[argument] = CreateArgumentOp(fb, argument);
   }
 
-  for (const DeviceBufferRef& zsc : non_input_zero_sized_consts()) {
-    auto type =
-        makeTensorType(mlir_context, zsc.dimensions(), zsc.element_type());
-    ref_to_op_map[zsc] = MakeConstant(fb, mlir::ArrayRef<int64_t>{}, type);
-  }
-
-  // Identify which inputs are donated.
-  // Deduplicate by the mlir::Value, not by the DeviceBufferRef, to avoid false
-  // negatives for no-op DeferredOps that get created by CopyTpuToTpu.
+  // Identify which arguments are donated.
   llvm::DenseSet<mlir::Value> donated_values;
 
   // Build an MlirOp for each deferred op in execution_order ordering, so that
@@ -547,18 +521,18 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
   mlir::func::Return(fb, results);
   auto module = mb.build();
 
-  // Identify which inputs to the Traversal are donated.
-  Indices donated_inputs;
+  // Identify which arguments to the Traversal are donated.
+  Indices donated_arguments;
   if (!donated_values.empty()) {
-    for (int64_t i = 0; i < inputs.size(); ++i) {
-      mlir::MlirOp input_op = ref_to_op_map[inputs[i]];
+    for (int64_t i = 0; i < arguments.size(); ++i) {
+      mlir::MlirOp input_op = ref_to_op_map[arguments[i]];
       if (donated_values.contains(input_op.getValue())) {
-        donated_inputs.push_back(i);
+        donated_arguments.push_back(i);
       }
     }
   }
   if (!donated_values.empty()) {
-    AnnotateBufferDonations(module.get(), donated_inputs);
+    AnnotateBufferDonations(module.get(), donated_arguments);
   }
   return module;
 }
@@ -573,21 +547,22 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
         return BuildMlirModule(mlir_context);
       };
   ABSL_VLOG(1) << "[Compile] cache_key: " << cache_key();
-  std::vector<Shape> input_shapes;
-  input_shapes.reserve(inputs_.size());
-  for (const auto& input : inputs_) {
-    Shape input_shape(CopyIntVector(input.dimensions()), input.element_type());
-    for (const auto& dynamic_dim : input.dynamic_dimensions()) {
-      input_shape.dynamic_dimensions().push_back(dynamic_dim);
+  std::vector<Shape> argument_shapes;
+  argument_shapes.reserve(arguments_.size());
+  for (const auto& argument : arguments_) {
+    Shape argument_shape(CopyIntVector(argument.dimensions()),
+                         argument.element_type());
+    for (const auto& dynamic_dim : argument.dynamic_dimensions()) {
+      argument_shape.dynamic_dimensions().push_back(dynamic_dim);
     }
-    input_shapes.push_back(std::move(input_shape));
+    argument_shapes.push_back(std::move(argument_shape));
   }
 
   TT_ASSIGN_OR_RETURN(UniqueCompileOptions compile_options,
                       MakeCompilerOptions(compilation_mode));
 
   return CompilationCache::GetInstance().GetOrCompile(
-      cache_key(), input_shapes, std::move(final_op_builder),
+      cache_key(), argument_shapes, std::move(final_op_builder),
       std::move(compile_options));
 }
 
@@ -632,9 +607,6 @@ void StreamInputDebug(
     absl::flat_hash_map<DeviceBufferRef, size_t>& buffer_to_index) {
   StreamBufferRefDebug(os, input, buffer_index);
   switch (input.state()) {
-    case DeviceBufferRefState::kZeroSize:
-      os << " <- zero-sized constant";
-      break;
     case DeviceBufferRefState::kMaterialized:
       os << " <- input " << arg_index++ << " (materialized)";
       break;
@@ -699,8 +671,8 @@ std::string Traversal::DebugString() const {
   size_t buffer_index = 0;
   absl::flat_hash_map<DeviceBufferRef, size_t> buffer_to_index;
   os << "Inputs:\n";
-  for (const auto& input : inputs_) {
-    StreamInputDebug(os, input, arg_index, buffer_index, buffer_to_index);
+  for (const auto& argument : arguments_) {
+    StreamInputDebug(os, argument, arg_index, buffer_index, buffer_to_index);
   }
   os << "Execution Order:\n";
   for (const SharedDeviceBufferList& node : execution_order_) {
@@ -829,9 +801,6 @@ std::string GraphvizVertexParams(
     }
     os << ToString(ref.element_type()) << ToString(ref.dimensions());
     switch (ref.state()) {
-      case DeviceBufferRefState::kZeroSize:
-        os << " (zero-sized constant)";
-        break;
       case DeviceBufferRefState::kMaterialized:
         os << " (materialized)";
         break;
@@ -855,9 +824,9 @@ absl::Status Traversal::Validate() const {
   size_t buffer_index = 0;
   absl::flat_hash_map<DeviceBufferRef, size_t> buffer_to_index;
 
-  // Get buffers from the traversal's inputs.
-  for (const auto& input : inputs_) {
-    buffer_to_index[input] = buffer_index++;
+  // Get buffers from the traversal's arguments.
+  for (const auto& argument : arguments_) {
+    buffer_to_index[argument] = buffer_index++;
   }
 
   // Validate internal buffers.
@@ -897,8 +866,8 @@ absl::Status Traversal::Validate() const {
 }
 
 bool Traversal::IsBoundedDynamic() const {
-  for (const DeviceBufferRef& input : inputs_) {
-    if (!input.dynamic_dimensions().empty()) {
+  for (const DeviceBufferRef& argument : arguments_) {
+    if (!argument.dynamic_dimensions().empty()) {
       return true;
     }
   }
@@ -909,9 +878,9 @@ absl::StatusOr<std::string> GetGraphviz(
     const Traversal& traversal,
     const absl::flat_hash_map<DeviceBufferRef, std::string>&
         buffer_ref_to_python_var) {
-  TT_ASSIGN_OR_RETURN(
-      GraphvizGraph graph,
-      GraphvizGraph::Create(traversal.inputs(), traversal.execution_order()));
+  TT_ASSIGN_OR_RETURN(GraphvizGraph graph,
+                      GraphvizGraph::Create(traversal.arguments(),
+                                            traversal.execution_order()));
 
   std::string result =
       "Graphviz string: (try pasting in http://graphviz/ to see the graph)\n"

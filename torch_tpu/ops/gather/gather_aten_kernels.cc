@@ -53,6 +53,12 @@ absl::StatusOr<DeviceBufferRef> Gather(const at::Tensor& self, int64_t dim,
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   Dimensions output_dims = CopyIntVector(index.sizes());
+
+  if (index.numel() == 0) {
+    // Gathering with 0 indexes results in a zero-sized tensor.
+    return DeviceBufferList::CreateZeroSize(output_dims, output_dtype);
+  }
+
   auto gather_op_builder =
       [dim, sparse_grad, output_dtype](FixedSizeSpan<mlir::MlirOp, 2> inputs) {
         auto& [self, index] = inputs;

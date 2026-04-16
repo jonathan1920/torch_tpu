@@ -78,9 +78,8 @@ absl::StatusOr<bool> IsMaterialized(const at::Tensor& tensor) {
   // no point in checking whether the view is materialized.
   // Instead, we check the base buffer.
   TT_ASSIGN_OR_RETURN(auto base_buffer_ref, GetBaseBufferFromAtTensor(tensor));
-  // A zero-sized buffer is considered materialized.
-  return (base_buffer_ref.state() == DeviceBufferRefState::kMaterialized ||
-          base_buffer_ref.state() == DeviceBufferRefState::kZeroSize);
+
+  return (base_buffer_ref.state() == DeviceBufferRefState::kMaterialized);
 }
 
 absl::StatusOr<bool> IsReady(const at::Tensor& tensor) {
@@ -88,20 +87,12 @@ absl::StatusOr<bool> IsReady(const at::Tensor& tensor) {
   // no point in checking whether the view is ready.
   // Instead, we check the base buffer.
   TT_ASSIGN_OR_RETURN(auto buffer_ref, GetBaseBufferFromAtTensor(tensor));
-  if (buffer_ref.state() == DeviceBufferRefState::kZeroSize) {
-    // A zero-sized buffer is considered ready.
-    return true;
+  if (buffer_ref.state() != DeviceBufferRefState::kMaterialized) {
+    // Deferred and placeholder buffers are not ready.
+    return false;
   }
   TT_ASSIGN_OR_RETURN(auto* pjrt_buffer, buffer_ref.GetOrMaterializeBuffer());
   return pjrt_buffer->GetReadyFuture().IsReady();
-}
-
-absl::StatusOr<bool> IsBufferlessZeroSize(const at::Tensor& tensor) {
-  TT_ASSIGN_OR_RETURN(auto buffer_ref, GetBaseBufferFromAtTensor(tensor));
-  return (buffer_ref.num_elements() == 0 &&
-          buffer_ref.state() == DeviceBufferRefState::kZeroSize &&
-          !buffer_ref.GetOrMaterializeBuffer().ok() &&
-          buffer_ref.size_bytes() == 0);
 }
 
 namespace {
@@ -114,8 +105,6 @@ absl::StatusOr<Traversal> GetTraversal(
   std::vector<SharedDeviceBufferList> nodes_to_traverse;
   for (const DeviceBufferRef& buffer_ref : buffer_refs) {
     switch (buffer_ref.state()) {
-      case DeviceBufferRefState::kZeroSize:
-        continue;
       case DeviceBufferRefState::kMaterialized:
       case DeviceBufferRefState::kDeferred: {
         if (nodes_to_traverse_set.insert(buffer_ref.device_buffer_list().get())

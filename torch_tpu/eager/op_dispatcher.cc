@@ -18,13 +18,11 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdint>
 #include <deque>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/no_destructor.h"
@@ -78,63 +76,6 @@ constexpr int kMinRepeatedSubsequenceLength = 10;
 constexpr int kMaxRepeatedSubsequenceLength = 128;
 constexpr std::string_view kRepeatedOpSafeMode = "safe";
 constexpr std::string_view kRepeatedOpAggressiveMode = "aggressive";
-
-// The result of trying to skip a list of (potentially) zero-sized outputs.
-struct SkipIfAllZeroSizedResult {
-  // The inputs were not all zero-sized, so we can't skip.
-  struct NotAllZeroSized {};
-  // We successfully skipped the op.
-  struct Skipped {
-    std::vector<DeviceBufferRef> zero_sized_buffers;
-  };
-
-  std::variant<NotAllZeroSized, Skipped> result;
-};
-
-// If all outputs are zero-sized, we can avoid dispatching the op entirely,
-// and just return a vector of appropriately zero-sized DeviceBufferRefs.
-absl::StatusOr<SkipIfAllZeroSizedResult> SkipIfAllZeroSized(
-    absl::Span<const mlir::ElementType> output_dtypes,
-    absl::Span<const absl::Span<const int64_t>> output_dims) {
-  // Intentionally delay allocation; the most common case is that we have at
-  // least one non-zero-sized output.
-  std::vector<DeviceBufferRef> zero_sized_buffers;
-  int num_outputs = output_dtypes.size();
-  for (int i = 0; i < num_outputs; ++i) {
-    const auto& output_dim_set = output_dims[i];
-    // Scalars (rank-0 outputs) are not zero-sized.
-    bool zero_sized = false;
-    // If a tensor has any zero-sized dimension, it has zero elements.
-    for (int64_t dim : output_dim_set) {
-      if (dim == 0) {
-        zero_sized = true;
-        break;
-      }
-    }
-    if (!zero_sized) {
-      // Found a non-zero-sized output. We need to actually dispatch.
-      return SkipIfAllZeroSizedResult{
-          SkipIfAllZeroSizedResult::NotAllZeroSized{}};
-    }
-    // Found a zero-sized output. Push a zero-sized DeviceBufferRef onto the
-    // list.
-    if (zero_sized_buffers.capacity() == 0) {
-      // Only allocate once we know there's at least one zero-sized output.
-      zero_sized_buffers.reserve(num_outputs);
-    }
-    ABSL_CHECK(zero_sized);  // CRASH_OK
-    DeviceBufferRef zero_sized_buffer =
-        // Shouldn't fail because we just checked that the output shape is
-        // zero-sized.
-        DeviceBufferList::CreateZeroSize(CopyIntVector(output_dim_set),
-                                         output_dtypes[i])
-            .value();
-    zero_sized_buffers.push_back(std::move(zero_sized_buffer));
-  }
-  // If we made it here, all outputs are zero-sized.
-  return SkipIfAllZeroSizedResult{SkipIfAllZeroSizedResult::Skipped{
-      .zero_sized_buffers = std::move(zero_sized_buffers)}};
-}
 
 // Internal helper for MakeTensor that returns the
 // DeviceBufferRef that will get wrapped into the at::Tensor.
@@ -382,18 +323,6 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
                 out_dims_list.size())
       << "Mismatching output sizes, num_outputs = " << num_outputs
       << ", out_dims_list.size() = " << out_dims_list.size();
-
-  // Check if we can take a shortcut; if all outputs are zero-sized, then there
-  // is no need to either defer or execute the op, as there will never be any
-  // data to collect.
-  TT_ASSIGN_OR_RETURN(SkipIfAllZeroSizedResult skip_result,
-                      SkipIfAllZeroSized(out_dtypes, out_dims_list));
-  if (std::holds_alternative<SkipIfAllZeroSizedResult::Skipped>(
-          skip_result.result)) {
-    return std::move(
-        std::get<SkipIfAllZeroSizedResult::Skipped>(skip_result.result)
-            .zero_sized_buffers);
-  }
 
   if (options.computation_dtype) {
     op_builder = [computation_dtype = *options.computation_dtype,

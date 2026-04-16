@@ -29,10 +29,8 @@
 #include "torch_tpu/eager/device_buffer.h"
 
 // When an aten op is dispatched, we always create a DeviceBufferList to contain
-// the result. Typically, this will contain a DeferredOp, which describes the
-// MLIR necessary to execute the op at some point in the future. Less commonly,
-// the DeviceBufferList may instead contain zero-sized buffers,
-// or empty/meta buffers (such as by torch.empty()).
+// the result. This DeviceBufferList will contain a DeferredOp, which describes
+// the MLIR necessary to compute the return value of the aten function.
 //
 // At some point in the future, we may need the actual data for one or more
 // tensors/buffers in the DeviceBufferList; this process is called
@@ -41,24 +39,20 @@
 //   - If the DeviceBufferList has a DeferredOp, then that DeferredOp will be
 //     compiled (or retrieved from the cache) and executed, and the
 //     DeviceBufferList will be updated to hold the results.
-//   - Zero-sized buffers in the DeviceBufferList do not need any data, so
-//     materialization is typically a no-op. However, if a DeferredOp produces
-//     a mix of zero-sized and non-zero-sized buffers, then the entire op must
-//     be executed, which will produce some redundant zero-sized PjRtBuffers.
-//   - Empty/meta buffers cannot be materialized, as they are purely placeholder
-//     buffers for compile-only warm-up runs, or out-tensor assignments to be
-//     overwritten.
+//   - Compiled mode placeholder buffers cannot be materialized, as they
+//     represent data that does not exist during compilation. It is an error to
+//     call Materialize during the compilation phase of torch.compile.
 
 namespace torch_tpu {
 
 enum class MaterializationMode { kFullGraph, kSplitGraph };
 
 // Executes all deferred nodes in the list, and updates them in place.  No-op
-// for nodes that are already materialized, or are entirely zero-sized
-// buffers. Optional parameter split_traversal can be set to false to avoid
-// splitting the op graph traversal and, hence, compile it as a whole. Returns
-// an error if any of the nodes are empty, or if any leaf input in the traversed
-// graph is empty/meta.
+// for nodes that are already materialized.
+// Optional parameter mode can be set to false to avoid splitting the op graph
+// traversal and, hence, compile it as a whole. Returns an error if any of the
+// nodes are placeholder buffers, or if any leaf input in the traversed graph is
+// a placeholder.
 absl::Status Materialize(
     absl::Span<const SharedDeviceBufferList> nodes,
     MaterializationMode mode = MaterializationMode::kSplitGraph);
@@ -66,7 +60,7 @@ absl::Status Materialize(
 // Materializes all of the buffers and connected leaf nodes in-place.
 // This materializes all DeviceBufferLists referenced which are not already
 // materialized; no-op for all materialized DeviceBufferLists.
-// Errors if any of the buffers are empty.
+// Errors if any of the buffers are placeholders.
 absl::Status Materialize(
     absl::Span<const DeviceBufferRef> buffer_refs,
     MaterializationMode mode = MaterializationMode::kSplitGraph);
@@ -91,7 +85,7 @@ inline absl::Status Materialize(
 // If the tensor is a contiguous base tensor, then it will return this tensor.
 // If it is a view, then an ephemeral DeviceBufferList will be created and
 // materialized.
-// Errors if the tensor's base DeviceBufferRef is empty.
+// Errors if the tensor's base DeviceBufferRef is a placeholder.
 absl::StatusOr<DeviceBufferRef> GetMaterialized(const at::Tensor& tensor);
 
 // Returns a materialized DeviceBufferRefs each input tensor.
@@ -99,7 +93,8 @@ absl::StatusOr<DeviceBufferRef> GetMaterialized(const at::Tensor& tensor);
 // deferred.
 // All contiguous base tensors will be returned as-is.
 // All views will be materialized into ephemeral DeviceBufferLists.
-// Errors if any of the tensors' base DeviceBufferRefs are empty.
+// Errors if any of the tensors' base DeviceBufferRefs are placeholders or
+// depend on placeholders.
 absl::StatusOr<std::vector<DeviceBufferRef>> GetMaterialized(
     absl::Span<const at::Tensor> tensors);
 
@@ -110,7 +105,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> GetMaterialized(
 // PjRtBuffers will not be ready until the executable reaches the front of the
 // materialization queue, is Executed, and the execution completes.
 absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
-    SharedLoadedExecutable executable, std::vector<DeviceBufferRef> inputs,
+    SharedLoadedExecutable executable, std::vector<DeviceBufferRef> arguments,
     absl::Span<const Shape> output_shapes, std::string_view task_name = "");
 
 // Sets the output nodes as error.
@@ -125,8 +120,8 @@ void SetOutputNodesAsError(absl::Span<const SharedDeviceBufferList> outputs,
 void AddLeafNodes(std::vector<SharedDeviceBufferList>& nodes);
 
 absl::Status ExecuteMaterializationJob(
-    absl::Span<const DeviceBufferRef> inputs,
-    absl::Span<const DeviceBufferRef> outputs,
+    absl::Span<const DeviceBufferRef> arguments,
+    absl::Span<const DeviceBufferRef> output_buffer_refs,
     std::vector<SharedLoadedExecutable> executables,
     std::string_view task_name = "anonymous");
 

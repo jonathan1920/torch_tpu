@@ -72,6 +72,9 @@ std::vector<at::Tensor> PyCallCustomKernel(
   TT_KERNEL(
       OpName::kCustomKernel, op_param_cache_keys,
       (name, kernel_key, inputs, output_shapes, donate_argnums), {
+        if (output_shapes.empty()) {
+          return {};
+        }
         auto custom_op_builder = [name = std::string(name),
                                   kernel_key = std::string(kernel_key)](
                                      absl::Span<const mlir::MlirOp> inputs,

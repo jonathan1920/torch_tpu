@@ -119,7 +119,7 @@ absl::Status SetOutputNodesAsMaterialized(std::vector<DeviceBufferRef>& outputs,
 }
 
 struct ExecutionTask {
-  std::vector<DeviceBufferRef> inputs;
+  std::vector<DeviceBufferRef> arguments;
   std::vector<DeviceBufferRef> outputs;
   CompiledKernel compiled_kernel;
   std::string task_name;
@@ -140,34 +140,31 @@ ExecutionTask CreateExecutionTask(Traversal traversal,
     task_name = absl::StrCat(traversal.cache_key());
   }
   Traversal::Parts parts = traversal.IntoParts();
-  return ExecutionTask{.inputs = std::move(parts.inputs),
+  return ExecutionTask{.arguments = std::move(parts.arguments),
                        .outputs = std::move(parts.outputs),
                        .compiled_kernel = std::move(compiled_kernel),
                        .task_name = std::move(task_name)};
 }
 
-absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>> GetRootArgs(
-    absl::Span<const DeviceBufferRef> inputs) {
+absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>> GetArgumentBuffers(
+    absl::Span<const DeviceBufferRef> arguments) {
   std::vector<xla::PjRtBuffer*> root_args;
-  for (const auto&& [index, input] : llvm::enumerate(inputs)) {
-    switch (input.state()) {
+  for (const auto&& [index, argument] : llvm::enumerate(arguments)) {
+    switch (argument.state()) {
       case DeviceBufferRefState::kMaterialized: {
         ABSL_VLOG(1) << "kMaterialized DeviceBufferRef index: " << index;
         TT_ASSIGN_OR_RETURN(xla::PjRtBuffer * pjrt_buffer,
-                            input.GetOrMaterializeBuffer());
+                            argument.GetOrMaterializeBuffer());
         root_args.push_back(pjrt_buffer);
         break;
       }
-      case DeviceBufferRefState::kZeroSize:
-        // Zero-sized constants are not arguments.
-        break;
       case DeviceBufferRefState::kPlaceholder:
         return TT_ERROR(error::kInternal)
                << "Materialize was called on a placeholder tensor. This "
                   "should never happen.\nkPlaceholder tensors should only "
                   "appear in compiled mode, which should never try to "
                   "materialize tensors."
-               << input.DebugString();
+               << argument.DebugString();
 
       case DeviceBufferRefState::kDeferred:
         return TT_ERROR(error::kInternal)
@@ -183,9 +180,9 @@ absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>> GetRootArgs(
 }  // namespace
 
 // PRECONDITION: executables must be a sequence that is compatible with the
-// inputs and composable, as they will be executed in order and the outputs of
-// an executable are the inputs to the next. The final execuatable returns a
-// complete set of outputs for each node in sequential blocks. That is, either
+// arguments and composable, as they will be executed in order and the outputs
+// of an executable are the arguments to the next. The final execuatable returns
+// a complete set of outputs for each node in sequential blocks. That is, either
 // all outputs of a node appear contiguously and in the same order as in
 // results, or none of them do. Furthermore, the order of nodes must be
 // consistent between the execution and results. For example, if node A is size
@@ -193,35 +190,36 @@ absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>> GetRootArgs(
 // A1, A2, B1, C0, C1]. This is established by all Materialize() functions in
 // this file.
 absl::Status ExecuteMaterializationJob(
-    absl::Span<const DeviceBufferRef> inputs,
+    absl::Span<const DeviceBufferRef> arguments,
     absl::Span<const DeviceBufferRef> outputs,
     std::vector<SharedLoadedExecutable> executables,
     std::string_view task_name) {
   tsl::profiler::TraceMe trace("ExecuteMaterializationJob");
   ABSL_VLOG(1) << "[ExecuteMaterializationJob]: task_name=" << task_name
-               << " input arg count: " << inputs.size()
+               << " input arg count: " << arguments.size()
                << " output arg count: " << outputs.size()
                << " executables count: " << executables.size();
   ABSL_CHECK(!executables.empty()) << "No executables to execute";  // CRASH_OK
 
-  TT_ASSIGN_OR_RETURN(std::vector<xla::PjRtBuffer*> root_args,
-                      GetRootArgs(inputs));
+  TT_ASSIGN_OR_RETURN(std::vector<xla::PjRtBuffer*> argument_buffers,
+                      GetArgumentBuffers(arguments));
 
   ABSL_VLOG(1)
       << "[ExecuteMaterializationJob]: Arguments materialization completed "
          "for task name="
-      << task_name << ", root_args size: " << root_args.size();
+      << task_name << ", argument_buffers size: " << argument_buffers.size();
 
   std::vector<PjRtBufferPointers> intermediate_results;
   for (auto& executable : executables) {
-    TT_ASSIGN_OR_RETURN(
-        PjRtBufferPointers results, Execute(executable, std::move(root_args)),
-        _.SetPrepend() << "failed to enqueue execution for task_name="
-                       << task_name << ": ");
-    root_args.clear();
-    root_args.reserve(results.size());
+    TT_ASSIGN_OR_RETURN(PjRtBufferPointers results,
+                        Execute(executable, std::move(argument_buffers)),
+                        _.SetPrepend()
+                            << "failed to enqueue execution for task_name="
+                            << task_name << ": ");
+    argument_buffers.clear();
+    argument_buffers.reserve(results.size());
     for (const auto& result : results) {
-      root_args.push_back(result.get());
+      argument_buffers.push_back(result.get());
     }
     intermediate_results.push_back(std::move(results));
   }
@@ -283,7 +281,7 @@ class MaterializationWorker {
   }
 
   absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
-      SharedLoadedExecutable executable, std::vector<DeviceBufferRef> inputs,
+      SharedLoadedExecutable executable, std::vector<DeviceBufferRef> arguments,
       absl::Span<const Shape> output_shapes, std::string_view task_name = "") {
     // Create a set of output DeviceBufferRefs to hold the materialized results.
     std::vector<DeviceBufferRef> outputs;
@@ -305,10 +303,10 @@ class MaterializationWorker {
 
     ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing executable: task_name="
                  << (task_name.empty() ? "anonymous" : task_name)
-                 << " input arg count: " << inputs.size()
+                 << " input arg count: " << arguments.size()
                  << "  output arg count: " << outputs.size();
 
-    ExecutionTask task = {.inputs = std::move(inputs),
+    ExecutionTask task = {.arguments = std::move(arguments),
                           .outputs = outputs,  // intentional copy
                           .compiled_kernel = std::move(compiled_kernel),
                           .task_name = std::string(task_name)};
@@ -405,7 +403,7 @@ class MaterializationWorker {
     ABSL_VLOG(1) << "[MaterializationWorker] Executing job for task_name="
                  << task_name;
     absl::Status status = ExecuteMaterializationJob(
-        task.inputs, task.outputs, std::move(cached_executables), task_name);
+        task.arguments, task.outputs, std::move(cached_executables), task_name);
     if (!status.ok()) {
       ABSL_VLOG(1)
           << "[MaterializationWorker] ExecuteMaterializationJob failed "
@@ -508,7 +506,7 @@ class MaterializationWorker {
       ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing traversal: cache_key="
                    << split_traversal.cache_key()
                    << " traversal input arg count: "
-                   << split_traversal.inputs().size()
+                   << split_traversal.arguments().size()
                    << " traversal output arg count: "
                    << split_traversal.outputs().size();
 
@@ -642,7 +640,8 @@ absl::Status MaterializeImpl(
 
   // Check that all nodes to materialize have indeed been materialized.
   for (auto& node : nodes_to_materialize) {
-    TT_RET_CHECK(node->IsMaterializedOrZeroState(), error::kInternal)
+    TT_RET_CHECK(node->state(0) == DeviceBufferRefState::kMaterialized,
+                 error::kInternal)
         << "Materialization failed for node " << node;
   }
 
@@ -690,11 +689,7 @@ absl::Status Materialize(absl::Span<const DeviceBufferRef> buffer_refs,
   for (const DeviceBufferRef& buffer_ref : buffer_refs) {
     switch (buffer_ref.state()) {
       case DeviceBufferRefState::kMaterialized:
-      case DeviceBufferRefState::kZeroSize:
-        // Only materialize the DeviceBufferLists we actually need.
-        // If a multi-output deferred op produces zero-sized buffer_refs, we
-        // don't need to materialize the op, unless we also need a non-zero
-        // sized output for a different buffer_ref from that same node.
+        // Already materialized, no-op for this node.
         continue;
       case DeviceBufferRefState::kDeferred: {
         if (unique_deferred_nodes.insert(buffer_ref.device_buffer_list())
@@ -799,10 +794,10 @@ void SetOutputNodesAsError(absl::Span<const SharedDeviceBufferList> outputs,
 }
 
 absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
-    SharedLoadedExecutable executable, std::vector<DeviceBufferRef> inputs,
+    SharedLoadedExecutable executable, std::vector<DeviceBufferRef> arguments,
     absl::Span<const Shape> output_shapes, std::string_view task_name) {
   return GetMaterializationWorker().EnqueueExecutable(
-      std::move(executable), std::move(inputs), output_shapes, task_name);
+      std::move(executable), std::move(arguments), output_shapes, task_name);
 }
 
 void AddLeafNodes(std::vector<SharedDeviceBufferList>& nodes) {

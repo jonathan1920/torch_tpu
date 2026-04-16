@@ -36,6 +36,9 @@ at::Tensor& AtenCumprodOut(const at::Tensor& self, int64_t dim,
                            std::optional<at::ScalarType> dtype,
                            at::Tensor& out) {
   TT_KERNEL(OpName::kCumprodOut, param_keys, (self, dim, dtype, out), {
+    if (out.numel() == 0) {
+      return out;
+    }
     if (self.dim() == 0) {
       out.copy_(self);
       return out;

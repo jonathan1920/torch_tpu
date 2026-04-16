@@ -4491,7 +4491,10 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_zero_sized_to_device(self):
     tensor = torch.ones(2, 0, 3, dtype=torch.int32, device="cpu")
     tensor_tpu = tensor.to(api.tpu_device())
-    self.assertTrue(sync.is_bufferless_zero_size(tensor_tpu))
+
+    # Zero-sized tensors are constructed as deferred constants, rather than
+    # actually transferring 0 bytes.
+    self.assertFalse(sync.is_materialized(tensor_tpu))
 
   @parameterized.product(
       dtype=[
