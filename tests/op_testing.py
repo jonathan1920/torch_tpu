@@ -1636,6 +1636,8 @@ class TorchTpuTestBase(TestCase):
           loss = result.sum()
           loss.backward()
           result = input_value.grad
+          if isinstance(result, torch.Tensor):
+            result = result.clone()
         else:
           result = _dummy_grad(device)
 

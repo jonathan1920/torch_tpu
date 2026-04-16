@@ -3472,8 +3472,6 @@ class TestOps(TorchTpuTestBase):
   def test_sgn(self):
     self.do_test_op(
         "sgn",
-        # TODO: fix the error on calling copy_() on an invalid python storage.
-        check_grad=False,
         # TODO: fix sgn() failing with integral dtypes.
         exclude_dtypes=INTEGRAL_DTYPES,
         # TODO: fix sgn_() failing with integral dtypes.

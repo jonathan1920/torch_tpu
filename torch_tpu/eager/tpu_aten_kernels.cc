@@ -258,6 +258,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kDivOut, AtenDivOut);
   Impl(m, OpName::kDivOutMode, AtenDivOutMode);
   Impl(m, OpName::kDot, AtenDot);
+  Impl(m, OpName::kEfficientZeroTensor, AtenEfficientZeroTensor);
   Impl(m, OpName::kEluBackwardGradInput, AtenEluBackwardGradInput);
   Impl(m, OpName::kEluOut, AtenEluOut);
   Impl(m, OpName::kEmbeddingBag, AtenEmbeddingBag);

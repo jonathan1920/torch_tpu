@@ -52,6 +52,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
@@ -252,6 +253,39 @@ at::Tensor AtenEmptyStrided(c10::SymIntArrayRef size_sym,
         c10::SymIntArrayRef final_strides_sym =
             c10::fromIntArrayRefKnownNonNegative(final_strides_vec);
         return AtenAsStrided(result, final_sizes_sym, final_strides_sym, 0);
+      });
+}
+
+at::Tensor AtenEfficientZeroTensor(at::IntArrayRef size,
+                                   c10::optional<at::ScalarType> dtype_opt,
+                                   c10::optional<at::Layout> layout_opt,
+                                   c10::optional<at::Device> device_opt,
+                                   c10::optional<bool> pin_memory_opt) {
+  // Note: _efficientzerotensor is an optimization to avoid materializing
+  // a zero tensor. On TPU, we defer the materialization by using a constant
+  // in the HLO graph, allowing XLA to optimize it away if possible.
+  TT_KERNEL(
+      OpName::kEfficientZeroTensor, _,
+      (IgnoreInCacheKey(size, "Not needed"),
+       IgnoreInCacheKey(dtype_opt, "Not needed"),
+       IgnoreInCacheKey(layout_opt, "Not needed"),
+       IgnoreInCacheKey(device_opt, "Not needed"),
+       IgnoreInCacheKey(pin_memory_opt, "Not needed")),
+      {
+        c10::ScalarType dtype =
+            dtype_opt.value_or(c10::get_default_dtype_as_scalartype());
+        auto op_builder =
+            [size_vec = CopyIntVector(size), dtype](
+                mlir::MlirBuilder& builder) -> absl::StatusOr<mlir::MlirOp> {
+          TT_ASSIGN_OR_RETURN(const mlir::ElementType mlir_dtype,
+                              ConvertTo<mlir::ElementType>(dtype));
+          auto type =
+              mlir::makeTensorType(builder.getContext(), size_vec, mlir_dtype);
+          return MakeConstant(builder, 0.0, type);
+        };
+
+        return ApplyNullaryOp(std::move(op_builder), dtype, size,
+                              OpParamCacheKeys::Empty());
       });
 }
 

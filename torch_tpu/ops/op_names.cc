@@ -258,6 +258,8 @@ std::string_view ToString(OpName op_name) {
       return "dot";
     case OpName::kDropout:
       return "dropout";
+    case OpName::kEfficientZeroTensor:
+      return "_efficientzerotensor";
     case OpName::kEluBackwardGradInput:
       return "elu_backward.grad_input";
     case OpName::kEluOut:

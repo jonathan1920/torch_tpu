@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_NULLARY_NULLARY_ATEN_KERNELS_H_
-#define TORCH_TPU_OPS_NULLARY_NULLARY_ATEN_KERNELS_H_
+#ifndef TORCH_TPU_OPS_NULLARY_ATEN_KERNELS_H_
+#define TORCH_TPU_OPS_NULLARY_ATEN_KERNELS_H_
 
 #include "absl/status/status.h"
 #include "ATen/core/ATen_fwd.h"
@@ -70,6 +70,12 @@ at::Tensor AtenEmptyStrided(c10::SymIntArrayRef size_sym,
                             c10::optional<at::Device> device_opt,
                             c10::optional<bool> pin_memory_opt);
 
+at::Tensor AtenEfficientZeroTensor(at::IntArrayRef size,
+                                   c10::optional<at::ScalarType> dtype_opt,
+                                   c10::optional<at::Layout> layout_opt,
+                                   c10::optional<at::Device> device_opt,
+                                   c10::optional<bool> pin_memory_opt);
+
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_NULLARY_NULLARY_ATEN_KERNELS_H_
+#endif  // TORCH_TPU_OPS_NULLARY_ATEN_KERNELS_H_

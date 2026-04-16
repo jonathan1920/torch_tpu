@@ -221,6 +221,7 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
         "@xla//xla:xla_data_proto_cc",
     ],
 )
