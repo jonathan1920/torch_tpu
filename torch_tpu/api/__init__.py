@@ -59,8 +59,8 @@ def _init_device_impl(device: str) -> torch.device:
   assert device == "tpu" or device == "xla_cuda" or device == "xla_cpu"
 
   # pylint: disable=protected-access
-  _device_module._DeviceModule._device_type = device
-  _device_module._device_ops_backend._init_runtime_options(device)
+  device_module = _device_module.get_device_module(device)
+  device_module._init_runtime_options()
   # pylint: enable=protected-access
 
   torch.utils.rename_privateuse1_backend(device)
@@ -74,7 +74,7 @@ def _init_device_impl(device: str) -> torch.device:
   )
 
   # pylint: disable=protected-access
-  torch._register_device_module(device, _device_module._DeviceModule)
+  torch._register_device_module(device, device_module)
   # pylint: enable=protected-access
   print(f"Registered Python module for '{device}'.", file=sys.stderr)
 

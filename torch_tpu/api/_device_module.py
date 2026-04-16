@@ -18,9 +18,10 @@ This module provides a Python interface to initialize and shutdown the device
 and runtime.
 """
 
+import abc
 import atexit
-from typing import Any, List
-
+from collections.abc import Mapping
+from typing import Any, Final, List
 from absl import logging
 import torch
 import torch_tpu._internal.precision as _precision_module
@@ -92,7 +93,7 @@ def _rng_validate_device_index(
     )
 
 
-class _DeviceModule:
+class _DeviceModule(abc.ABC):
   """torch_tpu device equivalent to functions in "torch/cuda/__init__.py".
 
   https://github.com/pytorch/pytorch/blob/v2.7.0/torch/cuda/__init__.py
@@ -112,9 +113,19 @@ class _DeviceModule:
   _autocast_enabled: bool = False
   _autocast_dtype: torch.dtype | None = torch.float16
 
+  _device_type: str
+
   Precision = _precision_module.Precision  # pylint: disable=invalid-name
   precision = _precision_module.precision
-  _device_type: str = "tpu"
+
+  # This method is called when a subclass of this abstract base class is
+  # created. As of Python 3.15, there is no obviously supported way of declaring
+  # a required abstract class attribute, but we can do the validation here.
+  def __init_subclass__(cls, **kwargs):
+    super().__init_subclass__(**kwargs)
+
+    if not hasattr(cls, "_device_type"):
+      raise TypeError(f"Class '{cls.__name__}' must define _device_type")
 
   @classmethod
   def current_device(cls) -> int:  # This is in torch/cuda/__init__.py.
@@ -220,11 +231,10 @@ class _DeviceModule:
   @classmethod
   def _init_runtime_options(
       cls,
-      device_type="tpu",
   ):
     """Initializes the TPU runtime options."""
     if not cls.is_initialized():
-      _device_ops_backend._init_runtime_options(device_type)  # pylint: disable=protected-access
+      _device_ops_backend._init_runtime_options(cls._device_type)  # pylint: disable=protected-access
       if not hasattr(cls, "_atexit_registered"):
         atexit.register(cls._shutdown_runtime)
         cls._atexit_registered = True
@@ -369,6 +379,43 @@ class _DeviceModule:
   def _shutdown_runtime(cls):
     if cls.is_initialized():
       _device_ops_backend._shutdown_runtime()  # pylint: disable=protected-access
+
+
+class TpuDeviceModule(_DeviceModule):
+  _device_type: Final[str] = "tpu"
+
+
+class XlaCudaDeviceModule(_DeviceModule):
+  _device_type: Final[str] = "xla_cuda"
+
+
+class XlaCpuDeviceModule(_DeviceModule):
+  _device_type: Final[str] = "xla_cpu"
+
+
+_DEVICE_MODULE_MAPPING: Final[Mapping[str, type[_DeviceModule]]] = {
+    "tpu": TpuDeviceModule,
+    "xla_cuda": XlaCudaDeviceModule,
+    "xla_cpu": XlaCpuDeviceModule,
+}
+
+
+def get_device_module(device_type: str) -> type[_DeviceModule]:
+  """Retrieves the _DeviceModule module for the specified device.
+
+  Args:
+    device_type: A valid device type, one of: {tpu, xla_cuda, xla_cpu}
+
+  Returns:
+    A module that can be passed to torch._register_device_module.
+  """
+  if device_type not in _DEVICE_MODULE_MAPPING:
+    raise ValueError(
+        f"Unknown device type {device_type!r}, please choose one of: "
+        + ", ".join(_DEVICE_MODULE_MAPPING.keys())
+    )
+
+  return _DEVICE_MODULE_MAPPING[device_type]
 
 
 class TpuStreamContext:

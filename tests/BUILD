@@ -880,4 +880,69 @@ torch_tpu_py_test(
     ],
 )
 
+pytype_strict_library(
+    name = "device_module_testing",
+    testonly = True,
+    srcs = ["device_module_testing.py"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/api:_device_module",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "device_module_test_tpu",
+    srcs = ["device_module_tpu_test.py"],
+    main = "device_module_tpu_test.py",
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":device_module_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/api",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "device_module_test_gpu",
+    srcs = ["device_module_gpu_test.py"],
+    main = "device_module_gpu_test.py",
+    tags = [
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":device_module_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/api",
+        "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
+        "@xla//xla/stream_executor:cuda_platform",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "device_module_test_cpu",
+    srcs = ["device_module_cpu_test.py"],
+    main = "device_module_cpu_test.py",
+    tags = [],
+    deps = [
+        ":device_module_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/api",
+    ],
+)
+
+test_suite(
+    name = "device_module_tests",
+    tests = [
+        "device_module_test_cpu",
+        "device_module_test_gpu",
+        "device_module_test_tpu",
+    ],
+)
+
 torch_tpu_package_end()

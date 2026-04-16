@@ -301,7 +301,8 @@ void PjrtBackend::Shutdown() {
   }
   ABSL_VLOG(1) << "ShutdownPjRt";
 
-  client_.reset();
+  // TODO(503040602): This is causing segfaults at shutdown
+  // client_.reset();
   device_ = nullptr;
   device_type_ = PjRtDeviceType::kUnknown;
   global_device_count_ = 0;

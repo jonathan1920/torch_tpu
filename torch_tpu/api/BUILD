@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "torch_tpu_package_end")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
@@ -63,61 +63,6 @@ pytype_strict_library(
     srcs = ["streams.py"],
     deps = [
         ":_device_ops_backend",
-    ],
-)
-
-torch_tpu_py_test(
-    name = "device_module_test",
-    srcs = ["device_module_test.py"],
-    strict = True,
-    deps = [
-        ":_device_module",
-        "//shims/absl_py/testing:absltest",
-        "//shims/torch:pytorch",
-        "//shims/torch:testing_internal",
-    ],
-)
-
-torch_tpu_py_test(
-    name = "tpu_module_test",
-    srcs = ["tpu_module_test.py"],
-    strict = True,
-    tags = ["requires-tpu-v5lite"],
-    deps = [
-        ":_device_module",
-        ":api",
-        "//shims/absl_py/testing:absltest",
-        "//shims/torch:pytorch",
-        "//shims/torch:testing_internal",
-    ],
-)
-
-torch_tpu_py_test(
-    name = "xla_cuda_module_test",
-    srcs = ["xla_cuda_module_test.py"],
-    notest_oss = "Disabled during switch from opt-in to opt-out",
-    strict = True,
-    tags = ["requires-gpu-sm60-only"],
-    deps = [
-        ":_device_module",
-        ":api",
-        "//shims/absl_py/testing:absltest",
-        "//shims/torch:pytorch",
-        "//shims/torch:testing_internal",
-        "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
-    ],
-)
-
-torch_tpu_py_test(
-    name = "xla_cpu_module_test",
-    srcs = ["xla_cpu_module_test.py"],
-    strict = True,
-    deps = [
-        ":_device_module",
-        ":api",
-        "//shims/absl_py/testing:absltest",
-        "//shims/torch:pytorch",
-        "//shims/torch:testing_internal",
     ],
 )
 
