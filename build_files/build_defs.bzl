@@ -100,6 +100,8 @@ def adjust_cc_options(copts, features):
 def torch_tpu_cc_library(name, copts = None, features = None, **kwargs):
     """Creates a C++ library for torch_tpu.
 
+    Also creates a build_test for the library to ensure it is buildable.
+
     Args:
         name: The name of the library.
         copts: The C/C++ compiler options to use.
@@ -108,12 +110,15 @@ def torch_tpu_cc_library(name, copts = None, features = None, **kwargs):
     """
 
     copts, features = adjust_cc_options(copts, features)
-
     cc_library(
         name = name,
         copts = copts,
         features = features,
         **kwargs
+    )
+    build_test(
+        name = name + "_build_test",
+        targets = [":" + name],
     )
 
 # Enable build_cleaner to clean up deps for torch_tpu_cc_library.
