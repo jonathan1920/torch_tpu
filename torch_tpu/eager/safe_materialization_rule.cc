@@ -76,14 +76,15 @@ void SafeMaterializationRule::AddMaterializations(
   }
 }
 
-void SafeMaterializationRule::operator()(
-    const Traversal& traversal,
-    absl::flat_hash_set<const DeviceBufferList*>& materialization_nodes) {
+absl::flat_hash_set<const DeviceBufferList*>
+SafeMaterializationRule::operator()(const Traversal& traversal) {
   tsl::profiler::TraceMe t("SafeMaterializationRule");
+  absl::flat_hash_set<const DeviceBufferList*> materialization_nodes;
   for (auto it = traversal.execution_order().rbegin();
        it != traversal.execution_order().rend(); ++it) {
     VisitNode(**it, materialization_nodes);
   }
+  return materialization_nodes;
 }
 
 }  // namespace torch_tpu

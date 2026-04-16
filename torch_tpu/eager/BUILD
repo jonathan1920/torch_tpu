@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_cc_test", "torch_tpu_package_end")
+load("//build_files:build_defs.bzl", "oss_target", "torch_tpu_cc_library", "torch_tpu_cc_test", "torch_tpu_package_end")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -457,17 +457,12 @@ torch_tpu_cc_library(
     srcs = ["split_traversal.cc"],
     hdrs = ["split_traversal.h"],
     deps = [
+        ":custom_split",
         ":device_buffer",
-        ":dynamic_op_split_heuristic",
-        ":fanout_heuristic",
-        ":forced_split_heuristic",
-        ":reexecution_heuristic",
         ":safe_materialization_rule",
-        ":stale_heuristic",
+        ":split_utils",
         ":traversal",
         "//shims/torch:torch_headers",
-        "//torch_tpu/common:error_utils",
-        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log",
@@ -683,6 +678,81 @@ torch_tpu_cc_library(
         "@tsl//tsl/platform:path",
         "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla:xla_data_proto_cc",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "custom_split",
+    srcs = ["custom_split.cc"],
+    hdrs = ["custom_split.h"],
+    deps = [
+        ":device_buffer",
+        ":dynamic_op_split_heuristic",
+        ":fanout_heuristic",
+        ":forced_split_heuristic",
+        ":reexecution_heuristic",
+        ":stale_heuristic",
+        ":traversal",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/flags:flag",
+        "@tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "split_utils",
+    srcs = ["split_utils.cc"],
+    hdrs = ["split_utils.h"],
+    deps = [
+        ":device_buffer",
+        ":traversal",
+        "//torch_tpu/common:error_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "split_utils_test",
+    srcs = ["split_utils_test.cc"],
+    # To initialize PjRt, we need to explicitly set environment variable
+    # TPU_LIBRARY_PATH to point to libtpu.so for C++ tests before starting
+    # running the tests, which is not needed for Python tests.
+    # TODO(b/497890629): Run this test in OSS CI instead of using the hack
+    nobuild_oss = "Use oss_split_utils_test instead in OSS CI",
+    deps = [
+        ":device_buffer",
+        ":split_utils",
+        ":traversal",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:dimension_types",
+        "//torch_tpu/common:shape",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:python_context",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+    ],
+)
+
+oss_target(
+    sh_test,
+    name = "oss_split_utils_test",
+    srcs = ["//torch_tpu/common:run_cc_tpu_test.sh"],
+    args = ["$(location :split_utils_test)"],
+    data = [
+        ":split_utils_test",
+        "@pypi_libtpu//:whl",
+    ],
+    tags = [
+        # This is normally added by the torch_tpu_... rules
+        "requires-tpu",
+        "requires-tpu-v5lite",
     ],
 )
 

@@ -49,9 +49,8 @@ struct SafeMaterializationRule {
       const absl::flat_hash_set<const DeviceBufferList*>& required_outputs)
       : required_outputs(required_outputs) {}
 
-  void operator()(
-      const Traversal& traversal,
-      absl::flat_hash_set<const DeviceBufferList*>& materialization_nodes);
+  absl::flat_hash_set<const DeviceBufferList*> operator()(
+      const Traversal& traversal);
 
   // Reverse order visitor for the execution order. Because references are
   // output-to-input, going backwards ensures that by the time we visit a node,

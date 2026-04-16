@@ -16,117 +16,26 @@
 
 #include "torch_tpu/eager/split_traversal.h"
 
-#include <memory>
-#include <utility>
 #include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/eager/custom_split.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/dynamic_op_split_heuristic.h"
-#include "torch_tpu/eager/fanout_heuristic.h"
-#include "torch_tpu/eager/forced_split_heuristic.h"
-#include "torch_tpu/eager/reexecution_heuristic.h"
 #include "torch_tpu/eager/safe_materialization_rule.h"
-#include "torch_tpu/eager/stale_heuristic.h"
+#include "torch_tpu/eager/split_utils.h"
 #include "torch_tpu/eager/traversal.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 
-ABSL_FLAG(bool, torch_tpu_internal_fanout_heuristic, true,
-          "Use a materialization heuristic that looks at node fanout.");
-ABSL_FLAG(bool, torch_tpu_internal_reexecution_heuristic, true,
-          "Use a materialization heuristic that materializes on reexecution.");
-ABSL_FLAG(bool, torch_tpu_internal_stale_heuristic, true,
-          "Use a materialization heuristic that materializes around the stale "
-          "regions of a graph.");
 ABSL_FLAG(bool, torch_tpu_internal_safe_materialization_rule, true,
           "Use a set of materialization heuristics that ensures nodes are "
           "dropped or materialized sequentially.");
-
 namespace torch_tpu {
-
-namespace {
-
-// Config struct indicating which materialization heuristics are enabled.
-struct EnabledHeuristics {
-  void Initialize() {
-    if (absl::GetFlag(FLAGS_torch_tpu_internal_safe_materialization_rule)) {
-      safe_rule = true;
-    } else {
-      reexecution =
-          absl::GetFlag(FLAGS_torch_tpu_internal_reexecution_heuristic);
-      fanout = absl::GetFlag(FLAGS_torch_tpu_internal_fanout_heuristic);
-      stale = absl::GetFlag(FLAGS_torch_tpu_internal_stale_heuristic);
-    }
-
-    initialized = true;
-  }
-
-  // Whether the heuristics have been initialized.
-  bool initialized = false;
-
-  // If torch_tpu_internal_safe_materialization_rule is enabled, then use the
-  // safe materialization rule and ignore the other heuristics.
-  bool safe_rule = false;
-
-  // Otherwise, use heuristics a la carte as indicated.
-  bool reexecution = false;
-  bool forced_split = true;      // always enabled
-  bool dynamic_op_split = true;  // always enabled
-  bool fanout = false;
-  bool stale = false;
-};
-
-// Applies all enabled materialization heuristics on a given `traversal` and
-// return the set of nodes in `traversal` that at least one heuristic decides
-// to materialize.
-[[nodiscard]] absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
-ApplyAllMaterializationHeuristicsOn(
-    const Traversal& traversal,
-    const absl::flat_hash_set<const DeviceBufferList*>& required_outputs) {
-  static EnabledHeuristics enabled_heuristics;
-  if (!enabled_heuristics.initialized) {
-    enabled_heuristics.Initialize();
-  }
-
-  absl::flat_hash_set<const DeviceBufferList*> nodes_to_materialize =
-      required_outputs;
-  if (enabled_heuristics.safe_rule) {
-    auto safe_rule = SafeMaterializationRule(required_outputs);
-    safe_rule(traversal, nodes_to_materialize);
-  } else {
-    {
-      tsl::profiler::TraceMe t("LocalHeuristics");
-      for (const auto& node : traversal.execution_order()) {
-        if (enabled_heuristics.reexecution) {
-          ReexecutionHeuristic(*node, nodes_to_materialize);
-        }
-        if (enabled_heuristics.forced_split) {
-          ForcedSplitHeuristic(*node, nodes_to_materialize);
-        }
-        if (enabled_heuristics.dynamic_op_split) {
-          DynamicOpSplitHeuristic(*node, nodes_to_materialize);
-        }
-        if (enabled_heuristics.fanout) {
-          FanoutHeuristic(*node, nodes_to_materialize);
-        }
-        if (enabled_heuristics.stale) {
-          StaleHeuristic(*node, nodes_to_materialize);
-        }
-      }
-    }
-  }
-  return nodes_to_materialize;
-}
-
-}  // namespace
 
 absl::StatusOr<std::vector<Traversal>> SplitTraversal(
     Traversal traversal,
@@ -142,35 +51,22 @@ absl::StatusOr<std::vector<Traversal>> SplitTraversal(
 
   std::vector<Traversal> traversals;
 
-  // Here we collect a set of materialization nodes internal to the input
-  // `traversal`.
-  absl::flat_hash_set<const DeviceBufferList*> materialization_nodes_set =
-      ApplyAllMaterializationHeuristicsOn(traversal, required_outputs);
-
-  if (materialization_nodes_set.size() <= required_outputs.size()) {
-    // Shortcut in the simple case where there is no internal materialization
-    // node.
-    traversals.push_back(std::move(traversal));
-    return traversals;
+  // Here we collect a set of nodes that should be split into separate
+  // traversals.
+  absl::flat_hash_set<const DeviceBufferList*> split_points;
+  if (absl::GetFlag(FLAGS_torch_tpu_internal_safe_materialization_rule)) {
+    auto safe_rule = SafeMaterializationRule(required_outputs);
+    split_points = safe_rule(traversal);
+  } else {
+    split_points = CustomSplitRule(traversal);
   }
 
   ABSL_VLOG(1) << "Found " << required_outputs.size()
                << " required outputs and "
-               << materialization_nodes_set.size() - required_outputs.size()
-               << " internal materialization nodes.";
+               << split_points.size() - required_outputs.size()
+               << " additional split points.";
 
-  // In the following code, we split the original traversal into multiple
-  // traversals, based on the identified materialization points.
-
-  // Split traversal into one node per materialization point, maintaining the
-  // creation index order established above.
-  for (const auto& node : traversal.execution_order()) {
-    if (!materialization_nodes_set.contains(node.get())) continue;
-    TT_ASSIGN_OR_RETURN(auto new_traversal,
-                        Traversal::Create({node}, materialization_nodes_set));
-    traversals.push_back(std::move(new_traversal));
-  }
-  return traversals;
+  return ApplySplitPoints(traversal, split_points);
 }
 
 }  // namespace torch_tpu
