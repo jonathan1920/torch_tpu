@@ -774,6 +774,7 @@ torch_tpu_py_test(
     env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "dynamism_test.py",
     tags = [
+        # TODO: b/503386468 - Re-enable once the test is fixed.
         # Skip this test on tpu v6 and v7 runners: Fatal crash in XLA XPrecisionCombineEmitter due
         # to SublaneBytes alignment assertion (32 vs 512) for dynamic 64-bit shapes (int64/float64).
         "fails-on-tpu-v6",
