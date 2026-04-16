@@ -24,7 +24,6 @@ from typing import Any
 from absl import logging
 import torch
 import torch.export
-from torch.fx import node
 import torch.utils._pytree as pytree
 from torch_tpu._internal import device_utils
 from torch_tpu._internal import execution_mode
@@ -168,38 +167,6 @@ class EagerLikeFxInterpreter(torch.fx.Interpreter):
     except Exception as e:
       logging.warning("Failed to set func code to node source locations: %s", e)
     return
-
-  def get_attr(
-      self,
-      target: node.Target,
-      args: tuple[node.Argument, ...],
-      kwargs: dict[str, Any],
-  ) -> Any:
-    logging.debug(
-        "[EagerLikeFxInterpreter::get_attr] target: %s, args: %s, kwargs: %s",
-        target,
-        args,
-        kwargs,
-    )
-    if isinstance(target, str) and target.startswith("_tensor_constant"):
-      # Embed the _tensor_constant in the graph as a scalar constant
-      scalar: torch.Tensor = self.state_dict[target]
-      # TODO: Add empty.fill_ support for 0-d tensor constants
-      if scalar.shape.numel() != 1:
-        return super().get_attr(target, args, kwargs)
-      # Scalar constants are always on CPU but need to be on the active XLA device.
-      device = device_utils.available_xla_device()
-      if device is None:
-        raise RuntimeError(
-            "the TPU backend must be initialized before compiling ops; please"
-            " call torch.tpu.api.tpu_device() first"
-        )
-      return torch.empty(scalar.shape, device=device, dtype=scalar.dtype).fill_(
-          scalar.item()
-      )
-
-    # Fallback to the default implementation.
-    return super().get_attr(target, args, kwargs)
 
   def run_node(self, node) -> Any:
     """(Override) Run a single node in the FX graph, adding source locations."""
