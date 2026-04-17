@@ -716,6 +716,9 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "split_utils_test",
     srcs = ["split_utils_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     # To initialize PjRt, we need to explicitly set environment variable
     # TPU_LIBRARY_PATH to point to libtpu.so for C++ tests before starting
     # running the tests, which is not needed for Python tests.
