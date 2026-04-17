@@ -1593,6 +1593,42 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.ops.aten.mm.dtype_out(lhs, rhs, out_dtype=torch.float64, out=out)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # PyTorch CPU does not raise an error when g size does not match the size of
+  # weight in dim 0.
+  # TODO: TorchTPU should have similar behavior w.r.t. PyTorch native devices.
+  def test_weight_norm_interface_g_size_mismatch(self):
+    v = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    g = torch.ones(3, device=et.device(), dtype=torch.float32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "weight_norm_interface(): expected the size of the weight magnitude"
+            " (g) to be 2, which is the size of the weight at dimension 0,"
+            " got 3"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._weight_norm(v, g, 0)
+
+  # Why do we run this test only on TPU (and not on CPU)?
+  # PyTorch CPU does not raise an error when g has more than 1 dimension.
+  # TODO: TorchTPU should have similar behavior w.r.t. PyTorch native devices.
+  def test_weight_norm_interface_g_rank_too_large(self):
+    v = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    g = torch.ones(3, 3, device=et.device(), dtype=torch.float32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "weight_norm_interface(): expected the weight magnitude (g) to be a"
+            " scalar or a 1D tensor, got a tensor of shape [3, 3]"
+        ),
+        message_reviewed_by="wan",
+    ):
+      torch._weight_norm(v, g, 1)
+
 
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
