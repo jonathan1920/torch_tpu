@@ -3577,8 +3577,6 @@ class TestOps(TorchTpuTestBase):
   def test_sort(self):
     self.do_test_op(
         "sort",
-        # TODO: fix sort(out=...) failing.
-        check_out_variant=False,
         # sort() returns a (values, indices) tuple, where indices is
         # non-deterministic (as there might be duplicates in values).
         # Therefore we only check the values of the first output.
@@ -3641,9 +3639,6 @@ class TestOps(TorchTpuTestBase):
     # sorting when multiple indices have the same value.
     self.do_test_op(
         "topk",
-        check_grad=False,
-        # TODO: fix topk(out=...) failing.
-        check_out_variant=False,
         # NOTE: topk() is not implemented for bool on CPU, so we
         # have to exclude bool here.
         # TODO: fix topk() succeeding with complex dtypes (it should fail).
