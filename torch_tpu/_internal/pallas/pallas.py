@@ -18,12 +18,17 @@ This module provides APIs to call Pallas kernels from PyTorch. Note that use
 of these APIs requires that your environment also has JAX/Pallas installed.
 """
 
+import inspect
 import pathlib
-from typing import Any, Callable, Sequence
+import types
+import typing
+from typing import Any, Callable, Sequence, Union, overload
 import warnings
 from absl import logging
 import frozendict
 import torch
+from torch._library.custom_ops import CustomOpDef
+import torch.library
 from torch_tpu._internal.pallas import tpu_torch_pallas
 
 try:
@@ -223,6 +228,169 @@ def _get_kernel_invocation_key(
   return ";".join([trace_key, inputs_shapes_str, input_kwargs_str])
 
 
+def _is_valid_base_type(annotation: type[Any]) -> bool:
+  return annotation in (
+      jax.Array,
+      int,
+      float,
+      bool,
+      str,
+  )
+
+
+def _get_underlying_type_from_optional(typ: type[Any]) -> type[Any] | None:
+  """Returns the underlying type of an optional type, or None if not optional."""
+  # Optional types are simply a union of the underlying type and None.
+  # get_origin gets the base type of subscripted types
+  # e.g. get_origin(Union[T, NoneType]) => Union
+  if typing.get_origin(typ) not in (Union, types.UnionType):
+    return None
+  # get_args gets the subscripted type arguments
+  # e.g. get_args(Union[T, NoneType]) => (T, NoneType)
+  union_types = typing.get_args(typ)
+  concrete_args = [t for t in union_types if t is not types.NoneType]
+
+  # If there is more than one concrete type, then this is not a simple optional
+  # type.
+  if len(concrete_args) != 1:
+    return None
+  return concrete_args[0]
+
+
+def _is_valid_argument_type(annotation: type[Any]) -> bool:
+  """Returns True if the argument type is valid for a wrapped JAX function."""
+  if (underling := _get_underlying_type_from_optional(annotation)) is not None:
+    return _is_valid_base_type(underling)
+  return _is_valid_base_type(annotation)
+
+
+def _is_valid_argument(param: inspect.Parameter) -> bool:
+  """Returns True if the argument is valid for a wrapped JAX function.
+
+  Note this includes and defaulted kw only arguments such as those produces by
+  `functools.partial`.
+
+  Args:
+    param: The function parameter to validate.
+  """
+  # Defaulted keyword only arguments are allowed as they will be simply bound to
+  # the jax.jit call, we must support this as it is how functools.partial works.
+  if (
+      param.kind is inspect.Parameter.KEYWORD_ONLY
+      and param.default is not inspect.Parameter.empty
+  ):
+    return True
+  return _is_valid_argument_type(param.annotation)
+
+
+def _verify_signature(signature: inspect.Signature):
+  """verify that the signature contains only the allowed types.
+
+  Allowed types are, where arguments can be optional:
+    - jax.Array
+    - int
+    - float
+    - bool
+    - str
+
+  Args:
+    signature: The signature of the function to verify.
+
+  Returns:
+    True if the signature arguments are valid.
+  """
+
+  for param in signature.parameters.values():
+    if param.annotation is inspect.Parameter.empty:
+      raise ValueError(
+          f"Missing argument type annotation for JAX function: {signature}."
+      )
+
+  def is_valid_result(result: Any):
+    if typing.get_origin(result) is tuple:
+      return all(_is_valid_base_type(arg) for arg in typing.get_args(result))
+    return _is_valid_base_type(result)
+
+  invalid_arg_indices = [
+      idx
+      for idx, param in enumerate(signature.parameters.values())
+      if not _is_valid_argument(param)
+  ]
+  result_valid = signature.return_annotation is None or is_valid_result(
+      signature.return_annotation
+  )
+
+  if not invalid_arg_indices and result_valid:
+    return
+
+  error_messages: list[str] = []
+  if invalid_arg_indices:
+    error_messages.append(
+        f"Arguments at indices {invalid_arg_indices} are invalid."
+    )
+  if not result_valid:
+    error_messages.append("The return annotation is invalid.")
+
+  raise ValueError(
+      f"Invalid signature for JAX function: {signature}. "
+      f"{' '.join(error_messages)} Only jax.Arrays and POD types are supported."
+  )
+
+
+def _infer_static_argnums(signature: inspect.Signature):
+  """Infers the static_argnums for a JAX function.
+
+  All non-tensor arguments are considered static.
+
+  Args:
+    signature: The inspect.Signature of the JAX function.
+
+  Returns:
+    A tuple of argument indices that should be treated as static.
+  """
+  static_argnums = []
+  for idx, (_, param) in enumerate(signature.parameters.items()):
+    annotation = param.annotation
+    if param.kind is inspect.Parameter.KEYWORD_ONLY:
+      continue
+    if annotation is jax.Array:
+      continue
+    if _get_underlying_type_from_optional(annotation) is jax.Array:
+      continue
+    static_argnums.append(idx)
+  return tuple(static_argnums)
+
+
+def _get_torch_signature(signature: inspect.Signature):
+  """Converts a JAX signature to a Torch signature."""
+
+  new_parameters = []
+
+  def _map_jax_to_torch(typ):
+    if typ is jax.Array:
+      return torch.Tensor
+    if (underling := _get_underlying_type_from_optional(typ)) is not None:
+      return _map_jax_to_torch(underling) | types.NoneType
+    if (origin := typing.get_origin(typ)) is tuple:
+      mapped_args = (_map_jax_to_torch(arg) for arg in typing.get_args(typ))
+      return origin[*mapped_args]
+
+    return typ
+
+  for param in signature.parameters.values():
+    # Skip invalid argument types, these should already have been verified
+    # to have a default value.
+    if not _is_valid_argument_type(param.annotation):
+      continue
+    new_parameters.append(
+        param.replace(annotation=_map_jax_to_torch(param.annotation))
+    )
+  new_return_annotation = _map_jax_to_torch(signature.return_annotation)
+  return inspect.Signature(
+      new_parameters, return_annotation=new_return_annotation
+  )
+
+
 _KernelResultT = Sequence[torch.Tensor] | torch.Tensor | None
 
 
@@ -298,6 +466,9 @@ class JaxCallable:
       self.donate_argnums = donate_argnums if donate_argnums is not None else []
       self.input_output_aliases = {}
 
+    self.__signature__ = _get_torch_signature(inspect.signature(jit_fn))
+    self.__globals__ = None
+
     logging.debug("Creating JAX callable: %s", self)
 
   def __repr__(self):
@@ -369,17 +540,50 @@ class JaxCallable:
     return out_tree.unflatten(results)
 
 
+@overload
 def custom_jax_kernel(
-    jax_fn: Callable[..., Any] | None = None,
+    jax_fn: None = None,
     name: str | None = None,
     static_argnums: tuple[int, ...] = (),
     donate_argnums: list[int] | None = None,
     input_output_aliases: dict[int, int] | None = None,
     mesh: jax.sharding.Mesh | None = None,
     input_partition_specs: tuple[tuple[str, ...], ...] | None = None,
-    **jit_kwargs,
-) -> Callable[..., JaxCallable] | Callable[[Callable[..., Any]], JaxCallable]:
-  """A decorator that imports a JAX kernel into for use with torch_tpu.
+    *,
+    warn_deprecated: bool = True,
+) -> Callable[[Callable[..., Any]], JaxCallable]:
+  ...
+
+
+@overload
+def custom_jax_kernel(
+    jax_fn: Callable[..., Any],
+    name: str | None = None,
+    static_argnums: tuple[int, ...] = (),
+    donate_argnums: list[int] | None = None,
+    input_output_aliases: dict[int, int] | None = None,
+    mesh: jax.sharding.Mesh | None = None,
+    input_partition_specs: tuple[tuple[str, ...], ...] | None = None,
+    *,
+    warn_deprecated: bool = True,
+) -> JaxCallable:
+  ...
+
+
+def custom_jax_kernel(
+    jax_fn=None,
+    name=None,
+    static_argnums=(),
+    donate_argnums=None,
+    input_output_aliases=None,
+    mesh=None,
+    input_partition_specs=None,
+    *,
+    warn_deprecated: bool = True,
+):
+  """Deprecated: Please use `jax_op` instead.
+
+  A decorator that imports a JAX kernel into for use with torch_tpu.
 
   Often pallas kernel libraries are written with thin JAX usability layers, i.e.
   in tokamax. `custom_jax_kernel` allows for interop with these JAX kernel
@@ -417,13 +621,19 @@ def custom_jax_kernel(
     mesh: If using a distributed kernel, provide the device mesh.
     input_partition_specs: If using a distributed kernel, provide the input
       partition specs for each input tensor.
-    **jit_kwargs: Additional keyword arguments to configure the inner `jax.jit`,
-      like `donate_argnums`, etc.
+    warn_deprecated: If True, issue a deprecation warning.
 
   Returns:
     A decorator that takes a JAX function and returns a callable that
     can be used to call the kernel with torch.Tensor inputs.
   """
+  if warn_deprecated:
+    warnings.warn(
+        "the use of `custom_jax_kernel` is deprecated and will be removed soon."
+        " Please use `jax_op` instead.",
+        DeprecationWarning,
+        skip_file_prefixes=(str(pathlib.Path(__file__).parent),),
+    )
 
   def decorator(jax_fn: Callable[..., Any]) -> JaxCallable:
     nonlocal name
@@ -434,13 +644,13 @@ def custom_jax_kernel(
     trace_key = _get_kernel_invocation_key(
         name_key,
         [],
-        {**jit_kwargs, "static_argnums": static_argnums},
+        {"static_argnums": static_argnums, "donate_argnums": donate_argnums},
     )
 
     jit_fn = jax.jit(
         jax_fn,
         static_argnums=static_argnums,
-        **jit_kwargs,
+        donate_argnums=donate_argnums,
     )
     return JaxCallable(
         name=name,
@@ -456,3 +666,118 @@ def custom_jax_kernel(
   if jax_fn is None:
     return decorator
   return decorator(jax_fn)
+
+
+@overload
+def jax_op(
+    name: str,
+    fn: None = None,
+    /,
+    *,
+    donate_argnums: Sequence[int] | None = None,
+    mesh: jax.sharding.Mesh | None = None,
+    input_partition_specs: tuple[tuple[str, ...], ...] | None = None,
+) -> Callable[[Callable[..., Any]], CustomOpDef]:
+  ...
+
+
+@overload
+def jax_op(
+    name: str,
+    fn: Callable[..., Any],
+    /,
+    *,
+    donate_argnums: Sequence[int] | None = None,
+    mesh: jax.sharding.Mesh | None = None,
+    input_partition_specs: tuple[tuple[str, ...], ...] | None = None,
+) -> CustomOpDef:
+  ...
+
+
+def jax_op(
+    name,
+    fn=None,
+    /,
+    *,
+    donate_argnums=None,
+    mesh=None,
+    input_partition_specs=None,
+):
+  """Registers a JAX function as a custom PyTorch operation.
+
+  This decorator allows a JAX function, typically a Pallas kernel wrapped
+  with `custom_jax_kernel`, to be exposed as a `torch.library.custom_op`.
+  It handles the necessary tracing and registration with the TPU backend.
+
+  If arguments are donated those tensors will be left in an invalid state after
+  the kernel is called and should not be used again. Consider using a wrapper
+  function and copy_ or set_ to overwrite these invalid tensors to prevent
+  accidental reuse.
+
+  Args:
+    name: The name of the custom operator.
+    fn: The JAX function to wrap. If None, `pallas_op` acts as a decorator.
+    donate_argnums: A sequence of argument indices to donate.
+    mesh: jax.sharding.Mesh | None = None,
+    input_partition_specs: tuple[tuple[str, ...], ...] | None = None
+
+  Returns:
+    A `CustomOpDef` instance if `fn` is provided, or a decorator that returns
+    a `CustomOpDef` when applied to a function.
+  """
+
+  if "::" not in name:
+    raise ValueError(f"Op name {name} does not contain a namespace.")
+
+  if len(name.split("::")) != 2:
+    raise ValueError(f"Op name {name} must have exactly one '::' separator.")
+
+  def dec(fn: Callable[..., object]) -> CustomOpDef:
+    nonlocal name
+
+    signature = inspect.signature(fn, follow_wrapped=False)
+    _verify_signature(signature)
+    static_argnums = _infer_static_argnums(signature)
+    wrapped_fn = custom_jax_kernel(
+        fn,
+        name,
+        donate_argnums=donate_argnums,
+        mesh=mesh,
+        input_partition_specs=input_partition_specs,
+        static_argnums=static_argnums,
+        warn_deprecated=False,
+    )
+
+    # Jax functions are inherently immutable, even donated args are immutable in
+    # that they are in an invalid state rather than mutated state, users can
+    # copy back if they require.
+    # If we mark donated args as mutable then Dynamo will copy back the
+    # original value of the donated arg which then defeats the purpose of
+    # donating.
+    mutates_args = ()
+
+    # We require that the user pass us a function that is make_fx traceable,
+    # so we can just register it as the Fake/meta kernel.
+    def fake_fn(*args, **kwargs):
+      jax_args = jax_placeholders(
+          args, mesh=mesh, partition_specs=input_partition_specs
+      )
+      lowered = wrapped_fn.exported(*jax_args, **kwargs)
+      return lowered.out_tree.unflatten(
+          torch_placeholder(aval, mesh=mesh) for aval in lowered.out_avals
+      )
+
+    result = torch.library.custom_op(
+        name,
+        wrapped_fn,
+        mutates_args=mutates_args,
+    )
+
+    result.register_fake(fake_fn)
+
+    return result
+
+  if fn is None:
+    return dec
+  else:
+    return dec(fn)

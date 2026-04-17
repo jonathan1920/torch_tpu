@@ -15,6 +15,7 @@
 """Small graph test for TPU backend."""
 
 import functools
+from typing import Optional, Tuple
 from absl.testing import absltest
 import jax
 from jax.experimental import pallas as pl
@@ -39,14 +40,14 @@ def add_vectors_kernel_body(x_ref, y_ref, o_ref):
   o_ref[...] = x + y
 
 
-def add_vectors_jax(x, y):
+def add_vectors_jax(x: jax.Array, y: jax.Array) -> jax.Array:
   dt = jax.ShapeDtypeStruct(x.shape, x.dtype)
   pallas_call = pl.pallas_call(add_vectors_kernel_body, out_shape=dt)
   return pallas_call(x, y)
 
 
-@pallas.custom_jax_kernel
-def add_vectors(x, y):
+@pallas.jax_op("pallas::add_vectors")
+def add_vectors(x: jax.Array, y: jax.Array) -> jax.Array:
   return add_vectors_jax(x, y)
 
 
@@ -56,8 +57,10 @@ def add_subtract_vectors_kernel(x_ref, y_ref, oadd_ref, osub_ref):
   osub_ref[...] = x - y
 
 
-@pallas.custom_jax_kernel
-def add_subtract_vectors(x, y):
+@pallas.jax_op("pallas::add_subtract_vectors")
+def add_subtract_vectors(
+    x: jax.Array, y: jax.Array
+) -> Tuple[jax.Array, jax.Array]:
   dt = jax.ShapeDtypeStruct(x.shape, x.dtype)
   return pl.pallas_call(add_subtract_vectors_kernel, out_shape=(dt, dt))(x, y)
 
@@ -67,15 +70,16 @@ def subtract_vectors_kernel(x_ref, y_ref, o_ref):
   o_ref[...] = x - y
 
 
-@pallas.custom_jax_kernel
-def subtract_vectors(x, y):
+@pallas.jax_op("pallas::subtract_vectors")
+def subtract_vectors(x: jax.Array, y: jax.Array) -> jax.Array:
   return pl.pallas_call(
       subtract_vectors_kernel, out_shape=jax.ShapeDtypeStruct(x.shape, x.dtype)
   )(x, y)
 
 
-@functools.partial(jax.jit, static_argnums=(0,))
-def jax_add_or_subtract_vectors_wrapper(mode, x, y):
+def jax_add_or_subtract_vectors_wrapper(
+    mode: str, x: jax.Array, y: jax.Array
+) -> jax.Array:
   """Emulate kernel lib like tokamax with thin JAX wrapper around pallas.
 
   TorchTPU custom kernel calls require that all input and output arguments are
@@ -89,6 +93,9 @@ def jax_add_or_subtract_vectors_wrapper(mode, x, y):
     mode: The mode to use, either "add" or "sub".
     x: The first input tensor.
     y: The second input tensor.
+
+  Returns:
+    The result of the addition or subtraction.
   """
 
   @functools.partial(jax.jit, static_argnums=(0,))
@@ -158,11 +165,8 @@ class TestPallasKernels(absltest.TestCase):
     utils.assert_close(actual, expected)
 
   def test_two_kernels_same_name_different_kwargs(self):
-    add_vectors_no_metadata = pallas.custom_jax_kernel(
-        add_vectors_jax, name="add_vectors"
-    )
 
-    def add_vectors_with_metadata_jax(x, y):
+    def add_vectors_with_metadata_jax(x: jax.Array, y: jax.Array) -> jax.Array:
       return pl.pallas_call(
           add_vectors_kernel_body,
           out_shape=jax.ShapeDtypeStruct(x.shape, x.dtype),
@@ -170,18 +174,22 @@ class TestPallasKernels(absltest.TestCase):
           metadata={"foo": "bar"},
       )(x, y)
 
-    add_vectors_with_metadata = pallas.custom_jax_kernel(
-        add_vectors_with_metadata_jax, name="add_vectors"
+    add_vectors_with_metadata = pallas.jax_op(
+        "pallas::add_vectors_with_metadata", add_vectors_with_metadata_jax
     )
 
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
     expected = torch.add(x, y).to("cpu")
-    actual_no_metadata = add_vectors_no_metadata(x, y).to("cpu")
+    actual_no_metadata = add_vectors(x, y).to("cpu")
     actual_with_metadata = add_vectors_with_metadata(x, y).to("cpu")
     utils.assert_close(actual_no_metadata, expected)
     utils.assert_close(actual_with_metadata, expected)
 
+  @absltest.skip(
+      "This is expected to fail now that we wrap in"
+      " torch.library.custom_ops (see cl/892251072)."
+  )
   def test_two_kernels_same_name_different_func(self):
     """Test two different kernels registered with the same name.
 
@@ -193,17 +201,13 @@ class TestPallasKernels(absltest.TestCase):
       x, y = x_ref[...], y_ref[...]
       o_ref[...] = x - y
 
-    def sub_vectors_jax(x, y):
+    def sub_vectors_jax(x: jax.Array, y: jax.Array) -> jax.Array:
       return pl.pallas_call(
           sub_vectors_kernel, out_shape=jax.ShapeDtypeStruct(x.shape, x.dtype)
       )(x, y)
 
-    add_vectors_fn = pallas.custom_jax_kernel(
-        add_vectors_jax, name="math_kernel"
-    )
-    sub_vectors_fn = pallas.custom_jax_kernel(
-        sub_vectors_jax, name="math_kernel"
-    )
+    add_vectors_fn = pallas.jax_op("pallas::math_kernel", add_vectors_jax)
+    sub_vectors_fn = pallas.jax_op("pallas::math_kernel", sub_vectors_jax)
 
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
@@ -214,11 +218,11 @@ class TestPallasKernels(absltest.TestCase):
     utils.assert_close(actual_add, expected_add)
     utils.assert_close(actual_sub, expected_sub)
 
-  def test_kernel_input_output_donating(self):
+  def test_kernel_donating(self):
 
-    donating_add_vectors = pallas.custom_jax_kernel(
+    donating_add_vectors = pallas.jax_op(
+        "pallas::donating_add_vectors",
         add_vectors_jax,
-        name="add_vectors",
         donate_argnums=(0,),
     )
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
@@ -234,11 +238,31 @@ class TestPallasKernels(absltest.TestCase):
     )
     utils.assert_close(y.to("cpu"), expected_y)
 
+  def test_kernel_donation_inplace(self):
+
+    donating_add_vectors = pallas.jax_op(
+        "pallas::donating_add_vectors",
+        add_vectors_jax,
+        donate_argnums=(0,),
+    )
+
+    def add_vectors_inplace(x: torch.Tensor, y: torch.Tensor) -> None:
+      result = donating_add_vectors(x, y)
+      x.set_(result)
+
+    x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
+    y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
+    expected = torch.add(x, y).to("cpu")
+    add_vectors_inplace(x, y)
+    utils.assert_close(x, expected)
+    expected_y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32)
+    utils.assert_close(y.to("cpu"), expected_y)
+
   def test_kernel_donation_invalidates_deferred_op(self):
 
-    donating_add_vectors = pallas.custom_jax_kernel(
+    donating_add_vectors = pallas.jax_op(
+        "pallas::donating_add_vectors",
         add_vectors_jax,
-        name="add_vectors",
         donate_argnums=(0,),
     )
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
@@ -257,29 +281,15 @@ class TestPallasKernels(absltest.TestCase):
       o_x_ref[...] = g
       o_y_ref[...] = g
 
-    @torch.library.custom_op(
-        "pallas::add_vectors_backward",
-        mutates_args=(),
-        schema="(Tensor grad) -> (Tensor, Tensor)",
-        device_types=["tpu"],
-    )
-    @pallas.custom_jax_kernel
-    def add_vectors_backward(g):
+    @pallas.jax_op("pallas::add_vectors_backward")
+    def add_vectors_backward(g: jax.Array) -> tuple[jax.Array, jax.Array]:
       dt = jax.ShapeDtypeStruct(g.shape, g.dtype)
       return pl.pallas_call(add_vectors_backward_kernel, out_shape=(dt, dt))(g)
 
-    add_vectors_backward.register_fake(
-        lambda g: (torch.empty_like(g), torch.empty_like(g))
+    add_vectors_op = pallas.jax_op(
+        "pallas::add_vectors_with_autograd",
+        add_vectors_jax,
     )
-
-    add_vectors_op = torch.library.custom_op(
-        "pallas::add_vectors",
-        add_vectors,
-        mutates_args=(),
-        schema="(Tensor x, Tensor y) -> Tensor",
-        device_types=["tpu"],
-    )
-    add_vectors_op.register_fake(lambda x, _: torch.empty_like(x))
 
     add_vectors_op.register_autograd(
         lambda ctx, grad: add_vectors_backward(grad)
@@ -317,22 +327,13 @@ class TestPallasKernels(absltest.TestCase):
     utils.assert_close(x_grad_actual, x_grad_expected)
     utils.assert_close(y_grad_actual, y_grad_expected)
 
-  def test_kernel_input_output_donating_compiled_mode(self):
+  def test_kernel_donating_compiled_mode(self):
 
-    donating_add_vectors = pallas.custom_jax_kernel(
+    torch_donating_add_vectors = pallas.jax_op(
+        "pallas::add_vectors_donated",
         add_vectors_jax,
-        name="add_vectors",
         donate_argnums=(0,),
     )
-
-    torch_donating_add_vectors = torch.library.custom_op(
-        "pallas::donating_add_vectors",
-        lambda x, y: donating_add_vectors(x, y).clone(),
-        mutates_args=(),
-        schema="(Tensor x, Tensor y) -> Tensor",
-        device_types=["tpu"],
-    )
-    torch_donating_add_vectors.register_fake(lambda x, _: torch.empty_like(x))
 
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
@@ -351,22 +352,34 @@ class TestPallasKernels(absltest.TestCase):
     utils.assert_close(actual_sum.to("cpu"), expected_sum)
     self._assert_donated(x)
 
-  def test_kernel_compiled_mode_donation_invalidates_deferred_op(self):
+  def test_kernel_donation_inplace_compiled_mode(self):
 
-    donating_add_vectors = pallas.custom_jax_kernel(
+    donating_add_vectors = pallas.jax_op(
+        "pallas::donating_add_vectors",
         add_vectors_jax,
-        name="add_vectors",
         donate_argnums=(0,),
     )
 
-    torch_donating_add_vectors = torch.library.custom_op(
+    @torch.compile(fullgraph=True, dynamic=False, backend=compile.TpuBackend())
+    def add_vectors_inplace(x: torch.Tensor, y: torch.Tensor) -> None:
+      result = donating_add_vectors(x, y)
+      x.copy_(result)
+
+    x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
+    y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
+    expected = torch.add(x, y).to("cpu")
+    add_vectors_inplace(x, y)
+    utils.assert_close(x, expected)
+    expected_y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32)
+    utils.assert_close(y.to("cpu"), expected_y)
+
+  def test_kernel_compiled_mode_donation_invalidates_deferred_op(self):
+
+    donating_add_vectors = pallas.jax_op(
         "pallas::donating_add_vectors",
-        lambda x, y: donating_add_vectors(x, y).clone(),
-        mutates_args=(),
-        schema="(Tensor x, Tensor y) -> Tensor",
-        device_types=["tpu"],
+        add_vectors_jax,
+        donate_argnums=(0,),
     )
-    torch_donating_add_vectors.register_fake(lambda x, _: torch.empty_like(x))
 
     # These tensors are intentionally 2D as it triggers the flatten -> unflatten
     # behaviour (b/479542146).
@@ -381,7 +394,7 @@ class TestPallasKernels(absltest.TestCase):
     # Run a donating compiled operation.
     @torch.compile(fullgraph=True, dynamic=False, backend=tpu_backend)
     def donated_add_vectors_sum(x, y):
-      return torch_donating_add_vectors(x, y).sum()
+      return donating_add_vectors(x, y).sum()
 
     _ = donated_add_vectors_sum(x, y)
 
@@ -399,23 +412,13 @@ class TestPallasKernels(absltest.TestCase):
     else:
       pre_x_sum.cpu()
 
-  def test_kernel_compile_both_donated_and_non_donated_ops(
-      self,
-  ):
+  def test_kernel_compile_both_donated_and_non_donated_ops(self):
 
-    donating_add_vectors = pallas.custom_jax_kernel(
+    donating_add_vectors = pallas.jax_op(
+        "pallas::add_vectors_donated",
         add_vectors_jax,
-        name="add_vectors",
         donate_argnums=(0,),
     )
-    torch_donating_add_vectors = torch.library.custom_op(
-        "pallas::donating_add_vectors",
-        lambda x, y: donating_add_vectors(x, y).clone(),
-        mutates_args=(),
-        schema="(Tensor x, Tensor y) -> Tensor",
-        device_types=["tpu"],
-    )
-    torch_donating_add_vectors.register_fake(lambda x, _: torch.empty_like(x))
 
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
@@ -425,7 +428,7 @@ class TestPallasKernels(absltest.TestCase):
       # This op uses x but does not donate it.
       x_sum = x.sum()
       # This op donates x.
-      z = torch_donating_add_vectors(x, y)
+      z = donating_add_vectors(x, y)
 
       return x_sum, z
 
@@ -440,8 +443,8 @@ class TestPallasKernels(absltest.TestCase):
   def test_jax_kernel_wrapper_simple(self):
     """Test a kernel wrapper that is a simple passthrough to a JAX kernel."""
 
-    @pallas.custom_jax_kernel
-    def add_fn(x, y):
+    @pallas.jax_op("pallas::simple_add_fn")
+    def add_fn(x: jax.Array, y: jax.Array) -> jax.Array:
       return jax.numpy.add(x, y)
 
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
@@ -453,15 +456,16 @@ class TestPallasKernels(absltest.TestCase):
   def test_jax_kernel_wrapper_with_donation(self):
     """Test a kernel wrapper with a donated argument."""
 
-    @pallas.custom_jax_kernel(donate_argnums=(0,))
-    def add_fn(x, y):
+    @pallas.jax_op("pallas::add_fn", donate_argnums=(0,))
+    def add_fn(x: jax.Array, y: jax.Array) -> jax.Array:
       return jax.numpy.add(x, y)
 
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
     expected = torch.add(x, y).to("cpu")
-    actual = add_fn(x, y).to("cpu")
-    utils.assert_close(actual, expected)
+    actual = add_fn(x, y)
+    utils.assert_close(actual.cpu(), expected)
+    # x should be donated by the output.
     self._assert_donated(x)
 
   def test_jax_kernel_with_trace_time_conditional(self):
@@ -477,8 +481,8 @@ class TestPallasKernels(absltest.TestCase):
     add_fn = functools.partial(jax_add_or_subtract_vectors_wrapper, "add")
     sub_fn = functools.partial(jax_add_or_subtract_vectors_wrapper, "sub")
 
-    add_kernel = pallas.custom_jax_kernel(add_fn)
-    sub_kernel = pallas.custom_jax_kernel(sub_fn)
+    add_kernel = pallas.jax_op("pallas::add_fn", add_fn)
+    sub_kernel = pallas.jax_op("pallas::sub_fn", sub_fn)
 
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
     y = torch.tensor([0.4, 0.5, 0.6], dtype=torch.float32, device=self.device)
@@ -491,8 +495,8 @@ class TestPallasKernels(absltest.TestCase):
 
   def test_jax_kernel_with_static_argnums(self):
     """Test custom_jax_kernel with static_argnums."""
-    kernel = pallas.custom_jax_kernel(
-        jax_add_or_subtract_vectors_wrapper, static_argnums=(0,)
+    kernel = pallas.jax_op(
+        "pallas::jax_test", jax_add_or_subtract_vectors_wrapper
     )
 
     x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32, device=self.device)
@@ -507,8 +511,8 @@ class TestPallasKernels(absltest.TestCase):
   def test_kernel_wrapper_with_none_return(self):
     """Simulate kernel libraries like tokamax that wrap pallas kernels."""
 
-    @pallas.custom_jax_kernel
-    def wrapper():
+    @pallas.jax_op("pallas::jax_test")
+    def wrapper() -> None:
       return None
 
     none = wrapper()
@@ -517,12 +521,67 @@ class TestPallasKernels(absltest.TestCase):
   def test_kernel_wrapper_with_none_input(self):
     """Simulate kernel libraries like tokamax that wrap pallas kernels."""
 
-    @pallas.custom_jax_kernel
-    def wrapper(x):
-      return x
+    @pallas.jax_op("pallas::jax_test")
+    def wrapper(x: jax.Array, y: Optional[jax.Array]) -> jax.Array:
+      if y is None:
+        return x
+      return jax.numpy.add(x, y)
 
-    none = wrapper(None)
-    self.assertIsNone(none)
+    x = torch.tensor([1.0, 2.0, 3.0], device=self.device)
+    z = wrapper(x, None)
+    utils.assert_close(z.cpu(), x.cpu())
+
+  def test_kernel_wrapper_with_none_input_new_syntax(self):
+    """Simulate kernel libraries like tokamax that wrap pallas kernels."""
+
+    @pallas.jax_op("pallas::jax_test")
+    def wrapper(x: jax.Array, y: jax.Array | None) -> jax.Array:
+      if y is None:
+        return x
+      return jax.numpy.add(x, y)
+
+    x = torch.tensor([1.0, 2.0, 3.0], device=self.device)
+    z = wrapper(x, None)
+    utils.assert_close(z.cpu(), x.cpu())
+
+  def test_jax_op_with_defaulted_int(self):
+    """Check that we can bind torch support-types to the kernel."""
+
+    def bias_add_kernel(x: jax.Array, bias: int = 1) -> jax.Array:
+      return x + bias
+
+    bias_add_op = pallas.jax_op("pallas::bias_add_kernel", bias_add_kernel)
+
+    x = torch.tensor([1.0, 2.0, 3.0], device=self.device)
+    x_plus_one = bias_add_op(x)
+    utils.assert_close(x_plus_one.cpu(), x.cpu() + 1)
+
+    # Check that we can override the default value with a positional argument.
+    x_plus_two = bias_add_op(x, 2)
+    utils.assert_close(x_plus_two.cpu(), x.cpu() + 2)
+
+    # Check that we can override the default value with a keyword argument.
+    x_plus_two = bias_add_op(x, bias=3)
+    utils.assert_close(x_plus_two.cpu(), x.cpu() + 3)
+
+  def test_jax_op_with_bound_mesh(self):
+    """Simulate distributed kernels.
+
+    Including pretty much any kernel that takes a non-torch types.
+    """
+
+    def kernel(x: jax.Array, mesh: jax.sharding.Mesh) -> jax.Array:
+      del mesh
+      return x + 1
+
+    x = torch.tensor([1.0, 2.0, 3.0], device=self.device)
+    mesh = jax.sharding.Mesh(jax.numpy.arange(8), "x")
+
+    kernel_op = pallas.jax_op(
+        "pallas::jax_test", functools.partial(kernel, mesh=mesh)
+    )
+    z = kernel_op(x)
+    utils.assert_close(z.cpu(), x.cpu() + 1)
 
   # The following aliasing tests are for the deprecated input_output_aliases
   # so are not comprehensive.

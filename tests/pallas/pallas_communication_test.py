@@ -38,7 +38,7 @@ from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multi
 P = jax.sharding.PartitionSpec
 
 
-def jax_kernel(global_input, mesh):
+def jax_kernel(global_input: jax.Array, mesh: jax.sharding.Mesh) -> jax.Array:
   def pallas_kernel(x_tile, y_tile, send_sem, recv_sem):
     rank = jax.lax.axis_index("x")
     world_size = jax.lax.axis_size("x")
@@ -91,23 +91,14 @@ def create_roll_op(world_size, rank):
 
   input_partition_specs = [partition_spec]
 
-  torch_kernel = pallas.custom_jax_kernel(
+  torch_kernel = pallas.jax_op(
+      "pallas::roll_vectors",
       functools.partial(jax_kernel, mesh=mesh),
       mesh=mesh,
       input_partition_specs=input_partition_specs,
   )
 
-  torch_kernel_op = torch.library.custom_op(
-      "pallas::roll_vectors",
-      torch_kernel,
-      mutates_args=(),
-      schema="(Tensor x) -> Tensor",
-      device_types=["tpu"],
-  )
-
-  torch_kernel_op.register_fake(torch.empty_like)
-
-  return torch_kernel_op
+  return torch_kernel
 
 
 def _run(do_compile):
