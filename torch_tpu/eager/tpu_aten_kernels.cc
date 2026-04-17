@@ -262,6 +262,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kEluBackwardGradInput, AtenEluBackwardGradInput);
   Impl(m, OpName::kEluOut, AtenEluOut);
   Impl(m, OpName::kEmbeddingBag, AtenEmbeddingBag);
+  Impl(m, OpName::kEmbeddingBagBackward, AtenEmbeddingBagBackward);
   Impl(m, OpName::kEmbeddingBagForwardOnly, AtenEmbeddingBagForwardOnly);
   Impl(m, OpName::kEmbeddingDenseBackward, AtenEmbeddingDenseBackward);
   Impl(m, OpName::kEmbeddingRenorm_, AtenEmbeddingRenorm_);

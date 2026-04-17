@@ -24,6 +24,7 @@ namespace torch_tpu {
 
 enum class OpName {
   // go/keep-sorted start
+
   kAbsOut,
   kAcosOut,
   kAcoshOut,
@@ -144,6 +145,7 @@ enum class OpName {
   kEluBackwardGradInput,
   kEluOut,
   kEmbeddingBag,
+  kEmbeddingBagBackward,
   kEmbeddingBagForwardOnly,
   kEmbeddingDenseBackward,
   kEmbeddingRenorm_,

@@ -21,6 +21,7 @@
 #include <optional>
 
 #include "absl/status/statusor.h"
+#include "c10/core/SymInt.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
@@ -31,6 +32,16 @@ absl::StatusOr<MlirOpResults<4>> BuildEmbeddingBagShlo(
     bool scale_grad_by_freq, int64_t mode, bool sparse,
     std::optional<mlir::MlirOp> per_sample_weights, bool include_last_offset,
     int64_t padding_idx);
+
+absl::StatusOr<mlir::MlirOp> BuildEmbeddingBagBackwardShlo(
+    mlir::MlirOp grad, mlir::MlirOp indices, mlir::MlirOp offsets,
+    mlir::MlirOp offset2bag, mlir::MlirOp bag_size, mlir::MlirOp max_indices,
+    at::SymInt num_weights, bool scale_grad_by_freq, int64_t mode, bool sparse,
+    std::optional<mlir::MlirOp> per_sample_weights, int64_t padding_idx);
+
+absl::StatusOr<mlir::MlirOp> BuildEmbeddingDenseBackwardShlo(
+    mlir::MlirOp grad_output, mlir::MlirOp indices, at::SymInt num_weights,
+    at::SymInt padding_idx, bool scale_grad_by_freq);
 
 absl::StatusOr<mlir::MlirOp> BuildEmbeddingRenormShlo(mlir::MlirOp weight,
                                                       mlir::MlirOp indices,

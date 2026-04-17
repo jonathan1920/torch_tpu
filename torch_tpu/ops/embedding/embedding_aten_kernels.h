@@ -42,6 +42,13 @@ AtenEmbeddingBagForwardOnly(const at::Tensor& weight, const at::Tensor& indices,
 at::Tensor& AtenEmbeddingRenorm_(at::Tensor& self, const at::Tensor& indices,
                                  double max_norm, double norm_type);
 
+at::Tensor AtenEmbeddingBagBackward(
+    const at::Tensor& grad, const at::Tensor& indices,
+    const at::Tensor& offsets, const at::Tensor& offset2bag,
+    const at::Tensor& bag_size, const at::Tensor& max_indices,
+    at::SymInt num_weights, bool scale_grad_by_freq, int64_t mode, bool sparse,
+    const std::optional<at::Tensor>& per_sample_weights, int64_t padding_idx);
+
 // This implementation is adapted from:
 // https://github.com/pytorch/pytorch/blob/5b764267f4446e92e4072fb4faf128da6208cf8f/torch/_decomp/decompositions.py#L1247-L1273
 at::Tensor AtenEmbeddingDenseBackward(const at::Tensor& grad_output,

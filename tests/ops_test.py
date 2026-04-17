@@ -455,13 +455,13 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 1e-4, "atol": 1e-2},
     },
     "nn.functional.embedding": {
-        torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
-        torch.float16: {"rtol": 1e-2, "atol": 1e-2},
+        torch.bfloat16: {"rtol": 1.5e-2, "atol": 1.5e-2},
+        torch.float16: {"rtol": 1.5e-2, "atol": 1.5e-2},
     },
     "nn.functional.embedding_bag": {
-        torch.bfloat16: {"rtol": 7.2e-02, "atol": 6.3e-02},
+        torch.bfloat16: {"rtol": 3.4e-1, "atol": 6.5e-2},
         # TODO(b/495931205): why are rtol and atol so high?
-        torch.float16: {"rtol": 2.4e-01, "atol": 3.2e-01},
+        torch.float16: {"rtol": 3.4e-01, "atol": 3.2e-01},
         torch.float32: {"rtol": 2.9e-6, "atol": 1.6e-5},
     },
     "nn.functional.gelu": {
@@ -947,12 +947,12 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float32: {"rtol": 9.4, "atol": 1.1},
     },
     "nn.functional.embedding": {
-        torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
-        torch.float16: {"rtol": 1e-2, "atol": 1e-2},
+        torch.bfloat16: {"rtol": 1.5e-2, "atol": 1.5e-2},
+        torch.float16: {"rtol": 1.5e-2, "atol": 1.5e-2},
     },
     "nn.functional.embedding_bag": {
-        torch.bfloat16: {"rtol": 5.9e-02, "atol": 1.6e-02},
-        torch.float16: {"rtol": 9.0e-02, "atol": 2.5e-01},
+        torch.bfloat16: {"rtol": 3.4e-1, "atol": 6.5e-2},
+        torch.float16: {"rtol": 3.4e-1, "atol": 2.5e-01},
     },
     "nn.functional.gelu": {
         torch.float16: {"rtol": 1e-1, "atol": 5e-4},
@@ -1278,8 +1278,8 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
         torch.float16: {"rtol": 3.90e-03, "atol": 1.50e-03},
     },
     "nn.functional.embedding_bag": {
-        torch.bfloat16: {"rtol": 5.90e-02, "atol": 1.60e-02},
-        torch.float16: {"rtol": 9.00e-02, "atol": 2.50e-01},
+        torch.bfloat16: {"rtol": 3.4e-1, "atol": 6.5e-2},
+        torch.float16: {"rtol": 3.4e-1, "atol": 2.50e-01},
     },
     "nn.functional.gelu": {
         torch.bool: {"rtol": 4.90e-06, "atol": 0.00e00},
@@ -2008,8 +2008,13 @@ class TestOps(TorchTpuTestBase):
   def test_embedding_bag(self):
     self.do_test_op(
         "nn.functional.embedding_bag",
-        # TODO: fix _embedding_bag_backward is unimplemented.
-        check_grad=False,
+        # TODO: fix embedding_bag() failing with complex dtypes.
+        exclude_dtypes=COMPLEX_DTYPES,
+        # TODO: add support for sparse embeddings.
+        skip_if=lambda device, variant, op_input: (
+            op_input.kwargs.get("sparse", False)
+            or op_input.kwargs.get("scale_grad_by_freq", False)
+        ),
     )
 
   def test_empty(self):

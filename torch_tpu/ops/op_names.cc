@@ -26,6 +26,7 @@ namespace torch_tpu {
 std::string_view ToString(OpName op_name) {
   switch (op_name) {
     // go/keep-sorted start
+
     case OpName::kAbsOut:
       return "abs.out";
     case OpName::kAcosOut:
@@ -266,6 +267,8 @@ std::string_view ToString(OpName op_name) {
       return "elu.out";
     case OpName::kEmbeddingBag:
       return "_embedding_bag";
+    case OpName::kEmbeddingBagBackward:
+      return "_embedding_bag_backward";
     case OpName::kEmbeddingBagForwardOnly:
       return "_embedding_bag_forward_only";
     case OpName::kEmbeddingDenseBackward:
