@@ -47,7 +47,7 @@ class TpuKinetoProfilerSession : public libkineto::IActivityProfilerSession {
   void start() override ABSL_LOCKS_EXCLUDED(mutex_);
   void stop() override ABSL_LOCKS_EXCLUDED(mutex_);
   std::vector<std::string> errors() override ABSL_LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     return errors_;
   }
   void processTrace(libkineto::ActivityLogger& logger) override;
