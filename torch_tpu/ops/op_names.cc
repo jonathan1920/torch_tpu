@@ -697,6 +697,10 @@ std::string_view ToString(OpName op_name) {
       return "__ilshift__.Scalar";
     case OpName::kIlshiftTensor:
       return "__ilshift__.Tensor";
+    case OpName::kIm2Col:
+      return "im2col";
+    case OpName::kIm2ColOut:
+      return "im2col.out";
     case OpName::kIndexAdd:
       return "index_add";
     case OpName::kIndexAddOut:

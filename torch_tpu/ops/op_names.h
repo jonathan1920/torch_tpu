@@ -360,6 +360,8 @@ enum class OpName {
   kHistcOut,
   kIlshiftScalar,
   kIlshiftTensor,
+  kIm2Col,
+  kIm2ColOut,
   kIndexAdd,
   kIndexAddOut,
   kIndexCopyOut,

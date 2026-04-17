@@ -888,6 +888,84 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     # TODO(b/489136147): Fix test case & disable allow_failure
     self.assert_close_tpu_vs_cpu(test_fn, allow_failure=True)
 
+  @parameterized.parameters(
+      (torch.float32,),
+      (torch.float64,),
+      (torch.float16,),
+      (torch.bfloat16,),
+  )
+  def test_im2col_dtypes(self, dtype):
+    """Tests im2col with various dtypes."""
+    n, c, h, w = 1, 2, 4, 4
+    kernel_size = (2, 2)
+    dilation = (1, 1)
+    padding = (0, 0)
+    stride = (1, 1)
+
+    input_val = torch.randn(n, c, h, w, dtype=torch.float32)
+
+    def test_fn(device):
+      input_dev = input_val.to(dtype=dtype, device=device)
+      return torch.nn.functional.unfold(
+          input_dev, kernel_size, dilation, padding, stride
+      )
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
+  @parameterized.parameters(
+      # (kernel_size, dilation, padding, stride)
+      ((1, 1), (1, 1), (0, 0), (1, 1)),  # 1x1
+      ((2, 3), (1, 1), (0, 0), (1, 1)),  # asymmetric kernel
+      ((2, 2), (2, 2), (0, 0), (1, 1)),  # dilation
+      ((2, 2), (1, 1), (1, 1), (1, 1)),  # padding
+      ((2, 2), (1, 1), (0, 0), (2, 2)),  # stride
+      ((3, 3), (2, 1), (1, 0), (2, 1)),  # asymmetric everything
+  )
+  def test_im2col_geometries(self, kernel_size, dilation, padding, stride):
+    """Tests im2col with various geometries."""
+    n, c, h, w = 2, 2, 8, 8
+    input_val = torch.randn(n, c, h, w)
+
+    def test_fn(device):
+      input_dev = input_val.to(device)
+      return torch.nn.functional.unfold(
+          input_dev, kernel_size, dilation, padding, stride
+      )
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
+  def test_im2col_errors(self):
+    """Tests im2col with invalid inputs that trigger error messages."""
+    tpu_device = api.tpu_device()
+
+    # Test invalid input dimensions (e.g. 2D tensor)
+    # C++ check: input.dim() == 4 (after unsqueeze if 3D)
+    x_2d = torch.randn(2, 2).to(tpu_device)
+    with self.assertRaisesRegex(
+        RuntimeError, "expected input to have 3 or 4 dimensions"
+    ):
+      torch.ops.aten.im2col(
+          x_2d,
+          kernel_size=(2, 2),
+          dilation=(1, 1),
+          padding=(0, 0),
+          stride=(1, 1),
+      )
+
+    # Test non-positive output shape
+    # kernel_size > input_size without padding
+    x_small = torch.randn(1, 1, 2, 2).to(tpu_device)
+    with self.assertRaisesRegex(
+        RuntimeError, "expected output shape to be positive"
+    ):
+      torch.ops.aten.im2col(
+          x_small,
+          kernel_size=(3, 3),
+          dilation=(1, 1),
+          padding=(0, 0),
+          stride=(1, 1),
+      )
+
   def test_conj(self):
     def test(device):
       x = torch.tensor([[1 + 1j, 2 - 2j], [3 + 3j, 4 - 4j]]).to(device=device)
