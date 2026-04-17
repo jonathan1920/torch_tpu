@@ -23,6 +23,7 @@
 
 #include "absl/status/statusor.h"
 #include "ATen/core/TensorBase.h"
+#include "c10/core/ScalarType.h"
 #include "torch/csrc/autograd/generated/variable_factories.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
@@ -76,7 +77,7 @@ std::tuple<at::Tensor&, at::Tensor&> AtenSortValuesStable(
       (self, stable_opt, dim, descending, values, indices), {
         if (self.dim() == 0) {
           values = self.clone();
-          indices = torch::tensor(0);
+          indices = torch::tensor(0, self.options().dtype(at::kLong));
           return {values, indices};
         }
         bool stable = stable_opt.value_or(false);

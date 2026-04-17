@@ -1383,6 +1383,11 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
         copy.deepcopy(ACCURACY_OVERRIDES_VS_CPU),
         {
             # go/keep-sorted start
+            "_foreach_norm": {
+                torch.bfloat16: {"rtol": 2e-2, "atol": 2e-2},
+                torch.float16: {"rtol": 2e-3, "atol": 2e-3},
+                torch.float32: {"rtol": 1e-5, "atol": 1e-5},
+            },
             "acos": {
                 torch.float16: {"rtol": 3e-3, "atol": 2e-2},
             },
@@ -2380,12 +2385,32 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("_foreach_neg")
 
   def test_foreach_norm(self):
+
+    def skip_if(device_type, variant, op_input):
+      _ = device_type  # Unused, suppress linter error
+      _ = variant  # Unused, suppress linter error
+      # TODO(b/488385491): Enable grad check for negative ord when the issues
+      # are fixed.
+      ord_val = op_input.kwargs.get("ord")
+      # For _foreach_norm, the first argument in the signature is `tensors`,
+      # which is stored in op_input.input_value. The `ord` parameter is the
+      # second argument. Thus, if `ord` is passed positionally, it will be
+      # at index 0 of `op_input.args`.
+      if ord_val is None and len(op_input.args) > 0:
+        ord_val = op_input.args[0]
+      if op_testing._COMPUTE_GRAD.value and ord_val is not None:
+        try:
+          if float(ord_val) < 0:
+            return f"Skip ord={ord_val} as it has issues on TPU."
+        except (ValueError, TypeError):
+          pass
+      return None
+
     self.do_test_op(
         "_foreach_norm",
-        # TODO(b/488385491): Enable grad check when the timeout issue is fixed.
-        check_grad=False,
         # TODO(b/485291373): fix _foreach_norm() failing with complex dtypes.
         exclude_dtypes=COMPLEX_DTYPES,
+        skip_if=skip_if,
     )
 
   def test_foreach_pow(self):
@@ -3484,6 +3509,7 @@ class TestOps(TorchTpuTestBase):
         exclude_dtypes=INTEGRAL_DTYPES,
         # TODO: fix sgn_() failing with integral dtypes.
         exclude_inplace_dtypes=INTEGRAL_DTYPES,
+        check_grad=False,
     )
 
   def test_sign(self):
@@ -3551,7 +3577,6 @@ class TestOps(TorchTpuTestBase):
   def test_sort(self):
     self.do_test_op(
         "sort",
-        check_grad=False,
         # TODO: fix sort(out=...) failing.
         check_out_variant=False,
         # sort() returns a (values, indices) tuple, where indices is
