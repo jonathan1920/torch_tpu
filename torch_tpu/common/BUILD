@@ -1068,6 +1068,19 @@ torch_tpu_cc_test(
 )
 
 torch_tpu_cc_library(
+    name = "context_manager",
+    srcs = ["context_manager.cc"],
+    hdrs = ["context_manager.h"],
+    deps = [
+        "//shims/torch:torch_headers",
+        "//shims/torch/c10/util:base",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log:absl_check",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "device_type",
     hdrs = ["device_type.h"],
     deps = [

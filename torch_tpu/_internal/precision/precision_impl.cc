@@ -14,28 +14,30 @@
  * limitations under the License.
  */
 
+#include "torch_tpu/common/context_manager.h"
 #include "torch_tpu/ops/precision_context.h"
 #include "pybind11/pybind11.h"
 #include "stablehlo/dialect/StablehloOps.h"
 
 namespace torch_tpu {
 
+using Precision = mlir::stablehlo::Precision;
+
 PYBIND11_MODULE(precision_impl, m) {
-  pybind11::enum_<mlir::stablehlo::Precision>(m, "Precision")
+  pybind11::enum_<Precision>(m, "Precision")
       .value("DEFAULT",
-             mlir::stablehlo::Precision::DEFAULT)  // EXPLICIT_PRECISION_OK=root
-                                                   // usage
-      .value(
-          "HIGH",
-          mlir::stablehlo::Precision::HIGH)  // EXPLICIT_PRECISION_OK=root usage
+             Precision::DEFAULT)  // EXPLICIT_PRECISION_OK=root usage
+      .value("HIGH",
+             Precision::HIGH)  // EXPLICIT_PRECISION_OK=root usage
       .value("HIGHEST",
-             mlir::stablehlo::Precision::HIGHEST)  // EXPLICIT_PRECISION_OK=root
-                                                   // usage
+             Precision::HIGHEST)  // EXPLICIT_PRECISION_OK=root usage
       .export_values();
 
   m.def("_get_precision", &GetPrecision, "Internal get for context manager");
-  m.def("_push_precision", &PushPrecision, "Internal push for context manager");
-  m.def("_pop_precision", &PopPrecision, "Internal pop for context manager");
+  m.def("_push_precision", &PushContextState<Precision>,
+        "Internal push for context manager");
+  m.def("_pop_precision", &PopContextState<Precision>,
+        "Internal pop for context manager");
 }
 
 }  // namespace torch_tpu

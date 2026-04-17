@@ -29,12 +29,6 @@ namespace torch_tpu {
 // Returns the current python thread's precision.
 mlir::stablehlo::Precision GetPrecision();
 
-// Pushes the given precision onto the current python thread's state stack.
-void PushPrecision(mlir::stablehlo::Precision precision);
-
-// Pops the current python thread's precision state stack.
-void PopPrecision();
-
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_PRECISION_CONTEXT_H_

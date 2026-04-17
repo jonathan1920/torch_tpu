@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from contextlib import contextmanager
+"""Context managers for setting various execution modes."""
+
+import contextlib
 from typing import Set, TypeAlias
 
 import torch
@@ -23,7 +25,7 @@ from torch_tpu._internal.execution_mode_impl import set_eager_mode
 EagerMode: TypeAlias = execution_mode_impl.EagerMode
 
 
-@contextmanager
+@contextlib.contextmanager
 def eager_mode(mode: EagerMode):
   """Context manager for setting the execution mode."""
   old_eager_mode = execution_mode_impl.get_eager_mode()
@@ -34,7 +36,7 @@ def eager_mode(mode: EagerMode):
     execution_mode_impl.set_eager_mode(old_eager_mode)
 
 
-@contextmanager
+@contextlib.contextmanager
 def cpu_fallback_mode(enabled: bool):
   """Context manager for setting the fallback mode."""
   old_enabled = execution_mode_impl.is_cpu_fallback_enabled()
