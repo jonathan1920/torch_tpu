@@ -80,11 +80,8 @@ jobs:
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
 
-      # The flags used here for `bazel build` need to be the same as that used for `bazel test`
-      # below. Otherwise, the remote cache benefits of the build step are lost and the test step has
-      # to redo that work.
-      - name: Run Bazel Build
-        run: bazel build --config=${{ matrix.job_info.config }} ${{ matrix.job_info.extra_flags }} //...
-
+      # We don't need a separate step for bazel build as bazel test will also build the code before
+      # running the tests. This allows test building and test running to overlap and reduce total
+      # build time.
       - name: Run Bazel Test
         run: bazel test --config=${{ matrix.job_info.config }} ${{ matrix.job_info.extra_flags }} //...

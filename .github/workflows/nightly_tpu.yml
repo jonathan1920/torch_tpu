@@ -88,13 +88,7 @@ jobs:
         uses: google-ml-infra/actions/ci_connection@08e5394bb8179c66a50ac783fb8b2501a034c06f
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
-      # Run Bazel build.
-      # The flags used here for `bazel build` need to be the same as that used for `bazel test`
-      # below. Otherwise, the remote cache benefits of the build step are lost and the test step has
-      # to redo that work.
-      - run: bazel build --config=ci_tpu_nightly --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" ${{ env.TEST_TARGETS }}
-      # Run Bazel test.
-      # The flags used here for `bazel test` need to be the same as that used for `bazel build`
-      # above. Otherwise, the remote cache benefits of the build step are lost and the test step has
-      # to redo that work.
+      # We don't need a separate step for bazel build as bazel test will also build the code before
+      # running the tests. This allows test building and test running to overlap and reduce total
+      # build time.
       - run: bazel test --config=ci_tpu_nightly --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" ${{ env.TEST_TARGETS }}
