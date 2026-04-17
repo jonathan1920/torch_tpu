@@ -29,6 +29,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/op_builder_utils.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/ChloBuilder.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -247,11 +248,49 @@ absl::StatusOr<mlir::MlirOp> BuildLog10Shlo(
 }
 
 absl::StatusOr<mlir::MlirOp> BuildSignShlo(mlir::MlirOp input) {
+  // torch.sign on complex tensors is defined as z / |z|, identical to
+  // torch.sgn.
+  return BuildSgnShlo(input);
+}
+
+absl::StatusOr<mlir::MlirOp> BuildSgnShlo(mlir::MlirOp input) {
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
   mlir::Type element_type = input_type.getElementType();
+  TT_ASSIGN_OR_RETURN(c10::ScalarType dtype,
+                      ConvertTo<c10::ScalarType>(element_type));
+
+  if (c10::isComplexType(dtype)) {
+    // For complex numbers, sgn(z) = z / |z| if z != 0, else 0.
+    // stablehlo::Sign can be numerically unstable for small values.
+    TT_ASSIGN_OR_RETURN(mlir::MlirOp abs_op, BuildAbsShlo(input));
+    // Handle division by zero: if abs_op is 0, we want result to be 0.
+    // We can use a small epsilon or just rely on stablehlo::Div behavior if
+    // it's defined. Actually, PyTorch's sgn(0) is 0. stablehlo::Div(0, 0) is
+    // usually 0 or NaN depending on implementation. To be safe and match Sign
+    // behavior, we can use a mask.
+    mlir::MlirOp zero_complex = MakeConstantLike(input, 0.0);
+    mlir::MlirOp zero_real = MakeConstantLike(abs_op, 0.0);
+    mlir::MlirOp is_zero = mlir::stablehlo::Compare(
+        abs_op, zero_real, mlir::stablehlo::ComparisonDirection::EQ);
+
+    // We use a safe divisor to avoid NaN.
+    mlir::MlirOp one_real = MakeConstantLike(abs_op, 1.0);
+    mlir::MlirOp safe_abs = mlir::stablehlo::Select(is_zero, one_real, abs_op);
+
+    // stablehlo::Div requires same types for all operands.
+    // Convert safe_abs (real) to complex.
+    mlir::MlirOp zero_imag = MakeConstantLike(safe_abs, 0.0);
+    mlir::MlirOp safe_abs_complex =
+        mlir::stablehlo::Complex(safe_abs, zero_imag);
+
+    mlir::MlirOp div_res = mlir::stablehlo::Div(input, safe_abs_complex);
+
+    return mlir::stablehlo::Select(is_zero, zero_complex, div_res);
+  }
 
   // mlir::stablehlo::Sign requires non-boolean signless integer type.
   auto compute_type = element_type;
+
   if (element_type.isUnsignedInteger()) {
     // Convert to signless if unsigned.
     compute_type = mlir::IntegerType::get(&input.getContext(),

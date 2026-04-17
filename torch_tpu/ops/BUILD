@@ -182,7 +182,6 @@ torch_tpu_cc_library(
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:macro_utils",
         "//torch_tpu/common:to_string",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
@@ -191,6 +190,7 @@ torch_tpu_cc_library(
         "@stablehlo//:chlo_builder",
         "@stablehlo//:mlir_builder",
         "@stablehlo//:stablehlo_builder",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

@@ -3503,14 +3503,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_sgn(self):
-    self.do_test_op(
-        "sgn",
-        # TODO: fix sgn() failing with integral dtypes.
-        exclude_dtypes=INTEGRAL_DTYPES,
-        # TODO: fix sgn_() failing with integral dtypes.
-        exclude_inplace_dtypes=INTEGRAL_DTYPES,
-        check_grad=False,
-    )
+    self.do_test_op("sgn")
 
   def test_sign(self):
     self.do_test_op("sign")

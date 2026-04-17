@@ -18,13 +18,8 @@
 #define TORCH_TPU_OPS_UNARY_H_
 
 #include "absl/status/statusor.h"
-#include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/macro_utils.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "torch_tpu/ops/op_builder_utils.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
-#include "stablehlo/integrations/cpp/builder/ChloBuilder.h"
-#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 
 namespace torch_tpu {
 
@@ -57,7 +52,6 @@ TT_UNARY_BUILDER_(BuildCeilShlo, mlir::stablehlo::Ceil);
 TT_UNARY_BUILDER_(BuildFloorShlo, mlir::stablehlo::Floor);
 TT_UNARY_BUILDER_(BuildNegShlo, mlir::stablehlo::Neg);
 TT_UNARY_BUILDER_(BuildNotShlo, mlir::stablehlo::Not);
-TT_UNARY_BUILDER_(BuildSgnShlo, mlir::stablehlo::Sign);
 TT_UNARY_BUILDER_FP_ONLY_(BuildAcosShlo, mlir::chlo::Acos);
 TT_UNARY_BUILDER_FP_ONLY_(BuildAcoshShlo, mlir::chlo::Acosh);
 TT_UNARY_BUILDER_FP_ONLY_(BuildAsinShlo, mlir::chlo::Asin);
@@ -89,6 +83,8 @@ absl::StatusOr<mlir::MlirOp> BuildConjPhysicalShlo(mlir::MlirOp input_op);
 absl::StatusOr<mlir::MlirOp> BuildReciprocalShlo(
     mlir::MlirOp input_op, mlir::ElementType default_mlir_type);
 absl::StatusOr<mlir::MlirOp> BuildReluShlo(mlir::MlirOp input_op);
+absl::StatusOr<mlir::MlirOp> BuildSgnShlo(mlir::MlirOp input);
+absl::StatusOr<mlir::MlirOp> BuildSignShlo(mlir::MlirOp input_op);
 absl::StatusOr<mlir::MlirOp> BuildSiluShlo(mlir::MlirOp input_op);
 absl::StatusOr<mlir::MlirOp> BuildTruncShlo(mlir::MlirOp input_op);
 absl::StatusOr<mlir::MlirOp> BuildLiftFreshShlo(mlir::MlirOp input_op);
@@ -100,7 +96,6 @@ absl::StatusOr<mlir::MlirOp> BuildLog2Shlo(mlir::MlirOp input_op,
                                            mlir::ElementType default_mlir_type);
 absl::StatusOr<mlir::MlirOp> BuildLog10Shlo(
     mlir::MlirOp input_op, mlir::ElementType default_mlir_type);
-absl::StatusOr<mlir::MlirOp> BuildSignShlo(mlir::MlirOp input_op);
 absl::StatusOr<mlir::MlirOp> BuildErfcShlo(mlir::MlirOp input,
                                            mlir::ElementType out_mlir_type);
 absl::StatusOr<mlir::MlirOp> BuildFracShlo(mlir::MlirOp input);
