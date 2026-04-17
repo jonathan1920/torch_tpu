@@ -283,13 +283,13 @@ template <typename T>
 }
 
 // Creates a constant with the given shape and element type.
-//
-// Prefer `MakeScalarConstant` if shape is empty and `MakeConstantLike`
-// otherwise, those methods fully support static and bounded programs.
 template <typename T>
-[[nodiscard]] mlir::MlirOp MakeConstant(mlir::MlirBuilder& builder, T value,
-                                        mlir::ElementType element_type,
-                                        mlir::ArrayRef<int64_t> shape) {
+[[deprecated(
+    "Prefer MakeScalarConstant if shape is empty, or MakeConstantLike "
+    "otherwise. These functions fully support static and bounded programs.")]]
+[[nodiscard]] mlir::MlirOp
+MakeConstant(mlir::MlirBuilder& builder, T value,
+             mlir::ElementType element_type, mlir::ArrayRef<int64_t> shape) {
   auto& ctx = builder.getContext();
   auto const_type = mlir::makeTensorType(ctx, shape, element_type);
   return mlir::stablehlo::Constant(builder,
@@ -300,9 +300,6 @@ template <typename T>
 //
 // Prefer this method over `MakeConstant` since the intent more clear and
 // scalars are supported in programs with bounded dynamism.
-//
-// The `MakeConstant` method will be deprecated in favor of `MakeScalarConstant`
-// and `MakeConstantLike` APIs which fully support static and bounded programs.
 template <typename T>
 [[nodiscard]] mlir::MlirOp MakeScalarConstant(mlir::MlirBuilder& builder,
                                               T value,
