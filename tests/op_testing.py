@@ -1585,32 +1585,43 @@ class TorchTpuTestBase(TestCase):
       )
 
     if compute_grad:
-      if not isinstance(input_value, torch.Tensor):
-        # We cannot test gradients for the given type of input. Just return
-        # a dummy value.
-        return _dummy_grad(device)
 
-      if _should_skip_dtype(input_value.dtype, exclude_dtypes=()):
-        # We cannot test gradients for the given type of input. Just return
-        # a dummy value.
-        return _dummy_grad(device)
+      def set_requires_grad(t: Any) -> Any:
+        if (
+            isinstance(t, torch.Tensor)
+            and (t.is_floating_point() or t.is_complex())
+            and t.numel() > 0
+        ):
+          return t.requires_grad_(True)
+        return t
+
+      # Set requires_grad=True for all floating-point and complex tensors in
+      # the input. We only support testing gradients when input_value is a
+      # tensor or a (possibly nested) list/tuple of tensors.
+      input_value = _tensor_tree_map(set_requires_grad, input_value)
+      device_op_input.input_value = input_value
+
+      def is_differentiable(t: Any) -> bool:
+        return isinstance(t, torch.Tensor) and t.requires_grad and t.numel() > 0
 
       # Autograd doesn't work with inplace ops and out variants, as they
       # erase the input tensor.
-      if variant == OpVariant.INPLACE or variant == OpVariant.OUT:
+      if (
+          variant == OpVariant.INPLACE
+          or variant == OpVariant.OUT
+          or not any(
+              _pytree.tree_leaves(
+                  _tensor_tree_map(is_differentiable, input_value)
+              )
+          )
+      ):
         return _dummy_grad(device)
 
       # TODO: fix the bug where computing the gradient of a 0-sized input tensor
       # fails with an exception "Function SumBackward0 returned an invalid
       # gradient at index 0 - expected device tpu:0 but got cpu".
-      if input_value.numel() == 0:
+      if isinstance(input_value, torch.Tensor) and input_value.numel() == 0:
         return _dummy_grad(device)
-
-      input_value.requires_grad = True
-      assert input_value.requires_grad, (
-          "The op input must have .requires_grad set to True when"
-          " testing the gradients."
-      )
 
     try:
       start_time = time.time()
@@ -1628,16 +1639,23 @@ class TorchTpuTestBase(TestCase):
         result = out
 
       if compute_grad:
-        if isinstance(result, torch.Tensor):
-          if result.numel() == 0:
-            return _dummy_grad(device)
-          # Use sum() s.t. all elements contribute to the loss. This also
-          # works for Boolean tensors.
-          loss = result.sum()
-          loss.backward()
-          result = input_value.grad
-          if isinstance(result, torch.Tensor):
-            result = result.clone()
+        losses = [
+            t.sum()
+            for t in _pytree.tree_leaves(result)
+            if isinstance(t, torch.Tensor)
+            and (t.is_floating_point() or t.is_complex())
+            and t.numel() > 0
+        ]
+
+        if losses:
+          torch.sum(torch.stack(losses)).backward()
+
+          def get_grad(t: Any) -> torch.Tensor | None:
+            if isinstance(t, torch.Tensor) and t.grad is not None:
+              return t.grad.clone()
+            return None
+
+          result = _tensor_tree_map(get_grad, input_value)
         else:
           result = _dummy_grad(device)
 

@@ -2258,7 +2258,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_erfc(self):
-    self.do_test_op("_foreach_erfc")
+    self.do_test_op("_foreach_erfc", check_grad=False)
 
   def test_foreach_exp(self):
     self.do_test_op(
@@ -2322,6 +2322,7 @@ class TestOps(TorchTpuTestBase):
     # TODO: look into making this STRICT.
     self.do_test_op(
         "_foreach_log2",
+        check_grad=False,
         check_value=CheckValueMode.LOOSE,
     )
 
@@ -2388,7 +2389,7 @@ class TestOps(TorchTpuTestBase):
     self.skipTest("_foreach_pow is not ready yet: dtype issues.")
 
   def test_foreach_reciprocal(self):
-    self.do_test_op("_foreach_reciprocal")
+    self.do_test_op("_foreach_reciprocal", check_grad=False)
 
   def test_foreach_round(self):
     self.do_test_op("_foreach_round")
@@ -2396,6 +2397,7 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_rsqrt(self):
     self.do_test_op(
         "_foreach_rsqrt",
+        check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
     )
@@ -2424,7 +2426,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_sqrt(self):
-    self.do_test_op("_foreach_sqrt")
+    self.do_test_op("_foreach_sqrt", check_grad=False)
 
   def test_foreach_sub(self):
     self.do_test_op(
@@ -2991,6 +2993,7 @@ class TestOps(TorchTpuTestBase):
   def test_native_layer_norm(self):
     self.do_test_op(
         "native_layer_norm",
+        check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
         # TODO: before cl/833944280 introduced the backward ops, this test runs
@@ -3543,6 +3546,7 @@ class TestOps(TorchTpuTestBase):
   def test_sort(self):
     self.do_test_op(
         "sort",
+        check_grad=False,
         # TODO: fix sort(out=...) failing.
         check_out_variant=False,
         # sort() returns a (values, indices) tuple, where indices is
@@ -3607,6 +3611,7 @@ class TestOps(TorchTpuTestBase):
     # sorting when multiple indices have the same value.
     self.do_test_op(
         "topk",
+        check_grad=False,
         # TODO: fix topk(out=...) failing.
         check_out_variant=False,
         # NOTE: topk() is not implemented for bool on CPU, so we
