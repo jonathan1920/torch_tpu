@@ -45,7 +45,6 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["module_registry_test.py"],
     data = ["//tests/compile:data/goldfish.jpg"],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 6,
     tags = [
@@ -130,7 +129,6 @@ torch_tpu_py_test(
         "--print_op_inputs=1",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
     notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 50,
@@ -160,7 +158,6 @@ torch_tpu_py_test(
         "--compute_grad=True",
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
     notest_oss = "Will re-enable this slow test until we have a proper way to speed it up.",
     shard_count = 50,
@@ -194,7 +191,6 @@ torch_tpu_py_test(
         "ops_test_gpu_golden_compiled1.gz",
         "ops_test_gpu_golden_compiled2.gz",
     ],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
     notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 40,
@@ -228,7 +224,6 @@ torch_tpu_py_test(
         "ops_test_gpu_golden1.gz",
         "ops_test_gpu_golden2.gz",
     ],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
     notest_oss = "Will re-enable this slow test until we have a proper way to speed it up.",
     shard_count = 50,
@@ -295,7 +290,6 @@ torch_tpu_py_test(
         "--print_op_inputs=1",
         "--max_samples_per_op_dtype=1",  # No need to test many samples to catch dynamism bugs.
     ],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_test.py",
     notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 32,
@@ -355,7 +349,6 @@ torch_tpu_py_test(
     name = "ops_unit_test",
     timeout = "long",  # Needed for asan.
     srcs = ["ops_unit_test.py"],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "ops_unit_test.py",
     notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 20,
@@ -386,7 +379,6 @@ torch_tpu_py_test(
     srcs = ["ops_unit_test.py"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
-        "ASAN_OPTIONS": "detect_leaks=0",
     },
     main = "ops_unit_test.py",
     notest_oss = "Disabled during switch from opt-in to opt-out",
@@ -419,7 +411,6 @@ torch_tpu_py_test(
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/my_cache",
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_LOCAL_BACKUP_TASK": "0",
-        "ASAN_OPTIONS": "detect_leaks=0",
     },
     main = "ops_unit_test.py",
     notest_oss = "Disabled during switch from opt-in to opt-out",
@@ -447,7 +438,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "compiler_option_test",
     srcs = ["compiler_option_test.py"],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "compiler_option_test.py",
     tags = ["requires-tpu-v5lite"],
     deps = [
@@ -463,7 +453,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "index_put_op_test",
     srcs = ["index_put_op_unit_test.py"],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "index_put_op_unit_test.py",
     shard_count = 20,
     tags = ["requires-tpu-v5lite"],
@@ -772,7 +761,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "dynamism_test",
     srcs = ["dynamism_test.py"],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     main = "dynamism_test.py",
     tags = [
         # TODO: b/503386468 - Re-enable once the test is fixed.

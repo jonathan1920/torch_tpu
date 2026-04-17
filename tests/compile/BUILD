@@ -30,7 +30,6 @@ exports_files(["data/goldfish.jpg"])
 torch_tpu_py_test(
     name = "small_graph_test",
     srcs = ["small_graph_test.py"],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.
@@ -78,7 +77,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "ensure_no_dynamic_test",
     srcs = ["ensure_no_dynamic_test.py"],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -187,7 +185,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "output_modify_test",
     srcs = ["output_modify_test.py"],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
@@ -282,7 +279,6 @@ torch_tpu_py_test(
     timeout = "long",
     srcs = ["model_coverage_timm_test.py"],
     data = ["data/goldfish.jpg"],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 6,
     tags = [
@@ -308,7 +304,6 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "trace_autograd_ops_test",
     srcs = ["trace_autograd_ops_test.py"],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix the leak.
     notest_oss = "Disabled during switch from opt-in to opt-out",
     strict = "true",
     tags = [
