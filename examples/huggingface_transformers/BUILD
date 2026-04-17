@@ -13,6 +13,7 @@
 # limitations under the License.
 
 load("//build_files:build_defs.bzl", "torch_tpu_package_end")
+load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -22,6 +23,16 @@ package(
 filegroup(
     name = "model_configs_data",
     srcs = glob(["model_configs/**/config.json"]),
+)
+
+pytype_strict_library(
+    name = "model_configs",
+    srcs = ["model_configs.py"],
+    data = [":model_configs_data"],
+    deps = [
+        "//shims/etils/epath",
+        "@pypi//transformers",
+    ],
 )
 
 # TODO: targets call

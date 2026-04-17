@@ -24,6 +24,7 @@
         qwen3_0_6B_custom_sampling_test_cuda
 """
 
+import os
 import time
 
 from absl import flags
@@ -33,10 +34,6 @@ from absl.testing import parameterized
 import torch
 from torch_tpu._internal.utils import log_utils
 from examples import paths
-from examples.huggingface_transformers import model_configs
-import transformers
-
-from torch_tpu._internal.shims.pyglib import gfile
 
 log_utils.log_to_stderr()
 
