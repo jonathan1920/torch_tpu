@@ -12,22 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the device module with XLA CUDA backend."""
+"""Shared entry points configuration for wheel and bazel builds."""
 
-from absl.testing import absltest
-import torch
-from tests import device_module_testing
-
-
-# Test cases are defined in device_module_testing.DeviceModuleBase
-class XlaCudaDeviceModuleTest(
-    device_module_testing.DeviceModuleBase, absltest.TestCase
-):
-
-  @property
-  def device_module(self):
-    return torch.xla_cuda
-
-
-if __name__ == "__main__":
-  absltest.main()
+ENTRY_POINTS = {
+    "torch.backends": ["torch_tpu = torch_tpu._loader:load"],
+}

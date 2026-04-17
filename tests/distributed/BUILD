@@ -61,6 +61,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "multi_tpu_test",
     srcs = ["multi_tpu_test.py"],
+    autoload = True,
     notest_oss = "fix hang in OSS",  # TODO
     tags = if_oss(
         ["exclusive"],
@@ -72,13 +73,13 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//tests/distributed:distributed_utils",
+        "//torch_tpu",  # build_cleaner: keep
         "//torch_tpu/_internal/distributed:tpu_distributed",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
-        "//torch_tpu/api",
     ],
 )
 

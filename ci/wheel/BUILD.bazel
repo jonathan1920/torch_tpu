@@ -16,6 +16,7 @@ load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
 load("@torch_tpu_deps//:dependencies.bzl", "WHEEL_REQUIRES")
 load("@torch_tpu_version//:version.bzl", "WHEEL_VERSION")
 load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
+load("//build_files:entry_points.bzl", "ENTRY_POINTS")
 load("//ci/wheel:pywrap_mapper.bzl", "remap_pywrap_binaries")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_binary", "pytype_strict_library")
 
@@ -114,6 +115,7 @@ py_wheel(
     ],
     description_file = "//:README.md",
     distribution = "torch_tpu",
+    entry_points = ENTRY_POINTS,
     homepage = "https://github.com/your_org/torch_tpu",
     license = "Apache 2.0",
     platform = "manylinux_2_31_x86_64",

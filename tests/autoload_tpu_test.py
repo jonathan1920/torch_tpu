@@ -12,21 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the device module with XLA CUDA backend."""
+"""Tests that autoload is working for the tpu backend."""
 
 from absl.testing import absltest
 import torch
-from tests import device_module_testing
+import torch.accelerator
 
 
-# Test cases are defined in device_module_testing.DeviceModuleBase
-class XlaCudaDeviceModuleTest(
-    device_module_testing.DeviceModuleBase, absltest.TestCase
-):
+class AutoloadTpuTest(absltest.TestCase):
 
-  @property
-  def device_module(self):
-    return torch.xla_cuda
+  def test_current_accelerator(self):
+    self.assertEqual(
+        torch.device("tpu"), torch.accelerator.current_accelerator()
+    )
+
+  def test_torch_dot_tpu(self):
+    import torch.tpu as module  # pylint: disable=g-import-not-at-top
+
+    self.assertTrue(module.is_available())
+
+  def test_torch_tpu_device(self):
+    device = torch.device("tpu")
+    self.assertEqual(device.type, "tpu")
+
+  def test_tensor_to_tpu(self):
+    tensor = torch.empty(1, 1)
+    tensor.to("tpu")
 
 
 if __name__ == "__main__":

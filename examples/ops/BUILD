@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "if_oss", "torch_tpu_package_end", "torch_tpu_py_test")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -21,6 +21,7 @@ package(
 torch_tpu_py_test(
     name = "layernorm",
     srcs = ["layernorm.py"],
+    autoload = if_oss(True, False),
     notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-net:external",

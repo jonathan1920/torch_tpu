@@ -33,13 +33,9 @@ pytype_strict_library(
         "__init__.py",
     ],
     deps = [
-        ":_device_module",
         "//shims/torch:pytorch",
-        "//torch_tpu",  # buildcleaner: keep
-        "//torch_tpu/_internal/compile:tpu_backend",
-        "//torch_tpu/_internal/distributed:tpu_distributed",
-        "//torch_tpu/_internal/profiler",
-        "//torch_tpu/_internal/sync",
+        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu:_loader",
     ],
 )
 
@@ -51,7 +47,6 @@ pytype_strict_library(
         ":streams",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
-        "//torch_tpu",  # buildcleaner: keep
         "//torch_tpu/_internal/precision",
         "//torch_tpu/_internal/utils:hardware",
         "//torch_tpu/eager:tpu_aten_kernels",

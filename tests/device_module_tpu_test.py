@@ -16,7 +16,6 @@
 
 from absl.testing import absltest
 import torch
-from torch_tpu import api
 from tests import device_module_testing
 
 
@@ -24,11 +23,6 @@ from tests import device_module_testing
 class TpuDeviceModuleTest(
     device_module_testing.DeviceModuleBase, absltest.TestCase
 ):
-
-  @classmethod
-  def setUpClass(cls):
-    super().setUpClass()
-    _ = api.tpu_device()
 
   @property
   def device_module(self):

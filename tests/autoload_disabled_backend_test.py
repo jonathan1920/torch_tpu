@@ -12,21 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the device module with XLA CUDA backend."""
+"""This tests that the XLA backends are NOT loaded unless explicitly enabled."""
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import torch
-from tests import device_module_testing
 
 
-# Test cases are defined in device_module_testing.DeviceModuleBase
-class XlaCudaDeviceModuleTest(
-    device_module_testing.DeviceModuleBase, absltest.TestCase
-):
+class AutoloadDisabledBackendTest(parameterized.TestCase):
 
-  @property
-  def device_module(self):
-    return torch.xla_cuda
+  @parameterized.parameters("xla_cuda", "xla_cpu")
+  def test_backend_unavailable(self, module: str) -> None:
+    with self.assertRaisesRegex(AttributeError, f".*{module}.*"):
+      getattr(torch, module)
+
+  @parameterized.parameters("xla_cuda", "xla_cpu")
+  def test_device_unavailable(self, device_name: str) -> None:
+    with self.assertRaisesRegex(RuntimeError, "Expected one of"):
+      torch.device(device_name)
 
 
 if __name__ == "__main__":

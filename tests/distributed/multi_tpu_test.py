@@ -20,7 +20,6 @@ from absl.testing import absltest
 import torch
 from torch import distributed as dist
 import torch.multiprocessing as mp
-from torch_tpu import api
 from torch_tpu._internal.distributed import tpu_distributed
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from tests.distributed import distributed_utils
@@ -39,7 +38,6 @@ def run_device_count() -> None:
   world_size = int(os.environ["WORLD_SIZE"])
   assert world_size == 8
 
-  _ = api.tpu_device()
   dist.init_process_group(backend="tpu_dist")
 
   global_device_id = tpu_distributed.global_device_id()

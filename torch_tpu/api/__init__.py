@@ -14,112 +14,72 @@
 
 """Core API for TorchTPU."""
 
+from collections.abc import Callable
 import functools
 import inspect
 import os
 import sys
-import threading
-from typing import Any, Callable
-
+import typing
 import torch
 from torch._dynamo.backends import inductor
 import torch._dynamo.backends.registry as backend_registry
-import torch.distributed
-# For torch.compile() "tpu" backend registration.
-import torch_tpu._internal.compile  # pylint: disable=unused-import
-from torch_tpu._internal.distributed import tpu_distributed
-# For monkeypatching torch.autograd.Variable._execution_engine.
-import torch_tpu._internal.sync  # pylint: disable=unused-import
-from torch_tpu.api import _device_module
+
+# TODO(pganssle): Migrate to PEP 695 syntax when PyTorch is 3.12+ only
+_RV = typing.TypeVar("_RV", bound=torch.device | None)
 
 
-_INIT_LOCK = threading.Lock()
-
-
-def _init_device_impl(device: str) -> torch.device:
-  """Initializes the runtime for a specific device.
-
-  If the underlying PjrtBackend::EnsureInitialized call fails,
-  _init_device_impl() will throw a runtime error exception.
-
-  This function is idempotent, the underlying _init_runtime_options checks
-  whether PjrtBackend has been initialized already.
+def _ensure_loaded(
+    f: Callable[[], _RV],
+) -> Callable[[], _RV]:
+  """Ensure that the torch_tpu backend is loaded before returning a device.
 
   Args:
-    device: Name of the device. Currently "tpu" and "xla_cuda" are supported.
-
-  Raises:
-    RuntimeError:  if initialization of PjRt runtime failed.
+    f: The decorated function
 
   Returns:
-    torch.device   if initialization of PjRt runtime succeeded.
+      Returns a wrapped version of the decorated function that makes sure that
+      the TPU backend has been loaded before the function is called.
   """
 
-  # Only "tpu / xla_cuda / xla_cpu" are supported.
-  assert device == "tpu" or device == "xla_cuda" or device == "xla_cpu"
+  @functools.wraps(f)
+  def _device_func() -> _RV:
+    # pylint: disable=g-import-not-at-top
+    from torch_tpu import _loader as loader
 
-  # pylint: disable=protected-access
-  device_module = _device_module.get_device_module(device)
-  device_module._init_runtime_options()
-  # pylint: enable=protected-access
+    # pylint: disable=protected-access
+    if not loader._LOADED:
+      # Set allow_xla_backend because unlike the automatic loading case, the
+      # *_device() calls are explicitly requesting one of the backends. It is
+      # possible that someone may call `api._xla_cuda_device()` on a CPU device,
+      # causing the `xla_cpu` backend to be loaded, but this will be followed
+      # immediately by an error, and this case will be rare, so we do not
+      # have to overly concern ourselves with this.
+      loader.load(allow_xla_backend=True)
+    return f()
 
-  torch.utils.rename_privateuse1_backend(device)
-  device_d = torch.device(device)
-  if device_d is None:
-    raise RuntimeError("Failed to set privateuse1_backend in torch")
-  print(
-      f"Successfully renamed PrivateUse1 backend to '{device}'. "
-      f"Device: {device_d}",
-      file=sys.stderr,
-  )
-
-  # pylint: disable=protected-access
-  torch._register_device_module(device, device_module)
-  # pylint: enable=protected-access
-  print(f"Registered Python module for '{device}'.", file=sys.stderr)
-
-  if device == "tpu" and not torch.distributed.is_initialized():
-    # Looks like we are running in a distributed setup.
-    # Register the TPU distributed runtime; users will also need to
-    # init_process_group() in their code.
-    print("Initializing TPU distributed runtime")
-    torch.distributed.Backend.register_backend(
-        "tpu_dist", tpu_distributed.create_process_group, devices="tpu"
-    )
-  # Lazily register the Kineto backend.
-  from torch_tpu._internal import profiler  # pylint: disable=g-import-not-at-top
-
-  profiler.register_kineto_backend()
-
-  return device_d
+  return _device_func
 
 
-def _init_device(device: str) -> torch.device:
-  # Acquire a lock to ensure that initialization happens exactly once.
-  with _INIT_LOCK:
-    if hasattr(torch, device):
-      return torch.device(device)
-    else:
-      return _init_device_impl(device)
-
-
-# TODO: Remove these functions. Make `torch.device("tpu:)` just work.
+# TODO(b/432530222): Remove these functions now that `torch.device("tpu")` works
 @functools.lru_cache(maxsize=1)
+@_ensure_loaded
 def tpu_device() -> torch.device:
   """Common wrapper function to ensure execution on device."""
-  return _init_device("tpu")
+  return torch.device("tpu")
 
 
 @functools.lru_cache(maxsize=1)
+@_ensure_loaded
 def _xla_cuda_device() -> torch.device:
   """Common wrapper function to ensure execution on device."""
-  return _init_device("xla_cuda")
+  return torch.device("xla_cuda")
 
 
 @functools.lru_cache(maxsize=1)
+@_ensure_loaded
 def _xla_cpu_device() -> torch.device:
   """Common wrapper function to ensure execution on device."""
-  return _init_device("xla_cpu")
+  return torch.device("xla_cpu")
 
 
 _torch_compile = torch.compile

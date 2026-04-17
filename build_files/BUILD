@@ -45,6 +45,23 @@ bzl_library(
     ],
 )
 
+bzl_library(
+    name = "py_dist_info_bzl",
+    srcs = ["py_dist_info.bzl"],
+    deps = [
+        "//shims/build_cleaner:build_defs_lib",
+    ],
+)
+
+# This library just holds the ENTRY_POINTS variable, so this target is unused;
+# it only exists because cclean wants something to point to entry_points.bzl
+bzl_library(
+    name = "entry_points_bzl",
+    srcs = ["entry_points.bzl"],
+    parse_tests = False,
+    visibility = ["//visibility:private"],
+)
+
 # Creates a test suite with the given name. The individual tests in
 # the suite are named build_defs_test_<suffix> and defined in build_defs_test.bzl.
 # TODO: make the test work in OSS (The unittest framework from bazel_skylib

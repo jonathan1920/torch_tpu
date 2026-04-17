@@ -482,6 +482,7 @@ def torch_tpu_py_test(
         name,
         args = None,
         shuffle_tests = True,
+        autoload = True,
         extra_pywrap_deps = ["//torch_tpu/common:pywrap_torch_tpu"],
         strict = False,
         size = None,
@@ -530,6 +531,7 @@ def torch_tpu_py_test(
             building was disabled. You should strongly prefer notest_oss to
             this!
         tags: The tags to add to the test.
+        autoload: Enable autoload during the tests.
         **kwargs: Any additional arguments.
     """
 
@@ -563,6 +565,18 @@ def torch_tpu_py_test(
     if is_oss():
         kwargs.pop("linking_mode", None)
 
+    existing_env = kwargs.pop("env", {})
+
+    # Opt-in to autoloading on a per-test basis
+    if autoload:
+        existing_autoload = existing_env.get("TORCH_DEVICE_BACKEND_AUTOLOAD", None)
+        if existing_autoload != None:
+            fail("Autoload behavior is intended to be controlled by the" +
+                 "autoload parameter rather than setting " +
+                 "TORCH_DEVICE_BACKEND_AUTOLOAD directly")
+    else:
+        existing_env["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "0"
+
     # Add env and LD_LIBRARY_PATH for wheel based testing.
     # Define the necessary library paths
 
@@ -577,9 +591,6 @@ def torch_tpu_py_test(
     new_paths_str = ":".join(all_paths)
 
     # 3. Create the specialized environment for wheel testing
-    existing_env = kwargs.pop("env", {})
-
-    # Standard wheel test environment (No local source)
     env_with_wheel = dict(existing_env)
     _prepend_to_env(env_with_wheel, "LD_LIBRARY_PATH", new_paths_str)
 

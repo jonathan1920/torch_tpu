@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "if_oss", "torch_tpu_package_end", "torch_tpu_py_test")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
@@ -695,6 +695,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "view_test",
     srcs = ["view_test.py"],
+    autoload = if_oss(True, False),
     tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
@@ -881,6 +882,95 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "autoload_test_tpu",
+    srcs = ["autoload_tpu_test.py"],
+    main = "autoload_tpu_test.py",
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",  # build_cleaner: keep
+    ],
+)
+
+torch_tpu_py_test(
+    name = "autoload_test_gpu",
+    srcs = ["autoload_gpu_test.py"],
+    env = {
+        "TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1",
+    },
+    main = "autoload_gpu_test.py",
+    tags = [
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",  # build_cleaner: keep
+        "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
+        "@xla//xla/stream_executor:cuda_platform",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "autoload_test_cpu",
+    srcs = ["autoload_cpu_test.py"],
+    env = {
+        "TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1",
+    },
+    main = "autoload_cpu_test.py",
+    tags = [],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",  # build_cleaner: keep
+    ],
+)
+
+torch_tpu_py_test(
+    name = "autoload_disabled_backend_test_gpu",
+    srcs = ["autoload_disabled_backend_test.py"],
+    main = "autoload_disabled_backend_test.py",
+    tags = [
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",  # build_cleaner: keep
+        "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
+        "@xla//xla/stream_executor:cuda_platform",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "autoload_disabled_backend_test_cpu",
+    srcs = ["autoload_disabled_backend_test.py"],
+    main = "autoload_disabled_backend_test.py",
+    tags = [],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",  # build_cleaner: keep
+    ],
+)
+
+test_suite(
+    name = "autoload_tests",
+    tests = [
+        "autoload_disabled_backend_test_cpu",
+        "autoload_disabled_backend_test_gpu",
+        "autoload_test_cpu",
+        "autoload_test_gpu",
+        "autoload_test_tpu",
+    ],
+)
+
 pytype_strict_library(
     name = "device_module_testing",
     testonly = True,
@@ -903,13 +993,16 @@ torch_tpu_py_test(
         ":device_module_testing",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu/api",
+        "//torch_tpu",  # build_cleaner: keep
     ],
 )
 
 torch_tpu_py_test(
     name = "device_module_test_gpu",
     srcs = ["device_module_gpu_test.py"],
+    env = {
+        "TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1",
+    },
     main = "device_module_gpu_test.py",
     tags = [
         "requires-gpu-nvidia",
@@ -918,7 +1011,7 @@ torch_tpu_py_test(
         ":device_module_testing",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu/api",
+        "//torch_tpu",  # build_cleaner: keep
         "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
         "@xla//xla/stream_executor:cuda_platform",
     ],
@@ -927,13 +1020,16 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "device_module_test_cpu",
     srcs = ["device_module_cpu_test.py"],
+    env = {
+        "TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1",
+    },
     main = "device_module_cpu_test.py",
     tags = [],
     deps = [
         ":device_module_testing",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu/api",
+        "//torch_tpu",  # build_cleaner: keep
     ],
 )
 
