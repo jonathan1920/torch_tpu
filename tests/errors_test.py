@@ -8048,6 +8048,24 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.view_as_complex(t)
 
+  def test_where_out_dtype_mismatch(self):
+    condition = torch.tensor([True, False], device=et.device())
+    inp = torch.ones(2, device=et.device(), dtype=torch.float32)
+    other = torch.zeros(2, device=et.device(), dtype=torch.float32)
+    out = torch.empty(2, device=et.device(), dtype=torch.int32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=(
+            "where(): expected the output dtype to be float32 (result of"
+            " promoting the dtype of the input tensors -- float32 and float32),"
+            " got int32"
+        ),
+        cpu="Expected out type to be Float but got Int",
+        message_reviewed_by="wan",
+    ):
+      torch.where(condition, inp, other, out=out)
+
 
 if __name__ == "__main__":
   absltest.main()
