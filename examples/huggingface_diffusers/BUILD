@@ -137,7 +137,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "flux_test_tpu",
-    size = "large",
+    size = "enormous",
     srcs = ["flux_1_schnell_test.py"],
     args = ["--device=tpu"],
     data = glob(["model_configs/**"]),
@@ -147,7 +147,7 @@ torch_tpu_py_test(
     tags = [
         "requires-accel-hbm",
         "requires-net:external",
-        "requires-tpu-v6e",
+        "requires-tpu-v7x:4",
     ],
     deps = [
         "//examples:paths",
@@ -157,6 +157,7 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/utils:log_utils",
         "//torch_tpu/api",
+        "@pypi//accelerate",  # buildcleaner: keep
         "@pypi//diffusers",
         "@pypi//transformers",  # buildcleaner: keep
     ],
