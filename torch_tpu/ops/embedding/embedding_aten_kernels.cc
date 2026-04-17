@@ -19,6 +19,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -36,6 +37,7 @@
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/static_shape_check.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/embedding/embedding.h"
@@ -56,6 +58,13 @@ absl::Status CheckWeightType(const at::Tensor& weight) {
       << ToString(scalar_type);
   return absl::OkStatus();
 }
+absl::Status CheckStaticShape(const at::Tensor& tensor,
+                              const std::string_view arg_name) {
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref,
+                      GetBaseBufferFromAtTensor(tensor));
+  return CheckStaticShape(tensor, buffer_ref, arg_name);
+}
+
 }  // namespace
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> AtenEmbeddingBag(
