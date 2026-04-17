@@ -94,7 +94,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
 // Important: the argument and result tensors must be the same as those used
 // by the FX graph, including their order. Otherwise, the compilation might
 // fail or the materialized tensors might be wrong.
-absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
+absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
     std::string_view mlir_module_bytecode,
     CompilationMode compilation_mode = CompilationMode::kFastRuntime);
 
@@ -117,7 +117,7 @@ absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
 // Important: the argument and result tensors must be the same as those used
 // by the FX graph, including their order. Otherwise, the compilation might
 // fail or the materialized tensors might be wrong.
-absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
+absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
     xla::MaybeOwningMlirModule module,
     CompilationMode compilation_mode = CompilationMode::kFastRuntime);
 
@@ -136,7 +136,7 @@ absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
 // Returns:
 //   The result tensors of the compiled executable.
 std::vector<at::Tensor> ExecuteCompiledModel(
-    const SharedLoadedExecutable& executable,
+    const SharedLoadedExecutableWithMetadata& executable,
     absl::Span<const at::Tensor> argument_tensors,
     absl::Span<const std::vector<int64_t>>  // INT_VEC_OK
         output_shapes);

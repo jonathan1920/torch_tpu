@@ -86,7 +86,8 @@ class CacheEntry {
   CacheEntry(const CacheEntry&) = delete;
   CacheEntry& operator=(const CacheEntry&) = delete;
 
-  [[nodiscard]] const SharedLoadedExecutableFuture& executable_future() const {
+  [[nodiscard]] const SharedLoadedExecutableWithMetadataFuture&
+  executable_future() const {
     return executable_future_;
   }
 
@@ -101,7 +102,7 @@ class CacheEntry {
   // Order the fields so that the promise is constructed before the future
   // and destroyed after it.
   std::shared_ptr<LoadedExecutablePromise> executable_promise_;
-  SharedLoadedExecutableFuture executable_future_;
+  SharedLoadedExecutableWithMetadataFuture executable_future_;
   mutable CacheEntryStats stats_;
 };
 
@@ -306,7 +307,7 @@ class CompilationCache {
   // allow_cache_mode_ is false, we will set needs_compilation to true.
   struct CacheLookupInternal {
     absl_nonnull std::shared_ptr<LoadedExecutablePromise> executable_promise;
-    SharedLoadedExecutableFuture executable_future;
+    SharedLoadedExecutableWithMetadataFuture executable_future;
     std::optional<ShapeDynamismMetadata> shape_dynamism_metadata;
     bool needs_compilation = false;
     bool dump_on_cache_miss = false;
@@ -365,9 +366,10 @@ class CompilationCache {
   // Precondition:
   //  - `key` is already in `executable_cache_`.
   //  - `cache_mutex_` is not held.
-  void SetExecutable(CompilationCacheKey key,
-                     absl::StatusOr<SharedLoadedExecutable> executable,
-                     CacheEntryStats stats) ABSL_LOCKS_EXCLUDED(cache_mutex_);
+  void SetExecutable(
+      CompilationCacheKey key,
+      absl::StatusOr<SharedLoadedExecutableWithMetadata> executable,
+      CacheEntryStats stats) ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Compiles the graph and stores the executable in the tier-1 cache.
   //

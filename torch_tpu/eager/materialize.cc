@@ -192,7 +192,7 @@ absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>> GetArgumentBuffers(
 absl::Status ExecuteMaterializationJob(
     absl::Span<const DeviceBufferRef> arguments,
     absl::Span<const DeviceBufferRef> outputs,
-    std::vector<SharedLoadedExecutable> executables,
+    std::vector<SharedLoadedExecutableWithMetadata> executables,
     std::string_view task_name) {
   tsl::profiler::TraceMe trace("ExecuteMaterializationJob");
   ABSL_VLOG(1) << "[ExecuteMaterializationJob]: task_name=" << task_name
@@ -281,7 +281,8 @@ class MaterializationWorker {
   }
 
   absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
-      SharedLoadedExecutable executable, std::vector<DeviceBufferRef> arguments,
+      SharedLoadedExecutableWithMetadata executable,
+      std::vector<DeviceBufferRef> arguments,
       absl::Span<const Shape> output_shapes, std::string_view task_name = "") {
     // Create a set of output DeviceBufferRefs to hold the materialized results.
     std::vector<DeviceBufferRef> outputs;
@@ -371,10 +372,10 @@ class MaterializationWorker {
         << "[MaterializationWorker] Compilation complete for task_name="
         << task_name;
 
-    std::vector<SharedLoadedExecutable> cached_executables;
+    std::vector<SharedLoadedExecutableWithMetadata> cached_executables;
 
     if (task.compiled_kernel.dynamic_kernel_adapter.has_value()) {
-      absl::StatusOr<SharedLoadedExecutable> preamble =
+      absl::StatusOr<SharedLoadedExecutableWithMetadata> preamble =
           task.compiled_kernel.dynamic_kernel_adapter->preamble.get();
       if (!preamble.ok()) {
         ABSL_VLOG(1) << "[MaterializationWorker] Failed to compile "
@@ -386,7 +387,7 @@ class MaterializationWorker {
       cached_executables.push_back(std::move(*preamble));
     }
 
-    absl::StatusOr<SharedLoadedExecutable> fixed_shape_kernel =
+    absl::StatusOr<SharedLoadedExecutableWithMetadata> fixed_shape_kernel =
         task.compiled_kernel.fixed_shape_kernel.get();
     if (!fixed_shape_kernel.ok()) {
       ABSL_VLOG(1) << "[MaterializationWorker] Failed to compile "
@@ -794,7 +795,8 @@ void SetOutputNodesAsError(absl::Span<const SharedDeviceBufferList> outputs,
 }
 
 absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
-    SharedLoadedExecutable executable, std::vector<DeviceBufferRef> arguments,
+    SharedLoadedExecutableWithMetadata executable,
+    std::vector<DeviceBufferRef> arguments,
     absl::Span<const Shape> output_shapes, std::string_view task_name) {
   return GetMaterializationWorker().EnqueueExecutable(
       std::move(executable), std::move(arguments), output_shapes, task_name);

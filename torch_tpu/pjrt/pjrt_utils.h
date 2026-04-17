@@ -60,7 +60,7 @@ using PjRtBufferPointers =
 // on the returned buffers will block until the execution and transfer from
 // TPU to CPU are complete.
 absl::StatusOr<PjRtBufferPointers> Execute(
-    const SharedLoadedExecutable& executable,
+    const SharedLoadedExecutableWithMetadata& executable,
     std::vector<xla::PjRtBuffer* absl_nullable> argument_buffers);
 
 std::string ToString(const xla::PjRtBuffer& buffer);

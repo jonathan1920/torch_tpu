@@ -275,7 +275,7 @@ absl::Status TpuMemcpyDtoHDirect(const DeviceBufferRef& buffer_ref,
 }
 
 absl::StatusOr<PjRtBufferPointers> Execute(
-    const SharedLoadedExecutable& executable,
+    const SharedLoadedExecutableWithMetadata& executable,
     std::vector<xla::PjRtBuffer* absl_nullable> argument_buffers) {
   tsl::profiler::TraceMe trace("Execute");
   xla::ExecuteOptions execute_options{.strict_shape_checking = true};

@@ -347,7 +347,7 @@ absl::Status MaterializationWorker::MaterializeQueue(
     ABSL_VLOG(1) << "[MaterializationWorker] Waiting for compilation of region "
                  << execution_task.name;
 
-    std::vector<SharedLoadedExecutable> executables;
+    std::vector<SharedLoadedExecutableWithMetadata> executables;
     if (execution_task.compiled_kernel.dynamic_kernel_adapter) {
       TT_ASSIGN_OR_RETURN(auto preamble,
                           execution_task.compiled_kernel.dynamic_kernel_adapter

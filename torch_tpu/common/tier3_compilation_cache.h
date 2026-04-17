@@ -38,7 +38,7 @@ namespace torch_tpu {
 [[nodiscard]] std::string GetTier3CacheEntryPath(CompilationCacheKey key);
 
 // Tries to get a loaded executable from the tier-3 compilation cache.
-absl::StatusOr<SharedLoadedExecutable> GetFromTier3Cache(
+absl::StatusOr<SharedLoadedExecutableWithMetadata> GetFromTier3Cache(
     CompilationCacheKey key);
 
 }  // namespace torch_tpu

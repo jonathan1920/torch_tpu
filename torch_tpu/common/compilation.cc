@@ -80,10 +80,12 @@ absl::StatusOr<ContextedModule> ContextedModule::Make(
   return ContextedModule(std::move(context), std::move(module));
 }
 
-absl::StatusOr<SharedLoadedExecutable> LoadedExecutableWithMetadata::MakeShared(
+absl::StatusOr<SharedLoadedExecutableWithMetadata>
+LoadedExecutableWithMetadata::MakeShared(
     absl_nonnull std::unique_ptr<xla::PjRtLoadedExecutable> executable) {
   TT_RET_CHECK(executable, error::kInternal)
-      << "cannot create SharedLoadedExecutable from null executable.";
+      << "cannot create SharedLoadedExecutableWithMetadata from null "
+         "executable.";
 
   // Get the flattened output shapes from the executable.
   // Executables can return tuples, we want individual tensor shapes.
@@ -106,7 +108,7 @@ absl::StatusOr<SharedLoadedExecutable> LoadedExecutableWithMetadata::MakeShared(
                                        std::move(output_shapes)));
 }
 
-absl::StatusOr<SharedLoadedExecutable> Compile(
+absl::StatusOr<SharedLoadedExecutableWithMetadata> Compile(
     xla::PjRtClient& client, LoadedExecutableBuilder executable_builder,
     UniqueCompileOptions compile_options) {
   TT_ASSIGN_OR_RETURN(

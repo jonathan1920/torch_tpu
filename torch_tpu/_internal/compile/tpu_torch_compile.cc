@@ -155,8 +155,8 @@ py::bytes PySerializePortableArtifact(std::shared_ptr<ContextedModule> module) {
 //         torch.compile.
 // Returns:
 //   The compiled executable.
-SharedLoadedExecutable PyCompileMlir(std::shared_ptr<ContextedModule> module,
-                                     const bool fast_compile) {
+SharedLoadedExecutableWithMetadata PyCompileMlir(
+    std::shared_ptr<ContextedModule> module, const bool fast_compile) {
   ScopedPythonContextCapturer capturer(OpName::kCompileMlir);
   // Provide the current python context to the compilation function so that
   // it can generate readable Mlir module names.
@@ -182,7 +182,7 @@ SharedLoadedExecutable PyCompileMlir(std::shared_ptr<ContextedModule> module,
 //     where the actual output shape might differ from the static
 //     upper bound.
 std::vector<at::Tensor> PyExecuteCompiledModel(
-    const SharedLoadedExecutable& executable,
+    const SharedLoadedExecutableWithMetadata& executable,
     const std::vector<at::Tensor>& argument_tensors,
     const std::vector<std::vector<int64_t>>& output_shapes) {  // INT_VEC_OK
   return ExecuteCompiledModel(executable, argument_tensors, output_shapes);
@@ -286,14 +286,16 @@ std::shared_ptr<ContextedModule> PyGetPadModuleMlir(
                                                       std::move(module));
 }
 
-py::bytes PySerializeExecutable(const SharedLoadedExecutable& executable) {
+py::bytes PySerializeExecutable(
+    const SharedLoadedExecutableWithMetadata& executable) {
   TT_ASSIGN_OR_THROW(const std::string serialized,
                      executable->GetExecutable()->SerializeExecutable(),
                      _.SetPrepend() << "Failed to serialize executable: ");
   return py::bytes(serialized);
 }
 
-SharedLoadedExecutable PyLoadSerializedExecutable(py::bytes& serialized_bytes) {
+SharedLoadedExecutableWithMetadata PyLoadSerializedExecutable(
+    py::bytes& serialized_bytes) {
   const auto data = py::cast<std::string_view>(serialized_bytes);
   xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   TT_CHECK_THROW(client != nullptr, error::kFailedPrecondition)
@@ -305,9 +307,10 @@ SharedLoadedExecutable PyLoadSerializedExecutable(py::bytes& serialized_bytes) {
                      _.SetPrepend()
                          << "Failed to load serialized executable: ");
   TT_ASSIGN_OR_THROW(
-      SharedLoadedExecutable executable,
+      SharedLoadedExecutableWithMetadata executable,
       LoadedExecutableWithMetadata::MakeShared(std::move(pjrt_executable)),
-      _.SetPrepend() << "Failed to create SharedLoadedExecutable: ");
+      _.SetPrepend()
+          << "Failed to create SharedLoadedExecutableWithMetadata: ");
   return executable;
 }
 

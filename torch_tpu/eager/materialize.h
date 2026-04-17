@@ -105,7 +105,8 @@ absl::StatusOr<std::vector<DeviceBufferRef>> GetMaterialized(
 // PjRtBuffers will not be ready until the executable reaches the front of the
 // materialization queue, is Executed, and the execution completes.
 absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
-    SharedLoadedExecutable executable, std::vector<DeviceBufferRef> arguments,
+    SharedLoadedExecutableWithMetadata executable,
+    std::vector<DeviceBufferRef> arguments,
     absl::Span<const Shape> output_shapes, std::string_view task_name = "");
 
 // Sets the output nodes as error.
@@ -122,7 +123,7 @@ void AddLeafNodes(std::vector<SharedDeviceBufferList>& nodes);
 absl::Status ExecuteMaterializationJob(
     absl::Span<const DeviceBufferRef> arguments,
     absl::Span<const DeviceBufferRef> output_buffer_refs,
-    std::vector<SharedLoadedExecutable> executables,
+    std::vector<SharedLoadedExecutableWithMetadata> executables,
     std::string_view task_name = "anonymous");
 
 }  // namespace torch_tpu

@@ -129,7 +129,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
   return mlir_module;
 }
 
-absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
+absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
     const std::string_view mlir_module_bytecode,
     const CompilationMode compilation_mode) {
   TT_ASSIGN_OR_RETURN(
@@ -145,7 +145,7 @@ absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
                                compilation_mode);
 }
 
-absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
+absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
     xla::MaybeOwningMlirModule module, const CompilationMode compilation_mode) {
   TT_ASSIGN_OR_RETURN(UniqueCompileOptions compile_options,
                       MakeCompilerOptions(compilation_mode));
@@ -182,7 +182,7 @@ namespace {
 //      - Have a dimension exceeding the corresponding dimension in the
 //      pjrt-inferred output shape.
 absl::StatusOr<std::vector<Shape>> GetOutputShapes(
-    const SharedLoadedExecutable& executable,
+    const SharedLoadedExecutableWithMetadata& executable,
     absl::Span<const std::vector<int64_t>>  // INT_VEC_OK
         runtime_output_shapes) {
   const std::vector<Shape>& inferred_shapes = executable->output_shapes();
@@ -231,7 +231,7 @@ absl::StatusOr<std::vector<Shape>> GetOutputShapes(
 // This is bound to Python function tpu_torch_compile.execute(), and thus
 // allowed to throw exceptions.
 std::vector<at::Tensor> ExecuteCompiledModel(
-    const SharedLoadedExecutable& executable,
+    const SharedLoadedExecutableWithMetadata& executable,
     absl::Span<const at::Tensor> argument_tensors,
     absl::Span<const std::vector<int64_t>>  // INT_VEC_OK
         output_shapes) {

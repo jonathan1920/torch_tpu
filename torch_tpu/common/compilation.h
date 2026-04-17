@@ -44,13 +44,13 @@ namespace torch_tpu {
 class LoadedExecutableWithMetadata;
 
 // TODO(basioli): Rename to something more descriptive.
-using SharedLoadedExecutable =
+using SharedLoadedExecutableWithMetadata =
     absl_nonnull std::shared_ptr<const LoadedExecutableWithMetadata>;
 
 class LoadedExecutableWithMetadata {
  public:
-  static absl::StatusOr<SharedLoadedExecutable> MakeShared(
-      absl_nonnull std::unique_ptr<xla::PjRtLoadedExecutable> executable);
+  static absl::StatusOr<SharedLoadedExecutableWithMetadata> MakeShared(
+      std::unique_ptr<xla::PjRtLoadedExecutable> executable);
 
   const xla::PjRtExecutable* GetExecutable() const {
     return executable_->GetExecutable();
@@ -75,22 +75,22 @@ class LoadedExecutableWithMetadata {
 };
 
 using LoadedExecutablePromise =
-    std::promise<absl::StatusOr<SharedLoadedExecutable>>;
-using SharedLoadedExecutableFuture =
-    std::shared_future<absl::StatusOr<SharedLoadedExecutable>>;
+    std::promise<absl::StatusOr<SharedLoadedExecutableWithMetadata>>;
+using SharedLoadedExecutableWithMetadataFuture =
+    std::shared_future<absl::StatusOr<SharedLoadedExecutableWithMetadata>>;
 
 // Holds the futures for a dynamic kernel adapter. These are lightweight
 // executables, e.g. padding ops.
 // TODO(unda): Add postamble (i.e. slice / relayout).
 struct DynamicKernelAdapter {
-  SharedLoadedExecutableFuture preamble;
+  SharedLoadedExecutableWithMetadataFuture preamble;
 };
 
 // Holds the futures for a compiled kernel. For static kernels, only the
 // fixed_shape_kernel future will be set. For bounded dynamic kernels, both the
 // fixed_shape_kernel and dynamic_kernel_adapter will be set.
 struct CompiledKernel {
-  SharedLoadedExecutableFuture fixed_shape_kernel;
+  SharedLoadedExecutableWithMetadataFuture fixed_shape_kernel;
   std::optional<DynamicKernelAdapter> dynamic_kernel_adapter;
 };
 
@@ -165,7 +165,7 @@ MlirComputationBuilderToExecutableBuilder(
     const MlirComputationBuilder& computation_builder);
 
 // Synchronously compiles a program, without any cache behavior.
-absl::StatusOr<SharedLoadedExecutable> Compile(
+absl::StatusOr<SharedLoadedExecutableWithMetadata> Compile(
     xla::PjRtClient& client, LoadedExecutableBuilder executable_builder,
     UniqueCompileOptions compile_options);
 

@@ -95,7 +95,7 @@ struct Tier2CacheEntryStats {
 // is when the request for getting the executable from the tier-2 cache was
 // made. Populates the output parameter `stats` with the cache entry
 // statistics.
-absl::StatusOr<SharedLoadedExecutable> GetFromTier2Cache(
+absl::StatusOr<SharedLoadedExecutableWithMetadata> GetFromTier2Cache(
     CompilationCacheKey key, absl::Time request_start,
     Tier2CacheEntryStats& stats);
 
@@ -107,7 +107,7 @@ absl::StatusOr<SharedLoadedExecutable> GetFromTier2Cache(
 absl::Status EnsureDirExistsRecursively(const std::string& path);
 
 // Loads a serialized executable read from the given cache.
-absl::StatusOr<SharedLoadedExecutable> LoadSerializedExecutable(
+absl::StatusOr<SharedLoadedExecutableWithMetadata> LoadSerializedExecutable(
     CacheTier tier, CompilationCacheKey key, std::string_view data);
 
 // Writes a compiled executable to the given tier-2 or tier-3 cache file. This
@@ -116,8 +116,9 @@ absl::StatusOr<SharedLoadedExecutable> LoadSerializedExecutable(
 // Calling this concurrently with the same key is safe (i.e. won't produce a
 // corrupted file) - the function first writes to a unique temp file in the same
 // directory, and then atomically renames it to the final cache file path.
-absl::Status AtomicWriteToCacheFile(const std::string& cache_entry_path,
-                                    const SharedLoadedExecutable& executable);
+absl::Status AtomicWriteToCacheFile(
+    const std::string& cache_entry_path,
+    const SharedLoadedExecutableWithMetadata& executable);
 
 // RAII class for locking and unlocking a tier-2 cache entry.
 class Tier2CacheEntryLock {

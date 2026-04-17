@@ -79,7 +79,7 @@ namespace torch_tpu {
 namespace {
 
 // Returns true if the future is ready.
-bool IsFutureReady(const SharedLoadedExecutableFuture& future) {
+bool IsFutureReady(const SharedLoadedExecutableWithMetadataFuture& future) {
   return future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
 }
 
@@ -241,7 +241,7 @@ void CompilationCache::SetOptions(
 // satisfied, this function will do nothing.
 static void TrySetExecutablePromise(
     CompilationCacheKey key, LoadedExecutablePromise& promise,
-    const absl::StatusOr<SharedLoadedExecutable>& executable) {
+    const absl::StatusOr<SharedLoadedExecutableWithMetadata>& executable) {
   try {
     promise.set_value(std::move(executable));
     ABSL_VLOG(1) << "Set executable for key: " << key;
@@ -628,7 +628,8 @@ void CompilationCache::EnqueueCompilation(
 }
 
 void CompilationCache::SetExecutable(
-    CompilationCacheKey key, absl::StatusOr<SharedLoadedExecutable> executable,
+    CompilationCacheKey key,
+    absl::StatusOr<SharedLoadedExecutableWithMetadata> executable,
     CacheEntryStats stats) {
   absl::MutexLock lock(cache_mutex_);
   // If the user requested to evict the cache while we were compiling this
@@ -718,7 +719,7 @@ void CompilationCache::GetFromTier3OrCompile(
     const absl::Time request_start) {
   const bool uses_tier3 = UsesTier3CompilationCache();
   const auto pre_compile_duration = absl::Now() - request_start;
-  absl::StatusOr<SharedLoadedExecutable> executable_or;
+  absl::StatusOr<SharedLoadedExecutableWithMetadata> executable_or;
   CacheTier tier = CacheTier::kUnknown;
 
   const bool backup_compilation = UsesLocalBackupTaskForTier3Read();
@@ -767,7 +768,7 @@ void CompilationCache::GetFromTier3OrCompile(
   }
 
   // Read the tier-1 cache.
-  SharedLoadedExecutableFuture f;
+  SharedLoadedExecutableWithMetadataFuture f;
   {
     absl::MutexLock lock(cache_mutex_);
     const CacheEntry& cache_entry = executable_cache_[key];
@@ -846,8 +847,9 @@ void CompilationCache::Compile(CompilationCacheKey key,
   }
 
   const absl::Time compile_start = absl::Now();
-  absl::StatusOr<SharedLoadedExecutable> executable = torch_tpu::Compile(
-      *client, std::move(executable_builder), std::move(compile_options));
+  absl::StatusOr<SharedLoadedExecutableWithMetadata> executable =
+      torch_tpu::Compile(*client, std::move(executable_builder),
+                         std::move(compile_options));
 
   SetExecutable(key, std::move(executable),
                 {

@@ -123,7 +123,7 @@ std::string GetTier3CacheEntryPath(CompilationCacheKey key) {
                       kTier3CacheFileExtension);
 }
 
-absl::StatusOr<SharedLoadedExecutable> GetFromTier3Cache(
+absl::StatusOr<SharedLoadedExecutableWithMetadata> GetFromTier3Cache(
     CompilationCacheKey key) {
   // Read the cache file into a char buffer.
   const std::string cache_entry_path = GetTier3CacheEntryPath(key);

@@ -272,7 +272,7 @@ class MappedCacheEntry {
   absl::Time last_read_;
 };
 
-absl::StatusOr<SharedLoadedExecutable> LoadSerializedExecutable(
+absl::StatusOr<SharedLoadedExecutableWithMetadata> LoadSerializedExecutable(
     CacheTier tier, CompilationCacheKey key, const std::string_view data) {
   xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   TT_RET_CHECK(client, error::kFailedPrecondition)
@@ -290,7 +290,7 @@ absl::StatusOr<SharedLoadedExecutable> LoadSerializedExecutable(
   return LoadedExecutableWithMetadata::MakeShared(std::move(pjrt_executable));
 }
 
-absl::StatusOr<SharedLoadedExecutable> GetFromTier2Cache(
+absl::StatusOr<SharedLoadedExecutableWithMetadata> GetFromTier2Cache(
     CompilationCacheKey key, absl::Time request_start,
     Tier2CacheEntryStats& stats) {
   const absl::Time read_start = absl::Now();
@@ -300,9 +300,9 @@ absl::StatusOr<SharedLoadedExecutable> GetFromTier2Cache(
   TT_ASSIGN_OR_RETURN(MappedCacheEntry mapped_entry,
                       MappedCacheEntry::Make(key));
 
-  // Create a SharedLoadedExecutable from the mapped data.
+  // Create a SharedLoadedExecutableWithMetadata from the mapped data.
   TT_ASSIGN_OR_RETURN(
-      SharedLoadedExecutable executable,
+      SharedLoadedExecutableWithMetadata executable,
       LoadSerializedExecutable(CacheTier::kTier2, key, mapped_entry.data()));
 
   stats.pre_read_duration = read_start - request_start;
@@ -381,8 +381,9 @@ absl::Status AtomicWriteToCacheFile(const std::string& cache_entry_path,
   return absl::OkStatus();
 }
 
-absl::Status AtomicWriteToCacheFile(const std::string& cache_entry_path,
-                                    const SharedLoadedExecutable& executable) {
+absl::Status AtomicWriteToCacheFile(
+    const std::string& cache_entry_path,
+    const SharedLoadedExecutableWithMetadata& executable) {
   ABSL_VLOG(1) << "Serializing and writing executable to file "
                << cache_entry_path;
   TT_ASSIGN_OR_RETURN(const std::string serialized,
