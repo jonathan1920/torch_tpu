@@ -272,7 +272,13 @@ absl::StatusOr<at::Tensor> MakeConstantTensor(const at::Tensor& cpu_tensor) {
   const void* const cpu_bytes_ptr = contiguous_cpu_bytes_tensor.data_ptr();
   const size_t num_bytes = contiguous_cpu_bytes_tensor.storage().nbytes();
   std::vector<char> cpu_bytes_copy(num_bytes);
-  std::memcpy(cpu_bytes_copy.data(), cpu_bytes_ptr, num_bytes);
+  // In the case of zero-sized constants both the data_ptr() pointer from the
+  // input buffer and the data() pointer on the vector will be null.
+  // Calling std::memcpy with a nullptr for either src or dest arguments is
+  // undefined behavior.
+  if (num_bytes > 0) {
+    std::memcpy(cpu_bytes_copy.data(), cpu_bytes_ptr, num_bytes);
+  }
 
   // Create a DeferredOp that represents the 1D array of bytes as a constant.
   Dimensions dimensions = CopyIntVector(cpu_tensor.sizes());
