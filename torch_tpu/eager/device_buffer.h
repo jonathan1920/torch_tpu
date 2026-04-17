@@ -409,7 +409,6 @@ class DeferredOp {
         op_context_(ScopedPythonContextCapturer::GetContext()),
         split_mode_(split_mode),
         subgraph_(std::move(subgraph)) {
-    static std::atomic_int64_t g_creation_index = 0;
     absl::flat_hash_set<const DeferredOp*> unique_deferred_ops;
     for (const auto& input : inputs_) {
       const auto* deferred_op = input.deferred_op();
@@ -421,7 +420,6 @@ class DeferredOp {
         }
       }
     }
-    creation_index_ = g_creation_index.fetch_add(1);
   }
 
   // DeferredOps are copyable and movable. Per "rule of five"
@@ -482,10 +480,6 @@ class DeferredOp {
   [[nodiscard]] const OpParamCacheKeys& op_param_cache_keys() const {
     return op_param_cache_keys_;
   }
-
-  // Returns the global index of the creation of this DeferredOp.
-  // Lower means earlier.
-  [[nodiscard]] int64_t creation_index() const { return creation_index_; }
 
   // Returns the split mode of the DeferredOp, which determines how the op is
   // split into subgraphs for compilation.
@@ -563,10 +557,6 @@ class DeferredOp {
   // This does *not* track the liveness of these ops; if a DeferredOp is
   // destroyed, the refcount will not be decremented.
   mutable int64_t num_child_ops_ = 0;
-
-  // A global index of the creation of this DeferredOp (created atomically for
-  // thread safety). Lower means earlier.
-  int64_t creation_index_ = 0;
 
   // The split mode of the DeferredOp, which determines how the op is split into
   // subgraphs for compilation.
@@ -848,6 +838,10 @@ class DeviceBufferList {
   // patterns in some cases.
   [[nodiscard]] bool is_stale() const { return live_data_ptrs_ == 0; }
 
+  // Returns the global index of the creation of this DeviceBufferList.  Lower
+  // means earlier.
+  [[nodiscard]] uint64_t creation_index() const { return creation_index_; }
+
   std::string DebugString() const;
 
  private:
@@ -863,6 +857,8 @@ class DeviceBufferList {
                    const mlir::ElementType element_type,
                    std::optional<xla::Future<>> future = std::nullopt)
       : subgraph_(nullptr) {
+    creation_index_ = g_creation_index.fetch_add(1);
+
     const xla::Shape& on_device_shape = buffer->on_device_shape();
     Shape shape(CopyIntVector(on_device_shape.dimensions()), element_type);
     shapes_.push_back(std::move(shape));
@@ -879,7 +875,8 @@ class DeviceBufferList {
                  << ToString(shapes_[0].dimensions())
                  << ", Type: " << ToString(shapes_[0].dtype())
                  << ", PjRtBuffer: " << buffer_address
-                 << ", Should await: " << future.has_value();
+                 << ", Should await: " << future.has_value()
+                 << ", creation_index: " << creation_index_;
   }
 
   // Private constructor for a deferred DeviceBufferList.
@@ -893,6 +890,7 @@ class DeviceBufferList {
       : data_(DeferredOp(std::move(deferred_op))),
         shapes_(std::move(shapes)),
         subgraph_(std::move(subgraph)) {
+    creation_index_ = g_creation_index.fetch_add(1);
     ABSL_VLOG(3)
         << "[DeviceBuffer CONSTRUCTOR (deferred)] Created. DeferredOp: "
         << std::get<DeferredOp>(data_).op_name()
@@ -908,11 +906,14 @@ class DeviceBufferList {
   // compiled executable will expect to be provided as an argument.
   DeviceBufferList(Dimensions dimensions, const mlir::ElementType element_type)
       : subgraph_(nullptr) {
+    creation_index_ = g_creation_index.fetch_add(1);
     shapes_.emplace_back(std::move(dimensions), element_type);
     ABSL_VLOG(3) << "[DeviceBuffer CONSTRUCTOR (bufferless)] Created. Dims: "
                  << ToString(shapes_[0].dimensions())
                  << ", Type: " << ToString(shapes_[0].dtype());
   }
+
+  static std::atomic_uint64_t g_creation_index;
 
   // The data backing the DeviceBufferList.
   //   std::monostate: compiled mode placeholder buffers.
@@ -925,6 +926,9 @@ class DeviceBufferList {
   std::vector<Shape> shapes_;
   // The subgraph this node belongs to. Only valid for deferred nodes.
   std::shared_ptr<Subgraph> subgraph_;
+  // A global index of the creation of this DeviceBufferList (created atomically
+  // for thread safety). Lower means earlier.
+  uint64_t creation_index_ = 0;
 
   // The number of live c10::DataPtrs to this DeviceBufferList.
   // This is incremented by MakeDataPtr and decremented by

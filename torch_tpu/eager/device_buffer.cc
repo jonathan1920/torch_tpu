@@ -17,6 +17,7 @@
 #include "torch_tpu/eager/device_buffer.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -426,6 +427,9 @@ c10::DataPtr MakeDataPtr(DeviceBufferRef buffer_ref, const int device_idx) {
   return c10::DataPtr(raw_ref_ptr, raw_ref_ptr, DeleteDeviceBufferRef,
                       c10::Device(GetPrivateUse1DeviceType(), device_idx));
 }
+
+std::atomic_uint64_t DeviceBufferList::g_creation_index = 0;
+
 absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateMaterialized(
     absl_nonnull std::unique_ptr<xla::PjRtBuffer> buffer) {
   Dimensions dimensions = CopyIntVector(buffer->on_device_shape().dimensions());

@@ -205,14 +205,7 @@ class Traversal {
     std::sort(
         execution_order_.begin(), execution_order_.end(),
         [](const SharedDeviceBufferList& a, const SharedDeviceBufferList& b) {
-          if (const auto* a_deferred_op = a->deferred_op()) {
-            if (const auto* b_deferred_op = b->deferred_op()) {
-              return a_deferred_op->creation_index() <
-                     b_deferred_op->creation_index();
-            }
-          }
-          // This should never happen.
-          return true;
+          return a->creation_index() < b->creation_index();
         });
   }
 
