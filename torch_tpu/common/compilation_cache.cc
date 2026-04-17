@@ -867,7 +867,8 @@ std::string CompilationCache::HbmUsageSummary() const {
     if (!executable.ok() || *executable == nullptr) {
       continue;
     }
-    const auto memory_stats = (*executable)->GetCompiledMemoryStats();
+    const auto memory_stats =
+        (*executable)->GetLoadedExecutable()->GetCompiledMemoryStats();
     if (!memory_stats.ok()) {
       ABSL_LOG(WARNING) << "Failed to get memory stats for key: " << std::hex
                         << key << " with status: " << memory_stats.status();

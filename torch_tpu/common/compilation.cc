@@ -23,6 +23,7 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
@@ -38,6 +39,7 @@
 #include "mlir/IR/OwningOpRef.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "xla/client/executable_build_options.h"
@@ -45,6 +47,8 @@
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/service/computation_placer.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/xla.pb.h"
 
 namespace torch_tpu {
@@ -76,15 +80,39 @@ absl::StatusOr<ContextedModule> ContextedModule::Make(
   return ContextedModule(std::move(context), std::move(module));
 }
 
+absl::StatusOr<SharedLoadedExecutable> LoadedExecutableWithMetadata::MakeShared(
+    absl_nonnull std::unique_ptr<xla::PjRtLoadedExecutable> executable) {
+  TT_RET_CHECK(executable, error::kInternal)
+      << "cannot create SharedLoadedExecutable from null executable.";
+
+  // Get the flattened output shapes from the executable.
+  // Executables can return tuples, we want individual tensor shapes.
+  TT_ASSIGN_OR_RETURN(std::vector<xla::Shape> output_shapes_vec,
+                      executable->GetOutputShapes());
+  std::vector<const xla::Shape*> output_shapes_flat_vec;
+  for (const auto& output_shape : output_shapes_vec) {
+    xla::ShapeUtil::FlattenTupleShape(output_shape, output_shapes_flat_vec);
+  }
+
+  std::vector<Shape> output_shapes;
+  output_shapes.reserve(output_shapes_flat_vec.size());
+  for (const auto* xla_shape : output_shapes_flat_vec) {
+    TT_ASSIGN_OR_RETURN(Shape shape, MakeShape(*xla_shape));
+    output_shapes.push_back(std::move(shape));
+  }
+
+  return std::shared_ptr<const LoadedExecutableWithMetadata>(
+      new LoadedExecutableWithMetadata(std::move(executable),
+                                       std::move(output_shapes)));
+}
+
 absl::StatusOr<SharedLoadedExecutable> Compile(
     xla::PjRtClient& client, LoadedExecutableBuilder executable_builder,
     UniqueCompileOptions compile_options) {
   TT_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::PjRtLoadedExecutable> executable,
       std::move(executable_builder)(client, std::move(compile_options)));
-  TT_RET_CHECK(executable, error::kInternal)
-      << "compilation succeeded but returned a null executable.";
-  return executable;
+  return LoadedExecutableWithMetadata::MakeShared(std::move(executable));
 }
 
 absl::StatusOr<LoadedExecutableBuilder>

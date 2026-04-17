@@ -299,11 +299,15 @@ SharedLoadedExecutable PyLoadSerializedExecutable(py::bytes& serialized_bytes) {
   TT_CHECK_THROW(client != nullptr, error::kFailedPrecondition)
       << "PjRtClient must be initialized before loading a serialized "
          "executable.";
-  TT_ASSIGN_OR_THROW(SharedLoadedExecutable executable,
+  TT_ASSIGN_OR_THROW(std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_executable,
                      client->LoadSerializedExecutable(
                          data, /*options=*/std::nullopt, xla::LoadOptions()),
                      _.SetPrepend()
                          << "Failed to load serialized executable: ");
+  TT_ASSIGN_OR_THROW(
+      SharedLoadedExecutable executable,
+      LoadedExecutableWithMetadata::MakeShared(std::move(pjrt_executable)),
+      _.SetPrepend() << "Failed to create SharedLoadedExecutable: ");
   return executable;
 }
 
@@ -318,8 +322,13 @@ void PyAssignConstantTensor(const at::Tensor& cpu_src_tensor,
 }
 
 PYBIND11_MODULE(tpu_torch_compile, m) {
-  py::class_<torch_tpu::ContextedModule,
+  py::class_<torch_tpu::ContextedModule,  // NOLINT(bugprone-unused-raii)
              std::shared_ptr<torch_tpu::ContextedModule>>(m, "ContextedModule");
+
+  py::class_<  // NOLINT(bugprone-unused-raii)
+      torch_tpu::LoadedExecutableWithMetadata,
+      std::shared_ptr<torch_tpu::LoadedExecutableWithMetadata>>(
+      m, "LoadedExecutableWithMetadata");
 
   py::class_<xla::PjRtLoadedExecutable,  // NOLINT(bugprone-unused-raii)
              std::shared_ptr<xla::PjRtLoadedExecutable>>(

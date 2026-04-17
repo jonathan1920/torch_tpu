@@ -177,6 +177,7 @@ torch_tpu_cc_library(
     deps = [
         ":env_vars",
         ":error_utils",
+        ":shape",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/base:no_destructor",
@@ -188,12 +189,14 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
+        "@xla//xla:shape_util",
         "@xla//xla:xla_proto_cc",
         "@xla//xla/client:executable_build_options",
         "@xla//xla/hlo/translate:register",
         "@xla//xla/pjrt:maybe_owning_mlir_module",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_compiler",
+        "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/service:computation_placer_hdr",
     ],
 )

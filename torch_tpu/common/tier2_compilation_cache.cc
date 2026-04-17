@@ -278,16 +278,16 @@ absl::StatusOr<SharedLoadedExecutable> LoadSerializedExecutable(
   TT_RET_CHECK(client, error::kFailedPrecondition)
       << "PjRtClient must be initialized before accessing the " << tier
       << " cache.";
-  TT_ASSIGN_OR_RETURN(SharedLoadedExecutable executable,
-                      client->LoadSerializedExecutable(data,
-                                                       /*options=*/std::nullopt,
-                                                       xla::LoadOptions()),
-                      _.SetPrepend()
-                          << "Failed to load serialized executable from the "
-                          << tier << " cache for key " << key
-                          << ", where the serialized data has " << data.size()
-                          << " bytes:\n");
-  return executable;
+  TT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_executable,
+      client->LoadSerializedExecutable(data,
+                                       /*options=*/std::nullopt,
+                                       xla::LoadOptions()),
+      _.SetPrepend() << "Failed to load serialized executable from the " << tier
+                     << " cache for key " << key
+                     << ", where the serialized data has " << data.size()
+                     << " bytes:\n");
+  return LoadedExecutableWithMetadata::MakeShared(std::move(pjrt_executable));
 }
 
 absl::StatusOr<SharedLoadedExecutable> GetFromTier2Cache(

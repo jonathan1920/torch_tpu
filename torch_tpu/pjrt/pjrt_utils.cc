@@ -284,10 +284,10 @@ absl::StatusOr<PjRtBufferPointers> Execute(
   execution_arguments.reserve(1);
   execution_arguments.push_back(std::move(argument_buffers));
 
-  TT_ASSIGN_OR_RETURN(
-      std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>
-          results_per_device,
-      executable->Execute(execution_arguments, execute_options));
+  TT_ASSIGN_OR_RETURN(std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>
+                          results_per_device,
+                      executable->GetLoadedExecutable()->Execute(
+                          execution_arguments, execute_options));
 
   TT_RET_CHECK(!results_per_device.empty(), error::kInternal)
       << "XLA execution did not return any results.";

@@ -55,7 +55,6 @@
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
@@ -167,58 +166,64 @@ absl::StatusOr<SharedLoadedExecutable> CompileMlirExecutable(
 
 namespace {
 
+// Returns the output shapes for executing the given executable.
+// Args:
+//   executable: The loaded executable with metadata containing pjrt-inferred
+//      output shapes.
+//   runtime_output_shapes: If non-empty overrides the pjrt-inferred output
+//   shapes. This is used for dynamic output buffers.
+// Returns:
+//   The output shapes for executing the given executable, or an error if the
+//   `runtime_output_shapes` are invalid.
+//   `runtime_output_shapes` are invalid if either of the following is true:
+//      - Don't match the expected number of pjrt-inferred output tensors.
+//      - Have a different number of dimensions than the corresponding
+//      pjrt-inferred output shapes.
+//      - Have a dimension exceeding the corresponding dimension in the
+//      pjrt-inferred output shape.
 absl::StatusOr<std::vector<Shape>> GetOutputShapes(
     const SharedLoadedExecutable& executable,
     absl::Span<const std::vector<int64_t>>  // INT_VEC_OK
-        output_shapes) {
-  // Get the flattened output shapes from the executable.
-  // Executables can return tuples, we want individual tensor shapes.
-  TT_ASSIGN_OR_RETURN(std::vector<xla::Shape> output_shapes_vec,
-                      executable->GetOutputShapes());
-  std::vector<const xla::Shape*> output_shapes_flat_vec;
-  for (const auto& output_shape : output_shapes_vec) {
-    xla::ShapeUtil::FlattenTupleShape(output_shape, output_shapes_flat_vec);
+        runtime_output_shapes) {
+  const std::vector<Shape>& inferred_shapes = executable->output_shapes();
+
+  if (runtime_output_shapes.empty()) {
+    return inferred_shapes;
   }
 
-  // Determine output shapes from the executable.
-  std::vector<Shape> result_shapes_vec;
-  result_shapes_vec.reserve(output_shapes_flat_vec.size());
+  TT_RET_CHECK(runtime_output_shapes.size() == inferred_shapes.size(),
+               error::kInvalidArgument)
+      << "output shapes must be specified for all outputs or none, "
+      << "got " << runtime_output_shapes.size() << " output shapes for "
+      << inferred_shapes.size() << " output tensors";
 
-  if (!output_shapes.empty()) {
-    TT_RET_CHECK(output_shapes.size() == output_shapes_flat_vec.size(),
+  std::vector<Shape> result_shapes;
+  result_shapes.reserve(inferred_shapes.size());
+
+  for (size_t i = 0; i < inferred_shapes.size(); ++i) {
+    Shape result_shape = inferred_shapes[i];
+    const auto& shape = runtime_output_shapes[i];
+    TT_RET_CHECK(shape.size() == result_shape.dimensions().size(),
                  error::kInvalidArgument)
-        << "output shapes must be specified for all outputs or none, "
-        << "got " << output_shapes.size() << " output shapes for "
-        << output_shapes_flat_vec.size() << " output tensors";
-  }
+        << "output shape number of dimensions must match the statically "
+           "inferred dimensions, got output shape dimensions "
+        << shape.size() << " and inferred dimensions "
+        << result_shape.dimensions().size() << " for output tensor " << i;
 
-  for (size_t i = 0; i < output_shapes_flat_vec.size(); ++i) {
-    const xla::Shape* output_shape = output_shapes_flat_vec[i];
-    TT_ASSIGN_OR_RETURN(Shape result_shape, MakeShape(*output_shape));
-    if (!output_shapes.empty()) {
-      const auto& shape = output_shapes[i];
-      TT_RET_CHECK(shape.size() == result_shape.dimensions().size(),
+    for (size_t j = 0; j < shape.size(); ++j) {
+      TT_RET_CHECK(shape[j] <= result_shape.dimensions()[j],
                    error::kInvalidArgument)
-          << "output shape number of dimensions must match the statically "
-             "inferred dimensions, got output shape dimensions "
-          << shape.size() << " and inferred dimensions "
-          << result_shape.dimensions().size() << " for output tensor " << i;
-
-      for (size_t j = 0; j < shape.size(); ++j) {
-        TT_RET_CHECK(shape[j] <= result_shape.dimensions()[j],
-                     error::kInvalidArgument)
-            << "output shape dimension must not exceed the statically "
-               "inferred bound, got output shape "
-            << ToString(shape) << " and inferred shape "
-            << ToString(result_shape.dimensions());
-      }
-
-      result_shape.dimensions().assign(shape.begin(), shape.end());
+          << "output shape dimension must not exceed the statically "
+             "inferred bound, got output shape "
+          << ToString(shape) << " and inferred shape "
+          << ToString(result_shape.dimensions());
     }
-    result_shapes_vec.push_back(result_shape);
+
+    result_shape.dimensions().assign(shape.begin(), shape.end());
+    result_shapes.push_back(std::move(result_shape));
   }
 
-  return result_shapes_vec;
+  return result_shapes;
 }
 
 }  // namespace

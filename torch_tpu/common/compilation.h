@@ -25,6 +25,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
@@ -32,14 +33,46 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 
 namespace torch_tpu {
 
+class LoadedExecutableWithMetadata;
+
+// TODO(basioli): Rename to something more descriptive.
 using SharedLoadedExecutable =
-    absl_nonnull std::shared_ptr<const xla::PjRtLoadedExecutable>;
+    absl_nonnull std::shared_ptr<const LoadedExecutableWithMetadata>;
+
+class LoadedExecutableWithMetadata {
+ public:
+  static absl::StatusOr<SharedLoadedExecutable> MakeShared(
+      absl_nonnull std::unique_ptr<xla::PjRtLoadedExecutable> executable);
+
+  const xla::PjRtExecutable* GetExecutable() const {
+    return executable_->GetExecutable();
+  }
+
+  const xla::PjRtLoadedExecutable* GetLoadedExecutable() const {
+    return executable_.get();
+  }
+
+  const std::vector<Shape>& output_shapes() const { return output_shapes_; }
+
+ private:
+  LoadedExecutableWithMetadata(
+      absl_nonnull std::unique_ptr<const xla::PjRtLoadedExecutable> executable,
+      std::vector<Shape> output_shapes)
+      : executable_(std::move(executable)),
+        output_shapes_(std::move(output_shapes)) {}
+
+  absl_nonnull std::unique_ptr<const xla::PjRtLoadedExecutable> executable_;
+  // Cached output shapes for the executable.
+  std::vector<Shape> output_shapes_;
+};
 
 using LoadedExecutablePromise =
     std::promise<absl::StatusOr<SharedLoadedExecutable>>;
