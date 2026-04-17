@@ -3784,6 +3784,19 @@ class TestOps(TorchTpuTestBase):
   def test_zeros_like(self):
     self.do_test_op("zeros_like")
 
+  def test_bucketize(self):
+    self.do_test_op(
+        "bucketize",
+        exclude_dtypes={
+            # - No total order for complex numbers.
+            # - Inconsistent behaviour on CPU with bool.
+            "cpu": COMPLEX_DTYPES + (torch.bool,),
+            "gpu": COMPLEX_DTYPES,
+        },
+        # TODO: b/499034385 - Re-enable this test once dynamism is supported.
+        check_dynamism=False,
+    )
+
 
 def setUpModule() -> None:
   """Called by absltest.main() after flags are parsed but before tests are run."""

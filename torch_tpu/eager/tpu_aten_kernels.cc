@@ -41,6 +41,7 @@
 #include "torch_tpu/ops/binary_aten_kernels.h"  // IWYU pragma: keep for AtenMulTensor, etc
 #include "torch_tpu/ops/bincount/bincount_aten_kernels.h"
 #include "torch_tpu/ops/bmm/bmm_aten_kernels.h"
+#include "torch_tpu/ops/bucketize/bucketize_aten_kernels.h"
 #include "torch_tpu/ops/cat/cat_aten_kernels.h"
 #include "torch_tpu/ops/clamp/clamp_aten_kernels.h"
 #include "torch_tpu/ops/col2im/col2im_aten_kernels.h"
@@ -226,6 +227,9 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kBmmDtype, AtenBmmDtype);
   Impl(m, OpName::kBmmDtypeOut, AtenBmmDtypeOut);
   Impl(m, OpName::kBmmOut, AtenBmmOut);
+  Impl(m, OpName::kBucketizeScalar, AtenBucketizeScalar);
+  Impl(m, OpName::kBucketizeTensor, AtenBucketizeTensor);
+  Impl(m, OpName::kBucketizeTensorOut, AtenBucketizeTensorOut);
   Impl(m, OpName::kCatOut, AtenCatOut);
   Impl(m, OpName::kCdistForward, AtenCdistForward);
   Impl(m, OpName::kCeilOut, AtenCeilOut);

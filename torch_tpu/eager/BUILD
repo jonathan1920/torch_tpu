@@ -499,6 +499,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/bernoulli:bernoulli_aten_kernels",
         "//torch_tpu/ops/bincount:bincount_aten_kernels",
         "//torch_tpu/ops/bmm:bmm_aten_kernels",
+        "//torch_tpu/ops/bucketize:bucketize_aten_kernels",
         "//torch_tpu/ops/cat:cat_aten_kernels",
         "//torch_tpu/ops/clamp:clamp_aten_kernels",
         "//torch_tpu/ops/col2im:col2im_aten_kernels",

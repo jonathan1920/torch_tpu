@@ -4565,6 +4565,81 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         atol=6e-3,
     )
 
+  def test_bucketize_scalar_empty_boundaries(self):
+    """Tests torch.bucketize with empty boundaries."""
+
+    def run(device):
+      return torch.bucketize(
+          self=1.234,
+          boundaries=torch.tensor([], dtype=torch.float32).to(device),
+      )
+
+    self.assert_close_tpu_vs_cpu(run)
+
+  @parameterized.product(
+      input_scalar=[0, 1, 1.5, 2, 3, 4.5, 5, 6],
+      out_int32=[True, False],
+      right=[True, False],
+      dtype=[
+          torch.uint8,
+          torch.int32,
+          torch.bfloat16,
+          torch.float32,
+          torch.float64,
+      ],
+  )
+  def test_bucketize_scalar(self, input_scalar, out_int32, right, dtype):
+    def run(device):
+      return torch.bucketize(
+          self=input_scalar,
+          boundaries=torch.tensor([1, 2, 4, 5], dtype=dtype).to(device),
+          out_int32=out_int32,
+          right=right,
+      )
+
+    self.assert_close_tpu_vs_cpu(run)
+
+  @parameterized.product(
+      input_shape=[(7,), (3, 7), (2, 3, 7)],
+      out_int32=[True, False],
+      right=[True, False],
+      dtype=[
+          torch.uint8,
+          torch.int32,
+          torch.bfloat16,
+          torch.float32,
+          torch.float64,
+      ],
+  )
+  def test_bucketize(self, input_shape, out_int32, right, dtype):
+    input_tensor = torch.tensor([3, 5, 6, 0, 1, 1.5, 2], dtype=dtype).repeat(
+        input_shape
+    )
+    boundaries = torch.tensor([1, 2, 4, 5], dtype=dtype)
+
+    def run(device):
+      return torch.bucketize(
+          input_tensor.to(device),
+          boundaries.to(device),
+          out_int32=out_int32,
+          right=right,
+      )
+
+    self.assert_close_tpu_vs_cpu(run)
+
+  def test_bucketize_out(self):
+    tpu_device = api.tpu_device()
+    input_tensor = torch.tensor(
+        [[0, 2, 3], [3, 4, 6]], dtype=torch.float32, device=tpu_device
+    )
+    boundaries = torch.tensor([1, 3, 5], dtype=torch.float32, device=tpu_device)
+    out = torch.empty((2, 3), dtype=torch.int64, device=tpu_device)
+    torch.bucketize(input_tensor, boundaries, out=out)
+
+    self.assertEqual(
+        out.cpu(), torch.tensor([[0, 1, 1], [1, 2, 3]], dtype=torch.int64)
+    )
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""

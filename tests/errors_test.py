@@ -8066,6 +8066,36 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.where(condition, inp, other, out=out)
 
+  def test_bucketize_unsupported_complex_dtype_1(self):
+    input_tensor = torch.tensor([1 + 1j], device=et.device())
+    boundaries = torch.tensor([0.5], device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu="\"searchsorted_out_cpu\" not implemented for 'ComplexFloat'",
+        tpu="bucketize(): self must not be complex, got 'ComplexFloat'",
+    ):
+      torch.bucketize(input_tensor, boundaries)
+
+  def test_bucketize_unsupported_complex_dtype_2(self):
+    input_tensor = torch.tensor([0.5], device=et.device())
+    boundaries = torch.tensor([1 + 1j], device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu="\"searchsorted_out_cpu\" not implemented for 'ComplexFloat'",
+        tpu="bucketize(): boundaries must not be complex, got 'ComplexFloat'",
+    ):
+      torch.bucketize(input_tensor, boundaries)
+
+  def test_bucketize_invalid_boundaries_dim(self):
+    input_tensor = torch.tensor([1.0, 2.0], device=et.device())
+    boundaries = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu="boundaries tensor must be 1 dimension, but got dim(2)",
+        tpu="bucketize(): boundaries tensor must be 1 dimension, got dim(2)",
+    ):
+      torch.bucketize(input_tensor, boundaries)
+
 
 if __name__ == "__main__":
   absltest.main()

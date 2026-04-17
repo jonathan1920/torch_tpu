@@ -165,6 +165,12 @@ std::string_view ToString(OpName op_name) {
       return "bmm.dtype_out";
     case OpName::kBmmOut:
       return "bmm.out";
+    case OpName::kBucketizeScalar:
+      return "bucketize.Scalar";
+    case OpName::kBucketizeTensor:
+      return "bucketize.Tensor";
+    case OpName::kBucketizeTensorOut:
+      return "bucketize.Tensor_out";
     case OpName::kCatOut:
       return "cat.out";
     case OpName::kCdistForward:
