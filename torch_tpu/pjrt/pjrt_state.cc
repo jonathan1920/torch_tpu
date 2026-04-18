@@ -239,7 +239,8 @@ bool PjrtBackend::IsInitialized() const {
 }
 
 xla::PjRtClient* absl_nullable PjrtBackend::GetClient() {
-  if (!EnsureInitialized().ok()) {
+  if (const absl::Status s = EnsureInitialized(); !s.ok()) {
+    ABSL_LOG(ERROR) << "PjrtBackend::GetClient failed to initialize: " << s;
     return nullptr;
   }
   absl::ReaderMutexLock lock(mutex_);
@@ -247,7 +248,8 @@ xla::PjRtClient* absl_nullable PjrtBackend::GetClient() {
 }
 
 xla::PjRtDevice* absl_nullable PjrtBackend::GetDevice() {
-  if (!EnsureInitialized().ok()) {
+  if (const absl::Status s = EnsureInitialized(); !s.ok()) {
+    ABSL_LOG(ERROR) << "PjrtBackend::GetDevice failed to initialize: " << s;
     return nullptr;
   }
   absl::ReaderMutexLock lock(mutex_);
