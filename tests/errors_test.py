@@ -1328,6 +1328,19 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.fft.rfftn(inp)
 
+  def test_mark_dynamic_multiple_dimensions_failure(self):
+    inp = torch.ones(10, 10, device=et.device(), dtype=torch.float32)
+
+    # Mark the dimension 0 as dynamic.
+    dynamism.mark_dynamic(inp, 0, 5, 20)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="only one dynamic dimension is supported per tensor",
+    ):
+      # Try to mark dimension 1 as dynamic too.
+      dynamism.mark_dynamic(inp, 1, 5, 20)
+
   # Why do we run this test only on TPU (and not on CPU)?
   # PyTorch `native_group_norm_backward` implementation doesn't check the
   # dimensions of `grad` and `inp`.

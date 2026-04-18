@@ -54,6 +54,8 @@
 #include "torch_tpu/_internal/dynamism/dynamism_ops.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
@@ -64,6 +66,7 @@
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -447,6 +450,7 @@ CompilationCache::AddBoundedDynamicCacheEntry(
 absl::StatusOr<CompilationCache::CacheLookupInternal>
 CompilationCache::GetOrCreateCacheEntry(
     CompilationCacheKey key, const std::vector<Shape>& input_shapes,
+    const std::vector<Shape>& output_shapes,
     bool skip_dynamic_lookup_and_compilation) {
   if (!allow_cache_mode_) {
     ABSL_LOG(WARNING) << "CompilationCache is disabled. key: " << key;
@@ -477,15 +481,19 @@ CompilationCache::GetOrCreateCacheEntry(
     for (const auto& entry : (*dynamic_it)->second) {
       if (entry.shape_dynamism_metadata.IsStaticShapeCompatible(input_shapes)) {
         ABSL_VLOG(2) << "Compilation cache DYNAMIC HIT for key: " << key;
-        TT_ASSIGN_OR_RETURN(auto cache_lookup,
-                            GetOrCreateCacheEntry(
-                                entry.middle_executable_key, input_shapes,
-                                /*skip_dynamic_lookup_and_compilation=*/true));
+
+        TT_ASSIGN_OR_RETURN(
+            auto cache_lookup,
+            GetOrCreateCacheEntry(
+                entry.middle_executable_key, input_shapes, output_shapes,
+                /*skip_dynamic_lookup_and_compilation=*/true));
         cache_lookup.shape_dynamism_metadata = entry.shape_dynamism_metadata;
         return cache_lookup;
       }
     }
   }
+
+  ABSL_VLOG(2) << "Compilation cache DYNAMIC MISS for key: " << key;
 
   TT_RET_CHECK(!cache_only_mode_, error::kFailedPrecondition)
       << "The user has asserted that no more compilation should happen; yet "
@@ -503,12 +511,13 @@ CompilationCache::GetOrCreateCacheEntry(
         return !s.dynamic_dimensions().empty();
       });
   if (create_dynamic_entry) {
-    auto dynamism_metadata = ShapeDynamismMetadata(input_shapes);
-    ABSL_VLOG(2) << "Compilation cache DYNAMIC MISS for key: " << key;
+    auto dynamism_metadata = ShapeDynamismMetadata(input_shapes, output_shapes);
+    ABSL_VLOG(2) << "Creating a dynamic cache entry for key: " << key;
     return AddBoundedDynamicCacheEntry(key.shapeless_key, dynamism_metadata,
                                        dynamic_it);
   }
 
+  ABSL_VLOG(2) << "Creating a static cache entry for key: " << key;
   // 4. Lastly, we create a static cache entry.
   return AddStaticCacheEntry(key);
 }
@@ -522,8 +531,219 @@ bool CompilationCache::IsExecutableReady(CompilationCacheKey key) const {
   return false;
 }
 
+namespace {
+
+// Returns true if the default layout is different between any input / output
+// shape pair. If we are unable to retrieve layouts, or the vector sizes don't
+// match, we return true.
+bool AnyInducesLayoutChange(const std::vector<Shape>& input_shapes,
+                            const std::vector<Shape>& output_shapes,
+                            xla::PjRtClient* client) {
+  if (input_shapes.size() != output_shapes.size()) {
+    return true;
+  }
+  for (int i = 0; i < input_shapes.size(); ++i) {
+    const Shape& input_shape = input_shapes[i];
+    auto input_element_type =
+        ConvertTo<xla::PrimitiveType>(input_shape.dtype());
+    auto input_layout =
+        client->GetDefaultLayout(input_element_type, input_shape.dimensions());
+    const Shape& output_shape = output_shapes[i];
+    auto output_element_type =
+        ConvertTo<xla::PrimitiveType>(output_shape.dtype());
+    auto output_layout = client->GetDefaultLayout(output_element_type,
+                                                  output_shape.dimensions());
+    // If we were unable to retrieve layouts, we assume the layout has changed.
+    if (!input_layout.ok() || !output_layout.ok() ||
+        input_layout != output_layout) {
+      ABSL_VLOG(3) << "[AnyInducesLayoutChange] Input layout: " << input_layout
+                   << " Output layout: " << output_layout
+                   << " Input shape: " << ToString(input_shape.dimensions())
+                   << " Output shape: " << ToString(output_shape.dimensions());
+      return true;
+    }
+  }
+  return false;
+}
+
+// Resolves runtime dynamic input shapes, static padded input shapes and updated
+// dynamism shapes based on shape dynamism metadata.
+void ResolvePaddingShapes(
+    const ShapeDynamismMetadata& shape_dynamism_metadata,
+    const std::vector<Shape>& input_shapes,
+    std::vector<Shape>& static_runtime_input_shapes,
+    std::vector<Shape>& static_padded_input_shapes,
+    std::vector<Shape>& input_shapes_with_updated_dynamism) {
+  absl::Span<const DimensionBounds> input_dimension_bounds =
+      shape_dynamism_metadata.input_dimension_bounds();
+  for (int i = 0; i < input_shapes.size(); ++i) {
+    const Shape& shape = input_shapes[i];
+    absl::Span<const DimensionBounds> bounds =
+        input_dimension_bounds.first(shape.dimensions().size());
+    input_dimension_bounds =
+        input_dimension_bounds.subspan(shape.dimensions().size());
+    Dimensions dimensions = shape.dimensions();
+    static_runtime_input_shapes.push_back(Shape(dimensions, shape.dtype()));
+    Shape dynamic_shape = Shape(dimensions, shape.dtype());
+    for (int j = 0; j < bounds.size(); ++j) {
+      if (bounds[j].lower != bounds[j].upper) {
+        dynamic_shape.dynamic_dimensions().push_back(BoundedDynamicDimension{
+            .dimension = j,
+            .lower_bound = bounds[j].lower,
+            .upper_bound = bounds[j].upper,
+        });
+      }
+    }
+    static_padded_input_shapes.push_back(
+        Shape(GetUpperBounds(bounds), shape.dtype()));
+    input_shapes_with_updated_dynamism.push_back(std::move(dynamic_shape));
+  }
+}
+
+}  // namespace
+
+// Creates a padding kernel for the dynamic kernel adapter.
+absl::StatusOr<SharedLoadedExecutableWithMetadataFuture>
+CompilationCache::CreatePaddingKernel(
+    const ShapeDynamismMetadata& shape_dynamism_metadata,
+    const std::vector<Shape>& static_runtime_input_shapes,
+    const std::vector<Shape>& static_padded_input_shapes,
+    std::vector<Shape> input_shapes_with_updated_dynamism,
+    UniqueCompileOptions compile_options) {
+  CompilationCacheKey padding_cache_key =
+      shape_dynamism_metadata.GetPadModuleCacheKey(static_runtime_input_shapes);
+
+  MlirComputationBuilder padding_module_builder =
+      [input_shapes_with_updated_dynamism =
+           std::move(input_shapes_with_updated_dynamism)](
+          mlir::MLIRContext& mlir_context) {
+        return GetPadModule(mlir_context, input_shapes_with_updated_dynamism);
+      };
+
+  TT_ASSIGN_OR_RETURN(
+      CompiledKernel padding_kernel,
+      GetOrCompile(padding_cache_key, static_runtime_input_shapes,
+                   static_padded_input_shapes,
+                   std::move(padding_module_builder),
+                   std::move(compile_options)));
+  return std::move(padding_kernel.fixed_shape_kernel);
+}
+
+// Creates a slicing kernel for the dynamic kernel adapter.
+absl::StatusOr<SharedLoadedExecutableWithMetadataFuture>
+CompilationCache::CreateSlicingKernel(
+    const ShapeDynamismMetadata& shape_dynamism_metadata,
+    const std::vector<Shape>& output_shapes,
+    UniqueCompileOptions compile_options) {
+  std::vector<Dimensions> runtime_output_dims_vec;
+  runtime_output_dims_vec.reserve(output_shapes.size());
+  for (const auto& shape : output_shapes) {
+    runtime_output_dims_vec.push_back(shape.dimensions());
+  }
+  std::vector<mlir::ElementType> output_dtypes;
+  output_dtypes.reserve(output_shapes.size());
+  for (const auto& shape : output_shapes) {
+    output_dtypes.push_back(shape.dtype());
+  }
+  std::vector<Dimensions> padded_output_dims_vec;
+  padded_output_dims_vec.reserve(runtime_output_dims_vec.size());
+  absl::Span<const DimensionBounds> output_dimension_bounds =
+      shape_dynamism_metadata.output_dimension_bounds();
+  for (const auto& dims : runtime_output_dims_vec) {
+    absl::Span<const DimensionBounds> bounds =
+        output_dimension_bounds.first(dims.size());
+    output_dimension_bounds = output_dimension_bounds.subspan(dims.size());
+    padded_output_dims_vec.push_back(GetUpperBounds(bounds));
+  }
+
+  std::vector<Shape> runtime_output_shapes;
+  runtime_output_shapes.reserve(output_shapes.size());
+  for (int i = 0; i < output_shapes.size(); ++i) {
+    runtime_output_shapes.push_back(
+        Shape(runtime_output_dims_vec[i], output_dtypes[i]));
+  }
+
+  std::vector<Shape> padded_output_shapes;
+  padded_output_shapes.reserve(output_shapes.size());
+  for (int i = 0; i < output_shapes.size(); ++i) {
+    padded_output_shapes.push_back(
+        Shape(padded_output_dims_vec[i], output_dtypes[i]));
+  }
+
+  CompilationCacheKey slicing_cache_key =
+      shape_dynamism_metadata.GetSliceModuleCacheKey(runtime_output_shapes);
+
+  MlirComputationBuilder slice_module_builder =
+      [runtime_output_dims_vec = std::move(runtime_output_dims_vec),
+       padded_output_dims_vec = std::move(padded_output_dims_vec),
+       output_dtypes =
+           std::move(output_dtypes)](mlir::MLIRContext& mlir_context) {
+        return GetSliceModule(mlir_context, runtime_output_dims_vec,
+                              padded_output_dims_vec, output_dtypes);
+      };
+
+  TT_ASSIGN_OR_RETURN(
+      CompiledKernel slice_kernel,
+      GetOrCompile(slicing_cache_key, padded_output_shapes, output_shapes,
+                   std::move(slice_module_builder),
+                   std::move(compile_options)));
+  return std::move(slice_kernel.fixed_shape_kernel);
+}
+
+// Creates a dynamic kernel adapter for the given shape dynamism metadata, input
+// shapes, output shapes, and compile options. If the padding operation does
+// not induce a layout change, returns an adapter with only the padding kernel.
+absl::StatusOr<DynamicKernelAdapter>
+CompilationCache::CreateDynamicKernelAdapter(
+    const ShapeDynamismMetadata& shape_dynamism_metadata,
+    const std::vector<Shape>& input_shapes,
+    const std::vector<Shape>& output_shapes,
+    UniqueCompileOptions compile_options) {
+  DynamicKernelAdapter adapter;
+  // TODO(unda): is it possible to reuse the compile options? We make a copy
+  // for now.
+  // Do this first, before we move the compile options.
+  auto padding_compile_options =
+      std::make_unique<xla::CompileOptions>(*compile_options);
+
+  std::vector<Shape> static_runtime_input_shapes;
+  std::vector<Shape> static_padded_input_shapes;
+  std::vector<Shape> input_shapes_with_updated_dynamism;
+
+  ResolvePaddingShapes(shape_dynamism_metadata, input_shapes,
+                       static_runtime_input_shapes, static_padded_input_shapes,
+                       input_shapes_with_updated_dynamism);
+
+  TT_ASSIGN_OR_RETURN(
+      adapter.preamble,
+      CreatePaddingKernel(shape_dynamism_metadata, static_runtime_input_shapes,
+                          static_padded_input_shapes,
+                          std::move(input_shapes_with_updated_dynamism),
+                          std::move(padding_compile_options)));
+
+  // Before doing any work for the slicing kernel, we check if we need to do it
+  // at all. We know that if the padding kernel doesn't induce a layout change,
+  // then the current mechanisms in the TPU backend already handle the slicing
+  // for us.
+  xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
+  if (!AnyInducesLayoutChange(static_runtime_input_shapes,
+                              static_padded_input_shapes, client)) {
+    return adapter;
+  }
+
+  ABSL_VLOG(1) << "A padding operation induces a layout change, adding a "
+                  "slicing kernel to the dynamic adapter.";
+
+  TT_ASSIGN_OR_RETURN(
+      adapter.postamble,
+      CreateSlicingKernel(shape_dynamism_metadata, output_shapes,
+                          std::move(compile_options)));
+  return adapter;
+}
+
 absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
     const CompilationCacheKey key, const std::vector<Shape>& input_shapes,
+    const std::vector<Shape>& output_shapes,
     MlirComputationBuilder computation_builder,
     UniqueCompileOptions compile_options) {
   // Critical section for cache lookups and insertion.
@@ -531,54 +751,31 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
       auto cache_lookup, [&]() -> absl::StatusOr<CacheLookupInternal> {
         absl::MutexLock lock(cache_mutex_);
         perf_stats_.num_cache_reqs++;
-        TT_ASSIGN_OR_RETURN(auto lookup,
-                            GetOrCreateCacheEntry(key, input_shapes));
+        TT_ASSIGN_OR_RETURN(auto lookup, GetOrCreateCacheEntry(
+                                             key, input_shapes, output_shapes));
         lookup.dump_on_cache_miss = dump_on_cache_miss_;
         return lookup;
       }());
   // Everything we are recovering from the cache is a shared pointer, so it
   // is safe to access them without the lock.
 
-  std::optional<DynamicKernelAdapter> dynamic_kernel_adapter;
+  CompiledKernel compiled_kernel{.fixed_shape_kernel =
+                                     cache_lookup.executable_future};
   CompilationCacheKey storage_key = key;
   if (cache_lookup.shape_dynamism_metadata.has_value()) {
     ABSL_VLOG(1) << "Found shape dynamism metadata for key: " << key;
-    // TODO(unda): is it possible to reuse the compile options? We make a copy
-    // for now.
-    // Do this first, before we move the compile options.
-    auto padding_compile_options =
+    // Create a copy of the compile options for the adapter.
+    auto adapter_compile_options =
         std::make_unique<xla::CompileOptions>(*compile_options);
-    CompilationCacheKey padding_cache_key =
-        cache_lookup.shape_dynamism_metadata->GetPadModuleCacheKey(
-            input_shapes);
-    std::vector<Shape> padding_shapes =
-        cache_lookup.shape_dynamism_metadata->GetPaddingShapes(input_shapes);
-    MlirComputationBuilder padding_module_builder =
-        [padding_shapes =
-             std::move(padding_shapes)](mlir::MLIRContext& mlir_context) {
-          return GetPadModule(mlir_context, padding_shapes);
-        };
-
-    // Remove the dynamism from inputs before passing to GetOrCompile. The
-    // padding module takes all inputs, is pass through for the static ones,
-    // and for ones with dynamic dimensions it pads them to their upper bounds,
-    // and adds a new mlirOp right after the corresponding input to carry the
-    // dynamic dimensions.
-    std::vector<Shape> fixed_shape_inputs;
-    fixed_shape_inputs.reserve(input_shapes.size());
-    for (const auto& shape : input_shapes) {
-      fixed_shape_inputs.emplace_back(shape.dimensions(), shape.dtype());
-    }
-    TT_ASSIGN_OR_RETURN(CompiledKernel padding_kernel,
-                        GetOrCompile(padding_cache_key, fixed_shape_inputs,
-                                     std::move(padding_module_builder),
-                                     std::move(padding_compile_options)));
-    dynamic_kernel_adapter = DynamicKernelAdapter{
-        .preamble = std::move(padding_kernel.fixed_shape_kernel)};
+    TT_ASSIGN_OR_RETURN(compiled_kernel.dynamic_kernel_adapter,
+                        CreateDynamicKernelAdapter(
+                            *cache_lookup.shape_dynamism_metadata, input_shapes,
+                            output_shapes, std::move(adapter_compile_options)));
     // Create a key for the storage of the dynamic executable.
     storage_key = CompilationCacheKey{
         key.shapeless_key,
         DimensionsKey(*cache_lookup.shape_dynamism_metadata)};
+    ABSL_VLOG(2) << "Storage key for dynamic executable: " << storage_key;
   }
 
   if (cache_lookup.needs_compilation) {
@@ -601,9 +798,7 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
     ABSL_VLOG(1) << "[TtPerf] Scheduled compilation for key: " << storage_key;
   }
 
-  return CompiledKernel{
-      .fixed_shape_kernel = cache_lookup.executable_future,
-      .dynamic_kernel_adapter = std::move(dynamic_kernel_adapter)};
+  return compiled_kernel;
 }
 
 void CompilationCache::EnqueueCompilation(

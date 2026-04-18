@@ -537,6 +537,21 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
   return module;
 }
 
+namespace {
+std::vector<Shape> GetShapes(absl::Span<const DeviceBufferRef> buffers) {
+  std::vector<Shape> shapes;
+  shapes.reserve(buffers.size());
+  for (const auto& buffer : buffers) {
+    Shape shape(CopyIntVector(buffer.dimensions()), buffer.element_type());
+    for (const auto& dynamic_dim : buffer.dynamic_dimensions()) {
+      shape.dynamic_dimensions().push_back(dynamic_dim);
+    }
+    shapes.push_back(std::move(shape));
+  }
+  return shapes;
+}
+}  // namespace
+
 absl::StatusOr<CompiledKernel> Traversal::Compile(
     CompilationMode compilation_mode) const {
   // Prepare a computation builder closure to be called on a cache miss.  Okay
@@ -547,22 +562,14 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
         return BuildMlirModule(mlir_context);
       };
   ABSL_VLOG(1) << "[Compile] cache_key: " << cache_key();
-  std::vector<Shape> argument_shapes;
-  argument_shapes.reserve(arguments_.size());
-  for (const auto& argument : arguments_) {
-    Shape argument_shape(CopyIntVector(argument.dimensions()),
-                         argument.element_type());
-    for (const auto& dynamic_dim : argument.dynamic_dimensions()) {
-      argument_shape.dynamic_dimensions().push_back(dynamic_dim);
-    }
-    argument_shapes.push_back(std::move(argument_shape));
-  }
+  std::vector<Shape> argument_shapes = GetShapes(arguments_);
+  std::vector<Shape> output_shapes = GetShapes(outputs_);
 
   TT_ASSIGN_OR_RETURN(UniqueCompileOptions compile_options,
                       MakeCompilerOptions(compilation_mode));
 
   return CompilationCache::GetInstance().GetOrCompile(
-      cache_key(), argument_shapes, std::move(final_op_builder),
+      cache_key(), argument_shapes, output_shapes, std::move(final_op_builder),
       std::move(compile_options));
 }
 

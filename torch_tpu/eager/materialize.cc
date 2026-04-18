@@ -361,10 +361,22 @@ class MaterializationWorker {
                      << task_name;
       }
       if (task.compiled_kernel.dynamic_kernel_adapter.has_value()) {
-        while (task.compiled_kernel.dynamic_kernel_adapter->preamble.wait_for(
-                   std::chrono::seconds(5)) == std::future_status::timeout) {
-          ABSL_VLOG(1) << "Still waiting for preamble compilation of task_name="
-                       << task_name;
+        if (task.compiled_kernel.dynamic_kernel_adapter->preamble.valid()) {
+          while (task.compiled_kernel.dynamic_kernel_adapter->preamble.wait_for(
+                     std::chrono::seconds(5)) == std::future_status::timeout) {
+            ABSL_VLOG(1)
+                << "Still waiting for preamble compilation of task_name="
+                << task_name;
+          }
+        }
+        if (task.compiled_kernel.dynamic_kernel_adapter->postamble.valid()) {
+          while (
+              task.compiled_kernel.dynamic_kernel_adapter->postamble.wait_for(
+                  std::chrono::seconds(5)) == std::future_status::timeout) {
+            ABSL_VLOG(1)
+                << "Still waiting for postamble compilation of task_name="
+                << task_name;
+          }
         }
       }
     }
@@ -375,16 +387,18 @@ class MaterializationWorker {
     std::vector<SharedLoadedExecutableWithMetadata> cached_executables;
 
     if (task.compiled_kernel.dynamic_kernel_adapter.has_value()) {
-      absl::StatusOr<SharedLoadedExecutableWithMetadata> preamble =
-          task.compiled_kernel.dynamic_kernel_adapter->preamble.get();
-      if (!preamble.ok()) {
-        ABSL_VLOG(1) << "[MaterializationWorker] Failed to compile "
-                        "task_name="
-                     << task_name << ": " << preamble.status();
-        SetOutputNodesAsError(task.outputs, preamble.status());
-        return;
+      if (task.compiled_kernel.dynamic_kernel_adapter->preamble.valid()) {
+        absl::StatusOr<SharedLoadedExecutableWithMetadata> preamble =
+            task.compiled_kernel.dynamic_kernel_adapter->preamble.get();
+        if (!preamble.ok()) {
+          ABSL_VLOG(1) << "[MaterializationWorker] Failed to compile "
+                          "task_name="
+                       << task_name << ": " << preamble.status();
+          SetOutputNodesAsError(task.outputs, preamble.status());
+          return;
+        }
+        cached_executables.push_back(std::move(*preamble));
       }
-      cached_executables.push_back(std::move(*preamble));
     }
 
     absl::StatusOr<SharedLoadedExecutableWithMetadata> fixed_shape_kernel =
@@ -397,6 +411,21 @@ class MaterializationWorker {
       return;
     }
     cached_executables.push_back(std::move(*fixed_shape_kernel));
+
+    if (task.compiled_kernel.dynamic_kernel_adapter.has_value()) {
+      if (task.compiled_kernel.dynamic_kernel_adapter->postamble.valid()) {
+        absl::StatusOr<SharedLoadedExecutableWithMetadata> postamble =
+            task.compiled_kernel.dynamic_kernel_adapter->postamble.get();
+        if (!postamble.ok()) {
+          ABSL_VLOG(1) << "[MaterializationWorker] Failed to compile "
+                          "task_name="
+                       << task_name << ": " << postamble.status();
+          SetOutputNodesAsError(task.outputs, postamble.status());
+          return;
+        }
+        cached_executables.push_back(std::move(*postamble));
+      }
+    }
 
     ABSL_VLOG(1) << "[MaterializationWorker] Cached executables size: "
                  << cached_executables.size();
@@ -600,14 +629,12 @@ absl::Status MaterializationWorker::PropagateBoundedDynamism(
     for (const auto& output_dimension : output_dimensions) {
       const DeviceBufferRef& ref = output_dimension.ref;
       const auto& dims = output_dimension.dims;
-      for (const mlir::stablehlo::DimensionInfo& dim : dims) {
-        if (dim.boundOp.has_value()) {
-          TT_RETURN_IF_ERROR(ref.MarkDynamic(dim.boundOpDim, 2, dim.size));
+      for (int d = 0; d < dims.size(); ++d) {
+        if (dims[d].boundOp.has_value() || dims[d].size > ref.dimensions()[d]) {
+          TT_RETURN_IF_ERROR(ref.MarkDynamic(d, 2, dims[d].size));
           ABSL_VLOG(1) << "[PropagateBoundedDynamism] Marked dynamic: "
-                       << ref.DebugString() << " dimension: " << dim.boundOpDim
-                       << " upper bound: " << dim.size;
-          // Multiple dynamic dimension for a tensor is currently not supported.
-          break;
+                       << ref.DebugString() << " dimension: " << d
+                       << " upper bound: " << dims[d].size;
         }
       }
     }

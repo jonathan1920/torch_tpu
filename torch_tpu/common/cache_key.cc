@@ -30,12 +30,15 @@
 
 #include "absl/functional/function_ref.h"
 #include "absl/log/absl_check.h"
+#include "absl/log/absl_log.h"
+#include "absl/log/absl_vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "ATen/core/ATen_fwd.h"
 #include "c10/core/Device.h"
@@ -47,6 +50,7 @@
 #include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/shape.h"
@@ -194,8 +198,19 @@ DimensionsKey::DimensionsKey(
   key = FingerprintCat(upper_bounds, lower_bounds);
 }
 
-ShapeDynamismMetadata::ShapeDynamismMetadata(absl::Span<const Shape> shapes) {
-  for (const Shape& shape : shapes) {
+Dimensions GetUpperBounds(absl::Span<const DimensionBounds> bounds) {
+  Dimensions dims;
+  dims.reserve(bounds.size());
+  for (auto& bound : bounds) {
+    dims.push_back(bound.upper);
+  }
+  return dims;
+}
+
+ShapeDynamismMetadata::ShapeDynamismMetadata(
+    absl::Span<const Shape> input_shapes,
+    absl::Span<const Shape> output_shapes) {
+  for (const Shape& shape : input_shapes) {
     const int64_t tensor_start_dim = input_dimension_bounds_.size();
     for (int64_t dim : shape.dimensions()) {
       input_dimension_bounds_.push_back({dim, dim});
@@ -207,9 +222,23 @@ ShapeDynamismMetadata::ShapeDynamismMetadata(absl::Span<const Shape> shapes) {
                                                     dynamic_dim.upper_bound};
     }
   }
+
+  for (const Shape& shape : output_shapes) {
+    const int64_t tensor_start_dim = output_dimension_bounds_.size();
+    for (int64_t dim : shape.dimensions()) {
+      output_dimension_bounds_.push_back({dim, dim});
+    }
+    for (const auto& dynamic_dim : shape.dynamic_dimensions()) {
+      const int64_t dynamic_dim_index =
+          tensor_start_dim + dynamic_dim.dimension;
+      output_dimension_bounds_[dynamic_dim_index] = {dynamic_dim.lower_bound,
+                                                     dynamic_dim.upper_bound};
+    }
+  }
 }
 
 namespace {
+
 bool IsShapeCompatibleWithBounds(const Shape& shape,
                                  absl::Span<const DimensionBounds> bounds) {
   TT_CHECK_THROW(shape.dimensions().size() == bounds.size(), error::kInternal)
@@ -223,38 +252,6 @@ bool IsShapeCompatibleWithBounds(const Shape& shape,
   return true;
 }
 
-std::string GetIncompatibilityErrorMsg(
-    int64_t index, const Shape& shape,
-    absl::Span<const DimensionBounds> bounds) {
-  return absl::StrCat(
-      "Input shape is incompatible with dynamism metadata at index ", index,
-      ". ", "input shapes: ", ToString(shape.dimensions()),
-      " dynamism bounds: ",
-      absl::StrJoin(
-          bounds, ",", [](std::string* out, const DimensionBounds& bounds) {
-            absl::StrAppend(out, "[", bounds.lower, ",", bounds.upper, "]");
-          }));
-}
-
-Shape GetPaddingShape(const Shape& shape,
-                      absl::Span<const DimensionBounds> bounds) {
-  TT_CHECK_THROW(shape.dimensions().size() == bounds.size(), error::kInternal)
-      << "Shape and bounds spans must have the same size.";
-  Shape padding_shape(shape.dimensions(), shape.dtype());
-  for (int i = 0; i < shape.dimensions().size(); ++i) {
-    TT_CHECK_THROW(padding_shape.dimensions()[i] >= bounds[i].lower &&
-                       padding_shape.dimensions()[i] <= bounds[i].upper,
-                   error::kInternal)
-        << GetIncompatibilityErrorMsg(i, shape, bounds);
-    if (bounds[i].lower != bounds[i].upper) {
-      padding_shape.dynamic_dimensions().push_back(
-          {.dimension = i,
-           .lower_bound = bounds[i].lower,
-           .upper_bound = bounds[i].upper});
-    }
-  }
-  return padding_shape;
-}
 }  // namespace
 
 OpParamCacheKeys::OpParamCacheKeys(OpParamCacheKeys&& other)
@@ -306,25 +303,29 @@ bool ShapeDynamismMetadata::IsStaticShapeCompatible(
   return true;
 }
 
-std::vector<Shape> ShapeDynamismMetadata::GetPaddingShapes(
-    absl::Span<const Shape> shapes) const {
-  TT_CHECK_THROW(IsStaticShapeCompatible(shapes), error::kInternal)
-      << "Input shapes are incompatible with dynamism metadata.";
-  std::vector<Shape> padding_shapes;
-  padding_shapes.reserve(shapes.size());
-  int index = 0;
-  absl::Span<const DimensionBounds> bounds = input_dimension_bounds_;
-  for (const Shape& shape : shapes) {
-    int64_t span_size = shape.dimensions().size();
-    padding_shapes.push_back(
-        GetPaddingShape(shape, bounds.subspan(index, span_size)));
-    index += span_size;
+void LogShapes(absl::Span<const Shape> shapes, std::string_view prefix) {
+  for (const auto& shape : shapes) {
+    ABSL_VLOG(3) << prefix << " shape: " << ToString(shape.dimensions()) << " "
+                 << ToString(shape.dtype());
   }
-  return padding_shapes;
 }
 
 CompilationCacheKey ShapeDynamismMetadata::GetPadModuleCacheKey(
     absl::Span<const Shape> shapes) const {
+  ABSL_VLOG(3) << "[GetPadModuleCacheKey] Creating a cache key for dynamism "
+                  "with "
+               << shapes.size() << " shapes:";
+  if (ABSL_VLOG_IS_ON(3)) {
+    LogShapes(shapes, "[GetPadModuleCacheKey]");
+  }
+  ABSL_VLOG(3) << "[GetPadModuleCacheKey] input dimension bounds: "
+               << absl::StrJoin(
+                      input_dimension_bounds_, ",",
+                      [](std::string* out, const DimensionBounds& bounds) {
+                        absl::StrAppend(out, "[", bounds.lower, ",",
+                                        bounds.upper, "]");
+                      });
+
   GraphSignature graph;
 
   for (const Shape& shape : shapes) {
@@ -380,6 +381,56 @@ CompilationCacheKey ShapeDynamismMetadata::GetPadModuleCacheKey(
     }
   }
 
+  return graph.cache_key();
+}
+
+CompilationCacheKey ShapeDynamismMetadata::GetSliceModuleCacheKey(
+    absl::Span<const Shape> shapes) const {
+  ABSL_VLOG(3) << "[GetSliceModuleCacheKey] Creating a slice module cache key "
+                  "for dynamism with "
+               << shapes.size() << " shapes:";
+  if (ABSL_VLOG_IS_ON(3)) {
+    LogShapes(shapes, "[GetSliceModuleCacheKey]");
+  }
+  ABSL_VLOG(3) << "[GetSliceModuleCacheKey] output dimension bounds: "
+               << absl::StrJoin(
+                      output_dimension_bounds_, ",",
+                      [](std::string* out, const DimensionBounds& bounds) {
+                        absl::StrAppend(out, "[", bounds.lower, ",",
+                                        bounds.upper, "]");
+                      });
+  GraphSignature graph;
+  std::vector<bool> requires_slicing(shapes.size(), false);
+  absl::Span<const DimensionBounds> bounds = output_dimension_bounds_;
+  int bounds_index = 0;
+  for (int i = 0; i < shapes.size(); ++i) {
+    const Shape& shape = shapes[i];
+    auto shape_bounds = bounds.subspan(bounds_index, shape.dimensions().size());
+    bounds_index += shape.dimensions().size();
+    Dimensions padded_dimensions = shape.dimensions();
+
+    for (int d = 0; d < shape.dimensions().size(); ++d) {
+      if (shape_bounds[d].lower != shape_bounds[d].upper) {
+        padded_dimensions[d] = shape_bounds[d].upper;
+        requires_slicing[i] = true;
+      }
+    }
+    graph.AddInput(padded_dimensions, shape.dtype());
+  }
+  for (int i = 0; i < shapes.size(); ++i) {
+    if (!requires_slicing[i]) {
+      graph.AddGraphOutput(i);
+      continue;
+    }
+
+    int op_index = graph.AddOp(
+        OpName::kSlice, OpParamCacheKeys::Empty(), /*aliased_inputs=*/{},
+        [&](GraphSignature::OpSignatureBuilder& op) {
+          op.AddInput(i);
+          op.AddOutput(shapes[i].dimensions(), shapes[i].dtype());
+        });
+    graph.AddGraphOutput(op_index);
+  }
   return graph.cache_key();
 }
 

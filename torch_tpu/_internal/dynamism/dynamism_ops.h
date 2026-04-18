@@ -22,7 +22,9 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/shape.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 
 namespace torch_tpu {
 
@@ -39,6 +41,19 @@ namespace torch_tpu {
 //   -> ([10, 5], i32, [], [8, 5, 7], i32, i32)
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetPadModule(
     mlir::MLIRContext& mlir_context, absl::Span<const Shape> shapes);
+
+// Universal slice module. Given a list of padded and unpadded shapes, returns a
+// module that converts padded dynamic dimensions into static dimensions and
+// then slices the tensors to the desired unpadded shapes.
+//
+// For example, given input padded_dimensions_vec = [[10, 5], [8, 5, 7]]
+// and dimensions_vec = [[3, 5], [8, 2, 2]], the module signature will be:
+//   ([<=10, 5], [8, <=5, <=7]) -> ([3, 5], [8, 2, 2]).
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetSliceModule(
+    mlir::MLIRContext& mlir_context,
+    absl::Span<const Dimensions> dimensions_vec,
+    absl::Span<const Dimensions> padded_dimensions_vec,
+    absl::Span<const mlir::ElementType> input_dtypes);
 
 }  // namespace torch_tpu
 

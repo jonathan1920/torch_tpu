@@ -247,6 +247,7 @@ class CompilationCache {
   // and enqueues compilations if necessary.
   absl::StatusOr<CompiledKernel> GetOrCompile(
       CompilationCacheKey key, const std::vector<Shape>& input_shapes,
+      const std::vector<Shape>& output_shapes,
       MlirComputationBuilder computation_builder,
       UniqueCompileOptions compile_options) ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
@@ -350,6 +351,9 @@ class CompilationCache {
   //  - input_shapes: The input shapes to the computation, in the order given by
   // a Traversal. This is used for checking compatibility with existing bounded
   // dynamic cache entries, or to create metadata for a new one.
+  //  - output_shapes: The output shapes to the computation, in the order given
+  // by a Traversal. This is used to create metadata for bounded dynamic cache
+  // entries.
   //  - skip_dynamic_lookup_and_compilation: If true, only do lookups in the
   // static cache, and create a new static cache entry if needed.
   //
@@ -357,8 +361,33 @@ class CompilationCache {
   //   A `CacheLookupInternal` struct containing the cache lookup result.
   absl::StatusOr<CacheLookupInternal> GetOrCreateCacheEntry(
       CompilationCacheKey key, const std::vector<Shape>& input_shapes,
+      const std::vector<Shape>& output_shapes,
       bool skip_dynamic_lookup_and_compilation = false)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(cache_mutex_);
+
+  // Creates a dynamic kernel adapter for the given shape dynamism metadata and
+  // input and output shapes.
+  absl::StatusOr<DynamicKernelAdapter> CreateDynamicKernelAdapter(
+      const ShapeDynamismMetadata& shape_dynamism_metadata,
+      const std::vector<Shape>& input_shapes,
+      const std::vector<Shape>& output_shapes,
+      UniqueCompileOptions compile_options) ABSL_LOCKS_EXCLUDED(cache_mutex_);
+
+  // Creates a padding kernel for the dynamic kernel adapter based on the shape
+  // dynamism metadata and resolved dynamic shapes.
+  absl::StatusOr<SharedLoadedExecutableWithMetadataFuture> CreatePaddingKernel(
+      const ShapeDynamismMetadata& shape_dynamism_metadata,
+      const std::vector<Shape>& static_runtime_input_shapes,
+      const std::vector<Shape>& static_padded_input_shapes,
+      std::vector<Shape> input_shapes_with_updated_dynamism,
+      UniqueCompileOptions compile_options);
+
+  // Creates a slicing kernel for the dynamic kernel adapter that executes slice
+  // ops on the outputs if original padding operations induced layout changes.
+  absl::StatusOr<SharedLoadedExecutableWithMetadataFuture> CreateSlicingKernel(
+      const ShapeDynamismMetadata& shape_dynamism_metadata,
+      const std::vector<Shape>& output_shapes,
+      UniqueCompileOptions compile_options);
 
   // Sets the executable for the given key if it is not already set.
   // Also sets the stats for the cache entry.

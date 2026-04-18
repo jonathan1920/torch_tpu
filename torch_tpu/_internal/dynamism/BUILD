@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end")
+load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_cc_test", "torch_tpu_package_end")
 load("//shims/py_rules:pytype.bzl", "pytype_library")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
@@ -61,9 +61,11 @@ torch_tpu_cc_library(
     hdrs = ["dynamism_ops.h"],
     deps = [
         "//shims/torch:torch_headers",
+        "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:shape",
+        "//torch_tpu/common:to_string",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status:statusor",
@@ -73,7 +75,9 @@ torch_tpu_cc_library(
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:func_builder",
         "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_broadcast_lowering",
         "@stablehlo//:stablehlo_builder",
+        "@stablehlo//:stablehlo_ops",
         "@xla//xla:xla_data_proto_cc",
     ],
 )
@@ -107,6 +111,24 @@ pytype_library(
         "//:__subpackages__",
     ],
     deps = [":_tpu_torch_dynamism"],
+)
+
+torch_tpu_cc_test(
+    name = "dynamism_ops_test",
+    srcs = ["dynamism_ops_test.cc"],
+    deps = [
+        ":dynamism_ops",
+        "//torch_tpu/common:dimension_types",
+        "//torch_tpu/common:shape",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:register",
+        "@xla//xla/tsl/platform:statusor",
+    ],
 )
 
 torch_tpu_package_end()

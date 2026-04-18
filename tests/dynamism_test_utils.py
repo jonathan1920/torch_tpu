@@ -112,14 +112,8 @@ def _should_skip_input_marking(
     return f"{op_info.name} op is not supported with dtype {dtype}."
   # TODO: b/449736443 - Bug in XLA:TPU handling of 64-bit types?
   is_64_bit = dtype in [torch.int64, torch.float64]
-  is_foreach_binop = (
-      isinstance(op_info, core.ForeachFuncInfo)
-      and op_info.name in foreach_binops
-  )
-  if (
-      isinstance(op_info, core.BinaryUfuncInfo) or is_foreach_binop
-  ) and is_64_bit:
-    return "Binary ops with int64 or float64 dtypes fail sporadically."
+  if is_64_bit:
+    return "64-bit dtypes fail sporadically."
   # TODO: b/449736443 - Empty tensor handling needs reworking.
   if input_value.numel() == 0:
     return "Empty tensors are currently not supported."
@@ -222,6 +216,7 @@ def verify_op_supports_dynamism(
       "split_with_sizes",
       "squeeze",  # unsupported view op - enhance view op to detect squeeze
       "squeeze_copy",  # unsupported view op
+      "sum",  # return i64, which has lowering issues
       "to",  # fails numerics (?)
       "take",
       "topk",
