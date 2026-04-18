@@ -185,6 +185,7 @@ torch_tpu_py_test(
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compiler_options",
+        "//torch_tpu/api",
         "@pypi//transformers",
     ],
 )
