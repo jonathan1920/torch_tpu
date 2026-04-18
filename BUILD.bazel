@@ -52,7 +52,7 @@ config_setting(
 
 filegroup(
     name = "local_wheel_file",
-    srcs = glob(["dist/*.whl"]),
+    srcs = glob(["dist/torch_tpu*.whl"]),
 )
 
 # Combined config setting for ease of use in selects
