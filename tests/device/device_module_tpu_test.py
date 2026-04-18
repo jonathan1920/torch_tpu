@@ -12,21 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the device module with XLA CUDA backend."""
+"""Tests for the device module with TPU backend."""
 
 from absl.testing import absltest
 import torch
-from tests import device_module_testing
+from tests.device import device_module_testing
 
 
 # Test cases are defined in device_module_testing.DeviceModuleBase
-class XlaCudaDeviceModuleTest(
+class TpuDeviceModuleTest(
     device_module_testing.DeviceModuleBase, absltest.TestCase
 ):
 
   @property
   def device_module(self):
-    return torch.xla_cuda
+    return torch.tpu
 
 
 if __name__ == "__main__":

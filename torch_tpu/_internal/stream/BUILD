@@ -1,4 +1,4 @@
-# Copyright 2025 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,24 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "torch_tpu_package_end")
+load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
     default_applicable_licenses = ["//:license"],
     default_visibility = ["//:__subpackages__"],
 )
 
-torch_tpu_py_test(
-    name = "api_test",
-    srcs = ["api_test.py"],
-    tags = [
-        "requires-net:external",
-        "requires-tpu-v5lite",
-    ],
+pytype_strict_library(
+    name = "streams",
+    srcs = ["streams.py"],
     deps = [
-        "//shims/absl_py/testing:absltest",
-        "//shims/torch:pytorch",
-        "//torch_tpu/api",
+        "//torch_tpu/_internal/device:_device_ops_backend",
     ],
 )
 

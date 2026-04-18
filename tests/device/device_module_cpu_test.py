@@ -16,7 +16,7 @@
 
 from absl.testing import absltest
 import torch
-from tests import device_module_testing
+from tests.device import device_module_testing
 
 
 # Test cases are defined in device_module_testing.DeviceModuleBase

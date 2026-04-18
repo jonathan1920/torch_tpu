@@ -1,4 +1,4 @@
-# Copyright 2025 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,15 +20,27 @@ package(
 )
 
 torch_tpu_py_test(
-    name = "api_test",
-    srcs = ["api_test.py"],
+    name = "stream_test",
+    srcs = ["stream_test.py"],
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/api",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "copy_test",
+    srcs = ["copy_test.py"],
     tags = [
-        "requires-net:external",
         "requires-tpu-v5lite",
     ],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
     ],
 )
