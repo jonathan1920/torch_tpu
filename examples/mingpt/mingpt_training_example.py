@@ -118,6 +118,7 @@ class SortDataset(Dataset):
 
 
 def main(_: Sequence[str]) -> None:
+  set_seed(3407)
   model_config = GPT.get_default_config()
 
   train_dataset = SortDataset('train')
@@ -155,5 +156,4 @@ def main(_: Sequence[str]) -> None:
 
 
 if __name__ == '__main__':
-  set_seed(3407)
   app.run(main)
