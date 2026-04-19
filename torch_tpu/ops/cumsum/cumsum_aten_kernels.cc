@@ -43,13 +43,17 @@ at::Tensor& AtenCumsumOut(const at::Tensor& self, int64_t dim,
       return out;
     }
 
+    TT_CHECK_THROW(out.scalar_type() != at::ScalarType::Bool,
+                   error::kUnimplemented)
+        << "invalid output dtype bool";
+
     std::optional<mlir::ElementType> dtype_element_type = std::nullopt;
     if (dtype.has_value()) {
       TT_ASSIGN_OR_THROW(dtype_element_type,
                          ConvertTo<mlir::ElementType>(dtype.value()));
       TT_CHECK_THROW(!mlir::IsBoolean(dtype_element_type.value()),
                      error::kUnimplemented)
-          << "dtype bool is not yet supported";
+          << "invalid output dtype bool";
     }
 
     TT_ASSIGN_OR_THROW(const int64_t normalized_dim,

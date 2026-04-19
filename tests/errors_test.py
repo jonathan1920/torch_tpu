@@ -696,13 +696,37 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
       torch.addmm(input_, mat1, mat2)
 
   def test_cumsum_with_unsupported_boolean_dtype(self):
+    """Tests that cumsum with a boolean out tensor throws the correct NotImplementedError."""
     with et.assert_raises_message(
         NotImplementedError,
-        "cumsum(): dtype bool is not yet supported",
+        "cumsum(): invalid output dtype bool",
     ):
       t = torch.ones(2, 2, device="tpu")
       res = torch.cumsum(t, dim=1, dtype=torch.bool)
       res.to("cpu")
+
+    x_cpu = torch.tensor([True, False], dtype=torch.bool)
+    x_tpu = x_cpu.to(device="tpu")
+
+    # Test out-of-place with out=
+    with et.assert_raises_message(
+        NotImplementedError, "\"cumsum_out_cpu\" not implemented for 'Bool'"
+    ):
+      torch.cumsum(x_cpu, dim=0, out=x_cpu)
+    with et.assert_raises_message(
+        NotImplementedError, "cumsum(): invalid output dtype bool"
+    ):
+      torch.cumsum(x_tpu, dim=0, out=x_tpu)
+
+    # Test in-place
+    with et.assert_raises_message(
+        NotImplementedError, "\"cumsum_out_cpu\" not implemented for 'Bool'"
+    ):
+      x_cpu.cumsum_(dim=0)
+    with et.assert_raises_message(
+        NotImplementedError, "cumsum(): invalid output dtype bool"
+    ):
+      x_tpu.cumsum_(dim=0)
 
   def test_cummax_dimension_size_limit(self):
     """Tests cummax fails if dimension size has > 2^31-1 elements."""
@@ -1521,7 +1545,8 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     with self.assertRaisesRegex(
         RuntimeError,
         r"upper bound must be greater than or equal to the static shape's"
-        r" dimension size, got upper bound 2 for dimension 1 for input tensor 0"
+        r" dimension size, got upper bound 2 for dimension 1 for input"
+        r" tensor 0"
         r" with shape \[1, 4\]",
     ):
       tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
@@ -3057,6 +3082,15 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       t = torch.ones(2, 2, device=et.device())
       output = torch.empty_like(t)
       torch.cumsum(t, dim=1, dtype=torch.int1, out=output)
+
+  def test_cumsum_bool_out(self):
+    with et.assert_raises_message(
+        NotImplementedError,
+        cpu="\"cumsum_out_cpu\" not implemented for 'Bool'",
+        tpu="cumsum(): invalid output dtype bool",
+    ):
+      x = torch.tensor([True, False], dtype=torch.bool, device=et.device())
+      torch.cumsum(x, dim=0, out=x)
 
   def test_cumsum_dimension_out_of_range(self):
     with et.assert_raises_message(
@@ -6430,8 +6464,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "embedding_bag_forward_only(): expected the weight dtype to be"
-            " either float16, bfloat16, float32, or float64, got int64"
+            "embedding_bag_forward_only(): expected weight dtype to be"
+            " float16, bfloat16, float32, or float64, got int64"
         ),
         cpu=(
             "Expected tensor for argument #1 'weight' to have one of the"
@@ -6746,8 +6780,9 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "gather(): materialization failed with: expected 1D input with size"
-            " at most 1 when index is 0D, got 2D with shape {2}"
+            "gather(): materialization failed with: expected the input to be a"
+            " 1D tensor with size at most 1 when index is 0D, got 2D with"
+            " shape {2}"
         ),
         cpu=(
             "Index tensor must have the same number of dimensions as input"
@@ -6915,8 +6950,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "embedding_renorm_(): expected the input dtype to be either"
-            " floating point or complex, got int64"
+            "embedding_renorm_(): expected floating point or complex, got int64"
         ),
         cpu=(
             "norm(): input dtype should be either floating point or complex."
