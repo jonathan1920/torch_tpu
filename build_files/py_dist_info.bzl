@@ -18,7 +18,6 @@ load("//shims/build_cleaner:build_defs.bzl", "register_extension_info")
 
 METADATA_TEMPLATE = """\
 Metadata-Version: 2.1
-
 Name: {name}
 Version: {version}
 """

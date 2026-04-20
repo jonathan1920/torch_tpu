@@ -1,3 +1,13 @@
+load("@rules_license//rules:license.bzl", "license")
+load("@torch_tpu_version//:version.bzl", OSS_WHEEL_VERSION = "WHEEL_VERSION")  # copybara:comment(oss-only)
+load(
+    "//build_files:build_defs.bzl",
+    "if_oss",
+    "torch_tpu_package_end",
+)
+load("//build_files:entry_points.bzl", "ENTRY_POINTS")
+load("//build_files:py_dist_info.bzl", "py_dist_info")
+
 # Copyright 2025 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,17 +21,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-load("@rules_license//rules:license.bzl", "license")
-load(
-    "//build_files:build_defs.bzl",
-    "if_oss",
-    "torch_tpu_package_end",
-)
-load("//build_files:entry_points.bzl", "ENTRY_POINTS")
-load("//build_files:py_dist_info.bzl", "py_dist_info")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 load("//shims/py_rules:strict.bzl", "py_library_providing_imports_info")
+
+WHEEL_VERSION = "0.0.0"
+
+WHEEL_VERSION = OSS_WHEEL_VERSION  # copybara:comment(oss-only)
 
 licenses(["notice"])
 
@@ -41,7 +46,7 @@ py_dist_info(
     name = "torch_tpu_dist_info",
     package_name = "torch_tpu",
     entry_points = ENTRY_POINTS,
-    version = "0.0.0",
+    version = WHEEL_VERSION,
 )
 
 pytype_strict_library(

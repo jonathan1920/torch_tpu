@@ -50,12 +50,16 @@ def _torch_tpu_version_repo_impl(ctx):
     if not version:
         fail("Version not found in pyproject.toml [project] section")
 
+    suffix = ctx.os.environ.get("WHEEL_VERSION_EXTRAS", "")
+    full_version = version + suffix
+
     ctx.file("BUILD.bazel", "")
-    ctx.file("version.bzl", "WHEEL_VERSION = '{}'\n".format(version))
+    ctx.file("version.bzl", "WHEEL_VERSION = '{}'\n".format(full_version))
 
 torch_tpu_version_repo = repository_rule(
     implementation = _torch_tpu_version_repo_impl,
     attrs = {
         "pyproject_toml": attr.label(mandatory = True, allow_single_file = True),
     },
+    environ = ["WHEEL_VERSION_EXTRAS"],
 )

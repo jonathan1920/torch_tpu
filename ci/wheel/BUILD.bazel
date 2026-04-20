@@ -126,8 +126,8 @@ py_wheel(
     strip_path_prefixes = ["ci/wheel/remapped_pywrap_binaries_pkg"],
     summary = "TPU/XLA support for PyTorch",
     tags = ["manual"],
-    # base version set by pyproject.toml, override extras with --define WHEEL_VERSION_EXTRAS=.dev0
-    version = WHEEL_VERSION + "$(WHEEL_VERSION_EXTRAS)",
+    # base version set by pyproject.toml.
+    version = WHEEL_VERSION,
     visibility = ["//visibility:public"],
     deps = [
         ":remapped_pywrap_binaries",
