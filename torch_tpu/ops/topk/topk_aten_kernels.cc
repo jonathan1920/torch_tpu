@@ -48,24 +48,11 @@ std::tuple<at::Tensor&, at::Tensor&> AtenTopKValues(
   TT_KERNEL(
       OpName::kTopkValues, param_keys,
       (self, k, dim, largest, sorted, values, indices), {
-        if (self.dim() == 0) {
-          if (values.defined()) {
-            at::native::resize_output(values, self.sizes());
-            values.copy_(self);
-          } else {
-            values = self.clone();
-          }
-          if (indices.defined()) {
-            at::native::resize_output(indices, self.sizes());
-            indices.copy_(torch::tensor(0, self.options().dtype(at::kLong)));
-          } else {
-            indices = torch::tensor(0, self.options().dtype(at::kLong));
-          }
-          return {values, indices};
+        int64_t wrapped_dim = 0;
+        if (self.dim() > 0) {
+          TT_ASSIGN_OR_THROW(wrapped_dim, SafeWrapDim(dim, self.dim()));
         }
 
-        TT_ASSIGN_OR_THROW(const int64_t wrapped_dim,
-                           SafeWrapDim(dim, self.dim()));
         // TODO(b/435537869): Support sorted = false.
         TT_CHECK_THROW(sorted, error::kInvalidArgument)
             << "sorted=False is not yet supported";
@@ -74,10 +61,19 @@ std::tuple<at::Tensor&, at::Tensor&> AtenTopKValues(
         TT_ASSIGN_OR_THROW(const auto elem_type,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
         Dimensions output_dims = CopyIntVector(self_sizes);
-        output_dims[wrapped_dim] = k;
+        if (self.dim() > 0) {
+          output_dims[wrapped_dim] = k;
+        }
+
         auto op_builder =
             [wrapped_dim, k,
              largest](mlir::MlirOp input) -> absl::StatusOr<MlirOpResults<2>> {
+          if (GetTensorTypeOrDie(input).getRank() == 0) {
+            mlir::MlirBuilder& builder = input.getBuilder();
+            return {{input,
+                     MakeScalarConstant(builder, int64_t{0},
+                                        builder.getOpBuilder().getI64Type())}};
+          }
           TT_ASSIGN_OR_RETURN(
               auto topk_outputs,
               BuildTopKShlo(input, k, wrapped_dim,

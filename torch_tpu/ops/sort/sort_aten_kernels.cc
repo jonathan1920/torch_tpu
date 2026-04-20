@@ -49,14 +49,21 @@ absl::StatusOr<DeviceBufferRefArray<2>> SortHelper(OpParamCacheKeys param_keys,
                                                    const bool stable,
                                                    const int64_t dim,
                                                    const bool descending) {
-  TT_ASSIGN_OR_RETURN(const int64_t normalized_dim,
-                      SafeWrapDim(dim, self.dim()));
+  int64_t normalized_dim = 0;
+  if (self.dim() > 0) {
+    TT_ASSIGN_OR_RETURN(normalized_dim, SafeWrapDim(dim, self.dim()));
+  }
   Dimensions output_dims = CopyIntVector(self.sizes());
   TT_ASSIGN_OR_RETURN(const auto elem_type,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   auto op_builder =
       [stable, normalized_dim,
        descending](mlir::MlirOp input) -> absl::StatusOr<MlirOpResults<2>> {
+    if (GetTensorTypeOrDie(input).getRank() == 0) {
+      mlir::MlirBuilder& builder = input.getBuilder();
+      return {{input, MakeScalarConstant(builder, int64_t{0},
+                                         builder.getOpBuilder().getI64Type())}};
+    }
     auto sort_shlo_outputs =
         BuildSortShlo(input, stable, normalized_dim, descending);
     return {{sort_shlo_outputs.values, sort_shlo_outputs.indices}};
@@ -76,21 +83,6 @@ std::tuple<at::Tensor&, at::Tensor&> AtenSortValuesStable(
   TT_KERNEL(
       OpName::kSortValuesStable, param_keys,
       (self, stable_opt, dim, descending, values, indices), {
-        if (self.dim() == 0) {
-          if (values.defined()) {
-            at::native::resize_output(values, self.sizes());
-            values.copy_(self);
-          } else {
-            values = self.clone();
-          }
-          if (indices.defined()) {
-            at::native::resize_output(indices, self.sizes());
-            indices.copy_(torch::tensor(0, self.options().dtype(at::kLong)));
-          } else {
-            indices = torch::tensor(0, self.options().dtype(at::kLong));
-          }
-          return {values, indices};
-        }
         bool stable = stable_opt.value_or(false);
         TT_ASSIGN_OR_THROW((auto [values_buf, indices_buf]),
                            SortHelper(std::move(param_keys), self,
