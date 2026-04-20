@@ -17,6 +17,7 @@
 #include "torch_tpu/ops/gelu/gelu_aten_kernels.h"
 
 #include <functional>
+#include <string>
 #include <utility>
 
 #include "absl/status/statusor.h"
@@ -41,7 +42,8 @@ namespace torch_tpu {
 namespace {
 
 MlirUnaryOpBuilder GetGeluFunctional(c10::string_view approximate) {
-  return std::bind(&BuildGeluShlo, std::placeholders::_1, approximate);
+  return std::bind(&BuildGeluShlo, std::placeholders::_1,
+                   static_cast<std::string>(approximate));
 }
 
 }  // namespace
@@ -72,7 +74,8 @@ at::Tensor& AtenGeluBackwardGradInput(const at::Tensor& grad_output,
         TT_ASSIGN_OR_THROW(const auto out_dtype,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
 
-        auto op_builder = [approximate](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+        auto op_builder = [approximate = static_cast<std::string>(approximate)](
+                              FixedSizeSpan<mlir::MlirOp, 2> inputs)
             -> absl::StatusOr<mlir::MlirOp> {
           auto& [grad_output_op, input_op] = inputs;
           return BuildGeluBackwardGradInputShlo(grad_output_op, input_op,
