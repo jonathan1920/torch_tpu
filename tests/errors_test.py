@@ -1671,6 +1671,15 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
 
+  def assertRaisesRegex(self, *args, **kwargs):
+    """Bans the default assertRaisesRegex() in TpuVsCpuErrorTest."""
+
+    self.fail(
+        "You must use et.assert_raises_message() instead of"
+        " assertRaisesRegex() in TpuVsCpuErrorTest to check"
+        " the error on both CPU and TPU."
+    )
+
   def test_triu_insufficient_dims(self):
     """Tests that triu with insufficient dims fails with expected error."""
     t = torch.ones(1, device=et.device(), dtype=torch.float32)
@@ -6780,9 +6789,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu=(
-            "gather(): materialization failed with: expected the input to be a"
-            " 1D tensor with size at most 1 when index is 0D, got 2D with"
-            " shape {2}"
+            """gather(): materialization failed with: expected the input to be a 1D tensor with size at most 1 when index is 0D, got 2D with shape {2}"""
         ),
         cpu=(
             "Index tensor must have the same number of dimensions as input"
@@ -7852,24 +7859,6 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         ),
     ):
       torch.scatter(self_t, 0, index, src, out=out).cpu()
-
-  def test_scatter_scalar_self_rank1_index(self):
-    self_t = torch.tensor(1.0, device=et.device())
-    index = torch.tensor([0], dtype=torch.int64, device=et.device())
-    src = torch.tensor([2.0], device=et.device())
-
-    if et.device().type == "tpu":
-      # TPU is more permissive for scalars to support gather_backward.
-      torch.scatter(self_t, 0, index, src).cpu()
-    else:
-      with et.assert_raises_message(
-          RuntimeError,
-          cpu=(
-              "Index tensor must have the same number of dimensions as input"
-              " tensor"
-          ),
-      ):
-        torch.scatter(self_t, 0, index, src).cpu()
 
   def test_scatter_rank2_self_scalar_src_tensor(self):
     self_t = torch.zeros(5, 5, device=et.device())
