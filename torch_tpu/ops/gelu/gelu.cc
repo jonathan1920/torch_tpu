@@ -58,10 +58,11 @@ absl::StatusOr<mlir::MlirOp> BuildGeluApproximateShlo(mlir::MlirOp input_op) {
 absl::StatusOr<mlir::MlirOp> BuildGeluNoneShlo(mlir::MlirOp input_op) {
   auto k_0_5 = MakeConstantLike(input_op, 0.5);
   auto k_1_0 = MakeConstantLike(input_op, 1.0);
-  auto k_sqrt_2 = MakeConstantLike(input_op, std::numbers::sqrt2);
+  auto k_alpha = MakeConstantLike(
+      input_op, 0.5 * std::numbers::sqrt2);  // 1/sqrt(2) == sqrt(2)/2
 
-  auto div_sqrt_2 = stablehlo::Div(input_op, k_sqrt_2);
-  auto erf_out = chlo::Erf(div_sqrt_2);
+  auto self_alpha = stablehlo::Mul(input_op, k_alpha);
+  auto erf_out = chlo::Erf(self_alpha);
   auto one_plus_erf = stablehlo::Add(k_1_0, erf_out);
   auto half_x = stablehlo::Mul(k_0_5, input_op);
   return stablehlo::Mul(half_x, one_plus_erf);
@@ -136,17 +137,18 @@ absl::StatusOr<mlir::MlirOp> BuildGeluBackwardGradInputApproximateShlo(
 //   PDF(x) = (1 / sqrt(2*pi)) * exp(-x^2 / 2)
 absl::StatusOr<mlir::MlirOp> BuildGeluBackwardGradInputNoneShlo(
     mlir::MlirOp grad_output_op, mlir::MlirOp input_op) {
-  auto kAlpha = MakeConstantLike(input_op, 1.0 / std::numbers::sqrt2);
+  auto k_alpha = MakeConstantLike(
+      input_op, 0.5 * std::numbers::sqrt2);  // 1/sqrt(2) == sqrt(2)/2
   // kBeta = 1 / sqrt(2 * pi)
-  auto kBeta =
+  auto k_beta =
       MakeConstantLike(input_op, 1.0 / std::sqrt(2.0 * std::numbers::pi));
   auto k_0_5 = MakeConstantLike(input_op, 0.5);
   auto k_1_0 = MakeConstantLike(input_op, 1.0);
   auto k_neg_0_5 = MakeConstantLike(input_op, -0.5);
 
   // 1. Calculate CDF(x) = 0.5 * (1 + erf(x / sqrt(2)))
-  mlir::MlirOp self_kAlpha = stablehlo::Mul(input_op, kAlpha);
-  mlir::MlirOp erf_out = chlo::Erf(self_kAlpha);
+  mlir::MlirOp self_alpha = stablehlo::Mul(input_op, k_alpha);
+  mlir::MlirOp erf_out = chlo::Erf(self_alpha);
   mlir::MlirOp one_plus_erf = stablehlo::Add(k_1_0, erf_out);
   mlir::MlirOp cdf = stablehlo::Mul(k_0_5, one_plus_erf);
 
@@ -154,7 +156,7 @@ absl::StatusOr<mlir::MlirOp> BuildGeluBackwardGradInputNoneShlo(
   mlir::MlirOp self_sq = stablehlo::Mul(input_op, input_op);
   mlir::MlirOp self_sq_neg_0_5 = stablehlo::Mul(self_sq, k_neg_0_5);
   mlir::MlirOp exp_out = stablehlo::Exp(self_sq_neg_0_5);
-  mlir::MlirOp pdf = stablehlo::Mul(kBeta, exp_out);
+  mlir::MlirOp pdf = stablehlo::Mul(k_beta, exp_out);
 
   // 3. Calculate dy/dx = CDF(x) + x * PDF(x)
   mlir::MlirOp self_pdf = stablehlo::Mul(input_op, pdf);
