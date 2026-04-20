@@ -325,7 +325,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
         # PyTorch implements ones() in terms of empty() automatically, so we
         # don't have a good way to know that the op in question is "ones"
         # instead of "empty".
-        """empty(): TorchTPU does not yet support dtype int1""",
+        tpu="""empty(): TorchTPU does not yet support dtype int1""",
         message_reviewed_by="wan",
     ):
       # This succeeds on CPU but is unimplemented on TPU.
@@ -338,7 +338,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     t1 = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        """prod(): my error""",
+        tpu="""prod(): my error""",
     ):
       torch.prod(t1).to("cpu")
 
@@ -349,7 +349,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     t1 = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        """prod(): my error""",
+        tpu="""prod(): my error""",
     ):
       torch.prod(t1, dim=1, out=torch.zeros_like(t1)).to("cpu")
 
@@ -360,7 +360,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     t1 = torch.ones(2, 3, device="tpu")
     with et.assert_raises_message(
         RuntimeError,
-        """nonzero(): my error""",
+        tpu="""nonzero(): my error""",
     ):
       out = torch.nonzero(t1)
       out.to("cpu")
@@ -372,7 +372,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     t1 = torch.ones(2, 3, device="tpu")
     with et.assert_raises_message(
         RuntimeError,
-        """nonzero(): my error""",
+        tpu="""nonzero(): my error""",
     ):
       out = torch.zeros(1, 3, device="tpu", dtype=torch.long)
       torch.nonzero(t1, out=out)
@@ -385,7 +385,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     t1 = torch.ones(2, 3, device="tpu")
     with et.assert_raises_message(
         RuntimeError,
-        """nonzero(): my error""",
+        tpu="""nonzero(): my error""",
     ):
       out = torch.nonzero(t1)
       out.to("cpu")
@@ -397,7 +397,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     t1 = torch.ones(2, 3, device="tpu")
     with et.assert_raises_message(
         RuntimeError,
-        """nonzero(): my error""",
+        tpu="""nonzero(): my error""",
     ):
       out = torch.zeros(1, 3, device="tpu", dtype=torch.long)
       torch.nonzero(t1, out=out)
@@ -410,7 +410,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     t1 = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        """topk(): my error""",
+        tpu="""topk(): my error""",
     ):
       values, indices = torch.topk(t1, 2)
       values.to("cpu")
@@ -437,7 +437,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     t = torch.tensor([0, 1], device="tpu")
     with et.assert_raises_message(
         RuntimeError,
-        """index_put_(): my error""",
+        tpu="""index_put_(): my error""",
     ):
       torch.index_put_(
           t,
@@ -453,7 +453,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     t = torch.tensor([0, 1], device="tpu")
     with et.assert_raises_message(
         RuntimeError,
-        """index_put_(): my error""",
+        tpu="""index_put_(): my error""",
     ):
       torch.index_put_(
           t,
@@ -473,7 +473,7 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     t = torch.arange(5.0, device=et.device()).as_strided((3, 3), (1, 1))
     with et.assert_raises_message(
         RuntimeError,
-        """index_put_(): inplace writes to overlapping views are undefined behavior and are not supported.
+        tpu="""index_put_(): inplace writes to overlapping views are undefined behavior and are not supported.
 Because multiple logical tensor indices point to the same buffer elements, writes from multiple indices may overwrite each other.
 Please use clone() or contiguous() to copy the tensor before writing""",
     ):
@@ -500,7 +500,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     source = torch.ones(1, 3, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        """index_copy(): inplace writes to overlapping views are undefined behavior and are not supported.
+        tpu="""index_copy(): inplace writes to overlapping views are undefined behavior and are not supported.
 Because multiple logical tensor indices point to the same buffer elements, writes from multiple indices may overwrite each other.
 Please use clone() or contiguous() to copy the tensor before writing""",
     ):
@@ -529,7 +529,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         RuntimeError,
         # This error is generated by pytorch. We don't have a good way to
         # replace it.
-        """Expected all tensors to be on the same device, but found at least two devices, tpu:0 and cpu!""",
+        tpu="""Expected all tensors to be on the same device, but found at least two devices, tpu:0 and cpu!""",
     ):
       tpu_tensor + cpu_tensor  # pylint: disable=pointless-statement
 
@@ -540,7 +540,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         RuntimeError,
         # This error is generated by pytorch. We don't have a good way to
         # replace it.
-        """Expected all tensors to be on the same device, but found at least two devices, tpu:0 and cpu!""",
+        tpu="""Expected all tensors to be on the same device, but found at least two devices, tpu:0 and cpu!""",
     ):
       cpu_tensor + tpu_tensor  # pylint: disable=pointless-statement
 
@@ -550,14 +550,14 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     cpu_tensor = torch.tensor([7, 8, 9], device="cpu")
     with et.assert_raises_message(
         RuntimeError,
-        """add(): the out tensor is expected to be on tpu, got cpu""",
+        tpu="""add(): the out tensor is expected to be on tpu, got cpu""",
     ):
       torch.add(tpu_tensor1, tpu_tensor2, out=cpu_tensor)
 
   def test_dtype_complex32_unsupported(self):
     with et.assert_raises_message(
         RuntimeError,
-        """empty(): TorchTPU does not yet support dtype complex32""",
+        tpu="""empty(): TorchTPU does not yet support dtype complex32""",
         message_reviewed_by="wan",
     ):
       torch.empty(2, dtype=torch.complex32, device="tpu")
@@ -567,7 +567,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     # which is different from XLA's supported single-value f4e2m1fn dtype.
     with et.assert_raises_message(
         RuntimeError,
-        """empty(): TorchTPU does not yet support dtype float4_e2m1fn_x2""",
+        tpu="""empty(): TorchTPU does not yet support dtype float4_e2m1fn_x2""",
         message_reviewed_by="wan",
     ):
       torch.empty(2, dtype=torch.float4_e2m1fn_x2, device="tpu")
@@ -575,7 +575,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
   def test_empty_strided(self):
     with et.assert_raises_message(
         RuntimeError,
-        """empty_strided(): TorchTPU does not yet support dtype complex32""",
+        tpu="""empty_strided(): TorchTPU does not yet support dtype complex32""",
         message_reviewed_by="wan",
     ):
       torch.empty_strided((2,), (1,), dtype=torch.complex32, device="tpu")
@@ -583,7 +583,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
   def test_empty_unsupported_layout(self):
     with et.assert_raises_message(
         NotImplementedError,
-        """empty(): only layout=torch.strided is supported by TorchTPU for now, got torch.jagged""",
+        tpu="""empty(): only layout=torch.strided is supported by TorchTPU for now, got torch.jagged""",
     ):
       torch.empty(2, layout=torch.jagged, device="tpu")
 
@@ -592,7 +592,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     t = torch.tensor([0, 0], device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        """histc(): expected min and max to be float or int type, got Bool and Bool""",
+        tpu="""histc(): expected min and max to be float or int type, got Bool and Bool""",
     ):
       torch.histc(t, min=False, max=True)
 
@@ -601,7 +601,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         RuntimeError,
         # This error is generated by pytorch. We don't have a good way to
         # replace it.
-        """Boolean value of Tensor with more than one value is ambiguous""",
+        tpu="""Boolean value of Tensor with more than one value is ambiguous""",
     ):
       torch.is_nonzero(torch.tensor([1, 3, 5], device="tpu"))
 
@@ -609,7 +609,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     with et.assert_raises_message(
         RuntimeError,
         # This is the error message we get from pytorch cpu.
-        """Boolean value of Tensor with no values is ambiguous""",
+        tpu="""Boolean value of Tensor with no values is ambiguous""",
     ):
       torch.is_nonzero(torch.tensor([], device="tpu"))
 
@@ -617,7 +617,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     with et.assert_raises_message(
         RuntimeError,
         # This is the error message we get from pytorch cpu.
-        """Boolean value of Tensor with no values is ambiguous""",
+        tpu="""Boolean value of Tensor with no values is ambiguous""",
     ):
       torch.is_nonzero(torch.tensor([[]], device="tpu"))
 
@@ -628,7 +628,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     out = torch.ones(5, device="cpu", dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        """masked_select(): the out tensor is expected to be on tpu, got cpu""",
+        tpu="""masked_select(): the out tensor is expected to be on tpu, got cpu""",
     ):
       torch.masked_select(t, mask, out=out)
 
@@ -640,7 +640,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        """masked_select(): tensor is expected to be on tpu, got cpu""",
+        tpu="""masked_select(): tensor is expected to be on tpu, got cpu""",
     ):
       torch.masked_select(t, mask, out=out)
 
@@ -665,7 +665,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     tensor.untyped_storage().resize_(nbytes // 2)
     with et.assert_raises_message(
         IndexError,
-        """to_copy(): cannot read 32 bytes (8 elements of type float32 with an offset of 0 elements) from a storage buffer with 16 bytes""",
+        tpu="""to_copy(): cannot read 32 bytes (8 elements of type float32 with an offset of 0 elements) from a storage buffer with 16 bytes""",
     ):
       tensor.to("cpu")
 
@@ -680,7 +680,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     mat2 = complex_val.clone()
     with et.assert_raises_message(
         NotImplementedError,
-        """addmm(): complex dtypes are not yet supported""",
+        tpu="""addmm(): complex dtypes are not yet supported""",
     ):
       torch.addmm(input_, mat1, mat2)
 
@@ -688,7 +688,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     """Tests that cumsum with a boolean out tensor throws the correct NotImplementedError."""
     with et.assert_raises_message(
         NotImplementedError,
-        """cumsum(): invalid output dtype bool""",
+        tpu="""cumsum(): invalid output dtype bool""",
     ):
       t = torch.ones(2, 2, device="tpu")
       res = torch.cumsum(t, dim=1, dtype=torch.bool)
@@ -699,21 +699,23 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     # Test out-of-place with out=
     with et.assert_raises_message(
-        NotImplementedError, "\"cumsum_out_cpu\" not implemented for 'Bool'"
+        NotImplementedError,
+        tpu=""""cumsum_out_cpu" not implemented for 'Bool'""",
     ):
       torch.cumsum(x_cpu, dim=0, out=x_cpu)
     with et.assert_raises_message(
-        NotImplementedError, "cumsum(): invalid output dtype bool"
+        NotImplementedError, tpu="""cumsum(): invalid output dtype bool"""
     ):
       torch.cumsum(x_tpu, dim=0, out=x_tpu)
 
     # Test in-place
     with et.assert_raises_message(
-        NotImplementedError, "\"cumsum_out_cpu\" not implemented for 'Bool'"
+        NotImplementedError,
+        tpu=""""cumsum_out_cpu" not implemented for 'Bool'""",
     ):
       x_cpu.cumsum_(dim=0)
     with et.assert_raises_message(
-        NotImplementedError, "cumsum(): invalid output dtype bool"
+        NotImplementedError, tpu="""cumsum(): invalid output dtype bool"""
     ):
       x_tpu.cumsum_(dim=0)
 
@@ -723,7 +725,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     t = torch.empty(2**31, dtype=torch.float32, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        """cummax_helper(): expected dimension size to be less than or equal to 2147483647, got 2147483648""",
+        tpu="""cummax_helper(): expected dimension size to be less than or equal to 2147483647, got 2147483648""",
     ):
       y, _ = torch.cummax(t, dim=0)
       y.cpu()
@@ -734,7 +736,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     t = torch.empty(2**31, dtype=torch.float32, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        """cummin_helper(): expected dimension size to be less than or equal to 2147483647, got 2147483648""",
+        tpu="""cummin_helper(): expected dimension size to be less than or equal to 2147483647, got 2147483648""",
     ):
       y, _ = torch.cummin(t, dim=0)
       y.cpu()
@@ -743,7 +745,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     """Tests cummin fails with unsupported complex dtypes."""
     with et.assert_raises_message(
         RuntimeError,
-        """cummin_helper(): expected supported element type, got ComplexFloat""",
+        tpu="""cummin_helper(): expected supported element type, got ComplexFloat""",
     ):
       t = torch.ones(2, 2, device="tpu", dtype=torch.complex64)
       torch.cummin(t, dim=1)
@@ -762,7 +764,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     source = torch.ones(1, 3, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        """index_add(): inplace writes to overlapping views are undefined behavior and are not supported.
+        tpu="""index_add(): inplace writes to overlapping views are undefined behavior and are not supported.
 Because multiple logical tensor indices point to the same buffer elements, writes from multiple indices may overwrite each other.
 Please use clone() or contiguous() to copy the tensor before writing""",
     ):
@@ -774,7 +776,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
   def test_unsafe_masked_index_error(self):
     with et.assert_raises_message(
         RuntimeError,
-        """index(): at least one index tensor must be defined""",
+        tpu="""index(): at least one index tensor must be defined""",
     ):
       torch.ops.aten._unsafe_masked_index(
           torch.tensor([1.0], device=et.device()),
@@ -789,7 +791,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     t = torch.empty(1, 1, 2**15, 2**16, dtype=torch.float32, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        re.compile(
+        tpu=re.compile(
             r""".*tpu doesn't support max_pool2d_with_indices on inputs with more than 2147483647 spatial elements due to int32 indices limitation for now, got 2147483648.*""",
             re.DOTALL,
         ),
@@ -812,7 +814,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     s = torch.ones(4, device=device, dtype=torch.complex64)
     with et.assert_raises_message(
         NotImplementedError,
-        """add(): complex128 alpha value is not yet supported""",
+        tpu="""add(): complex128 alpha value is not yet supported""",
     ):
       torch.add(t, s, alpha=1j)
 
@@ -823,7 +825,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     t = torch.ones(4, device=device, dtype=torch.float32)
     with et.assert_raises_message(
         NotImplementedError,
-        """add_relu(): complex128 alpha value is not yet supported""",
+        tpu="""add_relu(): complex128 alpha value is not yet supported""",
     ):
       torch.ops.aten._add_relu.Scalar(t, 2.0, 1j)
 
@@ -834,7 +836,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     s = torch.ones(4, device=device, dtype=torch.float32)
     with et.assert_raises_message(
         NotImplementedError,
-        """add_relu(): complex128 alpha value is not yet supported""",
+        tpu="""add_relu(): complex128 alpha value is not yet supported""",
     ):
       torch.ops.aten._add_relu.Tensor(t, s, alpha=1j)
 
@@ -846,7 +848,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     out = torch.ones(4, device=device, dtype=torch.float32)
     with et.assert_raises_message(
         NotImplementedError,
-        """add_relu(): complex128 alpha value is not yet supported""",
+        tpu="""add_relu(): complex128 alpha value is not yet supported""",
     ):
       torch.ops.aten._add_relu.out(t, s, alpha=1j, out=out)
 
@@ -856,7 +858,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     t = torch.ones(4, device=device, dtype=torch.float32)
     with et.assert_raises_message(
         NotImplementedError,
-        """add_relu_(): complex128 alpha value is not yet supported""",
+        tpu="""add_relu_(): complex128 alpha value is not yet supported""",
     ):
       torch.ops.aten._add_relu_.Scalar(t, 2.0, alpha=1j)
 
@@ -867,21 +869,21 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     s = torch.ones(4, device=device, dtype=torch.float32)
     with et.assert_raises_message(
         NotImplementedError,
-        """add_relu_(): complex128 alpha value is not yet supported""",
+        tpu="""add_relu_(): complex128 alpha value is not yet supported""",
     ):
       torch.ops.aten._add_relu_.Tensor(t, s, alpha=1j)
 
   def test_threshold_unsupported_bool_dtype(self):
     with et.assert_raises_message(
         NotImplementedError,
-        """threshold(): threshold is not implemented for bool type""",
+        tpu="""threshold(): threshold is not implemented for bool type""",
     ):
       torch.threshold(torch.tensor([True, False], device=et.device()), 0.5, 0.0)
 
   def test_threshold_unsupported_complex_dtype(self):
     with et.assert_raises_message(
         NotImplementedError,
-        """threshold(): threshold is not implemented for complex types""",
+        tpu="""threshold(): threshold is not implemented for complex types""",
     ):
       torch.threshold(
           torch.tensor([1 + 1j, 2 + 2j], device=et.device()), 0.5, 0.0
@@ -1319,7 +1321,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="only one dynamic dimension is supported per tensor",
+        tpu="""only one dynamic dimension is supported per tensor""",
     ):
       # Try to mark dimension 1 as dynamic too.
       dynamism.mark_dynamic(inp, 1, 5, 20)
@@ -1448,7 +1450,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     self_or_result = torch.ones(2, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        """In-place leakyReLu backward calculation is triggered with a negative slope which is not supported. This is caused by calling in-place forward function with a negative slope, please call out-of-place version instead. File an issue at https://github.com/pytorch/pytorch if you do require supporting in-place leakRelu backward calculation with negative slope""",
+        tpu="""In-place leakyReLu backward calculation is triggered with a negative slope which is not supported. This is caused by calling in-place forward function with a negative slope, please call out-of-place version instead. File an issue at https://github.com/pytorch/pytorch if you do require supporting in-place leakRelu backward calculation with negative slope""",
     ):
       torch.ops.aten.leaky_relu_backward(
           grad_output, self_or_result, negative_slope=-1.0, self_is_result=True
@@ -1621,9 +1623,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t = torch.ones(1, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        # This message is generated by pytorch. We don't have a good way to
-        # replace it.
-        """triu: input tensor must have at least 2 dimensions""",
+        tpu="""triu: input tensor must have at least 2 dimensions""",
     ):
       torch.triu(t, 1)
 
@@ -1632,9 +1632,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t = torch.tensor(42, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        # This message is generated by pytorch. We don't have a good way to
-        # replace it.
-        """tril: input tensor must have at least 2 dimensions""",
+        tpu="""tril: input tensor must have at least 2 dimensions""",
     ):
       torch.tril(t, 0)
 
@@ -1644,7 +1642,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     b = torch.ones(2, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        """linalg_solve_triangular(): expected the first argument to have at least 2 dimensions, got 1""",
+        tpu="""linalg_solve_triangular(): expected the first argument to have at least 2 dimensions, got 1""",
         cpu=(
             """linalg.solve_triangular: The input tensor A must have at least 2 dimensions."""
         ),
@@ -1659,7 +1657,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     b = torch.ones(2, 2, 3, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        """linalg_solve_triangular(): left == False means we are solving X * A = B; expected the two inputs to have matching last dimension, got 2 and 3""",
+        tpu="""linalg_solve_triangular(): left == False means we are solving X * A = B; expected the two inputs to have matching last dimension, got 2 and 3""",
         cpu=(
             """linalg.solve_triangular: Incompatible shapes of A and B for the equation XA = B (2x2 and 2x3)"""
         ),
@@ -1674,7 +1672,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     b = torch.ones(2, 3, 2, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        """linalg_solve_triangular(): left == True means we are solving A * X = B; expected the two inputs to have matching second to last dimension, got 2 and 3""",
+        tpu="""linalg_solve_triangular(): left == True means we are solving A * X = B; expected the two inputs to have matching second to last dimension, got 2 and 3""",
         cpu=(
             """linalg.solve_triangular: Incompatible shapes of A and B for the equation AX = B (2x2 and 3x2)"""
         ),
@@ -1689,7 +1687,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     b = torch.ones(2, 2, 2, device=et.device(), dtype=torch.bfloat16)
     with et.assert_raises_message(
         RuntimeError,
-        """linalg_solve_triangular(): triangular solve not supported for dtype bfloat16""",
+        tpu="""linalg_solve_triangular(): triangular solve not supported for dtype bfloat16""",
         cpu=""""triangular_solve_cpu" not implemented for 'BFloat16'""",
     ):
       torch.linalg.solve_triangular(
@@ -1748,7 +1746,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        """The size of tensor a (2) must match the size of tensor b (3) at non-singleton dimension 2""",
+        tpu="""The size of tensor a (2) must match the size of tensor b (3) at non-singleton dimension 2""",
     ):
       t.masked_select(mask)
 
@@ -1963,7 +1961,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t2 = torch.ones(4, 2, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        """self must be a matrix""",
+        tpu="""self must be a matrix""",
     ):
       torch.mm(t1, t2)
 
@@ -1973,7 +1971,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t2 = torch.ones(3, 3, 4, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        """mat2 must be a matrix""",
+        tpu="""mat2 must be a matrix""",
     ):
       torch.mm(t1, t2)
 
@@ -1983,7 +1981,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t2 = torch.ones(4, 2, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        """mat1 and mat2 shapes cannot be multiplied (2x3 and 4x2)""",
+        tpu="""mat1 and mat2 shapes cannot be multiplied (2x3 and 4x2)""",
     ):
       torch.mm(t1, t2)
 
@@ -2048,9 +2046,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     target = torch.ones(1, 2, 3, device=et.device(), dtype=torch.long)
     with et.assert_raises_message(
         ValueError,
-        # This error is generated by pytorch. We don't have a good way to
-        # replace it.
-        """all is not a valid value for reduction""",
+        tpu="""all is not a valid value for reduction""",
     ):
       torch.nn.functional.nll_loss(t, target, reduction="all")
 
@@ -2097,7 +2093,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         TypeError,
         # This error is generated by pytorch. We don't have a good way to
         # replace it.
-        re.compile(r""".*Overflow when unpacking long.*""", re.DOTALL),
+        tpu=re.compile(r""".*Overflow when unpacking long.*""", re.DOTALL),
     ):
       # The dimension size 2**63 fits in uint64_t but not in int64_t.
       torch.ones(2**63, device=et.device(), dtype=torch.float32)
@@ -2106,7 +2102,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         TypeError,
         # This error is generated by pytorch. We don't have a good way to
         # replace it.
-        re.compile(r""".*Overflow when unpacking long.*""", re.DOTALL),
+        tpu=re.compile(r""".*Overflow when unpacking long.*""", re.DOTALL),
     ):
       # The dimension size 2**64 fits in neither uint64_t nor int64_t.
       torch.ones(1, 2**64, device=et.device(), dtype=torch.float32)
@@ -2116,7 +2112,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         RuntimeError,
         # This error is generated by pytorch before our kernel is called;
         # we don't have control over this error message.
-        """Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.""",
+        tpu="""Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.""",
     ):
       torch.sign(torch.zeros(1, device=et.device(), dtype=torch.complex64))
 
@@ -2303,7 +2299,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     # v2.8.0.
     with et.assert_raises_message(
         RuntimeError,
-        """zeros: Dimension size must be non-negative.""",
+        tpu="""zeros: Dimension size must be non-negative.""",
     ):
       torch.zeros(-1, device=et.device(), dtype=torch.float32)
 
@@ -2417,7 +2413,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       with et.assert_raises_message(
           IndexError,
           # This error is generated by PyTorch.
-          """Dimension out of range (expected to be in range of [-2, 1], but"""
+          tpu="""Dimension out of range (expected to be in range of [-2, 1], but"""
           f""" got {dim})""",
       ):
         reduction_fn(t, dim=dim)
@@ -2437,7 +2433,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         # This error is generated by PyTorch.
-        """dim 1 appears multiple times in the list of dims""",
+        tpu="""dim 1 appears multiple times in the list of dims""",
     ):
       reduction_fn(t, dim=[-1, 1])
 
@@ -2457,7 +2453,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         IndexError,
         # This error is generated by PyTorch.
-        """Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
+        tpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
     ):
       reduction_fn(t_rank0, dim=1)
 
@@ -2467,7 +2463,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         # This error is generated by PyTorch.
-        """mean(): could not infer output dtype. Input dtype must be either a floating point or complex dtype. Got: Int""",
+        tpu="""mean(): could not infer output dtype. Input dtype must be either a floating point or complex dtype. Got: Int""",
     ):
       torch.mean(t, dim=0)
 
@@ -2556,7 +2552,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         RuntimeError,
         # This error is generated by pytorch before our kernel is called;
         # we don't have control over this error message.
-        """view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.""",
+        tpu="""view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.""",
     ):
       t.view(6)
 
@@ -2582,7 +2578,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
           IndexError,
           # This error is generated by pytorch before our kernel is called;
           # we don't have control over this error message.
-          f"""select(): index {index} out of range for tensor of size [2, 3]"""
+          tpu=f"""select(): index {index} out of range for tensor of size [2, 3]"""
           f""" at dimension {dim}""",
       ):
         t.select(dim, index)  # pylint: disable=unused-variable
@@ -2596,7 +2592,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
           IndexError,
           # This error is generated by pytorch before our kernel is called;
           # we don't have control over this error message.
-          """Dimension out of range (expected to be in range of [-2, 1], but"""
+          tpu="""Dimension out of range (expected to be in range of [-2, 1], but"""
           f""" got {dim})""",
       ):
         t.select(dim, 1)  # pylint: disable=unused-variable
@@ -2608,7 +2604,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         IndexError,
         # This error is generated by pytorch before redispatching to as_strided;
         # we don't have control over this error message.
-        """slice() cannot be applied to a 0-dim tensor.""",
+        tpu="""slice() cannot be applied to a 0-dim tensor.""",
     ):
       sliced_t = t[0:1:1]  # pylint: disable=unused-variable
 
@@ -2618,7 +2614,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         ValueError,
         # This error is generated by pytorch before redispatching to as_strided;
         # we don't have control over this error message.
-        """slice step cannot be zero""",
+        tpu="""slice step cannot be zero""",
     ):
       sliced_t = t[0:10:0]  # pylint: disable=unused-variable
 
@@ -2628,7 +2624,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         ValueError,
         # This error is generated by pytorch before redispatching to as_strided;
         # we don't have control over this error message.
-        """step must be greater than zero""",
+        tpu="""step must be greater than zero""",
     ):
       sliced_t = t[0:10:-1]  # pylint: disable=unused-variable
 
@@ -2637,19 +2633,19 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         ValueError,
         # This error is generated by pytorch before our kernel is called;
         # we don't have control over this error message.
-        """torch.cat(): expected a non-empty list of Tensors""",
+        tpu="""torch.cat(): expected a non-empty list of Tensors""",
     ):
       torch.cat([])
 
   def test_cat_scalar_input(self):
     with et.assert_raises_message(
         RuntimeError,
-        """zero-dimensional tensor (at position 0) cannot be concatenated""",
+        tpu="""zero-dimensional tensor (at position 0) cannot be concatenated""",
     ):
       torch.cat([torch.tensor(1.0, device=et.device())])
     with et.assert_raises_message(
         RuntimeError,
-        """zero-dimensional tensor (at position 1) cannot be concatenated""",
+        tpu="""zero-dimensional tensor (at position 1) cannot be concatenated""",
     ):
       torch.cat([
           torch.tensor([], dtype=torch.float32, device=et.device()),
@@ -2659,7 +2655,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_cat_dim_out_of_range(self):
     with et.assert_raises_message(
         IndexError,
-        """Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
+        tpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
     ):
       t0 = torch.tensor([], dtype=torch.float32, device=et.device())
       t3 = torch.tensor([1, 2, 3], device=et.device())
@@ -2670,7 +2666,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t1x3 = torch.tensor([[1, 2, 3]], device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        """Tensors must have same number of dimensions: got 1 and 2""",
+        tpu="""Tensors must have same number of dimensions: got 1 and 2""",
     ):
       torch.cat([t3, t1x3])
 
@@ -2680,12 +2676,12 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t3x2 = torch.tensor([[1, 2], [3, 4], [5, 6]], device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        """Sizes of tensors must match except in dimension 0. Expected size 2 but got size 3 for tensor number 1 in the list.""",
+        tpu="""Sizes of tensors must match except in dimension 0. Expected size 2 but got size 3 for tensor number 1 in the list.""",
     ):
       torch.cat([t2x2, t2x3])
     with et.assert_raises_message(
         RuntimeError,
-        """Sizes of tensors must match except in dimension 1. Expected size 2 but got size 3 for tensor number 1 in the list.""",
+        tpu="""Sizes of tensors must match except in dimension 1. Expected size 2 but got size 3 for tensor number 1 in the list.""",
     ):
       torch.cat([t2x2, t3x2], dim=1)
 
@@ -2937,8 +2933,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_cumsum_bool_out(self):
     with et.assert_raises_message(
         NotImplementedError,
-        cpu="\"cumsum_out_cpu\" not implemented for 'Bool'",
-        tpu="cumsum(): invalid output dtype bool",
+        cpu=""""cumsum_out_cpu" not implemented for 'Bool'""",
+        tpu="""cumsum(): invalid output dtype bool""",
     ):
       x = torch.tensor([True, False], dtype=torch.bool, device=et.device())
       torch.cumsum(x, dim=0, out=x)
@@ -3044,9 +3040,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_index_add_self_source_size_mismatch(self):
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """source tensor shape must match self tensor shape, excluding the specified dimension. Got self.shape = [2, 2] source.shape = [1, 3]"""
-        ),
+        cpu="""source tensor shape must match self tensor shape, excluding the specified dimension. Got self.shape = [2, 2] source.shape = [1, 3]""",
         tpu=(
             """index_add(): self and source must have the same size along dimension 1, got 2 and 3"""
         ),
@@ -3157,7 +3151,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     # This error is created by pytorch before our kernel is called.
     with et.assert_raises_message(
         RuntimeError,
-        """mat1 must be a matrix, got 1-D tensor""",
+        tpu="""mat1 must be a matrix, got 1-D tensor""",
     ):
       torch.addmm(input_, mat1, mat2)
 
@@ -3168,7 +3162,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     # This error is created by pytorch before our kernel is called.
     with et.assert_raises_message(
         RuntimeError,
-        """mat2 must be a matrix, got 1-D tensor""",
+        tpu="""mat2 must be a matrix, got 1-D tensor""",
     ):
       torch.addmm(input_, mat1, mat2)
 
@@ -3179,7 +3173,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     # This error is created by pytorch before our kernel is called.
     with et.assert_raises_message(
         RuntimeError,
-        """mat1 and mat2 shapes cannot be multiplied (3x13 and 11x2)""",
+        tpu="""mat1 and mat2 shapes cannot be multiplied (3x13 and 11x2)""",
     ):
       torch.addmm(input_, mat1, mat2)
 
@@ -4069,7 +4063,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_replication_pad_backward(self):
     with et.assert_raises_message(
         RuntimeError,
-        """Mismatch in shape: grad_output[0] has a shape of torch.Size([1]) and output[0] has a shape of torch.Size([1, 6, 4]).""",
+        tpu="""Mismatch in shape: grad_output[0] has a shape of torch.Size([1]) and output[0] has a shape of torch.Size([1, 6, 4]).""",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, device=et.device()),
@@ -4078,7 +4072,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       ).backward(torch.randn(1, device=et.device()))
     with et.assert_raises_message(
         RuntimeError,
-        """Mismatch in shape: grad_output[0] has a shape of torch.Size([1, 2, 3, 4]) and output[0] has a shape of torch.Size([1, 6, 4]).""",
+        tpu="""Mismatch in shape: grad_output[0] has a shape of torch.Size([1, 2, 3, 4]) and output[0] has a shape of torch.Size([1, 6, 4]).""",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, device=et.device()),
@@ -4089,7 +4083,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     # pytorch assertion error on the backward pass.
     with et.assert_raises_message(
         AssertionError,
-        """""",
+        tpu="",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, device=et.device()),
@@ -4099,7 +4093,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     # Empty padding input
     with et.assert_raises_message(
         RuntimeError,
-        """Only 2D, 3D, 4D, 5D padding with non-constant padding are supported for now""",
+        tpu="""Only 2D, 3D, 4D, 5D padding with non-constant padding are supported for now""",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, device=et.device()),
@@ -4108,7 +4102,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       ).backward(torch.randn(1, 6, 4, device=et.device()))
     with et.assert_raises_message(
         RuntimeError,
-        """Mismatch in shape: grad_output[0] has a shape of torch.Size([1, 6, 4]) and output[0] has a shape of torch.Size([1, 6, 13]).""",
+        tpu="""Mismatch in shape: grad_output[0] has a shape of torch.Size([1, 6, 4]) and output[0] has a shape of torch.Size([1, 6, 13]).""",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, device=et.device()),
@@ -4117,7 +4111,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       ).backward(torch.randn(1, 6, 4, device=et.device()))
     with et.assert_raises_message(
         RuntimeError,
-        """input (W: 4) is too small. Calculated output W: -2""",
+        tpu="""input (W: 4) is too small. Calculated output W: -2""",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, device=et.device()),
@@ -4162,7 +4156,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_reflection_pad_backward(self):
     with et.assert_raises_message(
         RuntimeError,
-        """Mismatch in shape: grad_output[0] has a shape of torch.Size([1]) and output[0] has a shape of torch.Size([1, 6, 4]).""",
+        tpu="""Mismatch in shape: grad_output[0] has a shape of torch.Size([1]) and output[0] has a shape of torch.Size([1, 6, 4]).""",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, device=et.device()),
@@ -4171,7 +4165,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       ).backward(torch.randn(1, device=et.device()))
     with et.assert_raises_message(
         RuntimeError,
-        """Mismatch in shape: grad_output[0] has a shape of torch.Size([1, 2, 3, 4]) and output[0] has a shape of torch.Size([1, 6, 4]).""",
+        tpu="""Mismatch in shape: grad_output[0] has a shape of torch.Size([1, 2, 3, 4]) and output[0] has a shape of torch.Size([1, 6, 4]).""",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, device=et.device()),
@@ -4182,7 +4176,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     # pytorch assertion error on the backward pass.
     with et.assert_raises_message(
         RuntimeError,
-        """element 0 of tensors does not require grad and does not have a grad_fn""",
+        tpu="""element 0 of tensors does not require grad and does not have a grad_fn""",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, device=et.device()),
@@ -4192,7 +4186,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     # Empty padding input
     with et.assert_raises_message(
         RuntimeError,
-        """Padding size 0 is not supported for 3D input tensor.
+        tpu="""Padding size 0 is not supported for 3D input tensor.
 Supported combinations for non-constant padding:
   - 2D or 3D input: padding size = 2 (pads last dimension)
   - 3D or 4D input: padding size = 4 (pads last 2 dimensions)
@@ -4205,7 +4199,7 @@ Supported combinations for non-constant padding:
       ).backward(torch.randn(1, 6, 4, device=et.device()))
     with et.assert_raises_message(
         RuntimeError,
-        """Argument #4: Padding size should be less than the corresponding input dimension, but got: padding (4, 5) at dimension 2 of input [1, 6, 4]""",
+        tpu="""Argument #4: Padding size should be less than the corresponding input dimension, but got: padding (4, 5) at dimension 2 of input [1, 6, 4]""",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, device=et.device()),
@@ -4214,7 +4208,7 @@ Supported combinations for non-constant padding:
       ).backward(torch.randn(1, 6, 4, device=et.device()))
     with et.assert_raises_message(
         RuntimeError,
-        """input (W: 4) is too small. Calculated output W: -2""",
+        tpu="""input (W: 4) is too small. Calculated output W: -2""",
     ):
       torch.nn.functional.pad(
           input=torch.ones(1, 6, 4, device=et.device()),
@@ -5655,9 +5649,9 @@ Supported combinations for non-constant padding:
         op(inp, out=out)
 
     with self.subTest(dtype=torch.bool):
-      test_with(torch.bool, tpu="bool", cpu="bool")
+      test_with(torch.bool, tpu="""bool""", cpu="""bool""")
     with self.subTest(dtype=torch.complex64):
-      test_with(torch.complex64, tpu="complex64", cpu="complex")
+      test_with(torch.complex64, tpu="""complex64""", cpu="""complex""")
 
   def test_mm_output_dtype_mismatch(self):
     lhs = torch.ones(3, 4, device=et.device(), dtype=torch.float32)
@@ -7339,7 +7333,7 @@ Supported combinations for non-constant padding:
     # Both TPU and CPU now raise the same eager error message.
     with et.assert_raises_message(
         RuntimeError,
-        """Index tensor must have the same number of dimensions as src tensor""",
+        tpu="""Index tensor must have the same number of dimensions as src tensor""",
     ):
       torch.scatter(self_t, 0, index, src).cpu()
 
@@ -7395,7 +7389,7 @@ Supported combinations for non-constant padding:
     src = torch.ones(3, 2, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        """reduce argument must be either add or multiply.""",
+        tpu="""reduce argument must be either add or multiply.""",
         message_reviewed_by="gunhyun",
     ):
       self_tensor.scatter(1, index, src, reduce="invalid")
@@ -7408,7 +7402,7 @@ Supported combinations for non-constant padding:
     src = torch.ones(3, 2, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        """reduce argument must be either sum, prod, mean, amax or amin, got invalid""",
+        tpu="""reduce argument must be either sum, prod, mean, amax or amin, got invalid""",
         message_reviewed_by="gunhyun",
     ):
       self_tensor.scatter_reduce(1, index, src, reduce="invalid")
