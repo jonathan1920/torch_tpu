@@ -16,10 +16,8 @@
 
 #include "torch_tpu/common/shape.h"
 
-#include <optional>
 #include <sstream>
 #include <string>
-#include <utility>
 
 #include "absl/status/statusor.h"
 #include "torch_tpu/common/aten_utils.h"
@@ -33,12 +31,7 @@ namespace torch_tpu {
 absl::StatusOr<Shape> MakeShape(const xla::Shape& xla_shape) {
   TT_ASSIGN_OR_RETURN(mlir::ElementType result_dtype,
                       ConvertTo<mlir::ElementType>(xla_shape.element_type()));
-  std::optional<std::string> layout = std::nullopt;
-  if (xla_shape.has_layout()) {
-    layout = xla_shape.layout().ToString();
-  }
-  return Shape(CopyIntVector(xla_shape.dimensions()), result_dtype,
-               std::move(layout));
+  return Shape(CopyIntVector(xla_shape.dimensions()), result_dtype);
 }
 
 std::string ToString(const Shape& s) {

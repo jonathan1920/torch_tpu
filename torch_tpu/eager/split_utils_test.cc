@@ -45,7 +45,7 @@ absl::StatusOr<DynamicMlirOpResults> DummyBuilder(
 
 TEST(SplitUtilsTest, ApplySplitPoints) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   // Create a graph of:
   //       / -> c

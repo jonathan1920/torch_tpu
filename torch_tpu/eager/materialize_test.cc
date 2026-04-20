@@ -16,7 +16,6 @@
 
 #include "torch_tpu/eager/materialize.h"
 
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -83,7 +82,7 @@ TEST_F(MaterializeTest, AddLeafNodes) {
       DeviceBufferRef arg,
       DeviceBufferList::CreateZeroSize({0}, mlir::ElementType::F32));
 
-  const Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
+  const Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   auto builder = [shape](mlir::MlirBuilder& builder,
                          absl::Span<mlir::MlirOp> inputs)
@@ -124,7 +123,7 @@ TEST_F(MaterializeTest, AddLeafNodes) {
 
 TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  const Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
+  const Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   auto builder = [shape](mlir::MlirBuilder& builder,
                          absl::Span<mlir::MlirOp> inputs)

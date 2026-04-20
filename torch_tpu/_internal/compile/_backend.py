@@ -49,7 +49,6 @@ from torch_tpu._internal import export as torch_tpu_export
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.dynamic import compiler as dynamic_compiler
 from torch_tpu._internal.compile.fx_passes import mark_embedded_constants
-import torch_tpu._internal.device_utils.annotations as tpu_annotations
 from torch_tpu._internal.utils import utils
 
 _ENABLE_COMPILED_MODE_DYNAMISM = flags.DEFINE_boolean(
@@ -321,43 +320,16 @@ class TpuBackend:
 
     _log_gm_and_inputs("__call__", "Pre", graph_module, example_inputs)
 
-    tensor_layouts = []
-    for example_input in example_inputs:
-      if not isinstance(example_input, torch.Tensor):
-        # We can only set layout hints on tensors.
-        continue
-
-      if tpu_annotations.is_tiling_supported(example_input):
-        tensor_layouts.append(
-            tpu_torch_compile.get_device_layout_if_materialized(example_input)
-        )
-      else:
-        tensor_layouts.append(None)
-    # Wrap _compile_graph_module to capture the layouts of the example inputs.
-    # This information won't be present in the FakeTensors so we have to capture
-    # it in advance.
-    fw_compiler = functools.partial(
-        self._compile_graph_module, layouts=tensor_layouts
-    )
-    # We don't have the layouts for the backwards pass so we don't capture them
-    # and we let the compiler handle them.
-    bw_compiler = functools.partial(
-        self._compile_graph_module,
-    )
-
     has_symints = _has_symints(example_inputs)
     if has_symints:
-      fw_compiler = dynamic_compiler.DynamicCompiler(
-          self,
-          original_layouts=[None] * len(tensor_layouts),  # TODO(b/503686077)
-      )
-      bw_compiler = fw_compiler
+      compiler = dynamic_compiler.DynamicCompiler(self)
+    else:
+      compiler = functools.partial(self._compile_graph_module)
 
     return aot_autograd(
-        fw_compiler=fw_compiler,
+        fw_compiler=compiler,
         # This is to avoid inplace generating graph modules that contains
         # inplace update.
-        bw_compiler=bw_compiler,
         keep_inference_input_mutations=False,
     )(graph_module, example_inputs)
 
@@ -365,7 +337,6 @@ class TpuBackend:
       self,
       graph_module: torch.fx.GraphModule,
       example_inputs: List[torch.Tensor],
-      layouts: List[str] | None = None,
   ) -> Callable[[torch.fx.GraphModule, List[torch.Tensor]], Callable[..., Any]]:
     """Compiles the graph_module with the given inputs for TPU.
 
@@ -377,8 +348,6 @@ class TpuBackend:
       graph_module: The FX graph module to compile.
       example_inputs: Example inputs to the FX graph for tracing (not the actual
         inputs).
-      layouts: The original layouts of the inputs seen by the backend before
-        aot_autograd tracing.
 
     Returns:
       A function that executes the compiled graph on the TPU.
@@ -435,17 +404,6 @@ class TpuBackend:
           else arg
           for arg in example_inputs
       ]
-
-      layout_idx = 0
-      if layouts is not None:
-        for arg in placeholder_args:
-          if tpu_annotations.is_tiling_supported(arg):
-            tpu_torch_compile.set_layout_hint(arg, layouts[layout_idx])
-            layout_idx += 1
-        assert layout_idx == len(layouts), (
-            "Number of layout hints should match number of non-DTensor tensor "
-            "arguments."
-        )
 
       with dynamo_timed("torchtpu_fx_to_mlir"):
         exported_mlir = torch_tpu_export.fx_to_mlir(

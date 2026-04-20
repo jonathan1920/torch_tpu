@@ -16,7 +16,6 @@
 
 #include "torch_tpu/_internal/dynamism/dynamism_ops.h"
 
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -60,27 +59,24 @@ TEST(DynamismOpsTest, GetPadModuleDocstringExample) {
   Dimensions dims1 = {3, 5};
   absl::InlinedVector<BoundedDynamicDimension, 1> dynamic_dims1 = {
       {.dimension = 0, .lower_bound = 0, .upper_bound = 10}};
-  shapes.push_back(
-      Shape(dims1, mlir::ElementType::F32, dynamic_dims1, std::nullopt));
+  shapes.push_back(Shape(dims1, mlir::ElementType::F32, dynamic_dims1));
 
   // Shape 2: []
   Dimensions dims2 = {};
-  shapes.push_back(Shape(dims2, mlir::ElementType::F32, {}, std::nullopt));
+  shapes.push_back(Shape(dims2, mlir::ElementType::F32, {}));
 
   // Shape 3: [8, 2, 2 ; dim1, <=5, dim2, <=7]
   Dimensions dims3 = {8, 2, 2};
   absl::InlinedVector<BoundedDynamicDimension, 1> dynamic_dims3 = {
       {.dimension = 1, .lower_bound = 0, .upper_bound = 5},
       {.dimension = 2, .lower_bound = 0, .upper_bound = 7}};
-  shapes.push_back(
-      Shape(dims3, mlir::ElementType::F32, dynamic_dims3, std::nullopt));
+  shapes.push_back(Shape(dims3, mlir::ElementType::F32, dynamic_dims3));
 
   // Shape 4: [6, 0 ; dim0, <=10]
   Dimensions dims4 = {6, 0};
   absl::InlinedVector<BoundedDynamicDimension, 1> dynamic_dims4 = {
       {.dimension = 0, .lower_bound = 0, .upper_bound = 10}};
-  shapes.push_back(
-      Shape(dims4, mlir::ElementType::F32, dynamic_dims4, std::nullopt));
+  shapes.push_back(Shape(dims4, mlir::ElementType::F32, dynamic_dims4));
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetPadModule(context, shapes));
   ASSERT_TRUE(module);

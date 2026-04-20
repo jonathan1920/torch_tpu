@@ -14,7 +14,6 @@
 
 #include "torch_tpu/ops/custom_kernels.h"
 
-#include <optional>
 #include <string_view>
 
 #include "gmock/gmock.h"
@@ -154,7 +153,7 @@ TEST_F(CustomKernelRegistryTest, CannotLoadNonexistentKernel) {
       mlir::makeTensorType(fb.getContext(), {10}, mlir::ElementType::F32);
   mlir::MlirOp op1 = mlir::func::Argument(fb, arg_type);
   mlir::MlirOp op2 = mlir::func::Argument(fb, arg_type);
-  Shape arg_shape(Dimensions{10}, mlir::ElementType::F32, std::nullopt);
+  Shape arg_shape(Dimensions{10}, mlir::ElementType::F32);
   auto kernel_add_func_status =
       CallCustomKernel(fb, {op1, op2}, "does_not_exist", "");
 

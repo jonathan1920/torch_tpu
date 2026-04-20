@@ -28,26 +28,20 @@ from torch_tpu._internal.compile.dynamic.symbol_bounds import get_symint_bounds
 
 
 def _get_example_inputs(
-    example_inputs: Sequence[Any],
-    sym_shape_manager: SymShapeManager,
-    original_layouts: Sequence[str | None] | None = None,
-) -> tuple[list[torch.Tensor | int], list[str | None]]:
+    example_inputs: Sequence[Any], sym_shape_manager: SymShapeManager
+) -> list[torch.Tensor | int]:
   """Specializes dynamic inputs to their static upper bounds.
 
   Args:
     example_inputs: The example inputs to the FX graph.
     sym_shape_manager: Symbolic shape manager to get the dynamic shape
       information.
-    original_layouts: The list of layout hints for the tensors in the example
-      inputs.
 
   Returns:
     A list of updated example inputs with SymInts in inputs replaced by
     their upper bounds. The updated example inputs also include
     any new runtime size placeholders introduced for dynamic tensors and
     generative ops.
-    Also returns an extension of the original layout hints to include None hints
-    for the new runtime size placeholders.
 
   Example:
     example_inputs = [SymInt(s0), tensor(s0, 2)]  # s0 <= 10
@@ -60,13 +54,9 @@ def _get_example_inputs(
       ]
   """
   updated_example_inputs = []
-  updated_layouts = []
-  layout_idx = 0
   for index, arg in enumerate(example_inputs):
     if isinstance(arg, torch.Tensor):
       num_dynamic_dims = sym_shape_manager.get_num_dynamic_dims(index)
-      updated_layouts.append(original_layouts[layout_idx])
-      layout_idx += 1
       if num_dynamic_dims == 0:
         updated_example_inputs.append(arg)
         continue
@@ -88,7 +78,6 @@ def _get_example_inputs(
         updated_example_inputs.append(
             torch.tensor(upper_bound, dtype=torch.int32)
         )
-        updated_layouts.append(None)
     elif isinstance(arg, torch.SymInt):
       _, upper = get_symint_bounds(arg)
       updated_example_inputs.append(upper)
@@ -96,13 +85,10 @@ def _get_example_inputs(
       # that is passed to set_dimension_size as an argument.
       if str(arg) in sym_shape_manager.symint_to_placeholder:
         updated_example_inputs.append(torch.tensor(upper, dtype=torch.int32))
-        updated_layouts.append(None)
     else:
       updated_example_inputs.append(arg)
-  assert layout_idx == len(
-      original_layouts
-  ), "Number of layout hints should match number of tensor arguments."
-  return updated_example_inputs, updated_layouts
+
+  return updated_example_inputs
 
 
 class _TensorInfo(NamedTuple):
@@ -111,12 +97,10 @@ class _TensorInfo(NamedTuple):
   Attributes:
     shape: The static shape of the tensor.
     dtype: The data type of the tensor.
-    layout_hint: The layout hint for the tensor.
   """
 
   shape: list[int]
   dtype: torch.dtype
-  layout_hint: str | None = None
 
 
 class _ShapeBoundInfo(NamedTuple):
@@ -164,9 +148,7 @@ def _get_pad_subgraph_inputs(
       continue
 
     # Handle any other missing type above
-    assert isinstance(
-        arg, torch.Tensor
-    ), f"Unsupported argument type: {type(arg)}"
+    assert isinstance(arg, torch.Tensor)
 
     if arg.device.type == "cpu":
       raise ValueError(
@@ -176,14 +158,7 @@ def _get_pad_subgraph_inputs(
 
     tensor_args.append(arg)
     static_shape = list(arg.shape)
-    tensor_info.append(
-        _TensorInfo(
-            shape=static_shape,
-            dtype=arg.dtype,
-            layout_hint=None,  # TODO(b/503686077): Once layout hints are
-            # supported, update this to query the layout hint from arg.
-        )
-    )
+    tensor_info.append(_TensorInfo(shape=static_shape, dtype=arg.dtype))
 
     tensor_metadata = sym_shape_manager.input_tensors_metadata[idx]
     if not tensor_metadata.dynamic_dims:
@@ -216,9 +191,7 @@ def _compile_and_execute_pad_subgraph(
 
   # Get the MLIR bytecode for the pad subgraph.
   mlir_bytecode = tpu_torch_compile.get_pad_module_mlir(
-      [(info.shape, info.dtype) for info in tensor_info],
-      bounds_list,
-      [info.layout_hint for info in tensor_info],
+      tensor_info, bounds_list
   )
   logging.debug(
       "[DynamicTpuBackend] MLIR bytecode: %s",
@@ -279,24 +252,14 @@ class DynamicCompiler:
   def __init__(
       self,
       static_backend: Any,
-      original_layouts: Sequence[str | None],
   ):
     """Initializes the DynamicCompiler instance.
 
     Args:
       static_backend: The static compilation backend to use for compiling the
         padded graph.
-      original_layouts: The list of layout hints for the torch.Tensor arguments
-        in the example inputs.
     """
     self.static_backend = static_backend
-    self.original_layouts = original_layouts
-
-    # TODO(b/503686077)
-    assert all([layout is None for layout in self.original_layouts]), (
-        "DynamicCompiler currently only supports dynamic shapes with no layout"
-        " hints."
-    )
 
   def __call__(
       self,
@@ -336,8 +299,8 @@ class DynamicCompiler:
     )
 
     # Create example inputs for the model executable.
-    model_example_inputs, updated_layouts = _get_example_inputs(
-        example_inputs, sym_shape_manager, self.original_layouts
+    model_example_inputs = _get_example_inputs(
+        example_inputs, sym_shape_manager
     )
 
     logging.debug(
@@ -347,7 +310,8 @@ class DynamicCompiler:
 
     # Create a static model executable with padded shape tensors as inputs
     static_model_executable = self.static_backend._compile_graph_module(
-        graph_module, model_example_inputs, updated_layouts
+        graph_module,
+        model_example_inputs,
     )
 
     return _DynamicTpuCompiledExecutable(

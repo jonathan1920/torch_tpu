@@ -17,7 +17,6 @@
 #include "torch_tpu/eager/device_buffer.h"
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -59,7 +58,7 @@ absl::StatusOr<DynamicMlirOpResults> DummyBuilder(
 
 TEST_F(SubgraphTest, SubgraphMerging) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   // Create two independent deferred nodes.
   auto refs1_or = DeviceBufferList::CreateDeferred(
@@ -93,7 +92,7 @@ TEST_F(SubgraphTest, SubgraphMerging) {
 
 TEST_F(SubgraphTest, GetLeafNodesInvalidPopping) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   SharedDeviceBufferList node2;
   std::shared_ptr<Subgraph> subgraph;
@@ -125,7 +124,7 @@ TEST_F(SubgraphTest, GetLeafNodesInvalidPopping) {
 
 TEST_F(SubgraphTest, GetLeafNodesStopPopping) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   SharedDeviceBufferList node1;
   SharedDeviceBufferList node3;
@@ -176,7 +175,7 @@ TEST_F(SubgraphTest, GetLeafNodesStopPopping) {
 
 TEST_F(SubgraphTest, DeferredOpSubgraphDereference) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   auto refs_or = DeviceBufferList::CreateDeferred(
       OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
@@ -191,27 +190,9 @@ TEST_F(SubgraphTest, DeferredOpSubgraphDereference) {
   EXPECT_EQ(op->subgraph(), ref.device_buffer_list()->subgraph());
 }
 
-TEST(DeviceBufferTest, LayoutHint) {
-  ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
-
-  auto refs_or = DeviceBufferList::CreateDeferred(
-      OpName::kAdd, DummyBuilder, {}, OpParamCacheKeys::Empty(), {shape});
-  ASSERT_TRUE(refs_or.ok());
-  auto ref = refs_or.value()[0];
-
-  EXPECT_FALSE(ref.layout_hint().has_value());
-
-  std::string my_hint = "{2,1,0:T(16,128)(2,1)}";
-  ref.set_layout_hint(my_hint);
-
-  ASSERT_TRUE(ref.layout_hint().has_value());
-  EXPECT_EQ(ref.layout_hint().value(), my_hint);
-}
-
 TEST_F(SubgraphTest, MergeAll) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   // Create two unrelated deferred nodes.
   auto refs_a_or = DeviceBufferList::CreateDeferred(
@@ -242,7 +223,7 @@ TEST_F(SubgraphTest, MergeAll) {
 
 TEST_F(SubgraphTest, DistributedCollectivesInSameSubgraph) {
   ScopedPythonContextCapturer capturer(OpName::kDistributedAllReduce);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   // Create two unrelated deferred nodes, but use the name for a distributed
   // collective.
@@ -289,7 +270,7 @@ TEST_F(SubgraphTest, DistributedCollectivesInSameSubgraph) {
 
 TEST_F(SubgraphTest, CollectivesMergeNonCollectives) {
   ScopedPythonContextCapturer capturer(OpName::kDistributedAllReduce);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
   // Create 3 disconnected ops in a pattern of [collective, non-collective,
   // collective]

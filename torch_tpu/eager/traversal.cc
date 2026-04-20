@@ -24,7 +24,6 @@
 #include <sstream>
 #include <stack>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -40,9 +39,7 @@
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseSet.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Types.h"
@@ -393,9 +390,8 @@ absl::StatusOr<mlir::MlirOp> Traversal::GetMlirOpForProcessedBuffer(
 
 namespace {
 
-mlir::MlirOp ConvertBufferToArgumentAndPopulateLayouts(
-    mlir::func::FunctionBuilder& fb, const DeviceBufferRef& argument,
-    std::vector<std::optional<std::string>>& argument_layout_hints) {
+mlir::MlirOp CreateArgumentOp(mlir::func::FunctionBuilder& fb,
+                              const DeviceBufferRef& argument) {
   Dimensions dimensions = CopyIntVector(argument.dimensions());
   // If argument has bounded dynamic dimensions, we assume we will receive an
   // input padded to the upper bound, along with the dimension sizes.
@@ -409,14 +405,10 @@ mlir::MlirOp ConvertBufferToArgumentAndPopulateLayouts(
   auto dimension_size_type =
       makeTensorType(fb.getContext(), {}, mlir::ElementType::I32);
   auto result = mlir::func::Argument(fb, type);
-
-  argument_layout_hints.push_back(argument.layout_hint());
-
   for (const auto& dynamic_dim : argument.dynamic_dimensions()) {
     mlir::MlirOp dimension_size = mlir::func::Argument(fb, dimension_size_type);
     result = mlir::stablehlo::SetDimensionSize(result, dimension_size,
                                                dynamic_dim.dimension);
-    argument_layout_hints.push_back(std::nullopt);
   }
   return result;
 }
@@ -451,13 +443,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
   // Add a function parameter for each argument DeviceBufferRef.
   RefToOpMap ref_to_op_map;
   ABSL_VLOG(2) << "[Traversal::BuildMlirModule] building MLIR ops for "
-               << arguments.size() << " inputs";
-  // Store layout hints for each non-zero-sized input.
-  std::vector<std::optional<std::string>> argument_layout_hints;
-  argument_layout_hints.reserve(arguments.size());
+               << arguments.size() << " arguments";
   for (const DeviceBufferRef& argument : arguments) {
-    ref_to_op_map[argument] = ConvertBufferToArgumentAndPopulateLayouts(
-        fb, argument, argument_layout_hints);
+    ref_to_op_map[argument] = CreateArgumentOp(fb, argument);
   }
 
   // Identify which arguments are donated.
@@ -533,35 +521,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Traversal::BuildMlirModule(
   mlir::func::Return(fb, results);
   auto module = mb.build();
 
-  // Annotate argument and result layouts.
-  mlir::func::FuncOp main_fn = module->lookupSymbol<mlir::func::FuncOp>("main");
-  if (main_fn) {
-    if (!argument_layout_hints.empty() &&
-        main_fn.getNumArguments() != argument_layout_hints.size()) {
-      return absl::InternalError(absl::StrCat(
-          "Number of arguments in main function does not match number of input "
-          "layout hints: ",
-          main_fn.getNumArguments(), " vs ", argument_layout_hints.size()));
-    }
-    for (size_t i = 0; i < argument_layout_hints.size(); ++i) {
-      if (argument_layout_hints[i].has_value()) {
-        main_fn.setArgAttr(
-            i, "mhlo.layout_mode",
-            mlir::StringAttr::get(&mlir_context,
-                                  argument_layout_hints[i].value()));
-      }
-    }
-
-    for (size_t i = 0; i < outputs.size(); ++i) {
-      if (outputs[i].layout_hint().has_value()) {
-        main_fn.setResultAttr(
-            i, "mhlo.layout_mode",
-            mlir::StringAttr::get(&mlir_context,
-                                  outputs[i].layout_hint().value()));
-      }
-    }
-  }
-
   // Identify which arguments to the Traversal are donated.
   Indices donated_arguments;
   if (!donated_values.empty()) {
@@ -583,8 +542,7 @@ std::vector<Shape> GetShapes(absl::Span<const DeviceBufferRef> buffers) {
   std::vector<Shape> shapes;
   shapes.reserve(buffers.size());
   for (const auto& buffer : buffers) {
-    Shape shape(CopyIntVector(buffer.dimensions()), buffer.element_type(),
-                buffer.layout_hint());
+    Shape shape(CopyIntVector(buffer.dimensions()), buffer.element_type());
     for (const auto& dynamic_dim : buffer.dynamic_dimensions()) {
       shape.dynamic_dimensions().push_back(dynamic_dim);
     }
