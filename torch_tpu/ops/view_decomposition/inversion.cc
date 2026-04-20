@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <ostream>
 #include <utility>
 #include <variant>
@@ -591,7 +592,8 @@ absl::StatusOr<InverseViewOperation> ComputeInverseViewOperation(
                                                 writable_dtype, layout);
 
   // Initially set the final shape to the shape after the bitcast.
-  Shape final_shape({}, writable_dtype);
+  Shape final_shape({}, writable_dtype, std::nullopt);
+
   final_shape.dimensions().reserve(layout.strided_dims.size());
   for (const auto& dim : layout.strided_dims) {
     final_shape.dimensions().push_back(dim.size);

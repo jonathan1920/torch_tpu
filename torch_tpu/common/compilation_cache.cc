@@ -583,8 +583,9 @@ void ResolvePaddingShapes(
     input_dimension_bounds =
         input_dimension_bounds.subspan(shape.dimensions().size());
     Dimensions dimensions = shape.dimensions();
-    static_runtime_input_shapes.push_back(Shape(dimensions, shape.dtype()));
-    Shape dynamic_shape = Shape(dimensions, shape.dtype());
+    static_runtime_input_shapes.push_back(
+        Shape(dimensions, shape.dtype(), shape.layout()));
+    Shape dynamic_shape = Shape(dimensions, shape.dtype(), shape.layout());
     for (int j = 0; j < bounds.size(); ++j) {
       if (bounds[j].lower != bounds[j].upper) {
         dynamic_shape.dynamic_dimensions().push_back(BoundedDynamicDimension{
@@ -595,7 +596,7 @@ void ResolvePaddingShapes(
       }
     }
     static_padded_input_shapes.push_back(
-        Shape(GetUpperBounds(bounds), shape.dtype()));
+        Shape(GetUpperBounds(bounds), shape.dtype(), shape.layout()));
     input_shapes_with_updated_dynamism.push_back(std::move(dynamic_shape));
   }
 }
@@ -659,15 +660,17 @@ CompilationCache::CreateSlicingKernel(
   std::vector<Shape> runtime_output_shapes;
   runtime_output_shapes.reserve(output_shapes.size());
   for (int i = 0; i < output_shapes.size(); ++i) {
-    runtime_output_shapes.push_back(
-        Shape(runtime_output_dims_vec[i], output_dtypes[i]));
+    runtime_output_shapes.push_back(Shape(runtime_output_dims_vec[i],
+                                          output_dtypes[i],
+                                          output_shapes[i].layout()));
   }
 
   std::vector<Shape> padded_output_shapes;
   padded_output_shapes.reserve(output_shapes.size());
   for (int i = 0; i < output_shapes.size(); ++i) {
-    padded_output_shapes.push_back(
-        Shape(padded_output_dims_vec[i], output_dtypes[i]));
+    padded_output_shapes.push_back(Shape(padded_output_dims_vec[i],
+                                         output_dtypes[i],
+                                         output_shapes[i].layout()));
   }
 
   CompilationCacheKey slicing_cache_key =

@@ -16,6 +16,8 @@
 
 #include "torch_tpu/eager/safe_materialization_rule.h"
 
+#include <optional>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/container/flat_hash_set.h"
@@ -45,7 +47,7 @@ absl::StatusOr<DynamicMlirOpResults> DummyBuilder(
 
 TEST(SafeMaterializationRuleTest, StaleNodesDropped) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
 
   // Create two input buffers that don't have tensors.
   auto refs_a_or = DeviceBufferList::CreateDeferred(
@@ -85,7 +87,7 @@ TEST(SafeMaterializationRuleTest, StaleNodesDropped) {
 
 TEST(SafeMaterializationRuleTest, LiveNodesMaterialized) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
 
   // Create two input buffers and create Tensors for them.
   auto refs_a_or = DeviceBufferList::CreateDeferred(
@@ -130,7 +132,7 @@ TEST(SafeMaterializationRuleTest, LiveNodesMaterialized) {
 
 TEST(SafeMaterializationRuleTest, ExternalFanoutMaterialized) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
 
   // Create one input buffer.
   auto refs_a_or = DeviceBufferList::CreateDeferred(
@@ -174,7 +176,7 @@ TEST(SafeMaterializationRuleTest, ExternalFanoutMaterialized) {
 
 TEST(SafeMaterializationRuleTest, InternalFanoutNotMaterialized) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
 
   // Create a diamond-shaped graph like:
   //    b
@@ -224,7 +226,7 @@ TEST(SafeMaterializationRuleTest, InternalFanoutNotMaterialized) {
 
 TEST(SafeMaterializationRuleTest, DispatchOrderMaintained) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
 
   // Dispatch a, b, c, d to make a graph like:
   // a -> b ----------> e
@@ -281,7 +283,7 @@ TEST(SafeMaterializationRuleTest, DispatchOrderMaintained) {
 
 TEST(SafeMaterializationRuleTest, ForcedSplitHeuristicRespected) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
 
   // Dispatch a, b, c, d to make a graph like:
   // a -> b -> c -> d
@@ -333,7 +335,7 @@ TEST(SafeMaterializationRuleTest, ForcedSplitHeuristicRespected) {
 
 TEST(SafeMaterializationRuleTest, DynamicOpSplitHeuristicRespected) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
 
   // Dispatch a, b, c, d to make a graph like:
   // a -> b -> c
@@ -344,7 +346,8 @@ TEST(SafeMaterializationRuleTest, DynamicOpSplitHeuristicRespected) {
   auto ref_a = refs_a_or.value()[0];
 
   Shape dynamic_shape({8}, mlir::ElementType::F32,
-                      {BoundedDynamicDimension{0, 2, 10}});
+                      {BoundedDynamicDimension{0, 2, 10}}, std::nullopt);
+
   auto refs_b_or = DeviceBufferList::CreateDeferred(
       OpName::kAdd, DummyBuilder, {ref_a}, OpParamCacheKeys::Empty(),
       {dynamic_shape});
@@ -381,7 +384,7 @@ TEST(SafeMaterializationRuleTest, DynamicOpSplitHeuristicRespected) {
 
 TEST(SafeMaterializationRuleTest, NonRequiredNodesNotMaterialized) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
 
   // Dispatch a, b, c to make a graph like:
   // a -> b -> c
@@ -425,7 +428,7 @@ TEST(SafeMaterializationRuleTest, NonRequiredNodesNotMaterialized) {
 
 TEST(SafeMaterializationRuleTest, EdgesFromNonRequiredNodesConsidered) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32, std::nullopt);
 
   // Dispatch a, b, c to make a graph like:
   // a -> b -> c

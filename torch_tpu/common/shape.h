@@ -18,6 +18,7 @@
 #define TORCH_TPU_COMMON_SHAPE_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -50,13 +51,16 @@ struct BoundedDynamicDimension {
 class Shape {
  public:
   Shape() = default;
-  Shape(Dimensions dimensions, mlir::ElementType dtype)
-      : Shape(std::move(dimensions), dtype, {}) {}
   Shape(Dimensions dimensions, mlir::ElementType dtype,
-        absl::InlinedVector<BoundedDynamicDimension, 1> dynamic_dimensions)
+        std::optional<std::string> layout)
+      : Shape(std::move(dimensions), dtype, {}, std::move(layout)) {}
+  Shape(Dimensions dimensions, mlir::ElementType dtype,
+        absl::InlinedVector<BoundedDynamicDimension, 1> dynamic_dimensions,
+        std::optional<std::string> layout)
       : dimensions_(std::move(dimensions)),
         dtype_(dtype),
-        dynamic_dimensions_(std::move(dynamic_dimensions)) {}
+        dynamic_dimensions_(std::move(dynamic_dimensions)),
+        layout_(std::move(layout)) {}
 
   const Dimensions& dimensions() const { return dimensions_; }
   Dimensions& dimensions() { return dimensions_; }
@@ -72,9 +76,15 @@ class Shape {
     return dynamic_dimensions_;
   }
 
+  const std::optional<std::string>& layout() const { return layout_; }
+  void set_layout(std::optional<std::string> layout) {
+    layout_ = std::move(layout);
+  }
+
   friend bool operator==(const Shape& lhs, const Shape& rhs) {
     return lhs.dtype_ == rhs.dtype_ && lhs.dimensions_ == rhs.dimensions_ &&
-           lhs.dynamic_dimensions_ == rhs.dynamic_dimensions_;
+           lhs.dynamic_dimensions_ == rhs.dynamic_dimensions_ &&
+           lhs.layout_ == rhs.layout_;
   }
 
  private:
@@ -84,8 +94,9 @@ class Shape {
   // most dynamic Shapes are dynamic in 1 dimension only, so this allows for
   // no heap allocation in the common case.
   absl::InlinedVector<BoundedDynamicDimension, 1> dynamic_dimensions_;
+  std::optional<std::string> layout_;
 };
-static_assert(sizeof(Shape) == 96);
+static_assert(sizeof(Shape) == 128);
 
 // Converts an XLA shape to a torch_tpu shape.
 absl::StatusOr<Shape> MakeShape(const xla::Shape& xla_shape);

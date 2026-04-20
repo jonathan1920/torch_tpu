@@ -44,6 +44,8 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -77,6 +79,30 @@ at::Tensor PyMakePlaceholderLike(const at::Tensor& arg_tensor) {
                                    arg_tensor.sizes().end());
   return PyMakePlaceholder(sizes, arg_tensor.scalar_type(),
                            arg_tensor.requires_grad());
+}
+
+void PySetLayoutHint(const at::Tensor& tensor,
+                     const std::optional<std::string>& layout) {
+  if (!layout) {
+    return;
+  }
+  TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref, GetBufferFromAtTensor(tensor));
+  if (!buffer_ref.dynamic_dimensions().empty()) {
+    TT_THROW_IF_ERROR(TT_ERROR(error::kInvalidArgument)
+                      << "User specified layout hints are not supported for "
+                         "tensors with dynamic"
+                         " dimensions.");
+  }
+  buffer_ref.set_layout_hint(*layout);
+}
+
+py::object PyGetDeviceLayoutIfMaterialized(const at::Tensor& tensor) {
+  TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref, GetBufferFromAtTensor(tensor));
+  if (!buffer_ref.IsMaterialized()) {
+    return py::none();
+  }
+  TT_ASSIGN_OR_THROW(auto* pjrt_buffer, buffer_ref.GetOrMaterializeBuffer());
+  return py::cast(pjrt_buffer->layout()->xla_layout().ToString());
 }
 
 // Returns a ContextedModule corresponding to the graph terminating at
@@ -228,12 +254,19 @@ std::shared_ptr<ContextedModule> PyGetPadModuleMlir(
         tensor_info,
     const std::vector<
         std::pair<std::vector<int64_t>, std::vector<int64_t>>>&  // INT_VEC_OK
-        bounds_list) {
+        bounds_list,
+    const std::vector<std::optional<std::string>>& layout_hints) {
   auto context = std::make_unique<mlir::MLIRContext>();
   mlir::DialectRegistry registry;
   xla::RegisterMlirToHloDependentDialects(registry);
   context->appendDialectRegistry(registry);
   context->loadAllAvailableDialects();
+
+  TT_CHECK_THROW(tensor_info.size() == layout_hints.size(),
+                 error::kInvalidArgument)
+      << "layout_hints size must match tensor_info size, got "
+      << layout_hints.size() << " layout hints for " << tensor_info.size()
+      << " tensors";
 
   std::vector<Shape> shapes;
   shapes.reserve(tensor_info.size());
@@ -244,6 +277,8 @@ std::shared_ptr<ContextedModule> PyGetPadModuleMlir(
     TT_ASSIGN_OR_THROW(mlir::ElementType element_type,
                        internal::ToElementType(info.second));
     shape.set_dtype(element_type);
+
+    shape.set_layout(layout_hints[i]);
 
     if (i < bounds_list.size()) {
       const auto& dims = bounds_list[i].first;
@@ -354,6 +389,10 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   m.def("placeholder", PyMakePlaceholder, py::arg("sizes"), py::arg("dtype"),
         py::arg("requires_grad"));
   m.def("placeholder_like", PyMakePlaceholderLike, py::arg("arg_tensor"));
+  m.def("set_layout_hint", &PySetLayoutHint, py::arg("tensor"),
+        py::arg("layout") = py::none());
+  m.def("get_device_layout_if_materialized", &PyGetDeviceLayoutIfMaterialized,
+        py::arg("tensor"));
   m.def("build_mlir", PyBuildMlir, py::arg("result_tensors"),
         py::arg("argument_tensors"));  // INT_VEC_OK
   // Returns: PjRtLoadedExecutable
@@ -371,10 +410,12 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         "Serializes a ContextedModule to a versioned portable artifact.");
   m.def("get_pad_module_mlir", PyGetPadModuleMlir, py::arg("tensor_info"),
         py::arg("bounds_list"),
+        py::arg("layout_hints") = std::vector<std::optional<std::string>>(),
         "Returns the MLIR module for a pad subgraph as bytecode.\n\n"
         "Args:\n"
         "  tensor_info: A list of (shape, dtype) pairs for each tensor.\n"
-        "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.");
+        "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.\n"
+        "  layout_hints: A list of layout strings for each tensor.");
   m.def("get_mlir_tracebacks_enabled", &PyGetMlirTracebacksEnabled,
         "Return whether MLIR location tracebacks are currently enabled.");
   m.def(

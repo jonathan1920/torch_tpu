@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -437,8 +438,8 @@ absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(
   std::vector<DeviceBufferRef> inputs = {std::move(base_buffer_ref)};
 
   std::vector<Shape> output_shapes;
-  output_shapes.emplace_back(CopyIntVector(tensor.sizes()),
-                             tensor_element_type);
+  output_shapes.emplace_back(CopyIntVector(tensor.sizes()), tensor_element_type,
+                             std::nullopt);
 
   // Create the deferred op.
   TT_ASSIGN_OR_RETURN(std::vector<DeviceBufferRef> deferred_refs,

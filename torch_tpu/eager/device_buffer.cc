@@ -22,6 +22,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -542,7 +543,8 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateConstant(
 
   // The op returns a single tensor with the given shape and dtype.
   std::vector<Shape> output_shapes;
-  output_shapes.push_back(Shape(dimensions, element_type));  // intentional copy
+  output_shapes.push_back(
+      Shape(dimensions, element_type, std::nullopt));  // intentional copy
 
   auto op_builder = [cpu_tensor_data = std::move(cpu_tensor_data), element_type,
                      dimensions = std::move(dimensions)](
@@ -613,7 +615,8 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateEmpty(
     return DynamicMlirOpResults{
         BuildFillUninitialized(builder, element_type, dimensions)};
   };
-  Shape output_shape(std::move(dimensions), element_type);
+  Shape output_shape(std::move(dimensions), element_type, std::nullopt);
+
   TT_ASSIGN_OR_RETURN(
       auto results, DeviceBufferList::CreateDeferred(
                         OpName::kEmpty, std::move(op_builder), /*inputs=*/{},
@@ -793,6 +796,10 @@ DeviceBufferRefState DeviceBufferRef::state() const {
   return device_buffer_list_->state(index_);
 }
 
+bool DeviceBufferRef::IsMaterialized() const {
+  return state() == DeviceBufferRefState::kMaterialized;
+}
+
 [[nodiscard]] absl::Span<const int64_t> DeviceBufferRef::dimensions() const {
   return device_buffer_list_->dimensions(index_);
 }
@@ -829,6 +836,14 @@ absl::Status DeviceBufferRef::MarkDynamic(int64_t dimension,
 absl::Span<const BoundedDynamicDimension> DeviceBufferRef::dynamic_dimensions()
     const {
   return device_buffer_list()->dynamic_dimensions(index_);
+}
+
+void DeviceBufferRef::set_layout_hint(std::string layout_hint) const {
+  device_buffer_list_->set_layout_hint(index_, std::move(layout_hint));
+}
+
+std::optional<std::string> DeviceBufferRef::layout_hint() const {
+  return device_buffer_list_->layout_hint(index_);
 }
 
 }  // namespace torch_tpu

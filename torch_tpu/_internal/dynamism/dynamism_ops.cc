@@ -205,6 +205,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetPadModule(
   }
   mlir::func::Return(fb, results);
   auto module = mb.build();
+
+  // TODO(b/503686077): Once layout hints are supported for dynamic shapes we
+  // should add them to the inputs and outputs of this module.
   return module;
 }
 

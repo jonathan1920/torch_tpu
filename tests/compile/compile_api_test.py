@@ -160,7 +160,9 @@ class CompileApiTest(absltest.TestCase):
     tensor_info = [([1, 4], torch.int64)]
     bounds_list = [([1], [8])]
 
-    mlir = tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
+    mlir = tpu_torch_compile.get_pad_module_mlir(
+        tensor_info, bounds_list, [None]
+    )
     mlir_text = tpu_torch_compile.serialize_mlir_text(mlir)
 
     expected_mlir = """module @pad_module {
