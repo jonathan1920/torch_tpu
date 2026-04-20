@@ -375,6 +375,7 @@ def torch_tpu_cc_test(
         name,
         size = None,
         timeout = None,
+        srcs = [],
         copts = None,
         features = None,
         args = None,
@@ -397,6 +398,7 @@ def torch_tpu_cc_test(
         name: The name of the test.
         size: The size of the test.
         timeout: The timeout of the test.
+        srcs: The source files to compile. Must contain at most one .cc file.
         copts: The C/C++ compiler options to use.
         features: The blaze features to enable/disable.
         args: The arguments to pass to the test.
@@ -426,6 +428,10 @@ def torch_tpu_cc_test(
         tags: The tags to add to the test.
         **kwargs: Any additional arguments.
     """
+
+    if len(srcs) > 1:
+        fail("torch_tpu_cc_test must contain at most one srcs file. This prevents build bloat " +
+             "and circular dependencies between files.")
 
     copts, features = adjust_cc_options(copts, features)
 
@@ -462,6 +468,7 @@ def torch_tpu_cc_test(
         name = name,
         size = size,
         timeout = timeout,
+        srcs = srcs,
         copts = copts,
         args = args,
         features = features,
@@ -491,6 +498,7 @@ def _prepend_to_env(env, key, value):
 
 def torch_tpu_py_test(
         name,
+        srcs = [],
         args = None,
         shuffle_tests = True,
         autoload = True,
@@ -513,6 +521,7 @@ def torch_tpu_py_test(
 
     Args:
         name: The name of the test.
+        srcs: The source files for the test. Must contain at most one .py file.
         args: The arguments to pass to the test.
         shuffle_tests: Whether to shuffle the test cases.
         extra_pywrap_deps: Additional pywrap dependencies to add to the test.
@@ -545,6 +554,10 @@ def torch_tpu_py_test(
         autoload: Enable autoload during the tests.
         **kwargs: Any additional arguments.
     """
+
+    if len(srcs) > 1:
+        fail("torch_tpu_py_test must contain at most one srcs file. This prevents build bloat " +
+             "and circular dependencies between files.")
 
     args = args or []
     if shuffle_tests:
@@ -670,6 +683,7 @@ def torch_tpu_py_test(
         rule = py_test
     rule(
         name = name,
+        srcs = srcs,
         args = args,
         size = size,
         timeout = timeout,
