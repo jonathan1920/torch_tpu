@@ -3781,8 +3781,6 @@ class TestOps(TorchTpuTestBase):
             "cpu": COMPLEX_DTYPES + (torch.bool,),
             "gpu": COMPLEX_DTYPES,
         },
-        # TODO: b/499034385 - Re-enable this test once dynamism is supported.
-        check_dynamism=False,
     )
 
 

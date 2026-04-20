@@ -17,7 +17,6 @@
 #include "torch_tpu/ops/bucketize/bucketize_aten_kernels.h"
 
 #include <cstdint>
-#include <numeric>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -30,7 +29,6 @@
 #include "ATen/ops/result_type.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
-#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
@@ -74,36 +72,14 @@ struct BroadcastResult {
 
 absl::StatusOr<BroadcastResult> BroadcastArgs(mlir::MlirOp self_op,
                                               mlir::MlirOp boundaries_op) {
-  const mlir::RankedTensorType self_type = GetTensorTypeOrDie(self_op);
-  const mlir::RankedTensorType boundaries_type =
-      GetTensorTypeOrDie(boundaries_op);
-  // TODO(b/499034385): Support dynamic dimensions.
-  TT_RET_CHECK(self_type.hasStaticShape(), error::kInvalidArgument)
-      << "expected 0 dynamic dimensions in self, got "
-      << self_type.getNumDynamicDims();
-  TT_RET_CHECK(boundaries_type.hasStaticShape(), error::kInvalidArgument)
-      << "expected 0 dynamic dimensions in boundaries, got "
-      << boundaries_type.getNumDynamicDims();
-  const int64_t num_boundaries = boundaries_type.getShape()[0];
+  // Unsqueeze self_op to add a trailing dimension of size 1.
+  const int64_t input_rank = GetTensorTypeOrDie(self_op).getRank();
+  TT_ASSIGN_OR_RETURN(const mlir::MlirOp self_unsqueeze_op,
+                      Unsqueeze(self_op, input_rank));
 
-  // Add the boundaries dimension to the input shape to get the target broadcast
-  // shape.
-  Dimensions target_shape(self_type.getShape().begin(),
-                          self_type.getShape().end());
-  target_shape.push_back(num_boundaries);
-
-  // Broadcast the input (self_op).
-  const int64_t input_rank = self_type.getRank();
-  Dimensions self_bcast_dims(input_rank);
-  std::iota(self_bcast_dims.begin(), self_bcast_dims.end(), 0);
-  TT_ASSIGN_OR_RETURN(const mlir::MlirOp self_bcast_op,
-                      Broadcast(self_op, target_shape, self_bcast_dims));
-
-  // Broadcast the boundaries (boundaries_op).
-  TT_ASSIGN_OR_RETURN(const mlir::MlirOp boundaries_bcast_op,
-                      Broadcast(boundaries_op, target_shape, {input_rank}));
-
-  return BroadcastResult{self_bcast_op, boundaries_bcast_op};
+  TT_ASSIGN_OR_RETURN(const auto broadcasted_ops,
+                      ApplyBroadcastIfNeeded(self_unsqueeze_op, boundaries_op));
+  return BroadcastResult{broadcasted_ops[0], broadcasted_ops[1]};
 }
 
 absl::StatusOr<mlir::MlirOp> BuildCompareAllShlo(mlir::MlirOp self_op,
