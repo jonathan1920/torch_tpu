@@ -649,9 +649,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     source = torch.arange(8, device="tpu", dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """set_(): expected the number of bytes required by the given arguments to be <= 32 (actual storage size), got 64"""
-        ),
+        tpu="""set_(): expected the number of bytes required by the given arguments to be <= 32 (actual storage size), got 64""",
         message_reviewed_by="wan",
     ):
       t.set_(source.untyped_storage(), storage_offset=0, size=[16], stride=[1])
@@ -942,9 +940,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     # TODO: b/483972819 remove this test when the divergence is resolved.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """lu_unpack(): expected the first output tensor to be a 3D tensor (pivots dimension + 1), got 1D of shape [4]"""
-        ),
+        tpu="""lu_unpack(): expected the first output tensor to be a 3D tensor (pivots dimension + 1), got 1D of shape [4]""",
     ):
       pivots = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
       out = _make_lu_unpack_outputs(p=(4,), l=(2, 4, 4), u=(2, 4, 4))
@@ -959,9 +955,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     # TODO: b/485613841 remove this test when the divergence is resolved.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """lu_unpack(): pivots size must be less than or equal to the size of the matrix, got 5 and 4"""
-        ),
+        tpu="""lu_unpack(): pivots size must be less than or equal to the size of the matrix, got 5 and 4""",
     ):
       pivots = torch.ones(2, 5, device=et.device(), dtype=torch.int32)
       torch.lu_unpack(data, pivots)
@@ -969,9 +963,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     # TODO: b/485613841 remove this test when the divergence is resolved.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """lu_unpack(): pivots and tensor must have the same batch dimensions, got [2] and [3]"""
-        ),
+        tpu="""lu_unpack(): pivots and tensor must have the same batch dimensions, got [2] and [3]""",
     ):
       pivots = torch.ones(3, 4, device=et.device(), dtype=torch.int32)
       torch.lu_unpack(data, pivots)
@@ -1009,9 +1001,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """linalg_lu_solve(): the rank of b must be equal to the rank of lu, got rank(b) = 3 and rank(lu) = 2"""
-        ),
+        tpu="""linalg_lu_solve(): the rank of b must be equal to the rank of lu, got rank(b) = 3 and rank(lu) = 2""",
     ):
       torch.linalg.lu_solve(lu, pivots, b, out=out)
 
@@ -1037,9 +1027,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         NotImplementedError,
-        tpu=(
-            """index(): indexing with more than one bool tensor is not yet supported"""
-        ),
+        tpu="""index(): indexing with more than one bool tensor is not yet supported""",
         message_reviewed_by="wan",
     ):
       torch.ops.aten.index(inp, indices)
@@ -1060,9 +1048,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """linalg_inv_ex(): expected the inverse output shape to match the input tensor of shape [4, 4], got [4, 4, 4]"""
-        ),
+        tpu="""linalg_inv_ex(): expected the inverse output shape to match the input tensor of shape [4, 4], got [4, 4, 4]""",
         message_reviewed_by="wan",
     ):
       torch.linalg.inv_ex(a, out=out)
@@ -1102,9 +1088,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """copy_from(): expected at least one of the inputs to be on 'tpu' device, got 'cpu' (source) and 'cpu' (destination)"""
-        ),
+        tpu="""copy_from(): expected at least one of the inputs to be on 'tpu' device, got 'cpu' (source) and 'cpu' (destination)""",
         message_reviewed_by="wan",
     ):
       # Dispatch to `_copy_from()` TPU kernel with CPU inputs.
@@ -1121,9 +1105,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """local_scalar_dense(): expected the input tensor to have 1 element, got 2"""
-        ),
+        tpu="""local_scalar_dense(): expected the input tensor to have 1 element, got 2""",
         message_reviewed_by="wan",
     ):
       torch.ops.aten._local_scalar_dense(inp)
@@ -1137,9 +1119,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """cumprod(): materialization failed with: the dtype argument cannot be bool"""
-        ),
+        tpu="""cumprod(): materialization failed with: the dtype argument cannot be bool""",
     ):
       # cpu() is needed because the error is triggered inside the op builder.
       torch.cumprod(inp, dim=0, dtype=torch.bool).cpu()
@@ -1177,9 +1157,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
       with et.assert_raises_message(
           RuntimeError,
-          tpu=(
-              """embedding_bag_forward_only(): expected all dimensions of the indices tensor to be static, got 1 dynamic dimension in the underlying tensor behind a view of shape [100]"""
-          ),
+          tpu="""embedding_bag_forward_only(): expected all dimensions of the indices tensor to be static, got 1 dynamic dimension in the underlying tensor behind a view of shape [100]""",
           message_reviewed_by="wan",
       ):
         torch.nn.functional.embedding_bag(indices, weight)
@@ -1193,9 +1171,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
       with et.assert_raises_message(
           RuntimeError,
-          tpu=(
-              """embedding_bag_forward_only(): expected all dimensions of the weight tensor to be static, got 1 dynamic dimension within shape [10, 10 (up to 20)]"""
-          ),
+          tpu="""embedding_bag_forward_only(): expected all dimensions of the weight tensor to be static, got 1 dynamic dimension within shape [10, 10 (up to 20)]""",
           message_reviewed_by="wan",
       ):
         torch.nn.functional.embedding_bag(indices, weight)
@@ -1210,9 +1186,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
       with et.assert_raises_message(
           RuntimeError,
-          tpu=(
-              """embedding_bag_forward_only(): expected all dimensions of the offsets tensor to be static, got 1 dynamic dimension within shape [10 (up to 20)]"""
-          ),
+          tpu="""embedding_bag_forward_only(): expected all dimensions of the offsets tensor to be static, got 1 dynamic dimension within shape [10 (up to 20)]""",
           message_reviewed_by="wan",
       ):
         torch.nn.functional.embedding_bag(indices, weight, offsets)
@@ -1230,9 +1204,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""grid_sampler_{dims}d(): expected the padding mode to be 0 (zeros), 1 (border), or 2 (reflection), got 3"""
-        ),
+        tpu=f"""grid_sampler_{dims}d(): expected the padding mode to be 0 (zeros), 1 (border), or 2 (reflection), got 3""",
         message_reviewed_by="wan",
     ):
       padding_mode = 3
@@ -1244,9 +1216,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """grid_sampler_2d(): expected the interpolation mode to be 0 (bilinear), 1 (nearest), or 2 (bicubic), got 3"""
-        ),
+        tpu="""grid_sampler_2d(): expected the interpolation mode to be 0 (bilinear), 1 (nearest), or 2 (bicubic), got 3""",
         message_reviewed_by="wan",
     ):
       interpolation_mode = 3
@@ -1258,9 +1228,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """grid_sampler_3d(): expected the interpolation mode to be 0 (bilinear) or 1 (nearest), got 2"""
-        ),
+        tpu="""grid_sampler_3d(): expected the interpolation mode to be 0 (bilinear) or 1 (nearest), got 2""",
         message_reviewed_by="wan",
     ):
       interpolation_mode = 2
@@ -1286,10 +1254,8 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """elu_backward(): expected the grad output dtype to be floating"""
-            f""" point, got {tpu_dtype_str}"""
-        ),
+        tpu="""elu_backward(): expected the grad output dtype to be floating"""
+        f""" point, got {tpu_dtype_str}""",
         message_reviewed_by="wan",
     ):
       torch.ops.aten.elu_backward(
@@ -1306,9 +1272,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """fft_r2c(): expected all dimensions of the input tensor to be static, got 1 dynamic dimension within shape [10 (up to 20)]"""
-        ),
+        tpu="""fft_r2c(): expected all dimensions of the input tensor to be static, got 1 dynamic dimension within shape [10 (up to 20)]""",
         message_reviewed_by="wan",
     ):
       torch.fft.rfftn(inp)
@@ -1346,9 +1310,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """native_group_norm_backward(): grad_out and input must have the same dimensions, got grad_out size [125], input size [5, 5, 5]"""
-        ),
+        tpu="""native_group_norm_backward(): grad_out and input must have the same dimensions, got grad_out size [125], input size [5, 5, 5]""",
     ):
       torch.ops.aten.native_group_norm_backward(
           grad_out, inp, mean, rstd, weight, n, c, h_w, group, output_mask
@@ -1426,9 +1388,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     size = torch.tensor([5], device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """set_dimension_logical_size(): expected a 0-dimensional tensor for size, got 1-dimensional tensor"""
-        ),
+        tpu="""set_dimension_logical_size(): expected a 0-dimensional tensor for size, got 1-dimensional tensor""",
         message_reviewed_by="wan",
     ):
       torch.ops.torch_tpu.set_dimension_logical_size(inp, 0, size)
@@ -1438,9 +1398,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     size = torch.tensor(5.0, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """set_dimension_logical_size(): expected an int32 tensor for size, got float32"""
-        ),
+        tpu="""set_dimension_logical_size(): expected an int32 tensor for size, got float32""",
         message_reviewed_by="wan",
     ):
       torch.ops.torch_tpu.set_dimension_logical_size(inp, 0, size)
@@ -1551,9 +1509,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """mm(): expected out_dtype to be the same as the dtype of the out tensor, got out_dtype int32 vs out tensor dtype int64"""
-        ),
+        tpu="""mm(): expected out_dtype to be the same as the dtype of the out tensor, got out_dtype int32 vs out tensor dtype int64""",
         message_reviewed_by="gunhyun",
     ):
       torch.ops.aten.mm.dtype_out(lhs, rhs, out_dtype=torch.int32, out=out)
@@ -1565,9 +1521,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """mm(): expected out_dtype to be the same as input dtype or fp32 for fp16/bf16 inputs, got out_dtype float64 vs inputs dtype float16"""
-        ),
+        tpu="""mm(): expected out_dtype to be the same as input dtype or fp32 for fp16/bf16 inputs, got out_dtype float64 vs inputs dtype float16""",
         message_reviewed_by="gunhyun",
     ):
       torch.ops.aten.mm.dtype_out(lhs, rhs, out_dtype=torch.float64, out=out)
@@ -1582,9 +1536,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """weight_norm_interface(): expected the size of the weight magnitude (g) to be 2, which is the size of the weight at dimension 0, got 3"""
-        ),
+        tpu="""weight_norm_interface(): expected the size of the weight magnitude (g) to be 2, which is the size of the weight at dimension 0, got 3""",
         message_reviewed_by="wan",
     ):
       torch._weight_norm(v, g, 0)
@@ -1598,9 +1550,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """weight_norm_interface(): expected the weight magnitude (g) to be a scalar or a 1D tensor, got a tensor of shape [3, 3]"""
-        ),
+        tpu="""weight_norm_interface(): expected the weight magnitude (g) to be a scalar or a 1D tensor, got a tensor of shape [3, 3]""",
         message_reviewed_by="wan",
     ):
       torch._weight_norm(v, g, 1)
@@ -1643,9 +1593,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu="""linalg_solve_triangular(): expected the first argument to have at least 2 dimensions, got 1""",
-        cpu=(
-            """linalg.solve_triangular: The input tensor A must have at least 2 dimensions."""
-        ),
+        cpu="""linalg.solve_triangular: The input tensor A must have at least 2 dimensions.""",
     ):
       torch.linalg.solve_triangular(
           a, b, upper=True, left=True, unitriangular=False
@@ -1658,9 +1606,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu="""linalg_solve_triangular(): left == False means we are solving X * A = B; expected the two inputs to have matching last dimension, got 2 and 3""",
-        cpu=(
-            """linalg.solve_triangular: Incompatible shapes of A and B for the equation XA = B (2x2 and 2x3)"""
-        ),
+        cpu="""linalg.solve_triangular: Incompatible shapes of A and B for the equation XA = B (2x2 and 2x3)""",
     ):
       torch.linalg.solve_triangular(
           a, b, upper=True, left=False, unitriangular=False
@@ -1673,9 +1619,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         tpu="""linalg_solve_triangular(): left == True means we are solving A * X = B; expected the two inputs to have matching second to last dimension, got 2 and 3""",
-        cpu=(
-            """linalg.solve_triangular: Incompatible shapes of A and B for the equation AX = B (2x2 and 3x2)"""
-        ),
+        cpu="""linalg.solve_triangular: Incompatible shapes of A and B for the equation AX = B (2x2 and 3x2)""",
     ):
       torch.linalg.solve_triangular(
           a, b, upper=True, left=True, unitriangular=False
@@ -1754,12 +1698,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     err_type = RuntimeError if et.device().type == "tpu" else IndexError
     with et.assert_raises_message(
         err_type,
-        cpu=(
-            """index_copy_(): When source and destination are not scalars, their dimensionality must match. Source dimensionality (1), destination dimensionality (2)"""
-        ),
-        tpu=(
-            """index_copy(): self and source must have the same number of dimensions, got 2 and 1"""
-        ),
+        cpu="""index_copy_(): When source and destination are not scalars, their dimensionality must match. Source dimensionality (1), destination dimensionality (2)""",
+        tpu="""index_copy(): self and source must have the same number of dimensions, got 2 and 1""",
     ):
       t = torch.ones(2, 2, device=et.device())
       index = torch.tensor([0], device=et.device(), dtype=torch.long)
@@ -1785,14 +1725,9 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_index_copy_dim_out_of_range(self):
     with et.assert_raises_message(
         IndexError,
-        cpu=(
-            """Dimension out of range (expected to be in range of [-2, 1], but got 2)"""
-        ),
-        tpu=(
-            # This error is generated by PyTorch and we cannot easily replace
-            # it.
-            """index_copy(): Dimension out of range (expected to be in range of [-2, 1], but got 2)"""
-        ),
+        cpu="""Dimension out of range (expected to be in range of [-2, 1], but got 2)""",
+        # This error is generated by PyTorch and we cannot easily replace it.
+        tpu="""index_copy(): Dimension out of range (expected to be in range of [-2, 1], but got 2)""",
     ):
       t = torch.ones(2, 2, device=et.device())
       index = torch.tensor([0], device=et.device(), dtype=torch.long)
@@ -1805,12 +1740,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     err_type = RuntimeError if et.device().type == "tpu" else IndexError
     with et.assert_raises_message(
         err_type,
-        cpu=(
-            """index_copy_(): Number of indices (1) should be equal to source.size(dim) (2)"""
-        ),
-        tpu=(
-            """index_copy(): source must have the same number of elements as the index along dimension 0, got 2 and 1"""
-        ),
+        cpu="""index_copy_(): Number of indices (1) should be equal to source.size(dim) (2)""",
+        tpu="""index_copy(): source must have the same number of elements as the index along dimension 0, got 2 and 1""",
     ):
       t = torch.ones(2, 2, device=et.device())
       index = torch.tensor([0], device=et.device(), dtype=torch.long)
@@ -1822,12 +1753,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_index_copy_self_source_size_mismatch(self):
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """index_copy_(): Source/destination tensor must have same slice shapes. Destination slice shape: 2 at dimension 0 and source slice shape: 3 at dimension 0."""
-        ),
-        tpu=(
-            """index_copy(): self and source must have the same size along dimension 1, got 2 and 3"""
-        ),
+        cpu="""index_copy_(): Source/destination tensor must have same slice shapes. Destination slice shape: 2 at dimension 0 and source slice shape: 3 at dimension 0.""",
+        tpu="""index_copy(): self and source must have the same size along dimension 1, got 2 and 3""",
     ):
       t = torch.ones(2, 2, device=et.device())
       index = torch.tensor([0], device=et.device(), dtype=torch.long)
@@ -1840,9 +1767,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     err_type = RuntimeError if et.device().type == "tpu" else IndexError
     with et.assert_raises_message(
         err_type,
-        cpu=(
-            """Dimension out of range (expected to be in range of [-1, 0], but got 1)"""
-        ),
+        cpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
         tpu="""index_copy(): dim must be 0 for scalar input, got 1""",
     ):
       t = torch.tensor(1, device=et.device())
@@ -1855,12 +1780,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_index_copy_scalar_source_not_scalar(self):
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """index_copy_(): Source/destination tensor must have same slice shapes. Destination slice shape:  at dimension 0 and source slice shape: 1 at dimension 0."""
-        ),
-        tpu=(
-            """index_copy(): source shape must match self shape, excluding the specified dimension, got source shape [1, 1] and self shape []"""
-        ),
+        cpu="""index_copy_(): Source/destination tensor must have same slice shapes. Destination slice shape:  at dimension 0 and source slice shape: 1 at dimension 0.""",
+        tpu="""index_copy(): source shape must match self shape, excluding the specified dimension, got source shape [1, 1] and self shape []""",
     ):
       t = torch.tensor(1, device=et.device())
       index = torch.tensor([0], device=et.device(), dtype=torch.long)
@@ -1873,12 +1794,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     err_type = RuntimeError if et.device().type == "tpu" else IndexError
     with et.assert_raises_message(
         err_type,
-        cpu=(
-            """index_copy_(): When source is scalar, index should have one element (got 2)"""
-        ),
-        tpu=(
-            """index_copy(): index must be 1D of size 1 for scalar input, got shape [2]"""
-        ),
+        cpu="""index_copy_(): When source is scalar, index should have one element (got 2)""",
+        tpu="""index_copy(): index must be 1D of size 1 for scalar input, got shape [2]""",
     ):
       t = torch.tensor(1, device=et.device())
       index = torch.tensor([0, 0], device=et.device(), dtype=torch.long)
@@ -1903,14 +1820,10 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """fill_ only supports 0-dimension value tensor but got tensor with"""
-            f""" {len(shape)} dimensions."""
-        ),
-        tpu=(
-            """fill_(): only supports 0-dimension value tensor but got tensor"""
-            f""" with {len(shape)} dimensions."""
-        ),
+        cpu="""fill_ only supports 0-dimension value tensor but got tensor with"""
+        f""" {len(shape)} dimensions.""",
+        tpu="""fill_(): only supports 0-dimension value tensor but got tensor"""
+        f""" with {len(shape)} dimensions.""",
     ):
       torch.fill(t, value)
 
@@ -1942,9 +1855,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         cpu="""masked_select(): self and result must have the same scalar type""",
-        tpu=(
-            """masked_select(): the out tensor dtype is expected to be float32, got int32"""
-        ),
+        tpu="""masked_select(): the out tensor dtype is expected to be float32, got int32""",
     ):
       torch.masked_select(t, mask, out=out)
 
@@ -1992,9 +1903,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         cpu="""expected m1 and m2 to have the same dtype, but got: float != int""",
-        tpu=(
-            """mm(): expected the two arguments to have the same dtype, got float32 vs int32"""
-        ),
+        tpu="""mm(): expected the two arguments to have the same dtype, got float32 vs int32""",
         message_reviewed_by="wan",
     ):
       torch.mm(t1, t2)
@@ -2035,9 +1944,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         cpu="""size mismatch (got input: [1, 3, 2, 2] , target: [1, 2, 3]""",
-        tpu=(
-            """nll_loss2d_forward(): expect the shapes of the input [N, C, d1, ..., dk] and the target [N, d1, ..., dk] (k >= 1) to match, got input: [1, 3, 2, 2], target: [1, 2, 3]"""
-        ),
+        tpu="""nll_loss2d_forward(): expect the shapes of the input [N, C, d1, ..., dk] and the target [N, d1, ..., dk] (k >= 1) to match, got input: [1, 3, 2, 2], target: [1, 2, 3]""",
     ):
       torch.nn.functional.nll_loss(t, target)
 
@@ -2061,29 +1968,21 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         cpu="""Trying to create tensor with negative dimension -1: [-1]""",
-        tpu=(
-            """empty(): dimension sizes must be >= 0, got [-1], which contains -1"""
-        ),
+        tpu="""empty(): dimension sizes must be >= 0, got [-1], which contains -1""",
     ):
       torch.ones(-1, device=et.device(), dtype=torch.float32)
 
     with et.assert_raises_message(
         RuntimeError,
         cpu="""Trying to create tensor with negative dimension -2: [3, -2, -4]""",
-        tpu=(
-            """empty(): dimension sizes must be >= 0, got [3, -2, -4], which contains -2 and -4"""
-        ),
+        tpu="""empty(): dimension sizes must be >= 0, got [3, -2, -4], which contains -2 and -4""",
     ):
       torch.ones(3, -2, -4, device=et.device(), dtype=torch.float32)
 
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """Trying to create tensor with negative dimension -2: [3, -2, -4, 1, -5]"""
-        ),
-        tpu=(
-            """empty(): dimension sizes must be >= 0, got [3, -2, -4, 1, -5], which contains -2, -4, and -5"""
-        ),
+        cpu="""Trying to create tensor with negative dimension -2: [3, -2, -4, 1, -5]""",
+        tpu="""empty(): dimension sizes must be >= 0, got [3, -2, -4, 1, -5], which contains -2, -4, and -5""",
     ):
       torch.ones(3, -2, -4, 1, -5, device=et.device(), dtype=torch.float32)
 
@@ -2120,12 +2019,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     """Tests that torch.ones() fails with expected error when the size product is negative."""
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """Storage size calculation overflowed with sizes=[2147483648, 4294967296]"""
-        ),
-        tpu=(
-            """empty(): product of dimension sizes [2147483648, 4294967296] overflows as int64"""
-        ),
+        cpu="""Storage size calculation overflowed with sizes=[2147483648, 4294967296]""",
+        tpu="""empty(): product of dimension sizes [2147483648, 4294967296] overflows as int64""",
     ):
       # The product of the dimensions is 2 ** 63, which doesn't cause an
       # overflow in XLA. However, it doesn't fit in int64_t.
@@ -2133,12 +2028,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """Storage size calculation overflowed with sizes=[1073741824, 1073741824, 1073741824]"""
-        ),
-        tpu=(
-            """empty(): product of dimension sizes [1073741824, 1073741824, 1073741824] overflows as int64"""
-        ),
+        cpu="""Storage size calculation overflowed with sizes=[1073741824, 1073741824, 1073741824]""",
+        tpu="""empty(): product of dimension sizes [1073741824, 1073741824, 1073741824] overflows as int64""",
     ):
       # The product of the dimensions is 2 ** 90, which causes an overflow in
       # XLA.
@@ -2148,12 +2039,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     """Tests that torch.ones() fails with expected error when the byte size overlows."""
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """Storage size calculation overflowed with sizes=[2147483648, 2147483648]"""
-        ),
-        tpu=(
-            """empty(): product of dimension sizes [2147483648, 2147483648] and size of f32 (4 bytes) overflows as int64"""
-        ),
+        cpu="""Storage size calculation overflowed with sizes=[2147483648, 2147483648]""",
+        tpu="""empty(): product of dimension sizes [2147483648, 2147483648] and size of f32 (4 bytes) overflows as int64""",
     ):
       # The product of the dimensions is 2 ** 62, which doesn't cause an
       # overflow in XLA. However, the byte size is 2 ** 64, which overflows
@@ -2166,10 +2053,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       # CPU immediately tries to allocate 4 exabytes of memory and crashes.
       with et.assert_raises_message(
           RuntimeError,
-          cpu=(
-              re.compile(
-                  r"""\[enforce fail at .+\] err == 0\. DefaultCPUAllocator: can't allocate memory: you tried to allocate 4000000000000000000 bytes. Error code 12 \(Cannot allocate memory\)"""
-              )
+          cpu=re.compile(
+              r"""\[enforce fail at .+\] err == 0\. DefaultCPUAllocator: can't allocate memory: you tried to allocate 4000000000000000000 bytes. Error code 12 \(Cannot allocate memory\)"""
           ),
           tpu="""error message is not used in this test""",
       ):
@@ -2194,9 +2079,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         cpu="""value cannot be converted to type int without overflow""",
-        tpu=(
-            """histc(): expected min and max to be within the range of their data types, but got min = 2147483646 and max = -2147483648. This happened because min and max were adjusted by one (due to min == max), which resulted in an overflow."""
-        ),
+        tpu="""histc(): expected min and max to be within the range of their data types, but got min = 2147483646 and max = -2147483648. This happened because min and max were adjusted by one (due to min == max), which resulted in an overflow.""",
     ):
       torch.histc(t)
 
@@ -2209,9 +2092,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         cpu="""value cannot be converted to type int without overflow""",
-        tpu=(
-            """histc(): expected min and max to be within the range of their data types, but got min = 2147483647 and max = -2147483647. This happened because min and max were adjusted by one (due to min == max), which resulted in an overflow."""
-        ),
+        tpu="""histc(): expected min and max to be within the range of their data types, but got min = 2147483647 and max = -2147483647. This happened because min and max were adjusted by one (due to min == max), which resulted in an overflow.""",
     ):
       torch.histc(t)
 
@@ -2221,9 +2102,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         cpu="""torch.histc: range of [-nan, -nan] is not finite""",
-        tpu=(
-            """histc(): expected min and max to be finite, got nan and nan. Either make sure that the input data is finite, or provide valid finite bounds."""
-        ),
+        tpu="""histc(): expected min and max to be finite, got nan and nan. Either make sure that the input data is finite, or provide valid finite bounds.""",
     ):
       torch.histc(t)
 
@@ -2233,9 +2112,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         cpu="""torch.histc: range of [0, inf] is not finite""",
-        tpu=(
-            """histc(): expected min and max to be finite, got 0 and inf. Either make sure that the input data is finite, or provide valid finite bounds."""
-        ),
+        tpu="""histc(): expected min and max to be finite, got 0 and inf. Either make sure that the input data is finite, or provide valid finite bounds.""",
     ):
       torch.histc(t)
 
@@ -2265,9 +2142,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         IndexError,
         cpu="""take(): tried to take from an empty tensor""",
-        tpu=(
-            """take(): input tensor must be non-empty when the index tensor is non-empty"""
-        ),
+        tpu="""take(): input tensor must be non-empty when the index tensor is non-empty""",
     ):
       torch.take(t, torch.tensor([0], dtype=torch.int64, device=et.device()))
 
@@ -2308,9 +2183,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         cpu="""Trying to create tensor with negative dimension -1: [-1]""",
-        tpu=(
-            """empty(): dimension sizes must be >= 0, got [-1], which contains -1"""
-        ),
+        tpu="""empty(): dimension sizes must be >= 0, got [-1], which contains -1""",
     ):
       torch.empty(-1, device=et.device(), dtype=torch.float32)
 
@@ -2321,14 +2194,10 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t2 = torch.ones(3, 2, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """The size of tensor a (3) must match the size of tensor b (2) at non-singleton dimension 1"""
-        ),
-        tpu=(
-            # This error is generated by pytorch. We don't have a good way to
-            # replace it.
-            """The size of tensor a (3) must match the size of tensor b (2) at non-singleton dimension 1"""
-        ),
+        cpu="""The size of tensor a (3) must match the size of tensor b (2) at non-singleton dimension 1""",
+        # This error is generated by pytorch. We don't have a good way to
+        # replace it.
+        tpu="""The size of tensor a (3) must match the size of tensor b (2) at non-singleton dimension 1""",
     ):
       torch.add(t1, t2)
 
@@ -2338,9 +2207,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t = torch.ones(1, device=et.device(), dtype=torch.int64)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """round(): expected the input dtype not to be integer when the decimals argument is specified (-1), got int64"""
-        ),
+        tpu="""round(): expected the input dtype not to be integer when the decimals argument is specified (-1), got int64""",
         cpu=""""round_cpu" not implemented for 'Long'""",
         message_reviewed_by="wan",
     ):
@@ -2349,9 +2216,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t = torch.ones(1, device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """round(): expected the input dtype not to be integer when the decimals argument is specified (2), got int32"""
-        ),
+        tpu="""round(): expected the input dtype not to be integer when the decimals argument is specified (2), got int32""",
         cpu=""""round_cpu" not implemented for 'Int'""",
         message_reviewed_by="wan",
     ):
@@ -2361,9 +2226,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     out_t = torch.zeros(1, device=et.device(), dtype=torch.int16)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """round(): expected the input dtype not to be integer when the decimals argument is specified (0), got int16"""
-        ),
+        tpu="""round(): expected the input dtype not to be integer when the decimals argument is specified (0), got int16""",
         cpu=""""round_vml_cpu" not implemented for 'Short'""",
         message_reviewed_by="wan",
     ):
@@ -2483,9 +2346,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         cpu="""maximum size for tensor at dimension 0 is 5 but size is 6""",
-        tpu=(
-            """unfold(): expected size <= dimension size (shape[0]: 5), got size: 6"""
-        ),
+        tpu="""unfold(): expected size <= dimension size (shape[0]: 5), got size: 6""",
     ):
       t.unfold(0, 6, 1)
 
@@ -2494,12 +2355,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t = torch.ones(2, 3, device=et.device())
     with et.assert_raises_message(
         IndexError,
-        cpu=(
-            """Dimension out of range (expected to be in range of [-2, 1], but got 2)"""
-        ),
-        tpu=(
-            """unfold(): expected dimension to be in range of [-2, 1] for shape [2, 3], got 2"""
-        ),
+        cpu="""Dimension out of range (expected to be in range of [-2, 1], but got 2)""",
+        tpu="""unfold(): expected dimension to be in range of [-2, 1] for shape [2, 3], got 2""",
     ):
       t.unfold(2, 1, 1)
 
@@ -2560,9 +2417,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """view_as_real(): expected the input dtype to be complex, got float32"""
-        ),
+        tpu="""view_as_real(): expected the input dtype to be complex, got float32""",
         cpu="""view_as_real is only supported for complex tensors""",
         message_reviewed_by="wan",
     ):
@@ -2696,9 +2551,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         cpu=""""addcmul_cpu_out" not implemented for 'Bool'""",
-        tpu=(
-            """addcmul(): bool tensors are not supported, got input: bool, tensor1: bool, tensor2: bool"""
-        ),
+        tpu="""addcmul(): bool tensors are not supported, got input: bool, tensor1: bool, tensor2: bool""",
     ):
       torch.addcmul(self_tensor, tensor1, tensor2, value=value)
 
@@ -2724,9 +2577,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         err_type,
         cpu="""tensors used as indices must be long, int, byte or bool tensors""",
-        tpu=(
-            """index_put_(): tensors used as indices must be long, int, byte or bool tensors, got float32 at index 0"""
-        ),
+        tpu="""index_put_(): tensors used as indices must be long, int, byte or bool tensors, got float32 at index 0""",
     ):
       torch.index_put_(
           torch.tensor([0, 1], device=et.device()),
@@ -2738,12 +2589,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     err_type = RuntimeError if et.device().type == "tpu" else IndexError
     with et.assert_raises_message(
         err_type,
-        cpu=(
-            """shape mismatch: indexing tensors could not be broadcast together with shapes [2], [3]"""
-        ),
-        tpu=(
-            """index_put_(): index tensors not broadcastable, got index tensor shape [3] and broadcast shape [2]: The size of tensor a (2) must match the size of tensor b (3) at non-singleton dimension 0"""
-        ),
+        cpu="""shape mismatch: indexing tensors could not be broadcast together with shapes [2], [3]""",
+        tpu="""index_put_(): index tensors not broadcastable, got index tensor shape [3] and broadcast shape [2]: The size of tensor a (2) must match the size of tensor b (3) at non-singleton dimension 0""",
     ):
       torch.index_put_(
           torch.tensor([[0, 1], [2, 3]], device=et.device()),
@@ -2757,12 +2604,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_index_put_broadcast_values_error(self):
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """shape mismatch: value tensor of shape [2, 2] cannot be broadcast to indexing result of shape [2]"""
-        ),
-        tpu=(
-            """index_put_(): value tensor of shape [2, 2] cannot be broadcast to indexing result of shape [2]"""
-        ),
+        cpu="""shape mismatch: value tensor of shape [2, 2] cannot be broadcast to indexing result of shape [2]""",
+        tpu="""index_put_(): value tensor of shape [2, 2] cannot be broadcast to indexing result of shape [2]""",
     ):
       torch.index_put_(
           torch.tensor([[0, 1], [2, 3]], device=et.device()),
@@ -2776,12 +2619,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_index_put_dtype_mismatch_error(self):
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """Index put requires the source and destination dtypes match, got Int for the destination and Long for the source."""
-        ),
-        tpu=(
-            """index_put_(): dtypes of values and destination must be the same, got int64 and int32"""
-        ),
+        cpu="""Index put requires the source and destination dtypes match, got Int for the destination and Long for the source.""",
+        tpu="""index_put_(): dtypes of values and destination must be the same, got int64 and int32""",
     ):
       torch.index_put_(
           torch.tensor([[0, 1], [2, 3]], dtype=torch.int32, device=et.device()),
@@ -2808,12 +2647,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     err_type = RuntimeError if et.device().type == "tpu" else IndexError
     with et.assert_raises_message(
         err_type,
-        cpu=(
-            """The shape of the mask [3, 5] at index 0 does not match the shape of the indexed tensor [2, 5] at index 0"""
-        ),
-        tpu=(
-            """index_put_(): the shape of the mask at index 0 must match the shape of the indexed tensor at index 0, got mask shape [3, 5] and indexed tensor shape [2, 5]"""
-        ),
+        cpu="""The shape of the mask [3, 5] at index 0 does not match the shape of the indexed tensor [2, 5] at index 0""",
+        tpu="""index_put_(): the shape of the mask at index 0 must match the shape of the indexed tensor at index 0, got mask shape [3, 5] and indexed tensor shape [2, 5]""",
     ):
       tensor = torch.arange(10).view(2, 5).to(et.device())
       tensor_other = torch.arange(15).view(3, 5).to(et.device())
@@ -2826,12 +2661,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     err_type = RuntimeError if et.device().type == "tpu" else IndexError
     with et.assert_raises_message(
         err_type,
-        cpu=(
-            """Dimension out of range (expected to be in range of [-1, 0], but got 1)"""
-        ),
-        tpu=(
-            """index_put_(): the shape of the mask at index 1 must match the shape of the indexed tensor at index 1, got mask shape [2, 2] and indexed tensor shape [2]"""
-        ),
+        cpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
+        tpu="""index_put_(): the shape of the mask at index 1 must match the shape of the indexed tensor at index 1, got mask shape [2, 2] and indexed tensor shape [2]""",
     ):
       torch.index_put_(
           torch.tensor([0, 1], device=et.device()),
@@ -2843,12 +2674,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     err_type = RuntimeError if et.device().type == "tpu" else IndexError
     with et.assert_raises_message(
         err_type,
-        cpu=(
-            """The shape of the mask [3] at index 0 does not match the shape of the indexed tensor [2, 3, 5, 9] at index 2"""
-        ),
-        tpu=(
-            """index_put_(): the shape of the mask at index 0 must match the shape of the indexed tensor at index 2, got mask shape [3] and indexed tensor shape [2, 3, 5, 9]"""
-        ),
+        cpu="""The shape of the mask [3] at index 0 does not match the shape of the indexed tensor [2, 3, 5, 9] at index 2""",
+        tpu="""index_put_(): the shape of the mask at index 0 must match the shape of the indexed tensor at index 2, got mask shape [3] and indexed tensor shape [2, 3, 5, 9]""",
     ):
       tensor = torch.arange(270).view(2, 3, 5, 9).to(et.device())
       boolean_mask_dim1 = tensor[0, :, 0, 0] % 2 != 0
@@ -2871,14 +2698,10 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_index_select_dim_out_of_bounds(self):
     with et.assert_raises_message(
         IndexError,
-        cpu=(
-            """Dimension out of range (expected to be in range of [-1, 0], but got 1)"""
-        ),
-        tpu=(
-            # This error is generated by PyTorch and we cannot easily replace
-            # it.
-            """index_select(): Dimension out of range (expected to be in range of [-1, 0], but got 1)"""
-        ),
+        cpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
+        # This error is generated by PyTorch and we cannot easily replace
+        # it.
+        tpu="""index_select(): Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
     ):
       torch.index_select(
           torch.ones(1, device=et.device()),
@@ -2890,9 +2713,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     err_type = RuntimeError if et.device().type == "tpu" else IndexError
     with et.assert_raises_message(
         err_type,
-        cpu=(
-            """Dimension out of range (expected to be in range of [-1, 0], but got 1)"""
-        ),
+        cpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
         tpu="""index_select(): dim must be 0 for scalar input, got 1""",
     ):
       torch.index_select(
@@ -2904,12 +2725,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_index_select_scalar_index(self):
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """index_select(): Index to scalar can have only 1 value, got 2 value(s)"""
-        ),
-        tpu=(
-            """index_select(): index must be 1D of size 1 for scalar input, got shape [2]"""
-        ),
+        cpu="""index_select(): Index to scalar can have only 1 value, got 2 value(s)""",
+        tpu="""index_select(): index must be 1D of size 1 for scalar input, got shape [2]""",
     ):
       torch.index_select(
           torch.tensor(1, device=et.device()),
@@ -2920,9 +2737,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_cumsum_with_unsupported_dtype(self):
     with et.assert_raises_message(
         NotImplementedError if et.device().type == """tpu""" else RuntimeError,
-        cpu=(
-            """Expected out tensor to have dtype c10::dummy_int1_7_t<1>, but got float instead"""
-        ),
+        cpu="""Expected out tensor to have dtype c10::dummy_int1_7_t<1>, but got float instead""",
         tpu="""cumsum(): TorchTPU does not yet support dtype int1""",
         message_reviewed_by="wan",
     ):
@@ -2942,14 +2757,10 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_cumsum_dimension_out_of_range(self):
     with et.assert_raises_message(
         IndexError,
-        cpu=(
-            """Dimension out of range (expected to be in range of [-1, 0], but got 1)"""
-        ),
-        tpu=(
-            # This error is generated by PyTorch and we cannot easily replace
-            # it.
-            """cumsum(): Dimension out of range (expected to be in range of [-1, 0], but got 1)"""
-        ),
+        cpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
+        # This error is generated by PyTorch and we cannot easily replace
+        # it.
+        tpu="""cumsum(): Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
     ):
       t = torch.ones(1, device=et.device())
       output = torch.empty_like(t)
@@ -2958,9 +2769,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_prod_out_with_unsupported_dtype(self):
     with et.assert_raises_message(
         NotImplementedError if et.device().type == """tpu""" else RuntimeError,
-        cpu=(
-            """Expected out tensor to have dtype c10::dummy_int1_7_t<1>, but got float instead"""
-        ),
+        cpu="""Expected out tensor to have dtype c10::dummy_int1_7_t<1>, but got float instead""",
         tpu="""prod(): TorchTPU does not yet support dtype int1""",
         message_reviewed_by="wan",
     ):
@@ -2971,12 +2780,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_index_add_rank_mismatch(self):
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """index_add_(): Number of indices (1) should be equal to source.size(dim): (2), for dim: 0"""
-        ),
-        tpu=(
-            """index_add(): self and source must have the same number of dimensions, got 2 and 1"""
-        ),
+        cpu="""index_add_(): Number of indices (1) should be equal to source.size(dim): (2), for dim: 0""",
+        tpu="""index_add(): self and source must have the same number of dimensions, got 2 and 1""",
     ):
       t = torch.ones(2, 2, device=et.device())
       index = torch.tensor([0], device=et.device(), dtype=torch.long)
@@ -2989,9 +2794,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     err_type = RuntimeError if et.device().type == "tpu" else IndexError
     with et.assert_raises_message(
         err_type,
-        cpu=(
-            """index_add_(): Index is supposed to be a vector, but got dim: 2 with type: Long and size: [1, 1]"""
-        ),
+        cpu="""index_add_(): Index is supposed to be a vector, but got dim: 2 with type: Long and size: [1, 1]""",
         tpu="""index_add(): index must be 1D, got shape [1, 1]""",
     ):
       t = torch.ones(2, 2, device=et.device())
@@ -3004,14 +2807,10 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_index_add_dim_out_of_range(self):
     with et.assert_raises_message(
         IndexError,
-        cpu=(
-            """Dimension out of range (expected to be in range of [-2, 1], but got 2)"""
-        ),
-        tpu=(
-            # This error is generated by PyTorch and we cannot easily replace
-            # it.
-            """index_add(): Dimension out of range (expected to be in range of [-2, 1], but got 2)"""
-        ),
+        cpu="""Dimension out of range (expected to be in range of [-2, 1], but got 2)""",
+        # This error is generated by PyTorch and we cannot easily replace
+        # it.
+        tpu="""index_add(): Dimension out of range (expected to be in range of [-2, 1], but got 2)""",
     ):
       t = torch.ones(2, 2, device=et.device())
       index = torch.tensor([0], device=et.device(), dtype=torch.long)
@@ -3023,12 +2822,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_index_add_source_dim_ne_index_size(self):
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """index_add_(): Number of indices (1) should be equal to source.size(dim): (2), for dim: 0"""
-        ),
-        tpu=(
-            """index_add(): source must have the same number of elements as the index along dimension 0, got 2 and 1"""
-        ),
+        cpu="""index_add_(): Number of indices (1) should be equal to source.size(dim): (2), for dim: 0""",
+        tpu="""index_add(): source must have the same number of elements as the index along dimension 0, got 2 and 1""",
     ):
       t = torch.ones(2, 2, device=et.device())
       index = torch.tensor([0], device=et.device(), dtype=torch.long)
@@ -3041,9 +2836,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         RuntimeError,
         cpu="""source tensor shape must match self tensor shape, excluding the specified dimension. Got self.shape = [2, 2] source.shape = [1, 3]""",
-        tpu=(
-            """index_add(): self and source must have the same size along dimension 1, got 2 and 3"""
-        ),
+        tpu="""index_add(): self and source must have the same size along dimension 1, got 2 and 3""",
     ):
       t = torch.ones(2, 2, device=et.device())
       index = torch.tensor([0], device=et.device(), dtype=torch.long)
@@ -3056,9 +2849,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     err_type = RuntimeError if et.device().type == "tpu" else IndexError
     with et.assert_raises_message(
         err_type,
-        cpu=(
-            """Dimension out of range (expected to be in range of [-1, 0], but got 1)"""
-        ),
+        cpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
         tpu="""index_add(): dim must be 0 for scalar input, got 1""",
     ):
       t = torch.tensor(1, device=et.device())
@@ -3071,12 +2862,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_index_add_scalar_source_not_scalar(self):
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """source tensor shape must match self tensor shape, excluding the specified dimension. Got self.shape = [] source.shape = [1]"""
-        ),
-        tpu=(
-            """index_add(): source shape must match self shape, excluding the specified dimension, got source shape [1] and self shape []"""
-        ),
+        cpu="""source tensor shape must match self tensor shape, excluding the specified dimension. Got self.shape = [] source.shape = [1]""",
+        tpu="""index_add(): source shape must match self shape, excluding the specified dimension, got source shape [1] and self shape []""",
     ):
       t = torch.tensor(1, device=et.device())
       index = torch.tensor([0], device=et.device(), dtype=torch.long)
@@ -3090,9 +2877,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     with et.assert_raises_message(
         err_type,
         cpu="""Dimension specified as 0 but tensor has no dimensions""",
-        tpu=(
-            """index_add(): index must be 1D of size 1 for scalar input, got shape [2]"""
-        ),
+        tpu="""index_add(): index must be 1D of size 1 for scalar input, got shape [2]""",
     ):
       t = torch.tensor(1, device=et.device())
       index = torch.tensor([0, 0], device=et.device(), dtype=torch.long)
@@ -3228,12 +3013,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     """Tests that empty_strided fails with expected error when size and stride arrays have different lengths."""
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """dimensionality of sizes (2) must match dimensionality of strides (1)"""
-        ),
-        tpu=(
-            """empty_strided(): the dimensionality of sizes must be the same as strides, got size [2] and stride [1]"""
-        ),
+        cpu="""dimensionality of sizes (2) must match dimensionality of strides (1)""",
+        tpu="""empty_strided(): the dimensionality of sizes must be the same as strides, got size [2] and stride [1]""",
     ):
       torch.empty_strided((2, 3), (1,), device=et.device(), dtype=torch.float32)
 
@@ -3252,9 +3033,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     """Tests that empty_strided fails with expected error when stride is negative."""
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """Storage size calculation overflowed with sizes=[2, 2] and strides=[2, -1]"""
-        ),
+        cpu="""Storage size calculation overflowed with sizes=[2, 2] and strides=[2, -1]""",
         tpu="""empty_strided(): stride must be nonnegative, got strides [2, -1]""",
     ):
       torch.empty_strided(
@@ -3265,12 +3044,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     err_type = RuntimeError if et.device().type == "tpu" else IndexError
     with et.assert_raises_message(
         err_type,
-        cpu=(
-            """Dimension out of range (expected to be in range of [-2, 1], but got 2)"""
-        ),
-        tpu=(
-            """index_put_(): too many indices for tensor of dimension 2, got 3 index tensors after expanding boolean indices"""
-        ),
+        cpu="""Dimension out of range (expected to be in range of [-2, 1], but got 2)""",
+        tpu="""index_put_(): too many indices for tensor of dimension 2, got 3 index tensors after expanding boolean indices""",
     ):
       t = torch.zeros(10, 20, device=et.device())
       mask = torch.zeros(10, 20, dtype=torch.bool, device=et.device())
@@ -3330,10 +3105,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """elu(): expected the input dtype to be floating point, got"""
-            f""" {tpu_dtype_str}"""
-        ),
+        tpu="""elu(): expected the input dtype to be floating point, got"""
+        f""" {tpu_dtype_str}""",
         cpu=f""""elu_cpu" not implemented for '{cpu_dtype_str}'""",
     ):
       torch.nn.functional.elu(inp)
@@ -3386,9 +3159,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     out = torch.tensor(0.0, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """glu(): expected input tensor to have at least 1 dimension, got 0 dimensions"""
-        ),
+        tpu="""glu(): expected input tensor to have at least 1 dimension, got 0 dimensions""",
         cpu="""glu does not support 0-dimensional tensors""",
         message_reviewed_by="wan",
     ):
@@ -3399,12 +3170,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     out = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         IndexError,
-        tpu=(
-            """glu(): Dimension out of range (expected to be in range of [-2, 1], but got 2)"""
-        ),
-        cpu=(
-            """Dimension out of range (expected to be in range of [-2, 1], but got 2)"""
-        ),
+        tpu="""glu(): Dimension out of range (expected to be in range of [-2, 1], but got 2)""",
+        cpu="""Dimension out of range (expected to be in range of [-2, 1], but got 2)""",
         message_reviewed_by="wan",
     ):
       torch.ops.aten.glu.out(t, dim=2, out=out)
@@ -3423,12 +3190,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_group_norm_backward_grad_out_numel_mismatch(self):
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """Expected dY.numel() == N * C * HxW to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)"""
-        ),
-        tpu=(
-            """native_group_norm_backward(): expected grad_out to have 18 elements, got 24"""
-        ),
+        cpu="""Expected dY.numel() == N * C * HxW to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)""",
+        tpu="""native_group_norm_backward(): expected grad_out to have 18 elements, got 24""",
     ):
       torch.ops.aten.native_group_norm_backward(
           torch.ones(1, 6, 4, device=et.device()),
@@ -3446,12 +3209,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_group_norm_backward_input_numel_mismatch(self):
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """Expected X.numel() == N * C * HxW to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)"""
-        ),
-        tpu=(
-            """native_group_norm_backward(): expected input to have 24 elements, got 18"""
-        ),
+        cpu="""Expected X.numel() == N * C * HxW to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)""",
+        tpu="""native_group_norm_backward(): expected input to have 24 elements, got 18""",
     ):
       torch.ops.aten.native_group_norm_backward(
           torch.ones(1, 6, 4, device=et.device()),
@@ -3469,12 +3228,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_group_norm_backward_mean_numel_mismatch(self):
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """Expected mean.numel() == N * group to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)"""
-        ),
-        tpu=(
-            """native_group_norm_backward(): expected mean to have shape [1, 2], got [1, 3]"""
-        ),
+        cpu="""Expected mean.numel() == N * group to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)""",
+        tpu="""native_group_norm_backward(): expected mean to have shape [1, 2], got [1, 3]""",
     ):
       torch.ops.aten.native_group_norm_backward(
           torch.ones(1, 6, 3, device=et.device()),
@@ -3492,12 +3247,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_group_norm_backward_mean_rstd_shape_mismatch(self):
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """Expected rstd.numel() == N * group to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)"""
-        ),
-        tpu=(
-            """native_group_norm_backward(): expected mean and rstd to have the same shape, got mean size [1, 2] and rstd size [1, 3]"""
-        ),
+        cpu="""Expected rstd.numel() == N * group to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)""",
+        tpu="""native_group_norm_backward(): expected mean and rstd to have the same shape, got mean size [1, 2] and rstd size [1, 3]""",
     ):
       torch.ops.aten.native_group_norm_backward(
           torch.ones(1, 6, 3, device=et.device()),
@@ -3515,12 +3266,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   def test_group_norm_backward_weight_numel_mismatch(self):
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """Expected !gamma.defined() || gamma.numel() == C to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)"""
-        ),
-        tpu=(
-            """native_group_norm_backward(): expected weight to have 6 elements, got 5"""
-        ),
+        cpu="""Expected !gamma.defined() || gamma.numel() == C to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)""",
+        tpu="""native_group_norm_backward(): expected weight to have 6 elements, got 5""",
     ):
       torch.ops.aten.native_group_norm_backward(
           torch.ones(1, 6, 3, device=et.device()),
@@ -3620,9 +3367,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """masked_scatter_ only supports boolean masks, but got mask with dtype Int"""
-        ),
+        cpu="""masked_scatter_ only supports boolean masks, but got mask with dtype Int""",
         tpu="""masked_scatter_(): expected Boolean tensor for mask, got int32""",
     ):
       torch.masked_scatter(t, mask_int, source)
@@ -3635,12 +3380,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """masked_scatter: expected self and source to have same dtypes but gotFloat and Int"""
-        ),
-        tpu=(
-            """masked_scatter_(): expected same dtype for self and source, got self dtype float32 and source dtype int32"""
-        ),
+        cpu="""masked_scatter: expected self and source to have same dtypes but gotFloat and Int""",
+        tpu="""masked_scatter_(): expected same dtype for self and source, got self dtype float32 and source dtype int32""",
     ):
       torch.masked_scatter(t, mask, source)
 
@@ -3681,18 +3422,14 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """arange(): expected [start, end) interval to have finite bounds, got [inf, 0)"""
-        ),
+        tpu="""arange(): expected [start, end) interval to have finite bounds, got [inf, 0)""",
         cpu="""unsupported range: inf -> 0""",
     ):
       torch.arange(float("inf"), 0, -1, device=et.device())
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """arange(): expected [start, end) interval to have finite bounds, got [0, inf)"""
-        ),
+        tpu="""arange(): expected [start, end) interval to have finite bounds, got [0, inf)""",
         cpu="""unsupported range: 0 -> inf""",
     ):
       torch.arange(0, float("inf"), 1, device=et.device())
@@ -3707,18 +3444,14 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """arange(): expected step to be positive since start (0) < end (10), got step=-1"""
-        ),
+        tpu="""arange(): expected step to be positive since start (0) < end (10), got step=-1""",
         cpu="""upper bound and lower bound inconsistent with step sign""",
     ):
       torch.arange(0, 10, -1, device=et.device())
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """arange(): expected step to be negative since start (10) > end (0), got step=1"""
-        ),
+        tpu="""arange(): expected step to be negative since start (10) > end (0), got step=1""",
         cpu="""upper bound and lower bound inconsistent with step sign""",
     ):
       torch.arange(10, 0, 1, device=et.device())
@@ -3733,18 +3466,14 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """arange(): expected step to be positive since start (0) < end (10), got step=-inf"""
-        ),
+        tpu="""arange(): expected step to be positive since start (0) < end (10), got step=-inf""",
         cpu="""upper bound and lower bound inconsistent with step sign""",
     ):
       torch.arange(0, 10, float("-inf"), device=et.device())
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """arange(): expected step to be negative since start (10) > end (0), got step=inf"""
-        ),
+        tpu="""arange(): expected step to be negative since start (10) > end (0), got step=inf""",
         cpu="""upper bound and lower bound inconsistent with step sign""",
     ):
       torch.arange(10, 0, float("inf"), device=et.device())
@@ -3779,10 +3508,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """cdist_forward(): expected the first argument's dtype not to be"""
-            f""" bfloat16 or float16, got {tpu_dtype_str}"""
-        ),
+        tpu="""cdist_forward(): expected the first argument's dtype not to be"""
+        f""" bfloat16 or float16, got {tpu_dtype_str}""",
         cpu=f""""cdist" not implemented for '{cpu_dtype_str}'""",
         message_reviewed_by="wan",
     ):
@@ -3790,10 +3517,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """cdist_forward(): expected the second argument's dtype not to be"""
-            f""" bfloat16 or float16, got {tpu_dtype_str}"""
-        ),
+        tpu="""cdist_forward(): expected the second argument's dtype not to be"""
+        f""" bfloat16 or float16, got {tpu_dtype_str}""",
         cpu=f"""expected scalar type Float but found {cpu_dtype_str}""",
         message_reviewed_by="wan",
     ):
@@ -3810,9 +3535,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """cdist_forward(): expected the first argument's dtype to be floating point, got int32"""
-        ),
+        tpu="""cdist_forward(): expected the first argument's dtype to be floating point, got int32""",
         cpu="""cdist only supports floating-point dtypes, X1 got: Int""",
         message_reviewed_by="wan",
     ):
@@ -3820,9 +3543,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """cdist_forward(): expected the second argument's dtype to be floating point, got int32"""
-        ),
+        tpu="""cdist_forward(): expected the second argument's dtype to be floating point, got int32""",
         cpu="""cdist only supports floating-point dtypes, X2 got: Int""",
         message_reviewed_by="wan",
     ):
@@ -3844,24 +3565,16 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t_int = torch.ones((2, 2), device=device, dtype=torch.int32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """exponential_(): expected input tensor dtype to be a floating-point real type, got int32"""
-        ),
-        cpu=(
-            """Exponential distribution is a continuous probability distribution. dtype must be a floating point but you specified Int"""
-        ),
+        tpu="""exponential_(): expected input tensor dtype to be a floating-point real type, got int32""",
+        cpu="""Exponential distribution is a continuous probability distribution. dtype must be a floating point but you specified Int""",
     ):
       t_int.exponential_()
 
     t_complex = torch.ones((2, 2), device=device, dtype=torch.complex64)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """exponential_(): expected input tensor dtype to be a floating-point real type, got complex64"""
-        ),
-        cpu=(
-            """Exponential distribution is a continuous probability distribution. dtype must be a floating point but you specified ComplexFloat"""
-        ),
+        tpu="""exponential_(): expected input tensor dtype to be a floating-point real type, got complex64""",
+        cpu="""Exponential distribution is a continuous probability distribution. dtype must be a floating point but you specified ComplexFloat""",
     ):
       t_complex.exponential_()
 
@@ -3881,12 +3594,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     b = torch.ones(4, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """add(): output with shape [4] doesn't match the broadcast shape of the tensor being operated on in-place, which has shape [1]"""
-        ),
-        cpu=(
-            """unsupported operation: some elements of the input tensor and the written-to tensor refer to a single memory location. Please clone() the tensor before performing the operation."""
-        ),
+        tpu="""add(): output with shape [4] doesn't match the broadcast shape of the tensor being operated on in-place, which has shape [1]""",
+        cpu="""unsupported operation: some elements of the input tensor and the written-to tensor refer to a single memory location. Please clone() the tensor before performing the operation.""",
     ):
       torch.add(a, b, out=a[1:2])
 
@@ -3901,45 +3610,35 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """avg_pool2d(): not yet implemented for uint8, int8, int16, int32, and complex64 dtypes, got complex64"""
-        ),
+        tpu="""avg_pool2d(): not yet implemented for uint8, int8, int16, int32, and complex64 dtypes, got complex64""",
         cpu=""""avg_pool2d" not implemented for 'ComplexFloat'""",
     ):
       torch.nn.functional.avg_pool2d(t_complex, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """avg_pool2d(): not yet implemented for uint8, int8, int16, int32, and complex64 dtypes, got uint8"""
-        ),
+        tpu="""avg_pool2d(): not yet implemented for uint8, int8, int16, int32, and complex64 dtypes, got uint8""",
         cpu=""""avg_pool2d" not implemented for 'Byte'""",
     ):
       torch.nn.functional.avg_pool2d(t_uint8, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """avg_pool2d(): not yet implemented for uint8, int8, int16, int32, and complex64 dtypes, got int8"""
-        ),
+        tpu="""avg_pool2d(): not yet implemented for uint8, int8, int16, int32, and complex64 dtypes, got int8""",
         cpu=""""avg_pool2d" not implemented for 'Char'""",
     ):
       torch.nn.functional.avg_pool2d(t_int8, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """avg_pool2d(): not yet implemented for uint8, int8, int16, int32, and complex64 dtypes, got int16"""
-        ),
+        tpu="""avg_pool2d(): not yet implemented for uint8, int8, int16, int32, and complex64 dtypes, got int16""",
         cpu=""""avg_pool2d" not implemented for 'Short'""",
     ):
       torch.nn.functional.avg_pool2d(t_int16, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """avg_pool2d(): not yet implemented for uint8, int8, int16, int32, and complex64 dtypes, got int32"""
-        ),
+        tpu="""avg_pool2d(): not yet implemented for uint8, int8, int16, int32, and complex64 dtypes, got int32""",
         cpu=""""avg_pool2d" not implemented for 'Int'""",
     ):
       torch.nn.functional.avg_pool2d(t_int32, kernel_size=3)
@@ -3968,72 +3667,56 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got bool"""
-        ),
+        tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got bool""",
         cpu=""""avg_pool3d_out_frame" not implemented for 'Bool'""",
     ):
       torch.nn.functional.avg_pool3d(t_bool, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got bfloat16"""
-        ),
+        tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got bfloat16""",
         cpu=""""avg_pool3d_out_frame" not implemented for 'BFloat16'""",
     ):
       torch.nn.functional.avg_pool3d(t_bf16, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got float16"""
-        ),
+        tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got float16""",
         cpu=""""avg_pool3d_out_frame" not implemented for 'Half'""",
     ):
       torch.nn.functional.avg_pool3d(t_f16, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got complex64"""
-        ),
+        tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got complex64""",
         cpu=""""avg_pool3d_out_frame" not implemented for 'ComplexFloat'""",
     ):
       torch.nn.functional.avg_pool3d(t_complex, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got uint8"""
-        ),
+        tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got uint8""",
         cpu=""""avg_pool3d_out_frame" not implemented for 'Byte'""",
     ):
       torch.nn.functional.avg_pool3d(t_uint8, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got int8"""
-        ),
+        tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got int8""",
         cpu=""""avg_pool3d_out_frame" not implemented for 'Char'""",
     ):
       torch.nn.functional.avg_pool3d(t_int8, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got int16"""
-        ),
+        tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got int16""",
         cpu=""""avg_pool3d_out_frame" not implemented for 'Short'""",
     ):
       torch.nn.functional.avg_pool3d(t_int16, kernel_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got int32"""
-        ),
+        tpu="""avg_pool3d(): not yet implemented for bool, bfloat16, float16, uint8, int8, int16, int32, and complex64 dtypes, got int32""",
         cpu=""""avg_pool3d_out_frame" not implemented for 'Int'""",
     ):
       torch.nn.functional.avg_pool3d(t_int32, kernel_size=3)
@@ -4049,10 +3732,8 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """pdist_forward(): expected the input dtype not to be bfloat16 or"""
-            f""" float16, got {tpu_dtype_str}"""
-        ),
+        tpu="""pdist_forward(): expected the input dtype not to be bfloat16 or"""
+        f""" float16, got {tpu_dtype_str}""",
         cpu=f""""pdist" not implemented for '{cpu_dtype_str}'""",
         message_reviewed_by="wan",
     ):
@@ -4262,54 +3943,42 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got complex64"""
-        ),
+        tpu="""adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got complex64""",
         cpu=""""adaptive_avg_pool2d" not implemented for 'ComplexFloat'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_complex, output_size=2)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got uint8"""
-        ),
+        tpu="""adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got uint8""",
         cpu=""""adaptive_avg_pool2d" not implemented for 'Byte'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_uint8, output_size=2)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got int8"""
-        ),
+        tpu="""adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got int8""",
         cpu=""""adaptive_avg_pool2d" not implemented for 'Char'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_int8, output_size=2)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got int16"""
-        ),
+        tpu="""adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got int16""",
         cpu=""""adaptive_avg_pool2d" not implemented for 'Short'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_int16, output_size=2)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got int32"""
-        ),
+        tpu="""adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got int32""",
         cpu=""""adaptive_avg_pool2d" not implemented for 'Int'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_int32, output_size=2)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got int64"""
-        ),
+        tpu="""adaptive_avg_pool2d(): not yet implemented for uint8, int8, int16, int32, int64, and complex64 dtypes, got int64""",
         cpu=""""adaptive_avg_pool2d" not implemented for 'Long'""",
     ):
       torch.nn.functional.adaptive_avg_pool2d(t_int64, output_size=2)
@@ -4327,63 +3996,49 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got bool"""
-        ),
+        tpu="""adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got bool""",
         cpu=""""adaptive_avg_pool3d_cpu" not implemented for 'Bool'""",
     ):
       torch.nn.functional.adaptive_avg_pool3d(t_bool, output_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got complex64"""
-        ),
+        tpu="""adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got complex64""",
         cpu=""""adaptive_avg_pool3d_cpu" not implemented for 'ComplexFloat'""",
     ):
       torch.nn.functional.adaptive_avg_pool3d(t_complex, output_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got uint8"""
-        ),
+        tpu="""adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got uint8""",
         cpu=""""adaptive_avg_pool3d_cpu" not implemented for 'Byte'""",
     ):
       torch.nn.functional.adaptive_avg_pool3d(t_uint8, output_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got int8"""
-        ),
+        tpu="""adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got int8""",
         cpu=""""adaptive_avg_pool3d_cpu" not implemented for 'Char'""",
     ):
       torch.nn.functional.adaptive_avg_pool3d(t_int8, output_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got int16"""
-        ),
+        tpu="""adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got int16""",
         cpu=""""adaptive_avg_pool3d_cpu" not implemented for 'Short'""",
     ):
       torch.nn.functional.adaptive_avg_pool3d(t_int16, output_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got int32"""
-        ),
+        tpu="""adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got int32""",
         cpu=""""adaptive_avg_pool3d_cpu" not implemented for 'Int'""",
     ):
       torch.nn.functional.adaptive_avg_pool3d(t_int32, output_size=3)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got int64"""
-        ),
+        tpu="""adaptive_avg_pool3d(): not yet implemented for bool, uint8, int8, int16, int32, int64, and complex64 dtypes, got int64""",
         cpu=""""adaptive_avg_pool3d_cpu" not implemented for 'Long'""",
     ):
       torch.nn.functional.adaptive_avg_pool3d(t_int64, output_size=3)
@@ -4394,9 +4049,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """floor_divide(): expected dtype of the first argument to be neither complex nor bool, got complex64"""
-        ),
+        tpu="""floor_divide(): expected dtype of the first argument to be neither complex nor bool, got complex64""",
         cpu=""""div_floor_cpu" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
@@ -4404,9 +4057,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """floor_divide(): expected dtype of the second argument to be neither complex nor bool, got complex64"""
-        ),
+        tpu="""floor_divide(): expected dtype of the second argument to be neither complex nor bool, got complex64""",
         cpu=""""div_floor_cpu" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
@@ -4418,9 +4069,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """atan2(): expected the dtype of the first argument not to be complex, got complex64"""
-        ),
+        tpu="""atan2(): expected the dtype of the first argument not to be complex, got complex64""",
         cpu=""""atan2_cpu" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
@@ -4428,9 +4077,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """atan2(): expected the dtype of the second argument not to be complex, got complex64"""
-        ),
+        tpu="""atan2(): expected the dtype of the second argument not to be complex, got complex64""",
         cpu=""""atan2_cpu" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
@@ -4459,9 +4106,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{op_name}(): expected the dtype of the first argument to be neither floating-point nor complex, got float64"""
-        ),
+        tpu=f"""{op_name}(): expected the dtype of the first argument to be neither floating-point nor complex, got float64""",
         cpu=f""""{op_name}_cpu" not implemented for 'Double'""",
         message_reviewed_by="wan",
     ):
@@ -4469,9 +4114,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{op_name}(): expected the dtype of the second argument to be neither floating-point nor complex, got float64"""
-        ),
+        tpu=f"""{op_name}(): expected the dtype of the second argument to be neither floating-point nor complex, got float64""",
         cpu=f""""{op_name}_cpu" not implemented for 'Double'""",
         message_reviewed_by="wan",
     ):
@@ -4499,9 +4142,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{op_name_tpu}(): expected the dtype of the first argument to be integer, got float64"""
-        ),
+        tpu=f"""{op_name_tpu}(): expected the dtype of the first argument to be integer, got float64""",
         cpu=f""""{op_name_cpu}_cpu" not implemented for 'Double'""",
         message_reviewed_by="wan",
     ):
@@ -4509,9 +4150,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{op_name_tpu}(): expected the dtype of the second argument to be integer, got float64"""
-        ),
+        tpu=f"""{op_name_tpu}(): expected the dtype of the second argument to be integer, got float64""",
         cpu=f""""{op_name_cpu}_cpu" not implemented for 'Double'""",
         message_reviewed_by="wan",
     ):
@@ -4566,12 +4205,8 @@ Supported combinations for non-constant padding:
     img = torch.randn(1, 4, 16, 1, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """col2im(): expected input to have 3 dimensions (batch, channels, length), got 4"""
-        ),
-        cpu=(
-            """Expected 2D or 3D (batch mode) tensor for input with possibly 0 batch size and non-zero dimensions for input, but got: [1, 4, 16, 1]"""
-        ),
+        tpu="""col2im(): expected input to have 3 dimensions (batch, channels, length), got 4""",
+        cpu="""Expected 2D or 3D (batch mode) tensor for input with possibly 0 batch size and non-zero dimensions for input, but got: [1, 4, 16, 1]""",
     ):
       torch.ops.aten.col2im(img, (5, 5), (2, 2), (1, 1), (0, 0), (1, 1))
 
@@ -4580,9 +4215,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""col2im(): expected kernel size to be positive, got 0""",
-        cpu=(
-            """kernel size should be greater than zero, but got kernel_height: 0 kernel_width: 2"""
-        ),
+        cpu="""kernel size should be greater than zero, but got kernel_height: 0 kernel_width: 2""",
     ):
       torch.ops.aten.col2im(img, (5, 5), (0, 2), (1, 1), (0, 0), (1, 1))
 
@@ -4590,12 +4223,8 @@ Supported combinations for non-constant padding:
     img = torch.randn(1, 5, 15, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """col2im(): expected input channels to be divisible by kernel product (4), got 5"""
-        ),
-        cpu=(
-            """Expected size of input's dimension 1 to be divisible by the product of kernel_size, but got input.size(1)=5 and kernel_size=(2, 2)."""
-        ),
+        tpu="""col2im(): expected input channels to be divisible by kernel product (4), got 5""",
+        cpu="""Expected size of input's dimension 1 to be divisible by the product of kernel_size, but got input.size(1)=5 and kernel_size=(2, 2).""",
     ):
       torch.ops.aten.col2im(img, (5, 5), (2, 2), (1, 1), (0, 0), (1, 1))
 
@@ -4611,9 +4240,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""col2im(): expected all stride elements to be positive, got [0, 1]""",
-        cpu=(
-            """stride should be greater than zero, but got stride_height: 0 stride_width: 1"""
-        ),
+        cpu="""stride should be greater than zero, but got stride_height: 0 stride_width: 1""",
         message_reviewed_by="wan",
     ):
       stride = (0, 1)
@@ -4624,12 +4251,8 @@ Supported combinations for non-constant padding:
     # Check negative stride.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """col2im(): expected all stride elements to be positive, got [1, -1]"""
-        ),
-        cpu=(
-            """stride should be greater than zero, but got stride_height: 1 stride_width: -1"""
-        ),
+        tpu="""col2im(): expected all stride elements to be positive, got [1, -1]""",
+        cpu="""stride should be greater than zero, but got stride_height: 1 stride_width: -1""",
         message_reviewed_by="wan",
     ):
       stride = (1, -1)
@@ -4643,12 +4266,8 @@ Supported combinations for non-constant padding:
     img = torch.randn(1, 4, 15, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """col2im(): expected input length to be divisible by col size (4 * 4 = 16), got 15"""
-        ),
-        cpu=(
-            """Given output_size=(5, 5), kernel_size=(2, 2), dilation=(1, 1), padding=(0, 0), stride=(1, 1), expected size of input's dimension 2 to match the calculated number of sliding blocks 4 * 4 = 16, but got input.size(2)=15."""
-        ),
+        tpu="""col2im(): expected input length to be divisible by col size (4 * 4 = 16), got 15""",
+        cpu="""Given output_size=(5, 5), kernel_size=(2, 2), dilation=(1, 1), padding=(0, 0), stride=(1, 1), expected size of input's dimension 2 to match the calculated number of sliding blocks 4 * 4 = 16, but got input.size(2)=15.""",
     ):
       torch.ops.aten.col2im(img, (5, 5), (2, 2), (1, 1), (0, 0), (1, 1))
 
@@ -4664,9 +4283,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{op_name}(): expected the dtype of the first argument not to be complex, got complex64"""
-        ),
+        tpu=f"""{op_name}(): expected the dtype of the first argument not to be complex, got complex64""",
         cpu=f""""{op_name}_cpu" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
@@ -4674,9 +4291,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{op_name}(): expected the dtype of the second argument not to be complex, got complex64"""
-        ),
+        tpu=f"""{op_name}(): expected the dtype of the second argument not to be complex, got complex64""",
         cpu=f""""{op_name}_cpu" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
@@ -4685,9 +4300,7 @@ Supported combinations for non-constant padding:
     # TODO: b/478955517 dtype checks should run after dtype promotion.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{op_name}(): expected the dtype of the second argument not to be complex, got complex128"""
-        ),
+        tpu=f"""{op_name}(): expected the dtype of the second argument not to be complex, got complex128""",
         cpu=f""""{op_name}_cpu" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
@@ -4706,9 +4319,7 @@ Supported combinations for non-constant padding:
     for args in test_cases:
       with et.assert_raises_message(
           RuntimeError,
-          tpu=(
-              """remainder(): expected the dtype of the output (promoted inputs dtype) to be neither bool nor complex, got complex64"""
-          ),
+          tpu="""remainder(): expected the dtype of the output (promoted inputs dtype) to be neither bool nor complex, got complex64""",
           cpu=""""remainder_cpu" not implemented for 'ComplexFloat'""",
           message_reviewed_by="wan",
       ):
@@ -4724,9 +4335,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """foreach_abs_(): expected all 4 tensors in the self list not to be complex, got 2 complex tensors: complex64 at index 1 and complex64 at index 2"""
-        ),
+        tpu="""foreach_abs_(): expected all 4 tensors in the self list not to be complex, got 2 complex tensors: complex64 at index 1 and complex64 at index 2""",
         cpu="""In-place abs is not supported for complex tensors.""",
         message_reviewed_by="wan",
     ):
@@ -4737,12 +4346,8 @@ Supported combinations for non-constant padding:
     other_list = [torch.tensor([3, 4], dtype=torch.int32, device=et.device())]
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """foreach_add(): expected alpha to be integral for integral input tensors, got float64"""
-        ),
-        cpu=(
-            """For integral input tensors, argument alpha must not be a floating point number."""
-        ),
+        tpu="""foreach_add(): expected alpha to be integral for integral input tensors, got float64""",
+        cpu="""For integral input tensors, argument alpha must not be a floating point number.""",
         message_reviewed_by="wan",
     ):
       torch._foreach_add(self_list, other_list, alpha=1.5)
@@ -4752,9 +4357,7 @@ Supported combinations for non-constant padding:
     other_list = [torch.tensor([3, 4], dtype=torch.int32, device=et.device())]
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """foreach_add(): expected input tensor dtypes to be bool when alpha dtype is bool, got int32 and int32"""
-        ),
+        tpu="""foreach_add(): expected input tensor dtypes to be bool when alpha dtype is bool, got int32 and int32""",
         cpu="""Boolean alpha only supported for Boolean results.""",
         message_reviewed_by="wan",
     ):
@@ -4764,9 +4367,7 @@ Supported combinations for non-constant padding:
     self_list = [torch.tensor([1, 2], dtype=torch.int32, device=et.device())]
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """foreach_add_(): expected the scalar dtype to be castable to the tensor dtype (e.g. bool to int or int to float), got float64 and int32"""
-        ),
+        tpu="""foreach_add_(): expected the scalar dtype to be castable to the tensor dtype (e.g. bool to int or int to float), got float64 and int32""",
         cpu="""result type Float can't be cast to the desired output type Int""",
         message_reviewed_by="wan",
     ):
@@ -4779,9 +4380,7 @@ Supported combinations for non-constant padding:
     ]
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """foreach_add_(): expected the scalar dtype to be castable to the tensor dtype (e.g. bool to int or int to float), got int64 and bool"""
-        ),
+        tpu="""foreach_add_(): expected the scalar dtype to be castable to the tensor dtype (e.g. bool to int or int to float), got int64 and bool""",
         cpu="""result type Long can't be cast to the desired output type Bool""",
         message_reviewed_by="wan",
     ):
@@ -4795,12 +4394,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """foreach_sub(): expected all 2 tensors in the self list not to be bool, got 1 bool tensor: bool at index 1"""
-        ),
-        cpu=(
-            """Subtraction, the `-` operator, with a bool tensor is not supported. If you are trying to invert a mask, use the `~` or `logical_not()` operator instead."""
-        ),
+        tpu="""foreach_sub(): expected all 2 tensors in the self list not to be bool, got 1 bool tensor: bool at index 1""",
+        cpu="""Subtraction, the `-` operator, with a bool tensor is not supported. If you are trying to invert a mask, use the `~` or `logical_not()` operator instead.""",
         message_reviewed_by="wan",
     ):
       torch._foreach_sub(self_list, [1, 1])
@@ -4813,12 +4408,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """foreach_sub(): expected the scalar argument not to be bool, got true"""
-        ),
-        cpu=(
-            """Subtraction, the `-` operator, with a bool tensor is not supported. If you are trying to invert a mask, use the `~` or `logical_not()` operator instead."""
-        ),
+        tpu="""foreach_sub(): expected the scalar argument not to be bool, got true""",
+        cpu="""Subtraction, the `-` operator, with a bool tensor is not supported. If you are trying to invert a mask, use the `~` or `logical_not()` operator instead.""",
         message_reviewed_by="wan",
     ):
       torch._foreach_sub(self_list, True)
@@ -4831,12 +4422,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """foreach_sub(): expected all 2 scalars in the scalars list not to be bool, got 1 bool scalar: true at index 1"""
-        ),
-        cpu=(
-            """Subtraction, the `-` operator, with a bool tensor is not supported. If you are trying to invert a mask, use the `~` or `logical_not()` operator instead."""
-        ),
+        tpu="""foreach_sub(): expected all 2 scalars in the scalars list not to be bool, got 1 bool scalar: true at index 1""",
+        cpu="""Subtraction, the `-` operator, with a bool tensor is not supported. If you are trying to invert a mask, use the `~` or `logical_not()` operator instead.""",
         message_reviewed_by="wan",
     ):
       torch._foreach_sub(self_list, [1, True])
@@ -4850,9 +4437,7 @@ Supported combinations for non-constant padding:
     ]
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """foreach_sqrt_(): expected all 4 tensors in the self list not to be integral, got 2 integral tensors: int32 at index 0 and int32 at index 2"""
-        ),
+        tpu="""foreach_sqrt_(): expected all 4 tensors in the self list not to be integral, got 2 integral tensors: int32 at index 0 and int32 at index 2""",
         cpu="""result type Float can't be cast to the desired output type Int""",
     ):
       torch._foreach_sqrt_(self_list)
@@ -4876,12 +4461,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """foreach_addcdiv(): expected at least one non-integral tensor in each of the 3 dividend (second tensor list) and divisor (third tensor list) pairs, got 2 integral dividend-divisor tensor pairs: (int32, uint8) at index 0 and (int32, uint8) at index 1"""
-        ),
-        cpu=(
-            """Integer division with addcdiv is no longer supported, and in a future  release addcdiv will perform a true division of tensor1 and tensor2. The historic addcdiv behavior can be implemented as (input + value * torch.trunc(tensor1 / tensor2)).to(input.dtype) for integer inputs and as (input + value * tensor1 / tensor2) for float inputs. The future addcdiv behavior is just the latter implementation: (input + value * tensor1 / tensor2), for all dtypes."""
-        ),
+        tpu="""foreach_addcdiv(): expected at least one non-integral tensor in each of the 3 dividend (second tensor list) and divisor (third tensor list) pairs, got 2 integral dividend-divisor tensor pairs: (int32, uint8) at index 0 and (int32, uint8) at index 1""",
+        cpu="""Integer division with addcdiv is no longer supported, and in a future  release addcdiv will perform a true division of tensor1 and tensor2. The historic addcdiv behavior can be implemented as (input + value * torch.trunc(tensor1 / tensor2)).to(input.dtype) for integer inputs and as (input + value * tensor1 / tensor2) for float inputs. The future addcdiv behavior is just the latter implementation: (input + value * tensor1 / tensor2), for all dtypes.""",
     ):
       torch._foreach_addcdiv(self_list, tensor1_list, tensor2_list)
 
@@ -4892,12 +4473,8 @@ Supported combinations for non-constant padding:
     err_type = RuntimeError if et.device().type == "tpu" else TypeError
     with et.assert_raises_message(
         err_type,
-        tpu=(
-            """cat(): expected the input to be castable to the desired dtype int32, got float32"""
-        ),
-        cpu=(
-            """torch.cat(): input types can't be cast to the desired output type Int"""
-        ),
+        tpu="""cat(): expected the input to be castable to the desired dtype int32, got float32""",
+        cpu="""torch.cat(): input types can't be cast to the desired output type Int""",
         message_reviewed_by="wan",
     ):
       torch.cat([t_f32], out=out_int32)
@@ -4910,9 +4487,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""sub(): the dtype of the first argument cannot be bool""",
-        cpu=(
-            """Subtraction, the `-` operator, with a bool tensor is not supported. If you are trying to invert a mask, use the `~` or `logical_not()` operator instead."""
-        ),
+        cpu="""Subtraction, the `-` operator, with a bool tensor is not supported. If you are trying to invert a mask, use the `~` or `logical_not()` operator instead.""",
         message_reviewed_by="wan",
     ):
       torch.sub(lhs.to(torch.bool), rhs, out=out)
@@ -4920,9 +4495,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""sub(): the dtype of the second argument cannot be bool""",
-        cpu=(
-            """Subtraction, the `-` operator, with a bool tensor is not supported. If you are trying to invert a mask, use the `~` or `logical_not()` operator instead."""
-        ),
+        cpu="""Subtraction, the `-` operator, with a bool tensor is not supported. If you are trying to invert a mask, use the `~` or `logical_not()` operator instead.""",
         message_reviewed_by="wan",
     ):
       torch.sub(lhs, rhs.to(torch.bool), out=out)
@@ -4935,9 +4508,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{op_name}(): expected output tensor dtype to match the dtype of the first argument (int64), got complex64"""
-        ),
+        tpu=f"""{op_name}(): expected output tensor dtype to match the dtype of the first argument (int64), got complex64""",
         cpu=cpu,
         message_reviewed_by="wan",
     ):
@@ -4951,20 +4522,14 @@ Supported combinations for non-constant padding:
     self._test_aminmax_output_dtype_mismatch_impl(
         op_name,
         op,
-        cpu=(
-            "Expected the dtype for input and out to match, but got Long for"
-            " input's dtype and ComplexFloat for out's dtype."
-        ),
+        cpu="""Expected the dtype for input and out to match, but got Long for input's dtype and ComplexFloat for out's dtype.""",
     )
 
   def test_aminmax_output_dtype_mismatch(self):
     self._test_aminmax_output_dtype_mismatch_impl(
         op_name="aminmax",
         op=torch.aminmax,
-        cpu=(
-            "Expected out tensor to have dtype long, but got"
-            " c10::complex<float> instead"
-        ),
+        cpu="""Expected out tensor to have dtype long, but got c10::complex<float> instead""",
     )
 
   @parameterized.named_parameters(
@@ -4992,9 +4557,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{op_name_tpu}(): expected the dtype of the input not to be complex, got complex64"""
-        ),
+        tpu=f"""{op_name_tpu}(): expected the dtype of the input not to be complex, got complex64""",
         cpu=f""""{op_name_cpu}_cpu" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
@@ -5007,24 +4570,16 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """complex(): expected the dtype of the first argument to be float32 or float64, got int32"""
-        ),
-        cpu=(
-            """Expected both inputs to be Half, Float or Double tensors but got Int and Float"""
-        ),
+        tpu="""complex(): expected the dtype of the first argument to be float32 or float64, got int32""",
+        cpu="""Expected both inputs to be Half, Float or Double tensors but got Int and Float""",
         message_reviewed_by="wan",
     ):
       torch.complex(real.to(torch.int32), img, out=out)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """complex(): expected the dtype of the second argument to be float32 or float64, got int32"""
-        ),
-        cpu=(
-            """Expected both inputs to be Half, Float or Double tensors but got Float and Int"""
-        ),
+        tpu="""complex(): expected the dtype of the second argument to be float32 or float64, got int32""",
+        cpu="""Expected both inputs to be Half, Float or Double tensors but got Float and Int""",
         message_reviewed_by="wan",
     ):
       torch.complex(real, img.to(torch.int32), out=out)
@@ -5036,24 +4591,16 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """polar(): expected the dtype of the first argument to be float32 or float64, got int32"""
-        ),
-        cpu=(
-            """Expected both inputs to be Half, Float or Double tensors but got Int and Float"""
-        ),
+        tpu="""polar(): expected the dtype of the first argument to be float32 or float64, got int32""",
+        cpu="""Expected both inputs to be Half, Float or Double tensors but got Int and Float""",
         message_reviewed_by="wan",
     ):
       torch.polar(absv.to(torch.int32), angle, out=out)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """polar(): expected the dtype of the second argument to be float32 or float64, got int32"""
-        ),
-        cpu=(
-            """Expected both inputs to be Half, Float or Double tensors but got Float and Int"""
-        ),
+        tpu="""polar(): expected the dtype of the second argument to be float32 or float64, got int32""",
+        cpu="""Expected both inputs to be Half, Float or Double tensors but got Float and Int""",
         message_reviewed_by="wan",
     ):
       torch.polar(absv, angle.to(torch.int32), out=out)
@@ -5079,9 +4626,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """addmv(): expected the second argument to be a matrix (2D tensor), got 3D tensor"""
-        ),
+        tpu="""addmv(): expected the second argument to be a matrix (2D tensor), got 3D tensor""",
         cpu="""vector + matrix @ vector expected, got 1, 3, 1""",
         message_reviewed_by="wan",
     ):
@@ -5095,9 +4640,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """addmv(): expected the third argument to be a vector (1D tensor), got 2D tensor"""
-        ),
+        tpu="""addmv(): expected the third argument to be a vector (1D tensor), got 2D tensor""",
         cpu="""vector + matrix @ vector expected, got 1, 2, 2""",
         message_reviewed_by="wan",
     ):
@@ -5111,9 +4654,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """addmv(): expected the last dimension of the second argument (matrix of size [5, 5]) to match the first dimension of the third argument (vector of size [4]), got 5 vs 4"""
-        ),
+        tpu="""addmv(): expected the last dimension of the second argument (matrix of size [5, 5]) to match the first dimension of the third argument (vector of size [4]), got 5 vs 4""",
         cpu="""size mismatch, got input (5), mat (5x5), vec (4)""",
         message_reviewed_by="wan",
     ):
@@ -5128,9 +4669,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """addmv(): expected the dtype of alpha to be neither complex nor bool, got complex128"""
-        ),
+        tpu="""addmv(): expected the dtype of alpha to be neither complex nor bool, got complex128""",
         cpu="""value cannot be converted to type float without overflow""",
         message_reviewed_by="wan",
     ):
@@ -5138,9 +4677,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """addmv(): expected the dtype of beta to be neither complex nor bool, got complex128"""
-        ),
+        tpu="""addmv(): expected the dtype of beta to be neither complex nor bool, got complex128""",
         cpu="""value cannot be converted to type float without overflow""",
         message_reviewed_by="wan",
     ):
@@ -5163,9 +4700,7 @@ Supported combinations for non-constant padding:
     for minv, maxv in min_max_values:
       with et.assert_raises_message(
           RuntimeError,
-          tpu=(
-              """clamp(): unable to cast complex128, the promotion of the dtypes of the inputs (complex64, min: float64, max: float64), to the output dtype float64"""
-          ),
+          tpu="""clamp(): unable to cast complex128, the promotion of the dtypes of the inputs (complex64, min: float64, max: float64), to the output dtype float64""",
           cpu="""clamp is not supported for complex types""",
           message_reviewed_by="wan",
       ):
@@ -5219,9 +4754,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """bmm(): expected the first argument to be a 3D tensor (batch of matrices), got 4D"""
-        ),
+        tpu="""bmm(): expected the first argument to be a 3D tensor (batch of matrices), got 4D""",
         cpu="""batch1 must be a 3D tensor""",
         message_reviewed_by="wan",
     ):
@@ -5229,9 +4762,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """bmm(): expected the second argument to be a 3D tensor (batch of matrices), got 4D"""
-        ),
+        tpu="""bmm(): expected the second argument to be a 3D tensor (batch of matrices), got 4D""",
         cpu="""batch2 must be a 3D tensor""",
         message_reviewed_by="wan",
     ):
@@ -5244,12 +4775,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """bmm(): expected the batch dimension of the first argument [1, 2, 3] to match the batch dimension of the second argument [2, 3, 2], got 1 vs 2"""
-        ),
-        cpu=(
-            """Expected size for first two dimensions of batch2 tensor to be: [1, 3] but got: [2, 3]."""
-        ),
+        tpu="""bmm(): expected the batch dimension of the first argument [1, 2, 3] to match the batch dimension of the second argument [2, 3, 2], got 1 vs 2""",
+        cpu="""Expected size for first two dimensions of batch2 tensor to be: [1, 3] but got: [2, 3].""",
         message_reviewed_by="wan",
     ):
       torch.bmm(a, b, out=out)
@@ -5261,12 +4788,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """bmm(): expected the last dimension of the first argument [1, 2, 3] to match the second dimension of the second argument [1, 2, 2], got 3 vs 2"""
-        ),
-        cpu=(
-            """Expected size for first two dimensions of batch2 tensor to be: [1, 3] but got: [1, 2]."""
-        ),
+        tpu="""bmm(): expected the last dimension of the first argument [1, 2, 3] to match the second dimension of the second argument [1, 2, 2], got 3 vs 2""",
+        cpu="""Expected size for first two dimensions of batch2 tensor to be: [1, 3] but got: [1, 2].""",
         message_reviewed_by="wan",
     ):
       torch.bmm(a, b, out=out)
@@ -5295,9 +4818,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """baddbmm(): expected batch1 to be a 3D tensor (batch of matrices), got 4D"""
-        ),
+        tpu="""baddbmm(): expected batch1 to be a 3D tensor (batch of matrices), got 4D""",
         cpu="""batch1 must be a 3D tensor""",
         message_reviewed_by="wan",
     ):
@@ -5305,9 +4826,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """baddbmm(): expected batch2 to be a 3D tensor (batch of matrices), got 4D"""
-        ),
+        tpu="""baddbmm(): expected batch2 to be a 3D tensor (batch of matrices), got 4D""",
         cpu="""batch2 must be a 3D tensor""",
         message_reviewed_by="wan",
     ):
@@ -5321,12 +4840,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """baddbmm(): expected the batch dimension of the first argument (of shape [1, 2, 3]) to match the batch dimension of the second argument (of shape [2, 3, 2]), got 1 vs 2"""
-        ),
-        cpu=(
-            """Expected size for first two dimensions of batch2 tensor to be: [1, 3] but got: [2, 3]."""
-        ),
+        tpu="""baddbmm(): expected the batch dimension of the first argument (of shape [1, 2, 3]) to match the batch dimension of the second argument (of shape [2, 3, 2]), got 1 vs 2""",
+        cpu="""Expected size for first two dimensions of batch2 tensor to be: [1, 3] but got: [2, 3].""",
         message_reviewed_by="wan",
     ):
       torch.baddbmm(input_tensor, batch1, batch2, out=out)
@@ -5339,12 +4854,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """baddbmm(): expected the last dimension of the first argument (of shape [1, 2, 3]) to match the second dimension of the second argument (of shape [1, 4, 2]), got 3 vs 4"""
-        ),
-        cpu=(
-            """Expected size for first two dimensions of batch2 tensor to be: [1, 3] but got: [1, 4]."""
-        ),
+        tpu="""baddbmm(): expected the last dimension of the first argument (of shape [1, 2, 3]) to match the second dimension of the second argument (of shape [1, 4, 2]), got 3 vs 4""",
+        cpu="""Expected size for first two dimensions of batch2 tensor to be: [1, 3] but got: [1, 4].""",
         message_reviewed_by="wan",
     ):
       torch.baddbmm(input_tensor, batch1, batch2, out=out)
@@ -5365,9 +4876,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{tpu_fn}(): expected the dtype of the input tensor to be neither long nor bool, got bool"""
-        ),
+        tpu=f"""{tpu_fn}(): expected the dtype of the input tensor to be neither long nor bool, got bool""",
         cpu=f""""{cpu_fn}" not implemented for 'Bool'""",
         message_reviewed_by="wan",
     ):
@@ -5375,9 +4884,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{tpu_fn}(): expected the dtype of the weight tensor to be neither long nor bool, got bool"""
-        ),
+        tpu=f"""{tpu_fn}(): expected the dtype of the weight tensor to be neither long nor bool, got bool""",
         cpu="""expected scalar type Float but found Bool""",
         message_reviewed_by="wan",
     ):
@@ -5396,12 +4903,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{tpu_fn}(): expected the input to have >= 3 dimensions of shape [batch, in channels, ... spatial dimensions ...], got shape [10, 10]"""
-        ),
-        cpu=(
-            """Expected 3-dimensional input for 3-dimensional weight [2, 3, 3], but got 2-dimensional input of size [10, 10] instead"""
-        ),
+        tpu=f"""{tpu_fn}(): expected the input to have >= 3 dimensions of shape [batch, in channels, ... spatial dimensions ...], got shape [10, 10]""",
+        cpu="""Expected 3-dimensional input for 3-dimensional weight [2, 3, 3], but got 2-dimensional input of size [10, 10] instead""",
         message_reviewed_by="wan",
     ):
       convolution(inp, w)
@@ -5419,13 +4922,8 @@ Supported combinations for non-constant padding:
     def test_arg(arg_name: str):
       with et.assert_raises_message(
           RuntimeError,
-          tpu=(
-              f"""{tpu_fn}(): expected {arg_name} to be either an integer or a 2-element list that matches the convolution dimensions, got [1, 1, 1]"""
-          ),
-          cpu=(
-              f"""expected {arg_name} to be a single integer value or a list of 2 values to match the convolution dimensions, but got"""
-              f""" {arg_name}=[1, 1, 1]"""
-          ),
+          tpu=f"""{tpu_fn}(): expected {arg_name} to be either an integer or a 2-element list that matches the convolution dimensions, got [1, 1, 1]""",
+          cpu=f"""expected {arg_name} to be a single integer value or a list of 2 values to match the convolution dimensions, but got {arg_name}=[1, 1, 1]""",
           message_reviewed_by="wan",
       ):
         convolution(inp, w, **{arg_name: (1, 1, 1)})
@@ -5447,12 +4945,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{tpu_fn}(): expected the weight tensor to have 4 dimensions of shape [out channels, in channels per group, ... 2 spatial dimensions ...], got shape [1, 3, 3, 3, 3]"""
-        ),
-        cpu=(
-            """Expected 5-dimensional input for 5-dimensional weight [1, 3, 3, 3, 3], but got 4-dimensional input of size [2, 3, 10, 10] instead"""
-        ),
+        tpu=f"""{tpu_fn}(): expected the weight tensor to have 4 dimensions of shape [out channels, in channels per group, ... 2 spatial dimensions ...], got shape [1, 3, 3, 3, 3]""",
+        cpu="""Expected 5-dimensional input for 5-dimensional weight [1, 3, 3, 3, 3], but got 4-dimensional input of size [2, 3, 10, 10] instead""",
         message_reviewed_by="wan",
     ):
       convolution(inp, w)
@@ -5469,12 +4963,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{tpu_fn}(): expected the second dimension of the weight tensor of shape [1, 3, 3, 3] to be 1 (3 in channels divided by 3 groups), got 3"""
-        ),
-        cpu=(
-            """Given groups=3, expected weight to be at least 3 at dimension 0, but got weight of size [1, 3, 3, 3] instead"""
-        ),
+        tpu=f"""{tpu_fn}(): expected the second dimension of the weight tensor of shape [1, 3, 3, 3] to be 1 (3 in channels divided by 3 groups), got 3""",
+        cpu="""Given groups=3, expected weight to be at least 3 at dimension 0, but got weight of size [1, 3, 3, 3] instead""",
         message_reviewed_by="wan",
     ):
       convolution(inp, w, groups=3)
@@ -5491,12 +4981,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{tpu_fn}(): expected the weight tensor to have 4 dimensions of shape [in channels, out channels per group, ... 2 spatial dimensions ...], got shape [1, 3, 3, 3, 3]"""
-        ),
-        cpu=(
-            """Expected 5-dimensional input for 5-dimensional weight [1, 3, 3, 3, 3], but got 4-dimensional input of size [2, 3, 10, 10] instead"""
-        ),
+        tpu=f"""{tpu_fn}(): expected the weight tensor to have 4 dimensions of shape [in channels, out channels per group, ... 2 spatial dimensions ...], got shape [1, 3, 3, 3, 3]""",
+        cpu="""Expected 5-dimensional input for 5-dimensional weight [1, 3, 3, 3, 3], but got 4-dimensional input of size [2, 3, 10, 10] instead""",
         message_reviewed_by="wan",
     ):
       convolution(inp, w, transposed=True)
@@ -5513,12 +4999,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{tpu_fn}(): expected the first dimension of the weight tensor of shape [1, 3, 3, 3] to be 3 (number of in channels), got 1"""
-        ),
-        cpu=(
-            """Given groups=3, expected weight to be at least 3 at dimension 0, but got weight of size [1, 3, 3, 3] instead"""
-        ),
+        tpu=f"""{tpu_fn}(): expected the first dimension of the weight tensor of shape [1, 3, 3, 3] to be 3 (number of in channels), got 1""",
+        cpu="""Given groups=3, expected weight to be at least 3 at dimension 0, but got weight of size [1, 3, 3, 3] instead""",
         message_reviewed_by="wan",
     ):
       convolution(inp, w, groups=3, transposed=True)
@@ -5535,24 +5017,16 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """convolution(): expected the bias tensor to have 1 dimension of shape [1 (out channels)], got shape [1, 1]"""
-        ),
-        cpu=(
-            """Given weight of size [1, 3, 3, 3], expected bias to be 1-dimensional with 1 elements, but got bias of size [1, 1] instead"""
-        ),
+        tpu="""convolution(): expected the bias tensor to have 1 dimension of shape [1 (out channels)], got shape [1, 1]""",
+        cpu="""Given weight of size [1, 3, 3, 3], expected bias to be 1-dimensional with 1 elements, but got bias of size [1, 1] instead""",
         message_reviewed_by="wan",
     ):
       _run_convolution(inp, w, bias=torch.ones(1, 1, device=et.device()))
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """convolution(): expected the bias tensor to have 1 dimension of shape [1 (out channels)], got shape [5]"""
-        ),
-        cpu=(
-            """Given weight of size [1, 3, 3, 3], expected bias to be 1-dimensional with 1 elements, but got bias of size [5] instead"""
-        ),
+        tpu="""convolution(): expected the bias tensor to have 1 dimension of shape [1 (out channels)], got shape [5]""",
+        cpu="""Given weight of size [1, 3, 3, 3], expected bias to be 1-dimensional with 1 elements, but got bias of size [5] instead""",
         message_reviewed_by="wan",
     ):
       _run_convolution(inp, w, bias=torch.ones(5, device=et.device()))
@@ -5568,9 +5042,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """convolution_backward(): expected the dtype of the grad tensor to be neither long nor bool, got bool"""
-        ),
+        tpu="""convolution_backward(): expected the dtype of the grad tensor to be neither long nor bool, got bool""",
         cpu="""expected scalar type Float but found Bool""",
         message_reviewed_by="wan",
     ):
@@ -5585,12 +5057,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{op_name}(): expected the dim argument to be specified when the input tensor has 0 elements"""
-        ),
-        cpu=(
-            f"""{op_name}(): Expected reduction dim to be specified for input.numel() == 0. Specify the reduction dim with the 'dim' argument."""
-        ),
+        tpu=f"""{op_name}(): expected the dim argument to be specified when the input tensor has 0 elements""",
+        cpu=f"""{op_name}(): Expected reduction dim to be specified for input.numel() == 0. Specify the reduction dim with the 'dim' argument.""",
         message_reviewed_by="wan",
     ):
       op(inp)
@@ -5639,10 +5107,8 @@ Supported combinations for non-constant padding:
 
       with et.assert_raises_message(
           RuntimeError,
-          tpu=(
-              f"""{op_name}(): expected the input dtype to be neither complex nor"""
-              f""" bool, got {tpu}"""
-          ),
+          tpu=f"""{op_name}(): expected the input dtype to be neither complex nor"""
+          f""" bool, got {tpu}""",
           cpu=f"""{op_name}(): does not support {cpu} input""",
           message_reviewed_by="wan",
       ):
@@ -5660,9 +5126,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """mm(): expected the output to have the same dtype as inputs, got out dtype float64 vs inputs dtype float32"""
-        ),
+        tpu="""mm(): expected the output to have the same dtype as inputs, got out dtype float64 vs inputs dtype float32""",
         cpu="""Expected out tensor to have dtype float, but got double instead""",
         message_reviewed_by="wan",
     ):
@@ -5677,12 +5141,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """mm(): expected the two arguments to have the same dtype, got float32 vs float64"""
-        ),
-        cpu=(
-            """expected m1 and m2 to have the same dtype, but got: float != double"""
-        ),
+        tpu="""mm(): expected the two arguments to have the same dtype, got float32 vs float64""",
+        cpu="""expected m1 and m2 to have the same dtype, but got: float != double""",
         message_reviewed_by="wan",
     ):
       torch.mm(lhs, rhs, out=out)
@@ -5696,9 +5156,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """mm(): expected the first argument to be a 2D tensor (matrix), got 3D of shape [3, 4, 5]"""
-        ),
+        tpu="""mm(): expected the first argument to be a 2D tensor (matrix), got 3D of shape [3, 4, 5]""",
         cpu="""self must be a matrix""",
         message_reviewed_by="wan",
     ):
@@ -5706,9 +5164,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """mm(): expected the second argument to be a 2D tensor (matrix), got 3D of shape [3, 4, 5]"""
-        ),
+        tpu="""mm(): expected the second argument to be a 2D tensor (matrix), got 3D of shape [3, 4, 5]""",
         cpu="""mat2 must be a matrix""",
         message_reviewed_by="wan",
     ):
@@ -5723,9 +5179,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """mm(): expected the column size of the first matrix to match the row size of the second matrix, got shape [3, 4] vs [5, 6] where 4 != 5"""
-        ),
+        tpu="""mm(): expected the column size of the first matrix to match the row size of the second matrix, got shape [3, 4] vs [5, 6] where 4 != 5""",
         cpu="""mat1 and mat2 shapes cannot be multiplied (3x4 and 5x6)""",
         message_reviewed_by="wan",
     ):
@@ -5736,12 +5190,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """linalg_lu_factor_ex(): non-pivoting decomposition is not supported"""
-        ),
-        cpu=(
-            """linalg.lu_factor: LU without pivoting is not implemented on the CPU"""
-        ),
+        tpu="""linalg_lu_factor_ex(): non-pivoting decomposition is not supported""",
+        cpu="""linalg.lu_factor: LU without pivoting is not implemented on the CPU""",
         message_reviewed_by="wan",
     ):
       torch.linalg.lu_factor_ex(a, pivot=False)
@@ -5760,12 +5210,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """linalg_lu_factor_ex(): input tensor expected to have at least 2 dimensions, got 1"""
-        ),
-        cpu=(
-            """torch.lu_factor: Expected tensor with 2 or more dimensions. Got size: [4] instead"""
-        ),
+        tpu="""linalg_lu_factor_ex(): input tensor expected to have at least 2 dimensions, got 1""",
+        cpu="""torch.lu_factor: Expected tensor with 2 or more dimensions. Got size: [4] instead""",
     ):
       torch.linalg.lu_factor_ex(a, out=out)
 
@@ -5779,9 +5225,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""lu_unpack(): lu_data must have at least 2 dimensions, got 1""",
-        cpu=(
-            """torch.lu_unpack: Expected tensor with 2 or more dimensions. Got size: [4] instead"""
-        ),
+        cpu="""torch.lu_unpack: Expected tensor with 2 or more dimensions. Got size: [4] instead""",
     ):
       torch.lu_unpack(data, pivots, out=out)
 
@@ -5796,9 +5240,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""linalg_lu_solve(): lu must have at least 2 dimensions, got 1""",
-        cpu=(
-            """torch.linalg.lu_solve: The input tensor A must have at least 2 dimensions."""
-        ),
+        cpu="""torch.linalg.lu_solve: The input tensor A must have at least 2 dimensions.""",
     ):
       torch.linalg.lu_solve(lu, pivots, b, out=out)
 
@@ -5813,9 +5255,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""linalg_lu_solve(): lu must be square, got 4 and 2""",
-        cpu=(
-            """torch.linalg.lu_solve: A must be batches of square matrices, but they are 4 by 2 matrices"""
-        ),
+        cpu="""torch.linalg.lu_solve: A must be batches of square matrices, but they are 4 by 2 matrices""",
     ):
       torch.linalg.lu_solve(lu, pivots, b, out=out)
 
@@ -5829,12 +5269,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """linalg_lu_solve(): b must have compatible dimensions with lu, got b.shape[-2:]=(3, 4) and lu.shape[-2:]=(4, 4), and left=1"""
-        ),
-        cpu=(
-            """linalg.lu_solve: Incompatible shapes of A and B for the equation AX = B (4x4 and 3x4)"""
-        ),
+        tpu="""linalg_lu_solve(): b must have compatible dimensions with lu, got b.shape[-2:]=(3, 4) and lu.shape[-2:]=(4, 4), and left=1""",
+        cpu="""linalg.lu_solve: Incompatible shapes of A and B for the equation AX = B (4x4 and 3x4)""",
     ):
       torch.linalg.lu_solve(lu, pivots, b, out=out)
 
@@ -5848,12 +5284,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """linalg_lu_solve(): pivots must have one less dimension than the tensor, got 2 and 2"""
-        ),
-        cpu=(
-            """linalg.lu_solve: Expected LU.shape[:-1] and pivots.shape to be the same, but got pivots with shape [2, 3] instead"""
-        ),
+        tpu="""linalg_lu_solve(): pivots must have one less dimension than the tensor, got 2 and 2""",
+        cpu="""linalg.lu_solve: Expected LU.shape[:-1] and pivots.shape to be the same, but got pivots with shape [2, 3] instead""",
     ):
       torch.linalg.lu_solve(lu, pivots, b, out=out)
 
@@ -5867,12 +5299,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """linalg_lu_solve(): pivots and tensor must have the same batch dimensions, got [3] and [2]"""
-        ),
-        cpu=(
-            """linalg.lu_solve: Expected LU.shape[:-1] and pivots.shape to be the same, but got pivots with shape [2, 3] instead"""
-        ),
+        tpu="""linalg_lu_solve(): pivots and tensor must have the same batch dimensions, got [3] and [2]""",
+        cpu="""linalg.lu_solve: Expected LU.shape[:-1] and pivots.shape to be the same, but got pivots with shape [2, 3] instead""",
     ):
       torch.linalg.lu_solve(lu, pivots, b, out=out)
 
@@ -5886,12 +5314,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """linalg_lu_solve(): pivots size must be less than or equal to the size of the matrix, got 4 and 3"""
-        ),
-        cpu=(
-            """linalg.lu_solve: Number of pivots per batch should be same as the dimension of the matrix"""
-        ),
+        tpu="""linalg_lu_solve(): pivots size must be less than or equal to the size of the matrix, got 4 and 3""",
+        cpu="""linalg.lu_solve: Number of pivots per batch should be same as the dimension of the matrix""",
     ):
       torch.linalg.lu_solve(lu, pivots, b, out=out)
 
@@ -5900,12 +5324,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """multinomial(): expected the input dtype to be floating-point, got int32"""
-        ),
-        cpu=(
-            """multinomial only supports floating-point dtypes for input, got: Int"""
-        ),
+        tpu="""multinomial(): expected the input dtype to be floating-point, got int32""",
+        cpu="""multinomial only supports floating-point dtypes for input, got: Int""",
         message_reviewed_by="wan",
     ):
       torch.multinomial(inp, num_samples=2)
@@ -5915,9 +5335,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """multinomial(): expected the input to have either 1 or 2 dimensions, got 3 of shape [2, 2, 2]"""
-        ),
+        tpu="""multinomial(): expected the input to have either 1 or 2 dimensions, got 3 of shape [2, 2, 2]""",
         cpu="""prob_dist must be 1 or 2 dim""",
         message_reviewed_by="wan",
     ):
@@ -5932,10 +5350,8 @@ Supported combinations for non-constant padding:
     for num_samples in [-1, 0]:
       with self.subTest(num_samples=num_samples), et.assert_raises_message(
           RuntimeError,
-          tpu=(
-              """multinomial(): expected the number of samples to be > 0, got"""
-              f""" {num_samples}"""
-          ),
+          tpu="""multinomial(): expected the number of samples to be > 0, got"""
+          f""" {num_samples}""",
           cpu="""cannot sample n_sample <= 0 samples""",
           message_reviewed_by="wan",
       ):
@@ -5945,12 +5361,8 @@ Supported combinations for non-constant padding:
     # `False`.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """multinomial(): expected the number of samples to be <= 2 (population size) when replacement is disabled, got 3"""
-        ),
-        cpu=(
-            """cannot sample n_sample > prob_dist.size(-1) samples without replacement"""
-        ),
+        tpu="""multinomial(): expected the number of samples to be <= 2 (population size) when replacement is disabled, got 3""",
+        cpu="""cannot sample n_sample > prob_dist.size(-1) samples without replacement""",
         message_reviewed_by="wan",
     ):
       torch.multinomial(inp, num_samples=3, replacement=False)
@@ -5968,9 +5380,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         IndexError,
-        tpu=(
-            """index(): expected the size of the indices to be <= 2 (number of input dimensions), got 3"""
-        ),
+        tpu="""index(): expected the size of the indices to be <= 2 (number of input dimensions), got 3""",
         cpu="""too many indices for tensor of dimension 2 (got 3)""",
         message_reviewed_by="wan",
     ):
@@ -5997,9 +5407,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{op_name}(): expected the first argument to be a 1D tensor, got 2D of shape [1, 2]"""
-        ),
+        tpu=f"""{op_name}(): expected the first argument to be a 1D tensor, got 2D of shape [1, 2]""",
         cpu="""1D tensors expected, but got 2D and 1D tensors""",
         message_reviewed_by="wan",
     ):
@@ -6007,9 +5415,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            f"""{op_name}(): expected the second argument to be a 1D tensor, got 2D of shape [1, 2]"""
-        ),
+        tpu=f"""{op_name}(): expected the second argument to be a 1D tensor, got 2D of shape [1, 2]""",
         cpu="""1D tensors expected, but got 1D and 2D tensors""",
         message_reviewed_by="wan",
     ):
@@ -6038,9 +5444,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""vdot(): expected inputs to have the same shape, got [2] vs [3]""",
-        cpu=(
-            """inconsistent tensor size, expected tensor [2] and src [3] to have the same number of elements, but got 2 and 3 elements respectively"""
-        ),
+        cpu="""inconsistent tensor size, expected tensor [2] and src [3] to have the same number of elements, but got 2 and 3 elements respectively""",
         message_reviewed_by="wan",
     ):
       torch.vdot(lhs, rhs)
@@ -6048,12 +5452,8 @@ Supported combinations for non-constant padding:
   def test_embedding_bag_invalid_dtypes(self):
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """embedding_bag_forward_only(): expected weight dtype to be float16, bfloat16, float32, or float64, got int64"""
-        ),
-        cpu=(
-            """Expected tensor for argument #1 'weight' to have one of the following scalar types: Half, BFloat16, Float, Double; but got torch.LongTensor instead (while checking arguments for embedding_bag)"""
-        ),
+        tpu="""embedding_bag_forward_only(): expected weight dtype to be float16, bfloat16, float32, or float64, got int64""",
+        cpu="""Expected tensor for argument #1 'weight' to have one of the following scalar types: Half, BFloat16, Float, Double; but got torch.LongTensor instead (while checking arguments for embedding_bag)""",
         message_reviewed_by="wan",
     ):
       torch.nn.functional.embedding_bag(
@@ -6070,9 +5470,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """layer_norm(): expected the input dtype to be floating point, got int32"""
-        ),
+        tpu="""layer_norm(): expected the input dtype to be floating point, got int32""",
         cpu=""""LayerNormKernelImpl" not implemented for 'Int'""",
         message_reviewed_by="wan",
     ):
@@ -6084,9 +5482,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """native_layer_norm_backward(): expected the input dtype to be floating point, got int32"""
-        ),
+        tpu="""native_layer_norm_backward(): expected the input dtype to be floating point, got int32""",
         cpu=""""LayerNormBackwardKernelImpl" not implemented for 'Int'""",
         message_reviewed_by="wan",
     ):
@@ -6099,9 +5495,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""layer_norm(): the normalized shape must have >= 1 dimensions""",
-        cpu=(
-            """Expected normalized_shape to be at least 1-dimensional, i.e., containing at least one element, but got normalized_shape = []"""
-        ),
+        cpu="""Expected normalized_shape to be at least 1-dimensional, i.e., containing at least one element, but got normalized_shape = []""",
         message_reviewed_by="wan",
     ):
       _run_native_layer_norm(inp, normalized_shape)
@@ -6112,12 +5506,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """native_layer_norm_backward(): the normalized shape must have >= 1 dimensions"""
-        ),
-        cpu=(
-            """Expected normalized_shape to be at least 1-dimensional, i.e., containing at least one element, but got normalized_shape = []"""
-        ),
+        tpu="""native_layer_norm_backward(): the normalized shape must have >= 1 dimensions""",
+        cpu="""Expected normalized_shape to be at least 1-dimensional, i.e., containing at least one element, but got normalized_shape = []""",
         message_reviewed_by="wan",
     ):
       _run_native_layer_norm_backward(inp, normalized_shape)
@@ -6128,12 +5518,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """layer_norm(): expected the normalized shape to have <= 2 dimensions, got 3 dimensions of shape [5, 3, 3]"""
-        ),
-        cpu=(
-            """Given normalized_shape=[5, 3, 3], expected input with shape [*, 5, 3, 3], but got input of size[5, 5]"""
-        ),
+        tpu="""layer_norm(): expected the normalized shape to have <= 2 dimensions, got 3 dimensions of shape [5, 3, 3]""",
+        cpu="""Given normalized_shape=[5, 3, 3], expected input with shape [*, 5, 3, 3], but got input of size[5, 5]""",
         message_reviewed_by="wan",
     ):
       _run_native_layer_norm(inp, normalized_shape)
@@ -6144,12 +5530,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """native_layer_norm_backward(): expected the normalized shape to have <= 2 dimensions, got 3 dimensions of shape [5, 3, 3]"""
-        ),
-        cpu=(
-            """Given normalized_shape=[5, 3, 3], expected input with shape [*, 5, 3, 3], but got input of size[5, 5]"""
-        ),
+        tpu="""native_layer_norm_backward(): expected the normalized shape to have <= 2 dimensions, got 3 dimensions of shape [5, 3, 3]""",
+        cpu="""Given normalized_shape=[5, 3, 3], expected input with shape [*, 5, 3, 3], but got input of size[5, 5]""",
         message_reviewed_by="wan",
     ):
       _run_native_layer_norm_backward(inp, normalized_shape)
@@ -6160,9 +5542,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""random_(): expected 'from' to be < 'to', got 20 vs 10""",
-        cpu=(
-            """random_ expects 'from' to be less than 'to', but got from=20 >= to=10"""
-        ),
+        cpu="""random_ expects 'from' to be less than 'to', but got from=20 >= to=10""",
         message_reviewed_by="wan",
     ):
       t.random_(20, 10)
@@ -6170,9 +5550,7 @@ Supported combinations for non-constant padding:
   def test_randn_unsupported_dtype(self):
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """normal_(): expected the self tensor to be floating point or complex type, got int32"""
-        ),
+        tpu="""normal_(): expected the self tensor to be floating point or complex type, got int32""",
         cpu=""""normal_kernel_cpu" not implemented for 'Int'""",
     ):
       torch.randn(5, dtype=torch.int32, device=et.device())
@@ -6180,9 +5558,7 @@ Supported combinations for non-constant padding:
   def test_uniform_unsupported_dtype(self):
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """uniform_(): expected the input dtype to be floating point or complex, got int32"""
-        ),
+        tpu="""uniform_(): expected the input dtype to be floating point or complex, got int32""",
         cpu=""""check_uniform_bounds" not implemented for 'Int'""",
         message_reviewed_by="wan",
     ):
@@ -6199,9 +5575,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """linalg_inv_ex(): expected the input tensor to have at least 2 dimensions, got 1 dimensions of shape [5]"""
-        ),
+        tpu="""linalg_inv_ex(): expected the input tensor to have at least 2 dimensions, got 1 dimensions of shape [5]""",
         cpu="""linalg.inv: The input tensor A must have at least 2 dimensions.""",
         message_reviewed_by="wan",
     ):
@@ -6218,12 +5592,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """linalg_inv_ex(): expected the input tensor's last 2 dimensions to be equal, got [3, 5]"""
-        ),
-        cpu=(
-            """linalg.inv: A must be batches of square matrices, but they are 3 by 5 matrices"""
-        ),
+        tpu="""linalg_inv_ex(): expected the input tensor's last 2 dimensions to be equal, got [3, 5]""",
+        cpu="""linalg.inv: A must be batches of square matrices, but they are 3 by 5 matrices""",
         message_reviewed_by="wan",
     ):
       torch.linalg.inv_ex(a, out=out)
@@ -6234,9 +5604,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """fused_rms_norm(): expected the input dtype to be floating point, got int32"""
-        ),
+        tpu="""fused_rms_norm(): expected the input dtype to be floating point, got int32""",
         cpu=""""rms_norm" not implemented for 'Int'""",
         message_reviewed_by="wan",
     ):
@@ -6246,9 +5614,7 @@ Supported combinations for non-constant padding:
     t = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """hardswish(): expected the input dtype to be floating point, got int32"""
-        ),
+        tpu="""hardswish(): expected the input dtype to be floating point, got int32""",
         cpu=""""hardswish_cpu" not implemented for 'Int'""",
     ):
       torch.nn.functional.hardswish(t)
@@ -6258,9 +5624,7 @@ Supported combinations for non-constant padding:
     out = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """hardswish(): expected the input dtype to be floating point, got int32"""
-        ),
+        tpu="""hardswish(): expected the input dtype to be floating point, got int32""",
         cpu=""""hardswish_cpu" not implemented for 'Int'""",
         message_reviewed_by="wan",
     ):
@@ -6270,9 +5634,7 @@ Supported combinations for non-constant padding:
     t = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """hardswish_(): expected the input dtype to be floating point, got int32"""
-        ),
+        tpu="""hardswish_(): expected the input dtype to be floating point, got int32""",
         cpu=""""hardswish_cpu" not implemented for 'Int'""",
         message_reviewed_by="wan",
     ):
@@ -6283,9 +5645,7 @@ Supported combinations for non-constant padding:
     self_val = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """hardswish_backward(): expected the input dtype to be floating point, got int32"""
-        ),
+        tpu="""hardswish_backward(): expected the input dtype to be floating point, got int32""",
         cpu=""""hardswish_backward_cpu" not implemented for 'Int'""",
     ):
       torch.ops.aten.hardswish_backward(grad, self_val)
@@ -6294,9 +5654,7 @@ Supported combinations for non-constant padding:
     t = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """hardsigmoid(): expected the input dtype to be floating point, got int32"""
-        ),
+        tpu="""hardsigmoid(): expected the input dtype to be floating point, got int32""",
         cpu=""""hardsigmoid_cpu" not implemented for 'Int'""",
     ):
       torch.nn.functional.hardsigmoid(t)
@@ -6306,9 +5664,7 @@ Supported combinations for non-constant padding:
     self_val = torch.tensor([1, 2], device=et.device(), dtype=torch.int32)
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """hardsigmoid_backward(): expected the input dtype to be floating point, got int32"""
-        ),
+        tpu="""hardsigmoid_backward(): expected the input dtype to be floating point, got int32""",
         cpu=""""hardsigmoid_backward" not implemented for 'Int'""",
     ):
       torch.ops.aten.hardsigmoid_backward(grad, self_val)
@@ -6319,9 +5675,7 @@ Supported combinations for non-constant padding:
     # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """bincount(): materialization failed with: Unexpected dimension of input tensor: [2, 2, 2]"""
-        ),
+        tpu="""bincount(): materialization failed with: Unexpected dimension of input tensor: [2, 2, 2]""",
         cpu="""bincount only supports 1-d non-negative integral inputs.""",
     ):
       torch.bincount(t).cpu()
@@ -6337,12 +5691,8 @@ Supported combinations for non-constant padding:
     # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """gather(): materialization failed with: expected the input to be a 1D tensor with size at most 1 when index is 0D, got 2D with shape {2}"""
-        ),
-        cpu=(
-            """Index tensor must have the same number of dimensions as input tensor"""
-        ),
+        tpu="""gather(): materialization failed with: expected the input to be a 1D tensor with size at most 1 when index is 0D, got 2D with shape {2}""",
+        cpu="""Index tensor must have the same number of dimensions as input tensor""",
     ):
       # cpu() is needed because the error is triggered inside the op builder.
       torch.gather(inp, dim, index, out=out).cpu()
@@ -6358,12 +5708,8 @@ Supported combinations for non-constant padding:
     # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """gather(): materialization failed with: expected the input and the index tensor to have the same number of dimensions, got 2D vs 3D"""
-        ),
-        cpu=(
-            """Index tensor must have the same number of dimensions as input tensor"""
-        ),
+        tpu="""gather(): materialization failed with: expected the input and the index tensor to have the same number of dimensions, got 2D vs 3D""",
+        cpu="""Index tensor must have the same number of dimensions as input tensor""",
     ):
       # cpu() is needed because the error is triggered inside the op builder.
       torch.gather(inp, dim, index, out=out).cpu()
@@ -6376,12 +5722,8 @@ Supported combinations for non-constant padding:
     # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """gather(): materialization failed with: expected the input and the index tensor to have the same number of dimensions, got 0D vs 2D"""
-        ),
-        cpu=(
-            """Index tensor must have the same number of dimensions as input tensor"""
-        ),
+        tpu="""gather(): materialization failed with: expected the input and the index tensor to have the same number of dimensions, got 0D vs 2D""",
+        cpu="""Index tensor must have the same number of dimensions as input tensor""",
     ):
       torch.gather(inp, dim, index).cpu()
 
@@ -6393,12 +5735,8 @@ Supported combinations for non-constant padding:
     # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """gather(): materialization failed with: expected the index tensor to have size less than or equal to the input tensor at dimension 1, got 4 vs 3"""
-        ),
-        cpu=(
-            """Size does not match at dimension 1 expected index [2, 4] to be no larger than self [2, 3] apart from dimension 0"""
-        ),
+        tpu="""gather(): materialization failed with: expected the index tensor to have size less than or equal to the input tensor at dimension 1, got 4 vs 3""",
+        cpu="""Size does not match at dimension 1 expected index [2, 4] to be no larger than self [2, 3] apart from dimension 0""",
     ):
       torch.gather(inp, dim, index).cpu()
 
@@ -6407,9 +5745,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """lerp(): expected the first argument's dtype to be non-integral, got int32"""
-        ),
+        tpu="""lerp(): expected the first argument's dtype to be non-integral, got int32""",
         cpu=""""lerp_kernel_tensor" not implemented for 'Int'""",
     ):
       torch.lerp(t, t, t)
@@ -6424,9 +5760,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: uint8"""
-        ),
+        tpu="""mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: uint8""",
         cpu=""""mse_cpu" not implemented for 'Byte'""",
         message_reviewed_by="yilingyuan",
     ):
@@ -6434,9 +5768,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: int8"""
-        ),
+        tpu="""mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: int8""",
         cpu=""""mse_cpu" not implemented for 'Char'""",
         message_reviewed_by="yilingyuan",
     ):
@@ -6444,9 +5776,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: int16"""
-        ),
+        tpu="""mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: int16""",
         cpu=""""mse_cpu" not implemented for 'Short'""",
         message_reviewed_by="yilingyuan",
     ):
@@ -6454,9 +5784,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: int32"""
-        ),
+        tpu="""mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: int32""",
         cpu=""""mse_cpu" not implemented for 'Int'""",
         message_reviewed_by="yilingyuan",
     ):
@@ -6464,9 +5792,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: int64"""
-        ),
+        tpu="""mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: int64""",
         cpu=""""mse_cpu" not implemented for 'Long'""",
         message_reviewed_by="yilingyuan",
     ):
@@ -6474,9 +5800,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: complex64"""
-        ),
+        tpu="""mse_loss(): uint8, int8, int16, int32, int64, and complex64 dtypes are not supported, got: complex64""",
         cpu=""""mse_cpu" not implemented for 'ComplexFloat'""",
         message_reviewed_by="yilingyuan",
     ):
@@ -6490,12 +5814,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """embedding_renorm_(): expected floating point or complex, got int64"""
-        ),
-        cpu=(
-            """norm(): input dtype should be either floating point or complex. Got Long instead."""
-        ),
+        tpu="""embedding_renorm_(): expected floating point or complex, got int64""",
+        cpu="""norm(): input dtype should be either floating point or complex. Got Long instead.""",
         message_reviewed_by="wan",
     ):
       torch.ops.aten.embedding_renorm_(inp, indices, max_norm, norm_type)
@@ -6506,9 +5826,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """grid_sampler_2d(): expected the input dtype to be floating point, got complex64"""
-        ),
+        tpu="""grid_sampler_2d(): expected the input dtype to be floating point, got complex64""",
         cpu=""""grid_sampler_2d_cpu_kernel_impl" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
@@ -6520,9 +5838,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """grid_sampler_3d(): expected the input dtype to be floating point, got complex64"""
-        ),
+        tpu="""grid_sampler_3d(): expected the input dtype to be floating point, got complex64""",
         cpu=""""grid_sampler3d_cpu" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
@@ -6534,10 +5850,8 @@ Supported combinations for non-constant padding:
     def check(p: float) -> None:
       with et.assert_raises_message(
           RuntimeError,
-          tpu=(
-              """dropout(): expected p to be in the exclusive range (0, 1), got"""
-              f""" {p}"""
-          ),
+          tpu="""dropout(): expected p to be in the exclusive range (0, 1), got"""
+          f""" {p}""",
           cpu=f"""bernoulli_ expects p to be in [0, 1], but got p={1 - p}""",
           message_reviewed_by="wan",
       ):
@@ -6553,9 +5867,7 @@ Supported combinations for non-constant padding:
     dim = 1
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """weight_norm_interface(): expected dim to be 0 or the last dimension of v, got 1"""
-        ),
+        tpu="""weight_norm_interface(): expected dim to be 0 or the last dimension of v, got 1""",
         cpu="""dim == 0 || dim == v.dim() - 1 INTERNAL ASSERT FAILED at "blaze-out/k8-fastbuild/bin/third_party/py/torch/aten/src/ATen/native/cpu/WeightNormKernel.AVX2.cpp":409, please report a bug to PyTorch. fused kernels can only be applied for first or last dim""",
     ):
       torch.ops.aten._weight_norm_interface(v, g, dim)
@@ -6566,9 +5878,7 @@ Supported combinations for non-constant padding:
     dim = 0
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """weight_norm_interface(): expected the input dtype to be floating point, got Int"""
-        ),
+        tpu="""weight_norm_interface(): expected the input dtype to be floating point, got Int""",
         cpu=""""weight_norm_kernel" not implemented for 'Int'""",
     ):
       torch.ops.aten._weight_norm_interface(v, g, dim)
@@ -6579,9 +5889,7 @@ Supported combinations for non-constant padding:
     g = torch.randn((), device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
         IndexError,
-        tpu=(
-            """weight_norm_interface(): expected v to have at least 1 dimension, got 0"""
-        ),
+        tpu="""weight_norm_interface(): expected v to have at least 1 dimension, got 0""",
         cpu="""Dimension specified as 0 but tensor has no dimensions""",
     ):
       torch.ops.aten._weight_norm_interface(v, g, 0)
@@ -6597,9 +5905,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """softplus(): expected the input dtype to be floating-point, got bool"""
-        ),
+        tpu="""softplus(): expected the input dtype to be floating-point, got bool""",
         cpu=""""softplus_cpu" not implemented for 'Bool'""",
         message_reviewed_by="wan",
     ):
@@ -6607,9 +5913,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """softplus(): expected the input dtype to be floating-point, got uint8"""
-        ),
+        tpu="""softplus(): expected the input dtype to be floating-point, got uint8""",
         cpu=""""softplus_cpu" not implemented for 'Byte'""",
         message_reviewed_by="wan",
     ):
@@ -6617,9 +5921,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """softplus(): expected the input dtype to be floating-point, got int8"""
-        ),
+        tpu="""softplus(): expected the input dtype to be floating-point, got int8""",
         cpu=""""softplus_cpu" not implemented for 'Char'""",
         message_reviewed_by="wan",
     ):
@@ -6627,9 +5929,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """softplus(): expected the input dtype to be floating-point, got int16"""
-        ),
+        tpu="""softplus(): expected the input dtype to be floating-point, got int16""",
         cpu=""""softplus_cpu" not implemented for 'Short'""",
         message_reviewed_by="wan",
     ):
@@ -6637,9 +5937,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """softplus(): expected the input dtype to be floating-point, got int32"""
-        ),
+        tpu="""softplus(): expected the input dtype to be floating-point, got int32""",
         cpu=""""softplus_cpu" not implemented for 'Int'""",
         message_reviewed_by="wan",
     ):
@@ -6647,9 +5945,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """softplus(): expected the input dtype to be floating-point, got int64"""
-        ),
+        tpu="""softplus(): expected the input dtype to be floating-point, got int64""",
         cpu=""""softplus_cpu" not implemented for 'Long'""",
         message_reviewed_by="wan",
     ):
@@ -6657,9 +5953,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """softplus(): expected the input dtype to be floating-point, got complex64"""
-        ),
+        tpu="""softplus(): expected the input dtype to be floating-point, got complex64""",
         cpu=""""softplus_cpu" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
@@ -6690,9 +5984,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """hardtanh(): hardtanh: cannot do hardtanh on an unsigned type with negative limits."""
-        ),
+        tpu="""hardtanh(): hardtanh: cannot do hardtanh on an unsigned type with negative limits.""",
         cpu="""cannot do hardtanh on an unsigned type with negative limits""",
     ):
       torch.nn.functional.hardtanh(t, min_val=-1)
@@ -6736,9 +6028,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""masked_fill_(): only supports 1-element value tensors""",
-        cpu=(
-            """masked_fill_ only supports a 0-dimensional value tensor, but got tensor with 1 dimension(s)."""
-        ),
+        cpu="""masked_fill_ only supports a 0-dimensional value tensor, but got tensor with 1 dimension(s).""",
     ):
       torch.masked_fill(inp, mask, value)
 
@@ -6750,9 +6040,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""masked_fill_(): value and input must have the same element type""",
-        cpu=(
-            """masked_fill_ only supports a 0-dimensional value tensor, but got tensor with 1 dimension(s)."""
-        ),
+        cpu="""masked_fill_ only supports a 0-dimensional value tensor, but got tensor with 1 dimension(s).""",
     ):
       torch.masked_fill(inp, mask, value)
 
@@ -6807,9 +6095,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         cpu="""normal expects all elements of std >= 0.0""",
-        tpu=(
-            """normal(): expected all elements of std >= 0.0, got min element: -1"""
-        ),
+        tpu="""normal(): expected all elements of std >= 0.0, got min element: -1""",
     ):
       torch.normal(
           mean=0.0, std=torch.tensor([-1.0, 1.0], device=device), out=out
@@ -6832,9 +6118,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         cpu="""normal expects standard deviation to be non-complex""",
-        tpu=(
-            """normal(): expected the std tensor to be floating point, got complex64"""
-        ),
+        tpu="""normal(): expected the std tensor to be floating point, got complex64""",
     ):
       torch.normal(
           mean=0.0,
@@ -6847,9 +6131,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         cpu="""normal expects standard deviation to be non-complex""",
-        tpu=(
-            """normal(): expected the std tensor to be floating point, got complex64"""
-        ),
+        tpu="""normal(): expected the std tensor to be floating point, got complex64""",
     ):
       torch.normal(
           mean=0.0,
@@ -6861,9 +6143,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         cpu="""normal expects standard deviation to be non-complex""",
-        tpu=(
-            """normal(): expected the std tensor to be non-complex, got complex64"""
-        ),
+        tpu="""normal(): expected the std tensor to be non-complex, got complex64""",
     ):
       torch.normal(
           mean=torch.tensor([0.0], device=device),
@@ -6874,12 +6154,8 @@ Supported combinations for non-constant padding:
     device = et.device()
     with et.assert_raises_message(
         RuntimeError,
-        cpu=(
-            """The size of tensor a (2) must match the size of tensor b (3) at non-singleton dimension 0"""
-        ),
-        tpu=(
-            """The size of tensor a (2) must match the size of tensor b (3) at non-singleton dimension 0"""
-        ),
+        cpu="""The size of tensor a (2) must match the size of tensor b (3) at non-singleton dimension 0""",
+        tpu="""The size of tensor a (2) must match the size of tensor b (3) at non-singleton dimension 0""",
     ):
       torch.normal(
           mean=torch.zeros(2, device=device), std=torch.ones(3, device=device)
@@ -6890,9 +6166,7 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         (RuntimeError, NotImplementedError),
         cpu=""""normal_kernel_cpu" not implemented for 'Int'""",
-        tpu=(
-            """normal(): expected the mean tensor to be floating point or complex type, got int32"""
-        ),
+        tpu="""normal(): expected the mean tensor to be floating point or complex type, got int32""",
     ):
       torch.normal(
           mean=torch.tensor([1], device=device, dtype=torch.int32), std=1.0
@@ -6907,12 +6181,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """histc(): expected the first argument not to be complex, got complex64"""
-        ),
-        cpu=(
-            """torch.histogram: input tensor and hist tensor should have the same dtype, but got input c10::complex<float> and hist float"""
-        ),
+        tpu="""histc(): expected the first argument not to be complex, got complex64""",
+        cpu="""torch.histogram: input tensor and hist tensor should have the same dtype, but got input c10::complex<float> and hist float""",
         message_reviewed_by="wan",
     ):
       torch.histc(t, bins=bins, min=min_val, max=max_val, out=out)
@@ -6924,12 +6194,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """linalg_solve_triangular(): expected the two inputs to have the same number of dimensions, got 2 and 1"""
-        ),
-        cpu=(
-            """linalg.solve_triangular: The input tensor B must have at least 2 dimensions."""
-        ),
+        tpu="""linalg_solve_triangular(): expected the two inputs to have the same number of dimensions, got 2 and 1""",
+        cpu="""linalg.solve_triangular: The input tensor B must have at least 2 dimensions.""",
         message_reviewed_by="wan",
     ):
       torch.linalg.solve_triangular(a, b, upper=True, out=out)
@@ -6941,9 +6207,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """linalg_solve_triangular(): triangular solve not supported for dtype int32"""
-        ),
+        tpu="""linalg_solve_triangular(): triangular solve not supported for dtype int32""",
         cpu=""""triangular_solve_cpu" not implemented for 'Int'""",
         message_reviewed_by="wan",
     ):
@@ -6971,10 +6235,8 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""mse_loss(): unrecognized reduction mode 3""",
-        cpu=(
-            re.compile(
-                r"""reduction == Reduction::Mean \|\| reduction == Reduction::Sum INTERNAL ASSERT FAILED at .*"""
-            )
+        cpu=re.compile(
+            r"""reduction == Reduction::Mean \|\| reduction == Reduction::Sum INTERNAL ASSERT FAILED at .*"""
         ),
     ):
       torch.ops.aten.mse_loss(inp, target, 3, out=out)
@@ -6991,9 +6253,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """nll_loss_forward(): expected the target dtype to be either int64 or uint8, got int32"""
-        ),
+        tpu="""nll_loss_forward(): expected the target dtype to be either int64 or uint8, got int32""",
         cpu="""expected target dtype to be Long or Byte, but got Int""",
         message_reviewed_by="wan",
     ):
@@ -7014,9 +6274,7 @@ Supported combinations for non-constant padding:
     # adaptive_avg_pool2d expects 3-D or 4-D input.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool2d(): input must be a 3-D or 4-D tensor, got 2-D tensor"""
-        ),
+        tpu="""adaptive_avg_pool2d(): input must be a 3-D or 4-D tensor, got 2-D tensor""",
         cpu="""adaptive_avg_pool2d(): Expected 3D or 4D tensor, but got [10, 10]""",
     ):
       torch.ops.aten.adaptive_avg_pool2d.out(inp, tuple(out.shape), out=out)
@@ -7028,12 +6286,8 @@ Supported combinations for non-constant padding:
     # adaptive_avg_pool3d expects 4-D or 5-D input.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """adaptive_avg_pool3d(): input must be a 4-D or 5-D tensor, got 3-D tensor"""
-        ),
-        cpu=(
-            """adaptive_avg_pool3d(): Expected 4D or 5D tensor, but got [10, 10, 10]"""
-        ),
+        tpu="""adaptive_avg_pool3d(): input must be a 4-D or 5-D tensor, got 3-D tensor""",
+        cpu="""adaptive_avg_pool3d(): Expected 4D or 5D tensor, but got [10, 10, 10]""",
     ):
       torch.ops.aten.adaptive_avg_pool3d.out(inp, tuple(out.shape), out=out)
 
@@ -7052,9 +6306,7 @@ Supported combinations for non-constant padding:
     # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """max_pool2d_with_indices(): materialization failed with: input must be a 3-D or 4-D tensor, got 2-D tensor"""
-        ),
+        tpu="""max_pool2d_with_indices(): materialization failed with: input must be a 3-D or 4-D tensor, got 2-D tensor""",
         cpu="""non-empty 3D or 4D (batch mode) tensor expected for input""",
     ):
       out, indices = torch.ops.aten.max_pool2d_with_indices.out(
@@ -7085,12 +6337,8 @@ Supported combinations for non-constant padding:
     # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
         (RuntimeError, IndexError),
-        tpu=(
-            """avg_pool2d(): materialization failed with: input must be a 3-D or 4-D tensor, got 2-D tensor"""
-        ),
-        cpu=(
-            """Dimension out of range (expected to be in range of [-2, 1], but got -3)"""
-        ),
+        tpu="""avg_pool2d(): materialization failed with: input must be a 3-D or 4-D tensor, got 2-D tensor""",
+        cpu="""Dimension out of range (expected to be in range of [-2, 1], but got -3)""",
     ):
       torch.ops.aten.avg_pool2d.out(
           inp,
@@ -7112,9 +6360,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """reflection_pad2d_backward(): expected the input shape to match the output (input grad) shape [1, 1, 5, 5] computed by removing the padding from the grad_output, got [1, 1, 4, 4]"""
-        ),
+        tpu="""reflection_pad2d_backward(): expected the input shape to match the output (input grad) shape [1, 1, 5, 5] computed by removing the padding from the grad_output, got [1, 1, 4, 4]""",
         cpu="""gradOutput width unexpected. Expected: 6, Got: 7""",
         message_reviewed_by="wan",
     ):
@@ -7127,9 +6373,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """replication_pad2d_backward(): expected the input shape to match the output (input grad) shape [1, 1, 5, 5] computed by removing the padding from grad_output, got [1, 1, 4, 4]"""
-        ),
+        tpu="""replication_pad2d_backward(): expected the input shape to match the output (input grad) shape [1, 1, 5, 5] computed by removing the padding from grad_output, got [1, 1, 4, 4]""",
         cpu="""gradOutput width unexpected. Expected: 6, Got: 7""",
         message_reviewed_by="wan",
     ):
@@ -7142,9 +6386,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """replication_pad3d_backward(): expected the input shape to match the output (input grad) shape [1, 1, 5, 5, 5] computed by removing the padding from the grad_output, got [1, 1, 4, 4, 4]"""
-        ),
+        tpu="""replication_pad3d_backward(): expected the input shape to match the output (input grad) shape [1, 1, 5, 5, 5] computed by removing the padding from the grad_output, got [1, 1, 4, 4, 4]""",
         cpu="""gradOutput width unexpected. Expected: 6, Got: 7""",
         message_reviewed_by="wan",
     ):
@@ -7157,9 +6399,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """replication_pad3d_backward(): expected padding at indices 0 and 1 to sum to a value smaller than the grad_output width (at dimension 4) of 6, got 8 (4 + 4)"""
-        ),
+        tpu="""replication_pad3d_backward(): expected padding at indices 0 and 1 to sum to a value smaller than the grad_output width (at dimension 4) of 6, got 8 (4 + 4)""",
         cpu="""gradOutput width unexpected. Expected: 12, Got: 6""",
         message_reviewed_by="wan",
     ):
@@ -7172,9 +6412,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """replication_pad3d_backward(): expected padding at indices 2 and 3 to sum to a value smaller than the grad_output height (at dimension 3) of 6, got 8 (4 + 4)"""
-        ),
+        tpu="""replication_pad3d_backward(): expected padding at indices 2 and 3 to sum to a value smaller than the grad_output height (at dimension 3) of 6, got 8 (4 + 4)""",
         cpu="""gradOutput height unexpected. Expected: 12, Got: 6""",
         message_reviewed_by="wan",
     ):
@@ -7187,9 +6425,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """replication_pad3d_backward(): expected padding at indices 4 and 5 to sum to a value smaller than the grad_output depth (at dimension 2) of 6, got 8 (4 + 4)"""
-        ),
+        tpu="""replication_pad3d_backward(): expected padding at indices 4 and 5 to sum to a value smaller than the grad_output depth (at dimension 2) of 6, got 8 (4 + 4)""",
         cpu="""gradOutput depth unexpected. Expected: 12, Got: 6""",
         message_reviewed_by="wan",
     ):
@@ -7203,12 +6439,8 @@ Supported combinations for non-constant padding:
     with torch.nn.attention.sdpa_kernel(backends=[]):
       with et.assert_raises_message(
           RuntimeError,
-          tpu=(
-              """fused_sdp_choice(): no viable SDPBackend found: all supported backends are disabled, including the fallback MATH backend; enable at least one of FLASH, EFFICIENT, OVERRIDEABLE, or MATH for TorchTPU"""
-          ),
-          cpu=(
-              """No viable backend for scaled_dot_product_attention was found. This is likely due to turning off both the math kernel and the fused kernels."""
-          ),
+          tpu="""fused_sdp_choice(): no viable SDPBackend found: all supported backends are disabled, including the fallback MATH backend; enable at least one of FLASH, EFFICIENT, OVERRIDEABLE, or MATH for TorchTPU""",
+          cpu="""No viable backend for scaled_dot_product_attention was found. This is likely due to turning off both the math kernel and the fused kernels.""",
           message_reviewed_by="wan",
       ):
         torch.nn.functional.scaled_dot_product_attention(query, key, value)
@@ -7216,9 +6448,7 @@ Supported combinations for non-constant padding:
   def test_tril_indices_unsupported_dtype(self):
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """tril_indices(): expected the dtype to be either int32 or int64, got float32"""
-        ),
+        tpu="""tril_indices(): expected the dtype to be either int32 or int64, got float32""",
         cpu=""""tril_indices" not implemented for 'Float'""",
         message_reviewed_by="wan",
     ):
@@ -7230,9 +6460,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """threshold_backward(): expected the input dtype not to be complex, got complex64"""
-        ),
+        tpu="""threshold_backward(): expected the input dtype not to be complex, got complex64""",
         cpu=""""threshold_cpu" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
@@ -7243,9 +6471,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """silu(): materialization failed with: expected the input dtype to be floating point, got int32"""
-        ),
+        tpu="""silu(): materialization failed with: expected the input dtype to be floating point, got int32""",
         cpu=""""silu_cpu" not implemented for 'Int'""",
     ):
       out = torch.nn.functional.silu(t)
@@ -7273,12 +6499,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """sign(): expected the input dtype not to be complex, got complex64; use torch.sgn() instead if you intend to normalize a complex tensor to each complex element having magnitude 1"""
-        ),
-        cpu=(
-            """Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead."""
-        ),
+        tpu="""sign(): expected the input dtype not to be complex, got complex64; use torch.sgn() instead if you intend to normalize a complex tensor to each complex element having magnitude 1""",
+        cpu="""Unlike NumPy, torch.sign is not intended to support complex numbers. Please use torch.sgn instead.""",
         message_reviewed_by="wan",
     ):
       torch.sign(t, out=out)
@@ -7294,12 +6516,8 @@ Supported combinations for non-constant padding:
     # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
         (RuntimeError, IndexError),
-        tpu=(
-            """scatter(): materialization failed with: expected the self tensor of shape [5, 5] to have the same rank as the src tensor of shape [5], got 2 vs. 1"""
-        ),
-        cpu=(
-            """Dimension out of range (expected to be in range of [-1, 0], but got 1)"""
-        ),
+        tpu="""scatter(): materialization failed with: expected the self tensor of shape [5, 5] to have the same rank as the src tensor of shape [5], got 2 vs. 1""",
+        cpu="""Dimension out of range (expected to be in range of [-1, 0], but got 1)""",
     ):
       torch.scatter(self_t, 0, index, src, out=out).cpu()
 
@@ -7314,12 +6532,8 @@ Supported combinations for non-constant padding:
     # TODO: Error eagerly, i.e. without having to call the op builder.
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """scatter(): materialization failed with: expected the self tensor of shape [5, 5] to have the same rank as the index tensor of shape [5], got 2 vs. 1"""
-        ),
-        cpu=(
-            """Index tensor must have the same number of dimensions as self tensor"""
-        ),
+        tpu="""scatter(): materialization failed with: expected the self tensor of shape [5, 5] to have the same rank as the index tensor of shape [5], got 2 vs. 1""",
+        cpu="""Index tensor must have the same number of dimensions as self tensor""",
     ):
       torch.scatter(self_t, 0, index, src, out=out).cpu()
 
@@ -7346,12 +6560,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """softmax_backward_data(): materialization failed with: expected grad_output and output arguments to have the same shape, got [5, 5] vs. [5]"""
-        ),
-        cpu=(
-            """Expected tensor for argument #1 'grad' to have same size as tensor for argument #2 'output'; but [5, 5] does not equal [5] (while checking arguments for softmax_backward)"""
-        ),
+        tpu="""softmax_backward_data(): materialization failed with: expected grad_output and output arguments to have the same shape, got [5, 5] vs. [5]""",
+        cpu="""Expected tensor for argument #1 'grad' to have same size as tensor for argument #2 'output'; but [5, 5] does not equal [5] (while checking arguments for softmax_backward)""",
     ):
       torch.ops.aten._softmax_backward_data(
           grad_output, output, 0, torch.float32, grad_input=grad_input
@@ -7361,9 +6571,7 @@ Supported combinations for non-constant padding:
     t = torch.empty(5, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """as_strided(): expected the given storage offset to be >= 0, got -1"""
-        ),
+        tpu="""as_strided(): expected the given storage offset to be >= 0, got -1""",
         cpu="""Tensor: invalid storage offset -1""",
         message_reviewed_by="wan",
     ):
@@ -7373,9 +6581,7 @@ Supported combinations for non-constant padding:
     t = torch.empty(5, device=et.device())
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """as_strided(): expected the given sizes [1, 2] and strides [1] to have the same length, got 2 vs. 1"""
-        ),
+        tpu="""as_strided(): expected the given sizes [1, 2] and strides [1] to have the same length, got 2 vs. 1""",
         cpu="""mismatch in length of strides and shape""",
         message_reviewed_by="wan",
     ):
@@ -7412,9 +6618,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """view(): expected the given sizes [-2] to be >= -1, got 1 invalid size: -2 at index 0"""
-        ),
+        tpu="""view(): expected the given sizes [-2] to be >= -1, got 1 invalid size: -2 at index 0""",
         cpu="""invalid shape dimension -2 at index 0 of shape [-2]""",
         message_reviewed_by="wan",
     ):
@@ -7425,9 +6629,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """view(): expected the given sizes [1, -1, 5, -1] to have up to 1 element equal to -1 (inferred dimension), got 2 occurrences of -1 at indices 1 and 3"""
-        ),
+        tpu="""view(): expected the given sizes [1, -1, 5, -1] to have up to 1 element equal to -1 (inferred dimension), got 2 occurrences of -1 at indices 1 and 3""",
         cpu="""only one dimension can be inferred""",
         message_reviewed_by="wan",
     ):
@@ -7438,12 +6640,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """view(): cannot infer the dimension for a 0-element view of shape [0, -1] because it's ambiguous, i.e. it could be of any value"""
-        ),
-        cpu=(
-            """cannot reshape tensor of 0 elements into shape [0, -1] because the unspecified dimension size -1 can be any value and is ambiguous"""
-        ),
+        tpu="""view(): cannot infer the dimension for a 0-element view of shape [0, -1] because it's ambiguous, i.e. it could be of any value""",
+        cpu="""cannot reshape tensor of 0 elements into shape [0, -1] because the unspecified dimension size -1 can be any value and is ambiguous""",
         message_reviewed_by="wan",
     ):
       t.view(0, -1)
@@ -7453,9 +6651,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """view(): expected the number of elements in the output view of shape [-1, 2] to be a multiple of the number of elements in the input of shape [5] in the presence of an inferred dimension (-1), got 2, which is not a multiple of 5"""
-        ),
+        tpu="""view(): expected the number of elements in the output view of shape [-1, 2] to be a multiple of the number of elements in the input of shape [5] in the presence of an inferred dimension (-1), got 2, which is not a multiple of 5""",
         cpu="""shape '[-1, 2]' is invalid for input of size 5""",
         message_reviewed_by="wan",
     ):
@@ -7466,9 +6662,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """view(): expected the input of shape [5] to have the same number of elements as the output of shape [2], got 5 vs. 2"""
-        ),
+        tpu="""view(): expected the input of shape [5] to have the same number of elements as the output of shape [2], got 5 vs. 2""",
         cpu="""shape '[2]' is invalid for input of size 5""",
         message_reviewed_by="wan",
     ):
@@ -7479,12 +6673,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """view(): cannot create a view of shape [6] from the input tensor of shape [3, 2] and strides [1, 3]; consider creating a new tensor using reshape() instead of taking a view"""
-        ),
-        cpu=(
-            """view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead."""
-        ),
+        tpu="""view(): cannot create a view of shape [6] from the input tensor of shape [3, 2] and strides [1, 3]; consider creating a new tensor using reshape() instead of taking a view""",
+        cpu="""view size is not compatible with input tensor's size and stride (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.""",
         message_reviewed_by="wan",
     ):
       t.view(6)
@@ -7494,12 +6684,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """view_as_complex(): expected the input dtype to be float32 or float64, got int32"""
-        ),
-        cpu=(
-            """view_as_complex is only supported for half, float and double tensors, but got a tensor of scalar type: Int"""
-        ),
+        tpu="""view_as_complex(): expected the input dtype to be float32 or float64, got int32""",
+        cpu="""view_as_complex is only supported for half, float and double tensors, but got a tensor of scalar type: Int""",
     ):
       torch.view_as_complex(t)
 
@@ -7508,9 +6694,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """view_as_complex(): expected the input to be a tensor, got a scalar"""
-        ),
+        tpu="""view_as_complex(): expected the input to be a tensor, got a scalar""",
         cpu="""Input tensor must have one or more dimensions""",
         message_reviewed_by="wan",
     ):
@@ -7521,9 +6705,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """view_as_complex(): expected the size of the last dimension of the input tensor to be 2, got 3"""
-        ),
+        tpu="""view_as_complex(): expected the size of the last dimension of the input tensor to be 2, got 3""",
         cpu="""Tensor must have a last dimension of size 2""",
         message_reviewed_by="wan",
     ):
@@ -7534,9 +6716,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """view_as_complex(): expected the stride of the last dimension of the input tensor to be 1, got 2"""
-        ),
+        tpu="""view_as_complex(): expected the stride of the last dimension of the input tensor to be 1, got 2""",
         cpu="""Tensor must have a last dimension with stride 1""",
         message_reviewed_by="wan",
     ):
@@ -7547,12 +6727,8 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """view_as_complex(): expected the input strides [3, 1] to be even numbers (except in the last dimension), got 1 odd stride: 3 at index 0"""
-        ),
-        cpu=(
-            """Tensor must have a stride divisible by 2 for all but last dimension"""
-        ),
+        tpu="""view_as_complex(): expected the input strides [3, 1] to be even numbers (except in the last dimension), got 1 odd stride: 3 at index 0""",
+        cpu="""Tensor must have a stride divisible by 2 for all but last dimension""",
         message_reviewed_by="wan",
     ):
       torch.view_as_complex(t)
@@ -7565,9 +6741,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu=(
-            """where(): expected the output dtype to be float32 (result of promoting the dtype of the input tensors -- float32 and float32), got int32"""
-        ),
+        tpu="""where(): expected the output dtype to be float32 (result of promoting the dtype of the input tensors -- float32 and float32), got int32""",
         cpu="""Expected out type to be Float but got Int""",
         message_reviewed_by="wan",
     ):
