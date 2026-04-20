@@ -97,21 +97,32 @@ def adjust_cc_options(copts, features):
     features.append("-use_header_modules")
     return copts, features
 
-def torch_tpu_cc_library(name, copts = None, features = None, **kwargs):
+def torch_tpu_cc_library(name, srcs = [], hdrs = [], copts = None, features = None, **kwargs):
     """Creates a C++ library for torch_tpu.
 
     Also creates a build_test for the library to ensure it is buildable.
 
     Args:
         name: The name of the library.
+        srcs: The source files to compile. Must contain at most one .cc file.
+        hdrs: The header files to export by the library. Must contain at most one .h file.
         copts: The C/C++ compiler options to use.
         features: The blaze features to enable/disable.
         **kwargs: Any additional arguments.
     """
 
+    if len(srcs) > 1:
+        fail("torch_tpu_cc_library must contain at most one srcs file. This reduces build bloat " +
+             "and prevents circular dependencies between files.")
+    if len(hdrs) > 1:
+        fail("torch_tpu_cc_library must contain at most one hdrs file. This reduces build bloat " +
+             "and prevents circular dependencies between files.")
+
     copts, features = adjust_cc_options(copts, features)
     cc_library(
         name = name,
+        srcs = srcs,
+        hdrs = hdrs,
         copts = copts,
         features = features,
         **kwargs

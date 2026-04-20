@@ -36,7 +36,6 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
-#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/absl_vlog_is_on.h"
 #include "absl/log/log.h"
@@ -45,7 +44,6 @@
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/compilation.h"
@@ -54,15 +52,14 @@
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
+#include "torch_tpu/eager/materialize_common.h"
 #include "torch_tpu/eager/materialize_new.h"
 #include "torch_tpu/eager/split_traversal.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/traversal.h"
-#include "torch_tpu/pjrt/pjrt_utils.h"
 #include "stablehlo/transforms/StablehloBroadcastLowering.h"
 #include "xla/future.h"
 #include "xla/hlo/translate/register.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -78,44 +75,6 @@ absl_nonnull std::unique_ptr<mlir::MLIRContext> MakeMlirContext() {
   context->appendDialectRegistry(registry);
   context->loadAllAvailableDialects();
   return context;
-}
-
-absl::Status SetOutputNodesAsMaterialized(std::vector<DeviceBufferRef>& outputs,
-                                          PjRtBufferPointers results) {
-  tsl::profiler::TraceMe trace("SetOutputNodesAsMaterialized");
-  ABSL_VLOG(1) << "[SetOutputNodesAsMaterialized] Starting";
-  PjRtBufferPointers buffers_to_assign;
-  buffers_to_assign.reserve(outputs.size());
-  auto i = 0;
-  while (i < outputs.size()) {
-    ABSL_VLOG(1) << "[AssignMaterializedBuffers] Assigning materialized "
-                    "buffers for node "
-                 << i;
-    auto* absl_nonnull node = outputs[i].device_buffer_list().get();
-    buffers_to_assign.clear();
-    buffers_to_assign.reserve(node->size());
-    if (i + node->size() > results.size()) {
-      ABSL_VLOG(1)
-          << "[AssignMaterializedBuffers] Not enough results to materialize "
-             "node "
-          << node;
-      return TT_ERROR(error::kFailedPrecondition)
-             << "Not enough results to materialize node " << node;
-    }
-    for (auto j = 0; j < node->size(); ++j) {
-      ABSL_VLOG(1)
-          << "[AssignMaterializedBuffers] Assigning materialized buffer for "
-             "node "
-          << node << " index " << j;
-      buffers_to_assign.push_back(std::move(results[i + j]));
-    }
-    TT_RETURN_IF_ERROR(node->SetAsMaterialized(std::move(buffers_to_assign)))
-        << "Failed to set node " << node << " as materialized";
-    i += node->size();
-  }
-  ABSL_VLOG(1) << "[AssignMaterializedBuffers] Assigned materialized buffers "
-                  "for nodes";
-  return absl::OkStatus();
 }
 
 struct ExecutionTask {
@@ -146,36 +105,7 @@ ExecutionTask CreateExecutionTask(Traversal traversal,
                        .task_name = std::move(task_name)};
 }
 
-absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>> GetArgumentBuffers(
-    absl::Span<const DeviceBufferRef> arguments) {
-  std::vector<xla::PjRtBuffer*> root_args;
-  for (const auto&& [index, argument] : llvm::enumerate(arguments)) {
-    switch (argument.state()) {
-      case DeviceBufferRefState::kMaterialized: {
-        ABSL_VLOG(1) << "kMaterialized DeviceBufferRef index: " << index;
-        TT_ASSIGN_OR_RETURN(xla::PjRtBuffer * pjrt_buffer,
-                            argument.GetOrMaterializeBuffer());
-        root_args.push_back(pjrt_buffer);
-        break;
-      }
-      case DeviceBufferRefState::kPlaceholder:
-        return TT_ERROR(error::kInternal)
-               << "Materialize was called on a placeholder tensor. This "
-                  "should never happen.\nkPlaceholder tensors should only "
-                  "appear in compiled mode, which should never try to "
-                  "materialize tensors."
-               << argument.DebugString();
 
-      case DeviceBufferRefState::kDeferred:
-        return TT_ERROR(error::kInternal)
-               << "Traversal input is unexpectedly deferred";
-      default:
-        return TT_ERROR(error::kInternal)
-               << "Traversal input has unknown state";
-    }
-  }
-  return root_args;
-}
 
 }  // namespace
 
@@ -189,57 +119,7 @@ absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>> GetArgumentBuffers(
 // 3, node B is size 1, and node C is size 2, then the output order must be [A0,
 // A1, A2, B1, C0, C1]. This is established by all Materialize() functions in
 // this file.
-absl::Status ExecuteMaterializationJob(
-    absl::Span<const DeviceBufferRef> arguments,
-    absl::Span<const DeviceBufferRef> outputs,
-    std::vector<SharedLoadedExecutableWithMetadata> executables,
-    std::string_view task_name) {
-  tsl::profiler::TraceMe trace("ExecuteMaterializationJob");
-  ABSL_VLOG(1) << "[ExecuteMaterializationJob]: task_name=" << task_name
-               << " input arg count: " << arguments.size()
-               << " output arg count: " << outputs.size()
-               << " executables count: " << executables.size();
-  ABSL_CHECK(!executables.empty()) << "No executables to execute";  // CRASH_OK
 
-  TT_ASSIGN_OR_RETURN(std::vector<xla::PjRtBuffer*> argument_buffers,
-                      GetArgumentBuffers(arguments));
-
-  ABSL_VLOG(1)
-      << "[ExecuteMaterializationJob]: Arguments materialization completed "
-         "for task name="
-      << task_name << ", argument_buffers size: " << argument_buffers.size();
-
-  std::vector<PjRtBufferPointers> intermediate_results;
-  for (auto& executable : executables) {
-    TT_ASSIGN_OR_RETURN(PjRtBufferPointers results,
-                        Execute(executable, std::move(argument_buffers)),
-                        _.SetPrepend()
-                            << "failed to enqueue execution for task_name="
-                            << task_name << ": ");
-    argument_buffers.clear();
-    argument_buffers.reserve(results.size());
-    for (const auto& result : results) {
-      argument_buffers.push_back(result.get());
-    }
-    intermediate_results.push_back(std::move(results));
-  }
-  PjRtBufferPointers final_results = std::move(intermediate_results.back());
-
-  ABSL_VLOG(1)
-      << "[ExecuteMaterializationJob]: Enqueued execution for task_name="
-      << task_name << ", results size: " << final_results.size();
-
-  ABSL_VLOG(1) << "[ExecuteMaterializationJob]: Materialization enqueue has "
-                  "completed for task_name="
-               << task_name;
-
-  std::vector<DeviceBufferRef> output_refs;
-  for (const auto& output : outputs) {
-    output_refs.push_back(output);
-  }
-
-  return SetOutputNodesAsMaterialized(output_refs, std::move(final_results));
-}
 
 namespace {
 

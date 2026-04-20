@@ -120,12 +120,6 @@ void SetOutputNodesAsError(absl::Span<const SharedDeviceBufferList> outputs,
 // subgraphs to the list.
 void AddLeafNodes(std::vector<SharedDeviceBufferList>& nodes);
 
-absl::Status ExecuteMaterializationJob(
-    absl::Span<const DeviceBufferRef> arguments,
-    absl::Span<const DeviceBufferRef> output_buffer_refs,
-    std::vector<SharedLoadedExecutableWithMetadata> executables,
-    std::string_view task_name = "anonymous");
-
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_EAGER_MATERIALIZE_H_
