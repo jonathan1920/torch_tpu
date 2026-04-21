@@ -56,12 +56,35 @@ build --linkopt=-Wno-unused-command-line-argument
 build --host_linkopt=-Wno-unused-command-line-argument
 build --per_file_copt=.*@-Wno-return-type
 
-# Disable warnings from external dependencies, which we can't
-# do anything about and are very spammy.
+# Disable warnings from external dependencies for both the target product and
+# the build-time host tools, which we can't do anything about and are very
+# spammy.
 # NOTE: Some warnings may be due to external dependencies, but
 # get reported as originating from torch_tpu code. Those need
 # to be ignored using a plain `.*` match.
 build --per_file_copt=.*external/.*@-w
+build --host_per_file_copt=.*external/.*@-w
+
+# Disable warnings globally for both target and host builds.
+# We do this because the following warnings occur from external dependencies
+# (primarily OpenXLA, Abseil, and RE2) during the compilation of our local
+# files, and `--per_file_copt=.*external.*@-w` and
+# `build --host_per_file_copt=.*external/.*@-w` above cannot catch them.
+# We accept the trade-off of losing these specific checks on our own code in
+# order to prevent these third-party headers from causing massive log bloat and
+# crashing the browser.
+#
+# To avoid massive spam from OpenXLA headers missing _Nonnull/_Nullable.
+build --copt=-Wno-nullability-completeness
+build --host_copt=-Wno-nullability-completeness
+# To avoid spam from RE2/Abseil and OpenXLA headers using deprecated macros/locks.
+build --copt=-Wno-deprecated-declarations
+build --host_copt=-Wno-deprecated-declarations
+# To avoid spam from third-party unused functions and variables.
+build --copt=-Wno-unused-function
+build --host_copt=-Wno-unused-function
+build --copt=-Wno-unused-value
+build --host_copt=-Wno-unused-value
 
 # ===== End spammy C++ compile warning disables ===
 
