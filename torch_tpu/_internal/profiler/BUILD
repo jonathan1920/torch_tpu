@@ -45,6 +45,8 @@ torch_tpu_cc_library(
         "//shims/torch",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
         "@tsl//tsl/profiler/lib:traceme",
         "@tsl//tsl/profiler/lib:traceme_encode",
     ],
@@ -121,6 +123,7 @@ pybind_extension(
     wrap_py_init = True,
     deps = [
         ":tpu_profiler_plugin_cc",
+        ":xprof_callback_handler",
         "//torch_tpu/common:error_utils",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",

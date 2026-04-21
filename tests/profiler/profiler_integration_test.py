@@ -233,6 +233,13 @@ class ProfilerIntegrationTest(absltest.TestCase):
         f"XPlane missing! contents: {list(output_dir.glob('*.*'))}",
     )
 
+    content = (output_dir / "xplane.pb").read_bytes()
+    self.assertIn(
+        b"model1_inference_tpu",
+        content,
+        "Python annotation not found in XPlane!",
+    )
+
   def test_concurrent_profiling_and_execution(self):
     stop_workers = False
 
