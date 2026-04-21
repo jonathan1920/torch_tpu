@@ -319,4 +319,31 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "compile_benchmark_test",
+    srcs = ["compile_benchmark_test.py"],
+    nopresubmit = "slow test",
+    notest_oss = "transformers version mismatches in oss with torch.compile issues",
+    tags = [
+        "cpu:4",
+        "nofastbuild",  # Measures performance.
+        "requires-accel-hbm",
+        "requires-net:external",
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/shims/xprof:traceme",
+        "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
+        "//torch_tpu/_internal/shims/xprof:xprof_session",
+        "//torch_tpu/_internal/utils:log_utils",
+        "//torch_tpu/api",
+        "@pypi//transformers",
+    ],
+)
+
 torch_tpu_package_end()
