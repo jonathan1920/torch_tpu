@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <map>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -127,6 +128,16 @@ TEST(Fingerprint, WorksForStringObject) {
 TEST(Finterprint, WorksForPair) {
   std::pair<int, std::string> p = {1, "hi"};
   EXPECT_EQ(Fingerprint(p), 2362095114178386943ULL);
+}
+
+TEST(Fingerprint, WorksForEmptyMap) {
+  std::map<int, std::string> m;
+  EXPECT_EQ(Fingerprint(m), 0);
+}
+
+TEST(Fingerprint, WorksForMap) {
+  std::map<int, std::string> m = {{1, "hello"}, {2, "world"}};
+  EXPECT_EQ(Fingerprint(m), 11808310844027338525ULL);
 }
 
 TEST(FingerprintCat, WorksForZeroArgs) { EXPECT_EQ(FingerprintCat(), 0); }

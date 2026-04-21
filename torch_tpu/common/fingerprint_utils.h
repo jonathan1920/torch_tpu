@@ -21,6 +21,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -84,6 +85,18 @@ struct Fingerprint64Impl<absl::InlinedVector<T, N>,
   [[nodiscard]] static FingerprintType Compute(
       const absl::InlinedVector<T, N>& span) {
     return Fingerprint(absl::MakeConstSpan(span));
+  }
+};
+
+// Partial specialization for std::map.
+template <typename K, typename V>
+struct Fingerprint64Impl<std::map<K, V>, /*kIsSmallIntegral=*/false> {
+  [[nodiscard]] static FingerprintType Compute(const std::map<K, V>& m) {
+    FingerprintType fp = m.size();
+    for (const auto& pair : m) {
+      fp = tsl::FingerprintCat64(fp, Fingerprint(pair));
+    }
+    return fp;
   }
 };
 
