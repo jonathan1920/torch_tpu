@@ -22,9 +22,6 @@ package(
 torch_tpu_py_test(
     name = "compile_test",
     srcs = ["compile_test.py"],
-    args = [
-        "--torch_tpu_internal_compiled_mode_dynamism",
-    ],
     tags = [
         # TODO: b/503386468 - Re-enable once the test is fixed.
         # Skip this test on tpu v6 and v7 runners: Fatal crash in XLA XPrecisionCombineEmitter due

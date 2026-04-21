@@ -34,7 +34,7 @@ class CompileTest(absltest.TestCase):
     if mark_dynamic_tests_info is None:
       mark_dynamic_tests_info = [() for _ in test_inputs]
 
-    backend = _backend.TpuBackend(debug=True)
+    backend = _backend.TpuBackend(debug=True, dynamism=True)
 
     with mock.patch.object(
         _backend.dynamic_compiler,

@@ -34,7 +34,6 @@ from collections.abc import Sequence
 import functools
 import operator
 from typing import Any, Callable, List, TypeAlias
-from absl import flags
 from absl import logging
 import torch
 from torch._dynamo.backends.common import aot_autograd
@@ -50,14 +49,6 @@ from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.dynamic import compiler as dynamic_compiler
 from torch_tpu._internal.compile.fx_passes import mark_embedded_constants
 from torch_tpu._internal.utils import utils
-
-_ENABLE_COMPILED_MODE_DYNAMISM = flags.DEFINE_boolean(
-    "torch_tpu_internal_compiled_mode_dynamism",
-    False,
-    "This is a temporary dev flag as the feature is not ready for production "
-    "use. Once ready, this flag will be removed along with assertion check on "
-    "SymInt.",
-)
 
 GraphTransformObserver = graph_transform_observer.GraphTransformObserver
 
@@ -279,14 +270,17 @@ class TpuBackend:
   def __init__(
       self,
       debug: bool = False,
+      dynamism: bool = False,
   ):
     """Initializes the TPU backend.
 
     Args:
       debug (bool): If True, enable debug logging and save a dump of the fx
         graph.
+      dynamism (bool): If True, enable dynamism.
     """
     self._debug = debug
+    self._dynamism = dynamism
     # Stores information about each compiled executable.
     # Organized by order of compilation (index 0 is the first compilation, etc.)
     self._compiled_executables: list[_TorchTpuCompiledExecutable] = []
@@ -315,7 +309,7 @@ class TpuBackend:
     #
     # TODO: Figure out how to remove symint from the graph and recompile
     # without dynamism.
-    if not _ENABLE_COMPILED_MODE_DYNAMISM.value:
+    if not self._dynamism:
       _raise_on_symint(example_inputs)
 
     _log_gm_and_inputs("__call__", "Pre", graph_module, example_inputs)
