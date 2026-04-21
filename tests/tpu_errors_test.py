@@ -1185,9 +1185,9 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     tensor_info = [([1, 4], torch.int64)]
     bounds_list = [([1], [8, 16])]
 
-    with self.assertRaisesRegex(
+    with et.assert_raises_message(
         RuntimeError,
-        """dimension indices and upper bounds must have the same size, got 1 and 2""",
+        tpu="""dimension indices and upper bounds must have the same size, got 1 and 2""",
     ):
       tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
 
@@ -1195,9 +1195,9 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     tensor_info = [([1, 4], torch.int64)]
     bounds_list = [([2], [8])]
 
-    with self.assertRaisesRegex(
+    with et.assert_raises_message(
         RuntimeError,
-        r"""dimension index must be within bounds \[0, 1\], got 2 for input tensor 0 with shape \[1, 4\]""",
+        tpu="""dimension index must be within bounds [0, 1], got 2 for input tensor 0 with shape [1, 4]""",
     ):
       tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
 
@@ -1220,9 +1220,9 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     mlir = tpu_torch_compile.build_mlir([z], [x, y])
     executable = tpu_torch_compile.compile_mlir(mlir)
 
-    with self.assertRaisesRegex(
+    with et.assert_raises_message(
         RuntimeError,
-        """output shapes must be specified for all outputs or none, got 2 output shapes for 1 output tensors""",
+        tpu="""output shapes must be specified for all outputs or none, got 2 output shapes for 1 output tensors""",
     ):
       tpu_torch_compile.execute(executable, [x, y], [[5], [5]])
 
@@ -1235,9 +1235,9 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     mlir = tpu_torch_compile.build_mlir([z], [x, y])
     executable = tpu_torch_compile.compile_mlir(mlir)
 
-    with self.assertRaisesRegex(
+    with et.assert_raises_message(
         RuntimeError,
-        """output shape number of dimensions must match the statically inferred dimensions, got output shape dimensions 2 and inferred dimensions 1 for output tensor 0""",
+        tpu="""output shape number of dimensions must match the statically inferred dimensions, got output shape dimensions 2 and inferred dimensions 1 for output tensor 0""",
     ):
       tpu_torch_compile.execute(executable, [x, y], [[5, 2]])
 
@@ -1250,9 +1250,9 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     mlir = tpu_torch_compile.build_mlir([z], [x, y])
     executable = tpu_torch_compile.compile_mlir(mlir)
 
-    with self.assertRaisesRegex(
+    with et.assert_raises_message(
         RuntimeError,
-        r"""output shape dimension must not exceed the statically inferred bound, got output shape \[15\] and inferred shape \[10\]""",
+        tpu="""output shape dimension must not exceed the statically inferred bound, got output shape [15] and inferred shape [10]""",
     ):
       tpu_torch_compile.execute(executable, [x, y], [[15]])
 

@@ -356,6 +356,15 @@ def assert_subprocess_raises_message(exception_type, expected_msg: str):
 class ErrorTestBase(absltest.TestCase):
   """Base class for error tests."""
 
+  def assertRaisesRegex(self, *args, **kwargs):
+    """Bans the default assertRaisesRegex() in favor of assert_raises_message()."""
+
+    self.fail(
+        "You must use et.assert_raises_message() instead of assertRaisesRegex()"
+        " to check the error on CPU and TPU. Using the same API guarantees "
+        "consistency."
+    )
+
   def setUp(self):
     super().setUp()
     # Error tests sometimes force op dispatch failures. We reset the forced

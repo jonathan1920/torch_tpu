@@ -304,15 +304,6 @@ def _run_native_layer_norm_backward(
 class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
   """Tests error messages on TPU vs on CPU."""
 
-  def assertRaisesRegex(self, *args, **kwargs):
-    """Bans the default assertRaisesRegex() in TpuVsCpuErrorTest."""
-
-    self.fail(
-        "You must use et.assert_raises_message() instead of"
-        " assertRaisesRegex() in TpuVsCpuErrorTest to check"
-        """ the error on both CPU and TPU."""
-    )
-
   def test_triu_insufficient_dims(self):
     """Tests that triu with insufficient dims fails with expected error."""
     t = torch.ones(1, device=et.device(), dtype=torch.float32)
