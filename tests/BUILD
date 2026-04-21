@@ -551,6 +551,32 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal:env",
+        "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
+        "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "tpu_errors_test",
+    srcs = ["tpu_errors_test.py"],
+    args = [
+        "--test_mode=tpu",
+    ],
+    env = {
+        "TORCH_SHOW_CPP_STACKTRACES": "0",
+        "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "1",
+    },
+    main = "tpu_errors_test.py",
+    tags = [
+        "requires-tpu-v5lite",
+        "wheel_test_excluded",
+    ],
+    deps = [
+        ":error_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
         "//torch_tpu/_internal:testing",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
@@ -585,6 +611,34 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal:env",
+        "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
+        "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "tpu_errors_test_cov",
+    srcs = ["tpu_errors_test.py"],
+    args = [
+        "--test_mode=cov",
+    ],
+    env = {
+        "TORCH_SHOW_CPP_STACKTRACES": "1",
+        "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "1",
+    },
+    main = "tpu_errors_test.py",
+    notap = "TODO(wan): Enable after the error coverage is decently high.",
+    # TODO: Get working in OSS and enable in nightlies
+    notest_oss = "Disabled as too slow and because it is failing in OSS.",
+    shard_count = 4,
+    tags = ["requires-tpu-v5lite"],
+    visibility = ["//:__subpackages__"],
+    deps = [
+        ":error_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
         "//torch_tpu/_internal:testing",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
@@ -611,12 +665,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal:env",
-        "//torch_tpu/_internal:testing",
-        "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
-        "//torch_tpu/_internal/dynamism",
-        "//torch_tpu/_internal/execution_mode",
-        "//torch_tpu/_internal/pallas",
         "//torch_tpu/_internal/pallas:tpu_torch_pallas",  # build_cleaner: keep
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
