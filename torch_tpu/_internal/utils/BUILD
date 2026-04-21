@@ -151,6 +151,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "test_fixtures_test",
     srcs = ["test_fixtures_test.py"],
+    notest_oss = "TODO: https://github.com/google-pytorch/torch_tpu/issues/524",
     strict = True,
     deps = [
         ":test_fixtures",
