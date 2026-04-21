@@ -93,6 +93,7 @@
 #include "torch_tpu/ops/lerp/lerp_aten_kernels.h"
 #include "torch_tpu/ops/linalg/linalg_kernels.h"
 #include "torch_tpu/ops/linalg/lu/linalg_lu_kernels.h"
+#include "torch_tpu/ops/linalg/qr/linalg_qr_kernels.h"
 #include "torch_tpu/ops/linalg/solve_triangular/linalg_solve_triangular_kernels.h"
 #include "torch_tpu/ops/linalg/vector_norm/aten_vector_norm_kernels.h"
 #include "torch_tpu/ops/linspace/linspace_aten_kernels.h"
@@ -448,6 +449,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kGeTensorOut, AtenGeTensorOut);
   Impl(m, OpName::kGeluBackwardGradInput, AtenGeluBackwardGradInput);
   Impl(m, OpName::kGeluOut, AtenGeluOut);
+  Impl(m, OpName::kGeqrf, AtenGeqrf);
+  Impl(m, OpName::kGeqrfA, AtenGeqrfA);
   Impl(m, OpName::kGluOut, AtenGluOut);
   Impl(m, OpName::kGridSampler2d, AtenGridSampler2d);
   Impl(m, OpName::kGridSampler3d, AtenGridSampler3d);

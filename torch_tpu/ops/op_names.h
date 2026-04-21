@@ -338,6 +338,8 @@ enum class OpName {
   kGeTensorOut,
   kGeluBackwardGradInput,
   kGeluOut,
+  kGeqrf,
+  kGeqrfA,
   kGetDimensionSize,
   kGluOut,
   kGridSampler2d,

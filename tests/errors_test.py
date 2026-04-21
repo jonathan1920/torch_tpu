@@ -5513,6 +5513,15 @@ Supported combinations for non-constant padding:
     ):
       torch.bucketize(input_tensor, boundaries)
 
+  def test_geqrf_insufficient_dims(self):
+    input_tensor = torch.ones(1, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu="""torch.geqrf: input must have at least 2 dimensions.""",
+        tpu="""geqrf(): expected input to have at least 2 dimensions, got 1""",
+    ):
+      torch.geqrf(input_tensor)
+
 
 if __name__ == "__main__":
   absltest.main()

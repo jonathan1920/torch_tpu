@@ -653,6 +653,10 @@ std::string_view ToString(OpName op_name) {
       return "gelu_backward.grad_input";
     case OpName::kGeluOut:
       return "gelu.out";
+    case OpName::kGeqrf:
+      return "geqrf";
+    case OpName::kGeqrfA:
+      return "geqrf.a";
     case OpName::kGetDimensionSize:
       return "get_dimension_size";
     case OpName::kGluOut:

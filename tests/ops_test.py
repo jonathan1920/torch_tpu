@@ -3783,6 +3783,12 @@ class TestOps(TorchTpuTestBase):
         },
     )
 
+  # geqrf testing isn't currently supported by PyTorch in other modes due to
+  # certain operations not being implemented on CPU/GPU.
+  @op_testing.skip_unless_torch_tpu_vs_gpu_mode
+  def test_geqrf(self):
+    self.do_test_op("geqrf")
+
 
 def setUpModule() -> None:
   """Called by absltest.main() after flags are parsed but before tests are run."""

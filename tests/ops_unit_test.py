@@ -4718,6 +4718,52 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         out.cpu(), torch.tensor([[0, 1, 1], [1, 2, 3]], dtype=torch.int64)
     )
 
+  @parameterized.product(
+      shape=[
+          (4, 4),
+          (10, 4),
+          (4, 10),
+          (2, 3, 4),
+          (0, 4),
+          (4, 0),
+          (0, 0),
+      ],
+      dtype=[
+          torch.int32,
+          torch.int64,
+          torch.float32,
+          torch.float64,
+          torch.complex64,
+      ],
+  )
+  def test_geqrf(self, shape, dtype):
+    if dtype in (torch.int32, torch.int64):
+      input_tensor = torch.randint(-10, 10, shape, dtype=dtype)
+    else:
+      input_tensor = torch.randn(shape, dtype=dtype)
+
+    def run(device):
+      # torch.geqrf on CPU does not support integer types, whereas the TPU
+      # implementation automatically promotes them to floating point.
+      if device == "cpu" and dtype in (torch.int32, torch.int64):
+        return torch.geqrf(input_tensor.to(torch.float64).to(device))
+      else:
+        return torch.geqrf(input_tensor.to(device))
+
+    self.assert_close_tpu_vs_cpu(run, rtol=4e-6, atol=1e-6)
+
+  def test_geqrf_out(self):
+    input_tensor = torch.randn(8, 4)
+    a = torch.empty(8, 4)
+    tau = torch.empty(4)
+
+    def run(device):
+      return torch.geqrf(
+          input_tensor.to(device), out=(a.to(device), tau.to(device))
+      )
+
+    self.assert_close_tpu_vs_cpu(run)
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""
