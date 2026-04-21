@@ -40,6 +40,8 @@
 #include "torch_tpu/_internal/compile/compiled_mode.h"
 #include "torch_tpu/_internal/dynamism/dynamism_ops.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/context_manager.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
@@ -186,20 +188,13 @@ std::vector<at::Tensor> PyExecuteCompiledModel(
   return ExecuteCompiledModel(executable, argument_tensors, output_shapes);
 }
 
-std::optional<bool> PyGetMlirTracebacksEnabledOverride() {
-  const auto mode = GetTracebackModeOverride();
-  if (mode == TracebackMode::kDisabled) return false;
-  if (mode == TracebackMode::kEnabled) return true;
-  return std::nullopt;
-}
-
-void PySetMlirTracebacksEnabledOverride(std::optional<bool> enabled) {
-  if (enabled.has_value()) {
-    SetTracebackModeOverride(*enabled ? TracebackMode::kEnabled
-                                      : TracebackMode::kDisabled);
-  } else {
-    SetTracebackModeOverride(std::nullopt);
-  }
+void PyPushEnableTracebacks(std::optional<bool> enabled) {
+  const EnableTracebacksContextState state =
+      enabled.has_value()
+          ? std::make_optional(enabled.value() ? TracebackMode::kEnabled
+                                               : TracebackMode::kDisabled)
+          : std::nullopt;
+  PushContextState(state);
 }
 
 }  // namespace
@@ -380,16 +375,10 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         "Args:\n"
         "  tensor_info: A list of (shape, dtype) pairs for each tensor.\n"
         "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.");
-  m.def("get_mlir_tracebacks_enabled_override",
-        &PyGetMlirTracebacksEnabledOverride,
-        "Return whether MLIR location tracebacks are currently enabled by a "
-        "context manager.");
-  m.def("set_mlir_tracebacks_enabled_override",
-        &PySetMlirTracebacksEnabledOverride, py::arg("enabled"),
-        "Sets whether MLIR location tracebacks should be captured with each "
-        "op. If the parameter is None, let it be decided by the "
-        "--torch_tpu_internal_mlir_tracebacks flag and the execution mode "
-        "(eager vs compiled).");
+  m.def("pop_enable_tracebacks", &PopContextState<EnableTracebacksContextState>,
+        "Pops the current state of the enable_tracebacks context manager.");
+  m.def("push_enable_tracebacks", &PyPushEnableTracebacks, py::arg("enabled"),
+        "Pushes a new state onto the enable_tracebacks context manager.");
   m.def("serialize_executable", PySerializeExecutable, py::arg("executable"),
         "Serializes a PjRtLoadedExecutable to bytes for caching.");
   m.def("load_serialized_executable", PyLoadSerializedExecutable,

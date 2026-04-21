@@ -372,16 +372,14 @@ def _process_fx_outputs(
 @contextlib.contextmanager
 def enable_tracebacks(value: bool | None = True):
   """A context manager that overrides whether enabling MLIR tracebacks."""
-  prev_tracebacks_enabled = (
-      tpu_torch_compile.get_mlir_tracebacks_enabled_override()
-  )
-  tpu_torch_compile.set_mlir_tracebacks_enabled_override(value)
+
+  # Push the new state.
+  tpu_torch_compile.push_enable_tracebacks(value)
   try:
     yield
   finally:
-    tpu_torch_compile.set_mlir_tracebacks_enabled_override(
-        prev_tracebacks_enabled
-    )
+    # Guarantee the state is restored even if Python code raises an exception.
+    tpu_torch_compile.pop_enable_tracebacks()
 
 
 def fx_to_mlir(

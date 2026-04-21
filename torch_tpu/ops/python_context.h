@@ -41,6 +41,7 @@
 #include "absl/base/nullability.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
@@ -66,25 +67,8 @@ using SharedTraceback = absl_nonnull std::shared_ptr<const PythonTraceback>;
 using MaybeSharedTraceback =
     absl_nullable std::shared_ptr<const PythonTraceback>;
 
-// Alias for a Boolean for readability.
-enum class TracebackMode {
-  // Tracebacks are not captured. This is the default for eager mode, where MLIR
-  // locations are not typically needed.
-  kDisabled,
-  // Tracebacks are captured for each dispatched op. This is the default for
-  // FX compiled/export modes
-  kEnabled,
-};
-
-// Returns the override for the active traceback mode, if any.
-[[nodiscard]] std::optional<TracebackMode> GetTracebackModeOverride();
-
 // Returns the active traceback mode.
 [[nodiscard]] TracebackMode GetTracebackMode();
-
-// Sets the active traceback mode.
-// Overrides `--torch_tpu_global_mlir_location_tracebacks` if not std::nullopt.
-void SetTracebackModeOverride(std::optional<TracebackMode> mode);
 
 // Options for specifying what stack traces to include in the MLIR Location.
 // kPythonOnly: Only include Python stack frames.

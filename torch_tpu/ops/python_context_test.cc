@@ -21,6 +21,8 @@
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/DebugStringHelper.h"
+#include "torch_tpu/common/context_manager.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
@@ -90,8 +92,17 @@ TEST(ScopedPythonContextCapturer, TwoObjectsAreAlive) {
   EXPECT_FALSE(context.has_value());
 }
 
-TEST(ScopedPythonContextCapturer, CapturesTracebackWhenEnabled) {
-  SetTracebackModeOverride(TracebackMode::kEnabled);
+class ScopedPythonContextCapturerTrackebackTest : public testing::Test {
+ protected:
+  ~ScopedPythonContextCapturerTrackebackTest() override {
+    // Restore the default state.
+    PopContextState<EnableTracebacksContextState>();
+  }
+};
+
+TEST_F(ScopedPythonContextCapturerTrackebackTest,
+       CapturesTracebackWhenEnabled) {
+  PushContextState<EnableTracebacksContextState>(TracebackMode::kEnabled);
   {
     ScopedPythonContextCapturer capturer(OpName::kAdd);
     auto context = ScopedPythonContextCapturer::GetContext();
@@ -102,8 +113,9 @@ TEST(ScopedPythonContextCapturer, CapturesTracebackWhenEnabled) {
   }
 }
 
-TEST(ScopedPythonContextCapturer, DoesNotCaptureTracebackWhenDisabled) {
-  SetTracebackModeOverride(TracebackMode::kDisabled);
+TEST_F(ScopedPythonContextCapturerTrackebackTest,
+       DoesNotCaptureTracebackWhenDisabled) {
+  PushContextState<EnableTracebacksContextState>(TracebackMode::kDisabled);
   {
     ScopedPythonContextCapturer capturer(OpName::kAdd);
     auto context = ScopedPythonContextCapturer::GetContext();

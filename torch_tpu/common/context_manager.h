@@ -24,7 +24,7 @@
 #include "absl/base/nullability.h"
 #include "absl/log/absl_check.h"
 #include "c10/util/ThreadLocalDebugInfo.h"
-#include "stablehlo/dialect/StablehloOps.h"
+#include "torch_tpu/common/context_states.h"
 
 namespace torch_tpu {
 
@@ -33,13 +33,14 @@ namespace internal {
 // can only use the TEST_INFO slot.
 // TODO(https://github.com/pytorch/pytorch/issues/56027): use a dedicated slot
 // for each type of context manager.
-inline constexpr auto kTpuContextSlot = c10::DebugInfoKind::TEST_INFO;
+inline const auto kTpuContextSlot = c10::DebugInfoKind::TEST_INFO;
 }  // namespace internal
 
-using PrecisionContextState = mlir::stablehlo::Precision;
-
 // The state for different types of context managers respectively.
-using ContextManagerState = std::variant<PrecisionContextState>;
+using ContextManagerState = std::variant<  //
+    PrecisionContextState,                 // The `precision` context manager.
+    EnableTracebacksContextState  // The `enable_tracebacks` context manager.
+    >;
 
 // A persistent stack node for TorchTPU context managers. Each node contains a
 // specific feature override and a pointer to the previous node.
