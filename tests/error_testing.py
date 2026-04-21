@@ -75,6 +75,11 @@ _EXCEPTION_RAISED_RE = re.compile(
     r"Exception raised from .* at ([/\w\.]+:\d+).*"
 )
 
+# Whether to allow `cpu=...` in `assert_raises_message()`.
+# If False, passing `cpu` will raise an error. This prevents accidental
+# misuse of the function in a TPU-only error test.
+_allow_cpu_parameter = True
+
 
 def _parse_error(msg: str):
   """Parses the message and prints the error macro locations it covers."""
@@ -255,6 +260,9 @@ def assert_raises_message(
 
   del message_reviewed_by  # Unused for now.
 
+  if not _allow_cpu_parameter and cpu is not None:
+    raise AssertionError("cpu=... is not allowed in TPU-only error tests.")
+
   if cpu is None:
     cpu = tpu
 
@@ -385,5 +393,21 @@ class TpuOnlyErrorTestBase(ErrorTestBase):
 
   def setUp(self):
     super().setUp()
+
     if TEST_MODE.value == "cpu":
-      self.skipTest("Skipping test on CPU as it is only relevant for TPU.")
+      self.fail(
+          "This test is only relevant for TPU. Please run it with only"
+          " --test_mode=tpu or --test_mode=cov."
+      )
+
+    # Disable CPU error testing for TPU-only error tests.
+    global _allow_cpu_parameter
+    self.old_allow_cpu_parameter = _allow_cpu_parameter
+    _allow_cpu_parameter = False
+
+  def tearDown(self):
+    # Restore the original value of _allow_cpu_parameter.
+    global _allow_cpu_parameter
+    _allow_cpu_parameter = self.old_allow_cpu_parameter
+
+    super().tearDown()
