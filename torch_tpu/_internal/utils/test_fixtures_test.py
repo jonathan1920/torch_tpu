@@ -129,7 +129,8 @@ class TestFixturesTest(absltest.TestCase):
     with self.assertRaisesWithLiteralMatch(ValueError, msg):
       # Act
       crash_module.crash = True
-      crash_module(test_tensor).sum().backward()
+      # TODO(b/505036496): Investigate autograd slowness after autoload.
+      test_fixtures.CrashBackwardFunction.backward(None, None)
 
 
 if __name__ == "__main__":
