@@ -56,8 +56,6 @@
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
 
 namespace torch_tpu {
 namespace py = pybind11;
@@ -188,13 +186,20 @@ std::vector<at::Tensor> PyExecuteCompiledModel(
   return ExecuteCompiledModel(executable, argument_tensors, output_shapes);
 }
 
-bool PyGetMlirTracebacksEnabled() {
-  return GetTracebackMode() == TracebackMode::kEnabled;
+std::optional<bool> PyGetMlirTracebacksEnabledOverride() {
+  const auto mode = GetTracebackModeOverride();
+  if (mode == TracebackMode::kDisabled) return false;
+  if (mode == TracebackMode::kEnabled) return true;
+  return std::nullopt;
 }
 
-void PySetMlirTracebacksEnabled(bool enabled) {
-  SetTracebackMode(enabled ? TracebackMode::kEnabled
-                           : TracebackMode::kDisabled);
+void PySetMlirTracebacksEnabledOverride(std::optional<bool> enabled) {
+  if (enabled.has_value()) {
+    SetTracebackModeOverride(*enabled ? TracebackMode::kEnabled
+                                      : TracebackMode::kDisabled);
+  } else {
+    SetTracebackModeOverride(std::nullopt);
+  }
 }
 
 }  // namespace
@@ -375,12 +380,16 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         "Args:\n"
         "  tensor_info: A list of (shape, dtype) pairs for each tensor.\n"
         "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.");
-  m.def("get_mlir_tracebacks_enabled", &PyGetMlirTracebacksEnabled,
-        "Return whether MLIR location tracebacks are currently enabled.");
-  m.def(
-      "set_mlir_tracebacks_enabled", &PySetMlirTracebacksEnabled,
-      py::arg("enabled"),
-      "Sets whether MLIR location tracebacks should be captured with each op.");
+  m.def("get_mlir_tracebacks_enabled_override",
+        &PyGetMlirTracebacksEnabledOverride,
+        "Return whether MLIR location tracebacks are currently enabled by a "
+        "context manager.");
+  m.def("set_mlir_tracebacks_enabled_override",
+        &PySetMlirTracebacksEnabledOverride, py::arg("enabled"),
+        "Sets whether MLIR location tracebacks should be captured with each "
+        "op. If the parameter is None, let it be decided by the "
+        "--torch_tpu_internal_mlir_tracebacks flag and the execution mode "
+        "(eager vs compiled).");
   m.def("serialize_executable", PySerializeExecutable, py::arg("executable"),
         "Serializes a PjRtLoadedExecutable to bytes for caching.");
   m.def("load_serialized_executable", PyLoadSerializedExecutable,

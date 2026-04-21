@@ -123,7 +123,6 @@ torch_tpu_cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
         "@stablehlo//:attr_type_builder_util",
-        "@xla//xla:shape_util",
         "@xla//xla/hlo/translate:register",
         "@xla//xla/mlir/utils:error_util",
         "@xla//xla/pjrt:maybe_owning_mlir_module",

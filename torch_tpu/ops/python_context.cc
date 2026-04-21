@@ -40,34 +40,58 @@
 #include "mlir/Support/LLVM.h"
 #include "torch/csrc/profiler/combined_traceback.h"
 #include "torch/csrc/profiler/unwind/unwind.h"
+#include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
-ABSL_FLAG(std::optional<bool>, torch_tpu_internal_mlir_tracebacks, std::nullopt,
-          "If set, MLIR location tracebacks will be globally enabled or "
-          "disabled (forced). Default is enabled for compiled, disabled for "
-          "eager.");
+ABSL_FLAG(std::optional<bool>, torch_tpu_internal_mlir_tracebacks,
+          std::nullopt,  //
+          "If set, MLIR location tracebacks will be enabled or disabled by "
+          "default depending on the Boolean value. Otherwise, the default is "
+          "disabling tracebacks in the eager mode and enabling them in the "
+          "compiled mode. This can be overridden by the enable_tracebacks() "
+          "context manager.");
 
 namespace torch_tpu {
 
 namespace {
 
-TracebackMode& MutableTracebackMode() {
-  thread_local TracebackMode mode = TracebackMode::kDisabled;
+// Returns the mutable traceback mode override in the current context.
+// If no override is set, returns std::nullopt.
+std::optional<TracebackMode>& MutableTracebackModeOverride() {
+  static thread_local std::optional<TracebackMode> mode = std::nullopt;
   return mode;
 }
 
 }  // namespace
 
+std::optional<TracebackMode> GetTracebackModeOverride() {
+  return MutableTracebackModeOverride();
+}
+
+// Returns the traceback mode in the current context.
 TracebackMode GetTracebackMode() {
-  auto maybe_flag = absl::GetFlag(FLAGS_torch_tpu_internal_mlir_tracebacks);
+  // If there's an override, use it.
+  const auto mode = GetTracebackModeOverride();
+  if (mode.has_value()) return mode.value();
+
+  // Otherwise, use the flag value if set. Read the flag once for consistent
+  // behavior in case the flag is changed while the program is running.
+  static const auto maybe_flag =
+      absl::GetFlag(FLAGS_torch_tpu_internal_mlir_tracebacks);
   if (maybe_flag.has_value()) {
     return (*maybe_flag ? TracebackMode::kEnabled : TracebackMode::kDisabled);
   }
-  return MutableTracebackMode();
+
+  // The flag is unset, check if we are in compiled mode.
+  return GetEagerMode() == EagerMode::kInternalDeferAll
+             ? TracebackMode::kEnabled
+             : TracebackMode::kDisabled;
 }
 
-void SetTracebackMode(TracebackMode mode) { MutableTracebackMode() = mode; }
+void SetTracebackModeOverride(std::optional<TracebackMode> mode) {
+  MutableTracebackModeOverride() = mode;
+}
 
 namespace {
 

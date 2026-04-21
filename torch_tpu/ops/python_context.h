@@ -66,24 +66,25 @@ using SharedTraceback = absl_nonnull std::shared_ptr<const PythonTraceback>;
 using MaybeSharedTraceback =
     absl_nullable std::shared_ptr<const PythonTraceback>;
 
-// Alias for a boolean for readability.
+// Alias for a Boolean for readability.
 enum class TracebackMode {
-  // Tracebacks are not captured. This is the default for eager mode, as it is
-  // higher-performance and MLIR locations are not typically needed.
+  // Tracebacks are not captured. This is the default for eager mode, where MLIR
+  // locations are not typically needed.
   kDisabled,
   // Tracebacks are captured for each dispatched op. This is the default for
-  // FX compiled/export modes, but can be enabled for eager mode as well
-  // using the `--torch_tpu_global_mlir_location_tracebacks` flag.
+  // FX compiled/export modes
   kEnabled,
 };
 
+// Returns the override for the active traceback mode, if any.
+[[nodiscard]] std::optional<TracebackMode> GetTracebackModeOverride();
+
 // Returns the active traceback mode.
-// Always kEnabled if `--torch_tpu_global_mlir_location_tracebacks` is set.
-TracebackMode GetTracebackMode();
+[[nodiscard]] TracebackMode GetTracebackMode();
 
 // Sets the active traceback mode.
-// Has no effect if `--torch_tpu_global_mlir_location_tracebacks` is set.
-void SetTracebackMode(TracebackMode mode);
+// Overrides `--torch_tpu_global_mlir_location_tracebacks` if not std::nullopt.
+void SetTracebackModeOverride(std::optional<TracebackMode> mode);
 
 // Options for specifying what stack traces to include in the MLIR Location.
 // kPythonOnly: Only include Python stack frames.

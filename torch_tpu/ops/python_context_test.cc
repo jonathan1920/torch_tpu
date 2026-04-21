@@ -91,7 +91,7 @@ TEST(ScopedPythonContextCapturer, TwoObjectsAreAlive) {
 }
 
 TEST(ScopedPythonContextCapturer, CapturesTracebackWhenEnabled) {
-  SetTracebackMode(TracebackMode::kEnabled);
+  SetTracebackModeOverride(TracebackMode::kEnabled);
   {
     ScopedPythonContextCapturer capturer(OpName::kAdd);
     auto context = ScopedPythonContextCapturer::GetContext();
@@ -103,7 +103,7 @@ TEST(ScopedPythonContextCapturer, CapturesTracebackWhenEnabled) {
 }
 
 TEST(ScopedPythonContextCapturer, DoesNotCaptureTracebackWhenDisabled) {
-  SetTracebackMode(TracebackMode::kDisabled);
+  SetTracebackModeOverride(TracebackMode::kDisabled);
   {
     ScopedPythonContextCapturer capturer(OpName::kAdd);
     auto context = ScopedPythonContextCapturer::GetContext();

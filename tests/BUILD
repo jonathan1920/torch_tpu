@@ -947,6 +947,21 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "tracebacks_precedence_test",
+    srcs = ["tracebacks_precedence_test.py"],
+    args = [
+        "--torch_tpu_internal_mlir_tracebacks=true",
+    ],
+    notest_oss = "Absl flags don't work in OSS",
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/export",
+        "//torch_tpu/api",
+    ],
+)
+
 test_suite(
     name = "autoload_tests",
     tests = [

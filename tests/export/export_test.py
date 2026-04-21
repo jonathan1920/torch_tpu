@@ -14,14 +14,12 @@
 
 """Small graph test for TPU backend."""
 
-import contextlib
 import os
 
 from absl.testing import absltest
 import torch
 import torch.export
 from torch_tpu import api
-from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.export import export as torch_tpu_export
 
 
@@ -49,17 +47,6 @@ class SimpleNN(torch.nn.Module):
     x = self.linear1(x)
     x = x + torch.ones_like(x)
     return x
-
-
-@contextlib.contextmanager
-def override_tracebacks(new_val):
-  """A context manager that enables MLIR location tracebacks."""
-  prev = tt_testing.get_mlir_tracebacks_flag()
-  tt_testing.set_mlir_tracebacks_flag(new_val)
-  try:
-    yield
-  finally:
-    tt_testing.set_mlir_tracebacks_flag(prev)
 
 
 class TestExportLinearMode(absltest.TestCase):
@@ -113,7 +100,7 @@ class ExportTest(absltest.TestCase):
         torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6]),
     )
     exported = torch.export.export(SimpleModule(), args=sample_input)
-    with override_tracebacks(None):  # override with nullopt
+    with torch_tpu_export.enable_tracebacks(None):  # override with nullopt
       exported_mlir = torch_tpu_export.exported_to_mlir(exported)
     mlir_text = exported_mlir.serialize_text(enable_debug_info=True)
 
@@ -175,7 +162,7 @@ class ExportTest(absltest.TestCase):
         torch.tensor([0.4, 0.5, 0.6, 0.7, 0.6]),
     )
     exported = torch.export.export(SimpleModule(), args=sample_input)
-    with override_tracebacks(False):  # disable tracebacks
+    with torch_tpu_export.enable_tracebacks(False):
       exported_mlir = torch_tpu_export.exported_to_mlir(exported)
     mlir_text = exported_mlir.serialize_text(enable_debug_info=True)
 

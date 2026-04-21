@@ -120,7 +120,6 @@ torch_tpu_cc_library(
         "//shims/torch:aten",
         "//shims/torch:torch_headers",
         "//torch_tpu/eager:op_dispatcher",
-        "@com_google_absl//absl/flags:flag",
     ],
 )
 

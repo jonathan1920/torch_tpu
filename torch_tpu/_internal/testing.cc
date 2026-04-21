@@ -13,15 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <optional>
 
-#include "absl/flags/declare.h"
-#include "absl/flags/flag.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
-
-ABSL_DECLARE_FLAG(std::optional<bool>, torch_tpu_internal_mlir_tracebacks);
 
 namespace torch_tpu {
 namespace py = pybind11;
@@ -36,14 +31,6 @@ PYBIND11_MODULE(testing, m) {
   // call will take effect.
   m.def("set_op_dispatch_failure", internal::SetOpDispatchFailure,  //
         py::arg("op_base_name"), py::arg("failure_message"));
-
-  // Exposes the C++ flag accessors.
-  m.def("set_mlir_tracebacks_flag", [](std::optional<bool> val) {
-    absl::SetFlag(&FLAGS_torch_tpu_internal_mlir_tracebacks, val);
-  });
-  m.def("get_mlir_tracebacks_flag", []() -> std::optional<bool> {
-    return absl::GetFlag(FLAGS_torch_tpu_internal_mlir_tracebacks);
-  });
 }
 
 }  // namespace torch_tpu

@@ -370,14 +370,18 @@ def _process_fx_outputs(
 
 
 @contextlib.contextmanager
-def enable_tracebacks():
-  """A context manager that enables MLIR location tracebacks."""
-  prev_tracebacks_enabled = tpu_torch_compile.get_mlir_tracebacks_enabled()
-  tpu_torch_compile.set_mlir_tracebacks_enabled(True)
+def enable_tracebacks(value: bool | None = True):
+  """A context manager that overrides whether enabling MLIR tracebacks."""
+  prev_tracebacks_enabled = (
+      tpu_torch_compile.get_mlir_tracebacks_enabled_override()
+  )
+  tpu_torch_compile.set_mlir_tracebacks_enabled_override(value)
   try:
     yield
   finally:
-    tpu_torch_compile.set_mlir_tracebacks_enabled(prev_tracebacks_enabled)
+    tpu_torch_compile.set_mlir_tracebacks_enabled_override(
+        prev_tracebacks_enabled
+    )
 
 
 def fx_to_mlir(
@@ -438,10 +442,9 @@ def fx_to_mlir(
     del rng_state
 
   # Run the module through the EagerLikeFxInterpreter with MLIR location
-  # tracebacks enabled so that the MLIR we generate has file location info.
-  with execution_mode.eager_mode(
-      execution_mode.EagerMode.INTERNAL_DEFER_ALL
-  ), enable_tracebacks():
+  # tracebacks enabled by default so that the MLIR we generate has file
+  # location info.
+  with execution_mode.eager_mode(execution_mode.EagerMode.INTERNAL_DEFER_ALL):
     # We clone the args so that inplace updates do not overwrite the placeholder
     # args, these copies will be removed in the compiled code so there is no
     # performance impact.
