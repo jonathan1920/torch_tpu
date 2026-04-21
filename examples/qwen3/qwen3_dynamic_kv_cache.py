@@ -20,6 +20,7 @@ from absl import app
 from absl import logging
 import torch
 from torch_tpu import api
+from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import log_utils
 from examples import paths
 import transformers
@@ -127,7 +128,9 @@ def main(argv):
   logging.info("output_tpu=%s", output_tpu)
   assert output_cpu == output_tpu
 
-  model_tpu_compiled = torch.compile(model_tpu, dynamic=False, backend="tpu")
+  model_tpu_compiled = torch.compile(
+      model_tpu, dynamic=False, backend=_backend.TpuBackend()
+  )
   output_tpu_compiled = model_generate(
       model_tpu_compiled, inputs.to("tpu"), tokenizer, max_decode_steps
   )

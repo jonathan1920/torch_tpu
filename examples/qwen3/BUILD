@@ -186,6 +186,7 @@ torch_tpu_py_test(
         "//shims/absl_py/logging",
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/utils:log_utils",
         "//torch_tpu/api",
         "@pypi//transformers",
