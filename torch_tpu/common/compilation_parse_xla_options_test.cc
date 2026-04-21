@@ -47,6 +47,10 @@ class MakeCompilerOptionsTest : public testing::Test {
         {.device_type = "tpu"});
     ABSL_CHECK_OK(PjrtBackend::GetInstance().EnsureInitialized());
   }
+
+  ~MakeCompilerOptionsTest() override {
+    unsetenv("TORCH_TPU_INTERNAL_XLA_OPTIONS");
+  }
 };
 
 TEST_F(MakeCompilerOptionsTest, ParsesXlaOptions) {
@@ -54,12 +58,33 @@ TEST_F(MakeCompilerOptionsTest, ParsesXlaOptions) {
          // Spaces are intentional to test parsing.
          " xla_optimization_level=O3  xla_tpu_enable_deduplicated_calls=AUTO ",
          1);
-  absl::Cleanup cleanup = [&]() { unsetenv("TORCH_TPU_INTERNAL_XLA_OPTIONS"); };
+
   const auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
   ASSERT_EQ(options_or.status(), absl::OkStatus());
   const auto& options = options_or.value();
+
   EXPECT_EQ(options->executable_build_options.optimization_level(),
             xla::ExecutionOptions::EFFORT_O3);
+  EXPECT_THAT(
+      options->env_option_overrides,
+      Contains(Pair("xla_tpu_enable_deduplicated_calls", std::string("AUTO"))));
+}
+
+TEST_F(MakeCompilerOptionsTest, PythonContextManagerOverridesEnvVar) {
+  setenv("TORCH_TPU_INTERNAL_XLA_OPTIONS",
+         "xla_optimization_level=O3  xla_tpu_enable_deduplicated_calls=AUTO",
+         1);
+  PushCompilerOptionOverrides({
+      {"xla_optimization_level", "O2"},
+  });
+  absl::Cleanup cleanup = [] { PopCompilerOptionOverrides(); };
+
+  const auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
+  ASSERT_EQ(options_or.status(), absl::OkStatus());
+  const auto& options = options_or.value();
+
+  EXPECT_EQ(options->executable_build_options.optimization_level(),
+            xla::ExecutionOptions::EFFORT_O2);
   EXPECT_THAT(
       options->env_option_overrides,
       Contains(Pair("xla_tpu_enable_deduplicated_calls", std::string("AUTO"))));

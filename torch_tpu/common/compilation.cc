@@ -322,9 +322,9 @@ static CompilerOptionOverrides MakeCompilerOptionOverrides(
     // between autofdo and optimization level.
     overrides["xla_tpu_autofdo"] = "false";
   }
-  UpdateMap(overrides, GetCompilerOptionOverridesFromPython());
-  // When merging the overrides, the environment variable takes precedence.
   UpdateMap(overrides, GetCompilerOptionOverridesFromEnvVar());
+  // When merging the overrides, the Python context manager takes precedence.
+  UpdateMap(overrides, GetCompilerOptionOverridesFromPython());
   return overrides;
 }
 
