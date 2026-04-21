@@ -170,6 +170,29 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "qwen3_dynamic_kv_cache",
+    timeout = "long",  # 15 minutes
+    srcs = ["qwen3_dynamic_kv_cache.py"],
+    nolocal = "slow example",
+    notest_oss = "Slow test",
+    tags = [
+        "nofastbuild",  # Benchmark.
+        "requires-net:external",  # Needed to access remote files.
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//examples:paths",
+        "//shims/absl_py:app",
+        "//shims/absl_py/logging",
+        "//shims/safetensors",  # buildcleaner: keep
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/utils:log_utils",
+        "//torch_tpu/api",
+        "@pypi//transformers",
+    ],
+)
+
+torch_tpu_py_test(
     name = "qwen3_hf_pipe_example",
     timeout = "long",  # 15 minutes
     srcs = ["qwen3_hf_pipe_example.py"],
