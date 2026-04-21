@@ -1,0 +1,184 @@
+# proto-file: https://github.com/google-ml-infra/actions/blob/main/benchmarking/proto/benchmark_registry.proto
+# proto-message: BenchmarkSuite
+
+benchmarks {
+  name: "model-performance"
+  description: "Benchmarks for model performance."
+  owner: "TorchTPU"
+
+  workload {
+    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
+    action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
+  }
+
+  environment_configs {
+    id: "tpu-v7"
+    runner_label: "linux-x86-tpu7x-224-4tpu"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest@sha256:43c523372c4b7f7ce649a1ff204b908727bd338353303c0444af34cb305e5832"
+    workload_action_inputs { key: "bazel_run_flags" value: "-c opt --config=bench --test_sharding_strategy=disabled" }
+    workload_action_inputs { key: "runtime_flags" value: "--enable_tensorboard_logging" }
+  }
+
+  # ==========================================
+  # --- Llama-3.2-1B Metrics ---
+  # ==========================================
+
+  # Forward Eager Default
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_default/hf_llama_3_2_1b/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_default/hf_llama_3_2_1b/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_default/hf_llama_3_2_1b/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_default/hf_llama_3_2_1b/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_default/hf_llama_3_2_1b/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Forward Eager Optimized
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_optimized/hf_llama_3_2_1b/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_optimized/hf_llama_3_2_1b/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_optimized/hf_llama_3_2_1b/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_optimized/hf_llama_3_2_1b/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_optimized/hf_llama_3_2_1b/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Forward Eager Defer Never and Launch Blocking
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_defer_never_and_launch_blocking/hf_llama_3_2_1b/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_defer_never_and_launch_blocking/hf_llama_3_2_1b/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_defer_never_and_launch_blocking/hf_llama_3_2_1b/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_defer_never_and_launch_blocking/hf_llama_3_2_1b/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_eager_defer_never_and_launch_blocking/hf_llama_3_2_1b/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Forward Compiled
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_compiled/hf_llama_3_2_1b/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_compiled/hf_llama_3_2_1b/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_compiled/hf_llama_3_2_1b/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_compiled/hf_llama_3_2_1b/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_forward_compiled/hf_llama_3_2_1b/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Train 1 Step Eager Default
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_eager_default/hf_llama_3_2_1b/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_eager_default/hf_llama_3_2_1b/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_eager_default/hf_llama_3_2_1b/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_eager_default/hf_llama_3_2_1b/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_eager_default/hf_llama_3_2_1b/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Train 1 Step Eager Optimized
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_eager_optimized/hf_llama_3_2_1b/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_eager_optimized/hf_llama_3_2_1b/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_eager_optimized/hf_llama_3_2_1b/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_eager_optimized/hf_llama_3_2_1b/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_eager_optimized/hf_llama_3_2_1b/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Train 1 Step Compiled
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_compiled/hf_llama_3_2_1b/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_compiled/hf_llama_3_2_1b/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_compiled/hf_llama_3_2_1b/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_compiled/hf_llama_3_2_1b/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_llama_3_2_1b_train_1_step_compiled/hf_llama_3_2_1b/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # ==========================================
+  # --- Gemma-3-270M Metrics ---
+  # ==========================================
+
+  # Forward Eager Default
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_eager_default/hf_gemma_3_270m/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_eager_default/hf_gemma_3_270m/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_eager_default/hf_gemma_3_270m/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_eager_default/hf_gemma_3_270m/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_eager_default/hf_gemma_3_270m/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Forward Eager Optimized
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_eager_optimized/hf_gemma_3_270m/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_eager_optimized/hf_gemma_3_270m/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_eager_optimized/hf_gemma_3_270m/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_eager_optimized/hf_gemma_3_270m/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_eager_optimized/hf_gemma_3_270m/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Forward Compiled
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_compiled/hf_gemma_3_270m/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_compiled/hf_gemma_3_270m/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_compiled/hf_gemma_3_270m/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_compiled/hf_gemma_3_270m/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_forward_compiled/hf_gemma_3_270m/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Train 1 Step Eager Default
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_eager_default/hf_gemma_3_270m/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_eager_default/hf_gemma_3_270m/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_eager_default/hf_gemma_3_270m/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_eager_default/hf_gemma_3_270m/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_eager_default/hf_gemma_3_270m/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Train 1 Step Eager Optimized
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_eager_optimized/hf_gemma_3_270m/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_eager_optimized/hf_gemma_3_270m/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_eager_optimized/hf_gemma_3_270m/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_eager_optimized/hf_gemma_3_270m/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_eager_optimized/hf_gemma_3_270m/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Train 1 Step Compiled
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_compiled/hf_gemma_3_270m/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_compiled/hf_gemma_3_270m/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_compiled/hf_gemma_3_270m/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_compiled/hf_gemma_3_270m/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_gemma_3_270m_train_1_step_compiled/hf_gemma_3_270m/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # ==========================================
+  # --- Qwen3-1.7B Metrics ---
+  # ==========================================
+
+  # Forward Eager Default
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_default/hf_qwen3_1_7b/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_default/hf_qwen3_1_7b/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_default/hf_qwen3_1_7b/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_default/hf_qwen3_1_7b/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_default/hf_qwen3_1_7b/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Forward Eager Optimized
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_optimized/hf_qwen3_1_7b/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_optimized/hf_qwen3_1_7b/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_optimized/hf_qwen3_1_7b/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_optimized/hf_qwen3_1_7b/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_optimized/hf_qwen3_1_7b/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Forward Eager Defer Never and Launch Blocking
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_defer_never_and_launch_blocking/hf_qwen3_1_7b/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_defer_never_and_launch_blocking/hf_qwen3_1_7b/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_defer_never_and_launch_blocking/hf_qwen3_1_7b/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_defer_never_and_launch_blocking/hf_qwen3_1_7b/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_eager_defer_never_and_launch_blocking/hf_qwen3_1_7b/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Forward Compiled
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_compiled/hf_qwen3_1_7b/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_compiled/hf_qwen3_1_7b/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_compiled/hf_qwen3_1_7b/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_compiled/hf_qwen3_1_7b/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_qwen3_1_7b_forward_compiled/hf_qwen3_1_7b/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # ==========================================
+  # --- Timm ResNet-50 Metrics ---
+  # ==========================================
+
+  # Forward Eager Default
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_default/timm_resnet_50/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_default/timm_resnet_50/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_default/timm_resnet_50/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_default/timm_resnet_50/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_default/timm_resnet_50/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Forward Eager Optimized
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_optimized/timm_resnet_50/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_optimized/timm_resnet_50/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_optimized/timm_resnet_50/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_optimized/timm_resnet_50/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_optimized/timm_resnet_50/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Forward Eager Defer Never and Launch Blocking
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_defer_never_and_launch_blocking/timm_resnet_50/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_defer_never_and_launch_blocking/timm_resnet_50/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_defer_never_and_launch_blocking/timm_resnet_50/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_defer_never_and_launch_blocking/timm_resnet_50/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_eager_defer_never_and_launch_blocking/timm_resnet_50/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+
+  # Forward Compiled
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_compiled/timm_resnet_50/post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_compiled/timm_resnet_50/first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_compiled/timm_resnet_50/warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_compiled/timm_resnet_50/peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
+  metrics { name: "torch_tpu/gfc_1x1x1/test_timm_resnet_50_forward_compiled/timm_resnet_50/num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
+}

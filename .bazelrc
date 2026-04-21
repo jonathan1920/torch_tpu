@@ -230,6 +230,10 @@ common:ci --remote_download_minimal
 common:ci --keep_going
 test:ci --test_output=errors
 
+# Setting specific to benchmarking runs.
+common:bench --config=ci
+common:bench --spawn_strategy=standalone,local
+
 # Settings specific to CPU CI runs.
 common:ci_cpu --config=ci
 common:ci_cpu --build_tag_filters=-nobuild,-requires-gpu,-requires-tpu
