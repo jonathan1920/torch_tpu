@@ -17,10 +17,12 @@
 #include "torch_tpu/common/compilation.h"
 
 #include <string>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "absl/log/absl_check.h"
 #include "absl/status/status.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "xla/xla.pb.h"
 
@@ -52,6 +54,44 @@ TEST_F(MakeCompilerOptionsTest, DefaultToUnsetForTorchCompileMode) {
   const auto& options = options_or.value();
   EXPECT_EQ(options->executable_build_options.optimization_level(),
             xla::ExecutionOptions::EFFORT_UNKNOWN);
+}
+
+class ScopedCompilerOptionOverrides {
+ public:
+  explicit ScopedCompilerOptionOverrides(CompilerOptionOverrides overrides) {
+    PushCompilerOptionOverrides(std::move(overrides));
+  }
+
+  ~ScopedCompilerOptionOverrides() { PopCompilerOptionOverrides(); }
+};
+
+TEST_F(MakeCompilerOptionsTest, CompilerOptionOverrides) {
+  ScopedCompilerOptionOverrides outer({{"xla_optimization_level", "O1"}});
+
+  {
+    const auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
+    ASSERT_EQ(options_or.status(), absl::OkStatus());
+    const auto& options = options_or.value();
+    EXPECT_EQ(options->executable_build_options.optimization_level(),
+              xla::ExecutionOptions::EFFORT_O1);
+  }
+
+  {
+    ScopedCompilerOptionOverrides inner({{"xla_optimization_level", "O2"}});
+    const auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
+    ASSERT_EQ(options_or.status(), absl::OkStatus());
+    const auto& options = options_or.value();
+    EXPECT_EQ(options->executable_build_options.optimization_level(),
+              xla::ExecutionOptions::EFFORT_O2);
+  }
+
+  {
+    const auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
+    ASSERT_EQ(options_or.status(), absl::OkStatus());
+    const auto& options = options_or.value();
+    EXPECT_EQ(options->executable_build_options.optimization_level(),
+              xla::ExecutionOptions::EFFORT_O1);
+  }
 }
 
 }  // namespace

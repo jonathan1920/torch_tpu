@@ -35,11 +35,23 @@ def custom_compiler_options(options: dict[str, str]):
         "xla_optimization_level": "O1",
         "xla_tpu_enable_deduplicated_calls": "ENABLED",
     }):
-      result =torch.matmul(torch.ones((1, 1)), torch.ones((1, 1)))
+      result = torch.matmul(torch.ones((1, 1)), torch.ones((1, 1)))
       result.to("cpu")
 
   All operations *materialized* within the context will use the provided
   compiler options.
+
+  When nested, compile options overrides from the inner context merge with the
+  outer context, with the inner options taking precedence.
+
+  For example:
+    with custom_compiler_options({"xla_optimization_level": "O1"}):
+      outer = torch.matmul(...)
+      outer.to("cpu")  # Compiled with {"xla_optimization_level": "O1"}
+
+      with custom_compiler_options({"xla_optimization_level": "O2"}):
+        inner = torch.matmul(...)
+        inner.to("cpu")  # Compiled with {"xla_optimization_level": "O2"}
   """
 
   # See

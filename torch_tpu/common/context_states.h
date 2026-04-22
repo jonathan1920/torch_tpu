@@ -17,14 +17,17 @@
 #ifndef TORCH_TPU_COMMON_CONTEXT_STATES_H_
 #define TORCH_TPU_COMMON_CONTEXT_STATES_H_
 
+#include <map>
 #include <optional>
+#include <string>
 
 #include "stablehlo/dialect/StablehloOps.h"
 
 namespace torch_tpu {
 
 // This library defines the context states for different types of context
-// managers.
+// managers. By convention, the context state type is denoted by appending
+// `ContextState` to the name of the context manager.
 
 // The state of the `precision` context manager.
 using PrecisionContextState = mlir::stablehlo::Precision;
@@ -41,6 +44,13 @@ enum class TracebackMode {
 
 // The state of the `enable_tracebacks` context manager.
 using EnableTracebacksContextState = std::optional<TracebackMode>;
+
+// Maps an XLA compiler option name to its string value. We pick this
+// representation for easy interop with Python.
+using CompilerOptionOverrides = std::map<std::string, std::string>;
+
+// The state of the `custom_compiler_options` context manager.
+using CustomCompilerOptionsContextState = CompilerOptionOverrides;
 
 }  // namespace torch_tpu
 

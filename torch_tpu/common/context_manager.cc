@@ -40,7 +40,8 @@ PopContextStateUntyped() {
   // _pop removes the last pushed state for the current python thread.
   auto node = c10::ThreadLocalDebugInfo::_pop(internal::kTpuContextSlot);
   ABSL_CHECK(node != nullptr)  // CRASH_OK
-      << "No context state to pop for the current python thread.";
+      << "No context state to pop for the current python thread. This is a bug "
+         "in TorchTPU.";
   auto manager_node = std::dynamic_pointer_cast<const ContextManagerNode>(node);
   ABSL_CHECK(manager_node != nullptr)  // CRASH_OK
       << "The state in the TorchTPU context slot must be a ContextManagerNode.";

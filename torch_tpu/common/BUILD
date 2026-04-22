@@ -184,6 +184,8 @@ torch_tpu_cc_library(
     srcs = ["compilation.cc"],
     hdrs = ["compilation.h"],
     deps = [
+        ":context_manager",
+        ":context_states",
         ":env_vars",
         ":error_utils",
         ":shape",
@@ -192,7 +194,6 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -847,6 +848,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":compilation",
+        ":context_states",
         "//shims/torch:torch_headers",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",

@@ -18,7 +18,6 @@
 
 #include <map>
 #include <memory>
-#include <stack>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -27,7 +26,6 @@
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
-#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -37,6 +35,8 @@
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "torch_tpu/common/context_manager.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
@@ -131,56 +131,6 @@ MlirComputationBuilderToExecutableBuilder(
   };
 }
 
-// Returns the compile option overrides for the current thread as a stack.
-// Each element in the stack represents a set of overrides that have been
-// pushed but not yet popped. Each time we push a set of overrides, it is
-// merged with the existing overrides (later pushes take precedence).
-//
-// For example, given Python code:
-//
-//  with compiler.custom_compiler_options({
-//      "foo": "1",
-//      "bar": "2",
-//  }):
-//    f().to("cpu")  // triggers compilation
-//    with compiler.custom_compiler_options({
-//      "bar": "3",
-//      "baz": "4",
-//    }):
-//      g().to("cpu")  // triggers compilation
-//    h().to("cpu")  // triggers compilation
-//
-// 1. initially the stack is empty,
-// 2. when we are in the outer custom_compiler_options context but not in
-//    the inner one, the stack contains one element
-//      { "foo": "1", "bar": "2" },
-// 3. when we are in the inner custom_compiler_options context, the stack
-//    contains two elements:
-//      (top)    { "foo": "1", "bar": "3", "baz": "4" }
-//      (bottom) { "foo": "1", "bar": "2" }
-//
-// Therefore f() and h() will be compiled with { "foo": "1", "bar": "2" },
-// and g() will be compiled with { "foo": "1", "bar": "3", "baz": "4" }.
-[[nodiscard]] static std::stack<CompilerOptionOverrides>&
-GetMutableCompileOptionOverridesStack() {
-  // User PyTorch code may set different overrides in different Python
-  // threads, so this needs to be thread-local.
-  // TODO: follow go/tt-context-managers to fix this.
-  static thread_local std::stack<CompilerOptionOverrides> overrides;
-  return overrides;
-}
-
-// Returns the compile option overrides for the current thread, as set in
-// the user Python code. Thread-safe.
-[[nodiscard]] static CompilerOptionOverrides
-GetCompilerOptionOverridesFromPython() {
-  const auto& stack = GetMutableCompileOptionOverridesStack();
-  if (stack.empty()) {
-    return {};
-  }
-  return stack.top();
-}
-
 // Updates `map` with the contents of `updates`. If a key appears in both `map`
 // and `updates`, the value from `updates` is used.
 template <typename Map>
@@ -193,17 +143,15 @@ static void UpdateMap(Map& map, Map updates) {
 void PushCompilerOptionOverrides(CompilerOptionOverrides overrides) {
   // When we push the overrides, the new overrides are merged with the existing
   // overrides. The innermost map takes precedence.
-  auto merged_overrides = GetCompilerOptionOverridesFromPython();
+  auto merged_overrides =
+      GetContextState<CustomCompilerOptionsContextState>({});
   UpdateMap(merged_overrides, std::move(overrides));
-  GetMutableCompileOptionOverridesStack().push(std::move(merged_overrides));
+  PushContextState<CustomCompilerOptionsContextState>(
+      std::move(merged_overrides));
 }
 
 void PopCompilerOptionOverrides() {
-  auto& stack = GetMutableCompileOptionOverridesStack();
-  ABSL_CHECK(!stack.empty())  // CRASH_OK
-      << "Attempted to pop empty compiler option overrides stack. This is a "
-         "bug in TorchTPU.";
-  stack.pop();
+  PopContextState<CustomCompilerOptionsContextState>();
 }
 
 static absl::StatusOr<xla::ExecutionOptions::EffortLevel> ParseEffortLevel(
@@ -325,7 +273,7 @@ static CompilerOptionOverrides MakeCompilerOptionOverrides(
   }
   UpdateMap(overrides, GetCompilerOptionOverridesFromEnvVar());
   // When merging the overrides, the Python context manager takes precedence.
-  UpdateMap(overrides, GetCompilerOptionOverridesFromPython());
+  UpdateMap(overrides, GetContextState<CustomCompilerOptionsContextState>({}));
   return overrides;
 }
 

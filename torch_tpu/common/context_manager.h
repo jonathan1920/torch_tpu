@@ -33,13 +33,18 @@ namespace internal {
 // can only use the TEST_INFO slot.
 // TODO(https://github.com/pytorch/pytorch/issues/56027): use a dedicated slot
 // for each type of context manager.
-inline const auto kTpuContextSlot = c10::DebugInfoKind::TEST_INFO;
+inline constexpr auto kTpuContextSlot = c10::DebugInfoKind::TEST_INFO;
 }  // namespace internal
 
 // The state for different types of context managers respectively.
-using ContextManagerState = std::variant<  //
-    PrecisionContextState,                 // The `precision` context manager.
-    EnableTracebacksContextState  // The `enable_tracebacks` context manager.
+using ContextManagerState = std::variant<
+    // clang-format off
+    // go/keep-sorted start
+    CustomCompilerOptionsContextState,  // The `custom_compiler_options` context manager.
+    EnableTracebacksContextState,       // The `enable_tracebacks` context manager.
+    PrecisionContextState               // The `precision` context manager.
+    // go/keep-sorted end
+    // clang-format on
     >;
 
 // A persistent stack node for TorchTPU context managers. Each node contains a

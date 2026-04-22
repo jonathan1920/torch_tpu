@@ -20,10 +20,8 @@
 // Utilities for compiling PyTorch to PjRt executables.
 
 #include <future>
-#include <map>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -33,6 +31,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -154,10 +153,6 @@ enum class CompilationMode {
   kFastRuntime,  // Produces more optimized executables, but with longer
                  // compile.
 };
-
-// Maps an XLA compiler option name to its string value. We pick this
-// representation for easy interop with Python.
-using CompilerOptionOverrides = std::map<std::string, std::string>;
 
 // Lifts a MlirComputationBuilder into an ExecutableBuilder.
 absl::StatusOr<LoadedExecutableBuilder>
