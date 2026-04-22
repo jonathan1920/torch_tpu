@@ -195,11 +195,16 @@ class ScopedPythonContextCapturer {
 
   // The names of the ops in the context capturer stack for the current thread,
   // from bottom to top.
-  thread_local static std::vector<std::string> op_names_;
+  static thread_local  // CPP_THREAD_LOCAL_OK=needed only in the dispatching
+                       // thread.
+      std::vector<std::string>
+          op_names_;
   // nullptr when the context capturer stack for the current thread is
   // empty, or when traceback capture is disabled.
   // Otherwise, the traceback of all contexts in the stack.
-  thread_local static MaybeSharedTraceback traceback_;
+  static thread_local  // CPP_THREAD_LOCAL_OK=needed only in the dispatching
+                       // thread.
+      MaybeSharedTraceback traceback_;
 };
 
 // RAII class to provide a PythonContext captured earlier to an MlirOp build
@@ -242,7 +247,10 @@ class ScopedPythonContextProvider {
  private:
   // The top python context on the singleton context provider stack, one for
   // each thread, or std::nullopt if the stack is empty.
-  thread_local static std::optional<PythonContext> top_context_;
+  static thread_local  // CPP_THREAD_LOCAL_OK=needed only in the dispatching
+                       // thread.
+      std::optional<PythonContext>
+          top_context_;
 
   // Each alive ScopedPythonContextProvider instance corresponds to an element
   // in the context provider stack for the current thread. This field is the

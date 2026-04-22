@@ -54,7 +54,8 @@
 namespace torch_tpu {
 namespace {
 
-struct TpuDeviceGuardImpl final : public c10::impl::DeviceGuardImplInterface {
+class TpuDeviceGuardImpl final : public c10::impl::DeviceGuardImplInterface {
+ public:
   TpuDeviceGuardImpl() = default;
   explicit TpuDeviceGuardImpl(c10::DeviceType t);
 
@@ -80,11 +81,13 @@ struct TpuDeviceGuardImpl final : public c10::impl::DeviceGuardImplInterface {
   void synchronizeEvent(void* event) const override;
 
  private:
+  // TODO: make this per-python-thread.
   static thread_local c10::DeviceIndex current_device_index_;
 };
 
 }  // namespace
 
+// TODO: make this per-python-thread.
 thread_local c10::DeviceIndex TpuDeviceGuardImpl::current_device_index_ = 0;
 
 c10::DeviceType TpuDeviceGuardImpl::type() const {

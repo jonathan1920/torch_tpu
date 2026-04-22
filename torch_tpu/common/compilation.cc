@@ -165,6 +165,7 @@ MlirComputationBuilderToExecutableBuilder(
 GetMutableCompileOptionOverridesStack() {
   // User PyTorch code may set different overrides in different Python
   // threads, so this needs to be thread-local.
+  // TODO: follow go/tt-context-managers to fix this.
   static thread_local std::stack<CompilerOptionOverrides> overrides;
   return overrides;
 }

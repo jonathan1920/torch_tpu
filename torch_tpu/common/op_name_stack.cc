@@ -29,7 +29,9 @@ namespace internal {
 // even though it's not trivially destructible. This is a thread-local
 // variable, so it needs to be destructed when the thread ends to avoid memory
 // leaks. Hence we shouldn't use NoDestructor<> here.
-thread_local std::stack<OpName> OpNameStack::stack_;  // NOLINT
+thread_local  // CPP_THREAD_LOCAL_OK=needed only in the dispatching thread.
+    std::stack<OpName>
+        OpNameStack::stack_;  // NOLINT
 
 void OpNameStack::Push(OpName op_name) { stack_.push(op_name); }
 

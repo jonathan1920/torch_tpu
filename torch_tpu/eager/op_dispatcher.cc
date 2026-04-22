@@ -103,8 +103,9 @@ absl::StatusOr<DeviceBufferRef> MakeBuffer(
     // that we may miss some opportunities to reuse scalars across threads,
     // but it might be a net win overall given that scalar buffers are cheap
     // to create.
-    static thread_local absl::flat_hash_map<HashableScalar, DeviceBufferRef>
-        scalar_map;
+    static thread_local  // CPP_THREAD_LOCAL_OK=unrelated to Python threads.
+        absl::flat_hash_map<HashableScalar, DeviceBufferRef>
+            scalar_map;
     if (auto it = scalar_map.find(hashable_scalar); it != scalar_map.end()) {
       return it->second;
     }
@@ -384,6 +385,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
       //
       // We make this thread_local to avoid op sequences from different threads
       // to interfere with each other.
+      // TODO: make this per-python-thread.
       static thread_local OpWindow op_window(kMinRepeatedSubsequenceLength,
                                              kMaxRepeatedSubsequenceLength);
       const DeferredOp* absl_nullable op = results[0].deferred_op();

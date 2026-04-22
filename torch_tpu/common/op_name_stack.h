@@ -43,7 +43,10 @@ class OpNameStack {
   static std::optional<OpName> MaybeTop();
 
  private:
-  static thread_local std::stack<OpName> stack_;
+  static thread_local  // CPP_THREAD_LOCAL_OK=needed only in the dispatching
+                       // thread.
+      std::stack<OpName>
+          stack_;
 };
 
 // ScopedOpName is an RAII guard that pushes an OpName onto the thread-local

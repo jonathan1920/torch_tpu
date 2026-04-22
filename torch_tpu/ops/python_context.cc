@@ -287,8 +287,11 @@ std::optional<PythonContext> ScopedPythonContextCapturer::MaybeGetContext() {
   return PythonContext(op_names_, traceback_);
 }
 
-thread_local std::vector<std::string> ScopedPythonContextCapturer::op_names_;
-thread_local MaybeSharedTraceback ScopedPythonContextCapturer::traceback_;
+thread_local  // CPP_THREAD_LOCAL_OK=needed only in the dispatching thread.
+    std::vector<std::string>
+        ScopedPythonContextCapturer::op_names_;  // NOLINT
+thread_local  // CPP_THREAD_LOCAL_OK=needed only in the dispatching thread.
+    MaybeSharedTraceback ScopedPythonContextCapturer::traceback_;  // NOLINT
 
 ScopedPythonContextProvider::ScopedPythonContextProvider(
     PythonContext context, mlir::MlirBuilder* absl_nullable const builder) {
@@ -304,8 +307,9 @@ ScopedPythonContextProvider::~ScopedPythonContextProvider() {
   top_context_ = std::move(previous_context_);
 }
 
-thread_local std::optional<PythonContext>
-    ScopedPythonContextProvider::top_context_;
+thread_local  // CPP_THREAD_LOCAL_OK=needed only in the dispatching thread.
+    std::optional<PythonContext>
+        ScopedPythonContextProvider::top_context_;  // NOLINT
 
 std::string GetRootOpName(const std::optional<OpName> current_op_name) {
   if (const auto& context = ScopedPythonContextProvider::MaybeGetContext();
