@@ -112,6 +112,7 @@
 #include "torch_tpu/ops/normal/normal_aten_kernels.h"
 #include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/optimization_barrier/optimization_barrier_kernels.h"
 #include "torch_tpu/ops/pooling/adaptive_avg_pool_aten_kernels.h"
 #include "torch_tpu/ops/pooling/avg_pool_aten_kernels.h"
 #include "torch_tpu/ops/pooling/max_pool_aten_kernels.h"
@@ -768,6 +769,7 @@ TORCH_LIBRARY(torch_tpu, m) {
   m.def(
       "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor group_sizes, *, "
       "Tensor(a!) out) -> Tensor(a!)");
+  m.def("optimization_barrier(Tensor[] inputs) -> Tensor[]");
   m.def(
       "stateless_dropout(Tensor rng_state, Tensor input, float p, "
       "bool? train) -> (Tensor, Tensor, Tensor)");
@@ -800,6 +802,7 @@ TORCH_LIBRARY(torch_tpu, m) {
 TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
   Impl(m, OpName::kRaggedDot, AtenRaggedDot);
   Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
+  Impl(m, OpName::kTorchTpuOptimizationBarrier, TorchTpuOptimizationBarrier);
   Impl(m, OpName::kTorchTpuStatelessDropout, TorchTpuStatelessDropout);
   Impl(m, OpName::kSetDimensionLogicalSize, SetDimensionLogicalSize);
   Impl(m, OpName::kExperimentalSend, TorchTpuExperimentalSend);

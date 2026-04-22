@@ -354,6 +354,21 @@ class CompileApiTest(absltest.TestCase):
     # The logical values of tpu_dst should be identical to cpu_src.
     utils.assert_close(actual=actual, expected=cpu_src)
 
+  def test_optimization_barrier(self):
+    with eager_mode_defer_all():
+      inputs = [
+          torch.ones(10, device='cpu').to(device=api.tpu_device()),
+          torch.ones(10, device='cpu').to(device=api.tpu_device()),
+      ]
+      results = torch.ops.torch_tpu.optimization_barrier(inputs)
+    expected_mlir = """%0:2 = stablehlo.optimization_barrier %arg0, %arg1 : tensor<10xf32>, tensor<10xf32>"""
+
+    mlir_text = tpu_torch_compile.serialize_mlir_text(
+        tpu_torch_compile.build_mlir(results, inputs)
+    )
+
+    self.assertIn(expected_mlir, mlir_text)
+
 
 if __name__ == '__main__':
   absltest.main()

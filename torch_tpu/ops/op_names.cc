@@ -25,7 +25,7 @@ namespace torch_tpu {
 // NOLINTNEXTLINE(readability/fn_size)
 std::string_view ToString(OpName op_name) {
   switch (op_name) {
-    // go/keep-sorted start
+      // go/keep-sorted start
 
     case OpName::kAbsOut:
       return "abs.out";
@@ -1149,6 +1149,8 @@ std::string_view ToString(OpName op_name) {
       return "_torchtpu_internal_constant";
     case OpName::kTorchTpuInternalGatherAllSubgroups:
       return "_torchtpu_internal_gather_all_subgroups";
+    case OpName::kTorchTpuOptimizationBarrier:
+      return "optimization_barrier";
     case OpName::kTorchTpuStatelessDropout:
       return "stateless_dropout";
     case OpName::kTrilIndices:
