@@ -29,6 +29,7 @@ from absl.testing import parameterized
 from scipy import stats
 import torch
 from torch_tpu import api
+from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.utils import utils
@@ -6160,6 +6161,100 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assertEqual(expected_out.cpu(), out.cpu())
     self.assertEqual(expected_mask.cpu(), mask.cpu())
+
+  def test_pointwise_op_dtype_promotion(self):
+    """Ensure that pointwise ops promote as expected.
+
+    In particular, they promote in all cases except one: rank zero
+    scalar tensors. This is the expected behavior of PyTorch.
+    """
+    # Sanity check
+    self.assertEqual(
+        torch.float32, torch.promote_types(torch.bfloat16, torch.float32)
+    )
+    self.assertEqual(
+        torch.float32, torch.promote_types(torch.bfloat16, torch.float16)
+    )
+
+    # Arrange
+    device = api.tpu_device()
+    dtypes = [torch.float16, torch.float32, torch.bfloat16, torch.float64]
+
+    # TODO: Systematically enumerate all 2-ary, pointwise ops out of
+    # native_functions.yaml. Note that matmul is not a pointwise op.
+    ops = [
+        torch.add,
+        torch.mul,
+        torch.sub,
+        torch.div,
+        torch.pow,
+        torch.remainder,
+        torch.fmod,
+        torch.maximum,
+        torch.minimum,
+        # torch.hypot,  # TODO: Uncomment once operator is added.
+        torch.atan2,
+        # torch.nextafter,  # TODO: Uncomment once operator is added.
+        # torch.copysign,  # TODO: Uncomment once operator is added.
+        torch.ldexp,  # not in tpu_aten_kernels, but native_functions.yaml
+        # indicates this is a decomposed op.
+    ]
+
+    # 1) Non-rank-zero tensors
+    for op in ops:
+      for left_dtype in dtypes:
+        for right_dtype in dtypes:
+          left = torch.tensor([0.0], dtype=left_dtype, device=device)
+          right = torch.tensor([0.0], dtype=right_dtype, device=device)
+          expected = torch.promote_types(left_dtype, right_dtype)
+          with execution_mode.cpu_fallback_mode(False):
+            actual = op(left, right).dtype
+          self.assertEqual(
+              expected,
+              actual,
+              msg=(
+                  f"{op.__name__=} {left_dtype=} {right_dtype=} {expected=}"
+                  f" {actual=}"
+              ),
+          )
+
+    # 2) Mixed rank-zero and non-rank-zero tensors
+    for op in ops:
+      for left_dtype in dtypes:
+        for right_dtype in dtypes:
+          left = torch.tensor([0.0], dtype=left_dtype, device=device)
+          right = torch.tensor(0.0, dtype=right_dtype, device=device)
+          # Notice that the output type matches the type of the non-scalar
+          # input, rather than the result of torch.promote_types.
+          expected = left.dtype
+          with execution_mode.cpu_fallback_mode(False):
+            actual = op(left, right).dtype
+          self.assertEqual(
+              expected,
+              actual,
+              msg=(
+                  f"{op.__name__=} {left_dtype=} {right_dtype=} {expected=}"
+                  f" {actual=}"
+              ),
+          )
+
+    # 3) Rank-zero tensors
+    for op in ops:
+      for left_dtype in dtypes:
+        for right_dtype in dtypes:
+          left = torch.tensor(0.0, dtype=left_dtype, device=device)
+          right = torch.tensor(0.0, dtype=right_dtype, device=device)
+          expected = torch.promote_types(left_dtype, right_dtype)
+          with execution_mode.cpu_fallback_mode(False):
+            actual = op(left, right).dtype
+          self.assertEqual(
+              expected,
+              actual,
+              msg=(
+                  f"{op.__name__=} {left_dtype=} {right_dtype=} {expected=}"
+                  f" {actual=}"
+              ),
+          )
 
 
 if __name__ == "__main__":
