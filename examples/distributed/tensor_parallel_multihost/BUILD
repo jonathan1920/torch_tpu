@@ -34,6 +34,7 @@ torch_tpu_py_test(
         ":model",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
+        "//torch_tpu",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/_internal/utils:log_utils",

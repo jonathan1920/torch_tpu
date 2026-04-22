@@ -311,6 +311,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/etils/epath",
         "//shims/torch:pytorch",
+        "//torch_tpu",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//datasets",
         "@pypi//peft",

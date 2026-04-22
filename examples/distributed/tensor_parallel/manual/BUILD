@@ -40,6 +40,7 @@ torch_tpu_py_test(
         ":tp_worker",
         "//shims/torch:pytorch",
         "//tests/distributed:distributed_utils",
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:multihost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],

@@ -39,6 +39,7 @@ torch_tpu_py_test(
         "//shims/absl_py:app",
         "//shims/absl_py/flags",
         "//shims/torch:pytorch",
+        "//torch_tpu",
     ],
 )
 

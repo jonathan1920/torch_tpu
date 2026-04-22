@@ -35,6 +35,7 @@ torch_tpu_py_test(
         "//shims/absl_py:app",
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
+        "//torch_tpu",
         "//torch_tpu/api",
         "@pypi//accelerate",  # buildcleaner: keep
         "@pypi//transformers",
@@ -62,6 +63,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//shims/torch:tensorboard_support",  # buildcleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/shims/xprof:traceme",

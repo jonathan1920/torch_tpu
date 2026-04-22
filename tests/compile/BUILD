@@ -39,6 +39,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
@@ -55,6 +56,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//torch_tpu",
         "//torch_tpu/api",
     ],
 )
@@ -69,6 +71,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//torch_tpu",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
     ],
@@ -84,6 +87,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//torch_tpu",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
     ],
@@ -110,6 +114,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//tests/distributed:distributed_utils",
+        "//torch_tpu",
         "//torch_tpu/_internal:env",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
@@ -130,6 +135,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
         "//torch_tpu/_internal/execution_mode",
@@ -178,6 +184,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/minipyspy:minipyspy_enable",
         "//shims/torch:tensorboard_support",  # buildcleaner: keep
+        "//torch_tpu",
     ],
 )
 
@@ -192,6 +199,7 @@ torch_tpu_py_test(
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
@@ -208,6 +216,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
+        "//torch_tpu",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
     ],
@@ -232,6 +241,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//tests:module_registry",
+        "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
@@ -266,6 +276,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
         "//tests:module_registry",
+        "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
@@ -292,6 +303,7 @@ torch_tpu_py_test(
         "//shims/etils/epath",
         "//shims/torch:pytorch",
         "//tests:module_registry",
+        "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
@@ -312,6 +324,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
+        "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils",
@@ -337,6 +350,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
+        "//torch_tpu",
         "//torch_tpu/_internal/shims/xprof:traceme",
         "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
         "//torch_tpu/_internal/shims/xprof:xprof_session",

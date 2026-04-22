@@ -499,6 +499,7 @@ def _prepend_to_env(env, key, value):
 def torch_tpu_py_test(
         name,
         srcs = [],
+        deps = [],
         args = None,
         shuffle_tests = True,
         autoload = True,
@@ -522,6 +523,7 @@ def torch_tpu_py_test(
     Args:
         name: The name of the test.
         srcs: The source files for the test. Must contain at most one .py file.
+        deps: The dependencies to add to the test.
         args: The arguments to pass to the test.
         shuffle_tests: Whether to shuffle the test cases.
         extra_pywrap_deps: Additional pywrap dependencies to add to the test.
@@ -660,18 +662,20 @@ def torch_tpu_py_test(
         "//conditions:default": existing_env,
     }), existing_env)
 
+    if "//torch_tpu" not in deps:
+        fail("torch_tpu_py_test must include \"//torch_tpu\" in its deps to " +
+             "ensure that torch_tpu is loaded.")
+
     deps_to_add = []
     if use_pywrap_rules():
         deps_to_add = extra_pywrap_deps
 
-    current_deps = kwargs.pop("deps", [])
-
     all_deps = if_oss(
         select({
             "//:wheel_test_enabled": ["//:torch_tpu_py_import"],
-            "//conditions:default": current_deps + deps_to_add,
+            "//conditions:default": deps + deps_to_add,
         }),
-        current_deps + deps_to_add,
+        deps + deps_to_add,
     )
 
     if platform:

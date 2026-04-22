@@ -28,6 +28,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py:app",
         "//shims/torch:pytorch",
+        "//torch_tpu",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/api",
     ],
