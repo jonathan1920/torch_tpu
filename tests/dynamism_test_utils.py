@@ -103,17 +103,9 @@ def _should_skip_input_marking(
   candidates = _get_dynamic_dimension_candidates(input_value)
   if not candidates:
     return "No valid input dimensions to mark dynamic."
-  if dtype in [torch.complex64, torch.complex128]:
-    return f"Input value has dtype {dtype}."
-  if not isinstance(input_value, torch.Tensor):
-    return f"Input value is not a tensor, got {type(input_value)}."
   # TODO: b/449736443 - [XLA] Crash in complex rewriter.
   if dtype in [torch.complex64, torch.complex128]:
     return f"{op_info.name} op is not supported with dtype {dtype}."
-  # TODO: b/449736443 - Bug in XLA:TPU handling of 64-bit types?
-  is_64_bit = dtype in [torch.int64, torch.float64]
-  if is_64_bit:
-    return "64-bit dtypes fail sporadically."
   # TODO: b/449736443 - Empty tensor handling needs reworking.
   if input_value.numel() == 0:
     return "Empty tensors are currently not supported."
@@ -149,6 +141,7 @@ def verify_op_supports_dynamism(
       "cdist",
       "constant_pad_nd",
       "cummin",
+      "conj_physical",  # identity operation for i64 and f64 fails
       "cummax",
       "cumprod",
       "cumsum",
