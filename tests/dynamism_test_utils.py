@@ -106,6 +106,9 @@ def _should_skip_input_marking(
   # TODO: b/449736443 - [XLA] Crash in complex rewriter.
   if dtype in [torch.complex64, torch.complex128]:
     return f"{op_info.name} op is not supported with dtype {dtype}."
+  # _foreach_exp_ does not support integral dtypes on TPU.
+  if op_info.name == "_foreach_exp_" and not dtype.is_floating_point:
+    return f"{op_info.name} does not support integral dtypes."
   # TODO: b/449736443 - Empty tensor handling needs reworking.
   if input_value.numel() == 0:
     return "Empty tensors are currently not supported."
@@ -133,97 +136,41 @@ def verify_op_supports_dynamism(
   """
 
   untriaged_ops_deny_list = [
-      "_log_softmax_backward_data",
-      "_native_batch_norm_legit",
-      "_softmax_backward_data",
-      "as_strided",
-      "bincount",
-      "cdist",
-      "constant_pad_nd",
-      "cummin",
+      "bincount",  # MLIR assertion failure (bounds length vs rank)
       "conj_physical",  # identity operation for i64 and f64 fails
-      "cummax",
-      "cumprod",
-      "cumsum",
-      "diagonal",
+      "diagonal",  # materialization failure (negative dimension size)
       "expand",  # view op - expand not yet supported
-      "fft.rfft",
+      "fft.rfft",  # expected all dimensions to be static
       "floor_divide",  # currently failing dynamism tests
-      "histc",
       "index_add",  # invalid bound length (likely bad tensor copy)
       "index_copy",  # invalid bound length (likely bad tensor copy)
       "index_put",  # garbage data
       "index_select",  # invalid gather
-      "isin",
-      "kron",
-      "log_softmax",
-      "linalg.solve_ex",
-      "linalg.lu_factor_ex",
-      "linalg.inv",
-      "linalg.lu",
-      "linalg.lu_solve",
-      "linalg.solve_triangular",
-      "masked_fill",
-      "masked_scatter",
-      "masked_select",
+      "isin",  # materialization failure (negative dimension size)
+      "linalg.lu_factor_ex",  # materialization failure (negative dim size)
+      "masked_scatter",  # unflatten ambiguous error
       "matmul",  # reshapes in the structured delegate
-      "multinomial",
-      "native_batch_norm",
-      "native_dropout_backward",
       "nn.functional.adaptive_avg_pool2d",  # sort op fails to infer
-      "nn.functional.adaptive_avg_pool3d",
-      "nn.functional.avg_pool2d",
-      "nn.functional.avg_pool3d",
-      "nn.functional.batch_norm",
-      "nn.functional.conv1d",
-      "nn.functional.conv2d",
-      "nn.functional.conv_transpose1d",
-      "nn.functional.conv_transpose2d",
-      "nn.functional.embedding",
+      "nn.functional.embedding",  # crash in shard 27
       "nn.functional.embedding_bag",  # invalid gather
-      "nn.functional.group_norm",
       "nn.functional.interpolate",  # gather with dynamic slice size
-      "nn.functional.max_pool2d",
-      "nn.functional.max_pool3d",
+      "nn.functional.max_pool3d",  # crash (Aborted)
       "nn.functional.mse_loss",  # binop LHS / RHS mismatch
-      "nn.functional.nll_loss",
-      "nn.functional.pad",
+      "nn.functional.nll_loss",  # numerical mismatch or failure in some shards
       "nn.functional.pdist",  # inlined vector size fail (likely using bound)
-      "nn.functional.rms_norm",
-      "nn.functional.scaled_dot_product_attention",
-      "nn.functional.upsample_bilinear",
-      "nn.functional.upsample_nearest",
-      "torch.nn.functional.conv_transpose1d",
-      "nonzero",
+      "nn.functional.scaled_dot_product_attention",  # broadcasting issue in add
+      "nn.functional.upsample_bilinear",  # MLIR gather out of bounds
+      "nn.functional.upsample_nearest",  # MLIR gather build failure
       "normal",  # OK
-      "repeat",
-      "resize_",
-      "roll",
-      "scatter",
-      "scatter_add",
-      "select",
-      "select_scatter",
-      "slice",
-      "sort",
-      "split",
-      "split_with_sizes",
+      "slice",  # reshape reassociation not supported
       "squeeze",  # unsupported view op - enhance view op to detect squeeze
       "squeeze_copy",  # unsupported view op
       "sum",  # return i64, which has lowering issues
       "to",  # fails numerics (?)
-      "take",
-      "topk",
-      "torch.ops.aten._unsafe_view",
-      "torch.ops.aten._safe_softmax.default",
       "tril",  # bad broadcast
       "triu",  # bad broadcast, iota-like
-      "unbind",
-      "unfold",
-      "unsqueeze",
-      "unsqueeze_copy",
-      "vdot",
-      "view",
-      "view_as_complex",
+      "vdot",  # MLIR assertion failure (bounds length vs rank)
+      "view_as_complex",  # crash (Aborted)
       "view_as_real",  # OK
   ]
   op = op_info
