@@ -12,23 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import dataclasses
 import enum
 import functools
+import re
 from typing import Any, Sequence
 from fairscale.nn.model_parallel import initialize as fairscale_init
+from fairscale.nn.model_parallel import layers as fairscale_layers
 import llama_models.llama3.model as m
 import torch
 from torch.distributed import fsdp
 import torch.distributed.tensor as dt
 from torch.nn import parallel
 from torch_tpu._internal.utils import device_utils
+from examples.benchmarks.e2e import ragged_moe
 from examples.deepseek import model as deepseek_model
 from tests import module_registry
 from transformers import activations
 from transformers.models.bert import modeling_bert
 from transformers.models.qwen3 import configuration_qwen3
 from transformers.models.qwen3 import modeling_qwen3
+from transformers.models.qwen3_moe import modeling_qwen3_moe
+
+
+@contextlib.contextmanager
+def set_default_dtype(dtype: torch.dtype):
+  """Temporarily sets the default torch dtype."""
+  old_dtype = torch.get_default_dtype()
+  torch.set_default_dtype(dtype)
+  try:
+    yield
+  finally:
+    torch.set_default_dtype(old_dtype)
 
 
 def _get_base_bert_config():
@@ -1004,4 +1020,115 @@ def get_timm_model(
 
   if use_torch_compile:
     model = device_utils.torch_compile(model, device.type)
+  return ModelAndInput(model=model, example_inputs=example_inputs)
+
+
+def _apply_tensor_parallel_plan(
+    module,
+    name_prefix="",
+    tp_plan=None,
+    world_size=1,
+    rank=0,
+):
+  """Applies a tensor parallel plan to a model."""
+  for name, child in module.named_children():
+    full_name = f"{name_prefix}.{name}" if name_prefix else name
+    full_name = full_name.removeprefix("model.")
+
+    if isinstance(child, ragged_moe.RaggedMoeQwen3):
+      # Handled during Qwen3MoeSparseMoeBlock -> RaggedMoeQwen3 replacement
+      continue
+
+    if isinstance(child, torch.nn.Linear):
+      for pattern, tp_type in tp_plan.items():
+        if re.fullmatch(pattern, full_name):
+          original_linear = child
+          new_linear = None
+
+          # TODO(mkkhanna): gather_output=False for ColumnParallelLinear layer
+          # does not work for self_attn linear layer. It requires world_size to
+          # be the divisor of num_attention_heads (32) and
+          # num_key_value_heads (4). Hence, for it to work we need world_size
+          # to be 4, which is currently not supported.
+          if "self_attn" in full_name:
+            gather_output = True
+          else:
+            gather_output = False
+
+          if tp_type == "colwise":
+            new_linear = fairscale_layers.ColumnParallelLinear(
+                original_linear.in_features,
+                original_linear.out_features,
+                bias=original_linear.bias is not None,
+                gather_output=gather_output,
+                init_method=lambda w: w,
+            )
+          elif tp_type == "rowwise":
+            new_linear = fairscale_layers.RowParallelLinear(
+                original_linear.in_features,
+                original_linear.out_features,
+                bias=original_linear.bias is not None,
+                input_is_parallel=not gather_output,
+                init_method=lambda w: w,
+            )
+
+          if new_linear:
+            setattr(module, name, new_linear)
+          break  # Found a match, move to the next child
+
+    # Recurse for submodules
+    _apply_tensor_parallel_plan(child, full_name, tp_plan, world_size, rank)
+
+
+def _replace_qwen_moe_with_ragged_moe(model, config):
+  for layer in model.model.layers:
+    assert isinstance(layer.mlp, modeling_qwen3_moe.Qwen3MoeSparseMoeBlock)
+    layer.mlp = ragged_moe.RaggedMoeQwen3(config, is_tensor_parallel=True)
+
+
+def get_qwen_ragged_moe(
+    model_name: str,
+    *,
+    device: torch.device,
+    weights_dtype: torch.dtype,
+    sequence_length: int,
+    batch_size: int,
+) -> ModelAndInput:
+  registry = get_module_registry()
+  module_spec = registry.get_module_spec(
+      "transformers", model_name, load_weights=False
+  )
+  module_config = module_spec.config
+
+  rank = (
+      torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
+  )
+  world_size = (
+      torch.distributed.get_world_size()
+      if torch.distributed.is_initialized()
+      else 1
+  )
+
+  # Directly initialize the model on the device.
+  with torch.device(device), set_default_dtype(weights_dtype):
+    model = module_spec.module_factory()
+    if world_size > 1:
+      # Fairscale library setup for distributed model parallelism.
+      if not fairscale_init.model_parallel_is_initialized():
+        fairscale_init.initialize_model_parallel(world_size)
+
+      _replace_qwen_moe_with_ragged_moe(model, module_config)
+
+      _apply_tensor_parallel_plan(
+          model,
+          name_prefix="",
+          tp_plan=module_config.base_model_tp_plan,
+          world_size=world_size,
+          rank=rank,
+      )
+    model.apply(_init_model_weights)
+
+  _, example_inputs = module_spec.sample_inputs_factory(
+      (batch_size, sequence_length), str(device)
+  )
   return ModelAndInput(model=model, example_inputs=example_inputs)

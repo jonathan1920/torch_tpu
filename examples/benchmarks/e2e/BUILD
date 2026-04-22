@@ -362,6 +362,7 @@ pytype_strict_library(
     name = "model_utils",
     srcs = ["model_utils.py"],
     deps = [
+        ":ragged_moe",
         "//examples/deepseek",
         "//shims/torch:pytorch",
         "//tests:module_registry",
@@ -369,6 +370,14 @@ pytype_strict_library(
         "@pypi//fairscale",
         "@pypi//llama_models",
         "@pypi//transformers",
+    ],
+)
+
+pytype_strict_library(
+    name = "ragged_moe",
+    srcs = ["ragged_moe.py"],
+    deps = [
+        "//shims/torch:pytorch",
     ],
 )
 

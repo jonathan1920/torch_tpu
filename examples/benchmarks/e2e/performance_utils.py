@@ -474,9 +474,9 @@ def _get_benchmark_function(
     inputs, and optimizer (if is_training is True) and returns output of the
     model.
   """
-  if (
-      config.benchmark_category
-      == benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM
+  if config.benchmark_category in (
+      benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+      benchmark_utils.BenchmarkCategory.QWEN_RAGGED_MOE,
   ):
     if not config.is_training:
       return benchmark_function_db.huggingface_llm_forward_pass
@@ -572,6 +572,15 @@ def _get_model_and_input(
         device=device,
         weights_dtype=weights_dtype,
         use_torch_compile=use_torch_compile,
+        **model_and_input_args.custom_kwargs,
+    )
+  elif benchmark_category == benchmark_utils.BenchmarkCategory.QWEN_RAGGED_MOE:
+    return model_utils.get_qwen_ragged_moe(
+        model_name=model_and_input_args.model_name,
+        device=device,
+        weights_dtype=weights_dtype,
+        sequence_length=model_and_input_args.sequence_length,
+        batch_size=model_and_input_args.batch_size,
         **model_and_input_args.custom_kwargs,
     )
   else:

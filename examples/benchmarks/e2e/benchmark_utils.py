@@ -182,6 +182,7 @@ class BenchmarkCategory(enum.Enum):
   META_LLAMA = "meta_llama"
   ML_LAYER = "ml_layer"
   TIMM = "timm"
+  QWEN_RAGGED_MOE = "qwen_ragged_moe"
 
 
 @dataclasses.dataclass
