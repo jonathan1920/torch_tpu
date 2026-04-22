@@ -116,7 +116,7 @@ py_wheel(
     description_file = "//:README.md",
     distribution = "torch_tpu",
     entry_points = ENTRY_POINTS,
-    homepage = "https://github.com/your_org/torch_tpu",
+    homepage = "https://github.com/google-pytorch/torch_tpu",
     license = "Apache 2.0",
     platform = "manylinux_2_31_x86_64",
     # HERMETIC Python set to 3.12
