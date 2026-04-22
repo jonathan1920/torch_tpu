@@ -500,7 +500,7 @@ mlir::ElementType MaybeAddRealToRealBitcast(
     ViewSequence& result, StridedLayout& head_layout,
     const mlir::ElementType real_head_element_type,
     const StridedLayout& tail_layout, const mlir::ElementType view_dtype) {
-  mlir::ElementType real_tail_element_type = RealEquivalentOf(view_dtype);
+  mlir::ElementType real_tail_element_type = RealComponentOf(view_dtype);
   if (real_head_element_type == real_tail_element_type) {
     // No real-to-real bitcast is required.
     return real_tail_element_type;

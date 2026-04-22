@@ -165,7 +165,6 @@ torch_tpu_cc_library(
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",
         "//torch_tpu/ops/stride:stride_helper",
-        "//torch_tpu/ops/view_decomposition:bitcast_primitive",
         "//torch_tpu/ops/view_decomposition:decomposition",
         "//torch_tpu/ops/view_decomposition:inversion",
         "//torch_tpu/ops/view_decomposition:strided_layout",

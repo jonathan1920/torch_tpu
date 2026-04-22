@@ -31,6 +31,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
@@ -514,7 +515,7 @@ ViewSequence GetBitcastSequenceToWritable(mlir::ElementType from_dtype,
   }
 
   // Then any real-to-real bitcast (if needed).
-  mlir::ElementType to_dtype_real = RealEquivalentOf(to_dtype);
+  mlir::ElementType to_dtype_real = RealComponentOf(to_dtype);
   if (from_dtype != to_dtype_real) {
     auto real_to_real =
         RealToRealBitcast{.from_type = from_dtype, .to_type = to_dtype_real};
