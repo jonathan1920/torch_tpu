@@ -39,7 +39,7 @@ torch_tpu_py_test(
         "//shims/absl_py:app",
         "//shims/absl_py/flags",
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/utils",
     ],
 )
@@ -60,7 +60,7 @@ torch_tpu_py_test(
         "//shims/profile_cpu:python_tracer",
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "@pypi//transformers",
     ],
 )
@@ -88,7 +88,7 @@ torch_tpu_py_test(
         "//shims/profile_cpu:python_tracer",
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/dynamism",
         "//torch_tpu/_internal/shims/xprof:traceme",
         "//torch_tpu/_internal/sync",
@@ -123,7 +123,7 @@ torch_tpu_py_test(
         "//shims/profile_cpu:python_tracer",
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/dynamism",
         "//torch_tpu/_internal/shims/xprof:traceme",
         "//torch_tpu/_internal/sync",
@@ -163,7 +163,7 @@ torch_tpu_py_test(
         "//shims/absl_py/logging",
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//transformers",
     ],
@@ -230,7 +230,7 @@ torch_tpu_py_test(
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//transformers",
     ],
@@ -249,7 +249,7 @@ torch_tpu_py_test(
     ],
     deps = [
         "//shims/absl_py/logging",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/utils:log_utils",
         "//examples/huggingface_transformers:model_configs",
         "//shims/absl_py/flags",
@@ -276,7 +276,7 @@ torch_tpu_py_test(
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//transformers",
         "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
@@ -304,7 +304,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//transformers",
     ],
@@ -331,7 +331,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:parameterized",
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//transformers",
     ],

@@ -33,7 +33,7 @@ pytype_strict_library(
     ],
     deps = [
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu:_loader",
     ],
 )

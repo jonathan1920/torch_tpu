@@ -34,7 +34,7 @@ pytype_strict_library(
     visibility = ["//:__subpackages__"],
     deps = [
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "@pypi//portpicker",
     ],
 )
@@ -53,7 +53,7 @@ torch_tpu_py_test(
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed:tpu_distributed",
         "@pypi//portpicker",
     ],
@@ -77,7 +77,7 @@ torch_tpu_py_test(
         ":distributed_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed:tpu_distributed",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
@@ -102,11 +102,11 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
@@ -137,11 +137,11 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
@@ -167,11 +167,11 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//tests:error_testing",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
@@ -197,11 +197,11 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//tests:error_testing",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
@@ -223,11 +223,11 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
@@ -253,11 +253,11 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//tests:error_testing",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
@@ -283,11 +283,11 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//tests:error_testing",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
@@ -311,11 +311,11 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//tests:error_testing",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal:testing",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
@@ -341,11 +341,11 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//tests:error_testing",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal:testing",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
@@ -366,10 +366,10 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
@@ -395,11 +395,11 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//tests:error_testing",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
@@ -425,11 +425,11 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//tests:error_testing",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
@@ -450,11 +450,11 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
@@ -476,10 +476,10 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/sync",
@@ -505,11 +505,11 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
@@ -534,7 +534,7 @@ torch_tpu_py_test(
         ":distributed_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
         "//torch_tpu/_internal/utils",
@@ -555,10 +555,10 @@ torch_tpu_py_test(
         "requires-tpu-v5lite:8",
     ],
     deps = [
+        ":distributed_utils",
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//tests/distributed:distributed_utils",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_backend",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",

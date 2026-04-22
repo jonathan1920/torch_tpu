@@ -73,6 +73,11 @@ py_library_providing_imports_info(
     ],
     lib_rule = pytype_strict_library,
     module_specs = ["torch_tpu.modspec.json"],
+    # Users of this library may rely on autoloading of the TPU backend, in which
+    # case they'd import `torch` but not `torch_tpu` directly. However, we need
+    # to ensure `torch_tpu` is linked in even if no symbols are explicitly
+    # used by the user. This tag prevents build_cleaner from removing the dependency.
+    tags = ["keep_dep"],
     deps = if_oss(
         ["//shims/libtpu"],
         [],

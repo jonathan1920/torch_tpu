@@ -931,7 +931,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
     ],
 )
 
@@ -948,7 +948,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
         "@xla//xla/stream_executor:cuda_platform",
     ],
@@ -965,7 +965,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
     ],
 )
 
@@ -980,7 +980,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
         "@xla//xla/stream_executor:cuda_platform",
     ],
@@ -995,7 +995,7 @@ torch_tpu_py_test(
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
     ],
 )
 

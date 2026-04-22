@@ -29,7 +29,7 @@ torch_tpu_py_test(
     deps = [
         "//shims/absl_py:app",
         "//shims/torch:pytorch",
-        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/eager:tpu_aten_kernels",
         "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",
