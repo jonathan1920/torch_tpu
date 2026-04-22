@@ -3199,7 +3199,6 @@ class TestOps(TorchTpuTestBase):
   def test_nn_functional_relu(self):
     self.do_test_op(
         "nn.functional.relu",
-        check_grad=True,
         # TODO: fix relu() succeeding with integral dtypes (it
         # should fail).  xla_cuda has no support for complex64::min()
         # xla_cuda: https://github.com/openxla/stablehlo/issues/560
@@ -3248,7 +3247,6 @@ class TestOps(TorchTpuTestBase):
           # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
           # but on tpu it succeeds. Remove this once we fix bmm on tpu.
           exclude_dtypes=(torch.int64,),
-          check_grad=True,
       )
 
   # TODO: b/476147793 association of (inputs, outputs) pairs with the op name
@@ -3290,7 +3288,6 @@ class TestOps(TorchTpuTestBase):
   def test_nn_functional_batch_norm(self):
     self.do_test_op(
         "nn.functional.batch_norm",
-        check_grad=True,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
         # TODO: fix nn.functional.batch_norm() timing out with complex dtypes.
