@@ -15,8 +15,7 @@
 name: CI - Postsubmit on TPU
 
 on:
-  # Enable remote connections.
-  # Step 1: Add a workflow dispatch to enable halting.
+  # Enable remote connections. Add a workflow dispatch to enable halting.
   # See go/ml-github-actions:connect#enable-workflow-dispatch.
   workflow_dispatch:
     inputs:
@@ -30,6 +29,10 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: read
@@ -40,13 +43,15 @@ permissions:
 # We generally want to run every postsubmit to ensure a clean history,
 # but if multiple merges happen rapidly, older runs will be cancelled.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false # Set to true if you only care about the absolute latest main
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   run_tests:
     name: "Postsubmit on ${{ matrix.job_info.runner }}"
-    # Available self-hosted runners.
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'ci:tpu-postsubmit')
     strategy:
       fail-fast: false
       matrix:
@@ -72,8 +77,7 @@ jobs:
       # accessible for workflow to use. Otherwise, the workflow cannot find the files (e.g. ls -lR
       # will return "total 0").
       - uses: actions/checkout@v5
-      # Enable remote connections.
-      # Step 2: Add a waiting step.
+      # Enable remote connections. Add a waiting step.
       # See go/ml-github-actions:connect#add-waiting-step.
       - name: Wait For Connection
         uses: google-ml-infra/actions/ci_connection@08e5394bb8179c66a50ac783fb8b2501a034c06f
@@ -82,7 +86,8 @@ jobs:
       # We don't need a separate step for bazel build as bazel test will also build the code before
       # running the tests. This allows test building and test running to overlap and reduce total
       # build time.
-      - run: bazel test --config=${{ matrix.job_info.bazel_config }} --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" //...
+      - name: Run Bazel Test
+        run: bazel test --config=${{ matrix.job_info.bazel_config }} --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" //...
       - name: Upload Test Logs on Failure
         uses: actions/upload-artifact@v4
         if: failure()
