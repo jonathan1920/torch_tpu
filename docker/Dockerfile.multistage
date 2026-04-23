@@ -82,8 +82,8 @@ WORKDIR /opt/wheels
 # Pull the fresh wheel from the builder stage
 COPY --from=builder /workspace/torch_tpu_src/dist/*.whl .
 
-# Install the wheel
-RUN pip install *.whl
+# Install the wheel forcing reinstall to overwrite metadata-only install from base stage
+RUN pip install --force-reinstall --no-deps *.whl
 
 # Maintain hierarchy: Copy examples to /workspace/examples
 COPY --from=builder /workspace/torch_tpu_src/examples /workspace/examples
