@@ -634,6 +634,8 @@ absl::StatusOr<OpParamCacheKeys> MakeOpParamCacheKeys(
 // Give the shapeless and dimensions keys separate types to avoid accidentally
 // using the wrong key.
 struct ShapelessKey {
+  explicit ShapelessKey(FingerprintType key) : key(key) {}
+
   struct Hash {
     [[nodiscard]] inline size_t operator()(const ShapelessKey key) const {
       return key.key;

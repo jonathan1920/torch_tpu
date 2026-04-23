@@ -513,15 +513,15 @@ CompilationCacheKey GraphSignature::cache_key() const {
   auto sorted_donated_indices = donated_indices_;
   std::sort(sorted_donated_indices.begin(), sorted_donated_indices.end());
 
-  const ShapelessKey shapeless_key = {FingerprintCat(
+  const ShapelessKey shapeless_key(FingerprintCat(
       graph_output_indices_, tensor_dimensions_starts_, tensor_element_types_,
       sorted_donated_indices, op_inputs_starts_, op_inputs_indices_, op_names_,
-      op_param_cache_keys_starts_, op_param_cache_keys_, op_outputs_indices_)};
+      op_param_cache_keys_starts_, op_param_cache_keys_, op_outputs_indices_));
   const DimensionsKey dimensions_key(tensor_dimensions_);
   return {
       .shapeless_key = shapeless_key,
       .dimensions_key = dimensions_key,
-      .compile_options_key = CompileOptionsKey{0},
+      .compile_options_key = CompileOptionsKey(0),
   };
 }
 

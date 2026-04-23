@@ -62,7 +62,7 @@ class CompilationCacheTestHelper {
 namespace {
 
 CompilationCacheKey DummyKey() {
-  return CompilationCacheKey{ShapelessKey{0}, DimensionsKey({}),
+  return CompilationCacheKey{ShapelessKey(0), DimensionsKey({}),
                              CompileOptionsKey(0)};
 }
 
@@ -167,7 +167,7 @@ TEST_F(CompilationCacheTest, GetOrCompileLogsOnMiss) {
 
   // Trigger a miss with a unique key.
   CompilationCacheKey key = {
-      .shapeless_key = {12345},
+      .shapeless_key = ShapelessKey(12345),
       .dimensions_key = DimensionsKey({}),
       .compile_options_key = CompileOptionsKey(0),
   };

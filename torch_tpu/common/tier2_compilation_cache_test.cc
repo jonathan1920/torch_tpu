@@ -100,12 +100,16 @@ std::vector<std::string> ListFiles(const std::string& directory_path) {
   return files;
 }
 
-// Returns a cache key with the given shapeless key and number of dimensions.
+// Returns a cache key with the given shapeless key, dimensions key, and
+// a placeholder compile options key.
 CompilationCacheKey MakeCacheKey(uint64_t shapeless_key, int num_dims) {
   const Dimensions dims(num_dims, 1);
   const DimensionsKey dimensions_key(dims);
-  return {.shapeless_key = {.key = shapeless_key},
-          .dimensions_key = dimensions_key};
+  return {
+      .shapeless_key = ShapelessKey(shapeless_key),
+      .dimensions_key = dimensions_key,
+      .compile_options_key = CompileOptionsKey(0),
+  };
 }
 
 // A test environment that initializes the PjRt client, which is required for
