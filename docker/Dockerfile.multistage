@@ -1,0 +1,96 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+ARG BASEIMAGE=python:3.12-slim-bookworm
+
+# =====================================================================
+# Stage 0: Base Image (torchtpu-base)
+# =====================================================================
+FROM $BASEIMAGE AS base
+
+# Install runtime system dependencies
+RUN apt-get update && apt-get install -y libgoogle-perftools-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Ensure python3 is available in /usr/bin for Bazel shims and local scripts.
+RUN ln -sf $(which python) /usr/bin/python3
+
+RUN pip install uv
+
+WORKDIR /workspace
+
+# Copy pyproject.toml to install dependencies
+COPY pyproject.toml .
+
+# Install all dependencies from pyproject.toml (including optional ones for dev/test)
+# We let uv read pyproject.toml to use the explicit pytorch-cpu index only for torch/torchvision!
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system .[dev,test,benchmark,examples]
+
+# Enable tcmalloc by default for all derived images
+ENV LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc.so.4"
+
+# =====================================================================
+# Stage 1: Builder Image (torchtpu-builder)
+# =====================================================================
+FROM base AS builder
+
+# Install build-time system dependencies
+RUN apt-get update && apt-get install -y curl gnupg git && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install bazelisk for bazel management
+RUN curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64 -o /usr/local/bin/bazel && \
+    chmod +x /usr/local/bin/bazel
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy the local repository source from the build context
+COPY . /workspace/torch_tpu_src
+
+# Build the wheel using bazel.
+# Preserving cache mounts and flags from Dockerfile.from_src
+RUN --mount=type=cache,id=torch-tpu-bazelisk,target=/root/.cache/bazelisk \
+    --mount=type=cache,id=torch-tpu-bazel-repo,target=/root/.cache/bazel,sharing=locked \
+    cd /workspace/torch_tpu_src && \
+    rm -rf bazel-* && \
+    bazel build -c opt \
+    --repository_cache=/root/.cache/bazel/repository_cache \
+    --disk_cache=/root/.cache/bazel/disk_cache \
+    //ci/wheel:torch_tpu_wheel --config=no_rbe && \
+    mkdir -p dist && mv bazel-bin/ci/wheel/* dist/
+
+# =====================================================================
+# Stage 2: Final Image (torchtpu)
+# =====================================================================
+FROM base AS final
+
+WORKDIR /opt/wheels
+
+# Pull the fresh wheel from the builder stage
+COPY --from=builder /workspace/torch_tpu_src/dist/*.whl .
+
+# Install the wheel
+RUN pip install *.whl
+
+# Maintain hierarchy: Copy examples to /workspace/examples
+COPY --from=builder /workspace/torch_tpu_src/examples /workspace/examples
+
+# Ensure /workspace is in the Python path and output is unbuffered
+ENV PYTHONPATH="/workspace"
+ENV PYTHONUNBUFFERED=1
+
+# Default command
+CMD ["/bin/bash"]
