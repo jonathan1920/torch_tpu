@@ -168,6 +168,35 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "wan_test_tpu",
+    size = "enormous",
+    srcs = ["wan2_2_ti2v_5b_diffusers_test.py"],
+    args = ["--device=tpu"],
+    main = "wan2_2_ti2v_5b_diffusers_test.py",
+    notap = "OOMs.",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
+    tags = [
+        "requires-accel-hbm",
+        "requires-net:external",
+        "requires-tpu-v7x:4",
+    ],
+    deps = [
+        "//examples:paths",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",  # buildcleaner: keep
+        "//torch_tpu/_internal/utils:log_utils",
+        "//torch_tpu/api",
+        "@pypi//accelerate",  # buildcleaner: keep
+        "@pypi//diffusers",
+        "@pypi//pillow",
+        "@pypi//transformers",  # buildcleaner: keep
+    ],
+)
+
 py_binary(
     name = "import_hf_configs",
     srcs = ["import_hf_configs.py"],
