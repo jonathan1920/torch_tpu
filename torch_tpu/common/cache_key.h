@@ -633,87 +633,108 @@ absl::StatusOr<OpParamCacheKeys> MakeOpParamCacheKeys(
 
 // Give the shapeless and dimensions keys separate types to avoid accidentally
 // using the wrong key.
-struct ShapelessKey {
-  explicit ShapelessKey(FingerprintType key) : key(key) {}
+class ShapelessKey {
+ public:
+  explicit ShapelessKey(FingerprintType key) : key_(key) {}
 
   struct Hash {
     [[nodiscard]] inline size_t operator()(const ShapelessKey key) const {
-      return key.key;
+      return key.key_;
     }
   };
 
   [[nodiscard]] bool operator==(const ShapelessKey rhs) const {
-    return key == rhs.key;
+    return key_ == rhs.key_;
   }
 
-  FingerprintType key;
+  [[nodiscard]] FingerprintType key() const { return key_; }
+
+ private:
+  FingerprintType key_;
 };
 
 // Formats a shapeless key as a human-readable string.
 template <typename Sink>
 void AbslStringify(Sink& sink, const ShapelessKey key) {
-  absl::Format(&sink, "%016x", key.key);
+  absl::Format(&sink, "%016x", key.key());
 }
 
 class ShapeDynamismMetadata;
 
-struct DimensionsKey {
+class DimensionsKey {
+ public:
   explicit DimensionsKey(absl::Span<const int64_t> dimensions) {
     // We keep the false parameter for backward compatibility.
     // TODO: (b/494661082) - Remove the false parameter.
-    key = FingerprintCat(dimensions, false);
+    key_ = FingerprintCat(dimensions, false);
   }
 
   // Create a DimensionsKey from the given shape dynamism metadata.
   explicit DimensionsKey(const ShapeDynamismMetadata& shape_dynamism_metadata);
 
   [[nodiscard]] bool operator==(const DimensionsKey rhs) const {
-    return key == rhs.key;
+    return key_ == rhs.key_;
   }
 
-  FingerprintType key;
+  [[nodiscard]] FingerprintType key() const { return key_; }
+
+ private:
+  FingerprintType key_;
 };
 
-struct CompileOptionsKey {
-  explicit CompileOptionsKey(FingerprintType key) : key(key) {}
+class CompileOptionsKey {
+ public:
+  explicit CompileOptionsKey(FingerprintType key) : key_(key) {}
 
   struct Hash {
     [[nodiscard]] inline size_t operator()(const CompileOptionsKey key) const {
-      return key.key;
+      return key.key_;
     }
   };
 
   [[nodiscard]] bool operator==(const CompileOptionsKey rhs) const {
-    return key == rhs.key;
+    return key_ == rhs.key_;
   }
 
-  FingerprintType key;
+  [[nodiscard]] FingerprintType key() const { return key_; }
+
+ private:
+  FingerprintType key_;
 };
 
 // Formats a compile options key as a human-readable string.
 template <typename Sink>
 void AbslStringify(Sink& sink, const CompileOptionsKey key) {
-  absl::Format(&sink, "%016x", key.key);
+  absl::Format(&sink, "%016x", key.key());
 }
 
 // A CompilationCacheKey is used to identify a compilation in the compilation
 // cache. Depending on the hash/eq functions used, it may either uniquely
 // identify a cached executable, or non-uniquely identify a set of executables
 // that share some property.
-struct CompilationCacheKey {
+class CompilationCacheKey {
+ public:
   struct Hash {
     [[nodiscard]] inline size_t operator()(CompilationCacheKey key) const {
-      return FingerprintCat(key.shapeless_key.key, key.dimensions_key.key,
-                            key.compile_options_key.key);
+      return FingerprintCat(key.shapeless_key().key(),
+                            key.dimensions_key().key(),
+                            key.compile_options_key().key());
     }
   };
+
+  // Creates a CompilationCacheKey from the given components.
+  CompilationCacheKey(ShapelessKey shapeless_key, DimensionsKey dimensions_key,
+                      CompileOptionsKey compile_options_key)
+      : shapeless_key_(shapeless_key),
+        dimensions_key_(dimensions_key),
+        compile_options_key_(compile_options_key) {}
 
   // Compares two CompilationCacheKeys.
   [[nodiscard]] friend bool operator==(CompilationCacheKey lhs,
                                        CompilationCacheKey rhs) {
-    return lhs.shapeless_key == rhs.shapeless_key &&
-           lhs.dimensions_key == rhs.dimensions_key &&
-           lhs.compile_options_key == rhs.compile_options_key;
+    return lhs.shapeless_key_ == rhs.shapeless_key_ &&
+           lhs.dimensions_key_ == rhs.dimensions_key_ &&
+           lhs.compile_options_key_ == rhs.compile_options_key_;
   }
 
   // Returns a compact string representation of the key, suitable for use in a
@@ -721,14 +742,23 @@ struct CompilationCacheKey {
   // key part is formatted as a hexadecimal string of 16 digits.
   [[nodiscard]] std::string CompactFormat() const;
 
+  [[nodiscard]] ShapelessKey shapeless_key() const { return shapeless_key_; }
+
+  [[nodiscard]] DimensionsKey dimensions_key() const { return dimensions_key_; }
+
+  [[nodiscard]] CompileOptionsKey compile_options_key() const {
+    return compile_options_key_;
+  }
+
+ private:
   // The fingerprint of all graph properties except for dimension sizes and
   // dynamic bounds.
-  ShapelessKey shapeless_key;
+  ShapelessKey shapeless_key_;
   // The fingerprint of only the dimension sizes and dynamic bounds.
-  DimensionsKey dimensions_key;
+  DimensionsKey dimensions_key_;
   // The fingerprint of the compile options.
   // TODO(b/502270689): set meaningful fingerprint value of XLA compile options.
-  CompileOptionsKey compile_options_key{0};
+  CompileOptionsKey compile_options_key_;
 };
 
 static_assert(

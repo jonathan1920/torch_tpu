@@ -166,11 +166,8 @@ TEST_F(CompilationCacheTest, GetOrCompileLogsOnMiss) {
   cache.SetDumpOnCacheMissMode(true);
 
   // Trigger a miss with a unique key.
-  CompilationCacheKey key = {
-      .shapeless_key = ShapelessKey(12345),
-      .dimensions_key = DimensionsKey({}),
-      .compile_options_key = CompileOptionsKey(0),
-  };
+  CompilationCacheKey key(ShapelessKey(12345), DimensionsKey({}),
+                          CompileOptionsKey(0));
   std::vector<Shape> input_shapes;
 
   MlirComputationBuilder builder = [](mlir::MLIRContext& context) {

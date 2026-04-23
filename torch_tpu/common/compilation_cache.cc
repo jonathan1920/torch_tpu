@@ -437,8 +437,9 @@ CompilationCache::AddBoundedDynamicCacheEntry(
         << ToString(shapeless_key);
     entries = &entry->second;
   }
-  CompilationCacheKey middle_executable_key = CompilationCacheKey{
-      shapeless_key, DimensionsKey(shape_dynamism_metadata)};
+  CompilationCacheKey middle_executable_key(
+      shapeless_key, DimensionsKey(shape_dynamism_metadata),
+      CompileOptionsKey(0));
   entries->push_back(BoundedDynamicCacheEntry{
       .middle_executable_key = middle_executable_key,
       .shape_dynamism_metadata = shape_dynamism_metadata});
@@ -476,7 +477,7 @@ CompilationCache::GetOrCreateCacheEntry(
   std::optional<BoundedDynamicCache::iterator> dynamic_it =
       skip_dynamic_lookup_and_compilation
           ? std::nullopt
-          : GetBoundedDynamicCacheEntries(key.shapeless_key);
+          : GetBoundedDynamicCacheEntries(key.shapeless_key());
   if (dynamic_it.has_value()) {
     for (const auto& entry : (*dynamic_it)->second) {
       if (entry.shape_dynamism_metadata.IsStaticShapeCompatible(input_shapes)) {
@@ -513,7 +514,7 @@ CompilationCache::GetOrCreateCacheEntry(
   if (create_dynamic_entry) {
     auto dynamism_metadata = ShapeDynamismMetadata(input_shapes, output_shapes);
     ABSL_VLOG(2) << "Creating a dynamic cache entry for key: " << key;
-    return AddBoundedDynamicCacheEntry(key.shapeless_key, dynamism_metadata,
+    return AddBoundedDynamicCacheEntry(key.shapeless_key(), dynamism_metadata,
                                        dynamic_it);
   }
 
@@ -772,9 +773,10 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
                             *cache_lookup.shape_dynamism_metadata, input_shapes,
                             output_shapes, std::move(adapter_compile_options)));
     // Create a key for the storage of the dynamic executable.
-    storage_key = CompilationCacheKey{
-        key.shapeless_key,
-        DimensionsKey(*cache_lookup.shape_dynamism_metadata)};
+    storage_key = CompilationCacheKey(
+        key.shapeless_key(),
+        DimensionsKey(*cache_lookup.shape_dynamism_metadata),
+        key.compile_options_key());
     ABSL_VLOG(2) << "Storage key for dynamic executable: " << storage_key;
   }
 

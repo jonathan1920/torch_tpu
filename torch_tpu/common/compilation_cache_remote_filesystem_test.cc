@@ -155,10 +155,8 @@ TEST_F(RemoteCacheTest, CreatesCacheDirectory) {
 }
 
 TEST_F(RemoteCacheTest, GetFromTier3Cache) {
-  CompilationCacheKey key = {
-      .shapeless_key = ShapelessKey{123},
-      .dimensions_key = DimensionsKey({10}),
-  };
+  const CompilationCacheKey key(ShapelessKey(123), DimensionsKey({10}),
+                                CompileOptionsKey(0));
 
   // Write a cache entry file.
   const std::string cache_entry_path = GetTier3CacheEntryPath(key);

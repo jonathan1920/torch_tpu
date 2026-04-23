@@ -172,14 +172,15 @@ absl::StatusOr<OpParamCacheKeys> OpParamCacheKeys::Builder::operator*() {
 }
 
 std::string CompilationCacheKey::CompactFormat() const {
-  return absl::StrFormat("%016x_%016x_%016x", shapeless_key.key,
-                         dimensions_key.key, compile_options_key.key);
+  return absl::StrFormat("%016x_%016x_%016x", shapeless_key_.key(),
+                         dimensions_key_.key(), compile_options_key_.key());
 }
 
 std::ostream& operator<<(std::ostream& os, CompilationCacheKey key) {
   os << "CompilationCacheKey{shapeless_key=" << std::hex
-     << key.shapeless_key.key << ", dimensions_key=" << key.dimensions_key.key
-     << ", compile_options_key=" << key.compile_options_key.key << std::dec
+     << key.shapeless_key().key()
+     << ", dimensions_key=" << key.dimensions_key().key()
+     << ", compile_options_key=" << key.compile_options_key().key() << std::dec
      << "}";
   return os;
 }
@@ -197,7 +198,7 @@ DimensionsKey::DimensionsKey(
     upper_bounds.push_back(dimension_bounds.upper);
     lower_bounds.push_back(dimension_bounds.lower);
   }
-  key = FingerprintCat(upper_bounds, lower_bounds);
+  key_ = FingerprintCat(upper_bounds, lower_bounds);
 }
 
 Dimensions GetUpperBounds(absl::Span<const DimensionBounds> bounds) {
@@ -518,11 +519,8 @@ CompilationCacheKey GraphSignature::cache_key() const {
       sorted_donated_indices, op_inputs_starts_, op_inputs_indices_, op_names_,
       op_param_cache_keys_starts_, op_param_cache_keys_, op_outputs_indices_));
   const DimensionsKey dimensions_key(tensor_dimensions_);
-  return {
-      .shapeless_key = shapeless_key,
-      .dimensions_key = dimensions_key,
-      .compile_options_key = CompileOptionsKey(0),
-  };
+  return CompilationCacheKey(shapeless_key, dimensions_key,
+                             CompileOptionsKey(0));
 }
 
 }  // namespace torch_tpu
