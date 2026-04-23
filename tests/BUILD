@@ -589,6 +589,7 @@ torch_tpu_py_test(
     },
     main = "tpu_errors_test.py",
     tags = [
+        "nosan",  # *san runs can cause divergence in error messages.
         "requires-tpu-v5lite",
         "wheel_test_excluded",
     ],
@@ -654,7 +655,10 @@ torch_tpu_py_test(
     # TODO: Get working in OSS and enable in nightlies
     notest_oss = "Disabled as too slow and because it is failing in OSS.",
     shard_count = 4,
-    tags = ["requires-tpu-v5lite"],
+    tags = [
+        "nosan",  # *san runs can cause divergence in error messages.
+        "requires-tpu-v5lite",
+    ],
     visibility = ["//:__subpackages__"],
     deps = [
         ":error_testing",
