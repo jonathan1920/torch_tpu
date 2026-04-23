@@ -205,9 +205,6 @@ def verify_op_supports_dynamism(
     return f"{op.name} op may work, but requires mark_dynamic test support."
 
   ### [XLA BUGS] ###
-  # TODO: b/449736443 - [XLA] Reduce op with dynamism gets flipped.
-  if op.name in ["min", "max"] and args:
-    return "min/max with dim flips the result"
   # TODO: b/449736443 - [XLA] Crash in complex rewriter.
   if op.name in ["polar"]:
     return f"{op.name} op is not supported."
@@ -215,7 +212,7 @@ def verify_op_supports_dynamism(
   ### [VIEW OP BUGS] ###
   # TODO: b/449736443 - Reshape support for bounded dynamism needed.
   # transposes and permutes can lower to a reshape sometimes (1x3->3x1)
-  if op.name in ["flatten", "t", "t_", "transpose", "reshape", "permute"]:
+  if op.name in ["t", "t_"]:
     return f"{op.name} op uses a reshape that is not supported with dynamism."
 
   ### [TORCHTPU INFRA BUGS] ###
