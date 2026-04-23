@@ -62,7 +62,8 @@ class CompilationCacheTestHelper {
 namespace {
 
 CompilationCacheKey DummyKey() {
-  return CompilationCacheKey(ShapelessKey{0}, DimensionsKey({}));
+  return CompilationCacheKey{ShapelessKey{0}, DimensionsKey({}),
+                             CompileOptionsKey(0)};
 }
 
 class GetNumCompilationThreadsTest : public testing::Test {};
@@ -165,7 +166,11 @@ TEST_F(CompilationCacheTest, GetOrCompileLogsOnMiss) {
   cache.SetDumpOnCacheMissMode(true);
 
   // Trigger a miss with a unique key.
-  CompilationCacheKey key(ShapelessKey{12345}, DimensionsKey({}));
+  CompilationCacheKey key = {
+      .shapeless_key = {12345},
+      .dimensions_key = DimensionsKey({}),
+      .compile_options_key = CompileOptionsKey(0),
+  };
   std::vector<Shape> input_shapes;
 
   MlirComputationBuilder builder = [](mlir::MLIRContext& context) {

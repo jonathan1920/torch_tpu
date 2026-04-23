@@ -172,13 +172,15 @@ absl::StatusOr<OpParamCacheKeys> OpParamCacheKeys::Builder::operator*() {
 }
 
 std::string CompilationCacheKey::CompactFormat() const {
-  return absl::StrFormat("%016x_%016x", shapeless_key.key, dimensions_key.key);
+  return absl::StrFormat("%016x_%016x_%016x", shapeless_key.key,
+                         dimensions_key.key, compile_options_key.key);
 }
 
 std::ostream& operator<<(std::ostream& os, CompilationCacheKey key) {
   os << "CompilationCacheKey{shapeless_key=" << std::hex
      << key.shapeless_key.key << ", dimensions_key=" << key.dimensions_key.key
-     << std::dec << "}";
+     << ", compile_options_key=" << key.compile_options_key.key << std::dec
+     << "}";
   return os;
 }
 
@@ -519,6 +521,7 @@ CompilationCacheKey GraphSignature::cache_key() const {
   return {
       .shapeless_key = shapeless_key,
       .dimensions_key = dimensions_key,
+      .compile_options_key = CompileOptionsKey{0},
   };
 }
 

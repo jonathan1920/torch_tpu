@@ -672,6 +672,28 @@ struct DimensionsKey {
   FingerprintType key;
 };
 
+struct CompileOptionsKey {
+  explicit CompileOptionsKey(FingerprintType key) : key(key) {}
+
+  struct Hash {
+    [[nodiscard]] inline size_t operator()(const CompileOptionsKey key) const {
+      return key.key;
+    }
+  };
+
+  [[nodiscard]] bool operator==(const CompileOptionsKey rhs) const {
+    return key == rhs.key;
+  }
+
+  FingerprintType key;
+};
+
+// Formats a compile options key as a human-readable string.
+template <typename Sink>
+void AbslStringify(Sink& sink, const CompileOptionsKey key) {
+  absl::Format(&sink, "%016x", key.key);
+}
+
 // A CompilationCacheKey is used to identify a compilation in the compilation
 // cache. Depending on the hash/eq functions used, it may either uniquely
 // identify a cached executable, or non-uniquely identify a set of executables
@@ -679,7 +701,8 @@ struct DimensionsKey {
 struct CompilationCacheKey {
   struct Hash {
     [[nodiscard]] inline size_t operator()(CompilationCacheKey key) const {
-      return FingerprintCat(key.shapeless_key.key, key.dimensions_key.key);
+      return FingerprintCat(key.shapeless_key.key, key.dimensions_key.key,
+                            key.compile_options_key.key);
     }
   };
 
@@ -687,7 +710,8 @@ struct CompilationCacheKey {
   [[nodiscard]] friend bool operator==(CompilationCacheKey lhs,
                                        CompilationCacheKey rhs) {
     return lhs.shapeless_key == rhs.shapeless_key &&
-           lhs.dimensions_key == rhs.dimensions_key;
+           lhs.dimensions_key == rhs.dimensions_key &&
+           lhs.compile_options_key == rhs.compile_options_key;
   }
 
   // Returns a compact string representation of the key, suitable for use in a
@@ -700,6 +724,9 @@ struct CompilationCacheKey {
   ShapelessKey shapeless_key;
   // The fingerprint of only the dimension sizes and dynamic bounds.
   DimensionsKey dimensions_key;
+  // The fingerprint of the compile options.
+  // TODO(b/502270689): set meaningful fingerprint value of XLA compile options.
+  CompileOptionsKey compile_options_key{0};
 };
 
 static_assert(
