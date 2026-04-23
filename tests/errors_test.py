@@ -5599,7 +5599,7 @@ Supported combinations for non-constant padding:
     out = torch.empty_like(x)
     with et.assert_raises_message(
         RuntimeError,
-        cpu="""\"xlogy_cpu\" not implemented for 'ComplexFloat'""",
+        cpu=""""xlogy_cpu" not implemented for 'ComplexFloat'""",
         tpu="""xlogy(): complex dtypes are not supported, got x dtype complex64 and y dtype complex64""",
     ):
       torch.ops.aten.xlogy.OutTensor(x, y, out=out)
