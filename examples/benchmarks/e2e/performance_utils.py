@@ -203,9 +203,9 @@ def _run_single_process_benchmark(
   # Seed random number generators for reproducibility. This should be done after
   # initializing the device.
   benchmark_utils.seed_rngs()
-  weights_dtype = _get_torch_dtype(WEIGHTS_DTYPE.value)
+  weights_dtype = get_torch_dtype(WEIGHTS_DTYPE.value)
   func = _get_benchmark_function(config, device)
-  model_and_input = _get_model_and_input(
+  model_and_input = get_model_and_input(
       config.model_and_input_args,
       config.benchmark_category,
       device,
@@ -445,7 +445,7 @@ def _get_optimizer(
   )
 
 
-def _get_torch_dtype(dtype_str: str) -> torch.dtype:
+def get_torch_dtype(dtype_str: str) -> torch.dtype:
   if dtype_str == "bfloat16":
     return torch.bfloat16
   elif dtype_str == "float16":
@@ -507,7 +507,7 @@ def _get_benchmark_function(
     )
 
 
-def _get_model_and_input(
+def get_model_and_input(
     model_and_input_args: ModelAndInputArgs,
     benchmark_category: benchmark_utils.BenchmarkCategory,
     device: torch.device,
