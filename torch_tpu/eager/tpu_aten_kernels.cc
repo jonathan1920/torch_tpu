@@ -746,24 +746,6 @@ TORCH_LIBRARY_IMPL(_, AutogradPrivateUse1, m) {
   m.fallback(torch::CppFunction::makeFallthrough());
 }
 
-// Register a fallback for automatic mixed precision (AMP).
-// Anything not explicitly registered in another TORCH_LIBRARY_IMPL block will
-// not force a dtype conversion (up or down).
-TORCH_LIBRARY_IMPL(_, AutocastPrivateUse1, m) {
-  m.fallback(torch::CppFunction::makeFallthrough());
-}
-
-// If we want to apply autocast logic on a specific op, we can register it here.
-// This can be used to force a lower precision for efficiency, or higher
-// precision for accuracy, using a macro like
-// `KERNEL_PRIVATEUSEONE(aten_op_name, lower_precision_fp)`
-// or
-// `KERNEL_PRIVATEUSEONE(aten_op_name, fp32)`.
-// or other CastPolicy values (see torch/aten/src/ATen/autocast_mode.h)
-TORCH_LIBRARY_IMPL(aten, AutocastPrivateUse1, m) {
-  // Currently we apply no autocast overrides on aten ops.
-}
-
 TORCH_LIBRARY(torch_tpu, m) {
   m.def("ragged_dot(Tensor lhs, Tensor rhs, Tensor group_sizes) -> Tensor");
   m.def(

@@ -31,6 +31,7 @@ pytype_strict_library(
         "//torch_tpu/_internal/precision",
         "//torch_tpu/_internal/stream:streams",
         "//torch_tpu/_internal/utils:hardware",
+        "//torch_tpu/eager:amp_policies",
         "//torch_tpu/eager:tpu_aten_kernels",
     ],
 )

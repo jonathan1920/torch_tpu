@@ -97,7 +97,7 @@ class _DeviceModule(abc.ABC):
 
   https://github.com/pytorch/pytorch/blob/v2.7.0/torch/cuda/__init__.py
 
-  For Automatic Mixed Presicion (AMP), see:
+  For Automatic Mixed Precision (AMP), see:
   https://docs.pytorch.org/docs/stable/amp.html
 
   Since methods of this class are accessible via getattr(torch, "tpu"), we need
@@ -110,7 +110,7 @@ class _DeviceModule(abc.ABC):
   _device_count: int | None = None
   _current_device: int | None = None
   _autocast_enabled: bool = False
-  _autocast_dtype: torch.dtype | None = torch.float16
+  _autocast_dtype: torch.dtype | None = torch.bfloat16
 
   _device_type: str
 

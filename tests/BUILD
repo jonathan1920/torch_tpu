@@ -1053,6 +1053,21 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "amp_test",
+    srcs = ["amp_test.py"],
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu/_internal/compile:tpu_torch_compile",
+        "//torch_tpu/_internal/execution_mode",
+    ],
+)
+
 test_suite(
     name = "autoload_tests",
     tests = [

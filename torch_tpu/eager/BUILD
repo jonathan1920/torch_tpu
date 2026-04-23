@@ -528,9 +528,14 @@ torch_tpu_cc_library(
     srcs = ["tpu_aten_kernels.cc"],
     hdrs = ["tpu_aten_kernels.h"],
     deps = [
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_log",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//torch_tpu/common:error_utils",
+        # Ensure that both TORCH_LIBRARY_IMPL values get built together always.
+        ":amp_policies",  # buildcleaner: keep
         "//torch_tpu/ops:binary_aten_kernels",
         "//torch_tpu/ops:foreach_aten_kernels",
         "//torch_tpu/ops:nullary_aten_kernels",
@@ -654,10 +659,22 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/view:view_aten_kernels",
         "//torch_tpu/ops/weight_norm:weight_norm_aten_kernels",
         "//torch_tpu/ops/where:where_aten_kernels",
+        "@xla//xla:xla_data_proto_cc",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "amp_policies",
+    srcs = ["amp_policies.cc"],
+    hdrs = ["amp_policies.h"],
+    deps = [
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:macro_utils",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",
-        "@xla//xla:xla_data_proto_cc",
     ],
 )
 
