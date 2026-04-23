@@ -47,6 +47,34 @@ torch_tpu_cc_test(
 )
 
 torch_tpu_cc_library(
+    name = "view_primitive_error_utils",
+    hdrs = ["view_primitive_error_utils.h"],
+    deps = [
+        ":strided_layout",
+        "//torch_tpu/common:to_string",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "view_primitive_error_utils_test",
+    srcs = ["view_primitive_error_utils_test.cc"],
+    deps = [
+        ":reshape_primitive",
+        ":strided_layout",
+        ":view_primitive_error_utils",
+        ":view_sequence",
+        "//torch_tpu/common:dimension_types",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "reshape_primitive",
     srcs = ["reshape_primitive.cc"],
     hdrs = ["reshape_primitive.h"],
