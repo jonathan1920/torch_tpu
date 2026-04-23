@@ -23,6 +23,7 @@
 
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
+#include "torch_tpu/common/dimension_types.h"
 
 // A DeviceBufferRef, or a PjRtBuffer, contains information about the shape
 // and element type of a tensor.
@@ -82,6 +83,12 @@ std::ostream& operator<<(std::ostream& os, const StridedLayout& layout);
 // The contiguous base layout is row-major, non-overlapping, dense, with
 // storage offset 0.
 StridedLayout MakeContiguousBaseLayout(absl::Span<const int64_t> shape);
+
+// Given a StridedLayout, returns a vector with all dimension sizes gathered.
+Dimensions GetSizes(const StridedLayout& layout);
+
+// Given a StridedLayout, returns a vector with all dimension strides gathered.
+Strides GetStrides(const StridedLayout& layout);
 
 }  // namespace torch_tpu
 

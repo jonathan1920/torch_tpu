@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <ostream>
 
+#include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/to_string.h"
@@ -84,6 +85,20 @@ bool operator==(const StridedLayout& lhs, const StridedLayout& rhs) {
     }
   }
   return lhs.storage_offset == rhs.storage_offset;
+}
+
+Dimensions GetSizes(const StridedLayout& layout) {
+  Dimensions dimensions(layout.strided_dims.size());
+  absl::c_transform(layout.strided_dims, dimensions.begin(),
+                    [](const auto& dim) { return dim.size; });
+  return dimensions;
+}
+
+Strides GetStrides(const StridedLayout& layout) {
+  Strides strides(layout.strided_dims.size());
+  absl::c_transform(layout.strided_dims, strides.begin(),
+                    [](const auto& dim) { return dim.stride; });
+  return strides;
 }
 
 }  // namespace torch_tpu

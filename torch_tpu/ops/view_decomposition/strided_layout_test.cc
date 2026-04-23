@@ -18,6 +18,7 @@
 
 #include "gtest/gtest.h"
 #include "absl/types/span.h"
+#include "torch_tpu/common/dimension_types.h"
 
 namespace torch_tpu {
 namespace {
@@ -143,6 +144,42 @@ TEST(StridedLayoutEquality, SizeOneStrideIgnored) {
       .storage_offset = 0,
   };
   EXPECT_EQ(lhs, rhs);
+}
+
+TEST(GetSizes, ReturnsDimensionSizes) {
+  StridedLayout layout = {
+      .strided_dims = {{.size = 2, .stride = 12},
+                       {.size = 3, .stride = 4},
+                       {.size = 4, .stride = 1}},
+      .storage_offset = 0,
+  };
+  EXPECT_EQ(GetSizes(layout), Dimensions({2, 3, 4}));
+}
+
+TEST(GetSizes, EmptyLayout) {
+  StridedLayout layout = {
+      .strided_dims = {},
+      .storage_offset = 0,
+  };
+  EXPECT_TRUE(GetSizes(layout).empty());
+}
+
+TEST(GetStrides, ReturnsDimensionStrides) {
+  StridedLayout layout = {
+      .strided_dims = {{.size = 2, .stride = 12},
+                       {.size = 3, .stride = 4},
+                       {.size = 4, .stride = 1}},
+      .storage_offset = 0,
+  };
+  EXPECT_EQ(GetStrides(layout), Strides({12, 4, 1}));
+}
+
+TEST(GetStrides, EmptyLayout) {
+  StridedLayout layout = {
+      .strided_dims = {},
+      .storage_offset = 0,
+  };
+  EXPECT_TRUE(GetStrides(layout).empty());
 }
 
 }  // namespace

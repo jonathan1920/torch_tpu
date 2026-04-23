@@ -31,6 +31,7 @@ torch_tpu_cc_library(
     deps = [
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:to_string",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
     ],
@@ -41,6 +42,7 @@ torch_tpu_cc_test(
     srcs = ["strided_layout_test.cc"],
     deps = [
         ":strided_layout",
+        "//torch_tpu/common:dimension_types",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
