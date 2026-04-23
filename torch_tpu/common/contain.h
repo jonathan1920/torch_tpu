@@ -20,7 +20,6 @@
 #include <cstdint>
 #include <memory>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 
 namespace torch_tpu {
@@ -28,15 +27,16 @@ namespace torch_tpu {
 // Dynamic container for tracking memory usage.
 //
 // This is a global singleton class that is initialized lazily on first use. It
-// supports only one implicit container. Entering via ScopedEnter multiple
-// times simply moves into said container for the duration of the scope, it
-// does not create or destroy containers per call. Attempting to enter the
-// container from a thread which is already inside of it has no effect.
+// supports only one implicit container. Entering via
+// ScopedMemMeasuringContainer multiple times simply moves into said container
+// for the duration of the scope, it does not create or destroy containers per
+// call. Attempting to enter the container from a thread which is already inside
+// of it has no effect.
 //
 // Example:
 //  auto threads = torch_tpu::ThreadPool();
 //  threads.Schedule([]() {
-//    auto guard = ScopedEnter();
+//    auto guard = ScopedMemMeasuringContainer();
 //    DoWork();
 //    auto child_threads = torch_tpu::ThreadPool();
 //    child_threads.Schedule([]() {
@@ -44,38 +44,34 @@ namespace torch_tpu {
 //    });
 //  });
 //
-// GetPeakHostMemoryBytes() will reflect all calls to DoWork();
+// ContainerPeakHostMemoryBytes() will reflect all calls to DoWork();
 
-class ScopedContainer {
+class ScopedMemMeasuringContainer {
  public:
-  ScopedContainer(const ScopedContainer&) = delete;
-  ScopedContainer& operator=(const ScopedContainer&) = delete;
-  ScopedContainer(ScopedContainer&&) = delete;
-  ScopedContainer& operator=(ScopedContainer&&) = delete;
-  ~ScopedContainer();
+  ScopedMemMeasuringContainer();
+  ~ScopedMemMeasuringContainer();
+
+  ScopedMemMeasuringContainer(const ScopedMemMeasuringContainer&) = delete;
+  ScopedMemMeasuringContainer& operator=(const ScopedMemMeasuringContainer&) =
+      delete;
+  ScopedMemMeasuringContainer(ScopedMemMeasuringContainer&&) = delete;
+  ScopedMemMeasuringContainer& operator=(ScopedMemMeasuringContainer&&) =
+      delete;
 
  private:
-  friend std::unique_ptr<ScopedContainer> ScopedEnter();
-  ScopedContainer();
-
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };
 
-// Move the current thread of execution into the container, if enabled. Any
-// threads spawned within the container will remain there, even when the current
-// thread leaves. Returns a guard that restores the previous container on
-// destruction. Lazily initializes the container on first call if enabled.
-// Returns nullptr if disabled or initialization fails.
-std::unique_ptr<ScopedContainer> ScopedEnter();
-
 // Returns peak memory usage in bytes inside the container. Work done by any
 // thread while inside the container, or any thread spawned inside the container
 // will be accounted for.
-absl::StatusOr<int64_t> GetPeakHostMemoryBytes();
+absl::StatusOr<int64_t> ContainerPeakHostMemoryBytes();
 
-// Destroys the container and resets the singleton state.
-absl::Status Cleanup();
+// Destroys the container and resets the singleton state. Facilitates
+// "resetting" of memory tracking, provided there are no background threads in
+// the current container that would be lost.
+void CleanUpContainer();
 
 }  // namespace torch_tpu
 

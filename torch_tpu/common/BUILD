@@ -829,10 +829,7 @@ torch_tpu_cc_library(
     name = "contain",
     srcs = ["contain_oss.cc"],
     hdrs = ["contain.h"],
-    deps = [
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ],
+    deps = ["@com_google_absl//absl/status:statusor"],
 )
 
 torch_tpu_cc_test(

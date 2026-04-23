@@ -14,26 +14,25 @@
  * limitations under the License.
  */
 
+#include <cstdint>
 #include <memory>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "torch_tpu/common/contain.h"
 
 namespace torch_tpu {
 
-struct ScopedContainer::Impl {
+struct ScopedMemMeasuringContainer::Impl {
   // Empty implementation for OSS
 };
 
-ScopedContainer::ScopedContainer() : impl_(std::make_unique<Impl>()) {}
+ScopedMemMeasuringContainer::ScopedMemMeasuringContainer()
+    : impl_(std::make_unique<Impl>()) {}
 
-ScopedContainer::~ScopedContainer() = default;
+ScopedMemMeasuringContainer::~ScopedMemMeasuringContainer() = default;
 
-std::unique_ptr<ScopedContainer> ScopedEnter() { return nullptr; }
+absl::StatusOr<int64_t> ContainerPeakHostMemoryBytes() { return 0; }
 
-absl::StatusOr<int64_t> GetPeakHostMemoryBytes() { return 0; }
-
-absl::Status Cleanup() { return absl::OkStatus(); }
+void CleanUpContainer() {}
 
 }  // namespace torch_tpu
