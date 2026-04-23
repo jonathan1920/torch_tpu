@@ -4851,6 +4851,28 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(run)
 
+  def test_xlogy(self):
+    x_data = [0.0, 0.0, 1.0, 0.0, 2.0, -1.0]
+    y_data = [0.0, -1.0, float("nan"), float("nan"), 2.0, 3.0]
+
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.xlogy(
+            torch.tensor(x_data, device=device).to(device),
+            torch.tensor(y_data, device=device).to(device),
+        ),
+        check_value=CheckValueMode.LOOSE,
+        rtol=5.7e-05,
+        atol=6.3e-05,
+    )
+
+    # Test broadcasting
+    def test_broadcasting_fn(device):
+      x = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device)
+      y = torch.tensor([1.0, 2.0], device=device)
+      return torch.xlogy(x, y)
+
+    self.assert_close_tpu_vs_cpu(test_broadcasting_fn)
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""

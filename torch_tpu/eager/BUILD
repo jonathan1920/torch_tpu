@@ -659,6 +659,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/view:view_aten_kernels",
         "//torch_tpu/ops/weight_norm:weight_norm_aten_kernels",
         "//torch_tpu/ops/where:where_aten_kernels",
+        "//torch_tpu/ops/xlogy:xlogy_aten_kernels",
         "@xla//xla:xla_data_proto_cc",
     ],
 )

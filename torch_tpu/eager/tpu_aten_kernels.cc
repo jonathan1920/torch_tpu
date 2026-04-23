@@ -151,6 +151,7 @@
 #include "torch_tpu/ops/view/view_aten_kernels.h"
 #include "torch_tpu/ops/weight_norm/weight_norm_aten_kernels.h"
 #include "torch_tpu/ops/where/where_aten_kernels.h"
+#include "torch_tpu/ops/xlogy/xlogy_aten_kernels.h"
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
@@ -710,6 +711,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kWeightNormInterface, AtenWeightNormInterface);
   Impl(m, OpName::kWhereSelf, AtenWhereSelf);
   Impl(m, OpName::kWhereSelfOut, AtenWhereSelfOut);
+  Impl(m, OpName::kXlogyOutTensor, AtenXlogyOutTensor);
   Impl(m, OpName::kZero_, AtenZero_);
   // go/keep-sorted end
 }

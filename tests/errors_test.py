@@ -5588,6 +5588,20 @@ Supported combinations for non-constant padding:
     ):
       torch.geqrf(input_tensor)
 
+  def test_xlogy_unsupported_complex_dtype(self):
+    complex_val = torch.complex(torch.tensor(1.0), torch.tensor(1.0))
+    complex_val = complex_val.to(et.device())
+
+    x = complex_val.clone()
+    y = complex_val.clone()
+    out = torch.empty_like(x)
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu="""\"xlogy_cpu\" not implemented for 'ComplexFloat'""",
+        tpu="""xlogy(): complex dtypes are not supported, got x dtype complex64 and y dtype complex64""",
+    ):
+      torch.ops.aten.xlogy.OutTensor(x, y, out=out)
+
 
 if __name__ == "__main__":
   absltest.main()

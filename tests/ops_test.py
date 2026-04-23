@@ -596,6 +596,16 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 1e-2, "atol": 5e-2},
         torch.float32: {"rtol": 5e-6, "atol": 5e-4},
     },
+    "xlogy": {
+        torch.bfloat16: {"rtol": 7.9e-3, "atol": 1.3e-01},
+        torch.float16: {"rtol": 9.8e-4, "atol": 1.6e-2},
+        torch.float32: {"rtol": 2.6e-4, "atol": 7.5e-4},
+        torch.uint8: {"rtol": 5.7e-5, "atol": 5.7e-4},
+        torch.int8: {"rtol": 5.7e-5, "atol": 5.7e-4},
+        torch.int16: {"rtol": 5.7e-5, "atol": 5.7e-4},
+        torch.int32: {"rtol": 5.7e-5, "atol": 5.7e-4},
+        torch.int64: {"rtol": 5.7e-5, "atol": 5.7e-4},
+    },
     # go/keep-sorted end
 }
 
@@ -3779,6 +3789,9 @@ class TestOps(TorchTpuTestBase):
 
   def test_where(self):
     self.do_test_op("where")
+
+  def test_xlogy(self):
+    self.do_test_op("xlogy")
 
   def test_zeros(self):
     self.do_test_op("zeros")

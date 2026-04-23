@@ -1227,6 +1227,8 @@ std::string_view ToString(OpName op_name) {
       return "where.self";
     case OpName::kWhereSelfOut:
       return "where.self_out";
+    case OpName::kXlogyOutTensor:
+      return "xlogy.OutTensor";
     case OpName::kZero_:
       return "zero_";
       // go/keep-sorted end

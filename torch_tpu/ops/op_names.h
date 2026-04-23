@@ -625,6 +625,7 @@ enum class OpName {
   kWeightNormInterface,
   kWhereSelf,
   kWhereSelfOut,
+  kXlogyOutTensor,
   kZero_,
   // go/keep-sorted end
 };
