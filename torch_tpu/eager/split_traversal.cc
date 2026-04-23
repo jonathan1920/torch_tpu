@@ -66,6 +66,12 @@ absl::StatusOr<std::vector<Traversal>> SplitTraversal(
                << split_points.size() - required_outputs.size()
                << " additional split points.";
 
+  if (split_points.size() <= required_outputs.size()) {
+    // Keep the full traversal when there are no internal split points.
+    traversals.push_back(std::move(traversal));
+    return traversals;
+  }
+
   return ApplySplitPoints(traversal, split_points);
 }
 
