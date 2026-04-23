@@ -446,8 +446,7 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:env",
-        # Keep this for GCS support.
-        "@xla//xla/tsl/platform/cloud:gcs_file_system",
+        "@xla//xla/tsl/platform/cloud:gcs_file_system",  # buildcleaner: keep - for GCS support
     ] + add_internal_filesystem_dependencies(),
 )
 
@@ -972,7 +971,7 @@ torch_tpu_cc_test(
     srcs = ["tier3_compilation_cache_test.cc"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
-        # TODO: b/490440118 - Remove this once the bug is fixed.
+        # Alternatively, set it to a GCS directory.
         # "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/remote_tier3_compilation_cache_test"
         "",
     },
@@ -1004,7 +1003,7 @@ torch_tpu_cc_test(
     srcs = ["compilation_cache_remote_filesystem_test.cc"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
-        # TODO: b/490440118 - Remove this once the bug is fixed.
+        # Alternatively, set it to a GCS directory.
         # "$DATA_ROOT/$TMP_SUBDIR/ttl=1d/compilation_cache_remote_filesystem_test"
         "",
     },
