@@ -32,6 +32,15 @@ torch_tpu_cc_library(
     deps = ["@com_google_absl//absl/strings"],
 )
 
+torch_tpu_cc_test(
+    name = "op_names_test",
+    srcs = ["op_names_test.cc"],
+    deps = [
+        ":op_names",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 torch_tpu_cc_library(
     name = "xla_utils",
     srcs = ["xla_utils.cc"],

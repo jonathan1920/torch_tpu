@@ -490,7 +490,6 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kIsNan, AtenIsNan);
   Impl(m, OpName::kIsNegInfOut, AtenIsNegInfOut);
   Impl(m, OpName::kIsPosInfOut, AtenIsPosInfOut);
-  Impl(m, OpName::kLayerNormBackward, AtenLayerNormBackward);
   Impl(m, OpName::kLeScalarOut, AtenLeScalarOut);
   Impl(m, OpName::kLeTensorOut, AtenLeTensorOut);
   Impl(m, OpName::kLeakyReluBackward, AtenLeakyReluBackwardGradInput);
@@ -567,6 +566,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kNativeDropoutBackward, AtenNativeDropoutBackward);
   Impl(m, OpName::kNativeGroupNormBackward, AtenNativeGroupNormBackward);
   Impl(m, OpName::kNativeLayerNorm, AtenNativeLayerNorm);
+  Impl(m, OpName::kNativeLayerNormBackward, AtenLayerNormBackward);
   Impl(m, OpName::kNeScalarOut, AtenNeScalarOut);
   Impl(m, OpName::kNeTensorOut, AtenNeTensorOut);
   Impl(m, OpName::kNegOut, AtenNegOut);

@@ -22,9 +22,11 @@
 
 namespace torch_tpu {
 
+// Identifies ops implemented by TorchTPU. The numerical values of the enum
+// members are unstable and not meaningful, so do not persist them.
 enum class OpName {
+  kMinOpMinus1,  // For enumerating all OpNames for testing. Not a real op.
   // go/keep-sorted start
-
   kAbsOut,
   kAcosOut,
   kAcoshOut,
@@ -381,7 +383,6 @@ enum class OpName {
   kIsNegInfOut,
   kIsPosInfOut,
   kLayerNorm,
-  kLayerNormBackward,
   kLe,
   kLeOut,
   kLeScalarOut,
@@ -628,6 +629,7 @@ enum class OpName {
   kXlogyOutTensor,
   kZero_,
   // go/keep-sorted end
+  kMaxOpPlus1,  // For enumerating all OpNames for testing. Not a real op.
 };
 
 // Formats an op name as a human-readable string.

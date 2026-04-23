@@ -25,8 +25,11 @@ namespace torch_tpu {
 // NOLINTNEXTLINE(readability/fn_size)
 std::string_view ToString(OpName op_name) {
   switch (op_name) {
+    case OpName::kMinOpMinus1:
+      return "<min_op-1>";
+    case OpName::kMaxOpPlus1:
+      return "<max_op+1>";
       // go/keep-sorted start
-
     case OpName::kAbsOut:
       return "abs.out";
     case OpName::kAcosOut:
@@ -739,8 +742,6 @@ std::string_view ToString(OpName op_name) {
       return "isposinf.out";
     case OpName::kLayerNorm:
       return "layer_norm";
-    case OpName::kLayerNormBackward:
-      return "native_layer_norm_backward";
     case OpName::kLe:
       return "le";
     case OpName::kLeOut:

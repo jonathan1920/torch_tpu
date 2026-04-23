@@ -174,7 +174,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenLayerNormBackward(
     const std::optional<at::Tensor>& bias_opt,
     std::array<bool, 3> grad_input_mask) {
   TT_KERNEL(
-      OpName::kLayerNormBackward, param_keys,
+      OpName::kNativeLayerNormBackward, param_keys,
       (dY, input, normalized_shape, mean, rstd, weight_opt, bias_opt,
        grad_input_mask),
       {
