@@ -4670,7 +4670,9 @@ Supported combinations for non-constant padding:
     with et.assert_raises_message(
         RuntimeError,
         tpu="""weight_norm_interface(): expected dim to be 0 or the last dimension of v, got 1""",
-        cpu="""dim == 0 || dim == v.dim() - 1 INTERNAL ASSERT FAILED at "blaze-out/k8-fastbuild/bin/third_party/py/torch/aten/src/ATen/native/cpu/WeightNormKernel.AVX2.cpp":409, please report a bug to PyTorch. fused kernels can only be applied for first or last dim""",
+        cpu=re.compile(
+            r"""dim == 0 \|\| dim == v.dim\(\) - 1 INTERNAL ASSERT FAILED.*"""
+        ),
     ):
       torch.ops.aten._weight_norm_interface(v, g, dim)
 
