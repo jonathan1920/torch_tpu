@@ -31,6 +31,7 @@ from torch_tpu._internal.utils import log_utils
 import torch_tpu.api as xla_api
 from examples.benchmarks.quality_utils import quality_benchmark_model
 
+from torch_tpu._internal.shims.xprof import traceme
 from torch_tpu._internal.shims.xprof import xprof_analysis_client
 from torch_tpu._internal.shims.xprof import xprof_session
 
@@ -400,12 +401,12 @@ def _warmup_run(
 
   with XprofContext("warmup_run", enable_xprof):
     for step in range(MAX_WARMUP_STEPS.value):
-      start_time = time.perf_counter()
-      out = benchmark_function(model, example_inputs, optimizer)
-      if isinstance(out, torch.Tensor):
-        device_utils.synchronize(device_name, out)
-
-      timings[step] = time.perf_counter() - start_time
+      with traceme.TraceMe("Warmup", step_num=step):
+        start_time = time.perf_counter()
+        out = benchmark_function(model, example_inputs, optimizer)
+        if isinstance(out, torch.Tensor):
+          device_utils.synchronize(device_name, out)
+        timings[step] = time.perf_counter() - start_time
       cache_misses[step] = device_utils.cache_miss_count(device_name)
 
       if (
@@ -463,11 +464,12 @@ def _post_warmup_run(
   # information.
   with XprofContext("post_warmup_run", enable_xprof) as xprof_context:
     for step in range(POST_WARMUP_STEPS.value):
-      start_time = time.perf_counter()
-      out = benchmark_function(model, example_inputs, optimizer)
-      if isinstance(out, torch.Tensor):
-        device_utils.synchronize(device_name, out)
-      timings[step] = time.perf_counter() - start_time
+      with traceme.TraceMe("Eval", step_num=step):
+        start_time = time.perf_counter()
+        out = benchmark_function(model, example_inputs, optimizer)
+        if isinstance(out, torch.Tensor):
+          device_utils.synchronize(device_name, out)
+        timings[step] = time.perf_counter() - start_time
 
       # Assert that the cache misses are consistent across steps.
       step_cache_misses = device_utils.cache_miss_count(device_name)

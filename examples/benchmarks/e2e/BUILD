@@ -35,6 +35,7 @@ pytype_strict_library(
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
+        "//torch_tpu/_internal/shims/xprof:traceme",
         "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
         "//torch_tpu/_internal/shims/xprof:xprof_session",
         "//torch_tpu/_internal/utils:device_utils",
