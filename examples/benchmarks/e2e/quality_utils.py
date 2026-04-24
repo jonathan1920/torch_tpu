@@ -121,6 +121,8 @@ def _run_single_process_benchmark(
         test_method_name=test_method_name,
         benchmark_name=benchmark_name,
         succeeded=benchmark_succeeded,
+        pending_cl=benchmark_utils.PENDING_CL.value,
+        benchmark_group=benchmark_utils.BENCHMARK_GROUP.value,
     )
 
   if not benchmark_succeeded and benchmark_exception is not None:

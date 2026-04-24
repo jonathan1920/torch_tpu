@@ -40,6 +40,8 @@ def export_to_mlcompass(
     benchmark_name: str,
     microbenchmark_name: str | None = None,
     succeeded: bool = True,
+    pending_cl: str | None = None,
+    benchmark_group: str | None = None,
 ) -> None:
   """Exports benchmark results to mlcompass.
 
@@ -58,6 +60,8 @@ def export_to_mlcompass(
       composed of multiple microbenchmarks. See
       go/mlcompass-microbenchmark-guide for more details.
     succeeded: Whether the benchmark succeeded or failed.
+    pending_cl: The pending CL used for the benchmark run.
+    benchmark_group: The benchmark group (control or experiment).
   """
 
   assert mlcompass_tracking_id is not None
@@ -79,15 +83,22 @@ def export_to_mlcompass(
   test_name = (
       f"{TEAM_NAME}/{platform.value}/{test_method_name}/{benchmark_name}"
   )
+
+  mlcompass_run_tags = None
+  if benchmark_group:
+    mlcompass_run_tags = (benchmark_group,)
+
   benchmark_data = benchmark_data_lib.BenchmarkData(
       test_name=test_name,
       wall_time=wall_time,
       base_cl=base_cl,
+      pending_cl=pending_cl,
       metrics=metric_map,
       mlcompass_tracking_id=mlcompass_tracking_id,
       mlcompass_execution_mode=mlcompass_execution_mode,
       team_name=TEAM_NAME,
       succeeded=succeeded,
+      mlcompass_run_tags=mlcompass_run_tags,
   )
   if microbenchmark_name:
     benchmark_data.micro_result_key = microbenchmark_name

@@ -84,6 +84,19 @@ BASE_CL = flags.DEFINE_string(
     " exported to MLCompass.",
 )
 
+PENDING_CL = flags.DEFINE_string(
+    "pending_cl",
+    None,
+    "Pending CL used for the benchmark run.",
+)
+
+BENCHMARK_GROUP = flags.DEFINE_enum(
+    "benchmark_group",
+    "experiment",
+    ["control", "experiment"],
+    "Benchmark group (control or experiment).",
+)
+
 TENSORBOARD_OUTPUT_ENV_VAR = flags.DEFINE_string(
     "tensorboard_output_env_var",
     "TENSORBOARD_OUTPUT_DIR",
