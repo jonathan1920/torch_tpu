@@ -56,9 +56,9 @@ at::Tensor& AtenSet_SourceStorage(at::Tensor& self, c10::Storage src) {
   TT_KERNEL(OpName::kSet_SourceStorage, _,
             (self, IgnoreInCacheKey(src, "Legacy usage")), {
               c10::TensorImpl* impl = self.unsafeGetTensorImpl();
-              TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref,
-                                 GetBaseBufferFromStorage(src));
-              const int64_t numel = buffer_ref.num_elements();
+              const int64_t element_size = self.element_size();
+              const int64_t numel =
+                  element_size > 0 ? src.nbytes() / element_size : 0;
               impl->set_storage_keep_dtype(std::move(src));
               impl->set_storage_offset(0);
               impl->set_sizes_contiguous({numel});
@@ -95,10 +95,10 @@ at::Tensor& AtenSet_SourceStorageOffset(at::Tensor& self, c10::Storage src,
         const mlir::ElementType storage_dtype = buffer_ref.element_type();
         TT_ASSIGN_OR_THROW(const mlir::ElementType tensor_dtype,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));
-        impl->set_storage_keep_dtype(std::move(src));
         TT_THROW_IF_ERROR(CheckProvidedLayoutDataFitsInStorage(
             storage_numel, storage_dtype, size_vec, stride_vec,
             concrete_storage_offset, tensor_dtype));
+        impl->set_storage_keep_dtype(std::move(src));
         impl->set_sizes_and_strides(/*sizes=*/size_vec,
                                     /*strides=*/stride_vec,
                                     /*storage_offset=*/concrete_storage_offset);

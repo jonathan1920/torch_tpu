@@ -115,6 +115,26 @@ class UntypedStorageTest(parameterized.TestCase):
     utils.assert_close(tensor.to('cpu'), expected_final_tensor)
     utils.assert_close(view.to('cpu'), expected_final_tensor.reshape(4, 2))
 
+  @parameterized.named_parameters(
+      ('float32', torch.float32),
+      ('bfloat16', torch.bfloat16),
+      ('int64', torch.int64),
+  )
+  def test_storage_copy_tpu_to_cpu(self, dtype):
+    """Checks that UntypedStorage.copy_ works from TPU to CPU."""
+    tensor = torch.arange(8, device=self.tpu, dtype=dtype)
+    storage = tensor.untyped_storage()
+
+    cpu_tensor = torch.empty(8, device='cpu', dtype=dtype)
+    # Note: copy_ internally creates a temporary typed view on TPU (e.g. a
+    # uint8 byte view). If the view incorrectly reads the element count from
+    # the base buffer rather than scaling by element size, it creates a view
+    # with incorrect shape.
+    cpu_tensor.untyped_storage().copy_(storage)
+
+    # Verify data was copied correctly.
+    utils.assert_close(cpu_tensor, tensor.cpu())
+
 
 if __name__ == '__main__':
   absltest.main()
