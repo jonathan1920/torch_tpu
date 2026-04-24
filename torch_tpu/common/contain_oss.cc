@@ -17,8 +17,13 @@
 #include <cstdint>
 #include <memory>
 
+#include "absl/flags/flag.h"
 #include "absl/status/statusor.h"
 #include "torch_tpu/common/contain.h"
+
+ABSL_FLAG(  // NONSTANDARD_FLAG_NAME_OK=false_positive
+    bool, torch_tpu_internal_enable_compilation_container, false,
+    "Enable usage of gcontain for capturing peak memory during compilation.");
 
 namespace torch_tpu {
 

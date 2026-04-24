@@ -16,6 +16,7 @@
 
 #include "torch_tpu/common/compilation_cache.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <thread>  // NOLINT
@@ -27,18 +28,24 @@
 #include "absl/base/log_severity.h"
 #include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
+#include "absl/flags/reflection.h"
 #include "absl/log/absl_check.h"
+#include "absl/log/absl_log.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/contain.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -48,6 +55,7 @@
 #include "xla/xla.pb.h"
 
 ABSL_DECLARE_FLAG(int, torch_tpu_internal_num_compilation_threads);
+ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_compilation_container);
 
 namespace torch_tpu {
 
@@ -61,8 +69,8 @@ class CompilationCacheTestHelper {
 
 namespace {
 
-CompilationCacheKey DummyKey() {
-  return CompilationCacheKey{ShapelessKey(0), DimensionsKey({}),
+CompilationCacheKey DummyKey(int key = 0) {
+  return CompilationCacheKey{ShapelessKey(key), DimensionsKey({}),
                              CompileOptionsKey(0)};
 }
 
@@ -100,7 +108,8 @@ TEST(PerfStatsPrinterTest, EmptyPerEntry) {
   stats.num_cache_reqs = 10;
   stats.num_cache_hits = 5;
   EXPECT_EQ(absl::StrCat(stats),
-            "num_cache_reqs=10\nnum_cache_hits=5 {50.0%}\n");
+            "num_cache_reqs=10\nnum_cache_hits=5 "
+            "{50.0%}\npeak_compilation_memory_bytes=unknown\n");
 }
 
 TEST(PerfStatsPrinterTest, WithPerEntry) {
@@ -122,6 +131,7 @@ TEST(PerfStatsPrinterTest, WithPerEntry) {
   // NOLINTBEGIN
   static constexpr std::string_view kExpected = R"(num_cache_reqs=10
 num_cache_hits=5 {50.0%}
+peak_compilation_memory_bytes=unknown
 num_compilation_events=2
 sum_compilation_time=150ms
 )";
@@ -166,8 +176,7 @@ TEST_F(CompilationCacheTest, GetOrCompileLogsOnMiss) {
   cache.SetDumpOnCacheMissMode(true);
 
   // Trigger a miss with a unique key.
-  CompilationCacheKey key(ShapelessKey(12345), DimensionsKey({}),
-                          CompileOptionsKey(0));
+  auto key = DummyKey(12345);
   std::vector<Shape> input_shapes;
 
   MlirComputationBuilder builder = [](mlir::MLIRContext& context) {
@@ -248,6 +257,68 @@ TEST_F(CompilationCacheInitTest, OptionsApplied) {
   EXPECT_EQ(status_or.status().code(), error::kFailedPrecondition);
   EXPECT_THAT(status_or.status().message(),
               testing::HasSubstr("no more compilation should happen"));
+
+  CompilationCache::ShutDown();
+}
+
+TEST_F(CompilationCacheTest, PeakMemoryReported) {
+  // Use xla_cpu for unit testing as it doesn't require real hardware.
+  PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+      {.device_type = "xla_cpu"});
+  ABSL_CHECK_OK(PjrtBackend::GetInstance().EnsureInitialized());
+
+  absl::FlagSaver saver;
+  absl::SetFlag(&FLAGS_torch_tpu_internal_enable_compilation_container, true);
+  torch_tpu::CleanUpContainer();
+
+  CompilationCache& cache = CompilationCache::GetInstance();
+
+  // Request compilation a few times.
+  std::vector<SharedLoadedExecutableWithMetadataFuture> futures;
+  for (int i = 0; i < 1; ++i) {
+    MlirComputationBuilder builder = [](mlir::MLIRContext& context)
+        -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
+      auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
+      mlir::OpBuilder builder(&context);
+      builder.setInsertionPointToEnd(module.getBody());
+
+      auto tensor_type = mlir::RankedTensorType::get({4}, builder.getF32Type());
+      auto func_type = builder.getFunctionType({tensor_type}, {tensor_type});
+      auto func = builder.create<mlir::func::FuncOp>(
+          mlir::UnknownLoc::get(&context), "main", func_type);
+
+      auto* entry_block = func.addEntryBlock();
+      builder.setInsertionPointToStart(entry_block);
+
+      // Identity operation
+      builder.create<mlir::func::ReturnOp>(mlir::UnknownLoc::get(&context),
+                                           entry_block->getArgument(0));
+
+      return mlir::OwningOpRef<mlir::ModuleOp>(module);
+    };
+
+    auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
+    ASSERT_TRUE(options_or.ok());
+
+    auto key = DummyKey(i + 100);
+    auto result = cache.GetOrCompile(key, {}, {}, std::move(builder),
+                                     std::move(*options_or));
+    ASSERT_TRUE(result.ok()) << "GetOrCompile failed: " << result.status();
+    futures.push_back(std::move(result->fixed_shape_kernel));
+  }
+
+  // Wait for the compilation just to make sure we get some signal, but
+  // it's OK to get metrics without waiting for the compilation to finish.
+  for (auto& future : futures) {
+    auto exec_or = future.get();
+    ASSERT_TRUE(exec_or.ok()) << "Compilation failed: " << exec_or.status();
+  }
+
+  PerfStats stats = cache.GetCacheStats();
+  ASSERT_TRUE(stats.peak_compilation_memory_bytes.has_value());
+  EXPECT_GT(*stats.peak_compilation_memory_bytes, 0);
+  ABSL_LOG(INFO) << "Peak compilation memory: "
+                 << *stats.peak_compilation_memory_bytes;
 
   CompilationCache::ShutDown();
 }

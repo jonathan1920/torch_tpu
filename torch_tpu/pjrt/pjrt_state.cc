@@ -33,6 +33,7 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "c10/core/Device.h"
+#include "torch_tpu/common/contain.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
@@ -178,15 +179,18 @@ absl::Status PjrtBackend::InitializeInternal() {
     return TT_ERROR(error::kInvalidArgument)
            << "Unsupported device type: " << options_.device_type;
   }
+  // Move active thread into container for memory tracking, if the flag is
+  // enabled.
+  torch_tpu::ScopedMemMeasuringContainer container;
 
   TT_ASSIGN_OR_RETURN(bool is_initialized,
                       pjrt::IsPjrtPluginInitialized(plugin_name));
-
   if (!is_initialized) {
     TT_RETURN_IF_ERROR(pjrt::InitializePjrtPlugin(plugin_name)).SetPrepend()
         << "InitializePjrtPlugin failed: ";
   }
 
+  // Mem tracking note: Background threads in XLA spun up during GetPjRtClient.
   TT_ASSIGN_OR_RETURN(
       client_,
       torch_tpu::GetPjRtClient(options_.device_type,

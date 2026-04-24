@@ -55,6 +55,7 @@
 #include "torch_tpu/_internal/dynamism/dynamism_ops.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/contain.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/env_vars.h"
@@ -68,6 +69,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "xla/hlo/utils/concurrency/concurrency_utils.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -167,6 +169,14 @@ void CompilationCache::EnsureInitialized() {
   absl::MutexLock lock(cache_mutex_);
   if (initialized_) return;
 
+  // Spawn worker threads in the container for memory tracking, if memory
+  // tracking flag is enabled.
+
+  ScopedMemMeasuringContainer container;
+  // Force initialization of XLA concurrency threads inside the container so
+  // they are tracked.
+  xla::concurrency::DefaultExecutor();
+
   compilation_pool_ = std::make_unique<torch_tpu::ThreadPool>(
       // The actual thread name will be "tf_tt_compile" in logs.
       "tt_compile", GetNumCompilationThreads());
@@ -184,6 +194,7 @@ void CompilationCache::EnsureInitialized() {
         // for the main compilation pool.
         /*low_latency_hint=*/false);
   }
+
   initialized_ = true;
 }
 
@@ -380,6 +391,15 @@ int64_t CompilationCache::GetCacheMisses() const {
 PerfStats CompilationCache::GetCacheStats() const {
   absl::MutexLock lock(cache_mutex_);
   PerfStats stats = perf_stats_;
+
+  auto peak_mem_or = ContainerPeakHostMemoryBytes();
+  if (peak_mem_or.ok()) {
+    stats.peak_compilation_memory_bytes = peak_mem_or.value();
+  } else {
+    ABSL_LOG(WARNING) << "Failed to get peak memory usage for stats: "
+                      << peak_mem_or.status();
+  }
+
   stats.per_entry_stats.reserve(executable_cache_.size());
   for (const auto& [key, cache_entry] : executable_cache_) {
     stats.per_entry_stats.push_back({
@@ -829,9 +849,9 @@ void CompilationCache::EnqueueCompilation(
   compilation_pool_->Schedule(
       [this, key, builder = std::move(executable_builder),
        compile_options = std::move(compile_options)]() mutable {
+        torch_tpu::ScopedMemMeasuringContainer container;
         this->GetFromTier2OrCompile(std::move(key), std::move(builder),
                                     std::move(compile_options));
-        return;
       });
 }
 

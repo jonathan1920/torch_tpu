@@ -54,6 +54,7 @@ torch_tpu_cc_library(
     deps = [
         ":pjrt",
         "//shims/torch/c10/core:base_headers",
+        "//torch_tpu/common:contain",
         "//torch_tpu/common:env_vars",
         "//torch_tpu/common:environment",
         "//torch_tpu/common:error_utils",

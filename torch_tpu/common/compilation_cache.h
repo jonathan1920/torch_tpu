@@ -137,6 +137,9 @@ struct PerfStats {
   int64_t num_cache_misses() const { return num_cache_reqs - num_cache_hits; }
   int64_t num_cache_reqs = 0;
   int64_t num_cache_hits = 0;
+  // Peak memory usage (host) during compilation in bytes across all concurrent
+  // calls. std::nullopt represents failed to retrieve or unknown.
+  std::optional<int64_t> peak_compilation_memory_bytes;
 
   std::vector<EntryStats> per_entry_stats;
 
@@ -145,6 +148,12 @@ struct PerfStats {
     absl::Format(&sink, "num_cache_reqs=%d\n", stats.num_cache_reqs);
     absl::Format(&sink, "num_cache_hits=%d {%s}\n", stats.num_cache_hits,
                  PercAsStr(stats.num_cache_hits, stats.num_cache_reqs));
+    if (stats.peak_compilation_memory_bytes.has_value()) {
+      absl::Format(&sink, "peak_compilation_memory_bytes=%d\n",
+                   *stats.peak_compilation_memory_bytes);
+    } else {
+      absl::Format(&sink, "peak_compilation_memory_bytes=unknown\n");
+    }
     if (stats.per_entry_stats.empty()) {
       return;
     }
