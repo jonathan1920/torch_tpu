@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 # This script is used to lock the environments in the torch_tpu repository.
 #
 # Dependencies are defined in the standard pyproject.toml file. uv allows
@@ -32,10 +31,19 @@ script_dir=$(dirname "$(readlink -f "$0")")
 working_dir="$script_dir/.."
 cd "$working_dir"
 
+# This is stateful, so we must remove the existing lock file first
+REQUIREMENTS_FILE="requirements/requirements.txt"
+
+
+if [ -f "$REQUIREMENTS_FILE" ]; then
+  rm "$REQUIREMENTS_FILE"
+fi
+
 # See https://docs.astral.sh/uv/reference/cli/#uv-pip-compile for more details.
 uv pip compile pyproject.toml \
   --all-extras \
   --python-version 3.12 \
-  --universal \
+  --python-platform x86_64-manylinux_2_31 \
+  --resolution lowest-direct \
   --generate-hashes \
-  --output-file requirements/requirements.txt
+  --output-file "$REQUIREMENTS_FILE"

@@ -12,38 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Module for single-sourcing wheel dependencies with version pins."""
-
-def _normalize_pkg_name(req_str):
-    """Extracts the base package name (e.g. 'absl-py' from 'absl-py==2.3.1')"""
-    name = req_str
-
-    # Split by common version/extra specifiers to isolate the base name
-    for char in ["=", ">", "<", "~", "[", ";", " "]:
-        if char in name:
-            name = name.split(char)[0]
-    return name.strip().lower().replace("_", "-")
+"""Module for parsing wheel dependencies."""
 
 def _torch_tpu_deps_repo_impl(ctx):
-    # 1. Build a dictionary of pinned versions from requirements.txt
-    reqs_path = ctx.path(ctx.attr.requirements_txt)
-    reqs_content = ctx.read(reqs_path)
-
-    pinned_deps = {}
-    for line in reqs_content.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or line.startswith("-"):
-            continue
-
-        # Remove inline pip-compile comments (e.g. "numpy==1.0  # via...")
-        dep_full = line.split(" #")[0].split(";")[0].strip()
-        dep_full = dep_full.split("\\")[0].strip()
-
-        if dep_full:
-            pkg_name = _normalize_pkg_name(dep_full)
-            pinned_deps[pkg_name] = dep_full
-
-    # 2. Parse pyproject.toml groupings and apply the pins
+    # Parse pyproject.toml groupings
     pyproject_path = ctx.path(ctx.attr.pyproject_toml)
     content = ctx.read(pyproject_path)
 
@@ -75,11 +47,7 @@ def _torch_tpu_deps_repo_impl(ctx):
                 else:
                     raw_dep = line.strip(",").strip('"').strip("'").strip()
                     if raw_dep:
-                        pkg_name = _normalize_pkg_name(raw_dep)
-
-                        # Swap in the pinned version if we found it in requirements.txt!
-                        final_dep = pinned_deps.get(pkg_name, raw_dep)
-                        dependencies.append(final_dep)
+                        dependencies.append(raw_dep)
 
             # Parse [project.optional-dependencies] -> dev, benchmark, etc.
         elif current_section == "project.optional-dependencies":
@@ -93,14 +61,12 @@ def _torch_tpu_deps_repo_impl(ctx):
                 else:
                     raw_dep = line.strip(",").strip('"').strip("'").strip()
                     if raw_dep:
-                        pkg_name = _normalize_pkg_name(raw_dep)
-                        final_dep = pinned_deps.get(pkg_name, raw_dep)
-                        optional_deps[current_list_name].append(final_dep)
+                        optional_deps[current_list_name].append(raw_dep)
 
     if not dependencies:
         fail("Dependencies not found in pyproject.toml [project] section")
 
-    # 3. Export the variables
+    # Export the variables
     ctx.file("BUILD.bazel", "")
 
     bzl_content = "WHEEL_REQUIRES = {}\n".format(dependencies)
