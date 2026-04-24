@@ -14,7 +14,6 @@
 
 """Macro phase bzl code for pip_parse customizations."""
 
-load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
@@ -45,23 +44,16 @@ def define_extra_torch_targets():
         ],
     )
 
-    lib_targets = []
-    for lib in native.glob(["site-packages/torch/lib/lib*.so*"]):
-        basename = paths.basename(lib)
-        so_offset = basename.find(".so")
-        target_name = basename[:so_offset]
+    # This is a subset of all the `.so` files bundled into the PyTorch wheel.
+    # More libraries can be added here as necessary.
+    standard_libs = [
+        "libc10",
+        "libtorch_cpu",
+        "libtorch_python",
+    ]
 
-        # NOTE: Some of the libs depend on each other, however, which depend
-        # on which depends on the torch version and build. Unfortunately, we
-        # can't inspect them during this build phase, so can't automatically
-        # construct the DAG of dependencies.
+    for lib_name in standard_libs:
         cc_import(
-            name = target_name,
-            shared_library = lib,
+            name = lib_name,
+            shared_library = "site-packages/torch/lib/{}.so".format(lib_name),
         )
-        lib_targets.append(target_name)
-
-    cc_library(
-        name = "torch_libs",
-        deps = lib_targets,
-    )

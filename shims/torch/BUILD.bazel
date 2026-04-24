@@ -129,7 +129,7 @@ cc_library(
             "@rules_python//python/cc:current_py_cc_libs",
         ],
         "//conditions:default": [
-            "@pypi//torch:torch_headers",
+            "@pypi_torch//:libtorch_python",
             "@rules_python//python/cc:current_py_cc_libs",
         ],
     }),
