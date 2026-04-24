@@ -19,6 +19,7 @@
 #include <string>
 
 #include "absl/log/absl_log.h"
+#include "absl/time/time.h"
 #include "ATen/core/Generator.h"
 #include "c10/core/Device.h"
 #include "c10/core/TensorImpl.h"
@@ -141,10 +142,8 @@ PYBIND11_MODULE(_device_ops_backend, m) {
   m.def("_query_event", &QueryEventSnapshotPy, py::arg("event_id"),
         "Returns whether the recorded event snapshot has completed.");
 
-  m.def(
-      "_release_event",
-      [](int64_t event_id) { ReleaseEventSnapshot(event_id); },
-      py::arg("event_id"), "Releases the recorded event snapshot.");
+  m.def("_release_event", &ReleaseEventSnapshot, py::arg("event_id"),
+        "Releases the recorded event snapshot.");
 
   m.def(
       "_get_current_device_id",
@@ -230,10 +229,8 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       "manual_seed", [](uint64_t seed) { SetManualSeed(seed); },
       py::arg("seed"),
       "Manually set the seed for the generator of the current device.");
-  m.def(
-      "manual_seed_all", [](uint64_t seed) { SetManualSeedAll(seed); },
-      py::arg("seed"),
-      "Manually set the seed for all generators (one per device).");
+  m.def("manual_seed_all", &SetManualSeedAll, py::arg("seed"),
+        "Manually set the seed for all generators (one per device).");
 
   m.def(
       "get_rng_state",
