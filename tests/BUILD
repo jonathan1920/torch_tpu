@@ -559,6 +559,7 @@ torch_tpu_py_test(
         "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "1",
     },
     main = "errors_test.py",
+    notest_oss = "Temporarily disabled due to b/505792906",
     shard_count = 4,
     tags = [
         "nosan",  # *san builds are low-value for error tests.
