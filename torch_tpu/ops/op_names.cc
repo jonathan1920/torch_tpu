@@ -770,6 +770,8 @@ std::string_view ToString(OpName op_name) {
       return "linalg_lu.out";
     case OpName::kLinalgLuSolveOut:
       return "linalg_lu_solve.out";
+    case OpName::kLinalgQrOut:
+      return "linalg_qr.out";
     case OpName::kLinalgSolveExOut:
       return "_linalg_solve_ex.result";
     case OpName::kLinalgSolveTriangular:

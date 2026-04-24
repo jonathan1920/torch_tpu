@@ -397,6 +397,7 @@ enum class OpName {
   kLinalgLuFactorExOut,
   kLinalgLuOut,
   kLinalgLuSolveOut,
+  kLinalgQrOut,
   kLinalgSolveExOut,
   kLinalgSolveTriangular,
   kLinalgSolveTriangularOut,

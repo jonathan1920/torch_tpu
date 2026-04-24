@@ -18,6 +18,7 @@
 #define TORCH_TPU_OPS_LINALG_QR_QR_LIB_H_
 
 #include "absl/status/statusor.h"
+#include "c10/util/string_view.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
@@ -33,6 +34,20 @@ namespace torch_tpu {
 //     - result[0]: Packed QR matrix of shape (..., M, N).
 //     - result[1]: Elementary reflectors (tau) of shape (..., min(M, N)).
 absl::StatusOr<MlirOpResults<2>> BuildGeqrfShlo(mlir::MlirOp input);
+
+// Generates StableHLO for QR decomposition using the XLA
+// "ProductOfElementaryHouseholderReflectors" custom call.
+//
+// Inputs:
+//   input: Matrix of shape (..., M, N).
+//   mode: "reduced", "complete", or "r".
+//
+// Returns:
+//   A result containing two MlirOps:
+//     - result[0]: Q after decomposition.
+//     - result[1]: R after decomposition.
+absl::StatusOr<MlirOpResults<2>> BuildQrShlo(mlir::MlirOp input,
+                                             c10::string_view mode);
 
 }  // namespace torch_tpu
 

@@ -4839,6 +4839,48 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(run, rtol=4e-6, atol=1e-6)
 
+  @parameterized.product(
+      shape=[
+          (4, 4),
+          (10, 4),
+          (4, 10),
+          (2, 3, 4),
+          (0, 4),
+          (4, 0),
+          (0, 0),
+      ],
+      dtype=[
+          torch.float32,
+          torch.float64,
+          torch.complex64,
+      ],
+      mode=["reduced", "complete", "r"],
+  )
+  def test_linalg_qr(self, shape, dtype, mode):
+    if dtype in (torch.int32, torch.int64):
+      input_tensor = torch.randint(-10, 10, shape, dtype=dtype)
+    else:
+      input_tensor = torch.randn(shape, dtype=dtype)
+
+    def run(device):
+      return torch.linalg.qr(input_tensor.to(device), mode=mode)
+
+    self.assert_close_tpu_vs_cpu(run, rtol=7e-6, atol=1e-6)
+
+  def test_linalg_qr_out(self):
+    shape = (5, 3)
+    input_tensor = torch.randn(shape, dtype=torch.float32)
+
+    def run(device):
+      m, n = shape
+      k = min(m, n)
+      q = torch.empty((m, k), dtype=torch.float32, device=device)
+      r = torch.empty((k, n), dtype=torch.float32, device=device)
+      torch.linalg.qr(input_tensor.to(device), mode="reduced", out=(q, r))
+      return q, r
+
+    self.assert_close_tpu_vs_cpu(run)
+
   def test_geqrf_out(self):
     input_tensor = torch.randn(8, 4)
     a = torch.empty(8, 4)

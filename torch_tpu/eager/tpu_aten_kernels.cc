@@ -501,6 +501,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kLinalgLuFactorExOut, AtenLinalgLuFactorExOut);
   Impl(m, OpName::kLinalgLuOut, AtenLinalgLuOut);
   Impl(m, OpName::kLinalgLuSolveOut, AtenLinalgLuSolveOut);
+  Impl(m, OpName::kLinalgQrOut, AtenLinalgQrOut);
   Impl(m, OpName::kLinalgSolveExOut, AtenLinalgSolveExOut);
   Impl(m, OpName::kLinalgSolveTriangular, AtenLinalgSolveTriangular);
   Impl(m, OpName::kLinalgSolveTriangularOut, AtenLinalgSolveTriangularOut);

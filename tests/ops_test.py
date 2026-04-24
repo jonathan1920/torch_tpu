@@ -3819,6 +3819,12 @@ class TestOps(TorchTpuTestBase):
   def test_geqrf(self):
     self.do_test_op("geqrf")
 
+  # qr testing isn't currently supported by PyTorch in other modes due to
+  # certain operations not being implemented on CPU/GPU.
+  @op_testing.skip_unless_torch_tpu_vs_gpu_mode
+  def test_linalg_qr(self):
+    self.do_test_op("linalg.qr")
+
 
 def setUpModule() -> None:
   """Called by absltest.main() after flags are parsed but before tests are run."""

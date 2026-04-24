@@ -24,6 +24,7 @@
 
 #include "absl/status/statusor.h"
 #include "ATen/core/TensorBody.h"
+#include "c10/util/string_view.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
@@ -44,16 +45,27 @@
 namespace torch_tpu {
 namespace {
 
-absl::StatusOr<DeviceBufferRefArray<2>> Geqrf(const at::Tensor& self,
-                                              OpParamCacheKeys param_keys) {
-  constexpr mlir::ElementType kCastDtypeForIntegerInput =
-      mlir::ElementType::F64;
+constexpr mlir::ElementType kCastDtypeForIntegerInput = mlir::ElementType::F64;
+
+absl::StatusOr<mlir::ElementType> GetOutDtype(const at::Tensor& self) {
   const bool input_is_integer = IsInteger(self);
   TT_ASSIGN_OR_RETURN(mlir::ElementType out_dtype,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   if (input_is_integer) {
     out_dtype = kCastDtypeForIntegerInput;
   }
+  return out_dtype;
+}
+
+mlir::MlirOp MaybeCastToFloat(mlir::MlirOp self_op, const at::Tensor& self) {
+  return IsInteger(self) ? mlir::stablehlo::ConvertElementType(
+                               self_op, kCastDtypeForIntegerInput)
+                         : self_op;
+}
+
+absl::StatusOr<DeviceBufferRefArray<2>> Geqrf(const at::Tensor& self,
+                                              OpParamCacheKeys param_keys) {
+  TT_ASSIGN_OR_RETURN(const mlir::ElementType out_dtype, GetOutDtype(self));
 
   TT_RET_CHECK(self.dim() >= 2, error::kInvalidArgument)
       << "expected input to have at least 2 dimensions, got " << self.dim();
@@ -63,12 +75,8 @@ absl::StatusOr<DeviceBufferRefArray<2>> Geqrf(const at::Tensor& self,
   tau_dims.push_back(std::min(m, n));
 
   auto op_builder =
-      [input_is_integer](
-          mlir::MlirOp self_op) -> absl::StatusOr<MlirOpResults<2>> {
-    mlir::MlirOp cast_self_op = input_is_integer
-                                    ? mlir::stablehlo::ConvertElementType(
-                                          self_op, kCastDtypeForIntegerInput)
-                                    : self_op;
+      [&self](mlir::MlirOp self_op) -> absl::StatusOr<MlirOpResults<2>> {
+    const mlir::MlirOp cast_self_op = MaybeCastToFloat(self_op, self);
     TT_ASSIGN_OR_RETURN(const MlirOpResults<2> result_ops,
                         BuildGeqrfShlo(cast_self_op));
     return result_ops;
@@ -77,6 +85,66 @@ absl::StatusOr<DeviceBufferRefArray<2>> Geqrf(const at::Tensor& self,
   return DispatchOp<1, 2>(std::move(op_builder), {self},
                           {.out_dtypes = {out_dtype, out_dtype},
                            .out_dims_list = {self.sizes(), tau_dims},
+                           .op_param_cache_keys = std::move(param_keys)});
+}
+
+struct QrDims {
+  Dimensions q_dims;
+  Dimensions r_dims;
+};
+
+absl::StatusOr<QrDims> ComputeQrDims(const at::Tensor& self,
+                                     c10::string_view mode) {
+  TT_RET_CHECK(self.dim() >= 2, error::kInvalidArgument)
+      << "expected input tensor to have at least 2 dimensions, got "
+      << self.dim();
+
+  const int64_t m = self.size(self.dim() - 2);
+  const int64_t n = self.size(self.dim() - 1);
+  const int64_t k = std::min(m, n);
+
+  Dimensions q_dims(self.sizes().begin(), self.sizes().end() - 2);
+  Dimensions r_dims(self.sizes().begin(), self.sizes().end() - 2);
+  if (mode == "reduced") {
+    q_dims.push_back(m);
+    q_dims.push_back(k);
+    r_dims.push_back(k);
+    r_dims.push_back(n);
+  } else if (mode == "complete") {
+    q_dims.push_back(m);
+    q_dims.push_back(m);
+    r_dims.push_back(m);
+    r_dims.push_back(n);
+  } else if (mode == "r") {
+    q_dims.push_back(0);
+    q_dims.push_back(0);
+    r_dims.push_back(k);
+    r_dims.push_back(n);
+  } else {
+    return TT_ERROR(error::kInvalidArgument)
+           << "expected mode to be one of 'reduced', 'complete', or 'r', got "
+           << mode;
+  }
+
+  return QrDims{std::move(q_dims), std::move(r_dims)};
+}
+
+absl::StatusOr<DeviceBufferRefArray<2>> Qr(const at::Tensor& self,
+                                           c10::string_view mode,
+                                           OpParamCacheKeys param_keys) {
+  TT_ASSIGN_OR_RETURN(const mlir::ElementType out_dtype, GetOutDtype(self));
+
+  auto op_builder =
+      [mode](mlir::MlirOp self_op) -> absl::StatusOr<MlirOpResults<2>> {
+    TT_ASSIGN_OR_RETURN(const MlirOpResults<2> result_ops,
+                        BuildQrShlo(self_op, mode));
+    return result_ops;
+  };
+
+  TT_ASSIGN_OR_RETURN(const QrDims qr_dims, ComputeQrDims(self, mode));
+  return DispatchOp<1, 2>(std::move(op_builder), {self},
+                          {.out_dtypes = {out_dtype, out_dtype},
+                           .out_dims_list = {qr_dims.q_dims, qr_dims.r_dims},
                            .op_param_cache_keys = std::move(param_keys)});
 }
 
@@ -99,6 +167,19 @@ std::tuple<at::Tensor&, at::Tensor&> AtenGeqrfA(const at::Tensor& self,
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[0], a));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[1], tau));
     return {a, tau};
+  });
+}
+
+std::tuple<at::Tensor&, at::Tensor&> AtenLinalgQrOut(const at::Tensor& self,
+                                                     c10::string_view mode,
+                                                     at::Tensor& q,
+                                                     at::Tensor& r) {
+  TT_KERNEL(OpName::kLinalgQrOut, param_keys, (self, mode, q, r), {
+    TT_ASSIGN_OR_THROW(const DeviceBufferRefArray<2> result_buffers,
+                       Qr(self, mode, std::move(param_keys)));
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[0], q));
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(result_buffers[1], r));
+    return {q, r};
   });
 }
 

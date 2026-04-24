@@ -20,12 +20,18 @@
 #include <tuple>
 
 #include "ATen/core/TensorBody.h"
+#include "c10/util/string_view.h"
 
 namespace torch_tpu {
 
 std::tuple<at::Tensor, at::Tensor> AtenGeqrf(const at::Tensor& self);
 std::tuple<at::Tensor&, at::Tensor&> AtenGeqrfA(const at::Tensor& self,
                                                 at::Tensor& a, at::Tensor& tau);
+
+std::tuple<at::Tensor&, at::Tensor&> AtenLinalgQrOut(const at::Tensor& self,
+                                                     c10::string_view mode,
+                                                     at::Tensor& q,
+                                                     at::Tensor& r);
 
 }  // namespace torch_tpu
 

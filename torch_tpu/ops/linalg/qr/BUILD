@@ -26,6 +26,7 @@ torch_tpu_cc_library(
     deps = [
         ":qr_lib",
         "//shims/torch:aten_headers",
+        "//shims/torch/c10/util:base_headers",
         "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:dimension_types",
@@ -50,12 +51,17 @@ torch_tpu_cc_library(
     srcs = ["qr_lib.cc"],
     hdrs = ["qr_lib.h"],
     deps = [
+        "//shims/torch:aten_headers",
+        "//shims/torch/c10/util:base_headers",
         "//torch_tpu/common:dimension_types",
+        "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_builder",
         "@stablehlo//:stablehlo_ops",
     ],
 )
