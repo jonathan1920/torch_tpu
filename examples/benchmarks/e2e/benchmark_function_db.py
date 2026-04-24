@@ -39,12 +39,12 @@ import torch
 from torch_tpu._internal.utils import device_utils
 
 
-def huggingface_llm_forward_pass(
+def huggingface_forward_pass(
     model: torch.nn.Module,
     inputs: Any,
     optimizer: torch.optim.Optimizer | None = None,  # pylint: disable=unused-argument
 ) -> torch.Tensor:
-  """Performs a forward pass for a Hugging Face LLM.
+  """Performs a forward pass for a Hugging Face model.
 
   Args:
     model: The Hugging Face LLM model.

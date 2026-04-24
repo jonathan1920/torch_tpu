@@ -18,6 +18,8 @@ import enum
 import functools
 import re
 from typing import Any, Sequence
+
+import diffusers
 from fairscale.nn.model_parallel import initialize as fairscale_init
 from fairscale.nn.model_parallel import layers as fairscale_layers
 import llama_models.llama3.model as m
@@ -45,6 +47,46 @@ def set_default_dtype(dtype: torch.dtype):
     yield
   finally:
     torch.set_default_dtype(old_dtype)
+
+
+def _get_base_wan_transformer_config():
+  # Reference config:
+  # third_party/py/torch_tpu/examples/huggingface_diffusers/model_configs/Wan-AI/Wan2.2-TI2V-5B-Diffusers/transformer/config.json
+  return {
+      "attention_head_dim": 128,
+      "cross_attn_norm": True,
+      "eps": 1e-06,
+      "ffn_dim": 14336,
+      "freq_dim": 256,
+      "in_channels": 48,
+      "num_attention_heads": 24,
+      "num_layers": 30,
+      "out_channels": 48,
+      "patch_size": [1, 2, 2],
+      "qk_norm": "rms_norm_across_heads",
+      "rope_max_seq_len": 1024,
+      "text_dim": 4096,
+  }
+
+
+def _get_base_wan_transformer_config():
+  # Reference config:
+  # third_party/py/torch_tpu/examples/huggingface_diffusers/model_configs/Wan-AI/Wan2.2-TI2V-5B-Diffusers/transformer/config.json
+  return {
+      "attention_head_dim": 128,
+      "cross_attn_norm": True,
+      "eps": 1e-06,
+      "ffn_dim": 14336,
+      "freq_dim": 256,
+      "in_channels": 48,
+      "num_attention_heads": 24,
+      "num_layers": 30,
+      "out_channels": 48,
+      "patch_size": [1, 2, 2],
+      "qk_norm": "rms_norm_across_heads",
+      "rope_max_seq_len": 1024,
+      "text_dim": 4096,
+  }
 
 
 def _get_base_bert_config():
@@ -1020,6 +1062,78 @@ def get_timm_model(
 
   if use_torch_compile:
     model = device_utils.torch_compile(model, device.type)
+  return ModelAndInput(model=model, example_inputs=example_inputs)
+
+
+# TODO(b/505851863): use model registry to get the model and inputs for all categories.
+def get_huggingface_diffuser_model(
+    model_name: str,
+    *,
+    device: torch.device,
+    weights_dtype: torch.dtype,
+    is_training: bool,
+    use_torch_compile: bool,
+) -> ModelAndInput:
+  """Returns a ModelAndInput for the specified Hugging Face Diffuser model."""
+  if model_name == "Wan-AI/Wan2.2-TI2V-5B-Diffusers":
+    config_dict = _get_base_wan_transformer_config()
+
+    with torch.inference_mode():
+      model = diffusers.WanTransformer3DModel(**config_dict)
+      model.apply(_init_model_weights)
+
+    model = model.to(weights_dtype).to(device)
+
+    # Dummy inputs
+    batch_size = 1
+    # Dimensions derived from pipeline settings (height=704, width=1280, num_frames=5):
+    # - latent_frames = (num_frames - 1) // 4 + 1 = (5 - 1) // 4 + 1 = 2
+    #   (VAE temporal downscale factor is 4)
+    # - latent_height = height // 16 = 704 // 16 = 44
+    # - latent_width = width // 16 = 1280 // 16 = 80
+    #   (VAE spatial downscale factor is 16 for Wan2.2)
+    latent_frames = 2
+    latent_height = 44
+    latent_width = 80
+    in_channels = 48
+    text_seq_len = 512
+    text_dim = 4096
+
+    hidden_states = torch.randn(
+        batch_size,
+        in_channels,
+        latent_frames,
+        latent_height,
+        latent_width,
+        dtype=weights_dtype,
+        device=device,
+    )
+    timestep = torch.randint(
+        0, 1000, (batch_size,), dtype=torch.long, device=device
+    )
+    encoder_hidden_states = torch.randn(
+        batch_size, text_seq_len, text_dim, dtype=weights_dtype, device=device
+    )
+
+    # Keys must match the forward() method arguments of WanTransformer3DModel in
+    # third_party/py/diffusers/models/transformers/transformer_wan.py
+    example_inputs = {
+        "hidden_states": hidden_states,
+        "timestep": timestep,
+        "encoder_hidden_states": encoder_hidden_states,
+    }
+
+  else:
+    raise ValueError(f"Unknown diffuser model: {model_name}")
+
+  if is_training:
+    model.train()
+  else:
+    model.eval()
+
+  if use_torch_compile and not is_training:
+    model = device_utils.torch_compile(model, device.type)
+
   return ModelAndInput(model=model, example_inputs=example_inputs)
 
 

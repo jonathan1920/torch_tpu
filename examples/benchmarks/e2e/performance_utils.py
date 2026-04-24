@@ -479,13 +479,19 @@ def _get_benchmark_function(
       benchmark_utils.BenchmarkCategory.QWEN_RAGGED_MOE,
   ):
     if not config.is_training:
-      return benchmark_function_db.huggingface_llm_forward_pass
+      return benchmark_function_db.huggingface_forward_pass
     else:
       return benchmark_function_db.get_huggingface_llm_training_function(
           device,
           benchmark_utils.is_torch_compile(config.run_mode),
           config.grad_accumulation_steps,
       )
+  elif (
+      config.benchmark_category
+      == benchmark_utils.BenchmarkCategory.HUGGINGFACE_DIFFUSER
+      and not config.is_training
+  ):
+    return benchmark_function_db.huggingface_forward_pass
   elif (
       config.benchmark_category == benchmark_utils.BenchmarkCategory.META_LLAMA
       and not config.is_training
@@ -545,6 +551,18 @@ def get_model_and_input(
         sequence_length=model_and_input_args.sequence_length,
         batch_size=model_and_input_args.batch_size,
         dist_strat=dist_strat,
+    )
+  elif (
+      benchmark_category
+      == benchmark_utils.BenchmarkCategory.HUGGINGFACE_DIFFUSER
+  ):
+    return model_utils.get_huggingface_diffuser_model(
+        model_and_input_args.model_name,
+        device=device,
+        weights_dtype=weights_dtype,
+        is_training=is_training,
+        use_torch_compile=use_torch_compile,
+        **model_and_input_args.custom_kwargs,
     )
   elif benchmark_category == benchmark_utils.BenchmarkCategory.META_LLAMA:
     return model_utils.get_meta_llama_model(

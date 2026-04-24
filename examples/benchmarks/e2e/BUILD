@@ -374,6 +374,7 @@ pytype_strict_library(
         "//shims/torch:pytorch",
         "//tests:module_registry",
         "//torch_tpu/_internal/utils:device_utils",
+        "@pypi//diffusers",
         "@pypi//fairscale",
         "@pypi//llama_models",
         "@pypi//transformers",

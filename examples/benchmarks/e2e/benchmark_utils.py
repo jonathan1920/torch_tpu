@@ -180,6 +180,7 @@ class BenchmarkCategory(enum.Enum):
   """The category of the benchmark."""
 
   HUGGINGFACE_LLM = "huggingface_llm"
+  HUGGINGFACE_DIFFUSER = "huggingface_diffuser"
   META_LLAMA = "meta_llama"
   ML_LAYER = "ml_layer"
   TIMM = "timm"
