@@ -1072,6 +1072,21 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "tpu_backend_config_test",
+    srcs = ["tpu_backend_config_test.py"],
+    strict = True,
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//shims/torch:testing_internal",
+        "//torch_tpu",  # build_cleaner: keep
+        "//torch_tpu/_internal/execution_mode",
+        "//torch_tpu/api",
+    ],
+)
+
 test_suite(
     name = "autoload_tests",
     tests = [

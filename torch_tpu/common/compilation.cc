@@ -16,8 +16,10 @@
 
 #include "torch_tpu/common/compilation.h"
 
+#include <atomic>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -59,6 +61,16 @@ constexpr std::string_view kMemoryFittingLevelOption =
     "xla_memory_fitting_level";
 
 namespace {
+// Represents the state of the "allow excess precision" compiler option.
+enum class ExcessPrecisionState {
+  // Use XLA_FLAGS or fall back to the default.
+  kUnset,
+  // Explicitly allow excess precision.
+  kAllow,
+  // Explicitly disallow excess precision.
+  kDisallow,
+};
+
 absl_nonnull std::unique_ptr<mlir::MLIRContext> MakeMlirContext() {
   auto context = std::make_unique<mlir::MLIRContext>();
   mlir::DialectRegistry registry;
@@ -66,6 +78,19 @@ absl_nonnull std::unique_ptr<mlir::MLIRContext> MakeMlirContext() {
   context->appendDialectRegistry(registry);
   context->loadAllAvailableDialects();
   return context;
+}
+
+// Returns the cached default XLA executable build options. This function is
+// memoized, so the environment variable of XLA_FLAGS is only read once.
+const xla::ExecutableBuildOptions& GetDefaultExecutableBuildOptions() {
+  static const absl::NoDestructor<xla::ExecutableBuildOptions>
+      default_executable_build_options([] {
+        xla::ExecutableBuildOptions options;
+        // Calling mutable_debug_options() triggers parsing XLA_FLAGS.
+        options.mutable_debug_options();
+        return options;
+      }());
+  return *default_executable_build_options;
 }
 }  // namespace
 
@@ -152,6 +177,52 @@ void PushCompilerOptionOverrides(CompilerOptionOverrides overrides) {
 
 void PopCompilerOptionOverrides() {
   PopContextState<CustomCompilerOptionsContextState>();
+}
+
+static std::atomic<ExcessPrecisionState> g_allow_excess_precision{
+    ExcessPrecisionState::kUnset};
+
+// TODO: b/498591854 - Remove this callback once allow_excess_precision is
+// included in the cache key. This is a temporary solution to avoid a circular
+// dependency between the low-level compilation.cc and the higher-level
+// compilation_cache.cc. We cannot call cache eviction in compilation_cache
+// directly from here. compilation_cache would fill this callback with the
+// eviction function and we call this callback instead. This is called before
+// the value of g_allow_excess_precision is changed.
+std::atomic<void (*)()> g_excess_precision_change_callback{nullptr};
+
+void SetAllowExcessPrecision(bool allow) {
+  if (GetAllowExcessPrecision() != allow) {
+    if (void (*callback)() = g_excess_precision_change_callback.load()) {
+      callback();
+    }
+  }
+  g_allow_excess_precision.store(allow ? ExcessPrecisionState::kAllow
+                                       : ExcessPrecisionState::kDisallow);
+}
+
+bool GetAllowExcessPrecision() {
+  switch (g_allow_excess_precision.load()) {
+    case ExcessPrecisionState::kAllow:
+      return true;
+    case ExcessPrecisionState::kDisallow:
+      return false;
+    case ExcessPrecisionState::kUnset:
+    default:
+      // Fall back to XLA_FLAGS or default to true.
+      // Use static to memoize the value to avoid reading the debug options
+      // multiple times.
+      static const bool allow_excess_precision = [] {
+        const xla::DebugOptions& debug_options =
+            GetDefaultExecutableBuildOptions().debug_options();
+        if (debug_options.has_xla_allow_excess_precision()) {
+          return debug_options.xla_allow_excess_precision();
+        }
+        // TODO: b/502610173 - Set to False when XLA_FLAGS is not set.
+        return true;
+      }();
+      return allow_excess_precision;
+  }
 }
 
 static absl::StatusOr<xla::ExecutionOptions::EffortLevel> ParseEffortLevel(
@@ -347,8 +418,17 @@ absl::Status ApplyCompilerOptionOverrides(
 
 absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(CompilationMode mode) {
   auto compile_options = std::make_unique<xla::CompileOptions>();
-  // Call mutable_debug_options to parse XLA_FLAGS into compile options.
-  compile_options->executable_build_options.mutable_debug_options();
+
+  // Use the cached ExecutableBuildOptions to avoid parsing XLA_FLAGS from
+  // environment variables multiple times when calling mutable_debug_options().
+  compile_options->executable_build_options =
+      GetDefaultExecutableBuildOptions();
+
+  xla::DebugOptions* debug_options =
+      compile_options->executable_build_options.mutable_debug_options();
+
+  debug_options->set_xla_allow_excess_precision(GetAllowExcessPrecision());
+
   TT_RETURN_IF_ERROR(
       SetDefaultDeviceAssignment(compile_options->executable_build_options));
 

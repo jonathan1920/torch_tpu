@@ -29,11 +29,10 @@ os.environ["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "0"
 # pylint: disable=g-import-not-at-top
 import torch
 import torch._dynamo.backends.registry as backend_registry
-
 from torch_tpu._internal.device import _device_module
+from torch_tpu._internal.device import _tpu_backend_config
 from torch_tpu._internal.distributed import tpu_distributed
 from torch_tpu._internal.utils import hardware
-
 # pylint: enable=g-import-not-at-top
 
 # Ensure that device is initialized exactly once
@@ -43,6 +42,11 @@ _INIT_LOCK: threading.Lock = threading.Lock()
 _LOADED: bool = False
 
 _torch_compile = torch.compile
+
+# Register the TPU backend.
+# pylint: disable=protected-access
+if not hasattr(torch.backends, "tpu"):
+  torch.backends.tpu = _tpu_backend_config._TpuBackendConfig()
 
 
 def _get_default_backend_impl() -> backend_registry.CompilerFn:

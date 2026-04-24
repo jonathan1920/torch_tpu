@@ -197,6 +197,12 @@ void PushCompilerOptionOverrides(CompilerOptionOverrides overrides);
 // non-empty.
 void PopCompilerOptionOverrides();
 
+// Sets whether XLA is allowed to use excess precision for all compilations.
+void SetAllowExcessPrecision(bool allow);
+
+// Returns whether XLA is allowed to use excess precision for all compilations.
+[[nodiscard]] bool GetAllowExcessPrecision();
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_COMMON_COMPILATION_H_

@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <future>
@@ -158,6 +159,10 @@ int GetNumCompilationThreads() {
   return GetNumCompilationThreads(GetNumProcs());
 }
 
+// TODO: b/498591854 - Remove this callback once allow_excess_precision is
+// included in the cache key.
+extern std::atomic<void (*)()> g_excess_precision_change_callback;
+
 void CompilationCache::EnsureInitialized() {
   absl::MutexLock lock(cache_mutex_);
   if (initialized_) return;
@@ -182,7 +187,13 @@ void CompilationCache::EnsureInitialized() {
   initialized_ = true;
 }
 
-CompilationCache::CompilationCache() = default;
+// TODO: b/498591854 - Change it back to
+// CompilationCache::CompilationCache() = default
+// once allow_excess_precision is included in the cache key.
+CompilationCache::CompilationCache() {
+  g_excess_precision_change_callback.store(
+      []() { CompilationCache::GetInstance().EvictAll(); });
+}
 
 CompilationCache::~CompilationCache() {
   ABSL_VLOG(1) << "CompilationCache shutting down.";

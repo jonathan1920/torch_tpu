@@ -24,6 +24,7 @@
 #include "c10/core/TensorImpl.h"
 #include "c10/core/impl/DeviceGuardImplInterface.h"
 #include "torch/csrc/utils/pybind.h"  // IWYU pragma: keep, needed for at::Tensor mapping
+#include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/common/discovery.h"
 #include "torch_tpu/common/error_utils.h"
@@ -214,7 +215,13 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       "_clear_cache", []() { CompilationCache::GetInstance().EvictAll(); },
       "Evict all existing entries in the compilation cache. The function "
       "waits for all in-flight compilations to complete.");
-
+  m.def("_set_allow_excess_precision", &SetAllowExcessPrecision,
+        py::arg("allow"),
+        "Sets whether XLA is allowed to use excess precision for all "
+        "compilations.");
+  m.def("_get_allow_excess_precision", &GetAllowExcessPrecision,
+        "Returns whether XLA is allowed to use excess precision for all "
+        "compilations.");
   m.def(
       "_hbm_usage_summary",
       []() { return CompilationCache::GetInstance().HbmUsageSummary(); },

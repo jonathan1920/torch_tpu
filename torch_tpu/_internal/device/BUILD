@@ -52,6 +52,7 @@ pybind_extension(
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
+        "//torch_tpu/common:compilation",
         "//torch_tpu/common:compilation_cache",
         "//torch_tpu/common:discovery",
         "//torch_tpu/common:env_vars",
@@ -67,6 +68,14 @@ pybind_extension(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@xla//xla/pjrt:pjrt_client",
+    ],
+)
+
+pytype_strict_library(
+    name = "_tpu_backend_config",
+    srcs = ["_tpu_backend_config.py"],
+    deps = [
+        ":_device_ops_backend",
     ],
 )
 
