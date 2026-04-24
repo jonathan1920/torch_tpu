@@ -561,6 +561,7 @@ torch_tpu_py_test(
     main = "errors_test.py",
     shard_count = 4,
     tags = [
+        "nosan",  # *san builds are low-value for error tests.
         "requires-tpu-v5lite",
         "wheel_test_excluded",
     ],
@@ -589,7 +590,7 @@ torch_tpu_py_test(
     },
     main = "tpu_errors_test.py",
     tags = [
-        "nosan",  # *san runs can cause divergence in error messages.
+        "nosan",  # *san builds are low-value for error tests.
         "requires-tpu-v5lite",
         "wheel_test_excluded",
     ],
@@ -625,7 +626,10 @@ torch_tpu_py_test(
     # TODO: Get working in OSS and enable in nightlies
     notest_oss = "Disabled as too slow and because it is failing in OSS.",
     shard_count = 4,
-    tags = ["requires-tpu-v5lite"],
+    tags = [
+        "nosan",  # *san builds are low-value for error tests.
+        "requires-tpu-v5lite",
+    ],
     visibility = ["//:__subpackages__"],
     deps = [
         ":error_testing",
@@ -656,7 +660,7 @@ torch_tpu_py_test(
     notest_oss = "Disabled as too slow and because it is failing in OSS.",
     shard_count = 4,
     tags = [
-        "nosan",  # *san runs can cause divergence in error messages.
+        "nosan",  # *san builds are low-value for error tests.
         "requires-tpu-v5lite",
     ],
     visibility = ["//:__subpackages__"],
@@ -685,7 +689,10 @@ torch_tpu_py_test(
     main = "errors_test.py",
     notest_oss = "Low value in maintaining for both internal and OSS and they run different versions of PyTorch.",
     shard_count = 4,
-    tags = ["wheel_test_excluded"],
+    tags = [
+        "nosan",  # *san builds are low-value for error tests.
+        "wheel_test_excluded",
+    ],
     deps = [
         ":error_testing",
         "//shims/absl_py/testing:absltest",

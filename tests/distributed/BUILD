@@ -161,9 +161,7 @@ torch_tpu_py_test(
         ["exclusive"],
         [],
     ) + [
-        "noasan",  # TODO(b/497035517): fix the test in asan mode.
-        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
-        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
+        "nosan",  # *san has low value for error tests.
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -191,9 +189,7 @@ torch_tpu_py_test(
         ["exclusive"],
         [],
     ) + [
-        "noasan",  # TODO(b/497035517): fix the test in asan mode.
-        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
-        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
+        "nosan",  # *san builds are low-value for error tests.
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -247,9 +243,7 @@ torch_tpu_py_test(
         ["exclusive"],
         [],
     ) + [
-        "noasan",  # TODO(b/497035517): fix the test in asan mode.
-        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
-        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
+        "nosan",  # *san builds are low-value for error tests.
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -277,9 +271,7 @@ torch_tpu_py_test(
         ["exclusive"],
         [],
     ) + [
-        "noasan",  # TODO(b/497035517): fix the test in asan mode.
-        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
-        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
+        "nosan",  # *san builds are low-value for error tests.
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -305,9 +297,7 @@ torch_tpu_py_test(
         ["exclusive"],
         [],
     ) + [
-        "noasan",  # TODO(b/497035517): fix the test in asan mode.
-        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
-        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
+        "nosan",  # *san builds are low-value for error tests.
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -335,9 +325,7 @@ torch_tpu_py_test(
         ["exclusive"],
         [],
     ) + [
-        "noasan",  # TODO(b/497035517): fix the test in asan mode.
-        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
-        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
+        "nosan",  # *san builds are low-value for error tests.
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -389,9 +377,7 @@ torch_tpu_py_test(
         ["exclusive"],
         [],
     ) + [
-        "noasan",  # TODO(b/497035517): fix the test in asan mode.
-        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
-        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
+        "nosan",  # *san builds are low-value for error tests.
         "requires-tpu-v5lite:8",
     ],
     deps = [
@@ -419,9 +405,7 @@ torch_tpu_py_test(
         ["exclusive"],
         [],
     ) + [
-        "noasan",  # TODO(b/497035517): fix the test in asan mode.
-        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
-        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
+        "nosan",  # *san builds are low-value for error tests.
         "requires-tpu-v5lite:8",
     ],
     deps = [

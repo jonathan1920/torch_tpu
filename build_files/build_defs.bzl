@@ -157,6 +157,13 @@ def _sort_inplace(a_list):
         a_list[i] = sorted_list[i]
     return a_list
 
+def _is_errors_test(name):
+    """Returns True if the given name is an error test name.
+
+    Equivalent to the regex: .*errors_test.*
+    """
+    return name.find("errors_test") >= 0
+
 def _check_and_adjust_test_tags(
         name,
         is_oss,
@@ -209,6 +216,12 @@ def _check_and_adjust_test_tags(
         Updates the `tags` list with desired tags and sorts it. The sorting is just to
         normalize the list for easy testing.
     """
+
+    # Error tests should not run in *san builds.
+    if _is_errors_test(name) and "nosan" not in tags:  # nosan not used in tags.
+        fail(name + " is an error test. Please add a 'nosan' tag " +  # nosan not used in tags.
+             "to skip *san builds as they may change some error messages and aren't a set-up " +
+             "for TorchTPU users.")
 
     # Adjust tags for nobuild.
     if nobuild != None:
