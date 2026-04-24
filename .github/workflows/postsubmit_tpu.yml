@@ -37,7 +37,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  issues: read
+  issues: write
 
 # Concurrency for postsubmit:
 # We generally want to run every postsubmit to ensure a clean history,
@@ -95,3 +95,17 @@ jobs:
           name: bazel-testlogs-${{ matrix.job_info.runner }}
           path: bazel-testlogs/
           retention-days: 7
+
+  notify_failure:
+    name: Notify Failed Runs
+    needs: [run_tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check whether one of the jobs failed
+        if: contains(needs.run_tests.result, 'failure') && github.event_name != 'pull_request'
+        uses: jayqi/failed-build-issue-action@1a893bbf43ef1c2a8705e2b115cd4f0fe3c5649b  # v1.2.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          label-name: "ci:tpu-postsubmit-failed"
+          title-template: "Failed Postsubmit on TPU"
