@@ -456,11 +456,33 @@ class DiffusersProvider(BaseProvider):
       seq_len = shape[1] if shape and len(shape) > 1 else 77
       cfg = config_dict
 
-      # Create dummy inputs using random noisy tensors
       latent_channels = cfg.get("in_channels", 4)
-      latent_size = cfg.get("sample_size", 64)
+
+      # Use latent dimensions passed in shape if available
+      # (e.g. for video models)
+      if shape and len(shape) > 2:
+        latent_dims = shape[2:]
+      else:
+        # Fall back to sample_size from config for 2D models
+        latent_size = cfg.get("sample_size", 64)
+        if isinstance(latent_size, int):
+          latent_dims = (latent_size, latent_size)
+        else:
+          latent_dims = tuple(latent_size)
+
+        # Check for 3D model if we only have 2D defaults.
+        # If patch_size has 3 dimensions, it's likely a 3D/video model and
+        # expects a "frames" dimension.
+        patch_size = cfg.get("patch_size")
+        if (
+            len(latent_dims) == 2
+            and isinstance(patch_size, (list, tuple))
+            and len(patch_size) == 3
+        ):
+          latent_dims = (2,) + latent_dims  # Default 2 frames
+
       noisy_latents = torch.randn(
-          (batch_size, latent_channels, latent_size, latent_size),
+          (batch_size, latent_channels, *latent_dims),
           dtype=d_type,
           device=device,
       )
@@ -470,7 +492,11 @@ class DiffusersProvider(BaseProvider):
           0, 1000, (batch_size,), device=device, dtype=torch.long
       )
 
-      cross_attention_dim = cfg.get("cross_attention_dim", 2048)
+      # Fallback to text_dim if cross_attention_dim is not specified in config
+      # (e.g. for Wan2.2)
+      cross_attention_dim = cfg.get("cross_attention_dim")
+      if cross_attention_dim is None:
+        cross_attention_dim = cfg.get("text_dim", 2048)
 
       # Encoder hidden states - These would be per token text embeddings
       # returned by CLIP-ViT/L text encoder

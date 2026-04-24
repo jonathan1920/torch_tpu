@@ -1076,52 +1076,31 @@ def get_huggingface_diffuser_model(
 ) -> ModelAndInput:
   """Returns a ModelAndInput for the specified Hugging Face Diffuser model."""
   if model_name == "Wan-AI/Wan2.2-TI2V-5B-Diffusers":
-    config_dict = _get_base_wan_transformer_config()
+    registry = get_module_registry()
+    module_spec = registry.get_module_spec(
+        "diffusers", model_name, load_weights=False, subfolder="transformer"
+    )
 
-    with torch.inference_mode():
-      model = diffusers.WanTransformer3DModel(**config_dict)
-      model.apply(_init_model_weights)
+    with torch.device("cpu"):
+      model_cpu = module_spec.module_factory()
 
-    model = model.to(weights_dtype).to(device)
+    model = model_cpu.to(weights_dtype).to(device)
+    model.apply(_init_model_weights)
 
-    # Dummy inputs
-    batch_size = 1
     # Dimensions derived from pipeline settings (height=704, width=1280, num_frames=5):
-    # - latent_frames = (num_frames - 1) // 4 + 1 = (5 - 1) // 4 + 1 = 2
+    batch_size = 1
     #   (VAE temporal downscale factor is 4)
-    # - latent_height = height // 16 = 704 // 16 = 44
-    # - latent_width = width // 16 = 1280 // 16 = 80
+    latent_frames = 2  # (num_frames - 1) // 4 + 1 = (5 - 1) // 4 + 1 = 2
     #   (VAE spatial downscale factor is 16 for Wan2.2)
-    latent_frames = 2
-    latent_height = 44
-    latent_width = 80
-    in_channels = 48
-    text_seq_len = 512
-    text_dim = 4096
-
-    hidden_states = torch.randn(
-        batch_size,
-        in_channels,
-        latent_frames,
-        latent_height,
-        latent_width,
-        dtype=weights_dtype,
-        device=device,
-    )
-    timestep = torch.randint(
-        0, 1000, (batch_size,), dtype=torch.long, device=device
-    )
-    encoder_hidden_states = torch.randn(
-        batch_size, text_seq_len, text_dim, dtype=weights_dtype, device=device
+    latent_height = 44  # height // 16 = 704 // 16 = 44
+    latent_width = 80  # width // 16 = 1280 // 16 = 80
+    _, example_inputs = module_spec.sample_inputs_factory(
+        (batch_size, latent_frames, latent_height, latent_width), str(device)
     )
 
-    # Keys must match the forward() method arguments of WanTransformer3DModel in
-    # third_party/py/diffusers/models/transformers/transformer_wan.py
-    example_inputs = {
-        "hidden_states": hidden_states,
-        "timestep": timestep,
-        "encoder_hidden_states": encoder_hidden_states,
-    }
+    for k, v in example_inputs.items():
+      if isinstance(v, torch.Tensor) and v.is_floating_point():
+        example_inputs[k] = v.to(weights_dtype)
 
   else:
     raise ValueError(f"Unknown diffuser model: {model_name}")
