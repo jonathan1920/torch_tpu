@@ -583,6 +583,30 @@ class TestPallasKernels(absltest.TestCase):
     z = kernel_op(x)
     utils.assert_close(z.cpu(), x.cpu() + 1)
 
+  def test_symbolic_shape_raises_error(self):
+    symbolic_shape = torch.fx.experimental.symbolic_shapes
+
+    def pass_through(x: jax.Array) -> jax.Array:
+      return x
+
+    pass_through_op = pallas.jax_op("pallas::pass_through", pass_through)
+
+    shape_env = symbolic_shape.ShapeEnv()
+    x = torch.randn(5, device=self.device)
+    with torch._subclasses.fake_tensor.FakeTensorMode(
+        shape_env=shape_env
+    ) as mode:
+      fake_x = mode.from_tensor(
+          x,
+          symbolic_context=symbolic_shape.StatelessSymbolicContext(
+              dynamic_sizes=[symbolic_shape.DimDynamic.DYNAMIC]
+          ),
+      )
+      with self.assertRaisesRegex(
+          RuntimeError, "Symbolic dimensions are not supported"
+      ):
+        pass_through_op(fake_x)
+
   # The following aliasing tests are for the deprecated input_output_aliases
   # so are not comprehensive.
   def test_kernel_input_output_aliases(self):

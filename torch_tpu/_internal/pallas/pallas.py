@@ -759,6 +759,17 @@ def jax_op(
     # We require that the user pass us a function that is make_fx traceable,
     # so we can just register it as the Fake/meta kernel.
     def fake_fn(*args, **kwargs):
+      # Symbolic dimensions can implicitly convert to int which then creates a
+      # very confusing error message, so we check for them explicitly here.
+      for arg in args:
+        if isinstance(arg, torch.Tensor) and any(
+            isinstance(d, torch.SymInt) for d in arg.shape
+        ):
+          raise RuntimeError(
+              "Symbolic dimensions are not supported in the default fake"
+              " kernel. Either remove symbolic dimensions or override this"
+              " default implementation."
+          )
       jax_args = jax_placeholders(
           args, mesh=mesh, partition_specs=input_partition_specs
       )
