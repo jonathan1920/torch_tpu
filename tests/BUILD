@@ -28,7 +28,6 @@ pytype_strict_library(
     ],
     visibility = ["//:__subpackages__"],
     deps = [
-        "//shims/absl_py/flags",
         "//shims/absl_py/logging",
         "//shims/etils/epath",
         "//shims/safetensors",  # buildcleaner: keep

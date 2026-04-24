@@ -250,6 +250,29 @@ class ModuleRegistryTest(absltest.TestCase):
         module_spec.config.get("cross_attention_dim"),
     )
 
+  def test_transformers_get_module_spec_with_base_path(self):
+    # Create a temporary directory to act as a custom model cache
+    temp_dir = self.create_tempdir()
+    model_dir = temp_dir.mkdir("mistralai").mkdir("Mistral-7B-v0.1")
+    config_file = model_dir.create_file("config.json")
+    config_file.write_text(
+        '{"vocab_size": 32000, "architectures": ["MistralForCausalLM"],'
+        ' "model_type": "mistral"}'
+    )
+
+    # Instantiate registry with base_path pointing to the cache root
+    registry = module_registry.ModuleRegistry(base_path=temp_dir.full_path)
+
+    module_spec = registry.get_module_spec(
+        "transformers",
+        "mistralai/Mistral-7B-v0.1",
+        load_weights=False,
+    )
+
+    # Check that the config was loaded from the custom path
+    self.assertEqual(module_spec.config.vocab_size, 32000)
+    self.assertEqual(module_spec.config.architectures, ["MistralForCausalLM"])
+
 
 if __name__ == "__main__":
   absltest.main()
