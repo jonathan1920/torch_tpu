@@ -509,7 +509,6 @@ class DiffusersProvider(BaseProvider):
           primary_input_key: noisy_latents,
           "timestep": timesteps,
           "encoder_hidden_states": dummy_encoder_hidden_states,
-          "return_dict": False,
       }
 
       # Create dummy additional conditioning inputs which would be expected in

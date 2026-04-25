@@ -1088,6 +1088,7 @@ def get_huggingface_diffuser_model(
     model.apply(_init_model_weights)
 
     # Dimensions derived from pipeline settings (height=704, width=1280, num_frames=5):
+    text_seq_len = 512
     batch_size = 1
     #   (VAE temporal downscale factor is 4)
     latent_frames = 2  # (num_frames - 1) // 4 + 1 = (5 - 1) // 4 + 1 = 2
@@ -1095,10 +1096,12 @@ def get_huggingface_diffuser_model(
     latent_height = 44  # height // 16 = 704 // 16 = 44
     latent_width = 80  # width // 16 = 1280 // 16 = 80
     _, example_inputs = module_spec.sample_inputs_factory(
-        (batch_size, latent_frames, latent_height, latent_width), str(device)
+        (batch_size, text_seq_len, latent_frames, latent_height, latent_width),
+        str(device),
     )
 
     for k, v in example_inputs.items():
+
       if isinstance(v, torch.Tensor) and v.is_floating_point():
         example_inputs[k] = v.to(weights_dtype)
 
