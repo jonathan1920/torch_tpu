@@ -393,7 +393,7 @@ enum class OpName {
   kLerpTensorOut,
   kLgammaOut,
   kLiftFreshOut,
-  kLinalgInvExOut,
+  kLinalgInvExInverse,
   kLinalgLuFactorExOut,
   kLinalgLuOut,
   kLinalgLuSolveOut,

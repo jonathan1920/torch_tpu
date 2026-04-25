@@ -194,7 +194,7 @@ void OpNameStack::Push(OpName op_name) {
       OpName::kIsInScalarTensorOut,
       OpName::kLayerNorm,
       OpName::kLerpScalarOut,
-      OpName::kLinalgInvExOut,
+      OpName::kLinalgInvExInverse,
       OpName::kLinalgLuFactorExOut,
       OpName::kLinalgLuOut,
       OpName::kLinalgLuSolveOut,

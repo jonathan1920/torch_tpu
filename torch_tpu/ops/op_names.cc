@@ -762,7 +762,7 @@ std::string_view ToString(OpName op_name) {
       return "lgamma.out";
     case OpName::kLiftFreshOut:
       return "liftfresh.out";
-    case OpName::kLinalgInvExOut:
+    case OpName::kLinalgInvExInverse:
       return "linalg_inv_ex.inverse";
     case OpName::kLinalgLuFactorExOut:
       return "linalg_lu_factor_ex.out";

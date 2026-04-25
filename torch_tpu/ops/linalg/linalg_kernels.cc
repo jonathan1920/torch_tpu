@@ -71,12 +71,12 @@ AtenLinalgSolveExOut(const at::Tensor& a, const at::Tensor& b, bool left,
             });
 }
 
-std::tuple<at::Tensor&, at::Tensor&> AtenLinalgInvExOut(const at::Tensor& a,
-                                                        bool check_errors,
-                                                        at::Tensor& inverse,
-                                                        at::Tensor& info) {
+std::tuple<at::Tensor&, at::Tensor&> AtenLinalgInvExInverse(const at::Tensor& a,
+                                                            bool check_errors,
+                                                            at::Tensor& inverse,
+                                                            at::Tensor& info) {
   TT_KERNEL(
-      OpName::kLinalgInvExOut, _,
+      OpName::kLinalgInvExInverse, _,
       (a, IgnoreInCacheKey(check_errors, "Legacy usage"), inverse, info), {
         TT_CHECK_THROW(a.dim() >= 2, error::kInvalidArgument)
             << "expected the input tensor to have at least 2 dimensions, got "

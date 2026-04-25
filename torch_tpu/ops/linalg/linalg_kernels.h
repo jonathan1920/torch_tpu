@@ -33,10 +33,10 @@ AtenLinalgSolveExOut(const at::Tensor& a, const at::Tensor& b, bool left,
 
 // Computes inverse of a matrix or batch of matrices `A`.
 // Returns inverse and singularity info.
-std::tuple<at::Tensor&, at::Tensor&> AtenLinalgInvExOut(const at::Tensor& a,
-                                                        bool check_errors,
-                                                        at::Tensor& inverse,
-                                                        at::Tensor& info);
+std::tuple<at::Tensor&, at::Tensor&> AtenLinalgInvExInverse(const at::Tensor& a,
+                                                            bool check_errors,
+                                                            at::Tensor& inverse,
+                                                            at::Tensor& info);
 
 }  // namespace torch_tpu
 

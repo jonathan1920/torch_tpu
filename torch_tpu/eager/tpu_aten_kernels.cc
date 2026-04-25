@@ -497,7 +497,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kLerpScalarOut, AtenLerpScalarOut);
   Impl(m, OpName::kLerpTensorOut, AtenLerpTensorOut);
   Impl(m, OpName::kLgammaOut, AtenLgammaOut);
-  Impl(m, OpName::kLinalgInvExOut, AtenLinalgInvExOut);
+  Impl(m, OpName::kLinalgInvExInverse, AtenLinalgInvExInverse);
   Impl(m, OpName::kLinalgLuFactorExOut, AtenLinalgLuFactorExOut);
   Impl(m, OpName::kLinalgLuOut, AtenLinalgLuOut);
   Impl(m, OpName::kLinalgLuSolveOut, AtenLinalgLuSolveOut);
