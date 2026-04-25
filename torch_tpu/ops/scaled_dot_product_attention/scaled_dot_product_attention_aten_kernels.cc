@@ -35,6 +35,7 @@
 #include "ATen/SDPBackend.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBase.h"
+#include "ATen/ops/zeros.h"
 #include "c10/core/ScalarType.h"
 #include "c10/util/Exception.h"
 #include "torch/headeronly/core/ScalarType.h"
@@ -426,6 +427,27 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, c10::SymInt,
            c10::SymInt, at::Tensor, at::Tensor, at::Tensor>
+GenerateResults(const at::Tensor& out) {
+  int64_t batch = get_batch_size(out);
+  int64_t heads = out.size(out.ndimension() - 3);
+  int64_t q_seq_len = out.size(out.ndimension() - 2);
+
+  at::Tensor logsumexp =
+      at::zeros({batch, heads, q_seq_len}, out.options().dtype(at::kFloat));
+  at::Tensor cum_seq_q = at::zeros({batch + 1}, out.options().dtype(at::kInt));
+  at::Tensor cum_seq_k = at::zeros({batch + 1}, out.options().dtype(at::kInt));
+  at::Tensor philox_seed = at::zeros({1}, out.options().dtype(at::kLong));
+  at::Tensor philox_offset = at::zeros({1}, out.options().dtype(at::kLong));
+  at::Tensor debug_mask = at::zeros({1}, out.options().dtype(at::kBool));
+
+  return std::make_tuple(std::move(out), std::move(logsumexp),
+                         std::move(cum_seq_q), std::move(cum_seq_k),
+                         c10::SymInt(0), c10::SymInt(0), std::move(philox_seed),
+                         std::move(philox_offset), std::move(debug_mask));
+}
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, c10::SymInt,
+           c10::SymInt, at::Tensor, at::Tensor, at::Tensor>
 AtenScaledDotProductFusedAttentionOverrideable(
     const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
     const std::optional<at::Tensor>& attn_bias, double dropout_p,
@@ -437,15 +459,10 @@ AtenScaledDotProductFusedAttentionOverrideable(
              IgnoreInCacheKey(return_debug_mask, "Legacy usage"),
              IgnoreInCacheKey(scale, "Legacy usage")),
             {
-              // Unused arguments: attn_bias, dropout_p, is_causal,
-              // return_debug_mask, scale.
               TT_ASSIGN_OR_THROW(auto out, ScaledDotProductFusedAttentionImpl(
                                                query, key, value, is_causal));
-              // Unused return values: logsumexp, cum_seq_q, cum_seq_k, max_q,
-              // max_k, philox_seed, philox_offset, debug_attn_mask.
-              return std::make_tuple(
-                  out, at::Tensor(), at::Tensor(), at::Tensor(), c10::SymInt(0),
-                  c10::SymInt(0), at::Tensor(), at::Tensor(), at::Tensor());
+
+              return GenerateResults(out);
             });
 }
 
@@ -453,7 +470,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>
 AtenScaledDotProductFusedAttentionOverrideableBackward(
     const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
     const at::Tensor& value, const at::Tensor& attn_bias,
-    const std::array<bool, 4> grad_input_mask, const at::Tensor& out,
+    std::array<bool, 4> grad_input_mask, const at::Tensor& out,
     const at::Tensor& logsumexp, const at::Tensor& cum_seq_q,
     const at::Tensor& cum_seq_k, at::SymInt max_q, at::SymInt max_k,
     double dropout_p, bool is_causal, const at::Tensor& philox_seed,
@@ -467,15 +484,21 @@ AtenScaledDotProductFusedAttentionOverrideableBackward(
              IgnoreInCacheKey(is_causal, "Legacy usage"), philox_seed,
              philox_offset, IgnoreInCacheKey(scale, "Legacy usage")),
             {
-              // Unused arguments: attn_bias, grad_input_mask, out, logsumexp,
+              // Unused arguments: grad_input_mask, out, logsumexp,
               // cum_seq_q, cum_seq_k, max_q, max_k, dropout_p, is_causal,
               // philox_seed, philox_offset, scale.
               TT_ASSIGN_OR_THROW(auto out,
                                  ScaledDotProductFusedAttentionBackwardImpl(
                                      grad_out, query, key, value, is_causal));
-              // Unused return value: grad_attn_bias
-              return std::make_tuple(std::get<0>(out), std::get<1>(out),
-                                     std::get<2>(out), at::Tensor());
+
+              return std::make_tuple(
+                  grad_input_mask[0] ? std::get<0>(out)
+                                     : at::zeros({0}, grad_out.options()),
+                  grad_input_mask[1] ? std::get<1>(out)
+                                     : at::zeros({0}, grad_out.options()),
+                  grad_input_mask[2] ? std::get<2>(out)
+                                     : at::zeros({0}, grad_out.options()),
+                  at::zeros({0}, grad_out.options()));
             });
 }
 
@@ -491,14 +514,23 @@ AtenScaledDotProductEfficientAttention(
              IgnoreInCacheKey(is_causal, "Legacy usage"),
              IgnoreInCacheKey(scale, "Legacy usage")),
             {
-              // Unused arguments: attn_bias, compute_log_sumexp, dropout_p,
-              // scale.
               TT_ASSIGN_OR_THROW(auto out, ScaledDotProductFusedAttentionImpl(
                                                query, key, value, is_causal));
 
-              // Unused return values: logsumexp, philox_seed, philox_offset.
-              return std::make_tuple(out, at::Tensor(), at::Tensor(),
-                                     at::Tensor());
+              int64_t batch = get_batch_size(query);
+              int64_t heads = query.size(query.ndimension() - 3);
+              int64_t q_seq_len = query.size(query.ndimension() - 2);
+
+              at::Tensor logsumexp = at::zeros(
+                  {batch, heads, q_seq_len}, query.options().dtype(at::kFloat));
+              at::Tensor philox_seed =
+                  at::zeros({1}, query.options().dtype(at::kLong));
+              at::Tensor philox_offset =
+                  at::zeros({1}, query.options().dtype(at::kLong));
+
+              return std::make_tuple(std::move(out), std::move(logsumexp),
+                                     std::move(philox_seed),
+                                     std::move(philox_offset));
             });
 }
 
@@ -515,15 +547,10 @@ AtenScaledDotProductFlashAttention(const at::Tensor& query,
              IgnoreInCacheKey(return_debug_mask, "Legacy usage"),
              IgnoreInCacheKey(scale, "Legacy usage")),
             {
-              // Unused arguments: dropout_p, return_debug_mask, scale.
               TT_ASSIGN_OR_THROW(auto out, ScaledDotProductFusedAttentionImpl(
                                                query, key, value, is_causal));
 
-              // Unused return values: logsumexp, cum_seq_q, cum_seq_k, max_q,
-              // max_k, rng_state, unused, debug_attn_mask.
-              return std::make_tuple(
-                  out, at::Tensor(), at::Tensor(), at::Tensor(), c10::SymInt(0),
-                  c10::SymInt(0), at::Tensor(), at::Tensor(), at::Tensor());
+              return GenerateResults(out);
             });
 }
 
