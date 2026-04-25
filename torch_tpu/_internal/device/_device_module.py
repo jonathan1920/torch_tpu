@@ -197,6 +197,11 @@ class _DeviceModule(abc.ABC):
     return _device_ops_backend._is_initialized()  # pylint: disable=protected-access
 
   @classmethod
+  def _lazy_init(cls) -> None:
+    """No-op initialization method to satisfy PyTorch's PrivateUse1 requirements."""
+    pass
+
+  @classmethod
   def _is_in_bad_fork(cls) -> bool:
     """Returns whether we are in a bad fork.
 

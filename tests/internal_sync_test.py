@@ -22,7 +22,7 @@ from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 
 
-class SyncTest(absltest.TestCase):
+class InternalSyncTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -168,33 +168,6 @@ class SyncTest(absltest.TestCase):
     self.assertTrue(sync.is_ready(x))
     self.assertTrue(sync.is_ready(y))
     self.assertTrue(sync.is_ready(z))
-
-  def test_synchronize_device_materialized(self):
-    x = torch.ones(10, device=api.tpu_device())
-    y = torch.ones(11, device=api.tpu_device())
-
-    self.assertFalse(sync.is_materialized(x))
-    self.assertFalse(sync.is_materialized(y))
-
-    # torch.tpu.synchronize() maps to _device_ops_backend._synchronize(None)
-    # which maps to TpuDeviceGuardImpl::synchronizeDevice()
-    # which calls SynchronizeAll(true) and SynchronizeStream()
-    torch.tpu.synchronize()
-
-    self.assertTrue(sync.is_materialized(x))
-    self.assertTrue(sync.is_materialized(y))
-
-  def test_synchronize_device_ready(self):
-    x = torch.ones(10, device=api.tpu_device())
-    y = torch.ones(11, device=api.tpu_device())
-
-    self.assertFalse(sync.is_ready(x))
-    self.assertFalse(sync.is_ready(y))
-
-    torch.tpu.synchronize()
-
-    self.assertTrue(sync.is_ready(x))
-    self.assertTrue(sync.is_ready(y))
 
   def test_host_to_device_is_materialized(self):
     x = torch.ones(128, device="cpu").to(api.tpu_device())

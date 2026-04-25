@@ -811,9 +811,25 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "sync_test",
-    srcs = ["sync_test.py"],
-    main = "sync_test.py",
+    name = "synchronize_test",
+    srcs = ["synchronize_test.py"],
+    main = "synchronize_test.py",
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/execution_mode",
+        "//torch_tpu/_internal/sync",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/api",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "internal_sync_test",
+    srcs = ["internal_sync_test.py"],
+    main = "internal_sync_test.py",
     tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
@@ -944,8 +960,9 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
-    name = "allocator_repro_test",
-    srcs = ["allocator_repro_test.py"],
+    name = "async_transfer_test",
+    srcs = ["async_transfer_test.py"],
+    main = "async_transfer_test.py",
     tags = [
         "requires-tpu-v5lite",
     ],
@@ -954,19 +971,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils",
-        "//torch_tpu/api",
-    ],
-)
-
-torch_tpu_py_test(
-    name = "h2d_sync_test",
-    srcs = ["h2d_sync_test.py"],
-    main = "h2d_sync_test.py",
-    tags = ["requires-tpu-v5lite"],
-    deps = [
-        "//shims/absl_py/testing:absltest",
-        "//shims/torch:pytorch",
-        "//torch_tpu",
         "//torch_tpu/api",
     ],
 )
