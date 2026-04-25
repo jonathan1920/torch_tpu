@@ -452,6 +452,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kGatherOut, AtenGatherOut);
   Impl(m, OpName::kGeScalarOut, AtenGeScalarOut);
   Impl(m, OpName::kGeTensorOut, AtenGeTensorOut);
+  Impl(m, OpName::kGelu, AtenGelu);
   Impl(m, OpName::kGeluBackwardGradInput, AtenGeluBackwardGradInput);
   Impl(m, OpName::kGeluOut, AtenGeluOut);
   Impl(m, OpName::kGeqrf, AtenGeqrf);

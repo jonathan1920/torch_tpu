@@ -22,6 +22,7 @@
 
 namespace torch_tpu {
 
+at::Tensor AtenGelu(const at::Tensor& self, c10::string_view approximate);
 at::Tensor& AtenGeluOut(const at::Tensor& self, c10::string_view approximate,
                         at::Tensor& out);
 at::Tensor& AtenGeluBackwardGradInput(const at::Tensor& grad_output,

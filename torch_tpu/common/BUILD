@@ -590,6 +590,7 @@ torch_tpu_cc_library(
     hdrs = ["aten_utils.h"],
     deps = [
         ":dimension_types",
+        ":dtype",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
@@ -597,9 +598,11 @@ torch_tpu_cc_library(
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/eager:device_types",
         "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Support",
+        "@stablehlo//:attr_type_builder_util",
     ],
 )
 

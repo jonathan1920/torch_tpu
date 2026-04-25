@@ -23,17 +23,21 @@
 #include <vector>
 
 #include "absl/log/absl_check.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "c10/core/DefaultDtype.h"
 #include "c10/core/ScalarType.h"
 #include "c10/util/DimVector.h"
 #include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/eager/device_types.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 
 namespace torch_tpu {
 
@@ -76,6 +80,14 @@ inline at::ScalarType GetScalarType(const at::Scalar& scalar) {
 inline at::ScalarType GetScalarType(at::ScalarType scalar_type) {
   return scalar_type;
 }
+
+// Returns the input dtype if it is a floating-point type or complex type.
+// Otherwise, returns the current default scalar dtype.
+[[nodiscard]] c10::ScalarType InferOutputDtype(const at::Tensor& self);
+
+// Return PyTorch's computation dtype for a given input dtype.
+absl::StatusOr<mlir::ElementType> InferComputationDtype(
+    mlir::ElementType input_dtype);
 
 // Returns whether `thing` holds boolean data.
 //

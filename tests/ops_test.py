@@ -3316,11 +3316,6 @@ class TestOps(TorchTpuTestBase):
         "nn.functional.gelu",
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
-        # TODO: fix nn.functional.gelu() succeeding with complex dtypes (it
-        # should fail).
-        # TODO: fix nn.functional.gelu() failing with float64 input and nan
-        # output.
-        exclude_dtypes=COMPLEX_DTYPES + (torch.float64,),
     )
 
   def test_nn_functional_glu(self):

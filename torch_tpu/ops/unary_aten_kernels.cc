@@ -194,17 +194,6 @@ absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out, OpName op_name,
   return UnaryOpOut(self, out, std::move(op_builder), std::move(options));
 }
 
-// Returns the input dtype if it is a floating-point type.
-// Otherwise, returns the current default scalar dtype.
-[[nodiscard]] static inline c10::ScalarType InferOutputDtype(
-    const at::Tensor& self) {
-  const c10::ScalarType input_dtype = self.scalar_type();
-  if (c10::isFloatingType(input_dtype) || c10::isComplexType(input_dtype)) {
-    return input_dtype;
-  }
-  return c10::get_default_dtype_as_scalartype();
-}
-
 // go/keep-sorted start
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAcosOut, AtenAcos, BuildAcosShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kAcoshOut, AtenAcosh, BuildAcoshShlo);

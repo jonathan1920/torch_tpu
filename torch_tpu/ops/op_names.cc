@@ -656,6 +656,8 @@ std::string_view ToString(OpName op_name) {
       return "ge.Scalar_out";
     case OpName::kGeTensorOut:
       return "ge.Tensor_out";
+    case OpName::kGelu:
+      return "gelu";
     case OpName::kGeluBackwardGradInput:
       return "gelu_backward.grad_input";
     case OpName::kGeluOut:

@@ -25,10 +25,11 @@
 namespace torch_tpu {
 
 absl::StatusOr<mlir::MlirOp> BuildGeluShlo(mlir::MlirOp input_op,
-                                           std::string_view approximation_type);
+                                           std::string_view approximation_type,
+                                           mlir::ElementType output_dtype);
 absl::StatusOr<mlir::MlirOp> BuildGeluBackwardGradInputShlo(
     mlir::MlirOp grad_output_op, mlir::MlirOp input_op,
-    std::string_view approximation_type);
+    std::string_view approximation_type, mlir::ElementType output_dtype);
 
 }  // namespace torch_tpu
 

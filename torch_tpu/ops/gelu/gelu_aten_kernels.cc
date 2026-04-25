@@ -22,11 +22,14 @@
 
 #include "absl/status/statusor.h"
 #include "ATen/core/TensorBody.h"
+#include "c10/core/ScalarType.h"
 #include "c10/util/string_view.h"
+#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -41,12 +44,37 @@
 namespace torch_tpu {
 namespace {
 
-MlirUnaryOpBuilder GetGeluFunctional(c10::string_view approximate) {
-  return std::bind(&BuildGeluShlo, std::placeholders::_1,
-                   static_cast<std::string>(approximate));
+MlirUnaryOpBuilder GetGeluFunctional(c10::string_view approximate,
+                                     mlir::ElementType output_dtype) {
+  return [approximate = static_cast<std::string>(approximate),
+          output_dtype](mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
+    return BuildGeluShlo(input, approximate, output_dtype);
+  };
 }
 
 }  // namespace
+
+at::Tensor AtenGelu(const at::Tensor& self, c10::string_view approximate) {
+  TT_KERNEL(OpName::kGelu, param_keys, (self, approximate), {
+    TT_CHECK_THROW(approximate == "none" || approximate == "tanh",
+                   error::kInvalidArgument)
+        << "unsupported approximate argument: " << approximate;
+    const c10::ScalarType self_dtype = self.scalar_type();
+    TT_CHECK_THROW(!c10::isComplexType(self_dtype), error::kUnimplemented)
+        << "unsupported input dtype: '" << ToString(self_dtype) << "'";
+    TT_CHECK_THROW(!c10::isIntegralType(self_dtype, /*includeBool=*/true),
+                   error::kUnimplemented)
+        << "unsupported input dtype: '" << ToString(self_dtype) << "'";
+    const c10::ScalarType out_type = InferOutputDtype(self);
+    TT_ASSIGN_OR_THROW(const auto out_dtype,
+                       ConvertTo<mlir::ElementType>(out_type));
+    TT_ASSIGN_OR_THROW(auto out,
+                       UnaryOp(self, GetGeluFunctional(approximate, out_dtype),
+                               {.op_param_cache_keys = std::move(param_keys),
+                                .out_dtype = out_type}));
+    return out;
+  });
+}
 
 at::Tensor& AtenGeluOut(const at::Tensor& self, c10::string_view approximate,
                         at::Tensor& out) {
@@ -54,8 +82,20 @@ at::Tensor& AtenGeluOut(const at::Tensor& self, c10::string_view approximate,
     TT_CHECK_THROW(approximate == "none" || approximate == "tanh",
                    error::kInvalidArgument)
         << "unsupported approximate argument: " << approximate;
+    const c10::ScalarType self_dtype = self.scalar_type();
+    TT_CHECK_THROW(!c10::isComplexType(self_dtype), error::kUnimplemented)
+        << "unsupported input dtype: '" << ToString(self_dtype) << "'";
+    TT_CHECK_THROW(!c10::isIntegralType(self_dtype, /*includeBool=*/true),
+                   error::kUnimplemented)
+        << "unsupported input dtype: '" << ToString(self_dtype) << "'";
+    const c10::ScalarType out_tensor_type = out.scalar_type();
+    TT_CHECK_THROW(!c10::isIntegralType(out_tensor_type, /*includeBool=*/true),
+                   error::kUnimplemented)
+        << "unsupported output dtype: '" << ToString(out_tensor_type) << "'";
+    TT_ASSIGN_OR_THROW(const auto out_dtype,
+                       ConvertTo<mlir::ElementType>(out_tensor_type));
     TT_THROW_IF_ERROR(
-        UnaryOpOut(self, out, GetGeluFunctional(approximate),
+        UnaryOpOut(self, out, GetGeluFunctional(approximate, out_dtype),
                    {.op_param_cache_keys = std::move(param_keys)}));
     return out;
   });
@@ -71,15 +111,22 @@ at::Tensor& AtenGeluBackwardGradInput(const at::Tensor& grad_output,
         TT_CHECK_THROW(approximate == "none" || approximate == "tanh",
                        error::kInvalidArgument)
             << "unsupported approximate argument: " << approximate;
+        const c10::ScalarType self_dtype = self.scalar_type();
+        TT_CHECK_THROW(!c10::isComplexType(self_dtype), error::kUnimplemented)
+            << "unsupported input dtype: '" << ToString(self_dtype) << "'";
+        TT_CHECK_THROW(!c10::isIntegralType(self_dtype, /*includeBool=*/true),
+                       error::kUnimplemented)
+            << "unsupported input dtype: '" << ToString(self_dtype) << "'";
+        const c10::ScalarType output_tensor_type = InferOutputDtype(self);
         TT_ASSIGN_OR_THROW(const auto out_dtype,
-                           ConvertTo<mlir::ElementType>(self.scalar_type()));
+                           ConvertTo<mlir::ElementType>(output_tensor_type));
 
-        auto op_builder = [approximate = static_cast<std::string>(approximate)](
-                              FixedSizeSpan<mlir::MlirOp, 2> inputs)
+        auto op_builder = [approximate = static_cast<std::string>(approximate),
+                           out_dtype](FixedSizeSpan<mlir::MlirOp, 2> inputs)
             -> absl::StatusOr<mlir::MlirOp> {
           auto& [grad_output_op, input_op] = inputs;
           return BuildGeluBackwardGradInputShlo(grad_output_op, input_op,
-                                                approximate);
+                                                approximate, out_dtype);
         };
         auto output_shape = CopyIntVector(self.sizes());
 

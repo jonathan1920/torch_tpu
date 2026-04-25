@@ -340,6 +340,7 @@ enum class OpName {
   kGeOut,
   kGeScalarOut,
   kGeTensorOut,
+  kGelu,
   kGeluBackwardGradInput,
   kGeluOut,
   kGeqrf,

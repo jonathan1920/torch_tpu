@@ -1913,6 +1913,27 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.nn.functional.elu(inp)
 
+  def test_gelu_unsupported_input_dtype(self):
+    del self  # self is not used in this test
+    t = torch.ones(2, device=et.device(), dtype=torch.complex64)
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""gelu(): unsupported input dtype: 'complex64'""",
+        cpu=""""GeluKernelImpl" not implemented for 'ComplexFloat'""",
+    ):
+      torch.nn.functional.gelu(t)
+
+  def test_gelu_unsupported_output_dtype(self):
+    del self  # self is not used in this test
+    t = torch.ones(2, device=et.device(), dtype=torch.float32)
+    out = torch.ones(2, device=et.device(), dtype=torch.int64)
+    with et.assert_raises_message(
+        Exception,
+        tpu="""gelu(): unsupported output dtype: 'int64'""",
+        cpu="""Found dtype Long but expected Float""",
+    ):
+      torch.nn.functional.gelu(t, out=out)
+
   def test_gelu_unsupported_approximation_type(self):
     t = torch.randn(2, 3, device=et.device(), dtype=torch.float32)
     with et.assert_raises_message(
