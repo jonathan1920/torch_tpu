@@ -38,7 +38,6 @@ from tests.distributed import distributed_utils
 
 from torch_tpu._internal.shims.xprof import xprof_analysis_client
 
-
 log_utils.log_to_stderr()
 
 
@@ -111,6 +110,8 @@ class PerformanceBenchmarkConfig:
   is_training: bool
   model_and_input_args: ModelAndInputArgs
   grad_accumulation_steps: int = 4
+
+
 # LINT.ThenChange(../../../g3doc/benchmarking.md)
 
 
@@ -133,9 +134,7 @@ def _run_mode_context(run_mode: benchmark_utils.RunMode, device: torch.device):
   new_eager_mode = None
 
   match run_mode:
-    case (
-        benchmark_utils.RunMode.EAGER_DEFAULT
-    ):
+    case benchmark_utils.RunMode.EAGER_DEFAULT:
       new_eager_mode = execution_mode.EagerMode.DEFER_NEVER
 
     case benchmark_utils.RunMode.EAGER_OPTIMIZED:
@@ -253,7 +252,9 @@ def _run_single_process_benchmark(
           "  warmup_overhead (seconds): %s\n"
           "  average_step_time (seconds): %s\n"
           "  peak_device_memory (MB): %s\n"
-          "  e2e_wall_time (seconds): %s",
+          "  e2e_wall_time (seconds): %s\n"
+          "  warmup_session_xprof_url: %s\n"
+          "  post_warmup_run_session_xprof_url: %s",
           test_method_name,
           benchmark_name,
           microbenchmark_name,
@@ -267,6 +268,8 @@ def _run_single_process_benchmark(
           result.post_warmup_step_time_seconds,
           result.peak_device_memory_mb,
           result.e2e_wall_time_seconds,
+          result.warmup_session_xprof_url,
+          result.post_warmup_run_session_xprof_url,
       )
   except Exception as e:
     logging.exception("Benchmark failed: %s", e)

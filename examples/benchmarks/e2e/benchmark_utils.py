@@ -35,7 +35,6 @@ from torch_tpu._internal.shims.xprof import traceme
 from torch_tpu._internal.shims.xprof import xprof_analysis_client
 from torch_tpu._internal.shims.xprof import xprof_session
 
-
 log_utils.log_to_stderr()
 
 
@@ -218,6 +217,9 @@ class PerformanceBenchmarkResult(BenchmarkResultInterface):
       after the warmup is complete.
     peak_device_memory_mb: The peak device memory usage in MB for a benchmark
       step.
+    warmup_session_xprof_url: The URL of the xprof session for the warmup run.
+    post_warmup_run_session_xprof_url: The URL of the xprof session for the post
+      warmup run.
   """
 
   num_warmup_steps: int = 0
@@ -225,6 +227,8 @@ class PerformanceBenchmarkResult(BenchmarkResultInterface):
   warmup_overhead_seconds: float = 0.0
   post_warmup_step_time_seconds: float = 0.0
   peak_device_memory_mb: float = 0.0
+  warmup_session_xprof_url: str | None = None
+  post_warmup_run_session_xprof_url: str | None = None
 
   def metric_map(self) -> Mapping[str, float]:
     """Returns a map of metrics to be exported to MLCompass."""
@@ -266,11 +270,13 @@ class _WarmupRunResult:
       step) * n. For example, if the cache misses are [100, 120, 130, 130] and
       wall times are [15, 10, 10, 2], then the warmup overhead is (15 + 10 + 10)
       - 2*3 = 29 seconds.
+    warmup_session_xprof_url: The URL of the xprof session for the warmup run.
   """
 
   num_warmup_steps: int = 0
   first_step_time_seconds: float = 0.0
   warmup_overhead_seconds: float = 0.0
+  warmup_session_xprof_url: str | None = None
 
 
 @dataclasses.dataclass
@@ -286,6 +292,7 @@ class _PostWarmupRunResult:
 
   post_warmup_step_time_seconds: float = 0.0
   peak_device_memory_mb: float = 0.0
+  post_warmup_run_session_xprof_url: str | None = None
 
 
 class XprofContext:
@@ -413,7 +420,7 @@ def _warmup_run(
   num_warmup_steps = None
   device_name = _get_device_name(device)
 
-  with XprofContext("warmup_run", enable_xprof):
+  with XprofContext("warmup_run", enable_xprof) as warmup_run_context:
     for step in range(MAX_WARMUP_STEPS.value):
       with traceme.TraceMe("Warmup", step_num=step):
         start_time = time.perf_counter()
@@ -432,11 +439,17 @@ def _warmup_run(
 
   logging.info("Warmup Timings: %s", timings)
   logging.info("Warmup cache misses: %s", cache_misses)
+  warmup_session_xprof_url = None
+  if enable_xprof:
+    warmup_session_xprof_url = (
+        f"http://xprof/?session_id={warmup_run_context.session_id}"
+    )
 
   return _WarmupRunResult(
       num_warmup_steps=num_warmup_steps,
       first_step_time_seconds=timings[0],
       warmup_overhead_seconds=_get_warmup_overhead(timings, num_warmup_steps),
+      warmup_session_xprof_url=warmup_session_xprof_url,
   )
 
 
@@ -497,6 +510,12 @@ def _post_warmup_run(
             " warmup steps. Consider increasing the number of warmup steps."
         )
 
+  post_warmup_run_session_xprof_url = None
+  if enable_xprof:
+    post_warmup_run_session_xprof_url = (
+        f"http://xprof/?session_id={xprof_context.session_id}"
+    )
+
   # Calculate the memory usage after the post warmup run is complete. This
   # requires the xprof response for TPU and XLA_CUDA devices, which is only
   # available after the xprof session ends. Memory usage is calculated for TPU
@@ -510,6 +529,7 @@ def _post_warmup_run(
   return _PostWarmupRunResult(
       post_warmup_step_time_seconds=np.mean(timings),
       peak_device_memory_mb=memory_usage,
+      post_warmup_run_session_xprof_url=post_warmup_run_session_xprof_url,
   )
 
 
