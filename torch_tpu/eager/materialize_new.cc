@@ -17,8 +17,10 @@
 #include "torch_tpu/eager/materialize_new.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <iterator>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -64,7 +66,8 @@ class MaterializationWorker {
       const SharedDeviceBufferList& device_buffer_list);
 
   // Materialize all ops dispatched so far.
-  absl::Status Materialize();
+  absl::Status Materialize(
+      absl::Span<const SharedDeviceBufferList> nodes_to_materialize);
 
   absl::Status BlockOnPendingMaterializations();
 
@@ -79,6 +82,8 @@ class MaterializationWorker {
       mutex_);
   bool queue_full_[kNumQueues] ABSL_GUARDED_BY(mutex_);
   bool must_exit_ ABSL_GUARDED_BY(mutex_) = false;
+  std::vector<SharedDeviceBufferList>
+      nodes_to_materialize_[kNumQueues] ABSL_GUARDED_BY(mutex_);
   absl::Status last_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
   std::thread execution_thread_;
 
@@ -117,7 +122,8 @@ class MaterializationWorker {
       const std::vector<SharedDeviceBufferList>& queue) const;
 
   absl::Status MaterializeQueue(
-      const std::vector<SharedDeviceBufferList>& queue);
+      const std::vector<SharedDeviceBufferList>& queue,
+      const std::vector<SharedDeviceBufferList>& nodes_to_materialize);
 };
 
 absl::Status MaterializationWorker::OnNewOpDispatch(
@@ -132,7 +138,8 @@ absl::Status MaterializationWorker::OnNewOpDispatch(
   return absl::OkStatus();
 }
 
-absl::Status MaterializationWorker::Materialize() {
+absl::Status MaterializationWorker::Materialize(
+    absl::Span<const SharedDeviceBufferList> nodes_to_materialize) {
   tsl::profiler::TraceMe t("Worker_Materialize");
   TT_RETURN_IF_ERROR(GetLastStatus());
   {
@@ -140,9 +147,27 @@ absl::Status MaterializationWorker::Materialize() {
     // Wait if the current dispatch queue is being processed.
     mutex_.Await(
         absl::Condition(this, &MaterializationWorker::IsReadyToDispatch));
-    if (queue_[dispatch_queue_id_].empty()) {
+
+    // Deterministically prune stale nodes from the current dispatch queue.
+    // Because this runs synchronously with the Python thread (which called
+    // Materialize), the GC state is fully deterministic here. This allows us to
+    // safely dead-code-eliminate completely unused tensors without causing XLA
+    // cache thrashing in the background worker.
+    auto& current_queue = queue_[dispatch_queue_id_];
+    current_queue.erase(
+        std::remove_if(current_queue.begin(), current_queue.end(),
+                       [](const SharedDeviceBufferList& node) {
+                         return node->is_stale();
+                       }),
+        current_queue.end());
+
+    if (current_queue.empty() && nodes_to_materialize.empty()) {
       return absl::OkStatus();
     }
+    ABSL_CHECK(nodes_to_materialize_[dispatch_queue_id_].empty());  // CRASH_OK
+    nodes_to_materialize_[dispatch_queue_id_].insert(
+        nodes_to_materialize_[dispatch_queue_id_].end(),
+        nodes_to_materialize.begin(), nodes_to_materialize.end());
     queue_full_[dispatch_queue_id_] = true;
     IncrementQueueId(dispatch_queue_id_);
   }
@@ -179,8 +204,9 @@ void MaterializationWorker::Exit() {
 void MaterializationWorker::ThreadLoop() {
   ABSL_VLOG(1) << ">>> MaterializationWorker::ThreadLoop";
   while (true) {
-    std::vector<SharedDeviceBufferList> current_queue;
     int current_execution_id;
+    std::vector<SharedDeviceBufferList> current_queue;
+    std::vector<SharedDeviceBufferList> nodes_to_materialize;
 
     {
       absl::MutexLock lock(
@@ -194,12 +220,14 @@ void MaterializationWorker::ThreadLoop() {
       // the shared array because the dispatch thread is blocked from accessing
       // this index by queue_full_[execution_queue_id_] == true.
       ABSL_CHECK(queue_full_[execution_queue_id_]);  // CRASH_OK
-      std::swap(current_queue, queue_[execution_queue_id_]);
       current_execution_id = execution_queue_id_;
+      std::swap(current_queue, queue_[execution_queue_id_]);
+      std::swap(nodes_to_materialize,
+                nodes_to_materialize_[execution_queue_id_]);
     }
 
     // Materialize the claimed queue without holding the mutex.
-    absl::Status status = MaterializeQueue(current_queue);
+    absl::Status status = MaterializeQueue(current_queue, nodes_to_materialize);
 
     {
       absl::MutexLock lock(mutex_);
@@ -213,7 +241,10 @@ void MaterializationWorker::ThreadLoop() {
       // then release the slod and move to the next one.
       ABSL_CHECK(current_execution_id == execution_queue_id_);  // CRASH_OK
       std::swap(current_queue, queue_[current_execution_id]);
+      std::swap(nodes_to_materialize,
+                nodes_to_materialize_[execution_queue_id_]);
       queue_[current_execution_id].clear();
+      nodes_to_materialize_[execution_queue_id_].clear();
       queue_full_[current_execution_id] = false;
       IncrementQueueId(execution_queue_id_);
     }
@@ -227,9 +258,14 @@ bool IsSplitPoint(const SharedDeviceBufferList& current_op,
     return false;
   }
 
+  // TODO: Enabling this lowers the initial compilation time, but doesn't affect
+  // the long-term step time.
+#if 0
   if (deferred_op->has_been_executed()) {
     return true;
   }
+#endif
+
   if (deferred_op->split_mode() == OpSplitMode::kSplitAfter) {
     return true;
   }
@@ -271,14 +307,102 @@ MaterializationWorker::SplitQueueIntoRegions(
   return split_regions;
 }
 
+absl::StatusOr<std::vector<SharedDeviceBufferList>> ExtractExecutionOrder(
+    const std::vector<SharedDeviceBufferList>& queue,
+    const std::vector<SharedDeviceBufferList>& nodes_to_materialize) {
+  // Unfortunately the nodes that have been dispatched in `queue` are not all
+  // the nodes that need to be scheduled. That's because view ops are not
+  // dispatched, rather they show as deferred op inputs of other dispatched or
+  // view ops, including as the nodes in `nodes_to_materialized`. In order to
+  // extract a complete and properly sorted (by creation index) list of nodes to
+  // dispatch we use the DFS search implemented in Traversal::Create() by
+  // passing all nodes we know about as traversal outputs. Then we can return
+  // the traversal's execution order and discard the other information.
+
+  absl::flat_hash_set<SharedDeviceBufferList> unique_nodes;
+  for (auto& node : nodes_to_materialize) {
+    unique_nodes.insert(node);
+  }
+  for (auto& node : queue) {
+    unique_nodes.insert(node);
+  }
+
+  // Sort nodes determinisically, so as to lead to identical traversal creations
+  // across different workers.
+  std::vector<SharedDeviceBufferList> sorted_nodes(unique_nodes.begin(),
+                                                   unique_nodes.end());
+  std::sort(sorted_nodes.begin(), sorted_nodes.end(), [](auto& n1, auto& n2) {
+    return n1->creation_index() < n2->creation_index();
+  });
+
+  std::vector<DeviceBufferRef> traversal_outputs;
+  for (auto& node : sorted_nodes) {
+    for (size_t i = 0; i < node->size(); ++i) {
+      TT_ASSIGN_OR_RETURN(auto output, DeviceBufferRef::Create(node, i));
+      traversal_outputs.push_back(std::move(output));
+    }
+  }
+
+  TT_ASSIGN_OR_RETURN(auto traversal, Traversal::Create(traversal_outputs));
+  auto parts = traversal.IntoParts();
+  return parts.execution_order;
+}
+
+// Compute the values used in each region and return a vector of sets, where
+// each set i contains the values used in region i.
+std::vector<absl::flat_hash_set<const DeviceBufferList*>> GetPerRegionUses(
+    absl::Span<const absl::Span<const SharedDeviceBufferList>> regions) {
+  auto num_regions = regions.size();
+  std::vector<absl::flat_hash_set<const DeviceBufferList*>> uses(num_regions);
+  for (auto i = 0; i < num_regions; ++i) {
+    const auto& region = regions[i];
+    auto& uses_ = uses[i];
+    absl::flat_hash_set<const DeviceBufferList*> visited;
+    for (const auto& n : region) {
+      const auto* deferred_op = n->deferred_op();
+      if (deferred_op) {
+        for (const auto& input : deferred_op->inputs()) {
+          // A "use" is ANY input to an operation in this region.
+          auto* node = input.device_buffer_list().get();
+          if (visited.insert(node).second) {
+            uses_.insert(node);
+          }
+        }
+      }
+    }
+  }
+
+  return uses;
+}
+
+std::string ToString(const std::vector<SharedDeviceBufferList>& v) {
+  std::ostringstream os;
+  os << "[size: " << v.size() << "\n";
+  for (auto& n : v) {
+    os << n->DebugString() << "\n";
+  }
+  os << "]";
+  return os.str();
+}
+
 absl::Status MaterializationWorker::MaterializeQueue(
-    const std::vector<SharedDeviceBufferList>& queue) {
+    const std::vector<SharedDeviceBufferList>& queue,
+    const std::vector<SharedDeviceBufferList>& nodes_to_materialize) {
   tsl::profiler::TraceMe t("Worker_MaterializeQueue");
 
   ABSL_VLOG(1) << ">>> MaterializationWorker::MaterializeQueue "
                << queue.size();
 
-  auto regions = SplitQueueIntoRegions(queue);
+  ABSL_VLOG(1) << "Queue: " << ToString(queue);
+  ABSL_VLOG(1) << "Nodes to Materialize: " << ToString(nodes_to_materialize);
+
+  TT_ASSIGN_OR_RETURN(std::vector<SharedDeviceBufferList> execution_order,
+                      ExtractExecutionOrder(queue, nodes_to_materialize));
+
+  ABSL_VLOG(1) << "Execution Order: " << ToString(execution_order);
+
+  auto regions = SplitQueueIntoRegions(execution_order);
+  const auto num_regions = regions.size();
 
   // Launch compilations for the identified regions.
   auto compilation_mode = (GetEagerMode() == EagerMode::kDeferAndFuse)
@@ -294,11 +418,68 @@ absl::Status MaterializationWorker::MaterializeQueue(
   };
 
   std::vector<ExecutionTask> execution_tasks;
-  execution_tasks.reserve(regions.size());
+  execution_tasks.reserve(num_regions);
 
-  for (const auto& region : regions) {
-    TT_ASSIGN_OR_RETURN(auto traversal,
-                        Traversal::CreateFromLinearRegion(region));
+  auto per_region_uses = GetPerRegionUses(regions);
+
+  absl::flat_hash_set<const DeviceBufferList*> explicit_targets;
+  for (const auto& n : nodes_to_materialize) {
+    explicit_targets.insert(n.get());
+  }
+
+  for (auto i = 0; i < num_regions; ++i) {
+    const auto& region = regions[i];
+
+    // For each region, we compute the desired outputs. Those are nodes that
+    // have already executed in a previous region, or nodes that are used as
+    // input in a subsequent region, or nodes that are defined in the current
+    // region, but not used in any subsequent region and, hence, could be used
+    // in the future.
+    std::vector<SharedDeviceBufferList> region_outputs;
+    for (const auto& n : region) {
+      bool must_materialize_node = false;
+      const auto* deferred_op = n->deferred_op();
+
+      if (deferred_op && deferred_op->has_been_executed()) {
+        // The node was already executed.
+        must_materialize_node = true;
+      } else if (explicit_targets.contains(n.get())) {
+        // The node was explicitly requested by the caller.
+        must_materialize_node = true;
+      } else if (per_region_uses[i].find(n.get()) == per_region_uses[i].end()) {
+        // The node is defined in the current region, but not used there.
+        must_materialize_node = true;
+      } else {
+        for (auto j = i + 1; j < num_regions; ++j) {
+          if (per_region_uses[j].find(n.get()) != per_region_uses[j].end()) {
+            // The node is defined in the current region and used in a next
+            // region.
+            must_materialize_node = true;
+            break;
+          }
+        }
+      }
+      if (must_materialize_node) {
+        region_outputs.push_back(n);
+      }
+    }
+
+    // Sort `region_outputs` deterministically so as to ensure identical
+    // traversal creations across different workers.
+    std::sort(region_outputs.begin(), region_outputs.end(),
+              [](const auto& a, const auto& b) {
+                return a->creation_index() < b->creation_index();
+              });
+    // Remove any duplicates.
+    region_outputs.erase(
+        std::unique(region_outputs.begin(), region_outputs.end()),
+        region_outputs.end());
+
+    // We create a traversal for the given region because that's the only way to
+    // compile the DeferredOps in the region. Note that this traversal
+    // constructor doesn't perform a DFS.
+    TT_ASSIGN_OR_RETURN(auto traversal, Traversal::CreateFromExecutionOrder(
+                                            region, region_outputs));
     ABSL_VLOG(1) << "==== TRAVERSAL ===\n" << traversal.DebugString();
 
     ABSL_VLOG(1) << "[MaterializationWorker] Launching compilation for "
@@ -344,6 +525,22 @@ absl::Status MaterializationWorker::MaterializeQueue(
 
   // Launch compiled kernels.
   for (const auto& execution_task : execution_tasks) {
+    // Don't launch kernels if this is part of TorchTPU tracing of an FX graph,
+    // which is indicated by placeholder inputs.
+    bool has_placeholder = false;
+    for (const auto& arg : execution_task.arguments) {
+      if (arg.state() == DeviceBufferRefState::kPlaceholder) {
+        has_placeholder = true;
+        break;
+      }
+    }
+    if (has_placeholder) {
+      ABSL_VLOG(1)
+          << "[MaterializationWorker] Skipping region " << execution_task.name
+          << " because it depends on a placeholder (likely traced by Dynamo).";
+      continue;
+    }
+
     ABSL_VLOG(1) << "[MaterializationWorker] Waiting for compilation of region "
                  << execution_task.name;
 
@@ -390,8 +587,7 @@ absl::Status OnNewOpDispatch(const SharedDeviceBufferList& device_buffer_list) {
 absl::Status MaterializeImplNew(
     absl::Span<const SharedDeviceBufferList> nodes_to_materialize) {
   ABSL_VLOG(1) << ">>> MaterializeImplNew " << nodes_to_materialize.size();
-  (void)nodes_to_materialize;
-  return MaterializationWorker::GetInstance().Materialize();
+  return MaterializationWorker::GetInstance().Materialize(nodes_to_materialize);
 }
 
 absl::Status BlockOnPendingMaterializations() {

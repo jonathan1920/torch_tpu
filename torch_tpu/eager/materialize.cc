@@ -526,6 +526,8 @@ absl::Status MaterializationWorker::PropagateBoundedDynamism(
 absl::Status MaterializeImpl(
     absl::Span<const SharedDeviceBufferList> nodes_to_materialize,
     MaterializationMode materialization_mode) {
+  tsl::profiler::TraceMe t([] { return "MaterializeImpl"; });
+
   if (absl::GetFlag(FLAGS_torch_tpu_internal_enable_new_materialization)) {
     return MaterializeImplNew(nodes_to_materialize);
   }
@@ -535,8 +537,6 @@ absl::Status MaterializeImpl(
   if (nodes_to_materialize.empty()) {
     return absl::OkStatus();
   }
-
-  tsl::profiler::TraceMe t([] { return "MaterializeImpl"; });
 
   std::vector<SharedDeviceBufferList> nodes(nodes_to_materialize.begin(),
                                             nodes_to_materialize.end());
