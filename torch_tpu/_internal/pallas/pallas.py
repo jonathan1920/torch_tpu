@@ -184,6 +184,7 @@ def torch_placeholder(
   return torch.empty(
       get_local_shape(tensor.shape, mesh, tensor.sharding.spec),
       dtype=torch_dtype,
+      device="tpu",
   )
 
 

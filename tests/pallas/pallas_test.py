@@ -77,6 +77,11 @@ def subtract_vectors(x: jax.Array, y: jax.Array) -> jax.Array:
   )(x, y)
 
 
+@pallas.jax_op("pallas::pass_through")
+def pass_through(x: jax.Array) -> jax.Array:
+  return x
+
+
 def jax_add_or_subtract_vectors_wrapper(
     mode: str, x: jax.Array, y: jax.Array
 ) -> jax.Array:
@@ -585,17 +590,10 @@ class TestPallasKernels(absltest.TestCase):
 
   def test_symbolic_shape_raises_error(self):
     symbolic_shape = torch.fx.experimental.symbolic_shapes
-
-    def pass_through(x: jax.Array) -> jax.Array:
-      return x
-
-    pass_through_op = pallas.jax_op("pallas::pass_through", pass_through)
-
     shape_env = symbolic_shape.ShapeEnv()
+
     x = torch.randn(5, device=self.device)
-    with torch._subclasses.fake_tensor.FakeTensorMode(
-        shape_env=shape_env
-    ) as mode:
+    with torch._subclasses.FakeTensorMode(shape_env=shape_env) as mode:
       fake_x = mode.from_tensor(
           x,
           symbolic_context=symbolic_shape.StatelessSymbolicContext(
@@ -605,7 +603,14 @@ class TestPallasKernels(absltest.TestCase):
       with self.assertRaisesRegex(
           RuntimeError, "Symbolic dimensions are not supported"
       ):
-        pass_through_op(fake_x)
+        pass_through(fake_x)
+
+  def test_fake_tensor_on_tpu(self):
+    x = torch.randn(5, device="tpu")
+    with torch._subclasses.FakeTensorMode() as mode:
+      fake_x = mode.from_tensor(x)
+      y = pass_through(fake_x)
+      self.assertEqual(y.device, x.device)
 
   # The following aliasing tests are for the deprecated input_output_aliases
   # so are not comprehensive.
