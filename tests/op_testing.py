@@ -2387,6 +2387,69 @@ def set_up_test_module() -> None:
       # the compilation time of ops fairly in the inividual tests.
       torch.ones(1, dtype=torch.float32, device="tpu").to("cpu")
 
+  # Operators that sort or select values and can have non-deterministic
+  # tie-breaking, leading to flaky gradient tests when inputs have duplicates.
+  # We intercept their sample generators to add a small uniqueness ramp.
+  ops_needing_unique_values = {
+      "topk",
+      "sort",
+      "max",
+      "min",
+      "argmax",
+      "argmin",
+      "cummax",
+      "cummin",
+  }
+
+  for op in _KNOWN_OPS:
+    if op.name not in ops_needing_unique_values:
+      continue
+    else:
+
+      def create_unique_samples(
+          orig_sample_inputs: collections.abc.Callable[
+              ..., collections.abc.Iterable[Any]
+          ],
+      ) -> collections.abc.Callable[..., collections.abc.Iterator[Any]]:
+        def unique_samples(
+            op_info: Any,
+            device: str,
+            dtype: torch.dtype,
+            requires_grad: bool,
+            **kwargs: Any,
+        ) -> collections.abc.Iterator[Any]:
+          for sample in orig_sample_inputs(
+              op_info, device, dtype, requires_grad, **kwargs
+          ):
+            if (
+                _COMPUTE_GRAD.value
+                and isinstance(sample.input, torch.Tensor)
+                and sample.input.is_floating_point()
+            ):
+              # Create a small ramp (e.g., 0.0 to 0.01) to break any ties
+              ramp = (
+                  torch.linspace(
+                      0, 1, sample.input.numel(), device=device, dtype=dtype
+                  ).reshape(sample.input.shape)
+                  * 1e-2
+              )
+
+              # Apply the ramp and preserve the requires_grad state
+              if requires_grad:
+                sample.input = (sample.input.detach() + ramp).requires_grad_(
+                    True
+                )
+              else:
+                sample.input = sample.input + ramp
+
+            yield sample
+
+        return unique_samples
+
+      # Override the default generator with our tie-breaking generator
+      # This handles the base op and its variants (like 'out')
+      op.sample_inputs_func = create_unique_samples(op.sample_inputs_func)
+
 
 def tear_down_test_module() -> None:
   """Tears down the entire test module."""
