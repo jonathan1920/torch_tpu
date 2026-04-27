@@ -146,6 +146,37 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "model_compile_benchmarks",
+    timeout = "long",
+    srcs = ["model_compile_benchmarks.py"],
+    main = "model_compile_benchmarks.py",
+    notap = "To be tested on guitar workflow.",
+    notest_oss = "transformers version mismatches in oss with torch.compile issues",
+    tags = [
+        "cpu:4",
+        "nofastbuild",  # Measures performance.
+        "requires-accel-hbm",
+        "requires-net:external",
+        "requires-tpu-v7x",
+    ],
+    deps = [
+        ":benchmark_utils",
+        ":mlcompass_utils",
+        ":model_utils",
+        ":performance_utils",
+        ":test_utils",
+        "//shims/absl_py/logging",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/shims/xprof:traceme",
+        "//torch_tpu/_internal/utils:device_utils",
+        "//torch_tpu/_internal/utils:log_utils",
+        "//torch_tpu/api",
+    ],
+)
+
+torch_tpu_py_test(
     name = "model_quality_benchmarks",
     timeout = "long",
     srcs = ["model_quality_benchmarks.py"],
