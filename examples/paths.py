@@ -14,5 +14,5 @@
 
 """Common constants for torch_tpu examples."""
 
-XM_HOME = "/home/"  # home dir
+XM_HOME = "/data/"  # home dir
 TRACES_HOME = "/traces/"  # traces dir

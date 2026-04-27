@@ -46,7 +46,8 @@ RUN pip install \
     frozendict \
     immutabledict \
     flax \
-    pillow
+    pillow \
+    immutabledict
 
 # Now copy the local repository source from the build context
 COPY . /workspace/torch_tpu_src
