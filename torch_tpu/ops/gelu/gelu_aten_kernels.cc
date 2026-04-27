@@ -71,7 +71,7 @@ at::Tensor AtenGelu(const at::Tensor& self, c10::string_view approximate) {
     TT_ASSIGN_OR_THROW(auto out,
                        UnaryOp(self, GetGeluFunctional(approximate, out_dtype),
                                {.op_param_cache_keys = std::move(param_keys),
-                                .out_dtype = out_type}));
+                                .out_dtype = out_dtype}));
     return out;
   });
 }

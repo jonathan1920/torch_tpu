@@ -63,7 +63,7 @@ at::Tensor& AtenCumsumOut(const at::Tensor& self, int64_t dim,
         self, out,
         absl::bind_front(BuildCumsumShlo, normalized_dim, dtype_element_type),
         {.op_param_cache_keys = std::move(param_keys),
-         .out_dtype = out.scalar_type()}));
+         .out_dtype = dtype_element_type}));
     return out;
   });
 }

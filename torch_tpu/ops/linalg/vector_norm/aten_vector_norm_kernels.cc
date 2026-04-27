@@ -68,7 +68,7 @@ absl::Status PNormOut(const at::Tensor& self, double ord,
 
   return UnaryOpOut(self, out, fn,
                     {.op_param_cache_keys = std::move(op_cache_keys),
-                     .out_dtype = out_dtype,
+                     .out_dtype = element_type,
                      .out_dims = std::move(output_dims)});
 }
 

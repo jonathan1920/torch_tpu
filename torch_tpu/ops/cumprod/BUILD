@@ -28,11 +28,13 @@ torch_tpu_cc_library(
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
+        "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:unary_aten_kernels",
         "//torch_tpu/ops/macros:kernel",
         "@com_google_absl//absl/functional:bind_front",
+        "@stablehlo//:attr_type_builder_util",
     ],
 )
 

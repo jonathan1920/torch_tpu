@@ -24,6 +24,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/unary_aten_kernels.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 
 namespace torch_tpu {
 
@@ -33,7 +34,7 @@ at::Tensor AtenIsNan(const at::Tensor& self) {
         auto result,
         ::torch_tpu::UnaryOp(self, BuildIsNanShlo,
                              {.op_param_cache_keys = OpParamCacheKeys::Empty(),
-                              .out_dtype = c10::kBool}));
+                              .out_dtype = mlir::ElementType::PRED}));
     return result;
   });
 }
@@ -43,7 +44,7 @@ at::Tensor& AtenIsNegInfOut(const at::Tensor& self, at::Tensor& out) {
     TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(
         self, out, BuildIsNegInfShlo,
         {.op_param_cache_keys = OpParamCacheKeys::Empty(),
-         .out_dtype = c10::kBool}));
+         .out_dtype = mlir::ElementType::PRED}));
     return out;
   });
 }
@@ -53,7 +54,7 @@ at::Tensor& AtenIsPosInfOut(const at::Tensor& self, at::Tensor& out) {
     TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(
         self, out, BuildIsPosInfShlo,
         {.op_param_cache_keys = OpParamCacheKeys::Empty(),
-         .out_dtype = c10::kBool}));
+         .out_dtype = mlir::ElementType::PRED}));
     return out;
   });
 }

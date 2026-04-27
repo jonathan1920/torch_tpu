@@ -88,7 +88,7 @@ absl::Status LogicalUnaryOutImpl(const at::Tensor& self, at::Tensor& out,
   TT_RETURN_IF_ERROR(
       ::torch_tpu::UnaryOpOut(self, out, std::move(custom_op_builder),
                               {.op_param_cache_keys = OpParamCacheKeys::Empty(),
-                               .out_dtype = out.scalar_type()}));
+                               .out_dtype = out_dtype}));
   return absl::OkStatus();
 }
 

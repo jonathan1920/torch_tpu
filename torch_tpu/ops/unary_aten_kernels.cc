@@ -88,7 +88,7 @@
       TT_THROW_IF_ERROR(::torch_tpu::UnaryOpOut(                             \
           self, out, std::move(op_builder_with_out_dtype),                   \
           {.op_param_cache_keys = std::move(param_keys),                     \
-           .out_dtype = out_dtype}));                                        \
+           .out_dtype = out_mlir_type}));                                    \
       return out;                                                            \
     });                                                                      \
   }                                                                          \
@@ -99,9 +99,13 @@ namespace torch_tpu {
 absl::StatusOr<at::Tensor> UnaryOp(const at::Tensor& self,
                                    MlirUnaryOpBuilder op_builder,
                                    UnaryOpOptions options) {
-  TT_ASSIGN_OR_RETURN(const auto output_dtype,
-                      ConvertTo<mlir::ElementType>(
-                          options.out_dtype.value_or(self.scalar_type())));
+  mlir::ElementType output_dtype;
+  if (options.out_dtype.has_value()) {
+    output_dtype = *options.out_dtype;
+  } else {
+    TT_ASSIGN_OR_RETURN(output_dtype,
+                        ConvertTo<mlir::ElementType>(self.scalar_type()));
+  }
   const at::IntArrayRef output_dims = options.out_dims.has_value()
                                           ? options.out_dims.value()
                                           : at::IntArrayRef(self.sizes());
@@ -158,27 +162,29 @@ absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out,
       << "expected the output tensor to be on "
       << GetPrivateUse1DeviceDebugName() << ", got " << out.device();
 
-  at::IntArrayRef shape =
+  const at::IntArrayRef shape =
       options.out_dims.has_value() ? *options.out_dims : self.sizes();
-  at::ScalarType dtype =
-      options.out_dtype.has_value() ? *options.out_dtype : out.scalar_type();
 
-  TT_RET_CHECK(out.scalar_type() == dtype, error::kInvalidArgument)
-      << "expected the output dtype to be " << ToString(dtype) << ", got "
-      << ToString(out.scalar_type());
+  mlir::ElementType output_dtype;
+  if (options.out_dtype.has_value()) {
+    output_dtype = *options.out_dtype;
+  } else {
+    TT_ASSIGN_OR_RETURN(output_dtype,
+                        ConvertTo<mlir::ElementType>(out.scalar_type()));
+  }
 
-  TT_ASSIGN_OR_RETURN(const auto output_dtype,
-                      ConvertTo<mlir::ElementType>(
-                          options.out_dtype.value_or(out.scalar_type())));
-  const at::IntArrayRef output_dims =
-      options.out_dims.has_value() ? options.out_dims.value() : self.sizes();
+  const at::ScalarType expected_dtype = ConvertTo<at::ScalarType>(output_dtype);
+  TT_RET_CHECK(out.scalar_type() == expected_dtype, error::kInvalidArgument)
+      << "expected the output dtype to be " << ToString(expected_dtype)
+      << ", got " << ToString(out.scalar_type());
+
   TT_ASSIGN_OR_RETURN(
       auto result_buf,
       DispatchOp<1>(
           std::move(op_builder), self,
           {.op_name = options.op_name,
            .out_dtype = output_dtype,
-           .out_dims = output_dims,
+           .out_dims = shape,
            .computation_dtype = options.computation_dtype,
            .op_param_cache_keys = std::move(options.op_param_cache_keys)}));
   at::native::resize_output(out, shape);

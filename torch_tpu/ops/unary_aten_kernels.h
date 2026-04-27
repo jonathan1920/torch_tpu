@@ -39,7 +39,7 @@ struct UnaryOpOptions {
   // by the compilation cache.
   OpParamCacheKeys op_param_cache_keys;
   // dtype of the output tensor. If not specified, use self's dtype.
-  std::optional<c10::ScalarType> out_dtype;
+  std::optional<mlir::ElementType> out_dtype;
   // Size of the output tensor. If not specified use self's size.
   std::optional<at::IntArrayRef> out_dims;
   // If specified, all inputs will be casted to this dtype before

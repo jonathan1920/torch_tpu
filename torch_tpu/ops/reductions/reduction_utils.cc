@@ -208,7 +208,7 @@ absl::StatusOr<at::Tensor> ApplySumReduction(const at::Tensor& self,
       // implementing a specific op, but rather a general reduction utility.
       {.op_name = OpName::kSum,
        .op_param_cache_keys = std::move(param_keys),
-       .out_dtype = out_dtype,
+       .out_dtype = mlir_type,
        .out_dims = std::move(output_dims)});
 }
 
@@ -232,7 +232,7 @@ absl::Status ApplySumReductionOut(const at::Tensor& self, at::Tensor& out,
       // utility.
       {.op_name = OpName::kSumIntListOut,
        .op_param_cache_keys = std::move(param_keys),
-       .out_dtype = out_dtype,
+       .out_dtype = mlir_type,
        .out_dims = std::move(output_dims)});
 }
 

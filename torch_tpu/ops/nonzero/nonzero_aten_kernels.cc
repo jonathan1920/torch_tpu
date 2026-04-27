@@ -49,7 +49,7 @@ absl::StatusOr<at::Tensor> GetNumNonZeroElements(const at::Tensor& self) {
                               // but rather a shared utility.
                               {.op_name = OpName::kNonzeroSize,
                                .op_param_cache_keys = OpParamCacheKeys::Empty(),
-                               .out_dtype = c10::ScalarType::Long,
+                               .out_dtype = mlir::ElementType::I64,
                                .out_dims = Dimensions()}));
   return num_non_zero_elements;
 }
@@ -65,7 +65,7 @@ absl::StatusOr<at::Tensor> Nonzero(const at::Tensor& self,
       auto result,
       UnaryOp(self, absl::bind_front(BuildNonzeroShlo, num_non_zero_elements),
               {.op_param_cache_keys = std::move(param_keys),
-               .out_dtype = c10::ScalarType::Long,
+               .out_dtype = mlir::ElementType::I64,
                .out_dims = std::move(out_dims)}));
   return result;
 }
@@ -80,7 +80,7 @@ absl::Status NonzeroOut(const at::Tensor& self, at::Tensor& out,
   return UnaryOpOut(self, out,
                     absl::bind_front(BuildNonzeroShlo, num_non_zero_elements),
                     {.op_param_cache_keys = std::move(param_keys),
-                     .out_dtype = c10::ScalarType::Long,
+                     .out_dtype = mlir::ElementType::I64,
                      .out_dims = std::move(out_dims)});
 }
 

@@ -91,6 +91,8 @@ absl::StatusOr<at::Tensor> AtenProdHelper(const at::Tensor& self,
                           // tensor with this dtype and errors out early.
         dtype_mlir_type, ConvertTo<mlir::ElementType>(dtype.value()));
   }
+  TT_ASSIGN_OR_RETURN(auto inferred_mlir_dtype,
+                      ConvertTo<mlir::ElementType>(inferred_dtype));
   Dimensions output_dims = GetSizesAfterProd(self.sizes(), dim, keep_dim);
   ReductionMode mode =
       keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
@@ -98,7 +100,7 @@ absl::StatusOr<at::Tensor> AtenProdHelper(const at::Tensor& self,
       auto result,
       UnaryOp(self, absl::bind_front(BuildProdShlo, dim, mode, dtype_mlir_type),
               {.op_param_cache_keys = std::move(param_keys),
-               .out_dtype = inferred_dtype,
+               .out_dtype = inferred_mlir_dtype,
                .out_dims = std::move(output_dims)}));
   return result;
 }
@@ -118,13 +120,15 @@ absl::Status AtenProdOutHelper(const at::Tensor& self,
                         ConvertTo<mlir::ElementType>(dtype.value()));
   }
 
+  TT_ASSIGN_OR_RETURN(auto inferred_mlir_dtype,
+                      ConvertTo<mlir::ElementType>(inferred_dtype));
   Dimensions output_dims = GetSizesAfterProd(self.sizes(), dim, keep_dim);
   ReductionMode mode =
       keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
   return UnaryOpOut(
       self, out, absl::bind_front(BuildProdShlo, dim, mode, dtype_element_type),
       {.op_param_cache_keys = std::move(param_keys),
-       .out_dtype = inferred_dtype,
+       .out_dtype = inferred_mlir_dtype,
        .out_dims = std::move(output_dims)});
 }
 

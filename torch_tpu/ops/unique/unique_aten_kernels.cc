@@ -60,7 +60,7 @@ absl::StatusOr<at::Tensor> GetUniqueCount(const at::Tensor& self, bool sorted) {
                                                     sorted);
               },
               {.op_param_cache_keys = OpParamCacheKeys::Empty(),
-               .out_dtype = c10::ScalarType::Long,
+               .out_dtype = mlir::ElementType::I64,
                .out_dims = at::IntArrayRef()}));
   return unique_count;
 }

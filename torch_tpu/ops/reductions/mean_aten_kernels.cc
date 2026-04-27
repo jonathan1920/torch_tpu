@@ -110,7 +110,7 @@ at::Tensor& AtenMeanOut(const at::Tensor& self,
             UnaryOpOut(self, out, std::move(op_builder),
                        {.op_name = OpName::kMeanOut,
                         .op_param_cache_keys = std::move(param_keys),
-                        .out_dtype = scalar_dtype,
+                        .out_dtype = mlir_type,
                         .out_dims = std::move(output_dims)}));
         return out;
       });

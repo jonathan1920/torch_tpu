@@ -24,11 +24,13 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/cumprod/cumprod.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/unary_aten_kernels.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 
 namespace torch_tpu {
 
@@ -44,10 +46,12 @@ at::Tensor& AtenCumprodOut(const at::Tensor& self, int64_t dim,
       return out;
     }
 
+    TT_ASSIGN_OR_THROW(const auto out_mlir_type,
+                       ConvertTo<mlir::ElementType>(out.scalar_type()));
     TT_THROW_IF_ERROR(UnaryOpOut(self, out,
                                  absl::bind_front(BuildCumprodShlo, dim, dtype),
                                  {.op_param_cache_keys = std::move(param_keys),
-                                  .out_dtype = out.scalar_type()}));
+                                  .out_dtype = out_mlir_type}));
     return out;
   });
 }
