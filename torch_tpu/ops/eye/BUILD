@@ -24,6 +24,7 @@ torch_tpu_cc_library(
     srcs = ["eye_aten_kernels.cc"],
     hdrs = ["eye_aten_kernels.h"],
     deps = [
+        ":eye_lib",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
@@ -35,6 +36,17 @@ torch_tpu_cc_library(
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops/macros:kernel",
+        "@com_google_absl//absl/status:statusor",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "eye_lib",
+    srcs = ["eye_lib.cc"],
+    hdrs = ["eye_lib.h"],
+    deps = [
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
         "@stablehlo//:attr_type_builder_util",

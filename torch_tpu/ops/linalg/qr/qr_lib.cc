@@ -30,6 +30,7 @@
 #include "c10/util/string_view.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/ops/eye/eye_lib.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -80,32 +81,6 @@ absl::StatusOr<mlir::MlirOp> BuildHouseholderProductCustomCallOp(
                         /*operands=*/{input.getValue(), tau.getValue()});
 
   return mlir::MlirOp(builder, householder_op.getResult(0));
-}
-
-absl::StatusOr<mlir::MlirOp> BuildEyeShlo(mlir::MlirBuilder& builder,
-                                          mlir::ElementType element_type,
-                                          int64_t m, int64_t n) {
-  const auto iota_type =
-      mlir::RankedTensorType::get({m, n}, builder.getOpBuilder().getI32Type());
-
-  // Row indices:    0 0 0 ...
-  //                 1 1 1 ...
-  //                 2 2 2 ...
-  //                 ...
-  mlir::MlirOp rows =
-      mlir::stablehlo::Iota(builder, iota_type, /*iota_dimension=*/0);
-
-  // Column indices: 0 1 2 ...
-  //                 0 1 2 ...
-  //                 0 1 2 ...
-  //                 ...
-  mlir::MlirOp cols =
-      mlir::stablehlo::Iota(builder, iota_type, /*iota_dimension=*/1);
-
-  const auto is_diagonal = mlir::stablehlo::Compare(
-      rows, cols, mlir::stablehlo::ComparisonDirection::EQ);
-
-  return mlir::stablehlo::ConvertElementType(is_diagonal, element_type);
 }
 
 Dimensions ConcatBatchAndMatrixDims(llvm::ArrayRef<int64_t> batch_dims,

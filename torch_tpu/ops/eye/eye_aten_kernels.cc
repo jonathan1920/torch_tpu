@@ -20,41 +20,22 @@
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "ATen/core/TensorBody.h"
 #include "c10/core/SymInt.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/ops/eye/eye_lib.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
-#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 
 namespace torch_tpu {
 namespace {
-absl::StatusOr<mlir::MlirOp> BuildEyeMShlo(mlir::MlirBuilder& builder,
-                                           const int64_t n, const int64_t m,
-                                           mlir::ElementType element_type) {
-  auto iota_type =
-      mlir::RankedTensorType::get({n, m}, builder.getOpBuilder().getI32Type());
-
-  auto iota_row = mlir::stablehlo::Iota(builder, iota_type, 0);
-  auto iota_col = mlir::stablehlo::Iota(builder, iota_type, 1);
-
-  // Compare iota results for equality
-  auto compare_op = mlir::stablehlo::Compare(
-      iota_row, iota_col, mlir::stablehlo::ComparisonDirection::EQ);
-
-  // Convert boolean(i1) to the element type
-  return mlir::stablehlo::ConvertElementType(compare_op, element_type);
-}
 
 absl::StatusOr<MlirNullaryOpBuilder> GetEyeOpBuilder(
     const int64_t n, const int64_t m, const c10::ScalarType output_dtype) {
@@ -63,7 +44,7 @@ absl::StatusOr<MlirNullaryOpBuilder> GetEyeOpBuilder(
 
   return [n, m, element_type](
              mlir::MlirBuilder& builder) -> absl::StatusOr<mlir::MlirOp> {
-    return BuildEyeMShlo(builder, n, m, element_type);
+    return BuildEyeShlo(builder, element_type, n, m);
   };
 }
 }  // namespace
