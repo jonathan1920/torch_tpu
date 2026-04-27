@@ -91,10 +91,10 @@ torch_tpu_cc_library(
     srcs = ["shape.cc"],
     hdrs = ["shape.h"],
     deps = [
-        ":aten_utils",
         ":dimension_types",
         ":dtype",
         ":error_utils",
+        ":utils",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status:statusor",
         "@stablehlo//:attr_type_builder_util",
@@ -560,12 +560,16 @@ torch_tpu_cc_library(
     hdrs = ["utils.h"],
     deps = [
         ":dimension_types",
+        "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
+        "//shims/torch/c10/util:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -589,19 +593,14 @@ torch_tpu_cc_library(
     srcs = ["aten_utils.cc"],
     hdrs = ["aten_utils.h"],
     deps = [
-        ":dimension_types",
         ":dtype",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
-        "//shims/torch/c10/util:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/eager:device_types",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Support",
         "@stablehlo//:attr_type_builder_util",
     ],
 )

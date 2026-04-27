@@ -24,8 +24,13 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "ATen/core/ATen_fwd.h"
+#include "c10/util/DimVector.h"
 #include "torch/headeronly/util/complex.h"
 #include "torch_tpu/common/dimension_types.h"
 
@@ -33,6 +38,28 @@
 #define TT_IS_INTERNAL_TORCH_TPU 0
 
 namespace torch_tpu {
+
+// Returns a copy of the array of integers.
+[[nodiscard]] inline SmallInt64Vector CopyIntVector(at::IntArrayRef ints) {
+  return SmallInt64Vector(ints.begin(), ints.end());
+}
+[[nodiscard]] inline SmallInt64Vector CopyIntVector(
+    const c10::DimVector& ints) {
+  return SmallInt64Vector(ints.begin(), ints.end());
+}
+[[nodiscard]] inline SmallInt64Vector CopyIntVector(
+    absl::Span<const int64_t> ints) {
+  return SmallInt64Vector(ints.begin(), ints.end());
+}
+[[nodiscard]] inline SmallInt64Vector CopyIntVector(
+    llvm::ArrayRef<int64_t> ints) {
+  return SmallInt64Vector(ints.begin(), ints.end());
+}
+[[nodiscard]] inline SmallInt64Vector CopyIntVector(
+    const std::vector<int64_t>& ints  // INT_VEC_OK
+) {
+  return SmallInt64Vector(ints.begin(), ints.end());
+}
 
 // Returns a string representation of the given value that can be losslessly
 // converted back to the original value. Use this when computing the computation
