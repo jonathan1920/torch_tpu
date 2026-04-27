@@ -23,6 +23,26 @@
 
 namespace torch_tpu {
 
+// TorchTpuOptimizationBarrier is a C++ kernel implementation for the custom
+// PyTorch op torch_tpu.optimization_barrier. This operation wraps
+// stablehlo.optimization_barrier, which serves as a barrier to prevent
+// compiler optimizations, such as Common Subexpression Elimination (CSE),
+// across it. See https://openxla.org/stablehlo/spec#optimization_barrier for
+// additional details.
+//
+// Its primary use case is within the torch_tpu library to control
+// optimizations like preventing CSE when activation checkpointing is enabled.
+//
+// This function is intended for internal use by the torch_tpu library and is
+// not meant to be called directly by end-users.
+//
+// Parameters:
+//   self: A list of input tensors.
+//
+// Returns:
+//   A vector of tensors, which are the result of the optimization barrier
+//   operation. The output tensors are semantically equivalent to the input
+//   tensors.
 std::vector<at::Tensor> TorchTpuOptimizationBarrier(at::TensorList self);
 
 }  // namespace torch_tpu
