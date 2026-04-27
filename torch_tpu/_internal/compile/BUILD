@@ -22,6 +22,18 @@ package(
 )
 
 pytype_library(
+    name = "compiler",
+    srcs = ["compiler.py"],
+    deps = [
+        ":tpu_torch_compile",
+        "//shims/absl_py/logging",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile/fx_passes:mark_embedded_constants",
+        "//torch_tpu/_internal/export",
+    ],
+)
+
+pytype_library(
     name = "tpu_backend",
     srcs = [
         "__init__.py",
