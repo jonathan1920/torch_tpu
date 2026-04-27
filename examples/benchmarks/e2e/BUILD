@@ -106,7 +106,10 @@ pytype_strict_library(
     deps = [
         ":benchmark_utils",
         ":performance_utils",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
         "//shims/absl_py/testing:parameterized",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
 )
 

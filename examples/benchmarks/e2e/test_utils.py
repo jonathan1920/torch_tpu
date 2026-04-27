@@ -16,11 +16,23 @@
 
 import dataclasses
 import os
+import queue
+import sys
 from typing import Any, Sequence
 
+from absl import flags
+from absl import logging
 from absl.testing import parameterized
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import performance_utils
+
+from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
+
+USE_SUBPROCESS = flags.DEFINE_bool(
+    "torch_tpu_internal_use_subprocess_for_benchmarks",
+    False,
+    "Whether to run each benchmark in a separate subprocess for isolation.",
+)
 
 # CUDA only has EAGER and COMPILED run modes. Other run modes are applicable to
 # TPU only.
@@ -37,6 +49,25 @@ def get_base_test_name(
   if not microbenchmark_name:
     return test_method_name
   return test_method_name.removesuffix(f"_{microbenchmark_name}")
+
+
+def _run_benchmark_redirected(q: queue.Queue, **kwargs):
+  class QueueWriter:
+
+    def __init__(self, q):
+      self.q = q
+
+    def write(self, s):
+      if s:
+        self.q.put(s)
+
+    def flush(self):
+      pass
+
+  qw = QueueWriter(q)
+  sys.stdout = qw
+  sys.stderr = qw
+  performance_utils.run_benchmark(**kwargs)
 
 
 class BenchmarkTest(parameterized.TestCase):
@@ -94,12 +125,40 @@ class BenchmarkTest(parameterized.TestCase):
         self._testMethodName, microbenchmark_name
     )
 
-    performance_utils.run_benchmark(
-        config=config,
-        test_method_name=base_test_name,
-        benchmark_name=benchmark_name,
-        microbenchmark_name=microbenchmark_name,
-    )
+    if USE_SUBPROCESS.value:
+      logging.info("Running benchmark in a subprocess for isolation.")
+      ctx = g3_multiprocessing.get_context(g3_multiprocessing.ABSL_SPAWN)
+      q = ctx.Queue()
+      p = ctx.Process(
+          target=_run_benchmark_redirected,
+          args=(q,),
+          kwargs=dict(
+              config=config,
+              test_method_name=base_test_name,
+              benchmark_name=benchmark_name,
+              microbenchmark_name=microbenchmark_name,
+          ),
+      )
+      p.start()
+
+      while p.is_alive() or not q.empty():
+        try:
+          output = q.get(timeout=0.1)
+          sys.stderr.write(output)
+          sys.stderr.flush()
+        except queue.Empty:
+          continue
+
+      p.join()
+      if p.exitcode != 0:
+        self.fail(f"Benchmark subprocess failed with exit code {p.exitcode}")
+    else:
+      performance_utils.run_benchmark(
+          config=config,
+          test_method_name=base_test_name,
+          benchmark_name=benchmark_name,
+          microbenchmark_name=microbenchmark_name,
+      )
 
 
 def get_microbenchmark_name(config_dataclass) -> str:

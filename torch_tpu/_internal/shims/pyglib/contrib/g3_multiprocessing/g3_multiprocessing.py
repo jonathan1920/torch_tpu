@@ -17,6 +17,7 @@
 See internal version of multiprocessing_setup
 """
 
+import multiprocessing
 from absl import app
 
 
@@ -26,3 +27,16 @@ def handle_main(main, *args, **kwargs):
 
 def handle_test_main(main, *args, **kwargs):
   return main(*args, **kwargs)
+
+
+# g3_multiprocessing constants
+ABSL_SPAWN = "spawn"
+ABSL_FORKSERVER = "forkserver"
+
+
+def get_context(method=None):
+  if method == ABSL_SPAWN:
+    method = "spawn"
+  elif method == ABSL_FORKSERVER:
+    method = "forkserver"
+  return multiprocessing.get_context(method)
