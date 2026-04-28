@@ -1,4 +1,3 @@
-#include "torch_tpu/eager/traversal.h"
 /*
  * Copyright 2026 Google LLC
  *
@@ -19,6 +18,8 @@
 #define TORCH_TPU_EAGER_PREVENT_GRAPH_SPLITS_H_
 
 #include "absl/status/statusor.h"
+#include "torch_tpu/eager/traversal.h"
+
 namespace torch_tpu {
 
 // TODO(b/498334411): make this logic safe in distributed code
