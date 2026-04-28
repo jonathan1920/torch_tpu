@@ -527,14 +527,55 @@ class FunctionTest(absltest.TestCase):
     compiled_fn = backend._compile_graph_module(gm, [x])
 
     # Run before pickle
-    result_before = compiled_fn(x)  # pylint: disable=unused-variable
+    result_before = compiled_fn([x])  # pylint: disable=unused-variable
 
     # Pickle roundtrip
     data = pickle.dumps(compiled_fn)
     restored = pickle.loads(data)
 
-    result = restored(x)
+    result = restored([x])
     utils.assert_close(result[0].cpu(), x * 3 + 1)
+
+
+  def test_executable_boxed_calling_convention(self):
+    """Test that _TorchTpuCompiledExecutable uses boxed calling convention."""
+
+    def add_mul(x, y):
+      return x + y, x * y
+
+    x = torch.randn(4, 4).to(api.tpu_device())
+    y = torch.randn(4, 4).to(api.tpu_device())
+
+    backend = compile_lib.TpuBackend()
+    gm = torch.fx.symbolic_trace(add_mul)
+    executable = backend._compile_graph_module(gm, [x, y])
+
+    expected_sum = (x + y).cpu()
+    expected_prod = (x * y).cpu()
+
+    result = executable([x, y])
+    utils.assert_close(result[0].cpu(), expected_sum)
+    utils.assert_close(result[1].cpu(), expected_prod)
+
+  def test_executable_boxed_single_input(self):
+    """Test boxed calling convention with a single tensor input."""
+
+    class ScaleModel(torch.nn.Module):
+
+      def forward(self, x):
+        return (x * 3 + 1,)
+
+    model = ScaleModel().to(api.tpu_device())
+    x = torch.randn(4, 8).to(api.tpu_device())
+    expected = (x * 3 + 1).cpu()
+
+    backend = compile_lib.TpuBackend()
+    gm = torch.fx.symbolic_trace(model)
+    executable = backend._compile_graph_module(gm, [x])
+
+    result = executable([x])
+    utils.assert_close(result[0].cpu(), expected)
+
 
 
 class ModuleTest(absltest.TestCase):

@@ -222,7 +222,7 @@ class _DynamicTpuCompiledExecutable:
     if not args:
       # If no args are passed, we assume there is no dynamic shape and we can
       # directly execute the model executable.
-      return self.model_executable(*args)
+      return self.model_executable(list(args))
 
     # Compile and run pad executable to get statically padded tensors
     # and runtime size tensors
@@ -243,7 +243,7 @@ class _DynamicTpuCompiledExecutable:
     )
 
     # Run model executable with pads, sizes, and explicit output shapes
-    return self.model_executable(*pad_outputs, output_shapes=output_shapes)
+    return self.model_executable(list(pad_outputs), output_shapes=output_shapes)
 
 
 class DynamicCompiler:
