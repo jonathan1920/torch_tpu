@@ -32,7 +32,6 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
-#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -83,9 +82,11 @@ std::tuple<at::Tensor, at::Tensor> AtenDropout(const at::Tensor& input,
                             std::nullopt, std::nullopt, std::nullopt)};
     }
 
+    auto gen = at::get_generator_or_default<DeviceGeneratorImpl>(
+        std::nullopt, GetDefaultDeviceGenerator());
+
     // Retrieve the rng_state tensor from the default device generator.
-    TT_ASSIGN_OR_THROW(at::Tensor rng_input_state,
-                       GetDeviceRngState(std::nullopt));
+    at::Tensor rng_input_state = gen->DeviceStateTensor();
 
     TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
                        ConvertTo<mlir::ElementType>(input.scalar_type()));
@@ -100,8 +101,7 @@ std::tuple<at::Tensor, at::Tensor> AtenDropout(const at::Tensor& input,
                            .op_param_cache_keys = std::move(param_keys)})));
 
     auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
-    TT_THROW_IF_ERROR(
-        SetDeviceRngState(/*generator=*/std::nullopt, rng_output_state));
+    TT_THROW_IF_ERROR(gen->SetDeviceStateTensor(rng_output_state));
 
     return {MakeTensor(std::move(output_buf)), MakeTensor(std::move(mask_buf))};
   });

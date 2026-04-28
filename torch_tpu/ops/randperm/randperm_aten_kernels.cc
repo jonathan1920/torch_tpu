@@ -23,6 +23,7 @@
 #include "absl/status/statusor.h"
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
+#include "ATen/core/Generator.h"
 #include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -101,9 +102,12 @@ at::Tensor& AtenRandpermGeneratorOut(c10::SymInt n,
     TT_ASSIGN_OR_THROW(const auto output_dtype,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));
 
+    auto gen = at::get_generator_or_default<DeviceGeneratorImpl>(
+        generator, GetDefaultDeviceGenerator());
+
     // Query the current RNG state and advance it.
     TT_ASSIGN_OR_THROW(at::Tensor rng_input_state,
-                       GetAndAdvanceDeviceRngState(generator, n_int, 64));
+                       gen->GetAndAdvanceDeviceStateTensor(n_int, 64));
 
     // Dispatch the actual randperm.
     auto randperm_op_builder =

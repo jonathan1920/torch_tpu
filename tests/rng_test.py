@@ -131,6 +131,48 @@ class RngTest(absltest.TestCase):
       self.assertEqual(state.dtype, torch.uint8)
       self.assertEqual(state.shape, (16,))
 
+  def test_generator_set_state_in_fake_tensor_mode(self):
+    device = api.tpu_device()
+    g = torch.Generator(device=device)
+    g.manual_seed(42)
+    state = g.get_state()
+    with fake_tensor.FakeTensorMode(allow_non_fake_inputs=False):
+      g.set_state(state)
+      state2 = g.get_state()
+      self.assertEqual(state2.dtype, torch.uint8)
+      self.assertEqual(state2.shape, (16,))
+
+  def test_generator_graphsafe_get_set_state(self):
+    device = api.tpu_device()
+    g = torch.Generator(device=device)
+    g.manual_seed(42)
+
+    g2 = g.graphsafe_get_state()
+
+    # Generating random numbers with g should change the state of both g and g2.
+    torch.randn(10, generator=g, device=device)
+
+    # Since g2 shares the state intrusive pointer, its state matches g's new
+    # state.
+    self.assertTrue(torch.equal(g.get_state(), g2.get_state()))
+
+    # Now set the state of g to another generator's state
+    g3 = torch.Generator(device=device)
+    g3.manual_seed(123)
+
+    g.graphsafe_set_state(g3)
+
+    # g's state is now changed to g3's state
+    self.assertTrue(torch.equal(g.get_state(), g3.get_state()))
+
+  def test_generator_graphsafe_get_state_in_fake_tensor_mode(self):
+    device = api.tpu_device()
+    with fake_tensor.FakeTensorMode(allow_non_fake_inputs=False):
+      g = torch.Generator(device=device)
+      g.manual_seed(42)
+      g2 = g.graphsafe_get_state()
+      self.assertIsNotNone(g2)
+
 
 if __name__ == "__main__":
   absltest.main()

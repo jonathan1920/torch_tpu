@@ -32,6 +32,23 @@
 
 namespace torch_tpu {
 
+// Holds the device-resident state of the generator (seed and offset) as a
+// tensor. This is the TPU equivalent of PyTorch's CUDAGeneratorState,
+// encapsulating the current generation state of the device.
+struct DeviceGeneratorState : public c10::intrusive_ptr_target {
+  DeviceGeneratorState() = default;
+  explicit DeviceGeneratorState(at::Tensor device_state_tensor)
+      : device_state_tensor(std::move(device_state_tensor)) {}
+
+  c10::intrusive_ptr<DeviceGeneratorState> clone() const {
+    return c10::make_intrusive<DeviceGeneratorState>(
+        device_state_tensor.clone());
+  }
+
+  // 1D uint64 tensor of 2 elements: {seed, offset}
+  at::Tensor device_state_tensor;  // UNINITIALIZED_TENSOR_OK
+};
+
 // A wrapper on a tensor of two integers, representing the current state (seed
 // and offset) of the generator. Given these, we can deterministically generate
 // random bits. Kernels that require random bits, will use this tensor as an
@@ -40,6 +57,8 @@ class DeviceGeneratorImpl : public c10::GeneratorImpl {
  public:
   DeviceGeneratorImpl(c10::DeviceIndex device_index = -1);
   DeviceGeneratorImpl(c10::DeviceIndex device_index, at::Tensor rng_state);
+  DeviceGeneratorImpl(c10::DeviceIndex device_index,
+                      c10::intrusive_ptr<DeviceGeneratorState> state);
 
   // This class is neither copyable nor movable.
   DeviceGeneratorImpl(const DeviceGeneratorImpl&) = delete;
@@ -60,17 +79,24 @@ class DeviceGeneratorImpl : public c10::GeneratorImpl {
       const c10::intrusive_ptr<c10::GeneratorImpl>& new_state) override;
   c10::intrusive_ptr<c10::GeneratorImpl> graphsafe_get_state() const override;
 
-  // Validates the shape, dtype, and device of the RNG state tensor.
-  absl::Status CheckDeviceRngState(const at::Tensor& rng_state) const;
-
   static c10::DeviceType device_type();
-  at::Tensor DeviceRngState() const;
+
+  at::Tensor DeviceStateTensor() const;
+  absl::Status SetDeviceStateTensor(at::Tensor device_state_tensor);
+  // Validates the shape, dtype, and device of the RNG state tensor.
+  absl::Status CheckDeviceStateTensor(const at::Tensor& rng_state) const;
+
+  // Returns the current device-resident rng_state tensor. This also
+  // advances the generator's state by the amount specified
+  // (num_elements * bit_width).
+  absl::StatusOr<at::Tensor> GetAndAdvanceDeviceStateTensor(
+      int64_t num_elements, int64_t bit_width = 64);
 
  private:
   DeviceGeneratorImpl* clone_impl() const override;
 
   // 1D uint64 tensor of 2 elements: {seed, offset}
-  at::Tensor device_rng_state_ui64_;  // UNINITIALIZED_TENSOR_OK
+  c10::intrusive_ptr<DeviceGeneratorState> state_;
 };
 
 // Convenience functions.
@@ -78,24 +104,6 @@ class DeviceGeneratorImpl : public c10::GeneratorImpl {
 // Returns the default generator for the given device index. If idx is -1,
 // returns the default generator for the current device.
 at::Generator& GetDefaultDeviceGenerator(c10::DeviceIndex idx = -1);
-
-// Returns the device-resident rng_state tensor from the given generator,
-// or from the default generator if not specified.
-absl::StatusOr<at::Tensor> GetDeviceRngState(
-    c10::optional<at::Generator> generator);
-
-// Returns the current device-resident rng_state tensor from the given
-// generator, or from the default generator if not specified. This also
-// advances the generator's state by the amount specified
-// (num_elements * bit_width).
-absl::StatusOr<at::Tensor> GetAndAdvanceDeviceRngState(
-    c10::optional<at::Generator> generator, int64_t num_elements,
-    int64_t bit_width = 64);
-
-// Updates the internal device-resident rng_state tensor for the given
-// generator Using a device-to-device copy.
-absl::Status SetDeviceRngState(c10::optional<at::Generator> generator,
-                               const at::Tensor& rng_state);
 
 // Creates a new generator for the given device index. If idx is -1, creates a
 // new generator for the current device.

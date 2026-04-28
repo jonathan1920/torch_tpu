@@ -36,12 +36,12 @@
 #include "c10/util/Optional.h"
 #include "torch/headeronly/core/Dispatch_v2.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -120,11 +120,14 @@ absl::Status Random(at::Tensor& self, c10::optional<at::Generator> generator,
     TT_ASSIGN_OR_RETURN(to, ComputeToValue(self.scalar_type()));
   }
   TT_RETURN_IF_ERROR(FromToInRange(from, to, self.scalar_type()));
-  // Since we need to generate random bits, we query for the rng state tensor.
-  TT_ASSIGN_OR_RETURN(at::Tensor rng_input_state, GetDeviceRngState(generator));
-
   TT_ASSIGN_OR_RETURN(mlir::ElementType output_dtype,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
+  auto gen = at::get_generator_or_default<DeviceGeneratorImpl>(
+      generator, GetDefaultDeviceGenerator());
+
+  // Since we need to generate random bits, we query for the rng state tensor.
+  at::Tensor rng_input_state = gen->DeviceStateTensor();
+
   auto dims = CopyIntVector(self.sizes());
   TT_ASSIGN_OR_RETURN(
       (auto [rng_output_state_buf, output_buf]),
@@ -138,7 +141,7 @@ absl::Status Random(at::Tensor& self, c10::optional<at::Generator> generator,
   // we give it back to the generator, so that it can be used by other ops in
   // the same graph.
   auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
-  TT_RETURN_IF_ERROR(SetDeviceRngState(generator, rng_output_state));
+  TT_RETURN_IF_ERROR(gen->SetDeviceStateTensor(rng_output_state));
   return AssignBufferToAtTensor(std::move(output_buf), self);
 }
 

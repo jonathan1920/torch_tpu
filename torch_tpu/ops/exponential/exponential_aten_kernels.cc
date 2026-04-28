@@ -23,11 +23,12 @@
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "ATen/core/ATen_fwd.h"
-#include "torch_tpu/common/aten_utils.h"
+#include "ATen/core/Generator.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -94,9 +95,11 @@ at::Tensor& AtenExponential_(at::Tensor& self, double lambd,
         << "expected input tensor dtype to be a floating-point real type, got "
         << torch_tpu::ToString(self.scalar_type());
 
+    auto gen = at::get_generator_or_default<DeviceGeneratorImpl>(
+        generator, GetDefaultDeviceGenerator());
+
     // Since we need to generate random bits, we query for the rng state tensor.
-    TT_ASSIGN_OR_THROW(at::Tensor rng_input_state,
-                       GetDeviceRngState(generator));
+    at::Tensor rng_input_state = gen->DeviceStateTensor();
 
     TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
                        ConvertTo<mlir::ElementType>(self.scalar_type()));
@@ -113,7 +116,7 @@ at::Tensor& AtenExponential_(at::Tensor& self, double lambd,
     // we give it back to the generator, so that it can be used by other ops in
     // the same graph.
     auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
-    TT_THROW_IF_ERROR(SetDeviceRngState(generator, rng_output_state));
+    TT_THROW_IF_ERROR(gen->SetDeviceStateTensor(rng_output_state));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), self));
     return self;
   });

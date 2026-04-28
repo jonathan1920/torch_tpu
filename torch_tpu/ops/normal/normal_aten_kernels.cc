@@ -27,6 +27,7 @@
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
+#include "ATen/core/Generator.h"
 #include "ATen/native/Resize.h"
 #include "ATen/ops/broadcast_tensors.h"
 #include "ATen/ops/scalar_tensor.h"
@@ -180,8 +181,12 @@ absl::StatusOr<DeviceBufferRef> NormalLike(
 
   TT_ASSIGN_OR_RETURN(auto mlir_type,
                       ConvertTo<mlir::ElementType>(self_real.scalar_type()));
+
+  auto gen = at::get_generator_or_default<DeviceGeneratorImpl>(
+      generator, GetDefaultDeviceGenerator());
+
   // Retrieve the rng_state tensor from the generator.
-  TT_ASSIGN_OR_RETURN(at::Tensor rng_input_state, GetDeviceRngState(generator));
+  at::Tensor rng_input_state = gen->DeviceStateTensor();
 
   TT_ASSIGN_OR_RETURN(auto builder, GetNormalFunctional());
   TT_ASSIGN_OR_RETURN(
@@ -197,7 +202,7 @@ absl::StatusOr<DeviceBufferRef> NormalLike(
   // give it back to the generator, so that it can be used by other ops in the
   // same graph.
   auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
-  TT_RETURN_IF_ERROR(SetDeviceRngState(generator, rng_output_state));
+  TT_RETURN_IF_ERROR(gen->SetDeviceStateTensor(rng_output_state));
   return output_buf;
 }
 

@@ -54,7 +54,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> TorchTpuStatelessDropout(
         at::Tensor rng_state_u64 = rng_state.view(at::kUInt64);
         auto gen_impl = at::get_generator_or_default<DeviceGeneratorImpl>(
             std::nullopt, GetDefaultDeviceGenerator(input.get_device()));
-        TT_THROW_IF_ERROR(gen_impl->CheckDeviceRngState(rng_state_u64));
+        TT_THROW_IF_ERROR(gen_impl->CheckDeviceStateTensor(rng_state_u64));
 
         if (!train.has_value() || p <= 0.0) {
           return {rng_state, input,
