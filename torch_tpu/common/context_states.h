@@ -45,6 +45,9 @@ enum class TracebackMode {
 // The state of the `enable_tracebacks` context manager.
 using EnableTracebacksContextState = std::optional<TracebackMode>;
 
+// The state of the `spmd_safe` context manager.
+using IsSpmdSafeContextState = bool;
+
 // Maps an XLA compiler option name to its string value. We pick this
 // representation for easy interop with Python.
 using CompilerOptionOverrides = std::map<std::string, std::string>;

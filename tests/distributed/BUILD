@@ -550,4 +550,42 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "spmd_util_test",
+    srcs = ["spmd_util_test.py"],
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/distributed:spmd_util",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "spmd_util_collective_test",
+    srcs = ["spmd_util_collective_test.py"],
+    tags = if_oss(
+        # In OSS, we have to run the test exclusively to avoid the
+        # "TPU initialization failed ... Device or resource busy" error.
+        ["exclusive"],
+        [],
+    ) + [
+        "requires-tpu-v5lite:8",
+    ],
+    deps = [
+        ":distributed_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/distributed:spmd_util",
+        "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/execution_mode",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "//torch_tpu/_internal/sync",
+    ],
+)
+
 torch_tpu_package_end()

@@ -99,6 +99,7 @@ genrule(
         "//torch_tpu/_internal/compile/dynamic:sym_shape_manager",
         "//torch_tpu/_internal/compile/dynamic:symbol_bounds",
         "//torch_tpu/_internal/compile/dynamic:graph_transformations",
+        "//torch_tpu/_internal/distributed:spmd_util",
         "//torch_tpu/_internal/utils:test_fixtures",
     ] + select({
         "//ci/wheel:use_local_torch": [

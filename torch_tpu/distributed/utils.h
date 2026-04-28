@@ -43,6 +43,16 @@ mlir::DenseIntElementsAttr BuildReplicaGroupsAttr(
 mlir::stablehlo::ChannelHandleAttr BuildChannelHandleAttr(
     mlir::MlirBuilder& builder, int handle, int type);
 
+// Enter SPMD safe region by setting the top of the python thread stack
+// context to true.
+void EnterSpmdSafeRegion();
+
+// Exit the SPMD safe region by popping the top of the python thread stack.
+void ExitSpmdSafeRegion();
+
+// Returns true if the current execution is within a SPMD safe region.
+[[nodiscard]] bool IsSpmdSafe();
+
 absl::Status ValidateReductionOp(c10d::ReduceOp reduce_op,
                                  c10::ScalarType scalar_type);
 

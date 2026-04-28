@@ -289,6 +289,9 @@ absl::Status CheckAllToAllShapeConsistency(
 
 // Returns the OpSplitMode to use for collectives.
 OpSplitMode GetCollectiveSplitMode() {
+  if (IsSpmdSafe()) {
+    return OpSplitMode::kNone;
+  }
   if (absl::GetFlag(FLAGS_torch_tpu_internal_materialize_collective_tensors)) {
     return OpSplitMode::kSplitBoth;
   }

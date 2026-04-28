@@ -32,6 +32,18 @@ torch_tpu_py_library(
     ],
 )
 
+torch_tpu_py_library(
+    name = "spmd_util",
+    srcs = [
+        "spmd_util.py",
+    ],
+    deps = [
+        ":tpu_distributed",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/sync",
+    ],
+)
+
 # This library is not used directly, but is needed for go/cclean. Without
 # this rule, cclean complains that tpu_distributed.cc has no rule depending on it.
 torch_tpu_cc_library(
@@ -43,6 +55,7 @@ torch_tpu_cc_library(
         "//shims/torch/c10/util:base_headers",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/distributed:process_group_tpu",
+        "//torch_tpu/distributed:utils",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:check",
@@ -61,6 +74,7 @@ pybind_extension(
         "//shims/torch/c10/util:base_headers",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/distributed:process_group_tpu",
+        "//torch_tpu/distributed:utils",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:check",

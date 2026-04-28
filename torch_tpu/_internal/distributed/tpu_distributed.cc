@@ -26,6 +26,7 @@
 #include "torch/csrc/utils/pybind.h"  // IWYU pragma: keep or multi_tpu_test fails
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/distributed/process_group_tpu.h"
+#include "torch_tpu/distributed/utils.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "pybind11/chrono.h"
 #include "pybind11/pybind11.h"
@@ -87,6 +88,11 @@ PYBIND11_MODULE(tpu_distributed, m) {
   m.def("global_device_id", &GetGlobalDeviceId);
   m.def("all_global_device_ids", &GetAllGlobalDeviceIds);
   m.def("device_debug_string", &DeviceDebugString);
+
+  // Expose this functions to allow entering and exiting the SPMD safe region
+  // from python
+  m.def("enter_spmd_safe_region", &EnterSpmdSafeRegion);
+  m.def("exit_spmd_safe_region", &ExitSpmdSafeRegion);
 }
 
 }  // namespace torch_tpu

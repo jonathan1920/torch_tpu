@@ -26,6 +26,8 @@
 #include "c10/core/ScalarType.h"
 #include "torch/csrc/distributed/c10d/Types.hpp"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/context_manager.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/distributed/types.h"
@@ -82,5 +84,11 @@ absl::Status ValidateReductionOp(c10d::ReduceOp reduce_op,
   }
   return absl::OkStatus();
 }
+
+void EnterSpmdSafeRegion() { PushContextState<IsSpmdSafeContextState>(true); }
+
+void ExitSpmdSafeRegion() { PopContextState<IsSpmdSafeContextState>(); }
+
+bool IsSpmdSafe() { return GetContextState<IsSpmdSafeContextState>(false); }
 
 }  // namespace torch_tpu
