@@ -14,9 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_EAGER_MATERIALIZE_NEW_H_
-#define TORCH_TPU_EAGER_MATERIALIZE_NEW_H_
-
+#ifndef TORCH_TPU_EXPERIMENTAL_EAGER_MATERIALIZE_NEW_H_
+#define TORCH_TPU_EXPERIMENTAL_EAGER_MATERIALIZE_NEW_H_
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -33,4 +32,4 @@ absl::Status BlockOnPendingMaterializations();
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_MATERIALIZE_H_
+#endif  // TORCH_TPU_EXPERIMENTAL_EAGER_MATERIALIZE_H_

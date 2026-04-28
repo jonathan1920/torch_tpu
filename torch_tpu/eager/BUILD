@@ -342,34 +342,6 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
-    name = "materialize_new",
-    srcs = ["materialize_new.cc"],
-    hdrs = ["materialize_new.h"],
-    deps = [
-        ":device_buffer",
-        ":eager_mode",
-        ":materialize_common",
-        ":traversal",
-        "//shims/torch:torch_headers",
-        "//torch_tpu/common:compilation",
-        "//torch_tpu/common:error_utils",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@tsl//tsl/profiler/lib:traceme",
-        "@xla//xla:xla_data_proto_cc",
-    ],
-)
-
-torch_tpu_cc_library(
     name = "materialize",
     srcs = [
         "materialize.cc",
@@ -381,7 +353,6 @@ torch_tpu_cc_library(
         ":device_buffer",
         ":eager_mode",
         ":materialize_common",
-        ":materialize_new",
         ":split_traversal",
         ":tensor_to_buffer",
         ":traversal",
@@ -391,6 +362,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:dynamism_utils",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:shape",
+        "//torch_tpu/experimental/eager:materialize_new",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
@@ -439,7 +411,6 @@ torch_tpu_cc_library(
         ":device_buffer",
         ":eager_mode",
         ":materialize",
-        ":materialize_new",
         ":tensor_to_buffer",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
@@ -455,6 +426,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:op_name_stack",
         "//torch_tpu/common:shape",
         "//torch_tpu/common:to_string",
+        "//torch_tpu/experimental/eager:materialize_new",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops/copy_from:cpu_to_tpu",
