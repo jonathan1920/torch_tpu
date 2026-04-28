@@ -25,5 +25,6 @@ def xla_repo():
         urls = [
             "https://github.com/openxla/xla/archive/{commit}.tar.gz".format(commit = XLA_COMMIT),
         ],
+        patches = ["//bazel/patches/xla:xla_bazel8.patch"],
         patch_args = ["-p1"],
     )

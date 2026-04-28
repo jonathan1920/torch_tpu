@@ -32,8 +32,22 @@
 TORCH_TPU_ACCELERATOR_COUNT=${TORCH_TPU_ACCELERATOR_COUNT:-8}
 TORCH_TPU_TESTS_PER_ACCELERATOR=${TORCH_TPU_TESTS_PER_ACCELERATOR:-1}
 
-TEST_BINARY="$(rlocation $TEST_WORKSPACE/${1#./})"
-shift
+# rlocation is needed to find the test binary when running with bazel 8+
+set -uo pipefail
+f=bazel_tools/tools/bash/runfiles/runfiles.bash
+# Source the runfiles library. We use a flexible grep to handle both WORKSPACE and Bzlmod prefixes.
+source "${RUNFILES_DIR:-/dev/null}/$f" 2>/dev/null || \
+  source "$(grep -m1 "$f " "${RUNFILES_MANIFEST_FILE:-/dev/null}" | cut -f2- -d' ')" 2>/dev/null || \
+  source "$0.runfiles/$f" 2>/dev/null || true
+
+if command -v rlocation >/dev/null; then
+  TEST_BINARY="$(rlocation "${TEST_WORKSPACE:-_main}/${1#./}")"
+else
+  TEST_BINARY="$1"
+fi
+shift; set +uo pipefail
+
+
 # *******************************************************************
 
 mkdir -p /var/lock

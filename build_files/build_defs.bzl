@@ -457,6 +457,10 @@ def torch_tpu_cc_test(
         # tests. This can happen if the test's link options are not set correctly.
         args = args + ["--gunit_fail_if_no_test_linked"]
     tags = tags or []
+    data = kwargs.pop("data", [])
+    if is_oss():
+        data.append("@bazel_tools//tools/bash/runfiles")
+    kwargs["data"] = data
 
     result = _check_and_adjust_test_tags(
         name = name,
@@ -610,8 +614,11 @@ def torch_tpu_py_test(
     if shuffle_tests:
         # Shuffle test cases to avoid test ordering dependencies.
         args = args + ["--test_randomize_ordering_seed=random"]
-
     tags = tags or []
+    data = kwargs.pop("data", [])
+    if is_oss():
+        data.append("@bazel_tools//tools/bash/runfiles")
+    kwargs["data"] = data
     result = _check_and_adjust_test_tags(
         name = name,
         is_oss = is_oss(),
