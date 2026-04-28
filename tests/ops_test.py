@@ -1949,6 +1949,7 @@ class TestOps(TorchTpuTestBase):
   def test_ctc_loss(self):
     self.do_test_op(
         "nn.functional.ctc_loss",
+        # TODO: fix the error _ctc_loss_backward is unimplemented.
         check_grad=False,
         # Excluded because PyTorch's sample generation (via log_softmax on CPU)
         # does not support integral, bfloat16, float16, and complex dtypes.
@@ -2299,6 +2300,8 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_erfc(self):
+    # TODO: fix strict accuracy failure (observed rel diff ~ 1.05e-5,
+    # abs diff ~ 2.86e-6).
     self.do_test_op("_foreach_erfc", check_grad=False)
 
   def test_foreach_exp(self):
@@ -2363,6 +2366,8 @@ class TestOps(TorchTpuTestBase):
     # TODO: look into making this STRICT.
     self.do_test_op(
         "_foreach_log2",
+        # TODO: fix accuracy failure (observed abs diff ~ 0.125,
+        # rel diff ~ 0.0106).
         check_grad=False,
         check_value=CheckValueMode.LOOSE,
     )
@@ -2450,6 +2455,8 @@ class TestOps(TorchTpuTestBase):
     self.skipTest("_foreach_pow is not ready yet: dtype issues.")
 
   def test_foreach_reciprocal(self):
+    # TODO: fix accuracy failure (observed abs diff ~ 3.05e-5,
+    # rel diff ~ 2.3e-7).
     self.do_test_op("_foreach_reciprocal", check_grad=False)
 
   def test_foreach_round(self):
@@ -2458,6 +2465,8 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_rsqrt(self):
     self.do_test_op(
         "_foreach_rsqrt",
+        # TODO: fix accuracy failure (observed abs diff ~ 1.37e-4,
+        # rel diff ~ 2.09e-6).
         check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
@@ -2487,6 +2496,8 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_sqrt(self):
+    # TODO: fix accuracy failure (observed abs diff ~ 2.44e-4,
+    # rel diff ~ 9.76e-4).
     self.do_test_op("_foreach_sqrt", check_grad=False)
 
   def test_foreach_sub(self):
@@ -2547,6 +2558,7 @@ class TestOps(TorchTpuTestBase):
   def test_grid_sampler(self):
     self.do_test_op(
         "nn.functional.grid_sample",
+        # TODO: fix the error aten::grid_sampler_2d_backward is unimplemented.
         check_grad=False,
         check_value=CheckValueMode.LOOSE,
         exclude_dtypes={
@@ -2689,6 +2701,8 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_lu_factor_ex(self):
     self.do_test_op(
         "linalg.lu_factor_ex",
+        # TODO: fix accuracy failure (observed abs diff ~ 4.06e-3,
+        # rel diff ~ 2.87e-3).
         check_grad=False,
         check_value=CheckValueMode.LOOSE,
         skip_if=_linalg_lu_without_pivot_gpu,
@@ -2697,6 +2711,8 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_triangular_solve(self):
     self.do_test_op(
         "linalg.solve_triangular",
+        # TODO: fix accuracy failure. Suggestions: rtol >= 4.8e-3
+        # or atol >= 4.5e-3.
         check_grad=False,
         # bool triggers an error in the sample generation code
         exclude_dtypes=(torch.bool,),
@@ -2706,7 +2722,6 @@ class TestOps(TorchTpuTestBase):
   def test_lu_unpack(self):
     self.do_test_op(
         "lu_unpack",
-        check_grad=False,
         exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
         check_value=CheckValueMode.LOOSE,
         # TODO(b/495521055): lu_unpack fails with complex64 with compile.
@@ -2719,7 +2734,6 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_lu_solve(self):
     self.do_test_op(
         "linalg.lu_solve",
-        check_grad=False,
         exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
         check_value=CheckValueMode.LOOSE,
         # TODO(b/495521055): linalg.lu_solve fails with complex64 with compile.
@@ -2732,6 +2746,8 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_solve_ex(self):
     self.do_test_op(
         "linalg.solve_ex",
+        # TODO: fix accuracy failure (observed abs diff ~ 0.058,
+        # rel diff ~ 0.0114).
         check_grad=False,
         exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
         check_value=CheckValueMode.LOOSE,
@@ -2745,6 +2761,8 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_lu_out(self):
     self.do_test_op(
         "linalg.lu",
+        # TODO: fix accuracy failure (observed abs diff ~ 4.31e-3,
+        # rel diff ~ 5.54e-3).
         check_grad=False,
         exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
         check_value=CheckValueMode.LOOSE,
@@ -2761,6 +2779,8 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_inv_ex_out(self):
     self.do_test_op(
         "linalg.inv",
+        # TODO: fix accuracy failure. Suggestions: rtol >= 1.1e-2
+        # or atol >= 7.0e-3.
         check_grad=False,
         exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
         check_value=CheckValueMode.LOOSE,
@@ -3054,6 +3074,8 @@ class TestOps(TorchTpuTestBase):
   def test_native_layer_norm(self):
     self.do_test_op(
         "native_layer_norm",
+        # TODO: fix accuracy failure (observed abs diff ~ 1.83e-3,
+        # rel diff ~ 0.365).
         check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
@@ -3275,7 +3297,6 @@ class TestOps(TorchTpuTestBase):
           # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
           # but on tpu it succeeds. Remove this once we fix bmm on tpu.
           exclude_dtypes=(torch.int64,),
-          check_grad=False,
       )
 
   # TODO: b/476147793 association of (inputs, outputs) pairs with the op name
@@ -3293,6 +3314,8 @@ class TestOps(TorchTpuTestBase):
           # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
           # but on tpu it succeeds. Remove this once we fix bmm on tpu.
           exclude_dtypes=(torch.int64,),
+          # TODO: fix accuracy failure (observed abs diff ~ 4.64,
+          # rel diff ~ 0.119).
           check_grad=False,
       )
 
@@ -3440,11 +3463,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_repeat(self):
-    self.do_test_op(
-        "repeat",
-        # TODO: fix the error that SumBackward0 returned an invalid gradient.
-        check_grad=False,
-    )
+    self.do_test_op("repeat")
 
   def test_replication_pad(self):
     # TODO: Check why this is failing with torch.bool.
@@ -3554,7 +3573,8 @@ class TestOps(TorchTpuTestBase):
   def test_softmax(self):
     self.do_test_op(
         "softmax",
-        # TODO: fix the error in softmax_backward_data() compilation.
+        # TODO: fix accuracy failure (observed abs diff ~ 1.63e-3,
+        # rel diff = 1.0).
         check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
