@@ -1,0 +1,171 @@
+module(
+    name = "torch_tpu",
+    version = "0.1.1",
+)
+
+# BCR dependencies
+bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_absl")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
+bazel_dep(name = "curl", version = "8.11.0")
+bazel_dep(name = "rules_cc", version = "0.2.9")
+bazel_dep(name = "rules_python", version = "1.8.5")
+bazel_dep(name = "rules_proto", version = "7.1.0")
+bazel_dep(name = "rules_license", version = "1.0.0")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "googletest", version = "1.15.2", repo_name = "com_google_googletest")
+bazel_dep(name = "grpc", version = "1.78.0", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "googleapis", version = "0.0.0-20240819-fe8ba054a")
+
+# BCR overrides
+
+single_version_override(
+    module_name = "curl",
+    patches = ["//bazel/patches/curl:remove_linker_script.patch"],
+)
+
+single_version_override(
+    module_name = "rules_python",
+    patch_strip = 1,
+    patches = [
+        "//bazel/patches/rules_python:rules_python_pip_version.patch",
+        "//bazel/patches/rules_python:rules_python_freethreaded.patch",
+        "//bazel/patches/rules_python:rules_python_versions.patch",
+        "//bazel/patches/rules_python:rules_python_scope.patch",
+    ],
+    version = "1.8.5",
+)
+
+single_version_override(
+    module_name = "grpc",
+    patch_strip = 1,
+    patches = ["//bazel/patches/grpc:grpc.patch"],
+    version = "1.78.0",
+)
+
+# TODO(ecalubaquib): Remove once googleapis is updated to a version compatible with current
+# rules_python. This will allow us to run bazel mod graph
+single_version_override(
+    module_name = "googleapis",
+    version = "0.0.0-20240819-fe8ba054a",
+)
+
+# Non-BCR or specific commit modules
+bazel_dep(name = "xla")
+bazel_dep(name = "rules_ml_toolchain")
+
+archive_override(
+    module_name = "xla",
+    integrity = "sha256-vFowe22DxrNXhlELvgVvG7JPwzyGYaUa6SeMC5mO18A=",
+    patch_strip = 1,
+    strip_prefix = "xla-704f71ae2f1103782243faec6cf8e1363e6a8bf3",
+    urls = ["https://github.com/openxla/xla/archive/704f71ae2f1103782243faec6cf8e1363e6a8bf3.tar.gz"],
+)
+
+archive_override(
+    module_name = "rules_ml_toolchain",
+    integrity = "sha256-m9RrxeBqVqkzWJe+Yw1LggxngoGqiDAlGMJQkhM4rSI=",
+    strip_prefix = "rules_ml_toolchain-40efd07eb8e6565e506562f36d7dc43cd83e5b32",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/40efd07eb8e6565e506562f36d7dc43cd83e5b32.tar.gz"],
+)
+
+archive_override(
+    module_name = "googletest",
+    integrity = "sha256-8lPKGgcmL4796DKOSyxol55A3fz8AB9w0dX2EsfeKXQ=",
+    strip_prefix = "googletest-28e9d1f26771c6517c3b4be10254887673c94018",
+    urls = ["https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c94018.zip"],
+)
+
+##############################################################
+# Dependencies defined in XLA via module extensions
+##############################################################
+
+### TSL
+tsl_extension = use_extension("@xla//third_party/extensions:tsl.bzl", "tsl_extension")
+use_repo(tsl_extension, "tsl")
+
+llvm = use_extension("@xla//third_party/extensions:llvm.bzl", "llvm_extension")
+use_repo(llvm, "llvm-project")
+
+### C++ dependencies
+# TODO: convert them to Bazel modules (bazel_dep).
+third_party = use_extension("@xla//third_party/extensions:third_party.bzl", "third_party_ext")
+use_repo(
+    third_party,
+    "dlpack",
+    "eigen_archive",
+    "gloo",
+    "nanobind",
+    "shardy",
+    "stablehlo",
+    "triton",
+)
+
+# Python extension
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    is_default = True,
+    python_version = "3.12",
+)
+use_repo(python, "python_3_12")
+
+# Pip extension
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    extra_hub_aliases = {
+        "torch": [
+            "torch_headers",
+            "torch_libs",
+            "libc10",
+            "libtorch_cpu",
+            "libtorch_python",
+            "libtorch",
+            "libshm",
+            "libtorch_global_deps",
+        ],
+    },
+    extra_pip_args = [
+        "--index-url",
+        "https://pypi.org/simple",
+        "--extra-index-url",
+        "https://download.pytorch.org/whl/cpu",
+    ],
+    hub_name = "torch_tpu_pypi",
+    python_version = "3.12",
+    requirements_lock = "//requirements:requirements.txt",
+    whl_modifications = {
+        "//bazel:torch_wheel.json": "torch",
+    },
+)
+
+# Expose the pip repositories using the names your BUILD files expect
+use_repo(
+    pip,
+    pypi = "torch_tpu_pypi",
+    pypi_libtpu = "torch_tpu_pypi_312_libtpu",
+    pypi_torch = "torch_tpu_pypi_312_torch",
+)
+
+# Custom repository rules
+torch_local_repo = use_repo_rule("//bazel:torch_local_repo.bzl", "torch_local_repo")
+
+torch_local_repo(
+    name = "local_torch",
+)
+
+torch_tpu_version_repo = use_repo_rule("//bazel:wheel_version.bzl", "torch_tpu_version_repo")
+
+torch_tpu_version_repo(
+    name = "torch_tpu_version",
+    pyproject_toml = "//:pyproject.toml",
+)
+
+# Load and run the custom extension
+torch_tpu_ext = use_extension("//bazel:extensions.bzl", "torch_tpu_deps_ext")
+
+# Expose the generated repository to your BUILD files
+use_repo(torch_tpu_ext, "torch_tpu_deps")
+
+### RBE
+rbe_config = use_extension("@xla//third_party/extensions:rbe_config.bzl", "rbe_config_ext")
+use_repo(rbe_config, "ml_build_config_platform")

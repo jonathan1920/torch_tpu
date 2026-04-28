@@ -50,6 +50,7 @@ def define_extra_torch_targets():
         "libc10",
         "libtorch_cpu",
         "libtorch_python",
+        "libshm",
     ]
 
     for lib_name in standard_libs:
@@ -57,3 +58,36 @@ def define_extra_torch_targets():
             name = lib_name,
             shared_library = "site-packages/torch/lib/{}.so".format(lib_name),
         )
+
+    cc_library(
+        name = "libtorch",
+        srcs = native.glob([
+            "site-packages/torch/lib/libtorch.so",
+            "site-packages/torch/lib/libtorch.dylib",
+        ]),
+        deps = [
+            ":libc10",
+            ":libtorch_cpu",
+            ":libshm",
+        ],
+        visibility = ["//visibility:public"],
+    )
+
+    cc_library(
+        name = "libtorch_global_deps",
+        deps = [
+            ":libc10",
+            ":libtorch_cpu",
+        ],
+        visibility = ["//visibility:public"],
+    )
+
+    cc_library(
+        name = "torch_libs",
+        deps = [
+            ":libtorch",
+            ":libtorch_python",
+            ":libtorch_global_deps",
+        ],
+        visibility = ["//visibility:public"],
+    )

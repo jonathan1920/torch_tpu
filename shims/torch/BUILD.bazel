@@ -79,7 +79,12 @@ cc_library(
         ],
         "//conditions:default": [
             "@pypi_torch//:libc10",
+            "@pypi_torch//:libshm",
+            "@pypi_torch//:libtorch",
             "@pypi_torch//:libtorch_cpu",
+            "@pypi_torch//:libtorch_global_deps",
+            "@pypi_torch//:libtorch_python",
+            "@rules_python//python/cc:current_py_cc_libs",
         ],
     }),
 )
@@ -94,6 +99,7 @@ cc_library(
         ],
         "//conditions:default": [
             "@pypi_torch//:libc10",
+            "@pypi_torch//:libtorch",
             "@pypi_torch//:libtorch_cpu",
         ],
     }),
@@ -129,6 +135,7 @@ cc_library(
             "@rules_python//python/cc:current_py_cc_libs",
         ],
         "//conditions:default": [
+            "@pypi//torch:torch_headers",
             "@pypi_torch//:libtorch_python",
             "@rules_python//python/cc:current_py_cc_libs",
         ],

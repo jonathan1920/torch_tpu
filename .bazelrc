@@ -12,6 +12,10 @@ common --repo_env=HERMETIC_PYTHON_VERSION=3.12
 
 common --enable_bzlmod=false --enable_workspace=true
 
+# Config to enable Bzlmod. Use with --config=bzlmod.
+common:bzlmod --enable_bzlmod=true
+common:bzlmod --enable_workspace=false
+
 # Enable usage of pywrap rules for pybind_extension.
 common --repo_env=USE_PYWRAP_RULES=1
 
@@ -39,6 +43,9 @@ build --per_file_copt=.*[.](cc|cpp|hpp)$@-std=c++20
 # Since the last flag wins for a given file, this needs to come
 # after the above flag.
 build --per_file_copt=external/(onednn|llvm-project)/.*[.](cc|cpp|hpp)$@-std=c++17
+
+# Use more general regex for Bzlmod's mangled repository names.
+build:bzlmod --per_file_copt=external/.*(onednn|llvm-project).*[.](cc|cpp|hpp)$@-std=c++17
 
 # ===== Start spammy C++ compile warning disables =====
 # Some low-level legacy glibc macros are used in lots of
