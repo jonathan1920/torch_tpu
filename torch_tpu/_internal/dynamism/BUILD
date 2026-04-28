@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_cc_test", "torch_tpu_package_end")
-load("//shims/py_rules:pytype.bzl", "pytype_library")
+load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
 package(
@@ -102,7 +102,7 @@ pybind_extension(
     ],
 )
 
-pytype_library(
+pytype_strict_library(
     name = "dynamism",
     srcs = [
         "__init__.py",

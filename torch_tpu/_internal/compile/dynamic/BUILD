@@ -13,14 +13,14 @@
 # limitations under the License.
 
 load("//build_files:build_defs.bzl", "torch_tpu_package_end")
-load("//shims/py_rules:pytype.bzl", "pytype_library")
+load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
     default_applicable_licenses = ["//:license"],
     default_visibility = ["//:__subpackages__"],
 )
 
-pytype_library(
+pytype_strict_library(
     name = "symbol_bounds",
     srcs = ["symbol_bounds.py"],
     deps = [
@@ -30,7 +30,7 @@ pytype_library(
     ],
 )
 
-pytype_library(
+pytype_strict_library(
     name = "sym_shape_manager",
     srcs = [
         "__init__.py",
@@ -48,7 +48,7 @@ pytype_library(
     ],
 )
 
-pytype_library(
+pytype_strict_library(
     name = "graph_transformations",
     srcs = [
         "graph_transformations.py",
@@ -60,7 +60,7 @@ pytype_library(
     ],
 )
 
-pytype_library(
+pytype_strict_library(
     name = "compiler",
     srcs = [
         "__init__.py",
