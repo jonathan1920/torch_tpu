@@ -16,16 +16,16 @@ load(
     "//build_files:build_defs.bzl",
     "if_oss",
     "torch_tpu_package_end",
+    "torch_tpu_py_library",
     "torch_tpu_py_test",
 )
-load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
     default_applicable_licenses = ["//:license"],
     default_visibility = ["//:__subpackages__"],
 )
 
-pytype_strict_library(
+torch_tpu_py_library(
     name = "distributed_utils",
     testonly = True,
     srcs = [

@@ -25,7 +25,7 @@ load(
 load("//shims/build_cleaner:build_defs.bzl", "register_extension_info")
 load("//shims/build_files:build_defs.bzl", "process_accelerator_tags")
 load("//shims/py_platform_test:py_platform_test.bzl", "py_platform_test")
-load("//shims/py_rules:pytype.bzl", "pytype_strict_contrib_test")
+load("//shims/py_rules:pytype.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
 
 # This file is torch_tpu implementation details and should not be imported by
 # other projects.
@@ -493,6 +493,38 @@ def torch_tpu_cc_test(
 # Enable build_cleaner to clean up deps for torch_tpu_cc_test.
 register_extension_info(
     extension = torch_tpu_cc_test,
+    label_regex_for_dep = "{extension_name}",
+)
+
+def torch_tpu_py_library(name, srcs = [], **kwargs):
+    """Creates a pytype_strict_library for torch_tpu.
+
+    Also creates a build_test for the library to ensure it is buildable.
+
+    Args:
+        name: The name of the library.
+        srcs: The source files for the library. Must contain at most one .py file.
+        **kwargs: Any additional arguments.
+    """
+
+    if len(srcs) > 1:
+        fail("torch_tpu_py_library must contain at most one srcs file. This prevents build bloat " +
+             "and circular dependencies between files.")
+
+    pytype_strict_library(
+        # PYTYPE_STRICT_LIBRARY_OK=for implementing torch_tpu_py_library.
+        name = name,
+        srcs = srcs,
+        **kwargs
+    )
+    build_test(
+        name = name + "_build_test",
+        targets = [":" + name],
+    )
+
+# Enable build_cleaner to clean up deps for torch_tpu_py_library.
+register_extension_info(
+    extension = torch_tpu_py_library,
     label_regex_for_dep = "{extension_name}",
 )
 

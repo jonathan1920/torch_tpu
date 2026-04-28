@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "if_oss", "torch_tpu_package_end", "torch_tpu_py_test")
-load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
+load("//build_files:build_defs.bzl", "if_oss", "torch_tpu_package_end", "torch_tpu_py_library", "torch_tpu_py_test")
 
 package(
     default_applicable_licenses = ["//:license"],
 )
 
-pytype_strict_library(
+torch_tpu_py_library(
     name = "module_registry",
     srcs = ["module_registry.py"],
     data = [
@@ -62,7 +61,7 @@ torch_tpu_py_test(
     ],
 )
 
-pytype_strict_library(
+torch_tpu_py_library(
     name = "op_testing",
     testonly = True,
     srcs = ["op_testing.py"],
@@ -81,7 +80,7 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+torch_tpu_py_library(
     name = "ops_test_data",
     testonly = True,
     srcs = ["ops_test_data.py"],
@@ -92,7 +91,7 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+torch_tpu_py_library(
     name = "dynamism_test_utils",
     testonly = True,
     srcs = ["dynamism_test_utils.py"],
@@ -519,7 +518,7 @@ torch_tpu_py_test(
     ],
 )
 
-pytype_strict_library(
+torch_tpu_py_library(
     name = "error_testing",
     testonly = True,
     srcs = ["error_testing.py"],

@@ -4,6 +4,7 @@ load(
     "//build_files:build_defs.bzl",
     "if_oss",
     "torch_tpu_package_end",
+    "torch_tpu_py_library",
 )
 load("//build_files:entry_points.bzl", "ENTRY_POINTS")
 load("//build_files:py_dist_info.bzl", "py_dist_info")
@@ -21,7 +22,6 @@ load("//build_files:py_dist_info.bzl", "py_dist_info")
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 load("//shims/py_rules:strict.bzl", "py_library_providing_imports_info")
 
 WHEEL_VERSION = "0.0.0"
@@ -49,7 +49,7 @@ py_dist_info(
     version = WHEEL_VERSION,
 )
 
-pytype_strict_library(
+torch_tpu_py_library(
     name = "_loader",
     srcs = ["_loader.py"],
     data = [
@@ -72,7 +72,7 @@ py_library_providing_imports_info(
     srcs = [
         "__init__.py",
     ],
-    lib_rule = pytype_strict_library,
+    lib_rule = torch_tpu_py_library,
     module_specs = ["torch_tpu.modspec.json"],
     # Users of this library may rely on autoloading of the TPU backend, in which
     # case they'd import `torch` but not `torch_tpu` directly. However, we need

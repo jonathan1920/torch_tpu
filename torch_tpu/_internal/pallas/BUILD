@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end")
+load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end", "torch_tpu_py_library")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
@@ -102,7 +102,7 @@ pybind_extension(
     ],
 )
 
-pytype_strict_library(
+torch_tpu_py_library(
     name = "pallas_kernel_generate_utils",
     srcs = ["pallas_kernel_generate_utils.py"],
     deps = [],

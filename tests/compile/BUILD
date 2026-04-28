@@ -1,10 +1,3 @@
-load(
-    "//build_files:build_defs.bzl",
-    "if_oss",
-    "torch_tpu_package_end",
-    "torch_tpu_py_test",
-)
-
 # Copyright 2025 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +11,13 @@ load(
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
+load(
+    "//build_files:build_defs.bzl",
+    "if_oss",
+    "torch_tpu_package_end",
+    "torch_tpu_py_library",
+    "torch_tpu_py_test",
+)
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -144,7 +143,7 @@ torch_tpu_py_test(
     ],
 )
 
-pytype_strict_library(
+torch_tpu_py_library(
     name = "stablehlo_compile_testing",
     srcs = ["stablehlo_compile_testing.py"],
     deps = [

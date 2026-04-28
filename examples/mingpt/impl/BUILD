@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load("@rules_license//rules:license.bzl", "license")
-load("//build_files:build_defs.bzl", "torch_tpu_package_end")
+load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_library")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
@@ -47,7 +47,7 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
+torch_tpu_py_library(
     name = "mingpt_jax",
     srcs = [
         "mingpt_jax.py",
