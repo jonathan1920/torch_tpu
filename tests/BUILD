@@ -812,6 +812,9 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "synchronize_test",
     srcs = ["synchronize_test.py"],
+    env = {
+        "TORCH_TPU_INTERNAL_DETECT_REPEATED_OPS": "disabled",
+    },
     main = "synchronize_test.py",
     tags = ["requires-tpu-v5lite"],
     deps = [
@@ -828,6 +831,9 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "internal_sync_test",
     srcs = ["internal_sync_test.py"],
+    env = {
+        "TORCH_TPU_INTERNAL_DETECT_REPEATED_OPS": "disabled",
+    },
     main = "internal_sync_test.py",
     tags = ["requires-tpu-v5lite"],
     deps = [
