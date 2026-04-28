@@ -243,6 +243,7 @@ def _run_single_process_benchmark(
           "  Test: %s\n"
           "  benchmark: %s\n"
           "  microbenchmark: %s\n"
+          "  is_training: %s\n"
           "  platform: %s\n"
           "  weights_dtype: %s\n"
           "  rank(0-indexed): %s\n"
@@ -258,6 +259,7 @@ def _run_single_process_benchmark(
           test_method_name,
           benchmark_name,
           microbenchmark_name,
+          config.is_training,
           benchmark_utils.PLATFORM.value,
           WEIGHTS_DTYPE.value,
           rank,
