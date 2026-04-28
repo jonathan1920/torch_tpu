@@ -102,8 +102,7 @@ torch_tpu_py_test(
         ["exclusive"],
         [],
     ) + [
-        "noasan",  # TODO: fix the test in asan mode.
-        "nomsan",  # TODO: fix the test in msan mode.
+        "requires-accel-hbm",
         "requires-tpu-v5lite:8",
     ],
     deps = [
