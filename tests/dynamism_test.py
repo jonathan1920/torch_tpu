@@ -489,6 +489,18 @@ class DynamismTest(parameterized.TestCase):
       res_y.cpu()
     self.assertEqual(counter.num_cache_hits(), 1)
 
+  @absltest.skip("Same rank dynamic reshape is not supported. (b/506132539)")
+  def test_same_rank_dynamic_reshape(self):
+    # [1, 16, ?, 128] to [16, ?, 128, 1]
+    def mark_dynamic(x: torch.Tensor) -> None:
+      dynamism.mark_dynamic(x, 2, 2, 10)
+
+    def reshape_fn(x: torch.Tensor) -> torch.Tensor:
+      return x.reshape(16, x.shape[2], 128, 1)
+
+    args = (torch.ones(1, 16, 5, 128),)
+    self._run_bounded_dynamism_test(reshape_fn, mark_dynamic, *args)
+
 
 if __name__ == "__main__":
   absltest.main()
