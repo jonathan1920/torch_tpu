@@ -150,6 +150,14 @@ class DeviceModuleBase(absltest.TestCase, metaclass=abc.ABCMeta):
     self.device_module._set_dump_on_cache_miss(False)
     self.assertFalse(self.device_module._get_dump_on_cache_miss())
 
+  def test_get_cache_stats(self):
+    stats = self.device_module._get_cache_stats()
+    self.assertIsNotNone(stats)
+    self.assertGreaterEqual(stats.num_cache_reqs, 0)
+    self.assertGreaterEqual(stats.num_cache_hits, 0)
+    self.assertFalse(stats.peak_compilation_host_memory_bytes)
+    self.assertIsInstance(stats.per_entry_stats, list)
+
   def test_rng_validate_device_index(self):
     """Test valid string and int."""
     _device_module._rng_validate_device_index("tpu", 0)
