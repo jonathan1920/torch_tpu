@@ -16,11 +16,12 @@
 
 import json
 import os
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from absl import logging
 import psutil
 import torch
+from torch.utils._pytree import tree_flatten
 from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import sync as tpu_sync
 import torch_tpu.api as xla_api
@@ -136,11 +137,29 @@ def reset_peak_memory_stats(device):
     raise ValueError(f'Unsupported device: {device}')
 
 
-def synchronize(device, tensor_to_sync: torch.Tensor):
+def _collect_tensors(tensors: Any) -> Sequence[torch.Tensor]:
+  leaves, _ = tree_flatten(tensors)
+  return [l for l in leaves if isinstance(l, torch.Tensor)]
+
+
+def synchronize(
+    device,
+    tensor_to_sync: (
+        torch.Tensor | dict[str, torch.Tensor] | Sequence[torch.Tensor]
+    ),
+):
+  """Synchronizes the device with the given tensor(s).
+
+  Args:
+    device: The device type ('cuda', 'tpu', 'xla_cuda').
+    tensor_to_sync: The tensor(s) to synchronize.
+  """
   if device == 'cuda':
     torch.cuda.synchronize()
   elif device == 'tpu' or device == 'xla_cuda':
-    tpu_sync.synchronize(tensor_to_sync, wait=True)
+    # TODO(b/507181043): Investigate why sync(None, wait=True) doesn't work.
+    tensors = _collect_tensors(tensor_to_sync)
+    tpu_sync.synchronize(tensors, wait=True)
   else:
     raise ValueError(f'Unsupported device: {device}')
 

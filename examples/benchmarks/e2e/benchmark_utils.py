@@ -425,8 +425,7 @@ def _warmup_run(
       with traceme.TraceMe("Warmup", step_num=step):
         start_time = time.perf_counter()
         out = benchmark_function(model, example_inputs, optimizer)
-        if isinstance(out, torch.Tensor):
-          device_utils.synchronize(device_name, out)
+        device_utils.synchronize(device_name, out)
         timings[step] = time.perf_counter() - start_time
       cache_misses[step] = device_utils.cache_miss_count(device_name)
 
@@ -494,8 +493,7 @@ def _post_warmup_run(
       with traceme.TraceMe("Eval", step_num=step):
         start_time = time.perf_counter()
         out = benchmark_function(model, example_inputs, optimizer)
-        if isinstance(out, torch.Tensor):
-          device_utils.synchronize(device_name, out)
+        device_utils.synchronize(device_name, out)
         timings[step] = time.perf_counter() - start_time
 
       # Assert that the cache misses are consistent across steps.
