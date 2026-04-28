@@ -31,8 +31,10 @@ from collections.abc import Callable, Sequence
 from importlib import resources
 from importlib.resources import abc as resources_abc
 import inspect
+import pathlib
 from typing import Any, Iterator
 
+from absl import flags
 from absl import logging
 import diffusers
 from diffusers.models.auto_model import AutoModel
@@ -43,6 +45,27 @@ import torchvision
 import transformers
 
 _MAX_SEQ_LEN_HEURISTIC_CAP = 100_000
+
+_HF_TRANSFORMERS_WEIGHTS_DIR = flags.DEFINE_string(
+    "hf_transformers_weights_dir",
+# "$DATA_ROOT/$WEIGHTS_SUBDIR/huggingface"
+    "",
+    "Location of weights and config files for HuggingFace Transformers models.",
+)
+
+_HF_TIMM_WEIGHTS_DIR = flags.DEFINE_string(
+    "hf_timm_weights_dir",
+# "$DATA_ROOT/$WEIGHTS_SUBDIR/huggingface/timm"
+    "",
+    "Location of weights and config files for HuggingFace TIMM models.",
+)
+
+_HF_DIFFUSERS_WEIGHTS_DIR = flags.DEFINE_string(
+    "hf_diffusers_weights_dir",
+# "$DATA_ROOT/$WEIGHTS_SUBDIR/huggingface"
+    "",
+    "Location of weights and config files for HuggingFace Diffusers models.",
+)
 
 
 class ModuleSpec:
@@ -78,11 +101,6 @@ class ModuleSpec:
 class BaseProvider(abc.ABC):
   """Abstract base class for model source providers."""
 
-  def __init__(
-      self, base_path: str = ""  # "$DATA_ROOT/$WEIGHTS_SUBDIR/huggingface"
-  ):
-    self._base_path = epath.Path(base_path)
-
   @abc.abstractmethod
   def list_modules(self) -> list[str]:
     """Lists the names of all models available from this provider.
@@ -94,11 +112,7 @@ class BaseProvider(abc.ABC):
 
   @abc.abstractmethod
   def get_module_spec(
-      self,
-      name: str,
-      *,
-      load_weights: bool = False,
-      **kwargs,
+      self, name: str, *, load_weights: bool = False, **kwargs
   ) -> ModuleSpec:
     """Retrieves the specification for a specific model.
 
@@ -121,11 +135,7 @@ class TorchvisionProvider(BaseProvider):
     return torchvision.models.list_models()
 
   def get_module_spec(
-      self,
-      name: str,
-      *,
-      load_weights: bool = False,
-      **kwargs,
+      self, name: str, *, load_weights: bool = False, **kwargs
   ) -> ModuleSpec:
     if load_weights:
       raise NotImplementedError(
@@ -145,15 +155,15 @@ class TorchvisionProvider(BaseProvider):
 class TimmProvider(BaseProvider):
   """Provider for TIMM (PyTorch Image Models)."""
 
+  def __init__(self):
+    weights_dir = _HF_TIMM_WEIGHTS_DIR.value
+    self._weights_dir = epath.Path(weights_dir) if weights_dir else None
+
   def list_modules(self) -> list[str]:
     return timm.list_models()
 
   def get_module_spec(
-      self,
-      name: str,
-      *,
-      load_weights: bool = False,
-      **kwargs,
+      self, name: str, *, load_weights: bool = False, **kwargs
   ) -> ModuleSpec:
     """Creates a ModuleSpec for a TIMM model.
 
@@ -179,11 +189,10 @@ class TimmProvider(BaseProvider):
       )
 
     def _module_factory():
-      if load_weights:
-        # Use base_path to find the checkpoint file under 'timm' directory
-        local_checkpoint = self._base_path / "timm" / f"{name}.pth"
+      if load_weights and self._weights_dir:
+        local_checkpoint = self._weights_dir / f"{name}.pth"
 
-        if local_checkpoint and local_checkpoint.exists():
+        if local_checkpoint.exists():
           model = timm.create_model(name, pretrained=False)
           #  local checkpoint can't be loaded by timm.create_model directly.
           with local_checkpoint.open("rb") as f:
@@ -280,6 +289,13 @@ class TransformersProvider(BaseProvider):
       "huggingface_transformers/model_configs"
   )
 
+  def __init__(self):
+    weights_dir = _HF_TRANSFORMERS_WEIGHTS_DIR.value
+    if weights_dir:
+      self._weights_dir = epath.Path(weights_dir)
+    else:
+      self._weights_dir = None
+
   def list_modules(self) -> list[str]:
     modules = []
     for resource in _walk_package_resources(self._FILES):
@@ -289,11 +305,7 @@ class TransformersProvider(BaseProvider):
     return modules
 
   def get_module_spec(
-      self,
-      name: str,
-      *,
-      load_weights: bool = False,
-      **kwargs,
+      self, name: str, *, load_weights: bool = False, **kwargs
   ) -> ModuleSpec:
     """Creates a ModuleSpec for a Transformer model.
 
@@ -310,7 +322,9 @@ class TransformersProvider(BaseProvider):
       A ModuleSpec containing the model factory and input factory.
     """
     if load_weights:
-      model_dir_or_repo_id = self._base_path / name
+      model_dir_or_repo_id = name
+      if self._weights_dir:
+        model_dir_or_repo_id = self._weights_dir / name
 
       model_fn = lambda: transformers.AutoModelForCausalLM.from_pretrained(
           model_dir_or_repo_id
@@ -320,8 +334,10 @@ class TransformersProvider(BaseProvider):
       )
       config = transformers.AutoConfig.from_pretrained(model_dir_or_repo_id)
     else:
-      config_dir = self._base_path / name
-      config = transformers.AutoConfig.from_pretrained(str(config_dir))
+      with resources.as_file(
+          self._FILES.joinpath(str(pathlib.Path(name) / "config.json"))
+      ) as f:
+        config = transformers.AutoConfig.from_pretrained(str(f))
       architectures = getattr(config, "architectures", [])
       model_cls = transformers.AutoModel
 
@@ -370,6 +386,13 @@ class DiffusersProvider(BaseProvider):
       "huggingface_diffusers/model_configs"
   )
 
+  def __init__(self):
+    weights_dir = _HF_DIFFUSERS_WEIGHTS_DIR.value
+    if weights_dir:
+      self._weights_dir = epath.Path(weights_dir)
+    else:
+      self._weights_dir = None
+
   def list_modules(self) -> list[str]:
     modules = []
     for resource in _walk_package_resources(self._FILES):
@@ -401,14 +424,18 @@ class DiffusersProvider(BaseProvider):
     d_type = torch.bfloat16
 
     if load_weights:
-      model_path = str(self._base_path / name)
-
+      model_path = str(self._weights_dir / name)
       raw_config = AutoModel.load_config(model_path, subfolder=subfolder)
       config_dict = dict(raw_config)
     else:
-      config_dir = self._base_path / name
-      raw_config = AutoModel.load_config(str(config_dir), subfolder=subfolder)
-      config_dict = dict(raw_config)
+      model_dir = pathlib.Path(name)
+      if subfolder:
+        model_dir = model_dir / subfolder
+      with resources.as_file(
+          self._FILES.joinpath(str(model_dir / "config.json"))
+      ) as f:
+        raw_config = AutoModel.load_config(str(f.parent))
+        config_dict = dict(raw_config)
 
     def _module_factory():
       if load_weights:
@@ -552,17 +579,12 @@ class DiffusersProvider(BaseProvider):
 class ModuleRegistry:
   """Central registry for managing multiple model providers."""
 
-  def __init__(
-      self, base_path: str = ""  # "$DATA_ROOT/$WEIGHTS_SUBDIR/huggingface"
-  ):
-    # base_path represents the location of weights and config files.
-    # load_weights in get_module_spec will dictate whether to read just the
-    # config file or load weights from that path.
+  def __init__(self):
     self._providers: dict[str, BaseProvider] = {
-        "torchvision": TorchvisionProvider(base_path=base_path),
-        "timm": TimmProvider(base_path=base_path),
-        "transformers": TransformersProvider(base_path=base_path),
-        "diffusers": DiffusersProvider(base_path=base_path),
+        "torchvision": TorchvisionProvider(),
+        "timm": TimmProvider(),
+        "transformers": TransformersProvider(),
+        "diffusers": DiffusersProvider(),
     }
 
   def list_all_sources(self) -> list[str]:
