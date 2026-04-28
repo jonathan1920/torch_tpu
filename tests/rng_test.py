@@ -14,6 +14,7 @@
 
 from absl.testing import absltest
 import torch
+from torch._subclasses import fake_tensor
 from torch_tpu import api
 
 
@@ -103,6 +104,32 @@ class RngTest(absltest.TestCase):
         RuntimeError, "expect rng state to be a torch.ByteTensor"
     ):
       g.set_state(state)
+
+  def test_get_rng_state_in_fake_tensor_mode(self):
+    device = api.tpu_device()
+    with fake_tensor.FakeTensorMode(allow_non_fake_inputs=False):
+      state = torch.tpu.get_rng_state(device)
+      self.assertEqual(state.dtype, torch.uint8)
+      self.assertEqual(state.shape, (16,))
+
+  def test_generator_get_state_in_fake_tensor_mode(self):
+    device = api.tpu_device()
+    with fake_tensor.FakeTensorMode(allow_non_fake_inputs=False):
+      g = torch.Generator(device=device)
+      g.manual_seed(42)
+      state = g.get_state()
+      self.assertEqual(state.dtype, torch.uint8)
+      self.assertEqual(state.shape, (16,))
+
+  def test_generator_clone_in_fake_tensor_mode(self):
+    device = api.tpu_device()
+    with fake_tensor.FakeTensorMode(allow_non_fake_inputs=False):
+      g = torch.Generator(device=device)
+      g.manual_seed(42)
+      g2 = g.clone_state()
+      state = g2.get_state()
+      self.assertEqual(state.dtype, torch.uint8)
+      self.assertEqual(state.shape, (16,))
 
 
 if __name__ == "__main__":

@@ -40,6 +40,7 @@
 #include "c10/core/ScalarType.h"
 #include "c10/core/TensorImpl.h"
 #include "c10/core/impl/DeviceGuardImplInterface.h"
+#include "c10/core/impl/LocalDispatchKeySet.h"
 #include "c10/util/ArrayRef.h"
 #include "c10/util/CallOnce.h"
 #include "c10/util/Optional.h"
@@ -109,6 +110,10 @@ absl::StatusOr<DeviceBufferRef> UpdateDeviceRngOffset(at::Tensor rng_state,
 }
 
 at::Tensor CreateDeviceRngStateTensor(c10::Device device) {
+  // Exclude the Python dispatch key to prevent FakeTensorMode and other
+  // Python-level dispatch modes from intercepting internal eager tensor
+  // allocations and operations in this scope.
+  c10::impl::ExcludeDispatchKeyGuard guard(c10::DispatchKey::Python);
   return at::full(/*size=*/{2}, /*fill_value=*/0, /*dtype_opt=*/at::kUInt64,
                   /*layout_opt=*/std::nullopt, /*device_opt=*/device,
                   /*pin_memory_opt=*/std::nullopt);
@@ -270,6 +275,12 @@ c10::intrusive_ptr<c10::TensorImpl> DeviceGeneratorImpl::get_state() const {
   // Gets the current internal state of DeviceGeneratorImpl. The internal
   // state is returned as a CPU byte tensor.
   ABSL_VLOG(1) << "[get_state]";
+
+  // Exclude the Python dispatch key to prevent FakeTensorMode and other
+  // Python-level dispatch modes from intercepting internal eager tensor
+  // allocations and operations in this scope.
+  c10::impl::ExcludeDispatchKeyGuard guard(c10::DispatchKey::Python);
+
   return device_rng_state_ui64_.view(at::kByte).to(at::kCPU).getIntrusivePtr();
 }
 
@@ -310,6 +321,10 @@ DeviceGeneratorImpl::graphsafe_get_state() const {
 }
 
 DeviceGeneratorImpl* DeviceGeneratorImpl::clone_impl() const {
+  // Exclude the Python dispatch key to prevent FakeTensorMode and other
+  // Python-level dispatch modes from intercepting internal eager tensor
+  // allocations and operations in this scope.
+  c10::impl::ExcludeDispatchKeyGuard guard(c10::DispatchKey::Python);
   return new DeviceGeneratorImpl(device().index(),
                                  device_rng_state_ui64_.clone());
 }
