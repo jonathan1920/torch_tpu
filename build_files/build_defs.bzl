@@ -516,7 +516,7 @@ def torch_tpu_py_library(name, srcs = [], **kwargs):
              "and circular dependencies between files.")
 
     pytype_strict_library(
-        # PYTYPE_STRICT_LIBRARY_OK=for implementing torch_tpu_py_library.
+        # PY_LIBRARY_OK=for implementing torch_tpu_py_library.
         name = name,
         srcs = srcs,
         **kwargs
