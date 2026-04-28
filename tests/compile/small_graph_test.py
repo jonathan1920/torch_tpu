@@ -588,9 +588,9 @@ class ModuleTest(absltest.TestCase):
 
       def __init__(self):
         super().__init__()
-        self.a = torch.nn.Parameter(torch.Tensor(5))
-        self.b = torch.nn.Parameter(torch.Tensor(5))
-        self.c = torch.nn.Parameter(torch.Tensor(5))
+        self.a = torch.nn.Parameter(torch.zeros(5))
+        self.b = torch.nn.Parameter(torch.zeros(5))
+        self.c = torch.nn.Parameter(torch.zeros(5))
 
       def forward(self, x, y):
         out = self.a + 0.8 * self.b + x
