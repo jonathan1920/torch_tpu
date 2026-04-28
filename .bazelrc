@@ -10,11 +10,13 @@ common --check_visibility=false
 # while we have 3.12 configured.
 common --repo_env=HERMETIC_PYTHON_VERSION=3.12
 
-common --enable_bzlmod=false --enable_workspace=true
+common --enable_bzlmod=true --enable_workspace=false
 
-# Config to enable Bzlmod. Use with --config=bzlmod.
-common:bzlmod --enable_bzlmod=true
-common:bzlmod --enable_workspace=false
+# Config to enable legacy WORKSPACE. Use with --config=workspace.
+common:workspace --enable_bzlmod=false
+common:workspace --enable_workspace=true
+# Support legacy WORKSPACE-style repository paths.
+common:workspace --per_file_copt=external/(onednn|llvm-project)/.*[.](cc|cpp|hpp)$@-std=c++17
 
 # Enable usage of pywrap rules for pybind_extension.
 common --repo_env=USE_PYWRAP_RULES=1
@@ -38,14 +40,12 @@ common --enable_platform_specific_config
 
 # Use C++20 by default, but not for `.c` files. Clang 18
 # gives an error when C files use it.
-build --per_file_copt=.*[.](cc|cpp|hpp)$@-std=c++20
-# Use C++17 for external dependencies incompatible with C++20.
-# Since the last flag wins for a given file, this needs to come
-# after the above flag.
-build --per_file_copt=external/(onednn|llvm-project)/.*[.](cc|cpp|hpp)$@-std=c++17
-
-# Use more general regex for Bzlmod's mangled repository names.
-build:bzlmod --per_file_copt=external/.*(onednn|llvm-project).*[.](cc|cpp|hpp)$@-std=c++17
+common --per_file_copt=.*[.](cc|cpp|hpp)$@-std=c++20
+# Use C++17 for dependencies incompatible with C++20.
+# Since the last flag wins for a given file, this comes after
+# the above flag.
+# Support Bzlmod-style mangled repository paths.
+common --per_file_copt=external/.*(onednn|llvm-project).*[.](cc|cpp|hpp)$@-std=c++17
 
 # ===== Start spammy C++ compile warning disables =====
 # Some low-level legacy glibc macros are used in lots of
