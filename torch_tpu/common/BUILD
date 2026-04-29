@@ -922,7 +922,6 @@ torch_tpu_cc_test(
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/flags:reflection",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/log:scoped_mock_log",
@@ -937,6 +936,29 @@ torch_tpu_cc_test(
         "@xla//xla:xla_proto_cc",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
+        "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "compilation_thread_num_test",
+    srcs = ["compilation_thread_num_test.cc"],
+    exec_properties = {"cpp_link.mem": "16g"},  # multiline select
+    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
+    tags = [
+        # Needs exclusive access to machine as we are testing hardware behavior. Without this,
+        # `blaze test --runs_per_test` may fail.
+        "exclusive",
+    ],
+    deps = [
+        ":compilation_cache",
+        ":flags",
+        "//shims/torch:torch_headers",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla:xla_proto_cc",
         "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
     ],
 )

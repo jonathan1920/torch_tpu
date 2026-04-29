@@ -16,10 +16,8 @@
 
 #include "torch_tpu/common/compilation_cache.h"
 
-#include <cstdlib>
 #include <memory>
 #include <string>
-#include <thread>  // NOLINT
 #include <utility>
 #include <vector>
 
@@ -28,7 +26,6 @@
 #include "absl/base/log_severity.h"
 #include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
-#include "absl/flags/reflection.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/scoped_mock_log.h"
@@ -55,12 +52,9 @@
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla.pb.h"
 
-ABSL_DECLARE_FLAG(int, torch_tpu_internal_num_compilation_threads);
 ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_compilation_container);
 
 namespace torch_tpu {
-
-int GetNumCompilationThreads(int num_procs);
 
 // Friend class for CompilationCache, to allow using private members.
 class CompilationCacheTestHelper {
@@ -70,53 +64,11 @@ class CompilationCacheTestHelper {
 
 namespace {
 
-using testing::ExitedWithCode;
-
 CompilationCacheKey DummyKey(int key = 0) {
   return CompilationCacheKey{ShapelessKey(key), DimensionsKey({}),
                              CompileOptionsKey(0)};
 }
 
-TEST(GetNumCompilationThreads, ReturnsHardwareConcurrencyWhenNprocNotSet) {
-  EXPECT_EQ(GetNumCompilationThreads(0),
-            std::thread::hardware_concurrency() - 1);
-}
-
-TEST(GetNumCompilationThreads, ReturnsNprocTimesTwoWhenNprocSet) {
-  EXPECT_EQ(GetNumCompilationThreads(10), 36);
-}
-
-// We use death tests to test the effect of setting flags in different
-// subprocesses, because GetNumCompilationThreads() memoizes the flag value on
-// the first call.
-
-TEST(GetNumCompilationThreadsDeathTest, ReturnsFlagValueWhenSet) {
-  EXPECT_EXIT(
-      {
-        absl::SetFlag(&FLAGS_torch_tpu_internal_num_compilation_threads, 42);
-        exit(GetNumCompilationThreads());
-      },
-      ExitedWithCode(42), "");
-}
-
-TEST(GetNumCompilationThreadsDeathTest,
-     ReturnsHardwareConcurrencyWhenFlagSetToZero) {
-  EXPECT_EXIT(
-      {
-        absl::SetFlag(&FLAGS_torch_tpu_internal_num_compilation_threads, 0);
-        exit(GetNumCompilationThreads(0));
-      },
-      ExitedWithCode(std::thread::hardware_concurrency() - 1), "");
-}
-
-TEST(GetNumCompilationThreadsDeathTest, FlagTakesPrecedenceOverNproc) {
-  EXPECT_EXIT(
-      {
-        absl::SetFlag(&FLAGS_torch_tpu_internal_num_compilation_threads, 42);
-        exit(GetNumCompilationThreads(10));
-      },
-      ExitedWithCode(42), "");
-}
 
 TEST(PerfStatsPrinterTest, EmptyPerEntry) {
   PerfStats stats;
