@@ -57,7 +57,7 @@ torch_tpu_py_library(
     ],
     deps = [
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/device:_device_module",
         "//torch_tpu/_internal/device:_tpu_backend_config",
         "//torch_tpu/_internal/distributed:tpu_distributed",

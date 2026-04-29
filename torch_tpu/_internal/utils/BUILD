@@ -30,7 +30,7 @@ torch_tpu_py_library(
         "//shims/absl_py/logging",
         "//shims/torch",
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/api",

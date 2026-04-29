@@ -30,7 +30,7 @@ torch_tpu_py_test(
         "//shims/jax:pallas",
         "//shims/torch:pytorch",
         "//torch_tpu",
-        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/pallas",
         "//torch_tpu/_internal/utils",

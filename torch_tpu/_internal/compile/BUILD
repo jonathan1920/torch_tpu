@@ -13,7 +13,6 @@
 # limitations under the License.
 
 load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end", "torch_tpu_py_library")
-load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
 package(
@@ -33,11 +32,10 @@ torch_tpu_py_library(
     ],
 )
 
-pytype_strict_library(
-    name = "tpu_backend",
+torch_tpu_py_library(
+    name = "compile",
     srcs = [
         "__init__.py",
-        "_backend.py",
     ],
     tags = [
         "ignore_for_dep=third_party.py.torch_tpu.api",
@@ -47,9 +45,24 @@ pytype_strict_library(
         "//learning/agents/tern/torch_agent:__subpackages__",
     ],
     deps = [
-        ":tpu_torch_compile",
+        ":tpu_backend",
         "//shims/absl_py:app",
         "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
+        "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "tpu_backend",
+    srcs = [
+        "_backend.py",
+    ],
+    tags = [
+        "ignore_for_dep=third_party.py.torch_tpu.api",
+    ],
+    deps = [
+        ":tpu_torch_compile",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compile/dynamic:compiler",

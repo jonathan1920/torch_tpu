@@ -29,7 +29,7 @@ torch_tpu_py_library(
         "//shims/absl_py/logging",
         "//shims/etils/epath",
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/utils:log_utils",
         "//torch_tpu/api",
         "@pypi//transformers",

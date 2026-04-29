@@ -73,7 +73,7 @@ torch_tpu_py_library(
         "//shims/safetensors",
         "//shims/torch:pytorch",
         "//shims/torch:testing_internal",
-        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/compiler_options",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/api",
@@ -602,7 +602,7 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal:testing",
-        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
         "//torch_tpu/_internal/dynamism",
         "//torch_tpu/_internal/execution_mode",
@@ -672,7 +672,7 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal:testing",
-        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
         "//torch_tpu/_internal/dynamism",
         "//torch_tpu/_internal/execution_mode",
