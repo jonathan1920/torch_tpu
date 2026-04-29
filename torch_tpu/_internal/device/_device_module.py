@@ -56,6 +56,27 @@ _AMP_SUPPORTED_DTYPES = (
 )
 
 
+class _DefaultGeneratorsProperty:
+  """Descriptor that acts exactly like a tuple of default generators.
+
+  Mirrors the type and lazy initialization behavior of PyTorch's native
+  `torch.cuda.default_generators`.
+  """
+
+  def __init__(self):
+    self._cached_tuple = None
+
+  def __get__(self, instance, owner):
+    if owner is None:
+      return ()
+    if self._cached_tuple is None:
+      self._cached_tuple = tuple(
+          _device_ops_backend.get_default_generator(i)
+          for i in range(owner.device_count())
+      )
+    return self._cached_tuple
+
+
 def _rng_validate_device_index(
     device: int | str | torch.device, device_idx: int
 ) -> None:
@@ -116,6 +137,9 @@ class _DeviceModule(abc.ABC):
 
   Precision = _precision_module.Precision  # pylint: disable=invalid-name
   precision = _precision_module.precision
+  # A sequence of default generators, one per device, matching the exact
+  # type and behavior of PyTorch's native `torch.cuda.default_generators`.
+  default_generators = _DefaultGeneratorsProperty()
 
   # This method is called when a subclass of this abstract base class is
   # created. As of Python 3.15, there is no obviously supported way of declaring
