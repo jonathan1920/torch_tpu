@@ -2370,6 +2370,13 @@ def set_up_test_module() -> None:
   if _torch_tpu_vs_gpu_mode():
     print("Running in TorchTPU vs GPU mode.", flush=True)
     _load_golden_files()
+    # TODO: b/502610173 - When the default value is changed to False for excess
+    # precision, keep configuring the value as True for compile mode to compare
+    # with the GPU inductor backend. For other tests, like gradient tests, tpu
+    # vs cpu tests, keep the value as True before updating their accuracy
+    # overrides.
+    if not is_compiled_mode():
+      torch.backends.tpu.allow_excess_precision = False  # pytype: disable=module-attr
     return
 
   if _perf_mode():
