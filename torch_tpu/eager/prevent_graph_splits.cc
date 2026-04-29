@@ -28,6 +28,7 @@
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/traversal.h"
 
@@ -78,7 +79,7 @@ struct Level1RepetitionMap {
 
 absl::StatusOr<bool> PreventGraphSplit(const Traversal& traversal) {
   const auto kThreshold =
-      absl::GetFlag(FLAGS_torch_tpu_internal_prevent_graph_splits);
+      GetFlagOnce<int, &FLAGS_torch_tpu_internal_prevent_graph_splits>();
   if (kThreshold <= 0) {
     return false;
   }

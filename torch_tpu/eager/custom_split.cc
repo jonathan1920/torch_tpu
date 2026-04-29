@@ -18,6 +18,7 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
+#include "torch_tpu/common/flags.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/dynamic_op_split_heuristic.h"
 #include "torch_tpu/eager/fanout_heuristic.h"
@@ -42,9 +43,10 @@ namespace {
 // Config struct indicating which materialization heuristic flags are enabled.
 struct CustomHeuristics {
   void Initialize() {
-    reexecution = absl::GetFlag(FLAGS_torch_tpu_internal_reexecution_heuristic);
-    fanout = absl::GetFlag(FLAGS_torch_tpu_internal_fanout_heuristic);
-    stale = absl::GetFlag(FLAGS_torch_tpu_internal_stale_heuristic);
+    reexecution =
+        GetFlagOnce<bool, &FLAGS_torch_tpu_internal_reexecution_heuristic>();
+    fanout = GetFlagOnce<bool, &FLAGS_torch_tpu_internal_fanout_heuristic>();
+    stale = GetFlagOnce<bool, &FLAGS_torch_tpu_internal_stale_heuristic>();
 
     initialized = true;
   }

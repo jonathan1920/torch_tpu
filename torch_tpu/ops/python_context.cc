@@ -42,6 +42,7 @@
 #include "torch/csrc/profiler/unwind/unwind.h"
 #include "torch_tpu/common/context_manager.h"
 #include "torch_tpu/common/context_states.h"
+#include "torch_tpu/common/flags.h"
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -65,7 +66,8 @@ TracebackMode GetTracebackMode() {
   // Otherwise, use the flag value if set. Read the flag once for consistent
   // behavior in case the flag is changed while the program is running.
   static const auto maybe_flag =
-      absl::GetFlag(FLAGS_torch_tpu_internal_mlir_tracebacks);
+      GetFlagOnce<std::optional<bool>,
+                  &FLAGS_torch_tpu_internal_mlir_tracebacks>();
   if (maybe_flag.has_value()) {
     return (*maybe_flag ? TracebackMode::kEnabled : TracebackMode::kDisabled);
   }

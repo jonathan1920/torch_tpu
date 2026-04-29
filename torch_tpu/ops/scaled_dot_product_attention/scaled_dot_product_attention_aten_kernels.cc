@@ -44,6 +44,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/flags.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -371,7 +372,8 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
              query.size(query.ndimension() - 1) % min_block_size == 0);
 
         const bool can_use_overrideable =
-            absl::GetFlag(FLAGS_torch_tpu_internal_sdpa_use_custom_kernel) &&
+            GetFlagOnce<bool,
+                        &FLAGS_torch_tpu_internal_sdpa_use_custom_kernel>() &&
             (!attn_mask.has_value() && !scale.has_value() &&
              (query.scalar_type() == at::ScalarType::Float ||
               query.scalar_type() == at::ScalarType::BFloat16) &&

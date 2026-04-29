@@ -16,7 +16,7 @@
 
 #include "torch_tpu/common/compilation_cache.h"
 
-#include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <thread>  // NOLINT
@@ -47,6 +47,7 @@
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/contain.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
@@ -69,38 +70,52 @@ class CompilationCacheTestHelper {
 
 namespace {
 
+using testing::ExitedWithCode;
+
 CompilationCacheKey DummyKey(int key = 0) {
   return CompilationCacheKey{ShapelessKey(key), DimensionsKey({}),
                              CompileOptionsKey(0)};
 }
 
-class GetNumCompilationThreadsTest : public testing::Test {};
-
-TEST_F(GetNumCompilationThreadsTest,
-       ReturnsHardwareConcurrencyWhenNprocNotSet) {
+TEST(GetNumCompilationThreads, ReturnsHardwareConcurrencyWhenNprocNotSet) {
   EXPECT_EQ(GetNumCompilationThreads(0),
             std::thread::hardware_concurrency() - 1);
 }
 
-TEST_F(GetNumCompilationThreadsTest, ReturnsNprocTimesTwoWhenNprocSet) {
+TEST(GetNumCompilationThreads, ReturnsNprocTimesTwoWhenNprocSet) {
   EXPECT_EQ(GetNumCompilationThreads(10), 36);
 }
 
-TEST_F(GetNumCompilationThreadsTest, ReturnsFlagValueWhenSet) {
-  absl::SetFlag(&FLAGS_torch_tpu_internal_num_compilation_threads, 42);
-  EXPECT_EQ(GetNumCompilationThreads(), 42);
+// We use death tests to test the effect of setting flags in different
+// subprocesses, because GetNumCompilationThreads() memoizes the flag value on
+// the first call.
+
+TEST(GetNumCompilationThreadsDeathTest, ReturnsFlagValueWhenSet) {
+  EXPECT_EXIT(
+      {
+        absl::SetFlag(&FLAGS_torch_tpu_internal_num_compilation_threads, 42);
+        exit(GetNumCompilationThreads());
+      },
+      ExitedWithCode(42), "");
 }
 
-TEST_F(GetNumCompilationThreadsTest,
-       ReturnsHardwareConcurrencyWhenFlagSetToZero) {
-  absl::SetFlag(&FLAGS_torch_tpu_internal_num_compilation_threads, 0);
-  EXPECT_EQ(GetNumCompilationThreads(0),
-            std::thread::hardware_concurrency() - 1);
+TEST(GetNumCompilationThreadsDeathTest,
+     ReturnsHardwareConcurrencyWhenFlagSetToZero) {
+  EXPECT_EXIT(
+      {
+        absl::SetFlag(&FLAGS_torch_tpu_internal_num_compilation_threads, 0);
+        exit(GetNumCompilationThreads(0));
+      },
+      ExitedWithCode(std::thread::hardware_concurrency() - 1), "");
 }
 
-TEST_F(GetNumCompilationThreadsTest, FlagTakesPrecedenceOverNproc) {
-  absl::SetFlag(&FLAGS_torch_tpu_internal_num_compilation_threads, 42);
-  EXPECT_EQ(GetNumCompilationThreads(10), 42);
+TEST(GetNumCompilationThreadsDeathTest, FlagTakesPrecedenceOverNproc) {
+  EXPECT_EXIT(
+      {
+        absl::SetFlag(&FLAGS_torch_tpu_internal_num_compilation_threads, 42);
+        exit(GetNumCompilationThreads(10));
+      },
+      ExitedWithCode(42), "");
 }
 
 TEST(PerfStatsPrinterTest, EmptyPerEntry) {
@@ -261,14 +276,21 @@ TEST_F(CompilationCacheInitTest, OptionsApplied) {
   CompilationCache::ShutDown();
 }
 
+// Must be done before running any tests.
+static const bool kSetFlagDone = [] {
+  absl::SetFlag(&FLAGS_torch_tpu_internal_enable_compilation_container, true);
+  return true;
+}();
+
 TEST_F(CompilationCacheTest, PeakMemoryReported) {
   // Use xla_cpu for unit testing as it doesn't require real hardware.
   PjrtBackend::GetInstance().SetPjRtInitializationOptions(
       {.device_type = "xla_cpu"});
   ABSL_CHECK_OK(PjrtBackend::GetInstance().EnsureInitialized());
 
-  absl::FlagSaver saver;
-  absl::SetFlag(&FLAGS_torch_tpu_internal_enable_compilation_container, true);
+  ASSERT_TRUE(
+      (GetFlagOnce<bool,
+                   &FLAGS_torch_tpu_internal_enable_compilation_container>()));
   torch_tpu::CleanUpContainer();
 
   CompilationCache& cache = CompilationCache::GetInstance();

@@ -19,6 +19,7 @@
 #include "gtest/gtest.h"
 #include "absl/flags/flag.h"
 #include "absl/log/absl_check.h"
+#include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 
@@ -50,7 +51,7 @@ auto* const test_env =
 // test program.
 TEST(Tier2CompilationCacheEnablementTest, Tier2CacheName) {
   EXPECT_EQ(GetTier2CacheName(),
-            absl::GetFlag(FLAGS_expected_tier2_cache_name));
+            (GetFlagOnce<std::string, &FLAGS_expected_tier2_cache_name>()));
 }
 
 }  // namespace

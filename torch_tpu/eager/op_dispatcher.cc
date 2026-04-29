@@ -30,7 +30,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/declare.h"
-#include "absl/flags/flag.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
@@ -51,8 +50,10 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize.h"
@@ -370,7 +371,8 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
     }
 
   } else if (eager_mode != EagerMode::kInternalDeferAll) {
-    if (absl::GetFlag(FLAGS_torch_tpu_internal_enable_new_materialization)) {
+    if (GetFlagOnce<bool,
+                    &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
       TT_RETURN_IF_ERROR(OnNewOpDispatch(results[0].device_buffer_list()));
     }
 

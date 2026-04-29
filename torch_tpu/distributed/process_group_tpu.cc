@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <exception>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -58,11 +59,11 @@
 #include "torch/csrc/distributed/c10d/Types.hpp"
 #include "torch/csrc/distributed/c10d/Work.hpp"
 #include "torch/headeronly/core/DeviceType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/distributed/allgather.h"
@@ -292,7 +293,8 @@ OpSplitMode GetCollectiveSplitMode() {
   if (IsSpmdSafe()) {
     return OpSplitMode::kNone;
   }
-  if (absl::GetFlag(FLAGS_torch_tpu_internal_materialize_collective_tensors)) {
+  if (GetFlagOnce<bool,
+                  &FLAGS_torch_tpu_internal_materialize_collective_tensors>()) {
     return OpSplitMode::kSplitBoth;
   }
   return OpSplitMode::kNone;

@@ -28,6 +28,7 @@
 #include "absl/log/absl_log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "torch_tpu/common/flags.h"
 #include "torch_tpu/ops/op_names.h"
 
 ABSL_FLAG(bool, torch_tpu_internal_ban_composite_ops, true,
@@ -287,7 +288,7 @@ void OpNameStack::Push(OpName op_name) {
           ". This is unusually not allowed - please implement the ",
           ToString(composite),
           " op by lowering it to SHLO instead. This is a TorchTPU bug.");
-      if (absl::GetFlag(FLAGS_torch_tpu_internal_ban_composite_ops)) {
+      if (GetFlagOnce<bool, &FLAGS_torch_tpu_internal_ban_composite_ops>()) {
         ABSL_LOG(FATAL) << msg;  // CRASH_OK
       } else {
         ABSL_LOG(ERROR) << msg;

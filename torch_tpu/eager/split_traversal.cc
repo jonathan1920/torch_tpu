@@ -16,6 +16,7 @@
 
 #include "torch_tpu/eager/split_traversal.h"
 
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -24,6 +25,7 @@
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "torch_tpu/common/flags.h"
 #include "torch_tpu/eager/custom_split.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/safe_materialization_rule.h"
@@ -54,7 +56,8 @@ absl::StatusOr<std::vector<Traversal>> SplitTraversal(
   // Here we collect a set of nodes that should be split into separate
   // traversals.
   absl::flat_hash_set<const DeviceBufferList*> split_points;
-  if (absl::GetFlag(FLAGS_torch_tpu_internal_safe_materialization_rule)) {
+  if (GetFlagOnce<bool,
+                  &FLAGS_torch_tpu_internal_safe_materialization_rule>()) {
     auto safe_rule = SafeMaterializationRule(required_outputs);
     split_points = safe_rule(traversal);
   } else {

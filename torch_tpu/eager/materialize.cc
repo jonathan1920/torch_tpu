@@ -35,7 +35,6 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/declare.h"
-#include "absl/flags/flag.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/absl_vlog_is_on.h"
 #include "absl/log/log.h"
@@ -49,6 +48,7 @@
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/dynamism_utils.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
@@ -528,7 +528,8 @@ absl::Status MaterializeImpl(
     MaterializationMode materialization_mode) {
   tsl::profiler::TraceMe t([] { return "MaterializeImpl"; });
 
-  if (absl::GetFlag(FLAGS_torch_tpu_internal_enable_new_materialization)) {
+  if (GetFlagOnce<bool,
+                  &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
     return MaterializeImplNew(nodes_to_materialize);
   }
 
@@ -635,7 +636,8 @@ absl::StatusOr<DeviceBufferRef> GetMaterialized(const at::Tensor& tensor) {
   // Materialize the view (no-op if the tensor is a continuous base tensor)
   TT_RETURN_IF_ERROR(Materialize(view_buffer_ref));
 
-  if (absl::GetFlag(FLAGS_torch_tpu_internal_enable_new_materialization)) {
+  if (GetFlagOnce<bool,
+                  &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
     TT_RETURN_IF_ERROR(BlockOnPendingMaterializations());
   }
 
@@ -670,7 +672,8 @@ absl::StatusOr<std::vector<DeviceBufferRef>> GetMaterialized(
   }
   TT_RETURN_IF_ERROR(Materialize(view_buffer_refs));
 
-  if (absl::GetFlag(FLAGS_torch_tpu_internal_enable_new_materialization)) {
+  if (GetFlagOnce<bool,
+                  &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
     TT_RETURN_IF_ERROR(BlockOnPendingMaterializations());
   }
 

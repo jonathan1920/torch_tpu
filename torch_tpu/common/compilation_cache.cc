@@ -60,6 +60,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/thread_pool.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"
@@ -117,7 +118,8 @@ int GetNumCpus() { return sysconf(_SC_NPROCESSORS_ONLN); }
 int GetNumCompilationThreads(const int num_procs) {
   // Is the flag set?
   if (const int num_threads =
-          absl::GetFlag(FLAGS_torch_tpu_internal_num_compilation_threads);
+          GetFlagOnce<int32_t,
+                      &FLAGS_torch_tpu_internal_num_compilation_threads>();
       num_threads != 0) {
     ABSL_CHECK_GE(num_threads, 0)  // CRASH_OK
         << "Invalid number of flag "

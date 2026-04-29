@@ -275,6 +275,7 @@ torch_tpu_cc_test(
     },
     notest_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
+        ":flags",
         ":tier2_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
@@ -300,6 +301,7 @@ torch_tpu_cc_test(
     },
     notest_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
+        ":flags",
         ":tier2_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
@@ -325,6 +327,7 @@ torch_tpu_cc_test(
     },
     notest_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
+        ":flags",
         ":tier2_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
@@ -348,6 +351,7 @@ torch_tpu_cc_test(
     },
     notest_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
+        ":flags",
         ":tier2_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
@@ -373,6 +377,7 @@ torch_tpu_cc_test(
     },
     notest_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
+        ":flags",
         ":tier2_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
@@ -396,6 +401,7 @@ torch_tpu_cc_test(
     },
     notest_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
+        ":flags",
         ":tier2_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
@@ -421,6 +427,7 @@ torch_tpu_cc_test(
     },
     notest_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
+        ":flags",
         ":tier2_compilation_cache",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
@@ -589,6 +596,26 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "flags",
+    hdrs = ["flags.h"],
+    deps = [
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "flags_test",
+    srcs = ["flags_test.cc"],
+    deps = [
+        ":flags",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "aten_utils",
     srcs = ["aten_utils.cc"],
     hdrs = ["aten_utils.h"],
@@ -745,6 +772,7 @@ torch_tpu_cc_library(
     srcs = ["op_name_stack.cc"],
     hdrs = ["op_name_stack.h"],
     deps = [
+        ":flags",
         "//torch_tpu/ops:op_names",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
@@ -798,6 +826,7 @@ torch_tpu_cc_library(
         ":dtype",
         ":env_vars",
         ":error_utils",
+        ":flags",
         ":shape",
         ":thread_pool",
         ":tier2_compilation_cache",
@@ -881,6 +910,7 @@ torch_tpu_cc_test(
         ":compilation",
         ":compilation_cache",
         ":error_utils",
+        ":flags",
         ":shape",
         "//shims/torch:torch_headers",
         "//torch_tpu/common:contain",

@@ -144,6 +144,7 @@ torch_tpu_cc_library(
         "//shims/torch:torch_headers",
         "//torch_tpu/common:context_manager",
         "//torch_tpu/common:context_states",
+        "//torch_tpu/common:flags",
         "//torch_tpu/eager:eager_mode",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/flags:flag",
