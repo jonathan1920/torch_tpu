@@ -16,14 +16,15 @@
 
 #include "torch_tpu/ops/grid_sampler/grid_sampler_aten_kernels.h"
 
-#include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
 #include "ATen/core/ATen_fwd.h"
@@ -46,6 +47,7 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
+#include "stablehlo/transforms/StablehloBroadcastLowering.h"
 
 namespace torch_tpu {
 
@@ -53,20 +55,24 @@ namespace {
 
 struct GridSamplerGatherConfig {
   mlir::stablehlo::GatherDimensionNumbersAttr gather_dimension_numbers;
-  Dimensions slice_sizes;
+  mlir::stablehlo::Dimensions slice_sizes;
 };
 
 GridSamplerGatherConfig GetGridSamplerGatherConfig(mlir::MlirOp input,
                                                    int64_t spatial_dim_size) {
-  const Dimensions input_shape =
-      CopyIntVector(GetTensorTypeOrDie(input).getShape());
-  const int64_t offset_dim_size = input_shape.size() - spatial_dim_size;
+  mlir::stablehlo::Dimensions slice_sizes = GetDimensions(input);
 
-  auto slice_sizes = input_shape;
-  slice_sizes[0] = 1;  // Batch dimension
+  const int64_t offset_dim_size = slice_sizes.size() - spatial_dim_size;
+
+  // For fixed dimensions, set size to 1 and ignore the dynamic information
+  // Batch dimension
+  slice_sizes[0].size = 1;
+  slice_sizes[0].boundOp = std::nullopt;
   for (int i = 0; i < spatial_dim_size; ++i) {
-    slice_sizes[offset_dim_size + i] = 1;
+    slice_sizes[offset_dim_size + i].size = 1;
+    slice_sizes[offset_dim_size + i].boundOp = std::nullopt;
   }
+
   // N appears in the input and in the index tensor.
   Dimensions batch_dims;
   batch_dims.push_back(0);
@@ -89,8 +95,56 @@ GridSamplerGatherConfig GetGridSamplerGatherConfig(mlir::MlirOp input,
           /*start_indices_batching_dims=*/AsArrayRef<int64_t>(batch_dims),
           /*start_index_map=*/AsArrayRef<int64_t>(start_index_map),
           /*index_vector_dim=*/spatial_dim_size + 1);
-
   return {gather_dimension_numbers, slice_sizes};
+}
+
+// Convert a potentially dynamic dimension to an MLIR op.
+absl::StatusOr<mlir::MlirOp> DimensionInfoToOp(
+    mlir::MlirBuilder& builder, mlir::stablehlo::DimensionInfo in_size) {
+  // If we have a dynamic dimension, get the dynamic dimension size we need.
+  if (in_size.boundOp.has_value()) {
+    mlir::MlirOp boundOp = mlir::MlirOp(builder, in_size.boundOp.value());
+    mlir::MlirOp dim_size_scalar =
+        mlir::stablehlo::GetDimensionSize(boundOp, in_size.boundOpDim);
+    // Reshape the result to a single element tensor.
+    return mlir::stablehlo::Reshape(dim_size_scalar, {1});
+  }
+  return MakeConstant(builder, in_size.size,
+                      builder.getOpBuilder().getI32Type(), {1});
+}
+
+absl::StatusOr<mlir::MlirOp> GatherOrDynamicGather(
+    mlir::MlirBuilder& builder, mlir::MlirOp input, mlir::MlirOp index_tensor,
+    const GridSamplerGatherConfig& gather_config, bool indices_are_sorted) {
+  bool is_dynamic = false;
+  for (auto& slice_size : gather_config.slice_sizes) {
+    if (slice_size.boundOp.has_value()) {
+      is_dynamic = true;
+      break;
+    }
+  }
+
+  if (is_dynamic) {
+    llvm::SmallVector<mlir::MlirOp> slice_sizes_ops;
+    for (auto& slice_size : gather_config.slice_sizes) {
+      TT_ASSIGN_OR_RETURN(auto slice_size_op,
+                          DimensionInfoToOp(builder, slice_size));
+      slice_sizes_ops.push_back(slice_size_op);
+    }
+    mlir::MlirOp slice_sizes_tensor =
+        mlir::stablehlo::Concatenate(builder, slice_sizes_ops, 0);
+    return mlir::stablehlo::DynamicGather(
+        input, index_tensor, slice_sizes_tensor,
+        gather_config.gather_dimension_numbers, indices_are_sorted);
+  } else {
+    Dimensions static_slice_sizes(gather_config.slice_sizes.size());
+    for (int i = 0; i < gather_config.slice_sizes.size(); ++i) {
+      static_slice_sizes[i] = gather_config.slice_sizes[i].size;
+    }
+    return mlir::stablehlo::Gather(input, index_tensor,
+                                   gather_config.gather_dimension_numbers,
+                                   static_slice_sizes, indices_are_sorted);
+  }
 }
 
 struct DimInfo {
@@ -105,25 +159,33 @@ struct DimInfo {
 enum class PaddingMode { kZeros = 0, kBorder = 1, kReflection = 2 };
 
 absl::StatusOr<mlir::MlirOp> ComputeSourceCoord(mlir::MlirOp grid_coord,
-                                                int64_t in_size,
+                                                mlir::MlirOp in_size,
                                                 bool align_corners,
                                                 PaddingMode padding_mode,
                                                 mlir::Type calc_type) {
-  const auto half = MakeConstantLike(grid_coord, 0.5, calc_type);
-  const auto one = MakeConstantLike(grid_coord, 1.0, calc_type);
+  auto zero = MakeConstantLike(grid_coord, 0.0, calc_type);
+  auto half = MakeConstantLike(grid_coord, 0.5, calc_type);
+  auto one = MakeConstantLike(grid_coord, 1.0, calc_type);
+  auto two = MakeConstantLike(grid_coord, 2.0, calc_type);
   TT_ASSIGN_OR_RETURN(auto grid_coord_plus_1, BuildAddShlo(grid_coord, one));
   TT_ASSIGN_OR_RETURN(auto grid_coord_plus_1_div_2,
                       BuildMulShlo(grid_coord_plus_1, half));
 
   mlir::MlirOp src_coord;
+  mlir::MlirOp in_size_f64 =
+      mlir::stablehlo::ConvertElementType(in_size, calc_type);
+
+  TT_ASSIGN_OR_RETURN(auto in_size_bcast,
+                      BroadcastIfNeeded(in_size_f64, grid_coord));
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp in_size_minus_1_bcast,
+                      BuildSubShlo(in_size_bcast, one));
+
   if (align_corners) {
-    auto in_size_minus_1 = MakeConstantLike(
-        grid_coord, static_cast<double>(in_size - 1), calc_type);
-    TT_ASSIGN_OR_RETURN(src_coord,
-                        BuildMulShlo(grid_coord_plus_1_div_2, in_size_minus_1));
+    TT_ASSIGN_OR_RETURN(src_coord, BuildMulShlo(grid_coord_plus_1_div_2,
+                                                in_size_minus_1_bcast));
   } else {
-    auto in_size_val =
-        MakeConstantLike(grid_coord, static_cast<double>(in_size), calc_type);
+    TT_ASSIGN_OR_RETURN(auto in_size_val,
+                        BroadcastIfNeeded(in_size_f64, grid_coord));
     TT_ASSIGN_OR_RETURN(auto scaled,
                         BuildMulShlo(grid_coord_plus_1_div_2, in_size_val));
     TT_ASSIGN_OR_RETURN(src_coord, BuildSubShlo(scaled, half));
@@ -131,19 +193,22 @@ absl::StatusOr<mlir::MlirOp> ComputeSourceCoord(mlir::MlirOp grid_coord,
 
   if (padding_mode == PaddingMode::kReflection) {
     if (align_corners) {
-      if (in_size > 1) {
-        auto double_range = MakeConstantLike(
-            grid_coord, static_cast<double>(2 * (in_size - 1)), calc_type);
-        auto abs_src_coord = mlir::stablehlo::Abs(src_coord);
-        TT_ASSIGN_OR_RETURN(auto mod_src_coord,
-                            BuildFmodTensorShlo(abs_src_coord, double_range));
-        TT_ASSIGN_OR_RETURN(auto reflected_src_coord,
-                            BuildSubShlo(double_range, mod_src_coord));
-        TT_ASSIGN_OR_RETURN(
-            src_coord, BuildMinimumShlo(mod_src_coord, reflected_src_coord));
-      } else {
-        src_coord = MakeConstantLike(grid_coord, 0.0, calc_type);
-      }
+      TT_ASSIGN_OR_RETURN(auto double_range,
+                          BuildMulShlo(in_size_minus_1_bcast, two));
+      auto abs_src_coord = mlir::stablehlo::Abs(src_coord);
+      TT_ASSIGN_OR_RETURN(auto mod_src_coord,
+                          BuildFmodTensorShlo(abs_src_coord, double_range));
+      TT_ASSIGN_OR_RETURN(auto reflected_src_coord,
+                          BuildSubShlo(double_range, mod_src_coord));
+      TT_ASSIGN_OR_RETURN(src_coord,
+                          BuildMinimumShlo(mod_src_coord, reflected_src_coord));
+
+      // If size was <= 1 then src_coord is 0.
+      TT_ASSIGN_OR_RETURN(auto in_gt_1,
+                          BuildGtShlo(in_size, MakeConstantLike(in_size, 1)));
+      TT_ASSIGN_OR_RETURN(auto in_gt_1_broadcast,
+                          BroadcastIfNeeded(in_gt_1, grid_coord));
+      src_coord = mlir::stablehlo::Select(in_gt_1_broadcast, src_coord, zero);
     } else {
       // For align_corners=false, the valid range is [-0.5, in_size - 0.5]
       // reflected about the boundaries -0.5 and in_size - 0.5
@@ -151,8 +216,8 @@ absl::StatusOr<mlir::MlirOp> ComputeSourceCoord(mlir::MlirOp grid_coord,
       const auto half_calc = MakeConstantLike(grid_coord, 0.5, calc_type);
       TT_ASSIGN_OR_RETURN(auto src_coord_shifted,
                           BuildAddShlo(src_coord, half_calc));
-      const auto double_range = MakeConstantLike(
-          grid_coord, static_cast<double>(2 * in_size), calc_type);
+
+      TT_ASSIGN_OR_RETURN(auto double_range, BuildMulShlo(in_size_bcast, two));
       const auto abs_src_coord = mlir::stablehlo::Abs(src_coord_shifted);
       TT_ASSIGN_OR_RETURN(auto mod_src_coord,
                           BuildFmodTensorShlo(abs_src_coord, double_range));
@@ -163,12 +228,12 @@ absl::StatusOr<mlir::MlirOp> ComputeSourceCoord(mlir::MlirOp grid_coord,
       TT_ASSIGN_OR_RETURN(src_coord, BuildSubShlo(min_src_coord, half_calc));
     }
   }
-
   return src_coord;
 }
 
 absl::StatusOr<DimInfo> ComputeDimInfo(mlir::MlirBuilder& builder,
-                                       mlir::MlirOp src_idx, int64_t in_size,
+                                       mlir::MlirOp src_idx,
+                                       mlir::MlirOp in_size,
                                        mlir::Type calc_type) {
   const auto idx_floor_calc = mlir::stablehlo::Floor(src_idx);
   const auto one_calc = MakeConstantLike(src_idx, 1.0, calc_type);
@@ -186,8 +251,12 @@ absl::StatusOr<DimInfo> ComputeDimInfo(mlir::MlirBuilder& builder,
 
   auto zero_i32 =
       MakeConstantLike(src_idx, 0, builder.getOpBuilder().getI32Type());
-  auto in_size_minus_1_i32 = MakeConstantLike(
-      src_idx, std::max(0L, in_size - 1), builder.getOpBuilder().getI32Type());
+  auto one_i32 =
+      MakeConstantLike(src_idx, 1, builder.getOpBuilder().getI32Type());
+  auto in_size_i32 = mlir::stablehlo::ConvertElementType(
+      in_size, builder.getOpBuilder().getI32Type());
+  TT_ASSIGN_OR_RETURN(auto in_size_minus_1_i32,
+                      BuildSubShlo(in_size_i32, one_i32));
 
   auto idx_floor_i32 = mlir::stablehlo::Clamp(idx_floor_i32_unclamped, zero_i32,
                                               in_size_minus_1_i32);
@@ -219,21 +288,25 @@ absl::StatusOr<mlir::MlirOp> GatherInterpolatedValue(
       builder, reshaped_indices,
       GetTensorTypeOrDie(reshaped_indices[0]).getRank() - 1);
 
-  return mlir::stablehlo::Gather(input_calc, index_tensor,
-                                 gather_config.gather_dimension_numbers,
-                                 gather_config.slice_sizes,
-                                 /*indices_are_sorted=*/false);
+  return GatherOrDynamicGather(builder, input_calc, index_tensor, gather_config,
+                               /*indices_are_sorted=*/false);
 }
 
 absl::StatusOr<mlir::MlirOp> ApplyZeroPadding(
     mlir::MlirBuilder& builder, mlir::MlirOp gathered,
     const std::vector<mlir::MlirOp>& indices_unclamped,
-    const Dimensions& input_shape, int64_t spatial_dim_size,
+    const mlir::stablehlo::Dimensions& input_shape, int64_t spatial_dim_size,
     mlir::Type calc_type, const Dimensions& bcast_dims) {
-  auto is_in_bounds = [&](mlir::MlirOp idx, int64_t in_size) {
+  auto is_in_bounds = [&](mlir::MlirOp idx,
+                          mlir::stablehlo::DimensionInfo in_size)
+      -> absl::StatusOr<mlir::MlirOp> {
+    // Construct limit values based on dynamic input size.
+    TT_ASSIGN_OR_RETURN(auto in_size_op, DimensionInfoToOp(builder, in_size));
+    mlir::MlirOp limit_element = mlir::stablehlo::ConvertElementType(
+        in_size_op, builder.getOpBuilder().getI32Type());
+    TT_ASSIGN_OR_RETURN(mlir::MlirOp limit,
+                        BroadcastIfNeeded(limit_element, idx));
     auto zero = MakeConstantLike(idx, 0, builder.getOpBuilder().getI32Type());
-    auto limit = MakeConstantLike(idx, static_cast<int32_t>(in_size),
-                                  builder.getOpBuilder().getI32Type());
     auto lt_zero = mlir::stablehlo::Compare(
         idx, zero, mlir::stablehlo::ComparisonDirection::LT);
     auto ge_limit = mlir::stablehlo::Compare(
@@ -248,16 +321,16 @@ absl::StatusOr<mlir::MlirOp> ApplyZeroPadding(
   if (spatial_dim_size == 2) {
     auto in_h = input_shape[offset_dim_size];
     auto in_w = input_shape[offset_dim_size + 1];
-    auto x_ok = is_in_bounds(indices_unclamped[0], in_w);
-    auto y_ok = is_in_bounds(indices_unclamped[1], in_h);
+    TT_ASSIGN_OR_RETURN(auto x_ok, is_in_bounds(indices_unclamped[0], in_w));
+    TT_ASSIGN_OR_RETURN(auto y_ok, is_in_bounds(indices_unclamped[1], in_h));
     pixel_ok = mlir::stablehlo::And(x_ok, y_ok);
   } else {  // spatial_dim_size == 3
     auto in_d = input_shape[offset_dim_size];
     auto in_h = input_shape[offset_dim_size + 1];
     auto in_w = input_shape[offset_dim_size + 2];
-    auto x_ok = is_in_bounds(indices_unclamped[0], in_w);
-    auto y_ok = is_in_bounds(indices_unclamped[1], in_h);
-    auto z_ok = is_in_bounds(indices_unclamped[2], in_d);
+    TT_ASSIGN_OR_RETURN(auto x_ok, is_in_bounds(indices_unclamped[0], in_w));
+    TT_ASSIGN_OR_RETURN(auto y_ok, is_in_bounds(indices_unclamped[1], in_h));
+    TT_ASSIGN_OR_RETURN(auto z_ok, is_in_bounds(indices_unclamped[2], in_d));
     auto yz_ok = mlir::stablehlo::And(y_ok, z_ok);
     pixel_ok = mlir::stablehlo::And(x_ok, yz_ok);
   }
@@ -300,8 +373,7 @@ absl::StatusOr<mlir::MlirOp> AccumulateBilinearInterpolation2D(
   mlir::MlirOp accumulated_result = MakeConstant(builder, 0, calc_type, {1});
   const auto input_calc = mlir::stablehlo::ConvertElementType(input, calc_type);
   const auto bcast_dims = Dimensions{0, 2, 3};
-  const Dimensions input_shape =
-      CopyIntVector(GetTensorTypeOrDie(input).getShape());
+  const mlir::stablehlo::Dimensions input_shape = GetDimensions(input);
   const int64_t spatial_dim_size = 2;
 
   for (int y_bit = 0; y_bit < 2; ++y_bit) {
@@ -350,8 +422,7 @@ absl::StatusOr<mlir::MlirOp> AccumulateBilinearInterpolation3D(
 
   const auto input_calc = mlir::stablehlo::ConvertElementType(input, calc_type);
   const auto bcast_dims = Dimensions{0, 2, 3, 4};
-  const Dimensions input_shape =
-      CopyIntVector(GetTensorTypeOrDie(input).getShape());
+  const mlir::stablehlo::Dimensions input_shape = GetDimensions(input);
   const int64_t spatial_dim_size = 3;
 
   for (int z_bit = 0; z_bit < 2; ++z_bit) {
@@ -425,11 +496,9 @@ struct CubicDimInfo {
 
 absl::Status UpdateIndicesForPaddingMode(
     mlir::MlirBuilder& builder, const PaddingMode padding_mode,
-    CubicDimInfo& info, mlir::MlirOp src_idx, int64_t in_size,
+    CubicDimInfo& info, mlir::MlirOp src_idx, mlir::MlirOp in_size,
     mlir::MlirOp in_size_minus_1_i32, bool align_corners, mlir::MlirOp one_i32,
     mlir::MlirOp zero_i32) {
-  auto i32_type = builder.getOpBuilder().getI32Type();
-
   // Default update operation for non-reflection padding modes.
   absl::AnyInvocable<absl::Status(mlir::MlirOp & idx)> update_index_fn =
       [&](mlir::MlirOp& idx) mutable -> absl::Status {
@@ -438,36 +507,45 @@ absl::Status UpdateIndicesForPaddingMode(
   };
 
   // Index update for reflection padding mode.
+  auto i32_type = builder.getOpBuilder().getI32Type();
   if (padding_mode == PaddingMode::kReflection) {
-    if (in_size > 1) {
       if (align_corners) {
-        auto double_size_minus_2 = MakeConstantLike(
-            src_idx, static_cast<int32_t>(2 * in_size - 2), i32_type);
-        update_index_fn =
-            [&, double_size_minus_2](mlir::MlirOp& idx) -> absl::Status {
+        auto two = MakeConstantLike(in_size, 2);
+        TT_ASSIGN_OR_RETURN(auto double_size, BuildMulShlo(in_size, two));
+        TT_ASSIGN_OR_RETURN(auto double_size_minus_2,
+                            BuildSubShlo(double_size, two));
+        TT_ASSIGN_OR_RETURN(auto double_size_minus_2_broadcast,
+                            BroadcastIfNeeded(double_size_minus_2, src_idx));
+        update_index_fn = [&, double_size_minus_2_broadcast](
+                              mlir::MlirOp& idx) -> absl::Status {
           auto abs_idx = mlir::stablehlo::Abs(idx);
           TT_ASSIGN_OR_RETURN(
-              auto mod_idx, BuildFmodTensorShlo(abs_idx, double_size_minus_2));
-          TT_ASSIGN_OR_RETURN(auto reflected_idx,
-                              BuildSubShlo(double_size_minus_2, mod_idx));
+              auto mod_idx,
+              BuildFmodTensorShlo(abs_idx, double_size_minus_2_broadcast));
+          TT_ASSIGN_OR_RETURN(
+              auto reflected_idx,
+              BuildSubShlo(double_size_minus_2_broadcast, mod_idx));
           TT_ASSIGN_OR_RETURN(idx, BuildMinimumShlo(mod_idx, reflected_idx));
           return absl::OkStatus();
         };
       } else {
-        auto four_size = MakeConstantLike(
-            src_idx, static_cast<int32_t>(4 * in_size), i32_type);
+        auto four = MakeConstantLike(in_size, 4);
+        TT_ASSIGN_OR_RETURN(auto four_size, BuildMulShlo(in_size, four));
+        TT_ASSIGN_OR_RETURN(auto four_size_broadcast,
+                            BroadcastIfNeeded(four_size, src_idx));
         auto two_i32 = MakeConstantLike(src_idx, 2, i32_type);
-        update_index_fn = [&, four_size,
+        update_index_fn = [&, four_size_broadcast,
                            two_i32](mlir::MlirOp& idx) -> absl::Status {
           // shifted = 2 * idx + 1
           TT_ASSIGN_OR_RETURN(auto temp1, BuildMulShlo(idx, two_i32));
           TT_ASSIGN_OR_RETURN(auto shifted, BuildAddShlo(temp1, one_i32));
 
           auto abs_shifted = mlir::stablehlo::Abs(shifted);
-          TT_ASSIGN_OR_RETURN(auto mod_shifted,
-                              BuildFmodTensorShlo(abs_shifted, four_size));
+          TT_ASSIGN_OR_RETURN(
+              auto mod_shifted,
+              BuildFmodTensorShlo(abs_shifted, four_size_broadcast));
           TT_ASSIGN_OR_RETURN(auto reflected_shifted,
-                              BuildSubShlo(four_size, mod_shifted));
+                              BuildSubShlo(four_size_broadcast, mod_shifted));
           TT_ASSIGN_OR_RETURN(auto min_shifted,
                               BuildMinimumShlo(mod_shifted, reflected_shifted));
 
@@ -478,22 +556,22 @@ absl::Status UpdateIndicesForPaddingMode(
           return absl::OkStatus();
         };
       }
-    } else {
-      update_index_fn = [&](mlir::MlirOp& idx) -> absl::Status {
-        idx = zero_i32;
-        return absl::OkStatus();
-      };
-    }
   }
 
+  TT_ASSIGN_OR_RETURN(auto in_gt_1,
+                      BuildGtShlo(in_size, MakeConstantLike(in_size, 1)));
   for (auto& idx : info.indices) {
     TT_RETURN_IF_ERROR(update_index_fn(idx));
+    TT_ASSIGN_OR_RETURN(auto in_gt_1_broadcast,
+                        BroadcastIfNeeded(in_gt_1, idx));
+    // If size was <= 1 then idx is 0.
+    idx = mlir::stablehlo::Select(in_gt_1_broadcast, idx, zero_i32);
   }
   return absl::OkStatus();
 }
 
 absl::StatusOr<CubicDimInfo> ComputeCubicDimInfo(
-    mlir::MlirBuilder& builder, mlir::MlirOp src_idx, int64_t in_size,
+    mlir::MlirBuilder& builder, mlir::MlirOp src_idx, mlir::MlirOp in_size,
     PaddingMode padding_mode, bool align_corners, mlir::Type calc_type) {
   const auto idx_floor_calc = mlir::stablehlo::Floor(src_idx);
   TT_ASSIGN_OR_RETURN(auto t, BuildSubShlo(src_idx, idx_floor_calc));
@@ -545,12 +623,11 @@ absl::StatusOr<CubicDimInfo> ComputeCubicDimInfo(
   const auto idx_floor_i32 =
       mlir::stablehlo::ConvertElementType(idx_floor_calc, i32_type);
 
-  const auto minus_one_i32 = MakeConstantLike(src_idx, -1, i32_type);
   const auto zero_i32 = MakeConstantLike(src_idx, 0, i32_type);
   const auto one_i32 = MakeConstantLike(src_idx, 1, i32_type);
   const auto two_i32 = MakeConstantLike(src_idx, 2, i32_type);
 
-  TT_ASSIGN_OR_RETURN(auto i0, BuildAddShlo(idx_floor_i32, minus_one_i32));
+  TT_ASSIGN_OR_RETURN(auto i0, BuildSubShlo(idx_floor_i32, one_i32));
   auto i1 = idx_floor_i32;
   TT_ASSIGN_OR_RETURN(auto i2, BuildAddShlo(idx_floor_i32, one_i32));
   TT_ASSIGN_OR_RETURN(auto i3, BuildAddShlo(idx_floor_i32, two_i32));
@@ -558,8 +635,10 @@ absl::StatusOr<CubicDimInfo> ComputeCubicDimInfo(
   info.indices_unclamped = {i0, i1, i2, i3};
   info.indices = info.indices_unclamped;
 
-  const auto in_size_minus_1_i32 =
-      MakeConstantLike(src_idx, static_cast<int32_t>(in_size - 1), i32_type);
+  mlir::MlirOp in_size_i32 =
+      mlir::stablehlo::ConvertElementType(in_size, i32_type);
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp in_size_minus_1_i32,
+                      BuildSubShlo(in_size_i32, one_i32));
 
   TT_RETURN_IF_ERROR(UpdateIndicesForPaddingMode(
       builder, padding_mode, info, src_idx, in_size, in_size_minus_1_i32,
@@ -607,17 +686,24 @@ absl::StatusOr<mlir::MlirOp> AccumulateBicubicInterpolation(
           builder, reshaped_indices,
           GetTensorTypeOrDie(reshaped_indices[0]).getRank() - 1);
 
-      auto gathered = mlir::stablehlo::Gather(
-          input_calc, index_tensor, gather_config.gather_dimension_numbers,
-          gather_config.slice_sizes,
-          /*indices_are_sorted=*/false);
+      TT_ASSIGN_OR_RETURN(auto gathered,
+                          GatherOrDynamicGather(builder, input_calc,
+                                                index_tensor, gather_config,
+                                                /*indices_are_sorted=*/false));
 
       if (padding_mode == PaddingMode::kZeros) {
-        auto is_in_bounds = [&](mlir::MlirOp idx, int64_t in_size) {
+        auto is_in_bounds = [&](mlir::MlirOp idx,
+                                mlir::stablehlo::DimensionInfo in_size)
+            -> absl::StatusOr<mlir::MlirOp> {
+          TT_ASSIGN_OR_RETURN(auto in_size_op,
+                              DimensionInfoToOp(builder, in_size));
           auto zero =
               MakeConstantLike(idx, 0, builder.getOpBuilder().getI32Type());
-          auto limit = MakeConstantLike(idx, static_cast<int32_t>(in_size),
-                                        builder.getOpBuilder().getI32Type());
+          // Construct limit values based on dynamic input size.
+          mlir::MlirOp limit_element = mlir::stablehlo::ConvertElementType(
+              in_size_op, builder.getOpBuilder().getI32Type());
+          TT_ASSIGN_OR_RETURN(auto limit,
+                              BroadcastIfNeeded(limit_element, idx));
           auto lt_zero = mlir::stablehlo::Compare(
               idx, zero, mlir::stablehlo::ComparisonDirection::LT);
           auto ge_limit = mlir::stablehlo::Compare(
@@ -626,15 +712,13 @@ absl::StatusOr<mlir::MlirOp> AccumulateBicubicInterpolation(
           return mlir::stablehlo::Not(out_of_bounds);
         };
 
-        // TODO: lwh - Add support for dynamic shape.
-        auto input_ty = GetTensorTypeOrDie(input);
-        Dimensions input_shape = CopyIntVector(input_ty.getShape());
+        const mlir::stablehlo::Dimensions input_shape = GetDimensions(input);
         int64_t offset_dim_size = input_shape.size() - spatial_dim_size;
         auto in_w = input_shape[offset_dim_size + 1];
         auto in_h = input_shape[offset_dim_size];
 
-        auto x_ok = is_in_bounds(x_idx_unclamped, in_w);
-        auto y_ok = is_in_bounds(y_idx_unclamped, in_h);
+        TT_ASSIGN_OR_RETURN(auto x_ok, is_in_bounds(x_idx_unclamped, in_w));
+        TT_ASSIGN_OR_RETURN(auto y_ok, is_in_bounds(y_idx_unclamped, in_h));
         auto pixel_ok = mlir::stablehlo::And(x_ok, y_ok);
 
         const auto gathered_ty = GetTensorTypeOrDie(gathered);
@@ -665,7 +749,7 @@ absl::StatusOr<mlir::MlirOp> BuildGridSamplerBicubicShlo(
     PaddingMode padding_mode) {
   mlir::MlirBuilder& builder = input.getBuilder();
   const auto input_ty = GetTensorTypeOrDie(input);
-  Dimensions input_shape = CopyIntVector(input_ty.getShape());
+  mlir::stablehlo::Dimensions input_shape = GetDimensions(input);
   auto grid_ty = GetTensorTypeOrDie(grid);
   Dimensions grid_shape = CopyIntVector(grid_ty.getShape());
   int64_t spatial_dim_size = grid_shape.back();
@@ -705,15 +789,15 @@ absl::StatusOr<mlir::MlirOp> BuildGridSamplerBicubicShlo(
     auto grid_coord_raw =
         mlir::stablehlo::Reshape(grid_coord_ty, grid_coord_sliced);
     grid_coords.push_back(grid_coord_raw);
-
-    int64_t in_size = input_shape[offset_dim_size + spatial_dim_size - 1 - i];
+    auto in_size = input_shape[offset_dim_size + spatial_dim_size - 1 - i];
+    TT_ASSIGN_OR_RETURN(auto in_size_op, DimensionInfoToOp(builder, in_size));
     TT_ASSIGN_OR_RETURN(
         auto src_coord,
-        ComputeSourceCoord(grid_coord_raw, in_size, align_corners, padding_mode,
-                           calc_type));
+        ComputeSourceCoord(grid_coord_raw, in_size_op, align_corners,
+                           padding_mode, calc_type));
     TT_ASSIGN_OR_RETURN(
         auto dim_info,
-        ComputeCubicDimInfo(builder, src_coord, in_size, padding_mode,
+        ComputeCubicDimInfo(builder, src_coord, in_size_op, padding_mode,
                             align_corners, calc_type));
     dim_infos.push_back(dim_info);
   }
@@ -731,8 +815,7 @@ absl::StatusOr<mlir::MlirOp> BuildGridSamplerBilinearShlo(
     PaddingMode padding_mode) {
   mlir::MlirBuilder& builder = input.getBuilder();
   const auto input_ty = GetTensorTypeOrDie(input);
-  // TODO: lwh - Add support for dynamic shape.
-  Dimensions input_shape = CopyIntVector(input_ty.getShape());
+  mlir::stablehlo::Dimensions input_shape = GetDimensions(input);
   const auto grid_ty = GetTensorTypeOrDie(grid);
   Dimensions grid_shape = CopyIntVector(grid_ty.getShape());
   int64_t spatial_dim_size = grid_shape.back();
@@ -767,14 +850,14 @@ absl::StatusOr<mlir::MlirOp> BuildGridSamplerBilinearShlo(
         mlir::stablehlo::Reshape(grid_coord_ty, grid_coord_sliced);
     grid_coords.push_back(grid_coord_raw);
 
-    const int64_t in_size =
-        input_shape[offset_dim_size + spatial_dim_size - 1 - i];
+    auto in_size = input_shape[offset_dim_size + spatial_dim_size - 1 - i];
+    TT_ASSIGN_OR_RETURN(auto in_size_op, DimensionInfoToOp(builder, in_size));
     TT_ASSIGN_OR_RETURN(
         const auto src_coord,
-        ComputeSourceCoord(grid_coord_raw, in_size, align_corners, padding_mode,
-                           calc_type));
-    TT_ASSIGN_OR_RETURN(auto dim_info,
-                        ComputeDimInfo(builder, src_coord, in_size, calc_type));
+        ComputeSourceCoord(grid_coord_raw, in_size_op, align_corners,
+                           padding_mode, calc_type));
+    TT_ASSIGN_OR_RETURN(auto dim_info, ComputeDimInfo(builder, src_coord,
+                                                      in_size_op, calc_type));
     dim_infos.push_back(std::move(dim_info));
   }
 
@@ -790,9 +873,7 @@ absl::StatusOr<mlir::MlirOp> BuildGridSamplerNearestShlo(
     mlir::MlirOp input, mlir::MlirOp grid, bool align_corners,
     PaddingMode padding_mode) {
   mlir::MlirBuilder& builder = input.getBuilder();
-  auto input_ty = GetTensorTypeOrDie(input);
-  // TODO: lwh - Add support for dynamic shape.
-  Dimensions input_shape = CopyIntVector(input_ty.getShape());
+  mlir::stablehlo::Dimensions input_shape = GetDimensions(input);
   auto grid_ty = GetTensorTypeOrDie(grid);
   Dimensions grid_shape = CopyIntVector(grid_ty.getShape());
   int64_t spatial_dim_size = grid_shape.back();
@@ -828,11 +909,12 @@ absl::StatusOr<mlir::MlirOp> BuildGridSamplerNearestShlo(
         mlir::stablehlo::Reshape(grid_coord_ty, grid_coord_sliced);
     grid_coords.push_back(grid_coord_raw);
 
-    int64_t in_size = input_shape[offset_dim_size + spatial_dim_size - 1 - i];
+    auto in_size = input_shape[offset_dim_size + spatial_dim_size - 1 - i];
+    TT_ASSIGN_OR_RETURN(auto in_size_op, DimensionInfoToOp(builder, in_size));
     TT_ASSIGN_OR_RETURN(
         auto src_coord,
-        ComputeSourceCoord(grid_coord_raw, in_size, align_corners, padding_mode,
-                           calc_type));
+        ComputeSourceCoord(grid_coord_raw, in_size_op, align_corners,
+                           padding_mode, calc_type));
 
     auto round = mlir::stablehlo::RoundNearestEven(src_coord);
     auto indices_i32_unclamped = mlir::stablehlo::ConvertElementType(
@@ -840,19 +922,28 @@ absl::StatusOr<mlir::MlirOp> BuildGridSamplerNearestShlo(
 
     auto zero_i32 = MakeConstantLike(grid_coord_raw, 0,
                                      builder.getOpBuilder().getI32Type());
-    auto in_size_minus_1_i32 =
-        MakeConstantLike(grid_coord_raw, std::max(0L, in_size - 1),
-                         builder.getOpBuilder().getI32Type());
+    auto one_i32 = MakeConstantLike(grid_coord_raw, 1,
+                                    builder.getOpBuilder().getI32Type());
+    TT_ASSIGN_OR_RETURN(auto in_size_op_broadcast,
+                        BroadcastIfNeeded(in_size_op, grid_coord_raw));
+    TT_ASSIGN_OR_RETURN(auto in_size_minus_1_i32,
+                        BuildSubShlo(in_size_op_broadcast, one_i32));
+    in_size_minus_1_i32 = mlir::stablehlo::Max(zero_i32, in_size_minus_1_i32);
     auto indices_i32 = mlir::stablehlo::Clamp(indices_i32_unclamped, zero_i32,
                                               in_size_minus_1_i32);
     indices.push_back(indices_i32);
 
     if (padding_mode == PaddingMode::kZeros) {
-      auto is_in_bounds = [&](mlir::MlirOp idx, int64_t in_size) {
+      auto is_in_bounds =
+          [&](mlir::MlirOp idx,
+              mlir::MlirOp in_size_op) -> absl::StatusOr<mlir::MlirOp> {
+        // Construct zero and limit values based on dynamic input size.
+        mlir::MlirOp limit_element = mlir::stablehlo::ConvertElementType(
+            in_size_op, builder.getOpBuilder().getI32Type());
+        TT_ASSIGN_OR_RETURN(mlir::MlirOp limit,
+                            BroadcastIfNeeded(limit_element, idx));
         auto zero =
             MakeConstantLike(idx, 0, builder.getOpBuilder().getI32Type());
-        auto limit = MakeConstantLike(idx, static_cast<int32_t>(in_size),
-                                      builder.getOpBuilder().getI32Type());
         auto lt_zero = mlir::stablehlo::Compare(
             idx, zero, mlir::stablehlo::ComparisonDirection::LT);
         auto ge_limit = mlir::stablehlo::Compare(
@@ -860,7 +951,9 @@ absl::StatusOr<mlir::MlirOp> BuildGridSamplerNearestShlo(
         auto out_of_bounds = mlir::stablehlo::Or(lt_zero, ge_limit);
         return mlir::stablehlo::Not(out_of_bounds);
       };
-      indices_ok.push_back(is_in_bounds(indices_i32_unclamped, in_size));
+      TT_ASSIGN_OR_RETURN(auto indices_ok_i32,
+                          is_in_bounds(indices_i32_unclamped, in_size_op));
+      indices_ok.push_back(indices_ok_i32);
     }
   }
 
@@ -879,10 +972,10 @@ absl::StatusOr<mlir::MlirOp> BuildGridSamplerNearestShlo(
       builder, reshaped_indices,
       GetTensorTypeOrDie(reshaped_indices[0]).getRank() - 1);
 
-  auto gathered = mlir::stablehlo::Gather(
-      input, index_tensor, gather_config.gather_dimension_numbers,
-      gather_config.slice_sizes,
-      /*indices_are_sorted=*/false);
+  TT_ASSIGN_OR_RETURN(
+      auto gathered,
+      GatherOrDynamicGather(builder, input, index_tensor, gather_config,
+                            /*indices_are_sorted=*/false));
 
   if (padding_mode == PaddingMode::kZeros) {
     mlir::MlirOp all_indices_ok;

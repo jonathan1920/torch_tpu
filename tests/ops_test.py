@@ -2692,9 +2692,6 @@ class TestOps(TorchTpuTestBase):
             # addressing for float16 and bfloat16
             "cpu": (torch.bfloat16, torch.float16),
         },
-        # TODO: b/487653164 fix grid_sampler() returning incorrect values when
-        # dynamism is enabled
-        check_dynamism=False,
     )
 
   def test_histc(self):
