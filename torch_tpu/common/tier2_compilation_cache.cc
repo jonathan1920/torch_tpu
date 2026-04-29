@@ -58,7 +58,7 @@ namespace torch_tpu {
 
 // Remember to increment this whenever TorchTPU's behavior changes enough to
 // invalidate the tier-2 cache.
-constexpr int kTorchTpuBinaryVersion = 2;
+constexpr int kTorchTpuBinaryVersion = 3;
 
 constexpr std::string_view kTier2CacheRootDir = "/dev/shm/torch_tpu_cache";
 constexpr std::string_view kLockFileExtension = ".lock";

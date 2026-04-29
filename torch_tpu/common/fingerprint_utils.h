@@ -28,6 +28,9 @@
 
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
+#include "torch_tpu/common/dtype.h"
+#include "torch_tpu/ops/op_names.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace torch_tpu {
@@ -44,9 +47,11 @@ namespace internal {
 // of a function to allow for partial specialization.
 //
 // The primary template is used for non-integral types.
-template <typename T, bool kIsSmallIntegral =
-                          (std::is_integral_v<T> || std::is_enum_v<T>) &&
-                          sizeof(T) <= sizeof(FingerprintType)>
+template <typename T,
+          bool kIsSmallIntegral =
+              // is_integral_v does NOT include enums. This is intentional as
+              // enum numerical values are not guaranteed to be stable.
+          std::is_integral_v<T> && sizeof(T) <= sizeof(FingerprintType)>
 struct Fingerprint64Impl {
   static_assert(!kIsSmallIntegral,
                 "The primary template should be instantiated only for "
@@ -55,6 +60,27 @@ struct Fingerprint64Impl {
   // Returns the fingerprint of the given value.
   [[nodiscard]] static FingerprintType Compute(const T& value) {
     return tsl::Fingerprint64(value);
+  }
+};
+
+// Specialization for OpName.
+template <>
+struct Fingerprint64Impl<OpName, /*kIsSmallIntegral=*/false> {
+  [[nodiscard]] static FingerprintType Compute(const OpName op_name) {
+    // The string op names are unique and stable as they are used for
+    // registering ops with PyTorch.
+    return Fingerprint(ToString(op_name));
+  }
+};
+
+// Specialization for mlir::ElementType.
+template <>
+struct Fingerprint64Impl<mlir::ElementType, /*kIsSmallIntegral=*/false> {
+  [[nodiscard]] static FingerprintType Compute(
+      const mlir::ElementType element_type) {
+    // The short names for ElementType are unique and stable as they are used
+    // for parameter cache keys.
+    return Fingerprint(ToShortString(element_type));
   }
 };
 
@@ -109,7 +135,7 @@ struct Fingerprint64Impl<std::pair<T, U>, /*kIsSmallIntegral=*/false> {
   }
 };
 
-// Partial specialization for integral/enum types that are small enough to fit
+// Partial specialization for integral types that are small enough to fit
 // in a FingerprintType.
 template <typename T>
 struct Fingerprint64Impl<T, /*kIsSmallIntegral=*/true> {

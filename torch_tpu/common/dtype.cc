@@ -501,6 +501,8 @@ std::string_view ToString(const mlir::ElementType element_type) {
 }
 
 std::string_view ToShortString(const mlir::ElementType element_type) {
+  // WARNING: These names are used for computing cache keys, so they must be
+  // stable. Changing them may cause key collisions in the persistent cache.
   switch (element_type) {
     case mlir::ElementType::PRED:
       return "pred";

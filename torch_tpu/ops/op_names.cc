@@ -24,6 +24,8 @@ namespace torch_tpu {
 
 // NOLINTNEXTLINE(readability/fn_size)
 std::string_view ToString(OpName op_name) {
+  // WARNING: These names are used for computing cache keys, so they must be
+  // stable. Changing them may cause key collisions in the persistent cache.
   switch (op_name) {
     case OpName::kMinOpMinus1:
       return "<min_op-1>";
