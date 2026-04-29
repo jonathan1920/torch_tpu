@@ -230,7 +230,6 @@ absl::Status AddTpuPartitioningPasses(xla::HloModule* module,
           .avoidReshardsOnNamedComputations = false
           /*shardy_options.dedup_functions_fully()*/,
       },
-      false /*shardy_options.dedup_functions_fully()*/,
       false /*shardy_options.enable_native_non_flat_support()*/);
 
   xla::spmd::SPMDCollectiveOpsCreator collective_creator =
