@@ -34,7 +34,8 @@ namespace torch_tpu {
 //   const int foo = GetFlagOnce<int, &FLAGS_torch_tpu_internal_foo>();
 template <typename T, const absl::Flag<T>* absl_nonnull flag_ptr>
 const T& GetFlagOnce() {
-  static const absl::NoDestructor<T> value(absl::GetFlag(*flag_ptr));
+  static const absl::NoDestructor<T>    //
+      value(absl::GetFlag(*flag_ptr));  // GET_FLAG_OK=implementing GetFlagOnce.
   return *value;
 }
 
