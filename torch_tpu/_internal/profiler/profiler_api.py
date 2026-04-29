@@ -15,15 +15,13 @@
 """torch_tpu._internal.profiler API."""
 
 from collections.abc import Callable
-from contextlib import contextmanager
+import contextlib
 import enum
 import os
 from typing import Any
 import warnings
 
-from ._impl import ProfileOptions
-from ._impl import start_trace
-from ._impl import stop_trace
+import torch_tpu._internal.profiler._impl as profiler
 
 
 class ProfilerActivity(enum.Enum):
@@ -71,13 +69,15 @@ def xprof_trace_handler(dir_name: os.PathLike | str) -> Callable[[Any], str]:
   return handler_fn
 
 
-def _get_profile_options(activities: list[ProfilerActivity]) -> ProfileOptions:
+def _get_profile_options(
+    activities: list[ProfilerActivity],
+) -> profiler.ProfileOptions:
   """Determines the profiler options based on the selected activities."""
   cpu_active = ProfilerActivity.CPU in activities
   tpu_active = ProfilerActivity.TPU in activities
   gpu_active = ProfilerActivity.GPU in activities
 
-  options = ProfileOptions()
+  options = profiler.ProfileOptions()
 
   if gpu_active:
     raise ValueError("GPU profiling is not supported.")
@@ -103,7 +103,7 @@ def _get_profile_options(activities: list[ProfilerActivity]) -> ProfileOptions:
   return options
 
 
-@contextmanager
+@contextlib.contextmanager
 def profile(
     activities: list[ProfilerActivity] | None = None,
     on_trace_ready: Callable[[Any], str] | None = None,
@@ -148,12 +148,12 @@ def profile(
   # For now, we call it without a profiler object.
   log_dir = on_trace_ready(None)
 
-  start_trace(log_dir, profiler_options=options)
+  profiler.start_trace(log_dir, profiler_options=options)
 
   try:
     yield None
   finally:
-    stop_trace()
+    profiler.stop_trace()
 
 
 def register_kineto_backend() -> None:

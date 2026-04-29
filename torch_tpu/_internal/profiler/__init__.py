@@ -14,13 +14,13 @@
 
 """torch_tpu._internal.profiler.profile API."""
 
-
-from .profiler_api import (
-    ProfilerActivity,
-    profile,
-    register_kineto_backend,
-    xprof_trace_handler,
-)
+# pylint: disable=g-importing-member
+# (This rule conflicts with the purpose of an __init__.py file, which is to
+# make symbols available at the package level.)
+from torch_tpu._internal.profiler.profiler_api import profile
+from torch_tpu._internal.profiler.profiler_api import ProfilerActivity
+from torch_tpu._internal.profiler.profiler_api import register_kineto_backend
+from torch_tpu._internal.profiler.profiler_api import xprof_trace_handler
 
 __all__ = [
     # go/keep-sorted start
