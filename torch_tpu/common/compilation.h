@@ -19,6 +19,8 @@
 
 // Utilities for compiling PyTorch to PjRt executables.
 
+#include <array>
+#include <cstddef>
 #include <future>
 #include <memory>
 #include <optional>
@@ -152,6 +154,13 @@ enum class CompilationMode {
   kFastCompile,  // Reduces compile time, but may result in slower execution.
   kFastRuntime,  // Produces more optimized executables, but with longer
                  // compile.
+};
+
+inline constexpr int kNumCompilationModes = 2;
+inline constexpr std::array<CompilationMode, kNumCompilationModes>
+    kCompilationModeValues = {
+        CompilationMode::kFastCompile,
+        CompilationMode::kFastRuntime,
 };
 
 // Lifts a MlirComputationBuilder into an ExecutableBuilder.
