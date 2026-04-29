@@ -21,8 +21,10 @@
 
 #include "absl/base/no_destructor.h"
 #include "absl/log/absl_log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
@@ -42,8 +44,42 @@ const absl::StatusOr<std::string>& GetRequiredEnvOnce() {
   return *env_var;
 }
 
+static absl::Status CheckRequiredDistributedEnvVars() {
+  std::vector<std::string> missing_vars;
+  if (!GetEnvOnce<kRankEnvVar>().has_value()) {
+    missing_vars.push_back(kRankEnvVar);
+  }
+  if (!GetEnvOnce<kLocalRankEnvVar>().has_value()) {
+    missing_vars.push_back(kLocalRankEnvVar);
+  }
+  if (!GetEnvOnce<kWorldSizeEnvVar>().has_value()) {
+    missing_vars.push_back(kWorldSizeEnvVar);
+  }
+  if (!GetEnvOnce<kMasterAddrEnvVar>().has_value()) {
+    missing_vars.push_back(kMasterAddrEnvVar);
+  }
+  if (!GetEnvOnce<kMasterPortEnvVar>().has_value()) {
+    missing_vars.push_back(kMasterPortEnvVar);
+  }
+  if (!GetEnvOnce<kTpuSlicebuilderAddressesEnvVar>().has_value()) {
+    missing_vars.push_back(kTpuSlicebuilderAddressesEnvVar);
+  }
+  if (!GetEnvOnce<kTpuTopologyEnvVar>().has_value()) {
+    missing_vars.push_back(kTpuTopologyEnvVar);
+  }
+
+  TT_RET_CHECK(missing_vars.empty(), error::kFailedPrecondition)
+      << "missing required environment variables for distributed training: "
+      << absl::StrJoin(missing_vars, ", ") << "; "
+      << "please run the program via torchrun or similar tools so that "
+         "the environment is set up properly";
+  return absl::OkStatus();
+}
+
 absl::StatusOr<DistributedWorkerConfiguration>
 GetDistributedWorkerConfiguration() {
+  TT_RETURN_IF_ERROR(CheckRequiredDistributedEnvVars());
+
   int rank = -1;
   TT_ASSIGN_OR_RETURN(std::string env_rank, GetRequiredEnvOnce<kRankEnvVar>());
   if (!absl::SimpleAtoi(env_rank, &rank)) {

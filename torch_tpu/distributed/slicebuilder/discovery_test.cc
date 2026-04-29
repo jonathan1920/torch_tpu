@@ -16,30 +16,87 @@
 
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
 
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include <string>
 
 #include "gtest/gtest.h"
+#include "absl/log/absl_log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "torch_tpu/common/env_vars.h"
+#include "torch_tpu/common/error_utils.h"
 
 namespace torch_tpu {
 namespace {
 
-TEST(DiscoveryTest, GetDistributedWorkerConfiguration) {
-  setenv(kRankEnvVar, "0", 1);
-  setenv(kLocalRankEnvVar, "0", 1);
-  setenv(kWorldSizeEnvVar, "2", 1);
-  setenv(kMasterAddrEnvVar, "localhost", 1);
-  setenv(kMasterPortEnvVar, "12345", 1);
-  // Use standard BNS addresses with numeric ports.
-  setenv(kTpuSlicebuilderAddressesEnvVar, "host0:54321,host1:54322", 1);
-  setenv(kTpuTopologyEnvVar, "1x1x1", 1);
+using testing::ExitedWithCode;
 
-  auto config_or = GetDistributedWorkerConfiguration();
-  ASSERT_TRUE(config_or.ok()) << config_or.status();
-  EXPECT_EQ(config_or->rank, 0);
-  EXPECT_EQ(config_or->sb_port, "54321");
-  EXPECT_EQ(config_or->sb_addrs, "host0:54321,host1:54322");
+TEST(DiscoveryDeathTest, GetDistributedWorkerConfigurationMissingVars) {
+  EXPECT_EXIT(
+      {
+        unsetenv(kRankEnvVar);
+        unsetenv(kLocalRankEnvVar);
+        unsetenv(kWorldSizeEnvVar);
+        unsetenv(kMasterAddrEnvVar);
+        unsetenv(kMasterPortEnvVar);
+        unsetenv(kTpuSlicebuilderAddressesEnvVar);
+        unsetenv(kTpuTopologyEnvVar);
+
+        const absl::StatusOr<DistributedWorkerConfiguration> config_or =
+            GetDistributedWorkerConfiguration();
+
+        if (config_or.ok()) {
+          ABSL_LOG(ERROR) << "Expected failure, but got success.";
+          _exit(1);
+        }
+        if (config_or.status().code() != error::kFailedPrecondition) {
+          ABSL_LOG(ERROR) << "Expected FailedPrecondition, but got: "
+                          << config_or.status().code();
+          _exit(2);
+        }
+        if (!absl::StrContains(config_or.status().message(),
+                               "missing required environment variables "
+                               "for distributed training")) {
+          ABSL_LOG(ERROR) << "Unexpected error message: "
+                          << config_or.status().message();
+          _exit(3);
+        }
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
+}
+
+TEST(DiscoveryDeathTest, GetDistributedWorkerConfiguration) {
+  EXPECT_EXIT(
+      {
+        setenv(kRankEnvVar, "0", 1);
+        setenv(kLocalRankEnvVar, "0", 1);
+        setenv(kWorldSizeEnvVar, "2", 1);
+        setenv(kMasterAddrEnvVar, "localhost", 1);
+        setenv(kMasterPortEnvVar, "12345", 1);
+        setenv(kTpuSlicebuilderAddressesEnvVar, "host0:54321,host1:54322", 1);
+        setenv(kTpuTopologyEnvVar, "1x1x1", 1);
+
+        const absl::StatusOr<DistributedWorkerConfiguration> config_or =
+            GetDistributedWorkerConfiguration();
+
+        if (!config_or.ok()) {
+          ABSL_LOG(ERROR) << "Expected success, but got failure: "
+                          << config_or.status();
+          _exit(1);
+        }
+        if (config_or->rank != 0 || config_or->sb_port != "54321" ||
+            config_or->sb_addrs != "host0:54321,host1:54322") {
+          ABSL_LOG(ERROR) << "Unexpected config values.";
+          _exit(2);
+        }
+        _exit(0);
+      },
+      ExitedWithCode(0), "");
 }
 
 }  // namespace
