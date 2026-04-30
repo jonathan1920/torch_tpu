@@ -16,19 +16,13 @@
 
 #include "torch_tpu/ops/view_decomposition/pad_primitive.h"
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 
 namespace torch_tpu {
 namespace {
-using absl_testing::StatusIs;
-using testing::HasSubstr;
 
 TEST(UpdateLayoutPad, ScalarNoOp) {
   StridedLayout layout = MakeContiguousBaseLayout({});
@@ -77,41 +71,6 @@ TEST(UpdateLayoutPad, TensorToTensor) {
       .storage_offset = 0,
   };
   EXPECT_EQ(layout, expected);
-}
-
-TEST(UpdateLayoutPad, InvalidRank) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  PadPrimitive pad = {
-      .pad_dims = {
-          {.low_padding = 1, .high_padding = 1, .interior_padding = 1},
-          {.low_padding = 1, .high_padding = 1, .interior_padding = 1},
-          {.low_padding = 1, .high_padding = 1, .interior_padding = 1},
-          {.low_padding = 1, .high_padding = 1, .interior_padding = 1}}};
-  EXPECT_THAT(UpdateLayout(layout, pad),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("pad has wrong number of dimensions")));
-}
-
-TEST(UpdateLayoutPad, InvalidNegativePadding) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  PadPrimitive pad = {
-      .pad_dims = {
-          {.low_padding = 1, .high_padding = 1, .interior_padding = 1},
-          {.low_padding = 1, .high_padding = -1, .interior_padding = 1},
-          {.low_padding = 1, .high_padding = 1, .interior_padding = 1}}};
-  EXPECT_THAT(
-      UpdateLayout(layout, pad),
-      StatusIs(error::kInvalidArgument, HasSubstr("pad has negative padding")));
 }
 
 }  // namespace

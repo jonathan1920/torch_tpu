@@ -19,17 +19,18 @@
 #include <cstddef>
 #include <cstdint>
 #include <ostream>
+#include <string_view>
 #include <utility>
 
-#include "absl/status/status.h"
+#include "absl/log/absl_check.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Types.h"
 #include "torch_tpu/common/dimension_types.h"
-#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
+#include "torch_tpu/ops/view_decomposition/view_primitive_error_utils.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 
@@ -37,19 +38,25 @@ namespace torch_tpu {
 
 namespace {
 
-absl::Status ValidatePad(const PadPrimitive& pad, const size_t expected_rank) {
-  TT_RET_CHECK(pad.pad_dims.size() == expected_rank, error::kInvalidArgument)
-      << "pad has wrong number of dimensions. Expected " << expected_rank
-      << " but got " << pad.pad_dims.size();
-  for (const auto& pad_dim : pad.pad_dims) {
-    if (pad_dim.low_padding < 0 || pad_dim.high_padding < 0 ||
-        pad_dim.interior_padding < 0) {
-      return TT_ERROR(error::kInvalidArgument)
-             << "pad has negative padding: " << pad;
-    }
+void CheckPad(const PadPrimitive& pad, const size_t rank,
+              const std::string_view error_message_suffix) {
+  ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+      pad.pad_dims.size(), rank)
+      << "expected the PadPrimitive padding dimensions size to be " << rank
+      << ", which is the rank of the input layout, got " << pad.pad_dims.size()
+      << error_message_suffix;
+
+  for (size_t i = 0; i < pad.pad_dims.size(); ++i) {
+    const auto& dim = pad.pad_dims[i];
+    ABSL_CHECK(  // CRASH_OK=Internal error on view decomposition.
+        dim.low_padding >= 0 && dim.high_padding >= 0 &&
+        dim.interior_padding >= 0)
+        << "expected the PadPrimitive values (high, low, and interior) to be "
+           ">= 0, got "
+        << dim << " at index " << i << error_message_suffix;
   }
-  return absl::OkStatus();
 }
+
 }  // namespace
 
 bool operator==(const PadDimension& lhs, const PadDimension& rhs) {
@@ -75,7 +82,9 @@ std::ostream& operator<<(std::ostream& os, const PadPrimitive& pad) {
 
 absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
                                   const PadPrimitive& pad) {
-  TT_RETURN_IF_ERROR(ValidatePad(pad, layout.strided_dims.size()));
+  CheckPad(pad, layout.strided_dims.size(),
+           /* error_message_suffix= */ GetUpdateLayoutBugSuffix(pad, layout));
+
   bool updated = false;
   // Padding resets the storage offset to 0, as it requires a copy to
   // contiguous.
@@ -89,9 +98,11 @@ absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
         pad_dim.interior_padding != 0) {
       updated = true;
     }
-    const int64_t new_size = input_dim.size + pad_dim.low_padding +
-                             pad_dim.high_padding +
-                             (input_dim.size - 1) * pad_dim.interior_padding;
+    const int64_t outer_padding = pad_dim.low_padding + pad_dim.high_padding;
+    const int64_t inner_padding =
+        (input_dim.size == 0) ? 0
+                              : (input_dim.size - 1) * pad_dim.interior_padding;
+    const int64_t new_size = input_dim.size + outer_padding + inner_padding;
     new_layout.strided_dims.push_back(
         StridedDimension{.size = new_size, .stride = 1});
   }
@@ -113,7 +124,9 @@ absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
 absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(mlir::MlirOp input,
                                                const PadPrimitive& pad) {
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
-  TT_RETURN_IF_ERROR(ValidatePad(pad, input_type.getRank()));
+  CheckPad(pad, input_type.getRank(),
+           /* error_message_suffix= */
+           GetViewPrimitiveShloErrorSuffix(pad, input_type.getShape()));
 
   // Restructure from list-of-tuples to tuple-of-lists to match StableHLO API.
   Indices low_padding;
