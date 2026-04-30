@@ -458,26 +458,6 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
-    name = "prevent_graph_splits",
-    srcs = ["prevent_graph_splits.cc"],
-    hdrs = ["prevent_graph_splits.h"],
-    deps = [
-        ":traversal",
-        "//torch_tpu/common:cache_key",
-        "//torch_tpu/common:compilation",
-        "//torch_tpu/common:compilation_cache",
-        "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:flags",
-        "//torch_tpu/common:utils",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-torch_tpu_cc_library(
     name = "split_traversal",
     srcs = ["split_traversal.cc"],
     hdrs = ["split_traversal.h"],
