@@ -35,7 +35,7 @@ namespace torch_tpu {
 // Represents the reason for an op materialization event.
 enum class MaterializationReason {
   kUnknown,
-  kCpuConversion,
+  kCpuTransfer,
   kScalarConversion,
   kExplicitSync,
   kAutogradSync,
@@ -49,7 +49,7 @@ constexpr std::string_view ToString(MaterializationReason reason) {
   switch (reason) {
     case MaterializationReason::kUnknown:
       return "unknown";
-    case MaterializationReason::kCpuConversion:
+    case MaterializationReason::kCpuTransfer:
       return ".cpu()";
     case MaterializationReason::kScalarConversion:
       return "item()";
