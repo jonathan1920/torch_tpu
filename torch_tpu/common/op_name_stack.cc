@@ -260,6 +260,7 @@ void OpNameStack::Push(OpName op_name) {
       OpName::kScatterValueOut,
       OpName::kScatterValueReduceOut,
       OpName::kSplitWithSizesCopyOut,
+      OpName::kSumIntListOut,
       OpName::kTake,
       OpName::kTakeOut,
       OpName::kThresholdBackwardGradInput,
