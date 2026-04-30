@@ -19,6 +19,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -38,6 +39,7 @@
 #include "ATen/ops/zeros.h"
 #include "c10/core/ScalarType.h"
 #include "c10/util/Exception.h"
+#include "c10/util/StringUtil.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
@@ -382,16 +384,16 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
              is_supported_flash_attention_shape);
 
         if (can_use_overrideable) {
-          if (ctx.userEnabledOverrideableSDP()) {
-            return static_cast<int64_t>(at::SDPBackend::overrideable);
-          } else if (ctx.userEnabledFlashSDP()) {
-            return static_cast<int64_t>(at::SDPBackend::flash_attention);
-          } else if (ctx.userEnabledMemEfficientSDP()) {
-            return static_cast<int64_t>(at::SDPBackend::efficient_attention);
-          }
+          // We unconditionally use "overrideable" as returning flash_attention
+          // falls through to calling
+          // at::_scaled_dot_product_flash_attention_for_cpu, see
+          // torch/aten/src/ATen/native/transformers/attention.cpp.
+          return static_cast<int64_t>(at::SDPBackend::overrideable);
         }
 
-        TORCH_WARN_ONCE(
+        // Use c10::str rather than absl::StrCat as it will convert enums into
+        // their string representation.
+        std::string failure_reason = c10::str(
             "TorchTPU only supports FLASH, EFFICIENT, OVERRIDEABLE SDPBackend "
             "for scaled_dot_product_attention when these conditions are met:\n"
             "- attn_mask is None (current: ",
@@ -420,9 +422,11 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
             ")\n"
             "- Head dimension (dim - 1) is less than 128 or divisible by 128 "
             "(query: ",
-            query.size(query.ndimension() - 1),
-            ")\n"
-            "Falling back to MATH backend.");
+            query.size(query.ndimension() - 1), ")");
+
+        TT_CHECK_THROW(ctx.userEnabledMathSDP(), error::kFailedPrecondition)
+            << failure_reason << "\nFallback MATH backend is disabled.";
+        TORCH_WARN_ONCE(failure_reason, "\nFalling back to MATH backend.");
         return static_cast<int64_t>(at::SDPBackend::math);
       });
 }

@@ -6173,7 +6173,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         dtype=config.dtype,
     )
 
-    def compute(device):
+    def compute(device: torch.device):
       q_t = q.clone().detach().to(device)
       k_t = k.clone().detach().to(device)
       v_t = v.clone().detach().to(device)
@@ -6181,13 +6181,18 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       k_t.requires_grad_(True)
       v_t.requires_grad_(True)
 
-      y = torch.nn.functional.scaled_dot_product_attention(
-          q_t,
-          k_t,
-          v_t,
-          is_causal=config.is_causal,
-          enable_gqa=config.enable_gqa,
-      )
+      with torch.nn.attention.sdpa_kernel(
+          torch.nn.attention.SDPBackend.MATH
+          if config.use_math_backend or device == "cpu"
+          else torch.nn.attention.SDPBackend.FLASH_ATTENTION
+      ):
+        y = torch.nn.functional.scaled_dot_product_attention(
+            q_t,
+            k_t,
+            v_t,
+            is_causal=config.is_causal,
+            enable_gqa=config.enable_gqa,
+        )
 
       y.sum().backward()
       return y, q_t.grad, k_t.grad, v_t.grad

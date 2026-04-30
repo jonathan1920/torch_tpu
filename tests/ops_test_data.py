@@ -79,6 +79,7 @@ SDPA_CONFIGS = [
         is_causal=True,
         enable_gqa=True,
         dtype=torch.bfloat16,
+        use_math_backend=True,
     ),
     # Configs for Llama3 70B attention layers
     SdpaConfig(
