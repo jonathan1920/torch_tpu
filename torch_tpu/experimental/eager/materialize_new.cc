@@ -484,7 +484,7 @@ absl::Status MaterializationWorker::MaterializeQueue(
 
     ABSL_VLOG(1) << "[MaterializationWorker] Launching compilation for "
                     "region: cache_key="
-                 << traversal.cache_key(compilation_mode);
+                 << traversal.GetCacheKey(compilation_mode);
     TT_ASSIGN_OR_RETURN(auto compiled_kernel,
                         traversal.Compile(compilation_mode));
 
@@ -513,7 +513,7 @@ absl::Status MaterializationWorker::MaterializeQueue(
       }
     }
 
-    std::string name = absl::StrCat(traversal.cache_key(compilation_mode));
+    std::string name = absl::StrCat(traversal.GetCacheKey(compilation_mode));
     Traversal::Parts traversal_parts = traversal.IntoParts();
     execution_tasks.push_back(ExecutionTask{
         .name = std::move(name),

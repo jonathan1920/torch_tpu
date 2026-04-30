@@ -541,7 +541,7 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
   TT_ASSIGN_OR_RETURN(UniqueCompileOptions compile_options,
                       MakeCompilerOptions(compilation_mode));
 
-  CompilationCacheKey compilation_cache_key = cache_key(compilation_mode);
+  CompilationCacheKey compilation_cache_key = GetCacheKey(compilation_mode);
   ABSL_VLOG(1) << "[Compile] compilation cache key: " << compilation_cache_key;
 
   return CompilationCache::GetInstance().GetOrCompile(

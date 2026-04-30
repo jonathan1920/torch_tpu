@@ -97,7 +97,7 @@ ExecutionTask CreateExecutionTask(CompilationMode compilation_mode,
                                   CompiledKernel compiled_kernel) {
   std::string task_name;
   if (ABSL_VLOG_IS_ON(1)) {
-    task_name = absl::StrCat(traversal.cache_key(compilation_mode));
+    task_name = absl::StrCat(traversal.GetCacheKey(compilation_mode));
   }
   Traversal::Parts parts = traversal.IntoParts();
   return ExecutionTask{.arguments = std::move(parts.arguments),
@@ -413,7 +413,7 @@ class MaterializationWorker {
       }
 
       ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing traversal: cache_key="
-                   << split_traversal.cache_key(compilation_mode)
+                   << split_traversal.GetCacheKey(compilation_mode)
                    << " traversal input arg count: "
                    << split_traversal.arguments().size()
                    << " traversal output arg count: "

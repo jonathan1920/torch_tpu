@@ -120,7 +120,7 @@ class Traversal {
       absl::Span<const SharedDeviceBufferList> nodes_to_materialize);
 
   // Composes a cache key for the traversal for the specific compilation mode.
-  CompilationCacheKey cache_key(CompilationMode) const {
+  CompilationCacheKey GetCacheKey(CompilationMode) const {
     if (graph_key_ == std::nullopt) {
       graph_key_ = BuildGraphKey();
     }
