@@ -78,8 +78,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenNativeLayerNorm(
       (input, normalized_shape, weight_opt, bias_opt, eps), {
         TT_THROW_IF_ERROR(CheckInputs(input, normalized_shape));
 
-        const bool has_weight = weight_opt.has_value();
-        const bool has_bias = bias_opt.has_value();
+        const bool has_weight = weight_opt.has_value() && weight_opt->defined();
+        const bool has_bias = bias_opt.has_value() && bias_opt->defined();
         const size_t normalized_shape_dims = normalized_shape.size();
 
         auto op_builder = [has_weight, has_bias, normalized_shape_dims, eps](
@@ -144,10 +144,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenNativeLayerNorm(
 
         // Build inputs for the op.
         std::vector<at::Tensor> inputs = {input};
-        if (weight_opt.has_value()) {
+        if (has_weight) {
           inputs.push_back(weight_opt.value());
         }
-        if (bias_opt.has_value()) {
+        if (has_bias) {
           inputs.push_back(bias_opt.value());
         }
         const auto elem_dtype = output_dtype;
@@ -186,8 +186,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenLayerNormBackward(
         // Note that bias is not an input to the backward compute.
         // We just need to know if it was present, in order to compute dbeta
         // from dy.
-        const bool compute_dbeta = bias_opt.has_value();
-        const bool has_weight = weight_opt.has_value();
+        const bool compute_dbeta = bias_opt.has_value() && bias_opt->defined();
+        const bool has_weight = weight_opt.has_value() && weight_opt->defined();
 
         Dimensions normalized_shape_vec = CopyIntVector(normalized_shape);
         auto op_builder = [has_weight, compute_dbeta, normalized_shape_vec](
@@ -223,13 +223,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenLayerNormBackward(
         Dimensions input_dims = CopyIntVector(x.sizes());
         Dimensions normalized_dims = CopyIntVector(normalized_shape);
         Dimensions weight_grad_dims =
-            weight_opt.has_value() ? normalized_dims : Dimensions();
+            has_weight ? normalized_dims : Dimensions();
         Dimensions bias_grad_dims =
-            bias_opt.has_value() ? normalized_dims : Dimensions();
+            compute_dbeta ? normalized_dims : Dimensions();
 
         // Build inputs for the op.
         std::vector<at::Tensor> inputs = {dY, x, mean, rstd};
-        if (weight_opt.has_value()) {
+        if (has_weight) {
           inputs.push_back(weight_opt.value());
         }
 
@@ -244,10 +244,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenLayerNormBackward(
 
         return {grad_input_mask[0] ? MakeTensor(std::move(grad_input_buf))
                                    : at::Tensor(),
-                grad_input_mask[1] && weight_opt.has_value()
+                grad_input_mask[1] && has_weight
                     ? MakeTensor(std::move(grad_weight_buf))
                     : at::Tensor(),
-                grad_input_mask[2] && bias_opt.has_value()
+                grad_input_mask[2] && compute_dbeta
                     ? MakeTensor(std::move(grad_bias_buf))
                     : at::Tensor()};
       });

@@ -5370,6 +5370,32 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
     assert_with_tol(fn)
 
+  # Regression test for b/503472873.
+  def test_layer_norm_backward_no_affine(self):
+    def fn(device):
+      n, c, h, w = 2, 2, 2, 4
+      num_elements = n * c * h * w
+
+      x = (
+          (
+              torch.arange(num_elements, dtype=torch.float32, device=device)
+              - num_elements / 2
+          )
+          .reshape(n, c, h, w)
+          .requires_grad_()
+      )
+      g = torch.ones_like(x)
+
+      layer_norm = torch.nn.LayerNorm(
+          [c, h, w], elementwise_affine=False, device=device
+      )
+
+      out = layer_norm(x)
+      out.backward(g)
+      return x.grad
+
+    self.assert_close_tpu_vs_cpu(fn, rtol=1e-5, atol=1e-5)
+
   def test_max_pool2d_with_indices(self):
     """Tests nn.functional.max_pool2d_float32_sample54."""
     device = api.tpu_device()
