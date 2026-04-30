@@ -24,7 +24,6 @@
 
 #include "absl/log/absl_check.h"
 #include "absl/log/check.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -32,6 +31,7 @@
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
+#include "torch_tpu/ops/view_decomposition/view_primitive_error_utils.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {
@@ -109,17 +109,21 @@ bool IsNoOpReshape(const ReshapePrimitive& reshape,
   return true;
 }
 
-absl::Status ValidateReshapeElementCount(const ReshapePrimitive& reshape,
-                                         const StridedLayout& layout) {
-  TT_RET_CHECK(layout.strided_dims.size() == reshape.base_sizes.size(),
-               error::kInvalidArgument)
-      << "reshape base sizes and layout rank must match. Layout: " << layout
-      << " Op: " << reshape;
+void CheckNumberOfElements(const ReshapePrimitive& reshape,
+                           const StridedLayout& layout) {
+  ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+      layout.strided_dims.size(), reshape.base_sizes.size())
+      << "expected ReshapePrimitive base shape size to be "
+      << layout.strided_dims.size() << ", which is the input rank, got "
+      << reshape.base_sizes.size() << GetUpdateLayoutBugSuffix(reshape, layout);
+
   for (int i = 0; i < layout.strided_dims.size(); ++i) {
-    TT_RET_CHECK(layout.strided_dims[i].size == reshape.base_sizes[i],
-                 error::kInvalidArgument)
-        << "reshape base sizes must match the layout. Layout: " << layout
-        << " Op: " << reshape;
+    ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+        layout.strided_dims[i].size, reshape.base_sizes[i])
+        << "expected ReshapePrimitive base size at index " << i << " to be "
+        << layout.strided_dims[i].size
+        << ", which is the input size at that dimension, got "
+        << reshape.base_sizes[i] << GetUpdateLayoutBugSuffix(reshape, layout);
   }
   int64_t layout_num_elements = 1;
   for (const auto& dim : layout.strided_dims) {
@@ -129,15 +133,16 @@ absl::Status ValidateReshapeElementCount(const ReshapePrimitive& reshape,
   for (const auto& size : reshape.new_sizes) {
     reshape_num_elements *= size;
   }
-  TT_RET_CHECK(layout_num_elements == reshape_num_elements,
-               error::kInvalidArgument)
-      << "reshape does not match the number of elements in the "
-         "layout. Layout: "
-      << layout << " Op: " << reshape;
-  TT_RET_CHECK(reshape_num_elements > 0, error::kInvalidArgument)
-      << "reshapes to a zero-sized dimension. Layout: " << layout
-      << " Op: " << reshape;
-  return absl::OkStatus();
+  ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+      layout_num_elements, reshape_num_elements)
+      << "expected ReshapePrimitive total number of elements to be "
+      << layout_num_elements
+      << ", which is the input total number of elements, got "
+      << reshape_num_elements << GetUpdateLayoutBugSuffix(reshape, layout);
+  ABSL_CHECK_GT(  // CRASH_OK=Internal error on view decomposition.
+      reshape_num_elements, 0)
+      << "expected ReshapePrimitive total number of elements to be > 0, got "
+      << reshape_num_elements << GetUpdateLayoutBugSuffix(reshape, layout);
 }
 
 }  // namespace
@@ -156,7 +161,7 @@ absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
   }
 
   // Validate element count matches and is non-zero.
-  TT_RETURN_IF_ERROR(ValidateReshapeElementCount(reshape, layout));
+  CheckNumberOfElements(reshape, layout);
 
   // Not a no-op, actually need to do the reshape
   // Storage offset is unchanged.
@@ -172,7 +177,9 @@ absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
   // Solving for the new strides requires tracking the contiguity-like blocks.
   auto blocks = GetContiguityBlocks(layout);
   size_t block_index = 0;
-  for (auto& new_dim : new_layout.strided_dims) {
+  for (int64_t i = 0; i < new_layout.strided_dims.size(); ++i) {
+    auto& new_dim = new_layout.strided_dims[i];
+
     if (new_dim.size == 1) {
       // Size-1 dimensions have arbitrary strides, and we can have as many
       // trailing size-1 dimensions as necessary.
@@ -183,9 +190,16 @@ absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
       new_dim.stride = 1;
       continue;
     }
-    TT_RET_CHECK(block_index < blocks.size(), error::kInvalidArgument)
-        << "reshape is not aligned with contiguity-like blocks. Layout: "
-        << layout << " Op: " << reshape;
+
+    ABSL_CHECK_LT(  // CRASH_OK=Internal error on view decomposition.
+        block_index, blocks.size())
+        << "expected the ReshapePrimitive the output of sizes "
+        << ToString(reshape.new_sizes)
+        << " to have only size 1 dimensions after reaching the end of the "
+           "input contiguity blocks, got output size "
+        << new_dim.size << " at index " << i
+        << GetUpdateLayoutBugSuffix(reshape, layout);
+
     auto& current_block = blocks[block_index];
     if (new_dim.size == current_block.num_elements) {
       // Used up the elements in the current block.
@@ -193,14 +207,21 @@ absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
       ++block_index;
       continue;
     }
-    TT_RET_CHECK(current_block.num_elements > new_dim.size,
-                 error::kInvalidArgument)
-        << "reshape is not aligned with contiguity-like blocks. Layout: "
-        << layout << " Op: " << reshape;
-    TT_RET_CHECK(current_block.num_elements % new_dim.size == 0,
-                 error::kInvalidArgument)
-        << "reshape is not aligned with contiguity-like blocks. Layout: "
-        << layout << " Op: " << reshape;
+
+    ABSL_CHECK_GT(  // CRASH_OK=Internal error on view decomposition.
+        current_block.num_elements, new_dim.size)
+        << "expected ReshapePrimitive output dimension size at index " << i
+        << " to be < " << current_block.num_elements
+        << ", which is the number of elements in the current contiguity block, "
+           "got "
+        << new_dim.size << GetUpdateLayoutBugSuffix(reshape, layout);
+    ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+        current_block.num_elements % new_dim.size, 0)
+        << "expected ReshapePrimitive the output dimension size "
+        << new_dim.size << " to divide " << current_block.num_elements
+        << ", which is the contiguity block number of elements, got "
+        << new_dim.size << " does not divide " << current_block.num_elements
+        << GetUpdateLayoutBugSuffix(reshape, layout);
 
     // Split the current block into two blocks to satisfy new_dim.size.
     // This converts a block with A*B elements and stride S into two blocks:
@@ -226,10 +247,11 @@ absl::StatusOr<ReshapePrimitive> Merge(ReshapePrimitive first,
   for (int64_t size : second.new_sizes) {
     to_merge_num_elements *= size;
   }
-  TT_RET_CHECK(current_num_elements == to_merge_num_elements,
-               error::kInvalidArgument)
-      << "sequential reshapes must have matching element counts. first: "
-      << first << ", second: " << second;
+  ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+      current_num_elements, to_merge_num_elements)
+      << "expected sequential ReshapePrimitives element count to match, got "
+      << current_num_elements << " != " << to_merge_num_elements
+      << GetViewPrimitiveErrorSuffix(first);
 
   // Sequential reshapes from A -> B and B -> C merge to A -> C.
   second.base_sizes = std::move(first.base_sizes);
@@ -239,23 +261,28 @@ absl::StatusOr<ReshapePrimitive> Merge(ReshapePrimitive first,
 absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(
     mlir::MlirOp input, const ReshapePrimitive& reshape) {
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
-  auto result =
-      ReshapeFromStaticDimensions(input, reshape.base_sizes, reshape.new_sizes);
-  if (result.ok() && input_type.hasStaticShape()) {
-    const mlir::RankedTensorType output_type = GetTensorTypeOrDie(*result);
+  TT_ASSIGN_OR_RETURN(auto result,
+                      ReshapeFromStaticDimensions(input, reshape.base_sizes,
+                                                  reshape.new_sizes));
+  if (input_type.hasStaticShape()) {
+    const mlir::RankedTensorType output_type = GetTensorTypeOrDie(result);
     // Verify that static shaped reshapes are exactly what PT dictates them to
     // be.
-    ABSL_CHECK(  // CRASH_OK: For static input, the input/output shape must
-                 // match static base_sizes/new_sizes.
-        input_type.getShape().equals(reshape.base_sizes) &&
-        output_type.getShape().equals(reshape.new_sizes))
-        << "input/output shape must match static base_sizes/new_sizes "
-           "respectively, got "
-           "input: "
+    ABSL_CHECK(  // CRASH_OK=Internal error on view decomposition.
+        input_type.getShape().equals(reshape.base_sizes))
+        << "expected the ReshapePrimitive input shape to be equal "
+        << ToString(reshape.base_sizes)
+        << ", which is the expected input shape by the primitive, got "
         << ToString(input_type.getShape())
-        << " base sizes: " << ToString(reshape.base_sizes)
-        << " output: " << ToString(output_type.getShape())
-        << " new sizes: " << ToString(reshape.new_sizes);
+        << GetViewPrimitiveShloErrorSuffix(reshape, input_type.getShape());
+
+    ABSL_CHECK(  // CRASH_OK=Internal error on view decomposition.
+        output_type.getShape().equals(reshape.new_sizes))
+        << "expected the ReshapePrimitive output shape to be equal "
+        << ToString(reshape.new_sizes)
+        << ", which is the expected output shape by the primitive, got "
+        << ToString(output_type.getShape())
+        << GetViewPrimitiveShloErrorSuffix(reshape, output_type.getShape());
   }
   return result;
 }

@@ -18,20 +18,15 @@
 
 #include <utility>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "torch_tpu/common/dimension_types.h"
-#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 
 namespace torch_tpu {
 namespace {
-using absl_testing::StatusIs;
-using testing::HasSubstr;
 
 TEST(UpdateLayoutReshape, ScalarNoOp) {
   StridedLayout layout = MakeContiguousBaseLayout({});
@@ -72,23 +67,6 @@ TEST(UpdateLayoutReshape, VectorToScalar) {
   EXPECT_EQ(layout, expected);
 }
 
-TEST(UpdateLayoutReshape, InvalidScalarToVector) {
-  StridedLayout layout = MakeContiguousBaseLayout({});
-  EXPECT_THAT(
-      UpdateLayout(layout,
-                   ReshapePrimitive{.base_sizes = {}, .new_sizes = {2}}),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("reshape does not match the number of elements")));
-}
-
-TEST(UpdateLayoutReshape, InvalidVectorToScalar) {
-  StridedLayout layout = MakeContiguousBaseLayout({2});
-  EXPECT_THAT(
-      UpdateLayout(layout,
-                   ReshapePrimitive{.base_sizes = {2}, .new_sizes = {}}),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("reshape does not match the number of elements")));
-}
 
 TEST(UpdateLayoutReshape, TensorNoOp) {
   StridedLayout layout = {
@@ -173,47 +151,6 @@ TEST(UpdateLayoutReshape, TensorToTensorWithOnes) {
   EXPECT_EQ(layout, expected);
 }
 
-TEST(UpdateLayoutReshape, InvalidViolatesContinguity) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  ReshapePrimitive reshape = {.base_sizes = {6, 4, 2}, .new_sizes = {24, 2}};
-  EXPECT_THAT(
-      UpdateLayout(layout, reshape),
-      StatusIs(
-          error::kInvalidArgument,
-          HasSubstr("reshape is not aligned with contiguity-like blocks")));
-}
-
-TEST(UpdateLayoutReshape, InvalidBaseRank) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  ReshapePrimitive reshape = {.base_sizes = {6, 4}, .new_sizes = {24, 1}};
-  EXPECT_THAT(UpdateLayout(layout, reshape),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("reshape base sizes and layout rank must "
-                                 "match")));
-}
-
-TEST(UpdateLayoutReshape, InvalidBaseSizes) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  ReshapePrimitive reshape = {.base_sizes = {6, 4, 1}, .new_sizes = {24, 1}};
-  EXPECT_THAT(UpdateLayout(layout, reshape),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("reshape base sizes must match the layout")));
-}
 
 TEST(MergeSequentialReshape, ValidMerge) {
   Dimensions contiguous_base_shape = {54};
@@ -234,16 +171,6 @@ TEST(MergeSequentialReshape, ValidMerge) {
   EXPECT_EQ(actual_layout, expected_layout);
 }
 
-TEST(MergeSequentialReshape, InvalidMerge) {
-  ReshapePrimitive current = {.new_sizes = {6, 9}};
-  ReshapePrimitive to_merge = {.new_sizes = {27, 3}};
-  auto merged = Merge(std::move(current), std::move(to_merge));
-  EXPECT_THAT(
-      merged.status(),
-      StatusIs(
-          error::kInvalidArgument,
-          HasSubstr("sequential reshapes must have matching element counts")));
-}
 
 }  // namespace
 }  // namespace torch_tpu
