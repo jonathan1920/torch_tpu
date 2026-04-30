@@ -306,8 +306,8 @@ torch_tpu_py_test(
     notest_oss = "Disabled during switch from opt-in to opt-out",
     shard_count = 6,
     tags = [
-        "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.
+        "requires-accel-hbm",
         "requires-net:external",
         "requires-tpu-v5lite",  #
     ],
