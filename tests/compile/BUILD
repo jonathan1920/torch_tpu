@@ -331,7 +331,6 @@ torch_tpu_py_test(
     notest_oss = "Disabled during switch from opt-in to opt-out",
     strict = "true",
     tags = [
-        "nomsan",  # TODO: fix the test in msan mode.
         "requires-tpu-v5lite",
     ],
     deps = [
