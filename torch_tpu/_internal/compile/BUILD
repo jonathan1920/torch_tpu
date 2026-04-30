@@ -59,7 +59,8 @@ torch_tpu_py_library(
         "_backend.py",
     ],
     tags = [
-        "ignore_for_dep=third_party.py.torch_tpu.api",
+        # Avoid a circular dependency. Imports torch_tpu for package version.
+        "ignore_for_dep=third_party.py.torch_tpu",
     ],
     deps = [
         ":tpu_torch_compile",
