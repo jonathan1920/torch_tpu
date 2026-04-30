@@ -46,25 +46,11 @@ import transformers
 
 _MAX_SEQ_LEN_HEURISTIC_CAP = 100_000
 
-_HF_TRANSFORMERS_WEIGHTS_DIR = flags.DEFINE_string(
-    "hf_transformers_weights_dir",
-# "$DATA_ROOT/$WEIGHTS_SUBDIR/huggingface"
+_WEIGHTS_BASE_PATH = flags.DEFINE_string(
+    "weights_base_path",
+# "$DATA_ROOT/$WEIGHTS_SUBDIR"
     "",
-    "Location of weights and config files for HuggingFace Transformers models.",
-)
-
-_HF_TIMM_WEIGHTS_DIR = flags.DEFINE_string(
-    "hf_timm_weights_dir",
-# "$DATA_ROOT/$WEIGHTS_SUBDIR/huggingface/timm"
-    "",
-    "Location of weights and config files for HuggingFace TIMM models.",
-)
-
-_HF_DIFFUSERS_WEIGHTS_DIR = flags.DEFINE_string(
-    "hf_diffusers_weights_dir",
-# "$DATA_ROOT/$WEIGHTS_SUBDIR/huggingface"
-    "",
-    "Location of weights and config files for HuggingFace Diffusers models.",
+    "Default base location of model configs and weights.",
 )
 
 
@@ -101,6 +87,11 @@ class ModuleSpec:
 class BaseProvider(abc.ABC):
   """Abstract base class for model source providers."""
 
+  def __init__(self, base_path: str | None = None):
+    if base_path is None:
+      base_path = _WEIGHTS_BASE_PATH.value
+    self._base_path = epath.Path(base_path)
+
   @abc.abstractmethod
   def list_modules(self) -> list[str]:
     """Lists the names of all models available from this provider.
@@ -112,7 +103,11 @@ class BaseProvider(abc.ABC):
 
   @abc.abstractmethod
   def get_module_spec(
-      self, name: str, *, load_weights: bool = False, **kwargs
+      self,
+      name: str,
+      *,
+      load_weights: bool = False,
+      **kwargs,
   ) -> ModuleSpec:
     """Retrieves the specification for a specific model.
 
@@ -135,7 +130,11 @@ class TorchvisionProvider(BaseProvider):
     return torchvision.models.list_models()
 
   def get_module_spec(
-      self, name: str, *, load_weights: bool = False, **kwargs
+      self,
+      name: str,
+      *,
+      load_weights: bool = False,
+      **kwargs,
   ) -> ModuleSpec:
     if load_weights:
       raise NotImplementedError(
@@ -155,15 +154,20 @@ class TorchvisionProvider(BaseProvider):
 class TimmProvider(BaseProvider):
   """Provider for TIMM (PyTorch Image Models)."""
 
-  def __init__(self):
-    weights_dir = _HF_TIMM_WEIGHTS_DIR.value
-    self._weights_dir = epath.Path(weights_dir) if weights_dir else None
+  def __init__(self, base_path: str | None = None):
+    if base_path is None:
+      base_path = _WEIGHTS_BASE_PATH.value
+    super().__init__(base_path=str(pathlib.Path(base_path) / "timm"))
 
   def list_modules(self) -> list[str]:
     return timm.list_models()
 
   def get_module_spec(
-      self, name: str, *, load_weights: bool = False, **kwargs
+      self,
+      name: str,
+      *,
+      load_weights: bool = False,
+      **kwargs,
   ) -> ModuleSpec:
     """Creates a ModuleSpec for a TIMM model.
 
@@ -189,8 +193,8 @@ class TimmProvider(BaseProvider):
       )
 
     def _module_factory():
-      if load_weights and self._weights_dir:
-        local_checkpoint = self._weights_dir / f"{name}.pth"
+      if load_weights and self._base_path:
+        local_checkpoint = self._base_path / name / f"{name}.pth"
 
         if local_checkpoint.exists():
           model = timm.create_model(name, pretrained=False)
@@ -200,8 +204,9 @@ class TimmProvider(BaseProvider):
           model.load_state_dict(state_dict)
           return model
         else:
-          logging.warning(
-              "Checkpoint %s not found. Using random init.", local_checkpoint
+          raise ValueError(
+              f"Cannot load weights for {name} because checkpoint is missing"
+              f" at {local_checkpoint}."
           )
 
       return timm.create_model(name, pretrained=False)
@@ -289,12 +294,10 @@ class TransformersProvider(BaseProvider):
       "huggingface_transformers/model_configs"
   )
 
-  def __init__(self):
-    weights_dir = _HF_TRANSFORMERS_WEIGHTS_DIR.value
-    if weights_dir:
-      self._weights_dir = epath.Path(weights_dir)
-    else:
-      self._weights_dir = None
+  def __init__(self, base_path: str | None = None):
+    if base_path is None:
+      base_path = _WEIGHTS_BASE_PATH.value
+    super().__init__(base_path=str(pathlib.Path(base_path) / "huggingface"))
 
   def list_modules(self) -> list[str]:
     modules = []
@@ -305,7 +308,11 @@ class TransformersProvider(BaseProvider):
     return modules
 
   def get_module_spec(
-      self, name: str, *, load_weights: bool = False, **kwargs
+      self,
+      name: str,
+      *,
+      load_weights: bool = False,
+      **kwargs,
   ) -> ModuleSpec:
     """Creates a ModuleSpec for a Transformer model.
 
@@ -321,23 +328,41 @@ class TransformersProvider(BaseProvider):
     Returns:
       A ModuleSpec containing the model factory and input factory.
     """
-    if load_weights:
-      model_dir_or_repo_id = name
-      if self._weights_dir:
-        model_dir_or_repo_id = self._weights_dir / name
+    model_dir_or_repo_id = self._base_path / name
 
-      model_fn = lambda: transformers.AutoModelForCausalLM.from_pretrained(
-          model_dir_or_repo_id
+    # Load the config first
+    config = None
+    try:
+      if model_dir_or_repo_id.exists():
+        config = transformers.AutoConfig.from_pretrained(
+            str(model_dir_or_repo_id)
+        )
+    except Exception:  # pylint: disable=broad-except
+      logging.warning(
+          "Failed to access %s, falling back to local resources.",
+          model_dir_or_repo_id,
       )
-      preprocessor_fn = lambda: (
-          transformers.AutoTokenizer.from_pretrained(model_dir_or_repo_id)
-      )
-      config = transformers.AutoConfig.from_pretrained(model_dir_or_repo_id)
-    else:
+
+    if config is None:  # Fallback to local resources
+      # Pretrained weights are not available in local resources.
+      if load_weights:
+        raise ValueError(
+            f"load_weights cannot be set to True for {name} when falling back"
+            " to local configuration resources."
+        )
       with resources.as_file(
           self._FILES.joinpath(str(pathlib.Path(name) / "config.json"))
       ) as f:
         config = transformers.AutoConfig.from_pretrained(str(f))
+
+    if load_weights:
+      model_fn = lambda: transformers.AutoModelForCausalLM.from_pretrained(
+          str(model_dir_or_repo_id)
+      )
+      preprocessor_fn = lambda: (
+          transformers.AutoTokenizer.from_pretrained(str(model_dir_or_repo_id))
+      )
+    else:
       architectures = getattr(config, "architectures", [])
       model_cls = transformers.AutoModel
 
@@ -386,12 +411,10 @@ class DiffusersProvider(BaseProvider):
       "huggingface_diffusers/model_configs"
   )
 
-  def __init__(self):
-    weights_dir = _HF_DIFFUSERS_WEIGHTS_DIR.value
-    if weights_dir:
-      self._weights_dir = epath.Path(weights_dir)
-    else:
-      self._weights_dir = None
+  def __init__(self, base_path: str | None = None):
+    if base_path is None:
+      base_path = _WEIGHTS_BASE_PATH.value
+    super().__init__(base_path=str(pathlib.Path(base_path) / "huggingface"))
 
   def list_modules(self) -> list[str]:
     modules = []
@@ -423,11 +446,25 @@ class DiffusersProvider(BaseProvider):
     subfolder = kwargs.get("subfolder")
     d_type = torch.bfloat16
 
-    if load_weights:
-      model_path = str(self._weights_dir / name)
-      raw_config = AutoModel.load_config(model_path, subfolder=subfolder)
-      config_dict = dict(raw_config)
-    else:
+    model_path = self._base_path / name
+    config_dict = None
+    try:
+      if model_path.exists():
+        raw_config = AutoModel.load_config(str(model_path), subfolder=subfolder)
+        config_dict = dict(raw_config)
+    except Exception:  # pylint: disable=broad-except
+      logging.warning(
+          "Failed to access %s, falling back to local resources.",
+          model_path,
+      )
+
+    if config_dict is None:  # Fallback to local resources
+      # Pretrained weights are not available in local resources.
+      if load_weights:
+        raise ValueError(
+            f"load_weights cannot be set to True for {name} when falling back"
+            " to local configuration resources."
+        )
       model_dir = pathlib.Path(name)
       if subfolder:
         model_dir = model_dir / subfolder
@@ -440,7 +477,7 @@ class DiffusersProvider(BaseProvider):
     def _module_factory():
       if load_weights:
         return AutoModel.from_pretrained(
-            model_path,
+            str(model_path),
             torch_dtype=d_type,
             subfolder=subfolder,
         )
@@ -579,12 +616,28 @@ class DiffusersProvider(BaseProvider):
 class ModuleRegistry:
   """Central registry for managing multiple model providers."""
 
-  def __init__(self):
+  def __init__(self, base_path: str | None = None):
+    """Initializes the registry.
+
+    Providers construct specific paths relative to this base_path.
+    - For Timm library, models are structured as base_path/timm/{model}/
+    - For other libraries, models are structured as
+    base_path/huggingface/{owner}/{model}/
+    - TODO(b/507481008): Restructure to base_path/{provider}/{owner}/{model}/
+      for all providers.
+
+    Args:
+      base_path: The base directory for model weights. Defaults to the value of
+        `_WEIGHTS_BASE_PATH`.
+    """
+    if base_path is None:
+      base_path = _WEIGHTS_BASE_PATH.value
+
     self._providers: dict[str, BaseProvider] = {
-        "torchvision": TorchvisionProvider(),
-        "timm": TimmProvider(),
-        "transformers": TransformersProvider(),
-        "diffusers": DiffusersProvider(),
+        "torchvision": TorchvisionProvider(base_path=base_path),
+        "timm": TimmProvider(base_path=base_path),
+        "transformers": TransformersProvider(base_path=base_path),
+        "diffusers": DiffusersProvider(base_path=base_path),
     }
 
   def list_all_sources(self) -> list[str]:
