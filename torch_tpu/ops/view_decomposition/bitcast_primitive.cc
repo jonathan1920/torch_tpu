@@ -16,11 +16,11 @@
 
 #include <cstdint>
 #include <ostream>
-#include <string>
 #include <string_view>
 
+#include "absl/algorithm/container.h"
+#include "absl/log/absl_check.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Types.h"
@@ -28,8 +28,12 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/static_shape_check.h"
+#include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
+#include "torch_tpu/ops/view_decomposition/view_primitive_error_utils.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
@@ -38,122 +42,219 @@ namespace torch_tpu {
 
 namespace {
 
+// Bitwidth of bitcast types.
+struct BitcastBitwidth {
+  const int64_t from;
+  const int64_t to;
+};
+
+// Convenient constructor of `BitcastBitwidth`, taking a `bitcast` as parameter.
+//
+// Constructs a `BitcastBitwidth` by calling `TorchEquivalentBitwidth()`
+// function on both `from_type` and `to_type`.
+BitcastBitwidth GetBitcastBitwidth(const RealToRealBitcast& bitcast) {
+  return BitcastBitwidth{
+      .from = TorchEquivalentBitwidth(bitcast.from_type),
+      .to = TorchEquivalentBitwidth(bitcast.to_type),
+  };
+}
+
+void CheckConversionBitwidthsAreDivisible(
+    const RealToRealBitcast& bitcast, const BitcastBitwidth& bitwidth,
+    const std::string_view error_message_suffix) {
+  if (bitwidth.from > bitwidth.to) {
+    ABSL_CHECK_EQ(  // CRASH_OK=Supported PyTorch type bitwidths are
+                    // always multiple of each other.
+        bitwidth.from % bitwidth.to, 0)
+        << "expected the RealToRealBitcast conversion to be from a type whose "
+           "bitwidth is divisible by the target type's bitwidth, got "
+        << ToString(bitcast.from_type) << " bitwidth (" << bitwidth.from
+        << ") is not divisible by " << ToString(bitcast.to_type)
+        << " bitwidth (" << bitwidth.to << ")" << error_message_suffix;
+  } else {
+    ABSL_CHECK_EQ(  // CRASH_OK=Supported PyTorch type bitwidths are
+                    // always multiple of each other.
+        bitwidth.to % bitwidth.from, 0)
+        << "expected the RealToRealBitcast conversion to be from a type whose "
+           "bitwidth divides the target type's bitwidth, got "
+        << ToString(bitcast.from_type) << " bitwidth (" << bitwidth.from
+        << ") does not divide " << ToString(bitcast.to_type) << " bitwidth ("
+        << bitwidth.to << ")" << error_message_suffix;
+  }
+}
+
+void CheckStridesAreDivisible(const StridedLayout& layout,
+                              const RealToRealBitcast& bitcast,
+                              const int64_t size_ratio) {
+  const int64_t rank = layout.strided_dims.size();
+  ABSL_CHECK_GT(rank, 0);  // CRASH_OK=Enforced by caller.
+
+  const Indices not_divisible_stride_indices =
+      FilterIndices(rank - 1,
+                    /* predicate= */
+                    [&layout, size_ratio](const int64_t i) {
+                      return layout.strided_dims[i].stride % size_ratio != 0;
+                    });
+
+  ABSL_CHECK(  // CRASH_OK=Always true for contiguous strides.
+               // Non-contiguous strides never get here.
+      not_divisible_stride_indices.empty())
+      << "expected the RealToRealBitcast conversion input with strides "
+      << ToString(GetStrides(layout))
+      << " to have all but the last dimension stride divisible by "
+      << size_ratio << ", which is the dtypes' bitwidth ratio, got "
+      << FormatCount(not_divisible_stride_indices.size(),
+                     /* singular= */ "stride that are not divisible",
+                     /* plural= */ "strides that are not divisible")
+      << ": "
+      << GetValueAtIndexErrorStr(not_divisible_stride_indices,
+                                 /* to_value =*/
+                                 [&layout](const int64_t i) {
+                                   return layout.strided_dims[i].stride;
+                                 })
+      << GetUpdateLayoutBugSuffix(bitcast, layout);
+}
+
 // Computes the shape of the tensor after a real-to-real bitcast.
 // This will add a dimension if moving from a larger size to a smaller one,
 // or remove a dimension if moving from a smaller size to a larger one.
-absl::StatusOr<Dimensions> GetShapeAfterRealToRealBitcast(
-    const int64_t from_bitwidth, const int64_t to_bitwidth,
-    absl::Span<const int64_t> shape) {
-  if (from_bitwidth == to_bitwidth) {
+Dimensions GetShapeAfterRealToRealBitcast(
+    const RealToRealBitcast& bitcast, const BitcastBitwidth& bitwidth,
+    absl::Span<const int64_t> shape,
+    const std::string_view error_message_suffix) {
+  CheckConversionBitwidthsAreDivisible(bitcast, bitwidth, error_message_suffix);
+
+  if (bitwidth.from == bitwidth.to) {
     return CopyIntVector(shape);
   }
-  if (from_bitwidth > to_bitwidth) {
-    TT_RET_CHECK(from_bitwidth % to_bitwidth == 0, error::kInvalidArgument)
-        << "the bitwidths are not divisible";
-    const int64_t size_ratio = from_bitwidth / to_bitwidth;
+
+  if (bitwidth.from > bitwidth.to) {
+    const int64_t size_ratio = bitwidth.from / bitwidth.to;
+
     // Element size is smaller, so there are more elements in the new type,
     // which we add as a new dimension.
-    Dimensions result;
-    result.reserve(shape.size() + 1);
-    for (int64_t dim : shape) {
-      result.push_back(dim);
-    }
+    Dimensions result = CopyIntVector(shape);
     result.push_back(size_ratio);
+
     return result;
   }
-  // from_bitwidth < to_bitwidth
-  TT_RET_CHECK(to_bitwidth % from_bitwidth == 0, error::kInvalidArgument)
-      << "the bitwidths are not divisible";
-  const int64_t size_ratio = to_bitwidth / from_bitwidth;
-  TT_RET_CHECK(!shape.empty() && shape.back() == size_ratio,
-               error::kInvalidArgument)
-      << "the last dimension does not match the size ratio " << size_ratio;
+
+  // bitwidth.from < bitwidth.to
+  const int64_t size_ratio = bitwidth.to / bitwidth.from;
+
+  ABSL_CHECK(  // CRASH_OK=Internal error on view decomposition.
+      !shape.empty())
+      << "the RealToRealBitcast conversion input cannot be a scalar"
+      << error_message_suffix;
+
+  ABSL_CHECK_EQ(  // CRASH_OK=Decomposition always create the
+                  // trailing dimension needed. The inverse never gets here.
+      shape.back(), size_ratio)
+      << "expected the RealToRealBitcast conversion input to have its last "
+         "dimension size equal "
+      << size_ratio << ", which is the dtypes' bitwidth ratio ("
+      << ToString(bitcast.to_type) << " / " << ToString(bitcast.from_type)
+      << "), got " << shape.back() << error_message_suffix;
+
   // Element size is larger, so the last dimension is removed.
-  Dimensions result;
-  result.reserve(shape.size() - 1);
-  for (int64_t i = 0; i < shape.size() - 1; ++i) {
-    result.push_back(shape[i]);
-  }
-  return result;
+  return Dimensions(shape.begin(), shape.end() - 1);
 }
 
 // Computes the strides of the tensor after a real-to-real bitcast.
 // This will add a dimension if moving from a larger size to a smaller one,
 // or remove a dimension if moving from a smaller size to a larger one.
-absl::StatusOr<Strides> GetStridesAfterRealToRealBitcast(
-    const int64_t from_bitwidth, const int64_t to_bitwidth,
-    absl::Span<const int64_t> strides) {
-  if (from_bitwidth == to_bitwidth) {
+Strides GetStridesAfterRealToRealBitcast(const RealToRealBitcast& bitcast,
+                                         const BitcastBitwidth& bitwidth,
+                                         const StridedLayout& layout) {
+  CheckConversionBitwidthsAreDivisible(
+      bitcast, bitwidth,
+      /* error_message_suffix= */ GetUpdateLayoutBugSuffix(bitcast, layout));
+
+  Strides strides = GetStrides(layout);
+
+  if (bitwidth.from == bitwidth.to) {
     // No change in the element size, so the strides are the same.
-    return CopyIntVector(strides);
+    return strides;
   }
-  if (from_bitwidth > to_bitwidth) {
-    TT_RET_CHECK(from_bitwidth % to_bitwidth == 0, error::kInvalidArgument)
-        << "because the bitwidths are not divisible";
-    const int64_t size_ratio = from_bitwidth / to_bitwidth;
+
+  if (bitwidth.from > bitwidth.to) {
+    const int64_t size_ratio = bitwidth.from / bitwidth.to;
+
     // New element size is smaller, so we append a new dimension with a stride
     // of 1, and scale up the existing strides by the size ratio.
-    Strides result;
-    result.reserve(strides.size() + 1);
-    for (int64_t stride : strides) {
-      result.push_back(stride * size_ratio);
-    }
-    result.push_back(1);
-    return result;
+    absl::c_transform(
+        strides, strides.begin(),
+        [size_ratio](const int64_t stride) { return stride * size_ratio; });
+    strides.push_back(1);
+
+    return strides;
   }
-  // from_bitwidth < to_bitwidth
-  TT_RET_CHECK(to_bitwidth % from_bitwidth == 0, error::kInvalidArgument)
-      << "the bitwidths are not divisible";
-  const int64_t size_ratio = to_bitwidth / from_bitwidth;
+
+  // bitwidth.from < bitwidth.to
+  const int64_t size_ratio = bitwidth.to / bitwidth.from;
+
   // The last stride must be 1 so that it is dense over the new, larger
   // element size.
-  TT_RET_CHECK(!strides.empty() && strides.back() == 1, error::kInvalidArgument)
-      << "the last dimension does not match the size ratio " << size_ratio;
+  ABSL_CHECK(  // CRASH_OK=Internal error on view decomposition.
+      !strides.empty())
+      << "the RealToRealBitcast conversion input cannot be a scalar"
+      << GetUpdateLayoutBugSuffix(bitcast, layout);
+
+  ABSL_CHECK_EQ(  // CRASH_OK=Decomposition always create the
+                  // trailing dimension needed. The inverse never gets here.
+      strides.back(), 1)
+      << "expected the RealToRealBitcast conversion input to have its last "
+         "dimension stride equal 1, got "
+      << strides.back() << GetUpdateLayoutBugSuffix(bitcast, layout);
+
+  strides.pop_back();
+
   // Element size is larger, so the last dimension is removed, and all
   // existing strides are divided by the size ratio.
-  Strides result;
-  result.reserve(strides.size() - 1);
-  for (int64_t i = 0; i < strides.size() - 1; ++i) {
-    TT_RET_CHECK(strides[i] % size_ratio == 0, error::kInvalidArgument)
-        << "the stride of dimension " << i << " is " << strides[i]
-        << " which is not divisible by the size ratio " << size_ratio;
-    result.push_back(strides[i] / size_ratio);
-  }
-  return result;
+  CheckStridesAreDivisible(layout, bitcast, size_ratio);
+
+  absl::c_transform(
+      strides, strides.begin(),
+      [size_ratio](const int64_t stride) { return stride / size_ratio; });
+
+  return strides;
 }
 
 // Computes the storage offset of the tensor after a real-to-real bitcast.
 // This may multiply or divide the storage offset by the size ratio, if the
 // element size is decreased or increased respectively.
-absl::StatusOr<int64_t> GetStorageOffsetAfterRealToRealBitcast(
-    const int64_t from_bitwidth, const int64_t to_bitwidth,
-    int64_t storage_offset) {
-  if (from_bitwidth == to_bitwidth) {
-    return storage_offset;
+int64_t GetStorageOffsetAfterRealToRealBitcast(const RealToRealBitcast& bitcast,
+                                               const BitcastBitwidth& bitwidth,
+                                               const StridedLayout& layout) {
+  CheckConversionBitwidthsAreDivisible(
+      bitcast, bitwidth,
+      /* error_message_suffix= */ GetUpdateLayoutBugSuffix(bitcast, layout));
+
+  if (bitwidth.from == bitwidth.to) {
+    return layout.storage_offset;
   }
-  if (from_bitwidth > to_bitwidth) {
-    TT_RET_CHECK(from_bitwidth % to_bitwidth == 0, error::kInvalidArgument)
-        << "the bitwidths are not divisible";
-    const int64_t size_ratio = (from_bitwidth / to_bitwidth);
+
+  if (bitwidth.from > bitwidth.to) {
+    const int64_t size_ratio = (bitwidth.from / bitwidth.to);
     // The new element size is smaller, so the existing storage offset covers
     // more new elements.
-    return storage_offset * size_ratio;
+    return layout.storage_offset * size_ratio;
   }
-  // from_bitwidth < to_bitwidth
-  TT_RET_CHECK(to_bitwidth % from_bitwidth == 0, error::kInvalidArgument)
-      << "the bitwidths are not divisible";
-  const int64_t size_ratio = to_bitwidth / from_bitwidth;
-  TT_RET_CHECK(storage_offset % size_ratio == 0, error::kInvalidArgument)
-      << "the storage offset " << storage_offset
-      << " is not divisible by the size ratio " << size_ratio;
-  // The existing storage offset covers fewer new elements.
-  return storage_offset / size_ratio;
-}
 
-// Returns a common error message prefix for invalid real-to-real bitcasts.
-std::string RealToRealBitcastErrorPrefix(const RealToRealBitcast& bitcast) {
-  return absl::StrCat("cannot bitcast from ", ToString(bitcast.from_type),
-                      " to ", ToString(bitcast.to_type), ": ");
+  // bitwidth.from < bitwidth.to
+  const int64_t size_ratio = bitwidth.to / bitwidth.from;
+
+  ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+      layout.storage_offset % size_ratio, 0)
+      << "expected the RealToRealBitcast conversion input to have its storage "
+         "offset divisible by "
+      << size_ratio << ", which is the dtypes' bitwidth ratio ("
+      << ToString(bitcast.to_type) << " / " << ToString(bitcast.from_type)
+      << "), got " << layout.storage_offset
+      << GetUpdateLayoutBugSuffix(bitcast, layout);
+
+  // The existing storage offset covers fewer new elements.
+  return layout.storage_offset / size_ratio;
 }
 
 // Returns the logical equivalent of torch.view_as_real().
@@ -173,6 +274,22 @@ absl::StatusOr<mlir::MlirOp> ViewAsRealShlo(mlir::MlirOp input) {
   return mlir::stablehlo::Concatenate(input.getBuilder(),
                                       {real_component, imag_component},
                                       input_type.getRank());
+}
+
+void CheckBitcastTypesAreNotComplex(const RealToRealBitcast& bitcast) {
+  ABSL_CHECK(  // CRASH_OK=Internal error on view decomposition.
+      bitcast.from_type != mlir::ElementType::COMPLEXF32 &&
+      bitcast.from_type != mlir::ElementType::COMPLEXF64)
+      << "expected the RealToRealBitcast conversion to be from a non-complex "
+         "type, got "
+      << ToString(bitcast.from_type) << GetViewPrimitiveErrorSuffix(bitcast);
+
+  ABSL_CHECK(  // CRASH_OK=Internal error on view decomposition.
+      bitcast.to_type != mlir::ElementType::COMPLEXF32 &&
+      bitcast.to_type != mlir::ElementType::COMPLEXF64)
+      << "expected the RealToRealBitcast conversion to be to a non-complex "
+         "type, got "
+      << ToString(bitcast.to_type) << GetViewPrimitiveErrorSuffix(bitcast);
 }
 
 }  // namespace
@@ -229,55 +346,44 @@ std::ostream& operator<<(std::ostream& os, const ViewAsComplex& bitcast) {
 // Returns true if the layout was modified, or false if the bitcast is a no-op.
 absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
                                   const RealToRealBitcast& bitcast) {
-  TT_RET_CHECK(bitcast.from_type != mlir::ElementType::COMPLEXF32 &&
-                   bitcast.from_type != mlir::ElementType::COMPLEXF64,
-               error::kInvalidArgument)
-      << RealToRealBitcastErrorPrefix(bitcast)
-      << "real-to-real bitcasts must not have complex dtypes";
-  TT_RET_CHECK(bitcast.to_type != mlir::ElementType::COMPLEXF32 &&
-                   bitcast.to_type != mlir::ElementType::COMPLEXF64,
-               error::kInvalidArgument)
-      << RealToRealBitcastErrorPrefix(bitcast)
-      << "real-to-real bitcasts must not have complex dtypes";
+  CheckBitcastTypesAreNotComplex(bitcast);
+
   if (bitcast.from_type == bitcast.to_type) {
     return false;
   }
-  const int64_t from_bitwidth = TorchEquivalentBitwidth(bitcast.from_type);
-  const int64_t to_bitwidth = TorchEquivalentBitwidth(bitcast.to_type);
-  if (from_bitwidth == to_bitwidth) {
+
+  BitcastBitwidth bitwidth = GetBitcastBitwidth(bitcast);
+
+  if (bitwidth.from == bitwidth.to) {
     // There's no change in the shape, but this is not a no-op because the
     // dtype is changing.
     return true;
   }
+
   // We're either adding or removing a dimension; need to compute the new
   // shape, strides, and storage offset.
-  Dimensions old_shape;
-  old_shape.reserve(layout.strided_dims.size());
-  Strides old_strides;
-  old_strides.reserve(layout.strided_dims.size());
-  for (auto& dim : layout.strided_dims) {
-    old_shape.push_back(dim.size);
-    old_strides.push_back(dim.stride);
-  }
-  TT_ASSIGN_OR_RETURN(
-      Dimensions new_shape,
-      GetShapeAfterRealToRealBitcast(from_bitwidth, to_bitwidth, old_shape),
-      _.SetPrepend() << RealToRealBitcastErrorPrefix(bitcast));
-  TT_ASSIGN_OR_RETURN(
-      Strides new_strides,
-      GetStridesAfterRealToRealBitcast(from_bitwidth, to_bitwidth, old_strides),
-      _.SetPrepend() << RealToRealBitcastErrorPrefix(bitcast));
-  TT_ASSIGN_OR_RETURN(int64_t new_storage_offset,
-                      GetStorageOffsetAfterRealToRealBitcast(
-                          from_bitwidth, to_bitwidth, layout.storage_offset),
-                      _.SetPrepend() << RealToRealBitcastErrorPrefix(bitcast));
+  Dimensions new_shape = GetShapeAfterRealToRealBitcast(
+      bitcast, bitwidth, GetSizes(layout),
+      /* error_message_suffix= */ GetUpdateLayoutBugSuffix(bitcast, layout));
+  Strides new_strides =
+      GetStridesAfterRealToRealBitcast(bitcast, bitwidth, layout);
+  int64_t new_storage_offset =
+      GetStorageOffsetAfterRealToRealBitcast(bitcast, bitwidth, layout);
+
+  ABSL_CHECK_EQ(  // CRASH_OK
+      new_shape.size(), new_strides.size());
+
   // Update the layout with the new values.
   layout.storage_offset = new_storage_offset;
+
   layout.strided_dims.clear();
+  layout.strided_dims.assign(new_shape.size(), StridedDimension{});
+
   for (int64_t i = 0; i < new_shape.size(); ++i) {
-    layout.strided_dims.push_back(
-        StridedDimension{.size = new_shape[i], .stride = new_strides[i]});
+    layout.strided_dims[i] =
+        StridedDimension{.size = new_shape[i], .stride = new_strides[i]};
   }
+
   return true;
 }
 
@@ -315,33 +421,48 @@ absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
 // Returns true if the layout was modified, or false if the bitcast is a no-op.
 absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
                                   const ViewAsComplex& bitcast) {
-  TT_RET_CHECK(!layout.strided_dims.empty(), error::kInvalidArgument)
-      << "cannot apply view_as_complex to a scalar";
+  ABSL_CHECK(  // CRASH_OK=Internal error on view decomposition.
+      !layout.strided_dims.empty())
+      << "the ViewAsComplex bitcast conversion input cannot be a scalar"
+      << GetUpdateLayoutBugSuffix(bitcast, layout);
+
   // Inverse of view_as_real; converts a tensor like f32[2, 3, 8] ->
   // cfloat[2, 3, 4].
-  TT_RET_CHECK(layout.strided_dims.back().size % 2 == 0,
-               error::kInvalidArgument)
-      << "cannot view_as_complex because the last dimension of size "
-      << layout.strided_dims.back().size << " is not divisible by 2";
-  TT_RET_CHECK(layout.strided_dims.back().stride == 1, error::kInvalidArgument)
-      << "cannot view_as_complex because the last dimension is not dense "
-         "(stride "
-      << layout.strided_dims.back().stride << " != 1)";
+  ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+      layout.strided_dims.back().size % 2, 0)
+      << "expected the ViewAsComplex bitcast conversion input to have its last "
+         "dimension size divisible by 2, got "
+      << layout.strided_dims.back().size
+      << GetUpdateLayoutBugSuffix(bitcast, layout);
+
+  ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+      layout.strided_dims.back().stride, 1)
+      << "expected the ViewAsComplex bitcast conversion input to have its last "
+         "dimension stride equal 1, got "
+      << layout.strided_dims.back().stride
+      << GetUpdateLayoutBugSuffix(bitcast, layout);
+
+  ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+      layout.storage_offset % 2, 0)
+      << "expected the ViewAsComplex bitcast conversion input to have its "
+         "storage offset divisible by 2, got "
+      << layout.storage_offset << GetUpdateLayoutBugSuffix(bitcast, layout);
 
   layout.strided_dims.back().size /= 2;
-
-  TT_RET_CHECK(layout.storage_offset % 2 == 0, error::kInvalidArgument)
-      << "cannot view_as_complex because the storage offset of "
-      << layout.storage_offset << " is not divisible by 2";
   layout.storage_offset /= 2;
 
   // Reduce the stride of all dimensions except the last one.
   // So strides like (16, 4, 1) become (8, 2, 1).
   for (auto i = 0; i < layout.strided_dims.size() - 1; ++i) {
     auto& dim = layout.strided_dims[i];
-    TT_RET_CHECK(dim.stride % 2 == 0, error::kInvalidArgument)
-        << "cannot view_as_complex because stride " << dim.stride
-        << " is not divisible by 2";
+
+    ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+        dim.stride % 2, 0)
+        << "expected the ViewAsComplex bitcast conversion input to have all "
+           "but its last dimension strides divisible by 2, got a stride of "
+        << dim.stride << " at index " << i
+        << GetUpdateLayoutBugSuffix(bitcast, layout);
+
     dim.stride /= 2;
   }
   return true;
@@ -379,17 +500,20 @@ absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(
     return mlir::stablehlo::ConvertElementType(input, mlir::ElementType::PRED);
   }
 
+  const BitcastBitwidth bitwidth = GetBitcastBitwidth(bitcast);
+
   // Otherwise, this is a regular real-to-real bitcast.
   // stablehlo::BitcastConvert requires specifying the full output type.
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
-  const int64_t from_bitwidth = TorchEquivalentBitwidth(bitcast.from_type);
-  const int64_t to_bitwidth = TorchEquivalentBitwidth(bitcast.to_type);
+  const absl::Span<const int64_t> shape = input_type.getShape();
   // Need to propagate dynamic bound to output shape for bitcast.
-  TT_RET_CHECK(input_type.hasStaticShape(), error::kInvalidArgument)
-      << "lowering for bitcast with dynamic shapes is currently not supported";
-  TT_ASSIGN_OR_RETURN(Dimensions result_shape,
-                      GetShapeAfterRealToRealBitcast(from_bitwidth, to_bitwidth,
-                                                     input_type.getShape()));
+  TT_RETURN_IF_ERROR(CheckStaticShape(input_type, "bitcast input"))
+      << GetViewPrimitiveShloErrorSuffix(bitcast, shape,
+                                         ViewPrimitiveBugSuffix::kHide);
+  Dimensions result_shape = GetShapeAfterRealToRealBitcast(
+      bitcast, bitwidth, input_type.getShape(),
+      /* error_message_suffix= */
+      GetViewPrimitiveShloErrorSuffix(bitcast, shape));
   mlir::Type result_element_type =
       mlir::getElementType(input.getContext(), bitcast.to_type);
   mlir::RankedTensorType result_type =
@@ -418,11 +542,19 @@ absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(
 absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(mlir::MlirOp input,
                                                const ViewAsComplex& bitcast) {
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
-  TT_RET_CHECK(input_type.getRank() > 0, error::kInvalidArgument)
-      << "cannot view_as_complex because the rank of the input tensor is 0";
-  TT_RET_CHECK(input_type.getShape().back() % 2 == 0, error::kInvalidArgument)
-      << "cannot view_as_complex because the last dimension of size "
-      << input_type.getShape().back() << " is not divisible by 2";
+  const absl::Span<const int64_t> shape = input_type.getShape();
+
+  // TODO: b/501473306 revisit after scalar tensor bitcast is supported.
+  ABSL_CHECK_GT(  // CRASH_OK=Internal error on view decomposition.
+      input_type.getRank(), 0)
+      << "the ViewAsComplex bitcast input cannot be a scalar"
+      << GetViewPrimitiveShloErrorSuffix(bitcast, shape);
+  ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+      input_type.getShape().back() % 2, 0)
+      << "expected the ViewAsComplex bitcast conversion input to "
+         "have its last dimension size divisible by 2, got "
+      << input_type.getShape().back()
+      << GetViewPrimitiveShloErrorSuffix(bitcast, shape);
 
   // Get the real values first
   Indices start_indices(input_type.getRank(), 0);

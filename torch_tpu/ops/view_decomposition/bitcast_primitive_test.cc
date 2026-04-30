@@ -16,18 +16,13 @@
 
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
-#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 
 namespace torch_tpu {
 namespace {
-using absl_testing::StatusIs;
-using testing::HasSubstr;
 
 TEST(UpdateLayoutRealToReal, RealScalarNoOp) {
   StridedLayout layout = MakeContiguousBaseLayout({});
@@ -120,89 +115,6 @@ TEST(UpdateLayoutRealToReal, RealTensorToLargerSize) {
   StridedLayout expected = MakeContiguousBaseLayout({2, 3});
   expected.storage_offset = 1;
   EXPECT_EQ(layout, expected);
-}
-
-TEST(UpdateLayoutRealToReal, InvalidScalarToLargerSize) {
-  StridedLayout layout = MakeContiguousBaseLayout({});
-  auto bitcast = RealToRealBitcast{
-      .from_type = mlir::ElementType::UI16,
-      .to_type = mlir::ElementType::UI64,
-  };
-  EXPECT_THAT(
-      UpdateLayout(layout, bitcast),
-      StatusIs(
-          error::kInvalidArgument,
-          HasSubstr("the last dimension does not match the size ratio 4")));
-}
-
-TEST(UpdateLayoutRealToReal, InvalidTensorToLargerSizeLastDimension) {
-  StridedLayout layout = MakeContiguousBaseLayout({2, 3, 3});
-  auto bitcast = RealToRealBitcast{
-      .from_type = mlir::ElementType::UI16,
-      .to_type = mlir::ElementType::UI64,
-  };
-  EXPECT_THAT(
-      UpdateLayout(layout, bitcast),
-      StatusIs(
-          error::kInvalidArgument,
-          HasSubstr("the last dimension does not match the size ratio 4")));
-}
-
-TEST(UpdateLayoutRealToReal, InvalidTensorToLargerSizeStrides) {
-  // Input layout is contiguous (2, 3, 5) sliced as [:, :, 0:4]
-  StridedLayout layout = MakeContiguousBaseLayout({2, 3, 4});
-  layout.strided_dims[0].stride = 15;
-  layout.strided_dims[1].stride = 5;
-  layout.strided_dims[2].stride = 1;
-  auto bitcast = RealToRealBitcast{
-      .from_type = mlir::ElementType::UI16,
-      .to_type = mlir::ElementType::UI64,
-  };
-  EXPECT_THAT(UpdateLayout(layout, bitcast),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("the stride of dimension 0 is 15 which is not "
-                                 "divisible by the size ratio 4")));
-}
-
-TEST(UpdateLayoutRealToReal, InvalidTensorToLargerBadOffset) {
-  StridedLayout layout = MakeContiguousBaseLayout({2, 3, 4});
-  layout.storage_offset = 3;
-  auto bitcast = RealToRealBitcast{
-      .from_type = mlir::ElementType::UI16,
-      .to_type = mlir::ElementType::UI64,
-  };
-  EXPECT_THAT(
-      UpdateLayout(layout, bitcast),
-      StatusIs(
-          error::kInvalidArgument,
-          HasSubstr(
-              "the storage offset 3 is not divisible by the size ratio 4")));
-}
-
-TEST(UpdateLayoutRealToReal, InvalidRealToRealFromComplex) {
-  StridedLayout layout = MakeContiguousBaseLayout({});
-  auto bitcast = RealToRealBitcast{
-      .from_type = mlir::ElementType::COMPLEXF32,
-      .to_type = mlir::ElementType::UI64,
-  };
-  EXPECT_THAT(
-      UpdateLayout(layout, bitcast),
-      StatusIs(
-          error::kInvalidArgument,
-          HasSubstr("real-to-real bitcasts must not have complex dtypes")));
-}
-
-TEST(UpdateLayoutRealToReal, InvalidRealToRealToComplex) {
-  StridedLayout layout = MakeContiguousBaseLayout({});
-  auto bitcast = RealToRealBitcast{
-      .from_type = mlir::ElementType::UI64,
-      .to_type = mlir::ElementType::COMPLEXF32,
-  };
-  EXPECT_THAT(
-      UpdateLayout(layout, bitcast),
-      StatusIs(
-          error::kInvalidArgument,
-          HasSubstr("real-to-real bitcasts must not have complex dtypes")));
 }
 
 TEST(UpdateLayoutComplexToReal, ScalarViewAsReal) {
@@ -312,62 +224,6 @@ TEST(UpdateLayoutViewAsComplex, LastDimensionEven) {
   EXPECT_TRUE(modified.value());
   StridedLayout expected = MakeContiguousBaseLayout({2, 3, 4});
   EXPECT_EQ(layout, expected);
-}
-
-TEST(UpdateLayoutViewAsComplex, InvalidScalarViewAsComplex) {
-  StridedLayout layout = MakeContiguousBaseLayout({});
-  auto bitcast =
-      ViewAsComplex{.complex_element_type = ComplexElementType::kComplexFloat};
-  EXPECT_THAT(UpdateLayout(layout, bitcast),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("cannot apply view_as_complex to a scalar")));
-}
-
-TEST(UpdateLayoutViewAsComplex, InvalidTensorViewAsComplexLastSize) {
-  StridedLayout layout = MakeContiguousBaseLayout({2, 3, 5});
-  auto bitcast =
-      ViewAsComplex{.complex_element_type = ComplexElementType::kComplexFloat};
-  EXPECT_THAT(UpdateLayout(layout, bitcast),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("cannot view_as_complex because the last "
-                                 "dimension of size 5 is not divisible by 2")));
-}
-
-TEST(UpdateLayoutViewAsComplex, InvalidTensorViewAsComplexLastStride) {
-  StridedLayout layout = MakeContiguousBaseLayout({2, 3, 2});
-  layout.strided_dims[0].stride = 12;
-  layout.strided_dims[1].stride = 4;
-  layout.strided_dims[2].stride = 2;
-  auto bitcast =
-      ViewAsComplex{.complex_element_type = ComplexElementType::kComplexFloat};
-  EXPECT_THAT(UpdateLayout(layout, bitcast),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("cannot view_as_complex because the last "
-                                 "dimension is not dense (stride 2 != 1)")));
-}
-
-TEST(UpdateLayoutViewAsComplex, InvalidTensorViewAsComplexStorageOffset) {
-  StridedLayout layout = MakeContiguousBaseLayout({2, 3, 2});
-  layout.storage_offset = 3;
-  auto bitcast =
-      ViewAsComplex{.complex_element_type = ComplexElementType::kComplexFloat};
-  EXPECT_THAT(UpdateLayout(layout, bitcast),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("cannot view_as_complex because the storage "
-                                 "offset of 3 is not divisible by 2")));
-}
-
-TEST(UpdateLayoutViewAsComplex, InvalidTensorViewAsComplexMiddleStride) {
-  StridedLayout layout = MakeContiguousBaseLayout({2, 4, 2});
-  layout.strided_dims[0].stride = 12;
-  layout.strided_dims[1].stride = 3;
-  layout.strided_dims[2].stride = 1;
-  auto bitcast =
-      ViewAsComplex{.complex_element_type = ComplexElementType::kComplexFloat};
-  EXPECT_THAT(UpdateLayout(layout, bitcast),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("cannot view_as_complex because stride 3 is "
-                                 "not divisible by 2")));
 }
 
 }  // namespace

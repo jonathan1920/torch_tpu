@@ -1309,6 +1309,23 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch._weight_norm(v, g, 1)
 
+  # Why do we run this test only on TPU (and not on CPU)?
+  # The notion of 'dynamic dimensions' does not exist in eager PyTorch.
+  def test_bitcast_dynamic_shape(self):
+    inp = torch.ones(5, 2, device=et.device(), dtype=torch.int32)
+
+    # Mark dimension 0 of `inp` as dynamic.
+    dynamism.mark_dynamic(inp, 0, 4, 10)
+
+    # TODO: Error eagerly, i.e. without having to call the op builder.
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""to_copy(): materialization failed with: expected all dimensions of the bitcast input tensor to be static, got 1 dynamic dimension within shape [dyn, 2]; calling ViewPrimitiveShlo() with input shape=[dyn, 2] and primitive=bitcast(from_type=int32, to_type=int64)""",
+        message_reviewed_by="wan",
+    ):
+      out = inp.view(torch.int64)
+      out.cpu()
+
 
 if __name__ == "__main__":
   absltest.main()
