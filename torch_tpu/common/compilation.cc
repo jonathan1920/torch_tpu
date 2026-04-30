@@ -165,7 +165,7 @@ static void UpdateMap(Map& map, Map updates) {
   }
 }
 
-void PushCompilerOptionOverrides(CompilerOptionOverrides overrides) {
+absl::Status PushCompilerOptionOverrides(CompilerOptionOverrides overrides) {
   // When we push the overrides, the new overrides are merged with the existing
   // overrides. The innermost map takes precedence.
   auto merged_overrides =
@@ -173,6 +173,10 @@ void PushCompilerOptionOverrides(CompilerOptionOverrides overrides) {
   UpdateMap(merged_overrides, std::move(overrides));
   PushContextState<CustomCompilerOptionsContextState>(
       std::move(merged_overrides));
+
+  // TODO(b/502270689): return the actual status when users push invalid options
+  // at context entry time.
+  return absl::OkStatus();
 }
 
 void PopCompilerOptionOverrides() {

@@ -16,6 +16,8 @@
 #include <utility>
 
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/context_states.h"
+#include "torch_tpu/common/error_utils.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 
@@ -23,17 +25,16 @@ namespace torch_tpu {
 
 namespace py = pybind11;
 
+static void PushCompilerOptions(CompilerOptionOverrides options) {
+  TT_THROW_IF_ERROR(PushCompilerOptionOverrides(std::move(options)));
+}
+
 PYBIND11_MODULE(compiler_options_impl, m) {
   // Pushes the XLA options onto the per-thread custom compiler options stack.
-  m.def(
-      "push_compiler_options",
-      [](CompilerOptionOverrides options) {
-        PushCompilerOptionOverrides(std::move(options));
-      },
-      py::arg("options"));
+  m.def("push_compiler_options", &PushCompilerOptions, py::arg("options"));
 
   // Pops the XLA options from the per-thread custom compiler options stack.
-  m.def("pop_compiler_options", []() { return PopCompilerOptionOverrides(); });
+  m.def("pop_compiler_options", []() { PopCompilerOptionOverrides(); });
 }
 
 }  // namespace torch_tpu

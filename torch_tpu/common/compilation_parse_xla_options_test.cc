@@ -19,10 +19,11 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "absl/cleanup/cleanup.h"
 #include "absl/log/absl_check.h"
 #include "absl/status/status.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_test_helper.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla.pb.h"
@@ -74,10 +75,9 @@ TEST_F(MakeCompilerOptionsTest, PythonContextManagerOverridesEnvVar) {
   setenv("TORCH_TPU_INTERNAL_XLA_OPTIONS",
          "xla_optimization_level=O3  xla_tpu_enable_deduplicated_calls=AUTO",
          1);
-  PushCompilerOptionOverrides({
+  ScopedCompilerOptionOverrides overrides({
       {"xla_optimization_level", "O2"},
   });
-  absl::Cleanup cleanup = [] { PopCompilerOptionOverrides(); };
 
   const auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
   ASSERT_EQ(options_or.status(), absl::OkStatus());

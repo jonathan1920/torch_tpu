@@ -20,7 +20,6 @@
 // Utilities for compiling PyTorch to PjRt executables.
 
 #include <array>
-#include <cstddef>
 #include <future>
 #include <memory>
 #include <optional>
@@ -29,6 +28,7 @@
 
 #include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -199,7 +199,11 @@ absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(CompilationMode mode);
 
 // Pushes the compile option overrides for the current thread on to the
 // custom compiler option stack. Thread-safe.
-void PushCompilerOptionOverrides(CompilerOptionOverrides overrides);
+//
+// Returns an error when it fails to make XLA compile options due to invalid
+// environment settings or user-specified options. On errors, the compiler
+// option overrides take no effect, i.e. the stack remains unchanged.
+absl::Status PushCompilerOptionOverrides(CompilerOptionOverrides overrides);
 
 // Pops the compile option overrides for the current thread from the
 // custom compiler option stack. Thread-safe. Requires that the stack is

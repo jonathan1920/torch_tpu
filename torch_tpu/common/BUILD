@@ -881,6 +881,17 @@ torch_tpu_cc_library(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "compilation_test_helper",
+    testonly = True,
+    hdrs = ["compilation_test_helper.h"],
+    deps = [
+        ":compilation",
+        ":context_states",
+        "@com_google_absl//absl/log:absl_check",
+    ],
+)
+
 torch_tpu_cc_test(
     name = "compilation_test",
     srcs = ["compilation_test.cc"],
@@ -893,6 +904,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":compilation",
+        ":compilation_test_helper",
         ":context_states",
         "//shims/torch:torch_headers",
         "//torch_tpu/pjrt:pjrt_state",
@@ -999,9 +1011,10 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":compilation",
+        ":compilation_test_helper",
+        ":context_states",
         "//shims/torch:torch_headers",
         "//torch_tpu/pjrt:pjrt_state",
-        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
