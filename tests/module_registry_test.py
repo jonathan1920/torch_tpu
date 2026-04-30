@@ -150,6 +150,98 @@ class ModuleRegistryTest(absltest.TestCase):
 
     self.assertEqual(out.logits.shape, expected_logits_shape)
 
+  def test_transformers_with_modify_config_hook(self):
+    def modify_config(config):
+      config.vocab_size = 99999
+      return config
+
+    module_spec = self.module_registry.get_module_spec(
+        "transformers",
+        "google/gemma-3-270m",
+        load_weights=False,
+        modify_config_hook=modify_config,
+    )
+
+    self.assertEqual(module_spec.config.vocab_size, 99999)
+
+  def test_transformers_modify_config_hook_and_load_weights_raises(self):
+    def modify_config(config):
+      return config
+
+    with self.assertRaises(NotImplementedError):
+      self.module_registry.get_module_spec(
+          "transformers",
+          "google/gemma-3-270m",
+          load_weights=True,
+          modify_config_hook=modify_config,
+      )
+
+  def test_torchvision_with_modify_config_hook_raises(self):
+    def modify_config(config):
+      return config
+
+    with self.assertRaises(ValueError):
+      self.module_registry.get_module_spec(
+          "torchvision",
+          "convnext_small",
+          modify_config_hook=modify_config,
+      )
+
+  def test_timm_with_modify_config_hook(self):
+    def modify_config(config):
+      config.input_size = (3, 999, 999)
+      return config
+
+    module_spec = self.module_registry.get_module_spec(
+        "timm",
+        "mobilenetv3_small_050",
+        load_weights=False,
+        modify_config_hook=modify_config,
+    )
+
+    self.assertEqual(module_spec.config.input_size, (3, 999, 999))
+
+  def test_timm_with_modify_config_hook_and_invalid_config(self):
+    def modify_config(config):
+      config.input_size = (3, 999, 999)
+      return config
+
+    module_spec = self.module_registry.get_module_spec(
+        "timm",
+        "random_model_name",
+        load_weights=False,
+        modify_config_hook=modify_config,
+    )
+    self.assertIsNone(module_spec.config)
+
+  def test_diffusers_with_modify_config_hook(self):
+    def modify_config(config):
+      config["sample_size"] = 999
+      return config
+
+    module_spec = self.module_registry.get_module_spec(
+        "diffusers",
+        "stabilityai/stable-diffusion-xl-base-1.0",
+        load_weights=False,
+        subfolder="unet",
+        modify_config_hook=modify_config,
+    )
+
+    self.assertEqual(module_spec.config.get("sample_size"), 999)
+
+  def test_diffusers_with_modify_config_hook_and_load_weights_raises(self):
+    def modify_config(config):
+      return config
+
+    with self.assertRaises(NotImplementedError):
+      self.module_registry.get_module_spec(
+          "diffusers",
+          "stabilityai/stable-diffusion-xl-base-1.0",
+          load_weights=True,
+          subfolder="unet",
+          modify_config_hook=modify_config,
+      )
+
   def test_transformers_get_module_spec_pretrained_using_sample_inputs(self):
     module_spec = self.module_registry.get_module_spec(
         "transformers", "google/gemma-3-270m", load_weights=True

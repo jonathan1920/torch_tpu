@@ -107,6 +107,7 @@ class BaseProvider(abc.ABC):
       name: str,
       *,
       load_weights: bool = False,
+      modify_config_hook: Callable[[Any], Any] | None = None,
       **kwargs,
   ) -> ModuleSpec:
     """Retrieves the specification for a specific model.
@@ -115,6 +116,8 @@ class BaseProvider(abc.ABC):
       name: The name of the model to retrieve.
       load_weights: If True, loads pre-trained weights. If False, initializes
         with random weights.
+      modify_config_hook: A callable to modify the model configuration. The
+        config object is specific to the provider.
       **kwargs: Additional provider-specific arguments.
 
     Returns:
@@ -134,13 +137,15 @@ class TorchvisionProvider(BaseProvider):
       name: str,
       *,
       load_weights: bool = False,
+      modify_config_hook: Callable[[Any], Any] | None = None,
       **kwargs,
   ) -> ModuleSpec:
+    if modify_config_hook is not None:
+      raise ValueError("modify_config_hook is not supported for torchvision.")
     if load_weights:
       raise NotImplementedError(
           "Loading pretrained weights not yet implemented."
       )
-
     default_shape = (1, 3, 224, 224)
     return ModuleSpec(
         lambda: torchvision.models.get_model(name),
@@ -167,6 +172,7 @@ class TimmProvider(BaseProvider):
       name: str,
       *,
       load_weights: bool = False,
+      modify_config_hook: Callable[[Any], Any] | None = None,
       **kwargs,
   ) -> ModuleSpec:
     """Creates a ModuleSpec for a TIMM model.
@@ -178,6 +184,8 @@ class TimmProvider(BaseProvider):
       name: Name (str) of the timm model.
       load_weights: If True, loads pretrained weights. If False, initializes
         with random weights.
+      modify_config_hook: A callable that accepts and returns a
+        timm.models.PretrainedCfg object to modify the model configuration.
       **kwargs: Additional keyword arguments.
 
     Returns:
@@ -191,6 +199,9 @@ class TimmProvider(BaseProvider):
           "Couldn't find config for %s.",
           name,
       )
+
+    if config and modify_config_hook is not None:
+      config = modify_config_hook(config)
 
     def _module_factory():
       if load_weights and self._base_path:
@@ -312,6 +323,7 @@ class TransformersProvider(BaseProvider):
       name: str,
       *,
       load_weights: bool = False,
+      modify_config_hook: Callable[[Any], Any] | None = None,
       **kwargs,
   ) -> ModuleSpec:
     """Creates a ModuleSpec for a Transformer model.
@@ -323,6 +335,8 @@ class TransformersProvider(BaseProvider):
       name: Name (str) of the hf transformer model.
       load_weights: If True, loads pretrained weights. If False, initializes
         with random weights.
+      modify_config_hook: A callable that accepts and returns a
+        transformers.PretrainedConfig object to modify the model configuration.
       **kwargs: Additional keyword arguments.
 
     Returns:
@@ -354,6 +368,13 @@ class TransformersProvider(BaseProvider):
           self._FILES.joinpath(str(pathlib.Path(name) / "config.json"))
       ) as f:
         config = transformers.AutoConfig.from_pretrained(str(f))
+
+    if modify_config_hook is not None:
+      if load_weights:
+        raise NotImplementedError(
+            "modify_config_hook is not supported when load_weights is True."
+        )
+      config = modify_config_hook(config)
 
     if load_weights:
       model_fn = lambda: transformers.AutoModelForCausalLM.from_pretrained(
@@ -429,6 +450,7 @@ class DiffusersProvider(BaseProvider):
       name: str,
       *,
       load_weights: bool = False,
+      modify_config_hook: Callable[[Any], Any] | None = None,
       **kwargs,
   ) -> ModuleSpec:
     """Creates a ModuleSpec for a Diffuser model.
@@ -437,6 +459,8 @@ class DiffusersProvider(BaseProvider):
       name: Name (str) of the hf diffuser model.
       load_weights: If True, loads pretrained weights. If False, initializes
         with random weights.
+      modify_config_hook: A callable that accepts and returns a config
+        dictionary to modify the model configuration for diffusers models.
       **kwargs: Additional keyword arguments. Supported arguments: - subfolder:
         Subfolder of the model to load.
 
@@ -447,24 +471,23 @@ class DiffusersProvider(BaseProvider):
     d_type = torch.bfloat16
 
     model_path = self._base_path / name
-    config_dict = None
+    raw_config = None
     try:
       if model_path.exists():
         raw_config = AutoModel.load_config(str(model_path), subfolder=subfolder)
-        config_dict = dict(raw_config)
-    except Exception:  # pylint: disable=broad-except
+    except Exception as exc:  # pylint: disable=broad-except
+      if load_weights:
+        # Pretrained weights are not available in local resources.
+        raise ValueError(
+            f"unable to load config for {name} from {model_path}. Cannot"
+            " fallback to local resources when loading weights."
+        ) from exc
       logging.warning(
           "Failed to access %s, falling back to local resources.",
           model_path,
       )
 
-    if config_dict is None:  # Fallback to local resources
-      # Pretrained weights are not available in local resources.
-      if load_weights:
-        raise ValueError(
-            f"load_weights cannot be set to True for {name} when falling back"
-            " to local configuration resources."
-        )
+    if raw_config is None:  # Fallback to local resources
       model_dir = pathlib.Path(name)
       if subfolder:
         model_dir = model_dir / subfolder
@@ -472,7 +495,14 @@ class DiffusersProvider(BaseProvider):
           self._FILES.joinpath(str(model_dir / "config.json"))
       ) as f:
         raw_config = AutoModel.load_config(str(f.parent))
-        config_dict = dict(raw_config)
+
+    if modify_config_hook is not None:
+      if load_weights:
+        raise NotImplementedError(
+            "modify_config_hook is not supported when load_weights is True."
+        )
+      raw_config = modify_config_hook(raw_config)
+    config_dict = dict(raw_config)
 
     def _module_factory():
       if load_weights:
@@ -678,6 +708,7 @@ class ModuleRegistry:
       name: str,
       *,
       load_weights: bool = False,
+      modify_config_hook: Callable[[Any], Any] | None = None,
       **kwargs,
   ) -> ModuleSpec:
     """Instantiates and returns the ModuleSpec for a specific model.
@@ -686,6 +717,9 @@ class ModuleRegistry:
       source: The provider key.
       name: The name of the model within that provider.
       load_weights: Whether to load pre-trained weights.
+      modify_config_hook: A callable to modify the model configuration. The
+        callable accepts and returns a config object specific to the model
+        library (e.g., transformers.PretrainedConfig for transformers).
       **kwargs: Additional provider-specific arguments.
 
     Returns:
@@ -698,4 +732,9 @@ class ModuleRegistry:
       raise ValueError(f"Source '{source}' not supported.")
 
     provider = self._providers[source]
-    return provider.get_module_spec(name, load_weights=load_weights, **kwargs)
+    return provider.get_module_spec(
+        name,
+        load_weights=load_weights,
+        modify_config_hook=modify_config_hook,
+        **kwargs,
+    )
