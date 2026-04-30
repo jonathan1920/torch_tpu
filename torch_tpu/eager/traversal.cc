@@ -46,7 +46,6 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_cache.h"
@@ -256,8 +255,8 @@ absl::StatusOr<Traversal> Traversal::CreateFromExecutionOrder(
   return traversal;
 }
 
-CompilationCacheKey Traversal::BuildCacheKey() const {
-  tsl::profiler::TraceMe t("Traversal::BuildCacheKey");
+GraphKey Traversal::BuildGraphKey() const {
+  tsl::profiler::TraceMe t("Traversal::BuildGraphKey");
   // We will be building a GraphSignature object as a simplified
   // representation of the Traversal graph for the purposes of hashing.
   GraphSignature graph;
@@ -271,7 +270,7 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
   }
   for (const SharedDeviceBufferList& node : execution_order()) {
     const DeferredOp* absl_nullable maybe_deferred_op = node->deferred_op();
-    ABSL_VLOG(1) << "[Traversal::BuildCacheKey] node: " << node.get()
+    ABSL_VLOG(1) << "[Traversal::BuildGraphKey] node: " << node.get()
                  << " maybe_deferred_op: " << maybe_deferred_op;
     ABSL_CHECK(maybe_deferred_op != nullptr);  // CRASH_OK
     const DeferredOp& deferred_op = *maybe_deferred_op;
@@ -296,7 +295,7 @@ CompilationCacheKey Traversal::BuildCacheKey() const {
     graph.AddGraphOutput(tensor_index_map.at(output));
   }
 
-  return graph.cache_key();
+  return graph.GetKey();
 }
 
 absl::Status Traversal::ValidateAndReorderArguments(
@@ -536,16 +535,18 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
       [this](mlir::MLIRContext& mlir_context) {
         return BuildMlirModule(mlir_context);
       };
-  ABSL_VLOG(1) << "[Compile] cache_key: " << cache_key();
   std::vector<Shape> argument_shapes = GetShapes(arguments_);
   std::vector<Shape> output_shapes = GetShapes(outputs_);
 
   TT_ASSIGN_OR_RETURN(UniqueCompileOptions compile_options,
                       MakeCompilerOptions(compilation_mode));
 
+  CompilationCacheKey compilation_cache_key = cache_key(compilation_mode);
+  ABSL_VLOG(1) << "[Compile] compilation cache key: " << compilation_cache_key;
+
   return CompilationCache::GetInstance().GetOrCompile(
-      cache_key(), argument_shapes, output_shapes, std::move(final_op_builder),
-      std::move(compile_options));
+      std::move(compilation_cache_key), argument_shapes, output_shapes,
+      std::move(final_op_builder), std::move(compile_options));
 }
 
 bool IsSimpleNodeTraversal(const Traversal& traversal) {

@@ -119,11 +119,15 @@ class Traversal {
       absl::Span<const SharedDeviceBufferList> execution_order,
       absl::Span<const SharedDeviceBufferList> nodes_to_materialize);
 
-  CompilationCacheKey cache_key() const {
-    if (!cache_key_) {
-      cache_key_ = BuildCacheKey();
+  // Composes a cache key for the traversal for the specific compilation mode.
+  CompilationCacheKey cache_key(CompilationMode) const {
+    if (graph_key_ == std::nullopt) {
+      graph_key_ = BuildGraphKey();
     }
-    return *cache_key_;
+    // TODO(b/502270689): set meaningful fingerprint value of XLA compile
+    // options for the given compilation mode.
+    const CompileOptionsKey compile_options_key(0);
+    return CompilationCacheKey(*graph_key_, compile_options_key);
   }
 
   // Validates that the provided arguments are a valid reordering of the
@@ -232,7 +236,7 @@ class Traversal {
         execution_order_(std::move(execution_order)),
         outputs_(std::move(outputs)) {}
 
-  CompilationCacheKey BuildCacheKey() const;
+  GraphKey BuildGraphKey() const;
 
   // Validates that the traversal is sound.
   absl::Status Validate() const;
@@ -248,8 +252,8 @@ class Traversal {
   // The tensor outputs of the Traversal. These may be in any state, but the
   // list is non-empty and all outputs are unique.
   std::vector<DeviceBufferRef> outputs_;
-  // The compilation cache key this Traversal; lazily computed.
-  mutable std::optional<CompilationCacheKey> cache_key_;
+  // The graph key of the Traversal; lazily computed.
+  mutable std::optional<GraphKey> graph_key_;
 
   // The acceptable dynamic bounds for each dimension in the traversal's
   // arguments.

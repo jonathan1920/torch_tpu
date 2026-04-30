@@ -470,12 +470,16 @@ CompilationCache::AddBoundedDynamicCacheEntry(
         << ToString(shapeless_key);
     entries = &entry->second;
   }
-  CompilationCacheKey middle_executable_key(
-      shapeless_key, DimensionsKey(shape_dynamism_metadata),
-      CompileOptionsKey(0));
+
+  const GraphKey graph_key(shapeless_key,
+                           DimensionsKey(shape_dynamism_metadata));
+  // TODO(b/502270689): set meaningful fingerprint value of XLA compile options.
+  CompilationCacheKey middle_executable_key(graph_key, CompileOptionsKey(0));
   entries->push_back(BoundedDynamicCacheEntry{
       .middle_executable_key = middle_executable_key,
-      .shape_dynamism_metadata = shape_dynamism_metadata});
+      .shape_dynamism_metadata = shape_dynamism_metadata,
+  });
+
   auto cache_lookup = AddStaticCacheEntry(middle_executable_key);
   cache_lookup.shape_dynamism_metadata = shape_dynamism_metadata;
   return cache_lookup;
@@ -510,7 +514,7 @@ CompilationCache::GetOrCreateCacheEntry(
   std::optional<BoundedDynamicCache::iterator> dynamic_it =
       skip_dynamic_lookup_and_compilation
           ? std::nullopt
-          : GetBoundedDynamicCacheEntries(key.shapeless_key());
+          : GetBoundedDynamicCacheEntries(key.graph_key().shapeless_key());
   if (dynamic_it.has_value()) {
     for (const auto& entry : (*dynamic_it)->second) {
       if (entry.shape_dynamism_metadata.IsStaticShapeCompatible(input_shapes)) {
@@ -547,8 +551,8 @@ CompilationCache::GetOrCreateCacheEntry(
   if (create_dynamic_entry) {
     auto dynamism_metadata = ShapeDynamismMetadata(input_shapes, output_shapes);
     ABSL_VLOG(2) << "Creating a dynamic cache entry for key: " << key;
-    return AddBoundedDynamicCacheEntry(key.shapeless_key(), dynamism_metadata,
-                                       dynamic_it);
+    return AddBoundedDynamicCacheEntry(key.graph_key().shapeless_key(),
+                                       dynamism_metadata, dynamic_it);
   }
 
   ABSL_VLOG(2) << "Creating a static cache entry for key: " << key;
@@ -644,8 +648,9 @@ CompilationCache::CreatePaddingKernel(
     const std::vector<Shape>& static_padded_input_shapes,
     std::vector<Shape> input_shapes_with_updated_dynamism,
     UniqueCompileOptions compile_options) {
-  CompilationCacheKey padding_cache_key =
-      shape_dynamism_metadata.GetPadModuleCacheKey(static_runtime_input_shapes);
+  CompilationCacheKey padding_cache_key(
+      shape_dynamism_metadata.GetPadModuleCacheKey(static_runtime_input_shapes),
+      CompileOptionsKey(0));
 
   MlirComputationBuilder padding_module_builder =
       [input_shapes_with_updated_dynamism =
@@ -704,8 +709,9 @@ CompilationCache::CreateSlicingKernel(
         Shape(padded_output_dims_vec[i], output_dtypes[i]));
   }
 
-  CompilationCacheKey slicing_cache_key =
-      shape_dynamism_metadata.GetSliceModuleCacheKey(runtime_output_shapes);
+  CompilationCacheKey slicing_cache_key(
+      shape_dynamism_metadata.GetSliceModuleCacheKey(runtime_output_shapes),
+      CompileOptionsKey(0));
 
   MlirComputationBuilder slice_module_builder =
       [runtime_output_dims_vec = std::move(runtime_output_dims_vec),
@@ -806,10 +812,10 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
                             *cache_lookup.shape_dynamism_metadata, input_shapes,
                             output_shapes, std::move(adapter_compile_options)));
     // Create a key for the storage of the dynamic executable.
-    storage_key = CompilationCacheKey(
-        key.shapeless_key(),
-        DimensionsKey(*cache_lookup.shape_dynamism_metadata),
-        key.compile_options_key());
+    const GraphKey graph_key(
+        key.graph_key().shapeless_key(),
+        DimensionsKey(*cache_lookup.shape_dynamism_metadata));
+    storage_key = CompilationCacheKey(graph_key, key.compile_options_key());
     ABSL_VLOG(2) << "Storage key for dynamic executable: " << storage_key;
   }
 

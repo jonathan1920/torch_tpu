@@ -65,8 +65,8 @@ class CompilationCacheTestHelper {
 namespace {
 
 CompilationCacheKey DummyKey(int key = 0) {
-  return CompilationCacheKey{ShapelessKey(key), DimensionsKey({}),
-                             CompileOptionsKey(0)};
+  return CompilationCacheKey(GraphKey(ShapelessKey(key), DimensionsKey({})),
+                             CompileOptionsKey(0));
 }
 
 

@@ -327,8 +327,8 @@ absl::StatusOr<std::vector<SharedDeviceBufferList>> ExtractExecutionOrder(
     unique_nodes.insert(node);
   }
 
-  // Sort nodes determinisically, so as to lead to identical traversal creations
-  // across different workers.
+  // Sort nodes deterministically, so as to lead to identical traversal
+  // creations across different workers.
   std::vector<SharedDeviceBufferList> sorted_nodes(unique_nodes.begin(),
                                                    unique_nodes.end());
   std::sort(sorted_nodes.begin(), sorted_nodes.end(), [](auto& n1, auto& n2) {
@@ -484,7 +484,7 @@ absl::Status MaterializationWorker::MaterializeQueue(
 
     ABSL_VLOG(1) << "[MaterializationWorker] Launching compilation for "
                     "region: cache_key="
-                 << traversal.cache_key();
+                 << traversal.cache_key(compilation_mode);
     TT_ASSIGN_OR_RETURN(auto compiled_kernel,
                         traversal.Compile(compilation_mode));
 
@@ -513,7 +513,7 @@ absl::Status MaterializationWorker::MaterializeQueue(
       }
     }
 
-    std::string name = absl::StrCat(traversal.cache_key());
+    std::string name = absl::StrCat(traversal.cache_key(compilation_mode));
     Traversal::Parts traversal_parts = traversal.IntoParts();
     execution_tasks.push_back(ExecutionTask{
         .name = std::move(name),

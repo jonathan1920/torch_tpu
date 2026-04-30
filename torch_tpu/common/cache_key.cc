@@ -172,14 +172,15 @@ absl::StatusOr<OpParamCacheKeys> OpParamCacheKeys::Builder::operator*() {
 }
 
 std::string CompilationCacheKey::CompactFormat() const {
-  return absl::StrFormat("%016x_%016x_%016x", shapeless_key_.key(),
-                         dimensions_key_.key(), compile_options_key_.key());
+  return absl::StrFormat("%016x_%016x_%016x", graph_key_.shapeless_key().key(),
+                         graph_key_.dimensions_key().key(),
+                         compile_options_key_.key());
 }
 
 std::ostream& operator<<(std::ostream& os, CompilationCacheKey key) {
   os << "CompilationCacheKey{shapeless_key=" << std::hex
-     << key.shapeless_key().key()
-     << ", dimensions_key=" << key.dimensions_key().key()
+     << key.graph_key().shapeless_key().key()
+     << ", dimensions_key=" << key.graph_key().dimensions_key().key()
      << ", compile_options_key=" << key.compile_options_key().key() << std::dec
      << "}";
   return os;
@@ -313,7 +314,7 @@ void LogShapes(absl::Span<const Shape> shapes, std::string_view prefix) {
   }
 }
 
-CompilationCacheKey ShapeDynamismMetadata::GetPadModuleCacheKey(
+GraphKey ShapeDynamismMetadata::GetPadModuleCacheKey(
     absl::Span<const Shape> shapes) const {
   ABSL_VLOG(3) << "[GetPadModuleCacheKey] Creating a cache key for dynamism "
                   "with "
@@ -384,10 +385,10 @@ CompilationCacheKey ShapeDynamismMetadata::GetPadModuleCacheKey(
     }
   }
 
-  return graph.cache_key();
+  return graph.GetKey();
 }
 
-CompilationCacheKey ShapeDynamismMetadata::GetSliceModuleCacheKey(
+GraphKey ShapeDynamismMetadata::GetSliceModuleCacheKey(
     absl::Span<const Shape> shapes) const {
   ABSL_VLOG(3) << "[GetSliceModuleCacheKey] Creating a slice module cache key "
                   "for dynamism with "
@@ -434,7 +435,7 @@ CompilationCacheKey ShapeDynamismMetadata::GetSliceModuleCacheKey(
         });
     graph.AddGraphOutput(op_index);
   }
-  return graph.cache_key();
+  return graph.GetKey();
 }
 
 int GraphSignature::AddTensor(absl::Span<const int64_t> dimensions,
@@ -510,7 +511,7 @@ void GraphSignature::AddGraphOutput(int index) {
   graph_output_indices_.push_back(index);
 }
 
-CompilationCacheKey GraphSignature::cache_key() const {
+GraphKey GraphSignature::GetKey() const {
   auto sorted_donated_indices = donated_indices_;
   std::sort(sorted_donated_indices.begin(), sorted_donated_indices.end());
 
@@ -519,8 +520,7 @@ CompilationCacheKey GraphSignature::cache_key() const {
       sorted_donated_indices, op_inputs_starts_, op_inputs_indices_, op_names_,
       op_param_cache_keys_starts_, op_param_cache_keys_, op_outputs_indices_));
   const DimensionsKey dimensions_key(tensor_dimensions_);
-  return CompilationCacheKey(shapeless_key, dimensions_key,
-                             CompileOptionsKey(0));
+  return GraphKey(shapeless_key, dimensions_key);
 }
 
 }  // namespace torch_tpu

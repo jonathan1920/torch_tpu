@@ -675,7 +675,6 @@ torch_tpu_cc_library(
     ],
     deps = [
         ":device_buffer",
-        "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:compilation",
         "//torch_tpu/common:compilation_cache",

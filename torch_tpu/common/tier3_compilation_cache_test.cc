@@ -62,8 +62,9 @@ auto* const test_env =
 CompilationCacheKey MakeCacheKey(uint64_t shapeless_key, int num_dims) {
   const Dimensions dims(num_dims, 1);
   const DimensionsKey dimensions_key(dims);
-  return CompilationCacheKey(ShapelessKey(shapeless_key), dimensions_key,
-                             CompileOptionsKey(0));
+  return CompilationCacheKey(
+      GraphKey(ShapelessKey(shapeless_key), dimensions_key),
+      CompileOptionsKey(0));
 }
 
 class Tier3CompilationCacheTest : public testing::Test {};

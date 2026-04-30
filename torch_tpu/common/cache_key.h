@@ -682,6 +682,42 @@ class DimensionsKey {
   FingerprintType key_;
 };
 
+// A `GraphKey` is used to identify a computation graph by
+// combining its structural representation (`ShapelessKey`) and the specific
+// tensor dimensions involved (`DimensionsKey`).
+class GraphKey {
+ public:
+  struct Hash {
+    [[nodiscard]] inline size_t operator()(GraphKey key) const {
+      return FingerprintCat(key.shapeless_key().key(),
+                            key.dimensions_key().key());
+    }
+  };
+
+  GraphKey(ShapelessKey shapeless_key, DimensionsKey dimensions_key)
+      : shapeless_key_(shapeless_key), dimensions_key_(dimensions_key) {}
+
+  [[nodiscard]] friend bool operator==(GraphKey lhs, GraphKey rhs) {
+    return lhs.shapeless_key_ == rhs.shapeless_key_ &&
+           lhs.dimensions_key_ == rhs.dimensions_key_;
+  }
+
+  [[nodiscard]] ShapelessKey shapeless_key() const { return shapeless_key_; }
+
+  [[nodiscard]] DimensionsKey dimensions_key() const { return dimensions_key_; }
+
+ private:
+  ShapelessKey shapeless_key_;
+  DimensionsKey dimensions_key_;
+};
+
+// Formats a graph key as a human-readable string.
+template <typename Sink>
+void AbslStringify(Sink& sink, const GraphKey key) {
+  absl::Format(&sink, "%016x_%016x", key.shapeless_key().key(),
+               key.dimensions_key().key());
+}
+
 class CompileOptionsKey {
  public:
   explicit CompileOptionsKey(FingerprintType key) : key_(key) {}
@@ -708,7 +744,7 @@ void AbslStringify(Sink& sink, const CompileOptionsKey key) {
   absl::Format(&sink, "%016x", key.key());
 }
 
-// A CompilationCacheKey is used to identify a compilation in the compilation
+// A `CompilationCacheKey` is used to identify a compilation in the compilation
 // cache. Depending on the hash/eq functions used, it may either uniquely
 // identify a cached executable, or non-uniquely identify a set of executables
 // that share some property.
@@ -716,48 +752,43 @@ class CompilationCacheKey {
  public:
   struct Hash {
     [[nodiscard]] inline size_t operator()(CompilationCacheKey key) const {
-      return FingerprintCat(key.shapeless_key().key(),
-                            key.dimensions_key().key(),
-                            key.compile_options_key().key());
+      const auto& graph_key = key.graph_key();
+      const auto& compile_options_key = key.compile_options_key();
+
+      return FingerprintCat(graph_key.shapeless_key().key(),
+                            graph_key.dimensions_key().key(),
+                            compile_options_key.key());
     }
   };
 
   // Creates a CompilationCacheKey from the given components.
-  CompilationCacheKey(ShapelessKey shapeless_key, DimensionsKey dimensions_key,
-                      CompileOptionsKey compile_options_key)
-      : shapeless_key_(shapeless_key),
-        dimensions_key_(dimensions_key),
-        compile_options_key_(compile_options_key) {}
+  CompilationCacheKey(GraphKey graph_key, CompileOptionsKey compile_options_key)
+      : graph_key_(graph_key), compile_options_key_(compile_options_key) {}
 
   // Compares two CompilationCacheKeys.
   [[nodiscard]] friend bool operator==(CompilationCacheKey lhs,
                                        CompilationCacheKey rhs) {
-    return lhs.shapeless_key_ == rhs.shapeless_key_ &&
-           lhs.dimensions_key_ == rhs.dimensions_key_ &&
+    return lhs.graph_key_ == rhs.graph_key_ &&
            lhs.compile_options_key_ == rhs.compile_options_key_;
   }
 
   // Returns a compact string representation of the key, suitable for use in a
-  // file name. The format is "<shapeless_key>_<dimensions_key>" where each
-  // key part is formatted as a hexadecimal string of 16 digits.
+  // file name.
+  //
+  // The format is "<shapeless_key>_<dimensions_key>_<compile_options_key>"
+  // where each key part is formatted as a hexadecimal string of 16 digits.
   [[nodiscard]] std::string CompactFormat() const;
 
-  [[nodiscard]] ShapelessKey shapeless_key() const { return shapeless_key_; }
-
-  [[nodiscard]] DimensionsKey dimensions_key() const { return dimensions_key_; }
+  [[nodiscard]] GraphKey graph_key() const { return graph_key_; }
 
   [[nodiscard]] CompileOptionsKey compile_options_key() const {
     return compile_options_key_;
   }
 
  private:
-  // The fingerprint of all graph properties except for dimension sizes and
-  // dynamic bounds.
-  ShapelessKey shapeless_key_;
-  // The fingerprint of only the dimension sizes and dynamic bounds.
-  DimensionsKey dimensions_key_;
+  // The fingerprint of all graph properties.
+  GraphKey graph_key_;
   // The fingerprint of the compile options.
-  // TODO(b/502270689): set meaningful fingerprint value of XLA compile options.
   CompileOptionsKey compile_options_key_;
 };
 
@@ -812,13 +843,11 @@ class ShapeDynamismMetadata {
 
   // Returns a cache key for the pad module with the given input shapes. This
   // ignores dynamic annotations.
-  CompilationCacheKey GetPadModuleCacheKey(
-      absl::Span<const Shape> shapes) const;
+  GraphKey GetPadModuleCacheKey(absl::Span<const Shape> shapes) const;
 
   // Returns a cache key for the slice module with the given output shapes.
   // This ignores dynamic annotations.
-  CompilationCacheKey GetSliceModuleCacheKey(
-      absl::Span<const Shape> shapes) const;
+  GraphKey GetSliceModuleCacheKey(absl::Span<const Shape> shapes) const;
 
  private:
   // The lower and upper bounds of each dimension in the graph's inputs.
@@ -886,10 +915,10 @@ class GraphSignature {
   // Specifies which tensors are graph outputs.
   void AddGraphOutput(int index);
 
-  // Computes the cache key for this graph. Note that this computes the final
+  // Computes the key for this graph. Note that this computes the final
   // key which involves sorting some properties, so it shouldn't be called
   // before the graph is fully constructed.
-  [[nodiscard]] CompilationCacheKey cache_key() const;
+  [[nodiscard]] GraphKey GetKey() const;
 
   int num_inputs() const { return num_inputs_; }
   int num_deferred_ops() const { return op_names_.size(); }

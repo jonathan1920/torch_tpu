@@ -92,11 +92,12 @@ struct MaterializationTask {
 
 using MaterializationJob = std::variant<ExecutionTask, MaterializationTask>;
 
-ExecutionTask CreateExecutionTask(Traversal traversal,
+ExecutionTask CreateExecutionTask(CompilationMode compilation_mode,
+                                  Traversal traversal,
                                   CompiledKernel compiled_kernel) {
   std::string task_name;
   if (ABSL_VLOG_IS_ON(1)) {
-    task_name = absl::StrCat(traversal.cache_key());
+    task_name = absl::StrCat(traversal.cache_key(compilation_mode));
   }
   Traversal::Parts parts = traversal.IntoParts();
   return ExecutionTask{.arguments = std::move(parts.arguments),
@@ -104,8 +105,6 @@ ExecutionTask CreateExecutionTask(Traversal traversal,
                        .compiled_kernel = std::move(compiled_kernel),
                        .task_name = std::move(task_name)};
 }
-
-
 
 }  // namespace
 
@@ -414,7 +413,7 @@ class MaterializationWorker {
       }
 
       ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing traversal: cache_key="
-                   << split_traversal.cache_key()
+                   << split_traversal.cache_key(compilation_mode)
                    << " traversal input arg count: "
                    << split_traversal.arguments().size()
                    << " traversal output arg count: "
@@ -428,8 +427,9 @@ class MaterializationWorker {
         }
       }
 
-      execution_tasks.push_back(CreateExecutionTask(
-          std::move(split_traversal), std::move(*compiled_kernel)));
+      execution_tasks.push_back(
+          CreateExecutionTask(compilation_mode, std::move(split_traversal),
+                              std::move(*compiled_kernel)));
     }
 
     return execution_tasks;
