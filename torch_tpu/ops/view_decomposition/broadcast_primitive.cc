@@ -18,75 +18,82 @@
 
 #include <cstdint>
 #include <ostream>
-#include <vector>
+#include <string_view>
 
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "torch_tpu/common/dimension_types.h"
-#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
+#include "torch_tpu/ops/view_decomposition/view_primitive_error_utils.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
 namespace torch_tpu {
 
 namespace {
 
-absl::Status ValidateBroadcastImpl(const BroadcastPrimitive& broadcast,
-                                   absl::Span<const int64_t> input_sizes,
-                                   mlir::RankedTensorType input_type) {
-  TT_RET_CHECK(broadcast.broadcast_dimensions.size() == input_sizes.size(),
-               error::kInvalidArgument)
-      << "broadcast_dimensions must have the same "
-         "size as the input tensor, got input size "
-      << input_sizes.size() << " and broadcast_dimensions size "
-      << broadcast.broadcast_dimensions.size();
-  std::vector<bool> dim_used(broadcast.new_sizes.size(), false);
+template <typename IsDynamicDim>
+void CheckBroadcast(const BroadcastPrimitive& broadcast,
+                    absl::Span<const int64_t> input_sizes,
+                    const std::string_view error_message_suffix,
+                    const IsDynamicDim& is_dynamic_dim) {
+  ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+      broadcast.broadcast_dimensions.size(), input_sizes.size())
+      << "expected the BroadcastPrimitive broadcast dimensions size to be "
+      << input_sizes.size() << ", which is the rank of the input layout, got "
+      << broadcast.broadcast_dimensions.size() << error_message_suffix;
+
+  Indices last_use_of(broadcast.new_sizes.size(), -1);
+
   for (auto i = 0; i < input_sizes.size(); ++i) {
     auto j = broadcast.broadcast_dimensions[i];
-    TT_RET_CHECK(j >= 0 && j < broadcast.new_sizes.size(),
-                 error::kInvalidArgument)
-        << "broadcast_dimensions[" << i << "] = " << j
-        << " which is out of bounds for new_sizes of size "
-        << broadcast.new_sizes.size();
-    TT_RET_CHECK(!dim_used[j], error::kInvalidArgument)
-        << "broadcast_dimensions has a duplicate input index: "
-        << ToString(broadcast.broadcast_dimensions);
-    dim_used[j] = true;
-    const bool is_dynamic_dim = input_type && input_type.isDynamicDim(i);
-    TT_RET_CHECK(input_sizes[i] == 1 || is_dynamic_dim ||
-                     input_sizes[i] == broadcast.new_sizes[j],
-                 error::kInvalidArgument)
-        << "cannot broadcast input dimension " << i << " of size "
-        << input_sizes[i] << " to output dimension " << j << " of size "
-        << broadcast.new_sizes[j];
+    ABSL_CHECK(  // CRASH_OK=Internal error on view decomposition.
+        j >= 0 && j < broadcast.new_sizes.size())
+        << "expected the BroadcastPrimitive to map the input dimension " << i
+        << " to a dimension within the range [0, " << broadcast.new_sizes.size()
+        << "), got " << j << error_message_suffix;
+
+    ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+        last_use_of[j], -1)
+        << "expected the BroadcastPrimitive dimensions to map each input "
+           "dimension to a unique dimension, got "
+        << j << " at indices " << i << " and " << last_use_of[j]
+        << error_message_suffix;
+    last_use_of[j] = i;
+
+    ABSL_CHECK(  // CRASH_OK=Internal error on view decomposition.
+        is_dynamic_dim(i) || input_sizes[i] == 1 ||
+        input_sizes[i] == broadcast.new_sizes[j])
+        << "expected the BroadcastPrimitive input dimension at index " << i
+        << " to be either dynamic, 1, or equal " << broadcast.new_sizes[j]
+        << " (broadcasted dimension at index " << j
+        << ") so that it is considered broadcastable, "
+           "got "
+        << input_sizes[i] << error_message_suffix;
   }
-  return absl::OkStatus();
 }
 
-absl::Status ValidateBroadcast(const BroadcastPrimitive& broadcast,
-                               absl::Span<const int64_t> input_sizes) {
-  return ValidateBroadcastImpl(broadcast, input_sizes, nullptr /*input_type*/);
-}
+void CheckBroadcast(const BroadcastPrimitive& broadcast,
+                    mlir::RankedTensorType type) {
+  CheckBroadcast(broadcast, type.getShape(),
+                 /* error_message_suffix= */
+                 GetViewPrimitiveShloErrorSuffix(broadcast, type.getShape()),
+                 /* is_dynamic_dim= */ [type](const int64_t i) {
+                   return type.isDynamicDim(i);
+                 });
+};
 
-absl::Status ValidateBroadcast(const BroadcastPrimitive& broadcast,
-                               mlir::RankedTensorType input_type) {
-  return ValidateBroadcastImpl(broadcast, input_type.getShape(), input_type);
-}
-
-absl::Status ValidateBroadcast(const BroadcastPrimitive& broadcast,
-                               const StridedLayout& layout) {
-  Dimensions input_dims;
-  input_dims.reserve(layout.strided_dims.size());
-  for (const auto& dim : layout.strided_dims) {
-    input_dims.push_back(dim.size);
-  }
-  return ValidateBroadcast(broadcast, input_dims);
+void CheckBroadcast(const BroadcastPrimitive& broadcast,
+                    const StridedLayout& layout) {
+  CheckBroadcast(
+      broadcast, GetSizes(layout),
+      /* error_message_suffix= */ GetUpdateLayoutBugSuffix(broadcast, layout),
+      /* is_dynamic_dim= */ [](const int64_t _) { return false; });
 }
 
 }  // namespace
@@ -102,7 +109,7 @@ std::ostream& operator<<(std::ostream& os,
 
 absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
                                   const BroadcastPrimitive& broadcast) {
-  TT_RETURN_IF_ERROR(ValidateBroadcast(broadcast, layout));
+  CheckBroadcast(broadcast, layout);
 
   // Storage offset is unchanged.
   StridedLayout new_layout = {.storage_offset = layout.storage_offset};
@@ -130,7 +137,7 @@ absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(
                << mlir::debugString(input_type) << " broadcast dims: "
                << ToString(broadcast.broadcast_dimensions)
                << " new sizes: " << ToString(broadcast.new_sizes);
-  TT_RETURN_IF_ERROR(ValidateBroadcast(broadcast, input_type));
+  CheckBroadcast(broadcast, input_type);
 
   return Broadcast(input, broadcast.new_sizes, broadcast.broadcast_dimensions);
 }

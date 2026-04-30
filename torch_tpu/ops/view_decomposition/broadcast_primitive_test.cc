@@ -16,18 +16,13 @@
 
 #include "torch_tpu/ops/view_decomposition/broadcast_primitive.h"
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
-#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 
 namespace torch_tpu {
 namespace {
-using absl_testing::StatusIs;
-using testing::HasSubstr;
 
 TEST(UpdateLayoutBroadcast, ScalarNoOp) {
   StridedLayout layout = MakeContiguousBaseLayout({});
@@ -87,83 +82,6 @@ TEST(UpdateLayoutBroadcast, TensorToTensor) {
       .storage_offset = 0,
   };
   EXPECT_EQ(layout, expected);
-}
-
-TEST(UpdateLayoutBroadcast, InvalidRank) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  BroadcastPrimitive broadcast = {.new_sizes = {6, 4, 2, 1},
-                                  .broadcast_dimensions = {0, 1, 2, 3}};
-  EXPECT_THAT(UpdateLayout(layout, broadcast),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("broadcast_dimensions must have the same size "
-                                 "as the input tensor")));
-}
-
-TEST(UpdateLayoutBroadcast, InvalidNegativeIndex) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  BroadcastPrimitive broadcast = {.new_sizes = {6, 4, 2},
-                                  .broadcast_dimensions = {0, 1, -1}};
-  EXPECT_THAT(
-      UpdateLayout(layout, broadcast),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("broadcast_dimensions[2] = -1 which is out of bounds "
-                         "for new_sizes of size 3")));
-}
-
-TEST(UpdateLayoutBroadcast, InvalidIndexOutOfBounds) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  BroadcastPrimitive broadcast = {.new_sizes = {6, 4, 2},
-                                  .broadcast_dimensions = {0, 1, 3}};
-  EXPECT_THAT(
-      UpdateLayout(layout, broadcast),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("broadcast_dimensions[2] = 3 which is out of bounds "
-                         "for new_sizes of size 3")));
-}
-
-TEST(UpdateLayoutBroadcast, InvalidDuplicateDimension) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 2, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  BroadcastPrimitive broadcast = {.new_sizes = {6, 2, 2},
-                                  .broadcast_dimensions = {0, 1, 1}};
-  EXPECT_THAT(
-      UpdateLayout(layout, broadcast),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("broadcast_dimensions has a duplicate input index")));
-}
-
-TEST(UpdateLayoutBroadcast, InvalidSizeNotOne) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  BroadcastPrimitive broadcast = {.new_sizes = {6, 4, 3},
-                                  .broadcast_dimensions = {0, 1, 2}};
-  EXPECT_THAT(UpdateLayout(layout, broadcast),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("cannot broadcast input dimension 2 of size 2 "
-                                 "to output dimension 2 of size 3")));
 }
 
 }  // namespace
