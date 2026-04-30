@@ -16,17 +16,12 @@
 
 #include "torch_tpu/ops/view_decomposition/unfold_primitive.h"
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
-#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 
 namespace torch_tpu {
 namespace {
-using absl_testing::StatusIs;
-using testing::HasSubstr;
 
 TEST(UpdateLayoutUnfold, TensorNoOp) {
   StridedLayout layout = {
@@ -84,141 +79,6 @@ TEST(UpdateLayoutUnfold, UnfoldWithStrideOnLastDimension) {
       .storage_offset = 2,
   };
   EXPECT_EQ(layout, expected);
-}
-
-TEST(UpdateLayoutUnfold, InvalidScalar) {
-  StridedLayout layout = {
-      .strided_dims = {},
-      .storage_offset = 0,
-  };
-  UnfoldPrimitive unfold = {
-      .start_index = 0, .limit_index = 0, .window_stride = 1, .window_size = 1};
-  EXPECT_THAT(
-      UpdateLayout(layout, unfold),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("expected input to have at least 2 dimensions")));
-}
-
-TEST(UpdateLayoutUnfold, InvalidRankOne) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 10, .stride = 1}},
-      .storage_offset = 0,
-  };
-  UnfoldPrimitive unfold = {.start_index = 0,
-                            .limit_index = 10,
-                            .window_stride = 1,
-                            .window_size = 1};
-  EXPECT_THAT(
-      UpdateLayout(layout, unfold),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("expected input to have at least 2 dimensions")));
-}
-
-TEST(UpdateLayoutUnfold, InvalidPenultimateSize) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 2, .stride = 10},
-                       {.size = 2, .stride = 5},
-                       {.size = 5, .stride = 1}},
-      .storage_offset = 0,
-  };
-  UnfoldPrimitive unfold = {
-      .start_index = 0, .limit_index = 5, .window_stride = 1, .window_size = 1};
-  EXPECT_THAT(UpdateLayout(layout, unfold),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("expected input to have size 1 in the "
-                                 "second-to-last dimension")));
-}
-
-TEST(UpdateLayoutUnfold, InvalidStartIndex) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 2, .stride = 5},
-                       {.size = 1, .stride = 999},
-                       {.size = 5, .stride = 1}},
-      .storage_offset = 0,
-  };
-  UnfoldPrimitive unfold = {
-      .start_index = 5, .limit_index = 5, .window_stride = 1, .window_size = 1};
-  EXPECT_THAT(
-      UpdateLayout(layout, unfold),
-      StatusIs(
-          error::kInvalidArgument,
-          HasSubstr("start index 5 is out of bounds for dimension of size 5")));
-}
-
-TEST(UpdateLayoutUnfold, InvalidLimitIndexBelowStartIndex) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 2, .stride = 5},
-                       {.size = 1, .stride = 999},
-                       {.size = 5, .stride = 1}},
-      .storage_offset = 0,
-  };
-  UnfoldPrimitive unfold = {
-      .start_index = 2, .limit_index = 1, .window_stride = 1, .window_size = 1};
-  EXPECT_THAT(
-      UpdateLayout(layout, unfold),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("limit index cannot be less than start index")));
-}
-
-TEST(UpdateLayoutUnfold, InvalidLimitIndexOutOfBounds) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 2, .stride = 5},
-                       {.size = 1, .stride = 999},
-                       {.size = 5, .stride = 1}},
-      .storage_offset = 0,
-  };
-  UnfoldPrimitive unfold = {
-      .start_index = 0, .limit_index = 6, .window_stride = 1, .window_size = 1};
-  EXPECT_THAT(
-      UpdateLayout(layout, unfold),
-      StatusIs(
-          error::kInvalidArgument,
-          HasSubstr("limit index 6 is out of bounds for dimension of size 5")));
-}
-
-TEST(UpdateLayoutUnfold, InvalidWindowSize) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 2, .stride = 5},
-                       {.size = 1, .stride = 999},
-                       {.size = 5, .stride = 1}},
-      .storage_offset = 0,
-  };
-  UnfoldPrimitive unfold = {
-      .start_index = 1, .limit_index = 2, .window_stride = 1, .window_size = 2};
-  EXPECT_THAT(
-      UpdateLayout(layout, unfold),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("window size 2 is larger than the range [1, 2)")));
-}
-
-TEST(UpdateLayoutUnfold, InvalidWindowStrideZero) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 2, .stride = 5},
-                       {.size = 1, .stride = 999},
-                       {.size = 5, .stride = 1}},
-      .storage_offset = 0,
-  };
-  UnfoldPrimitive unfold = {
-      .start_index = 1, .limit_index = 5, .window_stride = 0, .window_size = 2};
-  EXPECT_THAT(UpdateLayout(layout, unfold),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("window stride must be positive")));
-}
-
-TEST(UpdateLayoutUnfold, InvalidWindowStrideNegative) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 2, .stride = 5},
-                       {.size = 1, .stride = 999},
-                       {.size = 5, .stride = 1}},
-      .storage_offset = 0,
-  };
-  UnfoldPrimitive unfold = {.start_index = 1,
-                            .limit_index = 5,
-                            .window_stride = -1,
-                            .window_size = 2};
-  EXPECT_THAT(UpdateLayout(layout, unfold),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("window stride must be positive")));
 }
 
 }  // namespace

@@ -289,10 +289,13 @@ torch_tpu_cc_library(
     hdrs = ["unfold_primitive.h"],
     deps = [
         ":strided_layout",
+        ":view_primitive_error_utils",
         "//torch_tpu/common:dimension_types",
-        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:to_string",
         "//torch_tpu/ops:op_builder_utils",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
         "@stablehlo//:mlir_builder",
         "@stablehlo//:stablehlo_builder",
@@ -305,9 +308,7 @@ torch_tpu_cc_test(
     deps = [
         ":strided_layout",
         ":unfold_primitive",
-        "//torch_tpu/common:error_utils",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
