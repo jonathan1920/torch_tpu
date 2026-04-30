@@ -74,12 +74,16 @@ class BenchmarkTest(parameterized.TestCase):
   """Tests for end-to-end performance benchmarks."""
 
   @classmethod
+  def _is_torchax_backend(cls) -> bool:
+    return benchmark_utils.BACKEND.value == benchmark_utils.Backend.TORCHAX
+
+  @classmethod
   def setUpClass(cls):
     super().setUpClass()
     # TODO: b/502604749 - Remove this after we figure out a way to clear the
     # repeated sequence op window between tests.
     os.environ["TORCH_TPU_INTERNAL_DETECT_REPEATED_OPS"] = ""
-    if benchmark_utils.BACKEND.value == benchmark_utils.Backend.TORCHAX:
+    if cls._is_torchax_backend():
       # Import TorchAX specific libraries only if the backend is TorchAX
       # otherwise we will attempt to overwrite privatedeviceuse1 backend.
       import torchax
@@ -126,14 +130,10 @@ class BenchmarkTest(parameterized.TestCase):
           f"Run mode {config.run_mode} not applicable to platform {platform}"
       )
 
-    if (
-        benchmark_utils.BACKEND.value == benchmark_utils.Backend.TORCHAX
-        and config.run_mode
-        not in [
-            benchmark_utils.RunMode.COMPILED,
-            benchmark_utils.RunMode.EAGER_DEFAULT,
-        ]
-    ):
+    if self._is_torchax_backend() and config.run_mode not in [
+        benchmark_utils.RunMode.COMPILED,
+        benchmark_utils.RunMode.EAGER_DEFAULT,
+    ]:
       self.skipTest("TorchAX only supports compiled and eager default modes.")
 
     # MlCompass only looks for base test name after the benchmark run.
@@ -141,7 +141,7 @@ class BenchmarkTest(parameterized.TestCase):
         self._testMethodName, microbenchmark_name
     )
 
-    if benchmark_utils.BACKEND.value == benchmark_utils.Backend.TORCHAX:
+    if self._is_torchax_backend():
       # Import TorchAX specific libraries only if the backend is TorchAX otherwise we
       # will attempt to overwrite privatedeviceuse1 backend.
       from examples.benchmarks.e2e.torchax import performance_utils as torchax_perf_utils

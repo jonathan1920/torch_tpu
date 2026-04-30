@@ -63,7 +63,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def run_performance_benchmark_test(
       self, config, benchmark_name, microbenchmark_name=None
   ):
-    if benchmark_utils.BACKEND.value == benchmark_utils.Backend.TORCHAX:
+    if self._is_torchax_backend():
       # Layer specific skips.
       if config.is_training:
         batch_size = config.model_and_input_args.batch_size or 1

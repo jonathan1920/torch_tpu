@@ -151,6 +151,35 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "model_performance_benchmarks_torchax",
+    timeout = "long",
+    srcs = ["model_performance_benchmarks.py"],
+    args = ["--backend=torchax"],
+    autoload = False,
+    main = "model_performance_benchmarks.py",
+    notap = "Tested on guitar workflow.",
+    notest_oss = "Benchmarks have a separate workflow.",
+    shard_count = 7,
+    strict = True,
+    tags = [
+        "cpu:4",
+        "requires-accel-hbm",
+        "requires-net:external",
+        "requires-tpu-v7x",
+    ],
+    deps = [
+        ":benchmark_utils",
+        ":performance_utils",
+        ":test_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+    ],
+)
+
+torch_tpu_py_test(
     name = "model_compile_benchmarks",
     timeout = "long",
     srcs = ["model_compile_benchmarks.py"],

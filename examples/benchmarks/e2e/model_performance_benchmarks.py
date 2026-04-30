@@ -45,6 +45,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_llama_3_2_1b_forward(self, run_mode):
     """Tests the forward pass of Llama-3.2-1B."""
+    if (
+        self._is_torchax_backend()
+        and run_mode == benchmark_utils.RunMode.COMPILED
+    ):
+      self.skipTest("Test fails due to incompatibility with TorchAx")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
@@ -71,6 +76,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_qwen3_1_7b_forward(self, run_mode):
     """Tests the forward pass of Qwen3 1.7B."""
+    if (
+        self._is_torchax_backend()
+        and run_mode == benchmark_utils.RunMode.COMPILED
+    ):
+      self.skipTest("Test fails due to incompatibility with TorchAx")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
@@ -97,6 +107,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_gpt_oss_20b_forward(self, run_mode):
     """Tests the forward pass of GPT-OSS-20B."""
+    if self._is_torchax_backend():
+      self.skipTest("Test fails due to incompatibility with TorchAx")
+
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
@@ -122,6 +135,18 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_llama_3_2_1b_train_1_step(self, run_mode):
     """Tests the training of Llama-3.2-1B."""
+
+    if (
+        self._is_torchax_backend()
+        and run_mode == benchmark_utils.RunMode.EAGER_DEFAULT
+    ):
+      self.skipTest("Eager Llama-3.2-1B training OOMs with TorchAX.")
+    if (
+        self._is_torchax_backend()
+        and run_mode == benchmark_utils.RunMode.COMPILED
+    ):
+      self.skipTest("Test fails due to incompatibility with TorchAx")
+
     batch_size = 8
 
     config = performance_utils.PerformanceBenchmarkConfig(
@@ -149,6 +174,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_gemma_3_270m_train_1_step(self, run_mode):
     """Tests the training of Gemma-3-270m."""
+    if self._is_torchax_backend() and run_mode in [
+        benchmark_utils.RunMode.EAGER_DEFAULT,
+        benchmark_utils.RunMode.COMPILED,
+    ]:
+      self.skipTest("Test fails due to incompatibility with TorchAx")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
@@ -174,6 +204,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_gemma_3_270m_forward(self, run_mode):
     """Tests the forward pass of Gemma-3-270m."""
+    if self._is_torchax_backend() and run_mode in [
+        benchmark_utils.RunMode.EAGER_DEFAULT,
+        benchmark_utils.RunMode.COMPILED,
+    ]:
+      self.skipTest("Test fails due to incompatibility with TorchAx")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
@@ -198,6 +233,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_distributed_meta_llama_3_2_8b_forward(self, run_mode):
     """Tests the forward pass of Meta Llama-3.2-8B."""
+    if self._is_torchax_backend():
+      self.skipTest("TorchAX does not support distributed tests yet.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_2X2X1,
@@ -224,6 +261,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_ddp_llama_3_2_1b_train_1_step(self, run_mode):
     """Tests training Llama-3.2-1B distributed with DDP."""
+    if self._is_torchax_backend():
+      self.skipTest("TorchAX does not support distributed tests yet.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_2X2X1,
@@ -252,6 +291,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_fsdp_llama_3_2_1b_train_1_step(self, run_mode):
     """Tests training Llama-3.2-1B distributed with FSDP."""
+    if self._is_torchax_backend():
+      self.skipTest("TorchAX does not support distributed tests yet.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_2X2X1,
@@ -303,6 +344,31 @@ class BenchmarkTest(test_utils.BenchmarkTest):
           benchmark_utils.RunMode.COMPILED,
       ])
   )
+  def test_timm_resnet_50_backward(self, run_mode):
+    """Tests the backward pass of resnet-50."""
+
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.TIMM,
+        run_mode=run_mode,
+        is_training=True,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="timm/resnet50d",
+            custom_kwargs={"input_shape": (16, 3, 224, 224)},
+        ),
+    )
+    self.run_performance_benchmark_test(config, _TIMM_RESNET_50_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
   def test_wan_2_2_ti2v_5b_forward(self, run_mode):
     """Tests the forward pass of Wan-2.2-TI2V-5B."""
     config = performance_utils.PerformanceBenchmarkConfig(
@@ -327,6 +393,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_qwen3_coder_30b_a3b_ragged_moe_forward(self, run_mode):
     """Tests the forward pass of Qwen3-Coder-30B-A3B."""
+    if self._is_torchax_backend():
+      self.skipTest("TorchAX does not support distributed tests yet.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_2X2X1,
