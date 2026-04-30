@@ -459,6 +459,7 @@ torch_tpu_cc_library(
 
 torch_tpu_cc_library(
     name = "error_utils_test_helper",
+    testonly = True,
     hdrs = ["error_utils_test_helper.h"],
     # This is needed, so that the build system places this header in the build directory, changing
     # the value of `__FILE__` macro.
