@@ -76,6 +76,13 @@ class Platform(enum.Enum):
   B200_8 = "b200_8"
 
 
+class Backend(enum.Enum):
+  """The backend to use for the benchmark."""
+
+  TORCH_TPU = "torch_tpu"
+  TORCHAX = "torchax"
+
+
 BASE_CL = flags.DEFINE_string(
     "base_cl",
     None,
@@ -113,6 +120,13 @@ PLATFORM = flags.DEFINE_enum_class(
     Platform.GFC_1X1X1,
     Platform,
     "The platform to run the tests on.",
+)
+
+BACKEND = flags.DEFINE_enum_class(
+    "backend",
+    Backend.TORCH_TPU,
+    Backend,
+    "The backend to use for the benchmark.",
 )
 
 MLCOMPASS_TRACKING_ID = flags.DEFINE_string(

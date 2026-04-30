@@ -2637,6 +2637,9 @@ torch==2.10.0+cpu \
     #   peft
     #   timm
     #   torchvision
+torchax==0.0.11 \
+    --hash=sha256:bbb6fe7a62639ba79bd155b91a1cf959ab70451a4ac51892cc8a396d1dd5873b
+    # via torch-tpu (pyproject.toml)
 torchvision==0.25.0+cpu \
     --hash=sha256:0c2d0da9bc011a0fde1d125af396a8fbe94d99becf9d313764f24ca7657a3448 \
     --hash=sha256:2d444009c0956669ada149f61ed78f257c1cc96d259efa6acf3929ca96ceb3f0 \

@@ -1,0 +1,363 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Performance utilities for TorchAx benchmarks."""
+
+import os
+import time
+from typing import Any
+
+from absl import logging
+import jax
+import numpy as np
+import optax
+import torch
+from torch_tpu._internal.utils import log_utils
+from examples.benchmarks.e2e import benchmark_utils as pt_benchmark_utils
+from examples.benchmarks.e2e import performance_utils as pt_performance_utils
+from torchax import interop
+from torchax import train
+
+from torch_tpu._internal.shims.xprof import traceme
+
+log_utils.log_to_stderr()
+
+
+def _sync_jax_device(x):
+  """Synchronizes JAX device by blocking until ready."""
+
+  def sync_leaf(leaf):
+    if hasattr(leaf, "jax"):
+      leaf.jax().block_until_ready()
+    elif hasattr(leaf, "block_until_ready"):
+      leaf.block_until_ready()
+    return leaf
+
+  jax.tree_util.tree_map(sync_leaf, x)
+
+
+def _prepare_inputs(inputs):
+  if isinstance(inputs, dict):
+    args = ()
+    kwargs = inputs
+  elif isinstance(inputs, (tuple, list)):
+    args = inputs
+    kwargs = {}
+  else:
+    args = (inputs,)
+    kwargs = {}
+  return args, kwargs
+
+
+def _call_functional_model(model_jittable, params, buffers, inputs):
+  """Calls the jittable module functional_call with inputs.
+
+  Args:
+    model_jittable: The JittableModule instance.
+    params: The parameters for the functional call.
+    buffers: The buffers for the functional call.
+    inputs: The inputs to the model. This can be a dictionary of keyword
+      arguments (e.g., for Wan models) or a single positional tensor (e.g., for
+      ResNet). We construct args and kwargs dynamically to avoid duplicating the
+      functional_call line.
+
+  Returns:
+    The output of the functional call.
+  """
+  args, kwargs = _prepare_inputs(inputs)
+
+  # Call the functional model and get the result. The functional_call is used
+  # to represent the model as a function that can be called with JAX-compatible
+  # arguments, which is required for JAX JIT compilation.
+  res = model_jittable.functional_call(
+      "forward", params, buffers, *args, **kwargs
+  )
+
+  if hasattr(res, "sample"):
+    return res.sample
+  if hasattr(res, "logits"):
+    return res.logits
+  return res
+
+
+def _run_torchax_forward_pass(
+    model_jittable: interop.JittableModule,
+    inputs: Any,
+    run_mode: pt_benchmark_utils.RunMode,
+    enable_xprof: bool,
+) -> pt_benchmark_utils.PerformanceBenchmarkResult:
+  """Runs the forward pass benchmark for a TorchAx model."""
+
+  weights = model_jittable.params
+  buffers = model_jittable.buffers
+
+  def model_fn(params, buffers, inputs):
+    return _call_functional_model(model_jittable, params, buffers, inputs)
+
+  if pt_benchmark_utils.is_torch_compile(run_mode):
+    runnable_model = interop.jax_jit(model_fn)
+  else:
+    runnable_model = model_fn
+
+  e2e_start = time.perf_counter()
+
+  # Warmup
+  warmup_timings = np.zeros(
+      pt_benchmark_utils.MIN_WARMUP_STEPS.value, dtype=np.float64
+  )
+  with pt_benchmark_utils.XprofContext(
+      "warmup_run", enable_xprof
+  ) as warmup_run_context:
+    for i in range(pt_benchmark_utils.MIN_WARMUP_STEPS.value):
+      with traceme.TraceMe("Warmup", step_num=i):
+        step_start = time.perf_counter()
+        out = runnable_model(weights, buffers, inputs)
+        if isinstance(out, torch.Tensor):
+          _sync_jax_device(out)
+        warmup_timings[i] = time.perf_counter() - step_start
+
+  first_step_time = warmup_timings[0] if len(warmup_timings) > 0 else 0.0
+  warmup_session_xprof_url = None
+  if enable_xprof:
+    warmup_session_xprof_url = (
+        f"http://xprof/?session_id={warmup_run_context.session_id}"
+    )
+
+  # Eval
+  eval_timings = np.zeros(
+      pt_benchmark_utils.POST_WARMUP_STEPS.value, dtype=np.float64
+  )
+  with pt_benchmark_utils.XprofContext(
+      "post_warmup_run", enable_xprof
+  ) as post_warmup_run_context:
+    for i in range(pt_benchmark_utils.POST_WARMUP_STEPS.value):
+      with traceme.TraceMe("Eval", step_num=i):
+        step_start = time.perf_counter()
+        out = runnable_model(weights, buffers, inputs)
+        if isinstance(out, torch.Tensor):
+          _sync_jax_device(out)
+        eval_timings[i] = time.perf_counter() - step_start
+  post_warmup_run_session_xprof_url = None
+  if enable_xprof:
+    post_warmup_run_session_xprof_url = (
+        f"http://xprof/?session_id={post_warmup_run_context.session_id}"
+    )
+
+  eval_time = np.mean(eval_timings) if len(eval_timings) > 0 else 0.0
+
+  warmup_overhead = np.sum(warmup_timings) - (eval_time * len(warmup_timings))
+
+  return pt_benchmark_utils.PerformanceBenchmarkResult(
+      num_warmup_steps=len(warmup_timings),
+      first_step_time_seconds=first_step_time,
+      warmup_overhead_seconds=max(0.0, warmup_overhead),
+      post_warmup_step_time_seconds=eval_time,
+      e2e_wall_time_seconds=time.perf_counter() - e2e_start,
+      warmup_session_xprof_url=warmup_session_xprof_url,
+      post_warmup_run_session_xprof_url=post_warmup_run_session_xprof_url,
+  )
+
+
+def _run_torchax_backward_pass(
+    model_jittable: interop.JittableModule,
+    inputs: Any,
+    run_mode: pt_benchmark_utils.RunMode,
+    enable_xprof: bool,
+) -> pt_benchmark_utils.PerformanceBenchmarkResult:
+  """Runs the backward pass benchmark for a TorchAx model."""
+
+  weights = model_jittable.params
+  buffers = model_jittable.buffers
+
+  # Generate dummy labels
+  with torch.no_grad():
+    out = _call_functional_model(model_jittable, weights, buffers, inputs)
+  labels = torch.rand_like(out, device="jax")
+
+  def loss_fn(outputs, labels):
+    return torch.mean((outputs - labels) ** 2)
+
+  optimizer = optax.adam(0.1)
+  opt_state = interop.call_jax(optimizer.init, weights)
+
+  def model_fn(params, buffers, inputs):
+    return _call_functional_model(model_jittable, params, buffers, inputs)
+
+  train_step = train.make_train_step(model_fn, loss_fn, optimizer)
+
+  if pt_benchmark_utils.is_torch_compile(run_mode):
+    runnable_step = interop.jax_jit(
+        train_step, kwargs_for_jax_jit={"donate_argnums": (0, 2)}
+    )
+  else:
+    runnable_step = train_step
+
+  e2e_start = time.perf_counter()
+
+  # Warmup
+  warmup_timings = np.zeros(
+      pt_benchmark_utils.MIN_WARMUP_STEPS.value, dtype=np.float64
+  )
+  with pt_benchmark_utils.XprofContext(
+      "warmup_run", enable_xprof
+  ) as warmup_run_context:
+    for i in range(pt_benchmark_utils.MIN_WARMUP_STEPS.value):
+      with traceme.TraceMe("Warmup", step_num=i):
+        step_start = time.perf_counter()
+        loss, weights, opt_state = runnable_step(
+            weights, buffers, opt_state, inputs, labels
+        )
+        _sync_jax_device(loss)
+        _sync_jax_device(weights)
+        warmup_timings[i] = time.perf_counter() - step_start
+
+  first_step_time = warmup_timings[0] if len(warmup_timings) > 0 else 0.0
+
+  warmup_session_xprof_url = None
+  if enable_xprof:
+    warmup_session_xprof_url = (
+        f"http://xprof/?session_id={warmup_run_context.session_id}"
+    )
+  # Train
+  eval_timings = np.zeros(
+      pt_benchmark_utils.POST_WARMUP_STEPS.value, dtype=np.float64
+  )
+  with pt_benchmark_utils.XprofContext(
+      "post_warmup_run", enable_xprof
+  ) as post_warmup_run_context:
+    for i in range(pt_benchmark_utils.POST_WARMUP_STEPS.value):
+      with traceme.TraceMe("Train", step_num=i):
+        step_start = time.perf_counter()
+        loss, weights, opt_state = runnable_step(
+            weights, buffers, opt_state, inputs, labels
+        )
+        _sync_jax_device(loss)
+        _sync_jax_device(weights)
+        eval_timings[i] = time.perf_counter() - step_start
+
+  post_warmup_run_session_xprof_url = None
+  if enable_xprof:
+    post_warmup_run_session_xprof_url = (
+        f"http://xprof/?session_id={post_warmup_run_context.session_id}"
+    )
+
+  eval_time = np.mean(eval_timings) if len(eval_timings) > 0 else 0.0
+
+  warmup_overhead = np.sum(warmup_timings) - (eval_time * len(warmup_timings))
+
+  return pt_benchmark_utils.PerformanceBenchmarkResult(
+      num_warmup_steps=len(warmup_timings),
+      first_step_time_seconds=first_step_time,
+      warmup_overhead_seconds=max(0.0, warmup_overhead),
+      post_warmup_step_time_seconds=eval_time,
+      e2e_wall_time_seconds=time.perf_counter() - e2e_start,
+      warmup_session_xprof_url=warmup_session_xprof_url,
+      post_warmup_run_session_xprof_url=post_warmup_run_session_xprof_url,
+  )
+
+
+def get_model_and_input(
+    config: pt_performance_utils.PerformanceBenchmarkConfig,
+    cpu_device: torch.device,
+    weights_dtype: torch.dtype,
+):
+  """Gets model and input, handling TorchAx setup."""
+  model_and_input = pt_performance_utils.get_model_and_input(
+      config.model_and_input_args,
+      config.benchmark_category,
+      cpu_device,
+      weights_dtype,
+      config.is_training,
+      use_torch_compile=False,
+  )
+
+  model = model_and_input.model
+  inputs = model_and_input.example_inputs
+
+  model.to("jax")
+
+  def move_to_jax(x):
+    if isinstance(x, torch.Tensor):
+      return x.to("jax")
+    return x
+
+  inputs = jax.tree_util.tree_map(move_to_jax, inputs)
+
+  model_jittable = interop.JittableModule(model)
+
+  return model_jittable, inputs
+
+
+def run_benchmark(
+    config: pt_performance_utils.PerformanceBenchmarkConfig,
+    test_method_name: str,
+    benchmark_name: str,
+    microbenchmark_name: str | None = None,
+) -> None:
+  """Runs the performance benchmark for a TorchAx model."""
+
+  # TorchAx execution is managed by JAX, which will use the default JAX device
+  # (e.g. TPU). We load the model on CPU first to avoid initializing it via
+  # the standard PyTorch/XLA backend on TPU.
+  cpu_device = torch.device("cpu")
+  weights_dtype = pt_performance_utils.get_torch_dtype(
+      pt_performance_utils.WEIGHTS_DTYPE.value
+  )
+
+  rank = int(os.environ.get("RANK", "0"))
+  enable_xprof = pt_performance_utils.ENABLE_XPROF.value and rank == 0
+
+  # Load model and input, handling TorchAx setup
+  model_jittable, inputs = get_model_and_input(
+      config, cpu_device, weights_dtype
+  )
+
+  if config.is_training:
+    result = _run_torchax_backward_pass(
+        model_jittable, inputs, config.run_mode, enable_xprof
+    )
+  else:
+    result = _run_torchax_forward_pass(
+        model_jittable, inputs, config.run_mode, enable_xprof
+    )
+
+  logging.info(
+      "Performance Benchmark Results:\n"
+      "  Test: %s\n"
+      "  benchmark: %s\n"
+      "  microbenchmark: %s\n"
+      "  run_mode: %s\n"
+      "  is_training: %s\n"
+      "  warmup_overhead (seconds): %s\n"
+      "  average_step_time (seconds): %s\n"
+      "  first_step_time (seconds): %s\n"
+      "  e2e_wall_time (seconds): %s\n"
+      "  warmup_session_xprof_url: %s\n"
+      "  post_warmup_run_session_xprof_url: %s",
+      test_method_name,
+      benchmark_name,
+      microbenchmark_name,
+      config.run_mode.value,
+      config.is_training,
+      result.warmup_overhead_seconds,
+      result.post_warmup_step_time_seconds,
+      result.first_step_time_seconds,
+      result.e2e_wall_time_seconds,
+      result.warmup_session_xprof_url,
+      result.post_warmup_run_session_xprof_url,
+  )
+
+  # TODO(b/502598295): Enable mlcompass tracking for torchax
+  if pt_benchmark_utils.MLCOMPASS_TRACKING_ID.value:
+    pass

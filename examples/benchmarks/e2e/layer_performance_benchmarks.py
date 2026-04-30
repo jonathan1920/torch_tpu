@@ -60,6 +60,22 @@ _SDPA_LAYER_BENCHMARK_NAME = "sdpa"
 class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   """Tests for end-to-end performance benchmarks."""
 
+  def run_performance_benchmark_test(
+      self, config, benchmark_name, microbenchmark_name=None
+  ):
+    if benchmark_utils.BACKEND.value == benchmark_utils.Backend.TORCHAX:
+      # Layer specific skips.
+      if config.is_training:
+        batch_size = config.model_and_input_args.batch_size or 1
+        seq_len = config.model_and_input_args.sequence_length or 1
+        effective_seq_len = batch_size * seq_len
+        if effective_seq_len >= 262144:
+          self.skipTest("Benchmark would likely OOM for TorchAX on Forge.")
+
+    super().run_performance_benchmark_test(
+        config, benchmark_name, microbenchmark_name
+    )
+
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
           _ALL_RUN_MODES, (True, False), layer_configs.LINEAR_CONFIGS

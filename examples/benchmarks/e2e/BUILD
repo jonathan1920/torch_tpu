@@ -106,10 +106,12 @@ torch_tpu_py_library(
     deps = [
         ":benchmark_utils",
         ":performance_utils",
+        "//examples/benchmarks/e2e/torchax:performance_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:parameterized",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "@pypi//torchax",
     ],
 )
 
@@ -311,6 +313,38 @@ torch_tpu_py_test(
         "requires-gpu-sm100-full-only",
         # Needed for getting xprof links
         "requires-net:external",
+    ],
+    deps = [
+        ":benchmark_utils",
+        ":layer_configs",
+        ":performance_utils",
+        ":test_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "layer_performance_benchmarks_torchax",
+    timeout = "long",
+    srcs = ["layer_performance_benchmarks.py"],
+    args = [
+        "--backend=torchax",
+    ],
+    autoload = False,
+    main = "layer_performance_benchmarks.py",
+    notap = "Tested on guitar workflow.",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
+    shard_count = 9,
+    strict = True,
+    tags = [
+        "cpu:4",
+        "requires-accel-hbm",
+        "requires-net:external",
+        "requires-tpu-v7x",
     ],
     deps = [
         ":benchmark_utils",
