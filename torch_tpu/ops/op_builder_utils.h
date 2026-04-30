@@ -28,6 +28,7 @@
 #include "absl/functional/any_invocable.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/log/absl_vlog_is_on.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -50,7 +51,6 @@
 #include "c10/util/Exception.h"
 #include "c10/util/Optional.h"
 #include "torch/csrc/distributed/c10d/Types.hpp"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
@@ -687,13 +687,15 @@ absl::StatusOr<mlir::MlirOp> BuildRngStateUpdateShlo(mlir::MlirOp state,
 // Reshape Utilities
 
 // The type of reshape operation, currently only handling reshapes that can be
-// represented abstractly, either as a collapse or expand shape.
+// represented abstractly, either as a collapse, expand or transpose-like
+// reshape.
 //
 // Currently only affine reshapes are supported, meaning that the input and
 // output shapes must be contiguous:
 //  - Collapse: [AxBxC] -> [A*BxC]
 //  - Flatten: [AxBxC] -> [A*B*C] (special case of collapse, full collapse)
 //  - Expand:   [A*B] -> [AxB]
+//  - TransposeLike: [Ax1xBx1] -> [1xAx1xB] (only 1s can move around)
 //
 // This list may expand as support is added for other reshape types, such as:
 //   - [AxB] -> [AxB] no-op
@@ -706,6 +708,7 @@ enum class ReshapeType {
   kCollapse,
   kFlatten,
   kExpand,
+  kTransposeLike,
   kUnknown,
 };
 
@@ -755,6 +758,8 @@ absl::StatusOr<ReshapeReassociation> GetReshapeReassociation(
 //   - The dynamic dimension must not expand to multiple dimensions after the
 //     reshape. For example, when dimension 0 is dynamic:
 //       - [a*b, c] -> [a, b, c] is invalid
+//   - Arbitrary squeezes and unsqueezes are allowed.
+//       - [1, a, b, 1] -> [a, 1, 1, b] is valid.
 //
 absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
     mlir::MlirOp op, const Dimensions& static_shape_before,

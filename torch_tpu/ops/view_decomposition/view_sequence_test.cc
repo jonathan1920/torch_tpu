@@ -372,6 +372,14 @@ TEST(SymbolicViewPrimitive, ReshapeViewCacheKeys) {
       ViewSequenceCacheKey(unflatten, *tensor.unsafeGetTensorImpl()));
   EXPECT_THAT(param_keys,
               ElementsAre(Pair("view", "reshape:expand{0,1},{2}d0=2,d1=3")));
+
+  ViewSequence transpose_like = {
+      ReshapePrimitive{.base_sizes = {1, 4, 6}, .new_sizes = {4, 1, 6}}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      param_keys,
+      ViewSequenceCacheKey(transpose_like, *tensor.unsafeGetTensorImpl()));
+  EXPECT_THAT(param_keys,
+              ElementsAre(Pair("view", "reshape:transpose_like:d1=1")));
 }
 
 TEST(SymbolicViewPrimitive, TransposeViewCacheKeys) {

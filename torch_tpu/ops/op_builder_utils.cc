@@ -1038,6 +1038,8 @@ std::string ReshapeTypeToString(ReshapeType type) {
       return "flatten";
     case ReshapeType::kExpand:
       return "expand";
+    case ReshapeType::kTransposeLike:
+      return "transpose_like";
     case ReshapeType::kUnknown:
       return "unknown";
   }
@@ -1166,6 +1168,63 @@ absl::Status HandleExpandReshape(
   return absl::OkStatus();
 }
 
+Dimensions GetCoreShape(const Dimensions& shape) {
+  Dimensions core_shape;
+  for (int64_t i = 0; i < shape.size(); ++i) {
+    if (shape[i] != 1) {
+      core_shape.push_back(shape[i]);
+    }
+  }
+  return core_shape;
+}
+
+absl::Status HandleTransposeLikeReshape(
+    mlir::MlirOp op, const mlir::stablehlo::Dimensions& op_dims,
+    const Dimensions& shape_before, const Dimensions& shape_after,
+    mlir::SmallVector<mlir::stablehlo::DimensionInfo>& output_dims) {
+  // Transpose-like: ranks are same, non-1 dimensions don't move relative to
+  // each other. We extract core shapes and mappings to transfer bounds.
+  ABSL_CHECK(  // CRASH_OK=a valid transpose-like reshape requires this.
+      shape_before.size() == shape_after.size())
+      << "mismatched ranks for transpose-like reshape "
+      << ShapeTransitionToString(shape_before, shape_after);
+  int rank = shape_before.size();
+
+  for (int i = 0, j = 0; i < rank || j < rank; ++i, ++j) {
+    // Find the next non-one dimension in both input and output shapes.
+    while (i < rank && shape_before[i] == 1) {
+      ++i;
+    }
+    while (j < rank && shape_after[j] == 1) {
+      ++j;
+    }
+
+    // If we've reached the end of either shape, we must have also reached
+    // the end of the other shape for a valid transpose-like reshape.
+    if (i == rank || j == rank) {
+      ABSL_CHECK(  // CRASH_OK=invalid transpose-like reshape
+          i == rank && j == rank)
+          << "mismatched non-one dimensions for transpose-like reshape "
+          << ShapeTransitionToString(shape_before, shape_after);
+      return absl::OkStatus();
+    }
+
+    // The non-one dimensions must have the same size for a valid transpose-like
+    // reshape.
+    ABSL_CHECK(  // CRASH_OK=invalid transpose-like reshape
+        shape_before[i] == shape_after[j])
+        << "mismatched non-one dimensions for transpose-like reshape "
+        << ShapeTransitionToString(shape_before, shape_after);
+
+    // Transfer bounded dynamism from input to output.
+    if (op_dims[i].boundOp.has_value()) {
+      output_dims[j] = {.size = op_dims[i].size, .boundOp = op.getValue()};
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 // Returns a string representation of the reassociation indices for debugging.
@@ -1190,6 +1249,10 @@ std::string ReassociationToString(const ReshapeReassociation& reassociation) {
 // Basic function for now, but room to grow into other reshape types.
 ReshapeType GetReshapeType(const Dimensions& static_shape_before,
                            const Dimensions& static_shape_after) {
+  if (static_shape_before.size() == static_shape_after.size() &&
+      GetCoreShape(static_shape_before) == GetCoreShape(static_shape_after)) {
+    return ReshapeType::kTransposeLike;
+  }
   if (static_shape_after.size() > static_shape_before.size()) {
     return ReshapeType::kExpand;
   }
@@ -1207,8 +1270,9 @@ absl::StatusOr<ReshapeReassociation> GetReshapeReassociation(
     const Dimensions& static_shape_after) {
   ReshapeType reshape_type =
       GetReshapeType(static_shape_before, static_shape_after);
-  if (reshape_type == ReshapeType::kFlatten) {
-    // No need to reassociation for flattening.
+  if (reshape_type == ReshapeType::kFlatten ||
+      reshape_type == ReshapeType::kTransposeLike) {
+    // No need to reassociation for flattening or transpose-like reshapes.
     return ReshapeReassociation{reshape_type, {}};
   }
 
@@ -1279,10 +1343,13 @@ absl::StatusOr<mlir::MlirOp> ReshapeFromStaticDimensions(
   if (reassociation.type == ReshapeType::kCollapse) {
     TT_RETURN_IF_ERROR(HandleCollapseReshape(op, reassociation, op_dims,
                                              static_shape_after, output_dims));
-  } else {
+  } else if (reassociation.type == ReshapeType::kExpand) {
     TT_RETURN_IF_ERROR(HandleExpandReshape(op, reassociation, op_dims,
                                            static_shape_before,
                                            static_shape_after, output_dims));
+  } else if (reassociation.type == ReshapeType::kTransposeLike) {
+    TT_RETURN_IF_ERROR(HandleTransposeLikeReshape(
+        op, op_dims, static_shape_before, static_shape_after, output_dims));
   }
 
   mlir::RankedTensorType dynamic_shape_after =

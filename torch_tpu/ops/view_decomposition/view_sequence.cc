@@ -370,16 +370,19 @@ struct ViewCacheKeyVisitor {
         const ReshapeReassociation reassociation,
         GetReshapeReassociation(primitive.base_sizes, primitive.new_sizes));
 
-    // Expand reassociation maps inputs to outputs:
-    //  [6,4] -> {3,2,4,1} : {{0,1}, {2,3}}
-    // Meaning in[0] is distributed between output {0,1} and in[1] over {2,3}.
-    //
-    // Encode a suffix for expands to disambiguate between different
-    // factorizations and unsqueezes:
-    //  {6} => {2,3} or {3,2}, use suffix `d0=3,d1=2`
-    //  {6} => {1,6} or {6,1}, use suffix `d0=1`
     std::string suffix;
+
     if (reassociation.type == ReshapeType::kExpand) {
+      // Expand reassociation maps inputs to outputs:
+      //  [6,4] -> [3,2,4,1] : {{0,1}, {2,3}}
+      // Meaning in[0] is distributed between output {out[0],out[1]} and in[1]
+      // over {out[2],out[3]}.
+      //
+      // Encode a suffix for expands to disambiguate between different
+      // factorizations and unsqueezes:
+      //  [6] -> [2,3] or [3,2], use suffix `d0=3,d1=2`
+      //  [6] -> [1,6] or [6,1], use suffix `d0=1`
+
       // Special case scalar unsqueeze {} -> {1,...,1}
       if (reassociation.reassociation.empty()) {
         absl::StrAppend(&suffix, ":scalar_unsqueeze(",
@@ -390,7 +393,8 @@ struct ViewCacheKeyVisitor {
         if (dim_vec.size() == 1) {
           continue;
         }
-        // Input dim is split, encode static dim sizes where in[i] != out[dim].
+        // Input dim is split, encode static output dim sizes where in[i] !=
+        // out[dim].
         for (int64_t dim : dim_vec) {
           if (i < primitive.base_sizes.size() &&
               primitive.base_sizes[i] == primitive.new_sizes[dim]) {
@@ -401,12 +405,29 @@ struct ViewCacheKeyVisitor {
                           primitive.new_sizes[dim]);
         }
       }
+    } else if (reassociation.type == ReshapeType::kCollapse) {
+      // Special case scalar squeeze {1,...,1} -> {}
+      if (reassociation.reassociation.empty()) {
+        absl::StrAppend(&suffix, ":scalar_squeeze");
+      }
+    } else if (reassociation.type == ReshapeType::kTransposeLike) {
+      // Encode a suffix for where the 1s are in the output.
+      for (int64_t dim = 0; dim < primitive.new_sizes.size(); ++dim) {
+        if (primitive.new_sizes[dim] != 1) {
+          continue;
+        }
+        std::string comma = suffix.empty() ? ":" : ",";
+        absl::StrAppend(&suffix, comma, "d", dim, "=",
+                        primitive.new_sizes[dim]);
+      }
+    } else if (reassociation.type != ReshapeType::kFlatten) {
+      ABSL_CHECK(  // CRASH_OK=this should be updated when adding support for
+                   // other reshape types.
+          false)
+          << "unimplemented symbolic cache key for reassociation: "
+          << ReassociationToString(reassociation);
     }
-    // Special case scalar squeeze {1,...,1} -> {}
-    if (reassociation.type == ReshapeType::kCollapse &&
-        reassociation.reassociation.empty()) {
-      absl::StrAppend(&suffix, ":scalar_squeeze");
-    }
+
     return absl::StrCat("reshape:", ReassociationToString(reassociation),
                         suffix);
   }

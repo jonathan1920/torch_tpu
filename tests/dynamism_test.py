@@ -489,7 +489,6 @@ class DynamismTest(parameterized.TestCase):
       res_y.cpu()
     self.assertEqual(counter.num_cache_hits(), 1)
 
-  @absltest.skip("Same rank dynamic reshape is not supported. (b/506132539)")
   def test_same_rank_dynamic_reshape(self):
     # [1, 16, ?, 128] to [16, ?, 128, 1]
     def mark_dynamic(x: torch.Tensor) -> None:

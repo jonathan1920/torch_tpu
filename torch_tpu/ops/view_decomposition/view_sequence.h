@@ -102,7 +102,7 @@ absl::StatusOr<mlir::MlirOp> ViewSequenceShlo(mlir::MlirOp input,
                                               ViewSequenceSpan view_sequence);
 
 // Returns the cache key for the given view sequence and tensor.
-// ViewSequenec cache keys aim to use generic cache keys whenever possible,
+// ViewSequence cache keys aim to use generic cache keys whenever possible,
 // instead of embedding static tensor shapes into the cache key.
 // Ex: Basic reshape of [5] -> [5,1] will be stored as [A] -> [A, 1],
 // the cache uses input parameter shapes to avoid false cache hits.

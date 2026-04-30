@@ -723,7 +723,22 @@ INSTANTIATE_TEST_SUITE_P(
           /*static_output_shape=*/{2, 3, 1, 6, 1, 1},
           /*expected_bounded_output_shape=*/{2, 10, 1, 20, 1, 1},
           /*expected_output_bounded=*/
-          {false, true, false, true, false, false}}}),
+          {false, true, false, true, false, false}},
+         {"TransposeLikeSingleBoundedDim",
+          /*bounded_input_shape=*/{1, 10, 1, 6, 5},
+          /*bound_dims=*/{1},
+          /*static_input_shape=*/{1, 4, 1, 6, 5},
+          /*static_output_shape=*/{4, 6, 1, 1, 5},
+          /*expected_bounded_output_shape=*/{10, 6, 1, 1, 5},
+          /*expected_output_bounded=*/{true, false, false, false, false}},
+         {"TransposeLikeMultipleBoundedDims",
+          /*bounded_input_shape=*/{10, 1, 1, 10, 6, 5},
+          /*bound_dims=*/{0, 3},
+          /*static_input_shape=*/{4, 1, 1, 6, 6, 5},
+          /*static_output_shape=*/{4, 6, 6, 5, 1, 1},
+          /*expected_bounded_output_shape=*/{10, 10, 6, 5, 1, 1},
+          /*expected_output_bounded=*/
+          {true, true, false, false, false, false}}}),
     [](const testing::TestParamInfo<
         DynamicReshapeFromStaticDimensionsTest::ParamType>& info) {
       return info.param.test_name;
@@ -757,6 +772,23 @@ TEST(DynamicReshapeFromStaticDimensions, ErrorExpandDynamicToMultiple) {
   EXPECT_EQ(result.reshaped_op.status().code(), error::kInvalidArgument);
   EXPECT_THAT(result.reshaped_op.status().message(),
               testing::HasSubstr("expands to multiple non one output dims"));
+}
+
+TEST(DynamicReshapeFromStaticDimensions, ErrorNonTransposeLikeReshape) {
+  Dimensions bounded_input_shape = {10, 1, 5};
+  int64_t bound_dim = 0;
+  Dimensions static_input_shape = {3, 1, 5};
+  Dimensions static_output_shape = {5, 3, 1};
+  OpBuilderUtilsBuilder op_builder_utils_builder;
+  ReshapeTestResult result =
+      BuildReshapeGraph(bounded_input_shape, {bound_dim}, static_input_shape,
+                        static_output_shape, op_builder_utils_builder);
+  ASSERT_FALSE(result.reshaped_op.ok());
+  EXPECT_EQ(result.reshaped_op.status().code(), error::kInvalidArgument);
+  EXPECT_THAT(
+      result.reshaped_op.status().message(),
+      testing::HasSubstr(
+          "reshape reassociation not supported for same sized reshapes"));
 }
 
 namespace {
