@@ -36,7 +36,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils:log_utils",
-        "//torch_tpu/api",
         "@pypi//accelerate",  # buildcleaner: keep
         "@pypi//transformers",
     ],
