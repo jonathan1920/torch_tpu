@@ -27,6 +27,7 @@ _HF_GEMMA_3_270M_BENCHMARK_NAME = "hf_gemma_3_270m"
 _META_LLAMA_3_2_8B_BENCHMARK_NAME = "meta_llama_3_2_8b"
 _HF_QWEN3_1_7B_BENCHMARK_NAME = "hf_qwen3_1_7b"
 _HF_GPT_OSS_20B_BENCHMARK_NAME = "hf_gpt_oss_20b"
+_HF_GPT_OSS_120B_BENCHMARK_NAME = "hf_gpt_oss_120b"
 _HF_QWEN3_CODER_30B_RAGGED_MOE_BENCHMARK_NAME = "hf_qwen3_30b_ragged_moe"
 _TIMM_RESNET_50_BENCHMARK_NAME = "timm_resnet_50"
 _WAN_2_2_TI2V_5B_BENCHMARK_NAME = "wan_2_2_ti2v_5b"
@@ -125,6 +126,39 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         ),
     )
     self.run_performance_benchmark_test(config, _HF_GPT_OSS_20B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_gpt_oss_120b_4_layers_forward(self, run_mode):
+    """Tests the forward pass of GPT-OSS-20B."""
+    if self._is_torchax_backend():
+      self.skipTest("Test fails due to incompatibility with TorchAx")
+
+    def modify_config_hook(config):
+      config.num_hidden_layers = 4
+      return config
+
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="openai/gpt-oss-120b",
+            sequence_length=512,
+            batch_size=1,
+            custom_kwargs={"modify_config_hook": modify_config_hook},
+        ),
+    )
+    self.run_performance_benchmark_test(config, _HF_GPT_OSS_120B_BENCHMARK_NAME)
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([

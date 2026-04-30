@@ -17,7 +17,7 @@ import dataclasses
 import enum
 import functools
 import re
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import diffusers
 from fairscale.nn.model_parallel import initialize as fairscale_init
@@ -214,6 +214,7 @@ def get_huggingface_llm_model(
     sequence_length: int,
     batch_size: int,
     dist_strat: DistStrat,
+    modify_config_hook: Callable[[Any], Any] | None = None,
 ) -> ModelAndInput:
   """Returns the huggingface LLM model.
 
@@ -230,6 +231,7 @@ def get_huggingface_llm_model(
       sequence_length: The length of the input sequence for the example inputs.
       batch_size: The batch size for the example inputs.
       dist_strat: strategy for distributing model across devices.
+      modify_config_hook: A callable to modify the model configuration.
 
   Returns:
       A ModelAndInput dataclass containing the loaded Hugging Face model
@@ -238,7 +240,10 @@ def get_huggingface_llm_model(
 
   registry = get_module_registry()
   module_spec = registry.get_module_spec(
-      "transformers", model_name, load_weights=False
+      "transformers",
+      model_name,
+      load_weights=False,
+      modify_config_hook=modify_config_hook,
   )
 
   with torch.device("cpu"):

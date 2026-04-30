@@ -558,6 +558,9 @@ def get_model_and_input(
         sequence_length=model_and_input_args.sequence_length,
         batch_size=model_and_input_args.batch_size,
         dist_strat=dist_strat,
+        modify_config_hook=model_and_input_args.custom_kwargs.get(
+            "modify_config_hook", None
+        ),
     )
   elif (
       benchmark_category
