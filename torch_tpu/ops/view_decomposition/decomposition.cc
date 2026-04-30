@@ -17,6 +17,7 @@
 #include "torch_tpu/ops/view_decomposition/decomposition.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 #include <variant>
@@ -54,28 +55,41 @@ namespace {
 //   * The layout has a non-negative offset.
 //   * The layout doesn't extend beyond the end of the contiguous base tensor
 //     in terms of the number of bytes.
-absl::Status CheckViewPreconditions(
-    absl::Span<const int64_t> contiguous_base_shape,
-    const mlir::ElementType continuous_base_dtype,
-    const StridedLayout& view_layout, const mlir::ElementType view_dtype) {
+void CheckViewPreconditions(absl::Span<const int64_t> contiguous_base_shape,
+                            const mlir::ElementType contiguous_base_dtype,
+                            const StridedLayout& view_layout,
+                            const mlir::ElementType view_dtype) {
+  size_t i = 0;
+
   for (const auto& dim : view_layout.strided_dims) {
-    TT_RET_CHECK(dim.size >= 0, error::kInvalidArgument)
-        << "negative dimension sizes are invalid: " << view_layout;
-    TT_RET_CHECK(dim.size != 0, error::kUnimplemented)
-        << "view decomposition does not support zero-sized tensors. Use "
-           "empty_strided() instead.";
+    ABSL_CHECK_GE(dim.size, 0)  // CRASH_OK=Dimension sizes cannot be < 0.
+        << "expected the dimension sizes of the view layout to be >= 0, "
+           "got "
+        << dim.size << " at index " << i << "; this is a TorchTPU bug";
+
+    ABSL_CHECK_NE(  // CRASH_OK=0-sized views are handled directly by
+                    // both callers: `GetBufferFromAtTensor()` and
+                    // `AssignBufferToAtTensor()` functions.
+        dim.size, 0)
+        << "creating a 0-sized view of shape "
+        << ToString(GetSizes(view_layout))
+        << " is not yet supported; use empty_strided() instead";
+
+    i++;
   }
 
   // Make sure that the view layout has a non-negative offset.
-  TT_RET_CHECK(view_layout.storage_offset >= 0, error::kInvalidArgument)
-      << "storage_offset " << view_layout.storage_offset << " is negative";
+  ABSL_CHECK_GE(  // CRASH_OK=Storage offset is never negative.
+      view_layout.storage_offset, 0)
+      << "expected the storage offset of the view to be >= 0, got "
+      << view_layout.storage_offset << "; this is a TorchTPU bug";
 
   // Make sure that the view layout doesn't extend beyond the end of the
   // contiguous base tensor.
   // The starting tensor is contiguous and has 0 offset, so the bytes are just
   // a multiple of the number of elements.
   // Can't report in terms of bytes due to some sub-byte-sized types (F4, etc).
-  int64_t base_bits = TorchEquivalentBitwidth(continuous_base_dtype);
+  int64_t base_bits = TorchEquivalentBitwidth(contiguous_base_dtype);
   for (int64_t dim_size : contiguous_base_shape) {
     base_bits *= dim_size;
   }
@@ -90,12 +104,14 @@ absl::Status CheckViewPreconditions(
   const int64_t view_required_bits =
       (view_max_index + 1) * TorchEquivalentBitwidth(view_dtype);
 
-  TT_RET_CHECK(view_required_bits <= base_bits, error::kInvalidArgument)
-      << "the view requires " << view_required_bits / 8
-      << " bytes of data, but the base tensor only has " << base_bits / 8
-      << " bytes (as " << ToString(view_dtype)
-      << ToString(contiguous_base_shape) << ")";
-  return absl::OkStatus();
+  ABSL_CHECK_LE(  // CRASH_OK=Checked at time of view construction.
+      view_required_bits, base_bits)
+      << "expected the view to fit within the base tensor that has "
+      << base_bits / 8 << " bytes of storage ("
+      << ToString(contiguous_base_dtype) << " tensor of shape "
+      << ToString(contiguous_base_shape) << "), got a " << ToString(view_dtype)
+      << " view of shape " << ToString(GetSizes(view_layout))
+      << " that requires " << view_required_bits / 8 << " bytes of storage";
 }
 
 // A strided dimension, with the index it originated from. Used for constructing
@@ -1229,11 +1245,8 @@ absl::StatusOr<ViewSequence> DecomposeIntoViewSequence(
     absl::Span<const int64_t> contiguous_base_shape,
     mlir::ElementType contiguous_base_dtype, const StridedLayout& view_layout,
     mlir::ElementType view_dtype, bool is_conj) {
-  TT_RETURN_IF_ERROR(CheckViewPreconditions(contiguous_base_shape,
-                                            contiguous_base_dtype, view_layout,
-                                            view_dtype))
-          .SetPrepend()
-      << "view layout is invalid: ";
+  CheckViewPreconditions(contiguous_base_shape, contiguous_base_dtype,
+                         view_layout, view_dtype);
 
   // Work backwards, find the layout shape we need to reshape and slice to,
   // and note the last three operations necessary to achieve the view layout.

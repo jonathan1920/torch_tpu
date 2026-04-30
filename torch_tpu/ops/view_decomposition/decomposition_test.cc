@@ -18,10 +18,8 @@
 
 #include <cstdint>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "torch_tpu/common/dimension_types.h"
@@ -33,8 +31,6 @@
 
 namespace torch_tpu {
 namespace {
-using absl_testing::StatusIs;
-using testing::HasSubstr;
 
 // Validates that applying the view sequence to the contiguous base shape
 // produces the desired view layout. Returns an error if it does not.
@@ -430,22 +426,6 @@ TEST(DecomposeIntoViewSequence, TensorRealToLargerReal) {
                     view_dtype);
 }
 
-TEST(DecomposeIntoViewSequence, InvalidScalarRealToLargerReal) {
-  Dimensions contiguous_base_shape = {};
-  mlir::ElementType contiguous_base_dtype = mlir::ElementType::UI16;
-  StridedLayout view_layout = {
-      .strided_dims = {{.size = 1, .stride = 1}},
-      .storage_offset = 0,
-  };
-  mlir::ElementType view_dtype = mlir::ElementType::UI64;
-  EXPECT_THAT(
-      DecomposeIntoViewSequence(contiguous_base_shape, contiguous_base_dtype,
-                                view_layout, view_dtype)
-          .status(),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("view requires 8 bytes of data, but the base tensor "
-                         "only has 2 bytes")));
-}
 
 TEST(DecomposeIntoViewSequence, TensorViewAsComplex) {
   Dimensions contiguous_base_shape = {2, 3, 4, 2};
@@ -461,22 +441,6 @@ TEST(DecomposeIntoViewSequence, TensorViewAsComplex) {
                     view_dtype);
 }
 
-TEST(DecomposeIntoViewSequence, InvalidScalarViewAsComplex) {
-  Dimensions contiguous_base_shape = {};
-  mlir::ElementType contiguous_base_dtype = mlir::ElementType::F32;
-  StridedLayout view_layout = {
-      .strided_dims = {{.size = 1, .stride = 1}},
-      .storage_offset = 0,
-  };
-  mlir::ElementType view_dtype = mlir::ElementType::COMPLEXF32;
-  EXPECT_THAT(
-      DecomposeIntoViewSequence(contiguous_base_shape, contiguous_base_dtype,
-                                view_layout, view_dtype)
-          .status(),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("view requires 8 bytes of data, but the base tensor "
-                         "only has 4 bytes")));
-}
 
 TEST(DecomposeIntoViewSequence, ScalarCDoubleToCFloat) {
   Dimensions contiguous_base_shape = {};
@@ -503,23 +467,6 @@ TEST(DecomposeIntoViewSequence, TensorCDoubleToCFloat) {
   mlir::ElementType view_dtype = mlir::ElementType::COMPLEXF32;
   DecompositionTest(contiguous_base_shape, view_layout, contiguous_base_dtype,
                     view_dtype);
-}
-
-TEST(DecomposeIntoViewSequence, InvalidScalarCFloatToCDouble) {
-  Dimensions contiguous_base_shape = {};
-  mlir::ElementType contiguous_base_dtype = mlir::ElementType::COMPLEXF32;
-  StridedLayout view_layout = {
-      .strided_dims = {{.size = 1, .stride = 1}},
-      .storage_offset = 0,
-  };
-  mlir::ElementType view_dtype = mlir::ElementType::COMPLEXF64;
-  EXPECT_THAT(
-      DecomposeIntoViewSequence(contiguous_base_shape, contiguous_base_dtype,
-                                view_layout, view_dtype)
-          .status(),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("view requires 16 bytes of data, but the base tensor "
-                         "only has 8 bytes")));
 }
 
 TEST(DecomposeIntoViewSequence, TensorCFloatToCDouble) {
@@ -585,82 +532,6 @@ TEST(DecomposeIntoViewSequence, OverlappingMajorAndMinorDimension) {
       .storage_offset = 1,
   };
   DecompositionTest(contiguous_base_shape, view_layout);
-}
-
-TEST(DecomposeIntoViewSequence, UnsupportedZeroSizeView) {
-  Dimensions contiguous_base_shape = {54};
-  StridedLayout view_layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 0, .stride = 1},
-                       {.size = 9, .stride = 1}},
-      .storage_offset = 0,
-  };
-  EXPECT_THAT(
-      DecomposeIntoViewSequence(contiguous_base_shape, mlir::ElementType::F32,
-                                view_layout, mlir::ElementType::F32)
-          .status(),
-      StatusIs(
-          error::kUnimplemented,
-          HasSubstr("view decomposition does not support zero-sized tensors")));
-}
-
-TEST(DecomposeIntoViewSequence, InvalidNegativeStorageOffset) {
-  Dimensions contiguous_base_shape = {54};
-  StridedLayout view_layout = {
-      .strided_dims = {{.size = 6, .stride = 9}, {.size = 9, .stride = 1}},
-      .storage_offset = -1,
-  };
-  EXPECT_THAT(
-      DecomposeIntoViewSequence(contiguous_base_shape, mlir::ElementType::F32,
-                                view_layout, mlir::ElementType::F32)
-          .status(),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("storage_offset -1 is negative")));
-}
-
-TEST(DecomposeIntoViewSequence, InvalidTooManyElements) {
-  Dimensions contiguous_base_shape = {54};
-  StridedLayout view_layout = {
-      .strided_dims = {{.size = 5, .stride = 11}, {.size = 11, .stride = 1}},
-      .storage_offset = 0,
-  };
-  EXPECT_THAT(
-      DecomposeIntoViewSequence(contiguous_base_shape, mlir::ElementType::F32,
-                                view_layout, mlir::ElementType::F32)
-          .status(),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("view requires 220 bytes of data, but the base tensor "
-                         "only has 216 bytes")));
-}
-
-TEST(DecomposeIntoViewSequence, InvalidOutOfBounds) {
-  Dimensions contiguous_base_shape = {54};
-  StridedLayout view_layout = {
-      .strided_dims = {{.size = 6, .stride = 9}, {.size = 9, .stride = 1}},
-      .storage_offset = 1,
-  };
-  EXPECT_THAT(
-      DecomposeIntoViewSequence(contiguous_base_shape, mlir::ElementType::F32,
-                                view_layout, mlir::ElementType::F32)
-          .status(),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("view requires 220 bytes of data, but the base tensor "
-                         "only has 216 bytes")));
-}
-
-TEST(DecomposeIntoViewSequence, InvalidOutOfBoundsOverlapping) {
-  Dimensions contiguous_base_shape = {54};
-  StridedLayout view_layout = {
-      .strided_dims = {{.size = 6, .stride = 9}, {.size = 10, .stride = 1}},
-      .storage_offset = 0,
-  };
-  EXPECT_THAT(
-      DecomposeIntoViewSequence(contiguous_base_shape, mlir::ElementType::F32,
-                                view_layout, mlir::ElementType::F32)
-          .status(),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("view requires 220 bytes of data, but the base tensor "
-                         "only has 216 bytes")));
 }
 
 TEST(DecomposeIntoViewSequence, Conjugate_ComplexBase_ComplexView) {

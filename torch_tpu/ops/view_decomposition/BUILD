@@ -415,7 +415,6 @@ torch_tpu_cc_test(
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:to_string",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
