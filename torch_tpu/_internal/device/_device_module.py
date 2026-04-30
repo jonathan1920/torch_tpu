@@ -70,6 +70,8 @@ class _DefaultGeneratorsProperty:
     if owner is None:
       return ()
     if self._cached_tuple is None:
+      # Ensure initialized
+      owner.current_device()
       self._cached_tuple = tuple(
           _device_ops_backend.get_default_generator(i)
           for i in range(owner.device_count())
