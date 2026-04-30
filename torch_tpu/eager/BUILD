@@ -401,6 +401,31 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "structured_log_buffer",
+    srcs = ["structured_log_buffer.cc"],
+    hdrs = ["structured_log_buffer.h"],
+    deps = [
+        "//torch_tpu/common:env_vars",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "structured_log_buffer_test",
+    srcs = ["structured_log_buffer_test.cc"],
+    env = {"TORCH_TRACE": "/tmp/test_torch_trace"},
+    deps = [
+        ":structured_log_buffer",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "op_dispatcher",
     srcs = [
         "op_dispatcher.cc",
