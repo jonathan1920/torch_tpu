@@ -75,20 +75,21 @@ class MaterializationWorker {
   friend class absl::NoDestructor<MaterializationWorker>;
   static constexpr int kNumQueues = 2;
 
+  struct QueueState {
+    std::vector<SharedDeviceBufferList> queue;
+    std::vector<SharedDeviceBufferList> nodes_to_materialize;
+    bool is_full = false;
+  };
+
   mutable absl::Mutex mutex_;
   int dispatch_queue_id_ ABSL_GUARDED_BY(mutex_) = 0;
   int execution_queue_id_ ABSL_GUARDED_BY(mutex_) = 0;
-  std::vector<SharedDeviceBufferList> queue_[kNumQueues] ABSL_GUARDED_BY(
-      mutex_);
-  bool queue_full_[kNumQueues] ABSL_GUARDED_BY(mutex_);
+  QueueState queues_[kNumQueues] ABSL_GUARDED_BY(mutex_);
   bool must_exit_ ABSL_GUARDED_BY(mutex_) = false;
-  std::vector<SharedDeviceBufferList>
-      nodes_to_materialize_[kNumQueues] ABSL_GUARDED_BY(mutex_);
   absl::Status last_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
   std::thread execution_thread_;
 
   MaterializationWorker() {
-    std::fill(queue_full_, queue_full_ + kNumQueues, false);
     execution_thread_ = std::thread([this]() { ThreadLoop(); });
   }
 
@@ -104,16 +105,16 @@ class MaterializationWorker {
   void Exit();
 
   bool IsReadyToDispatch() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
-    return !queue_full_[dispatch_queue_id_];
+    return !queues_[dispatch_queue_id_].is_full;
   }
 
   bool IsExecutionThreadCaughtUp() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     return (execution_queue_id_ == dispatch_queue_id_) &&
-           !queue_full_[dispatch_queue_id_];
+           !queues_[dispatch_queue_id_].is_full;
   }
 
   bool IsReadyToExitOrExecute() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
-    return must_exit_ || queue_full_[execution_queue_id_];
+    return must_exit_ || queues_[execution_queue_id_].is_full;
   }
 
   void ThreadLoop();
@@ -134,7 +135,7 @@ absl::Status MaterializationWorker::OnNewOpDispatch(
   // Wait if the current dispatch queue is being processed.
   mutex_.Await(
       absl::Condition(this, &MaterializationWorker::IsReadyToDispatch));
-  queue_[dispatch_queue_id_].push_back(device_buffer_list);
+  queues_[dispatch_queue_id_].queue.push_back(device_buffer_list);
   return absl::OkStatus();
 }
 
@@ -153,7 +154,7 @@ absl::Status MaterializationWorker::Materialize(
     // Materialize), the GC state is fully deterministic here. This allows us to
     // safely dead-code-eliminate completely unused tensors without causing XLA
     // cache thrashing in the background worker.
-    auto& current_queue = queue_[dispatch_queue_id_];
+    auto& current_queue = queues_[dispatch_queue_id_].queue;
     current_queue.erase(
         std::remove_if(current_queue.begin(), current_queue.end(),
                        [](const SharedDeviceBufferList& node) {
@@ -164,11 +165,12 @@ absl::Status MaterializationWorker::Materialize(
     if (current_queue.empty() && nodes_to_materialize.empty()) {
       return absl::OkStatus();
     }
-    ABSL_CHECK(nodes_to_materialize_[dispatch_queue_id_].empty());  // CRASH_OK
-    nodes_to_materialize_[dispatch_queue_id_].insert(
-        nodes_to_materialize_[dispatch_queue_id_].end(),
+    ABSL_CHECK(  // CRASH_OK
+        queues_[dispatch_queue_id_].nodes_to_materialize.empty());
+    queues_[dispatch_queue_id_].nodes_to_materialize.insert(
+        queues_[dispatch_queue_id_].nodes_to_materialize.end(),
         nodes_to_materialize.begin(), nodes_to_materialize.end());
-    queue_full_[dispatch_queue_id_] = true;
+    queues_[dispatch_queue_id_].is_full = true;
     IncrementQueueId(dispatch_queue_id_);
   }
   return absl::OkStatus();
@@ -219,11 +221,11 @@ void MaterializationWorker::ThreadLoop() {
       // Claim the current queue for processing.  We can safely move it out of
       // the shared array because the dispatch thread is blocked from accessing
       // this index by queue_full_[execution_queue_id_] == true.
-      ABSL_CHECK(queue_full_[execution_queue_id_]);  // CRASH_OK
+      ABSL_CHECK(queues_[execution_queue_id_].is_full);  // CRASH_OK
       current_execution_id = execution_queue_id_;
-      std::swap(current_queue, queue_[execution_queue_id_]);
+      std::swap(current_queue, queues_[execution_queue_id_].queue);
       std::swap(nodes_to_materialize,
-                nodes_to_materialize_[execution_queue_id_]);
+                queues_[execution_queue_id_].nodes_to_materialize);
     }
 
     // Materialize the claimed queue without holding the mutex.
@@ -240,12 +242,12 @@ void MaterializationWorker::ThreadLoop() {
       // queue_[execution_queue_id_]), put the swapped vector back and clear it,
       // then release the slod and move to the next one.
       ABSL_CHECK(current_execution_id == execution_queue_id_);  // CRASH_OK
-      std::swap(current_queue, queue_[current_execution_id]);
+      std::swap(current_queue, queues_[current_execution_id].queue);
       std::swap(nodes_to_materialize,
-                nodes_to_materialize_[execution_queue_id_]);
-      queue_[current_execution_id].clear();
-      nodes_to_materialize_[execution_queue_id_].clear();
-      queue_full_[current_execution_id] = false;
+                queues_[execution_queue_id_].nodes_to_materialize);
+      queues_[current_execution_id].queue.clear();
+      queues_[execution_queue_id_].nodes_to_materialize.clear();
+      queues_[current_execution_id].is_full = false;
       IncrementQueueId(execution_queue_id_);
     }
   }
