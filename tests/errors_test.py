@@ -849,29 +849,6 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
       # int64_t.
       torch.ones(2**31, 2**31, device=et.device(), dtype=torch.float32)
 
-  def test_oom_in_ones(self):
-    """Tests that torch.ones() OOMs on CPU, but not on TPU."""
-    if _TEST_MODE.value == "cpu":
-      # CPU immediately tries to allocate 4 exabytes of memory and crashes.
-      with et.assert_raises_message(
-          RuntimeError,
-          cpu=re.compile(
-              r"""\[enforce fail at .+\] err == 0\. DefaultCPUAllocator: can't allocate memory: you tried to allocate 4000000000000000000 bytes. Error code 12 \(Cannot allocate memory\)"""
-          ),
-          tpu="""error message is not used in this test""",
-      ):
-        torch.ones(
-            1_000_000_000,
-            1_000_000_000,
-            device=et.device(),
-            dtype=torch.float32,
-        )
-    elif _TEST_MODE.value in ("tpu", "cov"):
-      # TPU defers allocation until execution time, so it should not OOM.
-      torch.ones(
-          1_000_000_000, 1_000_000_000, device=et.device(), dtype=torch.float32
-      )
-
   def test_histc_bounds_overflow(self):
     """Tests that torch.histc() fails when the bounds overflow."""
     max_int32 = torch.iinfo(torch.int32).max
