@@ -124,6 +124,16 @@ jobs:
             extra_flags: "--config=wheel_test_cpu"
             wheel_version: "cuda"
             custom_name: "CPU (CUDA wheel)"
+          - name: "CPU (PyTorch Nightly)"
+            runner: linux-x86-n2-16
+            extra_flags: "--config=wheel_test_cpu"
+            wheel_version: "nightly"
+            custom_name: "CPU (PyTorch Nightly)"
+          - name: "TPU (PyTorch Nightly)"
+            runner: linux-x86-tpu7x-224-4tpu
+            extra_flags: '--config=wheel_test_tpu_on_v7 --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"'
+            wheel_version: "nightly"
+            custom_name: "TPU (PyTorch Nightly)"
     runs-on: ${{ matrix.runner }}
     container:
       image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest
@@ -142,6 +152,10 @@ jobs:
         if: matrix.wheel_version == 'cuda'
         run: |
           pip download dist/*.whl -d dist/
+      - name: Download PyTorch Nightly Wheel to verify the override mechanism
+        if: matrix.wheel_version == 'nightly'
+        run: |
+          pip download --no-deps --pre torch --index-url https://download.pytorch.org/whl/nightly/cpu -d dist
       - name: Wait For Connection
         uses: google-ml-infra/actions/ci_connection@08e5394bb8179c66a50ac783fb8b2501a034c06f
         with:
