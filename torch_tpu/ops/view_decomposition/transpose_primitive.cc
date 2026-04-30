@@ -17,15 +17,16 @@
 #include "torch_tpu/ops/view_decomposition/transpose_primitive.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <ostream>
 #include <utility>
-#include <vector>
 
-#include "absl/status/status.h"
+#include "absl/log/absl_check.h"
 #include "absl/status/statusor.h"
-#include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
+#include "torch_tpu/ops/view_decomposition/view_primitive_error_utils.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 
@@ -33,25 +34,39 @@ namespace torch_tpu {
 
 namespace {
 
-absl::Status ValidatePermutation(const TransposePrimitive& transpose,
-                                 size_t expected_num_axes) {
-  TT_RET_CHECK(transpose.permutation.size() == expected_num_axes,
-               error::kInvalidArgument)
-      << "transpose has wrong number of axes. Expected: " << expected_num_axes
-      << " Actual: " << transpose.permutation.size();
-  std::vector<bool> dim_used(expected_num_axes, false);
-  for (int i = 0; i < transpose.permutation.size(); ++i) {
-    bool index_in_bounds = 0 <= transpose.permutation[i] &&
-                           transpose.permutation[i] < expected_num_axes;
-    TT_RET_CHECK(index_in_bounds, error::kInvalidArgument)
-        << "permutation dimension index is out of bounds. There are only "
-        << expected_num_axes << " axes but permutation index is "
-        << transpose.permutation[i];
-    TT_RET_CHECK(!dim_used[transpose.permutation[i]], error::kInvalidArgument)
-        << "transpose has duplicate axis dimension: " << transpose;
-    dim_used[transpose.permutation[i]] = true;
+void CheckTranspose(const TransposePrimitive& transpose,
+                    const StridedLayout& layout) {
+  const size_t rank = layout.strided_dims.size();
+
+  ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+      transpose.permutation.size(), rank)
+      << "expected the number of elements in the TransposePrimitive "
+         "permutation to be of size "
+      << rank << " (rank of the layout input), got "
+      << transpose.permutation.size()
+      << GetUpdateLayoutBugSuffix(transpose, layout);
+
+  Indices last_use_of(rank, -1);
+  for (int i = 0; i < rank; ++i) {
+    const int64_t permuted_index = transpose.permutation[i];
+
+    ABSL_CHECK(  // CRASH_OK=Internal error on view decomposition.
+        0 <= permuted_index && permuted_index < rank)
+        << "expected each element in the TransposePrimitive permutation to be "
+           "within the range [0, "
+        << rank << "), got " << permuted_index
+        << GetUpdateLayoutBugSuffix(transpose, layout);
+
+    ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+        last_use_of[permuted_index], -1)
+        << "expected the TransposePrimitive permutation elements to be unique, "
+           "got element "
+        << permuted_index << " at indices " << i << " and "
+        << last_use_of[permuted_index]
+        << GetUpdateLayoutBugSuffix(transpose, layout);
+
+    last_use_of[permuted_index] = i;
   }
-  return absl::OkStatus();
 }
 
 }  // namespace
@@ -64,8 +79,7 @@ std::ostream& operator<<(std::ostream& os,
 
 absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
                                   const TransposePrimitive& transpose) {
-  TT_RETURN_IF_ERROR(
-      ValidatePermutation(transpose, layout.strided_dims.size()));
+  CheckTranspose(transpose, layout);
 
   bool updated = false;
 

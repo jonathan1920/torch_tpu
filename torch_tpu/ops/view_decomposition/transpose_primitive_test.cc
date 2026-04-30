@@ -16,19 +16,13 @@
 
 #include "torch_tpu/ops/view_decomposition/transpose_primitive.h"
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
-#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 
 namespace torch_tpu {
 namespace {
-using absl_testing::StatusIs;
-using testing::HasSubstr;
 
 TEST(UpdateLayoutPermute, ScalarNoOp) {
   StridedLayout layout = MakeContiguousBaseLayout({});
@@ -71,59 +65,6 @@ TEST(UpdateLayoutPermute, TensorToTensor) {
   EXPECT_EQ(layout, expected);
 }
 
-TEST(UpdateLayoutPermute, InvalidDifferentRank) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  TransposePrimitive transpose = {.permutation = {0, 1, 2, 3}};
-  EXPECT_THAT(UpdateLayout(layout, transpose),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("transpose has wrong number of axes")));
-}
-
-TEST(UpdateLayoutPermute, InvalidNegativeIndex) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  TransposePrimitive transpose = {.permutation = {-1, 0, 2}};
-  EXPECT_THAT(
-      UpdateLayout(layout, transpose),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("permutation dimension index is out of bounds")));
-}
-
-TEST(UpdateLayoutPermute, InvalidIndexTooLarge) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  TransposePrimitive transpose = {.permutation = {0, 1, 3}};
-  EXPECT_THAT(
-      UpdateLayout(layout, transpose),
-      StatusIs(error::kInvalidArgument,
-               HasSubstr("permutation dimension index is out of bounds")));
-}
-
-TEST(UpdateLayoutPermute, InvalidIndexRepeated) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  TransposePrimitive transpose = {.permutation = {0, 1, 0}};
-  EXPECT_THAT(UpdateLayout(layout, transpose),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("transpose has duplicate axis dimension")));
-}
 
 }  // namespace
 }  // namespace torch_tpu
