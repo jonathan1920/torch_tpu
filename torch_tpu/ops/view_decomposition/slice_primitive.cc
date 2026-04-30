@@ -18,17 +18,21 @@
 
 #include <cstdint>
 #include <ostream>
+#include <string>
+#include <string_view>
 #include <utility>
 
-#include "absl/status/status.h"
+#include "absl/algorithm/container.h"
+#include "absl/log/absl_check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "torch_tpu/common/dimension_types.h"
-#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
+#include "torch_tpu/ops/view_decomposition/view_primitive_error_utils.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 
@@ -43,56 +47,66 @@ int64_t ComputeNewSize(const SliceDimension& slice_dim) {
          slice_dim.stride;
 }
 
-absl::Status ValidateSlice(const SlicePrimitive& slice,
-                           absl::Span<const int64_t> input_dims) {
-  TT_RET_CHECK(slice.slice_dims.size() == input_dims.size(),
-               error::kInvalidArgument)
-      << "slice has wrong number of dimensions. Expected: " << input_dims.size()
-      << " but got: " << slice.slice_dims.size();
+void CheckSlice(const SlicePrimitive& slice, absl::Span<const int64_t> sizes,
+                const std::string_view error_message_suffix) {
+  ABSL_CHECK_EQ(  // CRASH_OK=Internal error
+                  // on view decomposition.
+      slice.slice_dims.size(), sizes.size())
+      << "expected the SlicePrimitive input rank to be "
+      << slice.slice_dims.size()
+      << ", which is the number of SliceDimensions, got " << sizes.size()
+      << error_message_suffix;
+
   for (int i = 0; i < slice.slice_dims.size(); ++i) {
     const auto& slice_dim = slice.slice_dims[i];
-    const int64_t input_dim = input_dims[i];
-    TT_RET_CHECK(slice_dim.start_index >= 0, error::kInvalidArgument)
-        << "slice has negative start index " << slice_dim.start_index
-        << " on dimension " << i;
-    TT_RET_CHECK(slice_dim.start_index < input_dim, error::kInvalidArgument)
-        << "slice has start index " << slice_dim.start_index
-        << " which is greater than the dimension size " << input_dim
-        << " on dimension " << i;
-    TT_RET_CHECK(slice_dim.start_index < slice_dim.limit_index,
-                 error::kInvalidArgument)
-        << "slice has limit index " << slice_dim.limit_index
-        << " which is less than its start index " << slice_dim.start_index
-        << " on dimension " << i;
-    TT_RET_CHECK(slice_dim.stride > 0, error::kInvalidArgument)
-        << "slice has non-positive stride " << slice_dim.stride
-        << " on dimension " << i;
+    const int64_t input_dim = sizes[i];
+
+    ABSL_CHECK_GE(slice_dim.start_index,  // CRASH_OK=Internal error on view
+                                          // decomposition.
+                  0)
+        << "expected the SlicePrimitive start index at dimension " << i
+        << " to be >= 0, got " << slice_dim.start_index << error_message_suffix;
+    ABSL_CHECK_LT(  // CRASH_OK=Internal error on view
+                    // decomposition.
+        slice_dim.start_index, input_dim)
+        << "expected the SlicePrimitive start index at dimension " << i
+        << " to be < " << input_dim
+        << ", which is the size of the input dimension " << i << ", got "
+        << slice_dim.start_index << error_message_suffix;
+    ABSL_CHECK_LT(  // CRASH_OK=Internal error on view
+                    // decomposition.
+        slice_dim.start_index, slice_dim.limit_index)
+        << "expected the SlicePrimitive start index at dimension " << i
+        << " to be < " << slice_dim.limit_index
+        << ", which is the limit index at dimension " << i << ", got "
+        << slice_dim.start_index << error_message_suffix;
+    ABSL_CHECK_GT(slice_dim.stride,  // CRASH_OK=Internal error on view
+                                     // decomposition.
+                  0)
+        << "expected the SlicePrimitive stride at dimension " << i
+        << " to be > 0, got " << slice_dim.stride << error_message_suffix;
+
     const int64_t new_size = ComputeNewSize(slice_dim);
-    TT_RET_CHECK(new_size <= input_dim, error::kInvalidArgument)
-        << "slice would be size " << new_size << " which is greater than the "
-        << "dimension size " << input_dim << " on dimension " << i;
+
+    ABSL_CHECK_LE(  // CRASH_OK=Guaranteed by checks above.
+        new_size, input_dim)
+        << "expected the SlicePrimitive slice size to be <= " << input_dim
+        << ", which is the size of the input at dimension " << i << ", got "
+        << new_size << error_message_suffix;
   }
-  return absl::OkStatus();
 }
 
-absl::Status ValidateSlice(const SlicePrimitive& slice,
-                           const StridedLayout& layout) {
-  Dimensions input_dims;
-  input_dims.reserve(layout.strided_dims.size());
-  for (const auto& dim : layout.strided_dims) {
-    input_dims.push_back(dim.size);
-  }
-  return ValidateSlice(slice, input_dims);
-}
+void CheckSliceMerge(const SlicePrimitive& first,
+                     const SlicePrimitive& second) {
+  Dimensions dimensions(first.slice_dims.size());
+  absl::c_transform(first.slice_dims, dimensions.begin(), ComputeNewSize);
 
-absl::Status ValidateSlice(const SlicePrimitive& first,
-                           const SlicePrimitive& second) {
-  Dimensions input_dims;
-  input_dims.reserve(first.slice_dims.size());
-  for (const auto& dim : first.slice_dims) {
-    input_dims.push_back(ComputeNewSize(dim));
-  }
-  return ValidateSlice(second, input_dims);
+  std::string error_message_suffix = absl::StrCat(
+      "; calling Merge() with first=", ToString(first),
+      " and second=", ToString(second),
+      GetViewPrimitiveErrorSuffix(second, {.leading_semicolon = false}));
+
+  CheckSlice(second, dimensions, error_message_suffix);
 }
 
 }  // namespace
@@ -115,7 +129,9 @@ std::ostream& operator<<(std::ostream& os, const SlicePrimitive& slice) {
 
 absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
                                   const SlicePrimitive& slice) {
-  TT_RETURN_IF_ERROR(ValidateSlice(slice, layout));
+  CheckSlice(
+      slice, GetSizes(layout),
+      /* error_message_suffix= */ GetUpdateLayoutBugSuffix(slice, layout));
   bool updated = false;
 
   // Storage layout offset may be increased, but always starts at the input's
@@ -146,7 +162,7 @@ absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
 
 absl::StatusOr<SlicePrimitive> Merge(SlicePrimitive first,
                                      const SlicePrimitive second) {
-  TT_RETURN_IF_ERROR(ValidateSlice(first, second));
+  CheckSliceMerge(first, second);
 
   for (int i = 0; i < second.slice_dims.size(); ++i) {
     // The second slice is relative to the first slice; we need to account for
@@ -179,7 +195,9 @@ absl::StatusOr<SlicePrimitive> Merge(SlicePrimitive first,
 absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(mlir::MlirOp input,
                                                const SlicePrimitive& slice) {
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
-  TT_RETURN_IF_ERROR(ValidateSlice(slice, input_type.getShape()));
+  CheckSlice(slice, input_type.getShape(),
+             /* error_message_suffix= */
+             GetViewPrimitiveShloErrorSuffix(slice, input_type.getShape()));
 
   // Restructure from list-of-tuples to tuple-of-lists to match StableHLO API.
   Indices start_indices;

@@ -18,20 +18,14 @@
 
 #include <utility>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "torch_tpu/common/dimension_types.h"
-#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 
 namespace torch_tpu {
 namespace {
-using absl_testing::StatusIs;
-using testing::HasSubstr;
 
 TEST(UpdateLayoutSlice, ScalarNoOp) {
   StridedLayout layout = MakeContiguousBaseLayout({});
@@ -80,124 +74,6 @@ TEST(UpdateLayoutSlice, TensorToTensor) {
   EXPECT_EQ(layout, expected);
 }
 
-TEST(UpdateLayoutSlice, InvalidRank) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  SlicePrimitive slice = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1},
-                     {.start_index = 0, .limit_index = 1, .stride = 1}}};
-  EXPECT_THAT(UpdateLayout(layout, slice),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("slice has wrong number of dimensions")));
-}
-
-TEST(UpdateLayoutSlice, InvalidNegativeStartIndex) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  SlicePrimitive slice = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = -1, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  EXPECT_THAT(UpdateLayout(layout, slice),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("slice has negative start index")));
-}
-
-TEST(UpdateLayoutSlice, InvalidStartIndexGreaterThanSize) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  SlicePrimitive slice = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 3, .limit_index = 2, .stride = 1}}};
-  EXPECT_THAT(UpdateLayout(layout, slice),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("slice has start index 3 which is greater "
-                                 "than the dimension size 2")));
-}
-
-TEST(UpdateLayoutSlice, InvalidLimitIndexLessThanStartIndex) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 12},
-                       {.size = 4, .stride = 3},
-                       {.size = 3, .stride = 1}},
-      .storage_offset = 0,
-  };
-  SlicePrimitive slice = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 2, .limit_index = 1, .stride = 1}}};
-  EXPECT_THAT(
-      UpdateLayout(layout, slice),
-      StatusIs(
-          error::kInvalidArgument,
-          HasSubstr(
-              "slice has limit index 1 which is less than its start index 2")));
-}
-
-TEST(UpdateLayoutSlice, InvalidZeroStride) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  SlicePrimitive slice = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 0},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  EXPECT_THAT(UpdateLayout(layout, slice),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("slice has non-positive stride 0")));
-}
-
-TEST(UpdateLayoutSlice, InvalidNegativeStride) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  SlicePrimitive slice = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = -1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  EXPECT_THAT(UpdateLayout(layout, slice),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("slice has non-positive stride -1")));
-}
-
-TEST(UpdateLayoutSlice, InvalidOutOfBounds) {
-  StridedLayout layout = {
-      .strided_dims = {{.size = 6, .stride = 9},
-                       {.size = 4, .stride = 2},
-                       {.size = 2, .stride = 1}},
-      .storage_offset = 0,
-  };
-  SlicePrimitive slice = {
-      .slice_dims = {{.start_index = 0, .limit_index = 7, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  EXPECT_THAT(UpdateLayout(layout, slice),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("slice would be size 7 which is greater than "
-                                 "the dimension size 6 on dimension 0")));
-}
-
 TEST(MergeSlice, ValidMerge) {
   Dimensions contiguous_base_shape = {6, 4, 2};
   SlicePrimitive current = {
@@ -220,117 +96,6 @@ TEST(MergeSlice, ValidMerge) {
             absl::OkStatus());
 
   EXPECT_EQ(actual_layout, expected_layout);
-}
-
-TEST(MergeSlice, InvalidRank) {
-  SlicePrimitive current = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  SlicePrimitive to_merge = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1},
-                     {.start_index = 0, .limit_index = 1, .stride = 1}}};
-  auto merged = Merge(std::move(current), std::move(to_merge));
-  EXPECT_THAT(merged.status(),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("slice has wrong number of dimensions")));
-}
-
-TEST(MergeSlice, InvalidNegativeStartIndex) {
-  SlicePrimitive current = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  SlicePrimitive to_merge = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = -1, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  auto merged = Merge(std::move(current), std::move(to_merge));
-  EXPECT_THAT(merged.status(),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("slice has negative start index")));
-}
-
-TEST(MergeSlice, InvalidStartIndexGreaterThanSize) {
-  SlicePrimitive current = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  SlicePrimitive to_merge = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 2, .limit_index = 3, .stride = 1}}};
-  auto merged = Merge(std::move(current), std::move(to_merge));
-  EXPECT_THAT(merged.status(),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("slice has start index 2 which is greater "
-                                 "than the dimension size 2")));
-}
-
-TEST(MergeSlice, InvalidLimitIndexLessThanStartIndex) {
-  SlicePrimitive current = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 3, .stride = 1}}};
-  SlicePrimitive to_merge = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 2, .limit_index = 1, .stride = 1}}};
-  auto merged = Merge(std::move(current), std::move(to_merge));
-  EXPECT_THAT(
-      merged.status(),
-      StatusIs(
-          error::kInvalidArgument,
-          HasSubstr(
-              "slice has limit index 1 which is less than its start index 2")));
-}
-
-TEST(MergeSlice, InvalidZeroStride) {
-  SlicePrimitive current = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  SlicePrimitive to_merge = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 0},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  auto merged = Merge(std::move(current), std::move(to_merge));
-  EXPECT_THAT(merged.status(),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("slice has non-positive stride 0")));
-}
-
-TEST(MergeSlice, InvalidNegativeStride) {
-  SlicePrimitive current = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  SlicePrimitive to_merge = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = -1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  auto merged = Merge(std::move(current), std::move(to_merge));
-  EXPECT_THAT(merged.status(),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("slice has non-positive stride -1")));
-}
-
-TEST(MergeSlice, InvalidOutOfBounds) {
-  SlicePrimitive current = {
-      .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  SlicePrimitive to_merge = {
-      .slice_dims = {{.start_index = 0, .limit_index = 7, .stride = 1},
-                     {.start_index = 0, .limit_index = 4, .stride = 1},
-                     {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  auto merged = Merge(std::move(current), std::move(to_merge));
-  EXPECT_THAT(merged.status(),
-              StatusIs(error::kInvalidArgument,
-                       HasSubstr("slice would be size 7 which is greater than "
-                                 "the dimension size 6 on dimension 0")));
 }
 
 }  // namespace
