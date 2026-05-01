@@ -39,30 +39,40 @@ class ModuleRegistryTest(absltest.TestCase):
     super().setUp()
     self.module_registry = module_registry.ModuleRegistry()
 
+  def test_non_existent_path(self):
+    with self.assertRaises(FileNotFoundError):
+      module_registry.TimmProvider(base_path="/non/existent/path")
+
   def test_list_all_modules(self):
     modules = self.module_registry.list_all_modules()
 
-    self.assertIn("timm/convnext_small", modules)
-    self.assertIn("timm/resnet50d", modules)
+    self.assertIn("torchvision/resnet50", modules)
+    self.assertIn("timm/convnext_small.in12k_ft_in1k", modules)
+    self.assertIn("timm/resnet50d.ra2_in1k", modules)
+    self.assertIn("timm/vgg16.tv_in1k", modules)
+    # TODO(b/507481008): Restructure the path to be {base_path}/{provider}/...
+    self.assertIn("transformers/openai/gpt-oss-120b", modules)
+    self.assertIn("transformers/meta-llama/Llama-3.2-3B", modules)
     self.assertIn("transformers/google/gemma-3-270m", modules)
-    self.assertIn("diffusers/black-forest-labs/FLUX.1-schnell", modules)
     self.assertIn("diffusers/stabilityai/stable-diffusion-xl-base-1.0", modules)
 
   def test_torchvision_list_modules(self):
-    # torchvision doesn't return a stable set of models when running in Forge so
-    # we can't assert on existence of a specific model name.
-    # TODO: torchvision link
-    self.assertNotEmpty(self.module_registry.list_modules("torchvision"))
+    modules = self.module_registry.list_modules("torchvision")
+
+    self.assertIn("resnet50", modules)
 
   def test_timm_list_modules(self):
     modules = self.module_registry.list_modules("timm")
 
-    self.assertIn("convnext_small", modules)
-    self.assertIn("resnet50d", modules)
+    self.assertIn("convnext_small.in12k_ft_in1k", modules)
+    self.assertIn("resnet50d.ra2_in1k", modules)
+    self.assertIn("vgg16.tv_in1k", modules)
 
   def test_transformers_list_modules(self):
     modules = self.module_registry.list_modules("transformers")
 
+    self.assertIn("openai/gpt-oss-120b", modules)
+    self.assertIn("meta-llama/Llama-3.2-3B", modules)
     self.assertIn("google/gemma-3-270m", modules)
 
   def test_torchvision_get_module_spec(self):

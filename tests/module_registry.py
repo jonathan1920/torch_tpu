@@ -91,6 +91,8 @@ class BaseProvider(abc.ABC):
     if base_path is None:
       base_path = _WEIGHTS_BASE_PATH.value
     self._base_path = epath.Path(base_path)
+    if not self._base_path.exists():
+      raise FileNotFoundError(f"Base path does not exist: {self._base_path}")
 
   @abc.abstractmethod
   def list_modules(self) -> list[str]:
@@ -129,8 +131,20 @@ class BaseProvider(abc.ABC):
 class TorchvisionProvider(BaseProvider):
   """Provider for standard Torchvision models."""
 
+  def __init__(self, base_path: str | None = None):
+    if base_path is None:
+      base_path = _WEIGHTS_BASE_PATH.value
+    super().__init__(base_path=str(pathlib.Path(base_path) / "torchvision"))
+
   def list_modules(self) -> list[str]:
-    return torchvision.models.list_models()
+    """Lists the names of all models available from this provider.
+
+    Current it's structured as {base_path}/torchvision/{model_name}/weights.pt
+
+    Returns:
+      A list of model name strings.
+    """
+    return [path.name for path in self._base_path.iterdir() if path.is_dir()]
 
   def get_module_spec(
       self,
@@ -165,7 +179,14 @@ class TimmProvider(BaseProvider):
     super().__init__(base_path=str(pathlib.Path(base_path) / "timm"))
 
   def list_modules(self) -> list[str]:
-    return timm.list_models()
+    """Lists the names of all models available from this provider.
+
+    Current it's structured as {base_path}/timm/{model_name}/weights.pth
+
+    Returns:
+      A list of model name strings.
+    """
+    return [path.name for path in self._base_path.iterdir() if path.is_dir()]
 
   def get_module_spec(
       self,
@@ -311,11 +332,20 @@ class TransformersProvider(BaseProvider):
     super().__init__(base_path=str(pathlib.Path(base_path) / "huggingface"))
 
   def list_modules(self) -> list[str]:
+    """Lists the names of all models available from this provider.
+
+    Current it's structured as {base_path}/huggingface/{owner}/{model}/files
+    TODO(b/507481008): Restructure the path to be {base_path}/transformers/...
+
+    Returns:
+      A list of model name strings formatted as '{owner}/{model}'.
+    """
     modules = []
-    for resource in _walk_package_resources(self._FILES):
-      if resource.is_file() and "config.json" in resource.name:
-        with resources.as_file(resource) as f:
-          modules.append(f"{f.parts[-3]}/{f.parts[-2]}")
+    for owner_path in self._base_path.iterdir():
+      if owner_path.is_dir():
+        for model_path in owner_path.iterdir():
+          if model_path.is_dir():
+            modules.append(f"{owner_path.name}/{model_path.name}")
     return modules
 
   def get_module_spec(
@@ -438,11 +468,20 @@ class DiffusersProvider(BaseProvider):
     super().__init__(base_path=str(pathlib.Path(base_path) / "huggingface"))
 
   def list_modules(self) -> list[str]:
+    """Lists the names of all models available from this provider.
+
+    Current it's structured as {base_path}/huggingface/{owner}/{model}/files
+    TODO(b/507481008): Restructure the path to be {base_path}/diffusers/...
+
+    Returns:
+      A list of model name strings formatted as '{owner}/{model}'.
+    """
     modules = []
-    for resource in _walk_package_resources(self._FILES):
-      if resource.is_file() and "model_index.json" in resource.name:
-        with resources.as_file(resource) as f:
-          modules.append(f"{f.parts[-3]}/{f.parts[-2]}")
+    for owner_path in self._base_path.iterdir():
+      if owner_path.is_dir():
+        for model_path in owner_path.iterdir():
+          if model_path.is_dir():
+            modules.append(f"{owner_path.name}/{model_path.name}")
     return modules
 
   def get_module_spec(
