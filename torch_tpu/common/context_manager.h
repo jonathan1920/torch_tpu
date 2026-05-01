@@ -41,8 +41,9 @@ using ContextManagerState = std::variant<
     // clang-format off
     // go/keep-sorted start
     CustomCompilerOptionsContextState,  // The `custom_compiler_options` context manager.
+    EagerModeContextState,              // The `eager_mode` context manager.
     EnableTracebacksContextState,       // The `enable_tracebacks` context manager.
-    IsSpmdSafeContextState,         // The `spmd_safe` context manager.
+    IsSpmdSafeContextState,             // The `spmd_safe` context manager.
     PrecisionContextState               // The `precision` context manager.
     // go/keep-sorted end
     // clang-format on

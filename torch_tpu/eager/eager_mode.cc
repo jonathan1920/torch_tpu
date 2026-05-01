@@ -19,13 +19,13 @@
 #include <atomic>
 
 #include "absl/log/absl_log.h"
+#include "torch_tpu/common/context_manager.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/env_vars.h"
 
 namespace torch_tpu {
 
-namespace {
-
-EagerMode GetDefaultEagerMode() {
+[[nodiscard]] static EagerMode GetDefaultEagerMode() {
   if (GetEnvOnce<kTpuLaunchBlocking>() == "1") {
     return EagerMode::kDeferNeverAndLaunchBlocking;
   } else if (GetEnvOnce<kTpuDeferAndFuse>() == "1") {
@@ -35,19 +35,20 @@ EagerMode GetDefaultEagerMode() {
   }
 }
 
-// Returns the defer mode for the current thread.
-std::atomic<EagerMode>& GetMutableEagerMode() {
+// Returns the global base eager mode.
+static std::atomic<EagerMode>& GetMutableGlobalEagerMode() {
   static std::atomic<EagerMode> eager_mode = GetDefaultEagerMode();
   return eager_mode;
 }
 
-}  // namespace
-
-EagerMode GetEagerMode() { return GetMutableEagerMode(); }
+EagerMode GetEagerMode() {
+  return GetContextState<EagerModeContextState>(
+      GetMutableGlobalEagerMode().load());
+}
 
 void SetEagerMode(const EagerMode mode) {
   ABSL_VLOG(1) << "SetEagerMode " << static_cast<int>(mode);
-  GetMutableEagerMode() = mode;
+  GetMutableGlobalEagerMode() = mode;
 }
 
 }  // namespace torch_tpu

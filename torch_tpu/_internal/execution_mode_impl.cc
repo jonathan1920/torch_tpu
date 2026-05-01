@@ -13,8 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "torch_tpu/common/context_manager.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/eager/eager_mode.h"
-#include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tpu_aten_kernels.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
@@ -39,6 +40,10 @@ PYBIND11_MODULE(execution_mode_impl, m) {
 
   m.def("get_eager_mode", GetEagerMode);
   m.def("set_eager_mode", SetEagerMode, py::arg("eager_mode"));
+  m.def("_push_eager_mode", &PushContextState<EagerModeContextState>,
+        "Internal push for context manager");
+  m.def("_pop_eager_mode", &PopContextState<EagerModeContextState>,
+        "Internal pop for context manager");
 
   m.def("enable_cpu_fallback", EnableCpuFallback, py::arg("enabled"));
   m.def("is_cpu_fallback_enabled", IsCpuFallbackEnabled);

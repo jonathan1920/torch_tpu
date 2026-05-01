@@ -22,18 +22,21 @@ from torch_tpu._internal import execution_mode_impl
 from torch_tpu._internal.execution_mode_impl import get_eager_mode
 from torch_tpu._internal.execution_mode_impl import set_eager_mode
 
+# pylint: disable=protected-access
+
 EagerMode: TypeAlias = execution_mode_impl.EagerMode
 
 
 @contextlib.contextmanager
 def eager_mode(mode: EagerMode):
-  """Context manager for setting the execution mode."""
-  old_eager_mode = execution_mode_impl.get_eager_mode()
+  """Context manager for setting the eager mode."""
+  # Push the new state.
+  execution_mode_impl._push_eager_mode(mode)
   try:
-    execution_mode_impl.set_eager_mode(mode)
     yield
   finally:
-    execution_mode_impl.set_eager_mode(old_eager_mode)
+    # Guarantee the state is restored even if Python code throws an exception.
+    execution_mode_impl._pop_eager_mode()
 
 
 @contextlib.contextmanager

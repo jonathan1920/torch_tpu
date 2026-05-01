@@ -17,35 +17,20 @@
 #ifndef TORCH_TPU_EAGER_EAGER_MODE_H_
 #define TORCH_TPU_EAGER_EAGER_MODE_H_
 
+#include "torch_tpu/common/context_states.h"
+
 namespace torch_tpu {
 
-// The op defer mode.
-enum class EagerMode {
-  // kDeferAndFuse defers all ops except those that cannot be deferred.  This
-  // provides a higher performance eager mode.
-  kDeferAndFuse,
-  // kDeferNever marks all ops to be executed immediately, similarly to PyTorch
-  // on CUDA eager mode. This is primarily used for debugging, as it has
-  // suboptimal compile and execution performance.
-  kDeferNever,
-  // kDeferNeverAndLaunchBlocking marks all ops to be executed immediately and
-  // waits for the compilation of one op before dispatching the next one.
-  // Some expensive runtime checks are also performed in this mode. This
-  // should be used only for debugging, as it has the worst execution
-  // performance.
-  kDeferNeverAndLaunchBlocking,
-  // kInternalDeferAll attempts to defer all ops. If an op cannot be deferred,
-  // it will
-  // raise a runtime exception. This should be used only in torch.compile mode.
-  kInternalDeferAll,
-};
-
-// Sets the defer mode for the current thread. Thread-safe.
+// Sets the global default eager mode. Thread-safe.
 void SetEagerMode(EagerMode mode);
 
-// Returns the defer mode for the current thread. Thread-safe.
+// Returns the active eager mode for the current Python thread. Thread-safe.
+//
+// It resolves the mode from the thread-local context state managed via Python
+// context managers, with innermost context taking precedence. If no context
+// manager is active, it falls back to the global mode set by `SetEagerMode`.
 [[nodiscard]] EagerMode GetEagerMode();
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EAGER_OP_DISPATCHER_H_
+#endif  // TORCH_TPU_EAGER_EAGER_MODE_H_
