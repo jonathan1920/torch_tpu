@@ -395,50 +395,6 @@ TEST(ComputeInverseViewOperation, SliceTensorStridedWithLowAndHighIndex) {
   EXPECT_EQ(inverse_view_operation->final_shape, expected.final_shape);
 }
 
-TEST(InvertViewSequence, InvalidExpandTensor) {
-  Dimensions contiguous_base_shape = {1024, 1, 128};
-  StridedLayout contiguous_base_layout =
-      MakeContiguousBaseLayout(contiguous_base_shape);
-  ViewSequence view_sequence_forward = {
-      BroadcastPrimitive{.base_shape = {1024, 1, 128},
-                         .new_sizes = {1024, 512, 128},
-                         .broadcast_dimensions = {0, 1, 2}}};
-  EXPECT_THAT(InvertViewSequence(contiguous_base_layout, view_sequence_forward)
-                  .status(),
-              StatusIs(error::kFailedPrecondition,
-                       HasSubstr("in-place operations on overlapping views are "
-                                 "undefined behavior")));
-}
-
-TEST(InvertViewSequence, InvalidUnfoldTensor) {
-  Dimensions contiguous_base_shape = {1024, 1, 128};
-  StridedLayout contiguous_base_layout =
-      MakeContiguousBaseLayout(contiguous_base_shape);
-  ViewSequence view_sequence_forward = {UnfoldPrimitive{.start_index = 0,
-                                                        .limit_index = 128,
-                                                        .window_stride = 1,
-                                                        .window_size = 127}};
-  EXPECT_THAT(InvertViewSequence(contiguous_base_layout, view_sequence_forward)
-                  .status(),
-              StatusIs(error::kFailedPrecondition,
-                       HasSubstr("in-place operations on overlapping views are "
-                                 "undefined behavior")));
-}
-
-TEST(InvertViewSequence, InvalidInvertSlice) {
-  Dimensions contiguous_base_shape = {2, 3, 4};
-  StridedLayout contiguous_base_layout =
-      MakeContiguousBaseLayout(contiguous_base_shape);
-  ViewSequence view_sequence_forward = {SlicePrimitive{
-      .slice_dims = {{.start_index = 0, .limit_index = 2, .stride = 1},
-                     {.start_index = 1, .limit_index = 3, .stride = 1},
-                     {.start_index = 1, .limit_index = 4, .stride = 1}}}};
-  EXPECT_THAT(InvertViewSequence(contiguous_base_layout, view_sequence_forward)
-                  .status(),
-              StatusIs(error::kFailedPrecondition,
-                       HasSubstr("Slices are not trivially invertible")));
-}
-
 TEST(ComputeInverseViewOperation, NoDtypeChange) {
   const Dimensions contiguous_base_shape = {2, 3, 4};
   const mlir::ElementType contiguous_base_dtype = mlir::ElementType::F32;

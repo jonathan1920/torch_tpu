@@ -435,6 +435,7 @@ torch_tpu_cc_library(
         ":strided_layout",
         ":transpose_primitive",
         ":unfold_primitive",
+        ":view_primitive_error_utils",
         ":view_sequence",
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",

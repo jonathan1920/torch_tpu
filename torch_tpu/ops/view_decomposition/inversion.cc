@@ -46,6 +46,7 @@
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/ops/view_decomposition/transpose_primitive.h"
 #include "torch_tpu/ops/view_decomposition/unfold_primitive.h"
+#include "torch_tpu/ops/view_decomposition/view_primitive_error_utils.h"
 #include "torch_tpu/ops/view_decomposition/view_sequence.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -56,8 +57,8 @@ namespace torch_tpu {
 namespace {
 
 // Computes the inverse of a reshape primitive.
-absl::StatusOr<InverseViewPrimitive> InvertViewPrimitive(
-    const ReshapePrimitive& reshape, const StridedLayout& layout_before) {
+InverseViewPrimitive InvertViewPrimitive(const ReshapePrimitive& reshape,
+                                         const StridedLayout& layout_before) {
   // The inverse of a reshape is another reshape to the original dimensions.
   return ReshapePrimitive{
       .base_sizes = reshape.new_sizes,
@@ -66,12 +67,18 @@ absl::StatusOr<InverseViewPrimitive> InvertViewPrimitive(
 }
 
 // Computes the inverse of a permute primitive.
-absl::StatusOr<InverseViewPrimitive> InvertViewPrimitive(
-    const TransposePrimitive& transpose, const StridedLayout& layout_before) {
-  TT_RET_CHECK(
-      transpose.permutation.size() == layout_before.strided_dims.size(),
-      error::kInvalidArgument)
-      << "TransposePrimitive has wrong number of permutation values";
+InverseViewPrimitive InvertViewPrimitive(const TransposePrimitive& transpose,
+                                         const StridedLayout& layout_before) {
+  ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+      transpose.permutation.size(), layout_before.strided_dims.size())
+      << "expected TransposePrimitive permutation size to be "
+      << layout_before.strided_dims.size()
+      << ", which is the rank of the input, got "
+      << transpose.permutation.size()
+      << "; calling InvertViewPrimitive() with layout=" << layout_before
+      << " and "
+      << GetViewPrimitiveErrorSuffix(transpose, {.leading_semicolon = false});
+
   // The inverse of a transpose is a transpose to the original order.
   // Example:
   //   Shape before: [2, 3, 4]
@@ -86,46 +93,52 @@ absl::StatusOr<InverseViewPrimitive> InvertViewPrimitive(
 }
 
 // Error message only, for use with std::visit.
-absl::StatusOr<InverseViewPrimitive> InvertViewPrimitive(
-    const BroadcastPrimitive& broadcast, const StridedLayout& layout_before) {
-  return TT_ERROR(error::kFailedPrecondition)
-         << "in-place operations on overlapping views are undefined behavior "
-            "and are not supported.\nIf you need to apply an in-place "
-            "operation to an overlapping view, you must call .clone() or "
-            ".contiguous() first.";
+InverseViewPrimitive InvertViewPrimitive(const BroadcastPrimitive& broadcast,
+                                         const StridedLayout& layout_before) {
+  ABSL_LOG(FATAL)  // CRASH_OK
+      << "in-place operations on overlapping views are undefined behavior "
+         "and are not supported.\nIf you need to apply an in-place "
+         "operation to an overlapping view, you must call .clone() or "
+         ".contiguous() first.";
 }
 
 // Error message only, for use with std::visit.
-absl::StatusOr<InverseViewPrimitive> InvertViewPrimitive(
-    const UnfoldPrimitive& unfold, const StridedLayout& layout_before) {
-  return TT_ERROR(error::kFailedPrecondition)
-         << "in-place operations on overlapping views are undefined behavior "
-            "and are not supported.\nIf you need to apply an in-place "
-            "operation to an overlapping view, you must call .clone() or "
-            ".contiguous() first.";
+InverseViewPrimitive InvertViewPrimitive(const UnfoldPrimitive& unfold,
+                                         const StridedLayout& layout_before) {
+  ABSL_LOG(FATAL)  // CRASH_OK
+      << "in-place operations on overlapping views are undefined behavior "
+         "and are not supported.\nIf you need to apply an in-place "
+         "operation to an overlapping view, you must call .clone() or "
+         ".contiguous() first.";
 }
 
 // Error message only, for use with std::visit.
-absl::StatusOr<InverseViewPrimitive> InvertViewPrimitive(
-    const SlicePrimitive& slice, const StridedLayout& layout_before) {
-  return TT_ERROR(error::kFailedPrecondition)
-         << "Slices are not trivially invertible. Use "
-            "ComputeInverseViewOperation instead to invert a slice in context "
-            "of a full view sequence inversion";
+InverseViewPrimitive InvertViewPrimitive(const SlicePrimitive& slice,
+                                         const StridedLayout& layout_before) {
+  ABSL_LOG(FATAL)  // CRASH_OK
+      << "Cannot invert SlicesPrimitive. Slices should be handled separately. "
+         "Use ComputeInverseViewOperation instead to invert a slice in context "
+         "of a full view sequence inversion";
 }
 
-absl::StatusOr<InverseViewPrimitive> InvertViewPrimitive(
-    const ConjPrimitive& conj, const StridedLayout& layout_before) {
+InverseViewPrimitive InvertViewPrimitive(const ConjPrimitive& conj,
+                                         const StridedLayout& layout_before) {
   // Inversion of conj is conj.
   return ConjPrimitive{};
 }
 
 // Computes the inverse of a pad primitive.
-absl::StatusOr<InverseViewPrimitive> InvertViewPrimitive(
-    const PadPrimitive& pad, const StridedLayout& layout_before) {
-  TT_RET_CHECK(pad.pad_dims.size() == layout_before.strided_dims.size(),
-               error::kInvalidArgument)
-      << "PadPrimitive has wrong number of pad dims";
+InverseViewPrimitive InvertViewPrimitive(const PadPrimitive& pad,
+                                         const StridedLayout& layout_before) {
+  ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+      pad.pad_dims.size(), layout_before.strided_dims.size())
+      << "expected PadPrimitive padding dimensions size to be "
+      << layout_before.strided_dims.size()
+      << ", which is the rank of the input, got " << pad.pad_dims.size()
+      << "; calling InvertViewPrimitive() with layout=" << layout_before
+      << " and "
+      << GetViewPrimitiveErrorSuffix(pad, {.leading_semicolon = false});
+
   // The inverse of a pad is a slice.
   SlicePrimitive result;
   result.slice_dims.reserve(layout_before.strided_dims.size());
@@ -145,26 +158,29 @@ absl::StatusOr<InverseViewPrimitive> InvertViewPrimitive(
   return result;
 }
 
-absl::StatusOr<InverseViewPrimitive> InvertViewPrimitive(
-    const RealToRealBitcast& real_to_real, const StridedLayout& layout_before) {
-  return TT_ERROR(error::kUnimplemented)
-         << "Bitcasting inversion is not yet implemented";
+InverseViewPrimitive InvertViewPrimitive(const RealToRealBitcast& real_to_real,
+                                         const StridedLayout& layout_before) {
+  ABSL_LOG(FATAL)  // CRASH_OK
+      << "Cannot invert RealToRealBitcast primitive. Bitcasting "
+         "should be taken care of before this point.";
 }
-absl::StatusOr<InverseViewPrimitive> InvertViewPrimitive(
+InverseViewPrimitive InvertViewPrimitive(
     const ComplexToRealBitcast& complex_to_real,
     const StridedLayout& layout_before) {
-  return TT_ERROR(error::kUnimplemented)
-         << "Bitcasting inversion is not yet implemented";
+  ABSL_LOG(FATAL)  // CRASH_OK
+      << "Cannot invert ComplexToRealBitcast primitive. Bitcasting "
+         "should be taken care of before this point.";
 }
-absl::StatusOr<InverseViewPrimitive> InvertViewPrimitive(
-    const ViewAsComplex& view_as_complex, const StridedLayout& layout_before) {
-  return TT_ERROR(error::kUnimplemented)
-         << "Bitcasting inversion is not yet implemented";
+InverseViewPrimitive InvertViewPrimitive(const ViewAsComplex& view_as_complex,
+                                         const StridedLayout& layout_before) {
+  ABSL_LOG(FATAL)  // CRASH_OK
+      << "Cannot invert ViewAsComplex primitive. Bitcasting "
+         "should be taken care of before this point.";
 }
 
 // Computes the inverse of a view primitive.
-absl::StatusOr<InverseViewPrimitive> InvertViewPrimitive(
-    const ViewPrimitive& primitive, const StridedLayout& layout_before) {
+InverseViewPrimitive InvertViewPrimitive(const ViewPrimitive& primitive,
+                                         const StridedLayout& layout_before) {
   return std::visit(
       [&layout_before](const auto& primitive) {
         return InvertViewPrimitive(primitive, layout_before);
@@ -417,14 +433,13 @@ absl::StatusOr<mlir::MlirOp> InverseViewPrimitiveShlo(
       },
       primitive);
 }
+
 absl::StatusOr<InverseViewSequence> InvertViewSequence(
     StridedLayout& layout, absl::Span<const ViewPrimitive> view_sequence) {
   std::vector<InverseViewPrimitive> result_sequence(view_sequence.size());
   size_t write_index = result_sequence.size() - 1;
   for (const auto& primitive : view_sequence) {
-    TT_ASSIGN_OR_RETURN(result_sequence[write_index],
-                        InvertViewPrimitive(primitive, layout),
-                        _.SetPrepend() << "view sequence is invalid: ");
+    result_sequence[write_index] = InvertViewPrimitive(primitive, layout);
     TT_RETURN_IF_ERROR(UpdateLayout(layout, primitive)).SetPrepend()
         << "view sequence is invalid: ";
     --write_index;
@@ -448,33 +463,50 @@ namespace {
 
 // Gets a common dtype that the base and view can both be bitcasted into which
 // will preserve all data in a view -> base update.
-absl::StatusOr<mlir::ElementType> GetWritableDtype(
-    const mlir::ElementType base_dtype, const mlir::ElementType view_dtype) {
+mlir::ElementType GetWritableDtype(const mlir::ElementType base_dtype,
+                                   const mlir::ElementType view_dtype) {
   if (base_dtype == view_dtype) {
     // Neither base nor view needs to be bitcasted.
     // This is fine even when base and view are both booleans; no data is lost
     // from base on assignment, since the values were already 0x00 or 0x01.
     return base_dtype;
   }
+
   const int64_t base_bitwidth = TorchEquivalentBitwidth(base_dtype);
   const int64_t view_bitwidth = TorchEquivalentBitwidth(view_dtype);
+
   if (view_bitwidth < base_bitwidth) {
-    TT_RET_CHECK(base_bitwidth % view_bitwidth == 0, error::kInvalidArgument)
-        << "bitwidths are not divisible";
+    ABSL_CHECK_EQ(  // CRASH_OK=Supported PyTorch type bitwidths are
+                    // always multiple of each other.
+        base_bitwidth % view_bitwidth, 0)
+        << "expected the bitwidth of the base tensor dtype ("
+        << ToString(base_dtype)
+        << ") to be divisible by the bitwidth of the view tensor dtype ("
+        << ToString(view_dtype) << "), got " << base_bitwidth
+        << " is not divisible by " << view_bitwidth
+        << "; calling GetWritableDtype(); this is a TorchTPU bug";
+
     if (view_dtype == mlir::ElementType::PRED) {
       // Any bytes in the base that are not 0x00 or 0x01 should be preserved,
       // so we can't cast base to boolean.
       // Instead we cast both base and view to uint8.
       return mlir::ElementType::UI8;
     }
+
     // base will be bitcasted into view's dtype losslessly.
     return view_dtype;
   }
 
-  TT_RET_CHECK(
-      base_bitwidth == view_bitwidth || view_bitwidth % base_bitwidth == 0,
-      error::kInvalidArgument)
-      << "bitwidths are not divisible";
+  ABSL_CHECK_EQ(  // CRASH_OK=Supported PyTorch type bitwidths are
+                  // always multiple of each other.
+      view_bitwidth % base_bitwidth, 0)
+      << "expected the bitwidth of the view tensor dtype ("
+      << ToString(view_dtype)
+      << ") to be divisible by the bitwidth of the base tensor dtype ("
+      << ToString(base_dtype) << "), got " << view_bitwidth
+      << " is not divisible by " << base_bitwidth
+      << "; calling GetWritableDtype(); this is a TorchTPU bug";
+
   if (base_dtype == mlir::ElementType::PRED) {
     // view will be writing bytes other than 0x00 or 0x01 to base, so we need
     // to promote the base to UI8 to preserve the full value of written bytes.
@@ -557,15 +589,22 @@ ViewSequence GetBitcastSequenceToWritable(mlir::ElementType from_dtype,
   return result;
 }
 
-absl::StatusOr<mlir::MlirOp> InvertNonStridedSliceShlo(
-    mlir::MlirOp pre_slice_value, mlir::MlirOp post_slice_value,
-    const SlicePrimitive& slice) {
+mlir::MlirOp InvertNonStridedSliceShlo(mlir::MlirOp pre_slice_value,
+                                       mlir::MlirOp post_slice_value,
+                                       const SlicePrimitive& slice) {
   // Use dynamic_update_slice to invert non-strided slices.
   std::vector<mlir::MlirOp> start_indices;
   start_indices.reserve(slice.slice_dims.size());
-  for (const auto& slice_dim : slice.slice_dims) {
-    TT_RET_CHECK(slice_dim.stride == 1, error::kInternal)
-        << "InvertNonStridedSliceShlo called with strided slice";
+  for (int64_t i = 0; i < slice.slice_dims.size(); ++i) {
+    const auto& slice_dim = slice.slice_dims[i];
+
+    ABSL_CHECK_EQ(  // CRASH_OK=Internal error on view decomposition.
+        slice_dim.stride, 1)
+        << "expected SlicePrimitive slice dimensions to have stride = 1, got "
+        << slice_dim.stride << " at index " << i
+        << "; calling InvertNonStridedSliceShlo() with "
+        << GetViewPrimitiveErrorSuffix(slice, {.leading_semicolon = false});
+
     start_indices.push_back(MakeScalarConstant(pre_slice_value.getBuilder(),
                                                slice_dim.start_index,
                                                mlir::ElementType::I64));
@@ -581,8 +620,8 @@ absl::StatusOr<InverseViewOperation> ComputeInverseViewOperation(
     mlir::ElementType contiguous_base_dtype, const StridedLayout& view_layout,
     mlir::ElementType view_dtype, bool is_conj) {
   // Get the common dtype to bitcast base and view into.
-  TT_ASSIGN_OR_RETURN(mlir::ElementType writable_dtype,
-                      GetWritableDtype(contiguous_base_dtype, view_dtype));
+  mlir::ElementType writable_dtype =
+      GetWritableDtype(contiguous_base_dtype, view_dtype);
 
   // Cast the contiguous base to the writable dtype and update the shape
   // accordingly.
@@ -690,9 +729,11 @@ absl::StatusOr<mlir::MlirOp> InverseViewOperationShlo(
     if (i == 0) {
       before_stage = contiguous_base;
     } else {
-      TT_RET_CHECK(inverse_view_operation.stages[i - 1].slice.has_value(),
-                   error::kInternal)
-          << "expected slice in non-final stage";
+      ABSL_CHECK(  // CRASH_OK=Internal error on view decomposition.
+          inverse_view_operation.stages[i - 1].slice.has_value())
+          << "the InverseViewOperation non-final stage (" << i - 1
+          << ") must have a slice primitive; calling "
+             "InverseViewOperationShlo(); this is a TorchTPU bug";
       TT_ASSIGN_OR_RETURN(
           before_stage,
           ViewPrimitiveShlo(pre_slice_values.back(),
@@ -722,8 +763,8 @@ absl::StatusOr<mlir::MlirOp> InverseViewOperationShlo(
 
     // Merge the current op's values with the pre-slice value.
     const auto& slice = *inverse_view_operation.stages[i - 1].slice;
-    TT_ASSIGN_OR_RETURN(
-        curr_op, InvertNonStridedSliceShlo(pre_slice_value, curr_op, slice));
+
+    curr_op = InvertNonStridedSliceShlo(pre_slice_value, curr_op, slice);
   }
   return curr_op;
 }
