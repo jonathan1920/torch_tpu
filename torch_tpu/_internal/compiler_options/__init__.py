@@ -57,10 +57,11 @@ def custom_compiler_options(options: dict[str, str]):
   # See
   # https://openxla.org/xla/flags_guidance
   # for available options.
+  compiler.push_compiler_options(options)
   try:
-    compiler.push_compiler_options(options)
     yield
   finally:
+    # Guarantee the state is restored even if Python code throws an exception.
     compiler.pop_compiler_options()
 
 
