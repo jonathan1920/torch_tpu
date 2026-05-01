@@ -27,6 +27,7 @@
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/eager/materialize.h"
+#include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -88,7 +89,8 @@ void PySync(const std::vector<at::Tensor>& tensors, bool wait) {
   } else {
     // GetMaterialized returns DeviceBufferRefs for the views, but we don't
     // return them to Python.
-    TT_THROW_IF_ERROR(GetMaterialized(tensors_span));
+    TT_THROW_IF_ERROR(
+        GetMaterialized(tensors_span, MaterializationReason::kExplicitSync));
   }
 }
 

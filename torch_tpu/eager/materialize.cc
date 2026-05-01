@@ -54,6 +54,7 @@
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize_common.h"
 #include "torch_tpu/eager/split_traversal.h"
+#include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/traversal.h"
 #include "torch_tpu/experimental/eager/materialize_new.h"
@@ -88,6 +89,7 @@ struct MaterializationTask {
   std::vector<SharedDeviceBufferList> nodes_to_materialize;
   xla::Promise<void> completion_promise;
   MaterializationMode materialization_mode = MaterializationMode::kSplitGraph;
+  MaterializationReason reason;
 };
 
 using MaterializationJob = std::variant<ExecutionTask, MaterializationTask>;
@@ -119,7 +121,6 @@ ExecutionTask CreateExecutionTask(CompilationMode compilation_mode,
 // A1, A2, B1, C0, C1]. This is established by all Materialize() functions in
 // this file.
 
-
 namespace {
 
 void LogDeferredNodes(absl::Span<const SharedDeviceBufferList> nodes,
@@ -147,6 +148,7 @@ class MaterializationWorker {
   MaterializationWorker() { StartThreads(); }
 
   xla::Future<void> EnqueueNodes(std::vector<SharedDeviceBufferList> nodes,
+                                 MaterializationReason reason,
                                  MaterializationMode materialization_mode) {
     ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing " << nodes.size()
                  << " nodes for materialization";
@@ -155,7 +157,8 @@ class MaterializationWorker {
     materialize_jobs_.push(
         MaterializationTask{.nodes_to_materialize = std::move(nodes),
                             .completion_promise = std::move(promise),
-                            .materialization_mode = materialization_mode});
+                            .materialization_mode = materialization_mode,
+                            .reason = reason});
     return future;
   }
 
@@ -525,12 +528,12 @@ absl::Status MaterializationWorker::PropagateBoundedDynamism(
 // Common pathway for all Materialize() overloads.
 absl::Status MaterializeImpl(
     absl::Span<const SharedDeviceBufferList> nodes_to_materialize,
-    MaterializationMode materialization_mode) {
+    MaterializationReason reason, MaterializationMode materialization_mode) {
   tsl::profiler::TraceMe t([] { return "MaterializeImpl"; });
 
   if (GetFlagOnce<bool,
                   &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
-    return MaterializeImplNew(nodes_to_materialize);
+    return MaterializeImplNew(nodes_to_materialize, reason);
   }
 
   ABSL_VLOG(1) << "[MaterializeImpl] Materializing "
@@ -542,8 +545,8 @@ absl::Status MaterializeImpl(
   std::vector<SharedDeviceBufferList> nodes(nodes_to_materialize.begin(),
                                             nodes_to_materialize.end());
 
-  auto future = GetMaterializationWorker().EnqueueNodes(std::move(nodes),
-                                                        materialization_mode);
+  auto future = GetMaterializationWorker().EnqueueNodes(
+      std::move(nodes), reason, materialization_mode);
   TT_RETURN_IF_ERROR(future.Await()).SetPrepend()
       << "materialization failed with: ";
 
@@ -560,6 +563,7 @@ absl::Status MaterializeImpl(
 }  // namespace
 
 absl::Status Materialize(absl::Span<const SharedDeviceBufferList> nodes,
+                         MaterializationReason reason,
                          MaterializationMode materialization_mode) {
   if (nodes.empty()) {
     return absl::OkStatus();
@@ -585,10 +589,11 @@ absl::Status Materialize(absl::Span<const SharedDeviceBufferList> nodes,
              "compiled mode, which should never try to materialize tensors.";
     }
   }
-  return MaterializeImpl(nodes_to_materialize, materialization_mode);
+  return MaterializeImpl(nodes_to_materialize, reason, materialization_mode);
 }
 
 absl::Status Materialize(absl::Span<const DeviceBufferRef> buffer_refs,
+                         MaterializationReason reason,
                          MaterializationMode materialization_mode) {
   if (buffer_refs.empty()) {
     return absl::OkStatus();
@@ -618,23 +623,26 @@ absl::Status Materialize(absl::Span<const DeviceBufferRef> buffer_refs,
                << "DeviceBufferRef has unknown state";
     }
   }
-  return MaterializeImpl(nodes_to_materialize, materialization_mode);
+  return MaterializeImpl(nodes_to_materialize, reason, materialization_mode);
 }
 
-absl::StatusOr<DeviceBufferRef> GetMaterialized(const at::Tensor& tensor) {
+absl::StatusOr<DeviceBufferRef> GetMaterialized(const at::Tensor& tensor,
+                                                MaterializationReason reason) {
   tsl::profiler::TraceMe trace("GetMaterialized");
   // Make sure the base DeviceBufferRef is materialized
   const auto* tensor_impl = tensor.unsafeGetTensorImpl();
   TT_RET_CHECK(tensor_impl, error::kInvalidArgument) << "tensor is undefined";
   TT_ASSIGN_OR_RETURN(const DeviceBufferRef base_buffer_ref,
                       GetBaseBufferFromAtTensor(*tensor_impl));
-  TT_RETURN_IF_ERROR(Materialize(base_buffer_ref));
+  TT_RETURN_IF_ERROR(
+      Materialize(base_buffer_ref, reason, MaterializationMode::kSplitGraph));
 
   // Get the view DeviceBufferRef (may be the same as the base)
   TT_ASSIGN_OR_RETURN(const DeviceBufferRef view_buffer_ref,
                       GetBufferFromAtTensor(tensor));
   // Materialize the view (no-op if the tensor is a continuous base tensor)
-  TT_RETURN_IF_ERROR(Materialize(view_buffer_ref));
+  TT_RETURN_IF_ERROR(
+      Materialize(view_buffer_ref, reason, MaterializationMode::kSplitGraph));
 
   if (GetFlagOnce<bool,
                   &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
@@ -645,7 +653,7 @@ absl::StatusOr<DeviceBufferRef> GetMaterialized(const at::Tensor& tensor) {
 }
 
 absl::StatusOr<std::vector<DeviceBufferRef>> GetMaterialized(
-    absl::Span<const at::Tensor> tensors) {
+    absl::Span<const at::Tensor> tensors, MaterializationReason reason) {
   tsl::profiler::TraceMe trace("GetMaterialized (batch)");
   if (tensors.empty()) {
     return std::vector<DeviceBufferRef>();
@@ -660,7 +668,8 @@ absl::StatusOr<std::vector<DeviceBufferRef>> GetMaterialized(
                         GetBaseBufferFromAtTensor(*tensor_impl));
     base_buffer_refs.push_back(base_buffer_ref);
   }
-  TT_RETURN_IF_ERROR(Materialize(base_buffer_refs));
+  TT_RETURN_IF_ERROR(
+      Materialize(base_buffer_refs, reason, MaterializationMode::kSplitGraph));
 
   // Materialize all of the views (no-op if all tensors are contiguous bases)
   std::vector<DeviceBufferRef> view_buffer_refs;
@@ -670,7 +679,8 @@ absl::StatusOr<std::vector<DeviceBufferRef>> GetMaterialized(
                         GetBufferFromAtTensor(tensor));
     view_buffer_refs.push_back(view_buffer_ref);
   }
-  TT_RETURN_IF_ERROR(Materialize(view_buffer_refs));
+  TT_RETURN_IF_ERROR(
+      Materialize(view_buffer_refs, reason, MaterializationMode::kSplitGraph));
 
   if (GetFlagOnce<bool,
                   &FLAGS_torch_tpu_internal_enable_new_materialization>()) {

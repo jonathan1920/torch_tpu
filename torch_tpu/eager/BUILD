@@ -69,6 +69,7 @@ torch_tpu_cc_test(
     deps = [
         ":device_buffer",
         ":materialize",
+        ":structured_log_buffer",
         ":tensor_to_buffer",
         ":tpu_hooks",
         "//shims/torch:aten_headers",
@@ -354,6 +355,7 @@ torch_tpu_cc_library(
         ":eager_mode",
         ":materialize_common",
         ":split_traversal",
+        ":structured_log_buffer",
         ":tensor_to_buffer",
         ":traversal",
         "//shims/torch:aten_headers",
@@ -437,6 +439,7 @@ torch_tpu_cc_library(
         ":device_buffer",
         ":eager_mode",
         ":materialize",
+        ":structured_log_buffer",
         ":tensor_to_buffer",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",

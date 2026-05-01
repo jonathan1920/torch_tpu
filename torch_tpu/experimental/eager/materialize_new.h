@@ -20,16 +20,18 @@
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/structured_log_buffer.h"
 
 namespace torch_tpu {
 
 absl::Status OnNewOpDispatch(const SharedDeviceBufferList& device_buffer_list);
 
 absl::Status MaterializeImplNew(
-    absl::Span<const SharedDeviceBufferList> nodes_to_materialize);
+    absl::Span<const SharedDeviceBufferList> nodes_to_materialize,
+    MaterializationReason reason);
 
 absl::Status BlockOnPendingMaterializations();
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_EXPERIMENTAL_EAGER_MATERIALIZE_H_
+#endif  // TORCH_TPU_EXPERIMENTAL_EAGER_MATERIALIZE_NEW_H_

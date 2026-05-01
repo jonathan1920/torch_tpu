@@ -108,6 +108,7 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:materialize",
         "//torch_tpu/eager:op_dispatcher",
+        "//torch_tpu/eager:structured_log_buffer",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",

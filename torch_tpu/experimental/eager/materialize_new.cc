@@ -43,6 +43,7 @@
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize_common.h"
+#include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/traversal.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -67,7 +68,8 @@ class MaterializationWorker {
 
   // Materialize all ops dispatched so far.
   absl::Status Materialize(
-      absl::Span<const SharedDeviceBufferList> nodes_to_materialize);
+      absl::Span<const SharedDeviceBufferList> nodes_to_materialize,
+      MaterializationReason reason);
 
   absl::Status BlockOnPendingMaterializations();
 
@@ -78,6 +80,7 @@ class MaterializationWorker {
   struct QueueState {
     std::vector<SharedDeviceBufferList> queue;
     std::vector<SharedDeviceBufferList> nodes_to_materialize;
+    MaterializationReason reason;
     bool is_full = false;
   };
 
@@ -86,6 +89,7 @@ class MaterializationWorker {
   int execution_queue_id_ ABSL_GUARDED_BY(mutex_) = 0;
   QueueState queues_[kNumQueues] ABSL_GUARDED_BY(mutex_);
   bool must_exit_ ABSL_GUARDED_BY(mutex_) = false;
+
   absl::Status last_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
   std::thread execution_thread_;
 
@@ -124,7 +128,8 @@ class MaterializationWorker {
 
   absl::Status MaterializeQueue(
       const std::vector<SharedDeviceBufferList>& queue,
-      const std::vector<SharedDeviceBufferList>& nodes_to_materialize);
+      const std::vector<SharedDeviceBufferList>& nodes_to_materialize,
+      MaterializationReason reason);
 };
 
 absl::Status MaterializationWorker::OnNewOpDispatch(
@@ -140,7 +145,8 @@ absl::Status MaterializationWorker::OnNewOpDispatch(
 }
 
 absl::Status MaterializationWorker::Materialize(
-    absl::Span<const SharedDeviceBufferList> nodes_to_materialize) {
+    absl::Span<const SharedDeviceBufferList> nodes_to_materialize,
+    MaterializationReason reason) {
   tsl::profiler::TraceMe t("Worker_Materialize");
   TT_RETURN_IF_ERROR(GetLastStatus());
   {
@@ -170,6 +176,7 @@ absl::Status MaterializationWorker::Materialize(
     queues_[dispatch_queue_id_].nodes_to_materialize.insert(
         queues_[dispatch_queue_id_].nodes_to_materialize.end(),
         nodes_to_materialize.begin(), nodes_to_materialize.end());
+    queues_[dispatch_queue_id_].reason = reason;
     queues_[dispatch_queue_id_].is_full = true;
     IncrementQueueId(dispatch_queue_id_);
   }
@@ -209,6 +216,7 @@ void MaterializationWorker::ThreadLoop() {
     int current_execution_id;
     std::vector<SharedDeviceBufferList> current_queue;
     std::vector<SharedDeviceBufferList> nodes_to_materialize;
+    MaterializationReason current_reason;
 
     {
       absl::MutexLock lock(
@@ -226,10 +234,12 @@ void MaterializationWorker::ThreadLoop() {
       std::swap(current_queue, queues_[execution_queue_id_].queue);
       std::swap(nodes_to_materialize,
                 queues_[execution_queue_id_].nodes_to_materialize);
+      current_reason = queues_[execution_queue_id_].reason;
     }
 
     // Materialize the claimed queue without holding the mutex.
-    absl::Status status = MaterializeQueue(current_queue, nodes_to_materialize);
+    absl::Status status =
+        MaterializeQueue(current_queue, nodes_to_materialize, current_reason);
 
     {
       absl::MutexLock lock(mutex_);
@@ -389,7 +399,8 @@ std::string ToString(const std::vector<SharedDeviceBufferList>& v) {
 
 absl::Status MaterializationWorker::MaterializeQueue(
     const std::vector<SharedDeviceBufferList>& queue,
-    const std::vector<SharedDeviceBufferList>& nodes_to_materialize) {
+    const std::vector<SharedDeviceBufferList>& nodes_to_materialize,
+    MaterializationReason reason) {
   tsl::profiler::TraceMe t("Worker_MaterializeQueue");
 
   ABSL_VLOG(1) << ">>> MaterializationWorker::MaterializeQueue "
@@ -417,6 +428,7 @@ absl::Status MaterializationWorker::MaterializeQueue(
     std::vector<DeviceBufferRef> outputs;
     CompiledKernel compiled_kernel;
     std::vector<SharedDeviceBufferList> execution_order;
+    MaterializationReason reason;
   };
 
   std::vector<ExecutionTask> execution_tasks;
@@ -522,7 +534,8 @@ absl::Status MaterializationWorker::MaterializeQueue(
         .arguments = std::move(traversal_parts.arguments),
         .outputs = std::move(traversal_parts.outputs),
         .compiled_kernel = std::move(compiled_kernel),
-        .execution_order = std::move(traversal_parts.execution_order)});
+        .execution_order = std::move(traversal_parts.execution_order),
+        .reason = reason});
   }
 
   // Launch compiled kernels.
@@ -587,9 +600,11 @@ absl::Status OnNewOpDispatch(const SharedDeviceBufferList& device_buffer_list) {
 }
 
 absl::Status MaterializeImplNew(
-    absl::Span<const SharedDeviceBufferList> nodes_to_materialize) {
+    absl::Span<const SharedDeviceBufferList> nodes_to_materialize,
+    MaterializationReason reason) {
   ABSL_VLOG(1) << ">>> MaterializeImplNew " << nodes_to_materialize.size();
-  return MaterializationWorker::GetInstance().Materialize(nodes_to_materialize);
+  return MaterializationWorker::GetInstance().Materialize(nodes_to_materialize,
+                                                          reason);
 }
 
 absl::Status BlockOnPendingMaterializations() {
