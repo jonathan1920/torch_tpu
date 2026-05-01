@@ -179,16 +179,16 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> Compile(
 //
 // The options are constructed from the following sources, in order of
 // precedence:
-//  - compiler options set via environment variable
-//    TORCH_TPU_INTERNAL_XLA_OPTIONS, which is an internal API and shouldn't be
-//    used by users directly,
 //  - explicitly-specified compiler options set via
 //    PushCompilerOptionOverrides() (or via the custom_compiler_options context
 //    manager in Python); with nested custom_compiler_options contexts, the
 //    innermost context takes precedence,
+//  - compiler options set via environment variable
+//    TORCH_TPU_INTERNAL_XLA_OPTIONS, which is an internal API and shouldn't be
+//    used by users directly,
 //  - hard-coded default compiler options,
 //  - the global device count,
-//  - debug options set via environment variable XLA_FLAGS,
+//  - debug options set via environment variable XLA_FLAGS.
 //
 // The format of TORCH_TPU_INTERNAL_XLA_OPTIONS is a space-separated list of
 // key=value pairs, e.g. "xla_optimization_level=O1
