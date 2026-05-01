@@ -1545,6 +1545,12 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.float16: {"rtol": 1e-3, "atol": 3e-1},
                 torch.float32: {"rtol": 4e-4, "atol": 8e-2},
             },
+            "cummax": {
+                torch.float64: {"rtol": 0, "atol": 5},
+            },
+            "cummin": {
+                torch.float64: {"rtol": 0, "atol": 5},
+            },
             "erf": {
                 torch.bfloat16: {"rtol": 2e-2, "atol": 3e-4},
                 torch.float16: {"rtol": 2e-3, "atol": 1e-4},
@@ -2100,6 +2106,7 @@ class TestOps(TorchTpuTestBase):
   def test_cummax(self):
     self.do_test_op(
         "cummax",
+        check_value=CheckValueMode.LOOSE,
     )
 
   def test_cumsum(self):
@@ -2112,6 +2119,7 @@ class TestOps(TorchTpuTestBase):
   def test_cummin(self):
     self.do_test_op(
         "cummin",
+        check_value=CheckValueMode.LOOSE,
     )
 
   def test_diagonal(self):

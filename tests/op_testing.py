@@ -2327,6 +2327,69 @@ def _load_golden_files() -> None:
         _GOLDEN_GPU_DATA[op][dtype] = samples
 
 
+def float_random_perm(num_elem: int, dtype: torch.dtype) -> torch.Tensor | None:
+  """Generates a random permutation of unique numbers.
+
+  Args:
+    num_elem: The number of elements in the tensor.
+    dtype: The dtype of the tensor. Must be a floating-point type.
+
+  Returns:
+    A 1-D tensor whose elements are a random permutation of unique numbers.
+    Or None if num_elem is larger than the maximum number of unique values
+    representable in the given dtype.
+  """
+
+  # A floating-point number of N bits (1 sign bit, E exponent bits, M mantissa
+  # bits, where N = 1 + E + M) has this bit pattern:
+  #   < sign> <exponent> <mantissa>
+  #   <1 bit> < E bits > < M bits >
+  #
+  # - If all exponent bits are 1, the number is either infinity or NaN.
+  # - If the exponent bits are 0111...1, the number is in the range [1.0, 2.0).
+  #   An implicit 1. is assumed to be present in the mantissa, so the number is
+  #   1.mmmm....
+  #
+  # To guarantee uniqueness, we map an integer in [0, 2^M) to the range
+  # [1.0, 2.0) by using the integer as the mantissa and setting the exponent
+  # bits to 0111...1 (2**(E - 1) - 1).
+
+  # 1. Configuration mapping: maps a floating-point dtype to an integer dtype
+  #    of the same size and the number of mantissa bits.
+  config = {
+      torch.float16: (torch.int16, 10),
+      torch.bfloat16: (torch.int16, 7),
+      torch.float32: (torch.int32, 23),
+      torch.float64: (torch.int64, 52),
+  }
+
+  if dtype not in config:
+    raise ValueError(f"Unsupported dtype: {dtype}")
+
+  int_type, mantissa_bits = config[dtype]
+  max_unique = 2**mantissa_bits
+
+  # 2. Uniqueness Guarantee Check
+  if num_elem > max_unique:
+    return None
+
+  exp_bits = dtype.itemsize * 8 - mantissa_bits - 1
+  exp_pattern = (2 ** (exp_bits - 1) - 1) << mantissa_bits
+
+  # 3. Generate unique mantissa patterns.
+  # randperm(n) produces unique values from 0 to n-1.
+  mantissas = torch.randperm(num_elem, dtype=int_type)
+
+  # 4. Bitwise OR to inject the exponent and sign bits.
+  # This places the unique values in the [1.0, 2.0) range.
+  float_bits = torch.bitwise_or(
+      mantissas, torch.tensor(exp_pattern, dtype=int_type)
+  )
+
+  # 5. Bit-cast to the target floating point type
+  return float_bits.view(dtype)
+
+
 def set_up_test_module() -> None:
   """Sets up the entire test module."""
 
@@ -2433,21 +2496,15 @@ def set_up_test_module() -> None:
                 and isinstance(sample.input, torch.Tensor)
                 and sample.input.is_floating_point()
             ):
-              # Create a small ramp (e.g., 0.0 to 0.01) to break any ties
-              ramp = (
-                  torch.linspace(
-                      0, 1, sample.input.numel(), device=device, dtype=dtype
-                  ).reshape(sample.input.shape)
-                  * 1e-2
-              )
+              # Ignore the original input.
+              # Create a random tensor with the same shape, dtype, and
+              # requires_grad state as the original input.
+              rand_tensor = float_random_perm(sample.input.numel(), dtype)
+              if rand_tensor is None:
+                continue
 
-              # Apply the ramp and preserve the requires_grad state
-              if requires_grad:
-                sample.input = (sample.input.detach() + ramp).requires_grad_(
-                    True
-                )
-              else:
-                sample.input = sample.input + ramp
+              rand_tensor = rand_tensor.reshape(sample.input.shape).to(device)
+              sample.input = rand_tensor.requires_grad_(requires_grad)
 
             yield sample
 
