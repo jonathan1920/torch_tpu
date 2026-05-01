@@ -488,6 +488,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     "nn.functional.gelu": {
         torch.float16: {"rtol": 6.8e-3, "atol": 4.2e-5},
         torch.float32: {"rtol": 6.7e-3, "atol": 4.1e-5},
+        torch.float64: {"rtol": 8e-7, "atol": 1.3e-7},
     },
     "nn.functional.glu": {
         torch.bfloat16: {"rtol": 1.1e-2, "atol": 7.9e-3},
@@ -1005,6 +1006,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
     "nn.functional.gelu": {
         torch.float16: {"rtol": 6.6e-3, "atol": 3.9e-5},
         torch.float32: {"rtol": 6.2e-3, "atol": 4.2e-5},
+        torch.float64: {"rtol": 8e-7, "atol": 1.3e-7},
     },
     "nn.functional.group_norm": {
         torch.bfloat16: {"rtol": 1, "atol": 4.7e-2},
