@@ -14,6 +14,7 @@
 
 """Performance utilities for TorchAx benchmarks."""
 
+import enum
 import os
 import time
 from typing import Any
@@ -34,6 +35,34 @@ from torch_tpu._internal.shims.xprof import traceme
 log_utils.log_to_stderr()
 
 
+class ModelBenchmarkOutputType(enum.Enum):
+  """Enum for the type of return in ModelBenchmarkOutput."""
+
+  LOSS = "loss"
+  SAMPLE = "sample"
+  LOGITS = "logits"
+  RAW = "raw"
+  ALL = "all"
+
+
+@jax.tree_util.register_pytree_node_class
+class ModelBenchmarkOutput:
+  """A structure to hold the type of return and the actual data."""
+
+  def __init__(self, return_type: ModelBenchmarkOutputType, data: Any):
+    self.return_type = return_type
+    self.data = data
+
+  def tree_flatten(self):
+    """Flattens the object into children (JAX arrays) and auxiliary data (metadata)."""
+    return (self.data,), (self.return_type,)
+
+  @classmethod
+  def tree_unflatten(cls, aux_data, children):
+    """Reconstructs the object from auxiliary data and children."""
+    return cls(aux_data[0], children[0])
+
+
 def _sync_jax_device(x):
   """Synchronizes JAX device by blocking until ready."""
 
@@ -45,19 +74,6 @@ def _sync_jax_device(x):
     return leaf
 
   jax.tree_util.tree_map(sync_leaf, x)
-
-
-def _prepare_inputs(inputs):
-  if isinstance(inputs, dict):
-    args = ()
-    kwargs = inputs
-  elif isinstance(inputs, (tuple, list)):
-    args = inputs
-    kwargs = {}
-  else:
-    args = (inputs,)
-    kwargs = {}
-  return args, kwargs
 
 
 def _call_functional_model(model_jittable, params, buffers, inputs):
@@ -75,7 +91,8 @@ def _call_functional_model(model_jittable, params, buffers, inputs):
   Returns:
     The output of the functional call.
   """
-  args, kwargs = _prepare_inputs(inputs)
+  args = () if isinstance(inputs, dict) else (inputs,)
+  kwargs = inputs if isinstance(inputs, dict) else {}
 
   # Call the functional model and get the result. The functional_call is used
   # to represent the model as a function that can be called with JAX-compatible
@@ -84,11 +101,38 @@ def _call_functional_model(model_jittable, params, buffers, inputs):
       "forward", params, buffers, *args, **kwargs
   )
 
-  if hasattr(res, "sample"):
-    return res.sample
-  if hasattr(res, "logits"):
-    return res.logits
-  return res
+  # Prioritize explicit precomputed loss if available.
+  if hasattr(res, ModelBenchmarkOutputType.LOSS.value) and res.loss is not None:
+    return ModelBenchmarkOutput(ModelBenchmarkOutputType.LOSS, res.loss)
+
+  # Otherwise, collect all available tensor outputs.
+  collected_tensors = {}
+
+  # Check common explicit attributes first
+  for attr_name in (
+      ModelBenchmarkOutputType.SAMPLE.value,
+      ModelBenchmarkOutputType.LOGITS.value,
+  ):
+    if hasattr(res, attr_name):
+      val = getattr(res, attr_name)
+      if isinstance(val, torch.Tensor):
+        collected_tensors[attr_name] = val
+
+  # Next, iterate via items() (common for HF dict-like dataclasses)
+  if hasattr(res, "items"):
+    for k, v in res.items():
+      if isinstance(v, torch.Tensor) and k not in collected_tensors:
+        collected_tensors[k] = v
+
+  # Handle standalone tensor
+  if not collected_tensors and isinstance(res, torch.Tensor):
+    collected_tensors["raw"] = res
+
+  if collected_tensors:
+    return ModelBenchmarkOutput(ModelBenchmarkOutputType.ALL, collected_tensors)
+
+  # Hard fallback if nothing could be discovered
+  return ModelBenchmarkOutput(ModelBenchmarkOutputType.RAW, res)
 
 
 def _run_torchax_forward_pass(
@@ -123,8 +167,8 @@ def _run_torchax_forward_pass(
       with traceme.TraceMe("Warmup", step_num=i):
         step_start = time.perf_counter()
         out = runnable_model(weights, buffers, inputs)
-        if isinstance(out, torch.Tensor):
-          _sync_jax_device(out)
+        _sync_jax_device(out.data)
+
         warmup_timings[i] = time.perf_counter() - step_start
 
   first_step_time = warmup_timings[0] if len(warmup_timings) > 0 else 0.0
@@ -145,8 +189,7 @@ def _run_torchax_forward_pass(
       with traceme.TraceMe("Eval", step_num=i):
         step_start = time.perf_counter()
         out = runnable_model(weights, buffers, inputs)
-        if isinstance(out, torch.Tensor):
-          _sync_jax_device(out)
+        _sync_jax_device(out.data)
         eval_timings[i] = time.perf_counter() - step_start
   post_warmup_run_session_xprof_url = None
   if enable_xprof:
@@ -183,9 +226,23 @@ def _run_torchax_backward_pass(
   # Generate dummy labels
   with torch.no_grad():
     out = _call_functional_model(model_jittable, weights, buffers, inputs)
-  labels = torch.rand_like(out, device="jax")
+  if isinstance(out.data, dict):
+    labels = {k: torch.rand_like(v, device="jax") for k, v in out.data.items()}
+  else:
+    labels = torch.rand_like(out.data, device="jax")
 
   def loss_fn(outputs, labels):
+    if isinstance(outputs, ModelBenchmarkOutput):
+      if outputs.return_type == ModelBenchmarkOutputType.LOSS:
+        return outputs.data
+      if isinstance(outputs.data, dict):
+        # Accumulate MSE for all discovered tensor components.
+        total_loss = 0.0
+        for k, v in outputs.data.items():
+          if k in labels:
+            total_loss = total_loss + torch.mean((v - labels[k]) ** 2)
+        return total_loss
+      return torch.mean((outputs.data - labels) ** 2)
     return torch.mean((outputs - labels) ** 2)
 
   optimizer = optax.adam(0.1)
