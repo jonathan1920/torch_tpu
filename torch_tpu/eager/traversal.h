@@ -18,6 +18,7 @@
 #define TORCH_TPU_EAGER_TRAVERSAL_H_
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -92,11 +93,11 @@ class Traversal {
   // Traversal cannot be directly constructed; use Create() instead.
   Traversal() = delete;
 
-  // Delete copy constructor and copy assignment.
+  // Delete copy and move constructors and assignment operators.
   Traversal(const Traversal&) = delete;
-  Traversal(Traversal&&) = default;
+  Traversal(Traversal&&) = delete;
   Traversal& operator=(const Traversal&) = delete;
-  Traversal& operator=(Traversal&&) = default;
+  Traversal& operator=(Traversal&&) = delete;
 
   // Traverses the deferred operations from outputs (roots of the directed
   // acyclic graph) to arguments (leaves of the directed acyclic graph),
@@ -104,18 +105,19 @@ class Traversal {
   // Optional parameter `stopping_points` can be used to supply
   // DeviceBufferLists that should stop the traversal and, hence, be
   // treated as arguments (even though they may be associated to deferred ops).
-  static absl::StatusOr<Traversal> Create(
+  static absl::StatusOr<absl_nonnull std::unique_ptr<Traversal>> Create(
       std::vector<DeviceBufferRef> outputs,
       const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
           stopping_points = {});
-  static absl::StatusOr<Traversal> Create(
+  static absl::StatusOr<absl_nonnull std::unique_ptr<Traversal>> Create(
       absl::Span<const SharedDeviceBufferList> output_nodes,
       const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
           stopping_points = {});
 
   // Creates a traversal from a given execution order and a given set of
   // outputs.
-  static absl::StatusOr<Traversal> CreateFromExecutionOrder(
+  static absl::StatusOr<absl_nonnull std::unique_ptr<Traversal>>
+  CreateFromExecutionOrder(
       absl::Span<const SharedDeviceBufferList> execution_order,
       absl::Span<const SharedDeviceBufferList> nodes_to_materialize);
 

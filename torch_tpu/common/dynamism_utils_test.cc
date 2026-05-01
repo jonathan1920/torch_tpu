@@ -99,7 +99,7 @@ TEST(DynamismOpsTest, GetTraversalOutputDimensionsNoBoundedInput) {
   // Call GetTraversalOutputDimensions.
   TF_ASSERT_OK_AND_ASSIGN(
       auto outputs_to_dims,
-      GetTraversalOutputDimensions(ops_builder.getContext(), traversal));
+      GetTraversalOutputDimensions(ops_builder.getContext(), *traversal));
 
   ASSERT_EQ(outputs_to_dims.size(), 1);
   auto output_to_dims = outputs_to_dims[0];
@@ -154,7 +154,7 @@ TEST(DynamismOpsTest, GetTraversalOutputDimensionsWithBoundedInput) {
   // Call GetTraversalOutputDimensions.
   TF_ASSERT_OK_AND_ASSIGN(
       auto outputs_to_dims,
-      GetTraversalOutputDimensions(ops_builder.getContext(), traversal));
+      GetTraversalOutputDimensions(ops_builder.getContext(), *traversal));
   ASSERT_EQ(outputs_to_dims.size(), 1);
   auto output_to_dims = outputs_to_dims[0];
 

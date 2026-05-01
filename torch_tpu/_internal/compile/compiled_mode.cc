@@ -35,13 +35,13 @@
 #include "ATen/core/ATen_fwd.h"
 #include "c10/core/TensorImpl.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
@@ -117,15 +117,14 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
     result_refs.push_back(std::move(buffer_ref));
   }
 
-  TT_ASSIGN_OR_RETURN(Traversal traversal,
-                      Traversal::Create(std::move(result_refs)),
+  TT_ASSIGN_OR_RETURN(auto traversal, Traversal::Create(std::move(result_refs)),
                       _.SetPrepend() << "failed to traverse graph: ");
   TT_RETURN_IF_ERROR(
-      traversal.ValidateAndReorderArguments(std::move(argument_refs)))
+      traversal->ValidateAndReorderArguments(std::move(argument_refs)))
           .SetPrepend()
       << "failed to validate and reorder inputs: ";
   TT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                      traversal.BuildMlirModule(mlir_context));
+                      traversal->BuildMlirModule(mlir_context));
 
   return mlir_module;
 }

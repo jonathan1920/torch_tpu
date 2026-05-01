@@ -94,14 +94,15 @@ struct MaterializationTask {
 
 using MaterializationJob = std::variant<ExecutionTask, MaterializationTask>;
 
-ExecutionTask CreateExecutionTask(CompilationMode compilation_mode,
-                                  Traversal traversal,
-                                  CompiledKernel compiled_kernel) {
+ExecutionTask CreateExecutionTask(
+    CompilationMode compilation_mode,
+    absl_nonnull std::unique_ptr<Traversal> traversal,
+    CompiledKernel compiled_kernel) {
   std::string task_name;
   if (ABSL_VLOG_IS_ON(1)) {
-    task_name = absl::StrCat(traversal.GetCacheKey(compilation_mode));
+    task_name = absl::StrCat(traversal->GetCacheKey(compilation_mode));
   }
-  Traversal::Parts parts = traversal.IntoParts();
+  Traversal::Parts parts = traversal->IntoParts();
   return ExecutionTask{.arguments = std::move(parts.arguments),
                        .outputs = std::move(parts.outputs),
                        .compiled_kernel = std::move(compiled_kernel),
@@ -354,7 +355,7 @@ class MaterializationWorker {
     }
 
     ABSL_VLOG(1) << "[MaterializationWorker] Creating traversal";
-    absl::StatusOr<Traversal> traversal;
+    std::unique_ptr<Traversal> traversal;
     {
       tsl::profiler::TraceMe t("Traversal::Create");
       TT_ASSIGN_OR_RETURN(traversal, Traversal::Create(all_nodes));
@@ -363,7 +364,7 @@ class MaterializationWorker {
     ABSL_VLOG(3) << "[MaterializationWorker] Traversal created: "
                  << GetGraphviz(*traversal);
 
-    std::vector<Traversal> traversals;
+    std::vector<absl_nonnull std::unique_ptr<Traversal>> traversals;
 
     if (task.materialization_mode == MaterializationMode::kSplitGraph) {
       // Split the traversal while nodes are still in the deferred state.
@@ -374,14 +375,14 @@ class MaterializationWorker {
         for (const auto& node : task.nodes_to_materialize) {
           required_outputs.insert(node.get());
         }
-        TT_ASSIGN_OR_RETURN(traversals, SplitTraversal(std::move(*traversal),
-                                                       required_outputs));
+        TT_ASSIGN_OR_RETURN(
+            traversals, SplitTraversal(std::move(traversal), required_outputs));
       }
 
       ABSL_VLOG(1) << "[MaterializationWorker] Split traversal into "
                    << traversals.size() << " traversals";
     } else {
-      traversals.push_back(std::move(*traversal));
+      traversals.push_back(std::move(traversal));
     }
 
     TT_RETURN_IF_ERROR(
@@ -397,12 +398,12 @@ class MaterializationWorker {
       {
         tsl::profiler::TraceMe t("CompileTraversal");
         TT_ASSIGN_OR_RETURN(compiled_kernel,
-                            split_traversal.Compile(compilation_mode));
+                            split_traversal->Compile(compilation_mode));
       }
 
       // Mark all outputs of the split as scheduled/materialized.
       absl::flat_hash_set<const DeviceBufferList*> marked_materialized;
-      for (const auto& output : split_traversal.outputs()) {
+      for (const auto& output : split_traversal->outputs()) {
         if (!marked_materialized.insert(output.device_buffer_list().get())
                  .second) {
           continue;
@@ -416,14 +417,14 @@ class MaterializationWorker {
       }
 
       ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing traversal: cache_key="
-                   << split_traversal.GetCacheKey(compilation_mode)
+                   << split_traversal->GetCacheKey(compilation_mode)
                    << " traversal input arg count: "
-                   << split_traversal.arguments().size()
+                   << split_traversal->arguments().size()
                    << " traversal output arg count: "
-                   << split_traversal.outputs().size();
+                   << split_traversal->outputs().size();
 
       // Mark all deferred ops in the split as having been executed (scheduled).
-      for (const auto& node : split_traversal.execution_order()) {
+      for (const auto& node : split_traversal->execution_order()) {
         auto* deferred_op = node->deferred_op();
         if (deferred_op) {
           deferred_op->mark_executed();
@@ -480,8 +481,9 @@ class MaterializationWorker {
   // Propagates bounded dynamism annotations from one traversal to others
   // when one traversal's output is bounded dynamic and is another traversal's
   // input.
-  absl::Status PropagateBoundedDynamism(absl::Span<Traversal> traversals,
-                                        mlir::MLIRContext& mlir_context);
+  absl::Status PropagateBoundedDynamism(
+      absl::Span<absl_nonnull std::unique_ptr<Traversal>> traversals,
+      mlir::MLIRContext& mlir_context);
 
   std::thread materialize_thread_;
   std::thread execute_thread_;
@@ -500,15 +502,16 @@ MaterializationWorker& GetMaterializationWorker() {
 }
 
 absl::Status MaterializationWorker::PropagateBoundedDynamism(
-    absl::Span<Traversal> traversals, mlir::MLIRContext& mlir_context) {
+    absl::Span<absl_nonnull std::unique_ptr<Traversal>> traversals,
+    mlir::MLIRContext& mlir_context) {
   for (auto& traversal : traversals) {
-    if (!traversal.IsBoundedDynamic()) {
+    if (!traversal->IsBoundedDynamic()) {
       continue;
     }
     ABSL_VLOG(1) << "[PropagateBoundedDynamism] Traversal: "
-                 << traversal.DebugString();
+                 << traversal->DebugString();
     TT_ASSIGN_OR_RETURN(std::vector<DeviceRefDimensions> output_dimensions,
-                        GetTraversalOutputDimensions(mlir_context, traversal));
+                        GetTraversalOutputDimensions(mlir_context, *traversal));
     for (const auto& output_dimension : output_dimensions) {
       const DeviceBufferRef& ref = output_dimension.ref;
       const auto& dims = output_dimension.dims;

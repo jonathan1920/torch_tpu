@@ -17,8 +17,10 @@
 #ifndef TORCH_TPU_EAGER_SPLIT_UTILS_H_
 #define TORCH_TPU_EAGER_SPLIT_UTILS_H_
 
+#include <memory>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "torch_tpu/eager/device_buffer.h"
@@ -28,7 +30,8 @@ namespace torch_tpu {
 
 // Creates a new set of traversals, one for each split point in the original
 // traversal.
-absl::StatusOr<std::vector<Traversal>> ApplySplitPoints(
+absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
+ApplySplitPoints(
     const Traversal& traversal,
     const absl::flat_hash_set<const DeviceBufferList*>& split_points);
 

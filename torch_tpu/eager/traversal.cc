@@ -68,7 +68,7 @@
 
 namespace torch_tpu {
 
-absl::StatusOr<Traversal> Traversal::Create(
+absl::StatusOr<absl_nonnull std::unique_ptr<Traversal>> Traversal::Create(
     std::vector<DeviceBufferRef> outputs,
     const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
         stopping_points) {
@@ -181,18 +181,18 @@ absl::StatusOr<Traversal> Traversal::Create(
       stack.pop();
     }
   }
-  auto traversal = Traversal(std::move(arguments), std::move(execution_order),
-                             std::move(outputs));
+  auto traversal = std::unique_ptr<Traversal>(new Traversal(
+      std::move(arguments), std::move(execution_order), std::move(outputs)));
 #ifndef NDEBUG
-  if (auto status = traversal.Validate(); !status.ok()) {
-    LogLines(traversal.DebugString());
+  if (auto status = traversal->Validate(); !status.ok()) {
+    LogLines(traversal->DebugString());
     return status;
   }
 #endif
   return traversal;
 }
 
-absl::StatusOr<Traversal> Traversal::Create(
+absl::StatusOr<absl_nonnull std::unique_ptr<Traversal>> Traversal::Create(
     absl::Span<const SharedDeviceBufferList> output_nodes,
     const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
         stopping_points) {
@@ -206,7 +206,8 @@ absl::StatusOr<Traversal> Traversal::Create(
   return Create(std::move(outputs_ref), stopping_points);
 }
 
-absl::StatusOr<Traversal> Traversal::CreateFromExecutionOrder(
+absl::StatusOr<absl_nonnull std::unique_ptr<Traversal>>
+Traversal::CreateFromExecutionOrder(
     absl::Span<const SharedDeviceBufferList> execution_order,
     absl::Span<const SharedDeviceBufferList> nodes_to_materialize) {
   ABSL_VLOG(1) << "[Traversal::CreateFromExecutionOrder] Creating Traversal";
@@ -242,13 +243,14 @@ absl::StatusOr<Traversal> Traversal::CreateFromExecutionOrder(
     }
   }
 
-  Traversal traversal(std::move(inputs),
-                      std::vector<SharedDeviceBufferList>(
-                          execution_order.begin(), execution_order.end()),
-                      std::move(outputs));
+  auto traversal = std::unique_ptr<Traversal>(
+      new Traversal(std::move(inputs),
+                    std::vector<SharedDeviceBufferList>(execution_order.begin(),
+                                                        execution_order.end()),
+                    std::move(outputs)));
 #ifndef NDEBUG
-  if (auto status = traversal.Validate(); !status.ok()) {
-    LogLines(traversal.DebugString());
+  if (auto status = traversal->Validate(); !status.ok()) {
+    LogLines(traversal->DebugString());
     return status;
   }
 #endif

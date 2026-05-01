@@ -16,9 +16,11 @@
 
 #include "torch_tpu/eager/split_traversal.h"
 
+#include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
 #include "absl/log/absl_log.h"
@@ -39,19 +41,20 @@ ABSL_FLAG(bool, torch_tpu_internal_safe_materialization_rule, true,
           "dropped or materialized sequentially.");
 namespace torch_tpu {
 
-absl::StatusOr<std::vector<Traversal>> SplitTraversal(
-    Traversal traversal,
+absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
+SplitTraversal(
+    absl_nonnull std::unique_ptr<Traversal> traversal,
     const absl::flat_hash_set<const DeviceBufferList*>& required_outputs) {
-  ABSL_VLOG(1) << ">>> SplitTraversal " << traversal.execution_order().size();
+  ABSL_VLOG(1) << ">>> SplitTraversal " << traversal->execution_order().size();
   tsl::profiler::TraceMe t("SplitTraversal");
 
   // Reorder the nodes in the traversal to prefer materializing the
   // earliest-dispatched output DeferredOps first. This results in a
   // topological sort which is expected to be better, assuming the user's code
   // is organized for eager execution.
-  traversal.SortByCreationOrder();
+  traversal->SortByCreationOrder();
 
-  std::vector<Traversal> traversals;
+  std::vector<absl_nonnull std::unique_ptr<Traversal>> traversals;
 
   // Here we collect a set of nodes that should be split into separate
   // traversals.
@@ -59,9 +62,9 @@ absl::StatusOr<std::vector<Traversal>> SplitTraversal(
   if (GetFlagOnce<bool,
                   &FLAGS_torch_tpu_internal_safe_materialization_rule>()) {
     auto safe_rule = SafeMaterializationRule(required_outputs);
-    split_points = safe_rule(traversal);
+    split_points = safe_rule(*traversal);
   } else {
-    split_points = CustomSplitRule(traversal);
+    split_points = CustomSplitRule(*traversal);
   }
 
   ABSL_VLOG(1) << "Found " << required_outputs.size()
@@ -75,7 +78,7 @@ absl::StatusOr<std::vector<Traversal>> SplitTraversal(
     return traversals;
   }
 
-  return ApplySplitPoints(traversal, split_points);
+  return ApplySplitPoints(*traversal, split_points);
 }
 
 }  // namespace torch_tpu

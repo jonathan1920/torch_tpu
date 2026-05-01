@@ -16,10 +16,12 @@
 
 #include "torch_tpu/eager/split_utils.h"
 
+#include <memory>
 #include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -74,34 +76,35 @@ TEST(SplitUtilsTest, ApplySplitPoints) {
   DeviceBufferRef ref_d = refs_or.value()[0];
 
   // Get the traversal of the graph.
-  absl::StatusOr<Traversal> traversal_or;
+  absl::StatusOr<absl_nonnull std::unique_ptr<Traversal>> traversal_or;
   traversal_or = Traversal::Create({ref_c, ref_d});
   ASSERT_TRUE(traversal_or.ok());
-  Traversal& traversal = traversal_or.value();
-  traversal.SortByCreationOrder();
+  auto& traversal = traversal_or.value();
+  traversal->SortByCreationOrder();
 
   // Set nodes b and d as split points.
   absl::flat_hash_set<const DeviceBufferList*> split_points = {
       ref_b.device_buffer_list().get(), ref_d.device_buffer_list().get()};
 
-  absl::StatusOr<std::vector<Traversal>> traversals_or;
-  traversals_or = ApplySplitPoints(traversal, split_points);
+  absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
+      traversals_or;
+  traversals_or = ApplySplitPoints(*traversal, split_points);
   ASSERT_TRUE(traversals_or.ok());
-  std::vector<Traversal>& traversals = traversals_or.value();
+  auto& traversals = traversals_or.value();
 
   // We should get two traversals; one for {a, b} and one for {d}.
   // Node c is not included since it is not a part of the graph for any split
   // point.
   ASSERT_THAT(traversals, testing::SizeIs(2));
-  EXPECT_THAT(traversals[0].execution_order(), testing::SizeIs(2));
-  ASSERT_THAT(traversals[0].outputs(), testing::SizeIs(1));
-  EXPECT_EQ(traversals[0].outputs()[0], ref_b);
+  EXPECT_THAT(traversals[0]->execution_order(), testing::SizeIs(2));
+  ASSERT_THAT(traversals[0]->outputs(), testing::SizeIs(1));
+  EXPECT_EQ(traversals[0]->outputs()[0], ref_b);
 
-  ASSERT_THAT(traversals[1].arguments(), testing::SizeIs(1));
-  EXPECT_EQ(traversals[1].arguments()[0], ref_b);
-  EXPECT_THAT(traversals[1].execution_order(), testing::SizeIs(1));
-  ASSERT_THAT(traversals[1].outputs(), testing::SizeIs(1));
-  EXPECT_EQ(traversals[1].outputs()[0], ref_d);
+  ASSERT_THAT(traversals[1]->arguments(), testing::SizeIs(1));
+  EXPECT_EQ(traversals[1]->arguments()[0], ref_b);
+  EXPECT_THAT(traversals[1]->execution_order(), testing::SizeIs(1));
+  ASSERT_THAT(traversals[1]->outputs(), testing::SizeIs(1));
+  EXPECT_EQ(traversals[1]->outputs()[0], ref_d);
 }
 
 }  // namespace

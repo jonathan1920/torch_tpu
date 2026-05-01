@@ -15,10 +15,12 @@
  */
 #include "torch_tpu/_internal/sync/sync.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_log.h"
@@ -100,7 +102,7 @@ absl::StatusOr<bool> IsReady(const at::Tensor& tensor) {
 
 namespace {
 
-absl::StatusOr<Traversal> GetTraversal(
+absl::StatusOr<absl_nonnull std::unique_ptr<Traversal>> GetTraversal(
     absl::Span<const DeviceBufferRef> buffer_refs) {
   TT_RET_CHECK(!buffer_refs.empty(), error::kInvalidArgument)
       << "tensors must not be empty";
@@ -127,8 +129,7 @@ absl::StatusOr<Traversal> GetTraversal(
     }
   }
 
-  TT_ASSIGN_OR_RETURN(Traversal traversal,
-                      Traversal::Create(nodes_to_traverse));
+  TT_ASSIGN_OR_RETURN(auto traversal, Traversal::Create(nodes_to_traverse));
   ABSL_VLOG(2) << "[GetTraversal] Traversal created";
   return traversal;
 }
@@ -138,20 +139,20 @@ absl::StatusOr<Traversal> GetTraversal(
 absl::StatusOr<std::string> GetComputationGraphviz(
     absl::Span<const DeviceBufferRef> buffer_refs,
     const BufferRefToVarMap& buffer_ref_to_var) {
-  TT_ASSIGN_OR_RETURN(Traversal traversal, GetTraversal(buffer_refs));
+  TT_ASSIGN_OR_RETURN(auto traversal, GetTraversal(buffer_refs));
   TT_ASSIGN_OR_RETURN(std::string graphviz_string,
-                      GetGraphviz(traversal, buffer_ref_to_var));
+                      GetGraphviz(*traversal, buffer_ref_to_var));
   return graphviz_string;
 }
 
 absl::StatusOr<std::string> GetComputationMlir(
     absl::Span<const DeviceBufferRef> buffer_refs) {
-  TT_ASSIGN_OR_RETURN(Traversal traversal, GetTraversal(buffer_refs));
+  TT_ASSIGN_OR_RETURN(auto traversal, GetTraversal(buffer_refs));
   mlir::DialectRegistry registry;
   xla::RegisterMlirToHloDependentDialects(registry);
   mlir::MLIRContext context(registry);
   context.loadAllAvailableDialects();
-  TT_ASSIGN_OR_RETURN(auto module, traversal.BuildMlirModule(context));
+  TT_ASSIGN_OR_RETURN(auto module, traversal->BuildMlirModule(context));
   return mlir::debugString(module.get());
 }
 

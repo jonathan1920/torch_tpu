@@ -69,13 +69,13 @@ TEST(SafeMaterializationRuleTest, StaleNodesDropped) {
   auto traversal_or = Traversal::Create({ref_c});
   ASSERT_TRUE(traversal_or.ok());
   auto& traversal = traversal_or.value();
-  traversal.SortByCreationOrder();
+  traversal->SortByCreationOrder();
 
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_c.device_buffer_list().get()};
   auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(traversal);
+      safe_materialization_rule(*traversal);
 
   // a and b are not materialized; the execution plan is a single graph.
   EXPECT_THAT(materialization_nodes, testing::SizeIs(1));
@@ -110,13 +110,13 @@ TEST(SafeMaterializationRuleTest, LiveNodesMaterialized) {
   auto traversal_or = Traversal::Create({ref_c});
   ASSERT_TRUE(traversal_or.ok());
   auto& traversal = traversal_or.value();
-  traversal.SortByCreationOrder();
+  traversal->SortByCreationOrder();
 
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_c.device_buffer_list().get()};
   auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(traversal);
+      safe_materialization_rule(*traversal);
 
   // a and b are both materialized along with c; they have live tensors.
   EXPECT_THAT(materialization_nodes, testing::SizeIs(3));
@@ -153,13 +153,13 @@ TEST(SafeMaterializationRuleTest, ExternalFanoutMaterialized) {
   auto traversal_or = Traversal::Create({ref_b, ref_c});
   ASSERT_TRUE(traversal_or.ok());
   auto& traversal = traversal_or.value();
-  traversal.SortByCreationOrder();
+  traversal->SortByCreationOrder();
 
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_b.device_buffer_list().get(), ref_c.device_buffer_list().get()};
   auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(traversal);
+      safe_materialization_rule(*traversal);
 
   // a is materialized because it has two separate dependencies that are
   // materialized.
@@ -207,13 +207,13 @@ TEST(SafeMaterializationRuleTest, InternalFanoutNotMaterialized) {
   auto traversal_or = Traversal::Create({ref_d});
   ASSERT_TRUE(traversal_or.ok());
   auto& traversal = traversal_or.value();
-  traversal.SortByCreationOrder();
+  traversal->SortByCreationOrder();
 
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_d.device_buffer_list().get()};
   auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(traversal);
+      safe_materialization_rule(*traversal);
 
   // Only d is materialized; while a has fanout, it's fully internal to d's
   // subgraph.
@@ -259,13 +259,13 @@ TEST(SafeMaterializationRuleTest, DispatchOrderMaintained) {
   auto traversal_or = Traversal::Create({ref_d, ref_e});
   ASSERT_TRUE(traversal_or.ok());
   auto& traversal = traversal_or.value();
-  traversal.SortByCreationOrder();
+  traversal->SortByCreationOrder();
 
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_d.device_buffer_list().get(), ref_e.device_buffer_list().get()};
   auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(traversal);
+      safe_materialization_rule(*traversal);
 
   // b is materialized so that {a, b} is executed before {c, d}.
   // a and c are not materialized and are fused into {a, b} and {c, d}.
@@ -311,13 +311,13 @@ TEST(SafeMaterializationRuleTest, ForcedSplitHeuristicRespected) {
   auto traversal_or = Traversal::Create({ref_b, ref_d});
   ASSERT_TRUE(traversal_or.ok());
   auto& traversal = traversal_or.value();
-  traversal.SortByCreationOrder();
+  traversal->SortByCreationOrder();
 
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_b.device_buffer_list().get(), ref_d.device_buffer_list().get()};
   auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(traversal);
+      safe_materialization_rule(*traversal);
 
   // d is materialized because it is a required output.
   // Both b and c are materialized because of the forced split heuristic.
@@ -361,13 +361,13 @@ TEST(SafeMaterializationRuleTest, DynamicOpSplitHeuristicRespected) {
   auto traversal_or = Traversal::Create({ref_c});
   ASSERT_TRUE(traversal_or.ok());
   auto& traversal = traversal_or.value();
-  traversal.SortByCreationOrder();
+  traversal->SortByCreationOrder();
 
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_c.device_buffer_list().get()};
   auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(traversal);
+      safe_materialization_rule(*traversal);
 
   // c is materialized because it is a required output.
   // b is materialized because of the dynamic shape heuristic.
@@ -405,7 +405,7 @@ TEST(SafeMaterializationRuleTest, NonRequiredNodesNotMaterialized) {
   auto traversal_or = Traversal::Create({ref_c});
   ASSERT_TRUE(traversal_or.ok());
   auto& traversal = traversal_or.value();
-  traversal.SortByCreationOrder();
+  traversal->SortByCreationOrder();
 
   // But only require b to be materialized.
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
@@ -413,7 +413,7 @@ TEST(SafeMaterializationRuleTest, NonRequiredNodesNotMaterialized) {
 
   auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(traversal);
+      safe_materialization_rule(*traversal);
 
   // c is not materialized because it is after the last required output.
   // b is materialized because it is a required output.
@@ -450,7 +450,7 @@ TEST(SafeMaterializationRuleTest, EdgesFromNonRequiredNodesConsidered) {
   auto traversal_or = Traversal::Create({ref_c});
   ASSERT_TRUE(traversal_or.ok());
   auto& traversal = traversal_or.value();
-  traversal.SortByCreationOrder();
+  traversal->SortByCreationOrder();
 
   // But only require b to be materialized.
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
@@ -458,7 +458,7 @@ TEST(SafeMaterializationRuleTest, EdgesFromNonRequiredNodesConsidered) {
 
   auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(traversal);
+      safe_materialization_rule(*traversal);
 
   // c is not materialized because it is after the last required output.
   // b is materialized because it is a required output.

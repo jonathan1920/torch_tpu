@@ -356,7 +356,7 @@ absl::StatusOr<std::vector<SharedDeviceBufferList>> ExtractExecutionOrder(
   }
 
   TT_ASSIGN_OR_RETURN(auto traversal, Traversal::Create(traversal_outputs));
-  auto parts = traversal.IntoParts();
+  auto parts = traversal->IntoParts();
   return parts.execution_order;
 }
 
@@ -494,18 +494,18 @@ absl::Status MaterializationWorker::MaterializeQueue(
     // constructor doesn't perform a DFS.
     TT_ASSIGN_OR_RETURN(auto traversal, Traversal::CreateFromExecutionOrder(
                                             region, region_outputs));
-    ABSL_VLOG(1) << "==== TRAVERSAL ===\n" << traversal.DebugString();
+    ABSL_VLOG(1) << "==== TRAVERSAL ===\n" << traversal->DebugString();
 
     ABSL_VLOG(1) << "[MaterializationWorker] Launching compilation for "
                     "region: cache_key="
-                 << traversal.GetCacheKey(compilation_mode);
+                 << traversal->GetCacheKey(compilation_mode);
     TT_ASSIGN_OR_RETURN(auto compiled_kernel,
-                        traversal.Compile(compilation_mode));
+                        traversal->Compile(compilation_mode));
 
     // Mark all outputs of the split as scheduled/materialized.
     {
       absl::flat_hash_set<const DeviceBufferList*> marked_materialized;
-      for (const auto& output : traversal.outputs()) {
+      for (const auto& output : traversal->outputs()) {
         if (marked_materialized.insert(output.device_buffer_list().get())
                 .second) {
           ABSL_VLOG(1)
@@ -517,7 +517,7 @@ absl::Status MaterializationWorker::MaterializeQueue(
     }
 
     // Mark all deferred ops in the task as having been executed (or scheduled).
-    for (const auto& node : traversal.execution_order()) {
+    for (const auto& node : traversal->execution_order()) {
       auto* deferred_op = node->deferred_op();
       // We need to check for (deferred_op != nullptr) since nodes producing
       // region outputs have been materialized and no longer have a DeferredOp
@@ -527,8 +527,8 @@ absl::Status MaterializationWorker::MaterializeQueue(
       }
     }
 
-    std::string name = absl::StrCat(traversal.GetCacheKey(compilation_mode));
-    Traversal::Parts traversal_parts = traversal.IntoParts();
+    std::string name = absl::StrCat(traversal->GetCacheKey(compilation_mode));
+    Traversal::Parts traversal_parts = traversal->IntoParts();
     execution_tasks.push_back(ExecutionTask{
         .name = std::move(name),
         .arguments = std::move(traversal_parts.arguments),
