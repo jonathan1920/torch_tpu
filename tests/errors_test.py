@@ -2154,7 +2154,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     t_bool = torch.zeros((1, 1, 4, 4), device=et.device(), dtype=torch.bool)
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""max_pool2d_with_indices(): bool dtype is not supported""",
+        tpu="""max_pool2d(): bool dtype is not supported""",
         cpu=""""max_pool2d" not implemented for 'Bool'""",
     ):
       torch.nn.functional.max_pool2d(t_bool, kernel_size=3)

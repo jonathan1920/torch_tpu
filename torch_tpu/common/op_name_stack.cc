@@ -212,6 +212,7 @@ void OpNameStack::Push(OpName op_name) {
       OpName::kMaskedScatter_,
       OpName::kMaskedSelect,
       OpName::kMax,
+      OpName::kMaxPool2d,
       OpName::kMaxPool3dWithIndices,
       OpName::kMaxPool3dWithIndicesBackward,
       OpName::kMin,

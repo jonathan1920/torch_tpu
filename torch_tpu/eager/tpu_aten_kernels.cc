@@ -21,11 +21,16 @@
 #include "absl/base/no_destructor.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
+#include "ATen/core/ATen_fwd.h"
+#include "ATen/core/TensorBody.h"
 #include "ATen/core/dispatch/Dispatcher.h"
+#include "ATen/core/grad_mode.h"
 #include "ATen/core/stack.h"
 #include "ATen/native/CPUFallback.h"
 #include "ATen/native/DispatchStub.h"
 #include "ATen/native/transformers/attention.h"
+#include "ATen/ops/empty.h"
+#include "ATen/ops/max_pool2d_with_indices.h"
 #include "torch/library.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/a_min_max/a_min_max_aten_kernels.h"
@@ -750,10 +755,48 @@ TORCH_LIBRARY_IMPL(_, AutogradPrivateUse1, m) {
   m.fallback(torch::CppFunction::makeFallthrough());
 }
 
+// MaxPool is by default a CompositeImplicitAutograd op. The decomposition
+// replaces it with MaxPool2dWithIndices (even when return_indices=False). The
+// with-indices variant is helpful for training, because the indices are needed
+// to compute the gradient. Computing these indices during inference can harm
+// performance however, so we want to dispatch an non-index returning variant
+// in this case.
+//
+// To support this, we register a mirror of the aten op under the
+// torch_tpu namespace to preserve the composite classification of the
+// aten op itself. The torch_tpu op is dispatched via Autograd only when
+// appropriate.
+TORCH_LIBRARY_IMPL(aten, AutogradPrivateUse1, m) {
+  m.impl("max_pool2d",
+         [](const at::Tensor& self, at::IntArrayRef kernel_size,
+            at::IntArrayRef stride, at::IntArrayRef padding,
+            at::IntArrayRef dilation, bool ceil_mode) -> at::Tensor {
+           const auto needs_grads =
+               at::GradMode::is_enabled() && self.requires_grad();
+
+           if (needs_grads) {
+             return std::get<0>(at::max_pool2d_with_indices(
+                 self, kernel_size, stride, padding, dilation, ceil_mode));
+           }
+
+           return at::Dispatcher::singleton()
+               .findSchemaOrThrow("torch_tpu::max_pool2d", "")
+               .typed<at::Tensor(const at::Tensor&, at::IntArrayRef,
+                                 at::IntArrayRef, at::IntArrayRef,
+                                 at::IntArrayRef, bool)>()
+               .call(self, kernel_size, stride, padding, dilation, ceil_mode);
+         });
+}
+
 TORCH_LIBRARY(torch_tpu, m) {
+  m.def(
+      "max_pool2d(Tensor self, int[] kernel_size, int[] stride, int[] padding, "
+      "int[] dilation, "
+      "bool ceil_mode) "
+      "->Tensor");
   m.def("ragged_dot(Tensor lhs, Tensor rhs, Tensor group_sizes) -> Tensor");
   m.def(
-      "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor group_sizes, *, "
+      "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor grop_sizes, *, "
       "Tensor(a!) out) -> Tensor(a!)");
   m.def("optimization_barrier(Tensor[] inputs) -> Tensor[]");
   m.def(
@@ -785,7 +828,18 @@ TORCH_LIBRARY(torch_tpu, m) {
   m.def("experimental_recv(Tensor[] tensors, int src, int tag) -> Any");
 }
 
+TORCH_LIBRARY_IMPL(torch_tpu, Meta, m) {
+  m.impl("max_pool2d", [](const at::Tensor& self, at::IntArrayRef kernel_size,
+                          at::IntArrayRef stride, at::IntArrayRef padding,
+                          at::IntArrayRef dilation, bool ceil_mode) {
+    return at::empty(GetMaxPoolOutputSize(self.sizes(), kernel_size, stride,
+                                          padding, dilation, ceil_mode, 2),
+                     self.options());
+  });
+}
+
 TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
+  Impl(m, OpName::kMaxPool2d, AtenMaxPool2d);
   Impl(m, OpName::kRaggedDot, AtenRaggedDot);
   Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
   Impl(m, OpName::kTorchTpuOptimizationBarrier, TorchTpuOptimizationBarrier);

@@ -81,6 +81,38 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   add it here.
   """
 
+  def test_max_pool2d_no_indices(self):
+    """Tests nn.functional.max_pool2d without indices."""
+    device = api.tpu_device()
+    maxpool_input = torch.tensor(
+        [[
+            [
+                [-7.7435, -8.8254, 7.2097, 4.3371, 2.8040, -3.4491],
+                [-8.5819, 3.9336, -6.2229, 1.1184, -6.0094, 7.3457],
+                [-2.0333, 5.7398, 1.8601, 8.6590, 0.6541, 0.0145],
+            ],
+            [
+                [2.8523, -5.7473, 2.1480, -0.3480, 2.5668, -8.3042],
+                [-1.1508, -8.2351, 4.4935, -0.0096, -2.7059, -5.8874],
+                [5.4567, 0.2254, -3.6194, -6.1967, 8.8962, -1.7928],
+            ],
+        ]],
+        dtype=torch.float32,
+        device=device,
+    )
+
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.nn.functional.max_pool2d(
+            maxpool_input.to(device),
+            kernel_size=3,
+            stride=(2, 1),
+            padding=1,
+            dilation=(1, 2),
+            ceil_mode=True,
+            return_indices=False,
+        )
+    )
+
   def test_rsqrt_complex_grad(self):
     device = api.tpu_device()
     x = torch.randn(

@@ -182,6 +182,46 @@ absl::StatusOr<std::vector<mlir::MlirOp>> ComputeMaxPoolWithIndices(
   return std::vector<mlir::MlirOp>{final_output, final_indices};
 }
 
+absl::StatusOr<mlir::MlirOp> ComputeMaxPool(
+    const BatchInput& batch_input_info,
+    const ReduceWindowAttributes& reduce_window_attributes,
+    const int64_t spatial_dim_count) {
+  mlir::MlirOp batch_input = batch_input_info.batch_input;
+  const int64_t original_dim_size = batch_input_info.original_dim_size;
+
+  mlir::MlirBuilder& builder = batch_input.getBuilder();
+  const mlir::RankedTensorType input_shape = GetTensorTypeOrDie(batch_input);
+  const mlir::Type element_type = input_shape.getElementType();
+
+  mlir::Attribute val_attr =
+      GetMinFiniteValueAttr(element_type, builder.getOpBuilder());
+  mlir::DenseElementsAttr init_value_attr = mlir::DenseElementsAttr::get(
+      mlir::RankedTensorType::get({}, element_type), val_attr);
+  mlir::MlirOp init_value = mlir::stablehlo::Constant(builder, init_value_attr);
+
+  auto reduce_results = mlir::stablehlo::ReduceWindow(
+      builder,
+      /*inputs=*/{batch_input},
+      /*init_values=*/{init_value},
+      /*body=*/
+      [&](mlir::RegionBuilder& rb) {
+        mlir::stablehlo::buildReduceBody<mlir::stablehlo::MaxOp>(
+            element_type, rb.getRegion(), rb.getOpBuilder());
+      },
+      reduce_window_attributes.window_dimensions,
+      reduce_window_attributes.window_strides,
+      reduce_window_attributes.base_dilations,
+      reduce_window_attributes.window_dilations,
+      reduce_window_attributes.padding);
+
+  mlir::MlirOp batch_result = reduce_results[0];
+
+  mlir::MlirOp final_output =
+      RemoveTrivialBatch(batch_result, original_dim_size, spatial_dim_count);
+
+  return final_output;
+}
+
 // Calculates the size of a single output dimension (height, width, or depth)
 // for max_pool3d, including support for floor and ceil modes.
 //
@@ -217,30 +257,6 @@ int64_t GetSingleDim(const int64_t in, const int64_t i,
     return out - 1;
   }
   return out;
-}
-
-Dimensions GetMaxPoolOutputSize(at::IntArrayRef input_size,
-                                at::IntArrayRef kernel_size,
-                                at::IntArrayRef stride, at::IntArrayRef padding,
-                                at::IntArrayRef dilation, const bool ceil_mode,
-                                const int64_t spatial_dim_count) {
-  const int64_t dims_num = input_size.size();
-  // If (N, C, ...), spatial starts at 2. If (C, ...), starts at 1.
-  const int64_t spatial_start_index =
-      (dims_num == spatial_dim_count + 2) ? 2 : 1;
-
-  Dimensions output_size(dims_num);
-  std::copy(input_size.begin(), input_size.begin() + spatial_start_index,
-            output_size.begin());
-
-  // Calculates Spatial Dims (D, H, W).
-  for (int i = 0; i < spatial_dim_count; ++i) {
-    const int64_t in = input_size[spatial_start_index + i];
-    const int64_t out =
-        GetSingleDim(in, i, kernel_size, stride, padding, dilation, ceil_mode);
-    output_size[spatial_start_index + i] = std::max<int64_t>(out, 1);
-  }
-  return output_size;
 }
 
 // Builds the max_pool operations with indices and out tensors using
@@ -329,6 +345,58 @@ absl::StatusOr<std::vector<mlir::MlirOp>> BuildMaxPoolWithIndicesShlo(
   // using a single ReduceWindow.
   return ComputeMaxPoolWithIndices(batch_input_info, reduce_window_attributes,
                                    spatial_dim_count);
+}
+
+absl::StatusOr<mlir::MlirOp> BuildMaxPoolShlo(
+    mlir::MlirOp input, const int64_t spatial_dim_count, Dimensions kernel_size,
+    Dimensions stride, Dimensions padding, Dimensions dilation,
+    const bool ceil_mode) {
+  auto& builder = input.getBuilder();
+
+  TT_ASSIGN_OR_RETURN(auto batch_input_info,
+                      CreateBatchInput(input, spatial_dim_count));
+  const mlir::RankedTensorType input_shape =
+      GetTensorTypeOrDie(batch_input_info.batch_input);
+  auto total_num_dims = input_shape.getRank();
+  const int64_t expected_dims = spatial_dim_count + 2;
+  TT_RET_CHECK(total_num_dims == expected_dims, error::kInvalidArgument)
+      << "expected input shape dim size == " << expected_dims << " , got "
+      << total_num_dims;
+
+  TT_ASSIGN_OR_RETURN(Dimensions kernel_size_attr,
+                      ExpandAttribute(kernel_size, spatial_dim_count));
+  Dimensions stride_attr;
+  if (stride.empty()) {
+    stride_attr = kernel_size_attr;
+  } else {
+    TT_ASSIGN_OR_RETURN(stride_attr,
+                        ExpandAttribute(stride, spatial_dim_count));
+  }
+  Dimensions dilation_attr;
+  if (dilation.empty()) {
+    dilation_attr = Dimensions(spatial_dim_count, 1);
+  } else {
+    TT_ASSIGN_OR_RETURN(dilation_attr,
+                        ExpandAttribute(dilation, spatial_dim_count));
+  }
+  Dimensions padding_attr;
+  if (padding.empty()) {
+    padding_attr = Dimensions(spatial_dim_count, 0);
+  } else {
+    TT_ASSIGN_OR_RETURN(padding_attr,
+                        ExpandAttribute(padding, spatial_dim_count));
+  }
+
+  auto ceil_padding_pairs =
+      CeilModePadding(input_shape, kernel_size_attr, stride_attr, padding_attr,
+                      dilation_attr, ceil_mode);
+
+  ReduceWindowAttributes reduce_window_attributes = GetReduceWindowAttributes(
+      builder, kernel_size_attr, stride_attr, dilation_attr, ceil_padding_pairs,
+      spatial_dim_count, total_num_dims);
+
+  return ComputeMaxPool(batch_input_info, reduce_window_attributes,
+                        spatial_dim_count);
 }
 
 // Builds the backward pass for max_pool with indices using StableHLO's
@@ -500,6 +568,34 @@ absl::Status BuildMaxPoolWithIndicesOutNd(
   return AssignBufferToAtTensor(std::move(indices_buf), indices);
 }
 
+absl::Status BuildMaxPoolOutNd(const at::Tensor& self,
+                               at::IntArrayRef kernel_size,
+                               at::IntArrayRef stride, at::IntArrayRef padding,
+                               at::IntArrayRef dilation, bool ceil_mode,
+                               at::Tensor& out, int64_t spatial_dim_count,
+                               OpParamCacheKeys param_keys) {
+  TT_ASSIGN_OR_RETURN(auto element_type,
+                      ConvertTo<mlir::ElementType>(self.scalar_type()));
+
+  auto op_builder =
+      [kernel_size_vec = CopyIntVector(kernel_size),
+       stride_vec = CopyIntVector(stride), padding_vec = CopyIntVector(padding),
+       dilation_vec = CopyIntVector(dilation), ceil_mode, spatial_dim_count](
+          mlir::MlirOp input_op) -> absl::StatusOr<mlir::MlirOp> {
+    return BuildMaxPoolShlo(input_op, spatial_dim_count, kernel_size_vec,
+                            stride_vec, padding_vec, dilation_vec, ceil_mode);
+  };
+
+  TT_ASSIGN_OR_RETURN(
+      auto result_buf,
+      (DispatchOp<1>(std::move(op_builder), self,
+                     {.out_dtype = element_type,
+                      .out_dims = CopyIntVector(out.sizes()),
+                      .op_param_cache_keys = std::move(param_keys)})));
+
+  return AssignBufferToAtTensor(std::move(result_buf), out);
+}
+
 // Helper function to build and dispatch N-dimensional max_pool backward ops.
 absl::Status BuildMaxPoolWithIndicesBackwardGradInputNd(
     const at::Tensor& grad_output, const at::Tensor& self,
@@ -648,6 +744,52 @@ at::Tensor& AtenMaxPool3dWithIndicesBackwardGradInput(
                   ceil_mode, indices, grad_input, /*spatial_dim_count=*/3,
                   std::move(param_keys)));
               return grad_input;
+            });
+}
+
+Dimensions GetMaxPoolOutputSize(at::IntArrayRef input_size,
+                                at::IntArrayRef kernel_size,
+                                at::IntArrayRef stride, at::IntArrayRef padding,
+                                at::IntArrayRef dilation, const bool ceil_mode,
+                                const int64_t spatial_dim_count) {
+  const int64_t dims_num = input_size.size();
+  // If (N, C, ...), spatial starts at 2. If (C, ...), starts at 1.
+  const int64_t spatial_start_index =
+      (dims_num == spatial_dim_count + 2) ? 2 : 1;
+
+  Dimensions output_size(dims_num);
+  std::copy(input_size.begin(), input_size.begin() + spatial_start_index,
+            output_size.begin());
+
+  // Calculates Spatial Dims (D, H, W).
+  for (int i = 0; i < spatial_dim_count; ++i) {
+    const int64_t in = input_size[spatial_start_index + i];
+    const int64_t out =
+        GetSingleDim(in, i, kernel_size, stride, padding, dilation, ceil_mode);
+    output_size[spatial_start_index + i] = std::max<int64_t>(out, 1);
+  }
+  return output_size;
+}
+
+at::Tensor AtenMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,
+                         at::IntArrayRef stride, at::IntArrayRef padding,
+                         at::IntArrayRef dilation, bool ceil_mode) {
+  TT_KERNEL(OpName::kMaxPool2d, param_keys,
+            (self, kernel_size, stride, padding, dilation, ceil_mode), {
+              TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Bool,
+                             error::kInvalidArgument)
+                  << "bool dtype is not supported";
+
+              const int64_t spatial_dim_count = 2;
+              auto output_size = GetMaxPoolOutputSize(
+                  self.sizes(), kernel_size, stride, padding, dilation,
+                  ceil_mode, spatial_dim_count);
+              at::Tensor out = at::empty(output_size, self.options());
+
+              TT_THROW_IF_ERROR(BuildMaxPoolOutNd(
+                  self, kernel_size, stride, padding, dilation, ceil_mode, out,
+                  spatial_dim_count, std::move(param_keys)));
+              return out;
             });
 }
 

@@ -21,6 +21,7 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "torch_tpu/common/dimension_types.h"
 
 namespace torch_tpu {
 
@@ -28,6 +29,16 @@ std::tuple<at::Tensor&, at::Tensor&> AtenMaxPool2dWithIndicesOut(
     const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,
     at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode,
     at::Tensor& out, at::Tensor& indices);
+
+Dimensions GetMaxPoolOutputSize(at::IntArrayRef input_size,
+                                at::IntArrayRef kernel_size,
+                                at::IntArrayRef stride, at::IntArrayRef padding,
+                                at::IntArrayRef dilation, const bool ceil_mode,
+                                const int64_t spatial_dim_count);
+
+at::Tensor AtenMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,
+                         at::IntArrayRef stride, at::IntArrayRef padding,
+                         at::IntArrayRef dilation, bool ceil_mode);
 
 std::tuple<at::Tensor, at::Tensor> AtenMaxPool3dWithIndices(
     const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,

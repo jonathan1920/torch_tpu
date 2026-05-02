@@ -430,6 +430,7 @@ enum class OpName {
   kMaskedSelectSize,
   kMax,
   kMaxDimMax,
+  kMaxPool2d,
   kMaxPool2dWithIndicesBackwardGradInput,
   kMaxPool2dWithIndicesOut,
   kMaxPool3dWithIndices,
