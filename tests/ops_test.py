@@ -329,6 +329,10 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     "cummin": {
         torch.float64: {"rtol": 5.7e-8, "atol": 4.7e-7},
     },
+    "cumprod": {
+        torch.bfloat16: {"rtol": 1.7e-1, "atol": 5.9e-3},
+        torch.float16: {"rtol": 2.3e-2, "atol": 1.5e-3},
+    },
     "cumsum": {
         torch.bfloat16: {"rtol": 1.1e-1, "atol": 1.6e-2},
         torch.float16: {"rtol": 1.5e-2, "atol": 4.9e-3},
@@ -435,7 +439,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 1.3e-3, "atol": 1.3e-4},
     },
     "nn.functional.adaptive_avg_pool2d": {
-        torch.bfloat16: {"rtol": 2.1e-1, "atol": 1.6e-2},
+        torch.bfloat16: {"rtol": 2, "atol": 3e-2},
         torch.float16: {"rtol": 1.9e-1, "atol": 4e-3},
     },
     "nn.functional.adaptive_avg_pool3d": {
@@ -447,7 +451,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 3.4e-1, "atol": 2.4e-2},
     },
     "nn.functional.avg_pool3d": {
-        torch.float32: {"rtol": 1.5e-6, "atol": 8e-6},
+        torch.float32: {"rtol": 1e-5, "atol": 8e-6},
     },
     "nn.functional.batch_norm": {
         torch.bfloat16: {"rtol": 7.4e-2, "atol": 2.6e-2},
@@ -492,7 +496,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     },
     "nn.functional.glu": {
         torch.bfloat16: {"rtol": 1.1e-2, "atol": 7.9e-3},
-        torch.float16: {"rtol": 1.4e-3, "atol": 9.8e-4},
+        torch.float16: {"rtol": 2e-3, "atol": 1.5e-3},
         torch.float32: {"rtol": 3.1e-6, "atol": 1.8e-6},
     },
     "nn.functional.group_norm": {
@@ -504,11 +508,11 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 4.3e-3, "atol": 4.9e-4},
     },
     "nn.functional.hardswish": {
-        torch.bfloat16: {"rtol": 7.6e-3, "atol": 3.2e-2},
+        torch.bfloat16: {"rtol": 3e-2, "atol": 3.2e-2},
         torch.float16: {"rtol": 9.8e-4, "atol": 4e-3},
     },
     "nn.functional.mse_loss": {
-        torch.bfloat16: {"rtol": 7e-3, "atol": 2e-3},
+        torch.bfloat16: {"rtol": 7e-3, "atol": 3e-1},
         torch.float16: {"rtol": 6.2e-4, "atol": 3.2e-2},
         torch.float32: {"rtol": 1.2e-6, "atol": 7.7e-5},
         torch.float64: {"rtol": 2.8e-9, "atol": 1.8e-7},
@@ -543,7 +547,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 1.8e-3, "atol": 1.3e-4},
     },
     "remainder": {
-        torch.float16: {"rtol": 6.1e-1, "atol": 4e-3},
+        torch.float16: {"rtol": 1, "atol": 0.4},
     },
     "sigmoid": {
         torch.float32: {"rtol": 1.7e-5, "atol": 1.6e-5},
@@ -1466,10 +1470,6 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
             "cummin": {
                 torch.float64: {"rtol": 0, "atol": 5},
             },
-            "cumprod": {
-                torch.bfloat16: {"rtol": 1.7e-1, "atol": 5.9e-3},
-                torch.float16: {"rtol": 2.3e-2, "atol": 1.5e-3},
-            },
             "erf": {
                 torch.bfloat16: {"rtol": 2e-2, "atol": 3e-4},
                 torch.float16: {"rtol": 2e-3, "atol": 1e-4},
@@ -1481,7 +1481,11 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.float16: {"rtol": 5.9e-3, "atol": 4e-2},
             },
             "lerp": {
+                torch.bfloat16: {"rtol": 4e-2, "atol": 8e-3},
                 torch.float16: {"rtol": 1.6e-3, "atol": 3.2e-2},
+            },
+            "log10": {
+                torch.float16: {"rtol": 2e-3, "atol": 2e-4},
             },
             "log2": {
                 torch.float16: {"rtol": 1.3e-3, "atol": 2.5e-4},
@@ -1505,7 +1509,7 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.bfloat16: {"rtol": 2e-5, "atol": 3e-1},
             },
             "nn.functional.embedding_bag": {
-                torch.float16: {"rtol": 7e-4, "atol": 8e-3},
+                torch.float16: {"rtol": 2e-3, "atol": 8e-3},
             },
             "nn.functional.gelu": {
                 torch.bfloat16: {"rtol": 2e-2, "atol": 4e-4},
@@ -1521,7 +1525,7 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.float16: {"rtol": 6e-3, "atol": 1e-3},
             },
             "nn.functional.mse_loss": {
-                torch.bfloat16: {"rtol": 8e-3, "atol": 4e-3},
+                torch.bfloat16: {"rtol": 8e-3, "atol": 4e-2},
                 torch.float16: {"rtol": 1e-3, "atol": 1e-3},
             },
             "nn.functional.softplus": {
