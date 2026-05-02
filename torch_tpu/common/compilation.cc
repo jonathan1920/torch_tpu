@@ -54,13 +54,13 @@
 #include "xla/xla.pb.h"
 
 namespace torch_tpu {
+namespace {
 
 // Names of special XLA compiler options.
 constexpr std::string_view kOptimizationLevelOption = "xla_optimization_level";
 constexpr std::string_view kMemoryFittingLevelOption =
     "xla_memory_fitting_level";
 
-namespace {
 // Represents the state of the "allow excess precision" compiler option.
 enum class ExcessPrecisionState {
   // Use XLA_FLAGS or fall back to the default.
@@ -80,8 +80,9 @@ absl_nonnull std::unique_ptr<mlir::MLIRContext> MakeMlirContext() {
   return context;
 }
 
-// Returns the cached default XLA executable build options. This function is
-// memoized, so the environment variable of XLA_FLAGS is only read once.
+// Returns the cached default `xla::ExecutableBuildOptions` instance. This
+// function is memoized, so the XLA_FLAGS environment variable is parsed exactly
+// once.
 const xla::ExecutableBuildOptions& GetDefaultExecutableBuildOptions() {
   static const absl::NoDestructor<xla::ExecutableBuildOptions>
       default_executable_build_options([] {
@@ -92,6 +93,7 @@ const xla::ExecutableBuildOptions& GetDefaultExecutableBuildOptions() {
       }());
   return *default_executable_build_options;
 }
+
 }  // namespace
 
 ContextedModule::ContextedModule(std::unique_ptr<mlir::MLIRContext> context,
@@ -212,7 +214,6 @@ bool GetAllowExcessPrecision() {
     case ExcessPrecisionState::kDisallow:
       return false;
     case ExcessPrecisionState::kUnset:
-    default:
       // Fall back to XLA_FLAGS or default to true.
       // Use static to memoize the value to avoid reading the debug options
       // multiple times.
@@ -269,6 +270,18 @@ static const CompilerOptionOverrides& GetCompilerOptionOverridesFromEnvVar() {
     return overrides;
   }());
   return *overrides;
+}
+
+// Updates the `executable_build_options.debug_options` field of the given
+// `options` with the settings derived from the XLA_FLAGS environment variable.
+static void UpdateFromXlaFlags(xla::CompileOptions& options) {
+  // Use the cached `ExecutableBuildOptions` to avoid parsing the XLA_FLAGS
+  // environment variable multiple times when calling `mutable_debug_options`.
+  options.executable_build_options = GetDefaultExecutableBuildOptions();
+
+  xla::DebugOptions* debug_options =
+      options.executable_build_options.mutable_debug_options();
+  debug_options->set_xla_allow_excess_precision(GetAllowExcessPrecision());
 }
 
 static absl::Status SetDefaultDeviceAssignment(
@@ -423,24 +436,21 @@ absl::Status ApplyCompilerOptionOverrides(
 absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(CompilationMode mode) {
   auto compile_options = std::make_unique<xla::CompileOptions>();
 
-  // Use the cached ExecutableBuildOptions to avoid parsing XLA_FLAGS from
-  // environment variables multiple times when calling mutable_debug_options().
-  compile_options->executable_build_options =
-      GetDefaultExecutableBuildOptions();
+  // Set options derived from XLA_FLAGS environment variable in the
+  // `executable_build_options.debug_options` field.
+  UpdateFromXlaFlags(*compile_options);
 
-  xla::DebugOptions* debug_options =
-      compile_options->executable_build_options.mutable_debug_options();
-
-  debug_options->set_xla_allow_excess_precision(GetAllowExcessPrecision());
-
+  // Set device-related options, primarily global device count, in the
+  // `executable_build_options` field.
   TT_RETURN_IF_ERROR(
       SetDefaultDeviceAssignment(compile_options->executable_build_options));
 
+  // Finally, override the default flags if needed. The overrides are eventually
+  // reflected in the `env_option_overrides` field.
   TT_ASSIGN_OR_RETURN(const bool is_tpu, SetTpuOptions(*compile_options));
-
-  // Finally, override the default flags if needed.
   TT_RETURN_IF_ERROR(ApplyCompilerOptionOverrides(
       MakeCompilerOptionOverrides(is_tpu, mode), *compile_options));
+
   return compile_options;
 }
 
