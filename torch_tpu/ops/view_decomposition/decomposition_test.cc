@@ -40,11 +40,7 @@ absl::Status ValidateViewSequence(
     const StridedLayout& view_layout) {
   auto layout = MakeContiguousBaseLayout(contiguous_base_shape);
   for (const auto& primitive : view_sequence) {
-    TT_RETURN_IF_ERROR(UpdateLayout(layout, primitive)).SetPrepend()
-        << "Validation failed:\n"
-        << "contiguous_base_shape: " << ToString(contiguous_base_shape)
-        << "\nview_sequence: " << ToString(view_sequence)
-        << "\nvalidation error: ";
+    UpdateLayout(layout, primitive);
   }
 
   TT_RET_CHECK(layout == view_layout, error::kInvalidArgument)

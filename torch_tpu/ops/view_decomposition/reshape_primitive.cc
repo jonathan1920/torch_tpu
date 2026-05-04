@@ -153,8 +153,7 @@ std::ostream& operator<<(std::ostream& os, const ReshapePrimitive& reshape) {
   return os;
 }
 
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const ReshapePrimitive& reshape) {
+bool UpdateLayout(StridedLayout& layout, const ReshapePrimitive& reshape) {
   // Check for a no-op reshape
   if (IsNoOpReshape(reshape, layout)) {
     return false;

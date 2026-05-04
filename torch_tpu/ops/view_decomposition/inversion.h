@@ -135,8 +135,7 @@ std::ostream& operator<<(std::ostream& os,
 // Updates the layout to reflect the effect of applying the given inverse view
 // primitive.
 // Returns true if the layout was modified.
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const InverseViewPrimitive& primitive);
+bool UpdateLayout(StridedLayout& layout, const InverseViewPrimitive& primitive);
 
 // A inverse view sequence is a (possibly empty) sequence of inverse view
 // primitives.

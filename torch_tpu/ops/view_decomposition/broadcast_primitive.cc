@@ -107,8 +107,7 @@ std::ostream& operator<<(std::ostream& os,
   return os;
 }
 
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const BroadcastPrimitive& broadcast) {
+bool UpdateLayout(StridedLayout& layout, const BroadcastPrimitive& broadcast) {
   CheckBroadcast(broadcast, layout);
 
   // Storage offset is unchanged.

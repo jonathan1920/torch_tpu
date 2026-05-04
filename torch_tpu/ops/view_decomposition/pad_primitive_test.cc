@@ -17,7 +17,6 @@
 #include "torch_tpu/ops/view_decomposition/pad_primitive.h"
 
 #include "gtest/gtest.h"
-#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 
@@ -27,9 +26,7 @@ namespace {
 TEST(UpdateLayoutPad, ScalarNoOp) {
   StridedLayout layout = MakeContiguousBaseLayout({});
   PadPrimitive pad = {.pad_dims = {}};
-  auto modified = UpdateLayout(layout, pad);
-  EXPECT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_FALSE(modified.value());
+  EXPECT_FALSE(UpdateLayout(layout, pad));
 }
 
 TEST(UpdateLayoutPad, TensorNoOp) {
@@ -44,9 +41,7 @@ TEST(UpdateLayoutPad, TensorNoOp) {
           {.low_padding = 0, .high_padding = 0, .interior_padding = 0},
           {.low_padding = 0, .high_padding = 0, .interior_padding = 0},
           {.low_padding = 0, .high_padding = 0, .interior_padding = 0}}};
-  auto modified = UpdateLayout(layout, pad);
-  EXPECT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_FALSE(modified.value());
+  EXPECT_FALSE(UpdateLayout(layout, pad));
 }
 
 TEST(UpdateLayoutPad, TensorToTensor) {
@@ -61,9 +56,7 @@ TEST(UpdateLayoutPad, TensorToTensor) {
           {.low_padding = 1, .high_padding = 1, .interior_padding = 1},
           {.low_padding = 1, .high_padding = 1, .interior_padding = 1},
           {.low_padding = 1, .high_padding = 1, .interior_padding = 1}}};
-  auto modified = UpdateLayout(layout, pad);
-  EXPECT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, pad));
   StridedLayout expected = {
       .strided_dims = {{.size = 13, .stride = 45},
                        {.size = 9, .stride = 5},

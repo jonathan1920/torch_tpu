@@ -344,8 +344,7 @@ std::ostream& operator<<(std::ostream& os, const ViewAsComplex& bitcast) {
 // Updates the layout to reflect the effect of applying the given real-to-real
 // bitcast.
 // Returns true if the layout was modified, or false if the bitcast is a no-op.
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const RealToRealBitcast& bitcast) {
+bool UpdateLayout(StridedLayout& layout, const RealToRealBitcast& bitcast) {
   CheckBitcastTypesAreNotComplex(bitcast);
 
   if (bitcast.from_type == bitcast.to_type) {
@@ -390,8 +389,7 @@ absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
 // Updates the layout to reflect the effect of applying the given
 // complex-to-real bitcast.
 // Returns true if the layout was modified, or false if the bitcast is a no-op.
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const ComplexToRealBitcast& bitcast) {
+bool UpdateLayout(StridedLayout& layout, const ComplexToRealBitcast& bitcast) {
   // Double offset and all strides
   layout.storage_offset *= 2;
   for (auto& dim : layout.strided_dims) {
@@ -419,8 +417,7 @@ absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
 // Updates the layout to reflect the effect of applying the given
 // view_as_complex bitcast operation.
 // Returns true if the layout was modified, or false if the bitcast is a no-op.
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const ViewAsComplex& bitcast) {
+bool UpdateLayout(StridedLayout& layout, const ViewAsComplex& bitcast) {
   ABSL_CHECK(  // CRASH_OK=Internal error on view decomposition.
       !layout.strided_dims.empty())
       << "the ViewAsComplex bitcast conversion input cannot be a scalar"

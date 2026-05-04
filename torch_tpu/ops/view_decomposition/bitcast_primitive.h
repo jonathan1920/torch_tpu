@@ -168,15 +168,14 @@ std::ostream& operator<<(std::ostream& os, const ViewAsComplex& bitcast);
 
 // Updates the layout to reflect the effect of applying the given bitcast
 // primitive.
-// Returns an error if the bitcast is not valid for the layout, which will be
+//
+// Crashes if the bitcast is not valid for the layout, which will be
 // due to a missing or incompatible last dimension.
+//
 // Returns true if the layout was modified, or false if the bitcast is a no-op.
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const RealToRealBitcast& bitcast);
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const ComplexToRealBitcast& bitcast);
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const ViewAsComplex& bitcast);
+bool UpdateLayout(StridedLayout& layout, const RealToRealBitcast& bitcast);
+bool UpdateLayout(StridedLayout& layout, const ComplexToRealBitcast& bitcast);
+bool UpdateLayout(StridedLayout& layout, const ViewAsComplex& bitcast);
 
 // An overload for the ViewPrimitiveShlo function that handles bitcast
 // primitives. This may involve calls to BitcastConvert, Complex, Real, Imag,

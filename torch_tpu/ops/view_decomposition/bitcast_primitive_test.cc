@@ -17,7 +17,6 @@
 #include "torch_tpu/ops/view_decomposition/bitcast_primitive.h"
 
 #include "gtest/gtest.h"
-#include "absl/status/status.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 
@@ -30,9 +29,7 @@ TEST(UpdateLayoutRealToReal, RealScalarNoOp) {
       .from_type = mlir::ElementType::F32,
       .to_type = mlir::ElementType::F32,
   };
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_FALSE(modified.value());
+  EXPECT_FALSE(UpdateLayout(layout, bitcast));
 }
 
 TEST(UpdateLayoutRealToReal, RealTensorNoOp) {
@@ -41,9 +38,7 @@ TEST(UpdateLayoutRealToReal, RealTensorNoOp) {
       .from_type = mlir::ElementType::F32,
       .to_type = mlir::ElementType::F32,
   };
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_FALSE(modified.value());
+  EXPECT_FALSE(UpdateLayout(layout, bitcast));
 }
 
 TEST(UpdateLayoutRealToReal, RealScalarSameSize) {
@@ -53,10 +48,8 @@ TEST(UpdateLayoutRealToReal, RealScalarSameSize) {
       .to_type = mlir::ElementType::I32,
   };
   StridedLayout expected = layout;
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
   // Layout is unmodified, but the bitcast is not a no-op.
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, bitcast));
   EXPECT_EQ(layout, expected);
 }
 
@@ -67,10 +60,8 @@ TEST(UpdateLayoutRealToReal, RealTensorSameSize) {
       .to_type = mlir::ElementType::I32,
   };
   StridedLayout expected = layout;
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
   // Layout is unmodified, but the bitcast is not a no-op.
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, bitcast));
   EXPECT_EQ(layout, expected);
 }
 
@@ -81,9 +72,7 @@ TEST(UpdateLayoutRealToReal, RealScalarToSmallerSize) {
       .from_type = mlir::ElementType::UI64,
       .to_type = mlir::ElementType::UI16,
   };
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, bitcast));
   StridedLayout expected = MakeContiguousBaseLayout({4});
   expected.storage_offset = 4;
   EXPECT_EQ(layout, expected);
@@ -95,9 +84,7 @@ TEST(UpdateLayoutRealToReal, RealTensorToSmallerSize) {
       .from_type = mlir::ElementType::UI64,
       .to_type = mlir::ElementType::UI16,
   };
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, bitcast));
   StridedLayout expected = MakeContiguousBaseLayout({2, 3, 4, 4});
   EXPECT_EQ(layout, expected);
 }
@@ -109,9 +96,7 @@ TEST(UpdateLayoutRealToReal, RealTensorToLargerSize) {
       .from_type = mlir::ElementType::UI16,
       .to_type = mlir::ElementType::UI64,
   };
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, bitcast));
   StridedLayout expected = MakeContiguousBaseLayout({2, 3});
   expected.storage_offset = 1;
   EXPECT_EQ(layout, expected);
@@ -123,9 +108,7 @@ TEST(UpdateLayoutComplexToReal, ScalarViewAsReal) {
       .complex_element_type = ComplexElementType::kComplexFloat,
       .bitcast_type = ComplexToRealBitcastType::kViewAsReal,
   };
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, bitcast));
   StridedLayout expected = MakeContiguousBaseLayout({2});
   EXPECT_EQ(layout, expected);
 }
@@ -136,9 +119,7 @@ TEST(UpdateLayoutComplexToReal, TensorViewAsReal) {
       .complex_element_type = ComplexElementType::kComplexFloat,
       .bitcast_type = ComplexToRealBitcastType::kViewAsReal,
   };
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, bitcast));
   StridedLayout expected = MakeContiguousBaseLayout({2, 3, 4, 2});
   EXPECT_EQ(layout, expected);
 }
@@ -149,9 +130,7 @@ TEST(UpdateLayoutComplexToReal, ScalarRealPart) {
       .complex_element_type = ComplexElementType::kComplexFloat,
       .bitcast_type = ComplexToRealBitcastType::kReal,
   };
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, bitcast));
   StridedLayout expected = MakeContiguousBaseLayout({});
   EXPECT_EQ(layout, expected);
 }
@@ -162,9 +141,7 @@ TEST(UpdateLayoutComplexToReal, TensorRealPart) {
       .complex_element_type = ComplexElementType::kComplexFloat,
       .bitcast_type = ComplexToRealBitcastType::kReal,
   };
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, bitcast));
   StridedLayout expected = MakeContiguousBaseLayout({2, 3, 4});
   expected.strided_dims[0].stride = 24;
   expected.strided_dims[1].stride = 8;
@@ -179,9 +156,7 @@ TEST(UpdateLayoutComplexToReal, ScalarImagPart) {
       .complex_element_type = ComplexElementType::kComplexFloat,
       .bitcast_type = ComplexToRealBitcastType::kImag,
   };
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, bitcast));
   StridedLayout expected = MakeContiguousBaseLayout({});
   expected.storage_offset = 1;
   EXPECT_EQ(layout, expected);
@@ -193,9 +168,7 @@ TEST(UpdateLayoutComplexToReal, TensorImagPart) {
       .complex_element_type = ComplexElementType::kComplexFloat,
       .bitcast_type = ComplexToRealBitcastType::kImag,
   };
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, bitcast));
   StridedLayout expected = MakeContiguousBaseLayout({2, 3, 4});
   expected.strided_dims[0].stride = 24;
   expected.strided_dims[1].stride = 8;
@@ -208,9 +181,7 @@ TEST(UpdateLayoutViewAsComplex, LastDimensionSize2) {
   StridedLayout layout = MakeContiguousBaseLayout({2, 3, 4, 2});
   auto bitcast =
       ViewAsComplex{.complex_element_type = ComplexElementType::kComplexFloat};
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, bitcast));
   StridedLayout expected = MakeContiguousBaseLayout({2, 3, 4, 1});
   EXPECT_EQ(layout, expected);
 }
@@ -219,9 +190,7 @@ TEST(UpdateLayoutViewAsComplex, LastDimensionEven) {
   StridedLayout layout = MakeContiguousBaseLayout({2, 3, 8});
   auto bitcast =
       ViewAsComplex{.complex_element_type = ComplexElementType::kComplexFloat};
-  auto modified = UpdateLayout(layout, bitcast);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, bitcast));
   StridedLayout expected = MakeContiguousBaseLayout({2, 3, 4});
   EXPECT_EQ(layout, expected);
 }

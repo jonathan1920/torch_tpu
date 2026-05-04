@@ -63,13 +63,14 @@ static_assert(sizeof(UnfoldPrimitive) == 32, "");
 std::ostream& operator<<(std::ostream& os, const UnfoldPrimitive& unfold);
 
 // Updates the layout to reflect the effect of applying the given unfold.
-// Returns an error if the input layout is not shaped like (..., 1, M) with
+//
+// Crashes if the input layout is not shaped like (..., 1, M) with
 // stride 1 in the last dimension, or if the unfold dimensions would access
 // out-of-bounds elements.
+//
 // Returns true if the layout was modified, or false if the unfold is a
 // no-op.
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const UnfoldPrimitive& unfold);
+bool UpdateLayout(StridedLayout& layout, const UnfoldPrimitive& unfold);
 
 // An overload for the ViewPrimitiveShlo function that handles unfold
 // primitives. This uses stablehlo::Slice and stablehlo::Concatenate.

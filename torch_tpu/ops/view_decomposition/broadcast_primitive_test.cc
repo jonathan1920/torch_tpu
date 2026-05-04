@@ -17,7 +17,6 @@
 #include "torch_tpu/ops/view_decomposition/broadcast_primitive.h"
 
 #include "gtest/gtest.h"
-#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 
@@ -27,9 +26,7 @@ namespace {
 TEST(UpdateLayoutBroadcast, ScalarNoOp) {
   StridedLayout layout = MakeContiguousBaseLayout({});
   BroadcastPrimitive broadcast = {.new_sizes = {}, .broadcast_dimensions = {}};
-  auto modified = UpdateLayout(layout, broadcast);
-  EXPECT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_FALSE(modified.value());
+  EXPECT_FALSE(UpdateLayout(layout, broadcast));
 }
 
 TEST(UpdateLayoutBroadcast, TensorNoOp) {
@@ -41,18 +38,14 @@ TEST(UpdateLayoutBroadcast, TensorNoOp) {
   };
   BroadcastPrimitive broadcast = {.new_sizes = {6, 4, 2},
                                   .broadcast_dimensions = {0, 1, 2}};
-  auto modified = UpdateLayout(layout, broadcast);
-  EXPECT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_FALSE(modified.value());
+  EXPECT_FALSE(UpdateLayout(layout, broadcast));
 }
 
 TEST(UpdateLayoutBroadcast, ScalarToTensor) {
   StridedLayout layout = MakeContiguousBaseLayout({});
   BroadcastPrimitive broadcast = {.new_sizes = {2, 3, 4},
                                   .broadcast_dimensions = {}};
-  auto modified = UpdateLayout(layout, broadcast);
-  EXPECT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, broadcast));
   StridedLayout expected = {
       .strided_dims = {{.size = 2, .stride = 0},
                        {.size = 3, .stride = 0},
@@ -71,9 +64,7 @@ TEST(UpdateLayoutBroadcast, TensorToTensor) {
   };
   BroadcastPrimitive broadcast = {.new_sizes = {6, 3, 4, 2},
                                   .broadcast_dimensions = {0, 3, 1}};
-  auto modified = UpdateLayout(layout, broadcast);
-  EXPECT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, broadcast));
   StridedLayout expected = {
       .strided_dims = {{.size = 6, .stride = 0},   // expanded
                        {.size = 3, .stride = 2},   // transposed

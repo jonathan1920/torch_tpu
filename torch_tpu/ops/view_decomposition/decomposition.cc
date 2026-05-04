@@ -405,7 +405,7 @@ mlir::ElementType MaybeAddComplexToRealBitcast(
         .complex_element_type = complex_element_type,
         .bitcast_type = ComplexToRealBitcastType::kViewAsReal,
     };
-    ABSL_CHECK_OK(UpdateLayout(head_layout, complex_to_real));  // CRASH_OK
+    UpdateLayout(head_layout, complex_to_real);
     result.push_back(std::move(complex_to_real));
     return real_element_type;
   }
@@ -416,7 +416,7 @@ mlir::ElementType MaybeAddComplexToRealBitcast(
         .complex_element_type = complex_element_type,
         .bitcast_type = ComplexToRealBitcastType::kReal,
     };
-    ABSL_CHECK_OK(UpdateLayout(head_layout, real_op));  // CRASH_OK
+    UpdateLayout(head_layout, real_op);
     result.push_back(std::move(real_op));
   } else {
     // Output view only includes the imaginary part of the base.
@@ -424,7 +424,7 @@ mlir::ElementType MaybeAddComplexToRealBitcast(
         .complex_element_type = complex_element_type,
         .bitcast_type = ComplexToRealBitcastType::kImag,
     };
-    ABSL_CHECK_OK(UpdateLayout(head_layout, imag_op));  // CRASH_OK
+    UpdateLayout(head_layout, imag_op);
     result.push_back(std::move(imag_op));
   }
   // The rest of the decomposition assumes that the head layout is contiguous,
@@ -471,7 +471,7 @@ void CreateTrailingDimension(ViewSequence& result, StridedLayout& head_layout,
     }
     auto flatten_to_1d = ReshapePrimitive{
         .base_sizes = std::move(base_sizes_flatten), .new_sizes = {head_numel}};
-    ABSL_CHECK_OK(UpdateLayout(head_layout, flatten_to_1d));  // CRASH_OK
+    UpdateLayout(head_layout, flatten_to_1d);
     result.push_back(std::move(flatten_to_1d));
 
     const int64_t truncated_numel =
@@ -479,7 +479,7 @@ void CreateTrailingDimension(ViewSequence& result, StridedLayout& head_layout,
     auto truncate_slice = SlicePrimitive{
         .slice_dims = {SliceDimension{
             .start_index = 0, .limit_index = truncated_numel, .stride = 1}}};
-    ABSL_CHECK_OK(UpdateLayout(head_layout, truncate_slice));  // CRASH_OK
+    UpdateLayout(head_layout, truncate_slice);
     result.push_back(std::move(truncate_slice));
     head_numel = truncated_numel;
   }
@@ -492,7 +492,7 @@ void CreateTrailingDimension(ViewSequence& result, StridedLayout& head_layout,
     // Reshape to 1D, so that the only dimension is the trailing dimension.
     auto reshape = ReshapePrimitive{.base_sizes = std::move(base_sizes_1d),
                                     .new_sizes = {head_numel}};
-    ABSL_CHECK_OK(UpdateLayout(head_layout, reshape));  // CRASH_OK
+    UpdateLayout(head_layout, reshape);
     result.push_back(std::move(reshape));
     return;
   }
@@ -505,7 +505,7 @@ void CreateTrailingDimension(ViewSequence& result, StridedLayout& head_layout,
   auto reshape = ReshapePrimitive{
       .base_sizes = std::move(base_sizes_2d),
       .new_sizes = {head_numel / trailing_size, trailing_size}};
-  ABSL_CHECK_OK(UpdateLayout(head_layout, reshape));  // CRASH_OK
+  UpdateLayout(head_layout, reshape);
   result.push_back(std::move(reshape));
 }
 
@@ -534,7 +534,7 @@ mlir::ElementType MaybeAddRealToRealBitcast(
     // Bitcast is either to a smaller size, which will add a dimension, or to
     // the same size, which doesn't affect the shape. This is infallible and
     // requires no reshaping.
-    ABSL_CHECK_OK(UpdateLayout(head_layout, real_to_real));  // CRASH_OK
+    UpdateLayout(head_layout, real_to_real);
     result.push_back(std::move(real_to_real));
     return real_tail_element_type;
   }
@@ -545,7 +545,7 @@ mlir::ElementType MaybeAddRealToRealBitcast(
   CreateTrailingDimension(result, head_layout, size_ratio);
 
   // The bitcast can now be added.
-  ABSL_CHECK_OK(UpdateLayout(head_layout, real_to_real));  // CRASH_OK
+  UpdateLayout(head_layout, real_to_real);
   result.push_back(std::move(real_to_real));
   return real_tail_element_type;
 }
@@ -573,7 +573,7 @@ void MaybeAddViewAsComplex(ViewSequence& result, StridedLayout& head_layout,
                                   ? ComplexElementType::kComplexFloat
                                   : ComplexElementType::kComplexDouble,
   };
-  ABSL_CHECK_OK(UpdateLayout(head_layout, view_as_complex));  // CRASH_OK
+  UpdateLayout(head_layout, view_as_complex);
   result.push_back(std::move(view_as_complex));
 }
 
@@ -628,7 +628,7 @@ absl::StatusOr<BuildHeadResult> BuildHead(
   // This might be a no-op if the head_layout is already 1-dimensional or we
   // did some flattening in the bitcast step.
   TT_ASSIGN_OR_RETURN(const auto second_step, BuildHeadFlatten(head_layout));
-  ABSL_CHECK_OK(UpdateLayout(head_layout, second_step));  // CRASH_OK
+  UpdateLayout(head_layout, second_step);
   head_sequence.push_back(std::move(second_step));
 
   // The view width sequence is the number of dense elements required to satisfy
@@ -690,14 +690,14 @@ absl::StatusOr<BuildHeadResult> BuildHead(
   // This will be minimized by ReducePad during BuildBodyStep, ideally
   // eliminating it entirely.
   auto third_step = BuildHeadPad(head_layout, required_storage_capacity);
-  ABSL_CHECK_OK(UpdateLayout(head_layout, third_step));  // CRASH_OK
+  UpdateLayout(head_layout, third_step);
   head_sequence.push_back(std::move(third_step));
 
   // The fourth step is to slice the head_layout at the low and/or high ends
   // to achieve the target view offset and width.
   auto fourth_step = BuildHeadSliceToViewWindow(
       head_layout, tail_layout.storage_offset, initial_view_width);
-  ABSL_CHECK_OK(UpdateLayout(head_layout, fourth_step));  // CRASH_OK
+  UpdateLayout(head_layout, fourth_step);
   head_sequence.push_back(std::move(fourth_step));
 
   return {{.head_sequence = std::move(head_sequence),
@@ -924,7 +924,7 @@ absl::Status BuildBodyStepNonOverlapping(StridedLayout& head_layout,
     // Finish the reshape with the remaining elements to ensure no numel change.
     reshape.new_sizes.push_back(remaining_numel);
   }
-  TT_RETURN_IF_ERROR(UpdateLayout(head_layout, reshape));
+  UpdateLayout(head_layout, reshape);
   ABSL_VLOG(3) << "[BuildBodyStepNonOverlapping] Appended " << reshape
                << ", new head_layout: " << head_layout;
   result.push_back(std::move(reshape));
@@ -964,7 +964,7 @@ absl::Status BuildBodyStepNonOverlapping(StridedLayout& head_layout,
       std::get<SlicePrimitive>(result[head_pad_index + 1]).slice_dims[0];
   ShiftInitialViewWindow(head_pad, head_slice, head_layout, slice);
 
-  TT_RETURN_IF_ERROR(UpdateLayout(head_layout, slice));
+  UpdateLayout(head_layout, slice);
   ABSL_VLOG(3) << "[BuildBodyStepNonOverlapping] Appended " << slice
                << ", new head_layout: " << head_layout;
   result.push_back(std::move(slice));
@@ -1024,7 +1024,7 @@ absl::Status BuildBodyStepOverlapping(StridedLayout& head_layout,
   }
   reshape.new_sizes.push_back(1);
   reshape.new_sizes.push_back(head_layout.strided_dims[start_dim].size);
-  TT_RETURN_IF_ERROR(UpdateLayout(head_layout, reshape));
+  UpdateLayout(head_layout, reshape);
   ABSL_VLOG(3) << "[BuildBodyStepOverlapping] Appended " << reshape
                << ", new head_layout: " << head_layout;
   result.push_back(std::move(reshape));
@@ -1047,7 +1047,7 @@ absl::Status BuildBodyStepOverlapping(StridedLayout& head_layout,
       std::get<SlicePrimitive>(result[head_pad_index + 1]).slice_dims[0];
   ShiftInitialViewWindow(head_pad, head_slice, head_layout, unfold);
 
-  TT_RETURN_IF_ERROR(UpdateLayout(head_layout, unfold));
+  UpdateLayout(head_layout, unfold);
   ABSL_VLOG(3) << "[BuildBodyStepOverlapping] Appended " << unfold
                << ", new head_layout: " << head_layout;
   result.push_back(std::move(unfold));
@@ -1140,7 +1140,7 @@ absl::Status BuildFinalDimension(StridedLayout& head_layout,
     }
     reshape.new_sizes.push_back(remaining_numel / last_stride);
     reshape.new_sizes.push_back(last_stride);
-    TT_RETURN_IF_ERROR(UpdateLayout(head_layout, reshape));
+    UpdateLayout(head_layout, reshape);
     ABSL_VLOG(3) << "[BuildFinalDimension] Appended " << reshape
                  << ", new head_layout: " << head_layout;
     result.push_back(std::move(reshape));
@@ -1169,7 +1169,7 @@ absl::Status BuildFinalDimension(StridedLayout& head_layout,
       std::get<SlicePrimitive>(result[head_pad_index + 1]).slice_dims[0];
   ShiftInitialViewWindow(head_pad, head_slice, head_layout, slice);
 
-  TT_RETURN_IF_ERROR(UpdateLayout(head_layout, slice));
+  UpdateLayout(head_layout, slice);
   ABSL_VLOG(3) << "[BuildFinalDimension] Appended " << slice
                << ", new head_layout: " << head_layout;
   result.push_back(std::move(slice));

@@ -17,7 +17,6 @@
 #include "torch_tpu/ops/view_decomposition/unfold_primitive.h"
 
 #include "gtest/gtest.h"
-#include "absl/status/status.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 
 namespace torch_tpu {
@@ -34,9 +33,7 @@ TEST(UpdateLayoutUnfold, TensorNoOp) {
                             .limit_index = 5,
                             .window_stride = 999,
                             .window_size = 5};
-  auto modified = UpdateLayout(layout, unfold);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_FALSE(modified.value());
+  EXPECT_FALSE(UpdateLayout(layout, unfold));
 }
 
 TEST(UpdateLayoutUnfold, TensorValidUnfold) {
@@ -48,9 +45,7 @@ TEST(UpdateLayoutUnfold, TensorValidUnfold) {
   };
   UnfoldPrimitive unfold = {
       .start_index = 1, .limit_index = 6, .window_stride = 2, .window_size = 3};
-  auto modified = UpdateLayout(layout, unfold);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, unfold));
   StridedLayout expected = {
       .strided_dims = {{.size = 2, .stride = 7},
                        {.size = 2, .stride = 2},
@@ -69,9 +64,7 @@ TEST(UpdateLayoutUnfold, UnfoldWithStrideOnLastDimension) {
   };
   UnfoldPrimitive unfold = {
       .start_index = 1, .limit_index = 6, .window_stride = 2, .window_size = 3};
-  auto modified = UpdateLayout(layout, unfold);
-  ASSERT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, unfold));
   StridedLayout expected = {
       .strided_dims = {{.size = 2, .stride = 14},
                        {.size = 2, .stride = 4},

@@ -110,8 +110,7 @@ std::ostream& operator<<(std::ostream& os, const UnfoldPrimitive& unfold) {
   return os;
 }
 
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const UnfoldPrimitive& unfold) {
+bool UpdateLayout(StridedLayout& layout, const UnfoldPrimitive& unfold) {
   CheckUnfold(layout, unfold);
 
   // The last slice will be over the indexes

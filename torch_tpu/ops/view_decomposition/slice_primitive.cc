@@ -127,8 +127,7 @@ std::ostream& operator<<(std::ostream& os, const SlicePrimitive& slice) {
   return os;
 }
 
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const SlicePrimitive& slice) {
+bool UpdateLayout(StridedLayout& layout, const SlicePrimitive& slice) {
   CheckSlice(
       slice, GetSizes(layout),
       /* error_message_suffix= */ GetUpdateLayoutBugSuffix(slice, layout));

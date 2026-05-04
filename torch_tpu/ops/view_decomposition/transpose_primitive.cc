@@ -77,8 +77,7 @@ std::ostream& operator<<(std::ostream& os,
   return os;
 }
 
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const TransposePrimitive& transpose) {
+bool UpdateLayout(StridedLayout& layout, const TransposePrimitive& transpose) {
   CheckTranspose(transpose, layout);
 
   bool updated = false;

@@ -67,9 +67,7 @@ absl::StatusOr<bool> RemoveNoOps(
   size_t write_index = 0;
   bool any_no_ops = false;
   for (size_t read_index = 0; read_index < sequence.size(); ++read_index) {
-    TT_ASSIGN_OR_RETURN(const bool updated,
-                        UpdateLayout(layout, sequence[read_index]));
-    if (updated) {
+    if (UpdateLayout(layout, sequence[read_index])) {
       if (write_index != read_index) {
         // Don't overwrite an operation onto itself;
         // if there is a prefix of meaningful operations, leave them as-is.
@@ -297,8 +295,7 @@ std::ostream& operator<<(std::ostream& os, const ViewPrimitive& primitive) {
   ABSL_CHECK(false) << "Unknown view primitive";  // CRASH_OK
 }
 
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const ViewPrimitive& primitive) {
+bool UpdateLayout(StridedLayout& layout, const ViewPrimitive& primitive) {
   return std::visit(
       [&layout](const auto& primitive) {
         return UpdateLayout(layout, primitive);
@@ -323,13 +320,10 @@ absl::StatusOr<mlir::MlirOp> ViewPrimitiveShlo(mlir::MlirOp input,
       primitive);
 }
 
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  ViewSequenceSpan view_sequence) {
+bool UpdateLayout(StridedLayout& layout, ViewSequenceSpan view_sequence) {
   bool updated = false;
   for (const auto& primitive : view_sequence) {
-    TT_ASSIGN_OR_RETURN(bool updated_this_time,
-                        UpdateLayout(layout, primitive));
-    updated |= updated_this_time;
+    updated |= UpdateLayout(layout, primitive);
   }
   return updated;
 }

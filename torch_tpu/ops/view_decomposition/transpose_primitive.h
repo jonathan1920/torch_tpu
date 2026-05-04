@@ -56,12 +56,13 @@ static_assert(sizeof(TransposePrimitive) == 56, "");
 std::ostream& operator<<(std::ostream& os, const TransposePrimitive& transpose);
 
 // Updates the layout to reflect the effect of applying the given transpose.
-// Returns an error if number of axes does not match, or if the permutation
+//
+// Crashes if number of axes does not match, or if the permutation
 // is not one-to-one with permuted axes.
+//
 // Returns true if the layout was modified, or false if the transpose is a
 // no-op.
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const TransposePrimitive& transpose);
+bool UpdateLayout(StridedLayout& layout, const TransposePrimitive& transpose);
 
 // An overload for the ViewPrimitiveShlo function that handles transpose
 // primitives. This is a direct call into the stablehlo::Transpose function.

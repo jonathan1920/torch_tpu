@@ -73,8 +73,7 @@ std::ostream& operator<<(std::ostream& os, const ViewPrimitive& primitive);
 // Updates the layout to reflect the effect of applying the given view
 // primitive.
 // Returns true if the layout was modified.
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const ViewPrimitive& primitive);
+bool UpdateLayout(StridedLayout& layout, const ViewPrimitive& primitive);
 
 // Applies the given view primitive to the input, using the corresponding
 // StableHLO op (reshape, transpose, broadcast_in_dim, slice, pad, bitcast,
@@ -88,8 +87,7 @@ using ViewSequenceSpan = absl::Span<const ViewPrimitive>;
 // Updates the layout to reflect the effect of applying the given view
 // sequence.
 // Returns true if the layout was modified.
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  ViewSequenceSpan view_sequence);
+bool UpdateLayout(StridedLayout& layout, ViewSequenceSpan view_sequence);
 
 // Simplifies a sequence of view primitives by removing no-ops and merging
 // sequentially-applied primitives.

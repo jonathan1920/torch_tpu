@@ -80,8 +80,7 @@ std::ostream& operator<<(std::ostream& os, const PadPrimitive& pad) {
   return os;
 }
 
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const PadPrimitive& pad) {
+bool UpdateLayout(StridedLayout& layout, const PadPrimitive& pad) {
   CheckPad(pad, layout.strided_dims.size(),
            /* error_message_suffix= */ GetUpdateLayoutBugSuffix(pad, layout));
 

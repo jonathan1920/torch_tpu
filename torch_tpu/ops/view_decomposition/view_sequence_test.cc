@@ -23,7 +23,6 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/empty.h"
@@ -56,7 +55,7 @@ void SimplifyTest(absl::Span<const int64_t> contiguous_base_shape,
   // The simplified sequence should return the same final layout as the
   // original un-simplified sequence.
   auto expected_layout = MakeContiguousBaseLayout(contiguous_base_shape);
-  EXPECT_EQ(UpdateLayout(expected_layout, sequence).status(), absl::OkStatus());
+  UpdateLayout(expected_layout, sequence);
 
   // If the simplified sequence is empty, then the simplified sequence should
   // not update the layout; otherwise, there should be a meaningful update.
@@ -68,8 +67,7 @@ void SimplifyTest(absl::Span<const int64_t> contiguous_base_shape,
 
   auto actual_layout = MakeContiguousBaseLayout(contiguous_base_shape);
   auto updated_status = UpdateLayout(actual_layout, sequence);
-  EXPECT_EQ(updated_status.status(), absl::OkStatus());
-  EXPECT_EQ(updated_status.value(), expected_updated);
+  EXPECT_EQ(updated_status, expected_updated);
   EXPECT_EQ(actual_layout, expected_layout);
 
   // After simplification, a non-empty sequence should not be a net no-op,
@@ -172,7 +170,7 @@ TEST(Simplify, DoNotRemoveSameSizeBitcast) {
       MakeContiguousBaseLayout(contiguous_base_shape);
 
   auto expected_layout = MakeContiguousBaseLayout(contiguous_base_shape);
-  EXPECT_EQ(UpdateLayout(expected_layout, sequence).status(), absl::OkStatus());
+  UpdateLayout(expected_layout, sequence);
 
   // Same-size bitcasts to a new type are not no-ops. They should not be
   // removed by Simplify.
@@ -184,8 +182,7 @@ TEST(Simplify, DoNotRemoveSameSizeBitcast) {
   // because the values would be reinterpreted.
   auto actual_layout = MakeContiguousBaseLayout(contiguous_base_shape);
   auto updated_status = UpdateLayout(actual_layout, sequence);
-  EXPECT_EQ(updated_status.status(), absl::OkStatus());
-  EXPECT_EQ(updated_status.value(), expected_updated);
+  EXPECT_EQ(updated_status, expected_updated);
   EXPECT_EQ(actual_layout, unmodified_layout);
 }
 

@@ -19,7 +19,6 @@
 #include <utility>
 
 #include "gtest/gtest.h"
-#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
@@ -30,9 +29,7 @@ namespace {
 TEST(UpdateLayoutSlice, ScalarNoOp) {
   StridedLayout layout = MakeContiguousBaseLayout({});
   SlicePrimitive slice = {.slice_dims = {}};
-  auto modified = UpdateLayout(layout, slice);
-  EXPECT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_FALSE(modified.value());
+  EXPECT_FALSE(UpdateLayout(layout, slice));
 }
 
 TEST(UpdateLayoutSlice, TensorNoOp) {
@@ -46,9 +43,7 @@ TEST(UpdateLayoutSlice, TensorNoOp) {
       .slice_dims = {{.start_index = 0, .limit_index = 6, .stride = 1},
                      {.start_index = 0, .limit_index = 4, .stride = 1},
                      {.start_index = 0, .limit_index = 2, .stride = 1}}};
-  auto modified = UpdateLayout(layout, slice);
-  EXPECT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_FALSE(modified.value());
+  EXPECT_FALSE(UpdateLayout(layout, slice));
 }
 
 TEST(UpdateLayoutSlice, TensorToTensor) {
@@ -62,9 +57,7 @@ TEST(UpdateLayoutSlice, TensorToTensor) {
       .slice_dims = {{.start_index = 1, .limit_index = 6, .stride = 2},
                      {.start_index = 1, .limit_index = 3, .stride = 2},
                      {.start_index = 1, .limit_index = 2, .stride = 1}}};
-  auto modified = UpdateLayout(layout, slice);
-  EXPECT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, slice));
   StridedLayout expected = {
       .strided_dims = {{.size = 3, .stride = 18},
                        {.size = 1, .stride = 4},
@@ -85,15 +78,13 @@ TEST(MergeSlice, ValidMerge) {
                      {.start_index = 1, .limit_index = 2, .stride = 2},
                      {.start_index = 0, .limit_index = 2, .stride = 2}}};
   auto expected_layout = MakeContiguousBaseLayout(contiguous_base_shape);
-  EXPECT_EQ(UpdateLayout(expected_layout, current).status(), absl::OkStatus());
-  EXPECT_EQ(UpdateLayout(expected_layout, to_merge).status(), absl::OkStatus());
-
-  auto merged = Merge(std::move(current), std::move(to_merge));
-  EXPECT_EQ(merged.status(), absl::OkStatus());
+  UpdateLayout(expected_layout, current);
+  UpdateLayout(expected_layout, to_merge);
 
   auto actual_layout = MakeContiguousBaseLayout(contiguous_base_shape);
-  EXPECT_EQ(UpdateLayout(actual_layout, merged.value()).status(),
-            absl::OkStatus());
+  auto merged = Merge(std::move(current), std::move(to_merge));
+  ASSERT_TRUE(merged.ok());
+  UpdateLayout(actual_layout, merged.value());
 
   EXPECT_EQ(actual_layout, expected_layout);
 }

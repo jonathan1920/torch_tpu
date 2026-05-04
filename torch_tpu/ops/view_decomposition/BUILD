@@ -103,7 +103,6 @@ torch_tpu_cc_test(
         ":reshape_primitive",
         ":strided_layout",
         "//torch_tpu/common:dimension_types",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -132,8 +131,6 @@ torch_tpu_cc_test(
     deps = [
         ":strided_layout",
         ":transpose_primitive",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -164,7 +161,6 @@ torch_tpu_cc_test(
     deps = [
         ":broadcast_primitive",
         ":strided_layout",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -198,7 +194,6 @@ torch_tpu_cc_test(
         ":slice_primitive",
         ":strided_layout",
         "//torch_tpu/common:dimension_types",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -228,7 +223,6 @@ torch_tpu_cc_test(
     deps = [
         ":pad_primitive",
         ":strided_layout",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -275,7 +269,6 @@ torch_tpu_cc_test(
     deps = [
         ":bitcast_primitive",
         ":strided_layout",
-        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@stablehlo//:attr_type_builder_util",
     ],
@@ -306,7 +299,6 @@ torch_tpu_cc_test(
     deps = [
         ":strided_layout",
         ":unfold_primitive",
-        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -364,7 +356,6 @@ torch_tpu_cc_test(
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:shape",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@stablehlo//:attr_type_builder_util",

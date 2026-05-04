@@ -271,12 +271,12 @@ absl::Status ReplaceStridedSlice(const SlicePrimitive& strided_slice,
     }
   }
   // Apply and append the replacement primitives.
-  TT_RETURN_IF_ERROR(UpdateLayout(current_layout, pad));
+  UpdateLayout(current_layout, pad);
   reshape_before.base_sizes = GetCurrentDimensions(current_layout);
-  TT_RETURN_IF_ERROR(UpdateLayout(current_layout, reshape_before));
-  TT_RETURN_IF_ERROR(UpdateLayout(current_layout, dense_slice));
+  UpdateLayout(current_layout, reshape_before);
+  UpdateLayout(current_layout, dense_slice);
   reshape_after.base_sizes = GetCurrentDimensions(current_layout);
-  TT_RETURN_IF_ERROR(UpdateLayout(current_layout, reshape_after));
+  UpdateLayout(current_layout, reshape_after);
   result.push_back(std::move(pad));
   result.push_back(std::move(reshape_before));
   result.push_back(std::move(dense_slice));
@@ -313,7 +313,7 @@ absl::Status ReplaceStridedSlices(
       // Either this is not a slice, or it's a non-strided slice.
       // No need to replace, just update the layout and retain the original
       // primitive.
-      TT_RETURN_IF_ERROR(UpdateLayout(current_layout, view_sequence[i]));
+      UpdateLayout(current_layout, view_sequence[i]);
       if (has_strided_slice) {
         result.push_back(std::move(view_sequence[i]));
       }
@@ -411,10 +411,10 @@ std::ostream& operator<<(std::ostream& os, const InverseViewStage& stage) {
   return os << ", inverse: " << ToString(stage.inverse) << ")";
 }
 
-absl::StatusOr<bool> UpdateLayout(StridedLayout& layout,
-                                  const InverseViewPrimitive& primitive) {
+bool UpdateLayout(StridedLayout& layout,
+                  const InverseViewPrimitive& primitive) {
   return std::visit(
-      [&layout](const auto& primitive) -> absl::StatusOr<bool> {
+      [&layout](const auto& primitive) -> bool {
         if constexpr (std::is_same_v<decltype(primitive),
                                      const ConjPrimitive&>) {
           return true;
@@ -440,8 +440,7 @@ absl::StatusOr<InverseViewSequence> InvertViewSequence(
   size_t write_index = result_sequence.size() - 1;
   for (const auto& primitive : view_sequence) {
     result_sequence[write_index] = InvertViewPrimitive(primitive, layout);
-    TT_RETURN_IF_ERROR(UpdateLayout(layout, primitive)).SetPrepend()
-        << "view sequence is invalid: ";
+    UpdateLayout(layout, primitive);
     --write_index;
   }
   ABSL_VLOG(3) << "[InvertViewSequence] Inverted view sequence:"
@@ -541,7 +540,7 @@ ViewSequence GetBitcastSequenceToWritable(mlir::ElementType from_dtype,
     auto complex_to_real = ComplexToRealBitcast{
         .complex_element_type = complex_element_type,
         .bitcast_type = ComplexToRealBitcastType::kViewAsReal};
-    ABSL_CHECK_OK(UpdateLayout(layout, complex_to_real));  // CRASH_OK
+    UpdateLayout(layout, complex_to_real);
     result.push_back(std::move(complex_to_real));
     from_dtype = real_component_type;
   }
@@ -551,7 +550,7 @@ ViewSequence GetBitcastSequenceToWritable(mlir::ElementType from_dtype,
   if (from_dtype != to_dtype_real) {
     auto real_to_real =
         RealToRealBitcast{.from_type = from_dtype, .to_type = to_dtype_real};
-    ABSL_CHECK_OK(UpdateLayout(layout, real_to_real));  // CRASH_OK
+    UpdateLayout(layout, real_to_real);
     result.push_back(std::move(real_to_real));
     from_dtype = to_dtype_real;
   }
@@ -583,7 +582,7 @@ ViewSequence GetBitcastSequenceToWritable(mlir::ElementType from_dtype,
   ABSL_CHECK_EQ(layout.strided_dims.back().stride, 1);  // CRASH_OK
   auto view_as_complex =
       ViewAsComplex{.complex_element_type = ComplexElementType::kComplexFloat};
-  ABSL_CHECK_OK(UpdateLayout(layout, view_as_complex));  // CRASH_OK
+  UpdateLayout(layout, view_as_complex);
   result.push_back(std::move(view_as_complex));
 
   return result;
@@ -668,7 +667,7 @@ absl::StatusOr<InverseViewOperation> ComputeInverseViewOperation(
     if (i == 0 && std::holds_alternative<ReshapePrimitive>(base_to_view[i])) {
       // An initial reshape can be folded into the base transform, since it
       // retains contiguity. This also changes the expected final shape.
-      TT_RETURN_IF_ERROR(UpdateLayout(layout, base_to_view[i]));
+      UpdateLayout(layout, base_to_view[i]);
       final_shape.dimensions().clear();
       for (const auto& dim : layout.strided_dims) {
         final_shape.dimensions().push_back(dim.size);
@@ -685,7 +684,7 @@ absl::StatusOr<InverseViewOperation> ComputeInverseViewOperation(
       stages.back().inverse = std::move(inverse);
 
       // Update the layout to the post-slice layout and assign the slice.
-      TT_RETURN_IF_ERROR(UpdateLayout(layout, *slice));
+      UpdateLayout(layout, *slice);
       stages.back().slice = std::move(*slice);
 
       // Start a new empty stage.

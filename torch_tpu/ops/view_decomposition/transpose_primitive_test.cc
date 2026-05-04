@@ -17,8 +17,6 @@
 #include "torch_tpu/ops/view_decomposition/transpose_primitive.h"
 
 #include "gtest/gtest.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 
 namespace torch_tpu {
@@ -27,9 +25,7 @@ namespace {
 TEST(UpdateLayoutPermute, ScalarNoOp) {
   StridedLayout layout = MakeContiguousBaseLayout({});
   TransposePrimitive transpose = {.permutation = {}};
-  auto modified = UpdateLayout(layout, transpose);
-  EXPECT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_FALSE(modified.value());
+  EXPECT_FALSE(UpdateLayout(layout, transpose));
 }
 
 TEST(UpdateLayoutPermute, TensorNoOp) {
@@ -40,9 +36,7 @@ TEST(UpdateLayoutPermute, TensorNoOp) {
       .storage_offset = 0,
   };
   TransposePrimitive transpose = {.permutation = {0, 1, 2}};
-  auto modified = UpdateLayout(layout, transpose);
-  EXPECT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_FALSE(modified.value());
+  EXPECT_FALSE(UpdateLayout(layout, transpose));
 }
 
 TEST(UpdateLayoutPermute, TensorToTensor) {
@@ -53,9 +47,7 @@ TEST(UpdateLayoutPermute, TensorToTensor) {
       .storage_offset = 0,
   };
   TransposePrimitive transpose = {.permutation = {1, 2, 0}};
-  auto modified = UpdateLayout(layout, transpose);
-  EXPECT_EQ(modified.status(), absl::OkStatus());
-  EXPECT_TRUE(modified.value());
+  EXPECT_TRUE(UpdateLayout(layout, transpose));
   StridedLayout expected = {
       .strided_dims = {{.size = 4, .stride = 2},
                        {.size = 2, .stride = 1},
