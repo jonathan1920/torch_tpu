@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import pickle
+import random
 
 from absl.testing import absltest
 import torch
@@ -26,6 +27,12 @@ from torch_tpu._internal.utils import utils
 
 
 class BackendSerializationTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    # Set a fixed random seed to avoid flakes.
+    random.seed(42)
+    torch.manual_seed(42)
 
   def check_serialization(self, f, inputs):
     inputs_tpu = _backend.to_device(inputs, api.tpu_device())
