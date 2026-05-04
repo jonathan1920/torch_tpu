@@ -121,6 +121,12 @@ build --experimental_python_import_all_repositories=true
 
 # llvm has a bug where an empty glob isn't explicitly set.
 build --incompatible_disallow_empty_glob=false
+# Using the //... wildcard forces Bazel's loading phase to evaluate every single
+# BUILD file in the entire repository. The flag prefixed with `build` above only
+# allows Bazel to suppress the empty glob crashes from commands `bazel build` or
+# `bazel test`. Once we introduce `bazel query` commands, Bazel will execute the
+# glob check, hit the empty packages and instantly crash.
+query --incompatible_disallow_empty_glob=false
 
 # Disable magic generation of `__init__.py` files. This avoids surprising
 # import behaviors that only happen under Bazel.
