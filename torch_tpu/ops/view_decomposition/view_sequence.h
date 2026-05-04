@@ -92,8 +92,8 @@ bool UpdateLayout(StridedLayout& layout, ViewSequenceSpan view_sequence);
 // Simplifies a sequence of view primitives by removing no-ops and merging
 // sequentially-applied primitives.
 // The sequence is modified in-place.
-absl::Status Simplify(ViewSequence& view_sequence,
-                      absl::Span<const int64_t> contiguous_base_shape);
+void Simplify(ViewSequence& view_sequence,
+              absl::Span<const int64_t> contiguous_base_shape);
 
 // An MlirOpBuilder to apply the given view sequence to the input.
 absl::StatusOr<mlir::MlirOp> ViewSequenceShlo(mlir::MlirOp input,

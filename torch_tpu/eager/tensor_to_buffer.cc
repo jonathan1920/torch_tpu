@@ -406,7 +406,7 @@ absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(
       DecomposeIntoViewSequence(base_buffer_ref.dimensions(),
                                 base_buffer_ref.element_type(), view_layout,
                                 tensor_element_type, tensor.is_conj()));
-  TT_RETURN_IF_ERROR(Simplify(view_sequence, base_buffer_ref.dimensions()));
+  Simplify(view_sequence, base_buffer_ref.dimensions());
   ABSL_VLOG(1)
       << "[GetBufferFromAtTensor] Decomposed base buffer dtype and shape "
       << ToString(base_buffer_ref.element_type())

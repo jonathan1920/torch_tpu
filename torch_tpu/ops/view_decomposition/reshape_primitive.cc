@@ -233,8 +233,7 @@ bool UpdateLayout(StridedLayout& layout, const ReshapePrimitive& reshape) {
   return true;
 }
 
-absl::StatusOr<ReshapePrimitive> Merge(ReshapePrimitive first,
-                                       ReshapePrimitive second) {
+ReshapePrimitive Merge(ReshapePrimitive first, ReshapePrimitive second) {
   // The Reshape reshape themselves don't have stride metadata so we can't
   // validate the contiguity-like property here, but we can check that the
   // element counts match.

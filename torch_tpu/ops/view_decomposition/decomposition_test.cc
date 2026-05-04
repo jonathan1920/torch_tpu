@@ -17,6 +17,7 @@
 #include "torch_tpu/ops/view_decomposition/decomposition.h"
 
 #include <cstdint>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
@@ -59,24 +60,23 @@ void DecompositionTest(
     const mlir::ElementType contiguous_base_dtype = mlir::ElementType::F32,
     const mlir::ElementType view_dtype = mlir::ElementType::F32,
     bool is_conj = false) {
-  absl::StatusOr<ViewSequence> sequence =
+  absl::StatusOr<ViewSequence> sequence_status =
       DecomposeIntoViewSequence(contiguous_base_shape, contiguous_base_dtype,
                                 view_layout, view_dtype, is_conj);
 
+  ASSERT_TRUE(sequence_status.ok());
+  ViewSequence sequence = std::move(sequence_status).value();
+
   // Un-simplified sequence should be valid.
-  EXPECT_TRUE(sequence.ok());
-  EXPECT_EQ(ValidateViewSequence(sequence.value(), contiguous_base_shape,
-                                 view_layout),
-            absl::OkStatus());
+  EXPECT_TRUE(
+      ValidateViewSequence(sequence, contiguous_base_shape, view_layout).ok());
 
   // Sequence should be simplifiable.
-  EXPECT_EQ(Simplify(sequence.value(), contiguous_base_shape),
-            absl::OkStatus());
+  Simplify(sequence, contiguous_base_shape);
 
   // Simplified sequence should be also valid.
-  EXPECT_EQ(ValidateViewSequence(sequence.value(), contiguous_base_shape,
-                                 view_layout),
-            absl::OkStatus());
+  EXPECT_TRUE(
+      ValidateViewSequence(sequence, contiguous_base_shape, view_layout).ok());
 }
 
 TEST(DecomposeIntoViewSequence, ScalarNoOp) {

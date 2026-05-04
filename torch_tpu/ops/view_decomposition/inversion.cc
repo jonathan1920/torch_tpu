@@ -656,8 +656,7 @@ absl::StatusOr<InverseViewOperation> ComputeInverseViewOperation(
     // Don't use strided slices here so the inversion is more efficient.
     TT_RETURN_IF_ERROR(ReplaceStridedSlices(contiguous_base_shape_after_bitcast,
                                             base_to_view));
-    TT_RETURN_IF_ERROR(
-        Simplify(base_to_view, contiguous_base_shape_after_bitcast));
+    Simplify(base_to_view, contiguous_base_shape_after_bitcast);
   }
 
   // ...and partition it into stages.

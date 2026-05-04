@@ -85,8 +85,7 @@ std::ostream& operator<<(std::ostream& os, const SlicePrimitive& slice);
 bool UpdateLayout(StridedLayout& layout, const SlicePrimitive& slice);
 
 // Merges two sequential slices into a single slice.
-absl::StatusOr<SlicePrimitive> Merge(SlicePrimitive first,
-                                     SlicePrimitive second);
+[[nodiscard]] SlicePrimitive Merge(SlicePrimitive first, SlicePrimitive second);
 
 // An overload for the ViewPrimitiveShlo function that handles slice
 // primitives. This is a direct call into the stablehlo::Slice function; the

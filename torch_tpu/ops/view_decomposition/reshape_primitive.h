@@ -72,8 +72,8 @@ std::ostream& operator<<(std::ostream& os, const ReshapePrimitive& reshape);
 bool UpdateLayout(StridedLayout& layout, const ReshapePrimitive& reshape);
 
 // Merges two sequential reshapes into a single reshape.
-absl::StatusOr<ReshapePrimitive> Merge(ReshapePrimitive first,
-                                       ReshapePrimitive second);
+[[nodiscard]] ReshapePrimitive Merge(ReshapePrimitive first,
+                                     ReshapePrimitive second);
 
 // An overload for the ViewPrimitiveShlo function that handles reshape
 // primitives. This is a direct call into the stablehlo::Reshape function.

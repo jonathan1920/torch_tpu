@@ -451,7 +451,6 @@ torch_tpu_cc_test(
     srcs = ["inversion_test.cc"],
     deps = [
         ":bitcast_primitive",
-        ":broadcast_primitive",
         ":conj_primitive",
         ":inversion",
         ":pad_primitive",
@@ -459,10 +458,8 @@ torch_tpu_cc_test(
         ":slice_primitive",
         ":strided_layout",
         ":transpose_primitive",
-        ":unfold_primitive",
         ":view_sequence",
         "//torch_tpu/common:dimension_types",
-        "//torch_tpu/common:error_utils",
         "//torch_tpu/common:shape",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",

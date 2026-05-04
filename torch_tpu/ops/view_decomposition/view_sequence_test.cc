@@ -61,8 +61,7 @@ void SimplifyTest(absl::Span<const int64_t> contiguous_base_shape,
   // not update the layout; otherwise, there should be a meaningful update.
   const bool expected_updated = !expected.empty();
 
-  EXPECT_EQ(Simplify(sequence, contiguous_base_shape), absl::OkStatus());
-
+  Simplify(sequence, contiguous_base_shape);
   EXPECT_EQ(sequence, expected);
 
   auto actual_layout = MakeContiguousBaseLayout(contiguous_base_shape);
@@ -175,7 +174,8 @@ TEST(Simplify, DoNotRemoveSameSizeBitcast) {
   // Same-size bitcasts to a new type are not no-ops. They should not be
   // removed by Simplify.
   const bool expected_updated = true;
-  EXPECT_EQ(Simplify(sequence, contiguous_base_shape), absl::OkStatus());
+
+  Simplify(sequence, contiguous_base_shape);
   EXPECT_EQ(sequence, expected);
 
   // There is no layout change, even though the sequence is not a no-op,

@@ -159,8 +159,7 @@ bool UpdateLayout(StridedLayout& layout, const SlicePrimitive& slice) {
   return updated;
 }
 
-absl::StatusOr<SlicePrimitive> Merge(SlicePrimitive first,
-                                     const SlicePrimitive second) {
+SlicePrimitive Merge(SlicePrimitive first, const SlicePrimitive second) {
   CheckSliceMerge(first, second);
 
   for (int i = 0; i < second.slice_dims.size(); ++i) {

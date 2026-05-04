@@ -146,10 +146,9 @@ TEST(MergeSequentialReshape, ValidMerge) {
   UpdateLayout(expected_layout, current);
   UpdateLayout(expected_layout, to_merge);
 
-  auto actual_layout = MakeContiguousBaseLayout(contiguous_base_shape);
   auto merged = Merge(std::move(current), std::move(to_merge));
-  ASSERT_TRUE(merged.ok());
-  UpdateLayout(actual_layout, merged.value());
+  auto actual_layout = MakeContiguousBaseLayout(contiguous_base_shape);
+  UpdateLayout(actual_layout, merged);
 
   EXPECT_EQ(actual_layout, expected_layout);
 }

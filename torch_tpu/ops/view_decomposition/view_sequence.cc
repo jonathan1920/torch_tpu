@@ -58,8 +58,8 @@ namespace torch_tpu {
 
 namespace {
 
-absl::StatusOr<bool> RemoveNoOps(
-    ViewSequence& sequence, absl::Span<const int64_t> contiguous_base_shape) {
+bool RemoveNoOps(ViewSequence& sequence,
+                 absl::Span<const int64_t> contiguous_base_shape) {
   if (sequence.empty()) {
     return false;
   }
@@ -88,12 +88,11 @@ absl::StatusOr<bool> RemoveNoOps(
 // Returns true if the second primitive was merged into the first.
 // If the merge occurred, the second primitive is invalidated.
 template <typename T>
-absl::StatusOr<bool> MaybeMergeSequential(T& first, ViewPrimitive& second) {
+bool MaybeMergeSequential(T& first, ViewPrimitive& second) {
   if (std::holds_alternative<T>(second)) {
     ABSL_VLOG(3) << "[MergeAllSequential] Merging " << first << " and "
                  << second;
-    TT_ASSIGN_OR_RETURN(
-        first, Merge(std::move(first), std::move(std::get<T>(second))));
+    first = Merge(std::move(first), std::move(std::get<T>(second)));
     ABSL_VLOG(3) << "[MergeAllSequential] Merged into " << first;
     return true;
   }
@@ -106,43 +105,35 @@ absl::StatusOr<bool> MaybeMergeSequential(T& first, ViewPrimitive& second) {
 // can only do one concatenation per primitive).
 // Only reshapes and slices need to be merged.
 template <>
-absl::StatusOr<bool> MaybeMergeSequential(BroadcastPrimitive& first,
-                                          ViewPrimitive& second) {
+bool MaybeMergeSequential(BroadcastPrimitive& first, ViewPrimitive& second) {
   return false;
 }
 template <>
-absl::StatusOr<bool> MaybeMergeSequential(TransposePrimitive& first,
-                                          ViewPrimitive& second) {
+bool MaybeMergeSequential(TransposePrimitive& first, ViewPrimitive& second) {
   return false;
 }
 template <>
-absl::StatusOr<bool> MaybeMergeSequential(PadPrimitive& first,
-                                          ViewPrimitive& second) {
+bool MaybeMergeSequential(PadPrimitive& first, ViewPrimitive& second) {
   return false;
 }
 template <>
-absl::StatusOr<bool> MaybeMergeSequential(RealToRealBitcast& first,
-                                          ViewPrimitive& second) {
+bool MaybeMergeSequential(RealToRealBitcast& first, ViewPrimitive& second) {
   return false;
 }
 template <>
-absl::StatusOr<bool> MaybeMergeSequential(ComplexToRealBitcast& first,
-                                          ViewPrimitive& second) {
+bool MaybeMergeSequential(ComplexToRealBitcast& first, ViewPrimitive& second) {
   return false;
 }
 template <>
-absl::StatusOr<bool> MaybeMergeSequential(ViewAsComplex& first,
-                                          ViewPrimitive& second) {
+bool MaybeMergeSequential(ViewAsComplex& first, ViewPrimitive& second) {
   return false;
 }
 template <>
-absl::StatusOr<bool> MaybeMergeSequential(UnfoldPrimitive& first,
-                                          ViewPrimitive& second) {
+bool MaybeMergeSequential(UnfoldPrimitive& first, ViewPrimitive& second) {
   return false;
 }
 template <>
-absl::StatusOr<bool> MaybeMergeSequential(ConjPrimitive& first,
-                                          ViewPrimitive& second) {
+bool MaybeMergeSequential(ConjPrimitive& first, ViewPrimitive& second) {
   if (auto* second_conj = std::get_if<ConjPrimitive>(&second)) {
     // If they are exactly the same, they cancel out.
     // (active + active) -> inactive
@@ -157,14 +148,13 @@ absl::StatusOr<bool> MaybeMergeSequential(ConjPrimitive& first,
 }
 
 template <>
-absl::StatusOr<bool> MaybeMergeSequential(ViewPrimitive& first,
-                                          ViewPrimitive& second) {
+bool MaybeMergeSequential(ViewPrimitive& first, ViewPrimitive& second) {
   return std::visit(
       [&second](auto& first) { return MaybeMergeSequential(first, second); },
       first);
 }
 
-absl::StatusOr<bool> MergeAllSequential(ViewSequence& sequence) {
+bool MergeAllSequential(ViewSequence& sequence) {
   if (sequence.size() < 2) {
     return false;
   }
@@ -172,9 +162,8 @@ absl::StatusOr<bool> MergeAllSequential(ViewSequence& sequence) {
   size_t read_index = 0;  // Index of the last non-merged primitive so far.
   for (size_t to_merge_index = 1; to_merge_index < sequence.size();
        ++to_merge_index) {
-    TT_ASSIGN_OR_RETURN(
-        const bool merged,
-        MaybeMergeSequential(sequence[read_index], sequence[to_merge_index]));
+    const bool merged =
+        MaybeMergeSequential(sequence[read_index], sequence[to_merge_index]);
     if (merged) {
       any_merges = true;
       continue;
@@ -328,19 +317,17 @@ bool UpdateLayout(StridedLayout& layout, ViewSequenceSpan view_sequence) {
   return updated;
 }
 
-absl::Status Simplify(ViewSequence& sequence,
-                      absl::Span<const int64_t> contiguous_base_shape) {
+void Simplify(ViewSequence& sequence,
+              absl::Span<const int64_t> contiguous_base_shape) {
   ABSL_VLOG(3) << "[Simplify] Pre-simplified view sequence: "
                << ToString(sequence);
   bool any_changes = false;
   do {
-    TT_ASSIGN_OR_RETURN(const bool any_no_ops,
-                        RemoveNoOps(sequence, contiguous_base_shape));
-    TT_ASSIGN_OR_RETURN(const bool any_merges, MergeAllSequential(sequence));
+    const bool any_no_ops = RemoveNoOps(sequence, contiguous_base_shape);
+    const bool any_merges = MergeAllSequential(sequence);
     any_changes = any_no_ops || any_merges;
   } while (any_changes);
   ABSL_VLOG(3) << "[Simplify] Simplified view sequence: " << ToString(sequence);
-  return absl::OkStatus();
 }
 
 absl::StatusOr<mlir::MlirOp> ViewSequenceShlo(mlir::MlirOp input,
