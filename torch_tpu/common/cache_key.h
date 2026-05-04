@@ -68,6 +68,9 @@
 namespace torch_tpu {
 
 class PromotedScalar;
+class MaybePromotedScalar;
+
+enum class ScalarValue { kZero, kOne };
 
 namespace internal {
 
@@ -84,6 +87,10 @@ struct PromotedScalarState {
 void AppendPromotedScalarPointers(
     std::vector<const PromotedScalarState* absl_nonnull>& promoted_scalars,
     const PromotedScalar& arg);
+
+void AppendPromotedScalarPointers(
+    std::vector<const PromotedScalarState* absl_nonnull>& promoted_scalars,
+    const MaybePromotedScalar& arg);
 
 }  // namespace internal
 
@@ -107,7 +114,7 @@ class PromotedScalar {
   PromotedScalar& operator=(const PromotedScalar&) = delete;
 
   // Returns the scalar value.
-  const at::Scalar& scalar() const { return state_->scalar; }
+  [[nodiscard]] const at::Scalar& scalar() const { return state_->scalar; }
 
   // Returns the tensor value. Must be called at least once when the op
   // succeeds.
@@ -117,12 +124,78 @@ class PromotedScalar {
   // Formats the scalar for logging.
   [[nodiscard]] std::string ToString() const;
 
+  // Transforms this object to a MaybePromotedScalar object that can be
+  // conditionally promoted.
+  [[nodiscard]] MaybePromotedScalar AvoidPromoting(ScalarValue exclude) &&;
+  [[nodiscard]] MaybePromotedScalar AvoidPromoting(ScalarValue exclude1,
+                                                   ScalarValue exclude2) &&;
+
  private:
+  friend class MaybePromotedScalar;
   friend void internal::AppendPromotedScalarPointers(
       std::vector<const State* absl_nonnull>& promoted_scalars,
       const PromotedScalar& arg);
 
   absl_nonnull std::unique_ptr<State> state_;
+};
+
+// A scalar value that may or may not be promoted to a tensor, depending on
+// whether its value matches any of the specified excluded values.
+//
+// If the value matches an exclude, it is not promoted and its value is
+// included in the cache key. Otherwise, it is promoted to a tensor and
+// ignored in the cache key.
+class MaybePromotedScalar {
+ public:
+  // Constructs a MaybePromotedScalar from a PromotedScalar and a value to
+  // avoid promoting.
+  MaybePromotedScalar(PromotedScalar s, ScalarValue exclude);
+
+  // Constructs a MaybePromotedScalar from a PromotedScalar and two values to
+  // avoid promoting.
+  MaybePromotedScalar(PromotedScalar s, ScalarValue exclude1,
+                      ScalarValue exclude2);
+
+  // Returns true if the scalar value is zero.
+  [[nodiscard]] bool IsZero() const;
+
+  // Returns true if the scalar value is one.
+  [[nodiscard]] bool IsOne() const;
+
+  // Returns the tensor value. Must be called at least once when the op
+  // succeeds, unless the value matches an exclude.
+  absl::StatusOr<at::Tensor> GetTensor(
+      std::optional<at::ScalarType> scalar_type_opt = std::nullopt);
+
+  // Formats the scalar for logging.
+  [[nodiscard]] std::string ToString() const;
+
+  // Returns true if the scalar value matches any of the excluded values.
+  [[nodiscard]] bool ValueMatchesExclude() const {
+    return value_matches_exclude_;
+  }
+
+  // Returns the scalar value.
+  [[nodiscard]] const at::Scalar& scalar() const {
+    return promoted_scalar_.scalar();
+  }
+
+ private:
+  friend void internal::AppendPromotedScalarPointers(
+      std::vector<const internal::PromotedScalarState* absl_nonnull>&
+          promoted_scalars,
+      const MaybePromotedScalar& arg);
+
+  // Returns the underlying state.
+  [[nodiscard]] const std::unique_ptr<PromotedScalar::State>& state() const {
+    return promoted_scalar_.state_;
+  }
+
+  // Returns true if the scalar value matches any of the given values.
+  [[nodiscard]] bool MatchesAny(absl::Span<const ScalarValue> values) const;
+
+  PromotedScalar promoted_scalar_;
+  bool value_matches_exclude_ = false;
 };
 
 namespace internal {
@@ -243,6 +316,8 @@ template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
 
 [[nodiscard]] std::string FormatParamCacheKey(
     const std::optional<PromotedScalar>& value);
+
+[[nodiscard]] std::string FormatParamCacheKey(const MaybePromotedScalar& value);
 
 [[nodiscard]] inline std::string FormatParamCacheKey(
     const c10::optional<at::Generator>& value) {

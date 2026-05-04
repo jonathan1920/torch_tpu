@@ -33,6 +33,7 @@
 #include "absl/container/inlined_vector.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/log/absl_vlog_is_on.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -604,6 +605,12 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
     CheckScalarInput<kOpName, UsesScalarInput::kNo>();
     // The argument is a PromotedScalar, so we check it matches an at::Scalar
     // parameter in the kernel function signature.
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "at::Scalar")  // CRASH_OK
+        << message();
+  } else if constexpr (std::is_same_v<T, MaybePromotedScalar>) {
+    CheckScalarInput<kOpName, UsesScalarInput::kNo>();
+    // The argument is a MaybePromotedScalar, so we check it matches an
+    // at::Scalar parameter in the kernel function signature.
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "at::Scalar")  // CRASH_OK
         << message();
   } else if constexpr (std::is_same_v<T, std::optional<PromotedScalar>>) {

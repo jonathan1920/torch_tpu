@@ -17,9 +17,11 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/status/statusor.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/Dimname.h"
 #include "ATen/core/symbol.h"
@@ -37,6 +39,7 @@
 #include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -63,6 +66,77 @@ TEST(OpParamCacheKeys, SetParamScalar) {
   EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "123:Long")));
 }
 
+TEST(OpParamCacheKeys, SetParamMaybePromotedScalar_Promoted) {
+  auto dummy_promoter =
+      [](const at::Scalar&,
+         std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
+    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+  };
+  PromotedScalar ps(dummy_promoter, at::Scalar(5));
+  MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero, ScalarValue::kOne);
+
+  auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", mps);
+  ASSERT_TRUE(params_or.ok());
+  EXPECT_THAT(params_or.value(), IsEmpty());
+}
+
+TEST(OpParamCacheKeys, SetParamMaybePromotedScalarExcludedZero) {
+  auto dummy_promoter =
+      [](const at::Scalar&,
+         std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
+    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+  };
+  PromotedScalar ps(dummy_promoter, at::Scalar(0));
+  MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero, ScalarValue::kOne);
+
+  auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", mps);
+  ASSERT_TRUE(params_or.ok());
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "0")));
+}
+
+TEST(OpParamCacheKeys, SetParamMaybePromotedScalarExcludedOne) {
+  auto dummy_promoter =
+      [](const at::Scalar&,
+         std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
+    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+  };
+  PromotedScalar ps(dummy_promoter, at::Scalar(1));
+  MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero, ScalarValue::kOne);
+
+  auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", mps);
+  ASSERT_TRUE(params_or.ok());
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "1")));
+}
+
+TEST(MaybePromotedScalar, IsZeroAndIsOne) {
+  auto dummy_promoter =
+      [](const at::Scalar&,
+         std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
+    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+  };
+
+  {
+    PromotedScalar ps(dummy_promoter, at::Scalar(0));
+    MaybePromotedScalar mps(std::move(ps), ScalarValue::kOne);
+    EXPECT_TRUE(mps.IsZero());
+    EXPECT_FALSE(mps.IsOne());
+  }
+
+  {
+    PromotedScalar ps(dummy_promoter, at::Scalar(1));
+    MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero);
+    EXPECT_FALSE(mps.IsZero());
+    EXPECT_TRUE(mps.IsOne());
+  }
+
+  {
+    PromotedScalar ps(dummy_promoter, at::Scalar(5));
+    MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero);
+    EXPECT_FALSE(mps.IsZero());
+    EXPECT_FALSE(mps.IsOne());
+  }
+}
+
 TEST(OpParamCacheKeys, SetParamScalarType) {
   auto params_or =
       *OpParamCacheKeysBuilder().SetParam("foo", at::ScalarType::Float);
@@ -74,6 +148,36 @@ TEST(OpParamCacheKeysDeathTest, SetSameParamTwiceCrashes) {
   OpParamCacheKeys::Builder builder;
   builder.SetParam("foo", 1).SetParam("bar", 3);
   EXPECT_DEATH(builder.SetParam("foo", 2), "Duplicate parameter name 'foo'");
+}
+
+void KernelWithMaybePromotedScalar(at::Scalar s) {
+  auto dummy_promoter =
+      [](const at::Scalar&,
+         std::optional<at::ScalarType>) -> absl::StatusOr<at::Tensor> {
+    return TT_ERROR(error::kUnimplemented) << "Not implemented in test";
+  };
+  PromotedScalar ps(dummy_promoter, s);
+  MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero, ScalarValue::kOne);
+
+  TT_KERNEL(OpName::kRelu, param_keys, (mps), {
+    static_cast<void>(param_keys);
+    // Do nothing
+  });
+}
+
+TEST(OpParamCacheKeysDeathTest, MaybePromotedScalarNotUsedCrashes) {
+  EXPECT_DEATH(
+      { KernelWithMaybePromotedScalar(5); },
+      "The kernel didn't call \\.GetTensor\\(\\) on the promoted scalar");
+}
+
+TEST(MaybePromotedScalarDeathTest, GetTensorWhenValueMatchesExcludeCrashes) {
+  auto dummy_promoter = [](const at::Scalar&, std::optional<at::ScalarType>)
+      -> absl::StatusOr<at::Tensor> { return at::empty({}); };
+  PromotedScalar ps(dummy_promoter, at::Scalar(0));
+  MaybePromotedScalar mps(std::move(ps), ScalarValue::kZero);
+  ASSERT_TRUE(mps.ValueMatchesExclude());
+  EXPECT_DEATH(static_cast<void>(mps.GetTensor()), "GetTensor");
 }
 
 TEST(OpParamCacheKeys, SetParamScalarArray) {

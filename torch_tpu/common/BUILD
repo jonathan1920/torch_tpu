@@ -796,6 +796,7 @@ torch_tpu_cc_test(
     deps = [
         ":cache_key",
         ":dimension_types",
+        ":error_utils",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
@@ -803,6 +804,7 @@ torch_tpu_cc_test(
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops/macros:kernel",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:stablehlo_ops",

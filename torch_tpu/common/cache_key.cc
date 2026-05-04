@@ -28,6 +28,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -97,6 +98,20 @@ std::string FormatParamCacheKey(const std::string_view value) {
   return std::string(value);
 }
 
+std::string FormatParamCacheKey(const MaybePromotedScalar& value) {
+  if (value.ValueMatchesExclude()) {
+    if (value.IsZero()) {
+      return "0";
+    }
+    if (value.IsOne()) {
+      return "1";
+    }
+    ABSL_LOG(FATAL)  // CRASH_OK
+        << "Unexpected excluded scalar value: " << ToString(value.scalar());
+  }
+  return "";
+}
+
 std::string FormatParamCacheKey(const absl::Span<const int64_t> value) {
   return absl::StrCat("[", absl::StrJoin(value, ","), "]");
 }
@@ -144,6 +159,27 @@ std::string_view ParseNextArgName(std::string_view& args_str) {
   return name;
 }
 
+bool IsScalarEqualTo(const at::Scalar& scalar, const int value) {
+  if (scalar.isFloatingPoint()) {
+    return scalar.toDouble() == value;
+  }
+  if (scalar.isIntegral(/*include_bool=*/true)) {
+    return scalar.toLong() == value;
+  }
+  if (scalar.isComplex()) {
+    return scalar.toComplexDouble() == static_cast<double>(value);
+  }
+  return false;
+}
+
+void AppendPromotedScalarPointers(
+    std::vector<const PromotedScalarState* absl_nonnull>& promoted_scalars,
+    const MaybePromotedScalar& arg) {
+  if (!arg.ValueMatchesExclude()) {
+    promoted_scalars.push_back(arg.state().get());
+  }
+}
+
 }  // namespace internal
 
 PromotedScalar::PromotedScalar(Promoter promoter, at::Scalar scalar)
@@ -158,6 +194,57 @@ absl::StatusOr<at::Tensor> PromotedScalar::GetTensor(
 
 std::string PromotedScalar::ToString() const {
   return torch_tpu::ToString(scalar());
+}
+
+MaybePromotedScalar PromotedScalar::AvoidPromoting(ScalarValue exclude) && {
+  return MaybePromotedScalar(std::move(*this), exclude);
+}
+
+MaybePromotedScalar PromotedScalar::AvoidPromoting(ScalarValue exclude1,
+                                                   ScalarValue exclude2) && {
+  return MaybePromotedScalar(std::move(*this), exclude1, exclude2);
+}
+
+bool MaybePromotedScalar::MatchesAny(
+    absl::Span<const ScalarValue> values) const {
+  for (const auto& value : values) {
+    if (value == ScalarValue::kZero && IsZero()) {
+      return true;
+    }
+    if (value == ScalarValue::kOne && IsOne()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+MaybePromotedScalar::MaybePromotedScalar(PromotedScalar s, ScalarValue exclude)
+    : promoted_scalar_(std::move(s)),
+      value_matches_exclude_(MatchesAny({exclude})) {}
+
+MaybePromotedScalar::MaybePromotedScalar(PromotedScalar s, ScalarValue exclude1,
+                                         ScalarValue exclude2)
+    : promoted_scalar_(std::move(s)),
+      value_matches_exclude_(MatchesAny({exclude1, exclude2})) {}
+
+bool MaybePromotedScalar::IsZero() const {
+  return internal::IsScalarEqualTo(promoted_scalar_.scalar(), 0);
+}
+
+bool MaybePromotedScalar::IsOne() const {
+  return internal::IsScalarEqualTo(promoted_scalar_.scalar(), 1);
+}
+
+absl::StatusOr<at::Tensor> MaybePromotedScalar::GetTensor(
+    std::optional<at::ScalarType> scalar_type_opt) {
+  ABSL_CHECK(!value_matches_exclude_)  // CRASH_OK
+      << "GetTensor() called when the scalar value " << ToString()
+      << " should not be promoted.";
+  return promoted_scalar_.GetTensor(scalar_type_opt);
+}
+
+[[nodiscard]] std::string MaybePromotedScalar::ToString() const {
+  return promoted_scalar_.ToString();
 }
 
 absl::StatusOr<OpParamCacheKeys> OpParamCacheKeys::Builder::operator*() {

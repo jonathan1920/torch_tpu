@@ -112,15 +112,12 @@ absl::StatusOr<mlir::MlirOp> BuildAddmvShlo(
 
 absl::StatusOr<DeviceBufferRef> Addmv(
     const at::Tensor& self, const at::Tensor& mat, const at::Tensor& vec,
-    const at::Tensor& beta_tensor, const at::Tensor& alpha_tensor,
-    const bool beta_is_zero, at::Tensor& out, OpParamCacheKeys& param_keys) {
+    MaybePromotedScalar beta, const at::Tensor& alpha_tensor, at::Tensor& out,
+    OpParamCacheKeys& param_keys) {
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(out.scalar_type()));
 
-  // TODO(wan): This pattern is prone to bugs. We need a principled approach to
-  // detect and add derived values to the cache key.
   const auto precision = GetPrecision();
-  TT_RETURN_IF_ERROR(param_keys.SetParam("beta_is_zero", beta_is_zero));
   TT_RETURN_IF_ERROR(param_keys.SetParam("precision", precision));
   Dimensions result_shape = {mat.size(0)};
   DispatchOpOptions<1> options = {.out_dtype = out_dtype,
@@ -132,7 +129,7 @@ absl::StatusOr<DeviceBufferRef> Addmv(
   // an optimization because anything multiplied by zero is zero. We don't allow
   // reading from uninitialized tensors (at::empty) at the moment, so instead of
   // dispatching to ternary op, we dispatch to binary op without self.
-  if (beta_is_zero) {
+  if (beta.IsZero()) {
     auto op_builder = [out_dtype,
                        precision](FixedSizeSpan<mlir::MlirOp, 3> inputs)
         -> absl::StatusOr<mlir::MlirOp> {
@@ -153,6 +150,7 @@ absl::StatusOr<DeviceBufferRef> Addmv(
     return BuildAddmvShlo(self_op, mat_op, vec_op, beta_op, alpha_op, out_dtype,
                           precision);
   };
+  TT_ASSIGN_OR_RETURN(auto beta_tensor, beta.GetTensor(out.scalar_type()));
   TT_ASSIGN_OR_RETURN(auto result_buf,
                       DispatchOp<5>(std::move(op_builder),
                                     {self, mat, vec, beta_tensor, alpha_tensor},
@@ -206,20 +204,18 @@ absl::Status CheckAddmvInputs(const at::Tensor& self, const at::Tensor& mat,
 at::Tensor& AtenAddmvOut(const at::Tensor& self, const at::Tensor& mat,
                          const at::Tensor& vec, const at::Scalar& beta,
                          const at::Scalar& alpha, at::Tensor& out) {
-  auto promoted_beta = PromoteScalar(beta);
+  auto promoted_beta = PromoteScalar(beta).AvoidPromoting(ScalarValue::kZero);
   auto promoted_alpha = PromoteScalar(alpha);
   TT_KERNEL(
       OpName::kAddmvOut, param_keys,
       (self, mat, vec, promoted_beta, promoted_alpha, out), {
         TT_THROW_IF_ERROR(CheckAddmvInputs(self, mat, vec, beta, alpha));
 
-        TT_ASSIGN_OR_THROW(const at::Tensor beta_tensor,
-                           promoted_beta.GetTensor(out.scalar_type()));
         TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
                            promoted_alpha.GetTensor(out.scalar_type()));
         TT_ASSIGN_OR_THROW(auto result_buf,
-                           Addmv(self, mat, vec, beta_tensor, alpha_tensor,
-                                 beta.equal(0.0), out, param_keys));
+                           Addmv(self, mat, vec, std::move(promoted_beta),
+                                 alpha_tensor, out, param_keys));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });
