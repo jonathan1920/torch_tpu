@@ -15,12 +15,14 @@
 """Compiler for handling dynamic shape in torch.compile()."""
 
 from __future__ import annotations
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 import numbers
 from typing import Any, NamedTuple
 from absl import logging
 import torch
+from torch._inductor.utils import InputType
 from torch._logging import LazyString
+from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.dynamic.graph_transformations import apply_dynamism_transformations
 from torch_tpu._internal.compile.dynamic.sym_shape_manager import SymShapeManager
@@ -204,8 +206,7 @@ def _compile_and_execute_pad_subgraph(
   return tpu_torch_compile.execute(executable, tensor_args)
 
 
-# TODO: mkkhanna - Add support for pickling/unpickling this class.
-class _DynamicTpuCompiledExecutable:
+class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
   """A callable wrapper for dynamic MLIR programs with TPU executable."""
 
   def __init__(
@@ -245,27 +246,47 @@ class _DynamicTpuCompiledExecutable:
     # Run model executable with pads, sizes, and explicit output shapes
     return self.model_executable(list(pad_outputs), output_shapes=output_shapes)
 
+  def __reduce__(self) -> tuple[Callable[..., Any], tuple[Any, ...]]:
+    # TODO(b/903508278): Add support for pickling to DynamicCompiler.
+    raise NotImplementedError(
+        "Serialization support for DynamicCompiler not yet implemented"
+    )
 
-class DynamicCompiler:
+
+class DynamicCompiler(compiler.Compiler):
   """Compiler for handling dynamic shapes in torch.compile()."""
 
   def __init__(
       self,
-      static_backend: Any,
+      compilation_context: compiler.CompilationContext | None = None,
+      debug: bool = False,
   ):
     """Initializes the DynamicCompiler instance.
 
     Args:
-      static_backend: The static compilation backend to use for compiling the
-        padded graph.
+      compilation_context: A `compiler.CompilationContext` instance used for
+        maintaining compilation state.
+      debug: A `bool` that, when `True`, enables debug logging and artifact
+        generation.
     """
-    self.static_backend = static_backend
+    if compilation_context is None:
+      compilation_context = compiler.CompilationContext()
+    super().__init__(compilation_context, debug=debug)
+    self.static_compiler = compiler.StaticCompiler(
+        compilation_context, debug=debug
+    )
+
+  def execute_pre_grad_passes(
+      self,
+      graph_module: torch.fx.GraphModule,
+  ) -> None:
+    self.static_compiler.execute_pre_grad_passes(graph_module)
 
   def __call__(
       self,
       graph_module: torch.fx.GraphModule,
-      example_inputs: Sequence[Any],
-  ) -> Any:
+      example_inputs: Sequence[InputType],
+  ) -> _DynamicTpuCompiledExecutable:
     """Called by AOT Autograd to compile the graph.
 
     Args:
@@ -309,7 +330,7 @@ class DynamicCompiler:
     )
 
     # Create a static model executable with padded shape tensors as inputs
-    static_model_executable = self.static_backend._compile_graph_module(
+    static_model_executable = self.static_compiler(
         graph_module,
         model_example_inputs,
     )

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Ensure we error out at torch.compile() when "dynamic" is applyed"""
+"""Ensure we error out at torch.compile() when "dynamic" is applied."""
 
 import os
 from typing import Callable, List, Tuple
@@ -22,12 +22,12 @@ from absl.testing import absltest
 import torch
 from torch._dynamo.backends.common import aot_autograd
 from torch_tpu import api
-from torch_tpu._internal import compile
+from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.utils import utils
 
 
 def _run_tpu_backend_with_injected_test_case(
-    tpu_backend: compile.TpuBackend,
+    compiler_instance: compiler.StaticCompiler,
     inject_test_case: Callable[
         [torch.fx.GraphModule, List[torch.Tensor]],
         Tuple[torch.fx.GraphModule, List[torch.Tensor]],
@@ -38,7 +38,8 @@ def _run_tpu_backend_with_injected_test_case(
 
   This function returns a backend function compatible with `torch.compile`. It
   intercepts the compilation process to inject modification of the FX graph
-  via `inject_test_case` before it is compiled by `tpu_backend`. It also
+  via `inject_test_case` before it is compiled by `compiler.StaticCompiler`. It
+  also
   wraps the resulting executable to modify its output via `map_output` before
   returning the results to the caller, so that the code runs correctly. This is
   useful for testing backend
@@ -46,7 +47,8 @@ def _run_tpu_backend_with_injected_test_case(
   from Python source, such as outputs containing `None`.
 
   Args:
-    tpu_backend: The `TpuBackend` instance to use for compilation.
+    compiler_instance: The `compiler.StaticCompiler` instance to use for
+      compilation.
     inject_test_case: A callable `fn(gm, example_inputs)` that modifies the FX
       graph or example inputs and returns `(new_gm, new_example_inputs)`.
     map_output: A callable `fn(results)` that transforms the output of the
@@ -67,7 +69,7 @@ def _run_tpu_backend_with_injected_test_case(
     # outputs including None.
     logging.info("after injecting test case %s", gm.code)
     # Use the modified graph to test our code
-    executable = tpu_backend._compile_graph_module(gm, example_inputs)
+    executable = compiler_instance(gm, example_inputs)
 
     # 3. If needed, transform the results from executable() before returning.
     # For example, if inject_test_case added a None to the output which
@@ -122,11 +124,10 @@ class OutputModifyTest(absltest.TestCase):
     in_a = torch.randn(5).to(api.tpu_device())
     in_b = torch.randn(5).to(api.tpu_device())
 
-    tpu_backend = compile.TpuBackend(debug=True)
     compiled = torch.compile(
         _my_function,
         backend=_run_tpu_backend_with_injected_test_case(
-            tpu_backend,
+            compiler.StaticCompiler(),
             inject_test_case=_add_none_to_output,
             map_output=_remove_none_from_output,
         ),
@@ -150,11 +151,10 @@ class OutputModifyTest(absltest.TestCase):
 
     in_a = torch.randn(5).to(api.tpu_device())
     in_b = torch.randn(5).to(api.tpu_device())
-    tpu_backend = compile.TpuBackend(debug=True)
     compiled = torch.compile(
         _my_function,
         backend=_run_tpu_backend_with_injected_test_case(
-            tpu_backend,
+            compiler.StaticCompiler(),
             inject_test_case=lambda gm, example_inputs: (gm, example_inputs),
             map_output=_assert_no_duplicate_output,
         ),

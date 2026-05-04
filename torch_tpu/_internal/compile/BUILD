@@ -63,12 +63,10 @@ torch_tpu_py_library(
         "ignore_for_dep=third_party.py.torch_tpu",
     ],
     deps = [
-        ":tpu_torch_compile",
+        ":compiler",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compile/dynamic:compiler",
-        "//torch_tpu/_internal/compile/fx_passes:mark_embedded_constants",
-        "//torch_tpu/_internal/export",
         "//torch_tpu/_internal/utils",
     ],
 )

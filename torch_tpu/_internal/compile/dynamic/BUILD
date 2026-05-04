@@ -76,6 +76,7 @@ pytype_strict_library(
         ":symbol_bounds",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile:compiler",
         "//torch_tpu/_internal/compile:tpu_torch_compile",
     ],
 )

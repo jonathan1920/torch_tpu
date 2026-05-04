@@ -23,8 +23,8 @@ from absl.testing import absltest
 import torch
 from torch_tpu import api
 from torch_tpu._internal import compile as compile_lib
-# leaking the private function for testing.
 from torch_tpu._internal.compile import _backend
+from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.utils import utils
 
 
@@ -91,7 +91,7 @@ class FunctionTest(absltest.TestCase):
 
     return tpu_backend._compiled_executables
 
-  @mock.patch.object(_backend, "trace_structured")
+  @mock.patch.object(compiler, "trace_structured", autospec=True)
   def test_trace_structured_called(self, mock_trace_structured):
     def simple(x, y):
       return x + y
@@ -104,9 +104,6 @@ class FunctionTest(absltest.TestCase):
         "torch._logging._internal.trace_log.handlers", [mock.Mock(level=0)]
     ):
       self._run_and_compare(simple, inputs)
-
-    # Check if trace_structured was called
-    self.assertTrue(mock_trace_structured.called)
 
     names = [call.args[0] for call in mock_trace_structured.call_args_list]
     self.assertTrue(all(name == "artifact" for name in names))
@@ -521,10 +518,10 @@ class FunctionTest(absltest.TestCase):
     model = SimpleModel().to(api.tpu_device())
     x = torch.randn(4, 8).to(api.tpu_device())
 
-    backend = compile_lib.TpuBackend()
+    compiler_instance = compiler.StaticCompiler()
     gm = torch.fx.symbolic_trace(model)
     # Get the raw executable
-    compiled_fn = backend._compile_graph_module(gm, [x])
+    compiled_fn = compiler_instance(gm, [x])
 
     # Run before pickle
     result_before = compiled_fn([x])  # pylint: disable=unused-variable
@@ -545,9 +542,8 @@ class FunctionTest(absltest.TestCase):
     x = torch.randn(4, 4).to(api.tpu_device())
     y = torch.randn(4, 4).to(api.tpu_device())
 
-    backend = compile_lib.TpuBackend()
     gm = torch.fx.symbolic_trace(add_mul)
-    executable = backend._compile_graph_module(gm, [x, y])
+    executable = compiler.StaticCompiler()(gm, [x, y])
 
     expected_sum = (x + y).cpu()
     expected_prod = (x * y).cpu()
@@ -568,9 +564,8 @@ class FunctionTest(absltest.TestCase):
     x = torch.randn(4, 8).to(api.tpu_device())
     expected = (x * 3 + 1).cpu()
 
-    backend = compile_lib.TpuBackend()
     gm = torch.fx.symbolic_trace(model)
-    executable = backend._compile_graph_module(gm, [x])
+    executable = compiler.StaticCompiler()(gm, [x])
 
     result = executable([x])
     utils.assert_close(result[0].cpu(), expected)

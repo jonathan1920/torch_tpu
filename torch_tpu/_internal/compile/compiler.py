@@ -29,7 +29,10 @@ from typing import Any, TypeAlias
 from absl import logging
 import torch
 from torch._dynamo.utils import dynamo_timed
+from torch._functorch._aot_autograd.schemas import AOTDispatchCompiler
 from torch._inductor.fx_passes import post_grad
+from torch._inductor.output_code import OutputCode
+from torch._inductor.utils import InputType
 from torch._logging import trace_structured
 from torch._logging._internal import trace_log
 from torch._subclasses.fake_tensor import unset_fake_temporarily
@@ -57,7 +60,7 @@ _ReconstructFxOutputsFn: TypeAlias = Callable[
 ]
 
 
-class CompiledArtifact(abc.ABC):
+class CompiledArtifact(abc.ABC, OutputCode):
   """Abstract base class for a compiled executable.
 
   This class defines the interface for the result of a compilation,
@@ -67,12 +70,11 @@ class CompiledArtifact(abc.ABC):
   """
 
   @abc.abstractmethod
-  def __call__(self, *args: Any, **kwargs: Any) -> Any:
+  def __call__(self, inputs: Sequence[InputType]) -> Any:
     """Executes the compiled artifact.
 
     Args:
-      *args: Positional arguments to be passed to the compiled function.
-      **kwargs: Keyword arguments to be passed to the compiled function.
+      inputs: Arguments to be passed to the compiled function.
 
     Returns:
       The result of executing the compiled code with the provided arguments.
@@ -112,7 +114,7 @@ class CompilationContext:
   has_activation_checkpoint: bool = False
 
 
-class Compiler(abc.ABC):
+class Compiler(abc.ABC, AOTDispatchCompiler):
   """Abstract base class for a compiler.
 
   Defines the interface for compiling an FX graph module, including
@@ -161,10 +163,10 @@ class Compiler(abc.ABC):
     pass
 
   @abc.abstractmethod
-  def compile(
+  def __call__(
       self,
       graph_module: torch.fx.GraphModule,
-      example_inputs: Sequence[torch.Tensor],
+      example_inputs: Sequence[InputType],
   ) -> CompiledArtifact:
     """Compiles the FX graph module into a callable artifact.
 
@@ -356,7 +358,11 @@ class _TorchTpuCompiledExecutable(CompiledArtifact):
       are made to match the expected output of the original FX graph,
       potentially after being processed by `reconstruct_fx_outputs_fn`.
     """
-    output_shapes = [] if output_shapes is None else output_shapes
+    actual_output_shapes = output_shapes or []
+    # aot_autograd with SerializableAOTDispatchCompiler passes args as a
+    # single list: fn([t1, t2, ...]). Unwrap when we detect this pattern.
+    if len(args) == 1 and isinstance(args[0], (list, tuple)):
+      args = args[0]
 
     device = torch.accelerator.current_accelerator()
     device_module = getattr(torch, device.type)
@@ -382,8 +388,16 @@ class _TorchTpuCompiledExecutable(CompiledArtifact):
         *self._take_tensor_args(args),
         *device_state_tensors,
     )
+
+    # When output_shapes for user-defined outputs are provided, we need to
+    # append the shapes of the device state tensors to match the number of
+    # outputs from the executable.
+    if actual_output_shapes:
+      actual_output_shapes = list(actual_output_shapes) + [
+          list(t.shape) for t in device_state_tensors
+      ]
     outputs_with_device_state_tensors = tpu_torch_compile.execute(
-        self._executable, executable_args, output_shapes
+        self._executable, executable_args, actual_output_shapes
     )
     outputs, device_state_tensors = (
         outputs_with_device_state_tensors[: -len(device_state_tensors)],
@@ -424,6 +438,20 @@ class _TorchTpuCompiledExecutable(CompiledArtifact):
         (serialized, self._reconstruct_fx_outputs_fn),
     )
 
+  def prepare_for_serialization(self) -> None:
+    pass
+
+  def post_compile(
+      self,
+      example_inputs: Sequence[Any],
+      constants: Any,
+      graph_kwargs: Any,
+  ) -> None:
+    pass
+
+  def set_triton_bundle(self, triton_bundle: Any) -> None:
+    pass
+
 
 def _has_activation_checkpoint(graph: torch.fx.Graph) -> bool:
   """Determines whether activation checkpointing was used within the program."""
@@ -434,7 +462,7 @@ def _has_activation_checkpoint(graph: torch.fx.Graph) -> bool:
   return len(ac_ops) > 0
 
 
-def _has_symints(args: Any) -> bool:
+def has_symints(args: Any) -> bool:
   """Checks whether SymInt inputs or shapes exist in the provided input args.
 
   Args:
@@ -484,10 +512,10 @@ class StaticCompiler(Compiler):
     if _has_activation_checkpoint(graph_module.graph):
       self.compilation_context.has_activation_checkpoint = True
 
-  def compile(
+  def __call__(
       self,
       graph_module: torch.fx.GraphModule,
-      example_inputs: Sequence[torch.Tensor],
+      example_inputs: Sequence[InputType],
   ) -> _TorchTpuCompiledExecutable:
     """Compiles the FX graph module for static shapes.
 
@@ -520,7 +548,7 @@ class StaticCompiler(Compiler):
       ValueError: If the provided inputs contain SymInts or Tensor with SymInt
         dimensions.
     """  # fmt: skip
-    if _has_symints(example_inputs):
+    if has_symints(example_inputs):
       raise ValueError(
           "StaticCompiler does not support compilation of programs with dynamic"
           " shapes. Consider using DynamicCompiler instead."
