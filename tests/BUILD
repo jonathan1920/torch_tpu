@@ -915,6 +915,20 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "rng_stress_test",
+    srcs = ["rng_stress_test.py"],
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+    ],
+)
+
+torch_tpu_py_test(
     name = "dynamism_model_test",
     srcs = ["dynamism_model_test.py"],
     main = "dynamism_model_test.py",
