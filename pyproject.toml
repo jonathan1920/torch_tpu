@@ -56,7 +56,8 @@ benchmark = [
     "tensorflow-datasets>=4.9.9",
     "tensorboardx>=2.6",
     "timm>=1.0.26",
-    "torchax>=0.0.11"
+    "torchax>=0.0.11",
+    "grpcio-tools>=1.60.0"
 ]
 
 examples = [
