@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_library")
+load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end", "torch_tpu_py_library")
+load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -21,12 +22,47 @@ package(
     ],
 )
 
+# This library is not used directly, but is needed for go/cclean. Without
+# this rule, cclean complains that compiler_options_impl.cc has no rule depending on it.
+torch_tpu_cc_library(
+    name = "compiler_options_impl_build",
+    srcs = ["compiler_options_impl.cc"],
+    deps = [
+        "//shims/pybind11",
+        "//shims/torch",
+        "//shims/torch:aten",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/common:compilation",
+        "//torch_tpu/common:context_states",
+        "//torch_tpu/common:error_utils",
+    ],
+)
+
+pybind_extension(
+    # "private" python module for internal use.
+    name = "compiler_options_impl",
+    srcs = ["compiler_options_impl.cc"],
+    common_lib_packages = [
+        "torch_tpu/common",
+    ],
+    wrap_py_init = True,
+    deps = [
+        "//shims/torch",
+        "//shims/torch:aten",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/common:compilation",
+        "//torch_tpu/common:context_states",
+        "//torch_tpu/common:error_utils",
+        "@com_google_absl//absl/status",
+    ],
+)
+
 torch_tpu_py_library(
     name = "compiler_options",
     srcs = [
         "__init__.py",
     ],
-    deps = ["//torch_tpu/_internal:compiler_options_impl"],
+    deps = [":compiler_options_impl"],
 )
 
 torch_tpu_package_end()
