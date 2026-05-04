@@ -25,7 +25,6 @@ from absl import logging
 import torch
 import torch.export
 import torch.utils._pytree as pytree
-from torch_tpu._internal import device_utils
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.compile import tpu_torch_compile
 
@@ -204,12 +203,7 @@ def exported_to_mlir(
   args = state + sample_args
   args = [tpu_torch_compile.placeholder_like(arg) for arg in args]
 
-  device = device_utils.available_xla_device()
-  if device is None:
-    raise ValueError(
-        "export requires an XLA device to be initialized before use"
-    )
-
+  device = torch.accelerator.current_accelerator()
   to_xla = lambda x: x.to(device)
   args = pytree.tree_map_only(torch.Tensor, to_xla, args)
   module = exported.graph_module.to(device)
@@ -406,60 +400,60 @@ def fx_to_mlir(
   # Filter out non-tensor arguments.
   argument_tensors = [a for a in args if isinstance(a, torch.Tensor)]
 
-  # Sync the RNG state before FX tracing to force materialization of deferred
-  # ops.
-  #
-  # Context: TorchTPU uses "deferred execution". Operations aren't
-  # computed instantly. Instead, they are added to a deferred graph.
-  # RNG state is treated as just another tensor in this graph.
-  #
-  # The "Graph Leaking" Problem:
-  # If a module was run in eager mode previously (e.g., a warmup step), the
-  # current global RNG state might be an unexecuted node sitting at the end of
-  # that old graph. If FX tracing accesses this state (e.g., via dropout
-  # kernels) without syncing, it accidentally connects your clean export graph
-  # to the old eager execution graph.
-  #
-  # Illustration of the leak:
-  # [Old Eager Graph] ---> (Pending RNG State) <--- [New FX Tracing Graph]
-  #                               ^
-  #                  FX grabs this, merging both graphs!
-  #                  (Leads to bloat and validation errors)
-  #
-  # The Solution:
-  # Syncing forces the TPU to compute the old graph, turning the RNG state
-  # back into a concrete, standalone tensor. This gives the FX tracer a
-  # clean slate.
-  #
-  # Safe state after sync:
-  # [Old Graph Executed] | (Concrete RNG State) ---> [Clean FX Tracing Graph]
-  if argument_tensors:
-    rng_state = torch.get_device_module(
-        argument_tensors[0].device
-    ).get_rng_state()  # get_rng_state() syncs and returns tensor on CPU.
-    del rng_state
-
   # Run the module through the EagerLikeFxInterpreter with MLIR location
   # tracebacks enabled by default so that the MLIR we generate has file
   # location info.
-  with execution_mode.eager_mode(execution_mode.EagerMode.INTERNAL_DEFER_ALL):
-    # We clone the args so that inplace updates do not overwrite the placeholder
-    # args, these copies will be removed in the compiled code so there is no
-    # performance impact.
-    # Remove once b/491716758 is implemented.
-    cloned_args = (
-        x.clone() if isinstance(x, torch.Tensor) else x for x in args
+  device = torch.accelerator.current_accelerator()
+  device_module = getattr(torch, device.type)
+
+  # Add the default RNG generator for the device to the args.
+  argument_generators = [
+      device_module.default_generators[device.index or 0]
+  ] + [arg for arg in args if isinstance(arg, torch.Generator)]
+
+  orig_generator_states = {}
+  for gen in argument_generators:
+    orig_generator_states[gen] = gen.graphsafe_get_state().clone_state()
+
+    # Plumb a placeholder tensor to trace the generator's device rng state.
+    # This intercepts the C++ backend's state so that random operations
+    # are correctly chained against this placeholder during graph capture.
+    device_state_tensor = tpu_torch_compile.get_device_state_tensor(gen)
+    begin_state_tensor = tpu_torch_compile.placeholder_like(device_state_tensor)
+    tpu_torch_compile.set_device_state_tensor(gen, begin_state_tensor)
+
+    # Add placeholder to the argument tensors for traversal.
+    argument_tensors.append(begin_state_tensor)
+
+  try:
+    with execution_mode.eager_mode(execution_mode.EagerMode.INTERNAL_DEFER_ALL):
+      # We clone the args so that inplace updates do not overwrite the
+      # placeholder args. These copies will be removed in the compiled code so
+      # there is no performance impact.
+      # Remove once b/491716758 is implemented.
+      cloned_args = (
+          x.clone() if isinstance(x, torch.Tensor) else x for x in args
+      )
+      fx_outputs = EagerLikeFxInterpreter(module).run(*cloned_args)
+
+    result_tensors, reconstruct_fx_outputs_fn = _process_fx_outputs(
+        module, fx_outputs
     )
-    fx_outputs = EagerLikeFxInterpreter(module).run(*cloned_args)
 
-  result_tensors, reconstruct_fx_outputs_fn = _process_fx_outputs(
-      module, fx_outputs
-  )
+    # Plumb the final state tensor as the last output of the graph so that
+    # the updated RNG state can be returned from the executable and persisted.
+    for gen in argument_generators:
+      end_state_tensor = tpu_torch_compile.get_device_state_tensor(gen)
+      result_tensors.append(end_state_tensor)
 
-  mlir_module = tpu_torch_compile.build_mlir(
-      result_tensors=result_tensors,
-      argument_tensors=argument_tensors,
-  )
+    mlir_module = tpu_torch_compile.build_mlir(
+        result_tensors=result_tensors,
+        argument_tensors=argument_tensors,
+    )
+  finally:
+    # Restore original generator states.
+    for gen in argument_generators:
+      gen.graphsafe_set_state(orig_generator_states[gen])
 
   return ExportedMlir(
       module=mlir_module,

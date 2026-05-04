@@ -69,8 +69,8 @@ class TestExportLinearMode(absltest.TestCase):
     )
     self.assertIn(
         "func.func @main(%arg0: tensor<8x8xf32> loc(unknown), %arg1:"
-        " tensor<8xf32> loc(unknown), %arg2: tensor<8xf32> loc(unknown)) ->"
-        " tensor<8xf32>",
+        " tensor<8xf32> loc(unknown), %arg2: tensor<8xf32> loc(unknown), %arg3:"
+        " tensor<2xui64> loc(unknown)) -> (tensor<8xf32>, tensor<2xui64>)",
         mlir_text,
     )
 
@@ -112,8 +112,8 @@ class ExportTest(absltest.TestCase):
     self.assertIn(
         "func.func @main(%arg0: tensor<5xf32> loc(unknown), %arg1:"
         " tensor<5xf32> loc(unknown), %arg2: tensor<5xf32> loc(unknown), %arg3:"
-        " tensor<5xf32> loc(unknown), %arg4: tensor<5xf32> loc(unknown)) ->"
-        " tensor<5xf32>",
+        " tensor<5xf32> loc(unknown), %arg4: tensor<5xf32> loc(unknown), %arg5:"
+        " tensor<2xui64> loc(unknown)) -> (tensor<5xf32>, tensor<2xui64>)",
         mlir_text,
     )
 
@@ -138,7 +138,9 @@ class ExportTest(absltest.TestCase):
 
     exported = torch.export.export(mod, args=(x,))
     mlir_text = torch_tpu_export.exported_to_mlir(exported).serialize_text()
-    self.assertIn("-> (tensor<5xf32>, tensor<5xi32>)", mlir_text)
+    self.assertIn(
+        "-> (tensor<5xf32>, tensor<5xi32>, tensor<2xui64>)", mlir_text
+    )
 
   def test_export_deduplication_different_slices(self):
     """Tests that export deduplication does not deduplicate different slices of the same buffer."""
@@ -154,7 +156,9 @@ class ExportTest(absltest.TestCase):
     exported = torch.export.export(mod, args=(x,))
     mlir_text = torch_tpu_export.exported_to_mlir(exported).serialize_text()
 
-    self.assertIn("-> (tensor<2xf32>, tensor<2xf32>)", mlir_text)
+    self.assertIn(
+        "-> (tensor<2xf32>, tensor<2xf32>, tensor<2xui64>)", mlir_text
+    )
 
   def test_module_traceback_disabled(self):
     sample_input = (
@@ -171,8 +175,8 @@ class ExportTest(absltest.TestCase):
     self.assertIn(
         "func.func @main(%arg0: tensor<5xf32> loc(unknown), %arg1:"
         " tensor<5xf32> loc(unknown), %arg2: tensor<5xf32> loc(unknown), %arg3:"
-        " tensor<5xf32> loc(unknown), %arg4: tensor<5xf32> loc(unknown)) ->"
-        " tensor<5xf32>",
+        " tensor<5xf32> loc(unknown), %arg4: tensor<5xf32> loc(unknown), %arg5:"
+        " tensor<2xui64> loc(unknown)) -> (tensor<5xf32>, tensor<2xui64>)",
         mlir_text,
     )
 

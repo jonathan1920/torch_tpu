@@ -188,16 +188,60 @@ class _TorchTpuCompiledExecutable(OutputCode):
   def __call__(
       self, *args: Any, output_shapes: Sequence[list[int]] | None = None
   ) -> Any:
+
     if output_shapes is None:
       output_shapes = []
     # aot_autograd with SerializableAOTDispatchCompiler passes args as a
     # single list: fn([t1, t2, ...]). Unwrap when we detect this pattern.
     if len(args) == 1 and isinstance(args[0], (list, tuple)):
       args = args[0]
-    executable_args = self._filter_tensor_args(args)
-    outputs = tpu_torch_compile.execute(
+
+    device = torch.accelerator.current_accelerator()
+    device_module = getattr(torch, device.type)
+
+    # Update RNG state as the last argument.
+    generators = [device_module.default_generators[device.index or 0]] + [
+        arg for arg in args if isinstance(arg, torch.Generator)
+    ]
+    # Map all generators (including user-passed custom generators) to the
+    # canonical default generator for their device. This aligns with PyTorch's
+    # observed CUDA behavior where graphsafe RNG ops always mutate the global
+    # generator's state, making `torch.manual_seed()` work for compiled graphs.
+    # TODO(b/501205098): Confirm the intended behavior and right implementation.
+    generators = [
+        device_module.default_generators[gen.device.index] for gen in generators
+    ]
+
+    # Extract RNG state tensors for all involved generators to pass them
+    # as implicit inputs to the compiled PjRt executable.
+    device_state_tensors = [
+        tpu_torch_compile.get_device_state_tensor(gen) for gen in generators
+    ]
+
+    executable_args = (
+        *self._filter_tensor_args(args),
+        *device_state_tensors,
+    )
+
+    # When output_shapes for user-defined outputs are provided, we need to
+    # append the shapes of the device state tensors to match the number of
+    # outputs from the executable.
+    if output_shapes:
+      output_shapes = list(output_shapes) + [
+          list(t.shape) for t in device_state_tensors
+      ]
+    outputs_with_device_state_tensors = tpu_torch_compile.execute(
         self._executable, executable_args, output_shapes
     )
+    outputs, device_state_tensors = (
+        outputs_with_device_state_tensors[: -len(device_state_tensors)],
+        outputs_with_device_state_tensors[-len(device_state_tensors) :],
+    )
+
+    # Once the executable has completed, restore the newly updated RNG state
+    # back to each generator.
+    for gen, device_state_tensor in zip(generators, device_state_tensors):
+      tpu_torch_compile.set_device_state_tensor(gen, device_state_tensor)
 
     if self._reconstruct_fx_outputs_fn is not None:
       outputs = self._reconstruct_fx_outputs_fn(args, outputs)

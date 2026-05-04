@@ -34,6 +34,7 @@
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
+#include "ATen/core/Generator.h"
 #include "ATen/core/TensorBody.h"
 #include "torch/extension.h"  // IWYU pragma: keep for aten::Tensor pybind type
 #include "torch/headeronly/core/ScalarType.h"
@@ -46,6 +47,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -195,6 +197,18 @@ void PyPushEnableTracebacks(std::optional<bool> enabled) {
                                                : TracebackMode::kDisabled)
           : std::nullopt;
   PushContextState(state);
+}
+
+// Returns the internal TPU RNG state tensor from a generator.
+at::Tensor PyGetDeviceStateTensor(at::Generator gen) {
+  auto* device_gen = at::check_generator<DeviceGeneratorImpl>(gen);
+  return device_gen->DeviceStateTensor();
+}
+
+// Sets the internal TPU RNG state tensor on a generator.
+void PySetDeviceStateTensor(at::Generator gen, at::Tensor rng_state) {
+  auto* device_gen = at::check_generator<DeviceGeneratorImpl>(gen);
+  TT_THROW_IF_ERROR(device_gen->SetDeviceStateTensor(std::move(rng_state)));
 }
 
 }  // namespace
@@ -391,6 +405,11 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         py::arg("cpu_src_tensor"), py::arg("tpu_dst_tensor"),
         "Updates a TPU tensor to be a tensor with the constant value of the "
         "CPU tensor.");
+  m.def("get_device_state_tensor", PyGetDeviceStateTensor, py::arg("generator"),
+        "Returns the internal TPU RNG state tensor from a generator.");
+  m.def("set_device_state_tensor", PySetDeviceStateTensor, py::arg("generator"),
+        py::arg("rng_state"),
+        "Sets the internal TPU RNG state tensor on a generator.");
 }
 
 }  // namespace torch_tpu
