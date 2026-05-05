@@ -14,13 +14,11 @@
 
 """xprof_profiler API for internal use."""
 
-from contextlib import contextmanager
 import dataclasses
 import datetime
 import os
 import socket
 import threading
-from typing import Optional
 
 from absl import logging
 from torch_tpu._internal.profiler._profiler_backend import start_profiler_server
@@ -171,35 +169,3 @@ def stop_trace() -> None:
       logging.info('profiler saved in %s', final_file)
     finally:
       _profile_state.reset()
-
-
-@contextmanager
-def trace(
-    log_dir: os.PathLike[str] | str,
-    profiler_options: Optional[ProfileOptions] = None,
-):
-  """Context manager to take a profiler trace.
-
-  The trace will capture CPU, GPU, and/or TPU activity, including Python
-  functions and on-device operations.
-
-  The resulting trace can be viewed with TensorBoard. Note that TensorBoard
-  doesn't need to be running when collecting the trace.
-
-  Only one trace may be collected at a time. A RuntimeError will be raised if a
-  trace is started while another trace is running.
-
-  Args:
-    log_dir: The directory to save the profiler trace to (usually the
-      TensorBoard log directory).
-    profiler_options: Profiler options to configure the profiler for collection.
-
-  Yields:
-    None
-  """
-  start_trace(log_dir, profiler_options)
-
-  try:
-    yield
-  finally:
-    stop_trace()

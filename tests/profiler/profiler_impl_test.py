@@ -130,28 +130,6 @@ class ProfilerInternalTest(absltest.TestCase):
         os.path.exists(os.path.join(output_dir, 'plugins', 'profile'))
     )
 
-  def test_trace_context_manager_tpu(self):
-    """Tests the trace context manager with TPU operations."""
-    try:
-      device = torch.device('tpu')
-    except RuntimeError as e:
-      self.fail(f'Failed to get TPU device: {e}')
-    self.assertEqual(device.type, 'tpu', 'Device type should be TPU')
-
-    output_dir = self.create_tempdir('trace_context_manager_tpu').full_path
-    options = profiler_impl.ProfileOptions()
-    options.device_tracer_level = 1
-    options.host_tracer_level = 2
-    options.python_tracer_level = 0
-    with profiler_impl.trace(log_dir=output_dir, profiler_options=options):
-      a = torch.randn((16, 16)).to(device)
-      b = torch.randn((16, 16)).to(device)
-      c = a @ b
-      tpu_sync.synchronize(c)
-    self.assertTrue(
-        os.path.exists(os.path.join(output_dir, 'plugins', 'profile'))
-    )
-
 
 if __name__ == '__main__':
   absltest.main()
