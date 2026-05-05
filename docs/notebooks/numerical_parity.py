@@ -15,7 +15,7 @@
 
 import marimo
 
-__generated_with = "0.19.9"
+__generated_with = "0.22.4"
 app = marimo.App(width="medium")
 
 
@@ -29,17 +29,18 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    # **Numerical Parity Tools (`utils.assert_close`)**
+    # **Numerical Parity: Comparing TPU vs CPU**
 
-    When porting models to the TPU, you will often find that TPU outputs differ slightly from your CPU reference. This is usually not a bug, but a result of hardware-level optimizations and the way the **XLA Compiler** re-arranges your math for the hardware.
+    When porting models to TPU, you will often find that outputs differ slightly from your CPU reference. This is expected behavior due to fundamental hardware-level differences between a General Purpose CPU, a GPU, and the specialized TPU architecture.
 
-    ### **1. Understanding Numerical Drift**
+    ### **1. Hardware-Level Differences**
 
-    While TorchTPU defaults to the **Highest Precision** path for **Float32**, several factors cause TPU results to deviate from the CPU:
+    Numerical drift on TPU is primarily a result of hardware design, rather than just software optimizations:
 
-    *   **Operator Fusion**: The compiler may fuse a sequence like ***A . B + C*** into a single instruction. This results in fewer rounding steps than the CPU, which executes each op sequentially.
-    *   **Algebraic Simplification**: XLA reorders mathematical operations to optimize for the TPU's architecture — for example, to increase hardware parallelism or utilize the Matrix Units (MXUs) more efficiently. Because of this, in floating-point math, $(A + B) + C$ is not always calculated the same as ***A + (B + C)***.
-    *   **Systolic Array Execution**: The TPU Matrix Units (MXUs) use specialized hardware paths for "dot-product" accumulations. To prioritize computation speed, these specialized units may not strictly adhere to the standard IEEE-754 logic used by CPUs for all operations.
+    *   **Native Data Types**: TPUs are optimized for **BFloat16**. Unlike CPUs or GPUs, TPUs do **not** natively support Float32 at the hardware level. To execute Float32 math, the hardware must emulate it using three BFloat16 operations, which is significantly slower and can still lead to precision drift compared to standard IEEE-754 Float32.
+    *   **Accumulator Precision**: The TPU's Matrix Units (MXUs) use specialized hardware accumulators. Depending on the TPU generation, these accumulators may operate in BFloat16 while a GPU might use Float32 or TF32. These differing accumulation paths lead to variations in the final result.
+    *   **Systolic Array & Rounding**: TPUs use a systolic array for matrix multiplication, which optimizes for data reuse and throughput. This architectural choice means the order of operations and rounding behavior differs from the sequential logic used by CPUs.
+    *   **Compiler Fusions**: The XLA compiler may fuse multiple operations (e.g., Multiply-Add) into a single hardware instruction to reduce rounding errors and improve speed, further diverging from the step-by-step execution of a CPU.
     """)
   return
 
@@ -47,14 +48,15 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ### **2. The Weight Synchronization Trap**
+    ### **2. Comparing Results (Weight Synchronization)**
 
-    A common mistake in parity testing is initializing a model on the CPU and another on the TPU and comparing them immediately. Because layers use random initialization, the weights will differ, causing the test to fail.
+    To accurately compare TPU and CPU outputs, you must ensure both models start with the exact same weights. This process is used for **numerical verification only** and is not part of a standard training workflow.
 
-    **The Golden Workflow:**
+    **The Parity Workflow:**
     1.  Initialize your model on the CPU.
-    2.  Initialize an identical model on the TPU.
+    2.  Move an identical model to the TPU.
     3.  **Sync the weights** by loading the CPU `state_dict` into the TPU model.
+    4.  **Use the same Dtype**: For a fair "apples-to-apples" comparison, cast both models to the same data type (e.g., `torch.bfloat16`) before comparing.
     """)
   return
 
@@ -73,28 +75,25 @@ def _(mo):
 def _():
   import torch
   import torch.nn as nn
-  from tpu_utils import safe_init
-  from torch_tpu._internal.utils import utils  # used only in notebooks
-  # from torch_tpu import api # standard way outside of notebooks to create tpu device
+  from torch_tpu._internal.utils import utils
 
-  # Self-healing hardware initialization for notebooks
-  device = safe_init()
-  # device = api.tpu_device()  # standard way outside of notebooks to create tpu device
-  return device, nn, torch, utils
+  # Standard hardware initialization
+  device = torch.device("tpu")
+  return nn, torch, utils
 
 
 @app.cell
-def _(device, nn, torch, utils):
-  # 1. Setup identical models
-  model_cpu = nn.Linear(10, 10).cpu()
-  model_tpu = nn.Linear(10, 10).to(device)
+def _(nn, torch, utils):
+  # 1. Setup identical models in BFloat16 for fair comparison
+  model_cpu = nn.Linear(10, 10).cpu().to(torch.bfloat16)
+  model_tpu = nn.Linear(10, 10).to("tpu").to(torch.bfloat16)
 
-  # 2. Sync weights (Mandatory)
+  # 2. Sync weights (Mandatory for Parity)
   model_tpu.load_state_dict(model_cpu.state_dict())
 
-  # 3. Create identical input data
-  input_data = torch.randn(5, 10)
-  input_tpu = input_data.to(device)
+  # 3. Create dummy input data (same for both)
+  input_data = torch.randn(5, 10).to(torch.bfloat16)
+  input_tpu = input_data.to("tpu")
 
   # 4. Run Forward Pass
   out_cpu = model_cpu(input_data)
@@ -105,6 +104,7 @@ def _(device, nn, torch, utils):
   # Note: TorchTPU's internal bfloat16 precision drift will likely exceed these
   # strict tolerances, generating the `assert_close` diagnostic report below.
   try:
+    # Note: we move the TPU result back to CPU for comparison
     utils.assert_close(
         out_tpu.cpu(),
         out_cpu,
@@ -129,11 +129,11 @@ def _(mo):
     **Example Failure Output:**
     ```
     Tensor-likes are not close!
-    
+
     Mismatched elements: 1 / 50 (2.0%)
     Greatest absolute difference: 0.006596 at index (3, 9) (strict relative check failure)
     Greatest relative difference: 0.165375 at index (3, 9) (up to 0.1 allowed)
-    
+
     Tolerance Suggestions:
     Strict check failed.
     To pass STRICT mode, you need BOTH:
@@ -143,18 +143,12 @@ def _(mo):
 
     *   **Mismatched elements**: High percentages (e.g., >70%) typically suggest standard precision loss from compiler fusions rather than a logic bug.
     *   **Tolerance Suggestions**: This analyzes the failure and calculates the exact `atol` and `rtol` needed to accommodate the hardware variance. In `STRICT` mode, you need to satisfy both thresholds.
-    """)
-  return
 
-
-@app.cell(hide_code=True)
-def _(mo):
-  mo.md(r"""
     ### **5. Best Practices for Parity**
 
-    *   **Don't Cast CPU to BFloat16**: Keep your CPU reference in `float32`. BFloat16 has a smaller mantissa than Float32, making it more susceptible to precision differences. Keeping the CPU baseline in Float32 ensures a fair comparison and measures the TPU's deviation from the highest possible precision.
+    *   **Dtype Consistency**: Always compare `BF16` on TPU to `BF16` on CPU. Comparing `BF16` to `FP32` will always yield significant mismatches.
+    *   **Verify Gradients**: Use the same synchronization pattern to check `model.weight.grad` parity after a `loss.backward()` call.
     *   **Baseline Tolerances**: The recommended baseline tolerances are the default ones linked in the [PyTorch testing documentation](https://docs.pytorch.org/docs/stable/testing.html). When doing comparisons, you should use the `STRICT` mode in `utils.assert_close` (which is the default).
-    *   **Verify Gradients**: Check `model.weight.grad` parity after a `loss.backward()` call using the same synchronization pattern.
     """)
   return
 
