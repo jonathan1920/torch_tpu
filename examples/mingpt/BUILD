@@ -44,7 +44,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils",
-        "//torch_tpu/api",
         "//torch_tpu/eager:tpu_aten_kernels",
         "@pypi//jax",
         "@pypi//numpy",
@@ -60,6 +59,9 @@ torch_tpu_py_test(
     args = [
         "--device=xla_cpu",
     ],
+    env = {
+        "TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1",
+    },
     main = "mingpt_example.py",
     nopresubmit = "slow example",
     notest_oss = "Disabled during switch from opt-in to opt-out",
@@ -75,7 +77,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils",
-        "//torch_tpu/api",
         "@pypi//jax",
         "@pypi//numpy",
         "@xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",  # buildcleaner: keep
@@ -89,6 +90,9 @@ torch_tpu_py_test(
     args = [
         "--device=xla_cuda",
     ],
+    env = {
+        "TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1",
+    },
     main = "mingpt_example.py",
     notap = "slow example",
     notest_oss = "Disabled during switch from opt-in to opt-out",
@@ -105,7 +109,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/utils",
-        "//torch_tpu/api",
         "@pypi//jax",
         "@pypi//numpy",
         "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
@@ -132,7 +135,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/execution_mode",
-        "//torch_tpu/api",
         "//torch_tpu/eager:tpu_aten_kernels",
         "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",
     ],
@@ -159,7 +161,6 @@ torch_tpu_py_library(
     deps = [
         "//examples/mingpt/impl:mingpt",
         "//shims/torch:pytorch",
-        "//torch_tpu/api",
     ],
 )
 
