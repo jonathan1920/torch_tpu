@@ -46,11 +46,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_llama_3_2_1b_forward(self, run_mode):
     """Tests the forward pass of Llama-3.2-1B."""
-    if (
-        self._is_torchax_backend()
-        and run_mode == benchmark_utils.RunMode.COMPILED
-    ):
-      self.skipTest("Test fails due to incompatibility with TorchAx")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
@@ -77,11 +72,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_qwen3_1_7b_forward(self, run_mode):
     """Tests the forward pass of Qwen3 1.7B."""
-    if (
-        self._is_torchax_backend()
-        and run_mode == benchmark_utils.RunMode.COMPILED
-    ):
-      self.skipTest("Test fails due to incompatibility with TorchAx")
+    if self._is_torchax_backend():
+      self.skipTest("Device OOM")
+
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
@@ -109,7 +102,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   def test_gpt_oss_20b_forward(self, run_mode):
     """Tests the forward pass of GPT-OSS-20B."""
     if self._is_torchax_backend():
-      self.skipTest("Test fails due to incompatibility with TorchAx")
+      self.skipTest("Device OOM")
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
@@ -136,8 +129,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_gpt_oss_120b_4_layers_forward(self, run_mode):
     """Tests the forward pass of GPT-OSS-20B."""
-    if self._is_torchax_backend():
-      self.skipTest("Test fails due to incompatibility with TorchAx")
 
     def modify_config_hook(config):
       config.num_hidden_layers = 4
@@ -170,17 +161,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   def test_llama_3_2_1b_train_1_step(self, run_mode):
     """Tests the training of Llama-3.2-1B."""
 
-    if (
-        self._is_torchax_backend()
-        and run_mode == benchmark_utils.RunMode.EAGER_DEFAULT
-    ):
-      self.skipTest("Eager Llama-3.2-1B training OOMs with TorchAX.")
-    if (
-        self._is_torchax_backend()
-        and run_mode == benchmark_utils.RunMode.COMPILED
-    ):
-      self.skipTest("Test fails due to incompatibility with TorchAx")
-
     batch_size = 8
 
     config = performance_utils.PerformanceBenchmarkConfig(
@@ -208,11 +188,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_gemma_3_270m_train_1_step(self, run_mode):
     """Tests the training of Gemma-3-270m."""
-    if self._is_torchax_backend() and run_mode in [
-        benchmark_utils.RunMode.EAGER_DEFAULT,
-        benchmark_utils.RunMode.COMPILED,
-    ]:
-      self.skipTest("Test fails due to incompatibility with TorchAx")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
@@ -238,11 +213,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_gemma_3_270m_forward(self, run_mode):
     """Tests the forward pass of Gemma-3-270m."""
-    if self._is_torchax_backend() and run_mode in [
-        benchmark_utils.RunMode.EAGER_DEFAULT,
-        benchmark_utils.RunMode.COMPILED,
-    ]:
-      self.skipTest("Test fails due to incompatibility with TorchAx")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,

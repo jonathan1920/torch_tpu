@@ -252,6 +252,14 @@ def get_huggingface_llm_model(
   _, example_inputs = module_spec.sample_inputs_factory(
       (batch_size, sequence_length), str(device)
   )
+  if any(
+      name in model_name.lower() for name in ["gemma", "llama"]
+  ) and isinstance(example_inputs, dict):
+    # Pop attention_mask to trigger transformers model-internal fully static
+    # causal attention mask fallback. This avoids JAX/XLA JIT compilation
+    # control-flow tracing errors in masking_utils.py while keeping identical
+    # benchmark workload/math.
+    example_inputs.pop("attention_mask", None)
 
   if is_training:
     example_inputs["labels"] = torch.randint(

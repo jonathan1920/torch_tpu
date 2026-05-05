@@ -27,10 +27,24 @@ import torch
 from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import benchmark_utils as pt_benchmark_utils
 from examples.benchmarks.e2e import performance_utils as pt_performance_utils
-from torchax import interop
-from torchax import train
+import torchax
+from torchax import interop  # pylint: disable=unused-import
+from torchax import train  # pylint: disable=unused-import
 
 from torch_tpu._internal.shims.xprof import traceme
+
+# Monkeypatch torchax.tensor.Environment._to_copy to handle raw Python scalars (int, float, bool)
+# passed during functorch/vmap tracing, converting them to PyTorch tensors on the fly.
+_original_to_copy = torchax.tensor.Environment._to_copy
+
+
+def _patched_to_copy(self, the_tensor, new_dtype, new_device):
+  if isinstance(the_tensor, (int, float, bool)):
+    the_tensor = torch.tensor(the_tensor)
+  return _original_to_copy(self, the_tensor, new_dtype, new_device)
+
+
+torchax.tensor.Environment._to_copy = _patched_to_copy
 
 log_utils.log_to_stderr()
 
@@ -136,21 +150,24 @@ def _call_functional_model(model_jittable, params, buffers, inputs):
 
 
 def _run_torchax_forward_pass(
-    model_jittable: interop.JittableModule,
+    model_jittable: torchax.interop.JittableModule,
     inputs: Any,
     run_mode: pt_benchmark_utils.RunMode,
     enable_xprof: bool,
 ) -> pt_benchmark_utils.PerformanceBenchmarkResult:
   """Runs the forward pass benchmark for a TorchAx model."""
 
-  weights = model_jittable.params
+  weights = {
+      k: v.data if isinstance(v, torch.nn.Parameter) else v
+      for k, v in model_jittable.params.items()
+  }
   buffers = model_jittable.buffers
 
   def model_fn(params, buffers, inputs):
     return _call_functional_model(model_jittable, params, buffers, inputs)
 
   if pt_benchmark_utils.is_torch_compile(run_mode):
-    runnable_model = interop.jax_jit(model_fn)
+    runnable_model = torchax.interop.jax_jit(model_fn)
   else:
     runnable_model = model_fn
 
@@ -213,14 +230,17 @@ def _run_torchax_forward_pass(
 
 
 def _run_torchax_backward_pass(
-    model_jittable: interop.JittableModule,
+    model_jittable: torchax.interop.JittableModule,
     inputs: Any,
     run_mode: pt_benchmark_utils.RunMode,
     enable_xprof: bool,
 ) -> pt_benchmark_utils.PerformanceBenchmarkResult:
   """Runs the backward pass benchmark for a TorchAx model."""
 
-  weights = model_jittable.params
+  weights = {
+      k: v.data if isinstance(v, torch.nn.Parameter) else v
+      for k, v in model_jittable.params.items()
+  }
   buffers = model_jittable.buffers
 
   # Generate dummy labels
@@ -246,15 +266,15 @@ def _run_torchax_backward_pass(
     return torch.mean((outputs - labels) ** 2)
 
   optimizer = optax.adam(0.1)
-  opt_state = interop.call_jax(optimizer.init, weights)
+  opt_state = torchax.interop.call_jax(optimizer.init, weights)
 
   def model_fn(params, buffers, inputs):
     return _call_functional_model(model_jittable, params, buffers, inputs)
 
-  train_step = train.make_train_step(model_fn, loss_fn, optimizer)
+  train_step = torchax.train.make_train_step(model_fn, loss_fn, optimizer)
 
   if pt_benchmark_utils.is_torch_compile(run_mode):
-    runnable_step = interop.jax_jit(
+    runnable_step = torchax.interop.jax_jit(
         train_step, kwargs_for_jax_jit={"donate_argnums": (0, 2)}
     )
   else:
@@ -324,6 +344,63 @@ def _run_torchax_backward_pass(
   )
 
 
+def prepare_for_torchax(model: torch.nn.Module, inputs):
+  """Prepares the model and inputs for TorchAx execution by moving them to JAX.
+
+  This recursively moves parameters/buffers in-place (bypassing the PyTorch C++
+  Parameter dispatcher bypass bug and preserving weight tying) and moves
+  inputs (out-of-place) returning the JAXified inputs.
+  """
+
+  default_jax_device = jax.devices()[0]
+
+  memo = {}
+  # Disable DLPack for data conversion to force fallback to numpy,
+  # which correctly respects jax.default_device context!
+  torchax.default_env().config.use_dlpack_for_data_conversion = False
+
+  with jax.default_device(default_jax_device):
+
+    def _move(module):
+      for name, param in list(module.named_parameters(recurse=False)):
+        param_id = id(param)
+        if param_id in memo:
+          module.register_parameter(name, memo[param_id])
+        else:
+          param_jax_data = param.data.to("jax")
+          new_param = torch.nn.Parameter(param_jax_data, param.requires_grad)
+          module.register_parameter(name, new_param)
+          memo[param_id] = new_param
+
+      for k in dir(module):
+        try:
+          v = getattr(module, k)
+        except:
+          continue
+        if isinstance(v, torch.Tensor) and not isinstance(
+            v, torch.nn.Parameter
+        ):
+          setattr(module, k, v.to("jax"))
+
+      for child in module.children():
+        _move(child)
+
+    _move(model)
+
+    def _move_tensor(x):
+      if isinstance(x, torch.Tensor):
+        res = x.to("jax")
+        assert isinstance(res, torch.Tensor) and isinstance(
+            res, torchax.tensor.Tensor
+        )
+        return res
+      return x
+
+    inputs_jax = jax.tree_util.tree_map(_move_tensor, inputs)
+
+  return inputs_jax
+
+
 def get_model_and_input(
     config: pt_performance_utils.PerformanceBenchmarkConfig,
     cpu_device: torch.device,
@@ -342,16 +419,9 @@ def get_model_and_input(
   model = model_and_input.model
   inputs = model_and_input.example_inputs
 
-  model.to("jax")
+  inputs = prepare_for_torchax(model, inputs)
 
-  def move_to_jax(x):
-    if isinstance(x, torch.Tensor):
-      return x.to("jax")
-    return x
-
-  inputs = jax.tree_util.tree_map(move_to_jax, inputs)
-
-  model_jittable = interop.JittableModule(model)
+  model_jittable = torchax.interop.JittableModule(model).to("jax")
 
   return model_jittable, inputs
 
