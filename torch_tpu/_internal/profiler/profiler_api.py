@@ -38,7 +38,9 @@ class ProfilerActivity(enum.Enum):
   GPU = 3
 
 
-def xprof_trace_handler(dir_name: os.PathLike | str) -> Callable[[Any], str]:
+def xprof_trace_handler(
+    dir_name: os.PathLike[str] | str,
+) -> Callable[[Any], str]:
   """Standard handler to be used with the `on_trace_ready` argument in `profiler.profile`.
 
   The returned handler function simply returns the provided `dir_name`,
@@ -107,7 +109,6 @@ def _get_profile_options(
 def profile(
     activities: list[ProfilerActivity] | None = None,
     on_trace_ready: Callable[[Any], str] | None = None,
-    **kwargs,
 ):
   """Context manager to take a profiler trace, compatible with torch.profiler.
 
@@ -117,9 +118,8 @@ def profile(
 
   with profiler.profile(
     activities=[profiler.ProfilerActivity.TPU],
-    on_trace_ready=profiler.xprof_trace_handler(dir_name="/path/to/logdir"),
-    **kwargs,
-    ) as prof:
+    on_trace_ready=profiler.xprof_trace_handler(dir_name="/path/to/logdir")
+  ) as prof:
       trainer.train()
   ```
 
@@ -128,7 +128,6 @@ def profile(
       [ProfilerActivity.CPU, ProfilerActivity.TPU] if not provided.
     on_trace_ready: A callable that takes the profiler object as argument and
       returns the directory to save the trace to.
-    **kwargs: Additional arguments.
   """
   if not on_trace_ready:
     raise ValueError("on_trace_ready must be provided for profiler.profile.")

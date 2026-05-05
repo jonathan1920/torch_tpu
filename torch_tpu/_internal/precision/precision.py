@@ -19,8 +19,6 @@ from typing import Generator
 
 from torch_tpu._internal.precision import precision_impl
 
-# pylint: disable=protected-access
-
 __all__ = ["precision", "Precision"]
 
 
@@ -70,9 +68,9 @@ def precision(mode: Precision) -> Generator[None, None, None]:
     )
 
   # Push the new state.
-  precision_impl._push_precision(mode)
+  precision_impl._push_precision(mode)  # pylint: disable=protected-access
   try:
     yield
   finally:
     # Guarantee the state is restored even if Python code throws an exception.
-    precision_impl._pop_precision()
+    precision_impl._pop_precision()  # pylint: disable=protected-access

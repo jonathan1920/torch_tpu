@@ -275,9 +275,8 @@ def _map_unused_fake_inputs_to_outputs(
     # TODO(aarfaian): Consider handling things beyond FakeScriptObject.
     if not isinstance(
         input_node.meta.get("val"),
-        # pylint: disable=protected-access
+        # pylint: disable-next=protected-access
         torch._library.fake_class_registry.FakeScriptObject,
-        # pylint: enable=protected-access
     ):
       continue
 

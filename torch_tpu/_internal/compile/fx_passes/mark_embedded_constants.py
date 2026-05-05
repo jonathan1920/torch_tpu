@@ -48,15 +48,13 @@ def apply(
     )
 
     for attr_target in unique_attr_targets:
-      # pylint: disable=protected-access
+      # pylint: disable-next=protected-access
       target = torch.fx.graph_module._get_attr(gm, attr_target)
-      # pylint: enable=protected-access
       if not isinstance(target, torch.Tensor):
         continue
 
       # The target will be placed on the device by AOT Autograd automatically,
       # transfer it back to CPU so that we can access the data.
       new_target = tpu_torch_compile.make_constant_tensor(target.to("cpu"))
-      # pylint: disable=protected-access
+      # pylint: disable-next=protected-access
       _assign_attr(new_target, gm, attr_target, _AttrKind.CONSTANT)
-      # pylint: enable=protected-access
