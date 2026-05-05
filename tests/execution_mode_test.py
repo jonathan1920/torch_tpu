@@ -18,7 +18,6 @@ import concurrent
 import random
 
 from absl.testing import absltest
-from torch_tpu import api
 from torch_tpu._internal import execution_mode
 
 _EAGER_MODES = [
@@ -30,10 +29,6 @@ _EAGER_MODES = [
 
 class ExecutionModeTest(absltest.TestCase):
   """Unit tests for setting compiler options."""
-
-  def setUp(self):
-    super().setUp()
-    self.tpu = api.tpu_device()
 
   def test_eager_mode_nested_context(self):
     """Tests that nested context managers override each other correctly."""

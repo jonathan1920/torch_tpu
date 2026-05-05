@@ -15,10 +15,10 @@
 """Tests to verify that the traceback flag doesn't override the context manager."""
 
 import os
+
 from absl.testing import absltest
 import torch
 import torch.export
-from torch_tpu import api
 from torch_tpu._internal.export import export as torch_tpu_export
 
 
@@ -29,10 +29,6 @@ class SimpleModule(torch.nn.Module):
 
 
 class TracebackPrecedenceTest(absltest.TestCase):
-
-  def setUp(self):
-    super().setUp()
-    api._xla_cpu_device()
 
   def test_traceback_disabled_by_context_manager_even_if_flag_enabled(self):
     # This test assumes the flag --torch_tpu_internal_mlir_tracebacks=true

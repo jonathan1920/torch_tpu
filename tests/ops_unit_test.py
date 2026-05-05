@@ -28,7 +28,6 @@ from absl.testing import absltest
 from absl.testing import parameterized
 from scipy import stats
 import torch
-from torch_tpu import api
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
@@ -83,7 +82,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_max_pool2d_no_indices(self):
     """Tests nn.functional.max_pool2d without indices."""
-    device = api.tpu_device()
+    device = torch.device("tpu")
     maxpool_input = torch.tensor(
         [[
             [
@@ -114,7 +113,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
 
   def test_rsqrt_complex_grad(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
     x = torch.randn(
         2, 2, dtype=torch.complex64, device=device, requires_grad=True
     )
@@ -123,14 +122,14 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     print(f"rsqrt(complex64) grad: {x.grad}")
 
   def test_rsqrt_complex(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
     x = torch.randn(2, 2, dtype=torch.complex64, device=device)
     y = torch.rsqrt(x)
     print(f"rsqrt(complex64) result: {y}")
 
   def test_gather_scalar_grad(self):
     del self  # self is unused in this test.
-    device = api.tpu_device()
+    device = torch.device("tpu")
     input_val = 4.901_066_981_864_172
     input_tensor_tpu = torch.tensor(
         input_val, requires_grad=True, device=device
@@ -150,7 +149,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_gather_scalar_multi_index_grad(self):
     del self  # self is unused in this test.
-    device = api.tpu_device()
+    device = torch.device("tpu")
     input_val = 4.901_066_981_864_172
     self_tpu = torch.tensor([input_val], requires_grad=True, device=device)
     index_tpu = torch.tensor([0, 0], device=device, dtype=torch.int64)
@@ -280,7 +279,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   )
   def test__ishift__Scalar(self, input_dtype, op_fn):
     """Tests the __ilshift__.Scalar and __irshift__.Scalar op."""
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
     x = torch.tensor([1, 2, 3], dtype=input_dtype)
     x_tpu = x.to(tpu_device)
     op_fn(x, 2)
@@ -297,7 +296,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   )
   def test__ishift__Tensor(self, self_dtype, other_dtype, op_fn):
     """Tests the __ilshift__.Tensor and __irshift__.Tensor op."""
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
     self_tensor = torch.tensor([1, 2, 3], dtype=self_dtype)
     self_tensor_tpu = self_tensor.to(tpu_device)
     other_tensor = torch.tensor([1, 2, 3], dtype=other_dtype)
@@ -315,7 +314,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   )
   def test__shift__Scalar(self, input_dtype, op_fn):
     """Tests the __lshift__.Scalar and __rshift__.Scalar op."""
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
     x = torch.tensor([1, 2, 3, 128], dtype=input_dtype)
     x_tpu = x.to(tpu_device)
     out = op_fn(x, 2)
@@ -332,7 +331,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   )
   def test__shift__Tensor(self, self_dtype, other_dtype, op_fn):
     """Tests the __lshift__.Tensor and __rshift__.Tensor op."""
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
     self_tensor = torch.tensor([128, 128, 128], dtype=self_dtype)
     self_tensor_tpu = self_tensor.to(tpu_device)
     other_tensor = torch.tensor([1, 2, 3], dtype=other_dtype)
@@ -525,11 +524,11 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     # Test to() with simple types and the device argument being a torch.device.
     gpu = torch.device("cuda")
-    tpu = to(gpu, api.tpu_device())
-    self.assertEqual(tpu, api.tpu_device())
+    tpu = to(gpu, torch.device("tpu"))
+    self.assertEqual(tpu, torch.device("tpu"))
     gpu_dict = {"device": gpu}
-    tpu_dict = to(gpu_dict, api.tpu_device())
-    self.assertEqual(tpu_dict, {"device": api.tpu_device()})
+    tpu_dict = to(gpu_dict, torch.device("tpu"))
+    self.assertEqual(tpu_dict, {"device": torch.device("tpu")})
 
     # Test to() with simple types and the device argument being a string.
     gpu = "cuda"
@@ -545,10 +544,10 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             "sample1", torch.zeros(1, device="cpu"), (1,), {"device": gpu}
         )
     )
-    tpu_input = to(gpu_input, api.tpu_device())
+    tpu_input = to(gpu_input, torch.device("tpu"))
     self.assertEqual(tpu_input.name, "sample1")
     self.assert_devices_equivalent(
-        tpu_input.input_value.device, api.tpu_device()
+        tpu_input.input_value.device, torch.device("tpu")
     )
     self.assertEqual(tpu_input.args, (1,))
     self.assertEqual(tpu_input.kwargs, {"device": "tpu"})
@@ -715,7 +714,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_bernoulli_distribution(self):
     """Tests bernoulli to produce the correct distribution."""
     n = 1000
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
 
     torch.manual_seed(123)
     p = 0.7
@@ -1055,7 +1054,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_im2col_errors(self):
     """Tests im2col with invalid inputs that trigger error messages."""
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
 
     # Test invalid input dimensions (e.g. 2D tensor)
     # C++ check: input.dim() == 4 (after unsqueeze if 3D)
@@ -1184,7 +1183,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         )
     )
 
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
 
     # Test CPU -> TPU copy
     src_cpu = torch.tensor([1, 2, 3], dtype=torch.int32)
@@ -1322,7 +1321,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           ([0, 0, 0, 0, 1, 1, 1, 1], [4, 4, 0, 0, 0, 0, 0, 0]),
       ]:
         tpu_input = torch.tensor(int_input, dtype=int_dtype).to(
-            device=api.tpu_device()
+            device=torch.device("tpu")
         )
         tpu_result = torch.histc(tpu_input, bins=8, min=0, max=7)
         self.assertEqual(tpu_result, torch.tensor(int_result, dtype=int_dtype))
@@ -1375,20 +1374,20 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_torch_manual_seed_same_seed_same_result(self):
     torch.manual_seed(321)
-    x = torch.rand(1, dtype=torch.float32, device=api.tpu_device())
+    x = torch.rand(1, dtype=torch.float32, device=torch.device("tpu"))
     torch.manual_seed(321)
-    y = torch.rand(1, dtype=torch.float32, device=api.tpu_device())
+    y = torch.rand(1, dtype=torch.float32, device=torch.device("tpu"))
     self.assertEqual(x.cpu(), y.cpu())
 
   def test_torch_manual_seed_different_seed_different_result(self):
     torch.manual_seed(321)
-    x = torch.rand(1, dtype=torch.float32, device=api.tpu_device())
+    x = torch.rand(1, dtype=torch.float32, device=torch.device("tpu"))
     torch.manual_seed(123)
-    y = torch.rand(1, dtype=torch.float32, device=api.tpu_device())
+    y = torch.rand(1, dtype=torch.float32, device=torch.device("tpu"))
     self.assertNotEqual(x.cpu(), y.cpu())
 
   def test_bitwise_left_shift(self):
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
     shift_by_int32 = torch.tensor([1, 2, 4, 5], dtype=torch.int32)
     shift_by_int32_tpu = shift_by_int32.to(tpu_device)
     shift_by_int64 = torch.tensor([1, 2, 4, 5], dtype=torch.int64)
@@ -1440,7 +1439,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     # src_idx = 21 * (1/7) in float32 is 3.0000002... > 3.0
     # If not clamped, ceil(src_idx) becomes 4, which is OOB (valid: 0, 1, 2, 3).
 
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
     N, C = 1, 1
     H_in, W_in = 4, 4
     # We use a large output size that triggers the precision issue.
@@ -1478,7 +1477,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     #   res = val[-1]*(1-0.75) + val[0]*0.75 = 20*0.25 + 10*0.75 = 5 + 7.5 = 12.5.
     # Expected (clamped): val[0] = 10.
 
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
     N, C = 1, 1
     H_in, W_in = 1, 2
     H_out, W_out = 1, 4
@@ -1498,7 +1497,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close(golden_result=out_cpu, torch_tpu_result=out_tpu.cpu())
 
   def test_bitwise_right_shift(self):
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
     shift_by_int32 = torch.tensor([1, 2, 4, 5], dtype=torch.int32)
     shift_by_int32_tpu = shift_by_int32.to(tpu_device)
     shift_by_int64 = torch.tensor([1, 2, 4, 5], dtype=torch.int64)
@@ -1577,12 +1576,14 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
     # out param
     out_cpu = torch.empty(3, dtype=torch.int32)
-    out_tpu = torch.empty(3, dtype=torch.int32, device=api.tpu_device())
+    out_tpu = torch.empty(3, dtype=torch.int32, device=torch.device("tpu"))
     a = torch.tensor([1, 2, 3], dtype=torch.int32)
     b = torch.tensor([3, 1, 5], dtype=torch.int32)
     torch.bitwise_or(a, b, out=out_cpu)
     torch.bitwise_or(
-        a.to(api.tpu_device()), b.to(api.tpu_device()), out=out_tpu
+        a.to(torch.device("tpu")),
+        b.to(torch.device("tpu")),
+        out=out_tpu,
     )
     self.assertEqual(out_cpu, out_tpu.cpu())
 
@@ -1651,12 +1652,14 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
     # out param
     out_cpu = torch.empty(3, dtype=torch.int32)
-    out_tpu = torch.empty(3, dtype=torch.int32, device=api.tpu_device())
+    out_tpu = torch.empty(3, dtype=torch.int32, device=torch.device("tpu"))
     a = torch.tensor([1, 2, 3], dtype=torch.int32)
     b = torch.tensor([3, 1, 5], dtype=torch.int32)
     torch.bitwise_xor(a, b, out=out_cpu)
     torch.bitwise_xor(
-        a.to(api.tpu_device()), b.to(api.tpu_device()), out=out_tpu
+        a.to(torch.device("tpu")),
+        b.to(torch.device("tpu")),
+        out=out_tpu,
     )
     self.assertEqual(out_cpu, out_tpu.cpu())
 
@@ -1822,7 +1825,11 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
 
     tpu_result = torch.arange(
-        0, 10, 2, dtype=torch.float32, device=api.tpu_device()
+        0,
+        10,
+        2,
+        dtype=torch.float32,
+        device=torch.device("tpu"),
     ).cpu()
     self.assert_close(golden_result=golden_result, torch_tpu_result=tpu_result)
 
@@ -1935,7 +1942,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     """Tests that ops can run concurrently without correctness issues."""
 
     def run_op(op):
-      arg = torch.tensor(2, dtype=torch.float32, device=api.tpu_device())
+      arg = torch.tensor(2, dtype=torch.float32, device=torch.device("tpu"))
       res = op(arg)
       return res.to("cpu").item()
 
@@ -1950,7 +1957,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_concurrent_ops_deferred_to_different_thread(self):
     """Tests deferring an op to a different thread."""
-    device = api.tpu_device()
+    device = torch.device("tpu")
     lock = threading.Lock()
     num_tensors = 100
     tensors = [None for _ in range(num_tensors)]
@@ -2005,7 +2012,12 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_dropout_mean_of_entries(self):
     n = 5000
     p = 0.5
-    t = torch.rand(n, n, dtype=torch.float32, device=api.tpu_device())
+    t = torch.rand(
+        n,
+        n,
+        dtype=torch.float32,
+        device=torch.device("tpu"),
+    )
     t = torch.dropout(t, p, train=True)
     # If X = average of entries of t = (1/n^2) sum_{ij} U_ij * B_ij / (1 - p)
     #   U_ij ~ Uniform[0,1], B_ij ~ Bernoulli(1 - p)
@@ -2028,7 +2040,12 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
 
   def test_dropout_equal_to_zero_or_scaled_original(self):
-    t = torch.rand(10, 10, dtype=torch.float32, device=api.tpu_device())
+    t = torch.rand(
+        10,
+        10,
+        dtype=torch.float32,
+        device=torch.device("tpu"),
+    )
     z = torch.dropout(t, 0.5, train=True)
     mask = z != (2 * t)
     w = torch.masked_select(z, mask)
@@ -2038,7 +2055,12 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
 
   def test_dropout_reproducible(self):
-    t = torch.ones(10, 10, dtype=torch.float32, device=api.tpu_device())
+    t = torch.ones(
+        10,
+        10,
+        dtype=torch.float32,
+        device=torch.device("tpu"),
+    )
     torch.manual_seed(1234)
     z = torch.dropout(t, 0.5, train=True)
     w = torch.dropout(t, 0.5, train=True)
@@ -2052,7 +2074,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_exponential(self):
     """Tests the exponential_ op."""
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
     shape = (10, 10)
     lambd = 0.5
 
@@ -2075,7 +2097,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         torch.uint64,
     ]:
       n = 10000
-      t = torch.zeros(n, n, dtype=dtype, device=api.tpu_device())
+      t = torch.zeros(n, n, dtype=dtype, device=torch.device("tpu"))
       t = t.random_(0, 16)
       # If X = avg of entries of t that are equal to zero, then
       #   E(X) = 1/16
@@ -2121,8 +2143,18 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close_tpu_vs_cpu(compute, check_value=CheckValueMode.SKIP)
 
   def test_random_reproducible(self):
-    t = torch.zeros(10, 10, dtype=torch.int32, device=api.tpu_device())
-    w = torch.zeros(10, 10, dtype=torch.int32, device=api.tpu_device())
+    t = torch.zeros(
+        10,
+        10,
+        dtype=torch.int32,
+        device=torch.device("tpu"),
+    )
+    w = torch.zeros(
+        10,
+        10,
+        dtype=torch.int32,
+        device=torch.device("tpu"),
+    )
     torch.manual_seed(1234)
     t = t.random_(10)
     w = w.random_(10)
@@ -2134,8 +2166,18 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
 
   def test_random_reproducible_default_to(self):
-    t = torch.zeros(10, 10, dtype=torch.int32, device=api.tpu_device())
-    w = torch.zeros(10, 10, dtype=torch.int32, device=api.tpu_device())
+    t = torch.zeros(
+        10,
+        10,
+        dtype=torch.int32,
+        device=torch.device("tpu"),
+    )
+    w = torch.zeros(
+        10,
+        10,
+        dtype=torch.int32,
+        device=torch.device("tpu"),
+    )
     torch.manual_seed(1234)
     t = t.random_()
     w = w.random_()
@@ -2237,7 +2279,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     _, cpu_info = torch.linalg.solve_ex(a, b, check_errors=False)
 
     # TPU
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
     _, tpu_info = torch.linalg.solve_ex(
         a.to(tpu_device), b.to(tpu_device), check_errors=False
     )
@@ -2257,7 +2299,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       torch.linalg.solve_ex(a, b, check_errors=True)
 
     # TPU
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
     with self.assertRaises(RuntimeError):
       torch.linalg.solve_ex(
           a.to(tpu_device), b.to(tpu_device), check_errors=True
@@ -2311,7 +2353,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     other_tensor = (
         torch.tensor([3.0, 3.0, 5.0, 5.0, 5.0]).repeat(12).view(3, 4, 5)
     )
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
     cpu_result = sample_input.clone().floor_divide_(other_tensor)
     tpu_result = (
         sample_input.to(tpu_device)
@@ -2326,8 +2368,8 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
 
   def test_device_gen(self):
-    gen = torch.Generator(device=api.tpu_device())
-    self.assertEqual(gen.device.type, api.tpu_device().type)
+    gen = torch.Generator(device=torch.device("tpu"))
+    self.assertEqual(gen.device.type, torch.device("tpu").type)
 
     gen.manual_seed(42)
     state = gen.get_state()
@@ -2363,7 +2405,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_floor_divide_inplace_scalar(self):
     sample_input = torch.tensor([10.0, -10.0, 25.5, -25.5]).repeat(3).view(3, 4)
     other_tensor = torch.tensor(3.0)
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
     cpu_result = sample_input.clone().floor_divide_(other_tensor)
     tpu_result = (
         sample_input.to(tpu_device)
@@ -2583,7 +2625,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_is_nonzero(self):
     def assert_is_nonzero_equal_on_cpu_vs_tpu(tensor: torch.Tensor):
       cpu_result = torch.is_nonzero(tensor.to("cpu"))
-      tpu_result = torch.is_nonzero(tensor.to(api.tpu_device()))
+      tpu_result = torch.is_nonzero(tensor.to(torch.device("tpu")))
       self.assertEqual(cpu_result, tpu_result)
       self.assertEqual(cpu_result, tpu_result)
 
@@ -2658,7 +2700,8 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     # b = torch.randn(3)
     # golden_result = torch.tensor([6])
     # tpu_result = torch.kron(
-    #     to(a, device=api.tpu_device()), to(b, device=api.tpu_device())
+    #     to(a, device=torch.device("tpu")),
+    #     to(b, device=torch.device("tpu")),
     # )
     # tpu_result = to(tpu_result, device="cpu")
     # self.assert_close(golden_result, tpu_result)
@@ -2669,7 +2712,8 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     # b = 3
     # golden_result = torch.tensor([12])
     # tpu_result = torch.kron(
-    #     to(a, device=api.tpu_device()), to(b, device=api.tpu_device())
+    #     to(a, device=torch.device("tpu")),
+    #     to(b, device=torch.device("tpu")),
     # )
     # tpu_result = to(tpu_result, device="cpu")
     # self.assert_close(golden_result, tpu_result)
@@ -2768,11 +2812,15 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
     # out param
     out_cpu = torch.empty(3, dtype=torch.bool)
-    out_tpu = torch.empty(3, dtype=torch.bool, device=api.tpu_device())
+    out_tpu = torch.empty(3, dtype=torch.bool, device=torch.device("tpu"))
     a = torch.tensor([1, 2, 3], dtype=torch.int32)
     b = torch.tensor([3, 2, 1], dtype=torch.int32)
     torch.ne(a, b, out=out_cpu)
-    torch.ne(a.to(api.tpu_device()), b.to(api.tpu_device()), out=out_tpu)
+    torch.ne(
+        a.to(torch.device("tpu")),
+        b.to(torch.device("tpu")),
+        out=out_tpu,
+    )
     self.assertEqual(out_cpu, out_tpu.cpu())
 
     # empty input
@@ -2907,7 +2955,12 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         dtype=torch.float32,
         device=self.golden_device,
     )
-    out = torch.empty(1, 4, dtype=torch.float32, device=api.tpu_device())
+    out = torch.empty(
+        1,
+        4,
+        dtype=torch.float32,
+        device=torch.device("tpu"),
+    )
     tpu_result = torch.normal(mean=2.0, std=3.0, size=(1, 4), out=out).cpu()
 
     self.assertEqual(golden_result.shape, tpu_result.shape)
@@ -2932,7 +2985,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close_tpu_vs_cpu(compute, check_value=CheckValueMode.SKIP)
 
   def test_normal_inplace_complex(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
     t = torch.zeros(10, dtype=torch.complex64, device=device)
     t.normal_(mean=1.0, std=0.5)
     self.assertTrue(t.is_complex())
@@ -3102,20 +3155,24 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
     # out param (tensor/tensor)
     out_cpu = torch.empty(3, dtype=torch.float32)
-    out_tpu = torch.empty(3, dtype=torch.float32, device=api.tpu_device())
+    out_tpu = torch.empty(3, dtype=torch.float32, device=torch.device("tpu"))
     a = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32)
     b = torch.tensor([3.0, 1.0, 2.0], dtype=torch.float32)
     torch.pow(a, b, out=out_cpu)
-    torch.pow(a.to(api.tpu_device()), b.to(api.tpu_device()), out=out_tpu)
+    torch.pow(
+        a.to(torch.device("tpu")),
+        b.to(torch.device("tpu")),
+        out=out_tpu,
+    )
     self.assertEqual(out_cpu, out_tpu.cpu())
 
     # out param (scalar/tensor)
     out_cpu = torch.empty(3, dtype=torch.float32)
-    out_tpu = torch.empty(3, dtype=torch.float32, device=api.tpu_device())
+    out_tpu = torch.empty(3, dtype=torch.float32, device=torch.device("tpu"))
     a = 3.0
     b = torch.tensor([3.0, 1.0, 2.0], dtype=torch.float32)
     torch.pow(a, b, out=out_cpu)
-    torch.pow(a, b.to(api.tpu_device()), out=out_tpu)
+    torch.pow(a, b.to(torch.device("tpu")), out=out_tpu)
     self.assertEqual(out_cpu, out_tpu.cpu())
 
     # empty input
@@ -3153,8 +3210,8 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     # inplace pow_.Tensor
     a_cpu = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32)
     b_cpu = torch.tensor([3.0, 1.0, 2.0], dtype=torch.float32)
-    a_tpu = a_cpu.clone().to(api.tpu_device())
-    b_tpu = b_cpu.clone().to(api.tpu_device())
+    a_tpu = a_cpu.clone().to(torch.device("tpu"))
+    b_tpu = b_cpu.clone().to(torch.device("tpu"))
     a_cpu.pow_(b_cpu)
     a_tpu.pow_(b_tpu)
     self.assert_close(
@@ -3163,7 +3220,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     # inplace pow_.Scalar
     a_cpu = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32)
-    a_tpu = a_cpu.clone().to(api.tpu_device())
+    a_tpu = a_cpu.clone().to(torch.device("tpu"))
     a_cpu.pow_(2.0)
     a_tpu.pow_(2.0)
     self.assert_close(
@@ -3194,14 +3251,14 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_tensor_to_tpu_with_default_device(self):
     """Tests that a tensor can be moved to TPU with a default device set."""
-    device = api.tpu_device()
+    device = torch.device("tpu")
     torch.set_default_device(device)
     a = torch.tensor(1)
     # This should not raise an error.
     a.to(device=device, dtype=torch.float)
 
   def test_to_tpu_with_dtype(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
     cpu_device = torch.device("cpu")
     x = torch.arange(0, 1024, 2, dtype=torch.int64).to(cpu_device)
     x_tpu = x.to(device)
@@ -3211,7 +3268,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_chained_ops_and_views(self):
     dtype = torch.float32
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
 
     b, c, h, w = 2, 12, 16, 16  # C == K_mid
     k_mid, n_final = c, 8
@@ -3277,7 +3334,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_default_dtype_change_after_deferred_op(self):
     """Tests that the default dtype is captured when the op is enqueued."""
     with set_default_dtype(torch.float32):
-      arg = torch.tensor(2, dtype=torch.int32, device=api.tpu_device())
+      arg = torch.tensor(2, dtype=torch.int32, device=torch.device("tpu"))
       # Enqueue log2 op. The expected output type is float32.
       res = torch.log2(arg)
       # The tensor's dtype is set at the time of op creation.
@@ -3424,7 +3481,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_default_dtype_consistent(self):
     """Tests the torch_tpu respects the default dtype."""
     with set_default_dtype(torch.float32):
-      arg = torch.tensor(2, dtype=torch.int32, device=api.tpu_device())
+      arg = torch.tensor(2, dtype=torch.int32, device=torch.device("tpu"))
       res = torch.log2(arg)
       self.assertEqual(res.dtype, torch.float32)
       # This should not raise an error.
@@ -3448,12 +3505,12 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_randn_scalar(self):
     with set_default_dtype(torch.float32):
       torch.manual_seed(46)
-      x = torch.randn((), device=api.tpu_device())
-      y = torch.randn((), device=api.tpu_device())
+      x = torch.randn((), device=torch.device("tpu"))
+      y = torch.randn((), device=torch.device("tpu"))
       torch.manual_seed(47)
-      z = torch.randn((), device=api.tpu_device())
+      z = torch.randn((), device=torch.device("tpu"))
       torch.manual_seed(46)
-      w = torch.randn((), device=api.tpu_device())
+      w = torch.randn((), device=torch.device("tpu"))
       with self.subTest("same_seed_same_result"):
         self.assertEqual(x, w)
 
@@ -3467,11 +3524,13 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     with set_default_dtype(torch.float32):
       torch.manual_seed(46)
       n = 1000
-      x = torch.randn((n, n), device=api.tpu_device())
-      y = torch.randn((n, 1), device=api.tpu_device())
+      x = torch.randn((n, n), device=torch.device("tpu"))
+      y = torch.randn((n, 1), device=torch.device("tpu"))
       count = (x @ y > 0).sum()
       # Count should be close to N/2.
-      n_tensor = torch.tensor(n, dtype=torch.float32, device=api.tpu_device())
+      n_tensor = torch.tensor(
+          n, dtype=torch.float32, device=torch.device("tpu")
+      )
       self.assertGreater(count, n_tensor / 2 - 3 * torch.sqrt(n_tensor) / 2)
       self.assertLess(count, n_tensor / 2 + 3 * torch.sqrt(n_tensor) / 2)
 
@@ -3479,7 +3538,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     with set_default_dtype(torch.float32):
       torch.manual_seed(48)
       n = 1000
-      x = torch.randn((n, n), device=api.tpu_device())
+      x = torch.randn((n, n), device=torch.device("tpu"))
       norm_squared = (x**2).sum(dim=1)
       mean_sq_norm = torch.mean(norm_squared).item()
       self.assertGreater(mean_sq_norm, n - 6)
@@ -3494,7 +3553,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   )
   def test_randn_shape(self, shape):
     with set_default_dtype(torch.float32):
-      x = torch.randn(shape, device=api.tpu_device())
+      x = torch.randn(shape, device=torch.device("tpu"))
       self.assertEqual(x.shape, shape)
 
   @parameterized.named_parameters(
@@ -3511,18 +3570,18 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     with set_default_dtype(torch.float32):
       torch.manual_seed(49)
       if isinstance(mean, torch.Tensor):
-        mean = mean.to(api.tpu_device())
+        mean = mean.to(torch.device("tpu"))
       if isinstance(std, torch.Tensor):
-        std = std.to(api.tpu_device())
+        std = std.to(torch.device("tpu"))
       if isinstance(mean, float) and isinstance(std, float):
-        x = torch.normal(mean, std, (3, 3), device=api.tpu_device())
+        x = torch.normal(mean, std, (3, 3), device=torch.device("tpu"))
       else:
         x = torch.normal(mean, std)
       self.assertIsInstance(x, torch.Tensor)
 
   def test_randn_gaussianity(self):
     with set_default_dtype(torch.float32):
-      samples = torch.randn((10000,), device=api.tpu_device()).cpu()
+      samples = torch.randn((10000,), device=torch.device("tpu")).cpu()
 
       # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html
       with self.subTest("shapiro_wilk_test"):
@@ -3541,7 +3600,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   )
   def test_randn_float(self, dtype: torch.dtype):
     numel = 100_000
-    t = torch.randn(numel, dtype=dtype, device=api.tpu_device())
+    t = torch.randn(numel, dtype=dtype, device=torch.device("tpu"))
     t_cpu = t.cpu().float()
 
     num_nonfinite = (~torch.isfinite(t_cpu)).sum().item()
@@ -3566,7 +3625,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   )
   def test_randn_complex(self, dtype: torch.dtype):
     numel = 100_000
-    t = torch.randn(numel, dtype=dtype, device=api.tpu_device())
+    t = torch.randn(numel, dtype=dtype, device=torch.device("tpu"))
     t_cpu = t.cpu()
 
     num_nonfinite = (~torch.isfinite(t_cpu)).sum().item()
@@ -3674,8 +3733,8 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       )
       return out
 
-    fn(api.tpu_device())
-    fn_1(api.tpu_device())
+    fn(torch.device("tpu"))
+    fn_1(torch.device("tpu"))
 
   def test_embedding_renorm(self):
     """Tests that embedding renorm works."""
@@ -3712,7 +3771,11 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       # Create three empty tensors: one directly on CPU, one by materializing
       # empty TPU to CPU, and one by filling a CPU tensor with NaNs manually.
       empty_tpu = torch.empty(
-          1, 2, 3, device=api.tpu_device(), dtype=torch.float32
+          1,
+          2,
+          3,
+          device=torch.device("tpu"),
+          dtype=torch.float32,
       )
       empty_tpu_to_cpu = empty_tpu.to("cpu")
       empty_cpu = torch.empty(
@@ -3746,17 +3809,23 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     with self.assertRaisesRegex(IndexError, "min"):
       torch.min(torch.tensor([], device="cpu"), dim=0)
     with self.assertRaisesRegex(IndexError, "min"):
-      torch.min(torch.tensor([], device=api.tpu_device()), dim=0)
+      torch.min(
+          torch.tensor([], device=torch.device("tpu")),
+          dim=0,
+      )
 
     # empty tensor on reduction dim
     with self.assertRaisesRegex(IndexError, "min"):
       torch.min(torch.empty(0, 2, device="cpu"), dim=0)
     with self.assertRaisesRegex(IndexError, "min"):
-      torch.min(torch.empty(0, 2, device=api.tpu_device()), dim=0)
+      torch.min(
+          torch.empty(0, 2, device=torch.device("tpu")),
+          dim=0,
+      )
 
     # nested empty tensor
     cpu_result = torch.min(torch.empty(1, 0, device="cpu"), dim=0)
-    tpu_result = torch.min(torch.empty(1, 0, device=api.tpu_device()), dim=0)
+    tpu_result = torch.min(torch.empty(1, 0, device=torch.device("tpu")), dim=0)
     self.assert_close(
         golden_result=cpu_result[0], torch_tpu_result=tpu_result[0].cpu()
     )
@@ -3765,7 +3834,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
 
     cpu_result = torch.min(torch.empty(0, 2, device="cpu"), dim=1)
-    tpu_result = torch.min(torch.empty(0, 2, device=api.tpu_device()), dim=1)
+    tpu_result = torch.min(torch.empty(0, 2, device=torch.device("tpu")), dim=1)
     self.assert_close(
         golden_result=cpu_result[0], torch_tpu_result=tpu_result[0].cpu()
     )
@@ -3776,7 +3845,8 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     # test min reduced to scalar
     cpu_result = torch.min(torch.tensor([1, 3, 2], device="cpu"), dim=0)
     tpu_result = torch.min(
-        torch.tensor([1, 3, 2], device=api.tpu_device()), dim=0
+        torch.tensor([1, 3, 2], device=torch.device("tpu")),
+        dim=0,
     )
     self.assert_close(
         golden_result=cpu_result[0], torch_tpu_result=tpu_result[0].cpu()
@@ -3790,7 +3860,9 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         torch.tensor([1, 3, 2], device="cpu"), dim=0, keepdim=True
     )
     tpu_result = torch.min(
-        torch.tensor([1, 3, 2], device=api.tpu_device()), dim=0, keepdim=True
+        torch.tensor([1, 3, 2], device=torch.device("tpu")),
+        dim=0,
+        keepdim=True,
     )
     self.assert_close(
         golden_result=cpu_result[0], torch_tpu_result=tpu_result[0].cpu()
@@ -3801,7 +3873,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     cpu_result = torch.min(torch.tensor([-1.0, 3.0, 2.0], device="cpu"), dim=0)
     tpu_result = torch.min(
-        torch.tensor([-1.0, 3.0, 2.0], device=api.tpu_device()),
+        torch.tensor([-1.0, 3.0, 2.0], device=torch.device("tpu")),
         dim=0,
     )
     self.assert_close(
@@ -3816,7 +3888,11 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         torch.tensor([[1, 3, 2], [4, 6, 5]], device="cpu"), dim=0
     )
     tpu_result = torch.min(
-        torch.tensor([[1, 3, 2], [4, 6, 5]], device=api.tpu_device()), dim=0
+        torch.tensor(
+            [[1, 3, 2], [4, 6, 5]],
+            device=torch.device("tpu"),
+        ),
+        dim=0,
     )
     self.assert_close(
         golden_result=cpu_result[0], torch_tpu_result=tpu_result[0].cpu()
@@ -3830,7 +3906,10 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         torch.tensor([[1, 3, 2], [4, 6, 5]], device="cpu"), dim=1, keepdim=True
     )
     tpu_result = torch.min(
-        torch.tensor([[1, 3, 2], [4, 6, 5]], device=api.tpu_device()),
+        torch.tensor(
+            [[1, 3, 2], [4, 6, 5]],
+            device=torch.device("tpu"),
+        ),
         dim=1,
         keepdim=True,
     )
@@ -3846,7 +3925,11 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         torch.tensor([[1, 3, 2], [4, 6, 5]], device="cpu"), dim=-1
     )
     tpu_result = torch.min(
-        torch.tensor([[1, 3, 2], [4, 6, 5]], device=api.tpu_device()), dim=-1
+        torch.tensor(
+            [[1, 3, 2], [4, 6, 5]],
+            device=torch.device("tpu"),
+        ),
+        dim=-1,
     )
     self.assert_close(
         golden_result=cpu_result[0], torch_tpu_result=tpu_result[0].cpu()
@@ -3860,7 +3943,10 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         torch.tensor([[1, 3, 2], [4, 6, 5]], device="cpu"), dim=-1, keepdim=True
     )
     tpu_result = torch.min(
-        torch.tensor([[1, 3, 2], [4, 6, 5]], device=api.tpu_device()),
+        torch.tensor(
+            [[1, 3, 2], [4, 6, 5]],
+            device=torch.device("tpu"),
+        ),
         dim=-1,
         keepdim=True,
     )
@@ -3876,9 +3962,13 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     v_cpu = torch.empty(2, dtype=a.dtype)
     i_cpu = torch.empty(2, dtype=torch.int64)
     torch.min(a, dim=1, out=(v_cpu, i_cpu))
-    v_tpu = torch.empty(2, dtype=a.dtype, device=api.tpu_device())
-    i_tpu = torch.empty(2, dtype=torch.int64, device=api.tpu_device())
-    torch.min(a.clone().to(api.tpu_device()), dim=1, out=(v_tpu, i_tpu))
+    v_tpu = torch.empty(2, dtype=a.dtype, device=torch.device("tpu"))
+    i_tpu = torch.empty(2, dtype=torch.int64, device=torch.device("tpu"))
+    torch.min(
+        a.clone().to(torch.device("tpu")),
+        dim=1,
+        out=(v_tpu, i_tpu),
+    )
     self.assert_close(golden_result=v_cpu, torch_tpu_result=v_tpu.cpu())
     self.assert_close(golden_result=i_cpu, torch_tpu_result=i_tpu.cpu())
 
@@ -3887,9 +3977,9 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     v_cpu = torch.empty(2, dtype=a.dtype)
     i_cpu = torch.empty(2, dtype=torch.int64)
     torch.min(a, dim=1, out=(v_cpu, i_cpu))
-    v_tpu = torch.empty(2, dtype=a.dtype, device=api.tpu_device())
-    i_tpu = torch.empty(2, dtype=torch.int64, device=api.tpu_device())
-    torch.min(a.to(api.tpu_device()), dim=1, out=(v_tpu, i_tpu))
+    v_tpu = torch.empty(2, dtype=a.dtype, device=torch.device("tpu"))
+    i_tpu = torch.empty(2, dtype=torch.int64, device=torch.device("tpu"))
+    torch.min(a.to(torch.device("tpu")), dim=1, out=(v_tpu, i_tpu))
     self.assert_close(golden_result=v_cpu, torch_tpu_result=v_tpu.cpu())
     self.assert_close(golden_result=i_cpu, torch_tpu_result=i_tpu.cpu())
 
@@ -3924,7 +4014,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close_tpu_vs_cpu(functools.partial(compute, 1, True))
 
   def test_multinomial_output_properties(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
 
     # 2D input
     probs = torch.rand(4, 10, device=device)
@@ -3968,7 +4058,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assertLen(torch.unique(tpu_result.cpu()), len(tpu_result))
 
   def test_multinomial_skewed_distribution(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
 
     # 2D input
     probs = torch.tensor([[1e10, 1.0], [1.0, 1e10]], device=device)
@@ -3999,7 +4089,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assertEqual(tpu_result[0], 1)
 
   def test_empty_like(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
 
     nonempty_cpu_tensor = torch.randn(2, 3, 4, device="cpu")
     nonempty_contiguous_tensor = nonempty_cpu_tensor.to(device)
@@ -4036,8 +4126,8 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     # Going through the ordinary "copy_" method doesn't reach this aten op,
     # so we have to access it manually.
     copy_from_and_resize = torch.ops.aten._copy_from_and_resize
-    src = torch.arange(20, device=api.tpu_device())
-    dst = torch.empty(10, dtype=src.dtype, device=api.tpu_device())
+    src = torch.arange(20, device=torch.device("tpu"))
+    dst = torch.empty(10, dtype=src.dtype, device=torch.device("tpu"))
     copy_from_and_resize(src, dst)
     self.assertEqual(dst.shape, (20,))
     self.assertEqual(dst.cpu(), torch.arange(20, device="cpu"))
@@ -4053,13 +4143,26 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_randint_reproducible(self):
     low, high = 10, 20
     torch.manual_seed(1234)
-    z = torch.randint(low=low, high=high, size=(3, 3), device=api.tpu_device())
-    w = torch.randint(low=low, high=high, size=(3, 3), device=api.tpu_device())
+    z = torch.randint(
+        low=low,
+        high=high,
+        size=(3, 3),
+        device=torch.device("tpu"),
+    )
+    w = torch.randint(
+        low=low,
+        high=high,
+        size=(3, 3),
+        device=torch.device("tpu"),
+    )
     # with probability 1 - (1/2)^(100)
     self.assertNotEqual(z.to("cpu"), w.to("cpu"))
     torch.manual_seed(1234)
     z_again = torch.randint(
-        low=low, high=high, size=(3, 3), device=api.tpu_device()
+        low=low,
+        high=high,
+        size=(3, 3),
+        device=torch.device("tpu"),
     )
     self.assertEqual(z.to("cpu"), z_again.to("cpu"))
 
@@ -4069,7 +4172,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         low=low,
         high=high,
         size=(3, 3),
-        device=api.tpu_device(),
+        device=torch.device("tpu"),
         dtype=torch.int64,
     )
     res = x.cpu()
@@ -4082,7 +4185,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         low=low,
         high=high,
         size=(3, 3),
-        device=api.tpu_device(),
+        device=torch.device("tpu"),
         dtype=torch.int64,
     )
     res = x.cpu()
@@ -4095,7 +4198,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         low=low,
         high=high,
         size=(3, 3),
-        device=api.tpu_device(),
+        device=torch.device("tpu"),
         dtype=torch.int64,
     )
     res = x.cpu()
@@ -4108,7 +4211,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         low=low,
         high=high,
         size=(3, 3),
-        device=api.tpu_device(),
+        device=torch.device("tpu"),
         dtype=torch.int64,
     )
     res = x.cpu()
@@ -4121,7 +4224,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         low=low,
         high=high,
         size=(3, 3),
-        device=api.tpu_device(),
+        device=torch.device("tpu"),
         dtype=torch.int64,
     )
     res = x.cpu()
@@ -4134,7 +4237,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         low=low,
         high=high,
         size=(3, 3),
-        device=api.tpu_device(),
+        device=torch.device("tpu"),
         dtype=torch.int64,
     )
     res = x.cpu()
@@ -4222,7 +4325,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     shape = (10, 3, 32, 32)
     x = torch.empty(
         *shape,
-        device=api.tpu_device(),
+        device=torch.device("tpu"),
         memory_format=torch.channels_last,
     )
     self.assertTrue(x.is_contiguous(memory_format=torch.channels_last))
@@ -4235,7 +4338,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     shape = (10, 3, 32, 32, 32)
     x = torch.empty(
         *shape,
-        device=api.tpu_device(),
+        device=torch.device("tpu"),
         memory_format=torch.channels_last_3d,
     )
     self.assertTrue(x.is_contiguous(memory_format=torch.channels_last_3d))
@@ -4244,13 +4347,13 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_uniform_reproducible(self):
     torch.manual_seed(4321)
-    t = torch.zeros(10, 10, dtype=torch.float32).to(api.tpu_device())
+    t = torch.zeros(10, 10, dtype=torch.float32).to(torch.device("tpu"))
     t = torch.Tensor.uniform_(t, 0, 1)
-    w = torch.zeros(10, 10, dtype=torch.float32).to(api.tpu_device())
+    w = torch.zeros(10, 10, dtype=torch.float32).to(torch.device("tpu"))
     w = torch.Tensor.uniform_(w, 0, 1)
     self.assertNotEqual(t.cpu(), w.cpu())
     torch.manual_seed(4321)
-    t_again = torch.zeros(10, 10, dtype=torch.float32).to(api.tpu_device())
+    t_again = torch.zeros(10, 10, dtype=torch.float32).to(torch.device("tpu"))
     t_again = torch.Tensor.uniform_(t_again, 0, 1)
     self.assert_close(golden_result=t.cpu(), torch_tpu_result=t_again.cpu())
 
@@ -4264,7 +4367,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_uniform_distribution(self, dtype: torch.dtype):
     # To make sure atol is small, and the test is meaningful
     n = 1000
-    t = torch.zeros(n, n, dtype=dtype, device=api.tpu_device())
+    t = torch.zeros(n, n, dtype=dtype, device=torch.device("tpu"))
     t = torch.Tensor.uniform_(t, 0, 1)
     # P(|mean(t) - 0.5| > atol) < 1 / 12 / n / n / a^2
     # Make P < 1e-6, by picking a = sqrt(1e6 / 12 / n / n) = sqrt(1 / 12)
@@ -4392,7 +4495,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_upsample_nearest_with_size_parameters(self):
     """Tests that the upsample nearest op works with size parameters."""
 
-    device = api.tpu_device()
+    device = torch.device("tpu")
     upsample_float32 = torch.tensor(
         [
             [
@@ -4463,7 +4566,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_randperm(self):
     n = 1000
     seed = 4321
-    device = api.tpu_device()
+    device = torch.device("tpu")
 
     # Check that same seed produces same result
     torch.manual_seed(seed)
@@ -4481,13 +4584,13 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     # Check that the sorted tensor is the same as the expected tensor
     t1_sorted = torch.sort(t1)
-    expected_asc = torch.arange(n, device=api.tpu_device())
+    expected_asc = torch.arange(n, device=torch.device("tpu"))
     self.assertEqual(t1_sorted.values.cpu(), expected_asc.cpu())
     self.assertNotEqual(t1.cpu(), expected_asc.cpu())
 
   def test_randperm_rng(self):
     """Verifies RNG results and state update for randperm."""
-    device = api.tpu_device()
+    device = torch.device("tpu")
     gen = torch.Generator(device=device)
     gen.manual_seed(42)
     # Golden Philox bits for seed=42, offset=0.
@@ -4498,7 +4601,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assertEqual(state[8].item(), 5)
 
   def test_randperm_dtypes(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
 
     test_configs = [
         # Note: we run the "too large" test first to test that its (expected)
@@ -4557,7 +4660,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_fft_rfft_norm_modes(self):
     n = 100
     input_cpu = torch.ones(1, n, dtype=torch.float32)
-    input_tpu = input_cpu.to(api.tpu_device())
+    input_tpu = input_cpu.to(torch.device("tpu"))
     dim = -1
     onesided = True
 
@@ -4625,7 +4728,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       return fake_quantized_tensor, mask
 
     cpu_res_tensor, cpu_mask = test_fn("cpu")
-    tpu_res_tensor, tpu_mask = test_fn(api.tpu_device())
+    tpu_res_tensor, tpu_mask = test_fn(torch.device("tpu"))
 
     self.assert_close(
         golden_result=cpu_res_tensor.cpu(),
@@ -4664,10 +4767,10 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_embedding_bag_empty_bag(self):
     """Tests that empty bags are handled correctly in _embedding_bag."""
-    weight = torch.randn(5, 2).to(api.tpu_device())
-    indices = torch.tensor([0, 1, 2], dtype=torch.long).to(api.tpu_device())
+    weight = torch.randn(5, 2).to(torch.device("tpu"))
+    indices = torch.tensor([0, 1, 2], dtype=torch.long).to(torch.device("tpu"))
     # The first bag is empty
-    offsets = torch.tensor([0, 0], dtype=torch.long).to(api.tpu_device())
+    offsets = torch.tensor([0, 0], dtype=torch.long).to(torch.device("tpu"))
 
     output_sum, _, _, _ = torch.ops.aten._embedding_bag(
         weight, indices, offsets, mode=0
@@ -4687,7 +4790,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_zero_sized_to_device(self):
     tensor = torch.ones(2, 0, 3, dtype=torch.int32, device="cpu")
-    tensor_tpu = tensor.to(api.tpu_device())
+    tensor_tpu = tensor.to(torch.device("tpu"))
 
     # Zero-sized tensors are constructed as deferred constants, rather than
     # actually transferring 0 bytes.
@@ -4825,7 +4928,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assert_close_tpu_vs_cpu(run)
 
   def test_bucketize_out(self):
-    tpu_device = api.tpu_device()
+    tpu_device = torch.device("tpu")
     input_tensor = torch.tensor(
         [[0, 2, 3], [3, 4, 6]], dtype=torch.float32, device=tpu_device
     )
@@ -4953,7 +5056,7 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_ragged_dot_on_tpu(self):
     """Tests the torch_tpu.ragged_dot custom op on TPU."""
-    device = api.tpu_device()
+    device = torch.device("tpu")
     m, k, n, g = 5, 4, 3, 2
     lhs = torch.arange(m * k, dtype=torch.float32, device=device).reshape(m, k)
     rhs = torch.arange(g * k * n, dtype=torch.float32, device=device).reshape(
@@ -4975,7 +5078,7 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_ragged_dot_out_on_tpu(self):
     """Tests the torch_tpu.ragged_dot custom op with an out parameter on TPU."""
-    device = api.tpu_device()
+    device = torch.device("tpu")
     m, k, n, g = 4, 3, 2, 5
     lhs = torch.arange(m * k, dtype=torch.float32, device=device).reshape(m, k)
     rhs = torch.arange(g * k * n, dtype=torch.float32, device=device).reshape(
@@ -5001,7 +5104,7 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   @absltest.skip("b/498564738")
   def test_set_dimension_logical_size_on_tpu(self):
     """Tests the torch_tpu.set_dimension_logical_size custom op on TPU."""
-    device = api.tpu_device()
+    device = torch.device("tpu")
     x = torch.arange(100, device=device, dtype=torch.int32).reshape(10, 10)
     size = torch.tensor(5, device=device, dtype=torch.int32)
     out = torch.ops.torch_tpu.set_dimension_logical_size(x, 0, size)
@@ -5009,7 +5112,7 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_set_dimension_logical_size_with_mlir_on_tpu(self):
     """Tests the torch_tpu.set_dimension_logical_size custom op on TPU using MLIR."""
-    device = api.tpu_device()
+    device = torch.device("tpu")
     x = torch.arange(25, device=device, dtype=torch.int32).reshape(5, 5)
     y = torch.arange(25, device=device, dtype=torch.int32).reshape(5, 5)
     size = torch.tensor(1, device=device, dtype=torch.int32)
@@ -5146,7 +5249,8 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       return z
 
     self.assertNotEqual(
-        test_fn(api.tpu_device()).cpu(), test_fn2(api.tpu_device()).cpu()
+        test_fn(torch.device("tpu")).cpu(),
+        test_fn2(torch.device("tpu")).cpu(),
     )
     self.assert_close_tpu_vs_cpu(test_fn)
     self.assert_close_tpu_vs_cpu(test_fn2)
@@ -5248,7 +5352,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_signbit_float_zeros(self):
     t = torch.tensor([-float("inf"), -1.0, -0.0, 0.0, 1.0, float("inf")])
-    t_tpu = t.to(api.tpu_device())
+    t_tpu = t.to(torch.device("tpu"))
     expected = torch.tensor([True, True, True, False, False, False])
     self.assertEqual(torch.signbit(t), expected)
     self.assertEqual(torch.signbit(t_tpu).cpu(), expected)
@@ -5430,7 +5534,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
   def test_max_pool2d_with_indices(self):
     """Tests nn.functional.max_pool2d_float32_sample54."""
-    device = api.tpu_device()
+    device = torch.device("tpu")
     maxpool_input = torch.tensor(
         [[
             [
@@ -5491,7 +5595,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
 
   def test_max_pool2d_with_indices_int(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
     maxpool_int8 = torch.tensor(
         [
             [
@@ -5619,7 +5723,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         return torch.fmax(t, other)
 
       cpu_res = test_fn("cpu")
-      tpu_res = test_fn(api.tpu_device())
+      tpu_res = test_fn(torch.device("tpu"))
       self.assertEqual(cpu_res, tpu_res.cpu())
 
   def test_fmod_float_zero_division(self):
@@ -5632,7 +5736,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     cpu_res = test_fn("cpu")
     self.assertTrue(torch.isnan(cpu_res).all())
 
-    tpu_res = test_fn(api.tpu_device())
+    tpu_res = test_fn(torch.device("tpu"))
     self.assertTrue(torch.isnan(tpu_res.cpu()).all())
 
   # TODO: Make fmod() consistent across CPU and TPU for integer zero division
@@ -5644,7 +5748,11 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       torch.fmod(t_cpu, other_cpu)
 
     # TPU can return any value
-    t_tpu = torch.tensor([1, 2, 3], device=api.tpu_device(), dtype=torch.int32)
+    t_tpu = torch.tensor(
+        [1, 2, 3],
+        device=torch.device("tpu"),
+        dtype=torch.int32,
+    )
     other_tpu = torch.zeros_like(t_tpu)
     res_tpu = torch.fmod(t_tpu, other_tpu)
     self.assertEqual(res_tpu.dtype, torch.int32)
@@ -5657,8 +5765,8 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     x2_cpu = torch.randn(4, 5, device="cpu", dtype=torch.float32)
     res_cpu = torch.cdist(x1_cpu, x2_cpu)
 
-    x1_tpu = x1_cpu.to(api.tpu_device())
-    x2_tpu = x2_cpu.to(api.tpu_device())
+    x1_tpu = x1_cpu.to(torch.device("tpu"))
+    x2_tpu = x2_cpu.to(torch.device("tpu"))
     res_tpu = torch.cdist(x1_tpu, x2_tpu)
 
     self.assertEqual(res_tpu.shape, res_cpu.shape)
@@ -5666,8 +5774,18 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     self.assertEqual(res_tpu.shape, (0, 4))
 
     # Test that BF16 support for empty inputs
-    x1_bf16 = torch.randn(0, 5, device=api.tpu_device(), dtype=torch.bfloat16)
-    x2_bf16 = torch.randn(4, 5, device=api.tpu_device(), dtype=torch.bfloat16)
+    x1_bf16 = torch.randn(
+        0,
+        5,
+        device=torch.device("tpu"),
+        dtype=torch.bfloat16,
+    )
+    x2_bf16 = torch.randn(
+        4,
+        5,
+        device=torch.device("tpu"),
+        dtype=torch.bfloat16,
+    )
 
     res_bf16 = torch.cdist(x1_bf16, x2_bf16)
     self.assertEqual(res_bf16.shape, (0, 4))
@@ -6272,12 +6390,12 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         10,
         10,
         dtype=torch.float32,
-        device=api.tpu_device(),
+        device=torch.device("tpu"),
     )
 
-    rng_state = torch.get_device_module(api.tpu_device()).get_rng_state()
+    rng_state = torch.get_device_module(torch.device("tpu")).get_rng_state()
     # rng_state by spec is on CPU, move it to TPU.
-    rng_state = rng_state.to(api.tpu_device())
+    rng_state = rng_state.to(torch.device("tpu"))
 
     expected_out, expected_mask = torch.ops.aten.native_dropout(
         input_tensor, 0.5, True
@@ -6304,7 +6422,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     )
 
     # Arrange
-    device = api.tpu_device()
+    device = torch.device("tpu")
     dtypes = [torch.float16, torch.float32, torch.bfloat16, torch.float64]
 
     # TODO: Systematically enumerate all 2-ary, pointwise ops out of
