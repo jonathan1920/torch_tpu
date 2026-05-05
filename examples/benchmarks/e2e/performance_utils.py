@@ -510,7 +510,12 @@ def _get_benchmark_function(
           device, benchmark_utils.is_torch_compile(config.run_mode)
       )
   elif config.benchmark_category == benchmark_utils.BenchmarkCategory.TIMM:
-    return benchmark_function_db.timm_forward_pass
+    if not config.is_training:
+      return benchmark_function_db.timm_forward_pass
+    else:
+      return benchmark_function_db.get_ml_layer_train_step_function(
+          device, benchmark_utils.is_torch_compile(config.run_mode)
+      )
   else:
     raise ValueError(
         "No benchmark function found for category:"
@@ -598,6 +603,7 @@ def get_model_and_input(
         device=device,
         weights_dtype=weights_dtype,
         use_torch_compile=use_torch_compile,
+        is_training=is_training,
         **model_and_input_args.custom_kwargs,
     )
   elif benchmark_category == benchmark_utils.BenchmarkCategory.QWEN_RAGGED_MOE:

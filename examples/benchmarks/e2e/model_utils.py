@@ -1230,6 +1230,7 @@ def get_timm_model(
     device: torch.device,
     weights_dtype: torch.dtype,
     use_torch_compile: bool,
+    is_training: bool,
     input_shape: Sequence[int],
 ) -> ModelAndInput:
   """Returns the huggingface LLM model.
@@ -1259,7 +1260,10 @@ def get_timm_model(
   input_args, _ = module_spec.sample_inputs_factory(input_shape, str(device))
   example_inputs = input_args[0].to(weights_dtype)
   model = model_cpu.to(device)
-  model.eval()
+  if is_training:
+    model.train()
+  else:
+    model.eval()
 
   if use_torch_compile:
     model = device_utils.torch_compile(model, device.type)
