@@ -60,6 +60,29 @@ torch_tpu_cc_test(
 )
 
 torch_tpu_cc_test(
+    name = "traversal_test",
+    srcs = ["traversal_test.cc"],
+    notest_oss = "Fails due to TPU_LIBRARY_PATH not set.",
+    deps = [
+        ":device_buffer",
+        ":structured_log_buffer",
+        ":traversal",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:dimension_types",
+        "//torch_tpu/common:shape",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:python_context",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+        "@xla//xla/tsl/platform:statusor",
+    ],
+)
+
+torch_tpu_cc_test(
     name = "materialize_test",
     srcs = ["materialize_test.cc"],
     exec_properties = {
@@ -706,6 +729,7 @@ torch_tpu_cc_library(
     ],
     deps = [
         ":device_buffer",
+        ":structured_log_buffer",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:compilation",
         "//torch_tpu/common:compilation_cache",

@@ -35,6 +35,7 @@
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -56,6 +57,7 @@
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -674,6 +676,130 @@ std::string Traversal::DebugString() const {
     }
   }
   return os.str();
+}
+
+namespace {
+
+// Builds the canonical {DeviceBufferRef -> index} map used by
+// ReadableString. Numbers arguments first, then every
+// output of every node in execution_order. Skips outputs that fail to
+// construct.
+absl::flat_hash_map<DeviceBufferRef, size_t> BuildBufferIndexMap(
+    absl::Span<const DeviceBufferRef> arguments,
+    absl::Span<const SharedDeviceBufferList> execution_order) {
+  absl::flat_hash_map<DeviceBufferRef, size_t> idx;
+  size_t next = 0;
+  for (const DeviceBufferRef& arg : arguments) {
+    if (idx.try_emplace(arg, next).second) next++;
+  }
+  for (const SharedDeviceBufferList& node : execution_order) {
+    for (int i = 0; i < node->size(); ++i) {
+      auto out_or = DeviceBufferRef::Create(node, i);
+      if (out_or.ok() && idx.try_emplace(*out_or, next).second) next++;
+    }
+  }
+  return idx;
+}
+
+// Pick a user-relevant frame from a Python traceback: skip frames inside
+// torch_tpu internals and site-packages, take the first remaining frame.
+// Returns nullptr if no suitable frame exists.
+const PythonStackFrame* absl_nullable PickUserFrame(const PythonTraceback& tb) {
+  for (const PythonStackFrame& f : tb.frames) {
+    const std::string& fn = f.file_name;
+    if (absl::StrContains(fn, "/torch_tpu/")) continue;
+    if (absl::StrContains(fn, "/site-packages/")) continue;
+    if (absl::StrContains(fn, "/torch/")) continue;
+    return &f;
+  }
+  // Fallback: innermost frame.
+  if (!tb.frames.empty()) return &tb.frames.front();
+  return nullptr;
+}
+
+// Compact "f32[1, 2, 3]" form, used by ReadableString().
+std::string FormatTypeCompact(const DeviceBufferRef& ref) {
+  return absl::StrCat(ToShortString(ref.element_type()), "[",
+                      absl::StrJoin(ref.dimensions(), ", "), "]");
+}
+
+// FX-style "%N" if ref is in idx_of, "?" otherwise.
+std::string FormatRefIndex(
+    const absl::flat_hash_map<DeviceBufferRef, size_t>& idx_of,
+    const DeviceBufferRef& ref) {
+  auto it = idx_of.find(ref);
+  return it != idx_of.end() ? absl::StrCat("%", it->second) : "?";
+}
+
+// "%a, %b: f32[s], f32[s] = op_name(%c, %d)    # file:line"
+void AppendFxOpRow(std::string& out, const SharedDeviceBufferList& node,
+                   const DeferredOp& op,
+                   const absl::flat_hash_map<DeviceBufferRef, size_t>& idx_of) {
+  std::string indices_str;
+  std::string types_str;
+
+  for (int i = 0; i < node->size(); ++i) {
+    auto out_or = DeviceBufferRef::Create(node, i);
+    bool ok = out_or.ok();
+
+    absl::StrAppend(&indices_str, i == 0 ? "" : ", ",
+                    ok ? FormatRefIndex(idx_of, *out_or) : "?");
+    absl::StrAppend(&types_str, i == 0 ? "" : ", ",
+                    ok ? FormatTypeCompact(*out_or) : "?");
+  }
+
+  absl::StrAppend(&out, indices_str, ": ", types_str, " = ",
+                  ToString(op.op_name()), "(");
+  bool first = true;
+  for (const DeviceBufferRef& operand : op.inputs()) {
+    absl::StrAppend(&out, first ? "" : ", ", FormatRefIndex(idx_of, operand));
+    first = false;
+  }
+  absl::StrAppend(&out, ")");
+  if (const auto& tb = op.op_context().traceback()) {
+    if (const PythonStackFrame* f = PickUserFrame(*tb)) {
+      absl::StrAppend(&out, "    # ", f->file_name, ":", f->line_number, " in ",
+                      f->func_name);
+    }
+  }
+  absl::StrAppend(&out, "\n");
+}
+
+}  // namespace
+
+std::string Traversal::ReadableString(MaterializationReason reason) const {
+  const auto idx_of = BuildBufferIndexMap(arguments_, execution_order_);
+
+  // Compute op_count and accumulate op rows in one pass over execution_order.
+  std::string op_rows;
+  size_t op_count = 0;
+  for (const SharedDeviceBufferList& node : execution_order_) {
+    const DeferredOp* op = node->deferred_op();
+    if (op == nullptr) continue;
+    AppendFxOpRow(op_rows, node, *op, idx_of);
+    ++op_count;
+  }
+
+  std::string out =
+      absl::StrCat("# Graph: ", op_count, " ops, ", arguments_.size(),
+                   " inputs, reason: ", ToString(reason), "\n");
+
+  size_t input_idx = 0;
+  for (const DeviceBufferRef& argument : arguments_) {
+    absl::StrAppend(&out, "%", input_idx++, ": ", FormatTypeCompact(argument),
+                    " = input\n");
+  }
+  out += op_rows;
+  if (!outputs_.empty()) {
+    absl::StrAppend(&out, "return ");
+    bool first = true;
+    for (const DeviceBufferRef& output : outputs_) {
+      absl::StrAppend(&out, first ? "" : ", ", FormatRefIndex(idx_of, output));
+      first = false;
+    }
+    absl::StrAppend(&out, "\n");
+  }
+  return out;
 }
 
 namespace {

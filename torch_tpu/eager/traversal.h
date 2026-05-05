@@ -36,6 +36,7 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/ops/python_context.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
@@ -166,6 +167,16 @@ class Traversal {
   // This is extremely verbose and should not be exposed in user-facing error
   // messages.
   std::string DebugString() const;
+
+  // Returns an FX-style human-readable graph dump suitable for the
+  // aten_graph_payload of a StructuredLogEvent.
+  //
+  // Format:
+  //   # Graph: <N> ops, <M> inputs, reason: <reason>
+  //   %0: f32[1, 2, 3] = input
+  //   %1: f32[2, 3] = mm.default(%0, %2)    # file.py:25 in forward
+  //   return %1
+  std::string ReadableString(MaterializationReason reason) const;
 
   // Builds the MLIR module for the Traversal.
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> BuildMlirModule(

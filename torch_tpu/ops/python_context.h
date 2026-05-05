@@ -36,6 +36,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -178,6 +179,11 @@ class ScopedPythonContextCapturer {
   // Like GetContext(), but returns std::nullopt if no
   // ScopedPythonContextCapturer is alive for the current thread.
   [[nodiscard]] static std::optional<PythonContext> MaybeGetContext();
+
+  // For testing only: override the traceback of all currently alive contexts.
+  static void SetTracebackForTesting(MaybeSharedTraceback traceback) {
+    traceback_ = std::move(traceback);
+  }
 
  private:
   // Returns the number of alive ScopedPythonContextCapturer instances for the
