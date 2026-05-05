@@ -20,28 +20,10 @@ package(
 )
 
 torch_tpu_cc_library(
-    name = "ctc_loss",
-    srcs = ["ctc_loss.cc"],
-    hdrs = ["ctc_loss.h"],
-    deps = [
-        "//torch_tpu/common:error_utils",
-        "//torch_tpu/ops:op_builder_utils",
-        "@com_google_absl//absl/status:statusor",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@stablehlo//:attr_type_builder_util",
-        "@stablehlo//:mlir_builder",
-        "@stablehlo//:stablehlo_builder",
-        "@stablehlo//:stablehlo_ops",
-    ],
-)
-
-torch_tpu_cc_library(
     name = "ctc_loss_aten_kernels",
     srcs = ["ctc_loss_aten_kernels.cc"],
     hdrs = ["ctc_loss_aten_kernels.h"],
     deps = [
-        ":ctc_loss",
         "//shims/torch:aten_headers",
         "//shims/torch/c10/core:base_headers",
         "//torch_tpu/common:aten_utils",
