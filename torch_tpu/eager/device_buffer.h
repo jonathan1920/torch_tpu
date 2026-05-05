@@ -342,6 +342,10 @@ class DeviceBufferRef {
     return H::combine(std::move(h), ref.index_, ref.device_buffer_list_);
   }
 
+  // Increments the number of child ops for the DeviceBufferList that this
+  // DeviceBufferRef is attached to.
+  void IncrementNumChildOps() const;
+
  private:
   // DeviceBufferRefs can only be constructed by DeviceBufferList::Create*
   // functions, to ensure the reference and referent are created simultaneously.
@@ -409,15 +413,10 @@ class DeferredOp {
         op_context_(ScopedPythonContextCapturer::GetContext()),
         split_mode_(split_mode),
         subgraph_(std::move(subgraph)) {
-    absl::flat_hash_set<const DeferredOp*> unique_deferred_ops;
+    absl::flat_hash_set<const DeviceBufferList*> unique_input_lists;
     for (const auto& input : inputs_) {
-      const auto* deferred_op = input.deferred_op();
-      if (deferred_op) {
-        // Deduplicate the input nodes when increment the child op count.
-        const bool inserted = unique_deferred_ops.insert(deferred_op).second;
-        if (inserted) {
-          deferred_op->num_child_ops_++;
-        }
+      if (unique_input_lists.insert(input.device_buffer_list().get()).second) {
+        input.IncrementNumChildOps();
       }
     }
   }
@@ -467,11 +466,6 @@ class DeferredOp {
 
   // Marks this DeferredOp as having been executed at least once.
   void mark_executed() const { has_been_executed_ = true; }
-
-  // Returns the number of other DeferredOps that have been created which depend
-  // on this one. This does *not* track the liveness of these ops; if a
-  // DeferredOp destroyed, the refcount will not be updated.
-  [[nodiscard]] int64_t num_child_ops() const { return num_child_ops_; }
 
   // Returns the cache keys for the op parameters. These are used to ensure that
   // the compilation cache does not reuse a cached compiled op if there are
@@ -844,6 +838,9 @@ class DeviceBufferList {
 
   std::string DebugString() const;
 
+  int64_t num_child_ops() const { return num_child_ops_; }
+  void IncrementNumChildOps() { num_child_ops_++; }
+
  private:
   // Private constructor for a DeviceBufferList wrapping a single materialized
   // PjRtBuffer.
@@ -929,6 +926,11 @@ class DeviceBufferList {
   // A global index of the creation of this DeviceBufferList (created atomically
   // for thread safety). Lower means earlier.
   uint64_t creation_index_ = 0;
+
+  // The number of other DeferredOps that have been created which depend
+  // on this DeviceBufferList. This does *not* track the liveness of these ops;
+  // if a DeferredOp is destroyed, the refcount will not be updated.
+  mutable std::atomic_int64_t num_child_ops_ = 0;
 
   // The number of live c10::DataPtrs to this DeviceBufferList.
   // This is incremented by MakeDataPtr and decremented by

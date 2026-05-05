@@ -75,7 +75,7 @@ void Subgraph::Prune() {
                        return true;
                      }
                      const auto* deferred_op = node->deferred_op();
-                     if (!deferred_op || deferred_op->num_child_ops() > 0) {
+                     if (!deferred_op || node->num_child_ops() > 0) {
                        return true;
                      }
                      return false;
@@ -94,7 +94,7 @@ void Subgraph::PruneAndReturnLeafNodes(
               return true;
             }
             const auto* deferred_op = node->deferred_op();
-            if (!deferred_op || deferred_op->num_child_ops() > 0) {
+            if (!deferred_op || node->num_child_ops() > 0) {
               return true;
             }
             leaf_nodes_out.push_back(std::move(node));
@@ -158,7 +158,7 @@ void Subgraph::Merge(std::shared_ptr<Subgraph> s1,
   for (auto& weak_node : r2->queue_) {
     if (auto node = weak_node.lock()) {
       const auto* deferred_op = node->deferred_op();
-      if (deferred_op && deferred_op->num_child_ops() == 0) {
+      if (deferred_op && node->num_child_ops() == 0) {
         r1->queue_.push_back(std::move(weak_node));
       }
     }
@@ -829,6 +829,10 @@ absl::Status DeviceBufferRef::MarkDynamic(int64_t dimension,
 absl::Span<const BoundedDynamicDimension> DeviceBufferRef::dynamic_dimensions()
     const {
   return device_buffer_list()->dynamic_dimensions(index_);
+}
+
+void DeviceBufferRef::IncrementNumChildOps() const {
+  device_buffer_list_->IncrementNumChildOps();
 }
 
 }  // namespace torch_tpu
