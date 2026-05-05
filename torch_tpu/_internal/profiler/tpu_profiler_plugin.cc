@@ -18,21 +18,25 @@
 
 #include <unistd.h>
 
+#include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <ios>
 #include <memory>
 #include <set>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
@@ -43,6 +47,7 @@
 #include <kineto/output_base.h>
 #include "torch_tpu/_internal/profiler/xprof_callback_handler.h"
 #include "torch_tpu/common/env_vars.h"
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
 #include "xla/tsl/platform/env.h"
 #include "tsl/platform/path.h"
@@ -57,6 +62,68 @@
 namespace torch_tpu {
 
 #if TT_IS_INTERNAL_TORCH_TPU
+
+constexpr std::string_view kDeviceTracerLevel = "device_tracer_level";
+constexpr std::string_view kHostTracerLevel = "host_tracer_level";
+constexpr std::string_view kPythonTracerLevel = "python_tracer_level";
+
+// Helper to parse uint32_t and apply to a setter method of ProfileOptions.
+absl::Status ParseAndSetUint(
+    tensorflow::ProfileOptions& opts, std::string_view key,
+    std::string_view val,
+    void (tensorflow::ProfileOptions::*setter)(uint32_t)) {
+  uint32_t uint_val;
+  if (!absl::SimpleAtoi(val, &uint_val)) {
+    return TT_ERROR(error::kInvalidArgument)
+           << "expected the value of parameter " << key
+           << " to be an integer, got '" << val << "'";
+  }
+  (opts.*setter)(uint_val);
+  return absl::OkStatus();
+}
+
+// Applies a single key-value pair to the ProfileOptions.
+absl::Status CreateProfileOptions(tensorflow::ProfileOptions& opts,
+                                  std::string_view key, std::string_view val) {
+  if (key == kDeviceTracerLevel) {
+    return ParseAndSetUint(
+        opts, key, val, &tensorflow::ProfileOptions::set_device_tracer_level);
+  }
+  if (key == kHostTracerLevel) {
+    return ParseAndSetUint(opts, key, val,
+                           &tensorflow::ProfileOptions::set_host_tracer_level);
+  }
+  if (key == kPythonTracerLevel) {
+    return ParseAndSetUint(
+        opts, key, val, &tensorflow::ProfileOptions::set_python_tracer_level);
+  }
+  return TT_ERROR(error::kInvalidArgument)
+         << "expected the profiler option to be one of " << kDeviceTracerLevel
+         << ", " << kHostTracerLevel << ", or " << kPythonTracerLevel
+         << ", got '" << key << "'";
+}
+
+// Parses the custom configuration string from Kineto and updates the
+// ProfileOptions. Leading and trailing whitespace is ignored around keys and
+// values. The configuration string is expected to be a comma-separated
+// list of key-value pairs, where keys and values are separated by ':' (e.g.,
+// "host_tracer_level:3").
+absl::Status UpdateProfileOptions(tensorflow::ProfileOptions& opts,
+                                  std::string_view custom_config) {
+  for (std::string_view item :
+       absl::StrSplit(custom_config, ',', absl::SkipEmpty())) {
+    std::vector<std::string_view> kv = absl::StrSplit(item, ':');
+    if (kv.size() != 2) {
+      return TT_ERROR(error::kInvalidArgument)
+             << "expected the config item to be in the 'key:value' format, "
+             << "got '" << item << "'";
+    }
+    std::string_view key = absl::StripAsciiWhitespace(kv[0]);
+    std::string_view val = absl::StripAsciiWhitespace(kv[1]);
+    TT_RETURN_IF_ERROR(CreateProfileOptions(opts, key, val));
+  }
+  return absl::OkStatus();
+}
 
 namespace {
 
@@ -145,15 +212,8 @@ void TpuKinetoProfilerSession::start() {
   }
   tensorflow::ProfileOptions opts = tsl::ProfilerSession::DefaultOptions();
   opts.set_device_type(tensorflow::ProfileOptions::TPU);
-  // device_tracer_level: 0=disabled, 1=enabled.
-  opts.set_device_tracer_level(1);
-  // host_tracer_level: 0=disabled, 1=user-instrumented tracemes,
-  // 2=1+XLA tracemes, 3=2+low-level XLA tracemes.
-  opts.set_host_tracer_level(2);
-  // python_tracer_level: 0=disabled, 1=enabled.
-  opts.set_python_tracer_level(0);
 
-  // TODO(b/500368753): Introduce custom config parsing.
+  TT_THROW_IF_ERROR(UpdateProfileOptions(opts, config_.getCustomConfig()));
 
   session_ = tsl::ProfilerSession::Create(opts);
   if (session_ == nullptr) {

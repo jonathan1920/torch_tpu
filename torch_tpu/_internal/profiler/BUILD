@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end")
+load(
+    "//build_files:build_defs.bzl",
+    "torch_tpu_cc_library",
+    "torch_tpu_package_end",
+    "torch_tpu_py_library",
+)
 load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
@@ -21,6 +26,14 @@ package(
     default_visibility = [
         "//:__subpackages__",
         "//shims/torchtitan:__subpackages__",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "profiler_config",
+    srcs = ["profiler_config.py"],
+    deps = [
+        "//shims/torch:pytorch",
     ],
 )
 
@@ -33,6 +46,7 @@ pytype_strict_library(
     ],
     deps = [
         ":_profiler_backend",
+        ":profiler_config",
         "//shims/absl_py/logging",
     ],
 )
@@ -63,11 +77,13 @@ torch_tpu_cc_library(
         "//shims/torch:kineto",
         "//shims/torch:torch_headers",
         "//torch_tpu/common:env_vars",
+        "//torch_tpu/common:error_utils",
         "//torch_tpu/common:utils",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",

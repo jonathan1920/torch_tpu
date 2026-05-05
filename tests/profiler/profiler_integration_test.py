@@ -22,7 +22,15 @@ from absl import logging
 from absl.testing import absltest
 import torch
 from torch.autograd import profiler
+from torch_tpu import api as tpu_api
 from torch_tpu._internal import sync as tpu_sync
+from torch_tpu._internal.profiler.profiler_config import TpuProfilerConfig
+
+# pylint: disable=g-direct-tensorflow-import
+from tsl.profiler.protobuf import profiler_options_pb2
+from tsl.profiler.protobuf import xplane_pb2
+
+# pylint: enable=g-direct-tensorflow-import
 
 
 def _get_profile_dir() -> pathlib.Path:
@@ -71,6 +79,18 @@ def _cleanup_profile_dir() -> None:
     shutil.rmtree(_get_profile_dir())
   except FileNotFoundError:
     pass
+
+
+def _get_profiler_options_bytes(xspace: xplane_pb2.XSpace) -> bytes:
+  """Traverses the XSpace to find the profile_options stat as bytes."""
+  for plane in xspace.planes:
+    if plane.name != "Task Environment":
+      continue
+    for stat in plane.stats:
+      metadata = plane.stat_metadata.get(stat.metadata_id)
+      if metadata and metadata.name == "profile_options":
+        return stat.bytes_value
+  return b""
 
 
 class ProfilerIntegrationTest(absltest.TestCase):
@@ -238,6 +258,71 @@ class ProfilerIntegrationTest(absltest.TestCase):
         content,
         "Python annotation not found in XPlane!",
     )
+
+  def test_tpu_profiler_config_override(self):
+    """Verifies that TPU-specific profiler options are correctly applied."""
+    device = tpu_api.tpu_device()
+    base_output_dir = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR", "/tmp")
+    output_dir = pathlib.Path(base_output_dir) / "tpu_config_override"
+    os.makedirs(output_dir, exist_ok=True)
+
+    _cleanup_profile_dir()
+
+    config = TpuProfilerConfig(device_tracer_level=3)
+
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.PrivateUse1,
+        ],
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
+        experimental_config=config,
+    ):
+      a = torch.ones((16, 16)).to(device)
+      b = torch.ones((16, 16)).to(device)
+      c = a @ b
+      tpu_sync.synchronize(c)
+
+    tpu_xplane_path = pathlib.Path(output_dir) / "xplane.pb"
+    self._get_and_copy_xplane(tpu_xplane_path)
+
+    xspace = xplane_pb2.XSpace.FromString(tpu_xplane_path.read_bytes())
+    options_bytes = _get_profiler_options_bytes(xspace)
+
+    options = profiler_options_pb2.ProfileOptions.FromString(options_bytes)
+
+    self.assertEqual(
+        options.device_tracer_level,
+        3,
+        f"expected device_tracer_level=3, got {options.device_tracer_level}",
+    )
+
+  def test_invalid_profiler_config(self):
+    """Tests that invalid profiler configuration raises a Python exception."""
+    device = tpu_api.tpu_device()
+    output_dir = self.create_tempdir("invalid_config").full_path
+
+    _cleanup_profile_dir()
+
+    bad_config = torch.profiler._ExperimentalConfig(
+        custom_profiler_config="invalid_option_missing_colon"
+    )
+
+    with self.assertRaisesRegex(
+        RuntimeError,
+        r"expected the config item to be in the 'key:value' format, got"
+        r" 'invalid_option_missing_colon'",
+    ):
+      with torch.profiler.profile(
+          activities=[
+              torch.profiler.ProfilerActivity.CPU,
+              torch.profiler.ProfilerActivity.PrivateUse1,
+          ],
+          on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
+          experimental_config=bad_config,
+      ):
+        c = torch.ones((16, 16)).to(device) @ torch.ones((16, 16)).to(device)
+        tpu_sync.synchronize(c)
 
   def test_concurrent_profiling_and_execution(self):
     stop_workers = False

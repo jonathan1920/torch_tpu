@@ -21,12 +21,20 @@
 #include <string>
 
 #include "gtest/gtest.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include <kineto/ActivityType.h>
 #include <kineto/Config.h>
 #include <kineto/IActivityProfiler.h>
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
 
 namespace torch_tpu {
+
+absl::Status UpdateProfileOptions(tensorflow::ProfileOptions& opts,
+                                  std::string_view custom_config);
+
 namespace {
 
 #if TT_IS_INTERNAL_TORCH_TPU
@@ -55,6 +63,66 @@ TEST(TpuProfilerPluginTest, BasicSanity) {
 
   // We expect some errors since we are not running on a real TPU
   EXPECT_TRUE(session->errors().empty());
+}
+
+TEST(TpuProfilerPluginTest, UpdateProfileOptionsValid) {
+  tensorflow::ProfileOptions opts;
+  opts.set_device_tracer_level(1);
+  opts.set_host_tracer_level(2);
+  opts.set_python_tracer_level(0);
+
+  EXPECT_TRUE(UpdateProfileOptions(opts,
+                                   "device_tracer_level:3,host_tracer_level:3,"
+                                   "python_tracer_level:1")
+                  .ok());
+
+  EXPECT_EQ(opts.device_tracer_level(), 3);
+  EXPECT_EQ(opts.host_tracer_level(), 3);
+  EXPECT_EQ(opts.python_tracer_level(), 1);
+}
+
+TEST(TpuProfilerPluginTest, UpdateProfileOptionsWhitespace) {
+  tensorflow::ProfileOptions opts;
+  opts.set_device_tracer_level(1);
+  opts.set_host_tracer_level(2);
+  opts.set_python_tracer_level(0);
+
+  EXPECT_TRUE(UpdateProfileOptions(
+                  opts,
+                  " device_tracer_level : 3 ,  host_tracer_level : 3 , "
+                  " python_tracer_level : 1 ")
+                  .ok());
+
+  EXPECT_EQ(opts.device_tracer_level(), 3);
+  EXPECT_EQ(opts.host_tracer_level(), 3);
+  EXPECT_EQ(opts.python_tracer_level(), 1);
+}
+
+TEST(TpuProfilerPluginTest, UpdateProfileOptionsInvalidFormat) {
+  tensorflow::ProfileOptions opts;
+
+  absl::Status status = UpdateProfileOptions(opts, "invalid_format");
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), error::kInvalidArgument);
+}
+
+TEST(TpuProfilerPluginTest, UpdateProfileOptionsUnknownOption) {
+  tensorflow::ProfileOptions opts;
+
+  absl::Status status = UpdateProfileOptions(opts, "unknown_option:1");
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), error::kInvalidArgument);
+}
+
+TEST(TpuProfilerPluginTest, UpdateProfileOptionsInvalidValue) {
+  tensorflow::ProfileOptions opts;
+
+  absl::Status status = UpdateProfileOptions(opts, "device_tracer_level:abc");
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), error::kInvalidArgument);
+  EXPECT_EQ(status.message(),
+            "expected the value of parameter device_tracer_level to be an "
+            "integer, got 'abc'");
 }
 
 #endif  // TT_IS_INTERNAL_TORCH_TPU
