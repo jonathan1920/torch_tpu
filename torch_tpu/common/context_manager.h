@@ -33,7 +33,7 @@ namespace internal {
 // can only use the TEST_INFO slot.
 // TODO(https://github.com/pytorch/pytorch/issues/56027): use a dedicated slot
 // for each type of context manager.
-inline constexpr auto kTpuContextSlot = c10::DebugInfoKind::TEST_INFO;
+inline const auto kTpuContextSlot = c10::DebugInfoKind::TEST_INFO;
 }  // namespace internal
 
 // The state for different types of context managers respectively.
