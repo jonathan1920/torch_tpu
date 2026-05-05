@@ -140,7 +140,7 @@ _CHECK_DYNAMISM_USING_SEED: Final[flags.FlagHolder[int]] = flags.DEFINE_integer(
 _OPT_LEVEL: Final[flags.FlagHolder[str]] = flags.DEFINE_string(
     "opt_level",
     "",
-    "Optimization level to run the test with. Valid options are '' (default)ß,"
+    "Optimization level to run the test with. Valid options are '' (default),"
     " 'O0', 'O1', 'O2', 'O3', and 'O4'. Only used in the perf mode.",
 )
 
