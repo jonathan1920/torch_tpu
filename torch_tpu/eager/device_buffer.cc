@@ -43,13 +43,13 @@
 #include "c10/core/Device.h"
 #include "c10/core/impl/DeviceGuardImplInterface.h"
 #include "c10/util/accumulate.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -440,22 +440,6 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateMaterialized(
   // Can't use make_shared because the constructor is private.
   auto device_buffer_list = std::shared_ptr<DeviceBufferList>(
       new DeviceBufferList(std::move(buffer), element_type));
-  return DeviceBufferRef(std::move(device_buffer_list), 0);
-}
-
-absl::StatusOr<DeviceBufferRef>
-DeviceBufferList::CreateMaterializedNonAvailable(
-    absl_nonnull std::unique_ptr<xla::PjRtBuffer> buffer,
-    xla::Future<> future) {
-  Dimensions dimensions = CopyIntVector(buffer->on_device_shape().dimensions());
-  TT_ASSIGN_OR_RETURN(
-      const auto element_type,
-      ConvertTo<mlir::ElementType>(buffer->on_device_shape().element_type()));
-  TT_RETURN_IF_ERROR(ValidateTensorByteSize(dimensions, element_type));
-
-  // Can't use make_shared because the constructor is private.
-  auto device_buffer_list = std::shared_ptr<DeviceBufferList>(
-      new DeviceBufferList(std::move(buffer), element_type, std::move(future)));
   return DeviceBufferRef(std::move(device_buffer_list), 0);
 }
 

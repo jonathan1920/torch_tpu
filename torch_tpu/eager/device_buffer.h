@@ -22,7 +22,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -683,13 +682,6 @@ class DeviceBufferList {
   static absl::StatusOr<DeviceBufferRef> CreateMaterialized(
       absl_nonnull std::unique_ptr<xla::PjRtBuffer> buffer);
 
-  // Creates a single output DeviceBufferList with a non-available materialized
-  // PjRtBuffer, and returns a DeviceBufferRef to it.
-  // The future is used to determine when the buffer will become available.
-  static absl::StatusOr<DeviceBufferRef> CreateMaterializedNonAvailable(
-      absl_nonnull std::unique_ptr<xla::PjRtBuffer> buffer,
-      xla::Future<> future);
-
   // Creates a deferred DeviceBufferList containing a DeferredOp, and returns as
   // many DeviceBufferRefs as there are outputs in the list.
   // The op_builder must take the same number of inputs as `inputs`, and must
@@ -848,11 +840,8 @@ class DeviceBufferList {
   // is returned by the Create* functions.
   // The shape will be inferred from the PjRtBuffer; the element type will be
   // the type specified by the argument.
-  // If the future is provided, it is used to determine when the buffer will
-  // become available.
   DeviceBufferList(absl_nonnull std::unique_ptr<xla::PjRtBuffer> buffer,
-                   const mlir::ElementType element_type,
-                   std::optional<xla::Future<>> future = std::nullopt)
+                   const mlir::ElementType element_type)
       : subgraph_(nullptr) {
     creation_index_ = g_creation_index.fetch_add(1);
 
@@ -863,16 +852,11 @@ class DeviceBufferList {
     auto buffer_address = buffer.get();
     std::vector<std::unique_ptr<xla::PjRtBuffer>> buffers;
     buffers.push_back(std::move(buffer));
-    if (future.has_value()) {
-      data_ = MaterializedBuffers(std::move(buffers), *std::move(future));
-    } else {
-      data_ = MaterializedBuffers(std::move(buffers));
-    }
+    data_ = MaterializedBuffers(std::move(buffers));
     ABSL_VLOG(3) << "[DeviceBuffer CONSTRUCTOR (materialized)] Created. Dims: "
                  << ToString(shapes_[0].dimensions())
                  << ", Type: " << ToString(shapes_[0].dtype())
                  << ", PjRtBuffer: " << buffer_address
-                 << ", Should await: " << future.has_value()
                  << ", creation_index: " << creation_index_;
   }
 

@@ -717,11 +717,8 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::experimental_recv(
   for (size_t i = 0; i < tensors.size(); ++i) {
     auto& tensor = tensors[i];
     std::unique_ptr<xla::PjRtBuffer> buffer = std::move(recv_buffers[i]);
-    auto buffer_ready_future = buffer->GetReadyFuture();
-
     TT_ASSIGN_OR_THROW(auto device_buffer,
-                       DeviceBufferList::CreateMaterializedNonAvailable(
-                           std::move(buffer), std::move(buffer_ready_future)));
+                       DeviceBufferList::CreateMaterialized(std::move(buffer)));
 
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(device_buffer), tensor));
   }
