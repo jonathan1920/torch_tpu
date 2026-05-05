@@ -22,7 +22,6 @@ import torch
 import torch.testing
 from torch.utils import _pytree
 from torch.utils import checkpoint
-from torch_tpu import api
 from torch_tpu._internal.utils import utils
 
 
@@ -103,7 +102,7 @@ class RandomOpsTest(parameterized.TestCase):
 
   def test_dropout_compile(self):
     torch.manual_seed(42)
-    device = api.tpu_device()
+    device = torch.device("tpu")
 
     class MyModule(torch.nn.Module):
 
@@ -127,7 +126,7 @@ class RandomOpsTest(parameterized.TestCase):
 
   def test_dropout_compile_with_former_eager_run(self):
     torch.manual_seed(42)
-    device = api.tpu_device()
+    device = torch.device("tpu")
 
     class MyModule(torch.nn.Module):
 
@@ -157,7 +156,7 @@ class RandomOpsTest(parameterized.TestCase):
   @unittest.skip("Requires PyTorch changes. Reference: b/496168350")
   def test_checkpoint_rng_compile(self):
     # Arrange
-    device = api.tpu_device()
+    device = torch.device("tpu")
 
     class MyModule(torch.nn.Module):
 
@@ -202,7 +201,7 @@ class RandomOpsTest(parameterized.TestCase):
       ("exponential", lambda x: x.exponential_()),
   )
   def test_random_ops_compile(self, op_fn):
-    device = api.tpu_device()
+    device = torch.device("tpu")
 
     class MyModule(torch.nn.Module):
 
@@ -220,7 +219,7 @@ class RandomOpsTest(parameterized.TestCase):
     self.assert_random_outputs(runner)
 
   def test_multiple_random_ops_compile(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
 
     class MyModule(torch.nn.Module):
 
@@ -239,7 +238,7 @@ class RandomOpsTest(parameterized.TestCase):
     self.assert_random_outputs(runner)
 
   def test_explicit_generator_compile(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
     gen = torch.Generator(device=device)
 
     class MyModule(torch.nn.Module):
@@ -262,7 +261,7 @@ class RandomOpsTest(parameterized.TestCase):
     self.assert_random_outputs(runner, generator=gen)
 
   def test_eager_vs_compile_numerics(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
     x = torch.randn(2, 5, device=device)
 
     class MyModule(torch.nn.Module):

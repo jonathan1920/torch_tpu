@@ -21,7 +21,6 @@ from unittest import mock
 
 from absl.testing import absltest
 import torch
-from torch_tpu import api
 from torch_tpu._internal import compile as compile_lib
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.compile import compiler
@@ -55,7 +54,7 @@ class FunctionTest(absltest.TestCase):
     result_cpu = func(*inputs)
 
     # TPU eager
-    inputs_tpu = _backend.to_device(inputs, api.tpu_device())
+    inputs_tpu = _backend.to_device(inputs, torch.device("tpu"))
     tpu_eager_result = _backend.to_device(func(*inputs_tpu), "cpu")
     if isinstance(result_cpu, torch.Tensor):
       assert isinstance(tpu_eager_result, torch.Tensor)
@@ -158,7 +157,7 @@ class FunctionTest(absltest.TestCase):
       c_copy: "f32[64]" = torch.ops.aten._to_copy.default(c, device=x.device)
       return c_copy + x
 
-    x = torch.tensor([1, 2, 3, 4, 5], device=api.tpu_device())
+    x = torch.tensor([1, 2, 3, 4, 5], device=torch.device("tpu"))
     self._run_and_compare(simple, [x], debug=True)
 
   def test_simple_handle_input_flip(self):
@@ -199,8 +198,8 @@ class FunctionTest(absltest.TestCase):
 
     # Call with repeated and different inputs to ensure no torch_tpu caching
     # gets in the way.
-    input_a = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]).to(api.tpu_device())
-    input_b = torch.tensor([0.5, 0.4, 0.3, 0.2, 0.1]).to(api.tpu_device())
+    input_a = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5]).to(torch.device("tpu"))
+    input_b = torch.tensor([0.5, 0.4, 0.3, 0.2, 0.1]).to(torch.device("tpu"))
     compiled = torch.compile(func, backend=compile_lib.TpuBackend())
     res_a = compiled(input_a, input_a).to("cpu")
     res_ab = compiled(input_a, input_b).to("cpu")
@@ -293,7 +292,7 @@ class FunctionTest(absltest.TestCase):
       a = 0.3 * x
       return a
 
-    device = api.tpu_device()
+    device = torch.device("tpu")
     input_1 = torch.arange(2, device=device).view(1, 2)
 
     backend = _backend.TpuBackend()
@@ -355,9 +354,21 @@ class FunctionTest(absltest.TestCase):
       return (add,)
 
     inputs = [
-        torch.tensor(1.0, dtype=torch.complex64, device=api.tpu_device()),
-        torch.tensor(1.0, dtype=torch.complex64, device=api.tpu_device()),
-        torch.tensor(1.0, dtype=torch.complex64, device=api.tpu_device()),
+        torch.tensor(
+            1.0,
+            dtype=torch.complex64,
+            device=torch.device("tpu"),
+        ),
+        torch.tensor(
+            1.0,
+            dtype=torch.complex64,
+            device=torch.device("tpu"),
+        ),
+        torch.tensor(
+            1.0,
+            dtype=torch.complex64,
+            device=torch.device("tpu"),
+        ),
     ]
     self._run_and_compare(func, inputs)
 
@@ -380,13 +391,19 @@ class FunctionTest(absltest.TestCase):
     # inputs have deferred ops
     x_tpu = (
         torch.arange(
-            start=1, end=6, dtype=torch.float32, device=api.tpu_device()
+            start=1,
+            end=6,
+            dtype=torch.float32,
+            device=torch.device("tpu"),
         )
         * 0.1
     )
     y_tpu = (
         torch.arange(
-            start=6, end=11, dtype=torch.float32, device=api.tpu_device()
+            start=6,
+            end=11,
+            dtype=torch.float32,
+            device=torch.device("tpu"),
         )
         * 0.1
     )
@@ -405,12 +422,12 @@ class FunctionTest(absltest.TestCase):
         torch.tensor(
             [0.1, 0.2, 0.3, 0.4, 0.5],
             dtype=torch.float32,
-            device=api.tpu_device(),
+            device=torch.device("tpu"),
         ),
         torch.tensor(
             [0.6, 0.7, 0.8, 0.9, 1.0],
             dtype=torch.float32,
-            device=api.tpu_device(),
+            device=torch.device("tpu"),
         ),
     ]
     reexecuted_result = compiled(*input_nondeferred)
@@ -424,7 +441,7 @@ class FunctionTest(absltest.TestCase):
     def simple(x):
       return torch.tensor([1, 2, 3, 4, 5], device=x.device) + x
 
-    x = torch.tensor([1, 2, 3, 4, 5], device=api.tpu_device())
+    x = torch.tensor([1, 2, 3, 4, 5], device=torch.device("tpu"))
     self._run_and_compare(simple, [x], debug=True)
 
   def test_embedded_scalar_tensor_constants(self):
@@ -448,7 +465,7 @@ class FunctionTest(absltest.TestCase):
       return z
 
     args = [torch.tensor([4.0, 5.0]), torch.tensor([10.0, 11.0])]
-    args_tpu = _backend.to_device(args, api.tpu_device())
+    args_tpu = _backend.to_device(args, torch.device("tpu"))
     tpu_backend = compile_lib.TpuBackend(debug=True)
     compiled = torch.compile(inplace_add, backend=tpu_backend)
     result_tpu = compiled(*args_tpu).to("cpu")
@@ -481,7 +498,7 @@ class FunctionTest(absltest.TestCase):
     x = torch.randn(4, 8)
     scale = 3
 
-    x_tpu = x.to(api.tpu_device())
+    x_tpu = x.to(torch.device("tpu"))
     compiled = torch.compile(model, backend="tpu")
     result_tpu = compiled(x_tpu, scale).cpu()
 
@@ -500,7 +517,7 @@ class FunctionTest(absltest.TestCase):
 
     tpu_backend = compile_lib.TpuBackend(debug=True)
     compiled = torch.compile(func_with_int_put, backend=tpu_backend)
-    result_tpu = compiled(3, api.tpu_device()).to("cpu")
+    result_tpu = compiled(3, torch.device("tpu")).to("cpu")
     self.assertEqual(result_tpu, 3)
 
   def test_compiled_executable_is_picklable(self):
@@ -515,8 +532,8 @@ class FunctionTest(absltest.TestCase):
       def forward(self, x):
         return (x * 3 + 1,)
 
-    model = SimpleModel().to(api.tpu_device())
-    x = torch.randn(4, 8).to(api.tpu_device())
+    model = SimpleModel().to(torch.device("tpu"))
+    x = torch.randn(4, 8).to(torch.device("tpu"))
 
     compiler_instance = compiler.StaticCompiler()
     gm = torch.fx.symbolic_trace(model)
@@ -539,8 +556,8 @@ class FunctionTest(absltest.TestCase):
     def add_mul(x, y):
       return x + y, x * y
 
-    x = torch.randn(4, 4).to(api.tpu_device())
-    y = torch.randn(4, 4).to(api.tpu_device())
+    x = torch.randn(4, 4).to(torch.device("tpu"))
+    y = torch.randn(4, 4).to(torch.device("tpu"))
 
     gm = torch.fx.symbolic_trace(add_mul)
     executable = compiler.StaticCompiler()(gm, [x, y])
@@ -560,8 +577,8 @@ class FunctionTest(absltest.TestCase):
       def forward(self, x):
         return (x * 3 + 1,)
 
-    model = ScaleModel().to(api.tpu_device())
-    x = torch.randn(4, 8).to(api.tpu_device())
+    model = ScaleModel().to(torch.device("tpu"))
+    x = torch.randn(4, 8).to(torch.device("tpu"))
     expected = (x * 3 + 1).cpu()
 
     gm = torch.fx.symbolic_trace(model)
@@ -575,7 +592,7 @@ class ModuleTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
-    _ = api.tpu_device()
+
     os.environ["TORCHDYNAMO_VERBOSE"] = "1"
     os.environ["TORCH_LOGS"] = "+dynamo"
 
@@ -596,7 +613,7 @@ class ModuleTest(absltest.TestCase):
     m_cpu = module_class()
     cpu_results = m_cpu(*inputs)
 
-    inputs_tpu = _backend.to_device(inputs, api.tpu_device())
+    inputs_tpu = _backend.to_device(inputs, torch.device("tpu"))
     # We create a new instance of the module inside a context manager with the
     # tpu device in order for any constants created inside the module's
     # `__init__` method to get allocated on TPU. Without this Dynamo throws a

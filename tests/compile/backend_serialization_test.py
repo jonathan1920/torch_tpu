@@ -21,7 +21,6 @@ from torch._dynamo.functional_export import dynamo_graph_capture_for_export
 from torch._functorch._aot_autograd.aot_autograd_result import (
     deserialize_bundled_cache_entry,
 )
-from torch_tpu import api
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import utils
 
@@ -35,7 +34,7 @@ class BackendSerializationTest(absltest.TestCase):
     torch.manual_seed(42)
 
   def check_serialization(self, f, inputs):
-    inputs_tpu = _backend.to_device(inputs, api.tpu_device())
+    inputs_tpu = _backend.to_device(inputs, torch.device("tpu"))
     gm = dynamo_graph_capture_for_export(f)(*inputs_tpu)
 
     backend = _backend.TpuBackend(
@@ -82,7 +81,7 @@ class BackendSerializationTest(absltest.TestCase):
       return (cache + 0,)
 
     inputs_tpu = _backend.to_device(
-        [torch.randn(4, 4), torch.zeros(8, 8)], api.tpu_device()
+        [torch.randn(4, 4), torch.zeros(8, 8)], torch.device("tpu")
     )
     gm = dynamo_graph_capture_for_export(inplace_update)(*inputs_tpu)
 
@@ -92,8 +91,8 @@ class BackendSerializationTest(absltest.TestCase):
     )
     compiled_fn = backend(gm, inputs_tpu)
 
-    x = torch.randn(4, 4).to(api.tpu_device())
-    cache = torch.zeros(8, 8).to(api.tpu_device())
+    x = torch.randn(4, 4).to(torch.device("tpu"))
+    cache = torch.zeros(8, 8).to(torch.device("tpu"))
     result = compiled_fn(x, cache)
     result_cpu = _backend.to_device(result, "cpu")
     expected = x.cpu().sum().item()
@@ -105,7 +104,7 @@ class BackendSerializationTest(absltest.TestCase):
         pickle.loads(pickle.dumps(entry))
     )
 
-    cache2 = torch.zeros(8, 8).to(api.tpu_device())
+    cache2 = torch.zeros(8, 8).to(torch.device("tpu"))
     restored_result = restored_fn(x, cache2)
     restored_result_cpu = _backend.to_device(restored_result, "cpu")
     utils.assert_close(restored_result_cpu[0], torch.full((8, 8), expected))
@@ -119,14 +118,14 @@ class BackendSerializationTest(absltest.TestCase):
         enable_serialization=True,
     )
 
-    x_small = torch.randn(4, 4).to(api.tpu_device())
+    x_small = torch.randn(4, 4).to(torch.device("tpu"))
     gm_small = dynamo_graph_capture_for_export(simple)(x_small)
     compiled_small = backend(gm_small, [x_small])
     result_small = compiled_small(x_small)
     result_small_cpu = _backend.to_device(result_small, "cpu")
     utils.assert_close(result_small_cpu[0], x_small.cpu() * 2)
 
-    x_large = torch.randn(8, 8).to(api.tpu_device())
+    x_large = torch.randn(8, 8).to(torch.device("tpu"))
     gm_large = dynamo_graph_capture_for_export(simple)(x_large)
     compiled_large = backend(gm_large, [x_large])
     result_large = compiled_large(x_large)
@@ -154,7 +153,7 @@ class BackendSerializationTest(absltest.TestCase):
     def simple(x):
       return (x + 1,)
 
-    x = torch.randn(4, 4).to(api.tpu_device())
+    x = torch.randn(4, 4).to(torch.device("tpu"))
     gm = dynamo_graph_capture_for_export(simple)(x)
     backend = _backend.TpuBackend(
         debug=True,

@@ -21,7 +21,6 @@ from absl import logging
 from absl.testing import absltest
 import torch
 from torch._dynamo.backends.common import aot_autograd
-from torch_tpu import api
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.utils import utils
 
@@ -121,8 +120,8 @@ class OutputModifyTest(absltest.TestCase):
       self.assertIsNone(results[0])
       return results[1]
 
-    in_a = torch.randn(5).to(api.tpu_device())
-    in_b = torch.randn(5).to(api.tpu_device())
+    in_a = torch.randn(5).to(torch.device("tpu"))
+    in_b = torch.randn(5).to(torch.device("tpu"))
 
     compiled = torch.compile(
         _my_function,
@@ -149,8 +148,8 @@ class OutputModifyTest(absltest.TestCase):
       self.assertLen(results, 2)
       return results
 
-    in_a = torch.randn(5).to(api.tpu_device())
-    in_b = torch.randn(5).to(api.tpu_device())
+    in_a = torch.randn(5).to(torch.device("tpu"))
+    in_b = torch.randn(5).to(torch.device("tpu"))
     compiled = torch.compile(
         _my_function,
         backend=_run_tpu_backend_with_injected_test_case(
