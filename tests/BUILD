@@ -130,7 +130,7 @@ torch_tpu_py_test(
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
     main = "ops_test.py",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
+    nopresubmit_oss = "This slow test is enabled in nightly.",
     shard_count = 50,
     tags = [
         # Will re-enable this slow test until we have a proper way to speed it up.
@@ -160,7 +160,7 @@ torch_tpu_py_test(
         "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
     main = "ops_test.py",
-    notest_oss = "Will re-enable this slow test until we have a proper way to speed it up.",
+    nopresubmit_oss = "This slow test is enabled in nightly.",
     shard_count = 50,
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
@@ -228,7 +228,7 @@ torch_tpu_py_test(
         "ops_test_gpu_golden2.gz",
     ],
     main = "ops_test.py",
-    notest_oss = "Will re-enable this slow test until we have a proper way to speed it up.",
+    nopresubmit_oss = "This slow test is enabled in nightly.",
     shard_count = 50,
     tags = [
         "noasan",  # This test times out in asan mode.
@@ -266,7 +266,7 @@ torch_tpu_py_test(
     ],
     main = "ops_test.py",
     nolocal = "slow test",
-    notest_oss = "Disabled during switch from opt-in to opt-out",
+    nopresubmit_oss = "This slow test is enabled in nightly.",
     shard_count = 50,
     tags = [
         "cpu:8",  # Specify the number of CPUs for reproducible results.
@@ -558,7 +558,7 @@ torch_tpu_py_test(
         "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "1",
     },
     main = "errors_test.py",
-    notest_oss = "Temporarily disabled due to b/505792906",
+    notest_oss = "Disabled due to b/505792906. Intended not to run this slow test in OSS. It's low value to run the error tests in OSS.",
     shard_count = 4,
     tags = [
         "nosan",  # *san builds are low-value for error tests.
@@ -623,8 +623,7 @@ torch_tpu_py_test(
     },
     main = "errors_test.py",
     notap = "TODO(wan): Re-enable after the March 2026 TorchTPU release.",
-    # TODO: Get working in OSS and enable in nightlies
-    notest_oss = "Disabled as too slow and because it is failing in OSS.",
+    notest_oss = "Intended not to run this slow test in OSS. It's low value to test the error messages in both OSS and internal builds.",
     shard_count = 4,
     tags = [
         "nosan",  # *san builds are low-value for error tests.
@@ -656,8 +655,7 @@ torch_tpu_py_test(
     },
     main = "tpu_errors_test.py",
     notap = "TODO(wan): Enable after the error coverage is decently high.",
-    # TODO: Get working in OSS and enable in nightlies
-    notest_oss = "Disabled as too slow and because it is failing in OSS.",
+    notest_oss = "Intended not to run this slow test in OSS.",
     shard_count = 4,
     tags = [
         "nosan",  # *san builds are low-value for error tests.
@@ -877,8 +875,10 @@ torch_tpu_py_test(
     name = "dynamism_test",
     srcs = ["dynamism_test.py"],
     main = "dynamism_test.py",
+    nonightly_oss = "Nightly OSS is running on TPU v6. This test is failing on TPU v6 and v7: b/503386468. Will wait until next libtpu release to enable this test.",
     tags = [
-        # TODO: b/503386468 - Re-enable once the test is fixed.
+        # TODO: b/503386468 - The fix cl/903975578 was verified using a nightly libtpu wheel after
+        # that timestamp: cl/904535820. Will wait until the next libtpu release to enable this test.
         # Skip this test on tpu v6 and v7 runners: Fatal crash in XLA XPrecisionCombineEmitter due
         # to SublaneBytes alignment assertion (32 vs 512) for dynamic 64-bit shapes (int64/float64).
         "fails-on-tpu-v6",

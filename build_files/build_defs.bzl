@@ -175,6 +175,8 @@ def _check_and_adjust_test_tags(
         nolocal,
         notest_oss,
         nobuild_oss,
+        nopresubmit_oss,
+        nonightly_oss,
         tags):
     """Validates and adjusts the test tags and calculates build test requirements.
 
@@ -205,6 +207,10 @@ def _check_and_adjust_test_tags(
             run in OSS. The string provided should be a reason explaining why
             building was disabled. You should strongly prefer notest_oss to
             this!
+        nopresubmit_oss: If a string is provided, the test will be built but not run in the
+            non-nightly OSS, and it will be built and run in the nightly OSS.
+        nonightly_oss: If a string is provided, the test will be built but not run in the nightly
+            OSS.
         tags: The tags to add to the test.
 
     Returns:
@@ -261,6 +267,20 @@ def _check_and_adjust_test_tags(
                  "should be skipped in OSS tests.")
         tags.append("notest")
 
+    if nonightly_oss != None:
+        if type(nonightly_oss) != "string" or not nonightly_oss:
+            fail("nonightly_oss must be a non-empty string documenting why the test " +
+                 "should be skipped in the nightly OSS.")
+        if "nonightly" not in tags:
+            tags.append("nonightly")
+
+    if nopresubmit_oss != None:
+        if type(nopresubmit_oss) != "string" or not nopresubmit_oss:
+            fail("nopresubmit_oss must be a non-empty string documenting why the test " +
+                 "should be skipped in the non-nightly OSS.")
+        if "nopresubmit" not in tags:
+            tags.append("nopresubmit")
+
     # Adjust tags for notap.
     #
     # Whether to skip the test in local `blaze test //torch_tpu/...` runs.
@@ -292,7 +312,7 @@ def _check_and_adjust_test_tags(
     create_build_test = False
     build_test_tags = []
     if is_oss:
-        create_build_test = "notest" in tags and "nobuild" not in tags
+        create_build_test = ("notest" in tags or "nonightly" in tags or "nopresubmit" in tags) and "nobuild" not in tags
     else:
         create_build_test = "notap" in tags and "nobuild" not in tags  # NOTAP_OK=for implementing notap logic
     if create_build_test:
@@ -366,6 +386,8 @@ def check_and_adjust_test_tags_for_testing(
         nolocal = None,
         notest_oss = None,
         nobuild_oss = None,
+        nopresubmit_oss = None,
+        nonightly_oss = None,
         tags = None):
     """Public wrapper for testing."""
     if tags == None:
@@ -381,6 +403,8 @@ def check_and_adjust_test_tags_for_testing(
         nolocal = nolocal,
         notest_oss = notest_oss,
         nobuild_oss = nobuild_oss,
+        nopresubmit_oss = nopresubmit_oss,
+        nonightly_oss = nonightly_oss,
         tags = tags,
     )
 
@@ -401,6 +425,8 @@ def torch_tpu_cc_test(
         nolocal = None,
         notest_oss = None,
         nobuild_oss = None,
+        nopresubmit_oss = None,
+        nonightly_oss = None,
         tags = None,
         **kwargs):
     """Creates a cc_test for torch_tpu.
@@ -438,6 +464,10 @@ def torch_tpu_cc_test(
             run in OSS. The string provided should be a reason explaining why
             building was disabled. You should strongly prefer notest_oss to
             this!
+        nopresubmit_oss: If a string is provided, the test will be built but not run in the
+            non-nightly OSS, and it will be built and run in the nightly OSS.
+        nonightly_oss: If a string is provided, the test will be built but not run in the nightly
+            OSS.
         tags: The tags to add to the test.
         **kwargs: Any additional arguments.
     """
@@ -473,6 +503,8 @@ def torch_tpu_cc_test(
         nolocal = nolocal,
         notest_oss = notest_oss,
         nobuild_oss = nobuild_oss,
+        nopresubmit_oss = nopresubmit_oss,
+        nonightly_oss = nonightly_oss,
         tags = tags,
     )
     if result.create_build_test:
@@ -563,6 +595,8 @@ def torch_tpu_py_test(
         nolocal = None,
         notest_oss = None,
         nobuild_oss = None,
+        nopresubmit_oss = None,
+        nonightly_oss = None,
         tags = None,
         **kwargs):
     """Creates a py_test for torch_tpu.
@@ -601,6 +635,10 @@ def torch_tpu_py_test(
             run in OSS. The string provided should be a reason explaining why
             building was disabled. You should strongly prefer notest_oss to
             this!
+        nopresubmit_oss: If a string is provided, the test will be built but not run in the
+            non-nightly OSS, and it will be built and run in the nightly OSS.
+        nonightly_oss: If a string is provided, the test will be built but not run in the nightly
+            OSS.
         tags: The tags to add to the test.
         autoload: Enable autoload during the tests.
         **kwargs: Any additional arguments.
@@ -630,6 +668,8 @@ def torch_tpu_py_test(
         nolocal = nolocal,
         notest_oss = notest_oss,
         nobuild_oss = nobuild_oss,
+        nopresubmit_oss = nopresubmit_oss,
+        nonightly_oss = nonightly_oss,
         tags = tags,
     )
     if result.create_build_test:

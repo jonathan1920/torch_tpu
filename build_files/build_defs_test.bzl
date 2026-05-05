@@ -223,16 +223,136 @@ def _test_oss_notest_oss_nobuild_oss(ctx):
     asserts.false(env, result.create_build_test)
     return unittest.end(env)
 
+def _test_internal_nopresubmit_oss(ctx):
+    """Tests the nopresubmit_oss parameter in internal builds."""
+    env = unittest.begin(ctx)
+    tags = []
+    result = check_and_adjust_test_tags_for_testing(
+        is_oss = False,
+        nopresubmit_oss = "reason",
+        tags = tags,
+    )
+
+    asserts.true(env, tags == ["nopresubmit"], "tags: %s" % tags)
+    asserts.false(env, result.create_build_test)
+    return unittest.end(env)
+
+def _test_oss_nopresubmit_oss(ctx):
+    """Tests the nopresubmit_oss parameter in OSS builds."""
+    env = unittest.begin(ctx)
+    tags = []
+    result = check_and_adjust_test_tags_for_testing(
+        is_oss = True,
+        nopresubmit_oss = "reason",
+        tags = tags,
+    )
+
+    asserts.true(env, tags == ["nopresubmit"], "tags: %s" % tags)
+    asserts.true(env, result.create_build_test)
+    return unittest.end(env)
+
+def _test_internal_manual_nopresubmit_oss_tag(ctx):
+    """Tests that the nopresubmit_oss param appends correctly even if 'nopresubmit_oss' is in tags in internal builds."""
+    env = unittest.begin(ctx)
+    tags = ["nopresubmit_oss"]
+    result = check_and_adjust_test_tags_for_testing(
+        is_oss = False,
+        nopresubmit_oss = "reason",
+        tags = tags,
+    )
+
+    asserts.true(env, tags == ["nopresubmit", "nopresubmit_oss"], "tags: %s" % tags)
+    asserts.false(env, result.create_build_test)
+    return unittest.end(env)
+
+def _test_oss_manual_nopresubmit_oss_tag(ctx):
+    """Tests that the nopresubmit_oss param appends correctly even if 'nopresubmit_oss' is in tags in OSS builds."""
+    env = unittest.begin(ctx)
+    tags = ["nopresubmit_oss"]
+    result = check_and_adjust_test_tags_for_testing(
+        is_oss = True,
+        nopresubmit_oss = "reason",
+        tags = tags,
+    )
+
+    asserts.true(env, tags == ["nopresubmit", "nopresubmit_oss"], "tags: %s" % tags)
+    asserts.true(env, result.create_build_test)
+    return unittest.end(env)
+
+def _test_internal_nonightly_oss(ctx):
+    """Tests the nonightly_oss parameter in internal builds."""
+    env = unittest.begin(ctx)
+    tags = []
+    result = check_and_adjust_test_tags_for_testing(
+        is_oss = False,
+        nonightly_oss = "reason",
+        tags = tags,
+    )
+
+    asserts.true(env, tags == ["nonightly"], "tags: %s" % tags)
+    asserts.false(env, result.create_build_test)
+    return unittest.end(env)
+
+def _test_oss_nonightly_oss(ctx):
+    """Tests the nonightly_oss parameter in OSS builds."""
+    env = unittest.begin(ctx)
+    tags = []
+    result = check_and_adjust_test_tags_for_testing(
+        is_oss = True,
+        nonightly_oss = "reason",
+        tags = tags,
+    )
+
+    asserts.true(env, tags == ["nonightly"], "tags: %s" % tags)
+    asserts.true(env, result.create_build_test)
+    return unittest.end(env)
+
+def _test_internal_manual_nonightly_oss_tag(ctx):
+    """Tests that the nonightly_oss param appends correctly even if 'nonightly_oss' is in tags in internal builds."""
+    env = unittest.begin(ctx)
+    tags = ["nonightly_oss"]
+    result = check_and_adjust_test_tags_for_testing(
+        is_oss = False,
+        nonightly_oss = "reason",
+        tags = tags,
+    )
+
+    asserts.true(env, tags == ["nonightly", "nonightly_oss"], "tags: %s" % tags)
+    asserts.false(env, result.create_build_test)
+    return unittest.end(env)
+
+def _test_oss_manual_nonightly_oss_tag(ctx):
+    """Tests that the nonightly_oss param appends correctly even if 'nonightly_oss' is in tags in OSS builds."""
+    env = unittest.begin(ctx)
+    tags = ["nonightly_oss"]
+    result = check_and_adjust_test_tags_for_testing(
+        is_oss = True,
+        nonightly_oss = "reason",
+        tags = tags,
+    )
+
+    asserts.true(env, tags == ["nonightly", "nonightly_oss"], "tags: %s" % tags)
+    asserts.true(env, result.create_build_test)
+    return unittest.end(env)
+
 # go/keep-sorted start
 cuda_build_test = unittest.make(_test_cuda_build_test)
+internal_manual_nonightly_oss_tag_test = unittest.make(_test_internal_manual_nonightly_oss_tag)
+internal_manual_nopresubmit_oss_tag_test = unittest.make(_test_internal_manual_nopresubmit_oss_tag)
 internal_nobuild_oss_test = unittest.make(_test_internal_nobuild_oss)
+internal_nonightly_oss_test = unittest.make(_test_internal_nonightly_oss)
+internal_nopresubmit_oss_test = unittest.make(_test_internal_nopresubmit_oss)
 internal_notap_nobuild_test = unittest.make(_test_internal_notap_nobuild)
 internal_notest_oss_test = unittest.make(_test_internal_notest_oss)
 nobuild_test = unittest.make(_test_nobuild)
 nolocal_test = unittest.make(_test_nolocal)
 nopresubmit_test = unittest.make(_test_nopresubmit)
 notap_test = unittest.make(_test_notap)
+oss_manual_nonightly_oss_tag_test = unittest.make(_test_oss_manual_nonightly_oss_tag)
+oss_manual_nopresubmit_oss_tag_test = unittest.make(_test_oss_manual_nopresubmit_oss_tag)
 oss_nobuild_oss_test = unittest.make(_test_oss_nobuild_oss)
+oss_nonightly_oss_test = unittest.make(_test_oss_nonightly_oss)
+oss_nopresubmit_oss_test = unittest.make(_test_oss_nopresubmit_oss)
 oss_notest_oss_nobuild_oss_test = unittest.make(_test_oss_notest_oss_nobuild_oss)
 oss_notest_oss_test = unittest.make(_test_oss_notest_oss)
 # go/keep-sorted end
@@ -252,14 +372,22 @@ def build_defs_test_suite(name):
 
     # go/keep-sorted start
     add_test(tests, cuda_build_test, name + "_cuda_build_test")
+    add_test(tests, internal_manual_nonightly_oss_tag_test, name + "_internal_manual_nonightly_oss_tag")
+    add_test(tests, internal_manual_nopresubmit_oss_tag_test, name + "_internal_manual_nopresubmit_oss_tag")
     add_test(tests, internal_nobuild_oss_test, name + "_internal_nobuild_oss")
+    add_test(tests, internal_nonightly_oss_test, name + "_internal_nonightly_oss")
+    add_test(tests, internal_nopresubmit_oss_test, name + "_internal_nopresubmit_oss")
     add_test(tests, internal_notap_nobuild_test, name + "_internal_notap_nobuild")
     add_test(tests, internal_notest_oss_test, name + "_internal_notest_oss")
     add_test(tests, nobuild_test, name + "_nobuild")
     add_test(tests, nolocal_test, name + "_nolocal")
     add_test(tests, nopresubmit_test, name + "_nopresubmit")
     add_test(tests, notap_test, name + "_notap")
+    add_test(tests, oss_manual_nonightly_oss_tag_test, name + "_oss_manual_nonightly_oss_tag")
+    add_test(tests, oss_manual_nopresubmit_oss_tag_test, name + "_oss_manual_nopresubmit_oss_tag")
     add_test(tests, oss_nobuild_oss_test, name + "_oss_nobuild_oss")
+    add_test(tests, oss_nonightly_oss_test, name + "_oss_nonightly_oss")
+    add_test(tests, oss_nopresubmit_oss_test, name + "_oss_nopresubmit_oss")
     add_test(tests, oss_notest_oss_nobuild_oss_test, name + "_oss_notest_oss_nobuild_oss")
     add_test(tests, oss_notest_oss_test, name + "_oss_notest_oss")
     # go/keep-sorted end

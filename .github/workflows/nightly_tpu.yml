@@ -66,17 +66,6 @@ jobs:
     runs-on: ${{ matrix.job_info.runner }}
     container:
       image: ${{ matrix.job_info.container }}
-    # TODO: b/494827820 - Use tag to include test targets instead of env var.
-    env:
-      TEST_TARGETS: >-
-        //tests:errors_test_cov
-        //tests:errors_test_tpu
-        //tests:ops_test_grad
-        //tests:ops_test_perf
-        //tests:ops_test_tpu
-        //tests:ops_test_tpu_vs_gpu
-        //tests:tpu_errors_test
-        //tests:tpu_errors_test_cov
     steps:
       - run: echo "Start running tests."
       # Clone the GitHub repository to runner's environment $GITHUB_WORKSPACE, making its files
@@ -93,7 +82,13 @@ jobs:
       # We don't need a separate step for bazel build as bazel test will also build the code before
       # running the tests. This allows test building and test running to overlap and reduce total
       # build time.
-      - run: bazel test --config=ci_tpu_nightly --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" ${{ env.TEST_TARGETS }}
+      - name: Run Bazel tests
+        run: |
+          # Tests tagged with `manual` are dropped. Only using config `ci_tpu_nightly` and flag
+          # `--test_tag_filters` to get tests tagged with `nonightly` is not enough as there are
+          # some tests implicitly getting the `manual` tag from `notap` or `nolocal`.
+          TEST_TARGETS=$(bazel query 'tests(//...) except attr("tags", "nonightly", tests(//...))' | tr '\n' ' ')
+          bazel test --config=ci_tpu_nightly --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" ${TEST_TARGETS}
 
   notify_failure:
     name: Notify Failed Runs
