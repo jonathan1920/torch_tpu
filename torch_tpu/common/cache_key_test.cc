@@ -165,11 +165,15 @@ void KernelWithMaybePromotedScalar(at::Scalar s) {
   });
 }
 
+// The "must call .GetTensor() on promoted scalar" check is only enabled in
+// debug builds.
+#ifndef NDEBUG
 TEST(OpParamCacheKeysDeathTest, MaybePromotedScalarNotUsedCrashes) {
   EXPECT_DEATH(
       { KernelWithMaybePromotedScalar(5); },
       "The kernel didn't call \\.GetTensor\\(\\) on the promoted scalar");
 }
+#endif
 
 TEST(MaybePromotedScalarDeathTest, GetTensorWhenValueMatchesExcludeCrashes) {
   auto dummy_promoter = [](const at::Scalar&, std::optional<at::ScalarType>)
