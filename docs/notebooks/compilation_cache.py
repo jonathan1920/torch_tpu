@@ -16,7 +16,7 @@
 
 import marimo
 
-__generated_with = "0.19.8"
+__generated_with = "0.21.1"
 app = marimo.App(width="medium")
 
 
@@ -27,7 +27,7 @@ def _():
 
   # Environment Configuration
   os.environ["ACCELERATOR_TYPE"] = "v6e-4"
-  return mo, os
+  return (mo,)
 
 
 @app.cell(hide_code=True)
@@ -45,9 +45,9 @@ def _(mo):
   mo.md(r"""
     ## **How the Cache Works**
 
-    The first time a specific sequence of operations (a "graph") is materialized, the backend must compile it into TPU machine code. This is a **"Cold Start"** and can take several seconds or even minutes for complex models.
+    The first time a specific sequence of operations is executed, the backend must compile it into TPU machine code. This is a **"Cold Start"** and for large models, can add up to several seconds or even minutes.
 
-    Once compiled, the resulting binary is stored in the **Compilation Cache**. The second time you run that same graph (e.g., iteration 2 of a training loop), it will be a **"Warm Hit"** and execution starts instantly.
+    Once compiled, the resulting binary is stored in the **Compilation Cache**. The second time you run same sequence of ops (e.g., iteration 2 of a training loop), it will be a **"Warm Hit"** and execution starts instantly.
 
     ```
     Iteration 1:  Record Graph → Fingerprint → Cache MISS → Compile → Execute → Store in Cache
@@ -66,9 +66,8 @@ def _(mo):
 
     The backend generates a **fingerprint** for each computation graph based on:
 
-    1. **Input shapes** — e.g., `[32, 128]` vs. `[16, 128]` 
+    1. **Input shapes** — e.g., `[32, 128]` vs. `[16, 128]` Note that **input scalar** values also affect the fingerprint.
     2. **Input dtypes** — e.g., `float32` vs. `bfloat16`
-    3. **Input scalars**
     3. **Sequence of operations** — the exact ATen ops in order
 
     If **any** of these change, the fingerprint most likely changes, and the cache produces a **miss** — triggering a full compilation.
@@ -89,18 +88,16 @@ def _(mo):
 @app.cell
 def cache_stats_demo():
   import torch
-  from torch_tpu import api
-  import tpu_utils
 
-  device = tpu_utils.safe_init()
+  device = torch.device("tpu")
 
   # Run some operations to populate the cache
-  x = torch.randn(32, 128, device=device)
+  x = torch.randn(32, 128, device="tpu")
   y = x @ x.T
   _ = y.cpu()  # Trigger materialization → compilation
 
   # Run the same graph again (should be a cache hit)
-  x2 = torch.randn(32, 128, device=device)
+  x2 = torch.randn(32, 128, device="tpu")
   y2 = x2 @ x2.T
   _ = y2.cpu()
 
@@ -119,20 +116,20 @@ def cache_stats_demo():
     print(f"  Read Count: {entry.read_count}")
     print(f"  Compilation Duration (us): {entry.compilation_duration}")
     print(f"  Last Read: {entry.last_read}")
-  return device, torch
+  return
 
 
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## **The "Compilation Storm"**
-    If your input shapes change every iteration (e.g., variable sequence lengths without padding), or if you have data-dependent operations (e.g. nonzero()), the backend generates a new fingerprint and triggers a full re-compilation every time. This is called a "Compilation Storm" and makes training crawl.
+    ## **Avoiding Unnecessary Recompilations**
+    If your input shapes change every iteration (e.g., variable sequence lengths without padding), or if you have data-dependent operations (e.g. nonzero()), the backend may generate a new fingerprint and trigger a re-compilation of the changed ops.
 
     | Scenario | Fingerprints | Performance |
     | :--- | :--- | :--- |
     | Fixed batch size (32), fixed sequence length (128) | 1 unique graph | ✅ Fast — always cache hits |
     | Fixed batch size (32), 3 sequence buckets (128, 512, 1024) | 3 unique graphs | ✅ Good — 3 cold starts, then all hits |
-    | Variable sequence lengths (every batch different) | N unique graphs | ❌ **Storm** — constant re-compilation |
+    | Variable sequence lengths (every batch different) | N unique graphs | ❌ Re-compilation |
     """)
   return
 
@@ -140,9 +137,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## **The "Final Batch" Trap**
-
-    A common cause of compilation storms in production is an inconsistent batch size.
+    A common cause of recompilation in production is an inconsistent batch size.
 
     * **Scenario:** Batch size = 32, dataset has 100 samples. Batches 1–3 are size 32, but batch 4 is size 4.
     * **Result:** The shape change (32 → 4) triggers re-compilation on the last step of **every epoch**.
@@ -163,9 +158,9 @@ def _(mo):
   mo.md(r"""
     ## **Warmup Runs**
 
-    Because the first iteration is always a Cold Start, **never measure performance on the first pass**.
+    When measuring step time, make sure to exclude the first few steps as that can include the warmup (compilation) phase.
 
-    **Recommendation:** Run 1–2 warmup iterations before starting your timer.
+    **Recommendation:** Run 2 to 3 warmup iterations before starting your timer.
 
     ```python
     # Warmup iterations to populate the cache
@@ -184,13 +179,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
   mo.md(r"""
-    ## **Key Metrics to Monitor**
-
-    | Metric | Healthy Value | Problem Indicator |
-    | :--- | :--- | :--- |
-    | **Cache Hit Rate** | > 95% after warmup | < 80% suggests dynamic shapes |
-    | **Unique Graphs** | 1–5 per training loop | > 10 suggests a compilation storm |
-    | **Cold Start Duration** | Seconds (simple), minutes (complex) | If every step is a cold start, shapes are changing |
+    Use the above compilation cache statistics API after a handful of steps to ensure there are no more recompilations.
 
     > [!TIP]
     > Use `torch.tpu._hbm_usage_summary()` to check how much HBM is consumed by cached compiled binaries.
