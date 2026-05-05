@@ -22,12 +22,14 @@ package(
 torch_tpu_py_test(
     name = "export_test",
     srcs = ["export_test.py"],
+    env = {
+        "TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1",
+    },
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/export",
-        "//torch_tpu/api",
     ],
 )
 
