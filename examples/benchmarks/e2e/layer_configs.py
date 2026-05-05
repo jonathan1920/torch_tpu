@@ -131,6 +131,10 @@ LINEAR_CONFIGS = (
     ),
 )
 
+LINEAR_TIMM_CONFIGS = (
+    LinearConfig(batch_size=16, seq_len=1, in_features=2048, out_features=1000),
+)
+
 
 @dataclasses.dataclass
 class BatchNormConfig:
@@ -158,6 +162,196 @@ BATCH_NORM_CONFIGS = (
         seq_len=512,
         num_features=1024,
     ),
+)
+
+
+@dataclasses.dataclass
+class BatchNorm2dConfig:
+  batch_size: int
+  num_features: int
+  height: int
+  width: int
+
+
+BATCHNORM2D_TIMM_CONFIGS = (
+    BatchNorm2dConfig(batch_size=16, num_features=32, height=112, width=112),
+    BatchNorm2dConfig(batch_size=16, num_features=64, height=56, width=56),
+    BatchNorm2dConfig(batch_size=16, num_features=64, height=112, width=112),
+    BatchNorm2dConfig(batch_size=16, num_features=128, height=28, width=28),
+    BatchNorm2dConfig(batch_size=16, num_features=128, height=56, width=56),
+    BatchNorm2dConfig(batch_size=16, num_features=256, height=14, width=14),
+    BatchNorm2dConfig(batch_size=16, num_features=256, height=28, width=28),
+    BatchNorm2dConfig(batch_size=16, num_features=256, height=56, width=56),
+    BatchNorm2dConfig(batch_size=16, num_features=512, height=7, width=7),
+    BatchNorm2dConfig(batch_size=16, num_features=512, height=14, width=14),
+    BatchNorm2dConfig(batch_size=16, num_features=512, height=28, width=28),
+    BatchNorm2dConfig(batch_size=16, num_features=1024, height=14, width=14),
+    BatchNorm2dConfig(batch_size=16, num_features=2048, height=7, width=7),
+)
+
+
+@dataclasses.dataclass
+class AvgPool2dConfig:
+  batch_size: int
+  channels: int
+  height: int
+  width: int
+  kernel_size: int
+  stride: int
+  padding: int
+
+
+AVGPOOL2D_TIMM_CONFIGS = (
+    AvgPool2dConfig(
+        batch_size=16,
+        channels=256,
+        height=56,
+        width=56,
+        kernel_size=2,
+        stride=2,
+        padding=0,
+    ),
+    AvgPool2dConfig(
+        batch_size=16,
+        channels=512,
+        height=28,
+        width=28,
+        kernel_size=2,
+        stride=2,
+        padding=0,
+    ),
+    AvgPool2dConfig(
+        batch_size=16,
+        channels=1024,
+        height=14,
+        width=14,
+        kernel_size=2,
+        stride=2,
+        padding=0,
+    ),
+)
+
+
+@dataclasses.dataclass
+class SelectAdaptivePool2dConfig:
+  batch_size: int
+  channels: int
+  height: int
+  width: int
+  output_size: int = 1
+  pool_type: str = "avg"
+  flatten: bool = True
+  input_fmt: str = "NCHW"
+
+
+SELECT_ADAPTIVE_POOL2D_TIMM_CONFIGS = (
+    SelectAdaptivePool2dConfig(
+        batch_size=16,
+        channels=2048,
+        height=7,
+        width=7,
+        output_size=1,
+        pool_type="avg",
+        flatten=True,
+        input_fmt="NCHW",
+    ),
+)
+
+
+@dataclasses.dataclass
+class AdaptiveAvgPool2dConfig:
+  batch_size: int
+  channels: int
+  height: int
+  width: int
+  output_size: int = 1
+
+
+ADAPTIVE_AVG_POOL2D_TIMM_CONFIGS = (
+    AdaptiveAvgPool2dConfig(
+        batch_size=16, channels=2048, height=7, width=7, output_size=1
+    ),
+)
+
+
+@dataclasses.dataclass
+class FlattenConfig:
+  shape: tuple[int, ...]
+  start_dim: int = 1
+
+
+FLATTEN_TIMM_CONFIGS = (FlattenConfig(shape=(16, 2048, 1, 1), start_dim=1),)
+
+
+@dataclasses.dataclass
+class BottleneckConfig:
+  batch_size: int
+  height: int
+  width: int
+  inplanes: int
+  planes: int
+  stride: int = 1
+
+
+BOTTLENECK_TIMM_CONFIGS = (
+    BottleneckConfig(
+        batch_size=16, height=7, width=7, inplanes=2048, planes=512, stride=1
+    ),
+    BottleneckConfig(
+        batch_size=16, height=14, width=14, inplanes=1024, planes=256, stride=1
+    ),
+    BottleneckConfig(
+        batch_size=16, height=28, width=28, inplanes=512, planes=128, stride=1
+    ),
+    BottleneckConfig(
+        batch_size=16, height=56, width=56, inplanes=256, planes=64, stride=1
+    ),
+)
+
+
+@dataclasses.dataclass
+class MaxPool2dConfig:
+  batch_size: int
+  channels: int
+  height: int
+  width: int
+  kernel_size: int
+  stride: int
+  padding: int
+
+
+MAXPOOL2D_TIMM_CONFIGS = (
+    MaxPool2dConfig(
+        batch_size=16,
+        channels=64,
+        height=112,
+        width=112,
+        kernel_size=3,
+        stride=2,
+        padding=1,
+    ),
+)
+
+
+@dataclasses.dataclass
+class ReLUConfig:
+  shape: tuple[int, ...]
+
+
+RELU_TIMM_CONFIGS = (
+    ReLUConfig(shape=(16, 32, 112, 112)),
+    ReLUConfig(shape=(16, 64, 56, 56)),
+    ReLUConfig(shape=(16, 64, 112, 112)),
+    ReLUConfig(shape=(16, 128, 28, 28)),
+    ReLUConfig(shape=(16, 128, 56, 56)),
+    ReLUConfig(shape=(16, 256, 14, 14)),
+    ReLUConfig(shape=(16, 256, 28, 28)),
+    ReLUConfig(shape=(16, 256, 56, 56)),
+    ReLUConfig(shape=(16, 512, 7, 7)),
+    ReLUConfig(shape=(16, 512, 14, 14)),
+    ReLUConfig(shape=(16, 512, 28, 28)),
+    ReLUConfig(shape=(16, 1024, 14, 14)),
+    ReLUConfig(shape=(16, 2048, 7, 7)),
 )
 
 
@@ -235,6 +429,259 @@ CONV2D_CONFIGS = (
         padding=1,
         height=256,
         width=256,
+    ),
+)
+
+CONV2D_TIMM_CONFIGS = (
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=3,
+        out_channels=32,
+        kernel_size=3,
+        stride=2,
+        padding=1,
+        height=224,
+        width=224,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=32,
+        out_channels=32,
+        kernel_size=3,
+        stride=1,
+        padding=1,
+        height=112,
+        width=112,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=32,
+        out_channels=64,
+        kernel_size=3,
+        stride=1,
+        padding=1,
+        height=112,
+        width=112,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=64,
+        out_channels=64,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=56,
+        width=56,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=64,
+        out_channels=64,
+        kernel_size=3,
+        stride=1,
+        padding=1,
+        height=56,
+        width=56,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=64,
+        out_channels=256,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=56,
+        width=56,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=128,
+        out_channels=128,
+        kernel_size=3,
+        stride=1,
+        padding=1,
+        height=28,
+        width=28,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=128,
+        out_channels=128,
+        kernel_size=3,
+        stride=2,
+        padding=1,
+        height=56,
+        width=56,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=128,
+        out_channels=512,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=28,
+        width=28,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=256,
+        out_channels=64,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=56,
+        width=56,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=256,
+        out_channels=128,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=56,
+        width=56,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=256,
+        out_channels=256,
+        kernel_size=3,
+        stride=1,
+        padding=1,
+        height=14,
+        width=14,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=256,
+        out_channels=256,
+        kernel_size=3,
+        stride=2,
+        padding=1,
+        height=28,
+        width=28,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=256,
+        out_channels=512,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=28,
+        width=28,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=256,
+        out_channels=1024,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=14,
+        width=14,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=512,
+        out_channels=128,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=28,
+        width=28,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=512,
+        out_channels=256,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=28,
+        width=28,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=512,
+        out_channels=512,
+        kernel_size=3,
+        stride=1,
+        padding=1,
+        height=7,
+        width=7,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=512,
+        out_channels=512,
+        kernel_size=3,
+        stride=2,
+        padding=1,
+        height=14,
+        width=14,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=512,
+        out_channels=1024,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=14,
+        width=14,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=512,
+        out_channels=2048,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=7,
+        width=7,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=1024,
+        out_channels=256,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=14,
+        width=14,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=1024,
+        out_channels=512,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=14,
+        width=14,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=1024,
+        out_channels=2048,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=7,
+        width=7,
+    ),
+    Conv2dConfig(
+        batch_size=16,
+        in_channels=2048,
+        out_channels=512,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        height=7,
+        width=7,
     ),
 )
 

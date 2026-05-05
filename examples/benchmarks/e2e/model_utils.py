@@ -542,6 +542,26 @@ def get_ml_layer_model(
         dtype=weights_dtype,
         device=device,
     )
+  elif model_name == "nn.BatchNorm2d":
+    num_features = kwargs["num_features"]
+    height = kwargs["height"]
+    width = kwargs["width"]
+
+    class BatchNorm2dModel(torch.nn.Module):
+
+      def __init__(self, num_features, dtype):
+        super().__init__()
+        self.batchnorm = torch.nn.BatchNorm2d(num_features, dtype=dtype)
+
+      def forward(self, x):
+        return self.batchnorm(x)
+
+    model = BatchNorm2dModel(num_features, dtype=weights_dtype)
+    example_inputs = torch.randn(
+        (batch_size, num_features, height, width),
+        dtype=weights_dtype,
+        device=device,
+    )
   elif model_name == "nn.LayerNorm":
     normalized_shape = kwargs["normalized_shape"]
     # shape argument for input generation
@@ -623,6 +643,174 @@ def get_ml_layer_model(
     model = RMSNormModel(num_features, dtype=weights_dtype)
     example_inputs = torch.randn(
         (batch_size, sequence_length, num_features),
+        dtype=weights_dtype,
+        device=device,
+    )
+
+  elif model_name == "nn.AvgPool2d":
+    kernel_size = kwargs["kernel_size"]
+    stride = kwargs["stride"]
+    padding = kwargs["padding"]
+    channels = kwargs["channels"]
+    height = kwargs["height"]
+    width = kwargs["width"]
+
+    class AvgPool2dModel(torch.nn.Module):
+
+      def __init__(self, kernel_size, stride, padding):
+        super().__init__()
+        self.pool = torch.nn.AvgPool2d(
+            kernel_size, stride=stride, padding=padding, ceil_mode=True
+        )
+
+      def forward(self, x):
+        return self.pool(x)
+
+    model = AvgPool2dModel(kernel_size, stride, padding)
+    example_inputs = torch.randn(
+        (batch_size, channels, height, width),
+        dtype=weights_dtype,
+        device=device,
+    )
+  elif model_name == "nn.AdaptiveAvgPool2d":
+    output_size = kwargs["output_size"]
+    channels = kwargs["channels"]
+    height = kwargs["height"]
+    width = kwargs["width"]
+
+    class AdaptiveAvgPool2dModel(torch.nn.Module):
+
+      def __init__(self, output_size):
+        super().__init__()
+        self.pool = torch.nn.AdaptiveAvgPool2d(output_size)
+
+      def forward(self, x):
+        return self.pool(x)
+
+    model = AdaptiveAvgPool2dModel(output_size)
+    example_inputs = torch.randn(
+        (batch_size, channels, height, width),
+        dtype=weights_dtype,
+        device=device,
+    )
+  elif model_name == "nn.Flatten":
+    start_dim = kwargs["start_dim"]
+    shape = kwargs["shape"]
+
+    class FlattenModel(torch.nn.Module):
+
+      def __init__(self, start_dim):
+        super().__init__()
+        self.flatten = torch.nn.Flatten(start_dim=start_dim)
+
+      def forward(self, x):
+        return self.flatten(x)
+
+    model = FlattenModel(start_dim)
+    example_inputs = torch.randn(
+        shape,
+        dtype=weights_dtype,
+        device=device,
+    )
+  elif model_name == "nn.MaxPool2d":
+    kernel_size = kwargs["kernel_size"]
+    stride = kwargs["stride"]
+    padding = kwargs["padding"]
+    channels = kwargs["channels"]
+    height = kwargs["height"]
+    width = kwargs["width"]
+
+    class MaxPool2dModel(torch.nn.Module):
+
+      def __init__(self, kernel_size, stride, padding):
+        super().__init__()
+        self.pool = torch.nn.MaxPool2d(
+            kernel_size, stride=stride, padding=padding
+        )
+
+      def forward(self, x):
+        return self.pool(x)
+
+    model = MaxPool2dModel(kernel_size, stride, padding)
+    example_inputs = torch.randn(
+        (batch_size, channels, height, width),
+        dtype=weights_dtype,
+        device=device,
+    )
+  elif model_name == "nn.ReLU":
+    shape = kwargs["shape"]
+
+    class ReLUModel(torch.nn.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.relu = torch.nn.ReLU()
+
+      def forward(self, x):
+        return self.relu(x)
+
+    model = ReLUModel()
+    example_inputs = torch.randn(
+        shape,
+        dtype=weights_dtype,
+        device=device,
+    )
+  elif model_name == "SelectAdaptivePool2d":
+    import timm.layers
+
+    output_size = kwargs["output_size"]
+    pool_type = kwargs["pool_type"]
+    flatten = kwargs["flatten"]
+    input_fmt = kwargs["input_fmt"]
+    channels = kwargs["channels"]
+    height = kwargs["height"]
+    width = kwargs["width"]
+
+    class SelectAdaptivePool2dModel(torch.nn.Module):
+
+      def __init__(self, output_size, pool_type, flatten, input_fmt):
+        super().__init__()
+        self.pool = timm.layers.SelectAdaptivePool2d(
+            output_size=output_size,
+            pool_type=pool_type,
+            flatten=flatten,
+            input_fmt=input_fmt,
+        )
+
+      def forward(self, x):
+        return self.pool(x)
+
+    model = SelectAdaptivePool2dModel(
+        output_size, pool_type, flatten, input_fmt
+    )
+    example_inputs = torch.randn(
+        (batch_size, channels, height, width),
+        dtype=weights_dtype,
+        device=device,
+    )
+  elif model_name == "Bottleneck":
+    from timm.models import resnet
+
+    inplanes = kwargs["inplanes"]
+    planes = kwargs["planes"]
+    stride = kwargs["stride"]
+    height = kwargs["height"]
+    width = kwargs["width"]
+
+    class BottleneckModel(torch.nn.Module):
+
+      def __init__(self, inplanes, planes, stride):
+        super().__init__()
+        self.bottleneck = resnet.Bottleneck(
+            inplanes=inplanes, planes=planes, stride=stride
+        )
+
+      def forward(self, x):
+        return self.bottleneck(x)
+
+    model = BottleneckModel(inplanes, planes, stride).to(dtype=weights_dtype)
+    example_inputs = torch.randn(
+        (batch_size, inplanes, height, width),
         dtype=weights_dtype,
         device=device,
     )

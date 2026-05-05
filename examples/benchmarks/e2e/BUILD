@@ -470,6 +470,7 @@ torch_tpu_py_library(
         "@pypi//diffusers",
         "@pypi//fairscale",
         "@pypi//llama_models",
+        "@pypi//timm",
         "@pypi//transformers",
     ],
 )

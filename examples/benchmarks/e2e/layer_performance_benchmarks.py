@@ -55,6 +55,18 @@ _DEEPSEEK_PARALLEL_EMBEDDING_BENCHMARK_NAME = "deepseek_parallel_embedding"
 _DEEPSEEK_RMSNORM_BENCHMARK_NAME = "deepseek_rms_norm"
 _DEEPSEEK_EXPERT_BENCHMARK_NAME = "deepseek_expert"
 _SDPA_LAYER_BENCHMARK_NAME = "sdpa"
+_LINEAR_TIMM_LAYER_BENCHMARK_NAME = "linear_timm"
+_CONV2D_TIMM_LAYER_BENCHMARK_NAME = "conv2d_timm"
+_BATCHNORM2D_TIMM_LAYER_BENCHMARK_NAME = "batchnorm2d_timm"
+_AVGPOOL2D_TIMM_LAYER_BENCHMARK_NAME = "avgpool2d_timm"
+_SELECT_ADAPTIVE_POOL2D_TIMM_LAYER_BENCHMARK_NAME = (
+    "select_adaptive_pool2d_timm"
+)
+_ADAPTIVE_AVG_POOL2D_TIMM_LAYER_BENCHMARK_NAME = "adaptive_avg_pool2d_timm"
+_FLATTEN_TIMM_LAYER_BENCHMARK_NAME = "flatten_timm"
+_BOTTLENECK_TIMM_LAYER_BENCHMARK_NAME = "bottleneck_timm"
+_MAXPOOL2D_TIMM_LAYER_BENCHMARK_NAME = "maxpool2d_timm"
+_RELU_TIMM_LAYER_BENCHMARK_NAME = "relu_timm"
 
 
 class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
@@ -846,6 +858,336 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
     self.run_performance_benchmark_test(
         config, _SDPA_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          (benchmark_utils.RunMode.COMPILED,),
+          (False,),
+          layer_configs.LINEAR_TIMM_CONFIGS,
+      )
+  )
+  def test_linear_timm(self, run_mode, is_training, layer_config):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nn.Linear",
+            batch_size=layer_config.batch_size,
+            sequence_length=layer_config.seq_len,
+            custom_kwargs={
+                "in_features": layer_config.in_features,
+                "out_features": layer_config.out_features,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _LINEAR_TIMM_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          (benchmark_utils.RunMode.COMPILED,),
+          (False,),
+          layer_configs.CONV2D_TIMM_CONFIGS,
+      )
+  )
+  def test_conv2d_timm(self, run_mode, is_training, layer_config):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nn.Conv2d",
+            batch_size=layer_config.batch_size,
+            custom_kwargs={
+                "in_channels": layer_config.in_channels,
+                "out_channels": layer_config.out_channels,
+                "kernel_size": layer_config.kernel_size,
+                "stride": layer_config.stride,
+                "padding": layer_config.padding,
+                "height": layer_config.height,
+                "width": layer_config.width,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _CONV2D_TIMM_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          (benchmark_utils.RunMode.COMPILED,),
+          (False,),
+          layer_configs.BATCHNORM2D_TIMM_CONFIGS,
+      )
+  )
+  def test_batchnorm2d_timm(self, run_mode, is_training, layer_config):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nn.BatchNorm2d",
+            batch_size=layer_config.batch_size,
+            custom_kwargs={
+                "num_features": layer_config.num_features,
+                "height": layer_config.height,
+                "width": layer_config.width,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _BATCHNORM2D_TIMM_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          (benchmark_utils.RunMode.COMPILED,),
+          (False,),
+          layer_configs.AVGPOOL2D_TIMM_CONFIGS,
+      )
+  )
+  def test_avgpool2d_timm(self, run_mode, is_training, layer_config):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nn.AvgPool2d",
+            batch_size=layer_config.batch_size,
+            custom_kwargs={
+                "channels": layer_config.channels,
+                "height": layer_config.height,
+                "width": layer_config.width,
+                "kernel_size": layer_config.kernel_size,
+                "stride": layer_config.stride,
+                "padding": layer_config.padding,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _AVGPOOL2D_TIMM_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          (benchmark_utils.RunMode.COMPILED,),
+          (False,),
+          layer_configs.SELECT_ADAPTIVE_POOL2D_TIMM_CONFIGS,
+      )
+  )
+  def test_select_adaptive_pool2d_timm(
+      self, run_mode, is_training, layer_config
+  ):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="SelectAdaptivePool2d",
+            batch_size=layer_config.batch_size,
+            custom_kwargs={
+                "channels": layer_config.channels,
+                "height": layer_config.height,
+                "width": layer_config.width,
+                "output_size": layer_config.output_size,
+                "pool_type": layer_config.pool_type,
+                "flatten": layer_config.flatten,
+                "input_fmt": layer_config.input_fmt,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config,
+        _SELECT_ADAPTIVE_POOL2D_TIMM_LAYER_BENCHMARK_NAME,
+        microbenchmark_name,
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          (benchmark_utils.RunMode.COMPILED,),
+          (False,),
+          layer_configs.ADAPTIVE_AVG_POOL2D_TIMM_CONFIGS,
+      )
+  )
+  def test_adaptive_avg_pool2d_timm(self, run_mode, is_training, layer_config):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nn.AdaptiveAvgPool2d",
+            batch_size=layer_config.batch_size,
+            custom_kwargs={
+                "channels": layer_config.channels,
+                "height": layer_config.height,
+                "width": layer_config.width,
+                "output_size": layer_config.output_size,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config,
+        _ADAPTIVE_AVG_POOL2D_TIMM_LAYER_BENCHMARK_NAME,
+        microbenchmark_name,
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          (benchmark_utils.RunMode.COMPILED,),
+          (False,),
+          layer_configs.FLATTEN_TIMM_CONFIGS,
+      )
+  )
+  def test_flatten_timm(self, run_mode, is_training, layer_config):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nn.Flatten",
+            batch_size=layer_config.shape[0],
+            custom_kwargs={
+                "shape": layer_config.shape,
+                "start_dim": layer_config.start_dim,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _FLATTEN_TIMM_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          (benchmark_utils.RunMode.COMPILED,),
+          (False,),
+          layer_configs.BOTTLENECK_TIMM_CONFIGS,
+      )
+  )
+  def test_bottleneck_timm(self, run_mode, is_training, layer_config):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="Bottleneck",
+            batch_size=layer_config.batch_size,
+            custom_kwargs={
+                "height": layer_config.height,
+                "width": layer_config.width,
+                "inplanes": layer_config.inplanes,
+                "planes": layer_config.planes,
+                "stride": layer_config.stride,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _BOTTLENECK_TIMM_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          (benchmark_utils.RunMode.COMPILED,),
+          (False,),
+          layer_configs.MAXPOOL2D_TIMM_CONFIGS,
+      )
+  )
+  def test_maxpool2d_timm(self, run_mode, is_training, layer_config):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nn.MaxPool2d",
+            batch_size=layer_config.batch_size,
+            custom_kwargs={
+                "channels": layer_config.channels,
+                "height": layer_config.height,
+                "width": layer_config.width,
+                "kernel_size": layer_config.kernel_size,
+                "stride": layer_config.stride,
+                "padding": layer_config.padding,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _MAXPOOL2D_TIMM_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          (benchmark_utils.RunMode.COMPILED,),
+          (False,),
+          layer_configs.RELU_TIMM_CONFIGS,
+      )
+  )
+  def test_relu_timm(self, run_mode, is_training, layer_config):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nn.ReLU",
+            batch_size=layer_config.shape[0],
+            custom_kwargs={
+                "shape": layer_config.shape,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _RELU_TIMM_LAYER_BENCHMARK_NAME, microbenchmark_name
     )
 
 
