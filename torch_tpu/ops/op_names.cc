@@ -840,6 +840,8 @@ std::string_view ToString(OpName op_name) {
       return "max.dim_max";
     case OpName::kMaxPool2d:
       return "max_pool2d";
+    case OpName::kMaxPool2dBackward:
+      return "max_pool2d_backward";
     case OpName::kMaxPool2dWithIndicesBackwardGradInput:
       return "max_pool2d_with_indices_backward.grad_input";
     case OpName::kMaxPool2dWithIndicesOut:

@@ -431,6 +431,7 @@ enum class OpName {
   kMax,
   kMaxDimMax,
   kMaxPool2d,
+  kMaxPool2dBackward,
   kMaxPool2dWithIndicesBackwardGradInput,
   kMaxPool2dWithIndicesOut,
   kMaxPool3dWithIndices,

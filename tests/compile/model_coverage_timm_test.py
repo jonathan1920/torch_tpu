@@ -328,7 +328,7 @@ class ModelCoverageTimmTest(parameterized.TestCase):
           module_name="resnet50",
           expected_class=1,  # Goldfish
           img_path=_GOLDFISH_IMG_PATH,
-          rtol=2.1e-2,
+          rtol=2.3e-2,
           atol=1e-3,
           rmse_tol=4.5e-2,
           conf_tol=3e-3,

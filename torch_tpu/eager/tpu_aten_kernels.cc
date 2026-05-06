@@ -16,6 +16,8 @@
 
 #include "torch_tpu/eager/tpu_aten_kernels.h"
 
+#include <cstdint>
+#include <functional>
 #include <string>
 
 #include "absl/base/no_destructor.h"
@@ -24,7 +26,6 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "ATen/core/dispatch/Dispatcher.h"
-#include "ATen/core/grad_mode.h"
 #include "ATen/core/stack.h"
 #include "ATen/native/CPUFallback.h"
 #include "ATen/native/DispatchStub.h"
@@ -756,35 +757,31 @@ TORCH_LIBRARY_IMPL(_, AutogradPrivateUse1, m) {
 }
 
 // MaxPool is by default a CompositeImplicitAutograd op. The decomposition
-// replaces it with MaxPool2dWithIndices (even when return_indices=False). The
-// with-indices variant is helpful for training, because the indices are needed
-// to compute the gradient. Computing these indices during inference can harm
-// performance however, so we want to dispatch an non-index returning variant
-// in this case.
+// replaces it with MaxPool2dWithIndices (even when return_indices=False).
+// Intuitively, the with-indices variant would be helpful for training, because
+// the indices are needed to compute the gradient. This is NOT the case on tpu
+// however, re-computing the indices via SelectAndScatter is much faster.
 //
-// To support this, we register a mirror of the aten op under the
-// torch_tpu namespace to preserve the composite classification of the
-// aten op itself. The torch_tpu op is dispatched via Autograd only when
-// appropriate.
+// Therefore the optimal lowering of max_pool2d uses the non-indices variant
+// for both forward and backward, the latter leveraging SelectAndScatter.
+// SelectAndScatter does not support dilations however, so we fallback to the
+// indices variant and preserve the default composite behavior in this case.
 TORCH_LIBRARY_IMPL(aten, AutogradPrivateUse1, m) {
   m.impl("max_pool2d",
          [](const at::Tensor& self, at::IntArrayRef kernel_size,
             at::IntArrayRef stride, at::IntArrayRef padding,
             at::IntArrayRef dilation, bool ceil_mode) -> at::Tensor {
-           const auto needs_grads =
-               at::GradMode::is_enabled() && self.requires_grad();
+           const bool is_dilation_trivial =
+               dilation.allMatch(std::bind_front(std::equal_to<int64_t>(), 1));
 
-           if (needs_grads) {
-             return std::get<0>(at::max_pool2d_with_indices(
-                 self, kernel_size, stride, padding, dilation, ceil_mode));
+           if (is_dilation_trivial) {
+             return torch_tpu::TpuMaxPool2dAutograd::apply(
+                 self, kernel_size, stride, padding, dilation, ceil_mode);
+           } else {
+             auto results = at::max_pool2d_with_indices(
+                 self, kernel_size, stride, padding, dilation, ceil_mode);
+             return std::get<0>(results);
            }
-
-           return at::Dispatcher::singleton()
-               .findSchemaOrThrow("torch_tpu::max_pool2d", "")
-               .typed<at::Tensor(const at::Tensor&, at::IntArrayRef,
-                                 at::IntArrayRef, at::IntArrayRef,
-                                 at::IntArrayRef, bool)>()
-               .call(self, kernel_size, stride, padding, dilation, ceil_mode);
          });
 }
 
@@ -793,7 +790,11 @@ TORCH_LIBRARY(torch_tpu, m) {
       "max_pool2d(Tensor self, int[] kernel_size, int[] stride, int[] padding, "
       "int[] dilation, "
       "bool ceil_mode) "
-      "->Tensor");
+      "-> Tensor");
+  m.def(
+      "max_pool2d_backward(Tensor grad_output, Tensor self, int[] kernel_size, "
+      "int[] stride, int[] padding, int[] dilation, bool ceil_mode) "
+      "-> Tensor");
   m.def("ragged_dot(Tensor lhs, Tensor rhs, Tensor group_sizes) -> Tensor");
   m.def(
       "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor grop_sizes, *, "
@@ -836,10 +837,17 @@ TORCH_LIBRARY_IMPL(torch_tpu, Meta, m) {
                                           padding, dilation, ceil_mode, 2),
                      self.options());
   });
+  m.impl("max_pool2d_backward",
+         [](const at::Tensor& grad_output, const at::Tensor& self,
+            at::IntArrayRef kernel_size, at::IntArrayRef stride,
+            at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode) {
+           return at::empty(self.sizes(), self.options());
+         });
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
-  Impl(m, OpName::kMaxPool2d, AtenMaxPool2d);
+  Impl(m, OpName::kMaxPool2d, TpuMaxPool2d);
+  Impl(m, OpName::kMaxPool2dBackward, TpuMaxPool2dBackward);
   Impl(m, OpName::kRaggedDot, AtenRaggedDot);
   Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
   Impl(m, OpName::kTorchTpuOptimizationBarrier, TorchTpuOptimizationBarrier);

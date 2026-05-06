@@ -17,10 +17,13 @@
 #ifndef TORCH_TPU_OPS_POOLING_MAX_POOL_ATEN_KERNELS_H_
 #define TORCH_TPU_OPS_POOLING_MAX_POOL_ATEN_KERNELS_H_
 
+#include <cstdint>
 #include <tuple>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "torch/csrc/autograd/custom_function.h"
+#include "torch/csrc/autograd/function.h"
 #include "torch_tpu/common/dimension_types.h"
 
 namespace torch_tpu {
@@ -36,9 +39,15 @@ Dimensions GetMaxPoolOutputSize(at::IntArrayRef input_size,
                                 at::IntArrayRef dilation, const bool ceil_mode,
                                 const int64_t spatial_dim_count);
 
-at::Tensor AtenMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,
-                         at::IntArrayRef stride, at::IntArrayRef padding,
-                         at::IntArrayRef dilation, bool ceil_mode);
+at::Tensor TpuMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,
+                        at::IntArrayRef stride, at::IntArrayRef padding,
+                        at::IntArrayRef dilation, bool ceil_mode);
+
+at::Tensor TpuMaxPool2dBackward(const at::Tensor& grad_output,
+                                const at::Tensor& self,
+                                at::IntArrayRef kernel_size,
+                                at::IntArrayRef stride, at::IntArrayRef padding,
+                                at::IntArrayRef dilation, bool ceil_mode);
 
 std::tuple<at::Tensor, at::Tensor> AtenMaxPool3dWithIndices(
     const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,
@@ -66,6 +75,18 @@ at::Tensor& AtenMaxPool3dWithIndicesBackwardGradInput(
     at::IntArrayRef kernel_size, at::IntArrayRef stride,
     at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode,
     const at::Tensor& indices, at::Tensor& grad_input);
+
+struct TpuMaxPool2dAutograd
+    : public torch::autograd::Function<TpuMaxPool2dAutograd> {
+  static at::Tensor forward(torch::autograd::AutogradContext* ctx,
+                            const at::Tensor& self, at::IntArrayRef kernel_size,
+                            at::IntArrayRef stride, at::IntArrayRef padding,
+                            at::IntArrayRef dilation, bool ceil_mode);
+
+  static torch::autograd::variable_list backward(
+      torch::autograd::AutogradContext* ctx,
+      torch::autograd::variable_list grad_outputs);
+};
 
 }  // namespace torch_tpu
 

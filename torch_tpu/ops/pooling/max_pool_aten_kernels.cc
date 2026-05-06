@@ -31,15 +31,22 @@
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Region.h"
 #include "mlir/IR/Types.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "ATen/core/ATen_fwd.h"
+#include "ATen/core/LegacyTypeDispatch.h"
 #include "ATen/core/TensorBody.h"
+#include "ATen/core/dispatch/Dispatcher.h"
 #include "ATen/ops/empty.h"
 #include "c10/core/ScalarType.h"
+#include "torch/csrc/autograd/custom_function.h"
+#include "torch/csrc/autograd/function.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
@@ -47,6 +54,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -397,6 +405,163 @@ absl::StatusOr<mlir::MlirOp> BuildMaxPoolShlo(
 
   return ComputeMaxPool(batch_input_info, reduce_window_attributes,
                         spatial_dim_count);
+}
+
+absl::StatusOr<mlir::MlirOp> BuildMaxPoolBackwardShlo(
+    mlir::MlirOp grad_output, mlir::MlirOp input,
+    const int64_t spatial_dim_count, Dimensions kernel_size, Dimensions stride,
+    Dimensions padding, Dimensions dilation, const bool ceil_mode) {
+  TT_RET_CHECK(std::all_of(dilation.begin(), dilation.end(),
+                           std::bind_front(std::equal_to(), 1)),
+               error::kInvalidArgument)
+      << "MaxPool2dBackwards only supports trivial dilations.";
+
+  auto& builder = grad_output.getBuilder();
+
+  // STEP 1. Create batch inputs for both input and grad_output
+  TT_ASSIGN_OR_RETURN(auto batch_input_info,
+                      CreateBatchInput(input, spatial_dim_count));
+  TT_ASSIGN_OR_RETURN(auto batch_grad_output_info,
+                      CreateBatchInput(grad_output, spatial_dim_count));
+  mlir::MlirOp batch_input = batch_input_info.batch_input;
+  mlir::MlirOp batch_grad_output = batch_grad_output_info.batch_input;
+
+  const mlir::RankedTensorType input_shape = GetTensorTypeOrDie(batch_input);
+  auto total_num_dims = input_shape.getRank();
+
+  // STEP 2. Expand attributes
+  TT_ASSIGN_OR_RETURN(Dimensions kernel_size_attr,
+                      ExpandAttribute(kernel_size, spatial_dim_count));
+  Dimensions stride_attr;
+  if (stride.empty()) {
+    stride_attr = kernel_size_attr;
+  } else {
+    TT_ASSIGN_OR_RETURN(stride_attr,
+                        ExpandAttribute(stride, spatial_dim_count));
+  }
+  Dimensions dilation_attr;
+  if (dilation.empty()) {
+    dilation_attr = Dimensions(spatial_dim_count, 1);
+  } else {
+    TT_ASSIGN_OR_RETURN(dilation_attr,
+                        ExpandAttribute(dilation, spatial_dim_count));
+  }
+  Dimensions padding_attr;
+  if (padding.empty()) {
+    padding_attr = Dimensions(spatial_dim_count, 0);
+  } else {
+    TT_ASSIGN_OR_RETURN(padding_attr,
+                        ExpandAttribute(padding, spatial_dim_count));
+  }
+
+  // STEP 3. Padding pairs
+  auto ceil_padding_pairs =
+      CeilModePadding(input_shape, kernel_size_attr, stride_attr, padding_attr,
+                      dilation_attr, ceil_mode);
+
+  // STEP 4. ReduceWindow Attributes
+  ReduceWindowAttributes reduce_window_attributes = GetReduceWindowAttributes(
+      builder, kernel_size_attr, stride_attr, dilation_attr, ceil_padding_pairs,
+      spatial_dim_count, total_num_dims);
+
+  const mlir::Type element_type = input_shape.getElementType();
+
+  // STEP 5. Initialize init_value (0.0)
+  mlir::Attribute val_attr =
+      builder.getOpBuilder().getFloatAttr(element_type, 0.0);
+  mlir::DenseElementsAttr init_value_attr = mlir::DenseElementsAttr::get(
+      mlir::RankedTensorType::get({}, element_type), val_attr);
+  mlir::MlirOp init_value = mlir::stablehlo::Constant(builder, init_value_attr);
+
+  // STEP 6. Region Builders for Select and Scatter
+  auto select_body = [element_type](mlir::RegionBuilder& body) {
+    mlir::OpBuilder op_builder = body.getOpBuilder();
+    mlir::Region& region = body.getRegion();
+    if (region.getBlocks().empty()) op_builder.createBlock(&region);
+    mlir::Block* block = &region.getBlocks().front();
+
+    mlir::Type value_type = mlir::RankedTensorType::get({}, element_type);
+    mlir::Location loc = body.getLoc();
+    block->addArguments({value_type, value_type}, {loc, loc});
+
+    auto lhs_value = block->getArgument(0);
+    auto rhs_value = block->getArgument(1);
+
+    auto ge_pred = mlir::stablehlo::CompareOp::create(
+                       op_builder, loc, lhs_value, rhs_value,
+                       mlir::stablehlo::ComparisonDirection::GE)
+                       .getResult();
+
+    mlir::stablehlo::ReturnOp::create(op_builder, loc,
+                                      mlir::ValueRange{ge_pred});
+  };
+
+  auto scatter_body = [element_type](mlir::RegionBuilder& body) {
+    mlir::OpBuilder op_builder = body.getOpBuilder();
+    mlir::Region& region = body.getRegion();
+    if (region.getBlocks().empty()) op_builder.createBlock(&region);
+    mlir::Block* block = &region.getBlocks().front();
+
+    mlir::Type value_type = mlir::RankedTensorType::get({}, element_type);
+    mlir::Location loc = body.getLoc();
+    block->addArguments({value_type, value_type}, {loc, loc});
+
+    auto lhs_value = block->getArgument(0);
+    auto rhs_value = block->getArgument(1);
+
+    auto add_val =
+        mlir::stablehlo::AddOp::create(op_builder, loc, lhs_value, rhs_value)
+            .getResult();
+
+    mlir::stablehlo::ReturnOp::create(op_builder, loc,
+                                      mlir::ValueRange{add_val});
+  };
+
+  // STEP 7. Perform SelectAndScatter
+  auto select_results = mlir::stablehlo::SelectAndScatter(
+      /*operand=*/batch_input,
+      /*source=*/batch_grad_output,
+      /*init_value=*/init_value, select_body, scatter_body,
+      reduce_window_attributes.window_dimensions,
+      reduce_window_attributes.window_strides,
+      reduce_window_attributes.padding);
+
+  mlir::MlirOp batch_result = select_results;
+
+  mlir::MlirOp final_output = RemoveTrivialBatch(
+      batch_result, batch_input_info.original_dim_size, spatial_dim_count);
+
+  return final_output;
+}
+
+absl::Status BuildMaxPoolBackwardGradInputNd(
+    const at::Tensor& grad_output, const at::Tensor& self,
+    at::IntArrayRef kernel_size, at::IntArrayRef stride,
+    at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode,
+    at::Tensor& grad_input, int64_t spatial_dim_count,
+    OpParamCacheKeys param_keys) {
+  TT_ASSIGN_OR_RETURN(const auto output_dtype,
+                      ConvertTo<mlir::ElementType>(grad_input.scalar_type()));
+
+  auto op_builder = [kernel_size_vec = CopyIntVector(kernel_size),
+                     stride_vec = CopyIntVector(stride),
+                     padding_vec = CopyIntVector(padding),
+                     dilation_vec = CopyIntVector(dilation), ceil_mode,
+                     spatial_dim_count](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+      -> absl::StatusOr<mlir::MlirOp> {
+    return BuildMaxPoolBackwardShlo(inputs[0], inputs[1], spatial_dim_count,
+                                    kernel_size_vec, stride_vec, padding_vec,
+                                    dilation_vec, ceil_mode);
+  };
+
+  TT_ASSIGN_OR_RETURN(
+      auto result,
+      (DispatchOp<2>(std::move(op_builder), {grad_output, self},
+                     {.out_dtype = output_dtype,
+                      .out_dims = CopyIntVector(grad_input.sizes()),
+                      .op_param_cache_keys = std::move(param_keys)})));
+
+  return AssignBufferToAtTensor(std::move(result), grad_input);
 }
 
 // Builds the backward pass for max_pool with indices using StableHLO's
@@ -771,9 +936,9 @@ Dimensions GetMaxPoolOutputSize(at::IntArrayRef input_size,
   return output_size;
 }
 
-at::Tensor AtenMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,
-                         at::IntArrayRef stride, at::IntArrayRef padding,
-                         at::IntArrayRef dilation, bool ceil_mode) {
+at::Tensor TpuMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,
+                        at::IntArrayRef stride, at::IntArrayRef padding,
+                        at::IntArrayRef dilation, bool ceil_mode) {
   TT_KERNEL(OpName::kMaxPool2d, param_keys,
             (self, kernel_size, stride, padding, dilation, ceil_mode), {
               TT_CHECK_THROW(self.scalar_type() != at::ScalarType::Bool,
@@ -791,6 +956,68 @@ at::Tensor AtenMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,
                   spatial_dim_count, std::move(param_keys)));
               return out;
             });
+}
+
+at::Tensor TpuMaxPool2dBackward(const at::Tensor& grad_output,
+                                const at::Tensor& self,
+                                at::IntArrayRef kernel_size,
+                                at::IntArrayRef stride, at::IntArrayRef padding,
+                                at::IntArrayRef dilation, bool ceil_mode) {
+  TT_KERNEL(
+      OpName::kMaxPool2dBackward, param_keys,
+      (grad_output, self, kernel_size, stride, padding, dilation, ceil_mode), {
+        at::Tensor grad_input = at::empty(self.sizes(), self.options());
+        TT_THROW_IF_ERROR(BuildMaxPoolBackwardGradInputNd(
+            grad_output, self, kernel_size, stride, padding, dilation,
+            ceil_mode, grad_input, /*spatial_dim_count=*/2,
+            std::move(param_keys)));
+        return grad_input;
+      });
+}
+
+at::Tensor TpuMaxPool2dAutograd::forward(
+    torch::autograd::AutogradContext* ctx, const at::Tensor& self,
+    at::IntArrayRef kernel_size, at::IntArrayRef stride,
+    at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode) {
+  ctx->save_for_backward({self});
+  ctx->saved_data["kernel_size"] = kernel_size.vec();  // VEC_OK
+  ctx->saved_data["stride"] = stride.vec();            // VEC_OK
+  ctx->saved_data["padding"] = padding.vec();          // VEC_OK
+  ctx->saved_data["dilation"] = dilation.vec();        // VEC_OK
+  ctx->saved_data["ceil_mode"] = ceil_mode;
+
+  at::AutoDispatchBelowADInplaceOrView guard;
+  return at::Dispatcher::singleton()
+      .findSchemaOrThrow("torch_tpu::max_pool2d", "")
+      .typed<at::Tensor(const at::Tensor&, at::IntArrayRef, at::IntArrayRef,
+                        at::IntArrayRef, at::IntArrayRef, bool)>()
+      .call(self, kernel_size, stride, padding, dilation, ceil_mode);
+}
+
+torch::autograd::variable_list TpuMaxPool2dAutograd::backward(
+    torch::autograd::AutogradContext* ctx,
+    torch::autograd::variable_list grad_outputs) {
+  auto saved = ctx->get_saved_variables();
+  auto self = saved[0];
+  auto kernel_size = ctx->saved_data["kernel_size"].toIntVector();
+  auto stride = ctx->saved_data["stride"].toIntVector();
+  auto padding = ctx->saved_data["padding"].toIntVector();
+  auto dilation = ctx->saved_data["dilation"].toIntVector();
+  bool ceil_mode = ctx->saved_data["ceil_mode"].toBool();
+
+  auto grad_output = grad_outputs[0];
+
+  at::AutoDispatchBelowADInplaceOrView guard;
+  auto grad_input =
+      at::Dispatcher::singleton()
+          .findSchemaOrThrow("torch_tpu::max_pool2d_backward", "")
+          .typed<at::Tensor(const at::Tensor&, const at::Tensor&,
+                            at::IntArrayRef, at::IntArrayRef, at::IntArrayRef,
+                            at::IntArrayRef, bool)>()
+          .call(grad_output, self, kernel_size, stride, padding, dilation,
+                ceil_mode);
+  return {grad_input,   at::Tensor(), at::Tensor(),
+          at::Tensor(), at::Tensor(), at::Tensor()};
 }
 
 }  // namespace torch_tpu
