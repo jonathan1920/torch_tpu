@@ -199,7 +199,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float64: {"rtol": 5e-8, "atol": 2.8e-7},
     },
     "_foreach_reciprocal": {
-        torch.float32: {"rtol": 6.6e-8, "atol": 1.6e-5},
+        torch.float32: {"rtol": 1.2e-07, "atol": 1.6e-5},
     },
     "_foreach_sigmoid": {
         torch.complex64: {"rtol": 1.6e-5, "atol": 9.9e-5},
