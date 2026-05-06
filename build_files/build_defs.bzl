@@ -344,10 +344,9 @@ def _check_and_adjust_test_tags(
         if _is_cuda_test(tags):
             fail("CUDA tests must use notap instead of nopresubmit, as there's no postsubmit build for CUDA.")
 
-        if "nofastbuild" not in tags:
-            # This tag causes the test to be skipped in presubmit, as we only run
-            # fastbuild tests in presubmit.
-            tags.append("nofastbuild")
+        if "nopresubmit" not in tags:
+            # This tag causes the test to be skipped in presubmit.
+            tags.append("nopresubmit")
 
             # Skip in local runs as it's unreasonable to ask people to keep a
             # nopresubmit test green.

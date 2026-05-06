@@ -67,7 +67,7 @@ def _test_nopresubmit(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["manual", "nofastbuild"], "tags: %s" % tags)
+    asserts.true(env, tags == ["manual", "nopresubmit"], "tags: %s" % tags)
     asserts.false(env, result.create_build_test)
     return unittest.end(env)
 
