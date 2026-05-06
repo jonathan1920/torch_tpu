@@ -26,6 +26,7 @@ import optax
 import torch
 from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import benchmark_utils as pt_benchmark_utils
+from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import performance_utils as pt_performance_utils
 import torchax
 from torchax import interop  # pylint: disable=unused-import
@@ -450,41 +451,68 @@ def run_benchmark(
       config, cpu_device, weights_dtype
   )
 
-  if config.is_training:
-    result = _run_torchax_backward_pass(
-        model_jittable, inputs, config.run_mode, enable_xprof
+  succeeded = False
+  result = None
+  exception = None
+
+  try:
+    if config.is_training:
+      result = _run_torchax_backward_pass(
+          model_jittable, inputs, config.run_mode, enable_xprof
+      )
+    else:
+      result = _run_torchax_forward_pass(
+          model_jittable, inputs, config.run_mode, enable_xprof
+      )
+    succeeded = True
+  except Exception as e:  # pylint: disable=broad-except
+    logging.exception(
+        "Performance benchmark failed for %s", test_method_name, e
     )
-  else:
-    result = _run_torchax_forward_pass(
-        model_jittable, inputs, config.run_mode, enable_xprof
+    exception = e
+
+  # TODO: b/510335427) - Enable memory for torchax benchmarks.
+  if succeeded and result is not None:
+    logging.info(
+        "Performance Benchmark Results:\n"
+        "  Test: %s\n"
+        "  benchmark: %s\n"
+        "  microbenchmark: %s\n"
+        "  run_mode: %s\n"
+        "  is_training: %s\n"
+        "  warmup_overhead (seconds): %s\n"
+        "  average_step_time (seconds): %s\n"
+        "  first_step_time (seconds): %s\n"
+        "  e2e_wall_time (seconds): %s\n"
+        "  warmup_session_xprof_url: %s\n"
+        "  post_warmup_run_session_xprof_url: %s",
+        test_method_name,
+        benchmark_name,
+        microbenchmark_name,
+        config.run_mode.value,
+        config.is_training,
+        result.warmup_overhead_seconds,
+        result.post_warmup_step_time_seconds,
+        result.first_step_time_seconds,
+        result.e2e_wall_time_seconds,
+        result.warmup_session_xprof_url,
+        result.post_warmup_run_session_xprof_url,
     )
 
-  logging.info(
-      "Performance Benchmark Results:\n"
-      "  Test: %s\n"
-      "  benchmark: %s\n"
-      "  microbenchmark: %s\n"
-      "  run_mode: %s\n"
-      "  is_training: %s\n"
-      "  warmup_overhead (seconds): %s\n"
-      "  average_step_time (seconds): %s\n"
-      "  first_step_time (seconds): %s\n"
-      "  e2e_wall_time (seconds): %s\n"
-      "  warmup_session_xprof_url: %s\n"
-      "  post_warmup_run_session_xprof_url: %s",
-      test_method_name,
-      benchmark_name,
-      microbenchmark_name,
-      config.run_mode.value,
-      config.is_training,
-      result.warmup_overhead_seconds,
-      result.post_warmup_step_time_seconds,
-      result.first_step_time_seconds,
-      result.e2e_wall_time_seconds,
-      result.warmup_session_xprof_url,
-      result.post_warmup_run_session_xprof_url,
-  )
-
-  # TODO(b/502598295): Enable mlcompass tracking for torchax
   if pt_benchmark_utils.MLCOMPASS_TRACKING_ID.value:
-    pass
+    mlcompass_utils.export_to_mlcompass(
+        pt_benchmark_utils.PLATFORM.value,
+        result,
+        pt_benchmark_utils.BASE_CL.value,
+        pt_benchmark_utils.MLCOMPASS_TRACKING_ID.value,
+        pt_benchmark_utils.MLCOMPASS_EXECUTION_MODE.value,
+        test_method_name=test_method_name,
+        benchmark_name=benchmark_name,
+        microbenchmark_name=microbenchmark_name,
+        succeeded=succeeded,
+        pending_cl=pt_benchmark_utils.PENDING_CL.value,
+        benchmark_group=pt_benchmark_utils.BENCHMARK_GROUP.value,
+    )
+
+  if exception:
+    raise exception

@@ -29,6 +29,7 @@ torch_tpu_py_library(
     srcs = ["performance_utils.py"],
     deps = [
         "//examples/benchmarks/e2e:benchmark_utils",
+        "//examples/benchmarks/e2e:mlcompass_utils",
         "//examples/benchmarks/e2e:performance_utils",
         "//shims/absl_py/logging",
         "//shims/torch",
