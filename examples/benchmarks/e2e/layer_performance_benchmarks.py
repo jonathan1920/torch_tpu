@@ -773,7 +773,11 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
           list(
               layer_configs.SdpaConfig.configs_with_backends(
                   torch.nn.attention.SDPBackend.MATH,
-                  torch.nn.attention.SDPBackend.OVERRIDEABLE,
+                  # Allow fallback to math backend.
+                  [
+                      torch.nn.attention.SDPBackend.OVERRIDEABLE,
+                      torch.nn.attention.SDPBackend.MATH,
+                  ],
               )
           ),
       )
