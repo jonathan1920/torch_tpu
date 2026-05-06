@@ -25,6 +25,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/base/const_init.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
@@ -36,6 +37,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
@@ -387,16 +389,18 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
       // Note that view operations (like reshapes and transposes) don't go
       // through the op_dispatcher sequence. So the heuristic below considers
       // only non-view ops.
-      //
-      // We make this thread_local to avoid op sequences from different threads
-      // to interfere with each other.
-      // TODO: make this per-python-thread.
-      static thread_local OpWindow op_window(kMinRepeatedSubsequenceLength,
-                                             kMaxRepeatedSubsequenceLength);
+      static absl::Mutex mutex{absl::kConstInit};
+      static absl::NoDestructor<OpWindow> op_window(
+          kMinRepeatedSubsequenceLength, kMaxRepeatedSubsequenceLength);
       const DeferredOp* absl_nullable op = results[0].deferred_op();
       ABSL_CHECK(op != nullptr);  // CRASH_OK
-      op_window.Append(*op);
-      if (op_window.FindRepeatedSequence()) {
+      bool found_repetition = false;
+      {
+        absl::MutexLock lock(mutex);
+        op_window->Append(*op);
+        found_repetition = op_window->FindRepeatedSequence();
+      }
+      if (found_repetition) {
         auto materialization_mode =
             (detect_repeated_ops == kRepeatedOpAggressiveMode)
                 ? MaterializationMode::kFullGraph
