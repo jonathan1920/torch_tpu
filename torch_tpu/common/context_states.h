@@ -56,6 +56,19 @@ using EagerModeContextState = EagerMode;
 // The state of the `precision` context manager.
 using PrecisionContextState = mlir::stablehlo::Precision;
 
+enum class ProfilerStatus {
+  // By default, profiling is disabled.
+  kDisabled,
+  // Enables the collection of performance metrics by scoping the code region
+  // under profiling in a `profiler.profile` context.
+  kEnabled,
+};
+
+// The state of the `profile` context manager.
+// TODO(b/509670300): remove it when the native PyTorch profiler API is fully
+// integrated and available.
+using ProfileContextState = ProfilerStatus;
+
 // Whether to capture tracebacks for each dispatched op.
 enum class TracebackMode {
   // Tracebacks are not captured. This is the default for eager mode, where MLIR

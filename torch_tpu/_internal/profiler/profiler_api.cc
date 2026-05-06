@@ -25,6 +25,8 @@
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "torch_tpu/common/context_manager.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/error_utils.h"
 #include "pybind11/pybind11.h"
 #include "xla/tsl/platform/env.h"
@@ -240,6 +242,11 @@ PYBIND11_MODULE(_profiler_backend, m) {
   m.def("stop_profiler_server", &StopProfilerServerPy,
         "Stops the profiler gRPC server; fails if the server has not been "
         "started or has already been stopped.");
+
+  m.def("_push_enable_profiler",
+        []() { PushContextState(ProfilerStatus::kEnabled); });
+  m.def("_pop_enable_profiler",
+        []() { PopContextState<ProfileContextState>(); });
 }
 
 }  // namespace torch_tpu

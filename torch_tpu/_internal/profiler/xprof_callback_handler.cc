@@ -23,6 +23,9 @@
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
 #include "ATen/record_function.h"
+#include "torch/csrc/profiler/orchestration/observer.h"
+#include "torch_tpu/common/context_manager.h"
+#include "torch_tpu/common/context_states.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
@@ -43,15 +46,41 @@ class XProfObserverContext : public at::ObserverContext {
   tsl::profiler::TraceMe traceme_;
 };
 
+// Returns true if profiling is enabled for the current thread, otherwise
+// returns false.
+//
+// It accommodates the following profiling APIs:
+//   1. TSL profiler API `tsl::profiler::ProfilerSession::Create`, and
+//   2. native PyTorch profiler API `torch.profiler.profile`, and
+//   3. custom TorchTPU profiler API `torch_tpu._internal.profiler.profile`.
+//
+// TODO(b/509670300): simplify it when the native PyTorch profiler API is fully
+// integrated and available.
+[[nodiscard]] bool IsProfilerEnabled() {
+  // Enable profiling by default if any profiling session is active via global
+  // TSL or native PyTorch API. It ensures that PyTorch events are captured even
+  // if the user is not using the custom TorchTPU Python context manager.
+  const auto default_state = (tsl::profiler::TraceMe::Active() ||
+                              torch::profiler::impl::profilerEnabled())
+                                 ? ProfilerStatus::kEnabled
+                                 : ProfilerStatus::kDisabled;
+
+  // Override the default state with the current thread-local context state.
+  return GetContextState<ProfileContextState>(default_state) ==
+         ProfilerStatus::kEnabled;
+}
+
 // The callback function that is called when a RecordFunction is pushed.
 // It creates a TraceMe instance and returns a XProfObserverContext.
 // Returns nullptr if there is no active XProf session, allowing PyTorch to
 // bypass state tracking and avoid unnecessary heap allocations.
 absl_nullable std::unique_ptr<at::ObserverContext> OnFunctionEnter(
     const at::RecordFunction& fn) {
-  // Fast-path check: If no XProf session is active, return immediately
-  // to avoid the heap allocation of XProfObserverContext.
-  if (!tsl::profiler::TraceMe::Active()) {
+  // Fast-path check: if
+  //   1. no XProf session (local or remote) is active, or
+  //   2. profiling is not enabled
+  // return immediately to avoid the heap allocation of `XProfObserverContext`.
+  if (!tsl::profiler::TraceMe::Active() || !IsProfilerEnabled()) {
     return nullptr;
   }
   return std::make_unique<XProfObserverContext>(tsl::profiler::TraceMe([&] {

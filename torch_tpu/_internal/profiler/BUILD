@@ -59,6 +59,8 @@ torch_tpu_cc_library(
         "//shims/torch",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
+        "//torch_tpu/common:context_manager",
+        "//torch_tpu/common:context_states",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
         "@tsl//tsl/profiler/lib:traceme",
@@ -105,6 +107,8 @@ torch_tpu_cc_library(
     ],
     deps = [
         "//shims/pybind11",
+        "//torch_tpu/common:context_manager",
+        "//torch_tpu/common:context_states",
         "//torch_tpu/common:error_utils",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
@@ -140,6 +144,8 @@ pybind_extension(
     deps = [
         ":tpu_profiler_plugin_cc",
         ":xprof_callback_handler",
+        "//torch_tpu/common:context_manager",
+        "//torch_tpu/common:context_states",
         "//torch_tpu/common:error_utils",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",

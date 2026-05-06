@@ -21,6 +21,7 @@ import os
 from typing import Any
 import warnings
 
+from torch_tpu._internal.profiler import _profiler_backend
 import torch_tpu._internal.profiler._impl as profiler
 
 
@@ -105,6 +106,8 @@ def _get_profile_options(
   return options
 
 
+# TODO(b/509670300): remove it when the native PyTorch profiler API is fully
+# integrated and available.
 @contextlib.contextmanager
 def profile(
     activities: list[ProfilerActivity] | None = None,
@@ -148,10 +151,14 @@ def profile(
   log_dir = on_trace_ready(None)
 
   profiler.start_trace(log_dir, profiler_options=options)
+  # pylint: disable-next=protected-access
+  _profiler_backend._push_enable_profiler()
 
   try:
     yield None
   finally:
+    # pylint: disable-next=protected-access
+    _profiler_backend._pop_enable_profiler()
     profiler.stop_trace()
 
 
