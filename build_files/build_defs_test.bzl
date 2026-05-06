@@ -97,7 +97,7 @@ def _test_internal_nobuild_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["notest"], "tags: %s" % tags)
+    asserts.true(env, tags == [], "tags: %s" % tags)
 
     # In an internal build, nobuild_oss has no effect and thus does not make
     # it necessary to generate a build_test.
@@ -132,7 +132,7 @@ def _test_internal_notest_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["notest"], "tags: %s" % tags)
+    asserts.true(env, tags == [], "tags: %s" % tags)
 
     # In an internal build, notest_oss has no effect and thus does not make
     # it necessary to generate a build_test.
@@ -233,7 +233,7 @@ def _test_internal_nopresubmit_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nopresubmit"], "tags: %s" % tags)
+    asserts.true(env, tags == [], "tags: %s" % tags)
     asserts.false(env, result.create_build_test)
     return unittest.end(env)
 
@@ -261,7 +261,7 @@ def _test_internal_manual_nopresubmit_oss_tag(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nopresubmit", "nopresubmit_oss"], "tags: %s" % tags)
+    asserts.true(env, tags == ["nopresubmit_oss"], "tags: %s" % tags)
     asserts.false(env, result.create_build_test)
     return unittest.end(env)
 
@@ -289,7 +289,7 @@ def _test_internal_nonightly_oss(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nonightly"], "tags: %s" % tags)
+    asserts.true(env, tags == [], "tags: %s" % tags)
     asserts.false(env, result.create_build_test)
     return unittest.end(env)
 
@@ -317,7 +317,7 @@ def _test_internal_manual_nonightly_oss_tag(ctx):
         tags = tags,
     )
 
-    asserts.true(env, tags == ["nonightly", "nonightly_oss"], "tags: %s" % tags)
+    asserts.true(env, tags == ["nonightly_oss"], "tags: %s" % tags)
     asserts.false(env, result.create_build_test)
     return unittest.end(env)
 

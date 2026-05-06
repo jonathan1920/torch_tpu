@@ -265,20 +265,27 @@ def _check_and_adjust_test_tags(
         if type(notest_oss) != "string" or not notest_oss:
             fail("notest_oss must be a non-empty string documenting why the test " +
                  "should be skipped in OSS tests.")
-        tags.append("notest")
+
+        # notest_oss should only affect the OSS build.
+        if is_oss:
+            tags.append("notest")
 
     if nonightly_oss != None:
         if type(nonightly_oss) != "string" or not nonightly_oss:
             fail("nonightly_oss must be a non-empty string documenting why the test " +
                  "should be skipped in the nightly OSS.")
-        if "nonightly" not in tags:
+
+        # nonightly_oss should only affect the OSS build.
+        if is_oss and "nonightly" not in tags:
             tags.append("nonightly")
 
     if nopresubmit_oss != None:
         if type(nopresubmit_oss) != "string" or not nopresubmit_oss:
             fail("nopresubmit_oss must be a non-empty string documenting why the test " +
                  "should be skipped in the non-nightly OSS.")
-        if "nopresubmit" not in tags:
+
+        # nopresubmit_oss should only affect the OSS build.
+        if is_oss and "nopresubmit" not in tags:
             tags.append("nopresubmit")
 
     # Adjust tags for notap.
