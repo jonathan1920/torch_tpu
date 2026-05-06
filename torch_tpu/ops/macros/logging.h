@@ -243,7 +243,6 @@ void CheckScalarInput() {
                 // TODO: make this list empty.
                 // go/keep-sorted start
       kOpName == OpName::kAdd ||                         //
-      kOpName == OpName::kAddOut ||                      //
       kOpName == OpName::kAddReluOut ||                  //
       kOpName == OpName::kAddReluScalar ||               //
       kOpName == OpName::kAddReluTensor ||               //
