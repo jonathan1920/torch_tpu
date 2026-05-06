@@ -580,9 +580,17 @@ absl::Status CheckSubInputs(const at::Tensor& self, const at::Tensor& other) {
 // NOLINTEND
 at::Tensor& AtenAddOut(const at::Tensor& self, const at::Tensor& other,
                        const at::Scalar& alpha, at::Tensor& out) {
-  auto promoted_alpha = PromoteScalar(alpha);
+  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
   TT_KERNEL(OpName::kAddOut, param_keys, (self, other, promoted_alpha, out), {
     TT_THROW_IF_ERROR(CheckAlphaTypeSupported(alpha));
+
+    // As an optimization, skip the scaling if alpha is 1.
+    if (promoted_alpha.IsOne()) {
+      TT_THROW_IF_ERROR(
+          BinaryOpOut(self, other, out, BuildAddShlo,
+                      {.op_param_cache_keys = std::move(param_keys)}));
+      return out;
+    }
 
     TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
                        promoted_alpha.GetTensor(out.scalar_type()));
