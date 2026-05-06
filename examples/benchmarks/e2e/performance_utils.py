@@ -17,6 +17,7 @@
 import contextlib
 import dataclasses
 import functools
+import gc
 import os
 import sys
 from typing import Any, Callable, Mapping, Optional, Sequence, Tuple
@@ -193,6 +194,7 @@ def _run_single_process_benchmark(
       MLCompass when a benchmark test method is composed of multiple
       microbenchmarks. See go/mlcompass-microbenchmark-guide for more details.
   """
+  gc.collect()
   _setup_absl()
   rank = int(os.environ.get("RANK", "0"))
   world_size = int(os.environ.get("WORLD_SIZE", "1"))
