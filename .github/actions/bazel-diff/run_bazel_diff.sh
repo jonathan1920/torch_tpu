@@ -24,11 +24,13 @@ BASE_SHA="${2}"
 CURRENT_SHA="${3}"
 BAZEL_CONFIG="${4}"
 EXTRA_FLAGS="${5}"
+DISABLE_BAZEL_DIFF="${6:-false}"
 
-# If BASE_SHA is empty (e.g., workflow_dispatch, postsubmit, nightly on main),
-# diff-based testing is invalid. Fall back to running all tests.
-if [ -z "$BASE_SHA" ]; then
-  echo "No BASE_SHA provided (not a PR). Skipping bazel-diff and running all tests."
+# If BASE_SHA is empty (e.g., workflow_dispatch, postsubmit, nightly on main) or
+# label "ci:disable-bazel-diff" is applied, diff-based testing is invalid. Fall
+# back to running all tests.
+if [ -z "$BASE_SHA" ] || [ "$DISABLE_BAZEL_DIFF" == "true" ]; then
+  echo "No BASE_SHA provided (not a PR) or bazel-diff disabled via PR label. Skipping bazel-diff and running all tests."
 
   set +e
   eval bazel test --config="$BAZEL_CONFIG" $EXTRA_FLAGS //...
