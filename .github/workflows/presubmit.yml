@@ -26,6 +26,14 @@ on:
         options:
           - 'yes'
           - 'no'
+      override_base_sha:
+        description: 'Override Base SHA for bazel-diff (optional)'
+        required: false
+        type: string
+      override_current_sha:
+        description: 'Override Current SHA for bazel-diff (optional)'
+        required: false
+        type: string
   pull_request:
     branches:
       - main
@@ -90,8 +98,8 @@ jobs:
       - name: Run Impacted Tests via bazel-diff
         uses: ./.github/actions/bazel-diff
         with:
-          base_sha: ${{ github.event.pull_request.base.sha }}
-          current_sha: ${{ github.sha }}
+          base_sha: ${{ inputs.override_base_sha || github.event.pull_request.base.sha }}
+          current_sha: ${{ inputs.override_current_sha || github.sha }}
           bazel_config: ${{ matrix.job_info.config }}
           extra_bazel_flags: ${{ matrix.job_info.extra_flags }}
           disable_bazel_diff: ${{ contains(github.event.pull_request.labels.*.name, 'ci:disable-bazel-diff') }}
