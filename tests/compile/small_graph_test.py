@@ -753,6 +753,58 @@ class ModuleTest(absltest.TestCase):
     inputs = [torch.arange(25).reshape(5, 5)]
     self._run_and_compare(ModuleWithBuffer, inputs)
 
+  def test_adam_optimizer(self):
+    class SimpleModel(torch.nn.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.linear = torch.nn.Linear(5, 2)
+
+      def forward(self, x):
+        return self.linear(x)
+
+    device = torch.device("tpu")
+    model = SimpleModel().to(device)
+    model.train()
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-1, capturable=True)
+    criterion = torch.nn.MSELoss()
+
+    tpu_backend = compile_lib.TpuBackend(debug=True)
+    compiled = torch.compile(model, backend=tpu_backend)
+
+    input_tensor = torch.arange(50, dtype=torch.float32, device=device).reshape(
+        10, 5
+    )
+    target = torch.ones(10, 2, device=device)
+
+    optimizer.zero_grad()
+    outputs = compiled(input_tensor)
+    loss = criterion(outputs, target)
+    loss.backward()
+
+    for i, p in enumerate(model.parameters()):
+      with self.subTest(name=f"GradientCheck_Param_{i}"):
+        self.assertIsNotNone(p.grad, "Gradients should have been computed.")
+        self.assertFalse(
+            torch.all(p.grad == 0), "Gradients should not be all zeros."
+        )
+
+    params_before = [p.detach().clone() for p in model.parameters()]
+
+    optimizer.step()
+
+    for i, (p_before, p_after) in enumerate(
+        zip(params_before, model.parameters())
+    ):
+      with self.subTest(name=f"ParameterUpdateCheck_Param_{i}"):
+        # We expect the parameters to be different after the step.
+        # allclose returns True if they are within tolerance; we want False.
+        self.assertFalse(
+            torch.allclose(p_before, p_after, rtol=1e-4, atol=1e-4),
+            "Parameters did not change after optimizer.step()",
+        )
+
 
 if __name__ == "__main__":
   absltest.main()
