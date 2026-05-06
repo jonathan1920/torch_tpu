@@ -271,6 +271,8 @@ class DeviceBufferRef {
   // The current state of the referenced buffer, as an enum.
   [[nodiscard]] DeviceBufferRefState state() const;
 
+  [[nodiscard]] bool IsMaterialized() const;
+
   // The logical dimensions of the referenced buffer.
   [[nodiscard]] absl::Span<const int64_t> dimensions() const;
 

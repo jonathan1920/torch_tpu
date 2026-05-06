@@ -49,6 +49,7 @@ torch_tpu_cc_library(
         "//shims/torch:torch_headers",
         "//shims/torch/c10/util:base",
         "@stablehlo//:stablehlo_ops",
+        "@xla//xla:shape_util",
     ],
 )
 
@@ -719,6 +720,7 @@ pywrap_library(
         "//torch_tpu/_internal/compile:tpu_torch_compile",
         "//torch_tpu/_internal/compiler_options:compiler_options_impl",
         "//torch_tpu/_internal/device:_device_ops_backend",
+        "//torch_tpu/_internal/device_utils:annotations_py",
         "//torch_tpu/_internal/distributed:tpu_distributed",
         "//torch_tpu/_internal/dynamism:_tpu_torch_dynamism",
         "//torch_tpu/_internal/execution_mode:execution_mode_impl",

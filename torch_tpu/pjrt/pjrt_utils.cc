@@ -42,12 +42,15 @@
 #include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/context_manager.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/future.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -133,23 +136,28 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
                << ", dimensions: [" << absl::StrJoin(dimensions, ",") << "]"
                << ", semantics: " << static_cast<int>(semantics);
 
+  auto annotations_layout = GetContextState<LayoutContextState>(nullptr);
+  const xla::Layout* layout_ptr =
+      annotations_layout ? annotations_layout.get() : nullptr;
+
   bool keep_host_data_alive = backing_tensor.has_value();
 
-  TT_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::PjRtBuffer> buffer,
-      client->BufferFromHostBuffer(
-          effective_host_data,
+  TT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> buffer,
+                      client->BufferFromHostBuffer(
+                          effective_host_data,
 
-          type, dimensions, std::nullopt, semantics,
-          [backing_tensor = std::move(backing_tensor)]() mutable {
-            // This lambda isn't really doing anything, but we need to ensure
-            // the C++ compiler doesn't optimize by dropping the backing tensor
-            // before the transfer completes.
-            if (backing_tensor.has_value()) {
-              backing_tensor.reset();
-            }
-          },
-          memory_space, nullptr));
+                          type, dimensions, std::nullopt, semantics,
+                          [annotations_layout, backing_tensor = std::move(
+                                                   backing_tensor)]() mutable {
+                            // This lambda isn't really doing anything, but we
+                            // need to ensure the C++ compiler doesn't optimize
+                            // by dropping the backing tensor before the
+                            // transfer completes.
+                            if (backing_tensor.has_value()) {
+                              backing_tensor.reset();
+                            }
+                          },
+                          memory_space, layout_ptr));
 
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] "
                   "client->BufferFromHostBuffer SUCCEEDED.";

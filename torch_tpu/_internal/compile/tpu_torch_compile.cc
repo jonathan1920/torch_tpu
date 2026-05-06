@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -47,7 +48,9 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_gen_impl.h"
+#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -56,6 +59,7 @@
 #include "pybind11/stl.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/hlo/translate/register.h"
+#include "xla/layout.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -79,6 +83,33 @@ at::Tensor PyMakePlaceholderLike(const at::Tensor& arg_tensor) {
                                    arg_tensor.sizes().end());
   return PyMakePlaceholder(sizes, arg_tensor.scalar_type(),
                            arg_tensor.requires_grad());
+}
+
+py::object PyGetDeviceLayoutIfMaterialized(const at::Tensor& tensor) {
+  TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref, GetBufferFromAtTensor(tensor));
+  if (!buffer_ref.IsMaterialized()) {
+    return py::none();
+  }
+  TT_ASSIGN_OR_THROW(auto* pjrt_buffer, buffer_ref.GetOrMaterializeBuffer());
+  const auto pjrt_layout = pjrt_buffer->layout();
+  if (!pjrt_layout) {
+    return py::none();
+  }
+  const xla::Layout& layout = pjrt_layout->xla_layout();
+
+  std::vector<int64_t>  // INT_VEC_OK
+      minor_to_major(layout.minor_to_major().begin(),
+                     layout.minor_to_major().end());
+
+  std::vector<std::vector<int64_t>> tiles;  // INT_VEC_OK
+  tiles.reserve(layout.tiles().size());
+  for (const auto& tile : layout.tiles()) {
+    tiles.push_back(std::vector<int64_t>  // INT_VEC_OK
+                    (tile.dimensions().begin(), tile.dimensions().end()));
+  }
+
+  return py::cast(
+      std::make_tuple(minor_to_major, tiles, layout.element_size_in_bits()));
 }
 
 // Returns a ContextedModule corresponding to the graph terminating at
@@ -368,6 +399,8 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   m.def("placeholder", PyMakePlaceholder, py::arg("sizes"), py::arg("dtype"),
         py::arg("requires_grad"));
   m.def("placeholder_like", PyMakePlaceholderLike, py::arg("arg_tensor"));
+  m.def("get_device_layout_if_materialized", &PyGetDeviceLayoutIfMaterialized,
+        py::arg("tensor"));
   m.def("build_mlir", PyBuildMlir, py::arg("result_tensors"),
         py::arg("argument_tensors"));  // INT_VEC_OK
   // Returns: PjRtLoadedExecutable

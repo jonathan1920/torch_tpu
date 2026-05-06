@@ -18,10 +18,12 @@
 #define TORCH_TPU_COMMON_CONTEXT_STATES_H_
 
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/layout.h"
 
 namespace torch_tpu {
 
@@ -91,6 +93,9 @@ using CompilerOptionOverrides = std::map<std::string, std::string>;
 
 // The state of the `custom_compiler_options` context manager.
 using CustomCompilerOptionsContextState = CompilerOptionOverrides;
+
+// The state of the `layout` context manager.
+using LayoutContextState = std::shared_ptr<xla::Layout>;
 
 }  // namespace torch_tpu
 

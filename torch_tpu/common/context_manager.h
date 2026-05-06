@@ -44,6 +44,7 @@ using ContextManagerState = std::variant<
     EagerModeContextState,              // The `eager_mode` context manager.
     EnableTracebacksContextState,       // The `enable_tracebacks` context manager.
     IsSpmdSafeContextState,             // The `spmd_safe` context manager.
+    LayoutContextState,                 // The `layout` context manager.
     PrecisionContextState,              // The `precision` context manager.
     ProfileContextState                 // The `profile` context manager.
     // go/keep-sorted end

@@ -113,6 +113,8 @@ torch_tpu_cc_library(
         "//shims/torch/c10/util:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:compilation",
+        "//torch_tpu/common:context_manager",
+        "//torch_tpu/common:context_states",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:utils",

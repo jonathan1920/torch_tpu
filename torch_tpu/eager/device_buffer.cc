@@ -67,19 +67,19 @@
 namespace torch_tpu {
 
 void Subgraph::Prune() {
-  queue_.erase(std::remove_if(
-                   queue_.begin(), queue_.end(),
-                   [](std::weak_ptr<DeviceBufferList>& weak_node) {
-                     std::shared_ptr<DeviceBufferList> node = weak_node.lock();
-                     if (!node) {
-                       return true;
-                     }
-                     const auto* deferred_op = node->deferred_op();
-                     if (!deferred_op || node->num_child_ops() > 0) {
-                       return true;
-                     }
-                     return false;
-                   }),
+  queue_.erase(std::remove_if(queue_.begin(), queue_.end(),
+                              [](std::weak_ptr<DeviceBufferList>& weak_node) {
+                                std::shared_ptr<DeviceBufferList> node =
+                                    weak_node.lock();
+                                if (!node) {
+                                  return true;
+                                }
+                                const auto* deferred_op = node->deferred_op();
+                                if (!deferred_op || node->num_child_ops() > 0) {
+                                  return true;
+                                }
+                                return false;
+                              }),
                queue_.end());
 }
 
@@ -775,6 +775,10 @@ absl::StatusOr<size_t> DeviceBufferRef::pjrt_buffer_size() const {
 
 DeviceBufferRefState DeviceBufferRef::state() const {
   return device_buffer_list_->state(index_);
+}
+
+bool DeviceBufferRef::IsMaterialized() const {
+  return state() == DeviceBufferRefState::kMaterialized;
 }
 
 [[nodiscard]] absl::Span<const int64_t> DeviceBufferRef::dimensions() const {
