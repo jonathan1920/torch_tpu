@@ -53,6 +53,7 @@ def generate_configs_for_parameterized(configs):
 
 @dataclasses.dataclass(frozen=True)
 class SdpaConfig:
+  """Configuration for SDPA tests."""
   batch_size: int
   embed_dim: int
   q_seq_len: int
@@ -63,6 +64,7 @@ class SdpaConfig:
   is_causal: bool
   enable_gqa: bool
   dtype: torch.dtype
+  scale: float | None = None
   use_math_backend: bool = False
 
 
@@ -71,7 +73,7 @@ SDPA_CONFIGS = [
     SdpaConfig(
         batch_size=1,
         embed_dim=512,
-        q_seq_len=128,
+        q_seq_len=512,
         q_num_heads=8,
         kv_num_heads=8,
         qk_head_dim=64,
@@ -79,7 +81,7 @@ SDPA_CONFIGS = [
         is_causal=True,
         enable_gqa=True,
         dtype=torch.bfloat16,
-        use_math_backend=True,
+        scale=1.1 / 64**0.5,  # Slightly different from default 1.0 / sqrt(64)
     ),
     # Configs for Llama3 70B attention layers
     SdpaConfig(

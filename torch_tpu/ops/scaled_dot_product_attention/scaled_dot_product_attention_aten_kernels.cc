@@ -17,6 +17,7 @@
 #include "torch_tpu/ops/scaled_dot_product_attention/scaled_dot_product_attention_aten_kernels.h"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -107,6 +108,14 @@ int get_batch_size(const at::Tensor& tensor) {
   return batch_size;
 }
 
+mlir::MlirOp GetScaleDefaulted(mlir::MlirBuilder& builder,
+                               std::optional<double> maybe_scale,
+                               int64_t head_dim) {
+  double scale = maybe_scale ? *maybe_scale : 1.0 / std::sqrt(head_dim);
+  return MakeScalarConstant(builder, scale,
+                            builder.getOpBuilder().getF32Type());
+}
+
 absl::StatusOr<std::string_view> GetSdpaForwardKernel(at::ScalarType dtype,
                                                       bool is_causal) {
   static const absl::NoDestructor<
@@ -171,7 +180,7 @@ absl::StatusOr<std::string_view> GetSdpaBackwardKernel(at::ScalarType dtype,
 
 absl::StatusOr<at::Tensor> ScaledDotProductFusedAttentionImpl(
     const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
-    bool is_causal) {
+    bool is_causal, std::optional<double> scale) {
   int rank = query.ndimension();
   int batch_size = 1;
   for (int i = 0; i < rank - 3; i++) batch_size *= query.size(i);
@@ -182,8 +191,8 @@ absl::StatusOr<at::Tensor> ScaledDotProductFusedAttentionImpl(
   out_dims[rank - 1] = value.size(rank - 1);
 
   const auto query_scalar_type = query.scalar_type();
-  auto op_builder = [rank, batch_size, out_dims, query_scalar_type,
-                     is_causal](FixedSizeSpan<mlir::MlirOp, 3> inputs)
+  auto op_builder = [rank, batch_size, out_dims, query_scalar_type, is_causal,
+                     scale, query](FixedSizeSpan<mlir::MlirOp, 3> inputs)
       -> absl::StatusOr<mlir::MlirOp> {
     auto [query_mlir, key_mlir, value_mlir] = inputs;
 
@@ -203,8 +212,12 @@ absl::StatusOr<at::Tensor> ScaledDotProductFusedAttentionImpl(
     mlir::MlirOp value_4d =
         flatten_batch_dims(value_mlir, batch_size, rank - 3);
 
+    mlir::MlirOp scale_value =
+        GetScaleDefaulted(builder, scale, query.size(rank - 1));
+
     // Specialize the kernel given the inputs.
-    std::array<mlir::MlirOp, 3> input_array = {query_4d, key_4d, value_4d};
+    std::array<mlir::MlirOp, 4> input_array = {query_4d, key_4d, value_4d,
+                                               scale_value};
     TT_ASSIGN_OR_RETURN(
         auto results, BuildSpecializedMlirKernel(builder, imported_kernel.get(),
                                                  absl::MakeSpan(input_array)));
@@ -216,8 +229,9 @@ absl::StatusOr<at::Tensor> ScaledDotProductFusedAttentionImpl(
     return out;
   };
 
-  TT_ASSIGN_OR_RETURN(auto param_keys, *OpParamCacheKeysBuilder().SetParam(
-                                           "is_causal", is_causal));
+  TT_ASSIGN_OR_RETURN(auto param_keys, *OpParamCacheKeysBuilder()
+                                            .SetParam("is_causal", is_causal)
+                                            .SetParam("scale", scale));
 
   TT_ASSIGN_OR_RETURN(
       auto results,
@@ -229,11 +243,9 @@ absl::StatusOr<at::Tensor> ScaledDotProductFusedAttentionImpl(
 }
 
 absl::StatusOr<std::tuple<at::Tensor, at::Tensor, at::Tensor>>
-ScaledDotProductFusedAttentionBackwardImpl(const at::Tensor& grad_out,
-                                           const at::Tensor& query,
-                                           const at::Tensor& key,
-                                           const at::Tensor& value,
-                                           bool is_causal) {
+ScaledDotProductFusedAttentionBackwardImpl(
+    const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
+    const at::Tensor& value, std::optional<double> scale, bool is_causal) {
   int rank = query.ndimension();
   int batch_size = 1;
   for (int i = 0; i < rank - 3; i++) batch_size *= query.size(i);
@@ -242,8 +254,8 @@ ScaledDotProductFusedAttentionBackwardImpl(const at::Tensor& grad_out,
                       ConvertTo<mlir::ElementType>(query.scalar_type()));
 
   const auto query_scalar_type = query.scalar_type();
-  auto op_builder = [rank, batch_size, query_scalar_type,
-                     is_causal](FixedSizeSpan<mlir::MlirOp, 4> inputs)
+  auto op_builder = [rank, batch_size, query_scalar_type, is_causal, scale,
+                     query](FixedSizeSpan<mlir::MlirOp, 4> inputs)
       -> absl::StatusOr<MlirOpResults<3>> {
     auto [grad_out_mlir, query_mlir, key_mlir, value_mlir] = inputs;
 
@@ -264,8 +276,11 @@ ScaledDotProductFusedAttentionBackwardImpl(const at::Tensor& grad_out,
     mlir::MlirOp value_batch =
         flatten_batch_dims(value_mlir, batch_size, rank - 3);
 
-    std::array<mlir::MlirOp, 4> input_array = {grad_out_batch, query_batch,
-                                               key_batch, value_batch};
+    mlir::MlirOp scale_value =
+        GetScaleDefaulted(builder, scale, query.size(rank - 1));
+
+    std::array<mlir::MlirOp, 5> input_array = {
+        grad_out_batch, query_batch, key_batch, value_batch, scale_value};
     TT_ASSIGN_OR_RETURN(
         auto results, BuildSpecializedMlirKernel(builder, imported_kernel.get(),
                                                  absl::MakeSpan(input_array)));
@@ -283,8 +298,9 @@ ScaledDotProductFusedAttentionBackwardImpl(const at::Tensor& grad_out,
     return {{grad_query, grad_key, grad_value}};
   };
 
-  TT_ASSIGN_OR_RETURN(auto param_keys, *OpParamCacheKeysBuilder().SetParam(
-                                           "is_causal", is_causal));
+  TT_ASSIGN_OR_RETURN(auto param_keys, *OpParamCacheKeysBuilder()
+                                            .SetParam("is_causal", is_causal)
+                                            .SetParam("scale", scale));
 
   TT_ASSIGN_OR_RETURN(
       auto results,
@@ -376,7 +392,7 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
         const bool can_use_overrideable =
             GetFlagOnce<bool,
                         &FLAGS_torch_tpu_internal_sdpa_use_custom_kernel>() &&
-            (!attn_mask.has_value() && !scale.has_value() &&
+            (!attn_mask.has_value() &&
              (query.scalar_type() == at::ScalarType::Float ||
               query.scalar_type() == at::ScalarType::BFloat16) &&
              query.ndimension() == key.ndimension() &&
@@ -398,9 +414,6 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
             "for scaled_dot_product_attention when these conditions are met:\n"
             "- attn_mask is None (current: ",
             (attn_mask.has_value() ? "present" : "None"),
-            ")\n"
-            "- scale is None (current: ",
-            (scale.has_value() ? "present" : "None"),
             ")\n"
             "- inputs are float32 or bfloat16 (current: ",
             query.scalar_type(),
@@ -465,8 +478,9 @@ AtenScaledDotProductFusedAttentionOverrideable(
              IgnoreInCacheKey(return_debug_mask, "Legacy usage"),
              IgnoreInCacheKey(scale, "Legacy usage")),
             {
-              TT_ASSIGN_OR_THROW(auto out, ScaledDotProductFusedAttentionImpl(
-                                               query, key, value, is_causal));
+              TT_ASSIGN_OR_THROW(auto out,
+                                 ScaledDotProductFusedAttentionImpl(
+                                     query, key, value, is_causal, scale));
 
               return GenerateResults(out);
             });
@@ -493,9 +507,9 @@ AtenScaledDotProductFusedAttentionOverrideableBackward(
               // Unused arguments: grad_input_mask, out, logsumexp,
               // cum_seq_q, cum_seq_k, max_q, max_k, dropout_p, is_causal,
               // philox_seed, philox_offset, scale.
-              TT_ASSIGN_OR_THROW(auto out,
-                                 ScaledDotProductFusedAttentionBackwardImpl(
-                                     grad_out, query, key, value, is_causal));
+              TT_ASSIGN_OR_THROW(
+                  auto out, ScaledDotProductFusedAttentionBackwardImpl(
+                                grad_out, query, key, value, scale, is_causal));
 
               return std::make_tuple(
                   grad_input_mask[0] ? std::get<0>(out)
@@ -520,9 +534,11 @@ AtenScaledDotProductEfficientAttention(
              IgnoreInCacheKey(is_causal, "Legacy usage"),
              IgnoreInCacheKey(scale, "Legacy usage")),
             {
-              TT_ASSIGN_OR_THROW(auto out, ScaledDotProductFusedAttentionImpl(
-                                               query, key, value, is_causal));
-
+              // Unused arguments: attn_bias, compute_log_sumexp, dropout_p,
+              // scale.
+              TT_ASSIGN_OR_THROW(auto out,
+                                 ScaledDotProductFusedAttentionImpl(
+                                     query, key, value, is_causal, scale));
               int64_t batch = get_batch_size(query);
               int64_t heads = query.size(query.ndimension() - 3);
               int64_t q_seq_len = query.size(query.ndimension() - 2);
@@ -553,8 +569,9 @@ AtenScaledDotProductFlashAttention(const at::Tensor& query,
              IgnoreInCacheKey(return_debug_mask, "Legacy usage"),
              IgnoreInCacheKey(scale, "Legacy usage")),
             {
-              TT_ASSIGN_OR_THROW(auto out, ScaledDotProductFusedAttentionImpl(
-                                               query, key, value, is_causal));
+              TT_ASSIGN_OR_THROW(auto out,
+                                 ScaledDotProductFusedAttentionImpl(
+                                     query, key, value, is_causal, scale));
 
               return GenerateResults(out);
             });

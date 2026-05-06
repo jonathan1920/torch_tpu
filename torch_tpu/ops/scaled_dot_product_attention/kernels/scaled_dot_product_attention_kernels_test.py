@@ -70,8 +70,9 @@ class ScaledDotProductAttentionGenerateTest(parameterized.TestCase):
           jax.random.PRNGKey(2), shape=(self.B, self.H, self.S, self.Ev)
       ).astype(dtype)
 
-    out_base = base_fn(q, k, v)
-    out_test = test_fn(q, k, v)
+    scale = jnp.array(1.0 / np.sqrt(self.E), dtype=dtype)
+    out_base = base_fn(q, k, v, scale=float(scale))
+    out_test = test_fn(q, k, v, float(scale))
     logging.info("out_base.shape=%s", jax.tree.map(jnp.shape, out_base))
     logging.info("out_test.shape=%s", jax.tree.map(jnp.shape, out_test))
 
@@ -172,11 +173,11 @@ class ScaledDotProductAttentionGenerateTest(parameterized.TestCase):
             kernels.SDPAKernelReferenceTorch.forward,
             is_causal=is_causal,
         ),
-        kernels.SDPAKernelSplashAttention.export_forward(
+        lambda q, k, v, scale: kernels.SDPAKernelSplashAttention.export_forward(
             dtype=dtype,
             is_causal=is_causal,
             input_sizes=input_sizes,
-        ).call,
+        ).call(q, k, v),
         kernel_type="splash",
         dtype=dtype,
     )
@@ -205,12 +206,12 @@ class ScaledDotProductAttentionGenerateTest(parameterized.TestCase):
             kernels.SDPAKernelReferenceTorch.forward,
             is_causal=is_causal,
         ),
-        kernels.SDPAKernelSplashAttention.export_forward(
+        lambda q, k, v, scale: kernels.SDPAKernelSplashAttention.export_forward(
             dtype=dtype,
             is_causal=is_causal,
             input_sizes=input_sizes,
             enable_gqa=enable_gqa,
-        ).call,
+        ).call(q, k, v),
         kernel_type="splash",
         dtype=dtype,
     )

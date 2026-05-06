@@ -6446,6 +6446,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             v_t,
             is_causal=config.is_causal,
             enable_gqa=config.enable_gqa,
+            scale=config.scale,
         )
 
       y.sum().backward()

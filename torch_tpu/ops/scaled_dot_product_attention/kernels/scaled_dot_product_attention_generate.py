@@ -138,6 +138,7 @@ def export_backward_kernel(header_path, implementation_path):
 #######################################################################
 def main(argv: Sequence[str]) -> None:
   del argv
+
   assert not (_FORWARD.value and _BACKWARD.value)
   if _FORWARD.value:
     export_forward_kernel(_HEADER.value, _IMPLEMENTATION.value)

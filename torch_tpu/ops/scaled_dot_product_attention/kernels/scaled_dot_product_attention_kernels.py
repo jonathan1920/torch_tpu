@@ -97,10 +97,10 @@ class SDPAKernelReferenceJax:
       query,
       key,
       value,
+      scale,
       attn_mask=None,
       dropout_p=0.0,
       is_causal=False,
-      scale=None,
       enable_gqa=False,
   ):
     """Reference implementation using jax.nn.dot_product_attention."""
@@ -130,10 +130,10 @@ class SDPAKernelReferenceJax:
       query,
       key,
       value,
+      scale,
       attn_mask=None,
       dropout_p=0.0,
       is_causal=False,
-      scale=None,
       enable_gqa=False,
   ):
     """Backward implementation for JAX reference."""
@@ -195,9 +195,10 @@ class SDPAKernelReferenceJax:
         enable_gqa=True,
     )
     q_shape, k_shape, v_shape, _ = cls.get_shapes(dtype)
+    scale_shape = jax.ShapeDtypeStruct((), jnp.float32)
     with pallas_export_experimental(dynamic_shapes=True):
       return jax.export.export(jax.jit(kernel_fn), platforms=["tpu"])(
-          q_shape, k_shape, v_shape
+          q_shape, k_shape, v_shape, scale_shape
       )
 
   @classmethod
@@ -210,9 +211,10 @@ class SDPAKernelReferenceJax:
         enable_gqa=True,
     )
     q_shape, k_shape, v_shape, out_shape = cls.get_shapes(dtype)
+    scale_shape = jax.ShapeDtypeStruct((), jnp.float32)
     with pallas_export_experimental(dynamic_shapes=True):
       return jax.export.export(jax.jit(kernel_fn), platforms=["tpu"])(
-          out_shape, q_shape, k_shape, v_shape
+          out_shape, q_shape, k_shape, v_shape, scale_shape
       )
 
 
@@ -226,10 +228,10 @@ class SDPAKernelReferenceTorch:
       query,
       key,
       value,
+      scale,
       attn_mask=None,
       dropout_p=0.0,
       is_causal=False,
-      scale=None,
       enable_gqa=False,
   ):
     """Forward implementation for Torch reference."""
@@ -296,10 +298,10 @@ class SDPAKernelReferenceTorch:
       query,
       key,
       value,
+      scale,
       attn_mask=None,
       dropout_p=0.0,
       is_causal=False,
-      scale=None,
       enable_gqa=False,
   ):
     """Reference backward implementation for Torch."""
@@ -358,7 +360,7 @@ class SDPAKernelReferenceTorch:
 ########################################################################
 ## Flash Attention Kernels ##
 ########################################################################
-def flash_attention_gqa(q, k, v, causal, block_sizes=None):
+def flash_attention_gqa(q, k, v, causal, scale, block_sizes=None):
   """Flash Attention wrapper that adds GQA using vmap."""
   q_heads = q.shape[-3]
   kv_heads = k.shape[-3]
@@ -385,7 +387,12 @@ def flash_attention_gqa(q, k, v, causal, block_sizes=None):
 
     def process_head(q, k, v):
       return flash_attention.flash_attention(
-          q, k, v, causal=causal, block_sizes=block_sizes
+          q,
+          k,
+          v,
+          scale,
+          causal=causal,
+          block_sizes=block_sizes,
       )
 
     return jax.vmap(process_head, in_axes=(1, None, None), out_axes=1)(
@@ -411,21 +418,19 @@ class SDPAKernelFlashAttention:
   @classmethod
   def forward(
       cls,
-      query,
-      key,
-      value,
-      attn_mask=None,
-      dropout_p=0.0,
-      is_causal=False,
-      scale=None,
-      enable_gqa=False,
-      block_size=_BLOCK_SIZE,
+      query: jax.Array,
+      key: jax.Array,
+      value: jax.Array,
+      scale: jax.Array,
+      attn_mask: jax.Array | None = None,
+      dropout_p: float = 0.0,
+      is_causal: bool = False,
+      enable_gqa: bool = False,
+      block_size: int = _BLOCK_SIZE,
   ):
     """Forward implementation for Flash Attention."""
-    del attn_mask, dropout_p, scale, enable_gqa
+    del attn_mask, dropout_p, enable_gqa
     q, k, v = query, key, value
-    _, _, _, head_dim_qk = q.shape
-    q = q / jnp.sqrt(head_dim_qk)
     out = flash_attention_gqa(
         q=q,
         k=k,
@@ -444,7 +449,7 @@ class SDPAKernelFlashAttention:
             block_q_dq=block_size,
         ),
         causal=is_causal,
-        # sm_scale=scale if scale is not None else 1.0,
+        scale=scale,
     )
     return out
 
@@ -455,10 +460,10 @@ class SDPAKernelFlashAttention:
       query,
       key,
       value,
+      scale,
       attn_mask=None,
       dropout_p=0.0,
       is_causal=False,
-      scale=None,
       enable_gqa=False,
       block_size=_BLOCK_SIZE,
   ):
@@ -582,9 +587,10 @@ class SDPAKernelFlashAttention:
     q_dtype = jax.ShapeDtypeStruct(q_shape, dtype)
     k_dtype = jax.ShapeDtypeStruct(k_shape, dtype)
     v_dtype = jax.ShapeDtypeStruct(v_shape, dtype)
+    scale_dtype = jax.ShapeDtypeStruct((), jnp.float32)
     grad_out_dtype = jax.ShapeDtypeStruct(out_shape, dtype)
 
-    return q_dtype, k_dtype, v_dtype, grad_out_dtype
+    return q_dtype, k_dtype, v_dtype, scale_dtype, grad_out_dtype
 
   @classmethod
   def export_forward(
@@ -597,7 +603,7 @@ class SDPAKernelFlashAttention:
       **kwargs,
   ):
     """Exports Flash Attention forward to MLIR."""
-    q_dtype, k_dtype, v_dtype, _ = cls.get_shapes(
+    q_dtype, k_dtype, v_dtype, scale_dtype, _ = cls.get_shapes(
         dtype,
         input_sizes,
         block_size,
@@ -608,7 +614,7 @@ class SDPAKernelFlashAttention:
     )
     with pallas_export_experimental(dynamic_shapes=True):
       return jax.export.export(jax.jit(f_p), platforms=["tpu"])(
-          q_dtype, k_dtype, v_dtype
+          q_dtype, k_dtype, v_dtype, scale_dtype
       )
 
   @classmethod
@@ -623,7 +629,7 @@ class SDPAKernelFlashAttention:
   ):
     """Exports Flash Attention backward to MLIR."""
 
-    q_dtype, k_dtype, v_dtype, out_dtype = cls.get_shapes(
+    q_dtype, k_dtype, v_dtype, scale_dtype, out_dtype = cls.get_shapes(
         dtype,
         input_sizes,
         block_size,
@@ -634,7 +640,7 @@ class SDPAKernelFlashAttention:
     )
     with pallas_export_experimental(dynamic_shapes=True):
       return jax.export.export(jax.jit(f_p), platforms=["tpu"])(
-          out_dtype, q_dtype, k_dtype, v_dtype
+          out_dtype, q_dtype, k_dtype, v_dtype, scale_dtype
       )
 
 ########################################################################
