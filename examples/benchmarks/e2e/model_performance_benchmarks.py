@@ -393,6 +393,30 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_wan_2_2_ti2v_5b_backward(self, run_mode):
+    """Tests the backward pass of Wan-2.2-TI2V-5B."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_DIFFUSER,
+        run_mode=run_mode,
+        is_training=True,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+        ),
+    )
+    self.run_performance_benchmark_test(config, _WAN_2_2_TI2V_5B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
       ])
   )
   def test_qwen3_coder_30b_a3b_ragged_moe_forward(self, run_mode):

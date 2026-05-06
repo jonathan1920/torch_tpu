@@ -493,17 +493,26 @@ def _get_benchmark_function(
           benchmark_utils.is_torch_compile(config.run_mode),
           config.grad_accumulation_steps,
       )
+
   elif (
       config.benchmark_category
       == benchmark_utils.BenchmarkCategory.HUGGINGFACE_DIFFUSER
-      and not config.is_training
   ):
-    return benchmark_function_db.huggingface_forward_pass
+    if not config.is_training:
+      return benchmark_function_db.huggingface_forward_pass
+    else:
+      return benchmark_function_db.get_huggingface_diffuser_training_function(
+          device,
+          benchmark_utils.is_torch_compile(config.run_mode),
+          config.grad_accumulation_steps,
+      )
+
   elif (
       config.benchmark_category == benchmark_utils.BenchmarkCategory.META_LLAMA
       and not config.is_training
   ):
     return benchmark_function_db.meta_llama_forward_pass
+
   elif config.benchmark_category == benchmark_utils.BenchmarkCategory.ML_LAYER:
     if not config.is_training:
       return benchmark_function_db.ml_layer_forward_pass
@@ -511,6 +520,7 @@ def _get_benchmark_function(
       return benchmark_function_db.get_ml_layer_train_step_function(
           device, benchmark_utils.is_torch_compile(config.run_mode)
       )
+
   elif config.benchmark_category == benchmark_utils.BenchmarkCategory.TIMM:
     if not config.is_training:
       return benchmark_function_db.timm_forward_pass

@@ -136,6 +136,55 @@ def get_huggingface_llm_training_function(
   )
 
 
+def _huggingface_diffuser_train_1_step(
+    model: torch.nn.Module,
+    inputs: Mapping[str, Any],
+    optimizer: torch.optim.Optimizer | None,
+    grad_accumulation_steps: int,
+    optimizer_step_fn: Callable[[torch.optim.Optimizer], None],
+) -> float:
+  """Performs one training step for a Hugging Face Diffuser model."""
+  if optimizer is None:
+    raise ValueError("Optimizer must be provided for training.")
+  accumulated_losses = []
+  optimizer.zero_grad()
+  for _ in range(grad_accumulation_steps):
+    output = model(**inputs)
+    if hasattr(output, "sample"):
+      loss = torch.mean(output.sample)
+    elif isinstance(output, tuple):
+      loss = torch.mean(output[0])
+    else:
+      loss = torch.mean(output)
+    loss.backward()
+    accumulated_losses.append(loss.detach())
+  optimizer_step_fn(optimizer)
+  step_loss = torch.sum(torch.stack(accumulated_losses)).item()
+  return step_loss
+
+
+def get_huggingface_diffuser_training_function(
+    device: torch.device, torch_compile: bool, grad_accumulation_steps: int
+) -> Callable[[torch.nn.Module, Any, torch.optim.Optimizer], Any]:
+  """Returns the benchmark function for training a Hugging Face Diffuser model."""
+
+  def get_optimizer_step_fn():
+    def step_fn(optimizer):
+      optimizer.step()
+
+    if torch_compile:
+      return device_utils.torch_compile(step_fn, device.type)
+    return step_fn
+
+  optimizer_step_fn = get_optimizer_step_fn()
+
+  return functools.partial(
+      _huggingface_diffuser_train_1_step,
+      grad_accumulation_steps=grad_accumulation_steps,
+      optimizer_step_fn=optimizer_step_fn,
+  )
+
+
 def meta_llama_forward_pass(
     model: torch.nn.Module,
     inputs: Any,
