@@ -550,7 +550,6 @@ torch_tpu_py_test(
         "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "1",
     },
     main = "errors_test.py",
-    notest_oss = "Disabled due to b/505792906. Intended not to run this slow test in OSS. It's low value to run the error tests in OSS.",
     shard_count = 4,
     tags = [
         "nosan",  # *san builds are low-value for error tests.
