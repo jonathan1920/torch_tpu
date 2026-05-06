@@ -327,7 +327,6 @@ void CheckScalarInput() {
       kOpName == OpName::kSoftplusBackwardGradInput ||   //
       kOpName == OpName::kSoftplusOut ||                 //
       kOpName == OpName::kSub ||                         //
-      kOpName == OpName::kSubOut ||                      //
       kOpName == OpName::kThresholdBackwardGradInput ||  //
       kOpName == OpName::kThresholdOut ||                //
       kOpName == OpName::kVar ||                         //

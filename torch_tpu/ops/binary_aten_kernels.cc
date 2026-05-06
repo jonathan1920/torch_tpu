@@ -1225,12 +1225,31 @@ at::Tensor AtenRsubTensor(const at::Tensor& self, const at::Tensor& other,
 
 at::Tensor& AtenSubOut(const at::Tensor& self, const at::Tensor& other,
                        const at::Scalar& alpha, at::Tensor& out) {
-  TT_KERNEL(OpName::kSubOut, param_keys, (self, other, alpha, out), {
+  auto promoted_alpha = PromoteScalar(alpha);
+  TT_KERNEL(OpName::kSubOut, param_keys, (self, other, promoted_alpha, out), {
+    TT_THROW_IF_ERROR(CheckAlphaTypeSupported(alpha));
     TT_THROW_IF_ERROR(CheckSubInputs(self, other));
-    TT_ASSIGN_OR_THROW(auto op_builder, AtenAddHelper(self, other, -alpha));
+
+    TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
+                       promoted_alpha.GetTensor(out.scalar_type()));
+
+    auto op_builder =
+        [](mlir::MlirOp self_op, mlir::MlirOp other_op,
+           mlir::MlirOp alpha_op) -> absl::StatusOr<mlir::MlirOp> {
+      const mlir::RankedTensorType other_type = GetTensorTypeOrDie(other_op);
+      auto other_element_type = other_type.getElementType();
+      auto casted_alpha_op =
+          stablehlo::ConvertElementType(alpha_op, other_element_type);
+      TT_ASSIGN_OR_RETURN((auto [broadcasted_other, broadcasted_alpha]),
+                          ApplyBroadcastIfNeeded(other_op, casted_alpha_op));
+      TT_ASSIGN_OR_RETURN(auto mul_op,
+                          BuildMulShlo(broadcasted_other, broadcasted_alpha));
+      return BuildSubShlo(self_op, mul_op);
+    };
+
     TT_THROW_IF_ERROR(
-        BinaryOpOut(self, other, out, std::move(op_builder),
-                    {.op_param_cache_keys = std::move(param_keys)}));
+        TernaryOpOut(self, other, alpha_tensor, out, std::move(op_builder),
+                     {.op_param_cache_keys = std::move(param_keys)}));
     return out;
   });
 }
