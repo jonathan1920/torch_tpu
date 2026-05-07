@@ -1310,14 +1310,11 @@ absl::StatusOr<DeviceBufferRef> ProcessGroupTpu::AllToAllBaseEqualSplits(
 
   // Give the all_to_all split is on input tensor dimension 0,
   // the output tensor shape will be the same as the input tensor shape.
-  TT_ASSIGN_OR_RETURN(
-      auto result_buffer,
-      DispatchOp<1>(std::move(op_builder), maybe_materialized_input_tensor,
-                    {.out_dtype = output_dtype,
-                     .out_dims = output.sizes(),
-                     .op_param_cache_keys = std::move(param_keys),
-                     .split_mode = GetCollectiveSplitMode()}));
-  return std::move(result_buffer);
+  return DispatchOp<1>(std::move(op_builder), maybe_materialized_input_tensor,
+                       {.out_dtype = output_dtype,
+                        .out_dims = output.sizes(),
+                        .op_param_cache_keys = std::move(param_keys),
+                        .split_mode = GetCollectiveSplitMode()});
 }
 
 // TODO(mkkhanna): Implement support for uneven splits.
