@@ -309,11 +309,16 @@ common --@rules_python//python/config_settings:bootstrap_impl=script
 common --@rules_python//python/config_settings:venvs_site_packages=yes
 
 # Config for testing wheel builds.
+build --flag_alias=is_wheel_build=//:is_wheel_build
 build --flag_alias=test_wheel=//:test_wheel
+
+# Config for building the wheel
+build:wheel --is_wheel_build
+build:wheel --config=remote_caching_readonly
+build:wheel --config=remote_execution_readonly
+test:wheel_config --config=wheel
 test:wheel_config --test_output=errors
 test:wheel_config --test_wheel=true
-test:wheel_config --config=remote_caching_readonly
-test:wheel_config --config=remote_execution_readonly
 test:wheel_config --test_lang_filters=py  # Only run python tests
 
 # Config for testing CPU wheel test.

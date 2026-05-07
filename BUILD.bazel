@@ -38,6 +38,11 @@ bool_flag(
     build_setting_default = False,
 )
 
+bool_flag(
+    name = "is_wheel_build",
+    build_setting_default = False,
+)
+
 config_setting(
     name = "wheel_test_enabled",
     flag_values = {":test_wheel": "True"},
