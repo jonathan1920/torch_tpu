@@ -88,6 +88,24 @@ c10::ScalarType GetOutputDtypeFromTensorAndScalar(const at::Tensor& tensor,
   }
 }
 
+// If the input scalar is Boolean, converts it to int. Otherwise, returns it
+// unchanged.
+at::Scalar BoolScalarToInt(const at::Scalar& scalar) {
+  if (scalar.type() == at::ScalarType::Bool) {
+    return at::Scalar(scalar.to<bool>() ? 1 : 0);
+  }
+  return scalar;
+}
+
+// If the input tensor is Boolean, converts it to int. Otherwise, returns it
+// unchanged.
+at::Tensor BoolTensorToInt(const at::Tensor& tensor) {
+  if (tensor.scalar_type() == at::kBool) {
+    return tensor.to(at::kInt);
+  }
+  return tensor;
+}
+
 absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> BuildForeachShlo(
     absl::Span<const mlir::MlirOp> self, absl::Span<const mlir::MlirOp> other,
     absl::Span<const mlir::ElementType> out_dtypes,
@@ -2895,7 +2913,8 @@ std::vector<at::Tensor> AtenForeachPowList(at::TensorList self,
     std::vector<at::Tensor> result;
     result.reserve(self.size());
     for (size_t i = 0; i < self.size(); ++i) {
-      TT_ASSIGN_OR_THROW(auto out, AtenPow(self[i], exponent[i]));
+      const at::Tensor exp_i = BoolTensorToInt(exponent[i]);
+      TT_ASSIGN_OR_THROW(auto out, AtenPow(self[i], exp_i));
       result.push_back(out);
     }
     return result;
@@ -2905,8 +2924,8 @@ std::vector<at::Tensor> AtenForeachPowList(at::TensorList self,
 void AtenForeachPow_List(at::TensorList self, at::TensorList exponent) {
   TT_KERNEL(OpName::kForeachPow_List, _, (self, exponent), {
     for (size_t i = 0; i < self.size(); ++i) {
-      AtenPowTensorTensorOut(self[i], exponent[i],
-                             const_cast<at::Tensor&>(self[i]));
+      const at::Tensor exp_i = BoolTensorToInt(exponent[i]);
+      AtenPowTensorTensorOut(self[i], exp_i, const_cast<at::Tensor&>(self[i]));
     }
   });
 }
@@ -2917,8 +2936,9 @@ std::vector<at::Tensor> AtenForeachPowScalar(at::TensorList self,
             (self, IgnoreInCacheKey(exponent, "Legacy usage")), {
               std::vector<at::Tensor> result;
               result.reserve(self.size());
+              const at::Scalar exp_val = BoolScalarToInt(exponent);
               for (const auto& tensor : self) {
-                TT_ASSIGN_OR_THROW(auto out, AtenPow(tensor, exponent));
+                TT_ASSIGN_OR_THROW(auto out, AtenPow(tensor, exp_val));
                 result.push_back(out);
               }
               return result;
@@ -2928,8 +2948,9 @@ std::vector<at::Tensor> AtenForeachPowScalar(at::TensorList self,
 void AtenForeachPow_Scalar(at::TensorList self, const at::Scalar& exponent) {
   TT_KERNEL(OpName::kForeachPow_Scalar, _,
             (self, IgnoreInCacheKey(exponent, "Legacy usage")), {
+              const at::Scalar exp_val = BoolScalarToInt(exponent);
               for (const auto& tensor : self) {
-                AtenPowTensorScalarOut(tensor, exponent,
+                AtenPowTensorScalarOut(tensor, exp_val,
                                        const_cast<at::Tensor&>(tensor));
               }
             });
@@ -2942,7 +2963,8 @@ std::vector<at::Tensor> AtenForeachPowScalarList(
               std::vector<at::Tensor> result;
               result.reserve(self.size());
               for (size_t i = 0; i < self.size(); ++i) {
-                TT_ASSIGN_OR_THROW(auto out, AtenPow(self[i], exponent[i]));
+                const at::Scalar exp_val = BoolScalarToInt(exponent[i]);
+                TT_ASSIGN_OR_THROW(auto out, AtenPow(self[i], exp_val));
                 result.push_back(out);
               }
               return result;
@@ -2954,7 +2976,8 @@ void AtenForeachPow_ScalarList(at::TensorList self,
   TT_KERNEL(OpName::kForeachPow_ScalarList, _,
             (self, IgnoreInCacheKey(exponent, "Legacy usage")), {
               for (size_t i = 0; i < self.size(); ++i) {
-                AtenPowTensorScalarOut(self[i], exponent[i],
+                const at::Scalar exp_val = BoolScalarToInt(exponent[i]);
+                AtenPowTensorScalarOut(self[i], exp_val,
                                        const_cast<at::Tensor&>(self[i]));
               }
             });
@@ -2967,7 +2990,8 @@ std::vector<at::Tensor> AtenForeachPowScalarAndTensor(const at::Scalar& self,
               std::vector<at::Tensor> result;
               result.reserve(exponent.size());
               for (const auto& tensor : exponent) {
-                TT_ASSIGN_OR_THROW(auto out, AtenPow(self, tensor));
+                const at::Tensor exp_i = BoolTensorToInt(tensor);
+                TT_ASSIGN_OR_THROW(auto out, AtenPow(self, exp_i));
                 result.push_back(out);
               }
               return result;

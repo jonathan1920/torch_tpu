@@ -2561,14 +2561,6 @@ class TestOps(TorchTpuTestBase):
 
   def test_foreach_pow(self):
 
-    def skip_if(device_type, variant, op_input):
-      _ = device_type  # Unused, suppress linter error
-      _ = variant  # Unused, suppress linter error
-      # TODO: fix TPU failure for bool exponent.
-      if len(op_input.args) >= 1 and isinstance(op_input.args[0], bool):
-        return "Skip exponent=bool as it has issues on TPU."
-      return None
-
     self.do_test_op(
         "_foreach_pow",
         # TODO: fix TPU failure for these dtypes.
@@ -2576,7 +2568,6 @@ class TestOps(TorchTpuTestBase):
         exclude_inplace_dtypes=(torch.bool, torch.int64, torch.complex64),
         check_value=CheckValueMode.LOOSE,
         check_grad=False,
-        skip_if=skip_if,
     )
 
   def test_foreach_reciprocal(self):
