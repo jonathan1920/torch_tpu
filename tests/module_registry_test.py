@@ -43,6 +43,16 @@ class ModuleRegistryTest(absltest.TestCase):
     with self.assertRaises(FileNotFoundError):
       module_registry.TimmProvider(base_path="/non/existent/path")
 
+  def test_empty_base_path(self):
+    registry = module_registry.ModuleRegistry(base_path="")
+
+    self.assertEqual(registry.list_modules("torchvision"), [])
+    self.assertEqual(registry.list_modules("timm"), [])
+    self.assertEqual(registry.list_modules("transformers"), [])
+    self.assertEqual(registry.list_modules("diffusers"), [])
+
+    self.assertEqual(registry.list_all_modules(), [])
+
   def test_list_all_modules(self):
     modules = self.module_registry.list_all_modules()
 

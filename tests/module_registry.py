@@ -87,12 +87,21 @@ class ModuleSpec:
 class BaseProvider(abc.ABC):
   """Abstract base class for model source providers."""
 
-  def __init__(self, base_path: str | None = None):
+  def __init__(self, base_path: str | None = None, subdir: str | None = None):
     if base_path is None:
       base_path = _WEIGHTS_BASE_PATH.value
-    self._base_path = epath.Path(base_path)
-    if not self._base_path.exists():
-      raise FileNotFoundError(f"Base path does not exist: {self._base_path}")
+
+    # If base_path is empty, assume no local cache is available
+    self.has_cache_dir = bool(base_path)
+
+    if self.has_cache_dir:
+      self._base_path = epath.Path(base_path)
+      if subdir:
+        self._base_path = self._base_path / subdir
+      if not self._base_path.exists():
+        raise FileNotFoundError(f"Base path does not exist: {self._base_path}")
+    else:
+      self._base_path = None
 
   @abc.abstractmethod
   def list_modules(self) -> list[str]:
@@ -132,9 +141,7 @@ class TorchvisionProvider(BaseProvider):
   """Provider for standard Torchvision models."""
 
   def __init__(self, base_path: str | None = None):
-    if base_path is None:
-      base_path = _WEIGHTS_BASE_PATH.value
-    super().__init__(base_path=str(pathlib.Path(base_path) / "torchvision"))
+    super().__init__(base_path=base_path, subdir="torchvision")
 
   def list_modules(self) -> list[str]:
     """Lists the names of all models available from this provider.
@@ -144,6 +151,8 @@ class TorchvisionProvider(BaseProvider):
     Returns:
       A list of model name strings.
     """
+    if self._base_path is None:
+      return []
     return [path.name for path in self._base_path.iterdir() if path.is_dir()]
 
   def get_module_spec(
@@ -174,9 +183,7 @@ class TimmProvider(BaseProvider):
   """Provider for TIMM (PyTorch Image Models)."""
 
   def __init__(self, base_path: str | None = None):
-    if base_path is None:
-      base_path = _WEIGHTS_BASE_PATH.value
-    super().__init__(base_path=str(pathlib.Path(base_path) / "timm"))
+    super().__init__(base_path=base_path, subdir="timm")
 
   def list_modules(self) -> list[str]:
     """Lists the names of all models available from this provider.
@@ -186,6 +193,8 @@ class TimmProvider(BaseProvider):
     Returns:
       A list of model name strings.
     """
+    if self._base_path is None:
+      return []
     return [path.name for path in self._base_path.iterdir() if path.is_dir()]
 
   def get_module_spec(
@@ -212,6 +221,12 @@ class TimmProvider(BaseProvider):
     Returns:
       A ModuleSpec containing the model factory and input factory.
     """
+    if load_weights and not self.has_cache_dir:
+      raise ValueError(
+          f"load_weights cannot be set to True for {name} when no cache"
+          " directory is available."
+      )
+
     try:
       config = timm.models.get_pretrained_cfg(name)
     except RuntimeError:
@@ -327,9 +342,7 @@ class TransformersProvider(BaseProvider):
   )
 
   def __init__(self, base_path: str | None = None):
-    if base_path is None:
-      base_path = _WEIGHTS_BASE_PATH.value
-    super().__init__(base_path=str(pathlib.Path(base_path) / "huggingface"))
+    super().__init__(base_path=base_path, subdir="huggingface")
 
   def list_modules(self) -> list[str]:
     """Lists the names of all models available from this provider.
@@ -340,6 +353,8 @@ class TransformersProvider(BaseProvider):
     Returns:
       A list of model name strings formatted as '{owner}/{model}'.
     """
+    if self._base_path is None:
+      return []
     modules = []
     for owner_path in self._base_path.iterdir():
       if owner_path.is_dir():
@@ -372,20 +387,23 @@ class TransformersProvider(BaseProvider):
     Returns:
       A ModuleSpec containing the model factory and input factory.
     """
-    model_dir_or_repo_id = self._base_path / name
-
     # Load the config first
     config = None
-    try:
-      if model_dir_or_repo_id.exists():
-        config = transformers.AutoConfig.from_pretrained(
-            str(model_dir_or_repo_id)
+
+    if self.has_cache_dir:
+      model_dir_or_repo_id = self._base_path / name
+      try:
+        if model_dir_or_repo_id.exists():
+          config = transformers.AutoConfig.from_pretrained(
+              str(model_dir_or_repo_id)
+          )
+      except Exception as exc:  # pylint: disable=broad-except
+        logging.warning(
+            "Failed to access %s in cache, falling back to local resources."
+            " Error: %s",
+            model_dir_or_repo_id,
+            exc,
         )
-    except Exception:  # pylint: disable=broad-except
-      logging.warning(
-          "Failed to access %s, falling back to local resources.",
-          model_dir_or_repo_id,
-      )
 
     if config is None:  # Fallback to local resources
       # Pretrained weights are not available in local resources.
@@ -463,9 +481,7 @@ class DiffusersProvider(BaseProvider):
   )
 
   def __init__(self, base_path: str | None = None):
-    if base_path is None:
-      base_path = _WEIGHTS_BASE_PATH.value
-    super().__init__(base_path=str(pathlib.Path(base_path) / "huggingface"))
+    super().__init__(base_path=base_path, subdir="huggingface")
 
   def list_modules(self) -> list[str]:
     """Lists the names of all models available from this provider.
@@ -476,6 +492,8 @@ class DiffusersProvider(BaseProvider):
     Returns:
       A list of model name strings formatted as '{owner}/{model}'.
     """
+    if self._base_path is None:
+      return []
     modules = []
     for owner_path in self._base_path.iterdir():
       if owner_path.is_dir():
@@ -509,24 +527,30 @@ class DiffusersProvider(BaseProvider):
     subfolder = kwargs.get("subfolder")
     d_type = torch.bfloat16
 
-    model_path = self._base_path / name
     raw_config = None
-    try:
-      if model_path.exists():
-        raw_config = AutoModel.load_config(str(model_path), subfolder=subfolder)
-    except Exception as exc:  # pylint: disable=broad-except
+
+    if self.has_cache_dir:
+      model_path = self._base_path / name
+      try:
+        if model_path.exists():
+          raw_config = AutoModel.load_config(
+              str(model_path), subfolder=subfolder
+          )
+      except Exception as exc:  # pylint: disable=broad-except
+        logging.warning(
+            "Failed to access %s in cache, falling back to local resources."
+            " Error: %s",
+            model_path,
+            exc,
+        )
+
+    if raw_config is None:  # Fallback to local resources
       if load_weights:
         # Pretrained weights are not available in local resources.
         raise ValueError(
-            f"unable to load config for {name} from {model_path}. Cannot"
-            " fallback to local resources when loading weights."
-        ) from exc
-      logging.warning(
-          "Failed to access %s, falling back to local resources.",
-          model_path,
-      )
-
-    if raw_config is None:  # Fallback to local resources
+            f"load_weights cannot be set to True for {name} when falling back"
+            " to local configuration resources."
+        )
       model_dir = pathlib.Path(name)
       if subfolder:
         model_dir = model_dir / subfolder
