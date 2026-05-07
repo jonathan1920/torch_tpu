@@ -578,6 +578,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kNeScalarOut, AtenNeScalarOut);
   Impl(m, OpName::kNeTensorOut, AtenNeTensorOut);
   Impl(m, OpName::kNegOut, AtenNegOut);
+  Impl(m, OpName::kNllLoss2dBackward, AtenNllLoss2dBackward);
+  Impl(m, OpName::kNllLoss2dBackwardGradInput, AtenNllLoss2dBackwardGradInput);
   Impl(m, OpName::kNllLoss2dForward, AtenNllLoss2dForward);
   Impl(m, OpName::kNllLoss2dForwardOut, AtenNllLoss2dForwardOut);
   Impl(m, OpName::kNllLossBackwardGradInput, AtenNllLossBackwardGradInput);

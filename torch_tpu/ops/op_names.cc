@@ -924,6 +924,10 @@ std::string_view ToString(OpName op_name) {
       return "ne.Tensor_out";
     case OpName::kNegOut:
       return "neg.out";
+    case OpName::kNllLoss2dBackward:
+      return "nll_loss2d_backward";
+    case OpName::kNllLoss2dBackwardGradInput:
+      return "nll_loss2d_backward.grad_input";
     case OpName::kNllLoss2dForward:
       return "nll_loss2d_forward";
     case OpName::kNllLoss2dForwardOut:

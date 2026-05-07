@@ -750,6 +750,34 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.nn.functional.nll_loss(t, target)
 
+  def test_nll_loss2d_backward_invalid_input_dim(self):
+    grad_output = torch.ones(1, 2, 2, device=et.device(), dtype=torch.float32)
+    t = torch.ones(1, 3, 2, device=et.device(), dtype=torch.float32)
+    target = torch.ones(1, 2, 2, device=et.device(), dtype=torch.long)
+    total_weight = torch.ones((), device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu="""only batches of spatial inputs supported (4D tensors), but got input of dimension: 3""",
+        tpu="""nll_loss2d_backward(): expected input to be a 4D tensor, got 3D""",
+    ):
+      torch.ops.aten.nll_loss2d_backward(
+          grad_output, t, target, None, 1, -100, total_weight
+      )
+
+  def test_nll_loss2d_backward_invalid_target_dim(self):
+    grad_output = torch.ones(1, 2, 2, device=et.device(), dtype=torch.float32)
+    t = torch.ones(1, 3, 2, 2, device=et.device(), dtype=torch.float32)
+    target = torch.ones(1, 2, device=et.device(), dtype=torch.long)
+    total_weight = torch.ones((), device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        cpu="""only batches of spatial targets supported (3D tensors) but got targets of dimension: 2""",
+        tpu="""nll_loss2d_backward(): expected target to be a 3D tensor, got 2D""",
+    ):
+      torch.ops.aten.nll_loss2d_backward(
+          grad_output, t, target, None, 1, -100, total_weight
+      )
+
   def test_nll_loss_invalid_reduction(self):
     t = torch.ones(1, 3, 2, 2, device=et.device(), dtype=torch.float32)
     target = torch.ones(1, 2, 3, device=et.device(), dtype=torch.long)

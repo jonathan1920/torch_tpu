@@ -46,6 +46,19 @@ at::Tensor& AtenNllLossBackwardGradInput(
     int64_t reduction, int64_t ignore_index, const at::Tensor& total_weight,
     at::Tensor& grad_input);
 
+at::Tensor AtenNllLoss2dBackward(const at::Tensor& grad_output,
+                                 const at::Tensor& self,
+                                 const at::Tensor& target,
+                                 const c10::optional<at::Tensor>& weight,
+                                 int64_t reduction, int64_t ignore_index,
+                                 const at::Tensor& total_weight);
+
+at::Tensor& AtenNllLoss2dBackwardGradInput(
+    const at::Tensor& grad_output, const at::Tensor& self,
+    const at::Tensor& target, const c10::optional<at::Tensor>& weight,
+    int64_t reduction, int64_t ignore_index, const at::Tensor& total_weight,
+    at::Tensor& grad_input);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_NLL_LOSS_NLL_LOSS_ATEN_KERNELS_H_

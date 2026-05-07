@@ -532,6 +532,10 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float32: {"rtol": 1.2e-6, "atol": 7.7e-5},
         torch.float64: {"rtol": 2.8e-9, "atol": 1.8e-7},
     },
+    "nn.functional.nll_loss": {
+        torch.bfloat16: {"rtol": 1e-2, "atol": 3e-1},
+        torch.float16: {"rtol": 1e-2, "atol": 1e-1},
+    },
     "nn.functional.pdist": {
         torch.float32: {"rtol": 3.1e-6, "atol": 3.3e-5},
     },
@@ -3222,7 +3226,7 @@ class TestOps(TorchTpuTestBase):
   def test_neg(self):
     self.do_test_op("neg")
 
-  def test_nll_loss_forward(self):
+  def test_nll_loss(self):
     self.do_test_op(
         "nn.functional.nll_loss",
         # TODO: NLLLoss input given through a forward call is expected to
@@ -3231,8 +3235,6 @@ class TestOps(TorchTpuTestBase):
         # Temporarily exclude integer types until then as the op is supposed to
         # fail on invalid inputs.
         exclude_dtypes=(None if env.IS_INTERNAL_TORCH_TPU else INTEGRAL_DTYPES),
-        # TODO: fix the error that nll_loss2d_backward is unimplemented.
-        check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
     )

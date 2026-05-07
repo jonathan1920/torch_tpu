@@ -473,6 +473,8 @@ enum class OpName {
   kNeScalarOut,
   kNeTensorOut,
   kNegOut,
+  kNllLoss2dBackward,
+  kNllLoss2dBackwardGradInput,
   kNllLoss2dForward,
   kNllLoss2dForwardOut,
   kNllLossBackwardGradInput,
