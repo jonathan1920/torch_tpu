@@ -30,6 +30,16 @@ torch_tpu_py_library(
     ],
 )
 
+torch_tpu_py_library(
+    name = "sym_utils",
+    srcs = ["sym_utils.py"],
+    deps = [
+        "//shims/absl_py/logging",
+        "//shims/torch:pytorch",
+        "@pypi//sympy",
+    ],
+)
+
 pytype_strict_library(
     name = "sym_shape_manager",
     srcs = [
@@ -41,6 +51,7 @@ pytype_strict_library(
         "//learning/agents/tern/torch_agent:__subpackages__",
     ],
     deps = [
+        ":sym_utils",
         ":symbol_bounds",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",
@@ -55,7 +66,7 @@ torch_tpu_py_library(
     ],
     deps = [
         ":sym_shape_manager",
-        ":symbol_bounds",
+        ":sym_utils",
         "//shims/torch:pytorch",
     ],
 )

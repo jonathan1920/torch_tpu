@@ -255,6 +255,47 @@ class CompileTest(absltest.TestCase):
     )
     self.assertEqual(metrics["bounded_compile_events"], 1)
 
+  def test_arange_with_expression(self):
+    def arange_expr(x):
+      a = torch.arange(0, x.shape[0] + 1, device=x.device)
+      return a
+
+    test_inputs = [
+        [torch.arange(2)],  # static, [2]
+        [torch.arange(4)],  # bounded compile, [4 (4<=b<=8)]
+        [torch.arange(8)],  # no compile, [8]
+    ]
+    metrics = self.call_and_compare(arange_expr, test_inputs, None)
+    self.assertEqual(metrics["bounded_compile_events"], 1)
+
+  def test_arange_with_chained_expression(self):
+    def arange_expr(x):
+      n = (x.shape[0] * 3 + 5) // 2
+      a = torch.arange(0, n, device=x.device)
+      return a
+
+    test_inputs = [
+        [torch.arange(2)],  # static, [2]
+        [torch.arange(4)],  # bounded compile, [4 (4<=b<=8)]
+        [torch.arange(8)],  # no compile, [8]
+    ]
+    metrics = self.call_and_compare(arange_expr, test_inputs, None)
+    self.assertEqual(metrics["bounded_compile_events"], 1)
+
+  def test_arange_with_sym_sum(self):
+    def arange_expr(x):
+      n = torch.sym_sum([x.shape[0], 1])
+      a = torch.arange(0, n, device=x.device)
+      return a
+
+    test_inputs = [
+        [torch.arange(2)],  # static, [2]
+        [torch.arange(4)],  # bounded compile, [4 (4<=b<=8)]
+        [torch.arange(8)],  # no compile, [8]
+    ]
+    metrics = self.call_and_compare(arange_expr, test_inputs, None)
+    self.assertEqual(metrics["bounded_compile_events"], 1)
+
 
 if __name__ == "__main__":
   absltest.main()

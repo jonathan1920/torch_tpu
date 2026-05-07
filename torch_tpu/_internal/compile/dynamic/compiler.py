@@ -191,16 +191,14 @@ def _compile_and_execute_pad_subgraph(
       bounds_list,
   )
 
-  # Get the MLIR bytecode for the pad subgraph.
-  mlir_bytecode = tpu_torch_compile.get_pad_module_mlir(
-      tensor_info, bounds_list
-  )
+  # Get the MLIR module for the pad subgraph.
+  mlir_module = tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
   logging.debug(
-      "[DynamicTpuBackend] MLIR bytecode: %s",
-      tpu_torch_compile.serialize_mlir_bytecode(mlir_bytecode),
+      "[DynamicTpuBackend] MLIR text: %s",
+      LazyString(tpu_torch_compile.serialize_mlir_text(mlir_module)),
   )
   # Compile the pad subgraph to a PJRT executable.
-  executable = tpu_torch_compile.compile_mlir(mlir_bytecode)
+  executable = tpu_torch_compile.compile_mlir(mlir_module)
 
   # Execute the pad subgraph with the input tensors and get the padded tensors.
   return tpu_torch_compile.execute(executable, tensor_args)
@@ -300,7 +298,7 @@ class DynamicCompiler(compiler.Compiler):
     # TODO: Prevent truncation of log lines.
     logging.debug(
         "[DynamicTpuBackend] Compile FX Graph: %s",
-        LazyString(graph_module.print_readable()),
+        LazyString(graph_module.print_readable),
     )
 
     # Create a SymInt shape manager.
@@ -316,7 +314,7 @@ class DynamicCompiler(compiler.Compiler):
     # TODO: Prevent truncation of log lines.
     logging.debug(
         "[DynamicTpuBackend] Transformed FX Graph: %s",
-        LazyString(graph_module.print_readable()),
+        LazyString(graph_module.print_readable),
     )
 
     # Create example inputs for the model executable.
@@ -333,6 +331,11 @@ class DynamicCompiler(compiler.Compiler):
     static_model_executable = self.static_compiler(
         graph_module,
         model_example_inputs,
+    )
+
+    logging.debug(
+        "[DynamicTpuBackend] Static Model Executable MLIR: %s",
+        LazyString(lambda: static_model_executable.mlir_text),
     )
 
     return _DynamicTpuCompiledExecutable(

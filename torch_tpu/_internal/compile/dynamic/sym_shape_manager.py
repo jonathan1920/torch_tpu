@@ -22,6 +22,7 @@ from absl import logging
 import sympy
 import torch
 from torch.utils import _pytree
+from torch_tpu._internal.compile.dynamic import sym_utils
 from torch_tpu._internal.compile.dynamic.symbol_bounds import get_symint_bounds
 
 
@@ -178,6 +179,8 @@ class SymShapeManager:
     symint_to_placeholder: Maps the string representation of a SymInt to the FX
       placeholder node created to hold its runtime value (used by generative
       ops).
+    symint_node_to_tensor_node: Maps scalar nodes representing expressions to
+      tensor nodes.
   """
 
   # Tensor idx is its position in the example inputs.
@@ -196,6 +199,9 @@ class SymShapeManager:
   # placeholder node that was created for it by generative ops.
   symint_to_placeholder: dict[str, torch.fx.Node]
 
+  # Mapping of scalar nodes representing expressions to tensor nodes.
+  symint_node_to_tensor_node: dict[torch.fx.Node, torch.fx.Node]
+
   def __init__(
       self,
       graph_module: torch.fx.GraphModule,
@@ -204,6 +210,7 @@ class SymShapeManager:
     self._graph_module = graph_module
     self._example_inputs = example_inputs
     self.symint_to_placeholder = {}
+    self.symint_node_to_tensor_node = {}
     self._create_outputs_sym_shape()
     self._populate_input_tensors_metadata()
 
@@ -390,3 +397,44 @@ class SymShapeManager:
     for _, (symint, (lower, upper)) in unique_symints.items():
       torch._check(symint >= lower, "Dynamic shape lower bound check failed")  # pylint: disable=protected-access
       torch._check(symint <= upper, "Dynamic shape upper bound check failed")  # pylint: disable=protected-access
+
+  def get_or_create_tensor_node(
+      self,
+      scalar_node: torch.fx.Node,
+      consumer_node: torch.fx.Node,
+  ) -> torch.fx.Node | None:
+    """Gets or creates a tensor node for a symbolic argument.
+
+    If the argument is already mapped to a tensor node, returns it.
+    If it's a simple symbol and has a placeholder, returns the placeholder.
+    If it's an expression, uses the expression parser to create ops for it.
+
+    Args:
+      scalar_node: The scalar node representing the symbolic argument.
+      consumer_node: The node that will consume the resulting tensor node.
+
+    Returns:
+      The tensor node representing the argument, or None if it cannot be
+      resolved or created.
+    """
+    if not sym_utils.is_symint_node(scalar_node):
+      return None
+
+    if scalar_node in self.symint_node_to_tensor_node:
+      return self.symint_node_to_tensor_node[scalar_node]
+
+    sym_str = str(scalar_node.meta["val"])
+    symint_placeholder = self.symint_to_placeholder.get(sym_str)
+    if symint_placeholder:
+      return symint_placeholder
+
+    # If it is an expression, create ops for it.
+    if sym_utils.is_symexpr_node(scalar_node):
+      expr = scalar_node.meta["val"].node.expr
+      aten_node = sym_utils.symexpr_to_aten(
+          self._graph_module, consumer_node, expr, self.symint_to_placeholder
+      )
+      self.symint_node_to_tensor_node[scalar_node] = aten_node
+      return aten_node
+
+    return None
