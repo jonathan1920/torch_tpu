@@ -242,6 +242,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_2X2X1,
+            benchmark_utils.Platform.GFC_2X2X2,
             benchmark_utils.Platform.B200_4,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.META_LLAMA,

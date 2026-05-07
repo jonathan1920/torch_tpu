@@ -734,6 +734,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather(
       OpName::kDistributedAllGather, param_keys,
       (output_tensors, input_tensors, opts), {
         TT_SET_PROCESS_GROUP_ID(param_keys);
+        const int64_t group_size = getSize();
         TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=PyTorch only ever passes
                          // single-element input lists.
             input_tensors.size() == 1 && output_tensors.size() == 1,
@@ -742,11 +743,11 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather(
 
         auto& input_tensor = input_tensors[0];
         std::vector<at::Tensor>& output_tensor_list = output_tensors[0];
-        TT_CHECK_THROW(output_tensor_list.size() == size_,
+        TT_CHECK_THROW(output_tensor_list.size() == group_size,
                        error::kInvalidArgument)
             << "output tensor list must have one tensor per process, got "
             << FormatCount(output_tensor_list.size(), "tensor", "tensors")
-            << " and " << FormatCount(size_, "process", "processes");
+            << " and " << FormatCount(group_size, "process", "processes");
 
         // NOTE: PyTorch NCCL backend does support non-uniform shapes
         // (implemented as a sequence of broadcasts, one per tensor). We decided
@@ -775,13 +776,13 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather(
         // have the same dtype.
         TT_ASSIGN_OR_THROW(auto output_dtype, ConvertTo<mlir::ElementType>(
                                                   input_tensor.scalar_type()));
-        const std::vector<mlir::ElementType> output_dtypes(device_ids_.size(),
+        const std::vector<mlir::ElementType> output_dtypes(group_size,
                                                            output_dtype);
         // When all-gathering scalars, StableHLO will return a list of shape [1]
         // MlirOps/PjRtBuffers.
         int64_t scalar_size[1] = {1};
         std::vector<absl::Span<const int64_t>> output_dims;
-        output_dims.reserve(device_ids_.size());
+        output_dims.reserve(group_size);
         for (const auto& output_tensor : output_tensor_list) {
           if (output_tensor.dim() == 0) {
             output_dims.push_back(scalar_size);
@@ -801,8 +802,8 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather(
 
         // TODO: respect async.
 
-        ABSL_CHECK_EQ(result_buffers.size(), device_ids_.size());  // CRASH_OK
-        for (int64_t i = 0; i < device_ids_.size(); ++i) {
+        ABSL_CHECK_EQ(result_buffers.size(), group_size);  // CRASH_OK
+        for (int64_t i = 0; i < group_size; ++i) {
           TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buffers[i]),
                                                    output_tensor_list[i]));
         }

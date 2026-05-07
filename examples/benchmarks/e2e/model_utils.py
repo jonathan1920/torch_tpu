@@ -16,6 +16,7 @@ import contextlib
 import dataclasses
 import enum
 import functools
+import math
 import re
 from typing import Any, Callable, Sequence
 
@@ -348,15 +349,6 @@ def get_meta_llama_model(
       start_pos).
   """
 
-  world_size = (
-      torch.distributed.get_world_size()
-      if torch.distributed.is_initialized()
-      else 1
-  )
-  # Ensure model parallel is initialized
-  if not fairscale_init.model_parallel_is_initialized():
-    fairscale_init.initialize_model_parallel(world_size)
-
   if model_name == "Llama-3.2-8B":
     args = m.ModelArgs(
         dim=4096,
@@ -389,6 +381,27 @@ def get_meta_llama_model(
     )
   else:
     raise ValueError(f"Unknown model name: {model_name}")
+
+  world_size = (
+      torch.distributed.get_world_size()
+      if torch.distributed.is_initialized()
+      else 1
+  )
+
+  # Set model parallel size to gcd(world_size, n_kv_heads), this ensures that
+  # n_kv_heads is divisible by the mp_size.
+  #
+  # NOTE: For forward-only benchmarks, if mp_size fits within a single host
+  # (e.g., 8 for Llama-3.2-8B), all tensor parallel communication will be
+  # restricted to that host. Since Data Parallelism requires no
+  # communication in a forward pass, this means no cross-host communication
+  # will occur in such cases.
+  mp_size = math.gcd(world_size, args.n_kv_heads)
+
+  # Ensure model parallel is initialized
+  if not fairscale_init.model_parallel_is_initialized():
+    fairscale_init.initialize_model_parallel(mp_size)
+
   prev_dtype = torch.get_default_dtype()
   torch.set_default_dtype(weights_dtype)
 

@@ -70,6 +70,9 @@ class Platform(enum.Enum):
   # go/torchtpu-mlcompass#configuration-structure for more details.
   GFC_1X1X1 = "gfc_1x1x1"
   GFC_2X2X1 = "gfc_2x2x1"
+  GFC_2X2X2 = "gfc_2x2x2"
+  GFC_2X2X4 = "gfc_2x2x4"
+  GFC_2X4X4 = "gfc_2x4x4"
   B200_1 = "b200_1"
   B200_4 = "b200_4"
   B200_8 = "b200_8"
@@ -151,9 +154,18 @@ MLCOMPASS_EXECUTION_MODE = flags.DEFINE_enum(
 PLATFORM_DEVICE_MAP = {
     Platform.GFC_1X1X1: "tpu",
     Platform.GFC_2X2X1: "tpu",
+    Platform.GFC_2X2X2: "tpu",
+    Platform.GFC_2X2X4: "tpu",
+    Platform.GFC_2X4X4: "tpu",
     Platform.B200_1: "cuda",
     Platform.B200_4: "cuda",
     Platform.B200_8: "cuda",
+}
+
+PLATFORM_TO_NODE_CONFIG = {
+    Platform.GFC_2X2X2: {"num_nodes": 2, "nproc_per_node": 8},
+    Platform.GFC_2X2X4: {"num_nodes": 4, "nproc_per_node": 8},
+    Platform.GFC_2X4X4: {"num_nodes": 8, "nproc_per_node": 8},
 }
 
 

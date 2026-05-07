@@ -55,6 +55,9 @@ ENABLE_XPROF = flags.DEFINE_bool(
 
 DISTRIBUTED_PLATFORMS = (
     benchmark_utils.Platform.GFC_2X2X1,
+    benchmark_utils.Platform.GFC_2X2X2,
+    benchmark_utils.Platform.GFC_2X2X4,
+    benchmark_utils.Platform.GFC_2X4X4,
     benchmark_utils.Platform.B200_4,
 )
 
@@ -176,7 +179,7 @@ def _setup_absl() -> None:
 
 # Not using keyword arguments here because the google version of torchrun
 # doesn't support passing keyword arguments to the worker function.
-def _run_single_process_benchmark(
+def run_single_process_benchmark(
     config: PerformanceBenchmarkConfig,
     test_method_name: str,
     benchmark_name: str,
@@ -197,6 +200,7 @@ def _run_single_process_benchmark(
   gc.collect()
   _setup_absl()
   rank = int(os.environ.get("RANK", "0"))
+  logging.info("Process %s starting run_single_process_benchmark", rank)
   world_size = int(os.environ.get("WORLD_SIZE", "1"))
   platform = benchmark_utils.PLATFORM.value
   device = benchmark_utils.get_torch_device(platform)
@@ -325,11 +329,14 @@ def _run_single_process_benchmark(
         logging.exception("Error writing TensorBoard logs")
 
 
-def _run_torch_tpu_task(
+def run_torch_tpu_task(
     worker_func: Callable[..., Any],
     extra_worker_func_args: Tuple[Any, ...],
-):
+) -> None:
+  rank = os.environ.get("RANK", "0")
+  logging.info("Process %s initializing process group...", rank)
   torch.distributed.init_process_group(backend="tpu_dist")
+  logging.info("Process %s process group initialized.", rank)
   worker_func(*extra_worker_func_args)
   torch.distributed.destroy_process_group()
 
@@ -360,7 +367,8 @@ def _run_distributed_benchmark(
     microbenchmark_name: str | None = None,
 ) -> None:
   """Runs the benchmark for the given config."""
-  if benchmark_utils.PLATFORM.value == benchmark_utils.Platform.B200_4:
+  platform = benchmark_utils.PLATFORM.value
+  if platform == benchmark_utils.Platform.B200_4:
     # A single B200 device is roughly equivalent to two GFC devices,
     # so double the batch size on B200 to make a fairer comparison.
     config.model_and_input_args.batch_size = (
@@ -369,7 +377,7 @@ def _run_distributed_benchmark(
     distributed_utils.dist_run(
         4,
         _run_cuda_task,
-        _run_single_process_benchmark,
+        run_single_process_benchmark,
         (
             config,
             test_method_name,
@@ -377,12 +385,12 @@ def _run_distributed_benchmark(
             microbenchmark_name,
         ),
     )
-  elif benchmark_utils.PLATFORM.value == benchmark_utils.Platform.GFC_2X2X1:
+  elif platform == benchmark_utils.Platform.GFC_2X2X1:
     singlehost_wrapper.prepare_tpu_environment(world_size=8)
     distributed_utils.dist_run(
         8,
-        _run_torch_tpu_task,
-        _run_single_process_benchmark,
+        run_torch_tpu_task,
+        run_single_process_benchmark,
         (
             config,
             test_method_name,
@@ -418,6 +426,7 @@ def run_benchmark(
 
   platform = benchmark_utils.PLATFORM.value
   if platform in DISTRIBUTED_PLATFORMS:
+    logging.info("Running distributed benchmark on platform %s", platform)
     _run_distributed_benchmark(
         config,
         test_method_name=test_method_name,
@@ -425,7 +434,8 @@ def run_benchmark(
         microbenchmark_name=microbenchmark_name,
     )
   else:
-    _run_single_process_benchmark(
+    logging.info("Running single process benchmark on platform %s", platform)
+    run_single_process_benchmark(
         config,
         test_method_name=test_method_name,
         benchmark_name=benchmark_name,
