@@ -477,6 +477,18 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(test_fn)
 
+  def test__sub_out(self):
+    """Tests sub.out with various inputs and dtypes."""
+    x1 = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)
+    y1 = torch.tensor([[2.0, 3.0], [1.0, 5.0]], dtype=torch.float32)
+
+    def test_fn(device):
+      out = torch.empty(2, 2, dtype=torch.float32, device=device)
+      torch.sub(x1.to(device), y1.to(device), alpha=1.0, out=out)
+      return out
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
   def test__add_relu__Scalar(self):
     """Tests _add_relu_.Scalar with various inputs and dtypes."""
     x1 = torch.tensor([[1.0, -2.0], [-3.0, 4.0]], dtype=torch.float32)
