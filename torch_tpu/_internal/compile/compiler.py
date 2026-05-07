@@ -543,16 +543,7 @@ class StaticCompiler(Compiler):
     Returns:
       A _TorchTpuCompiledExecutable object, which can be called to execute
       the compiled graph on TPU.
-
-    Raises:
-      ValueError: If the provided inputs contain SymInts or Tensor with SymInt
-        dimensions.
     """  # fmt: skip
-    if has_symints(example_inputs):
-      raise ValueError(
-          "StaticCompiler does not support compilation of programs with dynamic"
-          " shapes. Consider using DynamicCompiler instead."
-      )
     # Decompose auto functionalized ops, we need to explicitly do this because
     # the default behaviour inserts flatten and unflatten ops at the boundaries
     # which then blocks buffer donation.
