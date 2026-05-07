@@ -30,10 +30,8 @@ from torch_tpu._internal import execution_mode
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import device_utils
 from torch_tpu._internal.utils import log_utils
-from examples.benchmarks.e2e import benchmark_function_db
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import mlcompass_utils
-from examples.benchmarks.e2e import model_utils
 from tests.distributed import distributed_utils
 
 from torch_tpu._internal.shims.xprof import xprof_analysis_client
@@ -104,7 +102,11 @@ class PerformanceBenchmarkConfig:
     is_training: Whether the benchmark is for training. If True, the benchmark
       will use the training mode of the model and will run the optimizer.
     model_and_input_args: The args to get the model and example inputs.
-    grad_accumulation_steps: The number of steps to accumulate gradients for.
+    model_and_input_factory: Factory to create the model and inputs.
+    sync_params: Whether to eagerly synchronize parameter gradients inside
+      timing loops.
+    train_factory: Optional factory to create the training benchmark function.
+    eval_factory: Optional factory to create the inference benchmark function.
   """
 
   supported_platforms: Sequence[benchmark_utils.Platform]
@@ -112,7 +114,10 @@ class PerformanceBenchmarkConfig:
   run_mode: benchmark_utils.RunMode
   is_training: bool
   model_and_input_args: ModelAndInputArgs
-  grad_accumulation_steps: int = 4
+  model_and_input_factory: Callable[..., Any]
+  sync_params: bool = False
+  train_factory: Optional[Callable[[], Callable[..., Any]]] = None
+  eval_factory: Optional[Callable[[], Callable[..., Any]]] = None
 
 
 # LINT.ThenChange(../../../g3doc/benchmarking.md)
@@ -206,17 +211,39 @@ def run_single_process_benchmark(
   device = benchmark_utils.get_torch_device(platform)
   # Seed random number generators for reproducibility. This should be done after
   # initializing the device.
+  if config.is_training:
+    assert (
+        config.train_factory is not None
+    ), "train_factory must be provided for training."
+  else:
+    assert (
+        config.eval_factory is not None
+    ), "eval_factory must be provided for inference."
+
+  # Seed random number generators for reproducibility. This should be done after
+  # initializing the device.
   benchmark_utils.seed_rngs()
   weights_dtype = get_torch_dtype(WEIGHTS_DTYPE.value)
-  func = _get_benchmark_function(config, device)
-  model_and_input = get_model_and_input(
-      config.model_and_input_args,
-      config.benchmark_category,
-      device,
-      weights_dtype,
-      config.is_training,
-      benchmark_utils.is_torch_compile(config.run_mode),
+
+  use_torch_compile = benchmark_utils.is_torch_compile(config.run_mode)
+  if config.is_training:
+    func = config.train_factory()
+  else:
+    func = config.eval_factory()
+  model_and_input = config.model_and_input_factory(
+      model_and_input_args=config.model_and_input_args,
+      device=device,
+      weights_dtype=weights_dtype,
+      is_training=config.is_training,
   )
+
+  if use_torch_compile:
+    if config.is_training:
+      func = device_utils.torch_compile(func, device.type)
+    else:
+      model_and_input.model = device_utils.torch_compile(
+          model_and_input.model, device.type
+      )
   optimizer = _get_optimizer(
       model_and_input.model,
       is_training=config.is_training,
@@ -242,6 +269,7 @@ def run_single_process_benchmark(
           enable_xprof=enable_xprof,
           optimizer=optimizer,
           xprof_client=xprof_client,
+          sync_params=config.sync_params,
       )
       logging.info(
           "Performance Benchmark Results:\n"
@@ -471,171 +499,3 @@ def get_torch_dtype(dtype_str: str) -> torch.dtype:
     return torch.float32
   else:
     raise ValueError(f"Unknown model dtype: {dtype_str}")
-
-
-def _get_benchmark_function(
-    config: PerformanceBenchmarkConfig,
-    device: torch.device,
-) -> Callable[
-    [torch.nn.Module, Any, torch.optim.Optimizer | None],
-    Any,
-]:
-  """Returns callable for the given benchmark category and is_training.
-
-  Args:
-    config: The benchmark config.
-    device: The torch device being used.
-
-  Returns:
-    The benchmark function. The returned function takes in the model, example
-    inputs, and optimizer (if is_training is True) and returns output of the
-    model.
-  """
-  if config.benchmark_category in (
-      benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-      benchmark_utils.BenchmarkCategory.QWEN_RAGGED_MOE,
-  ):
-    if not config.is_training:
-      return benchmark_function_db.huggingface_forward_pass
-    else:
-      return benchmark_function_db.get_huggingface_llm_training_function(
-          device,
-          benchmark_utils.is_torch_compile(config.run_mode),
-          config.grad_accumulation_steps,
-      )
-
-  elif (
-      config.benchmark_category
-      == benchmark_utils.BenchmarkCategory.HUGGINGFACE_DIFFUSER
-  ):
-    if not config.is_training:
-      return benchmark_function_db.huggingface_forward_pass
-    else:
-      return benchmark_function_db.get_huggingface_diffuser_training_function(
-          device,
-          benchmark_utils.is_torch_compile(config.run_mode),
-          config.grad_accumulation_steps,
-      )
-
-  elif (
-      config.benchmark_category == benchmark_utils.BenchmarkCategory.META_LLAMA
-      and not config.is_training
-  ):
-    return benchmark_function_db.meta_llama_forward_pass
-
-  elif config.benchmark_category == benchmark_utils.BenchmarkCategory.ML_LAYER:
-    if not config.is_training:
-      return benchmark_function_db.ml_layer_forward_pass
-    else:
-      return benchmark_function_db.get_ml_layer_train_step_function(
-          device, benchmark_utils.is_torch_compile(config.run_mode)
-      )
-
-  elif config.benchmark_category == benchmark_utils.BenchmarkCategory.TIMM:
-    if not config.is_training:
-      return benchmark_function_db.timm_forward_pass
-    else:
-      return benchmark_function_db.get_ml_layer_train_step_function(
-          device, benchmark_utils.is_torch_compile(config.run_mode)
-      )
-  else:
-    raise ValueError(
-        "No benchmark function found for category:"
-        f" {config.benchmark_category}, is_training: {config.is_training}"
-    )
-
-
-def get_model_and_input(
-    model_and_input_args: ModelAndInputArgs,
-    benchmark_category: benchmark_utils.BenchmarkCategory,
-    device: torch.device,
-    weights_dtype: torch.dtype,
-    is_training: bool,
-    use_torch_compile: bool,
-) -> model_utils.ModelAndInput:
-  """Returns the benchmark model and example input for the given args.
-
-  Args:
-    model_and_input_args: The model and input args.
-    benchmark_category: The benchmark category. Defines how to get the model and
-      example inputs.
-    device: The torch device. The model and example inputs will be loaded on
-      this device.
-    weights_dtype: The model dtype. The model weights will be loaded with this
-      dtype.
-    is_training: Whether the model is in training mode or eval mode.
-    use_torch_compile: Whether to wrap the model with torch.compile.
-
-  Returns:
-    ModelAndInput dataclass containing the model and example inputs.
-  """
-  if benchmark_category == benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM:
-    dist_strat_str = model_and_input_args.custom_kwargs.get(
-        "dist_strat", "none"
-    )
-    dist_strat = model_utils.DistStrat(dist_strat_str)
-    return model_utils.get_huggingface_llm_model(
-        model_and_input_args.model_name,
-        device=device,
-        weights_dtype=weights_dtype,
-        is_training=is_training,
-        use_torch_compile=use_torch_compile,
-        sequence_length=model_and_input_args.sequence_length,
-        batch_size=model_and_input_args.batch_size,
-        dist_strat=dist_strat,
-        modify_config_hook=model_and_input_args.custom_kwargs.get(
-            "modify_config_hook", None
-        ),
-    )
-  elif (
-      benchmark_category
-      == benchmark_utils.BenchmarkCategory.HUGGINGFACE_DIFFUSER
-  ):
-    return model_utils.get_huggingface_diffuser_model(
-        model_and_input_args.model_name,
-        device=device,
-        weights_dtype=weights_dtype,
-        is_training=is_training,
-        use_torch_compile=use_torch_compile,
-        **model_and_input_args.custom_kwargs,
-    )
-  elif benchmark_category == benchmark_utils.BenchmarkCategory.META_LLAMA:
-    return model_utils.get_meta_llama_model(
-        model_and_input_args.model_name,
-        device,
-        weights_dtype,
-        use_torch_compile,
-        model_and_input_args.sequence_length,
-        model_and_input_args.batch_size,
-    )
-  elif benchmark_category == benchmark_utils.BenchmarkCategory.ML_LAYER:
-    return model_utils.get_ml_layer_model(
-        model_name=model_and_input_args.model_name,
-        device=device,
-        weights_dtype=weights_dtype,
-        is_training=is_training,
-        use_torch_compile=use_torch_compile,
-        batch_size=model_and_input_args.batch_size,
-        sequence_length=model_and_input_args.sequence_length,
-        **model_and_input_args.custom_kwargs,
-    )
-  elif benchmark_category == benchmark_utils.BenchmarkCategory.TIMM:
-    return model_utils.get_timm_model(
-        model_name=model_and_input_args.model_name,
-        device=device,
-        weights_dtype=weights_dtype,
-        use_torch_compile=use_torch_compile,
-        is_training=is_training,
-        **model_and_input_args.custom_kwargs,
-    )
-  elif benchmark_category == benchmark_utils.BenchmarkCategory.QWEN_RAGGED_MOE:
-    return model_utils.get_qwen_ragged_moe(
-        model_name=model_and_input_args.model_name,
-        device=device,
-        weights_dtype=weights_dtype,
-        sequence_length=model_and_input_args.sequence_length,
-        batch_size=model_and_input_args.batch_size,
-        **model_and_input_args.custom_kwargs,
-    )
-  else:
-    raise ValueError(f"Unknown benchmark category: {benchmark_category}")

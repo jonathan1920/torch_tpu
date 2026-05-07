@@ -222,6 +222,7 @@ class BenchmarkCategory(enum.Enum):
   ML_LAYER = "ml_layer"
   TIMM = "timm"
   QWEN_RAGGED_MOE = "qwen_ragged_moe"
+  TORCHAUDIO = "torchaudio"
 
 
 @dataclasses.dataclass
@@ -412,6 +413,7 @@ def _warmup_run(
     *,
     optimizer: torch.optim.Optimizer | None = None,
     enable_xprof: bool = False,
+    sync_params: bool = False,
 ) -> _WarmupRunResult:
   """Runs the model for MAX_WARMUP_STEPS times to warmup the caches.
 
@@ -426,6 +428,8 @@ def _warmup_run(
     device: The device to run the benchmark on.
     optimizer: The optimizer to use for the model.
     enable_xprof: Whether to enable xprof profiling.
+    sync_params: Whether to eagerly synchronize parameter gradients inside
+      timing loops.
 
   Returns:
     A _WarmupRunResult instance containing the number of warmup steps, the time
@@ -446,6 +450,10 @@ def _warmup_run(
         start_time = time.perf_counter()
         out = benchmark_function(model, example_inputs, optimizer)
         device_utils.synchronize(device_name, out)
+        if sync_params:
+          for p in model.parameters():
+            if p.grad is not None:
+              device_utils.synchronize(device_name, p.grad)
         timings[step] = time.perf_counter() - start_time
       cache_misses[step] = device_utils.cache_miss_count(device_name)
 
@@ -484,6 +492,7 @@ def _post_warmup_run(
     optimizer: torch.optim.Optimizer | None = None,
     enable_xprof: bool = False,
     xprof_client: xprof_analysis_client.XprofAnalysisClient | None = None,
+    sync_params: bool = False,
 ) -> _PostWarmupRunResult:
   """Runs the model once after the warmup is complete.
 
@@ -495,6 +504,8 @@ def _post_warmup_run(
     optimizer: The optimizer to use for the model.
     enable_xprof: Whether to enable xprof profiling.
     xprof_client: The xprof client to use for profiling.
+    sync_params: Whether to eagerly synchronize parameter gradients inside
+      timing loops.
 
   Returns:
     A _PostWarmupRunResult instance containing the average step time and peak
@@ -514,6 +525,10 @@ def _post_warmup_run(
         start_time = time.perf_counter()
         out = benchmark_function(model, example_inputs, optimizer)
         device_utils.synchronize(device_name, out)
+        if sync_params:
+          for p in model.parameters():
+            if p.grad is not None:
+              device_utils.synchronize(device_name, p.grad)
         timings[step] = time.perf_counter() - start_time
 
       # Assert that the cache misses are consistent across steps.
@@ -574,6 +589,7 @@ def run_performance_benchmark(
     enable_xprof: bool = False,
     optimizer: torch.optim.Optimizer | None = None,
     xprof_client: xprof_analysis_client.XprofAnalysisClient | None = None,
+    sync_params: bool = False,
 ) -> PerformanceBenchmarkResult:
   """Runs a performance benchmark for a given model.
 
@@ -613,6 +629,7 @@ def run_performance_benchmark(
           device,
           optimizer=optimizer,
           enable_xprof=enable_xprof,
+          sync_params=sync_params,
       )
   )
 
@@ -626,6 +643,7 @@ def run_performance_benchmark(
             optimizer=optimizer,
             enable_xprof=enable_xprof,
             xprof_client=xprof_client,
+            sync_params=sync_params,
         )
     )
 

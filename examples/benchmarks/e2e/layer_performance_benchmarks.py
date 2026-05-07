@@ -18,8 +18,10 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import torch
 import torch.multiprocessing as mp
+from examples.benchmarks.e2e import benchmark_function_db
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import layer_configs
+from examples.benchmarks.e2e import model_utils
 from examples.benchmarks.e2e import performance_utils
 from examples.benchmarks.e2e import test_utils
 
@@ -75,6 +77,11 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def run_performance_benchmark_test(
       self, config, benchmark_name, microbenchmark_name=None
   ):
+    if config.is_training:
+      config.sync_params = True
+      config.train_factory = benchmark_function_db.simple_train_factory
+    else:
+      config.eval_factory = benchmark_function_db.simple_eval_factory
     if self._is_torchax_backend():
       # Layer specific skips.
       if config.is_training:
@@ -102,6 +109,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.Linear",
             batch_size=layer_config.batch_size,
@@ -137,6 +145,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.BatchNorm1d",
             batch_size=layer_config.batch_size,
@@ -165,6 +174,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.LayerNorm",
             custom_kwargs={
@@ -192,6 +202,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.Conv2d",
             batch_size=layer_config.batch_size,
@@ -225,6 +236,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.Embedding",
             batch_size=layer_config.batch_size,
@@ -257,6 +269,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.Dropout",
             custom_kwargs={
@@ -287,6 +300,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.Tanh",
             custom_kwargs={
@@ -315,6 +329,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="GELUActivation",
             batch_size=layer_config.batch_size,
@@ -341,6 +356,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="BertLayer",
             batch_size=layer_config.batch_size,
@@ -366,6 +382,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="BertSelfOutput",
             batch_size=layer_config.batch_size,
@@ -391,6 +408,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="BertIntermediate",
             batch_size=layer_config.batch_size,
@@ -416,6 +434,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="BertOutput",
             batch_size=layer_config.batch_size,
@@ -441,6 +460,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="BertPooler",
             batch_size=layer_config.batch_size,
@@ -466,6 +486,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="BertEmbeddings",
             batch_size=layer_config.batch_size,
@@ -497,6 +518,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.RMSNorm",
             batch_size=layer_config.batch_size,
@@ -525,6 +547,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="Qwen3Attention",
             batch_size=layer_config.batch_size,
@@ -551,6 +574,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="Qwen3RMSNorm",
             batch_size=layer_config.batch_size,
@@ -577,6 +601,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="Qwen3MLP",
             batch_size=layer_config.batch_size,
@@ -606,6 +631,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="SiLUActivation",
             batch_size=layer_config.batch_size,
@@ -633,6 +659,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="Qwen3RotaryEmbedding",
             batch_size=layer_config.batch_size,
@@ -661,6 +688,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="DeepSeekParallelEmbedding",
             batch_size=layer_config.batch_size,
@@ -702,6 +730,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="DeepSeekRMSNorm",
             batch_size=layer_config.batch_size,
@@ -741,6 +770,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="DeepSeekExpert",
             batch_size=layer_config.batch_size,
@@ -792,6 +822,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.f.scaled_dot_product_attention",
             batch_size=layer_config.batch_size,
@@ -843,6 +874,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.f.scaled_dot_product_attention",
             batch_size=layer_config.batch_size,
@@ -880,6 +912,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.Linear",
             batch_size=layer_config.batch_size,
@@ -911,6 +944,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.Conv2d",
             batch_size=layer_config.batch_size,
@@ -946,6 +980,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.BatchNorm2d",
             batch_size=layer_config.batch_size,
@@ -977,6 +1012,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.AvgPool2d",
             batch_size=layer_config.batch_size,
@@ -1013,6 +1049,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="SelectAdaptivePool2d",
             batch_size=layer_config.batch_size,
@@ -1050,6 +1087,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.AdaptiveAvgPool2d",
             batch_size=layer_config.batch_size,
@@ -1084,6 +1122,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.Flatten",
             batch_size=layer_config.shape[0],
@@ -1114,6 +1153,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="Bottleneck",
             batch_size=layer_config.batch_size,
@@ -1147,6 +1187,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.MaxPool2d",
             batch_size=layer_config.batch_size,
@@ -1181,6 +1222,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
         is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="nn.ReLU",
             batch_size=layer_config.shape[0],

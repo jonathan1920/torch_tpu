@@ -12,302 +12,223 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""This module contains functions that are benchmarked in the e2e benchmark suite.
+# Backend performance benchmark functions database.
+"""Database of benchmark execution functions for backend performance tests."""
 
-All benchmark functions in this module must adhere to the following signature:
+from typing import Any, Callable
 
-def benchmark_function(
-    model: torch.nn.Module,
-    inputs: Any,
-    optimizer: torch.optim.Optimizer | None = None,
-) -> Any:
-  ...
-
-The output should be a tensor if it's required to synchronize the device before
-measuring the performance metrics. This signature is enforced by the benchmark
-suite to ensure consistency and
-interchangeability of benchmark functions. The arguments are:
-  - model: The model to be benchmarked.
-  - inputs: The input tensors for the model.
-  - optimizer: An optional optimizer. This is unused in inference benchmarks,
-      but required for training benchmarks.
-"""
-
-import functools
-from typing import Any, Callable, Mapping
 import torch
-from torch_tpu._internal.utils import device_utils
+
+# ==============================================================================
+# 1. HUGGING FACE LLM FACTORIES & RUNNERS
+# ==============================================================================
 
 
-def huggingface_forward_pass(
-    model: torch.nn.Module,
-    inputs: Any,
-    optimizer: torch.optim.Optimizer | None = None,  # pylint: disable=unused-argument
-) -> torch.Tensor:
-  """Performs a forward pass for a Hugging Face model.
-
-  Args:
-    model: The Hugging Face LLM model.
-    inputs: The input tensors for the model.
-    optimizer: An optional optimizer (unused in this function). This is to match
-      the expected function signature for benchmarks.
+def huggingface_eval_factory() -> Callable[..., Any]:
+  """Creates a benchmark function for Hugging Face model evaluation.
 
   Returns:
-    The output tensor from the model, typically the logits.
+    A callable step function that executes a forward pass on the model under
+    `torch.no_grad` and returns the output logits.
   """
-  # TODO(bbahl): Change to inference mode after fixing error in
-  # torch.inference_mode(). Currently it raises: RuntimeError: Cannot set
-  # version_counter for inference tensor in torch.embedding.
-  with torch.no_grad():
-    result = model(**inputs)
-    if hasattr(result, "logits"):
-      result = result.logits
-    return result
+
+  def step_fn(
+      model: torch.nn.Module,
+      inputs: Any,
+      optimizer: torch.optim.Optimizer | None = None,
+  ) -> torch.Tensor:
+    del optimizer  # Unused
+    # TODO(bbahl): Change to inference mode after fixing error in
+    # torch.inference_mode(). Currently it raises: RuntimeError: Cannot set
+    # version_counter for inference tensor in torch.embedding.
+    with torch.no_grad():
+      result = model(**inputs)
+      if hasattr(result, "logits"):
+        result = result.logits
+      return result
+
+  return step_fn
 
 
-def _huggingface_llm_train_1_step(
-    model: torch.nn.Module,
-    inputs: Mapping[str, Any],
-    optimizer: torch.optim.Optimizer | None,
+def huggingface_llm_train_factory(
     grad_accumulation_steps: int,
-    optimizer_step_fn: Callable[[torch.optim.Optimizer], None],
-) -> float:
-  """Performs one training step for a Hugging Face LLM.
-
-  This function assumes that the output of the model is an object that has a
-  `loss` attribute (e.g. CausalLMOutput), which is typical for Huggingface
-  transformer models.
-
-  Args:
-    model: The Hugging Face LLM model.
-    inputs: The input tensors for the model.
-    optimizer: The optimizer for training.
-    grad_accumulation_steps: The number of steps to accumulate gradients for.
-    optimizer_step_fn: The function to call to step the optimizer.
-
-  Returns:
-    The loss for the training step.
-  """
-  if optimizer is None:
-    raise ValueError("Optimizer must be provided for training.")
-  accumulated_losses = []
-  optimizer.zero_grad()
-  for _ in range(grad_accumulation_steps):
-    # TODO(b/495432689): The test fails with flash attention on CUDA.
-    with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.MATH):
-      output = model(**inputs)
-      output.loss.backward()
-    accumulated_losses.append(output.loss.detach())
-  optimizer_step_fn(optimizer)
-  step_loss = torch.sum(torch.stack(accumulated_losses)).item()
-  return step_loss
-
-
-def get_huggingface_llm_training_function(
-    device: torch.device, torch_compile: bool, grad_accumulation_steps: int
 ) -> Callable[[torch.nn.Module, Any, torch.optim.Optimizer], Any]:
   """Returns the benchmark function for training a Hugging Face LLM.
 
   Args:
-    device: The device to run the benchmark on.
-    torch_compile: Whether to compile the optimizer step function using
-      `torch.compile`.
     grad_accumulation_steps: The number of gradient accumulation steps.
 
   Returns:
-    A callable function suitable for benchmarking training, which takes
-    `model`, `inputs`, and `optimizer` as arguments.
+    A callable step function that executes training iterations with gradient
+    accumulation and returns the average step loss as a float.
   """
 
-  def get_optimizer_step_fn():
-    def step_fn(optimizer):
-      optimizer.step()
+  def train_step(
+      model: torch.nn.Module, inputs: Any, optimizer: torch.optim.Optimizer
+  ) -> float:
+    if optimizer is None:
+      raise ValueError("Optimizer must be provided for training.")
+    accumulated_losses = []
+    optimizer.zero_grad()
+    for _ in range(grad_accumulation_steps):
+      # Dynamic attention kernel overrides for HuggingFace training.
+      with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.MATH):
+        output = model(**inputs)
+        output.loss.backward()
+      accumulated_losses.append(output.loss.detach())
+    optimizer.step()
+    step_loss = torch.sum(torch.stack(accumulated_losses)).item()
+    return step_loss
 
-    if torch_compile:
-      return device_utils.torch_compile(step_fn, device.type)
-    return step_fn
-
-  optimizer_step_fn = get_optimizer_step_fn()
-
-  return functools.partial(
-      _huggingface_llm_train_1_step,
-      grad_accumulation_steps=grad_accumulation_steps,
-      optimizer_step_fn=optimizer_step_fn,
-  )
+  return train_step
 
 
-def _huggingface_diffuser_train_1_step(
-    model: torch.nn.Module,
-    inputs: Mapping[str, Any],
-    optimizer: torch.optim.Optimizer | None,
+# ==============================================================================
+# 2. META LLAMA FACTORIES & RUNNERS
+# ==============================================================================
+
+
+def meta_llama_eval_factory() -> Callable[..., Any]:
+  """Creates a benchmark function for Meta Llama model evaluation.
+
+  Returns:
+    A callable step function that executes inference on the Llama model using
+    (tokens, start_pos) inputs and returns the output predictions.
+  """
+
+  def step_fn(
+      model: torch.nn.Module,
+      inputs: Any,
+      optimizer: torch.optim.Optimizer | None = None,
+  ) -> torch.Tensor:
+    del optimizer  # Unused
+    tokens, start_pos = inputs
+    with torch.no_grad():
+      result = model(tokens, start_pos)
+    return result
+
+  return step_fn
+
+
+# ==============================================================================
+# 3. HUGGINGFACE DIFFUSER FACTORIES & RUNNERS
+# ==============================================================================
+
+
+def huggingface_diffuser_train_factory(
     grad_accumulation_steps: int,
-    optimizer_step_fn: Callable[[torch.optim.Optimizer], None],
-) -> float:
-  """Performs one training step for a Hugging Face Diffuser model."""
-  if optimizer is None:
-    raise ValueError("Optimizer must be provided for training.")
-  accumulated_losses = []
-  optimizer.zero_grad()
-  for _ in range(grad_accumulation_steps):
-    output = model(**inputs)
-    if hasattr(output, "sample"):
-      loss = torch.mean(output.sample)
-    elif isinstance(output, tuple):
-      loss = torch.mean(output[0])
-    else:
-      loss = torch.mean(output)
-    loss.backward()
-    accumulated_losses.append(loss.detach())
-  optimizer_step_fn(optimizer)
-  step_loss = torch.sum(torch.stack(accumulated_losses)).item()
-  return step_loss
-
-
-def get_huggingface_diffuser_training_function(
-    device: torch.device, torch_compile: bool, grad_accumulation_steps: int
 ) -> Callable[[torch.nn.Module, Any, torch.optim.Optimizer], Any]:
-  """Returns the benchmark function for training a Hugging Face Diffuser model."""
-
-  def get_optimizer_step_fn():
-    def step_fn(optimizer):
-      optimizer.step()
-
-    if torch_compile:
-      return device_utils.torch_compile(step_fn, device.type)
-    return step_fn
-
-  optimizer_step_fn = get_optimizer_step_fn()
-
-  return functools.partial(
-      _huggingface_diffuser_train_1_step,
-      grad_accumulation_steps=grad_accumulation_steps,
-      optimizer_step_fn=optimizer_step_fn,
-  )
-
-
-def meta_llama_forward_pass(
-    model: torch.nn.Module,
-    inputs: Any,
-    optimizer: torch.optim.Optimizer | None = None,  # pylint: disable=unused-argument
-) -> torch.Tensor:
-  """Performs a forward pass for a Meta Llama model.
+  """Returns the benchmark function for training a Hugging Face Diffuser.
 
   Args:
-    model: The Meta Llama model.
-    inputs: A tuple containing (tokens, start_pos), where tokens is a tensor of
-      input token indices and start_pos is an integer indicating the starting
-      position.
-    optimizer: An optional optimizer (unused in this function). This is to match
-      the expected function signature for benchmarks.
+    grad_accumulation_steps: The number of gradient accumulation steps.
 
   Returns:
-    The output tensor from the model.
-  """
-  tokens, start_pos = inputs
-  with torch.no_grad():
-    result = model(tokens, start_pos)
-  return result
-
-
-def ml_layer_forward_pass(
-    model: torch.nn.Module,
-    inputs: Any,
-    optimizer: torch.optim.Optimizer | None = None,  # pylint: disable=unused-argument
-) -> torch.Tensor:
-  """Performs a forward pass for an ML layer.
-
-  Args:
-    model: The ML layer model.
-    inputs: The input tensors for the model.
-    optimizer: Unused.
-
-  Returns:
-    The output tensor from the model.
-  """
-  del optimizer  # Unused
-  with torch.inference_mode():
-    if isinstance(inputs, tuple):
-      return model(*inputs)
-    return model(inputs)
-
-
-def _ml_layer_train_step(
-    model: torch.nn.Module,
-    inputs: Any,
-    optimizer: torch.optim.Optimizer,
-    step_fn: Callable[[torch.nn.Module, Any], Any],
-    device: torch.device,
-) -> None:
-  """Performs a training step (forward + backward) for an ML layer.
-
-  Args:
-    model: The ML layer model.
-    inputs: The input tensors for the model.
-    optimizer: Unused.
-    step_fn: The function to call to perform the forward and backward pass.
-    device: The device to run the benchmark on.
-  """
-  del optimizer  # Unused
-
-  loss = step_fn(model, inputs)
-
-  device_utils.synchronize(device.type, loss)
-  for p in model.parameters():
-    if p.grad is not None:
-      device_utils.synchronize(device.type, p.grad)
-
-
-def get_ml_layer_train_step_function(
-    device: torch.device, torch_compile: bool
-) -> Callable[[torch.nn.Module, Any, torch.optim.Optimizer], Any]:
-  """Returns the benchmark function for training an ML layer.
-
-  Args:
-    device: The device to run the benchmark on.
-    torch_compile: Whether to compile the training step function using
-      `torch.compile`.
+    A callable step function that executes training iterations with gradient
+    accumulation and returns the average step loss as a float.
   """
 
-  def get_model_train_fn():
-    def step_fn(model, inputs):
-
-      if isinstance(inputs, tuple):
-        y_pred = model(*inputs)
+  def train_step(
+      model: torch.nn.Module, inputs: Any, optimizer: torch.optim.Optimizer
+  ) -> float:
+    if optimizer is None:
+      raise ValueError("Optimizer must be provided for training.")
+    accumulated_losses = []
+    optimizer.zero_grad()
+    for _ in range(grad_accumulation_steps):
+      output = model(**inputs)
+      if hasattr(output, "sample"):
+        loss = torch.mean(output.sample)
+      elif isinstance(output, tuple):
+        loss = torch.mean(output[0])
       else:
-        y_pred = model(inputs)
-      if isinstance(y_pred, tuple):
-        y_pred = y_pred[0]
-      loss = torch.mean(y_pred)
-
+        loss = torch.mean(output)
       loss.backward()
-      return loss.detach()
+      accumulated_losses.append(loss.detach())
+    optimizer.step()
+    step_loss = torch.sum(torch.stack(accumulated_losses)).item()
+    return step_loss
 
-    if torch_compile:
-      return device_utils.torch_compile(step_fn, device.type)
-    return step_fn
-
-  model_train_fn = get_model_train_fn()
-  return functools.partial(
-      _ml_layer_train_step, step_fn=model_train_fn, device=device
-  )
+  return train_step
 
 
-def timm_forward_pass(
-    model: torch.nn.Module,
-    inputs: Any,
-    optimizer: torch.optim.Optimizer | None = None,
-) -> torch.Tensor:
-  """Performs a forward pass for a TIMM model.
+# ==============================================================================
+# 3. TIMM FACTORIES & RUNNERS
+# ==============================================================================
 
-  Args:
-    model: The TIMM model.
-    inputs: The input tensors for the model.
-    optimizer: Unused.
+
+def timm_eval_factory() -> Callable[..., Any]:
+  """Creates a benchmark function for TIMM model evaluation.
 
   Returns:
-    The output tensor from the model.
+    A callable step function that executes inference on the TIMM model under
+    `torch.inference_mode` and returns the output predictions.
   """
-  del optimizer  # Unused
-  with torch.inference_mode():
-    out = model(inputs)
-  return out
+
+  def step_fn(
+      model: torch.nn.Module,
+      inputs: Any,
+      optimizer: torch.optim.Optimizer | None = None,
+  ) -> torch.Tensor:
+    del optimizer  # Unused
+    with torch.inference_mode():
+      out = model(inputs)
+    return out
+
+  return step_fn
+
+
+# ==============================================================================
+# 4. SIMPLE / LAYER FACTORIES & RUNNERS
+# ==============================================================================
+
+
+def simple_eval_factory() -> Callable[..., Any]:
+  """Creates a benchmark function for simple layer/model evaluation.
+
+  Returns:
+    A callable step function that executes inference on the model under
+    `torch.inference_mode` supporting unpacked tuple inputs.
+  """
+
+  def step_fn(
+      model: torch.nn.Module,
+      inputs: Any,
+      optimizer: torch.optim.Optimizer | None = None,
+  ) -> torch.Tensor:
+    del optimizer  # Unused
+    with torch.inference_mode():
+      if isinstance(inputs, tuple):
+        return model(*inputs)
+      return model(inputs)
+
+  return step_fn
+
+
+def simple_train_factory() -> (
+    Callable[[torch.nn.Module, Any, torch.optim.Optimizer], Any]
+):
+  """Returns the benchmark function for training a simple layer/model.
+
+  Returns:
+    A callable step function that executes a forward pass, computes a mean
+    loss, executes a backward pass, and returns the detached loss.
+  """
+
+  def train_step(
+      model: torch.nn.Module,
+      inputs: Any,
+      optimizer: torch.optim.Optimizer | None = None,
+  ) -> torch.Tensor:
+    del optimizer  # Unused in simple training step
+    if isinstance(inputs, tuple):
+      y_pred = model(*inputs)
+    else:
+      y_pred = model(inputs)
+    if isinstance(y_pred, tuple):
+      y_pred = y_pred[0]
+    loss = torch.mean(y_pred)
+    loss.backward()
+    return loss.detach()
+
+  return train_step

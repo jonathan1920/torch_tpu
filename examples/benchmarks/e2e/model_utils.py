@@ -18,7 +18,7 @@ import enum
 import functools
 import math
 import re
-from typing import Any, Callable, Sequence
+from typing import Any, Callable
 
 import diffusers
 from fairscale.nn.model_parallel import initialize as fairscale_init
@@ -28,7 +28,6 @@ import torch
 from torch.distributed import fsdp
 import torch.distributed.tensor as dt
 from torch.nn import parallel
-from torch_tpu._internal.utils import device_utils
 from examples.benchmarks.e2e import ragged_moe
 from examples.deepseek import model as deepseek_model
 from tests import module_registry
@@ -205,17 +204,11 @@ def get_module_registry():
   return module_registry.ModuleRegistry()
 
 
-def get_huggingface_llm_model(
-    model_name: str,
-    *,
+def huggingface_llm_model_builder(
+    model_and_input_args: Any,
     device: torch.device,
     weights_dtype: torch.dtype,
     is_training: bool,
-    use_torch_compile: bool,
-    sequence_length: int,
-    batch_size: int,
-    dist_strat: DistStrat,
-    modify_config_hook: Callable[[Any], Any] | None = None,
 ) -> ModelAndInput:
   """Returns the huggingface LLM model.
 
@@ -223,21 +216,25 @@ def get_huggingface_llm_model(
   `third_party/py/torch_tpu/examples/huggingface_transformers/model_configs`.
 
   Args:
-      model_name: The name of the Hugging Face model to load.
+      model_and_input_args: The model and input args.
       device: The device to load the model and inputs on (e.g., 'tpu', 'cuda').
       weights_dtype: The data type for the model weights (e.g., torch.float32,
         torch.bfloat16).
-      is_training: Whether the model should be in training mode.
+      is_training: Whether the model is in training mode or eval mode.
       use_torch_compile: Whether to wrap the model with `torch.compile`.
-      sequence_length: The length of the input sequence for the example inputs.
-      batch_size: The batch size for the example inputs.
-      dist_strat: strategy for distributing model across devices.
-      modify_config_hook: A callable to modify the model configuration.
 
   Returns:
       A ModelAndInput dataclass containing the loaded Hugging Face model
       and example inputs suitable for benchmarking.
   """
+  model_name = model_and_input_args.model_name
+  sequence_length = model_and_input_args.sequence_length
+  batch_size = model_and_input_args.batch_size
+  dist_strat_str = model_and_input_args.custom_kwargs.get("dist_strat", "none")
+  dist_strat = DistStrat(dist_strat_str)
+  modify_config_hook = model_and_input_args.custom_kwargs.get(
+      "modify_config_hook", None
+  )
 
   registry = get_module_registry()
   module_spec = registry.get_module_spec(
@@ -303,8 +300,6 @@ def get_huggingface_llm_model(
   else:
     model.eval()
 
-  if use_torch_compile:
-    model = device_utils.torch_compile(model, device.type)
   return ModelAndInput(model=model, example_inputs=example_inputs)
 
 
@@ -320,13 +315,11 @@ def _init_model_weights(model):
     tensor.fill_(0.0)
 
 
-def get_meta_llama_model(
-    model_name: str,
+def meta_llama_model_builder(
+    model_and_input_args: Any,
     device: torch.device,
     weights_dtype: torch.dtype,
-    use_torch_compile: bool,
-    sequence_length: int,
-    batch_size: int,
+    is_training: bool,
 ) -> ModelAndInput:
   """Returns a ModelAndInput for the specified Meta Llama model.
 
@@ -335,19 +328,21 @@ def get_meta_llama_model(
   initialization is handled internally.
 
   Args:
-      model_name: The name of the Meta Llama model to load (e.g.,
-        "Llama-3.2-8B", "Llama-3.2-70B").
-      device: The torch device to load the model and inputs.
-      weights_dtype: The data type for the model weights.
+      model_and_input_args: The model and input args.
+      device: The device to load the model and inputs on (e.g., 'tpu', 'cuda').
+      weights_dtype: The data type for the model weights (e.g., torch.float32,
+        torch.bfloat16).
+      is_training: Unused.
       use_torch_compile: Whether to wrap the model with `torch.compile`.
-      sequence_length: The length of the input sequence for the example inputs.
-      batch_size: The batch size for the example inputs.
 
   Returns:
-      A ModelAndInput dataclass containing the loaded Meta Llama model
-      and example inputs. The example inputs are a tuple of (input_ids,
-      start_pos).
+      A ModelAndInput dataclass containing the loaded Meta Llama model and
+      example inputs.
   """
+  del is_training  # Unused for forward
+  model_name = model_and_input_args.model_name
+  sequence_length = model_and_input_args.sequence_length
+  batch_size = model_and_input_args.batch_size
 
   if model_name == "Llama-3.2-8B":
     args = m.ModelArgs(
@@ -414,9 +409,6 @@ def get_meta_llama_model(
 
     model.apply(_init_model_weights)
 
-  if use_torch_compile:
-    model = device_utils.torch_compile(model, device.type)
-
   input_ids = torch.randint(
       0, args.vocab_size, (batch_size, sequence_length), device=device
   )
@@ -427,32 +419,30 @@ def get_meta_llama_model(
   return ModelAndInput(model=model, example_inputs=example_inputs)
 
 
-def get_ml_layer_model(
-    model_name: str,
+def ml_layer_model_builder(
+    model_and_input_args: Any,
     device: torch.device,
     weights_dtype: torch.dtype,
     is_training: bool,
-    use_torch_compile: bool,
-    batch_size: int,
-    sequence_length: int,
-    **kwargs,
 ) -> ModelAndInput:
   """Returns a ModelAndInput for the specified ML layer.
 
   Args:
-      model_name: The name of the layer (e.g., "nn.Linear").
-      device: The torch device.
-      weights_dtype: The data type for the weights.
-      is_training: Whether the model should be in training mode.
+      model_and_input_args: The model and input args.
+      device: The device to load the model and inputs on (e.g., 'tpu', 'cuda').
+      weights_dtype: The data type for the model weights (e.g., torch.float32,
+        torch.bfloat16).
+      is_training: Whether the model is in training mode or eval mode.
       use_torch_compile: Whether to wrap the model with `torch.compile`.
-      batch_size: The batch size for inputs.
-      sequence_length: The length of the input sequence for the example inputs.
-      **kwargs: Additional arguments for specific layers (e.g., in_features,
-        out_features, etc).
 
   Returns:
       ModelAndInput dataclass.
   """
+  model_name = model_and_input_args.model_name
+  sequence_length = model_and_input_args.sequence_length
+  batch_size = model_and_input_args.batch_size
+  kwargs = model_and_input_args.custom_kwargs
+
   if model_name == "nn.Linear":
     if "in_features" not in kwargs:
       raise ValueError("nn.Linear requires in_features to be specified.")
@@ -1231,38 +1221,32 @@ def get_ml_layer_model(
 
   # Only compile the model for inference. For training, we will compile the
   # train step function which includes the forward and backward pass.
-  if use_torch_compile and not is_training:
-    model = device_utils.torch_compile(model, device.type)
 
   return ModelAndInput(model=model, example_inputs=example_inputs)
 
 
-def get_timm_model(
-    model_name: str,
-    *,
+def timm_model_builder(
+    model_and_input_args: Any,
     device: torch.device,
     weights_dtype: torch.dtype,
-    use_torch_compile: bool,
     is_training: bool,
-    input_shape: Sequence[int],
 ) -> ModelAndInput:
-  """Returns the huggingface LLM model.
-
-  See supported models in
-  `third_party/py/torch_tpu/examples/huggingface_transformers/model_configs`.
+  """Returns the TIMM model.
 
   Args:
-      model_name: The name of the Hugging Face model to load.
+      model_and_input_args: The model and input args.
       device: The device to load the model and inputs on (e.g., 'tpu', 'cuda').
       weights_dtype: The data type for the model weights (e.g., torch.float32,
         torch.bfloat16).
+      is_training: Whether the model is in training mode or eval mode.
       use_torch_compile: Whether to wrap the model with `torch.compile`.
-      input_shape: shape of the inputs to the model.
 
   Returns:
-      A ModelAndInput dataclass containing the loaded Hugging Face model
+      A ModelAndInput dataclass containing the loaded TIMM model
       and example inputs suitable for benchmarking.
   """
+  model_name = model_and_input_args.model_name
+  input_shape = model_and_input_args.custom_kwargs["input_shape"]
 
   registry = get_module_registry()
   module_spec = registry.get_module_spec("timm", model_name, load_weights=False)
@@ -1278,21 +1262,32 @@ def get_timm_model(
   else:
     model.eval()
 
-  if use_torch_compile:
-    model = device_utils.torch_compile(model, device.type)
   return ModelAndInput(model=model, example_inputs=example_inputs)
 
 
 # TODO(b/505851863): use model registry to get the model and inputs for all categories.
-def get_huggingface_diffuser_model(
-    model_name: str,
-    *,
+def huggingface_diffuser_model_builder(
+    model_and_input_args: Any,
     device: torch.device,
     weights_dtype: torch.dtype,
     is_training: bool,
-    use_torch_compile: bool,
 ) -> ModelAndInput:
-  """Returns a ModelAndInput for the specified Hugging Face Diffuser model."""
+  """Returns a ModelAndInput for the specified Hugging Face Diffuser model.
+
+  Args:
+      model_and_input_args: The model and input args.
+      device: The device to load the model and inputs on (e.g., 'tpu', 'cuda').
+      weights_dtype: The data type for the model weights (e.g., torch.float32,
+        torch.bfloat16).
+      is_training: Whether the model is in training mode or eval mode.
+      use_torch_compile: Whether to wrap the model with `torch.compile`.
+
+  Returns:
+      A ModelAndInput dataclass containing the loaded Hugging Face Diffuser
+      model
+      and example inputs.
+  """
+  model_name = model_and_input_args.model_name
   if model_name == "Wan-AI/Wan2.2-TI2V-5B-Diffusers":
     registry = get_module_registry()
     module_spec = registry.get_module_spec(
@@ -1330,9 +1325,6 @@ def get_huggingface_diffuser_model(
     model.train()
   else:
     model.eval()
-
-  if use_torch_compile and not is_training:
-    model = device_utils.torch_compile(model, device.type)
 
   return ModelAndInput(model=model, example_inputs=example_inputs)
 
@@ -1400,14 +1392,30 @@ def _replace_qwen_moe_with_ragged_moe(model, config):
     layer.mlp = ragged_moe.RaggedMoeQwen3(config, is_tensor_parallel=True)
 
 
-def get_qwen_ragged_moe(
-    model_name: str,
-    *,
+def qwen_ragged_moe_model_builder(
+    model_and_input_args: Any,
     device: torch.device,
     weights_dtype: torch.dtype,
-    sequence_length: int,
-    batch_size: int,
+    is_training: bool,
 ) -> ModelAndInput:
+  """Returns a ModelAndInput for the specified Qwen Ragged MoE model.
+
+  Args:
+      model_and_input_args: The model and input args.
+      device: The device to load the model and inputs on (e.g., 'tpu', 'cuda').
+      weights_dtype: The data type for the model weights (e.g., torch.float32,
+        torch.bfloat16).
+      is_training: Unused.
+      use_torch_compile: Unused.
+
+  Returns:
+      A ModelAndInput dataclass containing the loaded Qwen Ragged MoE model and
+      example inputs.
+  """
+  del is_training  # Unused
+  model_name = model_and_input_args.model_name
+  sequence_length = model_and_input_args.sequence_length
+  batch_size = model_and_input_args.batch_size
   registry = get_module_registry()
   module_spec = registry.get_module_spec(
       "transformers", model_name, load_weights=False

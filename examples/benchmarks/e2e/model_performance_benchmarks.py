@@ -12,14 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Benchmarks for model performance."""
+import functools
 
 from absl.testing import absltest
 from absl.testing import parameterized
 import torch.multiprocessing as mp
+from examples.benchmarks.e2e import benchmark_function_db
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import model_utils
 from examples.benchmarks.e2e import performance_utils
 from examples.benchmarks.e2e import test_utils
+
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 _HF_LLAMA_3_2_1B_BENCHMARK_NAME = "hf_llama_3_2_1b"
@@ -59,6 +62,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             sequence_length=4096,
             batch_size=1,
         ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
 
@@ -88,6 +93,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             sequence_length=4096,
             batch_size=1,
         ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
     )
     self.run_performance_benchmark_test(config, _HF_QWEN3_1_7B_BENCHMARK_NAME)
 
@@ -117,6 +124,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             sequence_length=4096,
             batch_size=1,
         ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
     )
     self.run_performance_benchmark_test(config, _HF_GPT_OSS_20B_BENCHMARK_NAME)
 
@@ -148,6 +157,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=1,
             custom_kwargs={"modify_config_hook": modify_config_hook},
         ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
     )
     self.run_performance_benchmark_test(config, _HF_GPT_OSS_120B_BENCHMARK_NAME)
 
@@ -176,6 +187,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             sequence_length=1024,
             batch_size=batch_size,
         ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        train_factory=functools.partial(
+            benchmark_function_db.huggingface_llm_train_factory,
+            grad_accumulation_steps=4,
+        ),
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
 
@@ -200,6 +216,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="google/gemma-3-270m",
             sequence_length=512,
             batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        train_factory=functools.partial(
+            benchmark_function_db.huggingface_llm_train_factory,
+            grad_accumulation_steps=4,
         ),
     )
     self.run_performance_benchmark_test(config, _HF_GEMMA_3_270M_BENCHMARK_NAME)
@@ -226,6 +247,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             sequence_length=512,
             batch_size=1,
         ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
     )
     self.run_performance_benchmark_test(config, _HF_GEMMA_3_270M_BENCHMARK_NAME)
 
@@ -253,6 +276,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             sequence_length=2048,
             batch_size=1,
         ),
+        model_and_input_factory=model_utils.meta_llama_model_builder,
+        eval_factory=benchmark_function_db.meta_llama_eval_factory,
     )
     self.run_performance_benchmark_test(
         config, _META_LLAMA_3_2_8B_BENCHMARK_NAME
@@ -282,7 +307,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=8,
             custom_kwargs={"dist_strat": "ddp"},
         ),
-        grad_accumulation_steps=10,
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        train_factory=functools.partial(
+            benchmark_function_db.huggingface_llm_train_factory,
+            grad_accumulation_steps=10,
+        ),
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
 
@@ -312,7 +341,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             batch_size=16,
             custom_kwargs={"dist_strat": "fsdp"},
         ),
-        grad_accumulation_steps=10,
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        train_factory=functools.partial(
+            benchmark_function_db.huggingface_llm_train_factory,
+            grad_accumulation_steps=10,
+        ),
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
 
@@ -338,6 +371,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="timm/resnet50d",
             custom_kwargs={"input_shape": (16, 3, 224, 224)},
         ),
+        model_and_input_factory=model_utils.timm_model_builder,
+        eval_factory=benchmark_function_db.timm_eval_factory,
     )
     self.run_performance_benchmark_test(config, _TIMM_RESNET_50_BENCHMARK_NAME)
 
@@ -363,6 +398,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             model_name="timm/resnet50d",
             custom_kwargs={"input_shape": (16, 3, 224, 224)},
         ),
+        model_and_input_factory=model_utils.timm_model_builder,
+        train_factory=benchmark_function_db.simple_train_factory,
     )
     self.run_performance_benchmark_test(config, _TIMM_RESNET_50_BENCHMARK_NAME)
 
@@ -387,6 +424,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="Wan-AI/Wan2.2-TI2V-5B-Diffusers",
         ),
+        model_and_input_factory=model_utils.huggingface_diffuser_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
     )
     self.run_performance_benchmark_test(config, _WAN_2_2_TI2V_5B_BENCHMARK_NAME)
 
@@ -410,6 +449,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         is_training=True,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+        ),
+        model_and_input_factory=model_utils.huggingface_diffuser_model_builder,
+        train_factory=functools.partial(
+            benchmark_function_db.huggingface_diffuser_train_factory,
+            grad_accumulation_steps=4,
         ),
     )
     self.run_performance_benchmark_test(config, _WAN_2_2_TI2V_5B_BENCHMARK_NAME)
@@ -436,6 +480,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
             sequence_length=2048,
             batch_size=1,
         ),
+        model_and_input_factory=model_utils.qwen_ragged_moe_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
     )
     self.run_performance_benchmark_test(
         config, _HF_QWEN3_CODER_30B_RAGGED_MOE_BENCHMARK_NAME

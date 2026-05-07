@@ -61,10 +61,8 @@ torch_tpu_py_library(
     testonly = 1,
     srcs = ["performance_utils.py"],
     deps = [
-        ":benchmark_function_db",
         ":benchmark_utils",
         ":mlcompass_utils",
-        ":model_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",
         "//shims/torch",
@@ -136,7 +134,9 @@ torch_tpu_py_test(
         "requires-net:external",
     ],
     deps = [
+        ":benchmark_function_db",
         ":benchmark_utils",
+        ":model_utils",
         ":performance_utils",
         ":test_utils",
         "//shims/absl_py/testing:absltest",
@@ -165,7 +165,9 @@ torch_tpu_py_test(
         "requires-tpu-v7x",
     ],
     deps = [
+        ":benchmark_function_db",
         ":benchmark_utils",
+        ":model_utils",
         ":performance_utils",
         ":test_utils",
         "//shims/absl_py/testing:absltest",
@@ -290,8 +292,10 @@ torch_tpu_py_test(
         "requires-net:external",
     ],
     deps = [
+        ":benchmark_function_db",
         ":benchmark_utils",
         ":layer_configs",
+        ":model_utils",
         ":performance_utils",
         ":test_utils",
         "//shims/absl_py/testing:absltest",
@@ -340,8 +344,10 @@ torch_tpu_py_test(
         "requires-net:external",
     ],
     deps = [
+        ":benchmark_function_db",
         ":benchmark_utils",
         ":layer_configs",
+        ":model_utils",
         ":performance_utils",
         ":test_utils",
         "//shims/absl_py/testing:absltest",
@@ -372,8 +378,10 @@ torch_tpu_py_test(
         "requires-tpu-v7x",
     ],
     deps = [
+        ":benchmark_function_db",
         ":benchmark_utils",
         ":layer_configs",
+        ":model_utils",
         ":performance_utils",
         ":test_utils",
         "//shims/absl_py/testing:absltest",
@@ -405,7 +413,9 @@ torch_tpu_py_test(
         "requires-net:external",
     ],
     deps = [
+        ":benchmark_function_db",
         ":benchmark_utils",
+        ":model_utils",
         ":performance_utils",
         ":test_utils",
         "//shims/absl_py/testing:absltest",
@@ -437,7 +447,9 @@ torch_tpu_py_test(
         "requires-net:external",
     ],
     deps = [
+        ":benchmark_function_db",
         ":benchmark_utils",
+        ":model_utils",
         ":performance_utils",
         ":test_utils",
         "//shims/absl_py/testing:absltest",
@@ -452,10 +464,7 @@ torch_tpu_py_library(
     name = "benchmark_function_db",
     testonly = 1,
     srcs = ["benchmark_function_db.py"],
-    deps = [
-        "//shims/torch:pytorch",
-        "//torch_tpu/_internal/utils:device_utils",
-    ],
+    deps = ["//shims/torch:pytorch"],
 )
 
 torch_tpu_py_library(
@@ -466,7 +475,6 @@ torch_tpu_py_library(
         "//examples/deepseek",
         "//shims/torch:pytorch",
         "//tests:module_registry",
-        "//torch_tpu/_internal/utils:device_utils",
         "@pypi//diffusers",
         "@pypi//fairscale",
         "@pypi//llama_models",

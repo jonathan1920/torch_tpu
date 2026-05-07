@@ -408,13 +408,11 @@ def get_model_and_input(
     weights_dtype: torch.dtype,
 ):
   """Gets model and input, handling TorchAx setup."""
-  model_and_input = pt_performance_utils.get_model_and_input(
-      config.model_and_input_args,
-      config.benchmark_category,
-      cpu_device,
-      weights_dtype,
-      config.is_training,
-      use_torch_compile=False,
+  model_and_input = config.model_and_input_factory(
+      model_and_input_args=config.model_and_input_args,
+      device=cpu_device,
+      weights_dtype=weights_dtype,
+      is_training=config.is_training,
   )
 
   model = model_and_input.model
