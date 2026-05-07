@@ -17,7 +17,7 @@
 import os
 import sys
 import time
-from typing import Any, Dict
+from typing import Any, Dict, TypeAlias
 
 from absl import flags
 from absl import logging
@@ -34,6 +34,8 @@ import transformers
 
 from torch_tpu._internal.shims.xprof import traceme
 from rules_python.python.runfiles import runfiles
+
+EagerMode: TypeAlias = execution_mode.EagerMode
 
 log_utils.log_to_stderr()
 
@@ -66,14 +68,10 @@ _USE_TORCH_COMPILE = flags.DEFINE_bool(
     "Whether to use torch.compile to run the model.",
 )
 
-_EAGER_MODE = flags.DEFINE_enum(
+_EAGER_MODE = flags.DEFINE_enum_class(
     "eager_mode",
-    "DEFER_AND_FUSE",
-    [
-        "DEFER_AND_FUSE",
-        "DEFER_NEVER",
-        "DEFER_NEVER_AND_LAUNCH_BLOCKING",
-    ],
+    EagerMode.DEFER_AND_FUSE,
+    EagerMode,
     "Eager mode for the model.",
 )
 
@@ -103,17 +101,6 @@ flags.register_validator(
     lambda value: isinstance(value, int),
     message="--test_random_seed must be an integer to be used as a seed.",
 )
-
-
-def _get_eager_mode() -> execution_mode.EagerMode:
-  if _EAGER_MODE.value == "DEFER_AND_FUSE":
-    return execution_mode.EagerMode.DEFER_AND_FUSE
-  elif _EAGER_MODE.value == "DEFER_NEVER":
-    return execution_mode.EagerMode.DEFER_NEVER
-  elif _EAGER_MODE.value == "DEFER_NEVER_AND_LAUNCH_BLOCKING":
-    return execution_mode.EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING
-  else:
-    raise ValueError(f"Unsupported defer mode: {_EAGER_MODE.value}")
 
 
 def _get_torch_device() -> torch.device:
@@ -263,7 +250,7 @@ class GptOss120BRandomDataTrainingTest(absltest.TestCase):
     batch_size = _BATCH_SIZE.value
     seq_len = _SEQ_LEN.value
     device = _get_torch_device()
-    execution_mode.set_eager_mode(_get_eager_mode())
+    execution_mode.set_eager_mode(_EAGER_MODE.value)
 
     # Arrange
     model, config = _create_model_and_config(device)
