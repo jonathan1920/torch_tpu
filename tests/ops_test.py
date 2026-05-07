@@ -155,6 +155,10 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 1.5, "atol": 6.1e-2},
         torch.float16: {"rtol": 5.1e-1, "atol": 6.3e-2},
     },
+    "_foreach_lgamma": {
+        torch.bfloat16: {"rtol": 5e-2, "atol": 1e-2},
+        torch.float32: {"rtol": 1e-1, "atol": 1e-3},
+    },
     "_foreach_log": {
         torch.complex64: {"rtol": 5.8e-5, "atol": 1.1e-4},
         torch.float32: {"rtol": 2.5e-4, "atol": 9e-5},
@@ -197,6 +201,13 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     },
     "_foreach_norm": {
         torch.float64: {"rtol": 5e-8, "atol": 2.8e-7},
+    },
+    "_foreach_pow": {
+        torch.int8: {"rtol": 1, "atol": 1},
+        torch.int16: {"rtol": 1, "atol": 1},
+        torch.int32: {"rtol": 1, "atol": 1},
+        torch.int64: {"rtol": 1, "atol": 1},
+        torch.complex64: {"rtol": 1e-3, "atol": 1e-3},
     },
     "_foreach_reciprocal": {
         torch.float32: {"rtol": 1.2e-07, "atol": 1.6e-5},
@@ -2431,8 +2442,14 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_lgamma(self):
-    # TODO: enable when accuracy issues are resolved.
-    self.skipTest("_foreach_lgamma is not ready yet: accuracy issues.")
+    self.do_test_op(
+        "_foreach_lgamma",
+        # Too slow for float64.
+        exclude_dtypes=(torch.float64,),
+        exclude_inplace_dtypes=(torch.float64,),
+        check_value=CheckValueMode.LOOSE,
+        check_grad=False,
+    )
 
   def test_foreach_log(self):
     self.do_test_op(
@@ -2543,9 +2560,24 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_pow(self):
-    # TODO: fix _foreach_pow_() failing when exponent is bool dtype.
-    # pow(): boolean dtypes are not supported.
-    self.skipTest("_foreach_pow is not ready yet: dtype issues.")
+
+    def skip_if(device_type, variant, op_input):
+      _ = device_type  # Unused, suppress linter error
+      _ = variant  # Unused, suppress linter error
+      # TODO: fix TPU failure for bool exponent.
+      if len(op_input.args) >= 1 and isinstance(op_input.args[0], bool):
+        return "Skip exponent=bool as it has issues on TPU."
+      return None
+
+    self.do_test_op(
+        "_foreach_pow",
+        # TODO: fix TPU failure for these dtypes.
+        exclude_dtypes=(torch.bool, torch.int64, torch.complex64),
+        exclude_inplace_dtypes=(torch.bool, torch.int64, torch.complex64),
+        check_value=CheckValueMode.LOOSE,
+        check_grad=False,
+        skip_if=skip_if,
+    )
 
   def test_foreach_reciprocal(self):
     # TODO: fix accuracy failure (observed abs diff ~ 3.05e-5,

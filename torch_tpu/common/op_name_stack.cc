@@ -144,6 +144,8 @@ void OpNameStack::Push(OpName op_name) {
       OpName::kForeachLerp_List,
       OpName::kForeachLerp_Scalar,
       OpName::kForeachLerp_ScalarList,
+      OpName::kForeachLgamma,
+      OpName::kForeachLgamma_,
       OpName::kForeachLog10_,
       OpName::kForeachLog1p_,
       OpName::kForeachLog2_,
