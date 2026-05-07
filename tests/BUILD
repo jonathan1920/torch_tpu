@@ -599,6 +599,7 @@ torch_tpu_py_test(
     ],
 )
 
+# Collects error coverage stats without verifying the error messages.
 torch_tpu_py_test(
     name = "errors_test_cov",
     srcs = ["errors_test.py"],
@@ -610,7 +611,6 @@ torch_tpu_py_test(
         "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "1",
     },
     main = "errors_test.py",
-    notap = "TODO(wan): Re-enable after the March 2026 TorchTPU release.",
     notest_oss = "Intended not to run this slow test in OSS. It's low value to test the error messages in both OSS and internal builds.",
     shard_count = 4,
     tags = [
@@ -631,6 +631,7 @@ torch_tpu_py_test(
     ],
 )
 
+# Collects error coverage stats without verifying the error messages.
 torch_tpu_py_test(
     name = "tpu_errors_test_cov",
     srcs = ["tpu_errors_test.py"],
@@ -642,7 +643,6 @@ torch_tpu_py_test(
         "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS": "1",
     },
     main = "tpu_errors_test.py",
-    notap = "TODO(wan): Enable after the error coverage is decently high.",
     notest_oss = "Intended not to run this slow test in OSS.",
     shard_count = 4,
     tags = [

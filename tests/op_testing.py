@@ -1854,8 +1854,6 @@ class TorchTpuTestBase(TestCase):
         print_reproducer(subtest_name, op, golden_input, variant)
       print_op_input(torch_tpu_printable_input, data=_PRINT_OP_INPUTS.value > 1)
 
-    # TODO(wan): measure compilation time and execution time separately
-    # in the perf mode.
     opt_level = _OPT_LEVEL.value
     if opt_level:
       compiler_options = {"xla_optimization_level": opt_level}

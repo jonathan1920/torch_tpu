@@ -35,10 +35,12 @@ TEST_MODE = flags.DEFINE_string(
     help=(
         "Mode of the test. Valid options are 'tpu' (verify the error messages"
         " on TPU), 'cpu' (verify the error messages on CPU), and 'cov' (measure"
-        " the error message coverage on TPU). Note that the 'cov' mode does"
-        " NOT verify the correctness of the error messages (it only collects"
-        " the coverage stats). Therefore running the test in the 'tpu' mode "
-        " is still necessary."
+        " the error message coverage on TPU). Note that the 'cov' mode does NOT"
+        " verify the correctness of the error messages (it only collects and"
+        " prints the coverage stats). A cov-mode test only fails when the"
+        " tested code fails to raise an exception or raises an exception of an"
+        " unexpected type. Therefore running the test in the 'tpu' mode  is"
+        " still necessary."
     ),
 )
 
