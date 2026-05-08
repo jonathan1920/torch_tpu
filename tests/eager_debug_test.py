@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import TypeAlias
 from absl.testing import absltest
 import torch
 from torch_tpu._internal import execution_mode
+
+EagerMode: TypeAlias = execution_mode.EagerMode
 
 
 class EagerDebugTest(absltest.TestCase):
@@ -23,9 +26,7 @@ class EagerDebugTest(absltest.TestCase):
   def test_failing_op_raises_in_correct_location(self):
     """Test that failing ops are not deferred."""
     # Act
-    execution_mode.set_eager_mode(
-        execution_mode.EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING
-    )
+    execution_mode.eager_mode = EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING
 
     # Arrange
     a = torch.rand((1_000_000_000, 1), device="tpu")

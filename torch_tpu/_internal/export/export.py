@@ -19,7 +19,7 @@ import contextlib
 import copy
 import dataclasses
 import functools
-from typing import Any
+from typing import Any, TypeAlias
 
 from absl import logging
 import torch
@@ -27,6 +27,8 @@ import torch.export
 import torch.utils._pytree as pytree
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.compile import tpu_torch_compile
+
+EagerMode: TypeAlias = execution_mode.EagerMode
 
 __all__ = [
     "ExportedMlir",
@@ -383,7 +385,7 @@ def fx_to_mlir(
 
   This function traces the given FX graph module by running it with an
   EagerLikeFxInterpreter in full defer mode
-  (`execution_mode.EagerMode.DEFER_ALL`).
+  (`EagerMode.DEFER_ALL`).
   The
   resulting deferred graph is then converted to MLIR bytes.
 
@@ -425,7 +427,7 @@ def fx_to_mlir(
     argument_tensors.append(begin_state_tensor)
 
   try:
-    with execution_mode.eager_mode(execution_mode.EagerMode.INTERNAL_DEFER_ALL):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
       # We clone the args so that inplace updates do not overwrite the
       # placeholder args. These copies will be removed in the compiled code so
       # there is no performance impact.

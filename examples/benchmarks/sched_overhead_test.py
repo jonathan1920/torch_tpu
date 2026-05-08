@@ -17,6 +17,7 @@
 from collections.abc import Sequence
 import sys
 import time
+from typing import TypeAlias
 
 from absl import flags
 from absl import logging
@@ -32,6 +33,7 @@ from torch_tpu._internal.utils import log_utils
 from torch_tpu._internal.shims.xprof import traceme
 from torch_tpu._internal.shims.xprof import xprof_session
 
+EagerMode: TypeAlias = execution_mode.EagerMode
 
 log_utils.log_to_stderr()
 
@@ -167,7 +169,7 @@ class SchedOverheadTest(parameterized.TestCase):
   @parameterized.parameters((1), (16), (1024))
   def test_execute_queueing_overhead_benchmark(self, num_outputs):
     device = get_torch_device()
-    with execution_mode.eager_mode(execution_mode.EagerMode.INTERNAL_DEFER_ALL):
+    with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
       x = torch.ones(10, device="cpu").to(device=device)
       y = torch.ones(10, device="cpu").to(device=device)
       z = x + y

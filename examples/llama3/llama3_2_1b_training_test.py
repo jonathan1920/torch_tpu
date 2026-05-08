@@ -15,13 +15,13 @@
 # %%
 """Tests of Llama3 1B training based on llama3_1B_training_nb.py."""
 
-from absl import logging
 import os
 import sys
 import time
-from typing import Any, Dict
+from typing import Any, Dict, TypeAlias
 
 from absl import flags
+from absl import logging
 from absl.testing import absltest
 import datasets
 from etils import epath
@@ -31,15 +31,14 @@ from torch.utils import tensorboard
 from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.utils import benchmarking
+from torch_tpu._internal.utils import log_utils
 from examples import paths
 import tqdm
 import transformers
 
 from torch_tpu._internal.shims.xprof import traceme
 
-
-from torch_tpu._internal.utils import log_utils
-
+EagerMode: TypeAlias = execution_mode.EagerMode
 log_utils.log_to_stderr()
 
 
@@ -99,13 +98,13 @@ def get_torch_device() -> torch.device:
 
 
 # %%
-def get_eager_mode() -> execution_mode.EagerMode:
+def get_eager_mode() -> EagerMode:
   if _EAGER_MODE.value == "DEFER_AND_FUSE":
-    return execution_mode.EagerMode.DEFER_AND_FUSE
+    return EagerMode.DEFER_AND_FUSE
   elif _EAGER_MODE.value == "DEFER_NEVER":
-    return execution_mode.EagerMode.DEFER_NEVER
+    return EagerMode.DEFER_NEVER
   elif _EAGER_MODE.value == "DEFER_NEVER_AND_LAUNCH_BLOCKING":
-    return execution_mode.EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING
+    return EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING
   else:
     raise ValueError(f"Unsupported defer mode: {_EAGER_MODE.value}")
 
@@ -437,7 +436,7 @@ class Llama31BTrainingTest(absltest.TestCase):
 
     # Set defer mode for torch_tpu
     if _DEVICE.value in ("tpu", "xla_cuda"):
-      execution_mode.set_eager_mode(get_eager_mode())
+      execution_mode.eager_mode = get_eager_mode()
 
     # Initialize model
     self.model = transformers.AutoModelForCausalLM.from_pretrained(
