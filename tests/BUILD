@@ -247,7 +247,15 @@ torch_tpu_py_test(
     ],
 )
 
-# TODO: Document how to update the perf data in OSS.
+# This target measures the compilation time for each op.
+#
+# TODO: Document how to update the perf data in OSS. > op_perf.txt
+#
+# To debug the compilation performance of a specific op (e.g. grid_sample)
+# and dtype (e.g. float32):
+#   1. blaze test //tests:ops_test_perf -c opt --test_sharding_strategy=disabled --test_arg=TestOps.test_grid_sample --test_arg=--dtypes=float32
+#   2. Search for "module @" in the test log to find the SHLOs corresponding to
+#      the op invocations.
 torch_tpu_py_test(
     name = "ops_test_perf",
     timeout = "long",  # 15 minutes. The test finishes in ~5 minutes, which is the default limit.
@@ -258,9 +266,6 @@ torch_tpu_py_test(
         "--max_samples_per_op_dtype=10",
         "--print_op_inputs=2",
         "--test_mode=perf",
-        # Needed to fix flag 'vmodule' parsing error when using C++ flag in Python with Bazel.
-        "--undefok=vmodule",
-        "--vmodule=compilation_cache=3",  # Log SHLO strings.
         # go/keep-sorted end
     ],
     main = "ops_test.py",

@@ -2446,6 +2446,8 @@ def set_up_test_module() -> None:
       # for compiling the same op repeatedly.
       torch_tpu_module = getattr(torch, "tpu")
       torch_tpu_module._set_allow_cache(False)  # pylint: disable=protected-access
+      # Dump the SHLO module for each compilation.
+      torch_tpu_module._set_dump_on_cache_miss(True)  # pylint: disable=protected-access
       # Run an op to warm up the XLA compiler, so that we can measure
       # the compilation time of ops fairly in the inividual tests.
       torch.ones(1, dtype=torch.float32, device="tpu").to("cpu")

@@ -2675,7 +2675,7 @@ class TestOps(TorchTpuTestBase):
   def test_gt(self):
     self.do_test_op("gt")
 
-  def test_grid_sampler(self):
+  def test_grid_sample(self):
     self.do_test_op(
         "nn.functional.grid_sample",
         # TODO: fix the error aten::grid_sampler_2d_backward is unimplemented.
