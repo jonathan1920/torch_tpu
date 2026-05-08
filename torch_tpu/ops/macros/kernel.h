@@ -17,9 +17,11 @@
 #ifndef TORCH_TPU_OPS_MACROS_KERNEL_H_
 #define TORCH_TPU_OPS_MACROS_KERNEL_H_
 
+#include <cstddef>
 #include <optional>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -72,57 +74,51 @@
 //     error to happen before the kernel has a chance to call GetTensor() on
 //     some or all of the PromotedScalar arguments.
 
-#define TT_KERNEL(op_name, param_keys, args, ...)                              \
-  do {                                                                         \
-    ::torch_tpu::internal::ScopedOpName _scoped_op_name(op_name);              \
-    TT_CHECK_AND_LOG_KERNEL_ARGS_(op_name, TT_REMOVE_PARENS_(args));           \
-    TT_IF_DEBUG(                                                               \
-        std::vector<const ::torch_tpu::PromotedScalar::State* absl_nonnull>    \
-            _promoted_scalars;                                                 \
-        TT_COLLECT_PROMOTED_SCALAR_POINTERS_(_promoted_scalars,                \
-                                             TT_REMOVE_PARENS_(args));         \
-        bool _kernel_threw = false;)                                           \
-    ::torch_tpu::ScopedPythonContextCapturer _capturer(op_name);               \
-    if constexpr (std::string_view(#param_keys) == "_") {                      \
-      constexpr bool _param_types_ok =                                         \
-          std::string_view(#param_keys) != "_" ||                              \
-          !decltype(::torch_tpu::internal::ShouldIncludeSomeInCacheKey         \
-                        args)::value;                                          \
-      static_assert(_param_types_ok,                                           \
-                    "TT_KERNEL() argument list contains an argument that "     \
-                    "should normally be included in parameter cache keys. If " \
-                    "you are sure that you want to exclude it from cache key " \
-                    "computation, wrap it in IgnoreInCacheKey().");            \
-      /* Use InvalidOpParamCacheKeys as the type of _, to prevent using it in  \
-       * ...                                                                   \
-       */                                                                      \
-      ::torch_tpu::internal::InvalidOpParamCacheKeys param_keys;               \
-      try {                                                                    \
-        __VA_ARGS__;                                                           \
-      } catch (const ::torch_tpu::TtError& e) {                                \
-        TT_IF_DEBUG(_kernel_threw = true;)                                     \
-        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                           \
-      } catch (...) {                                                          \
-        TT_IF_DEBUG(_kernel_threw = true;)                                     \
-        throw; /* throw needed for implementing TT_KERNEL. */                  \
-      }                                                                        \
-    } else {                                                                   \
-      TT_ASSIGN_OR_THROW(/* ERROR_COV_INFEASIBLE=in macro definition. */       \
-                         ::torch_tpu::OpParamCacheKeys param_keys,             \
-                         TT_MAKE_OP_PARAM_CACHE_KEYS_NO_ENFORCE_ args);        \
-      try {                                                                    \
-        __VA_ARGS__;                                                           \
-      } catch (const ::torch_tpu::TtError& e) {                                \
-        TT_IF_DEBUG(_kernel_threw = true;)                                     \
-        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                           \
-      } catch (...) {                                                          \
-        TT_IF_DEBUG(_kernel_threw = true;)                                     \
-        throw; /* throw needed for implementing TT_KERNEL. */                  \
-      }                                                                        \
-    }                                                                          \
-    TT_IF_DEBUG(if (!_kernel_threw) {                                          \
-      ::torch_tpu::internal::CheckTensorsUsed(_promoted_scalars);              \
-    })                                                                         \
+#define TT_KERNEL(op_name, param_keys, args, ...)                             \
+  do {                                                                        \
+    ::torch_tpu::internal::ScopedOpName _scoped_op_name(op_name);             \
+    TT_CHECK_AND_LOG_KERNEL_ARGS_(op_name, TT_REMOVE_PARENS_(args));          \
+    TT_IF_DEBUG(                                                              \
+        std::vector<const ::torch_tpu::PromotedScalar::State* absl_nonnull>   \
+            _promoted_scalars;                                                \
+        TT_COLLECT_PROMOTED_SCALAR_POINTERS_(_promoted_scalars,               \
+                                             TT_REMOVE_PARENS_(args));        \
+        bool _kernel_threw = false;)                                          \
+    ::torch_tpu::ScopedPythonContextCapturer _capturer(op_name);              \
+    if constexpr (std::string_view(#param_keys) == "_") {                     \
+      ::torch_tpu::internal::ConditionalStaticAssert<                         \
+          std::string_view(#param_keys) == "_",                               \
+          decltype(::torch_tpu::internal::NoArgAffectsCacheKey args)>();      \
+      /* Use InvalidOpParamCacheKeys as the type of _, to prevent using it in \
+       * ...                                                                  \
+       */                                                                     \
+      ::torch_tpu::internal::InvalidOpParamCacheKeys param_keys;              \
+      try {                                                                   \
+        __VA_ARGS__;                                                          \
+      } catch (const ::torch_tpu::TtError& e) {                               \
+        TT_IF_DEBUG(_kernel_threw = true;)                                    \
+        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                          \
+      } catch (...) {                                                         \
+        TT_IF_DEBUG(_kernel_threw = true;)                                    \
+        throw; /* throw needed for implementing TT_KERNEL. */                 \
+      }                                                                       \
+    } else {                                                                  \
+      TT_ASSIGN_OR_THROW(/* ERROR_COV_INFEASIBLE=in macro definition. */      \
+                         ::torch_tpu::OpParamCacheKeys param_keys,            \
+                         TT_MAKE_OP_PARAM_CACHE_KEYS_NO_ENFORCE_ args);       \
+      try {                                                                   \
+        __VA_ARGS__;                                                          \
+      } catch (const ::torch_tpu::TtError& e) {                               \
+        TT_IF_DEBUG(_kernel_threw = true;)                                    \
+        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                          \
+      } catch (...) {                                                         \
+        TT_IF_DEBUG(_kernel_threw = true;)                                    \
+        throw; /* throw needed for implementing TT_KERNEL. */                 \
+      }                                                                       \
+    }                                                                         \
+    TT_IF_DEBUG(if (!_kernel_threw) {                                         \
+      ::torch_tpu::internal::CheckTensorsUsed(_promoted_scalars);             \
+    })                                                                        \
   } while (false)
 
 // Collects pointers to all PromotedScalar-typed arguments into the given
@@ -263,6 +259,89 @@ class InvalidOpParamCacheKeys {
 template <typename... Ts>
 std::bool_constant<(... || IncludeInCacheKey<Ts>())>
 ShouldIncludeSomeInCacheKey(const Ts&...);
+
+// Checks if an argument should be ignored in the cache key.
+// If not, it triggers a static_assert with the index of the argument.
+template <size_t kParamIndex, typename ParamType>
+struct ArgDoesNotAffectCacheKey {
+  static constexpr bool value = !IncludeInCacheKey<ParamType>();
+  static_assert(
+      value,
+      "You are using _ for the name of the parameter cache keys "
+      "variable in TT_KERNEL(), which causes the parameter cache key "
+      "computation to be skipped. However, the TT_KERNEL() argument "
+      "list contains one or more arguments that should normally be "
+      "included in parameter cache keys. If you indeed want to exclude "
+      "them from cache key computation, wrap them in IgnoreInCacheKey() "
+      "with a string explaining why. Otherwise, rename _ to param_keys and use "
+      "it in DispatchOp().");
+};
+
+// Checks if all arguments in a pack should be ignored in the cache key.
+//
+// How it works:
+// - It takes a pack of types `Ts...`.
+// - It uses a C++20 lambda with an explicit template parameter pack
+//   `<size_t... Is>` to deduce the indices from `std::index_sequence`.
+// - The lambda creates an index sequence of the same size as `Ts...`.
+// - It then uses a fold expression
+//   `(ArgDoesNotAffectCacheKey<Is, Ts>::value && ...)`
+//   to instantiate `ArgDoesNotAffectCacheKey` for each argument,
+//   passing its index and type.
+// - This triggers the `static_assert` inside `ArgDoesNotAffectCacheKey`
+//   for any argument that should not be ignored.
+template <typename... Ts>
+struct NoArgAffectsCacheKey {
+  explicit NoArgAffectsCacheKey(const Ts&...) {}
+
+  static constexpr bool value = []<size_t... Is>(std::index_sequence<Is...>) {
+    return (ArgDoesNotAffectCacheKey<Is, Ts>::value && ...);
+  }(std::make_index_sequence<sizeof...(Ts)>{});
+};
+
+// Deduction guide for NoArgAffectsCacheKey.
+//
+// Why it's necessary:
+// In TT_KERNEL, we use CTAD (Class Template Argument Deduction) to deduce the
+// template arguments of NoArgAffectsCacheKey from the values passed to it:
+//   decltype(::torch_tpu::internal::NoArgAffectsCacheKey args)
+//
+// While C++20 can often deduce this automatically from the constructor,
+// clang warns with -Wctad-maybe-unsupported that the struct may not intend
+// to support CTAD unless an explicit deduction guide is provided. This guide
+// suppresses that warning by explicitly stating that CTAD is intended.
+//
+// How it works:
+// It tells the compiler that when it sees `NoArgAffectsCacheKey` constructed
+// with arguments of types `Ts...`, it should deduce the template instance as
+// `NoArgAffectsCacheKey<Ts...>`.
+template <typename... Ts>
+NoArgAffectsCacheKey(const Ts&...) -> NoArgAffectsCacheKey<Ts...>;
+
+// ConditionalStaticAssert() is a helper to trigger a static_assert inside a
+// template only when a condition is true.
+//
+// This is useful when we want to perform a compile-time check in a non-template
+// context (e.g. inside a non-template function) based on a macro parameter,
+// but we want to avoid triggering template instantiation errors when the check
+// should be skipped.
+//
+// How it works:
+// - It takes a boolean kCondition and a type EvalStaticAssert.
+// - EvalStaticAssert is expected to be a template instantiation that has a
+//   `value` member, and evaluating that `value` triggers a static_assert if it
+//   fails.
+// - If kCondition is true, it accesses `EvalStaticAssert::value`, forcing the
+//   compiler to instantiate EvalStaticAssert and thus trigger the static_assert
+//   inside EvalStaticAssert.
+// - If kCondition is false, it does nothing, and EvalStaticAssert is not
+//   instantiated in a way that triggers its internal static_asserts.
+template <bool kCondition, typename EvalStaticAssert>
+constexpr void ConditionalStaticAssert() {
+  if constexpr (kCondition) {
+    static_cast<void>(EvalStaticAssert::value);
+  }
+}
 
 }  // namespace internal
 }  // namespace torch_tpu
