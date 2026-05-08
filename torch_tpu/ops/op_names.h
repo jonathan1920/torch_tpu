@@ -140,6 +140,8 @@ enum class OpName {
   kDistributedAllToAllSingle,
   kDistributedBarrier,
   kDistributedBroadcast,
+  kDistributedExperimentalRecv,
+  kDistributedExperimentalSend,
   kDistributedGather,
   kDistributedReduceScatter,
   kDistributedReduceScatterTensor,
@@ -170,8 +172,6 @@ enum class OpName {
   kErfOut,
   kExpM1Out,
   kExpOut,
-  kExperimentalRecv,
-  kExperimentalSend,
   kExponential_,
   kEyeMOut,
   kEyeOut,
@@ -665,6 +665,9 @@ inline std::ostream& operator<<(std::ostream& os, const OpName op_name) {
     case OpName::kDistributedAllToAllSingle:
     case OpName::kDistributedBarrier:
     case OpName::kDistributedBroadcast:
+    case OpName::kDistributedExperimentalRecv:
+    case OpName::kDistributedExperimentalSend:
+    case OpName::kDistributedGather:
     case OpName::kDistributedReduceScatter:
     case OpName::kDistributedReduceScatterTensor:
     case OpName::kDistributedReduceScatterTensorCoalesced:

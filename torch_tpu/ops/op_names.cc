@@ -258,6 +258,10 @@ std::string_view ToString(OpName op_name) {
       return "distributed.barrier";
     case OpName::kDistributedBroadcast:
       return "distributed.broadcast";
+    case OpName::kDistributedExperimentalRecv:
+      return "experimental_recv";
+    case OpName::kDistributedExperimentalSend:
+      return "experimental_send";
     case OpName::kDistributedGather:
       return "distributed.gather";
     case OpName::kDistributedReduceScatter:
@@ -318,10 +322,6 @@ std::string_view ToString(OpName op_name) {
       return "expm1.out";
     case OpName::kExpOut:
       return "exp.out";
-    case OpName::kExperimentalRecv:
-      return "experimental_recv";
-    case OpName::kExperimentalSend:
-      return "experimental_send";
     case OpName::kExponential_:
       return "exponential_";
     case OpName::kEyeMOut:

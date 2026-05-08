@@ -61,7 +61,7 @@ absl::StatusOr<ProcessGroupTpu*> GetProcessGroupTpu() {
 
 c10::IValue TorchTpuExperimentalSend(at::ITensorListRef tensors, int64_t dst,
                                      int64_t tag) {
-  TT_KERNEL(OpName::kExperimentalSend, _,
+  TT_KERNEL(OpName::kDistributedExperimentalSend, _,
             (tensors, IgnoreInCacheKey(dst, "no op being dispatched"),
              IgnoreInCacheKey(tag, "no op being dispatched")),
             {
@@ -76,7 +76,7 @@ c10::IValue TorchTpuExperimentalSend(at::ITensorListRef tensors, int64_t dst,
 
 c10::IValue TorchTpuExperimentalRecv(at::ITensorListRef tensors, int64_t src,
                                      int64_t tag) {
-  TT_KERNEL(OpName::kExperimentalRecv, _,
+  TT_KERNEL(OpName::kDistributedExperimentalRecv, _,
             (tensors, IgnoreInCacheKey(src, "no op being dispatched"),
              IgnoreInCacheKey(tag, "no op being dispatched")),
             {

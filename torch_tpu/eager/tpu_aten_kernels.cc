@@ -851,6 +851,8 @@ TORCH_LIBRARY_IMPL(torch_tpu, Meta, m) {
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
+  Impl(m, OpName::kDistributedExperimentalSend, TorchTpuExperimentalSend);
+  Impl(m, OpName::kDistributedExperimentalRecv, TorchTpuExperimentalRecv);
   Impl(m, OpName::kMaxPool2d, TpuMaxPool2d);
   Impl(m, OpName::kMaxPool2dBackward, TpuMaxPool2dBackward);
   Impl(m, OpName::kRaggedDot, AtenRaggedDot);
@@ -858,8 +860,6 @@ TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
   Impl(m, OpName::kTorchTpuOptimizationBarrier, TorchTpuOptimizationBarrier);
   Impl(m, OpName::kTorchTpuStatelessDropout, TorchTpuStatelessDropout);
   Impl(m, OpName::kSetDimensionLogicalSize, SetDimensionLogicalSize);
-  Impl(m, OpName::kExperimentalSend, TorchTpuExperimentalSend);
-  Impl(m, OpName::kExperimentalRecv, TorchTpuExperimentalRecv);
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, CPU, m) {
