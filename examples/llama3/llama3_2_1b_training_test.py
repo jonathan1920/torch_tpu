@@ -15,13 +15,13 @@
 # %%
 """Tests of Llama3 1B training based on llama3_1B_training_nb.py."""
 
+from absl import logging
 import os
 import sys
 import time
-from typing import Any, Dict, TypeAlias
+from typing import Any, Dict
 
 from absl import flags
-from absl import logging
 from absl.testing import absltest
 import datasets
 from etils import epath
@@ -31,14 +31,14 @@ from torch.utils import tensorboard
 from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal.utils import benchmarking
-from torch_tpu._internal.utils import log_utils
 from examples import paths
 import tqdm
 import transformers
 
 from torch_tpu._internal.shims.xprof import traceme
 
-EagerMode: TypeAlias = execution_mode.EagerMode
+
+from torch_tpu._internal.utils import log_utils
 
 log_utils.log_to_stderr()
 
@@ -52,10 +52,14 @@ _DEVICE = flags.DEFINE_enum(
     help="Accelerator to test.",
 )
 
-_EAGER_MODE = flags.DEFINE_enum_class(
+_EAGER_MODE = flags.DEFINE_enum(
     "eager_mode",
-    EagerMode.DEFER_AND_FUSE,
-    EagerMode,
+    "DEFER_AND_FUSE",
+    [
+        "DEFER_AND_FUSE",
+        "DEFER_NEVER",
+        "DEFER_NEVER_AND_LAUNCH_BLOCKING",
+    ],
     "Eager mode for the model.",
 )
 
@@ -92,6 +96,18 @@ def get_torch_device() -> torch.device:
     return torch.device("xla_cuda")
   else:
     raise ValueError(f"Unsupported device: {_DEVICE.value}")
+
+
+# %%
+def get_eager_mode() -> execution_mode.EagerMode:
+  if _EAGER_MODE.value == "DEFER_AND_FUSE":
+    return execution_mode.EagerMode.DEFER_AND_FUSE
+  elif _EAGER_MODE.value == "DEFER_NEVER":
+    return execution_mode.EagerMode.DEFER_NEVER
+  elif _EAGER_MODE.value == "DEFER_NEVER_AND_LAUNCH_BLOCKING":
+    return execution_mode.EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING
+  else:
+    raise ValueError(f"Unsupported defer mode: {_EAGER_MODE.value}")
 
 
 # %%
@@ -421,7 +437,7 @@ class Llama31BTrainingTest(absltest.TestCase):
 
     # Set defer mode for torch_tpu
     if _DEVICE.value in ("tpu", "xla_cuda"):
-      execution_mode.set_eager_mode(_EAGER_MODE.value)
+      execution_mode.set_eager_mode(get_eager_mode())
 
     # Initialize model
     self.model = transformers.AutoModelForCausalLM.from_pretrained(
