@@ -5061,6 +5061,18 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(test_broadcasting_fn)
 
+  def test_assert_async_stub(self):
+    """Tests _assert_async and _assert_async.msg as no-ops."""
+    device = torch.device("tpu")
+    true_cond = torch.tensor(True, device=device)
+    false_cond = torch.tensor(False, device=device)
+
+    # Should not fail regardless of condition value.
+    torch.ops.aten._assert_async(true_cond)
+    torch.ops.aten._assert_async(false_cond)
+    torch.ops.aten._assert_async.msg(true_cond, "should not fail")
+    torch.ops.aten._assert_async.msg(false_cond, "intended failure but no-op")
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""

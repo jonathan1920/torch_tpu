@@ -68,6 +68,8 @@ enum class OpName {
   kAsStridedInverse,
   kAsinOut,
   kAsinhOut,
+  kAssertAsync,
+  kAssertAsyncMsg,
   kAtan2Out,
   kAtanOut,
   kAtanhOut,

@@ -114,6 +114,10 @@ std::string_view ToString(OpName op_name) {
       return "asin.out";
     case OpName::kAsinhOut:
       return "asinh.out";
+    case OpName::kAssertAsync:
+      return "_assert_async";
+    case OpName::kAssertAsyncMsg:
+      return "_assert_async.msg";
     case OpName::kAtan2Out:
       return "atan2.out";
     case OpName::kAtanOut:

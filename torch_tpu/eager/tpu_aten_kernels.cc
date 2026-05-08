@@ -42,6 +42,7 @@
 #include "torch_tpu/ops/all_any/all_any_aten_kernels.h"
 #include "torch_tpu/ops/arange/arange_aten_kernels.h"
 #include "torch_tpu/ops/as_strided/as_strided_aten_kernels.h"
+#include "torch_tpu/ops/assertion_aten_kernels.h"
 #include "torch_tpu/ops/baddbmm/baddbmm_aten_kernels.h"
 #include "torch_tpu/ops/bernoulli/bernoulli_aten_kernels.h"
 #include "torch_tpu/ops/binary_aten_kernels.h"  // IWYU pragma: keep for AtenMulTensor, etc
@@ -217,6 +218,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kAsStrided, AtenAsStrided);
   Impl(m, OpName::kAsinOut, AtenAsinOut);
   Impl(m, OpName::kAsinhOut, AtenAsinhOut);
+  Impl(m, OpName::kAssertAsync, AtenAssertAsync);
+  Impl(m, OpName::kAssertAsyncMsg, AtenAssertAsyncMsg);
   Impl(m, OpName::kAtan2Out, AtenAtan2Out);
   Impl(m, OpName::kAtanOut, AtenAtanOut);
   Impl(m, OpName::kAtanhOut, AtenAtanhOut);

@@ -548,6 +548,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:error_utils",
         # Ensure that both TORCH_LIBRARY_IMPL values get built together always.
         ":amp_policies",  # buildcleaner: keep
+        "//torch_tpu/ops:assertion_aten_kernels",
         "//torch_tpu/ops:binary_aten_kernels",
         "//torch_tpu/ops:foreach_aten_kernels",
         "//torch_tpu/ops:nullary_aten_kernels",

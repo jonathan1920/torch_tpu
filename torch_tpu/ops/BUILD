@@ -278,6 +278,25 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "assertion_aten_kernels",
+    srcs = ["assertion_aten_kernels.cc"],
+    hdrs = ["assertion_aten_kernels.h"],
+    deps = [
+        ":op_builder_utils",
+        ":op_names",
+        "//shims/torch:aten_headers",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/eager:op_dispatcher",
+        "//torch_tpu/ops/macros:kernel",
+        "@com_google_absl//absl/log",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "binary",
     srcs = ["binary.cc"],
     hdrs = ["binary.h"],
