@@ -445,7 +445,10 @@ class JaxCallable:
     self.mesh = mesh
     self.input_partition_specs = input_partition_specs
     self.static_argnums = static_argnums
-    self.exported = jax.export.export(jit_fn, platforms=["tpu"])
+    # Ignore forward compatibility as we are directly using the exported
+    # StableHLO, without this flag we can be missing the latest optimisations.
+    with jax._src.config.export_ignore_forward_compatibility(True):
+      self.exported = jax.export.export(jit_fn, platforms=["tpu"])
     if input_output_aliases is not None:
       warnings.warn(
           "input_output_aliases is deprecated and will be removed soon. Please"
