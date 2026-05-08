@@ -61,8 +61,6 @@ inline constexpr char kTmpdirEnvVar[] = "TMPDIR";
 // https://docs.pytorch.org/docs/stable/debugging_environment_variables.html#pytorch-debug-environment-variables
 inline constexpr char kTorchShowCppStacktracesEnvVar[] =
     "TORCH_SHOW_CPP_STACKTRACES";
-// If set, enables structured logging for tlparse.
-inline constexpr char kTorchTraceEnvVar[] = "TORCH_TRACE";
 // Specifies the repeated op detection mode. If not set, "safe" mode is used.
 // Supported modes:
 // - "safe": Uses MaterializationMode::kSplitGraph when a repeated sequence is
@@ -102,6 +100,8 @@ inline constexpr char kTorchTpuInternalTier3CompilationCacheRootEnvVar[] =
 // ...".
 inline constexpr char kTorchTpuInternalXlaOptionsEnvVar[] =
     "TORCH_TPU_INTERNAL_XLA_OPTIONS";
+// If set, enables structured logging for tlparse.
+inline constexpr char kTorchTraceEnvVar[] = "TORCH_TRACE";
 inline constexpr char kTpuChipsPerHostBoundsEnvVar[] =
     "TPU_CHIPS_PER_HOST_BOUNDS";  // Read by Google Cloud.
 inline constexpr char kTpuDeferAndFuse[] =
@@ -114,7 +114,8 @@ inline constexpr char kTpuLaunchBlocking[] =
                             // EagerMode::kDeferNeverAndLaunchBlocking by
                             // default.
 inline constexpr char kTpuPremappedBufferSizeEnvVar[] =
-    "TPU_PREMAPPED_BUFFER_SIZE";  // Read when initializing the pjrt runtime.
+    "TPU_PREMAPPED_BUFFER_SIZE";  // Premapped buffer size in bytes for PjRt
+                                  // client.
 inline constexpr char kTpuProcessAddressesEnvVar[] =
     "TPU_PROCESS_ADDRESSES";  // Set by Google Cloud.
 inline constexpr char kTpuProcessPortEnvVar[] =
