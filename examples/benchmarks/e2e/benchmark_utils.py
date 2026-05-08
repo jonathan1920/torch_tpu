@@ -444,11 +444,14 @@ def _warmup_run(
   num_warmup_steps = None
   device_name = _get_device_name(device)
 
+  is_sequence = isinstance(example_inputs, list) and len(example_inputs) > 0
+
   with XprofContext("warmup_run", enable_xprof) as warmup_run_context:
     for step in range(MAX_WARMUP_STEPS.value):
       with traceme.TraceMe("Warmup", step_num=step):
+        step_input = example_inputs[step] if is_sequence else example_inputs
         start_time = time.perf_counter()
-        out = benchmark_function(model, example_inputs, optimizer)
+        out = benchmark_function(model, step_input, optimizer)
         device_utils.synchronize(device_name, out)
         if sync_params:
           for p in model.parameters():
@@ -517,13 +520,16 @@ def _post_warmup_run(
   num_cache_misses = None
   device_name = _get_device_name(device)
 
+  is_sequence = isinstance(example_inputs, list) and len(example_inputs) > 0
+
   # TODO(bbahl): Calculate the number of post warmup steps based on timing
   # information.
   with XprofContext("post_warmup_run", enable_xprof) as xprof_context:
     for step in range(POST_WARMUP_STEPS.value):
       with traceme.TraceMe("Eval", step_num=step):
+        step_input = example_inputs[step] if is_sequence else example_inputs
         start_time = time.perf_counter()
-        out = benchmark_function(model, example_inputs, optimizer)
+        out = benchmark_function(model, step_input, optimizer)
         device_utils.synchronize(device_name, out)
         if sync_params:
           for p in model.parameters():
@@ -532,16 +538,19 @@ def _post_warmup_run(
         timings[step] = time.perf_counter() - start_time
 
       # Assert that the cache misses are consistent across steps.
-      step_cache_misses = device_utils.cache_miss_count(device_name)
-      if num_cache_misses is None:
-        num_cache_misses = step_cache_misses
-      if step_cache_misses != num_cache_misses:
-        raise RuntimeError(
-            "Cache misses are not consistent across steps; expected"
-            f" {num_cache_misses}, got {step_cache_misses}. This means that the"
-            f" model is not fully warmed up after {MAX_WARMUP_STEPS.value}"
-            " warmup steps. Consider increasing the number of warmup steps."
-        )
+      if not is_sequence:
+        # TODO(unda): Re-introduce a version of this check for bounded dynamism.
+        step_cache_misses = device_utils.cache_miss_count(device_name)
+        if num_cache_misses is None:
+          num_cache_misses = step_cache_misses
+        if step_cache_misses != num_cache_misses:
+          raise RuntimeError(
+              "Cache misses are not consistent across steps; expected"
+              f" {num_cache_misses}, got {step_cache_misses}. This means that"
+              " the model is not fully warmed up after"
+              f" {MAX_WARMUP_STEPS.value} warmup steps. Consider increasing the"
+              " number of warmup steps."
+          )
 
   post_warmup_run_session_xprof_url = None
   if enable_xprof:
@@ -590,6 +599,7 @@ def run_performance_benchmark(
     optimizer: torch.optim.Optimizer | None = None,
     xprof_client: xprof_analysis_client.XprofAnalysisClient | None = None,
     sync_params: bool = False,
+    is_bounded_dynamic: bool = False,
 ) -> PerformanceBenchmarkResult:
   """Runs a performance benchmark for a given model.
 
@@ -605,6 +615,7 @@ def run_performance_benchmark(
     optimizer: The optimizer to use for the model. Needed for training
       benchmarks.
     xprof_client: The xprof client to use for profiling.
+    is_bounded_dynamic: Whether the example inputs are bounded dynamic.
 
   Returns:
     A PerformanceBenchmarkResult instance containing the results of the
@@ -619,13 +630,33 @@ def run_performance_benchmark(
 
   _synchronize_all_tensors(example_inputs, device)
   _synchronize_all_tensors(list(model.state_dict().values()), device)
+
+  warmup_steps = MAX_WARMUP_STEPS.value
+  if is_bounded_dynamic and (
+      not isinstance(example_inputs, list)
+      or len(example_inputs) != (warmup_steps + POST_WARMUP_STEPS.value)
+  ):
+    logging.warning(
+        "Example inputs are not a list of length warmup_steps +"
+        " POST_WARMUP_STEPS. This is unexpected for bounded dynamic"
+        " benchmarks. Skipping benchmark."
+    )
+    return PerformanceBenchmarkResult()
+
+  warmup_inputs = (
+      example_inputs[:warmup_steps] if is_bounded_dynamic else example_inputs
+  )
+  post_warmup_inputs = (
+      example_inputs[warmup_steps:] if is_bounded_dynamic else example_inputs
+  )
+
   result_kwargs = {}
   start_time = time.perf_counter()
   result_kwargs |= dataclasses.asdict(
       _warmup_run(
           benchmark_function,
           model,
-          example_inputs,
+          warmup_inputs,
           device,
           optimizer=optimizer,
           enable_xprof=enable_xprof,
@@ -638,7 +669,7 @@ def run_performance_benchmark(
         _post_warmup_run(
             benchmark_function,
             model,
-            example_inputs,
+            post_warmup_inputs,
             device,
             optimizer=optimizer,
             enable_xprof=enable_xprof,

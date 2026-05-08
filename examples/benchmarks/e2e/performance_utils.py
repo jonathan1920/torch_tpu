@@ -20,7 +20,7 @@ import functools
 import gc
 import os
 import sys
-from typing import Any, Callable, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Mapping, Optional, Sequence, Tuple, Union
 
 from absl import flags
 from absl import logging
@@ -32,6 +32,7 @@ from torch_tpu._internal.utils import device_utils
 from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import mlcompass_utils
+from examples.benchmarks.e2e import model_utils
 from tests.distributed import distributed_utils
 
 from torch_tpu._internal.shims.xprof import xprof_analysis_client
@@ -49,6 +50,12 @@ ENABLE_XPROF = flags.DEFINE_bool(
     "enable_xprof",
     False,
     "Whether to enable xprof profiling for post warmup run.",
+)
+
+BOUNDED_DYNAMIC = flags.DEFINE_bool(
+    "bounded_dynamic",
+    False,
+    "Whether to run the E2E benchmarks with bounded dynamic shapes.",
 )
 
 DISTRIBUTED_PLATFORMS = (
@@ -77,13 +84,16 @@ class ModelAndInputArgs:
     model_name: The name of the model to benchmark.
     sequence_length: The sequence length of the input.
     batch_size: The batch size of the input.
+    is_bounded_dynamic: Whether to run the E2E benchmarks with bounded dynamic
+      shapes.
     custom_kwargs: Custom kwargs that might be needed to get the model and
       example inputs.
   """
 
   model_name: Optional[str] = None
-  sequence_length: Optional[int] = None
-  batch_size: Optional[int] = None
+  sequence_length: Optional[Union[int, model_utils.DynamicDimension]] = None
+  batch_size: Optional[Union[int, model_utils.DynamicDimension]] = None
+  is_bounded_dynamic: bool = False
   custom_kwargs: Mapping[str, Any] = dataclasses.field(default_factory=dict)
 
 
@@ -203,6 +213,7 @@ def run_single_process_benchmark(
       microbenchmarks. See go/mlcompass-microbenchmark-guide for more details.
   """
   gc.collect()
+
   _setup_absl()
   rank = int(os.environ.get("RANK", "0"))
   logging.info("Process %s starting run_single_process_benchmark", rank)
@@ -239,10 +250,12 @@ def run_single_process_benchmark(
 
   if use_torch_compile:
     if config.is_training:
-      func = device_utils.torch_compile(func, device.type)
+      func = device_utils.torch_compile(
+          func, device.type, dynamic=BOUNDED_DYNAMIC.value
+      )
     else:
       model_and_input.model = device_utils.torch_compile(
-          model_and_input.model, device.type
+          model_and_input.model, device.type, dynamic=BOUNDED_DYNAMIC.value
       )
   optimizer = _get_optimizer(
       model_and_input.model,
@@ -270,6 +283,7 @@ def run_single_process_benchmark(
           optimizer=optimizer,
           xprof_client=xprof_client,
           sync_params=config.sync_params,
+          is_bounded_dynamic=BOUNDED_DYNAMIC.value,
       )
       logging.info(
           "Performance Benchmark Results:\n"

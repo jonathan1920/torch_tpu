@@ -168,12 +168,15 @@ def cache_miss_count(device: str) -> int:
     raise ValueError(f'Unsupported device: {device}')
 
 
-def torch_compile(func: Callable[..., Any], device: str) -> Callable[..., Any]:
+def torch_compile(
+    func: Callable[..., Any], device: str, dynamic: bool = False
+) -> Callable[..., Any]:
   """Wraps a callable with `torch.compile` based on the specified device.
 
   Args:
     func: The callable to be compiled.
     device: The device type ('cuda', 'tpu', 'xla_cuda').
+    dynamic: Whether to use dynamic shapes in compilation. Defaults to False.
 
   Returns:
     The compiled callable.
@@ -184,9 +187,19 @@ def torch_compile(func: Callable[..., Any], device: str) -> Callable[..., Any]:
   if device == 'cuda':
     func = torch.compile(func, backend='inductor')
   elif device in ('tpu', 'xla_cuda'):
-    func = torch.compile(
-        func, dynamic=False, backend=torch_tpu_compile.TpuBackend()
-    )
+    if dynamic:
+      func = torch.compile(
+          func,
+          # We want to start with static shapes and auto-detect dynamism, so
+          # we use dynamic=None instead of dynamic=True, which starts with as
+          # much dynamism as possible.
+          dynamic=None,
+          backend=torch_tpu_compile.TpuBackend(dynamism=True),
+      )
+    else:
+      func = torch.compile(
+          func, dynamic=False, backend=torch_tpu_compile.TpuBackend()
+      )
   else:
     raise ValueError(f'Unsupported device: {device}')
   return func

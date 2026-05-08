@@ -71,6 +71,109 @@ _MAXPOOL2D_TIMM_LAYER_BENCHMARK_NAME = "maxpool2d_timm"
 _RELU_TIMM_LAYER_BENCHMARK_NAME = "relu_timm"
 
 
+_DYNAMIC_SKIPS = {
+    # Blocked by remote TPU/MLIR/JAX C++ backend compiler bugs:
+    "nn.Embedding": (
+        "Blocked by RankedTensorType MLIR storage uniquer assertion crashes "
+        "inside standard LLVM MLIR backend library."
+    ),
+    "Qwen3Attention": (
+        "Blocked by slice_primitive assertion checks crashes inside JAX C++"
+        " compiler."
+    ),
+    "nn.RMSNorm": (
+        "Blocked by CPU constant mapping restrictions in dynamic shapes "
+        "compilation grids."
+    ),
+    "Qwen3RMSNorm": (
+        "Blocked by CPU constant mapping restrictions in dynamic shapes "
+        "compilation grids."
+    ),
+    "BertLayer": (
+        "Blocked by unflatten view shape collisions under dynamic batches "
+        "inside view reassociation engine."
+    ),
+    "BertSelfOutput": (
+        "Blocked by unflatten view shape collisions under dynamic batches "
+        "inside view reassociation engine."
+    ),
+    "BertIntermediate": (
+        "Blocked by unflatten view shape collisions under dynamic batches "
+        "inside view reassociation engine."
+    ),
+    "BertOutput": (
+        "Blocked by unflatten view shape collisions under dynamic batches "
+        "inside view reassociation engine."
+    ),
+    "Qwen3MLP": (
+        "Blocked by unflatten view shape collisions under dynamic batches "
+        "inside view reassociation engine."
+    ),
+    "linear_timm": (
+        "Blocked by unflatten view shape collisions under dynamic batches "
+        "inside view reassociation engine."
+    ),
+    # Spatial / 2D Timm layers that do not utilize 1D sequence length dynamism:
+    "nn.Dropout": (
+        "Spatial layer does not utilize sequence length dynamic parameters "
+        "under our 1D dynamism model."
+    ),
+    "batchnorm2d_timm": (
+        "Spatial layer does not utilize sequence length dynamic parameters "
+        "under our 1D dynamism model."
+    ),
+    "avgpool2d_timm": (
+        "Spatial layer does not utilize sequence length dynamic parameters "
+        "under our 1D dynamism model."
+    ),
+    "select_adaptive_pool2d_timm": (
+        "Spatial layer does not utilize sequence length dynamic parameters "
+        "under our 1D dynamism model."
+    ),
+    "adaptive_avg_pool2d_timm": (
+        "Spatial layer does not utilize sequence length dynamic parameters "
+        "under our 1D dynamism model."
+    ),
+    "flatten_timm": (
+        "Spatial layer does not utilize sequence length dynamic parameters "
+        "under our 1D dynamism model."
+    ),
+    "bottleneck_timm": (
+        "Spatial layer does not utilize sequence length dynamic parameters "
+        "under our 1D dynamism model."
+    ),
+    "maxpool2d_timm": (
+        "Spatial layer does not utilize sequence length dynamic parameters "
+        "under our 1D dynamism model."
+    ),
+    "relu_timm": (
+        "Spatial layer does not utilize sequence length dynamic parameters "
+        "under our 1D dynamism model."
+    ),
+    # Harness/Input generation setup skips:
+    "nn.BatchNorm1d": "BatchNorm1d dynamic input generation not yet updated.",
+    "nn.LayerNorm": "LayerNorm dynamic input generation not yet updated.",
+    "nn.Conv2d": "Conv2d dynamic input generation not yet updated.",
+    "nn.Tanh": "Tanh dynamic input generation not yet updated.",
+    "BertPooler": "BertPooler dynamic input generation not yet updated.",
+    "BertEmbeddings": (
+        "BertEmbeddings dynamic input generation not yet updated."
+    ),
+    "SiLUActivation": (
+        "SiLUActivation dynamic input generation not yet updated."
+    ),
+    "DeepSeekParallelEmbedding": (
+        "DeepSeekParallelEmbedding dynamic input generation not yet updated."
+    ),
+    "DeepSeekRMSNorm": (
+        "DeepSeekRMSNorm dynamic input generation not yet updated."
+    ),
+    "DeepSeekExpert": (
+        "DeepSeekExpert dynamic input generation not yet updated."
+    ),
+}
+
+
 class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   """Tests for end-to-end performance benchmarks."""
 
@@ -82,6 +185,16 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       config.train_factory = benchmark_function_db.simple_train_factory
     else:
       config.eval_factory = benchmark_function_db.simple_eval_factory
+    if performance_utils.BOUNDED_DYNAMIC.value:
+      model_name = config.model_and_input_args.model_name
+      if model_name in _DYNAMIC_SKIPS or benchmark_name in _DYNAMIC_SKIPS:
+        skip_reason = _DYNAMIC_SKIPS.get(model_name) or _DYNAMIC_SKIPS.get(
+            benchmark_name
+        )
+        self.skipTest(
+            f"Layer {model_name} (benchmark {benchmark_name}) is currently"
+            f" blocked in dynamic execution mode: {skip_reason}"
+        )
     if self._is_torchax_backend():
       # Layer specific skips.
       if config.is_training:
@@ -101,6 +214,10 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_linear_layer(self, run_mode, is_training, layer_config):
+    if performance_utils.BOUNDED_DYNAMIC.value and layer_config.batch_size != 1:
+      self.skipTest(
+          "batch_size > 1 produces an ambiguous expand reshape error."
+      )
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,

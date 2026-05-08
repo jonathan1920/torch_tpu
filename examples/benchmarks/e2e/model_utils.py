@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Sequence
 import contextlib
 import dataclasses
 import enum
@@ -20,14 +21,15 @@ import math
 import re
 from typing import Any, Callable
 
-import diffusers
 from fairscale.nn.model_parallel import initialize as fairscale_init
 from fairscale.nn.model_parallel import layers as fairscale_layers
 import llama_models.llama3.model as m
+import numpy as np
 import torch
 from torch.distributed import fsdp
 import torch.distributed.tensor as dt
 from torch.nn import parallel
+from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import ragged_moe
 from examples.deepseek import model as deepseek_model
 from tests import module_registry
@@ -36,6 +38,65 @@ from transformers.models.bert import modeling_bert
 from transformers.models.qwen3 import configuration_qwen3
 from transformers.models.qwen3 import modeling_qwen3
 from transformers.models.qwen3_moe import modeling_qwen3_moe
+
+
+@dataclasses.dataclass(frozen=True)
+class DynamicDimension:
+  min_value: int
+  max_value: int
+  values: Sequence[int] | None = None
+
+
+def _get_shape_iterator(
+    dim: int | DynamicDimension, num_steps: int, mode: str
+) -> Sequence[int]:
+  if isinstance(dim, int):
+    return [dim] * num_steps
+
+  if dim.values:
+    return [dim.values[i % len(dim.values)] for i in range(num_steps)]
+
+  if mode == "warmup":
+    if num_steps < 2:
+      return [dim.min_value]
+    values = [dim.min_value, dim.max_value]
+    if num_steps > 2:
+      values.extend(
+          np.linspace(
+              dim.min_value, dim.max_value, num_steps - 2, dtype=int
+          ).tolist()
+      )
+    return values[:num_steps]
+  else:
+    return np.random.randint(
+        dim.min_value, dim.max_value + 1, size=num_steps
+    ).tolist()
+
+
+def _generate_inputs(
+    batch_size: int | DynamicDimension,
+    sequence_length: int | DynamicDimension,
+    shape_fn: Callable[[int, int], Any],
+) -> Any:
+  if not isinstance(batch_size, DynamicDimension) and not isinstance(
+      sequence_length, DynamicDimension
+  ):
+    return shape_fn(batch_size, sequence_length)
+
+  warmup_steps = benchmark_utils.MAX_WARMUP_STEPS.value
+  post_warmup_steps = benchmark_utils.POST_WARMUP_STEPS.value
+
+  warmup_bs = _get_shape_iterator(batch_size, warmup_steps, "warmup")
+  warmup_seq = _get_shape_iterator(sequence_length, warmup_steps, "warmup")
+  post_bs = _get_shape_iterator(batch_size, post_warmup_steps, "post_warmup")
+  post_seq = _get_shape_iterator(
+      sequence_length, post_warmup_steps, "post_warmup"
+  )
+
+  bs_iterator = list(warmup_bs) + list(post_bs)
+  seq_iterator = list(warmup_seq) + list(post_seq)
+
+  return [shape_fn(bs, seq) for bs, seq in zip(bs_iterator, seq_iterator)]
 
 
 @contextlib.contextmanager
@@ -47,26 +108,6 @@ def set_default_dtype(dtype: torch.dtype):
     yield
   finally:
     torch.set_default_dtype(old_dtype)
-
-
-def _get_base_wan_transformer_config():
-  # Reference config:
-  # third_party/py/torch_tpu/examples/huggingface_diffusers/model_configs/Wan-AI/Wan2.2-TI2V-5B-Diffusers/transformer/config.json
-  return {
-      "attention_head_dim": 128,
-      "cross_attn_norm": True,
-      "eps": 1e-06,
-      "ffn_dim": 14336,
-      "freq_dim": 256,
-      "in_channels": 48,
-      "num_attention_heads": 24,
-      "num_layers": 30,
-      "out_channels": 48,
-      "patch_size": [1, 2, 2],
-      "qk_norm": "rms_norm_across_heads",
-      "rope_max_seq_len": 1024,
-      "text_dim": 4096,
-  }
 
 
 def _get_base_wan_transformer_config():
@@ -221,7 +262,6 @@ def huggingface_llm_model_builder(
       weights_dtype: The data type for the model weights (e.g., torch.float32,
         torch.bfloat16).
       is_training: Whether the model is in training mode or eval mode.
-      use_torch_compile: Whether to wrap the model with `torch.compile`.
 
   Returns:
       A ModelAndInput dataclass containing the loaded Hugging Face model
@@ -333,7 +373,6 @@ def meta_llama_model_builder(
       weights_dtype: The data type for the model weights (e.g., torch.float32,
         torch.bfloat16).
       is_training: Unused.
-      use_torch_compile: Whether to wrap the model with `torch.compile`.
 
   Returns:
       A ModelAndInput dataclass containing the loaded Meta Llama model and
@@ -433,11 +472,11 @@ def ml_layer_model_builder(
       weights_dtype: The data type for the model weights (e.g., torch.float32,
         torch.bfloat16).
       is_training: Whether the model is in training mode or eval mode.
-      use_torch_compile: Whether to wrap the model with `torch.compile`.
 
   Returns:
       ModelAndInput dataclass.
   """
+  is_bounded_dynamic = model_and_input_args.is_bounded_dynamic
   model_name = model_and_input_args.model_name
   sequence_length = model_and_input_args.sequence_length
   batch_size = model_and_input_args.batch_size
@@ -462,10 +501,14 @@ def ml_layer_model_builder(
         return self.linear(x)
 
     model = LinearModel(in_features, out_features, dtype=weights_dtype)
-    example_inputs = torch.randn(
-        (batch_size, sequence_length, in_features),
-        dtype=weights_dtype,
-        device=device,
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: torch.randn(
+            (bs, seq, in_features),
+            dtype=weights_dtype,
+            device=device,
+        ),
     )
   elif model_name == "nn.Embedding":
     num_embeddings = kwargs["num_embeddings"]
@@ -483,12 +526,16 @@ def ml_layer_model_builder(
         return self.embedding(x)
 
     model = EmbeddingModel(num_embeddings, embedding_dim, dtype=weights_dtype)
-    example_inputs = torch.randint(
-        0,
-        num_embeddings,
-        (batch_size, sequence_length),
-        dtype=torch.int32,  # Using int32 as per the reference
-        device=device,
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: torch.randint(
+            0,
+            num_embeddings,
+            (bs, seq),
+            dtype=torch.int32,  # Using int32 as per the reference
+            device=device,
+        ),
     )
   elif model_name == "nn.Dropout":
     p = kwargs["p"]
@@ -644,10 +691,14 @@ def ml_layer_model_builder(
         return self.rmsnorm(x)
 
     model = RMSNormModel(num_features, dtype=weights_dtype)
-    example_inputs = torch.randn(
-        (batch_size, sequence_length, num_features),
-        dtype=weights_dtype,
-        device=device,
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: torch.randn(
+            (bs, seq, num_features),
+            dtype=weights_dtype,
+            device=device,
+        ),
     )
 
   elif model_name == "nn.AvgPool2d":
@@ -821,15 +872,19 @@ def ml_layer_model_builder(
   elif model_name == "BertLayer":
     cfg = _get_base_bert_config()
     model = modeling_bert.BertLayer(cfg)
-    example_inputs = (
-        torch.randn(
-            batch_size,
-            sequence_length,
-            cfg.hidden_size,
-            dtype=weights_dtype,
-            device=device,
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: (
+            torch.randn(
+                bs,
+                seq,
+                cfg.hidden_size,
+                dtype=weights_dtype,
+                device=device,
+            ),
+            None,
         ),
-        None,
     )
 
     class BertLayerWrapper(torch.nn.Module):
@@ -855,20 +910,24 @@ def ml_layer_model_builder(
   elif model_name == "BertSelfOutput":
     cfg = _get_base_bert_config()
     model = modeling_bert.BertSelfOutput(cfg)
-    example_inputs = (
-        torch.randn(
-            batch_size,
-            sequence_length,
-            cfg.hidden_size,
-            dtype=weights_dtype,
-            device=device,
-        ),
-        torch.randn(
-            batch_size,
-            sequence_length,
-            cfg.hidden_size,
-            dtype=weights_dtype,
-            device=device,
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: (
+            torch.randn(
+                bs,
+                seq,
+                cfg.hidden_size,
+                dtype=weights_dtype,
+                device=device,
+            ),
+            torch.randn(
+                bs,
+                seq,
+                cfg.hidden_size,
+                dtype=weights_dtype,
+                device=device,
+            ),
         ),
     )
 
@@ -886,12 +945,16 @@ def ml_layer_model_builder(
   elif model_name == "BertIntermediate":
     cfg = _get_base_bert_config()
     model = modeling_bert.BertIntermediate(cfg)
-    example_inputs = torch.randn(
+    example_inputs = _generate_inputs(
         batch_size,
         sequence_length,
-        cfg.hidden_size,
-        dtype=weights_dtype,
-        device=device,
+        lambda bs, seq: torch.randn(
+            bs,
+            seq,
+            cfg.hidden_size,
+            dtype=weights_dtype,
+            device=device,
+        ),
     )
 
     class BertIntermediateWrapper(torch.nn.Module):
@@ -908,20 +971,24 @@ def ml_layer_model_builder(
   elif model_name == "BertOutput":
     cfg = _get_base_bert_config()
     model = modeling_bert.BertOutput(cfg)
-    example_inputs = (
-        torch.randn(
-            batch_size,
-            sequence_length,
-            cfg.intermediate_size,
-            dtype=weights_dtype,
-            device=device,
-        ),
-        torch.randn(
-            batch_size,
-            sequence_length,
-            cfg.hidden_size,
-            dtype=weights_dtype,
-            device=device,
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: (
+            torch.randn(
+                bs,
+                seq,
+                cfg.intermediate_size,
+                dtype=weights_dtype,
+                device=device,
+            ),
+            torch.randn(
+                bs,
+                seq,
+                cfg.hidden_size,
+                dtype=weights_dtype,
+                device=device,
+            ),
         ),
     )
 
@@ -939,12 +1006,16 @@ def ml_layer_model_builder(
   elif model_name == "GELUActivation":
     cfg = _get_base_bert_config()
     model = activations.GELUActivation(use_gelu_python=False)
-    example_inputs = torch.randn(
+    example_inputs = _generate_inputs(
         batch_size,
         sequence_length,
-        cfg.intermediate_size,
-        dtype=weights_dtype,
-        device=device,
+        lambda bs, seq: torch.randn(
+            bs,
+            seq,
+            cfg.intermediate_size,
+            dtype=weights_dtype,
+            device=device,
+        ),
     )
   elif model_name == "BertPooler":
     cfg = _get_base_bert_config()
@@ -974,23 +1045,23 @@ def ml_layer_model_builder(
 
     head_dim = config.hidden_size // config.num_attention_heads
 
-    cos = torch.randn(
-        1, sequence_length, head_dim, device=device, dtype=weights_dtype
-    )
-    sin = torch.randn(
-        1, sequence_length, head_dim, device=device, dtype=weights_dtype
-    )
+    def _qwen3_shape_fn(bs, seq):
+      cos = torch.randn(1, seq, head_dim, device=device, dtype=weights_dtype)
+      sin = torch.randn(1, seq, head_dim, device=device, dtype=weights_dtype)
+      return (
+          torch.randn(
+              bs,
+              seq,
+              config.hidden_size,
+              dtype=weights_dtype,
+              device=device,
+          ),
+          (cos, sin),
+          None,
+      )
 
-    example_inputs = (
-        torch.randn(
-            batch_size,
-            sequence_length,
-            config.hidden_size,
-            dtype=weights_dtype,
-            device=device,
-        ),
-        (cos, sin),
-        None,
+    example_inputs = _generate_inputs(
+        batch_size, sequence_length, _qwen3_shape_fn
     )
 
     class Qwen3AttentionWrapper(torch.nn.Module):
@@ -1013,12 +1084,16 @@ def ml_layer_model_builder(
     hidden_size = kwargs["hidden_size"]
     model = modeling_qwen3.Qwen3RMSNorm(hidden_size=hidden_size)
     model = model.to(dtype=weights_dtype)
-    example_inputs = torch.randn(
+    example_inputs = _generate_inputs(
         batch_size,
         sequence_length,
-        hidden_size,
-        dtype=weights_dtype,
-        device=device,
+        lambda bs, seq: torch.randn(
+            bs,
+            seq,
+            hidden_size,
+            dtype=weights_dtype,
+            device=device,
+        ),
     )
 
   elif model_name == "Qwen3MLP":
@@ -1029,12 +1104,16 @@ def ml_layer_model_builder(
     )
     model = modeling_qwen3.Qwen3MLP(config)
     model = model.to(dtype=weights_dtype)
-    example_inputs = torch.randn(
+    example_inputs = _generate_inputs(
         batch_size,
         sequence_length,
-        config.hidden_size,
-        dtype=weights_dtype,
-        device=device,
+        lambda bs, seq: torch.randn(
+            bs,
+            seq,
+            config.hidden_size,
+            dtype=weights_dtype,
+            device=device,
+        ),
     )
 
   elif model_name == "SiLUActivation":
@@ -1219,8 +1298,15 @@ def ml_layer_model_builder(
   else:
     model.eval()
 
-  # Only compile the model for inference. For training, we will compile the
-  # train step function which includes the forward and backward pass.
+  if (
+      is_bounded_dynamic
+      and not isinstance(batch_size, DynamicDimension)
+      and not isinstance(sequence_length, DynamicDimension)
+  ):
+    raise ValueError(
+        "At least one of batch_size or sequence_length must be a"
+        " DynamicDimension for bounded dynamic benchmarks."
+    )
 
   return ModelAndInput(model=model, example_inputs=example_inputs)
 
@@ -1406,7 +1492,6 @@ def qwen_ragged_moe_model_builder(
       weights_dtype: The data type for the model weights (e.g., torch.float32,
         torch.bfloat16).
       is_training: Unused.
-      use_torch_compile: Unused.
 
   Returns:
       A ModelAndInput dataclass containing the loaded Qwen Ragged MoE model and

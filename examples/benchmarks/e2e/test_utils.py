@@ -24,6 +24,7 @@ from absl import flags
 from absl import logging
 from absl.testing import parameterized
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import model_utils
 from examples.benchmarks.e2e import performance_utils
 
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
@@ -110,6 +111,25 @@ class BenchmarkTest(parameterized.TestCase):
         exported to MLCompass as a microbenchmark. See
         go/mlcompass-microbenchmark-guide for more details.
     """
+
+    if performance_utils.BOUNDED_DYNAMIC.value:
+      if not benchmark_utils.is_torch_compile(config.run_mode):
+        self.skipTest(
+            "Only compiled mode benchmarks with bounded dynamic shapes is"
+            " supported."
+        )
+      if config.is_training:
+        self.skipTest("Training is not supported under bounded dynamic mode.")
+
+      benchmark_name = f"{benchmark_name}_bounded_dynamic"
+      config.model_and_input_args.is_bounded_dynamic = True
+      if config.model_and_input_args.sequence_length is not None:
+        seq_len = config.model_and_input_args.sequence_length
+        config.model_and_input_args.sequence_length = (
+            model_utils.DynamicDimension(
+                min_value=max(2, seq_len // 2), max_value=seq_len * 2
+            )
+        )
 
     platform = benchmark_utils.PLATFORM.value
     if platform not in config.supported_platforms:

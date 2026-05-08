@@ -63,6 +63,7 @@ torch_tpu_py_library(
     deps = [
         ":benchmark_utils",
         ":mlcompass_utils",
+        ":model_utils",
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",
         "//shims/torch",
@@ -100,6 +101,7 @@ torch_tpu_py_library(
     srcs = ["test_utils.py"],
     deps = [
         ":benchmark_utils",
+        ":model_utils",
         ":performance_utils",
         "//examples/benchmarks/e2e/torchax:performance_utils",
         "//shims/absl_py/flags",
@@ -471,13 +473,14 @@ torch_tpu_py_library(
     name = "model_utils",
     srcs = ["model_utils.py"],
     deps = [
+        ":benchmark_utils",
         ":ragged_moe",
         "//examples/deepseek",
         "//shims/torch:pytorch",
         "//tests:module_registry",
-        "@pypi//diffusers",
         "@pypi//fairscale",
         "@pypi//llama_models",
+        "@pypi//numpy",
         "@pypi//timm",
         "@pypi//transformers",
     ],
@@ -488,6 +491,38 @@ torch_tpu_py_library(
     srcs = ["ragged_moe.py"],
     deps = [
         "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "dynamic_layer_performance_benchmarks",
+    timeout = "long",
+    srcs = ["layer_performance_benchmarks.py"],
+    args = ["--bounded_dynamic=True"],
+    main = "layer_performance_benchmarks.py",
+    notap = "disabled until dynamic shape support is added.",
+    notest_oss = "disabled until dynamic shape support is added",
+    shard_count = 8,
+    strict = True,
+    tags = [
+        "cpu:4",
+        "nofastbuild",
+        "requires-accel-hbm",
+        "requires-net:external",
+        "requires-tpu-v5p",
+    ],
+    deps = [
+        ":benchmark_function_db",
+        ":benchmark_utils",
+        ":layer_configs",
+        ":model_utils",
+        ":performance_utils",
+        ":test_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
     ],
 )
 
