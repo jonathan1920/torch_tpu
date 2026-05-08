@@ -102,10 +102,14 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Get current date
+        id: date
+        if: contains(needs.run_tests.result, 'failure') && github.event_name != 'pull_request'
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
       - name: Check whether one of the jobs failed
         if: contains(needs.run_tests.result, 'failure') && github.event_name != 'pull_request'
         uses: jayqi/failed-build-issue-action@1a893bbf43ef1c2a8705e2b115cd4f0fe3c5649b  # v1.2.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           label-name: "ci:tpu-postsubmit-failed"
-          title-template: "Failed Postsubmit on TPU"
+          title-template: "Failed Postsubmit on TPU (${{ steps.date.outputs.date }})"
