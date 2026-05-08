@@ -157,12 +157,12 @@ class TpuWork : public c10d::Work {
   friend class ::torch_tpu::ProcessGroupTpu;  // To allow changing op type.
 };
 
-std::string DeviceBufferRefDebugString(at::Tensor& input) {
-  ABSL_CHECK(input.is_privateuseone())  // CRASH_OK
-      << "Tensor must be on TPU device (use PrivateUse1 key)";
-  auto* const tpu_buf = static_cast<DeviceBufferRef*>(input.mutable_data_ptr());
-  ABSL_CHECK(tpu_buf != nullptr) << "DeviceBufferRef is null";  // CRASH_OK
-  return tpu_buf->DebugString();
+std::string DeviceBufferRefDebugString(const at::Tensor& input) {
+  auto maybe_base_buffer_ref = GetBaseBufferFromAtTensor(input);
+  if (!maybe_base_buffer_ref.ok()) {
+    return std::string(maybe_base_buffer_ref.status().message());
+  }
+  return maybe_base_buffer_ref->DebugString();
 }
 
 absl::Status CheckTensorsUniformShape(const std::vector<at::Tensor>& tensors) {
