@@ -278,8 +278,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_qwen3_1_7b_forward(self, run_mode):
     """Tests the forward pass of Qwen3 1.7B."""
-    if self._is_torchax_backend():
-      self.skipTest("Device OOM")
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
@@ -296,6 +294,43 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_QWEN3_1_7B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_qwen3_1_7b_train(self, run_mode):
+    """Tests the train pass of Qwen3 1.7B."""
+    if (
+        self._is_torchax_backend()
+        and run_mode != benchmark_utils.RunMode.COMPILED
+    ):
+      self.skipTest("Device OOM")
+
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=True,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="Qwen/Qwen3-1.7B",
+            sequence_length=4096,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        train_factory=functools.partial(
+            benchmark_function_db.huggingface_llm_train_factory,
+            grad_accumulation_steps=1,
+        ),
     )
     self.run_performance_benchmark_test(config, _HF_QWEN3_1_7B_BENCHMARK_NAME)
 
