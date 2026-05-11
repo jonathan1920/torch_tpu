@@ -751,6 +751,11 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float16: {"rtol": 6.9e-8, "atol": 4.9e-7},
         torch.float64: {"rtol": 5.4e-8, "atol": 3.9e-7},
     },
+    "_foreach_pow": {
+        torch.int16: {"rtol": 1, "atol": 1},
+        torch.int32: {"rtol": 1, "atol": 1},
+        torch.int8: {"rtol": 1, "atol": 1},
+    },
     "_foreach_sigmoid": {
         torch.complex64: {"rtol": 1.2e-5, "atol": 6e-5},
         torch.float16: {"rtol": 6.3e-2, "atol": 1.6e-5},
@@ -912,6 +917,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.bfloat16: {"rtol": 6.6e-3, "atol": 3.2e-2},
     },
     "lgamma": {
+        torch.bfloat16: {"rtol": 2.6e-2, "atol": 1.6e-4},
         torch.float16: {"rtol": 1.3e-2, "atol": 1.5e-4},
         torch.float32: {"rtol": 1.3e-2, "atol": 2.6e-4},
         torch.int16: {"rtol": 1.3e-4, "atol": 2.3e-4},
@@ -935,6 +941,13 @@ ACCURACY_OVERRIDES_VS_GPU = {
     "linalg.vector_norm": {
         torch.complex64: {"rtol": 4e-6, "atol": 1.3e-4},
         torch.float32: {"rtol": 4e-6, "atol": 2.9e-4},
+    },
+    "linspace": {
+        torch.int16: {"rtol": 3.4e-1, "atol": 1},
+        torch.int32: {"rtol": 3.4e-1, "atol": 1},
+        torch.int64: {"rtol": 3.4e-1, "atol": 1},
+        torch.int8: {"rtol": 3.4e-1, "atol": 1},
+        torch.uint8: {"rtol": 3.4e-1, "atol": 1},
     },
     "log": {
         torch.complex64: {"rtol": 4e-5, "atol": 6.5e-5},
@@ -1021,6 +1034,9 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float16: {"rtol": 78, "atol": 8.8e-1},
         torch.float32: {"rtol": 9.4, "atol": 1.1},
     },
+    "nn.functional.ctc_loss": {
+        torch.float32: {"rtol": 1.2e-6, "atol": 4.9e-4},
+    },
     "nn.functional.embedding": {
         torch.bfloat16: {"rtol": 7.6e-3, "atol": 4e-3},
         torch.float16: {"rtol": 9.7e-4, "atol": 4.9e-4},
@@ -1033,6 +1049,11 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float16: {"rtol": 6.6e-3, "atol": 3.9e-5},
         torch.float32: {"rtol": 6.2e-3, "atol": 4.2e-5},
         torch.float64: {"rtol": 8e-7, "atol": 1.3e-7},
+    },
+    "nn.functional.glu": {
+        torch.bfloat16: {"rtol": 1.3e-2, "atol": 1.6e-2},
+        torch.float16: {"rtol": 1.5e-3, "atol": 9.8e-4},
+        torch.float32: {"rtol": 4e-6, "atol": 1.8e-6},
     },
     "nn.functional.group_norm": {
         torch.bfloat16: {"rtol": 1, "atol": 4.7e-2},
@@ -1114,6 +1135,16 @@ ACCURACY_OVERRIDES_VS_GPU = {
     },
     "var": {
         torch.float16: {"rtol": 1.3e-3, "atol": 3.2e-2},
+    },
+    "xlogy": {
+        torch.bfloat16: {"rtol": 7.8e-3, "atol": 2.5e-1},
+        torch.float16: {"rtol": 9.8e-4, "atol": 3.2e-2},
+        torch.float32: {"rtol": 2.7e-4, "atol": 7.6e-4},
+        torch.int16: {"rtol": 5.7e-5, "atol": 5.7e-4},
+        torch.int32: {"rtol": 5.7e-5, "atol": 5.7e-4},
+        torch.int64: {"rtol": 5.7e-5, "atol": 5.7e-4},
+        torch.int8: {"rtol": 5.7e-5, "atol": 5.7e-4},
+        torch.uint8: {"rtol": 5.7e-5, "atol": 5.7e-4},
     },
     # go/keep-sorted end
 }
@@ -2069,7 +2100,11 @@ class TestOps(TorchTpuTestBase):
                 + COMPLEX_DTYPES
                 + (torch.bfloat16, torch.float16)
             ),
-            "gpu": INTEGRAL_DTYPES + COMPLEX_DTYPES,
+            "gpu": (
+                INTEGRAL_DTYPES
+                + COMPLEX_DTYPES
+                + (torch.bfloat16, torch.float16)
+            ),
         },
     )
 
@@ -3943,7 +3978,7 @@ class TestOps(TorchTpuTestBase):
             # - No total order for complex numbers.
             # - Inconsistent behaviour on CPU with bool.
             "cpu": COMPLEX_DTYPES + (torch.bool,),
-            "gpu": COMPLEX_DTYPES,
+            "gpu": COMPLEX_DTYPES + (torch.bool,),
         },
     )
 
