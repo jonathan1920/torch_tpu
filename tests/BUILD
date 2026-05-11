@@ -844,10 +844,10 @@ torch_tpu_py_test(
     name = "execution_mode_test",
     srcs = ["execution_mode_test.py"],
     main = "execution_mode_test.py",
-    notest_oss = "Temporarily disabled: broken for lack of libtorch.so",
     tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/execution_mode",
     ],
