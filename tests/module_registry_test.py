@@ -64,7 +64,6 @@ class ModuleRegistryTest(absltest.TestCase):
     self.assertIn("transformers/openai/gpt-oss-120b", modules)
     self.assertIn("transformers/meta-llama/Llama-3.2-3B", modules)
     self.assertIn("transformers/google/gemma-3-270m", modules)
-    self.assertIn("diffusers/stabilityai/stable-diffusion-xl-base-1.0", modules)
 
   def test_torchvision_list_modules(self):
     modules = self.module_registry.list_modules("torchvision")

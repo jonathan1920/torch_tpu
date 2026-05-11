@@ -498,15 +498,10 @@ class DiffusersProvider(BaseProvider):
     Returns:
       A list of model name strings formatted as '{owner}/{model}'.
     """
-    if self._base_path is None:
-      return []
-    modules = []
-    for owner_path in self._base_path.iterdir():
-      if owner_path.is_dir():
-        for model_path in owner_path.iterdir():
-          if model_path.is_dir():
-            modules.append(f"{owner_path.name}/{model_path.name}")
-    return modules
+    # TODO(b/507481008): Temporarily return empty list as it returns the same
+    # list as TransformersProvider. After the path is restructured, this will
+    # return the list of diffusers models.
+    return []
 
   def get_module_spec(
       self,
