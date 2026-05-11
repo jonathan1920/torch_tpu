@@ -171,7 +171,7 @@ torch_tpu_py_library(
 
 torch_tpu_py_test(
     name = "stablehlo_compile_test",
-    size = "enormous",
+    timeout = "long",
     srcs = ["stablehlo_compile_test.py"],
     args = [
         "--enable_tensorboard_logging=False",
@@ -181,7 +181,7 @@ torch_tpu_py_test(
     },
     linking_mode = "static",
     main = "stablehlo_compile_test.py",
-    notap = "Disable on TAP until we can get faster performance or reduce number of runs. Currently runs ~1h.",
+    nopresubmit = "Slow test.",
     tags = [
         "cpu:1",  # Ensure reproducible performance on Forge.
         "nofastbuild",  # Measures performance.
