@@ -491,6 +491,7 @@ torch_tpu_py_library(
     srcs = ["ragged_moe.py"],
     deps = [
         "//shims/torch:pytorch",
+        "@pypi//transformers",
     ],
 )
 

@@ -17,6 +17,7 @@ import contextlib
 import dataclasses
 import enum
 import functools
+from importlib import resources
 import math
 import re
 from typing import Any, Callable
@@ -33,10 +34,12 @@ from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import ragged_moe
 from examples.deepseek import model as deepseek_model
 from tests import module_registry
+import transformers
 from transformers import activations
 from transformers.models.bert import modeling_bert
 from transformers.models.qwen3 import configuration_qwen3
 from transformers.models.qwen3 import modeling_qwen3
+from transformers.models.qwen3_5_moe import modeling_qwen3_5_moe
 from transformers.models.qwen3_moe import modeling_qwen3_moe
 
 
@@ -1424,7 +1427,9 @@ def _apply_tensor_parallel_plan(
     full_name = f"{name_prefix}.{name}" if name_prefix else name
     full_name = full_name.removeprefix("model.")
 
-    if isinstance(child, ragged_moe.RaggedMoeQwen3):
+    if isinstance(
+        child, (ragged_moe.RaggedMoeQwen3, ragged_moe.RaggedMoeQwen35)
+    ):
       # Handled during Qwen3MoeSparseMoeBlock -> RaggedMoeQwen3 replacement
       continue
 
@@ -1439,7 +1444,7 @@ def _apply_tensor_parallel_plan(
           # be the divisor of num_attention_heads (32) and
           # num_key_value_heads (4). Hence, for it to work we need world_size
           # to be 4, which is currently not supported.
-          if "self_attn" in full_name:
+          if "self_attn" in full_name or "linear_attn" in full_name:
             gather_output = True
           else:
             gather_output = False
@@ -1535,4 +1540,94 @@ def qwen_ragged_moe_model_builder(
   _, example_inputs = module_spec.sample_inputs_factory(
       (batch_size, sequence_length), str(device)
   )
+  return ModelAndInput(model=model, example_inputs=example_inputs)
+
+
+def qwen3_5_model_builder(
+    model_and_input_args: Any,
+    device: torch.device,
+    weights_dtype: torch.dtype,
+    is_training: bool,
+) -> ModelAndInput:
+  """Returns a ModelAndInput for the specified Qwen 3.5 model.
+
+  Args:
+      model_and_input_args: The model and input args.
+      device: The device to load the model and inputs on (e.g., 'tpu', 'cuda').
+      weights_dtype: The data type for the model weights (e.g., torch.float32,
+        torch.bfloat16).
+      is_training: Unused.
+
+  Returns:
+      A ModelAndInput dataclass containing the loaded Qwen 3.5 model and
+      example inputs.
+  """
+  del is_training  # Unused
+  modify_config_hook = model_and_input_args.custom_kwargs.get(
+      "modify_config_hook", None
+  )
+  use_ragged_dot_moe = model_and_input_args.custom_kwargs.get(
+      "use_ragged_dot_moe", False
+  )
+  return get_qwen3_5_model(
+      model_name=model_and_input_args.model_name,
+      device=device,
+      weights_dtype=weights_dtype,
+      sequence_length=model_and_input_args.sequence_length,
+      batch_size=model_and_input_args.batch_size,
+      modify_config_hook=modify_config_hook,
+      use_ragged_dot_moe=use_ragged_dot_moe,
+  )
+
+
+def get_qwen3_5_model(
+    model_name: str,
+    *,
+    device: torch.device,
+    weights_dtype: torch.dtype,
+    sequence_length: int,
+    batch_size: int,
+    modify_config_hook: Callable[[Any], Any] | None = None,
+    use_ragged_dot_moe: bool = False,
+) -> ModelAndInput:
+  """Returns a ModelAndInput for the specified Qwen 3.5 model."""
+  registry = get_module_registry()
+  module_spec = registry.get_module_spec(
+      "transformers",
+      model_name,
+      load_weights=False,
+      modify_config_hook=modify_config_hook,
+  )
+  default_config = module_spec.config
+
+  if hasattr(default_config, "get_text_config"):
+    default_config = default_config.get_text_config()
+
+  with torch.device(device), set_default_dtype(weights_dtype):
+    model = module_spec.module_factory()
+
+    # Replace Qwen3.5 MoE layers with Ragged MoE layers if enabled.
+    if use_ragged_dot_moe:
+      for layer in model.model.language_model.layers:
+        if hasattr(layer, "mlp") and isinstance(
+            layer.mlp, modeling_qwen3_5_moe.Qwen3_5MoeSparseMoeBlock
+        ):
+          layer.mlp = ragged_moe.RaggedMoeQwen35(
+              default_config,
+          )
+
+    model.apply(_init_model_weights)
+
+  model.eval()
+
+  actual_shape = (batch_size, sequence_length)
+  example_inputs = {
+      "input_ids": torch.randint(
+          0, default_config.vocab_size, actual_shape, device=device
+      ),
+      "attention_mask": torch.ones(
+          actual_shape, device=device, dtype=torch.long
+      ),
+  }
+
   return ModelAndInput(model=model, example_inputs=example_inputs)
