@@ -449,6 +449,12 @@ class TransformersProvider(BaseProvider):
 
     safe_seq_len = min(_get_max_seq_len(config), 512)
 
+    vocab_size = getattr(config, "vocab_size", None)
+    if vocab_size is None and hasattr(config, "text_config"):
+      vocab_size = getattr(config.text_config, "vocab_size", None)
+    if vocab_size is None:
+      vocab_size = 32000
+
     def _input_fn(
         shape=None, device="cpu"
     ) -> tuple[tuple[Any, ...], dict[str, Any]]:
@@ -457,7 +463,7 @@ class TransformersProvider(BaseProvider):
           (),
           {
               "input_ids": torch.randint(
-                  0, config.vocab_size, actual_shape, device=device
+                  0, vocab_size, actual_shape, device=device
               ),
               "attention_mask": torch.ones(
                   actual_shape, device=device, dtype=torch.long
