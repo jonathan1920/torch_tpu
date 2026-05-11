@@ -512,7 +512,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       t = x1.clone().to(device)
       if device == "cpu":
         # CPU backend might not support _add_relu_.Tensor directly
-        return torch.relu(t + y1 * 1.0)
+        return torch.relu(t + y1.to(device) * 1.0)
       torch.ops.aten._add_relu_.Tensor(t, y1.to(device), alpha=1.0)
       return t
 
