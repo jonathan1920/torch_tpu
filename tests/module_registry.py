@@ -172,8 +172,12 @@ class TorchvisionProvider(BaseProvider):
     default_shape = (1, 3, 224, 224)
     return ModuleSpec(
         lambda: torchvision.models.get_model(name),
-        lambda shape=default_shape, device="cpu": (
-            (torch.randn(shape, device=device),),
+        lambda shape=None, device="cpu": (
+            (
+                torch.randn(
+                    shape if shape is not None else default_shape, device=device
+                ),
+            ),
             {},
         ),
     )
@@ -412,10 +416,17 @@ class TransformersProvider(BaseProvider):
             f"load_weights cannot be set to True for {name} when falling back"
             " to local configuration resources."
         )
-      with resources.as_file(
-          self._FILES.joinpath(str(pathlib.Path(name) / "config.json"))
-      ) as f:
-        config = transformers.AutoConfig.from_pretrained(str(f))
+      try:
+        with resources.as_file(
+            self._FILES.joinpath(str(pathlib.Path(name) / "config.json"))
+        ) as f:
+          config = transformers.AutoConfig.from_pretrained(str(f))
+      except Exception as exc:  # pylint: disable=broad-except
+        raise ValueError(
+            f"Model config for '{name}' is missing in local resources"
+            f" ({self._FILES.joinpath(str(pathlib.Path(name) / 'config.json'))})"
+            " and could not be loaded from cache."
+        ) from exc
 
     if modify_config_hook is not None:
       if load_weights:
@@ -555,10 +566,17 @@ class DiffusersProvider(BaseProvider):
       model_dir = pathlib.Path(name)
       if subfolder:
         model_dir = model_dir / subfolder
-      with resources.as_file(
-          self._FILES.joinpath(str(model_dir / "config.json"))
-      ) as f:
-        raw_config = AutoModel.load_config(str(f.parent))
+      try:
+        with resources.as_file(
+            self._FILES.joinpath(str(model_dir / "config.json"))
+        ) as f:
+          raw_config = AutoModel.load_config(str(f.parent))
+      except Exception as exc:  # pylint: disable=broad-exception-caught
+        raise ValueError(
+            f"Model config for '{name}' is missing in local resources "
+            f"({self._FILES.joinpath(str(model_dir / 'config.json'))}) "
+            "and could not be loaded from cache."
+        ) from exc
 
     if modify_config_hook is not None:
       if load_weights:
