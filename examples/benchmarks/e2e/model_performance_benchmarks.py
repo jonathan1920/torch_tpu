@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Benchmarks for model performance."""
+
 import functools
 
 from absl.testing import absltest
@@ -38,6 +40,10 @@ _WAN_2_2_TI2V_5B_BENCHMARK_NAME = "wan_2_2_ti2v_5b"
 
 class BenchmarkTest(test_utils.BenchmarkTest):
   """Tests for end-to-end model performance benchmarks."""
+
+  # ============================================================================
+  # 1. Llama Architecture Family
+  # ============================================================================
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
@@ -71,101 +77,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
-  def test_qwen3_1_7b_forward(self, run_mode):
-    """Tests the forward pass of Qwen3 1.7B."""
-    if self._is_torchax_backend():
-      self.skipTest("Device OOM")
-
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=False,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="Qwen/Qwen3-1.7B",
-            sequence_length=4096,
-            batch_size=1,
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        eval_factory=benchmark_function_db.huggingface_eval_factory,
-    )
-    self.run_performance_benchmark_test(config, _HF_QWEN3_1_7B_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
-  def test_gpt_oss_20b_forward(self, run_mode):
-    """Tests the forward pass of GPT-OSS-20B."""
-    if self._is_torchax_backend():
-      self.skipTest("Device OOM")
-
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=False,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="openai/gpt-oss-20b",
-            sequence_length=4096,
-            batch_size=1,
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        eval_factory=benchmark_function_db.huggingface_eval_factory,
-    )
-    self.run_performance_benchmark_test(config, _HF_GPT_OSS_20B_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
-  def test_gpt_oss_120b_4_layers_forward(self, run_mode):
-    """Tests the forward pass of GPT-OSS-20B."""
-
-    def modify_config_hook(config):
-      config.num_hidden_layers = 4
-      return config
-
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=False,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="openai/gpt-oss-120b",
-            sequence_length=512,
-            batch_size=1,
-            custom_kwargs={"modify_config_hook": modify_config_hook},
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        eval_factory=benchmark_function_db.huggingface_eval_factory,
-    )
-    self.run_performance_benchmark_test(config, _HF_GPT_OSS_120B_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
           benchmark_utils.RunMode.COMPILED,
       ])
   )
@@ -194,63 +105,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         ),
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
-  def test_gemma_3_270m_train_1_step(self, run_mode):
-    """Tests the training of Gemma-3-270m."""
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=True,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="google/gemma-3-270m",
-            sequence_length=512,
-            batch_size=1,
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=4,
-        ),
-    )
-    self.run_performance_benchmark_test(config, _HF_GEMMA_3_270M_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
-  def test_gemma_3_270m_forward(self, run_mode):
-    """Tests the forward pass of Gemma-3-270m."""
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=False,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="google/gemma-3-270m",
-            sequence_length=512,
-            batch_size=1,
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        eval_factory=benchmark_function_db.huggingface_eval_factory,
-    )
-    self.run_performance_benchmark_test(config, _HF_GEMMA_3_270M_BENCHMARK_NAME)
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
@@ -349,6 +203,203 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
 
+  # ============================================================================
+  # 2. Gemma Architecture Family
+  # ============================================================================
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_gemma_3_270m_forward(self, run_mode):
+    """Tests the forward pass of Gemma-3-270m."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="google/gemma-3-270m",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_GEMMA_3_270M_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_gemma_3_270m_train_1_step(self, run_mode):
+    """Tests the training of Gemma-3-270m."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=True,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="google/gemma-3-270m",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        train_factory=functools.partial(
+            benchmark_function_db.huggingface_llm_train_factory,
+            grad_accumulation_steps=4,
+        ),
+    )
+    self.run_performance_benchmark_test(config, _HF_GEMMA_3_270M_BENCHMARK_NAME)
+
+  # ============================================================================
+  # 3. Qwen Architecture Family
+  # ============================================================================
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_qwen3_1_7b_forward(self, run_mode):
+    """Tests the forward pass of Qwen3 1.7B."""
+    if self._is_torchax_backend():
+      self.skipTest("Device OOM")
+
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="Qwen/Qwen3-1.7B",
+            sequence_length=4096,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_QWEN3_1_7B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+      ])
+  )
+  def test_qwen3_coder_30b_a3b_ragged_moe_forward(self, run_mode):
+    """Tests the forward pass of Qwen3-Coder-30B-A3B."""
+    if self._is_torchax_backend():
+      self.skipTest("TorchAX does not support distributed tests yet.")
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_2X2X1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.QWEN_RAGGED_MOE,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="Qwen/Qwen3-Coder-30B-A3B-Instruct",
+            sequence_length=2048,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.qwen_ragged_moe_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(
+        config, _HF_QWEN3_CODER_30B_RAGGED_MOE_BENCHMARK_NAME
+    )
+
+  # ============================================================================
+  # 4. GPT-OSS Architecture Family
+  # ============================================================================
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_gpt_oss_20b_forward(self, run_mode):
+    """Tests the forward pass of GPT-OSS-20B."""
+    if self._is_torchax_backend():
+      self.skipTest("Device OOM")
+
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="openai/gpt-oss-20b",
+            sequence_length=4096,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_GPT_OSS_20B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_gpt_oss_120b_4_layers_forward(self, run_mode):
+    """Tests the forward pass of GPT-OSS-20B."""
+
+    def modify_config_hook(config):
+      config.num_hidden_layers = 4
+      return config
+
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="openai/gpt-oss-120b",
+            sequence_length=512,
+            batch_size=1,
+            custom_kwargs={"modify_config_hook": modify_config_hook},
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_GPT_OSS_120B_BENCHMARK_NAME)
+
+  # ============================================================================
+  # 5. TIMM / Vision Models
+  # ============================================================================
+
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
@@ -402,6 +453,10 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         train_factory=benchmark_function_db.simple_train_factory,
     )
     self.run_performance_benchmark_test(config, _TIMM_RESNET_50_BENCHMARK_NAME)
+
+  # ============================================================================
+  # 6. Wan Diffuser Family
+  # ============================================================================
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
@@ -457,35 +512,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         ),
     )
     self.run_performance_benchmark_test(config, _WAN_2_2_TI2V_5B_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-      ])
-  )
-  def test_qwen3_coder_30b_a3b_ragged_moe_forward(self, run_mode):
-    """Tests the forward pass of Qwen3-Coder-30B-A3B."""
-    if self._is_torchax_backend():
-      self.skipTest("TorchAX does not support distributed tests yet.")
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_2X2X1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.QWEN_RAGGED_MOE,
-        run_mode=run_mode,
-        is_training=False,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="Qwen/Qwen3-Coder-30B-A3B-Instruct",
-            sequence_length=2048,
-            batch_size=1,
-        ),
-        model_and_input_factory=model_utils.qwen_ragged_moe_model_builder,
-        eval_factory=benchmark_function_db.huggingface_eval_factory,
-    )
-    self.run_performance_benchmark_test(
-        config, _HF_QWEN3_CODER_30B_RAGGED_MOE_BENCHMARK_NAME
-    )
 
 
 if __name__ == "__main__":
