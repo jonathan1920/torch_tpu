@@ -377,7 +377,10 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_gpt_oss_20b_forward(self, run_mode):
     """Tests the forward pass of GPT-OSS-20B."""
-    if self._is_torchax_backend():
+    if (
+        self._is_torchax_backend()
+        and run_mode != benchmark_utils.RunMode.COMPILED
+    ):
       self.skipTest("Device OOM")
 
     config = performance_utils.PerformanceBenchmarkConfig(
@@ -395,6 +398,40 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_GPT_OSS_20B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_gpt_oss_20b_train(self, run_mode):
+    """Tests the train pass of GPT-OSS-20B."""
+    # TODO(b/510886286): Reenable after fix.
+    self.skipTest("Assert async not supported yet.")
+
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=True,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="openai/gpt-oss-20b",
+            sequence_length=4096,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        train_factory=functools.partial(
+            benchmark_function_db.huggingface_llm_train_factory,
+            grad_accumulation_steps=1,
+        ),
     )
     self.run_performance_benchmark_test(config, _HF_GPT_OSS_20B_BENCHMARK_NAME)
 
@@ -428,6 +465,44 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_GPT_OSS_120B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_gpt_oss_120b_4_layers_train(self, run_mode):
+    """Tests the train pass of GPT-OSS-20B."""
+    # TODO(b/510886286): Reenable after fix.
+    self.skipTest("Assert async not supported yet.")
+
+    def modify_config_hook(config):
+      config.num_hidden_layers = 4
+      return config
+
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=True,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="openai/gpt-oss-120b",
+            sequence_length=512,
+            batch_size=1,
+            custom_kwargs={"modify_config_hook": modify_config_hook},
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        train_factory=functools.partial(
+            benchmark_function_db.huggingface_llm_train_factory,
+            grad_accumulation_steps=1,
+        ),
     )
     self.run_performance_benchmark_test(config, _HF_GPT_OSS_120B_BENCHMARK_NAME)
 
