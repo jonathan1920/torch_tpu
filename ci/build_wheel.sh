@@ -43,7 +43,7 @@ docker run --rm \
   -w "/workspace" \
   -e WHEEL_VERSION_EXTRAS="${WHEEL_VERSION_EXTRAS}" \
   "${CONTAINER_IMAGE}" \
-  bash -c "bazel build -c opt --config=remote_caching_readonly --config=remote_execution_readonly //ci/wheel:torch_tpu_wheel --repo_env=WHEEL_VERSION_EXTRAS=\$WHEEL_VERSION_EXTRAS && cp bazel-bin/ci/wheel/*.whl /workspace/dist/"
+  bash -c "bazel build -c opt --config=no_rbe //ci/wheel:torch_tpu_wheel --repo_env=WHEEL_VERSION_EXTRAS=\$WHEEL_VERSION_EXTRAS && cp bazel-bin/ci/wheel/*.whl /workspace/dist/"
 
 # Move the built wheels from local dist back to Kokoro artifacts directory
 if [[ -d dist && -n "$(ls -A dist/*.whl 2>/dev/null)" ]]; then
