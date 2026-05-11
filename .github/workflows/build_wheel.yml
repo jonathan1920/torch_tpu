@@ -63,13 +63,12 @@ jobs:
     env:
       WHEEL_DIR: dist
     outputs:
-      gcs-path: ${{ steps.vars.outputs.gcs_path }}
+      # Full path to the wheel on GCS
+      gcs-wheel-path: ${{ steps.upload.outputs.gcs_wheel_path }}
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v5
-      - id: vars
-        run: echo "gcs_path=gs://torch-tpu-ci-transient/artifacts/${{ github.workflow }}/${{ github.run_number }}/${{ github.run_attempt }}" >> $GITHUB_OUTPUT
       - name: Build wheel
         run: |
           WHEEL_VERSION_EXTRAS=".dev$(date +%Y%m%d%H%M%S)"
@@ -80,7 +79,16 @@ jobs:
         run: uv run --isolated --with twine twine check $WHEEL_DIR/*.whl
       - name: Upload wheel to GCS for wheel testing
         if: github.event_name != 'schedule'
-        run:  gcloud storage cp -r "$(pwd)/$WHEEL_DIR/*.whl" "gs://torch-tpu-ci-transient/artifacts/${{ github.workflow }}/${{ github.run_number }}/${{ github.run_attempt }}/"
+        id: upload
+        run: |
+          WHEEL_PATH=$(ls $WHEEL_DIR/*.whl | head -n 1)
+          WHEEL_FILENAME=$(basename "$WHEEL_PATH")
+          GCS_PATH="gs://torch-tpu-ci-transient/artifacts/${{ github.workflow }}/${{ github.run_number }}/${{ github.run_attempt }}/$WHEEL_FILENAME"
+          gcloud storage cp "$WHEEL_PATH" "$GCS_PATH"
+          # We must store the full path to the wheel, not just the bucket, since
+          # sometimes stale pre-existing wheels exist in the bucket, and we need
+          # to know which one is the one this particular job uploaded.
+          echo "gcs_wheel_path=$GCS_PATH" >> $GITHUB_OUTPUT
       - name: Upload to Artifact Registry
         # Run only on main branch, once a day.
         if: github.event_name == 'schedule' && github.ref == 'refs/heads/main'
@@ -147,7 +155,7 @@ jobs:
       - name: Download Wheel from GCS
         run: |
           mkdir dist
-          gcloud storage cp "${{ needs.build_wheels.outputs.gcs-path }}/*.whl" dist/
+          gcloud storage cp "${{ needs.build_wheels.outputs.gcs-wheel-path }}" dist/
       - name: Download a specific CUDA-enabled torch wheel to verify the override mechanism
         if: matrix.wheel_version == 'cuda'
         run: |
