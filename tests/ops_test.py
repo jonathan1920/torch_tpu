@@ -372,6 +372,9 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.int8: {"rtol": 3.7e-6, "atol": 2.4e-3},
         torch.uint8: {"rtol": 3.7e-6, "atol": 2.4e-3},
     },
+    "fmod": {
+        torch.float32: {"rtol": 3.0e-4, "atol": 4.8e-7},
+    },
     "lgamma": {
         torch.float16: {"rtol": 1.2e-3, "atol": 2.5e-4},
         torch.float32: {"rtol": 8.2e-4, "atol": 1.8e-4},
