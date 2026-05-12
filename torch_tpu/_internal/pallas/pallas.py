@@ -446,7 +446,7 @@ class JaxCallable:
     self.input_partition_specs = input_partition_specs
     self.static_argnums = static_argnums
     # Ignore forward compatibility as we are directly using the exported
-    # StableHLO, without this flag we can be missing the latest optimisations.
+    # StableHLO. Without this flag we can be missing the latest optimizations.
     with jax._src.config.export_ignore_forward_compatibility(True):
       self.exported = jax.export.export(jit_fn, platforms=["tpu"])
     if input_output_aliases is not None:
@@ -510,7 +510,8 @@ class JaxCallable:
       jax_args = jax_placeholders(
           args, mesh=self.mesh, partition_specs=self.input_partition_specs
       )
-      lowered = self.exported(*jax_args, **kwargs)
+      with jax._src.config.export_ignore_forward_compatibility(True):
+        lowered = self.exported(*jax_args, **kwargs)
       tpu_torch_pallas.register_custom_kernel(
           self.name,
           kernel_key,
@@ -777,7 +778,8 @@ def jax_op(
       jax_args = jax_placeholders(
           args, mesh=mesh, partition_specs=input_partition_specs
       )
-      lowered = wrapped_fn.exported(*jax_args, **kwargs)
+      with jax._src.config.export_ignore_forward_compatibility(True):
+        lowered = wrapped_fn.exported(*jax_args, **kwargs)
       return lowered.out_tree.unflatten(
           torch_placeholder(aval, mesh=mesh) for aval in lowered.out_avals
       )
