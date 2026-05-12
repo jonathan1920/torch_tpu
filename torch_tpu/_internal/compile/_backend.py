@@ -42,7 +42,6 @@ from torch._dynamo.backends.common import aot_autograd
 from torch._functorch._aot_autograd import autograd_cache as _autograd_cache
 from torch._functorch._aot_autograd import graph_compile as _graph_compile
 from torch._functorch._aot_autograd.schemas import AOTAutogradCacheInfo
-from torch._functorch._aot_autograd.schemas import AOTDispatchCompiler
 from torch._functorch._aot_autograd.schemas import SerializableAOTDispatchCompiler
 import torch._functorch.config as functorch_config
 from torch.utils import _pytree
@@ -90,6 +89,12 @@ def _raise_on_symint(
   """We will defer the support of symint for now.
 
   Here it scans the input object for SymInt. And raises error if found.
+
+  Args:
+    x: The input object to scan for SymInt.
+
+  Returns:
+    The input object if no SymInt is found.
   """
 
   def _raise(t: torch.SymInt):
@@ -323,7 +328,7 @@ class TpuBackend:
 
   def _compile_graph_module(
       self,
-      compiler_instance: AOTDispatchCompiler,
+      compiler_instance: compiler.Compiler,
       is_fwd: bool,
       graph_module: torch.fx.GraphModule,
       example_inputs: Sequence[torch.Tensor],
@@ -353,7 +358,7 @@ class TpuBackend:
         example_inputs,
     )
 
-    executable = compiler_instance(graph_module, example_inputs)
+    executable = compiler_instance(graph_module, example_inputs, is_fwd=is_fwd)
 
     self._compiled_executables.append(executable)
 

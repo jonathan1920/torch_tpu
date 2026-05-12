@@ -62,6 +62,37 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "activation_checkpointing_test",
+    srcs = ["activation_checkpointing_test.py"],
+    tags = [
+        "requires-net:external",
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "activation_checkpointing_mem_test",
+    srcs = ["activation_checkpointing_mem_test.py"],
+    tags = [
+        "requires-net:external",
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+    ],
+)
+
+torch_tpu_py_test(
     name = "dtensor_test",
     srcs = ["dtensor_test.py"],
     tags = [

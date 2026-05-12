@@ -36,4 +36,12 @@ torch_tpu_py_library(
     ],
 )
 
+torch_tpu_py_library(
+    name = "mark_activation_checkpoints",
+    srcs = ["mark_activation_checkpoints.py"],
+    deps = [
+        "//shims/torch:pytorch",
+    ],
+)
+
 torch_tpu_package_end()

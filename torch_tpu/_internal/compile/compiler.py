@@ -40,6 +40,7 @@ from torch.fx.passes import graph_transform_observer
 from torch.utils import _pytree
 from torch_tpu._internal import export as torch_tpu_export
 from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal.compile.fx_passes import mark_activation_checkpoints
 from torch_tpu._internal.compile.fx_passes import mark_embedded_constants
 
 _UNSET_GRAPH_HELPER_STR = (
@@ -105,13 +106,7 @@ class CompilationContext:
   This class is used to pass information and state between different
   stages of the compilation process, including across the forward and
   backward pass compilations.
-
-  Attributes:
-    has_activation_checkpoint: True if activation checkpointing is used in the
-      graph.
   """
-
-  has_activation_checkpoint: bool = False
 
 
 class Compiler(abc.ABC, AOTDispatchCompiler):
@@ -167,6 +162,7 @@ class Compiler(abc.ABC, AOTDispatchCompiler):
       self,
       graph_module: torch.fx.GraphModule,
       example_inputs: Sequence[InputType],
+      is_fwd: bool = True,
   ) -> CompiledArtifact:
     """Compiles the FX graph module into a callable artifact.
 
@@ -178,6 +174,7 @@ class Compiler(abc.ABC, AOTDispatchCompiler):
       graph_module: The FX graph module to compile.
       example_inputs: A sequence of example input tensors that can be used to
         guide the compilation process (e.g., for shape inference).
+      is_fwd: Indicates whether the forward or backward pass is being compiled.
 
     Returns:
       A CompiledArtifact object, which is a callable representation of the
@@ -453,15 +450,6 @@ class _TorchTpuCompiledExecutable(CompiledArtifact):
     pass
 
 
-def _has_activation_checkpoint(graph: torch.fx.Graph) -> bool:
-  """Determines whether activation checkpointing was used within the program."""
-  ac_ops = graph.find_nodes(
-      op="call_function",
-      target=torch.ops.higher_order.tag_activation_checkpoint,
-  )
-  return len(ac_ops) > 0
-
-
 def has_symints(args: Any) -> bool:
   """Checks whether SymInt inputs or shapes exist in the provided input args.
 
@@ -496,26 +484,11 @@ class StaticCompiler(Compiler):
   programs with dynamic shapes by raising an exception.
   """
 
-  def execute_pre_grad_passes(
-      self,
-      graph_module: torch.fx.GraphModule,
-  ) -> None:
-    """Executes graph passes on the FX graph module before AOT Autograd.
-
-    This method checks if activation checkpointing is used in the graph and
-    updates the CompilationContext accordingly. This information is typically
-    used in the backward pass compilation.
-
-    Args:
-      graph_module: The FX graph module to process.
-    """
-    if _has_activation_checkpoint(graph_module.graph):
-      self.compilation_context.has_activation_checkpoint = True
-
   def __call__(
       self,
       graph_module: torch.fx.GraphModule,
       example_inputs: Sequence[InputType],
+      is_fwd: bool = True,
   ) -> _TorchTpuCompiledExecutable:
     """Compiles the FX graph module for static shapes.
 
@@ -539,6 +512,7 @@ class StaticCompiler(Compiler):
       example_inputs: A sequence of example input tensors used to guide
         the conversion to MLIR, particularly for determining input
         specifications.
+      is_fwd: Indicates whether the forward or backward pass is being compiled.
 
     Returns:
       A _TorchTpuCompiledExecutable object, which can be called to execute
@@ -554,6 +528,10 @@ class StaticCompiler(Compiler):
     graph_transform_observer.GraphTransformObserver(
         graph_module, "mark_embedded_constants"
     ).apply_graph_pass(mark_embedded_constants.apply)
+    if not is_fwd:
+      graph_transform_observer.GraphTransformObserver(
+          graph_module, "mark_activation_checkpoints"
+      ).apply_graph_pass(mark_activation_checkpoints.apply)
 
     graph_module.graph.lint()
     graph_module.recompile()

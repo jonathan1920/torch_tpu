@@ -284,12 +284,14 @@ class DynamicCompiler(compiler.Compiler):
       self,
       graph_module: torch.fx.GraphModule,
       example_inputs: Sequence[InputType],
+      is_fwd: bool = True,
   ) -> _DynamicTpuCompiledExecutable:
     """Called by AOT Autograd to compile the graph.
 
     Args:
       graph_module: The FX graph module to be compiled.
       example_inputs: A list of example inputs for the graph module.
+      is_fwd: Indicates whether the forward or backward pass is being compiled.
 
     Returns:
       A callable `_DynamicTpuCompiledExecutable` that wraps the compiled model
@@ -331,6 +333,7 @@ class DynamicCompiler(compiler.Compiler):
     static_model_executable = self.static_compiler(
         graph_module,
         model_example_inputs,
+        is_fwd=is_fwd,
     )
 
     logging.debug(
