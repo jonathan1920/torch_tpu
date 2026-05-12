@@ -16,7 +16,6 @@ import concurrent.futures
 from absl.testing import absltest
 import torch
 from torch_tpu._internal.utils import utils
-import torch_tpu.api
 
 
 class StreamsTest(absltest.TestCase):
@@ -158,8 +157,6 @@ class StreamsTest(absltest.TestCase):
 
   def test_async_transfer_on_separate_stream(self):
     """Tests async transfers on a separate stream."""
-    _ = torch_tpu.api.tpu_device()
-
     size = 1024 * 1024
     t_tpu = torch.ones(size, device='tpu', dtype=torch.float32)
     t_cpu = torch.empty(size, device='cpu', pin_memory=True)
