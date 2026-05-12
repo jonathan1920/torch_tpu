@@ -63,8 +63,8 @@ in GKE (skip if one already exists).
 
 ```bash
 cd $TORCH_TPU_SRC/docker
-./build_image.sh [specify a different source location to build from]
-docker tag torch-tpu-local:latest ${ARTIFACT_REGISTRY_URL}/${DOCKER_IMAGE}
+./build_image_multistage.sh
+docker tag torch-tpu:latest ${ARTIFACT_REGISTRY_URL}/${DOCKER_IMAGE}
 docker push ${ARTIFACT_REGISTRY_URL}/${DOCKER_IMAGE}
 ```
 
