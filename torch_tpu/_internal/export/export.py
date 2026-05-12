@@ -102,6 +102,10 @@ class ExportedMlir:
     reconstruct_fx_outputs_fn: A function that takes the flattened MLIR outputs
       and reconstructs the original FX graph's output structure (e.g., restoring
       `None` values or nested tuples).
+    updates_default_generator_state: Whether the MLIR module updates the default
+      generator state. If so, one additional input tensor as the last argument
+      is expected for the generator state tensor, and the one additional tensor
+      as the last output is expected for the updated generator state tensor.
   """
 
   module: tpu_torch_compile.ContextedModule | None
@@ -110,6 +114,7 @@ class ExportedMlir:
   reconstruct_fx_outputs_fn: Callable[
       [Sequence[Any], Sequence[torch.Tensor]], Any
   ]
+  updates_default_generator_state: bool
 
   def serialize_text(self, enable_debug_info: bool = False) -> str:
     """Returns the MLIR representation of the graph as text."""
@@ -416,8 +421,8 @@ def fx_to_mlir(
 
   # Add the default RNG generator for the device to the args.
   argument_generators = [
-      device_module.default_generators[device.index or 0]
-  ] + [arg for arg in args if isinstance(arg, torch.Generator)]
+      arg for arg in args if isinstance(arg, torch.Generator)
+  ] + [device_module.default_generators[device.index or 0]]
 
   orig_generator_states = {}
   for gen in argument_generators:
@@ -454,6 +459,19 @@ def fx_to_mlir(
       end_state_tensor = tpu_torch_compile.get_device_state_tensor(gen)
       result_tensors.append(end_state_tensor)
 
+    # Check if the module updates the default generator state.
+    begin_default_state_tensor = argument_tensors[-1]
+    end_default_state_tensor = result_tensors[-1]
+    updates_default_generator_state = (
+        begin_default_state_tensor.data_ptr()
+        != end_default_state_tensor.data_ptr()
+    )
+    if not updates_default_generator_state:
+      # Remove the default generator state tensor from the arguments and
+      # outputs since it is not used.
+      argument_tensors.pop()
+      result_tensors.pop()
+
     compile_result = tpu_torch_compile.traverse_and_compile(
         result_tensors=result_tensors,
         argument_tensors=argument_tensors,
@@ -469,4 +487,5 @@ def fx_to_mlir(
       executable=compile_result.executable,
       mlir_result_tensors=result_tensors,
       reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
+      updates_default_generator_state=updates_default_generator_state,
   )

@@ -186,6 +186,7 @@ class Compiler(abc.ABC, AOTDispatchCompiler):
 def _unpickle_compiled_executable(
     serialized_bytes: bytes,
     reconstruct_fx_outputs_fn: _ReconstructFxOutputsFn | None,
+    updates_default_generator_state: bool,
 ) -> "_TorchTpuCompiledExecutable":
   """Reconstructs a _TorchTpuCompiledExecutable from serialized bytes.
 
@@ -201,6 +202,8 @@ def _unpickle_compiled_executable(
       from the TPU executable back to the output structure expected by PyTorch.
       This is the same function that was passed to the
       _TorchTpuCompiledExecutable constructor.
+    updates_default_generator_state: Whether the executable updates the default
+      generator state.
 
   Returns:
     A deserialized _TorchTpuCompiledExecutable instance.
@@ -208,6 +211,7 @@ def _unpickle_compiled_executable(
   return _TorchTpuCompiledExecutable(
       executable=tpu_torch_compile.load_serialized_executable(serialized_bytes),
       reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
+      updates_default_generator_state=updates_default_generator_state,
   )
 
 
@@ -223,6 +227,7 @@ class _TorchTpuCompiledExecutable(CompiledArtifact):
       self,
       executable: tpu_torch_compile.PjRtLoadedExecutable,
       reconstruct_fx_outputs_fn: _ReconstructFxOutputsFn | None,
+      updates_default_generator_state: bool,
   ):
     """Initializes the compiled executable wrapper.
 
@@ -241,12 +246,17 @@ class _TorchTpuCompiledExecutable(CompiledArtifact):
 
         It should return a Sequence[Any] representing
         the final outputs as expected by the FX graph's consumer.
+      updates_default_generator_state: Whether the executable updates the
+        default generator state.
     """  # fmt: skip
     self._executable = executable
     self._reconstruct_fx_outputs_fn = reconstruct_fx_outputs_fn
     self._tensor_arg_indices = None
     self._graph_module_debug_str: str | None = None
     self._mlir_text: str | None = None
+    self._updates_default_generator_state: bool = (
+        updates_default_generator_state
+    )
 
   @property
   def graph_module_debug_str(self) -> str | None:
@@ -365,9 +375,10 @@ class _TorchTpuCompiledExecutable(CompiledArtifact):
     device_module = getattr(torch, device.type)
 
     # Update RNG state as the last argument.
-    generators = [device_module.default_generators[device.index or 0]] + [
-        arg for arg in args if isinstance(arg, torch.Generator)
-    ]
+    generators = [arg for arg in args if isinstance(arg, torch.Generator)]
+    if self._updates_default_generator_state:
+      generators.append(device_module.default_generators[device.index or 0])
+
     # Map all generators (including user-passed custom generators) to the
     # canonical default generator for their device. This aligns with PyTorch's
     # observed CUDA behavior where graphsafe RNG ops always mutate the global
@@ -380,7 +391,6 @@ class _TorchTpuCompiledExecutable(CompiledArtifact):
     device_state_tensors = [
         tpu_torch_compile.get_device_state_tensor(gen) for gen in generators
     ]
-
     executable_args = (
         *self._take_tensor_args(args),
         *device_state_tensors,
@@ -396,16 +406,18 @@ class _TorchTpuCompiledExecutable(CompiledArtifact):
     outputs_with_device_state_tensors = tpu_torch_compile.execute(
         self._executable, executable_args, actual_output_shapes
     )
-    outputs, device_state_tensors = (
-        outputs_with_device_state_tensors[: -len(device_state_tensors)],
-        outputs_with_device_state_tensors[-len(device_state_tensors) :],
-    )
+    if not device_state_tensors:
+      outputs = outputs_with_device_state_tensors
+    else:
+      outputs, device_state_tensors = (
+          outputs_with_device_state_tensors[: -len(device_state_tensors)],
+          outputs_with_device_state_tensors[-len(device_state_tensors) :],
+      )
 
     # Once the executable has completed, restore the newly updated RNG state
     # back to each generator.
     for gen, device_state_tensor in zip(generators, device_state_tensors):
       tpu_torch_compile.set_device_state_tensor(gen, device_state_tensor)
-
     if self._reconstruct_fx_outputs_fn is not None:
       outputs = self._reconstruct_fx_outputs_fn(args, outputs)
 
@@ -432,7 +444,11 @@ class _TorchTpuCompiledExecutable(CompiledArtifact):
     serialized = tpu_torch_compile.serialize_executable(self._executable)
     return (
         _unpickle_compiled_executable,
-        (serialized, self._reconstruct_fx_outputs_fn),
+        (
+            serialized,
+            self._reconstruct_fx_outputs_fn,
+            self._updates_default_generator_state,
+        ),
     )
 
   def prepare_for_serialization(self) -> None:
@@ -603,6 +619,7 @@ class StaticCompiler(Compiler):
     executable = _TorchTpuCompiledExecutable(
         executable=exported_mlir.executable,
         reconstruct_fx_outputs_fn=exported_mlir.reconstruct_fx_outputs_fn,
+        updates_default_generator_state=exported_mlir.updates_default_generator_state,
     )
 
     if self._debug and mlir_module is not None:

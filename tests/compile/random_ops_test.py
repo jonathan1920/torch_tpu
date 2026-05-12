@@ -22,6 +22,7 @@ import torch
 import torch.testing
 from torch.utils import _pytree
 from torch.utils import checkpoint
+from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import utils
 
 
@@ -259,6 +260,25 @@ class RandomOpsTest(parameterized.TestCase):
       return compiled_module(x, gen)
 
     self.assert_random_outputs(runner, generator=gen)
+
+  def test_no_rng_state_update_compile(self):
+    backend = _backend.TpuBackend(debug=True)
+
+    class MyModule(torch.nn.Module):
+
+      def forward(self, x):
+        return x + 10.0
+
+    device = torch.accelerator.current_accelerator()
+    module = MyModule().to(device)
+    compiled_module = torch.compile(module, backend=backend)
+
+    x = torch.zeros(2, 5, device=device)
+    compiled_module(x)
+
+    self.assertNotEmpty(backend._compiled_executables)
+    for executable in backend._compiled_executables:
+      self.assertFalse(executable._updates_default_generator_state)
 
   def test_eager_vs_compile_numerics(self):
     device = torch.device("tpu")
