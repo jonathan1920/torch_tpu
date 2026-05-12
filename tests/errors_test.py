@@ -4675,9 +4675,22 @@ Supported combinations for non-constant padding:
     ):
       torch.ops.aten.embedding_renorm_(inp, indices, max_norm, norm_type)
 
-  def test_grid_sampler_2d_complex(self):
-    inp = torch.ones(1, 1, 2, 2, device=et.device(), dtype=torch.complex64)
-    grid = torch.zeros(1, 1, 2, 2, device=et.device())
+  def test_grid_sampler_invalid_input_dtype(self):
+    t = torch.randint(
+        0, 10, (2, 3, 4, 4), device=et.device(), dtype=torch.int32
+    )
+    g = torch.randn(2, 5, 5, 2, device=et.device(), dtype=torch.float32)
+    inp2d = torch.ones(1, 1, 2, 2, device=et.device(), dtype=torch.complex64)
+    grid2d = torch.zeros(1, 1, 2, 2, device=et.device())
+    inp3d = torch.ones(1, 1, 2, 2, 2, device=et.device(), dtype=torch.complex64)
+    grid3d = torch.zeros(1, 1, 2, 2, 3, device=et.device())
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""grid_sampler_2d(): expected the input dtype to be floating point, got int32""",
+        cpu=""""grid_sampler_2d_cpu_kernel_impl" not implemented for 'Int'""",
+    ):
+      torch.ops.aten.grid_sampler_2d(t, g, 0, 0, False)
 
     with et.assert_raises_message(
         RuntimeError,
@@ -4685,11 +4698,7 @@ Supported combinations for non-constant padding:
         cpu=""""grid_sampler_2d_cpu_kernel_impl" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
-      torch.grid_sampler(inp, grid, 0, 0, False)
-
-  def test_grid_sampler_3d_complex(self):
-    inp = torch.ones(1, 1, 2, 2, 2, device=et.device(), dtype=torch.complex64)
-    grid = torch.zeros(1, 1, 2, 2, 3, device=et.device())
+      torch.grid_sampler(inp2d, grid2d, 0, 0, False)
 
     with et.assert_raises_message(
         RuntimeError,
@@ -4697,7 +4706,7 @@ Supported combinations for non-constant padding:
         cpu=""""grid_sampler3d_cpu" not implemented for 'ComplexFloat'""",
         message_reviewed_by="wan",
     ):
-      torch.grid_sampler(inp, grid, 0, 0, False)
+      torch.grid_sampler(inp3d, grid3d, 0, 0, False)
 
   def test_native_dropout_invalid_p(self):
     inp = torch.ones(5, 3, device=et.device())
