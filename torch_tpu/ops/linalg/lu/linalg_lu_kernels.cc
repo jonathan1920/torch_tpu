@@ -51,6 +51,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -186,63 +187,63 @@ absl::Status ApplyPivotsInPlace(at::Tensor& tensor, const at::Tensor& pivots,
 std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuFactorExOut(
     const at::Tensor& a, bool pivot, bool check_errors, at::Tensor& lu,
     at::Tensor& pivots, at::Tensor& info) {
-  TT_KERNEL(
-      OpName::kLinalgLuFactorExOut, _,
-      (a, IgnoreInCacheKey(pivot, "Legacy usage"),
-       IgnoreInCacheKey(check_errors, "Legacy usage"), lu, pivots, info),
-      {
-        TT_CHECK_THROW(pivot, error::kInvalidArgument)
-            << "non-pivoting decomposition is not supported";
-        TT_CHECK_THROW(a.dim() >= 2, error::kInvalidArgument)
-            << "input tensor expected to have at least 2 dimensions, got "
-            << a.dim();
-        const int n = a.size(a.dim() - 2);
-        const int m = a.size(a.dim() - 1);
-        const int num_batch_dims = a.dim() - 2;
-        Dimensions batch_dims(a.sizes().begin(),
-                              a.sizes().begin() + num_batch_dims);
-        Dimensions pivot_dims = batch_dims;
-        pivot_dims.push_back(std::min(n, m));
+  TT_KERNEL(OpName::kLinalgLuFactorExOut, param_keys,
+            (a, pivot, IgnoreInCacheKey(check_errors, "Doesn't affect SHLO"),
+             lu, pivots, info),
+            {
+              TT_CHECK_THROW(pivot, error::kInvalidArgument)
+                  << "non-pivoting decomposition is not supported";
+              TT_CHECK_THROW(a.dim() >= 2, error::kInvalidArgument)
+                  << "input tensor expected to have at least 2 dimensions, got "
+                  << a.dim();
+              const int n = a.size(a.dim() - 2);
+              const int m = a.size(a.dim() - 1);
+              const int num_batch_dims = a.dim() - 2;
+              Dimensions batch_dims(a.sizes().begin(),
+                                    a.sizes().begin() + num_batch_dims);
+              Dimensions pivot_dims = batch_dims;
+              pivot_dims.push_back(std::min(n, m));
 
-        TT_ASSIGN_OR_THROW(mlir::ElementType out_mlir_type,
-                           ConvertTo<mlir::ElementType>(a.scalar_type()));
-        auto a_f32 = a;
-        if (a.scalar_type() == c10::ScalarType::Double) {
-          ABSL_VLOG(1) << "linalg.factor_ex.out: lowering is only implemented "
-                          "for f32, so casting f64 down";
-          a_f32 = a.to(c10::ScalarType::Float);
-        }
+              TT_ASSIGN_OR_THROW(mlir::ElementType out_mlir_type,
+                                 ConvertTo<mlir::ElementType>(a.scalar_type()));
+              auto a_f32 = a;
+              if (a.scalar_type() == c10::ScalarType::Double) {
+                ABSL_VLOG(1)
+                    << "linalg.factor_ex.out: lowering is only implemented "
+                       "for f32, so casting f64 down";
+                a_f32 = a.to(c10::ScalarType::Float);
+              }
 
-        TT_ASSIGN_OR_THROW(
-            auto results,
-            (DispatchOp<1, 2>(
-                LuDecompositionBuilder, {a_f32},
-                {.out_dtypes = {out_mlir_type, mlir::ElementType::I32},
-                 .out_dims_list = {a.sizes(), pivot_dims},
-                 .op_param_cache_keys = OpParamCacheKeys::Empty()})));
+              TT_ASSIGN_OR_THROW(
+                  auto results,
+                  (DispatchOp<1, 2>(
+                      LuDecompositionBuilder, {a_f32},
+                      {.out_dtypes = {out_mlir_type, mlir::ElementType::I32},
+                       .out_dims_list = {a.sizes(), pivot_dims},
+                       .op_param_cache_keys = std::move(param_keys)})));
 
-        if (lu.sizes() != a.sizes()) {
-          lu.resize_(a.sizes());
-        }
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(results[0], lu));
-        if (!pivots.sizes().equals(pivot_dims)) {
-          pivots.resize_(pivot_dims);
-        }
-        TT_THROW_IF_ERROR(AssignBufferToAtTensor(results[1], pivots));
-        // Pivots are 0-based, but torch uses 1-based indexing.
-        pivots.add_(1);
-        // Find the first non-zero diagonal element.
-        auto diagonal = at::diagonal(lu, /*offset=*/0, -2, -1);
-        auto zeros = at::eq(diagonal, 0).to(c10::ScalarType::Double);
-        auto has_zeros = at::any(zeros, -1);
-        info.zero_();
-        auto indices = at::add(at::argmax(zeros, -1), 1);
-        info = at::where(has_zeros, indices, 0).to(c10::kInt);
-        if (check_errors) {
-          at::_linalg_check_errors(info, "lu_factor", a.dim() == 2);
-        }
-        return {lu, pivots, info};
-      });
+              if (lu.sizes() != a.sizes()) {
+                lu.resize_(a.sizes());
+              }
+              TT_THROW_IF_ERROR(AssignBufferToAtTensor(results[0], lu));
+              if (!pivots.sizes().equals(pivot_dims)) {
+                pivots.resize_(pivot_dims);
+              }
+              TT_THROW_IF_ERROR(AssignBufferToAtTensor(results[1], pivots));
+              // Pivots are 0-based, but torch uses 1-based indexing.
+              pivots.add_(1);
+              // Find the first non-zero diagonal element.
+              auto diagonal = at::diagonal(lu, /*offset=*/0, -2, -1);
+              auto zeros = at::eq(diagonal, 0).to(c10::ScalarType::Double);
+              auto has_zeros = at::any(zeros, -1);
+              info.zero_();
+              auto indices = at::add(at::argmax(zeros, -1), 1);
+              info = at::where(has_zeros, indices, 0).to(c10::kInt);
+              if (check_errors) {
+                at::_linalg_check_errors(info, "lu_factor", a.dim() == 2);
+              }
+              return {lu, pivots, info};
+            });
 }
 
 std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLuUnpackOut(
@@ -384,25 +385,22 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
         // the inverse permutation to the columns of B.
 
         // This is true in cases 1 and 3.
-        bool inversion_order_is_p_l_u = left ^ adjoint;
+        const bool inversion_order_is_p_l_u = left ^ adjoint;
 
-        auto p_inversion = [pivots, inversion_order_is_p_l_u,
-                            left](at::Tensor& t) -> absl::Status {
+        const auto p_inversion = [pivots, inversion_order_is_p_l_u,
+                                  left](at::Tensor& t) -> absl::Status {
           TT_RETURN_IF_ERROR(
               ApplyPivotsInPlace(t, pivots, /*to_rows=*/left,
                                  /*inverse=*/inversion_order_is_p_l_u));
           return absl::OkStatus();
         };
 
-        auto l_inversion = [lu, left, adjoint, &param_keys = param_keys](
-                               at::Tensor& t) -> absl::Status {
+        const auto l_inversion = [lu, left, adjoint, &param_keys = param_keys](
+                                     at::Tensor& t) -> absl::Status {
           TT_ASSIGN_OR_RETURN(mlir::ElementType out_dtype,
                               ConvertTo<mlir::ElementType>(t.scalar_type()));
-
-          TT_ASSIGN_OR_RETURN(OpParamCacheKeys step_keys,
-                              *OpParamCacheKeysBuilder(param_keys.Clone())
-                                   .SetParam("step", "L"));
-
+          auto step_keys = param_keys.Clone();
+          TT_RETURN_IF_ERROR(step_keys.SetParam("step", "L"));
           TT_ASSIGN_OR_RETURN(
               auto buffer,
               DispatchOp<2>(LinalgSolveTriangularBuilder(
@@ -417,15 +415,12 @@ at::Tensor& AtenLinalgLuSolveOut(const at::Tensor& lu, const at::Tensor& pivots,
           return absl::OkStatus();
         };
 
-        auto u_inversion = [lu, left, adjoint, &param_keys = param_keys](
-                               at::Tensor& t) -> absl::Status {
+        const auto u_inversion = [lu, left, adjoint, &param_keys = param_keys](
+                                     at::Tensor& t) -> absl::Status {
           TT_ASSIGN_OR_RETURN(mlir::ElementType out_dtype,
                               ConvertTo<mlir::ElementType>(t.scalar_type()));
-
-          TT_ASSIGN_OR_RETURN(OpParamCacheKeys step_keys,
-                              *OpParamCacheKeysBuilder(param_keys.Clone())
-                                   .SetParam("step", "U"));
-
+          auto step_keys = param_keys.Clone();
+          TT_RETURN_IF_ERROR(step_keys.SetParam("step", "U"));
           TT_ASSIGN_OR_RETURN(
               auto buffer,
               DispatchOp<2>(LinalgSolveTriangularBuilder(
