@@ -224,6 +224,7 @@ class BenchmarkCategory(enum.Enum):
   QWEN_RAGGED_MOE = "qwen_ragged_moe"
   QWEN3_5_RAGGED_MOE = "qwen3_5_ragged_moe"
   TORCHAUDIO = "torchaudio"
+  INTERNAL_MODEL = "internal_model"
 
 
 @dataclasses.dataclass
