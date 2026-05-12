@@ -510,10 +510,12 @@ torch_tpu_cc_library(
     deps = [
         ":dtype",
         "//torch_tpu/ops:op_names",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
         "@stablehlo//:attr_type_builder_util",
         "@tsl//tsl/platform:fingerprint",
+        "@xla//xla:xla_proto_cc",
     ],
 )
 
@@ -526,6 +528,8 @@ torch_tpu_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@stablehlo//:attr_type_builder_util",
+        "@xla//xla:xla_proto_cc",
+        "@xla//xla/pjrt:pjrt_executable",
     ],
 )
 

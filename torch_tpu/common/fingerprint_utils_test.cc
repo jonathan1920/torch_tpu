@@ -22,12 +22,15 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "gtest/gtest.h"
 #include "absl/types/span.h"
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/xla.pb.h"
 
 namespace torch_tpu {
 namespace {
@@ -193,6 +196,74 @@ TEST(Fingerprint, WorksForOpName) {
          "correctness. Do not change the expected value to make the test pass. "
          "Instead, figure out why your code change caused the fingerprint to "
          "change.";
+}
+
+TEST(Fingerprint, WorksForXlaExecutionOptionsEffortLevel) {
+  EXPECT_EQ(Fingerprint(xla::ExecutionOptions::EFFORT_O1),
+            1209527397252475055ULL)
+      << "Fingerprint stability is vital for the compilation cache "
+         "correctness. Do not change the expected value to make the test pass. "
+         "Instead, figure out why your code change caused the fingerprint to "
+         "change.";
+  EXPECT_EQ(Fingerprint(xla::ExecutionOptions::EFFORT_O3),
+            16240567011948058057ULL)
+      << "Fingerprint stability is vital for the compilation cache "
+         "correctness. Do not change the expected value to make the test pass. "
+         "Instead, figure out why your code change caused the fingerprint to "
+         "change.";
+}
+
+TEST(Fingerprint, WorksForFloatingPointTypes) {
+  EXPECT_EQ(Fingerprint(42.0f), 1109917696ULL)
+      << "Fingerprint stability is vital for the compilation cache "
+         "correctness. Do not change the expected value to make the test pass. "
+         "Instead, figure out why your code change caused the fingerprint to "
+         "change.";
+  EXPECT_EQ(Fingerprint(42.0), 4631107791820423168ULL)
+      << "Fingerprint stability is vital for the compilation cache "
+         "correctness. Do not change the expected value to make the test pass. "
+         "Instead, figure out why your code change caused the fingerprint to "
+         "change.";
+}
+
+TEST(Fingerprint, WorksForVariant) {
+  {
+    std::variant<int, float, std::string> v = 42;
+    EXPECT_EQ(Fingerprint(v), 7278683826098160691ULL)
+        << "Fingerprint stability is vital for the compilation cache "
+           "correctness. Do not change the expected value to make the test "
+           "pass. "
+           "Instead, figure out why your code change caused the fingerprint to "
+           "change.";
+  }
+
+  {
+    std::variant<int, double, std::string> v = 42.0;
+    EXPECT_EQ(Fingerprint(v), 16822203514485882311ULL)
+        << "Fingerprint stability is vital for the compilation cache "
+           "correctness. Do not change the expected value to make the test "
+           "pass. "
+           "Instead, figure out why your code change caused the fingerprint to "
+           "change.";
+  }
+
+  {
+    xla::CompileOptions::OptionOverride override = "hello";
+    EXPECT_EQ(Fingerprint(override), 9437734065348176533ULL)
+        << "Fingerprint stability is vital for the compilation cache "
+           "correctness. Do not change the expected value to make the test "
+           "pass. "
+           "Instead, figure out why your code change caused the fingerprint to "
+           "change.";
+
+    override = false;
+    EXPECT_EQ(Fingerprint(override), 12725806677685968135ULL)
+        << "Fingerprint stability is vital for the compilation cache "
+           "correctness. Do not change the expected value to make the test "
+           "pass. "
+           "Instead, figure out why your code change caused the fingerprint to "
+           "change.";
+  }
 }
 
 TEST(FingerprintCat, WorksForZeroArgs) {

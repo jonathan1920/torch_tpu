@@ -24,13 +24,16 @@
 #include <map>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace torch_tpu {
@@ -84,6 +87,18 @@ struct Fingerprint64Impl<mlir::ElementType, /*kIsSmallIntegral=*/false> {
   }
 };
 
+// Specialization for xla::ExecutionOptions::EffortLevel.
+template <>
+struct Fingerprint64Impl<xla::ExecutionOptions::EffortLevel,
+                         /*kIsSmallIntegral=*/false> {
+  [[nodiscard]] static FingerprintType Compute(
+      const xla::ExecutionOptions::EffortLevel effort_level) {
+    // The proto enum string names for EffortLevel are unique and stable as
+    // they are used for parameter cache keys.
+    return Fingerprint(xla::ExecutionOptions::EffortLevel_Name(effort_level));
+  }
+};
+
 // Partial specialization for absl::Span.
 template <typename T>
 struct Fingerprint64Impl<absl::Span<T>, /*kIsSmallIntegral=*/false> {
@@ -126,12 +141,41 @@ struct Fingerprint64Impl<std::map<K, V>, /*kIsSmallIntegral=*/false> {
   }
 };
 
+// Specializations for floating point types.
+template <>
+struct Fingerprint64Impl<double, /*kIsSmallIntegral=*/false> {
+  [[nodiscard]] static FingerprintType Compute(double value) {
+    return Fingerprint(absl::bit_cast<uint64_t>(value));
+  }
+};
+
+template <>
+struct Fingerprint64Impl<float, /*kIsSmallIntegral=*/false> {
+  [[nodiscard]] static FingerprintType Compute(float value) {
+    return Fingerprint(absl::bit_cast<uint32_t>(value));
+  }
+};
+
 // Partial specialization for std::pair.
 template <typename T, typename U>
 struct Fingerprint64Impl<std::pair<T, U>, /*kIsSmallIntegral=*/false> {
   [[nodiscard]] static FingerprintType Compute(const std::pair<T, U>& pair) {
     return tsl::FingerprintCat64(Fingerprint(pair.first),
                                  Fingerprint(pair.second));
+  }
+};
+
+// Partial specialization for std::variant.
+template <typename... Ts>
+struct Fingerprint64Impl<std::variant<Ts...>, /*kIsSmallIntegral=*/false> {
+  [[nodiscard]] static FingerprintType Compute(const std::variant<Ts...>& v) {
+    FingerprintType fp = v.index();
+    std::visit(
+        [&fp](const auto& val) {
+          fp = tsl::FingerprintCat64(fp, Fingerprint(val));
+        },
+        v);
+    return fp;
   }
 };
 
