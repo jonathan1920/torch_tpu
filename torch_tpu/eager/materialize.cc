@@ -16,12 +16,9 @@
 
 #include "torch_tpu/eager/materialize.h"
 
-#include <chrono>
 #include <cstdint>
-#include <future>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <queue>
 #include <string>
 #include <string_view>
@@ -46,19 +43,16 @@
 #include "mlir/IR/MLIRContext.h"
 #include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/compilation.h"
-#include "torch_tpu/common/dynamism_utils.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize_common.h"
 #include "torch_tpu/eager/split_traversal.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/traversal.h"
 #include "torch_tpu/experimental/eager/materialize_new.h"
-#include "stablehlo/transforms/StablehloBroadcastLowering.h"
 #include "xla/future.h"
 #include "xla/hlo/translate/register.h"
 #include "xla/xla_data.pb.h"
@@ -77,14 +71,6 @@ absl_nonnull std::unique_ptr<mlir::MLIRContext> MakeMlirContext() {
   context->loadAllAvailableDialects();
   return context;
 }
-
-struct ExecutionTask {
-  std::vector<DeviceBufferRef> arguments;
-  std::vector<DeviceBufferRef> outputs;
-  CompiledKernel compiled_kernel;
-  std::string task_name;
-};
-
 struct MaterializationTask {
   std::vector<SharedDeviceBufferList> nodes_to_materialize;
   xla::Promise<void> completion_promise;
@@ -93,21 +79,6 @@ struct MaterializationTask {
 };
 
 using MaterializationJob = std::variant<ExecutionTask, MaterializationTask>;
-
-ExecutionTask CreateExecutionTask(
-    CompilationMode compilation_mode,
-    absl_nonnull std::unique_ptr<Traversal> traversal,
-    CompiledKernel compiled_kernel) {
-  std::string task_name;
-  if (ABSL_VLOG_IS_ON(1)) {
-    task_name = absl::StrCat(traversal->GetCacheKey(compilation_mode));
-  }
-  Traversal::Parts parts = traversal->IntoParts();
-  return ExecutionTask{.arguments = std::move(parts.arguments),
-                       .outputs = std::move(parts.outputs),
-                       .compiled_kernel = std::move(compiled_kernel),
-                       .task_name = std::move(task_name)};
-}
 
 }  // namespace
 
@@ -171,29 +142,22 @@ class MaterializationWorker {
     std::vector<DeviceBufferRef> outputs;
     outputs.reserve(output_shapes.size());
     for (const auto& shape : output_shapes) {
-      // Make a placeholder and then immediately put it in the
-      // pending-materialization state.
+      // Make a placeholders to hold the results.
       TT_ASSIGN_OR_RETURN(
           DeviceBufferRef output_ref,
           DeviceBufferList::MakePlaceholder(shape.dimensions(), shape.dtype()));
-      TT_RETURN_IF_ERROR(output_ref.device_buffer_list()->SetAsMaterialized());
       outputs.push_back(std::move(output_ref));
     }
 
-    // Create a promise/future that is already done using the executable.
-    LoadedExecutablePromise promise;
-    CompiledKernel compiled_kernel{.fixed_shape_kernel = promise.get_future()};
-    promise.set_value(std::move(executable));
+    // Intentional copy on outputs; we need to both include them in the task
+    // and return them to the caller.
+    TT_ASSIGN_OR_RETURN(
+        ExecutionTask task,
+        ExecutionTask::FromExecutable(
+            std::move(executable), std::move(arguments), outputs,
+            /*reason=*/MaterializationReason::kCompileModeExecution,
+            task_name));
 
-    ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing executable: task_name="
-                 << (task_name.empty() ? "anonymous" : task_name)
-                 << " input arg count: " << arguments.size()
-                 << "  output arg count: " << outputs.size();
-
-    ExecutionTask task = {.arguments = std::move(arguments),
-                          .outputs = outputs,  // intentional copy
-                          .compiled_kernel = std::move(compiled_kernel),
-                          .task_name = std::string(task_name)};
     absl::MutexLock lock(execute_mu_);
     execute_jobs_.push(std::move(task));
 
@@ -223,112 +187,6 @@ class MaterializationWorker {
     ExecutionTask popped_job = std::move(execute_jobs_.front());
     execute_jobs_.pop();
     return popped_job;
-  }
-
-  void ProcessExecutionTask(ExecutionTask task) {
-    tsl::profiler::TraceMe trace("ProcessExecutionTask");
-    std::string_view task_name = "anonymous";
-    if (!task.task_name.empty()) {
-      task_name = task.task_name;
-    }
-
-    ABSL_VLOG(1) << "[MaterializationWorker] Waiting for compilation for "
-                    "task_name="
-                 << task_name;
-
-    if (ABSL_VLOG_IS_ON(1)) {
-      // Wait for the compilation to complete with a timeout.
-      while (task.compiled_kernel.fixed_shape_kernel.wait_for(
-                 std::chrono::seconds(5)) == std::future_status::timeout) {
-        ABSL_VLOG(1) << "Still waiting for compilation of task_name="
-                     << task_name;
-      }
-      if (task.compiled_kernel.dynamic_kernel_adapter.has_value()) {
-        if (task.compiled_kernel.dynamic_kernel_adapter->preamble.valid()) {
-          while (task.compiled_kernel.dynamic_kernel_adapter->preamble.wait_for(
-                     std::chrono::seconds(5)) == std::future_status::timeout) {
-            ABSL_VLOG(1)
-                << "Still waiting for preamble compilation of task_name="
-                << task_name;
-          }
-        }
-        if (task.compiled_kernel.dynamic_kernel_adapter->postamble.valid()) {
-          while (
-              task.compiled_kernel.dynamic_kernel_adapter->postamble.wait_for(
-                  std::chrono::seconds(5)) == std::future_status::timeout) {
-            ABSL_VLOG(1)
-                << "Still waiting for postamble compilation of task_name="
-                << task_name;
-          }
-        }
-      }
-    }
-    ABSL_VLOG(1)
-        << "[MaterializationWorker] Compilation complete for task_name="
-        << task_name;
-
-    std::vector<SharedLoadedExecutableWithMetadata> cached_executables;
-
-    if (task.compiled_kernel.dynamic_kernel_adapter.has_value()) {
-      if (task.compiled_kernel.dynamic_kernel_adapter->preamble.valid()) {
-        absl::StatusOr<SharedLoadedExecutableWithMetadata> preamble =
-            task.compiled_kernel.dynamic_kernel_adapter->preamble.get();
-        if (!preamble.ok()) {
-          ABSL_VLOG(1) << "[MaterializationWorker] Failed to compile "
-                          "task_name="
-                       << task_name << ": " << preamble.status();
-          SetOutputNodesAsError(task.outputs, preamble.status());
-          return;
-        }
-        cached_executables.push_back(std::move(*preamble));
-      }
-    }
-
-    absl::StatusOr<SharedLoadedExecutableWithMetadata> fixed_shape_kernel =
-        task.compiled_kernel.fixed_shape_kernel.get();
-    if (!fixed_shape_kernel.ok()) {
-      ABSL_VLOG(1) << "[MaterializationWorker] Failed to compile "
-                      "task_name="
-                   << task_name << ": " << fixed_shape_kernel.status();
-      SetOutputNodesAsError(task.outputs, fixed_shape_kernel.status());
-      return;
-    }
-    cached_executables.push_back(std::move(*fixed_shape_kernel));
-
-    if (task.compiled_kernel.dynamic_kernel_adapter.has_value()) {
-      if (task.compiled_kernel.dynamic_kernel_adapter->postamble.valid()) {
-        absl::StatusOr<SharedLoadedExecutableWithMetadata> postamble =
-            task.compiled_kernel.dynamic_kernel_adapter->postamble.get();
-        if (!postamble.ok()) {
-          ABSL_VLOG(1) << "[MaterializationWorker] Failed to compile "
-                          "task_name="
-                       << task_name << ": " << postamble.status();
-          SetOutputNodesAsError(task.outputs, postamble.status());
-          return;
-        }
-        cached_executables.push_back(std::move(*postamble));
-      }
-    }
-
-    ABSL_VLOG(1) << "[MaterializationWorker] Cached executables size: "
-                 << cached_executables.size();
-
-    ABSL_VLOG(1) << "[MaterializationWorker] Executing job for task_name="
-                 << task_name;
-    absl::Status status = ExecuteMaterializationJob(
-        task.arguments, task.outputs, std::move(cached_executables), task_name);
-    if (!status.ok()) {
-      ABSL_VLOG(1)
-          << "[MaterializationWorker] ExecuteMaterializationJob failed "
-             "for task_name="
-          << task_name << " with status: " << status;
-      SetOutputNodesAsError(task.outputs, status);
-      return;
-    }
-
-    ABSL_VLOG(1) << "[MaterializationWorker] ExecuteMaterializationJob "
-                    "succeeded for task_name="
-                 << task_name;
   }
 
   absl::StatusOr<std::vector<ExecutionTask>> ProcessMaterializationTask(
@@ -385,55 +243,12 @@ class MaterializationWorker {
       traversals.push_back(std::move(traversal));
     }
 
-    TT_RETURN_IF_ERROR(
-        PropagateBoundedDynamism(absl::MakeSpan(traversals), mlir_context));
-
     std::vector<ExecutionTask> execution_tasks;
     for (auto& split_traversal : traversals) {
-      ABSL_VLOG(1) << "[MaterializationWorker] Compiling traversal";
-      auto compilation_mode = (GetEagerMode() == EagerMode::kDeferAndFuse)
-                                  ? CompilationMode::kFastRuntime
-                                  : CompilationMode::kFastCompile;
-      absl::StatusOr<CompiledKernel> compiled_kernel;
-      {
-        tsl::profiler::TraceMe t("CompileTraversal");
-        TT_ASSIGN_OR_RETURN(compiled_kernel,
-                            split_traversal->Compile(compilation_mode));
-      }
-
-      // Mark all outputs of the split as scheduled/materialized.
-      absl::flat_hash_set<const DeviceBufferList*> marked_materialized;
-      for (const auto& output : split_traversal->outputs()) {
-        if (!marked_materialized.insert(output.device_buffer_list().get())
-                 .second) {
-          continue;
-        }
-
-        ABSL_VLOG(1)
-            << "[MaterializationWorker] Marking output as materialized: "
-            << output.device_buffer_list();
-
-        TT_RETURN_IF_ERROR(output.device_buffer_list()->SetAsMaterialized());
-      }
-
-      ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing traversal: cache_key="
-                   << split_traversal->GetCacheKey(compilation_mode)
-                   << " traversal input arg count: "
-                   << split_traversal->arguments().size()
-                   << " traversal output arg count: "
-                   << split_traversal->outputs().size();
-
-      // Mark all deferred ops in the split as having been executed (scheduled).
-      for (const auto& node : split_traversal->execution_order()) {
-        auto* deferred_op = node->deferred_op();
-        if (deferred_op) {
-          deferred_op->mark_executed();
-        }
-      }
-
-      execution_tasks.push_back(
-          CreateExecutionTask(compilation_mode, std::move(split_traversal),
-                              std::move(*compiled_kernel)));
+      TT_ASSIGN_OR_RETURN(auto execution_task, ExecutionTask::FromTraversal(
+                                                   std::move(split_traversal),
+                                                   task.reason, &mlir_context));
+      execution_tasks.push_back(std::move(execution_task));
     }
 
     return execution_tasks;
@@ -473,17 +288,10 @@ class MaterializationWorker {
       while (true) {
         ExecutionTask job = DequeueExecutionJob();
         ABSL_VLOG(1) << "[MaterializationWorker] Processing ExecutionTask";
-        ProcessExecutionTask(std::move(job));
+        job.Run();
       }
     });
   }
-
-  // Propagates bounded dynamism annotations from one traversal to others
-  // when one traversal's output is bounded dynamic and is another traversal's
-  // input.
-  absl::Status PropagateBoundedDynamism(
-      absl::Span<absl_nonnull std::unique_ptr<Traversal>> traversals,
-      mlir::MLIRContext& mlir_context);
 
   std::thread materialize_thread_;
   std::thread execute_thread_;
@@ -499,33 +307,6 @@ class MaterializationWorker {
 MaterializationWorker& GetMaterializationWorker() {
   static absl::NoDestructor<MaterializationWorker> worker;
   return *worker;
-}
-
-absl::Status MaterializationWorker::PropagateBoundedDynamism(
-    absl::Span<absl_nonnull std::unique_ptr<Traversal>> traversals,
-    mlir::MLIRContext& mlir_context) {
-  for (auto& traversal : traversals) {
-    if (!traversal->IsBoundedDynamic()) {
-      continue;
-    }
-    ABSL_VLOG(1) << "[PropagateBoundedDynamism] Traversal: "
-                 << traversal->DebugString();
-    TT_ASSIGN_OR_RETURN(std::vector<DeviceRefDimensions> output_dimensions,
-                        GetTraversalOutputDimensions(mlir_context, *traversal));
-    for (const auto& output_dimension : output_dimensions) {
-      const DeviceBufferRef& ref = output_dimension.ref;
-      const auto& dims = output_dimension.dims;
-      for (int d = 0; d < dims.size(); ++d) {
-        if (dims[d].boundOp.has_value() || dims[d].size > ref.dimensions()[d]) {
-          TT_RETURN_IF_ERROR(ref.MarkDynamic(d, 2, dims[d].size));
-          ABSL_VLOG(1) << "[PropagateBoundedDynamism] Marked dynamic: "
-                       << ref.DebugString() << " dimension: " << d
-                       << " upper bound: " << dims[d].size;
-        }
-      }
-    }
-  }
-  return absl::OkStatus();
 }
 
 // Common pathway for all Materialize() overloads.

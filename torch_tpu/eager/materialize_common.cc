@@ -16,23 +16,34 @@
 
 #include "torch_tpu/eager/materialize_common.h"
 
+#include <chrono>
+#include <future>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/flags/declare.h"
-#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/log/absl_vlog_is_on.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/IR/MLIRContext.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/context_states.h"
+#include "torch_tpu/common/dynamism_utils.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/eager_mode.h"
+#include "torch_tpu/eager/structured_log_buffer.h"
+#include "torch_tpu/eager/traversal.h"
 #include "torch_tpu/pjrt/pjrt_utils.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/xla_data.pb.h"
@@ -41,50 +52,242 @@
 ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 
 namespace torch_tpu {
+
 namespace {
 
-absl::Status SetOutputNodesAsMaterialized(std::vector<DeviceBufferRef>& outputs,
-                                          PjRtBufferPointers results) {
-  tsl::profiler::TraceMe trace("SetOutputNodesAsMaterialized");
-  ABSL_VLOG(1) << "[SetOutputNodesAsMaterialized] Starting";
-  PjRtBufferPointers buffers_to_assign;
-  buffers_to_assign.reserve(outputs.size());
-  auto i = 0;
-  while (i < outputs.size()) {
-    ABSL_VLOG(1) << "[AssignMaterializedBuffers] Assigning materialized "
-                    "buffers for node "
-                 << i;
-    auto* absl_nonnull node = outputs[i].device_buffer_list().get();
-    buffers_to_assign.clear();
-    buffers_to_assign.reserve(node->size());
-    if (i + node->size() > results.size()) {
-      ABSL_VLOG(1)
-          << "[AssignMaterializedBuffers] Not enough results to materialize "
-             "node "
-          << node;
-      return TT_ERROR(error::kFailedPrecondition)
-             << "Not enough results to materialize node " << node;
-    }
-    for (auto j = 0; j < node->size(); ++j) {
-      ABSL_VLOG(1)
-          << "[AssignMaterializedBuffers] Assigning materialized buffer for "
-             "node "
-          << node << " index " << j;
-      buffers_to_assign.push_back(std::move(results[i + j]));
-    }
-    TT_RETURN_IF_ERROR(node->SetAsMaterialized(std::move(buffers_to_assign)))
-        << "Failed to set node " << node << " as materialized";
-    i += node->size();
+// Propagates bounded dynamism annotations from one traversal to others
+// when one traversal's output is bounded dynamic and is another traversal's
+// input.
+absl::Status PropagateBoundedDynamism(Traversal& traversal,
+                                      mlir::MLIRContext& mlir_context) {
+  if (!traversal.IsBoundedDynamic()) {
+    return absl::OkStatus();
   }
-  ABSL_VLOG(1) << "[AssignMaterializedBuffers] Assigned materialized buffers "
-                  "for nodes";
+  ABSL_VLOG(1) << "[PropagateBoundedDynamism] Traversal: "
+               << traversal.DebugString();
+  TT_ASSIGN_OR_RETURN(std::vector<DeviceRefDimensions> output_dimensions,
+                      GetTraversalOutputDimensions(mlir_context, traversal));
+  for (const auto& output_dimension : output_dimensions) {
+    const DeviceBufferRef& ref = output_dimension.ref;
+    const auto& dims = output_dimension.dims;
+    for (int d = 0; d < dims.size(); ++d) {
+      if (dims[d].boundOp.has_value() || dims[d].size > ref.dimensions()[d]) {
+        TT_RETURN_IF_ERROR(ref.MarkDynamic(d, 2, dims[d].size));
+        ABSL_VLOG(1) << "[PropagateBoundedDynamism] Marked dynamic: "
+                     << ref.DebugString() << " dimension: " << d
+                     << " upper bound: " << dims[d].size;
+      }
+    }
+  }
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>> GetArgumentBuffers(
-    absl::Span<const DeviceBufferRef> arguments) {
+}  // namespace
+
+absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
+    absl_nonnull std::unique_ptr<Traversal> traversal,
+    MaterializationReason reason,
+    mlir::MLIRContext* absl_nullable mlir_context) {
+  // Propagate bounded dynamism annotations if needed.
+  if (traversal->IsBoundedDynamic()) {
+    TT_RET_CHECK(mlir_context != nullptr, error::kInvalidArgument)
+        << "mlir_context is required for bounded dynamic traversals";
+    TT_RETURN_IF_ERROR(PropagateBoundedDynamism(*traversal, *mlir_context));
+  }
+
+  // Start compiling the traversal.
+  ABSL_VLOG(1) << "[ExecutionTask] Compiling traversal";
+  auto compilation_mode = (GetEagerMode() == EagerMode::kDeferAndFuse)
+                              ? CompilationMode::kFastRuntime
+                              : CompilationMode::kFastCompile;
+  absl::StatusOr<CompiledKernel> compiled_kernel;
+  {
+    tsl::profiler::TraceMe t("CompileTraversal");
+    TT_ASSIGN_OR_RETURN(compiled_kernel, traversal->Compile(compilation_mode));
+  }
+
+  // Mark all outputs of the split as scheduled/materialized.
+  absl::flat_hash_set<const DeviceBufferList*> marked_materialized;
+  for (const auto& output : traversal->outputs()) {
+    if (!marked_materialized.insert(output.device_buffer_list().get()).second) {
+      continue;
+    }
+
+    ABSL_VLOG(1) << "[ExecutionTask] Marking output as materialized: "
+                 << output.device_buffer_list();
+
+    TT_RETURN_IF_ERROR(output.device_buffer_list()->SetAsMaterialized());
+  }
+
+  ABSL_VLOG(1) << "[ExecutionTask] Marking all nodes as having been executed";
+
+  // Mark all deferred ops in the split as having been executed (scheduled).
+  for (const auto& node : traversal->execution_order()) {
+    auto* deferred_op = node->deferred_op();
+    if (deferred_op) {
+      deferred_op->mark_executed();
+    }
+  }
+
+  std::string task_name;
+  if (ABSL_VLOG_IS_ON(1)) {
+    task_name = absl::StrCat(traversal->GetCacheKey(compilation_mode));
+  }
+  Traversal::Parts traversal_parts = traversal->IntoParts();
+  return ExecutionTask(
+      std::move(task_name), std::move(traversal_parts.arguments),
+      std::move(traversal_parts.outputs), std::move(*compiled_kernel), reason);
+}
+
+absl::StatusOr<ExecutionTask> ExecutionTask::FromExecutable(
+    SharedLoadedExecutableWithMetadata executable,
+    std::vector<DeviceBufferRef> arguments,
+    std::vector<DeviceBufferRef> outputs, MaterializationReason reason,
+    std::string_view task_name) {
+  for (const auto& output : outputs) {
+    TT_RETURN_IF_ERROR(output.device_buffer_list()->SetAsMaterialized());
+  }
+
+  // Create a promise/future that is already done using the executable.
+  LoadedExecutablePromise promise;
+  CompiledKernel compiled_kernel{.fixed_shape_kernel = promise.get_future()};
+  promise.set_value(std::move(executable));
+
+  return ExecutionTask(std::string(task_name), std::move(arguments),
+                       std::move(outputs), std::move(compiled_kernel), reason);
+}
+
+void ExecutionTask::SetOutputNodesAsError(absl::Status status) {
+  for (const auto& output : outputs_) {
+    auto* absl_nonnull node = output.device_buffer_list().get();
+    auto* materialized_buffers = node->materialized_buffers();
+    if (materialized_buffers == nullptr) {
+      continue;
+    }
+    // SetAsError is idempotent and will no-op if a node successfully
+    // materialized or already had an error set.
+    materialized_buffers->SetAsError(status);
+  }
+}
+
+namespace {
+
+void LogCompilationWait(const CompiledKernel& compiled_kernel,
+                        std::string_view task_name) {
+  // Wait for the compilation to complete with a timeout.
+  while (compiled_kernel.fixed_shape_kernel.wait_for(std::chrono::seconds(5)) ==
+         std::future_status::timeout) {
+    ABSL_VLOG(1) << "Still waiting for compilation of task_name=" << task_name;
+  }
+  if (compiled_kernel.dynamic_kernel_adapter.has_value()) {
+    if (compiled_kernel.dynamic_kernel_adapter->preamble.valid()) {
+      while (compiled_kernel.dynamic_kernel_adapter->preamble.wait_for(
+                 std::chrono::seconds(5)) == std::future_status::timeout) {
+        ABSL_VLOG(1) << "Still waiting for preamble compilation of task_name="
+                     << task_name;
+      }
+    }
+    if (compiled_kernel.dynamic_kernel_adapter->postamble.valid()) {
+      while (compiled_kernel.dynamic_kernel_adapter->postamble.wait_for(
+                 std::chrono::seconds(5)) == std::future_status::timeout) {
+        ABSL_VLOG(1) << "Still waiting for postamble compilation of task_name="
+                     << task_name;
+      }
+    }
+  }
+  ABSL_VLOG(1) << "[ExecutionTask::Run] Compilation complete for task_name="
+               << task_name;
+}
+
+absl::StatusOr<PjRtBufferPointers> RunSequentialExecutables(
+    absl::Span<const SharedLoadedExecutableWithMetadata> executables,
+    std::vector<xla::PjRtBuffer*> argument_buffers,
+    std::string_view task_name) {
+  std::vector<PjRtBufferPointers> intermediate_results;
+  for (auto& executable : executables) {
+    TT_ASSIGN_OR_RETURN(PjRtBufferPointers results,
+                        Execute(executable, std::move(argument_buffers)),
+                        _.SetPrepend()
+                            << "failed to enqueue execution for task_name="
+                            << task_name << ": ");
+    argument_buffers.clear();
+    argument_buffers.reserve(results.size());
+    for (const auto& result : results) {
+      argument_buffers.push_back(result.get());
+    }
+    intermediate_results.push_back(std::move(results));
+  }
+  return std::move(intermediate_results.back());
+}
+
+}  // namespace
+
+absl::StatusOr<std::vector<SharedLoadedExecutableWithMetadata>>
+ExecutionTask::GetCachedExecutables(std::string_view task_name) {
+  if (ABSL_VLOG_IS_ON(1)) {
+    LogCompilationWait(compiled_kernel_, task_name);
+  }
+
+  std::vector<SharedLoadedExecutableWithMetadata> cached_executables;
+
+  // Get the preamble if it exists.
+  if (compiled_kernel_.dynamic_kernel_adapter.has_value()) {
+    if (compiled_kernel_.dynamic_kernel_adapter->preamble.valid()) {
+      absl::StatusOr<SharedLoadedExecutableWithMetadata> preamble =
+          compiled_kernel_.dynamic_kernel_adapter->preamble.get();
+      if (!preamble.ok()) {
+        ABSL_VLOG(1) << "[ExecutionTask::Run] Failed to compile "
+                        "task_name="
+                     << task_name << ": " << preamble.status();
+        return preamble.status();
+      }
+      cached_executables.push_back(std::move(*preamble));
+    }
+  }
+
+  // Get the fixed shape kernel. This should always exist.
+  absl::StatusOr<SharedLoadedExecutableWithMetadata> fixed_shape_kernel =
+      compiled_kernel_.fixed_shape_kernel.get();
+  if (!fixed_shape_kernel.ok()) {
+    ABSL_VLOG(1) << "[ExecutionTask::Run] Failed to compile "
+                    "task_name="
+                 << task_name << ": " << fixed_shape_kernel.status();
+    return fixed_shape_kernel.status();
+  }
+  cached_executables.push_back(std::move(*fixed_shape_kernel));
+
+  // Get the postamble if it exists.
+  if (compiled_kernel_.dynamic_kernel_adapter.has_value()) {
+    if (compiled_kernel_.dynamic_kernel_adapter->postamble.valid()) {
+      absl::StatusOr<SharedLoadedExecutableWithMetadata> postamble =
+          compiled_kernel_.dynamic_kernel_adapter->postamble.get();
+      if (!postamble.ok()) {
+        ABSL_VLOG(1) << "[ExecutionTask::Run] Failed to compile "
+                        "task_name="
+                     << task_name << ": " << postamble.status();
+        return postamble.status();
+      }
+      cached_executables.push_back(std::move(*postamble));
+    }
+  }
+  return cached_executables;
+}
+
+absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>>
+ExecutionTask::GetArgumentBuffers() {
+  // Check that this task does not have any placeholder arguments.
+  for (const auto& input : arguments_) {
+    if (input.state() == DeviceBufferRefState::kPlaceholder) {
+      return TT_ERROR(error::kInternal)
+             << "Materialize was called on a placeholder tensor. This "
+                "should never happen.\nkPlaceholder tensors should only "
+                "appear in compiled mode, which should never try to "
+                "materialize tensors."
+             << input.DebugString();
+    }
+  }
   std::vector<xla::PjRtBuffer*> root_args;
-  for (const auto&& [index, argument] : llvm::enumerate(arguments)) {
+  for (const auto&& [index, argument] : llvm::enumerate(arguments_)) {
     switch (argument.state()) {
       case DeviceBufferRefState::kMaterialized: {
         ABSL_VLOG(1) << "kMaterialized DeviceBufferRef index: " << index;
@@ -112,68 +315,88 @@ absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>> GetArgumentBuffers(
   return root_args;
 }
 
-}  // namespace
-
-// PRECONDITION: executables must be a sequence that is compatible with the
-// arguments and composable, as they will be executed in order and the outputs
-// of an executable are the arguments to the next. The final execuatable returns
-// a complete set of outputs for each node in sequential blocks. That is, either
-// all outputs of a node appear contiguously and in the same order as in
-// results, or none of them do. Furthermore, the order of nodes must be
-// consistent between the execution and results. For example, if node A is size
-// 3, node B is size 1, and node C is size 2, then the output order must be [A0,
-// A1, A2, B1, C0, C1]. This is established by all Materialize() functions in
-// this file.
-absl::Status ExecuteMaterializationJob(
-    absl::Span<const DeviceBufferRef> arguments,
-    absl::Span<const DeviceBufferRef> outputs,
-    std::vector<SharedLoadedExecutableWithMetadata> executables,
-    std::string_view task_name) {
-  tsl::profiler::TraceMe trace("ExecuteMaterializationJob");
-  ABSL_VLOG(1) << "[ExecuteMaterializationJob]: task_name=" << task_name
-               << " input arg count: " << arguments.size()
-               << " output arg count: " << outputs.size()
-               << " executables count: " << executables.size();
-  ABSL_CHECK(!executables.empty()) << "No executables to execute";  // CRASH_OK
-
-  TT_ASSIGN_OR_RETURN(std::vector<xla::PjRtBuffer*> argument_buffers,
-                      GetArgumentBuffers(arguments));
-
-  ABSL_VLOG(1)
-      << "[ExecuteMaterializationJob]: Arguments materialization completed "
-         "for task name="
-      << task_name << ", argument_buffers size: " << argument_buffers.size();
-
-  std::vector<PjRtBufferPointers> intermediate_results;
-  for (auto& executable : executables) {
-    TT_ASSIGN_OR_RETURN(PjRtBufferPointers results,
-                        Execute(executable, std::move(argument_buffers)),
-                        _.SetPrepend()
-                            << "failed to enqueue execution for task_name="
-                            << task_name << ": ");
-    argument_buffers.clear();
-    argument_buffers.reserve(results.size());
-    for (const auto& result : results) {
-      argument_buffers.push_back(result.get());
+absl::Status ExecutionTask::SetOutputNodesAsMaterialized(
+    PjRtBufferPointers results) {
+  tsl::profiler::TraceMe trace("SetOutputNodesAsMaterialized");
+  ABSL_VLOG(1) << "[SetOutputNodesAsMaterialized] Starting";
+  PjRtBufferPointers buffers_to_assign;
+  buffers_to_assign.reserve(outputs_.size());
+  auto i = 0;
+  while (i < outputs_.size()) {
+    ABSL_VLOG(1) << "[AssignMaterializedBuffers] Assigning materialized "
+                    "buffers for node "
+                 << i;
+    auto* absl_nonnull node = outputs_[i].device_buffer_list().get();
+    buffers_to_assign.clear();
+    buffers_to_assign.reserve(node->size());
+    if (i + node->size() > results.size()) {
+      ABSL_VLOG(1)
+          << "[AssignMaterializedBuffers] Not enough results to materialize "
+             "node "
+          << node;
+      return TT_ERROR(error::kFailedPrecondition)
+             << "Not enough results to materialize node " << node;
     }
-    intermediate_results.push_back(std::move(results));
+    for (auto j = 0; j < node->size(); ++j) {
+      ABSL_VLOG(1)
+          << "[AssignMaterializedBuffers] Assigning materialized buffer for "
+             "node "
+          << node << " index " << j;
+      buffers_to_assign.push_back(std::move(results[i + j]));
+    }
+    TT_RETURN_IF_ERROR(node->SetAsMaterialized(std::move(buffers_to_assign)))
+        << "Failed to set node " << node << " as materialized";
+    i += node->size();
   }
-  PjRtBufferPointers final_results = std::move(intermediate_results.back());
-
-  ABSL_VLOG(1)
-      << "[ExecuteMaterializationJob]: Enqueued execution for task_name="
-      << task_name << ", results size: " << final_results.size();
-
-  ABSL_VLOG(1) << "[ExecuteMaterializationJob]: Materialization enqueue has "
-                  "completed for task_name="
-               << task_name;
-
-  std::vector<DeviceBufferRef> output_refs;
-  for (const auto& output : outputs) {
-    output_refs.push_back(output);
-  }
-
-  return SetOutputNodesAsMaterialized(output_refs, std::move(final_results));
+  ABSL_VLOG(1) << "[AssignMaterializedBuffers] Assigned materialized buffers "
+                  "for nodes";
+  return absl::OkStatus();
 }
 
+absl::Status ExecutionTask::RunInternal() {
+  tsl::profiler::TraceMe trace("ExecutionTask::Run");
+  std::string_view task_name = "anonymous";
+  if (!name_.empty()) {
+    task_name = name_;
+  }
+
+  // Wait for compilation to complete.
+  ABSL_VLOG(1) << "[ExecutionTask::Run] Waiting for compilation for "
+                  "task_name="
+               << task_name;
+  TT_ASSIGN_OR_RETURN(
+      std::vector<SharedLoadedExecutableWithMetadata> cached_executables,
+      GetCachedExecutables(task_name));
+  ABSL_VLOG(1) << "[ExecutionTask::Run] Cached executables size: "
+               << cached_executables.size();
+
+  // Wait for arguments to be materialized.
+  TT_ASSIGN_OR_RETURN(std::vector<xla::PjRtBuffer*> argument_buffers,
+                      GetArgumentBuffers());
+  ABSL_VLOG(1) << "[ExecutionTask::Run] Retrieved " << argument_buffers.size()
+               << " argument buffers for task_name=" << task_name;
+
+  // Run all cached executables in sequence to get the PjRtBuffer pointers.
+  ABSL_VLOG(1) << "[ExecutionTask::Run] Executing job for task_name="
+               << task_name;
+  TT_ASSIGN_OR_RETURN(
+      PjRtBufferPointers final_results,
+      RunSequentialExecutables(cached_executables, std::move(argument_buffers),
+                               task_name));
+
+  // Assign the final results to the output nodes.
+  TT_RETURN_IF_ERROR(SetOutputNodesAsMaterialized(std::move(final_results)));
+
+  ABSL_VLOG(1) << "[ExecutionTask::Run] ExecuteMaterializationJob "
+                  "succeeded for task_name="
+               << task_name;
+  return absl::OkStatus();
+}
+
+void ExecutionTask::Run() {
+  absl::Status status = RunInternal();
+  if (!status.ok()) {
+    SetOutputNodesAsError(status);
+  }
+}
 }  // namespace torch_tpu

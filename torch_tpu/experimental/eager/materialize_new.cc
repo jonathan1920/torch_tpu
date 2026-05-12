@@ -39,6 +39,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
@@ -423,15 +424,6 @@ absl::Status MaterializationWorker::MaterializeQueue(
                               ? CompilationMode::kFastRuntime
                               : CompilationMode::kFastCompile;
 
-  struct ExecutionTask {
-    std::string name;
-    std::vector<DeviceBufferRef> arguments;
-    std::vector<DeviceBufferRef> outputs;
-    CompiledKernel compiled_kernel;
-    std::vector<SharedDeviceBufferList> execution_order;
-    MaterializationReason reason;
-  };
-
   std::vector<ExecutionTask> execution_tasks;
   execution_tasks.reserve(num_regions);
 
@@ -495,56 +487,10 @@ absl::Status MaterializationWorker::MaterializeQueue(
     // constructor doesn't perform a DFS.
     TT_ASSIGN_OR_RETURN(auto traversal, Traversal::CreateFromExecutionOrder(
                                             region, region_outputs));
-    ABSL_VLOG(1) << "==== TRAVERSAL ===\n" << traversal->DebugString();
-
-    ABSL_VLOG(1) << "[MaterializationWorker] Launching compilation for "
-                    "region: cache_key="
-                 << traversal->GetCacheKey(compilation_mode);
-    TT_ASSIGN_OR_RETURN(auto compiled_kernel,
-                        traversal->Compile(compilation_mode));
-
-    // Mark all outputs of the split as scheduled/materialized.
-    {
-      absl::flat_hash_set<const DeviceBufferList*> marked_materialized;
-      for (const auto& output : traversal->outputs()) {
-        if (marked_materialized.insert(output.device_buffer_list().get())
-                .second) {
-          ABSL_VLOG(1)
-              << "[MaterializationWorker] Marking output as materialized: "
-              << output.device_buffer_list();
-          TT_RETURN_IF_ERROR(output.device_buffer_list()->SetAsMaterialized());
-        }
-      }
-    }
-
-    // Mark all deferred ops in the task as having been executed (or scheduled).
-    for (const auto& node : traversal->execution_order()) {
-      auto* deferred_op = node->deferred_op();
-      // We need to check for (deferred_op != nullptr) since nodes producing
-      // region outputs have been materialized and no longer have a DeferredOp
-      // attached.
-      if (deferred_op) {
-        deferred_op->mark_executed();
-      }
-    }
-
-    std::string name = absl::StrCat(traversal->GetCacheKey(compilation_mode));
-    Traversal::Parts traversal_parts = traversal->IntoParts();
-    execution_tasks.push_back(ExecutionTask{
-        .name = std::move(name),
-        .arguments = std::move(traversal_parts.arguments),
-        .outputs = std::move(traversal_parts.outputs),
-        .compiled_kernel = std::move(compiled_kernel),
-        .execution_order = std::move(traversal_parts.execution_order),
-        .reason = reason});
-  }
-
-  // Launch compiled kernels.
-  for (const auto& execution_task : execution_tasks) {
     // Don't launch kernels if this is part of TorchTPU tracing of an FX graph,
     // which is indicated by placeholder inputs.
     bool has_placeholder = false;
-    for (const auto& arg : execution_task.arguments) {
+    for (const auto& arg : traversal->arguments()) {
       if (arg.state() == DeviceBufferRefState::kPlaceholder) {
         has_placeholder = true;
         break;
@@ -552,41 +498,21 @@ absl::Status MaterializationWorker::MaterializeQueue(
     }
     if (has_placeholder) {
       ABSL_VLOG(1)
-          << "[MaterializationWorker] Skipping region " << execution_task.name
+          << "[MaterializationWorker] Skipping region "
+          << absl::StrCat(traversal->GetCacheKey(compilation_mode))
           << " because it depends on a placeholder (likely traced by Dynamo).";
       continue;
     }
+    ABSL_VLOG(1) << "==== TRAVERSAL ===\n" << traversal->DebugString();
+    // TODO(cbasile): support bounded dynamism, requires an MLIR context
+    TT_ASSIGN_OR_RETURN(auto execution_task, ExecutionTask::FromTraversal(
+                                                 std::move(traversal), reason));
+    execution_tasks.push_back(std::move(execution_task));
+  }
 
-    ABSL_VLOG(1) << "[MaterializationWorker] Waiting for compilation of region "
-                 << execution_task.name;
-
-    std::vector<SharedLoadedExecutableWithMetadata> executables;
-    if (execution_task.compiled_kernel.dynamic_kernel_adapter) {
-      TT_ASSIGN_OR_RETURN(auto preamble,
-                          execution_task.compiled_kernel.dynamic_kernel_adapter
-                              ->preamble.get());
-      executables.push_back(std::move(preamble));
-    }
-    TT_ASSIGN_OR_RETURN(
-        auto fixed_shape_kernel,
-        execution_task.compiled_kernel.fixed_shape_kernel.get());
-    executables.push_back(std::move(fixed_shape_kernel));
-
-    ABSL_VLOG(1) << "[MaterializationWorker] Compilation of region "
-                 << execution_task.name << " is done";
-
-    ABSL_VLOG(1) << "[MaterializationWorker] Executing region "
-                 << execution_task.name
-                 << " arguments: " << execution_task.arguments.size()
-                 << " outputs: " << execution_task.outputs.size();
-
-    TT_RETURN_IF_ERROR(ExecuteMaterializationJob(
-        execution_task.arguments, execution_task.outputs, executables,
-        execution_task.name));
-
-    ABSL_VLOG(1)
-        << "[MaterializationWorker] Marking region ops as executed: task="
-        << execution_task.name;
+  // Launch compiled kernels.
+  for (auto& execution_task : execution_tasks) {
+    execution_task.Run();
   }
 
   return absl::OkStatus();

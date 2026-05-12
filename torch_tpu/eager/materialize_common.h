@@ -17,21 +17,106 @@
 #ifndef TORCH_TPU_EAGER_MATERIALIZE_COMMON_H_
 #define TORCH_TPU_EAGER_MATERIALIZE_COMMON_H_
 
+#include <memory>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
-#include "absl/types/span.h"
+#include "absl/status/statusor.h"
+#include "mlir/IR/MLIRContext.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/structured_log_buffer.h"
+#include "torch_tpu/eager/traversal.h"
+#include "torch_tpu/pjrt/pjrt_utils.h"
+#include "xla/pjrt/pjrt_client.h"
 
 namespace torch_tpu {
 
-absl::Status ExecuteMaterializationJob(
-    absl::Span<const DeviceBufferRef> arguments,
-    absl::Span<const DeviceBufferRef> output_buffer_refs,
-    std::vector<SharedLoadedExecutableWithMetadata> executables,
-    std::string_view task_name = "anonymous");
+// To materialize a tensor's data, we need to execute it on-device.
+// This requires identifying the arguments to the executable, the MLIR for the
+// executable, both of which may only be available asynchronously due to async
+// execution and compilation.
+// Once these are available, we can start the execution and write the output
+// back to the output tensors.
+class ExecutionTask {
+ public:
+  // Creates an execution task from a traversal.
+  // This will:
+  //   * Propagate bounded dynamism annotations if needed. This requires a
+  //     non-null mlir_context for a bounded dynamic traversal.
+  //   * Mark all nodes in the traversal as having been executed
+  //   * Begin compiling the traversal into a kernel (or kernels)
+  //   * Set all outputs to the "pending materialization" state
+  static absl::StatusOr<ExecutionTask> FromTraversal(
+      absl_nonnull std::unique_ptr<Traversal> traversal,
+      MaterializationReason reason = MaterializationReason::kUnknown,
+      mlir::MLIRContext* absl_nullable mlir_context = nullptr);
+
+  // Creates an execution task from a pre-compiled executable.
+  // This will set all outputs to the "pending materialization" state.
+  static absl::StatusOr<ExecutionTask> FromExecutable(
+      SharedLoadedExecutableWithMetadata executable,
+      std::vector<DeviceBufferRef> arguments,
+      std::vector<DeviceBufferRef> outputs,
+      MaterializationReason reason = MaterializationReason::kUnknown,
+      std::string_view task_name = "");
+
+  // Runs the execution task. This will:
+  //   * Wait for all arguments to be materialized
+  //   * Wait for the compiled kernel(s) to be ready
+  //   * Execute the compiled kernel(s) to get new PjRtBuffers
+  //   * Set all outputs to the "materialized" state with these buffers
+  // Any failures will be set as errors on the output buffers.
+  void Run();
+
+ private:
+  explicit ExecutionTask(std::string name,
+                         std::vector<DeviceBufferRef> arguments,
+                         std::vector<DeviceBufferRef> outputs,
+                         CompiledKernel compiled_kernel,
+                         MaterializationReason reason)
+      : name_(std::move(name)),
+        arguments_(std::move(arguments)),
+        outputs_(std::move(outputs)),
+        compiled_kernel_(std::move(compiled_kernel)),
+        reason_(reason) {}
+
+  // Runs the execution task and early-returns if there is any failure.
+  absl::Status RunInternal();
+
+  // Sets all output nodes as having a specified error.
+  void SetOutputNodesAsError(absl::Status status);
+
+  // Gets cached executables from the compiled kernel.
+  // This will always include a static, fixed-shape kernel, and may also include
+  // a preamble and/or postamble for dynamic shape padding and unpadding.
+  absl::StatusOr<std::vector<SharedLoadedExecutableWithMetadata>>
+  GetCachedExecutables(std::string_view task_name);
+
+  // Gets the inner PjRtBuffers for the argument DeviceBufferRefs.
+  absl::StatusOr<std::vector<xla::PjRtBuffer* absl_nullable>>
+  GetArgumentBuffers();
+
+  // Finishes a materialization by setting the output nodes as materialized with
+  // the given results.
+  absl::Status SetOutputNodesAsMaterialized(PjRtBufferPointers results);
+
+  // A human-readable name for the task. Debug use only.
+  std::string name_;
+  // The arguments to the compiled kernel.
+  std::vector<DeviceBufferRef> arguments_;
+  // The outputs of the compiled kernel.
+  std::vector<DeviceBufferRef> outputs_;
+  // The compiled kernel; or, more precisely, the futures for the compiled
+  // kernel and any dynamic adapters.
+  CompiledKernel compiled_kernel_;
+  // The reason that this task is being executed. Used for TORCH_TRACE logging.
+  MaterializationReason reason_;
+};
 
 }  // namespace torch_tpu
 
