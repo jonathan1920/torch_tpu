@@ -34,9 +34,6 @@ _HF_QWEN3_1_7B_BENCHMARK_NAME = "hf_qwen3_1_7b"
 _HF_GPT_OSS_20B_BENCHMARK_NAME = "hf_gpt_oss_20b"
 _HF_GPT_OSS_120B_BENCHMARK_NAME = "hf_gpt_oss_120b"
 _HF_QWEN3_CODER_30B_RAGGED_MOE_BENCHMARK_NAME = "hf_qwen3_30b_ragged_moe"
-_HF_QWEN3_5_397B_A17B_4LAYER_RAGGED_MOE_BENCHMARK_NAME = (
-    "hf_qwen3_5_397b_a17b_4layer_ragged_moe"
-)
 _TIMM_RESNET_50_BENCHMARK_NAME = "timm_resnet_50"
 _WAN_2_2_TI2V_5B_BENCHMARK_NAME = "wan_2_2_ti2v_5b"
 
@@ -364,50 +361,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(
         config, _HF_QWEN3_CODER_30B_RAGGED_MOE_BENCHMARK_NAME
-    )
-
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-      ])
-  )
-  def test_qwen3_5_397b_a17b_4layer_ragged_moe_forward(self, run_mode):
-    """Tests the forward pass of Qwen3-5-397B-A17B."""
-
-    def modify_config_hook(base_config):
-      if hasattr(base_config, "get_text_config"):
-        default_config = base_config.get_text_config()
-      else:
-        default_config = base_config
-
-      default_config.num_hidden_layers = 4
-      if hasattr(default_config, "layer_types"):
-        default_config.layer_types = default_config.layer_types[:4]
-      base_config.num_hidden_layers = 4
-      return base_config
-
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.QWEN3_5_RAGGED_MOE,
-        run_mode=run_mode,
-        is_training=False,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="Qwen/Qwen3.5-397B-A17B",
-            sequence_length=2048,
-            batch_size=1,
-            custom_kwargs={
-                "use_ragged_dot_moe": True,
-                "modify_config_hook": modify_config_hook,
-            },
-        ),
-        model_and_input_factory=model_utils.qwen3_5_model_builder,
-        eval_factory=benchmark_function_db.huggingface_eval_factory,
-    )
-    self.run_performance_benchmark_test(
-        config, _HF_QWEN3_5_397B_A17B_4LAYER_RAGGED_MOE_BENCHMARK_NAME
     )
 
   # ============================================================================

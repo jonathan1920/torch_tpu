@@ -222,7 +222,6 @@ class BenchmarkCategory(enum.Enum):
   ML_LAYER = "ml_layer"
   TIMM = "timm"
   QWEN_RAGGED_MOE = "qwen_ragged_moe"
-  QWEN3_5_RAGGED_MOE = "qwen3_5_ragged_moe"
   TORCHAUDIO = "torchaudio"
   INTERNAL_MODEL = "internal_model"
 
