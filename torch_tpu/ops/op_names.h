@@ -125,6 +125,8 @@ enum class OpName {
   kCosOut,
   kCoshOut,
   kCtcLoss,
+  kCtcLossBackward,
+  kCtcLossBackwardTensor,
   kCtcLossTensor,
   kCummaxHelper,
   kCumminHelper,

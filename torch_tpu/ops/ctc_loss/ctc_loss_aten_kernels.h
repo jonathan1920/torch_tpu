@@ -36,6 +36,18 @@ std::tuple<at::Tensor, at::Tensor> AtenCtcLossTensor(
     const at::Tensor& input_lengths, const at::Tensor& target_lengths,
     int64_t blank, bool zero_infinity);
 
+at::Tensor AtenCtcLossBackward(
+    const at::Tensor& grad_out, const at::Tensor& log_probs,
+    const at::Tensor& targets, at::IntArrayRef input_lengths,
+    at::IntArrayRef target_lengths, const at::Tensor& neg_log_likelihood,
+    const at::Tensor& log_alpha, int64_t blank, bool zero_infinity);
+
+at::Tensor AtenCtcLossBackwardTensor(
+    const at::Tensor& grad_out, const at::Tensor& log_probs,
+    const at::Tensor& targets, const at::Tensor& input_lengths,
+    const at::Tensor& target_lengths, const at::Tensor& neg_log_likelihood,
+    const at::Tensor& log_alpha, int64_t blank, bool zero_infinity);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_CTC_LOSS_CTC_LOSS_ATEN_KERNELS_H_

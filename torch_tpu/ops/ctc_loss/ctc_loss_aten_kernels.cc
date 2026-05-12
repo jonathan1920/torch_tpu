@@ -16,10 +16,12 @@
 
 #include "torch_tpu/ops/ctc_loss/ctc_loss_aten_kernels.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -41,8 +43,11 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/eager/op_dispatcher.h"
+#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
+#include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -574,6 +579,357 @@ absl::StatusOr<std::vector<mlir::MlirOp>> BuildCtcLossShlo(
   return std::vector<mlir::MlirOp>{loss, whl[2]};
 }
 
+// The core dynamic programming body for the CTC backward algorithm at time t.
+// It computes beta[t, s] given the state beta[t+1, s].
+//
+// The new probability is the emission probability at time t added to the
+// LogSumExp of:
+//   1. beta_curr: Staying at the same state (s).
+//   2. beta_shift_1: Transitioning from the next state (s+1).
+//   3. beta_shift_2 (term2): Transitioning from s+2 (if allowed by mask_M).
+std::vector<mlir::MlirOp> BackwardLoopBodyLogic(
+    mlir::RegionBuilder& body, mlir::MlirBuilder& body_builder,
+    mlir::MlirOp t_curr, mlir::MlirOp beta_curr, mlir::MlirOp acc_curr,
+    mlir::MlirOp log_probs, mlir::MlirOp gather_indices, mlir::MlirOp mask_m,
+    mlir::MlirOp input_lengths, mlir::MlirOp target_lengths,
+    mlir::MlirOp batch_seq, mlir::MlirOp neg_inf_const,
+    mlir::RankedTensorType type_nl_probs, int64_t n, int64_t c, int64_t l,
+    mlir::Type log_probs_element_type) {
+  const auto ctx = &body_builder.getContext();
+  const auto i32_type = body_builder.getOpBuilder().getI32Type();
+  const auto i1_type = body_builder.getOpBuilder().getI1Type();
+
+  auto log_probs_in_body = mlir::MlirOp(body, log_probs.getValue());
+  auto gather_indices_in_body = mlir::MlirOp(body, gather_indices.getValue());
+  auto mask_m_in_body = mlir::MlirOp(body, mask_m.getValue());
+  auto input_lengths_in_body = mlir::MlirOp(body, input_lengths.getValue());
+  auto target_lengths_in_body = mlir::MlirOp(body, target_lengths.getValue());
+  auto neg_inf_const_in_body = mlir::MlirOp(body, neg_inf_const.getValue());
+
+  // beta_shift_1 represents transitions from the next state (s+1).
+  auto beta_padded_1 = mlir::stablehlo::Pad(beta_curr, neg_inf_const_in_body,
+                                            {0, 0}, {0, 1}, {0, 0});
+  auto beta_shift_1 =
+      mlir::stablehlo::Slice(beta_padded_1, {0, 1}, {n, l + 1}, {1, 1});
+
+  // beta_shift_2 represents transitions from the state after next (s+2).
+  auto beta_padded_2 = mlir::stablehlo::Pad(beta_curr, neg_inf_const_in_body,
+                                            {0, 0}, {0, 2}, {0, 0});
+  auto beta_shift_2 =
+      mlir::stablehlo::Slice(beta_padded_2, {0, 2}, {n, l + 2}, {1, 1});
+
+  auto false_const = MakeScalarConstant(body_builder, false, i1_type);
+  auto mask_padded_2 =
+      mlir::stablehlo::Pad(mask_m_in_body, false_const, {0, 0}, {0, 2}, {0, 0});
+  auto mask_shift_2 =
+      mlir::stablehlo::Slice(mask_padded_2, {0, 2}, {n, l + 2}, {1, 1});
+
+  auto neginf_nl =
+      mlir::stablehlo::BroadcastInDim(type_nl_probs, neg_inf_const_in_body, {});
+  auto zero_scalar =
+      MakeScalarConstant(body_builder, 0.0, log_probs_element_type);
+  auto zero_nl =
+      mlir::stablehlo::BroadcastInDim(type_nl_probs, zero_scalar, {});
+  auto one_scalar =
+      MakeScalarConstant(body_builder, 1.0, log_probs_element_type);
+  auto one_nl = mlir::stablehlo::BroadcastInDim(type_nl_probs, one_scalar, {});
+
+  // term2: Transitioning from s+2 (if allowed by mask_m).
+  auto term2 = mlir::stablehlo::Select(mask_shift_2, beta_shift_2, neginf_nl);
+
+  auto lse_result =
+      LogSumExp({beta_curr, beta_shift_1, term2}, neginf_nl, zero_nl, one_nl);
+
+  auto zero_i32 = MakeScalarConstant(body_builder, 0, i32_type);
+  auto log_probs_t = mlir::stablehlo::Reshape(
+      mlir::stablehlo::DynamicSlice(log_probs_in_body,
+                                    {t_curr, zero_i32, zero_i32}, {1, n, c}),
+      {n, c});
+
+  auto log_probs_mapped = mlir::stablehlo::Gather(
+      log_probs_t, gather_indices_in_body,
+      GetGatherDimensionNumbers(ctx, {}, {0, 1}, {}, {}, {0, 1}, 2), {1, 1},
+      false);
+
+  auto beta_step = mlir::stablehlo::Add(lse_result, log_probs_mapped);
+
+  auto t_curr_nl = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n, l}, i32_type), t_curr, {});
+
+  auto input_lengths_nl = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n, l}, i32_type), input_lengths_in_body,
+      {0});
+  auto one_const_i32 = MakeScalarConstant(body_builder, 1, i32_type);
+  auto one_i32_nl = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n, l}, i32_type), one_const_i32, {});
+  auto input_lengths_minus_1 =
+      mlir::stablehlo::Subtract(input_lengths_nl, one_i32_nl);
+
+  auto is_final_t =
+      mlir::stablehlo::Compare(t_curr_nl, input_lengths_minus_1,
+                               mlir::stablehlo::ComparisonDirection::EQ);
+  auto is_past_t =
+      mlir::stablehlo::Compare(t_curr_nl, input_lengths_minus_1,
+                               mlir::stablehlo::ComparisonDirection::GT);
+
+  auto two_const_i32 = MakeScalarConstant(body_builder, 2, i32_type);
+  auto two_n_i32 = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n}, i32_type), two_const_i32, {});
+  auto s1 = mlir::stablehlo::Mul(target_lengths_in_body, two_n_i32);
+
+  auto one_n_i32 = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n}, i32_type), one_const_i32, {});
+  auto s2 = mlir::stablehlo::Subtract(s1, one_n_i32);
+
+  auto s1_nl = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n, l}, i32_type), s1, {0});
+  auto s2_nl = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n, l}, i32_type), s2, {0});
+
+  auto state_indices = mlir::stablehlo::Iota(
+      body_builder, mlir::RankedTensorType::get({n, l}, i32_type), 1);
+
+  auto is_s1 = mlir::stablehlo::Compare(
+      state_indices, s1_nl, mlir::stablehlo::ComparisonDirection::EQ);
+  auto is_s2 = mlir::stablehlo::Compare(
+      state_indices, s2_nl, mlir::stablehlo::ComparisonDirection::EQ);
+
+  auto zero_n_i32 = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n}, i32_type), zero_i32, {});
+  auto target_lens_gt_0 =
+      mlir::stablehlo::Compare(target_lengths_in_body, zero_n_i32,
+                               mlir::stablehlo::ComparisonDirection::GT);
+  auto target_lens_gt_0_nl = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n, l}, i1_type), target_lens_gt_0, {0});
+
+  auto valid_s2 = mlir::stablehlo::And(is_s2, target_lens_gt_0_nl);
+  auto is_init_state = mlir::stablehlo::Or(is_s1, valid_s2);
+
+  auto beta_init =
+      mlir::stablehlo::Select(is_init_state, log_probs_mapped, neginf_nl);
+
+  auto beta_next_inner =
+      mlir::stablehlo::Select(is_final_t, beta_init, beta_step);
+  auto beta_next =
+      mlir::stablehlo::Select(is_past_t, neginf_nl, beta_next_inner);
+
+  auto beta_next_reshaped = mlir::stablehlo::Reshape(beta_next, {n, 1, l});
+  auto acc_next = mlir::stablehlo::DynamicUpdateSlice(
+      acc_curr, beta_next_reshaped, {zero_i32, t_curr, zero_i32});
+
+  auto t_next = mlir::stablehlo::Subtract(t_curr, one_const_i32);
+
+  return {t_next, beta_next, acc_next};
+}
+
+mlir::MlirOp ReduceAddDim2(mlir::MlirBuilder& builder, mlir::MlirOp input,
+                           mlir::Type element_type) {
+  auto zero_scalar = MakeScalarConstant(builder, 0.0, element_type);
+  auto zero = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({}, element_type), zero_scalar, {});
+  return mlir::stablehlo::Reduce(
+      builder, {input}, {zero},
+      [&](mlir::RegionBuilder& region) {
+        auto type = mlir::RankedTensorType::get({}, element_type);
+        auto arg0 = mlir::Argument(region, type);
+        auto arg1 = mlir::Argument(region, type);
+        mlir::stablehlo::Return(region, mlir::stablehlo::Add(arg0, arg1));
+      },
+      {2})[0];
+}
+
+// Top-level entry point to construct the StableHLO operations for
+// CTC Loss Backward.
+//
+// The process consists of:
+// 1. Initializing constants, masks, and expanded targets with blanks.
+// 2. Creating a while loop that executes the backward dynamic programming
+//    algorithm along the time dimension of log_probs from T-1 down to 0.
+// 3. Accumulating alpha and beta probabilities to calculate the gradient with
+//    respect to log_probs.
+absl::StatusOr<mlir::MlirOp> BuildCtcLossBackwardShlo(
+    mlir::MlirOp grad_out, mlir::MlirOp log_probs, mlir::MlirOp targets,
+    mlir::MlirOp input_lengths, mlir::MlirOp target_lengths,
+    mlir::MlirOp neg_log_likelihood, mlir::MlirOp log_alpha, int64_t blank,
+    ZeroInfinity zero_infinity, mlir::MlirBuilder& builder) {
+  TT_ASSIGN_OR_RETURN(targets,
+                      ConvertIfInteger(targets, mlir::ElementType::I32));
+  TT_ASSIGN_OR_RETURN(input_lengths,
+                      ConvertIfInteger(input_lengths, mlir::ElementType::I32));
+  TT_ASSIGN_OR_RETURN(target_lengths,
+                      ConvertIfInteger(target_lengths, mlir::ElementType::I32));
+
+  const mlir::RankedTensorType log_probs_type = GetTensorTypeOrDie(log_probs);
+  auto element_type = log_probs_type.getElementType();
+  const auto i32_type = builder.getOpBuilder().getI32Type();
+
+  const mlir::RankedTensorType input_lengths_type =
+      GetTensorTypeOrDie(input_lengths);
+  if (input_lengths_type.getRank() != 1) {
+    input_lengths = mlir::stablehlo::Reshape(
+        input_lengths, {input_lengths_type.getNumElements()});
+  }
+
+  const mlir::RankedTensorType target_lengths_type =
+      GetTensorTypeOrDie(target_lengths);
+  if (target_lengths_type.getRank() != 1) {
+    target_lengths = mlir::stablehlo::Reshape(
+        target_lengths, {target_lengths_type.getNumElements()});
+  }
+
+  TT_ASSIGN_OR_RETURN(auto init_result,
+                      InitializeCtcLoss(log_probs, targets, blank, builder));
+  auto neg_inf_const = init_result.neg_inf_const;
+  const int64_t n = init_result.N;
+  const int64_t l = init_result.L;
+  const int64_t t = init_result.T;
+  const int64_t c = init_result.C;
+
+  auto neginf_nl = mlir::stablehlo::BroadcastInDim(init_result.type_nl_probs,
+                                                   neg_inf_const, {});
+  auto beta_0 = neginf_nl;
+  auto log_beta_acc_init = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n, t, l}, element_type), neg_inf_const, {});
+
+  auto t_start = MakeScalarConstant(builder, t - 1, i32_type);
+
+  auto whl = mlir::stablehlo::While(
+      builder, {t_start, beta_0, log_beta_acc_init},
+      [&](mlir::RegionBuilder& cond) {
+        mlir::MlirBuilder cond_builder(cond.getOpBuilder(),
+                                       cond.getOpBuilder().getUnknownLoc());
+        auto args = mlir::stablehlo::Arguments(
+            cond, cond.getOp<mlir::stablehlo::WhileOp>());
+        auto zero_i32 = MakeScalarConstant(cond_builder, 0, i32_type);
+        mlir::stablehlo::Return(
+            cond,
+            mlir::stablehlo::Compare(args[0], zero_i32,
+                                     mlir::stablehlo::ComparisonDirection::GE));
+      },
+      [&](mlir::RegionBuilder& body) {
+        mlir::MlirBuilder body_builder(body.getOpBuilder(),
+                                       body.getOpBuilder().getUnknownLoc());
+        auto args = mlir::stablehlo::Arguments(
+            body, body.getOp<mlir::stablehlo::WhileOp>());
+
+        mlir::stablehlo::Return(
+            body,
+            BackwardLoopBodyLogic(
+                body, body_builder, args[0], args[1], args[2], log_probs,
+                init_result.gather_indices, init_result.mask_M, input_lengths,
+                target_lengths, init_result.batch_seq, neg_inf_const,
+                init_result.type_nl_probs, n, c, l, element_type));
+      });
+
+  auto log_beta = whl[2];
+
+  auto sum_alpha_beta = mlir::stablehlo::Add(log_alpha, log_beta);
+  auto nll_ntl = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n, t, l}, element_type), neg_log_likelihood,
+      {0});
+  auto log_prob_term = mlir::stablehlo::Add(sum_alpha_beta, nll_ntl);
+
+  auto batch_indices = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n, t, l}, i32_type), init_result.batch_seq,
+      {0, 2});
+  auto t_indices = mlir::stablehlo::Iota(
+      builder, mlir::RankedTensorType::get({n, t, l}, i32_type), 1);
+
+  TT_ASSIGN_OR_RETURN(auto targets_with_blanks,
+                      CreateTargetsWithBlanks(builder, targets, blank, n,
+                                              init_result.S, i32_type));
+  auto target_indices = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n, t, l}, i32_type), targets_with_blanks,
+      {0, 2});
+
+  TT_ASSIGN_OR_RETURN(auto batch_indices_u, Unsqueeze(batch_indices, 3));
+  TT_ASSIGN_OR_RETURN(auto t_indices_u, Unsqueeze(t_indices, 3));
+  TT_ASSIGN_OR_RETURN(auto target_indices_u, Unsqueeze(target_indices, 3));
+  auto gather_indices = mlir::stablehlo::Concatenate(
+      builder, {t_indices_u, batch_indices_u, target_indices_u}, 3);
+
+  auto log_probs_ntl = mlir::stablehlo::Gather(
+      log_probs, gather_indices,
+      GetGatherDimensionNumbers(&builder.getContext(), {}, {0, 1, 2}, {}, {},
+                                {0, 1, 2}, 3),
+      {1, 1, 1}, false);
+
+  log_prob_term = mlir::stablehlo::Subtract(log_prob_term, log_probs_ntl);
+
+  auto prob_term = mlir::stablehlo::Exp(log_prob_term);
+
+  auto c_iota = mlir::stablehlo::Iota(
+      builder, mlir::RankedTensorType::get({c}, i32_type), 0);
+  auto c_iota_ntlc = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n, t, l, c}, i32_type), c_iota, {3});
+  auto target_indices_ntlc = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n, t, l, c}, i32_type), target_indices,
+      {0, 1, 2});
+
+  auto mask =
+      mlir::stablehlo::Compare(target_indices_ntlc, c_iota_ntlc,
+                               mlir::stablehlo::ComparisonDirection::EQ);
+  auto prob_ntlc = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n, t, l, c}, element_type), prob_term,
+      {0, 1, 2});
+
+  auto zero_scalar = MakeScalarConstant(builder, 0.0, element_type);
+  auto zero_ntlc = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({n, t, l, c}, element_type), zero_scalar, {});
+
+  auto selected_prob = mlir::stablehlo::Select(mask, prob_ntlc, zero_ntlc);
+
+  auto prob_ntc = ReduceAddDim2(builder, selected_prob, element_type);
+
+  auto prob_tnc = mlir::stablehlo::Transpose(prob_ntc, {1, 0, 2});
+
+  auto log_probs_exp = mlir::stablehlo::Exp(log_probs);
+  auto grad_inner = mlir::stablehlo::Subtract(log_probs_exp, prob_tnc);
+
+  const mlir::RankedTensorType grad_out_type = GetTensorTypeOrDie(grad_out);
+  Dimensions grad_out_bcast_dims;
+  if (grad_out_type.getRank() == 1) {
+    grad_out_bcast_dims = {1};
+  } else {
+    grad_out_bcast_dims = {};
+  }
+  auto grad_out_tnc = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({t, n, c}, element_type), grad_out,
+      grad_out_bcast_dims);
+  auto grad_final = mlir::stablehlo::Mul(grad_inner, grad_out_tnc);
+
+  auto zero_tnc = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({t, n, c}, element_type), zero_scalar, {});
+
+  if (zero_infinity == ZeroInfinity::kYes) {
+    auto inf_scalar = MakeScalarConstant(
+        builder, std::numeric_limits<double>::infinity(), element_type);
+    auto inf_n = mlir::stablehlo::BroadcastInDim(
+        mlir::RankedTensorType::get({n}, element_type), inf_scalar, {});
+    auto nll_is_inf = mlir::stablehlo::Compare(
+        neg_log_likelihood, inf_n, mlir::stablehlo::ComparisonDirection::EQ);
+    auto nll_is_inf_tnc = mlir::stablehlo::BroadcastInDim(
+        mlir::RankedTensorType::get({t, n, c},
+                                    builder.getOpBuilder().getI1Type()),
+        nll_is_inf, {1});
+
+    grad_final = mlir::stablehlo::Select(nll_is_inf_tnc, zero_tnc, grad_final);
+  }
+
+  auto t_iota = mlir::stablehlo::Iota(
+      builder, mlir::RankedTensorType::get({t}, i32_type), 0);
+  auto t_iota_tnc = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({t, n, c}, i32_type), t_iota, {0});
+  auto input_lengths_tnc = mlir::stablehlo::BroadcastInDim(
+      mlir::RankedTensorType::get({t, n, c}, i32_type), input_lengths, {1});
+  auto is_valid_t = mlir::stablehlo::Compare(
+      t_iota_tnc, input_lengths_tnc, mlir::stablehlo::ComparisonDirection::LT);
+
+  grad_final = mlir::stablehlo::Select(is_valid_t, grad_final, zero_tnc);
+
+  return grad_final;
+}
+
 }  // namespace
 
 std::tuple<at::Tensor, at::Tensor> AtenCtcLoss(const at::Tensor& log_probs,
@@ -624,8 +980,8 @@ std::tuple<at::Tensor, at::Tensor> AtenCtcLossTensor(
             << "expected target_lengths to have batch_size (" << batch_size
             << ") elements, got " << target_lengths.numel();
 
-        const int64_t N = log_probs.size(1);
-        const int64_t T = log_probs.size(0);
+        const int64_t n = log_probs.size(1);
+        const int64_t t = log_probs.size(0);
 
         at::Tensor padded_targets = targets;
         if (targets.dim() == 1) {
@@ -637,9 +993,9 @@ std::tuple<at::Tensor, at::Tensor> AtenCtcLossTensor(
                   ? at::max(target_lengths_cpu).item<int64_t>()
                   : 0;
 
-          padded_targets = at::zeros({N, max_target_length}, targets.options());
+          padded_targets = at::zeros({n, max_target_length}, targets.options());
           int64_t offset = 0;
-          for (int64_t i = 0; i < N; ++i) {
+          for (int64_t i = 0; i < n; ++i) {
             int64_t len = lengths_accessor[i];
             if (len > 0) {
               padded_targets.select(0, i).narrow(0, 0, len).copy_(
@@ -649,8 +1005,8 @@ std::tuple<at::Tensor, at::Tensor> AtenCtcLossTensor(
           }
         }
 
-        const int64_t S = padded_targets.size(1);
-        const int64_t L = 2 * S + 1;
+        const int64_t s = padded_targets.size(1);
+        const int64_t l = 2 * s + 1;
 
         TT_ASSIGN_OR_THROW(
             mlir::ElementType output_dtype,
@@ -658,8 +1014,8 @@ std::tuple<at::Tensor, at::Tensor> AtenCtcLossTensor(
         const std::array<mlir::ElementType, 2> out_dtypes = {output_dtype,
                                                              output_dtype};
 
-        const Dimensions loss_dims = {N};
-        const Dimensions log_alpha_dims = {N, T, L};
+        const Dimensions loss_dims = {n};
+        const Dimensions log_alpha_dims = {n, t, l};
 
         const std::array<absl::Span<const int64_t>, 2> out_dims_list = {
             absl::MakeConstSpan(loss_dims),
@@ -701,6 +1057,130 @@ std::tuple<at::Tensor, at::Tensor> AtenCtcLossTensor(
             AssignBufferToAtTensor(std::move(output_bufs[1]), log_alpha));
 
         return std::make_tuple(loss, log_alpha);
+      });
+}
+
+at::Tensor AtenCtcLossBackward(
+    const at::Tensor& grad_out, const at::Tensor& log_probs,
+    const at::Tensor& targets, at::IntArrayRef input_lengths,
+    at::IntArrayRef target_lengths, const at::Tensor& neg_log_likelihood,
+    const at::Tensor& log_alpha, int64_t blank, bool zero_infinity) {
+  TT_KERNEL(OpName::kCtcLossBackward, _,
+            (grad_out, log_probs, targets,
+             IgnoreInCacheKey(input_lengths,
+                              "delegates to AtenCtcLossBackwardTensor"),
+             IgnoreInCacheKey(target_lengths,
+                              "delegates to AtenCtcLossBackwardTensor"),
+             neg_log_likelihood, log_alpha,
+             IgnoreInCacheKey(blank, "delegates to AtenCtcLossBackwardTensor"),
+             IgnoreInCacheKey(zero_infinity,
+                              "delegates to AtenCtcLossBackwardTensor")),
+            {
+              at::Tensor input_lengths_tensor =
+                  at::tensor(input_lengths, at::kLong).to(log_probs.device());
+              at::Tensor target_lengths_tensor =
+                  at::tensor(target_lengths, at::kLong).to(log_probs.device());
+              return AtenCtcLossBackwardTensor(
+                  grad_out, log_probs, targets, input_lengths_tensor,
+                  target_lengths_tensor, neg_log_likelihood, log_alpha, blank,
+                  zero_infinity);
+            });
+}
+
+at::Tensor AtenCtcLossBackwardTensor(
+    const at::Tensor& grad_out, const at::Tensor& log_probs,
+    const at::Tensor& targets, const at::Tensor& input_lengths,
+    const at::Tensor& target_lengths, const at::Tensor& neg_log_likelihood,
+    const at::Tensor& log_alpha, int64_t blank, bool zero_infinity) {
+  TT_KERNEL(
+      OpName::kCtcLossBackwardTensor, param_keys,
+      (grad_out, log_probs, targets, input_lengths, target_lengths,
+       neg_log_likelihood, log_alpha, blank, zero_infinity),
+      {
+        const int64_t n = log_probs.size(1);
+
+        TT_CHECK_THROW(log_probs.dim() == 3, error::kInvalidArgument)
+            << "expected log_probs to be 3-D, got " << log_probs.dim() << "-D";
+        TT_CHECK_THROW(targets.dim() == 1 || targets.dim() == 2,
+                       error::kInvalidArgument)
+            << "expected targets to be 1-D or 2-D, got " << targets.dim()
+            << "-D";
+
+        TT_CHECK_THROW(input_lengths.numel() == n, error::kInvalidArgument)
+            << "expected input_lengths to have batch_size (" << n
+            << ") elements, got " << input_lengths.numel();
+        TT_CHECK_THROW(target_lengths.numel() == n, error::kInvalidArgument)
+            << "expected target_lengths to have batch_size (" << n
+            << ") elements, got " << target_lengths.numel();
+
+        at::Tensor padded_targets = targets;
+        if (targets.dim() == 1) {
+          at::Tensor target_lengths_cpu =
+              target_lengths.to(at::kLong).cpu().contiguous();
+          auto lengths_accessor = target_lengths_cpu.accessor<int64_t, 1>();
+          int64_t max_target_length = 0;
+          for (int64_t i = 0; i < target_lengths_cpu.numel(); ++i) {
+            max_target_length =
+                std::max(max_target_length, lengths_accessor[i]);
+          }
+
+          padded_targets = AtenEfficientZeroTensor(
+              {n, max_target_length}, targets.scalar_type(), std::nullopt,
+              targets.device(), std::nullopt);
+          int64_t offset = 0;
+          for (int64_t i = 0; i < n; ++i) {
+            int64_t len = lengths_accessor[i];
+            if (len > 0) {
+              padded_targets.select(0, i).narrow(0, 0, len).copy_(
+                  targets.narrow(0, offset, len));
+            }
+            offset += len;
+          }
+        }
+
+        TT_ASSIGN_OR_THROW(
+            mlir::ElementType output_dtype,
+            ConvertTo<mlir::ElementType>(log_probs.scalar_type()));
+        const Dimensions grad_in_dims = {log_probs.size(0), log_probs.size(1),
+                                         log_probs.size(2)};
+
+        DispatchOpOptions<1> options = {
+            .out_dtype = output_dtype,
+            .out_dims = absl::MakeConstSpan(grad_in_dims),
+            .op_param_cache_keys = std::move(param_keys),
+        };
+
+        auto op_builder = [blank,
+                           zero_infinity](FixedSizeSpan<mlir::MlirOp, 7> inputs)
+            -> absl::StatusOr<MlirOpResults<1>> {
+          auto& [grad_out_op, log_probs_op, targets_op, input_lengths_op,
+                 target_lengths_op, neg_log_likelihood_op, log_alpha_op] =
+              inputs;
+          auto& builder = log_probs_op.getBuilder();
+          TT_ASSIGN_OR_RETURN(
+              auto result,
+              BuildCtcLossBackwardShlo(
+                  grad_out_op, log_probs_op, targets_op, input_lengths_op,
+                  target_lengths_op, neg_log_likelihood_op, log_alpha_op, blank,
+                  zero_infinity ? ZeroInfinity::kYes : ZeroInfinity::kNo,
+                  builder));
+          return MlirOpResults<1>{result};
+        };
+
+        TT_ASSIGN_OR_THROW(
+            auto output_bufs,
+            (DispatchOp<7, 1>(
+                std::move(op_builder),
+                {grad_out, log_probs, padded_targets, input_lengths,
+                 target_lengths, neg_log_likelihood, log_alpha},
+                std::move(options))));
+
+        at::Tensor grad_in = MakeEmptyTensor(
+            grad_in_dims, log_probs.scalar_type(), log_probs.device());
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(output_bufs), grad_in));
+
+        return grad_in;
       });
 }
 

@@ -379,6 +379,33 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
           log_probs, targets, input_lengths, target_lengths, 0, False
       )
 
+  def test_ctc_loss_backward_log_probs_3d(self):
+    grad_out = torch.randn(2, device=et.device())
+    log_probs = torch.randn(2, 3, device=et.device())
+    targets = torch.randint(1, 3, (2, 3), dtype=torch.int32, device=et.device())
+    input_lengths = torch.tensor([2, 2], dtype=torch.int32, device=et.device())
+    target_lengths = torch.tensor([3, 3], dtype=torch.int32, device=et.device())
+    neg_log_likelihood = torch.randn(2, device=et.device())
+    log_alpha = torch.randn(2, 2, 7, device=et.device())
+
+    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+    with et.assert_raises_message(
+        err_type,
+        cpu="""Dimension out of range (expected to be in range of [-2, 1], but got 2)""",
+        tpu="""ctc_loss_backward(): expected log_probs to be 3-D, got 2-D""",
+    ):
+      torch.ops.aten._ctc_loss_backward.Tensor(
+          grad_out,
+          log_probs,
+          targets,
+          input_lengths,
+          target_lengths,
+          neg_log_likelihood,
+          log_alpha,
+          0,
+          False,
+      )
+
   def test_tril_insufficient_dims(self):
     """Tests that tril with insufficient dims fails with expected error."""
     t = torch.tensor(42, device=et.device(), dtype=torch.float32)

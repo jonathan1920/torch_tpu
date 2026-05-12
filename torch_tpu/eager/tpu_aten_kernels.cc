@@ -270,6 +270,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kCosOut, AtenCosOut);
   Impl(m, OpName::kCoshOut, AtenCoshOut);
   Impl(m, OpName::kCtcLoss, AtenCtcLoss);
+  Impl(m, OpName::kCtcLossBackward, AtenCtcLossBackward);
+  Impl(m, OpName::kCtcLossBackwardTensor, AtenCtcLossBackwardTensor);
   Impl(m, OpName::kCtcLossTensor, AtenCtcLossTensor);
   Impl(m, OpName::kCummaxHelper, AtenCummaxHelper);
   Impl(m, OpName::kCumminHelper, AtenCumminHelper);

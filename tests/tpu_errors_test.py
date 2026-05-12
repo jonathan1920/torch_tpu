@@ -1328,6 +1328,84 @@ Please use clone() or contiguous() to copy the tensor before writing""",
       out = inp.view(torch.int64)
       out.cpu()
 
+  def test_ctc_loss_backward_targets_1d_or_2d(self):
+    log_probs = torch.randn(5, 2, 3, device=et.device())
+    targets = torch.randint(
+        1, 3, (2, 3, 4), dtype=torch.int32, device=et.device()
+    )
+    input_lengths = torch.tensor([5, 5], dtype=torch.int32, device=et.device())
+    target_lengths = torch.tensor([3, 3], dtype=torch.int32, device=et.device())
+    neg_log_likelihood = torch.randn(2, device=et.device())
+    log_alpha = torch.randn(2, 5, 7, device=et.device())
+    grad_out = torch.randn(2, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""ctc_loss_backward(): expected targets to be 1-D or 2-D, got 3-D""",
+    ):
+      torch.ops.aten._ctc_loss_backward.Tensor(
+          grad_out,
+          log_probs,
+          targets,
+          input_lengths,
+          target_lengths,
+          neg_log_likelihood,
+          log_alpha,
+          0,
+          False,
+      )
+
+  def test_ctc_loss_backward_input_lengths_size_match_batch_size(self):
+    grad_out = torch.randn(2, device=et.device())
+    log_probs = torch.randn(5, 2, 3, device=et.device())
+    targets = torch.randint(1, 3, (2, 3), dtype=torch.int32, device=et.device())
+    input_lengths = torch.tensor(
+        [5, 5, 5], dtype=torch.int32, device=et.device()
+    )
+    target_lengths = torch.tensor([3, 3], dtype=torch.int32, device=et.device())
+    neg_log_likelihood = torch.randn(2, device=et.device())
+    log_alpha = torch.randn(2, 5, 7, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""ctc_loss_backward(): expected input_lengths to have batch_size (2) elements, got 3""",
+    ):
+      torch.ops.aten._ctc_loss_backward.Tensor(
+          grad_out,
+          log_probs,
+          targets,
+          input_lengths,
+          target_lengths,
+          neg_log_likelihood,
+          log_alpha,
+          0,
+          False,
+      )
+
+  def test_ctc_loss_backward_target_lengths_size_match_batch_size(self):
+    grad_out = torch.randn(2, device=et.device())
+    log_probs = torch.randn(5, 2, 3, device=et.device())
+    targets = torch.randint(1, 3, (2, 3), dtype=torch.int32, device=et.device())
+    input_lengths = torch.tensor([5, 5], dtype=torch.int32, device=et.device())
+    target_lengths = torch.tensor(
+        [3, 3, 3], dtype=torch.int32, device=et.device()
+    )
+    neg_log_likelihood = torch.randn(2, device=et.device())
+    log_alpha = torch.randn(2, 5, 7, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""ctc_loss_backward(): expected target_lengths to have batch_size (2) elements, got 3""",
+    ):
+      torch.ops.aten._ctc_loss_backward.Tensor(
+          grad_out,
+          log_probs,
+          targets,
+          input_lengths,
+          target_lengths,
+          neg_log_likelihood,
+          log_alpha,
+          0,
+          False,
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

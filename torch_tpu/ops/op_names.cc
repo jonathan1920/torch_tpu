@@ -228,6 +228,10 @@ std::string_view ToString(OpName op_name) {
       return "cosh.out";
     case OpName::kCtcLoss:
       return "_ctc_loss";
+    case OpName::kCtcLossBackward:
+      return "_ctc_loss_backward";
+    case OpName::kCtcLossBackwardTensor:
+      return "_ctc_loss_backward.Tensor";
     case OpName::kCtcLossTensor:
       return "_ctc_loss.Tensor";
     case OpName::kCummaxHelper:

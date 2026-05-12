@@ -82,6 +82,8 @@ void OpNameStack::Push(OpName op_name) {
       OpName::kCopy_,
       OpName::kCtcLoss,
       OpName::kCtcLossTensor,
+      OpName::kCtcLossBackward,
+      OpName::kCtcLossBackwardTensor,
       OpName::kCumprodOut,
       OpName::kCumsumOut,
       OpName::kDistributedAllGatherIntoTensor,

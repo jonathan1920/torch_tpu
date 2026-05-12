@@ -1561,6 +1561,9 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
             "nn.functional.conv2d": {
                 torch.bfloat16: {"rtol": 2e-5, "atol": 3e-1},
             },
+            "nn.functional.ctc_loss": {
+                torch.float32: {"rtol": 6.9e-3, "atol": 2.3e-4},
+            },
             "nn.functional.embedding_bag": {
                 torch.float16: {"rtol": 2e-3, "atol": 8e-3},
             },
@@ -2089,8 +2092,6 @@ class TestOps(TorchTpuTestBase):
   def test_ctc_loss(self):
     self.do_test_op(
         "nn.functional.ctc_loss",
-        # TODO: fix the error _ctc_loss_backward is unimplemented.
-        check_grad=False,
         # Excluded because PyTorch's sample generation (via log_softmax on CPU)
         # does not support integral, bfloat16, float16, and complex dtypes.
         # Additionally, CPU does not support bfloat16 and float16.
