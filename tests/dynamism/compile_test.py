@@ -204,6 +204,18 @@ class CompileTest(absltest.TestCase):
     metrics = self.call_and_compare(arange, test_inputs, None)
     self.assertEqual(metrics["bounded_compile_events"], 1)
 
+  def test_ones_multiple_dynamic_dims(self):
+    def ones_func(x, y):
+      return torch.ones(x.shape[0], y.shape[0], device=x.device)
+
+    test_inputs = [
+        [torch.arange(2), torch.arange(3)],  # static
+        [torch.arange(4), torch.arange(5)],  # bounded compile
+        [torch.arange(8), torch.arange(6)],  # no compile
+    ]
+    metrics = self.call_and_compare(ones_func, test_inputs, None)
+    self.assertEqual(metrics["bounded_compile_events"], 1)
+
   def test_dynamic_reduction(self):
     def reduction_func(x):
       return x.mean(-1, keepdim=True)
@@ -294,6 +306,52 @@ class CompileTest(absltest.TestCase):
         [torch.arange(8)],  # no compile, [8]
     ]
     metrics = self.call_and_compare(arange_expr, test_inputs, None)
+    self.assertEqual(metrics["bounded_compile_events"], 1)
+
+  def test_arange_constant_length(self):
+    def arange_func(x):
+      # start is dynamic (x.shape[0]), end is dynamic (x.shape[0] + 5)
+      # length is constant (5)
+      a = torch.arange(x.shape[0], x.shape[0] + 5, device=x.device)
+      return a
+
+    test_inputs = [
+        [torch.arange(2)],  # static, [2]
+        [torch.arange(4)],  # bounded compile, [4 (4<=b<=8)]
+        [torch.arange(8)],  # no compile, [8]
+    ]
+    metrics = self.call_and_compare(arange_func, test_inputs, None)
+    self.assertEqual(metrics["bounded_compile_events"], 1)
+
+  def test_arange_dynamic_length(self):
+    def arange_func(x, y):
+      a = torch.arange(x.shape[0], x.shape[0] + y.shape[0] * 2, device=x.device)
+      return a
+
+    test_inputs = [
+        [torch.arange(2), torch.arange(3)],  # static, [2]
+        [torch.arange(4), torch.arange(5)],  # bounded compile, [4 (4<=b<=8)]
+        [torch.arange(8), torch.arange(6)],  # no compile, [8]
+    ]
+    metrics = self.call_and_compare(arange_func, test_inputs, None)
+    self.assertEqual(metrics["bounded_compile_events"], 1)
+
+  def test_arange_dynamic_step(self):
+    def arange_func(x):
+      a = torch.arange(
+          x.shape[0],
+          x.shape[0] + 100,
+          step=x.shape[0] // 2,
+          device=x.device,
+      )
+      return a
+
+    test_inputs = [
+        [torch.arange(2)],  # static, [2]
+        [torch.arange(4)],  # bounded compile, [4 (4<=b<=8)]
+        [torch.arange(8)],  # no compile, [8]
+    ]
+    metrics = self.call_and_compare(arange_func, test_inputs, None)
     self.assertEqual(metrics["bounded_compile_events"], 1)
 
 

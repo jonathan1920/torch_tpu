@@ -105,31 +105,27 @@ class GraphTransformationsTest(absltest.TestCase):
 
     graph_transformations.HandleGenerativeOpsPass(captured_sm)(captured_gm)
 
-    # Verify that set_dimension_logical_size was inserted for arange
-    set_dim_nodes = list(
+    # Verify that dynamic_arange was inserted for arange
+    dynamic_arange_nodes = list(
         captured_gm.graph.find_nodes(
             op="call_function",
-            target=torch.ops.torch_tpu.set_dimension_logical_size,
+            target=torch.ops.torch_tpu.dynamic_arange,
         )
     )
-    self.assertLen(set_dim_nodes, 1)
+    self.assertLen(dynamic_arange_nodes, 1)
 
-    set_dim_node = set_dim_nodes[0]
+    dynamic_arange_node = dynamic_arange_nodes[0]
 
-    arange_nodes = list(
-        captured_gm.graph.find_nodes(
-            op="call_function",
-            target=torch.ops.aten.arange.start,
-        )
+    # Verify the arguments passed to dynamic_arange
+    self.assertEqual(
+        dynamic_arange_node.args[0].target, torch.ops.aten.scalar_tensor.default
     )
-    self.assertLen(arange_nodes, 1)
-    arange_node = arange_nodes[0]
-
-    self.assertEqual(arange_node.args[0], 0)
-    self.assertEqual(arange_node.args[1].name, "arg0_1")
-    self.assertEqual(set_dim_node.args[0], arange_node)
-    self.assertEqual(set_dim_node.args[1], 0)
-    self.assertEqual(set_dim_node.args[2].op, "placeholder")
+    self.assertEqual(dynamic_arange_node.args[1].op, "placeholder")
+    self.assertEqual(
+        dynamic_arange_node.args[2].target, torch.ops.aten.scalar_tensor.default
+    )
+    self.assertEqual(dynamic_arange_node.args[3], 8)  # max_length
+    self.assertEqual(dynamic_arange_node.args[4], torch.int64)  # expected_dtype
 
   def test_scan_inputs_create_placeholders_pass(self):
     captured_gm = None

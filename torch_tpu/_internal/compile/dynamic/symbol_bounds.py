@@ -21,28 +21,51 @@ import torch
 from torch.utils._sympy.numbers import int_oo
 
 
-def _lookup_known_bounds(sym: torch.SymInt) -> tuple[int, int] | None:
-  """Looks up known bounds for a symbol, i.e. via mark_dynamic, else None."""
-  shape_env = sym.node.shape_env
-  expr = sym.node.expr
-  if not isinstance(expr, sympy.Symbol):
-    # var_to_range only contains bounds for individual sympy.Symbol instances,
-    # not for complex expressions.
-    return None
-  vr = shape_env.var_to_range.get(expr, None)
-  if not vr:
+def _is_valid_bound(s: sympy.Expr) -> bool:
+  return s.is_integer and s.is_constant() and (s not in (int_oo, -int_oo))
+
+
+def _lookup_bounds_in_shape_env(
+    expr: sympy.Expr, shape_env
+) -> tuple[int, int] | None:
+  """Queries the shape environment using all available lookups and math solvers."""
+  # When expr is a symbol.
+  if isinstance(expr, sympy.Symbol):
+    vr = shape_env.var_to_range.get(expr, None)
+    if vr and _is_valid_bound(vr.lower) and _is_valid_bound(vr.upper):
+      logging.debug(
+          "shape_env.var_to_range bounds: %s -> [%s, %s]",
+          expr,
+          vr.lower,
+          vr.upper,
+      )
+      return int(vr.lower), int(vr.upper)
     return None
 
-  def is_valid_bound(s: sympy.Expr) -> bool:
-    return s.is_integer and s.is_constant() and (s not in (int_oo, -int_oo))
+  # When expr is an arithmetic expression, try bound_sympy.
+  if hasattr(shape_env, "bound_sympy"):
+    try:
+      vr = shape_env.bound_sympy(expr)
+      if _is_valid_bound(vr.lower) and _is_valid_bound(vr.upper):
+        min_val = int(vr.lower)
+        max_val = int(vr.upper)
+        logging.debug(
+            "shape_env.bound_sympy bounds: %s -> [%d, %d]",
+            expr,
+            min_val,
+            max_val,
+        )
+        return min_val, max_val
+    except Exception as e:  # pylint: disable=broad-except
+      logging.warning(
+          "Failed to get bounds from shape_env.bound_sympy for %s: %s", expr, e
+      )
 
-  if not is_valid_bound(vr.lower) or not is_valid_bound(vr.upper):
-    return None
-  return (int(vr.lower), int(vr.upper))
+  return None
 
 
 def get_symint_bounds(sym_int: torch.SymInt) -> tuple[int, int]:
-  """Gets lower and upper bounds for a given SymInt.
+  """Gets lower and upper bounds for a given SymInt, evaluating expressions if needed.
 
   Args:
     sym_int: The SymInt to get the bounds for.
@@ -51,30 +74,28 @@ def get_symint_bounds(sym_int: torch.SymInt) -> tuple[int, int]:
     A tuple of (lower_bound, upper_bound) for the SymInt.
 
   Raises:
-    RuntimeError: If bounds are not found via shape_env and no hint is
-      provided for the symbol.
-
-  If bounds are not found via shape env, current algorithm determines:
-    - lower_bound using the hint, if hint is present.
-    - upper_bound as 2 * lower_bound.
-
-  Note: Bound selection algorithms will be explored separately.
-
-  If a shape dimension is dependent on tensor data (e.g., nonzero(), item()),
-  PyTorch generates an "unbacked" SymInt which has no concrete backing value
-  at trace time, resulting in hint = None.
+    RuntimeError: If bounds are not found via shape_env and no hint is provided
+      for the symbol.
   """
+  if vr := _lookup_bounds_in_shape_env(
+      sym_int.node.expr, sym_int.node.shape_env
+  ):
+    return vr
 
-  if vr := _lookup_known_bounds(sym_int):
-    lower_bound, upper_bound = vr
-  else:
-    hint = sym_int.node.hint
-    if hint is None:
-      raise RuntimeError(
-          f"Cannot determine bounds for dynamic symbol: {sym_int}."
-      )
-    lower_bound = hint
-    upper_bound = lower_bound * 2
+  # Fallback: resolve using concrete runtime profiling tracing hints
+  hint = sym_int.node.hint
+  if hint is None:
+    raise RuntimeError(
+        f"Cannot determine bounds for dynamic symbol or expression: {sym_int}."
+    )
 
-  logging.debug("symint: %s, lb: %s, ub: %s", sym_int, lower_bound, upper_bound)
+  lower_bound = hint
+  upper_bound = lower_bound * 2
+
+  logging.debug(
+      "Fallback hint bounds: %s, lb: %s, ub: %s",
+      sym_int,
+      lower_bound,
+      upper_bound,
+  )
   return lower_bound, upper_bound

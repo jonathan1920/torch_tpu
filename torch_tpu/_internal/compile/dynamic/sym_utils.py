@@ -57,6 +57,18 @@ def is_symexpr_node(node: torch.fx.Node) -> bool:
   return False
 
 
+def is_base_symbol_node(node: torch.fx.Node) -> bool:
+  """Checks if the FX node represents a raw base symbol variable token (e.g., s0).
+
+  Args:
+    node: The FX node to check.
+
+  Returns:
+    True if the node represents a base symbol variable, False otherwise.
+  """
+  return is_symint_node(node) and not is_symexpr_node(node)
+
+
 def symexpr_to_aten(
     graph_module: torch.fx.GraphModule,
     consumer_node: torch.fx.Node,

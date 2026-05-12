@@ -194,8 +194,8 @@ def _compile_and_execute_pad_subgraph(
   # Get the MLIR module for the pad subgraph.
   mlir_module = tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
   logging.debug(
-      "[DynamicTpuBackend] MLIR text: %s",
-      LazyString(tpu_torch_compile.serialize_mlir_text(mlir_module)),
+      "[DynamicTpuBackend] MLIR pad module: %s",
+      LazyString(lambda: tpu_torch_compile.serialize_mlir_text(mlir_module)),
   )
   # Compile the pad subgraph to a PJRT executable.
   executable = tpu_torch_compile.compile_mlir(mlir_module)

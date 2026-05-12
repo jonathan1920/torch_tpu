@@ -67,6 +67,7 @@ torch_tpu_py_library(
     deps = [
         ":sym_shape_manager",
         ":sym_utils",
+        ":symbol_bounds",
         "//shims/torch:pytorch",
     ],
 )
