@@ -203,6 +203,23 @@ SharedLoadedExecutableWithMetadata PyCompileMlir(
   return executable;
 }
 
+CompileResult PyTraverseAndCompile(
+    const std::vector<at::Tensor>& result_tensors,
+    const std::vector<at::Tensor>& argument_tensors, bool fast_compile,
+    bool build_mlir_module) {
+  TT_ASSIGN_OR_THROW(
+      CompileResult result,
+      TraverseAndCompile(
+          result_tensors, argument_tensors,
+          TraverseAndCompileOptions{
+              .compilation_mode = fast_compile ? CompilationMode::kFastCompile
+                                               : CompilationMode::kFastRuntime,
+              .build_mlir_module = build_mlir_module,
+          }),
+      _.SetPrepend() << "Failed to traverse and compile: ");
+  return result;
+}
+
 // Executes a compiled PJRT executable with the given arguments.
 //
 // Args:
@@ -370,6 +387,10 @@ void PyAssignConstantTensor(const at::Tensor& cpu_src_tensor,
 }
 
 PYBIND11_MODULE(tpu_torch_compile, m) {
+  py::class_<CompileResult>(m, "CompileResult")
+      .def_readonly("module", &CompileResult::module)
+      .def_readonly("executable", &CompileResult::executable);
+
   py::class_<torch_tpu::ContextedModule,  // NOLINT(bugprone-unused-raii)
              std::shared_ptr<torch_tpu::ContextedModule>>(m, "ContextedModule");
 
@@ -401,6 +422,11 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   m.def("placeholder_like", PyMakePlaceholderLike, py::arg("arg_tensor"));
   m.def("get_device_layout_if_materialized", &PyGetDeviceLayoutIfMaterialized,
         py::arg("tensor"));
+  m.def("traverse_and_compile", PyTraverseAndCompile, py::arg("result_tensors"),
+        py::arg("argument_tensors"), py::arg("fast_compile") = false,
+        py::arg("build_mlir_module") = false,
+        "Traverses the graph from outputs to arguments and compiles it.");
+
   m.def("build_mlir", PyBuildMlir, py::arg("result_tensors"),
         py::arg("argument_tensors"));  // INT_VEC_OK
   // Returns: PjRtLoadedExecutable

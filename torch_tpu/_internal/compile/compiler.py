@@ -580,11 +580,16 @@ class StaticCompiler(Compiler):
         exported_mlir = torch_tpu_export.fx_to_mlir(
             graph_module,
             placeholder_args,
+            build_mlir_module=(tracing_enabled or self._debug),
         )
 
+    mlir_module = exported_mlir.module
+
     # Emit StableHLO artifact for tlparse when TORCH_TRACE is set.
-    if tracing_enabled:
-      mlir_text = exported_mlir.serialize_text(enable_debug_info=self._debug)
+    if tracing_enabled and mlir_module is not None:
+      mlir_text = tpu_torch_compile.serialize_mlir_text(
+          mlir_module, enable_debug_info=self._debug
+      )
       trace_structured(
           "artifact",
           metadata_fn=lambda: {
@@ -595,20 +600,16 @@ class StaticCompiler(Compiler):
           expect_trace_id=True,
       )
 
-    with dynamo_timed("torchtpu_pjrt_compile"):
-      cached_executable = tpu_torch_compile.compile_mlir(exported_mlir.module)
-
     executable = _TorchTpuCompiledExecutable(
-        executable=cached_executable,
+        executable=exported_mlir.executable,
         reconstruct_fx_outputs_fn=exported_mlir.reconstruct_fx_outputs_fn,
     )
 
-    if self._debug:
-      # Do not use print_readable() as it includes original lines of code
-      # which is too verbose.
+    if self._debug and mlir_module is not None:
+      # Avoid print_readable() as it includes verbose original code lines.
       executable.graph_module_debug_str = str(graph_module.code)
-      executable.mlir_text = exported_mlir.serialize_text(
-          enable_debug_info=True
+      executable.mlir_text = tpu_torch_compile.serialize_mlir_text(
+          mlir_module, enable_debug_info=True
       )
 
     return executable

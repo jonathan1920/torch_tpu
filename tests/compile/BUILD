@@ -367,4 +367,22 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "cache_test",
+    srcs = ["cache_test.py"],
+    notest_oss = "subprocess spawning to set env vars timeout in oss",
+    tags = [
+        "requires-net:external",
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+    ],
+)
+
 torch_tpu_package_end()

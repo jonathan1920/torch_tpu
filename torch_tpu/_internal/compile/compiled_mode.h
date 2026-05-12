@@ -18,9 +18,11 @@
 #define TORCH_TPU_TESTS_COMPILED_MODE_H_
 
 #include <cstdint>
+#include <memory>
 #include <string_view>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -31,7 +33,6 @@
 #include "ATen/core/Generator.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/compilation.h"
-#include "torch_tpu/common/shape.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 
 // The core functions used for Dynamo compiled mode.
@@ -74,6 +75,28 @@ absl::StatusOr<at::Tensor> MakePlaceholder(absl::Span<const int64_t> sizes,
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
     mlir::MLIRContext& mlir_context, const std::vector<at::Tensor>& arg_tensors,
     const std::vector<at::Tensor>& result_tensors);
+
+// Result of TraverseAndCompile, containing the compiled executable and
+// optionally additional compilation artifacts (like the MLIR module) if
+// requested.
+struct CompileResult {
+  absl_nullable std::shared_ptr<ContextedModule> module = nullptr;
+  SharedLoadedExecutableWithMetadata executable;
+};
+
+struct TraverseAndCompileOptions {
+  // The compilation mode to use.
+  CompilationMode compilation_mode = CompilationMode::kFastRuntime;
+  // If true, build the MLIR module and return it in the CompileResult.
+  bool build_mlir_module = false;
+};
+
+// Traverses the graph from outputs to arguments and compiles it.
+// Hides the traversal logic within its implementation.
+absl::StatusOr<CompileResult> TraverseAndCompile(
+    const std::vector<at::Tensor>& result_tensors,
+    const std::vector<at::Tensor>& argument_tensors,
+    const TraverseAndCompileOptions& options = {});
 
 // torch.compile integration: this is called by torch.compile() to compile the
 // FX graph, after it has generated the graph and its input/output tensors. This

@@ -19,11 +19,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -127,6 +130,97 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
                       traversal->BuildMlirModule(mlir_context));
 
   return mlir_module;
+}
+
+absl::StatusOr<CompileResult> TraverseAndCompile(
+    const std::vector<at::Tensor>& result_tensors,
+    const std::vector<at::Tensor>& argument_tensors,
+    const TraverseAndCompileOptions& options) {
+  ScopedPythonContextCapturer capturer(OpName::kCompileMlir);
+  ScopedPythonContextProvider provider(
+      ScopedPythonContextCapturer::GetContext());
+
+  ABSL_CHECK(  // CRASH_OK=implies a bug in compile backend if this happens
+      !result_tensors.empty())
+      << "no result tensors provided";
+
+  std::vector<DeviceBufferRef> argument_refs;
+  argument_refs.reserve(argument_tensors.size());
+  for (const at::Tensor& tensor : argument_tensors) {
+    absl::StatusOr<DeviceBufferRef> buffer_ref_or =
+        GetBufferFromAtTensor(tensor);
+    ABSL_CHECK_OK(  // CRASH_OK=implies a bug in compile backend if this happens
+        buffer_ref_or)
+        << "failed to get device buffer from argument tensor: "
+        << ToString(tensor);
+    auto buffer_ref = std::move(*buffer_ref_or);
+    ABSL_CHECK(  // CRASH_OK=implies a bug in compile backend if this happens
+        buffer_ref.state() != DeviceBufferRefState::kDeferred)
+        << "argument tensor has deferred ops: " << ToString(tensor);
+    argument_refs.push_back(std::move(buffer_ref));
+  }
+
+  std::vector<DeviceBufferRef> result_refs;
+  result_refs.reserve(result_tensors.size());
+  for (const at::Tensor& tensor : result_tensors) {
+    absl::StatusOr<DeviceBufferRef> buffer_ref_or =
+        GetBufferFromAtTensor(tensor);
+    ABSL_CHECK_OK(  // CRASH_OK=implies a bug in compile backend if this happens
+        buffer_ref_or)
+        << "failed to get device buffer from result tensor: "
+        << ToString(tensor);
+    auto buffer_ref = std::move(*buffer_ref_or);
+    ABSL_CHECK(  // CRASH_OK=implies a bug in compile backend if this happens
+        buffer_ref.state() != DeviceBufferRefState::kMaterialized)
+        << "result tensor is already materialized: " << ToString(tensor);
+    result_refs.push_back(std::move(buffer_ref));
+  }
+
+  absl::StatusOr<std::unique_ptr<Traversal>> traversal_or =
+      Traversal::Create(std::move(result_refs));
+  ABSL_CHECK_OK(  // CRASH_OK=implies a bug in compile backend if this happens
+      traversal_or)
+      << "failed to create traversal";
+  auto traversal = std::move(*traversal_or);
+
+  ABSL_CHECK_OK(  // CRASH_OK=implies a bug in compile backend if this happens
+      traversal->ValidateAndReorderArguments(std::move(argument_refs)))
+      << "failed to validate and reorder traversal inputs";
+
+  ABSL_CHECK(  // CRASH_OK=implies a bug in compile backend if this happens
+      !traversal->IsBoundedDynamic())
+      << "bounded dynamic shapes are not supported in TraverseAndCompile yet";
+
+  // 2. Compile Traversal and get exec
+  absl::StatusOr<CompiledKernel> compiled_kernel_or =
+      traversal->Compile(options.compilation_mode);
+  ABSL_CHECK_OK(  // CRASH_OK=implies a bug in compile backend if this happens
+      compiled_kernel_or)
+      << "failed to compile traversal";
+  auto compiled_kernel = std::move(*compiled_kernel_or);
+
+  TT_ASSIGN_OR_RETURN(auto executable, compiled_kernel.fixed_shape_kernel.get(),
+                      _.SetPrepend() << "failed to get fixed shape kernel: ");
+
+  std::shared_ptr<ContextedModule> module = nullptr;
+  if (options.build_mlir_module) {
+    ABSL_VLOG(1) << "Building MLIR module as requested.";
+
+    absl::StatusOr<ContextedModule> contexted_module_or = ContextedModule::Make(
+        [&](mlir::MLIRContext& mlir_context)
+            -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
+          return traversal->BuildMlirModule(mlir_context);
+        });
+    ABSL_CHECK_OK(  // CRASH_OK=implies a bug in compile backend if this happens
+        contexted_module_or)
+        << "failed to build MLIR module";
+    module = std::make_shared<ContextedModule>(std::move(*contexted_module_or));
+  }
+
+  return CompileResult{
+      .module = std::move(module),
+      .executable = std::move(executable),
+  };
 }
 
 absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(

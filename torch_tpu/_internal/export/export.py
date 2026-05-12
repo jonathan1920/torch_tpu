@@ -92,10 +92,11 @@ def _extract_sample_arguments(exported: torch.export.ExportedProgram):
 
 @dataclasses.dataclass(frozen=True)
 class ExportedMlir:
-  """Represents the MLIR representation of an FX graph module.
+  """The MLIR representation and compiled executable of an FX graph module.
 
   Attributes:
     module: The ContextedModule instance.
+    executable: The compiled PJRT executable.
     mlir_result_tensors: A flattened list of tensors that the MLIR graph will
       actually produce as outputs.
     reconstruct_fx_outputs_fn: A function that takes the flattened MLIR outputs
@@ -103,7 +104,8 @@ class ExportedMlir:
       `None` values or nested tuples).
   """
 
-  module: tpu_torch_compile.ContextedModule
+  module: tpu_torch_compile.ContextedModule | None
+  executable: tpu_torch_compile.LoadedExecutableWithMetadata
   mlir_result_tensors: list[torch.Tensor]
   reconstruct_fx_outputs_fn: Callable[
       [Sequence[Any], Sequence[torch.Tensor]], Any
@@ -377,9 +379,12 @@ def enable_tracebacks(value: bool | None = True):
     tpu_torch_compile.pop_enable_tracebacks()
 
 
+# TODO(cnchan): change build_mlir_module default to False after migrating all
+# test usages with the new traverse_and_compile API.
 def fx_to_mlir(
     module: torch.fx.GraphModule,
     args: list[torch.Tensor | Any],
+    build_mlir_module: bool = True,
 ) -> ExportedMlir:
   """Converts an FX graph module to MLIR using TorchTPU's defer mode.
 
@@ -393,6 +398,8 @@ def fx_to_mlir(
     module: The `torch.fx.GraphModule` to be converted to MLIR.
     args: A list of input arguments to trace the module. These will be run
       through an FX graph interpreter to identify the graph's output tensors.
+    build_mlir_module: Whether to build and return the MLIR module in the
+      result.
 
   Returns:
     An `ExportedMlir` object containing the MLIR representation of the graph and
@@ -447,9 +454,10 @@ def fx_to_mlir(
       end_state_tensor = tpu_torch_compile.get_device_state_tensor(gen)
       result_tensors.append(end_state_tensor)
 
-    mlir_module = tpu_torch_compile.build_mlir(
+    compile_result = tpu_torch_compile.traverse_and_compile(
         result_tensors=result_tensors,
         argument_tensors=argument_tensors,
+        build_mlir_module=build_mlir_module,
     )
   finally:
     # Restore original generator states.
@@ -457,7 +465,8 @@ def fx_to_mlir(
       gen.graphsafe_set_state(orig_generator_states[gen])
 
   return ExportedMlir(
-      module=mlir_module,
+      module=compile_result.module,
+      executable=compile_result.executable,
       mlir_result_tensors=result_tensors,
       reconstruct_fx_outputs_fn=reconstruct_fx_outputs_fn,
   )
