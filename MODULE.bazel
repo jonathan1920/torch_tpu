@@ -167,6 +167,16 @@ torch_tpu_ext = use_extension("//bazel:extensions.bzl", "torch_tpu_deps_ext")
 # Expose the generated repository to your BUILD files
 use_repo(torch_tpu_ext, "torch_tpu_deps")
 
-### RBE
+# RBE
 rbe_config = use_extension("@xla//third_party/extensions:rbe_config.bzl", "rbe_config_ext")
 use_repo(rbe_config, "ml_build_config_platform")
+
+# Ensure Bazel securely mounts the ThreadSanitizer runtime library into the RBE sandbox runfiles.
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+
+http_file(
+    name = "tsan_lib",
+    downloaded_file_path = "libclang_rt.tsan.so",
+    sha256 = "4495aec33d1d6b56785af7d36d2b3b1801ece4ff53db43fc83a2a7fcede97dfe",
+    urls = ["https://storage.googleapis.com/ml-sysroot-testing/python/libclang_rt.tsan-llvm20-20260511.so"],
+)

@@ -155,6 +155,44 @@ build:faster --experimental_check_output_files=false
 # Bazel 9 feature: skip checking files on the local host.
 # build:faster --experimental_check_external_other_files=false
 
+# ThreadSanitizer (TSan) Configurations
+# Base TSan config for C++ tests.
+common:tsan_cc --features=tsan
+# Never strips debugging information from all binaries and shared libraries.
+common:tsan_cc --strip=never
+# Enables TSan to detect data races in C/C++ code at runtime.
+common:tsan_cc --copt=-fsanitize=thread
+common:tsan_cc --linkopt=-fsanitize=thread
+# Generates DWARF debugging information so TSan prints filenames and line
+# numbers.
+common:tsan_cc --copt=-g
+# Keeps frame pointers intact for fast, accurate stack unwinding in error
+# reports.
+common:tsan_cc --copt=-fno-omit-frame-pointer
+# Defines a macro allowing developers to write `#ifdef THREAD_SANITIZER` in C++
+# to selectively disable flaky code or use explicit TSan annotations.
+common:tsan_cc --copt=-DTHREAD_SANITIZER
+# TSan executes exceptionally slowly at -O0. -O1 applies basic optimizations to
+# speed up execution without aggressively inlining and destroying the call stack
+# structure.
+common:tsan_cc --copt=-O1
+
+# TSan config for Python tests.
+# Explicitly uses dynamic linking (-shared-libsan) so the PyTorch C++ extension
+# leaves its TSan symbols undefined, allowing our LD_PRELOAD wrapper to satisfy
+# them at runtime via the custom Python interpreter.
+common:tsan_py --config=tsan_cc
+common:tsan_py --copt=-shared-libsan
+common:tsan_py --linkopt=-shared-libsan
+# Hermetic Python Configuration for TSan (Python 3.12)
+# Standard Python generates thousands of false-positive data races due to the
+# GIL. This overrides the default rules_ml_toolchain behavior to fetch a custom
+# Python interpreter built natively with LLVM 20 TSan instrumentation.
+common:tsan_py --repo_env=HERMETIC_PYTHON_VERSION=3.12
+common:tsan_py --repo_env=HERMETIC_PYTHON_URL=https://storage.googleapis.com/ml-sysroot-testing/python/cpython-3.12.x-tsan-shared-linux-x86_64-llvm-20-bazel-20260511.tar.gz
+common:tsan_py --repo_env=HERMETIC_PYTHON_SHA256=91db187fb5d98e6361b6416e81a6037dbe5ba745dc3e191ba1ffa06a3108e1b6
+common:tsan_py --repo_env=HERMETIC_PYTHON_PREFIX=cpython-3.12.x-tsan-shared-linux-x86_64-llvm-20-bazel-20260511/
+
 # Config to aid debugging.
 # "standalone" means "local" -- run things locally so its easier to
 # inspect state and break out of bazel sandboxes.
