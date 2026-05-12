@@ -16,6 +16,7 @@
 
 #include "torch_tpu/eager/tpu_hooks.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <utility>
@@ -54,6 +55,8 @@
 namespace torch_tpu {
 namespace {
 
+constexpr int kMaxDevices = 8;
+
 class TpuDeviceGuardImpl final : public c10::impl::DeviceGuardImplInterface {
  public:
   TpuDeviceGuardImpl() = default;
@@ -82,13 +85,23 @@ class TpuDeviceGuardImpl final : public c10::impl::DeviceGuardImplInterface {
 
  private:
   // TODO: make this per-python-thread.
-  static thread_local c10::DeviceIndex current_device_index_;
+  // clang-format off
+  // NOLINTNEXTLINE(whitespace/line_length)
+  static thread_local c10::DeviceIndex current_device_index_;  // CPP_THREAD_LOCAL_OK=State is per-C++-thread for device guard
+  // NOLINTNEXTLINE(whitespace/line_length)
+  static thread_local std::array<c10::StreamId, kMaxDevices> current_stream_ids_;  // CPP_THREAD_LOCAL_OK=State is per-C++-thread for device guard
+  // clang-format on
 };
 
 }  // namespace
 
 // TODO: make this per-python-thread.
-thread_local c10::DeviceIndex TpuDeviceGuardImpl::current_device_index_ = 0;
+// clang-format off
+// NOLINTNEXTLINE(whitespace/line_length)
+thread_local c10::DeviceIndex TpuDeviceGuardImpl::current_device_index_ = 0;  // CPP_THREAD_LOCAL_OK=State is per-C++-thread for device guard
+// NOLINTNEXTLINE(whitespace/line_length)
+thread_local std::array<c10::StreamId, kMaxDevices> TpuDeviceGuardImpl::current_stream_ids_ = {0};  // CPP_THREAD_LOCAL_OK=State is per-C++-thread for device guard
+// clang-format on
 
 c10::DeviceType TpuDeviceGuardImpl::type() const {
   return GetPrivateUse1DeviceType();
@@ -147,17 +160,24 @@ void TpuDeviceGuardImpl::uncheckedSetDevice(c10::Device d) const noexcept {
 c10::Stream TpuDeviceGuardImpl::getStream(c10::Device d) const {
   TT_CHECK_THROW(d.type() == type(), error::kInvalidArgument)
       << "TpuDeviceGuardImpl: invalid device type for getStream " << d.type();
-  return c10::Stream(c10::Stream::DEFAULT, d);
+  const c10::DeviceIndex index = d.index();
+  TT_CHECK_THROW(index >= 0 && index < kMaxDevices, error::kInvalidArgument)
+      << "device index out of bounds: " << index;
+  const c10::StreamId stream_id = current_stream_ids_[index];
+  return c10::Stream(c10::Stream::UNSAFE, d, stream_id);
 }
 
 c10::Stream TpuDeviceGuardImpl::exchangeStream(c10::Stream s) const {
   TT_CHECK_THROW(s.device_type() == type(), error::kInvalidArgument)
       << "TpuDeviceGuardImpl: invalid stream device type for exchangeStream "
       << s.device_type();
-  c10::Device current_guarded_device = getDevice();
-  c10::Stream old_stream =
-      c10::Stream(c10::Stream::DEFAULT, current_guarded_device);
-  return old_stream;
+  c10::DeviceIndex device_index = s.device_index();
+  TT_CHECK_THROW(device_index >= 0 && device_index < kMaxDevices,
+                 error::kInvalidArgument)
+      << "device index out of bounds: " << device_index;
+  c10::StreamId old_stream_id = current_stream_ids_[device_index];
+  current_stream_ids_[device_index] = s.id();
+  return c10::Stream(c10::Stream::UNSAFE, s.device(), old_stream_id);
 }
 
 c10::DeviceIndex TpuDeviceGuardImpl::deviceCount() const noexcept {
@@ -193,12 +213,13 @@ bool TpuDeviceGuardImpl::queryStream(const c10::Stream& stream) const {
   return true;
 }
 void TpuDeviceGuardImpl::synchronizeStream(const c10::Stream& stream) const {
-  PjrtBackend::GetInstance().SynchronizeStream(stream.device_index());
+  PjrtBackend::GetInstance().SynchronizeStream(stream.device_index(),
+                                               stream.id());
 }
 void TpuDeviceGuardImpl::synchronizeDevice(
-    const c10::DeviceIndex device_index) const {
+    c10::DeviceIndex device_index) const {
   TT_THROW_IF_ERROR(SynchronizeAll(WaitOnExecution::kYes));
-  PjrtBackend::GetInstance().SynchronizeStream(device_index);
+  PjrtBackend::GetInstance().SynchronizeDevice(device_index);
 }
 void TpuDeviceGuardImpl::destroyEvent(
     void* event, const c10::DeviceIndex device_index) const noexcept {

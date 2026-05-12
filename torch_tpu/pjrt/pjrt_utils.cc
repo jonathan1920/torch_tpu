@@ -38,7 +38,7 @@
 #include "ATen/ops/empty.h"
 #include "c10/core/Device.h"
 #include "c10/core/TensorImpl.h"
-#include "c10/util/Exception.h"
+#include "c10/core/impl/DeviceGuardImplInterface.h"
 #include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/compilation.h"
@@ -164,7 +164,6 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
 
   // Get necessary information from the buffer before moving it.
   auto future = buffer->GetReadyFuture();
-  const auto* buffer_device = buffer->device();
   TT_ASSIGN_OR_RETURN(auto buffer_ref,
                       DeviceBufferList::CreateMaterialized(std::move(buffer)));
   if (!keep_host_data_alive) {
@@ -174,10 +173,13 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
   } else {
     ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] Backing tensor present, "
                     "creating DeviceBufferRef and marking stream active.";
-    PjrtBackend::GetInstance().MarkStreamActive(
-        static_cast<c10::DeviceIndex>(
-            buffer_device->local_hardware_id().value()),
-        future);
+    const auto* impl =
+        c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
+    TT_RET_CHECK(impl != nullptr, error::kInternal)
+        << "TPU DeviceGuardImpl not found";
+    const c10::Stream current_stream = impl->getStream(impl->getDevice());
+    PjrtBackend::GetInstance().MarkStreamActive(impl->getDevice().index(),
+                                                current_stream.id(), future);
   }
 
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL EXIT] Created "
@@ -268,10 +270,13 @@ absl::Status TpuMemcpyDtoHDirect(const DeviceBufferRef& buffer_ref,
         ABSL_LOG(ERROR) << "Async D2H ToLiteral transfer failed: " << s;
       }
     });
-    PjrtBackend::GetInstance().MarkStreamActive(
-        static_cast<c10::DeviceIndex>(
-            buffer->device()->local_hardware_id().value()),
-        future);
+    const auto* impl =
+        c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
+    TT_RET_CHECK(impl != nullptr, error::kInternal)
+        << "TPU DeviceGuardImpl not found";
+    const c10::Stream current_stream = impl->getStream(impl->getDevice());
+    PjrtBackend::GetInstance().MarkStreamActive(impl->getDevice().index(),
+                                                current_stream.id(), future);
     return absl::OkStatus();
   } else {
     return future.Await();

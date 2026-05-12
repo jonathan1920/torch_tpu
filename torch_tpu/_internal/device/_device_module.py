@@ -316,29 +316,32 @@ class _DeviceModule(abc.ABC):
     )
 
   @classmethod
-  def set_stream(cls, stream: streams.TpuStream) -> None:  # pylint: disable=unused-argument
-    """Sets the current stream. Currently a dummy method (b/452051142)."""
-    return
+  def set_stream(cls, stream: streams.TpuStream) -> None:
+    """Sets the current stream."""
+    # pylint: disable=protected-access
+    _device_ops_backend._set_current_stream_id(
+        stream.stream_id, stream.device.index
+    )
 
   @classmethod
   def current_stream(
-      cls, device: torch.device | None = None  # pylint: disable=unused-argument
-  ) -> streams.TpuStream:  # pylint: disable=g-doc-args
-    """Returns the active stream for a given device.
-
-    Currently a dummy method (b/452051142).
-    """
-    return streams.TpuStream()
+      cls, device: torch.device | None = None
+  ) -> streams.TpuStream:
+    """Returns the active stream for a given device."""
+    if device is None:
+      device = torch.device("tpu")
+    # pylint: disable=protected-access
+    stream_id = _device_ops_backend._get_current_stream_id(device.index)
+    return streams.TpuStream(device=device, stream_id=stream_id)
 
   @classmethod
   def default_stream(
-      cls, device: torch.device | None = None  # pylint: disable=unused-argument
-  ) -> streams.TpuStream:  # pylint: disable=g-doc-args
-    """Returns the default stream for a given device.
-
-    Currently a dummy method (b/452051142).
-    """
-    return streams.TpuStream()
+      cls, device: torch.device | None = None
+  ) -> streams.TpuStream:
+    """Returns the default stream for a given device."""
+    if device is None:
+      device = torch.device("tpu")
+    return streams.TpuStream(device=device, stream_id=0)
 
   @classmethod
   def get_amp_supported_dtype(cls) -> List[torch.dtype]:  # Needed for AMP.

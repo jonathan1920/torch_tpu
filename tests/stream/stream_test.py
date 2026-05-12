@@ -16,6 +16,7 @@ import concurrent.futures
 from absl.testing import absltest
 import torch
 from torch_tpu._internal.utils import utils
+import torch_tpu.api
 
 
 class StreamsTest(absltest.TestCase):
@@ -154,6 +155,36 @@ class StreamsTest(absltest.TestCase):
     utils.assert_close(
         second_t_cpu, torch.full((size,), 2.0, dtype=torch.float32)
     )
+
+  def test_async_transfer_on_separate_stream(self):
+    """Tests async transfers on a separate stream."""
+    _ = torch_tpu.api.tpu_device()
+
+    size = 1024 * 1024
+    t_tpu = torch.ones(size, device='tpu', dtype=torch.float32)
+    t_cpu = torch.empty(size, device='cpu', pin_memory=True)
+
+    default_stream = torch.tpu.current_stream()
+    transfer_stream = torch.tpu.Stream()
+
+    # Start a non-blocking copy on the transfer stream
+    with torch.tpu.stream(transfer_stream):
+      current_stream = torch.tpu.current_stream()
+      self.assertEqual(current_stream.stream_id, transfer_stream.stream_id)
+      t_cpu.copy_(t_tpu, non_blocking=True)
+      transfer_event = torch.tpu.Event()
+      transfer_event.record()
+
+    self.assertEqual(
+        torch.tpu.current_stream().stream_id, default_stream.stream_id
+    )
+
+    # We should be able to synchronize on the event recorded on the
+    # transfer stream.
+    transfer_event.synchronize()
+
+    self.assertTrue(transfer_event.query())
+    utils.assert_close(t_cpu, torch.ones(size, dtype=torch.float32))
 
 
 if __name__ == '__main__':

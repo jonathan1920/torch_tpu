@@ -51,6 +51,7 @@ pybind_extension(
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
+        "//torch_tpu/_internal/sync:sync_cc",
         "//torch_tpu/common:compilation",
         "//torch_tpu/common:compilation_cache",
         "//torch_tpu/common:discovery",

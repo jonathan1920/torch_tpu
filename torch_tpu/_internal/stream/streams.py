@@ -14,13 +14,19 @@
 
 """Python interface for streams and events on TPU."""
 
+import itertools
 from typing import Optional, Self
+
+import torch
 from torch_tpu._internal.device import _device_ops_backend
 
 _NOT_IMPLEMENTED_STREAMS_MSG = (
     'Streams and Events are not fully implemented in TorchTPU. Please file a'
     ' feature request describing your use case.'
 )
+
+
+_STREAM_COUNTER = itertools.count(1)
 
 
 class TpuStream:
@@ -43,8 +49,30 @@ class TpuStream:
   TODO: b/452051142 - Explore if and how to make better use of streams.
   """
 
-  def __init__(self, device=None, priority: int = 0, **kwargs):
-    pass
+  def __init__(
+      self,
+      device=None,
+      priority: int = 0,
+      stream_id: Optional[int] = None,
+      **kwargs
+  ):
+    # pylint: disable=unused-argument
+    if stream_id is not None:
+      self.stream_id = stream_id
+    else:
+      self.stream_id = next(_STREAM_COUNTER)
+
+    if device is not None:
+      if isinstance(device, int):
+        self.device = torch.device('tpu', device)
+      elif isinstance(device, str):
+        self.device = torch.device(device)
+      else:
+        self.device = device
+    else:
+      self.device = torch.device(
+          'tpu', _device_ops_backend._get_current_device_id()
+      )
 
   def wait_event(self, event: 'TpuEvent') -> None:  # pylint: disable=unused-argument
     """Makes all future work submitted to the stream wait for an event."""
@@ -107,24 +135,12 @@ class TpuEvent:
     # Accepted for CUDA API compatibility; TPU currently ignores these flags.
     self._event_id: int | None = None
 
-  def record(self, stream: TpuStream | None = None):  # pylint: disable=unused-argument
-    """Snapshot all pending async futures on the current device.
-
-    If this event was previously recorded, the old snapshot is released before
-    recording the new one. This matches CUDA semantics where re-recording an
-    event overwrites its previous state.
-
-    Args:
-      stream: Ignored. Present for CUDA API compatibility. torch_tpu has a
-        single implicit stream, so this always snapshots device-wide pending
-        futures.
-
-    Returns:
-      ``self``, for chaining.
-    """
+  def record(self, stream: TpuStream | None = None):
+    """Snapshot all pending async futures on the current device."""
     if self._event_id is not None:
       _device_ops_backend._release_event(self._event_id)  # pylint: disable=protected-access
-    self._event_id = _device_ops_backend._record_event()  # pylint: disable=protected-access
+    stream_id = stream.stream_id if stream is not None else None
+    self._event_id = _device_ops_backend._record_event(stream_id=stream_id)  # pylint: disable=protected-access
     return self
 
   def wait(self, stream: TpuStream | None = None) -> None:  # pylint: disable=unused-argument

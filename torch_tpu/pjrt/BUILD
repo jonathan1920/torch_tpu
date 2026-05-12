@@ -115,6 +115,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:compilation",
         "//torch_tpu/common:context_manager",
         "//torch_tpu/common:context_states",
+        "//torch_tpu/common:device_type",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:utils",

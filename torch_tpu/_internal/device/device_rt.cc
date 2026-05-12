@@ -25,6 +25,7 @@
 #include "c10/core/TensorImpl.h"
 #include "c10/core/impl/DeviceGuardImplInterface.h"
 #include "torch/csrc/utils/pybind.h"  // IWYU pragma: keep, needed for at::Tensor mapping
+#include "torch_tpu/_internal/sync/sync.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/common/discovery.h"
@@ -52,28 +53,33 @@ void SynchronizePy(std::optional<int> device_index) {
   TT_CHECK_THROW(impl != nullptr, error::kInternal)
       << "TPU DeviceGuardImpl not found";
 
-  c10::DeviceIndex index;
-  if (device_index.has_value()) {
-    index = static_cast<c10::DeviceIndex>(*device_index);
-  } else {
-    index = impl->getDevice().index();
-  }
+  c10::DeviceIndex index = device_index.has_value()
+                               ? static_cast<c10::DeviceIndex>(*device_index)
+                               : impl->getDevice().index();
+
   impl->synchronizeDevice(index);
 }
 
-int64_t RecordEventPy(std::optional<int> device_index) {
+int64_t RecordEventPy(std::optional<int> device_index,
+                      std::optional<int64_t> stream_id) {
   const c10::impl::DeviceGuardImplInterface* impl =
       c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
   TT_CHECK_THROW(impl != nullptr, error::kInternal)
       << "TPU DeviceGuardImpl not found";
 
-  c10::DeviceIndex index;
-  if (device_index.has_value()) {
-    index = static_cast<c10::DeviceIndex>(*device_index);
+  c10::DeviceIndex index = device_index.has_value()
+                               ? static_cast<c10::DeviceIndex>(*device_index)
+                               : impl->getDevice().index();
+
+  c10::StreamId id;
+  if (stream_id.has_value()) {
+    id = *stream_id;
   } else {
-    index = impl->getDevice().index();
+    c10::Stream current_stream =
+        impl->getStream(c10::Device(GetPrivateUse1DeviceType(), index));
+    id = current_stream.id();
   }
-  return RecordEventSnapshot(index);
+  return RecordEventSnapshot(index, id);
 }
 
 void InitRuntimeOptions(const std::string& device_type) {
@@ -99,6 +105,50 @@ bool QueryEventSnapshotPy(int64_t event_id) {
                      _.SetPrepend() << "failed querying event snapshot: ");
   return is_ready;
 }
+
+int64_t GetCurrentStreamIdPy(std::optional<int> device_index) {
+  const c10::impl::DeviceGuardImplInterface* impl =
+      c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
+  TT_CHECK_THROW(impl != nullptr, error::kInternal)
+      << "TPU DeviceGuardImpl not found";
+
+  c10::DeviceIndex index = device_index.has_value()
+                               ? static_cast<c10::DeviceIndex>(*device_index)
+                               : impl->getDevice().index();
+  c10::Stream current_stream =
+      impl->getStream(c10::Device(GetPrivateUse1DeviceType(), index));
+  return current_stream.id();
+}
+
+void SetCurrentStreamIdPy(int64_t stream_id, std::optional<int> device_index) {
+  const c10::impl::DeviceGuardImplInterface* impl =
+      c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
+  TT_CHECK_THROW(impl != nullptr, error::kInternal)
+      << "TPU DeviceGuardImpl not found";
+
+  c10::DeviceIndex index = device_index.has_value()
+                               ? static_cast<c10::DeviceIndex>(*device_index)
+                               : impl->getDevice().index();
+  c10::Stream s =
+      c10::Stream(c10::Stream::UNSAFE,
+                  c10::Device(GetPrivateUse1DeviceType(), index), stream_id);
+  impl->exchangeStream(s);
+}
+
+void SynchronizeStreamPy(int64_t stream_id, std::optional<int> device_index) {
+  const c10::impl::DeviceGuardImplInterface* impl =
+      c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
+  TT_CHECK_THROW(impl != nullptr, error::kInternal)
+      << "TPU DeviceGuardImpl not found";
+
+  c10::DeviceIndex index = device_index.has_value()
+                               ? static_cast<c10::DeviceIndex>(*device_index)
+                               : impl->getDevice().index();
+
+  TT_THROW_IF_ERROR(SynchronizeAll(WaitOnExecution::kYes));
+  PjrtBackend::GetInstance().SynchronizeStream(index, stream_id);
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_device_ops_backend, m) {
@@ -126,14 +176,28 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       },
       "Shuts down the PjRt runtime.");
 
+  m.def("_get_current_stream_id", &GetCurrentStreamIdPy,
+        py::arg("device_index") = py::none(),
+        "Returns the current stream ID for the specified device.");
+
+  m.def("_set_current_stream_id", &SetCurrentStreamIdPy, py::arg("stream_id"),
+        py::arg("device_index") = py::none(),
+        "Sets the current stream ID for the specified device.");
+
+  m.def("_synchronize_stream", &SynchronizeStreamPy, py::arg("stream_id"),
+        py::arg("device_index") = py::none(),
+        py::call_guard<py::gil_scoped_release>(),
+        "Blocks until all operations on the specified stream have completed.");
+
   m.def("_synchronize", &SynchronizePy, py::arg("device_index") = py::none(),
         py::call_guard<py::gil_scoped_release>(),
         "Blocks until all async d2h copies and deferred operations on the "
         "specified device have completed.");
 
   m.def("_record_event", &RecordEventPy, py::arg("device_index") = py::none(),
+        py::arg("stream_id") = py::none(),
         "Records a fence over async d2h copies already enqueued on the "
-        "specified device.");
+        "specified device and stream.");
 
   m.def("_wait_event", &WaitEventSnapshotPy, py::arg("event_id"),
         py::call_guard<py::gil_scoped_release>(),
