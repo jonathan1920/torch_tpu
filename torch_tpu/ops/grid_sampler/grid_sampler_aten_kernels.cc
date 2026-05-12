@@ -53,6 +53,15 @@ namespace torch_tpu {
 
 namespace {
 
+// Enum class for interpolation modes.
+// Must match the values in the PyTorch specification:
+// https://pytorch.org/docs/stable/generated/torch.nn.functional.grid_sample.html
+enum class InterpolationMode {
+  kBilinear = 0,
+  kNearest = 1,
+  kBicubic = 2,
+};
+
 struct GridSamplerGatherConfig {
   mlir::stablehlo::GatherDimensionNumbersAttr gather_dimension_numbers;
   mlir::stablehlo::Dimensions slice_sizes;
@@ -1023,24 +1032,28 @@ absl::Status CheckInputAndPaddingMode(const at::Tensor& input,
 }
 
 // Checks for the `interpolation_mode` argument for 2D grid sampler.
-absl::Status Check2DInterpolationMode(const int64_t interpolation_mode) {
-  TT_RET_CHECK(interpolation_mode == 0 || interpolation_mode == 1 ||
-                   interpolation_mode == 2,
+absl::Status Check2DInterpolationMode(
+    const InterpolationMode interpolation_mode) {
+  TT_RET_CHECK(interpolation_mode == InterpolationMode::kBilinear ||
+                   interpolation_mode == InterpolationMode::kNearest ||
+                   interpolation_mode == InterpolationMode::kBicubic,
                error::kUnimplemented)
       << "expected the interpolation mode to be 0 (bilinear), 1 (nearest), or "
          "2 (bicubic), got "
-      << interpolation_mode;
+      << static_cast<int64_t>(interpolation_mode);
 
   return absl::OkStatus();
 }
 
 // Checks for the `interpolation_mode` argument for 3D grid sampler.
-absl::Status Check3DInterpolationMode(const int64_t interpolation_mode) {
-  TT_RET_CHECK(interpolation_mode == 0 || interpolation_mode == 1,
+absl::Status Check3DInterpolationMode(
+    const InterpolationMode interpolation_mode) {
+  TT_RET_CHECK(interpolation_mode == InterpolationMode::kBilinear ||
+                   interpolation_mode == InterpolationMode::kNearest,
                error::kUnimplemented)
       << "expected the interpolation mode to be 0 (bilinear) or 1 (nearest), "
          "got "
-      << interpolation_mode;
+      << static_cast<int64_t>(interpolation_mode);
 
   return absl::OkStatus();
 }
@@ -1053,8 +1066,11 @@ at::Tensor AtenGridSampler2d(const at::Tensor& input, const at::Tensor& grid,
   TT_KERNEL(
       OpName::kGridSampler2d, param_keys,
       (input, grid, interpolation_mode, padding_mode, align_corners), {
+        auto interpolation_mode_enum =
+            static_cast<InterpolationMode>(interpolation_mode);
+
         TT_THROW_IF_ERROR(CheckInputAndPaddingMode(input, padding_mode));
-        TT_THROW_IF_ERROR(Check2DInterpolationMode(interpolation_mode));
+        TT_THROW_IF_ERROR(Check2DInterpolationMode(interpolation_mode_enum));
 
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(input.scalar_type()));
@@ -1064,19 +1080,19 @@ at::Tensor AtenGridSampler2d(const at::Tensor& input, const at::Tensor& grid,
 
         PaddingMode pm = static_cast<PaddingMode>(padding_mode);
         auto op_builder = [&]() -> NAryMlirOpBuilder<2, 1> {
-          if (interpolation_mode == 0) {  // bilinear
+          if (interpolation_mode_enum == InterpolationMode::kBilinear) {
             return [align_corners, pm](FixedSizeSpan<mlir::MlirOp, 2> inputs)
                        -> absl::StatusOr<mlir::MlirOp> {
               return BuildGridSamplerBilinearShlo(inputs[0], inputs[1],
                                                   align_corners, pm);
             };
-          } else if (interpolation_mode == 1) {  // nearest
+          } else if (interpolation_mode_enum == InterpolationMode::kNearest) {
             return [align_corners, pm](FixedSizeSpan<mlir::MlirOp, 2> inputs)
                        -> absl::StatusOr<mlir::MlirOp> {
               return BuildGridSamplerNearestShlo(inputs[0], inputs[1],
                                                  align_corners, pm);
             };
-          } else {  // bicubic
+          } else {  // InterpolationMode::kBicubic
             return [align_corners, pm](FixedSizeSpan<mlir::MlirOp, 2> inputs)
                        -> absl::StatusOr<mlir::MlirOp> {
               return BuildGridSamplerBicubicShlo(inputs[0], inputs[1],
@@ -1103,8 +1119,10 @@ at::Tensor AtenGridSampler3d(const at::Tensor& input, const at::Tensor& grid,
   TT_KERNEL(
       OpName::kGridSampler3d, param_keys,
       (input, grid, interpolation_mode, padding_mode, align_corners), {
+        auto interpolation_mode_enum =
+            static_cast<InterpolationMode>(interpolation_mode);
         TT_THROW_IF_ERROR(CheckInputAndPaddingMode(input, padding_mode));
-        TT_THROW_IF_ERROR(Check3DInterpolationMode(interpolation_mode));
+        TT_THROW_IF_ERROR(Check3DInterpolationMode(interpolation_mode_enum));
 
         TT_ASSIGN_OR_THROW(auto element_type,
                            ConvertTo<mlir::ElementType>(input.scalar_type()));
@@ -1115,20 +1133,21 @@ at::Tensor AtenGridSampler3d(const at::Tensor& input, const at::Tensor& grid,
         PaddingMode pm = static_cast<PaddingMode>(padding_mode);
 
         auto op_builder = [&]() -> NAryMlirOpBuilder<2, 1> {
-          if (interpolation_mode == 0) {  // trilinear
+          if (interpolation_mode_enum == InterpolationMode::kBilinear) {
             return [align_corners, pm](FixedSizeSpan<mlir::MlirOp, 2> inputs)
                        -> absl::StatusOr<mlir::MlirOp> {
               return BuildGridSamplerBilinearShlo(inputs[0], inputs[1],
                                                   align_corners, pm);
             };
-
-          } else {  // nearest
+          } else {  // InterpolationMode::kNearest
             return [align_corners, pm](FixedSizeSpan<mlir::MlirOp, 2> inputs)
                        -> absl::StatusOr<mlir::MlirOp> {
               return BuildGridSamplerNearestShlo(inputs[0], inputs[1],
                                                  align_corners, pm);
             };
           }
+          // InterpolationMode::kBicubic is not supported for 3D grid sampler
+          // and this is checked above Check3DInterpolationMode.
         }();
         TT_ASSIGN_OR_THROW(
             auto out_buf,
