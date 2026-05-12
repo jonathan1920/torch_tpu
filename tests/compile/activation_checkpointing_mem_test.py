@@ -59,20 +59,8 @@ def run_and_measure(use_ac):
   criterion = torch.nn.MSELoss()
   compiled = torch.compile(model, backend=tpu_backend)
 
-  input_tensor = torch.randn(16, 256, 1024, device=device)
-  target = torch.randn(16, 256, 1024, device=device)
-
-  # Warmup
-  optimizer.zero_grad()
-  outputs = compiled(input_tensor, use_ac)
-  loss = criterion(outputs, target)
-  loss.backward()
-  optimizer.step()
-
-  torch.accelerator.empty_cache()
-  gc.collect()
-
-  torch.accelerator.reset_peak_memory_stats()
+  input_tensor = torch.randn(32, 512, 1024, device=device)
+  target = torch.randn(32, 512, 1024, device=device)
 
   # Measure
   optimizer.zero_grad()
@@ -81,10 +69,10 @@ def run_and_measure(use_ac):
   loss.backward()
   optimizer.step()
 
+  torch.accelerator.synchronize()
   peak_mem = torch.accelerator.max_memory_allocated()
 
   del compiled, model, optimizer, criterion, input_tensor, target, outputs, loss
-  torch.accelerator.empty_cache()
   gc.collect()
 
   return peak_mem
