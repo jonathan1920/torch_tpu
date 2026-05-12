@@ -298,6 +298,27 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
+    name = "repeated_ops_heuristic",
+    srcs = ["repeated_ops_heuristic.cc"],
+    hdrs = ["repeated_ops_heuristic.h"],
+    deps = [
+        ":device_buffer",
+        ":materialize",
+        "//torch_tpu/common:env_vars",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "safe_materialization_rule",
     srcs = ["safe_materialization_rule.cc"],
     hdrs = ["safe_materialization_rule.h"],
@@ -468,6 +489,7 @@ torch_tpu_cc_library(
         ":device_buffer",
         ":eager_mode",
         ":materialize",
+        ":repeated_ops_heuristic",
         ":structured_log_buffer",
         ":tensor_to_buffer",
         "//shims/torch:aten_headers",
