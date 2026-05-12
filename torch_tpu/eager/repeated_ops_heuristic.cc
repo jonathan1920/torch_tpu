@@ -160,10 +160,6 @@ class OpWindow {
   size_t last_repeated_sequence_size_ = 0;
 };
 
-static absl::Mutex g_mutex{absl::kConstInit};
-static absl::NoDestructor<OpWindow> g_op_window(kMinRepeatedSubsequenceLength,
-                                                kMaxRepeatedSubsequenceLength);
-
 }  // namespace
 
 bool MustApplyRepeatedOpsHeuristic() {
@@ -176,6 +172,10 @@ bool MustApplyRepeatedOpsHeuristic() {
 
 absl::Status ApplyRepeatedOpsHeuristic(
     const SharedDeviceBufferList& device_buffer_list) {
+  static absl::Mutex mutex{absl::kConstInit};
+  static absl::NoDestructor<OpWindow> op_window(kMinRepeatedSubsequenceLength,
+                                                kMaxRepeatedSubsequenceLength);
+
   const std::string& detect_repeated_ops =
       GetEnvOnce<kTorchTpuInternalDetectRepeatedOpsEnvVar>().value_or(
           std::string(kRepeatedOpSafeMode));
@@ -187,9 +187,9 @@ absl::Status ApplyRepeatedOpsHeuristic(
   ABSL_CHECK(op != nullptr);  // CRASH_OK
   bool found_repetition = false;
   {
-    absl::MutexLock lock(g_mutex);
-    g_op_window->Append(*op);
-    found_repetition = g_op_window->FindRepeatedSequence();
+    absl::MutexLock lock(mutex);
+    op_window->Append(*op);
+    found_repetition = op_window->FindRepeatedSequence();
   }
 
   if (found_repetition) {

@@ -21,7 +21,11 @@
 
 namespace torch_tpu {
 
+// Return true if the repeated ops heuristic must be applied.
 bool MustApplyRepeatedOpsHeuristic();
+
+// Applies the repeated ops heuristic must be applied, which may cause the
+// provided `device_buffer_list` to be materialized.
 absl::Status ApplyRepeatedOpsHeuristic(
     const SharedDeviceBufferList& device_buffer_list);
 
