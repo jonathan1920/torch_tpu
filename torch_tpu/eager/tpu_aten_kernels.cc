@@ -64,6 +64,7 @@
 #include "torch_tpu/ops/dot/dot_aten_kernels.h"
 #include "torch_tpu/ops/dot/vdot_aten_kernels.h"
 #include "torch_tpu/ops/dropout/dropout_aten_kernels.h"
+#include "torch_tpu/ops/dynamic/dynamic_arange/dynamic_arange.h"
 #include "torch_tpu/ops/dynamic/set_dimension_logical_size/set_dimension_logical_size.h"
 #include "torch_tpu/ops/elu/elu_aten_kernels.h"
 #include "torch_tpu/ops/embedding/embedding_aten_kernels.h"
@@ -829,6 +830,26 @@ TORCH_LIBRARY(torch_tpu, m) {
       "set_dimension_logical_size(Tensor input, int dim, Tensor size) -> "
       "Tensor");
 
+  // This op is a torch_tpu custom op for use in torch.compile() mode to handle
+  // dynamic arange operations on TPU. It generates a sequence of numbers
+  // starting from `start`, up to (but not including) `end`, by `step`.
+  // Since the length of the sequence can be dynamic, it takes a `max_length`
+  // to allocate a static tensor of that size, and then uses
+  // `stablehlo.set_dimension_size` (during lowering) to set the runtime size.
+  // Args:
+  //   start: The starting value of the sequence. Must be a 0-D tensor.
+  //   end: The ending value of the sequence. Must be a 0-D tensor.
+  //   step: The step size between consecutive elements. Must be a 0-D tensor.
+  //   max_length: The maximum possible length of the sequence. This is used for
+  //     static allocation.
+  //   dtype: The desired data type of the output tensor.
+  // Returns:
+  //   A 1-D tensor containing the generated sequence, with a physical size of
+  //   `max_length` and a logical size determined by `start`, `end`, and `step`.
+  m.def(
+      "dynamic_arange(Tensor start, Tensor end, Tensor step, "
+      "int max_length, ScalarType dtype) -> Tensor");
+
   // Experimental P2P communication ops for ProcessGroupTpu.
   // Isolated from the public torch.distributed API to safely prototype new
   // behaviors.
@@ -862,6 +883,7 @@ TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
   Impl(m, OpName::kTorchTpuOptimizationBarrier, TorchTpuOptimizationBarrier);
   Impl(m, OpName::kTorchTpuStatelessDropout, TorchTpuStatelessDropout);
   Impl(m, OpName::kSetDimensionLogicalSize, SetDimensionLogicalSize);
+  Impl(m, OpName::kDynamicArange, DynamicArange);
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, CPU, m) {

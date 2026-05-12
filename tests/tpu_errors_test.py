@@ -352,6 +352,54 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch.histc(t, min=False, max=True)
 
+  def test_dynamic_arange_unsupported_dtype(self):
+    """Tests that torch.ops.torch_tpu.dynamic_arange() fails with bool."""
+    device = et.device()
+    start = torch.tensor(0, device=device, dtype=torch.int32)
+    end = torch.tensor(5, device=device, dtype=torch.int32)
+    step = torch.tensor(1, device=device, dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_arange(): expected float or int dtype, got bool""",
+    ):
+      torch.ops.torch_tpu.dynamic_arange(start, end, step, 5, torch.bool)
+
+  def test_dynamic_arange_invalid_start_dim(self):
+    """Tests that torch.ops.torch_tpu.dynamic_arange() fails if start is 1D."""
+    device = et.device()
+    start = torch.tensor([0], device=device, dtype=torch.int32)
+    end = torch.tensor(5, device=device, dtype=torch.int32)
+    step = torch.tensor(1, device=device, dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_arange(): expected a 0-dimensional tensor for start, got 1-dimensional tensor""",
+    ):
+      torch.ops.torch_tpu.dynamic_arange(start, end, step, 5, torch.int32)
+
+  def test_dynamic_arange_invalid_end_dim(self):
+    """Tests that torch.ops.torch_tpu.dynamic_arange() fails if end is 1D."""
+    device = et.device()
+    start = torch.tensor(0, device=device, dtype=torch.int32)
+    end = torch.tensor([5], device=device, dtype=torch.int32)
+    step = torch.tensor(1, device=device, dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_arange(): expected a 0-dimensional tensor for end, got 1-dimensional tensor""",
+    ):
+      torch.ops.torch_tpu.dynamic_arange(start, end, step, 5, torch.int32)
+
+  def test_dynamic_arange_invalid_step_dim(self):
+    """Tests that torch.ops.torch_tpu.dynamic_arange() fails if step is 1D."""
+    device = et.device()
+    start = torch.tensor(0, device=device, dtype=torch.int32)
+    end = torch.tensor(5, device=device, dtype=torch.int32)
+    step = torch.tensor([1], device=device, dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""dynamic_arange(): expected a 0-dimensional tensor for step, got 1-dimensional tensor""",
+    ):
+      torch.ops.torch_tpu.dynamic_arange(start, end, step, 5, torch.int32)
+
   def test_is_nonzero_with_more_than_one_value(self):
     with et.assert_raises_message(
         RuntimeError,

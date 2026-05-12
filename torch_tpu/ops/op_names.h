@@ -154,6 +154,7 @@ enum class OpName {
   kDivOutMode,
   kDot,
   kDropout,
+  kDynamicArange,
   kEfficientZeroTensor,
   kEluBackwardGradInput,
   kEluOut,

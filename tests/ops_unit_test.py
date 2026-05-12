@@ -5238,6 +5238,49 @@ module {
         golden_result=golden_result.cpu(), torch_tpu_result=result[0].cpu()
     )
 
+  def test_dynamic_arange_int_on_tpu(self):
+    """Tests the torch_tpu.dynamic_arange custom op on TPU with integers."""
+    device = torch.device("tpu")
+    start = torch.tensor(1, device=device, dtype=torch.int32)
+    end = torch.tensor(6, device=device, dtype=torch.int32)
+    step = torch.tensor(2, device=device, dtype=torch.int32)
+    max_length = 5
+    out = torch.ops.torch_tpu.dynamic_arange(
+        start, end, step, max_length, torch.int32
+    )
+    expected = torch.arange(1, 6, step=2, dtype=torch.int32)
+    self.assert_close(
+        golden_result=expected, torch_tpu_result=out[: expected.size(0)].cpu()
+    )
+
+  def test_dynamic_arange_float_on_tpu(self):
+    """Tests the torch_tpu.dynamic_arange custom op on TPU with floats."""
+    device = torch.device("tpu")
+    start = torch.tensor(0.0, device=device, dtype=torch.float32)
+    end = torch.tensor(2.5, device=device, dtype=torch.float32)
+    step = torch.tensor(0.5, device=device, dtype=torch.float32)
+    max_length = 6
+    out = torch.ops.torch_tpu.dynamic_arange(
+        start, end, step, max_length, torch.float32
+    )
+    expected = torch.arange(0.0, 2.5, step=0.5, dtype=torch.float32)
+    self.assert_close(
+        golden_result=expected, torch_tpu_result=out[: expected.size(0)].cpu()
+    )
+
+  def test_dynamic_arange_empty_on_tpu(self):
+    """Tests the torch_tpu.dynamic_arange custom op on TPU with an empty range."""
+    device = torch.device("tpu")
+    start = torch.tensor(5, device=device, dtype=torch.int32)
+    end = torch.tensor(2, device=device, dtype=torch.int32)
+    step = torch.tensor(1, device=device, dtype=torch.int32)
+    max_length = 5
+    out = torch.ops.torch_tpu.dynamic_arange(
+        start, end, step, max_length, torch.int32
+    )
+    expected = torch.tensor([], dtype=torch.int32)
+    self.assert_close(golden_result=expected, torch_tpu_result=out[:0].cpu())
+
 
 class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for backward ops."""
