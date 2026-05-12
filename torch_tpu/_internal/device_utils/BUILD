@@ -65,7 +65,6 @@ torch_tpu_py_test(
         "//torch_tpu",
         "//torch_tpu/_internal/compile:tpu_torch_compile",  # build_cleaner: keep
         "//torch_tpu/_internal/sync",
-        "//torch_tpu/api",
     ],
 )
 

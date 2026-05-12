@@ -17,7 +17,6 @@
 from absl.testing import absltest
 import torch
 import torch.testing
-from torch_tpu import api
 from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
 import torch_tpu._internal.device_utils.annotations as tpu_annotations
@@ -26,7 +25,7 @@ import torch_tpu._internal.device_utils.annotations as tpu_annotations
 class AnnotationsTest(absltest.TestCase):
 
   def test_layout_context_to_device(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
     layout = tpu_annotations.TpuLayout(
         minor_to_major=[1, 0],
         tiles=[[16, 128], [2, 1]],
@@ -42,7 +41,7 @@ class AnnotationsTest(absltest.TestCase):
       self.assertEqual(device_layout, layout)
 
   def test_layout_context_device_arg(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
     layout = tpu_annotations.TpuLayout(
         minor_to_major=[1, 0],
         tiles=[[16, 128], [2, 1]],
@@ -58,7 +57,7 @@ class AnnotationsTest(absltest.TestCase):
       self.assertEqual(device_layout, layout)
 
   def test_layout_context_nested(self):
-    device = api.tpu_device()
+    device = torch.device("tpu")
     layout1 = tpu_annotations.TpuLayout(
         minor_to_major=[1, 0],
         tiles=[[16, 128], [2, 1]],
