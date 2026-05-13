@@ -135,6 +135,22 @@ torch_tpu_cc_test(
 )
 
 torch_tpu_cc_library(
+    name = "rng_utils",
+    hdrs = ["rng_utils.h"],
+    deps = [
+        "//shims/torch:aten_headers",
+        "//shims/torch/c10/util:base_headers",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:device_gen_impl",
+        "//torch_tpu/eager:tensor_to_buffer",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "python_context",
     srcs = ["python_context.cc"],
     hdrs = ["python_context.h"],

@@ -16,7 +16,6 @@
 
 #include "torch_tpu/ops/dropout/dropout_aten_kernels.h"
 
-#include <mutex>
 #include <optional>
 #include <tuple>
 #include <utility>
@@ -34,13 +33,13 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/dropout/dropout.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/rng_utils.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
@@ -83,32 +82,22 @@ std::tuple<at::Tensor, at::Tensor> AtenDropout(const at::Tensor& input,
                             std::nullopt, std::nullopt, std::nullopt)};
     }
 
-    auto gen = at::get_generator_or_default<DeviceGeneratorImpl>(
-        std::nullopt, GetDefaultDeviceGenerator());
-
-    // See Note [Acquire lock when using random generators]
-    // NOLINTNEXTLINE
-    std::scoped_lock<std::mutex> lock(gen->mutex_);
-
-    // Retrieve the rng_state tensor from the default device generator.
-    at::Tensor rng_input_state = gen->DeviceStateTensor();
-
     TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
                        ConvertTo<mlir::ElementType>(input.scalar_type()));
 
     TT_ASSIGN_OR_THROW(
-        (auto [rng_output_state_buf, output_buf, mask_buf]),
-        (DispatchOp<2, 3>(GetDropoutFunctional(input, p),
-                          {rng_input_state, input},
-                          {.out_dtypes = {mlir::ElementType::UI64, output_dtype,
-                                          mlir::ElementType::PRED},
-                           .out_dims_list = {{2}, input.sizes(), input.sizes()},
-                           .op_param_cache_keys = std::move(param_keys)})));
+        auto results,
+        DispatchRngOpGeneral(std::nullopt, [&](at::Tensor rng_input_state) {
+          return DispatchOp<2, 3>(
+              GetDropoutFunctional(input, p), {rng_input_state, input},
+              {.out_dtypes = {mlir::ElementType::UI64, output_dtype,
+                              mlir::ElementType::PRED},
+               .out_dims_list = {{2}, input.sizes(), input.sizes()},
+               .op_param_cache_keys = std::move(param_keys)});
+        }));
 
-    auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
-    TT_THROW_IF_ERROR(gen->SetDeviceStateTensor(rng_output_state));
-
-    return {MakeTensor(std::move(output_buf)), MakeTensor(std::move(mask_buf))};
+    return {MakeTensor(std::move(results[0])),
+            MakeTensor(std::move(results[1]))};
   });
 }
 

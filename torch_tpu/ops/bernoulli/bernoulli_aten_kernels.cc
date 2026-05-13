@@ -17,7 +17,6 @@
 #include "torch_tpu/ops/bernoulli/bernoulli_aten_kernels.h"
 
 #include <cstdint>
-#include <mutex>
 #include <optional>
 #include <utility>
 
@@ -29,15 +28,12 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/utils.h"
-#include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/op_dispatcher.h"
-#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/rng_utils.h"
 #include "torch_tpu/ops/uniform/uniform.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -100,33 +96,18 @@ at::Tensor& AtenBernoulli_Float(at::Tensor& self, double p,
     TT_CHECK_THROW(p >= 0.0 && p <= 1.0, error::kInvalidArgument)
         << "expected p to be in the range [0, 1], got " << p;
 
-    auto gen = at::get_generator_or_default<DeviceGeneratorImpl>(
-        generator, GetDefaultDeviceGenerator());
-
-    // See Note [Acquire lock when using random generators]
-    // NOLINTNEXTLINE
-    std::scoped_lock<std::mutex> lock(gen->mutex_);
-
-    // Since we need to generate random bits, we query for the rng state tensor.
-    at::Tensor rng_input_state = gen->DeviceStateTensor();
-
     TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
                        ConvertTo<mlir::ElementType>(self.scalar_type()));
     const auto dims = CopyIntVector(self.sizes());
-    TT_ASSIGN_OR_THROW(
-        (auto [rng_output_state_buf, output_buf]),
-        (DispatchOp<1, 2>(
-            GetBernoulliFloatFunctional(dims, output_dtype, p),
-            {rng_input_state},
-            {.out_dtypes = {mlir::ElementType::UI64, output_dtype},
-             .out_dims_list = {{2}, dims},
-             .op_param_cache_keys = std::move(param_keys)})));
-    // After the state has been used (and updated) after generating random bits,
-    // we give it back to the generator, so that it can be used by other ops in
-    // the same graph.
-    auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
-    TT_THROW_IF_ERROR(gen->SetDeviceStateTensor(rng_output_state));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(output_buf), self));
+    TT_THROW_IF_ERROR(
+        DispatchRngOp(self, generator, [&](at::Tensor rng_input_state) {
+          return DispatchOp<1, 2>(
+              GetBernoulliFloatFunctional(dims, output_dtype, p),
+              {rng_input_state},
+              {.out_dtypes = {mlir::ElementType::UI64, output_dtype},
+               .out_dims_list = {{2}, dims},
+               .op_param_cache_keys = std::move(param_keys)});
+        }));
     return self;
   });
 }

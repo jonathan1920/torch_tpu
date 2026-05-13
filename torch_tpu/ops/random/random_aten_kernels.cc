@@ -18,7 +18,6 @@
 
 #include <cstdint>
 #include <limits>
-#include <mutex>
 #include <optional>
 #include <type_traits>
 #include <utility>
@@ -41,16 +40,14 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/op_dispatcher.h"
-#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/random/random.h"
+#include "torch_tpu/ops/rng_utils.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 
@@ -123,31 +120,15 @@ absl::Status Random(at::Tensor& self, c10::optional<at::Generator> generator,
   TT_RETURN_IF_ERROR(FromToInRange(from, to, self.scalar_type()));
   TT_ASSIGN_OR_RETURN(mlir::ElementType output_dtype,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
-  auto gen = at::get_generator_or_default<DeviceGeneratorImpl>(
-      generator, GetDefaultDeviceGenerator());
-
-  // See Note [Acquire lock when using random generators]
-  // NOLINTNEXTLINE
-  std::scoped_lock<std::mutex> lock(gen->mutex_);
-
-  // Since we need to generate random bits, we query for the rng state tensor.
-  at::Tensor rng_input_state = gen->DeviceStateTensor();
-
   auto dims = CopyIntVector(self.sizes());
-  TT_ASSIGN_OR_RETURN(
-      (auto [rng_output_state_buf, output_buf]),
-      (DispatchOp<1, 2>(GetRandomFunctional(dims, output_dtype, from, to),
-                        {rng_input_state},
-                        {.out_dtypes = {mlir::ElementType::UI64, output_dtype},
-                         .out_dims_list = {{2}, self.sizes()},
-                         .op_param_cache_keys = std::move(param_keys),
-                         .split_mode = OpSplitMode::kSplitAfter})));
-  // After the state has been used (and updated) after generating random bits,
-  // we give it back to the generator, so that it can be used by other ops in
-  // the same graph.
-  auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
-  TT_RETURN_IF_ERROR(gen->SetDeviceStateTensor(rng_output_state));
-  return AssignBufferToAtTensor(std::move(output_buf), self);
+  return DispatchRngOp(self, generator, [&](at::Tensor rng_input_state) {
+    return DispatchOp<1, 2>(
+        GetRandomFunctional(dims, output_dtype, from, to), {rng_input_state},
+        {.out_dtypes = {mlir::ElementType::UI64, output_dtype},
+         .out_dims_list = {{2}, self.sizes()},
+         .op_param_cache_keys = std::move(param_keys),
+         .split_mode = OpSplitMode::kSplitAfter});
+  });
 }
 
 }  // namespace

@@ -17,7 +17,6 @@
 #include "torch_tpu/ops/normal/normal_aten_kernels.h"
 
 #include <cmath>
-#include <mutex>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -41,12 +40,12 @@
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/rng_utils.h"
 #include "torch_tpu/ops/uniform/uniform.h"
 #include "torch_tpu/ops/view/view_aten_kernels.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -183,32 +182,18 @@ absl::StatusOr<DeviceBufferRef> NormalLike(
   TT_ASSIGN_OR_RETURN(auto mlir_type,
                       ConvertTo<mlir::ElementType>(self_real.scalar_type()));
 
-  auto gen = at::get_generator_or_default<DeviceGeneratorImpl>(
-      generator, GetDefaultDeviceGenerator());
-
-  // See Note [Acquire lock when using random generators]
-  // NOLINTNEXTLINE
-  std::scoped_lock<std::mutex> lock(gen->mutex_);
-
-  // Retrieve the rng_state tensor from the generator.
-  at::Tensor rng_input_state = gen->DeviceStateTensor();
-
   TT_ASSIGN_OR_RETURN(auto builder, GetNormalFunctional());
-  TT_ASSIGN_OR_RETURN(
-      (auto [rng_output_state_buf, output_buf]),
-      (DispatchOp<5, 2>(
-          std::move(builder),
-          {self_real, rng_input_state, mean_real, std_real, std_scale},
-          {.out_dtypes = {mlir::ElementType::UI64, mlir_type},
-           .out_dims_list = {{2}, self_real.sizes()},
-           .op_param_cache_keys = OpParamCacheKeys::Empty(),
-           .split_mode = OpSplitMode::kSplitAfter})));
-  // After the state has been used (and updated) to generate random bits, we
-  // give it back to the generator, so that it can be used by other ops in the
-  // same graph.
-  auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
-  TT_RETURN_IF_ERROR(gen->SetDeviceStateTensor(rng_output_state));
-  return output_buf;
+  return DispatchRngOpAndReturnBuffer(
+      generator, [builder = std::move(builder), self_real, mean_real, std_real,
+                  std_scale, mlir_type](at::Tensor rng_input_state) mutable {
+        return DispatchOp<5, 2>(
+            std::move(builder),
+            {self_real, rng_input_state, mean_real, std_real, std_scale},
+            {.out_dtypes = {mlir::ElementType::UI64, mlir_type},
+             .out_dims_list = {{2}, self_real.sizes()},
+             .op_param_cache_keys = OpParamCacheKeys::Empty(),
+             .split_mode = OpSplitMode::kSplitAfter});
+      });
 }
 
 }  // namespace

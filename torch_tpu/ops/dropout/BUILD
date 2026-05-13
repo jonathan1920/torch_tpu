@@ -43,6 +43,7 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:rng_utils",
         "//torch_tpu/ops:xla_utils",
         "//torch_tpu/ops/fill:fill_aten_kernels",
         "//torch_tpu/ops/macros:kernel",
