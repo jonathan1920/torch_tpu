@@ -413,8 +413,8 @@ class DeferredOp {
         op_builder_(std::move(op_builder)),
         inputs_(std::move(inputs)),
         donated_indices_(std::move(donated_indices)),
-        op_param_cache_keys_(std::move(op_param_cache_keys)),
         output_shapes_(std::move(output_shapes)),
+        op_param_cache_keys_(std::move(op_param_cache_keys)),
         op_context_(ScopedPythonContextCapturer::GetContext()),
         split_mode_(split_mode),
         subgraph_(std::move(subgraph)) {
