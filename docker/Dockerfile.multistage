@@ -80,7 +80,7 @@ RUN --mount=type=cache,id=torch-tpu-bazelisk,target=/root/.cache/bazelisk \
     --define TORCH_SOURCE=local \
     --repository_cache=/root/.cache/bazel/repository_cache \
     --disk_cache=/root/.cache/bazel/disk_cache \
-    //ci/wheel:torch_tpu_wheel --config=wheel --config=no_rbe && \
+    //ci/wheel:torch_tpu_wheel --config=no_rbe && \
     mkdir -p dist && mv bazel-bin/ci/wheel/* dist/
 
 # =====================================================================

@@ -347,16 +347,12 @@ common --@rules_python//python/config_settings:bootstrap_impl=script
 common --@rules_python//python/config_settings:venvs_site_packages=yes
 
 # Config for testing wheel builds.
-build --flag_alias=is_wheel_build=//:is_wheel_build
 build --flag_alias=test_wheel=//:test_wheel
 
 # Common config for all wheel.
 build:wheel_common --config=remote_caching_readonly
 build:wheel_common --config=remote_execution_readonly
 
-# Config for building the wheel
-build:wheel --config=wheel_common
-build:wheel --is_wheel_build
 
 # Common config for testing the wheel
 test:wheel_common_test --config=wheel_common
