@@ -261,7 +261,6 @@ void CheckScalarInput() {
       kOpName == OpName::kEluBackwardGradInput ||        //
       kOpName == OpName::kEluOut ||                      //
       kOpName == OpName::kEq ||                          //
-      kOpName == OpName::kEqScalarOut ||                 //
       kOpName == OpName::kExponential_ ||                //
       kOpName == OpName::kFill_Scalar ||                 //
       kOpName == OpName::kForeachAddList ||              //

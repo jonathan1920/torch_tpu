@@ -871,13 +871,16 @@ at::Tensor& AtenDivOutMode(const at::Tensor& self, const at::Tensor& other,
 
 at::Tensor& AtenEqScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
-  TT_KERNEL(OpName::kEqScalarOut, _,
-            (self, IgnoreInCacheKey(other, "Legacy usage"), out), {
-              TT_THROW_IF_ERROR(BinaryOpOut(
-                  self, other, out, BuildEqShlo,
-                  {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
-              return out;
-            });
+  PromotedScalar promoted_other = PromoteScalar(other);
+  TT_KERNEL(OpName::kEqScalarOut, _, (self, promoted_other, out), {
+    const at::ScalarType promoted_scalar_type = at::result_type(self, other);
+    TT_ASSIGN_OR_THROW(const at::Tensor other_tensor,
+                       promoted_other.GetTensor(promoted_scalar_type));
+    TT_THROW_IF_ERROR(
+        BinaryOpOut(self, other_tensor, out, BuildEqShlo,
+                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    return out;
+  });
 }
 
 at::Tensor& AtenEqTensorOut(const at::Tensor& self, const at::Tensor& other,
