@@ -64,6 +64,7 @@ torch_tpu_py_library(
         "//torch_tpu/_internal/distributed:tpu_distributed",
         "//torch_tpu/_internal/profiler",
         "//torch_tpu/_internal/sync",
+        "//torch_tpu/_internal/tracing",
         "//torch_tpu/_internal/utils:hardware",
     ],
 )

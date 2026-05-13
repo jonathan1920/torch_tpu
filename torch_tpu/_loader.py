@@ -29,10 +29,12 @@ os.environ["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "0"
 # pylint: disable=g-import-not-at-top
 import torch
 import torch._dynamo.backends.registry as backend_registry
+from torch_tpu._internal import tracing
 from torch_tpu._internal.device import _device_module
 from torch_tpu._internal.device import _tpu_backend_config
 from torch_tpu._internal.distributed import tpu_distributed
 from torch_tpu._internal.utils import hardware
+
 # pylint: enable=g-import-not-at-top
 
 # Ensure that device is initialized exactly once
@@ -201,3 +203,7 @@ def load(allow_xla_backend: bool | None = None) -> None:
     else:
       _init_device("xla_cpu")
     _LOADED = True
+
+  # Start the eager-mode trace daemon if TORCH_TRACE was set at process
+  # startup. No-op when TORCH_TRACE is unset.
+  tracing.enable_if_requested()

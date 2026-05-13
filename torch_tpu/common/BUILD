@@ -733,6 +733,7 @@ pywrap_library(
         "//torch_tpu/_internal/precision:precision_impl",
         "//torch_tpu/_internal/profiler:_profiler_backend",
         "//torch_tpu/_internal/sync:_tpu_torch_sync",
+        "//torch_tpu/_internal/tracing:_tpu_torch_tracing",
     ],
 )
 

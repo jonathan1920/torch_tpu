@@ -97,6 +97,8 @@ struct StructuredLogEvent {
   std::string mlir_payload = "";
   // Why this materialization was triggered.
   MaterializationReason reason = MaterializationReason::kUnknown;
+  // Pre-serialized JSON for the chromium_event payload.
+  std::string chromium_payload = "";
 };
 
 // A global thread-safe buffer for collecting structured log events.
