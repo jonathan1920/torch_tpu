@@ -488,8 +488,8 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
 
   // Create the DeferredOp.
   auto op = DeferredOp(op_name, std::move(op_builder), std::move(inputs),
-                       std::move(op_param_cache_keys), subgraph, split_mode,
-                       std::move(donated_indices));
+                       std::move(op_param_cache_keys), output_shapes, subgraph,
+                       split_mode, std::move(donated_indices));
 
   // Wrap the DeferredOp in a DeviceBufferList.
   // Can't use make_shared because the constructor is private.
@@ -781,6 +781,10 @@ bool DeviceBufferRef::IsMaterialized() const {
   return state() == DeviceBufferRefState::kMaterialized;
 }
 
+[[nodiscard]] const Shape& DeviceBufferRef::shape() const {
+  return device_buffer_list_->shapes()[index_];
+}
+
 [[nodiscard]] absl::Span<const int64_t> DeviceBufferRef::dimensions() const {
   return device_buffer_list_->dimensions(index_);
 }
@@ -821,6 +825,41 @@ absl::Span<const BoundedDynamicDimension> DeviceBufferRef::dynamic_dimensions()
 
 void DeviceBufferRef::IncrementNumChildOps() const {
   device_buffer_list_->IncrementNumChildOps();
+}
+
+template <>
+inline void HashCombine<Shape>(std::size_t& h, const Shape& shape) {
+  HashCombine(h, shape.dimensions().size());
+  for (auto dim : shape.dimensions()) {
+    HashCombine(h, dim);
+  }
+  HashCombine(h, static_cast<size_t>(shape.dtype()));
+}
+
+size_t DeferredOp::Hash() const {
+  auto h = static_cast<size_t>(op_name_);
+
+  HashCombine(h, inputs_.size());
+  for (const auto& input : inputs_) {
+    HashCombine(h, input.shape());
+  }
+
+  HashCombine(h, donated_indices_.size());
+  for (auto index : donated_indices_) {
+    HashCombine(h, index);
+  }
+
+  HashCombine(h, output_shapes_.size());
+  for (const auto& output_shape : output_shapes_) {
+    HashCombine(h, output_shape);
+  }
+
+  HashCombine(h, op_param_cache_keys_.size());
+  for (const auto& [key, value] : op_param_cache_keys_) {
+    HashCombine(h, value);
+  }
+
+  return h;
 }
 
 }  // namespace torch_tpu

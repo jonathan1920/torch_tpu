@@ -273,6 +273,8 @@ class DeviceBufferRef {
 
   [[nodiscard]] bool IsMaterialized() const;
 
+  [[nodiscard]] const Shape& shape() const;
+
   // The logical dimensions of the referenced buffer.
   [[nodiscard]] absl::Span<const int64_t> dimensions() const;
 
@@ -403,6 +405,7 @@ class DeferredOp {
   DeferredOp(OpName op_name, MlirOpBuilder op_builder,
              std::vector<DeviceBufferRef> inputs,
              OpParamCacheKeys op_param_cache_keys,
+             std::vector<Shape> output_shapes,
              std::shared_ptr<Subgraph> subgraph,
              OpSplitMode split_mode = OpSplitMode::kNone,
              Indices donated_indices = {})
@@ -411,6 +414,7 @@ class DeferredOp {
         inputs_(std::move(inputs)),
         donated_indices_(std::move(donated_indices)),
         op_param_cache_keys_(std::move(op_param_cache_keys)),
+        output_shapes_(std::move(output_shapes)),
         op_context_(ScopedPythonContextCapturer::GetContext()),
         split_mode_(split_mode),
         subgraph_(std::move(subgraph)) {
@@ -433,11 +437,7 @@ class DeferredOp {
   DeferredOp& operator=(DeferredOp&& other) = default;
 
   // A quick hash, but prone to collisions.
-  size_t Hash() const {
-    auto h = static_cast<size_t>(op_name_);
-    HashCombine(h, op_param_cache_keys_.size());
-    return h;
-  }
+  size_t Hash() const;
 
   // The name of the deferred op, like "add" or "matmul".
   OpName op_name() const { return op_name_; }
@@ -529,6 +529,9 @@ class DeferredOp {
   // used for custom kernels, and only when the DeferredOp directly depends on
   // an input to the overall MLIR module.
   Indices donated_indices_;
+
+  // The shapes of the outputs of the deferred op.
+  std::vector<Shape> output_shapes_;
 
   // The cache keys for the op parameters. These are used to ensure that the
   // compilation cache does not reuse a cached compiled op if there are
