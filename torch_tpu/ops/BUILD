@@ -377,6 +377,7 @@ torch_tpu_cc_library(
         "@stablehlo//:chlo_ops",
         "@stablehlo//:mlir_builder",
         "@stablehlo//:stablehlo_builder",
+        "@stablehlo//:stablehlo_ops",
         "@xla//xla/mlir/utils:type_util",
     ],
 )

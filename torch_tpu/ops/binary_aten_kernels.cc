@@ -57,6 +57,7 @@
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/unary.h"
 #include "stablehlo/dialect/ChloOps.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/ChloBuilder.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -499,19 +500,14 @@ absl::Status CheckComplexOutInputs(const at::Tensor& real,
   return absl::OkStatus();
 }
 
-// Checks the dtypes of the inputs of the following comparison ops:
-//
-//   - GE
-//   - GT
-//   - LE
-//   - LT
+// Checks that the input dtypes are not complex.
 //
 // In this context, the template parameter `T` should be one of:
 //
 //   - at::Tensor
 //   - at::Scalar
 template <typename T>
-absl::Status CheckComparisonOpsInputs(const at::Tensor& self, const T& other) {
+absl::Status CheckInputsNotComplex(const at::Tensor& self, const T& other) {
   TT_RET_CHECK(!IsComplex(self), error::kInvalidArgument)
       << "expected the dtype of the first argument not to be complex, got "
       << ToString(self.scalar_type());
@@ -587,6 +583,45 @@ absl::Status CheckSubInputs(const at::Tensor& self, const at::Tensor& other) {
       << "the dtype of the second argument cannot be bool";
 
   return absl::OkStatus();
+}
+
+absl::Status AtenComparisonScalarOutHelper(
+    const at::Tensor& self, PromotedScalar& promoted_other, at::Tensor& out,
+    stablehlo::ComparisonDirection direction) {
+  // We can compare complex numbers for equality but not for ordering.
+  if (direction != stablehlo::ComparisonDirection::EQ &&
+      direction != stablehlo::ComparisonDirection::NE) {
+    TT_RETURN_IF_ERROR(CheckInputsNotComplex(self, promoted_other.scalar()));
+  }
+  const at::ScalarType promoted_scalar_type =
+      at::result_type(self, promoted_other.scalar());
+  TT_ASSIGN_OR_RETURN(const at::Tensor other_tensor,
+                      promoted_other.GetTensor(promoted_scalar_type));
+
+  MlirBinaryOpBuilder builder;
+  switch (direction) {
+    case stablehlo::ComparisonDirection::EQ:
+      builder = BuildEqShlo;
+      break;
+    case stablehlo::ComparisonDirection::GE:
+      builder = BuildGeShlo;
+      break;
+    case stablehlo::ComparisonDirection::GT:
+      builder = BuildGtShlo;
+      break;
+    case stablehlo::ComparisonDirection::LE:
+      builder = BuildLeShlo;
+      break;
+    case stablehlo::ComparisonDirection::LT:
+      builder = BuildLtShlo;
+      break;
+    case stablehlo::ComparisonDirection::NE:
+      builder = BuildNeShlo;
+      break;
+  }
+
+  return BinaryOpOut(self, other_tensor, out, std::move(builder),
+                     {.op_param_cache_keys = OpParamCacheKeys::Empty()});
 }
 
 }  // namespace
@@ -873,12 +908,8 @@ at::Tensor& AtenEqScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
   PromotedScalar promoted_other = PromoteScalar(other);
   TT_KERNEL(OpName::kEqScalarOut, _, (self, promoted_other, out), {
-    const at::ScalarType promoted_scalar_type = at::result_type(self, other);
-    TT_ASSIGN_OR_THROW(const at::Tensor other_tensor,
-                       promoted_other.GetTensor(promoted_scalar_type));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(self, other_tensor, out, BuildEqShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    TT_THROW_IF_ERROR(AtenComparisonScalarOutHelper(
+        self, promoted_other, out, stablehlo::ComparisonDirection::EQ));
     return out;
   });
 }
@@ -937,13 +968,8 @@ at::Tensor& AtenGeScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
   PromotedScalar promoted_other = PromoteScalar(other);
   TT_KERNEL(OpName::kGeScalarOut, _, (self, promoted_other, out), {
-    TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
-    const at::ScalarType promoted_scalar_type = at::result_type(self, other);
-    TT_ASSIGN_OR_THROW(const at::Tensor other_tensor,
-                       promoted_other.GetTensor(promoted_scalar_type));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(self, other_tensor, out, BuildGeShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    TT_THROW_IF_ERROR(AtenComparisonScalarOutHelper(
+        self, promoted_other, out, stablehlo::ComparisonDirection::GE));
     return out;
   });
 }
@@ -951,7 +977,7 @@ at::Tensor& AtenGeScalarOut(const at::Tensor& self, const at::Scalar& other,
 at::Tensor& AtenGeTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kGeOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
+    TT_THROW_IF_ERROR(CheckInputsNotComplex(self, other));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildGeShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -963,13 +989,8 @@ at::Tensor& AtenGtScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
   PromotedScalar promoted_other = PromoteScalar(other);
   TT_KERNEL(OpName::kGtScalarOut, _, (self, promoted_other, out), {
-    TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
-    const at::ScalarType promoted_scalar_type = at::result_type(self, other);
-    TT_ASSIGN_OR_THROW(const at::Tensor other_tensor,
-                       promoted_other.GetTensor(promoted_scalar_type));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(self, other_tensor, out, BuildGtShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    TT_THROW_IF_ERROR(AtenComparisonScalarOutHelper(
+        self, promoted_other, out, stablehlo::ComparisonDirection::GT));
     return out;
   });
 }
@@ -977,7 +998,7 @@ at::Tensor& AtenGtScalarOut(const at::Tensor& self, const at::Scalar& other,
 at::Tensor& AtenGtTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kGtOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
+    TT_THROW_IF_ERROR(CheckInputsNotComplex(self, other));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildGtShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -1023,13 +1044,8 @@ at::Tensor& AtenLeScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
   PromotedScalar promoted_other = PromoteScalar(other);
   TT_KERNEL(OpName::kLeScalarOut, _, (self, promoted_other, out), {
-    TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
-    const at::ScalarType promoted_scalar_type = at::result_type(self, other);
-    TT_ASSIGN_OR_THROW(const at::Tensor other_tensor,
-                       promoted_other.GetTensor(promoted_scalar_type));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(self, other_tensor, out, BuildLeShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    TT_THROW_IF_ERROR(AtenComparisonScalarOutHelper(
+        self, promoted_other, out, stablehlo::ComparisonDirection::LE));
     return out;
   });
 }
@@ -1037,7 +1053,7 @@ at::Tensor& AtenLeScalarOut(const at::Tensor& self, const at::Scalar& other,
 at::Tensor& AtenLeTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kLeOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
+    TT_THROW_IF_ERROR(CheckInputsNotComplex(self, other));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildLeShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -1071,13 +1087,8 @@ at::Tensor& AtenLtScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
   PromotedScalar promoted_other = PromoteScalar(other);
   TT_KERNEL(OpName::kLtScalarOut, _, (self, promoted_other, out), {
-    TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
-    const at::ScalarType promoted_scalar_type = at::result_type(self, other);
-    TT_ASSIGN_OR_THROW(const at::Tensor other_tensor,
-                       promoted_other.GetTensor(promoted_scalar_type));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(self, other_tensor, out, BuildLtShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    TT_THROW_IF_ERROR(AtenComparisonScalarOutHelper(
+        self, promoted_other, out, stablehlo::ComparisonDirection::LT));
     return out;
   });
 }
@@ -1085,7 +1096,7 @@ at::Tensor& AtenLtScalarOut(const at::Tensor& self, const at::Scalar& other,
 at::Tensor& AtenLtTensorOut(const at::Tensor& self, const at::Tensor& other,
                             at::Tensor& out) {
   TT_KERNEL(OpName::kLtOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
+    TT_THROW_IF_ERROR(CheckInputsNotComplex(self, other));
     TT_THROW_IF_ERROR(
         BinaryOpOut(self, other, out, BuildLtShlo,
                     {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
@@ -1125,17 +1136,12 @@ at::Tensor& AtenMulOut(const at::Tensor& self, const at::Tensor& other,
 
 at::Tensor& AtenNeScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
-  TT_KERNEL(
-      OpName::kNeScalarOut, _,
-      (self, IgnoreInCacheKey(other, "Legacy usage"), out), {
-        TT_ASSIGN_OR_THROW(auto output_dtype,
-                           ConvertTo<mlir::ElementType>(out.scalar_type()));
-        TT_THROW_IF_ERROR(
-            BinaryOpOut(self, other, out, BuildNeShlo,
-                        {.output_dtype_override = output_dtype,
-                         .op_param_cache_keys = OpParamCacheKeys::Empty()}));
-        return out;
-      });
+  PromotedScalar promoted_other = PromoteScalar(other);
+  TT_KERNEL(OpName::kNeScalarOut, _, (self, promoted_other, out), {
+    TT_THROW_IF_ERROR(AtenComparisonScalarOutHelper(
+        self, promoted_other, out, stablehlo::ComparisonDirection::NE));
+    return out;
+  });
 }
 
 at::Tensor& AtenNeTensorOut(const at::Tensor& self, const at::Tensor& other,

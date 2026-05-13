@@ -306,7 +306,6 @@ void CheckScalarInput() {
       kOpName == OpName::kMaskedFill_Scalar ||           //
       kOpName == OpName::kNativeBatchNormBackward ||     //
       kOpName == OpName::kNe ||                          //
-      kOpName == OpName::kNeScalarOut ||                 //
       kOpName == OpName::kPdistForward ||                //
       kOpName == OpName::kPow ||                         //
       kOpName == OpName::kRemainder ||                   //
