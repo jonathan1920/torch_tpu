@@ -1106,4 +1106,17 @@ test_suite(
     ],
 )
 
+torch_tpu_py_test(
+    name = "batch_transfer_test",
+    srcs = ["batch_transfer_test.py"],
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/batch_transfer",
+        "//torch_tpu/_internal/utils",
+    ],
+)
+
 torch_tpu_package_end()
