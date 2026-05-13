@@ -18,6 +18,7 @@
 #define TORCH_TPU_EAGER_DEVICE_GEN_IMPL_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -31,6 +32,8 @@
 #include "torch/headeronly/core/DeviceType.h"
 
 namespace torch_tpu {
+
+class DeviceBufferRef;
 
 // Holds the device-resident state of the generator (seed and offset) as a
 // tensor. This is the TPU equivalent of PyTorch's CUDAGeneratorState,
@@ -48,6 +51,10 @@ struct DeviceGeneratorState : public c10::intrusive_ptr_target {
   // 1D uint64 tensor of 2 elements: {seed, offset}
   at::Tensor device_state_tensor;  // UNINITIALIZED_TENSOR_OK
 };
+
+// Forward declarations for friends.
+at::Tensor PyGetDeviceStateTensor(at::Generator gen);
+void PySetDeviceStateTensor(at::Generator gen, at::Tensor rng_state);
 
 // A wrapper on a tensor of two integers, representing the current state (seed
 // and offset) of the generator. Given these, we can deterministically generate
@@ -81,8 +88,6 @@ class DeviceGeneratorImpl : public c10::GeneratorImpl {
 
   static c10::DeviceType device_type();
 
-  at::Tensor DeviceStateTensor() const;
-  absl::Status SetDeviceStateTensor(at::Tensor device_state_tensor);
   // Validates the shape, dtype, and device of the RNG state tensor.
   absl::Status CheckDeviceStateTensor(const at::Tensor& rng_state) const;
 
@@ -93,7 +98,25 @@ class DeviceGeneratorImpl : public c10::GeneratorImpl {
       int64_t num_elements, int64_t bit_width = 64);
 
  private:
+  template <typename DispatchFunc>
+  friend absl::StatusOr<std::vector<DeviceBufferRef>> DispatchRngOpGeneral(
+      c10::optional<at::Generator> generator, DispatchFunc dispatch_func);
+
+  friend at::Tensor PyGetDeviceStateTensor(at::Generator gen);
+  friend void PySetDeviceStateTensor(at::Generator gen, at::Tensor rng_state);
+
   DeviceGeneratorImpl* clone_impl() const override;
+
+  // The following RNG state accessors are private as it's dangerous to modify
+  // the state. Only approved friends are allowed to call them.
+
+  // Returns the internal TPU RNG state tensor.
+  // This is a 1D uint64 tensor of 2 elements: {seed, offset}.
+  at::Tensor DeviceStateTensor() const;
+
+  // Sets the internal TPU RNG state tensor.
+  // Validates the shape, dtype, and device of the provided tensor.
+  absl::Status SetDeviceStateTensor(at::Tensor device_state_tensor);
 
   // 1D uint64 tensor of 2 elements: {seed, offset}
   c10::intrusive_ptr<DeviceGeneratorState> state_;

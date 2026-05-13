@@ -247,6 +247,8 @@ void PyPushEnableTracebacks(std::optional<bool> enabled) {
   PushContextState(state);
 }
 
+}  // namespace
+
 // Returns the internal TPU RNG state tensor from a generator.
 at::Tensor PyGetDeviceStateTensor(at::Generator gen) {
   auto* device_gen = at::check_generator<DeviceGeneratorImpl>(gen);
@@ -258,8 +260,6 @@ void PySetDeviceStateTensor(at::Generator gen, at::Tensor rng_state) {
   auto* device_gen = at::check_generator<DeviceGeneratorImpl>(gen);
   TT_THROW_IF_ERROR(device_gen->SetDeviceStateTensor(std::move(rng_state)));
 }
-
-}  // namespace
 
 // Returns the MLIR module for a pad subgraph.
 // Args:
