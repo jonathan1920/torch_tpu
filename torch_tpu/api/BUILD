@@ -21,7 +21,6 @@ package(
         "//learning/agents/tern/torch_agent:__subpackages__",
         "//shims/torchprime:__subpackages__",
         "//shims/torchtitan:__subpackages__",
-        "@pypi//helion:__subpackages__",
     ],
 )
 
