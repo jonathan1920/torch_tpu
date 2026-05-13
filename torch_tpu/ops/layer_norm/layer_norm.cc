@@ -243,25 +243,38 @@ absl::StatusOr<LayerNormBackwardShloResults> BuildLayerNormBackwardShlo(
     std::optional<mlir::MlirOp> weight, at::IntArrayRef normalized_shape,
     bool compute_dbeta) {
   mlir::MlirBuilder& builder = x.getBuilder();
-  TT_ASSIGN_OR_RETURN(mlir::ElementType element_type, GetElementType(x));
-  auto mlir_type = mlir::getElementType(builder.getContext(), element_type);
-  mlir::MlirOp zeros = MakeScalarConstant(builder, 0.0, element_type);
-  auto sum_reduce_builder = [mlir_type](mlir::RegionBuilder& rb) {
+  const mlir::RankedTensorType x_type = GetTensorTypeOrDie(x);
+  const mlir::Type orig_elem_type = x_type.getElementType();
+  bool needs_upcast = orig_elem_type.isF16() || orig_elem_type.isBF16();
+
+  if (needs_upcast) {
+    TT_ASSIGN_OR_RETURN(x, PromoteFloatDtype(x));
+    TT_ASSIGN_OR_RETURN(dy, PromoteFloatDtype(dy));
+    TT_ASSIGN_OR_RETURN(mean, PromoteFloatDtype(mean));
+    TT_ASSIGN_OR_RETURN(rstd, PromoteFloatDtype(rstd));
+  }
+  mlir::Type acc_elem_type = GetTensorTypeOrDie(x).getElementType();
+  auto acc_float_type = mlir::cast<mlir::FloatType>(acc_elem_type);
+
+  mlir::MlirOp zeros = MakeScalarConstant(builder, 0.0, acc_float_type);
+  auto sum_reduce_builder = [acc_float_type](mlir::RegionBuilder& rb) {
     mlir::stablehlo::buildReduceBody<mlir::stablehlo::AddOp>(
-        mlir_type, rb.getRegion(), rb.getOpBuilder());
+        acc_float_type, rb.getRegion(), rb.getOpBuilder());
   };
 
-  // math pseudo code, referencing torch cpu kernel:
-  // py/torch/aten/src/ATen/native/cpu/layer_norm_kernel.cpp;l=320
+  // math pseudo code, referencing torch cuda kernel:
+  // py/torch/aten/src/ATen/native/cuda/layer_norm_kernel.cu
   //
-  // dGamma = dY * (rstd * X  - rstd * mean)
-  // dBeta = dY
-  // scale = 1 / normalized_dim_numl
-  // ds = sum(dY * X * gamma) //  gamma is 1 if not present
-  // db = sum(dY * gamma) //  gamma is 1 if not present
-  // b = (db * mean - ds) * rstd * rstd * rstd * scale
-  // c = -b * mean - db * rstd * scale
-  // dX = rstd * dY * gamma + b * X + c
+  // N = normalized_dim_numl
+  // x_hat = (X - mean) * rstd
+  // dy_gamma = dY * gamma (or dY if gamma is not present)
+  //
+  // dGamma = sum_batch(dY * x_hat)
+  // dBeta = sum_batch(dY)
+  //
+  // a1 = sum_norm(dy_gamma)
+  // a2 = sum_norm(dy_gamma * x_hat)
+  // dX = (1 / N) * rstd * (N * dy_gamma - a1 - x_hat * a2)
 
   // Shape example:
   // All code comments below will use this shape for explanation:
@@ -269,20 +282,16 @@ absl::StatusOr<LayerNormBackwardShloResults> BuildLayerNormBackwardShlo(
   // dy will be shape [20, 5, 10, 10]
   // mean is shape [20, 1, 1, 1]
   // rstd is shape [20, 1, 1, 1]
-  // gamma is shape [5,10,10]
-  // bias is shape [5,10,10]
+  // gamma is shape [5, 10, 10]
+  // bias is shape [5, 10, 10]
 
-  // Get Dimensions
-  int64_t x_rank =
-      GetTensorTypeOrDie(x).getShape().size();  // 4 [20, 5, 10, 10]
-  int64_t norm_len = normalized_shape.size();   // 3 [5, 10, 10]
-  int64_t batch_len = x_rank - norm_len;        // 1 [20]
+  int64_t x_rank = GetTensorTypeOrDie(x).getShape().size();
+  int64_t norm_len = normalized_shape.size();
+  int64_t batch_len = x_rank - norm_len;
 
-  // Calculate dimension indices
-  Dimensions batch_dims;  // {0}
-  Dimensions norm_dims;   // {1, 2, 3}
-  Dimensions all_dims;    // {0, 1, 2, 3}
-
+  Dimensions batch_dims;
+  Dimensions norm_dims;
+  Dimensions all_dims;
   for (int i = 0; i < x_rank; ++i) {
     all_dims.push_back(i);
     if (i < batch_len)
@@ -291,106 +300,90 @@ absl::StatusOr<LayerNormBackwardShloResults> BuildLayerNormBackwardShlo(
       norm_dims.push_back(i);
   }
 
-  // Broadcast Mean and Rstd to X shape
-  // mean/rstd are [20, 1, 1, 1]. We must broadcast them to [20, 5, 10, 10]
-  // to perform element-wise ops with X.
-  mlir::MlirOp mean_casted = mean;
-  mlir::MlirOp rstd_casted = rstd;
-  mlir::Type x_element_type = GetTensorTypeOrDie(x).getElementType();
-  if (GetTensorTypeOrDie(mean).getElementType() != x_element_type) {
-    mean_casted = mlir::stablehlo::ConvertElementType(mean, x_element_type);
-  }
-  if (GetTensorTypeOrDie(rstd).getElementType() != x_element_type) {
-    rstd_casted = mlir::stablehlo::ConvertElementType(rstd, x_element_type);
-  }
-
+  // Broadcast mean/rstd to x shape.
   mlir::MlirOp mean_bcast =
-      mlir::stablehlo::BroadcastInDim(x.getType(), mean_casted, all_dims);
+      mlir::stablehlo::BroadcastInDim(x.getType(), mean, all_dims);
   mlir::MlirOp rstd_bcast =
-      mlir::stablehlo::BroadcastInDim(x.getType(), rstd_casted, all_dims);
+      mlir::stablehlo::BroadcastInDim(x.getType(), rstd, all_dims);
 
+  // x_hat = (x - mean) * rstd
+  mlir::MlirOp x_hat = mlir::stablehlo::Subtract(x, mean_bcast);
+  x_hat = mlir::stablehlo::Mul(x_hat, rstd_bcast);
+
+  // Optionally broadcast and upcast weight.
   std::optional<mlir::MlirOp> gamma_bcast;
   if (weight.has_value()) {
-    gamma_bcast =
-        mlir::stablehlo::BroadcastInDim(x.getType(), weight.value(), norm_dims);
+    mlir::MlirOp w = weight.value();
+    if (needs_upcast) {
+      TT_ASSIGN_OR_RETURN(w, PromoteFloatDtype(w));
+    }
+    gamma_bcast = mlir::stablehlo::BroadcastInDim(x.getType(), w, norm_dims);
   }
 
-  // dGamma = dY * (rstd * X  - rstd * mean)
+  // dgamma = sum_batch(dy * x_hat)
+  // Reduce over batch dimensions {0} to get [5, 10, 10]
   mlir::MlirOp dgamma;
-
-  if (gamma_bcast.has_value()) {
-    auto temp = mlir::stablehlo::Subtract(x, mean_bcast);
-    temp = mlir::stablehlo::Mul(rstd_bcast, temp);
-    mlir::MlirOp dgamma_full = mlir::stablehlo::Mul(dy, temp);
-    // Reduce over batch dimensions {0} to get [5, 10, 10]
+  if (weight.has_value()) {
+    mlir::MlirOp dgamma_full = mlir::stablehlo::Mul(dy, x_hat);
     dgamma = mlir::stablehlo::Reduce(builder, dgamma_full, zeros,
                                      sum_reduce_builder, batch_dims)[0];
   } else {
-    // If no gamma, then dGamma is just zeros and not used, the shape doesn't
-    // matter.
     dgamma = zeros;
   }
 
-  // dBeta = dY
+  // dbeta = sum_batch(dy)
+  // Reduce over batch dimensions {0} to get [5, 10, 10]
   mlir::MlirOp dbeta;
   if (compute_dbeta) {
     dbeta = mlir::stablehlo::Reduce(builder, dy, zeros, sum_reduce_builder,
                                     batch_dims)[0];
   } else {
-    // If no beta, then dGamma is just zeros and not used, the shape doesn't
-    // matter.
     dbeta = zeros;
   }
 
-  // scale = 1 / normalized_dim_numl
-  TT_ASSIGN_OR_RETURN(const int64_t normalized_dim_numl,
-                      NumElements(normalized_shape));
-  mlir::MlirOp scale_const =
-      MakeScalarConstant(builder, 1.0 / normalized_dim_numl, element_type);
-  mlir::MlirOp scale =
-      mlir::stablehlo::BroadcastInDim(x.getType(), scale_const, {});
-
-  // ds = sum(dY * X * gamma)
-  mlir::MlirOp ds = mlir::stablehlo::Mul(dy, x);
+  // dy_gamma = dy * gamma (or just dy when no weight)
+  mlir::MlirOp dy_gamma = dy;
   if (gamma_bcast.has_value()) {
-    ds = mlir::stablehlo::Mul(ds, gamma_bcast.value());
+    dy_gamma = mlir::stablehlo::Mul(dy, gamma_bcast.value());
   }
-  ds = mlir::stablehlo::Reduce(builder, ds, zeros, sum_reduce_builder,
-                               norm_dims)[0];
-  ds = mlir::stablehlo::BroadcastInDim(x.getType(), ds, batch_dims);
 
-  // db = sum(dY * gamma)
-  mlir::MlirOp db = dy;
-  if (gamma_bcast.has_value()) {
-    db = mlir::stablehlo::Mul(dy, gamma_bcast.value());
+  // a1 = sum_norm(dy * gamma)
+  // Reduce over norm_dims {1, 2, 3} to get [20], then broadcast to [20, 5, 10,
+  // 10]
+  mlir::MlirOp a1 = mlir::stablehlo::Reduce(builder, dy_gamma, zeros,
+                                            sum_reduce_builder, norm_dims)[0];
+  a1 = mlir::stablehlo::BroadcastInDim(x.getType(), a1, batch_dims);
+
+  // a2 = sum_norm(dy * gamma * x_hat)
+  // Reduce over norm_dims {1, 2, 3} to get [20], then broadcast to [20, 5, 10,
+  // 10]
+  mlir::MlirOp a2_full = mlir::stablehlo::Mul(dy_gamma, x_hat);
+  mlir::MlirOp a2 = mlir::stablehlo::Reduce(builder, a2_full, zeros,
+                                            sum_reduce_builder, norm_dims)[0];
+  a2 = mlir::stablehlo::BroadcastInDim(x.getType(), a2, batch_dims);
+
+  // dx = (1/N) * rstd * (N * dy_gamma - a1 - x_hat * a2)
+  TT_ASSIGN_OR_RETURN(const int64_t n, NumElements(normalized_shape));
+  mlir::MlirOp n_const =
+      MakeScalarConstant(builder, static_cast<double>(n), acc_float_type);
+  mlir::MlirOp n_bcast =
+      mlir::stablehlo::BroadcastInDim(x.getType(), n_const, {});
+  mlir::MlirOp inv_n = MakeScalarConstant(builder, 1.0 / n, acc_float_type);
+  mlir::MlirOp inv_n_bcast =
+      mlir::stablehlo::BroadcastInDim(x.getType(), inv_n, {});
+
+  mlir::MlirOp dx = mlir::stablehlo::Mul(n_bcast, dy_gamma);
+  dx = mlir::stablehlo::Subtract(dx, a1);
+  mlir::MlirOp x_hat_a2 = mlir::stablehlo::Mul(x_hat, a2);
+  dx = mlir::stablehlo::Subtract(dx, x_hat_a2);
+  mlir::MlirOp inv_n_rstd = mlir::stablehlo::Mul(inv_n_bcast, rstd_bcast);
+  dx = mlir::stablehlo::Mul(dx, inv_n_rstd);
+
+  if (needs_upcast) {
+    dx = mlir::stablehlo::ConvertElementType(dx, orig_elem_type);
+    dgamma = mlir::stablehlo::ConvertElementType(dgamma, orig_elem_type);
+    dbeta = mlir::stablehlo::ConvertElementType(dbeta, orig_elem_type);
   }
-  db = mlir::stablehlo::Reduce(builder, db, zeros, sum_reduce_builder,
-                               norm_dims)[0];
-  db = mlir::stablehlo::BroadcastInDim(x.getType(), db, batch_dims);
-
-  // b = (db * mean - ds) * rstd * rstd * rstd * scale
-  mlir::MlirOp b = mlir::stablehlo::Mul(db, mean_bcast);
-  b = mlir::stablehlo::Subtract(b, ds);
-  b = mlir::stablehlo::Mul(b, rstd_bcast);
-  b = mlir::stablehlo::Mul(b, rstd_bcast);
-  b = mlir::stablehlo::Mul(b, rstd_bcast);
-  b = mlir::stablehlo::Mul(b, scale);
-
-  // c = -b * mean - db * rstd * scale
-  mlir::MlirOp c_term1 = mlir::stablehlo::Mul(b, mean_bcast);
-  c_term1 = mlir::stablehlo::Neg(c_term1);
-  mlir::MlirOp c_term2 = mlir::stablehlo::Mul(db, rstd_bcast);
-  c_term2 = mlir::stablehlo::Mul(c_term2, scale);
-  mlir::MlirOp c = mlir::stablehlo::Subtract(c_term1, c_term2);
-
-  // dX = rstd * dY * gamma + b * X + c
-  mlir::MlirOp dx = mlir::stablehlo::Mul(rstd_bcast, dy);
-  if (gamma_bcast.has_value()) {
-    dx = mlir::stablehlo::Mul(dx, gamma_bcast.value());
-  }
-  mlir::MlirOp dx_term2 = mlir::stablehlo::Mul(b, x);
-  dx = mlir::stablehlo::Add(dx, dx_term2);
-  dx = mlir::stablehlo::Add(dx, c);
 
   return LayerNormBackwardShloResults{
       .grad_input = dx, .grad_weight = dgamma, .grad_bias = dbeta};

@@ -3245,9 +3245,6 @@ class TestOps(TorchTpuTestBase):
   def test_native_layer_norm(self):
     self.do_test_op(
         "native_layer_norm",
-        # TODO: fix accuracy failure (observed abs diff ~ 1.83e-3,
-        # rel diff ~ 0.365).
-        check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
         # TODO: before cl/833944280 introduced the backward ops, this test runs
