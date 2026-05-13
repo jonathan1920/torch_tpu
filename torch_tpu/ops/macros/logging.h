@@ -285,7 +285,6 @@ void CheckScalarInput() {
       kOpName == OpName::kForeachSub_List ||             //
       kOpName == OpName::kGe ||                          //
       kOpName == OpName::kGt ||                          //
-      kOpName == OpName::kGtScalarOut ||                 //
       kOpName == OpName::kHardtanh ||                    //
       kOpName == OpName::kHardtanhOut ||                 //
       kOpName == OpName::kHardtanh_ ||                   //
