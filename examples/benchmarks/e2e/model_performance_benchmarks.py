@@ -604,6 +604,12 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_wan_2_2_ti2v_5b_backward(self, run_mode):
     """Tests the backward pass of Wan-2.2-TI2V-5B."""
+    if (
+        run_mode == benchmark_utils.RunMode.COMPILED
+        and not self._is_torchax_backend()
+    ):
+      self.skipTest("Compiled mode fails for TorchTPU.")
+
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
