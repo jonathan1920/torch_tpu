@@ -32,7 +32,7 @@ def _get_text_chunks(text, max_text_chunk_size: int) -> list[str]:
 
 def perplexity_score(
     pred_logits: torch.Tensor, target: torch.Tensor, target_len: int
-):
+) -> torch.Tensor:
   """Computes perplexity score for the given sample output and data.
 
   Simplified implementation of
@@ -50,9 +50,8 @@ def perplexity_score(
   Returns:
     Perplexity score.
   """
-  ce = F.cross_entropy(pred_logits, target, reduce=False)
-  mask = torch.arange(len(ce)) < target_len
-  loss = (ce * mask).sum() / target_len
+  ce = F.cross_entropy(pred_logits, target, reduction="none")
+  loss = ce[:target_len].sum() / target_len
   return torch.exp(loss)
 
 
@@ -85,32 +84,24 @@ class PerplexityMetric(quality_benchmark_model.MetricProducer):
       The perplexity score for the given text.
     """
     ppl_avg = []
-    m = benchmark_model.get_model()
     for text_chunk in _get_text_chunks(model_input, self._max_text_chunk_size):
       # Encode arbitrary text.
       formatted_input = benchmark_model.format(text_chunk)
 
-      if formatted_input.input.shape[1] < 2:
+      if formatted_input.unpadded_length < 2:
         continue
 
-      # We forward formatted_input.input[:, :-1] to the model. For every
-      # position in the input sequence, the model predicts a distribution for
-      # the token right after that position, and we are measuring Perplexity for
-      # the next token.
-      pred_logits = m.forward(formatted_input.input[:, :-1], 0)
-
-      # Remove batch dimension and squeeze out sequence dimension.
-      squeezed_formatted_input = torch.squeeze(formatted_input.input)
-      pred_logits = torch.squeeze(pred_logits)
+      pred_logits, target = benchmark_model.get_logits_and_targets(
+          formatted_input
+      )
 
       # Compute perplexity score.
-      # The target consists of the sample_input shifted by one to the left when
-      # compared to the input to the model.
-      target = squeezed_formatted_input[1:]
       ppl_avg.append(
           perplexity_score(
               pred_logits, target, formatted_input.unpadded_length - 1
           )
       )
 
-    return sum(ppl_avg) / len(ppl_avg)
+    if not ppl_avg:
+      raise ValueError("No valid text chunks to compute perplexity.")
+    return torch.stack(ppl_avg).mean()

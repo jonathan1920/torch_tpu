@@ -147,6 +147,76 @@ class QualityBenchmarkModel(abc.ABC):
     """
     raise NotImplementedError
 
+  def get_logits_and_targets(
+      self, formatted_input: FormattedInput
+  ) -> tuple[torch.Tensor, torch.Tensor]:
+    """Returns logits and targets aligned for loss calculation.
+
+    This method performs the forward pass on the given formatted_input and
+    returns a tuple of (logits, targets).
+
+    Args:
+      formatted_input: The formatted input for the model.
+
+    Returns:
+      A tuple of (logits, targets).
+    """
+    raise NotImplementedError
+
+  def get_intermediate_outputs(
+      self, formatted_input: FormattedInput
+  ) -> dict[str, torch.Tensor]:
+    """Returns a dictionary of intermediate activations.
+
+    This method is a foundation for layer checks. It performs a forward pass
+    and returns a dictionary mapping layer names to their output tensors.
+
+    Note: There is a risk of memory Out Of Memory (OOM) errors if intermediate
+    outputs from all layers are returned at once.
+
+    Args:
+      formatted_input: The formatted input for the model.
+
+    Returns:
+      A dictionary of intermediate activations mapping layer names to tensors.
+    """
+    raise NotImplementedError
+
+  def get_logits_and_targets(
+      self, formatted_input: FormattedInput
+  ) -> tuple[torch.Tensor, torch.Tensor]:
+    """Returns logits and targets aligned for loss calculation.
+
+    This method performs the forward pass on the given formatted_input and
+    returns a tuple of (logits, targets).
+
+    Args:
+      formatted_input: The formatted input for the model.
+
+    Returns:
+      A tuple of (logits, targets).
+    """
+    raise NotImplementedError
+
+  def get_intermediate_outputs(
+      self, formatted_input: FormattedInput
+  ) -> dict[str, torch.Tensor]:
+    """Returns a dictionary of intermediate activations.
+
+    This method is a foundation for layer checks. It performs a forward pass
+    and returns a dictionary mapping layer names to their output tensors.
+
+    Note: There is a risk of memory Out Of Memory (OOM) errors if intermediate
+    outputs from all layers are returned at once.
+
+    Args:
+      formatted_input: The formatted input for the model.
+
+    Returns:
+      A dictionary of intermediate activations mapping layer names to tensors.
+    """
+    raise NotImplementedError
+
 
 def run_quality_benchmark(
     benchmark_model: QualityBenchmarkModel,

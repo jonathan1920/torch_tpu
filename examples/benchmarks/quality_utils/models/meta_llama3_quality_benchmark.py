@@ -124,3 +124,41 @@ class DistributedMetaLlama3QualityBenchmarkModel(
     )
 
     return quality_benchmark_model.FormattedInput(tokens, tokens_len)
+
+  def get_logits_and_targets(
+      self, formatted_input: quality_benchmark_model.FormattedInput
+  ) -> tuple[torch.Tensor, torch.Tensor]:
+    """Returns logits and targets aligned for loss calculation."""
+    # We forward formatted_input.input[:, :-1] to the model. For every
+    # position in the input sequence, the model predicts a distribution for
+    # the token right after that position, and we are measuring Perplexity for
+    # the next token.
+    pred_logits = self._model(formatted_input.input[:, :-1], 0)
+
+    # Remove the batch dimension (batch_size=1) using direct indexing.
+    pred_logits = pred_logits[0]
+
+    # The target consists of the sample_input shifted by one to the left when
+    # compared to the input to the model. We also slice out the batch dimension.
+    target = formatted_input.input[0, 1:]
+
+    return pred_logits, target
+
+  def get_logits_and_targets(
+      self, formatted_input: quality_benchmark_model.FormattedInput
+  ) -> tuple[torch.Tensor, torch.Tensor]:
+    """Returns logits and targets aligned for loss calculation."""
+    # We forward formatted_input.input[:, :-1] to the model. For every
+    # position in the input sequence, the model predicts a distribution for
+    # the token right after that position, and we are measuring Perplexity for
+    # the next token.
+    pred_logits = self._model(formatted_input.input[:, :-1], 0)
+
+    # Remove the batch dimension (batch_size=1) using direct indexing.
+    pred_logits = pred_logits[0]
+
+    # The target consists of the sample_input shifted by one to the left when
+    # compared to the input to the model. We also slice out the batch dimension.
+    target = formatted_input.input[0, 1:]
+
+    return pred_logits, target

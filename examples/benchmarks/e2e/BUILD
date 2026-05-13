@@ -231,6 +231,7 @@ torch_tpu_py_test(
     deps = [
         ":benchmark_utils",
         ":quality_utils",
+        "//examples/benchmarks/quality_utils:quality_benchmark_model",
         "//examples/benchmarks/quality_utils/metrics:data_loader",
         "//examples/benchmarks/quality_utils/metrics:perplexity_metric",
         "//examples/benchmarks/quality_utils/models:meta_llama3_quality_benchmark",
