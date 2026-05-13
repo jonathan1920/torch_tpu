@@ -185,10 +185,12 @@ torch_tpu_cc_library(
     srcs = ["compilation.cc"],
     hdrs = ["compilation.h"],
     deps = [
+        ":cache_key",
         ":context_manager",
         ":context_states",
         ":env_vars",
         ":error_utils",
+        ":fingerprint_utils",
         ":shape",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/pjrt:pjrt_state",
@@ -1031,6 +1033,28 @@ torch_tpu_cc_test(
         "@xla//xla:xla_proto_cc",
         "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "compile_options_key_test",
+    srcs = ["compile_options_key_test.cc"],
+    # go/cppdebugflags#increasing-your-size-limits
+    exec_properties = {"cpp_link.mem": "16g"},  # multiline select
+    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
+    tags = [
+        "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":cache_key",
+        ":compilation",
+        ":compilation_test_helper",
+        ":fingerprint_utils",
+        "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla/pjrt:pjrt_executable",
     ],
 )
 

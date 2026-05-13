@@ -96,8 +96,10 @@ inline constexpr char
 // compilation cache is disabled.
 inline constexpr char kTorchTpuInternalTier3CompilationCacheRootEnvVar[] =
     "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT";
-// XLA compiler option overrides, in the format of "key1=value1 key2=value2
-// ...".
+// TorchTPU-internal XLA compiler option overrides, in the format of
+// "key1=value1 key2=value2 ...". It is used to update `xla::CompileOptions`
+// through `env_option_overrides`, and takes precedence over `debug_options` set
+// via XLA_FLAGS.
 inline constexpr char kTorchTpuInternalXlaOptionsEnvVar[] =
     "TORCH_TPU_INTERNAL_XLA_OPTIONS";
 // If set, enables structured logging for tlparse.
@@ -131,6 +133,8 @@ inline constexpr char kTpuVisibleChipsEnvVar[] =
 // How many devices are in this process group. Set by launchers like
 // torchrun.
 inline constexpr char kWorldSizeEnvVar[] = "WORLD_SIZE";
+// Standard environment variable to configure XLA compiler behavior.
+inline constexpr char kXlaFlagsEnvVar[] = "XLA_FLAGS";
 // go/keep-sorted end
 
 // Sets the environment variable with the given name to the given value.

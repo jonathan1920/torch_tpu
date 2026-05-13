@@ -37,10 +37,12 @@
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/context_manager.h"
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
@@ -274,6 +276,7 @@ static const CompilerOptionOverrides& GetCompilerOptionOverridesFromEnvVar() {
 
 // Updates the `executable_build_options.debug_options` field of the given
 // `options` with the settings derived from the XLA_FLAGS environment variable.
+// LINT.IfChange
 static void UpdateFromXlaFlags(xla::CompileOptions& options) {
   // Use the cached `ExecutableBuildOptions` to avoid parsing the XLA_FLAGS
   // environment variable multiple times when calling `mutable_debug_options`.
@@ -283,6 +286,22 @@ static void UpdateFromXlaFlags(xla::CompileOptions& options) {
       options.executable_build_options.mutable_debug_options();
   debug_options->set_xla_allow_excess_precision(GetAllowExcessPrecision());
 }
+// LINT.ThenChange(:xla_flags_fingerprint)
+
+// Returns fingerprint of raw string value read from XLA_FLAGS environment
+// variable. The environment variable is only read exactly once per process.
+//
+// It is intended not to replicate parsing XLA_FLAGS into `tsl::Flag`. The
+// current approach is simpler and practically sufficient to capture XLA
+// behavioral changes controlled by XLA_FLAGS. Semantically identical flags in a
+// different order will yield different keys, but it is an acceptable trade-off.
+//
+// LINT.IfChange(xla_flags_fingerprint)
+[[nodiscard]] static FingerprintType GetXlaFlagsFingerprint() {
+  const std::optional<std::string>& xla_flags = GetEnvOnce<kXlaFlagsEnvVar>();
+  return xla_flags.has_value() ? Fingerprint(*xla_flags) : FingerprintCat();
+}
+// LINT.ThenChange()
 
 static absl::Status SetDefaultDeviceAssignment(
     xla::ExecutableBuildOptions& options) {
@@ -295,6 +314,7 @@ static absl::Status SetDefaultDeviceAssignment(
 
   // Use of multiple partitions aligns with JAX collective behavior and is
   // required by Pallas/Mosaic.
+  // LINT.IfChange
   options.set_num_replicas(1);
   options.set_num_partitions(num_devices);
   xla::DeviceAssignment da(1, num_devices);
@@ -309,9 +329,28 @@ static absl::Status SetDefaultDeviceAssignment(
   // will be a no-op.
   options.set_use_spmd_partitioning(true);
   options.set_use_shardy_partitioner(true);
+  // LINT.ThenChange(:xla_executable_build_options_fingerprint)
 
   return absl::OkStatus();
 }
+
+// Returns fingerprint of `xla::ExecutableBuildOptions` fields that are used
+// in `SetDefaultDeviceAssignment` and `ApplyCompilerOptionOverrides`.
+//
+// Note that `options.debug_options` is excluded because it is already included
+// in the XLA_FLAGS fingerprint (via `GetXlaFlagsFingerprint`).
+//
+// LINT.IfChange(xla_executable_build_options_fingerprint)
+[[nodiscard]] static FingerprintType GetXlaExecutableBuildOptionsFingerprint(
+    const xla::ExecutableBuildOptions& options) {
+  return FingerprintCat(
+      // Device assignment related fields.
+      options.num_replicas(), options.num_partitions(),
+      options.use_spmd_partitioning(), options.use_shardy_partitioner(),
+      // XLA execution effort levels.
+      options.optimization_level(), options.memory_fitting_level());
+}
+// LINT.ThenChange()
 
 // Sets `options.env_option_overrides` to TPU-specific options, sorted by key
 // in ascending order.
@@ -391,12 +430,14 @@ absl::Status ApplyCompilerOptionOverrides(
                  << absl::CEscape(key) << " = " << absl::CEscape(value);
     TT_RET_CHECK(!key.empty(), error::kInvalidArgument)
         << "XLA compiler option name must not be empty";
+    // LINT.IfChange
     if (key == kOptimizationLevelOption) {
       TT_ASSIGN_OR_RETURN(const auto level, ParseEffortLevel(value));
       compile_options.executable_build_options.set_optimization_level(level);
     } else if (key == kMemoryFittingLevelOption) {
       TT_ASSIGN_OR_RETURN(const auto level, ParseEffortLevel(value));
       compile_options.executable_build_options.set_memory_fitting_level(level);
+      // LINT.ThenChange(:xla_executable_build_options_fingerprint)
     } else {
       // Apply a new override by replacing the entry with the same key, if
       // present, or by appending the new (key, value) pair at the end fo the
@@ -433,6 +474,7 @@ absl::Status ApplyCompilerOptionOverrides(
   return absl::OkStatus();
 }
 
+// LINT.IfChange
 absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(CompilationMode mode) {
   auto compile_options = std::make_unique<xla::CompileOptions>();
 
@@ -453,5 +495,21 @@ absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(CompilationMode mode) {
 
   return compile_options;
 }
+// LINT.ThenChange(:compile_options_key)
+
+// LINT.IfChange(compile_options_key)
+[[nodiscard]] CompileOptionsKey GetCompileOptionsKey(
+    const xla::CompileOptions& options) {
+  return CompileOptionsKey(FingerprintCat(
+      // Fingerprint of XLA_FLAGS environment variable.
+      GetXlaFlagsFingerprint(),
+      // Fingerprint of XLA executable build options, mainly device-related
+      // information.
+      GetXlaExecutableBuildOptionsFingerprint(options.executable_build_options),
+      // Fingerprint of resolved eventual compiler option overrides, including
+      // TorchTPU defaults, TorchTPU-internal and explicit user overrides.
+      Fingerprint(options.env_option_overrides)));
+}
+// LINT.ThenChange()
 
 }  // namespace torch_tpu
