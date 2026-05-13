@@ -237,6 +237,21 @@ absl::StatusOr<mlir::MlirOp> BuildLog1pShlo(mlir::MlirOp input_op,
   return mlir::stablehlo::ConvertElementType(result_op, default_dtype);
 }
 
+absl::StatusOr<mlir::MlirOp> BuildExp2Shlo(
+    mlir::MlirOp input_op, mlir::ElementType default_mlir_type) {
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp op,
+                      ConvertIfInteger(input_op, default_mlir_type));
+  mlir::MlirBuilder& builder = op.getBuilder();
+  mlir::RankedTensorType type = GetTensorTypeOrDie(op);
+  mlir::MlirOp value_2 =
+      MakeScalarConstant(builder, 2.0, type.getElementType());
+  mlir::MlirOp ln2 = mlir::stablehlo::Log(value_2);
+  TT_ASSIGN_OR_RETURN((auto [ln2_b, op_b]), ApplyBroadcastIfNeeded(ln2, op));
+  mlir::MlirOp mul_op = mlir::stablehlo::Mul(ln2_b, op_b);
+  mlir::MlirOp result_op = mlir::stablehlo::Exp(mul_op);
+  return mlir::stablehlo::ConvertElementType(result_op, default_mlir_type);
+}
+
 absl::StatusOr<mlir::MlirOp> BuildLog2Shlo(
     mlir::MlirOp input_op, mlir::ElementType default_mlir_type) {
   return LogN(input_op, 2, default_mlir_type);

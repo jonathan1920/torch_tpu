@@ -18,8 +18,13 @@
 #define TORCH_TPU_OPS_UNARY_H_
 
 #include "absl/status/statusor.h"
-#include "mlir/IR/BuiltinTypes.h"
+#include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/macro_utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/ChloBuilder.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 
 namespace torch_tpu {
 
@@ -88,6 +93,8 @@ absl::StatusOr<mlir::MlirOp> BuildSignShlo(mlir::MlirOp input_op);
 absl::StatusOr<mlir::MlirOp> BuildSiluShlo(mlir::MlirOp input_op);
 absl::StatusOr<mlir::MlirOp> BuildTruncShlo(mlir::MlirOp input_op);
 absl::StatusOr<mlir::MlirOp> BuildLiftFreshShlo(mlir::MlirOp input_op);
+absl::StatusOr<mlir::MlirOp> BuildExp2Shlo(mlir::MlirOp input_op,
+                                           mlir::ElementType default_mlir_type);
 absl::StatusOr<mlir::MlirOp> BuildLogShlo(mlir::MlirOp input_op,
                                           mlir::ElementType default_dtype);
 absl::StatusOr<mlir::MlirOp> BuildLog1pShlo(mlir::MlirOp input_op,

@@ -26,8 +26,6 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/native/Resize.h"
-#include "c10/core/DefaultDtype.h"
-#include "c10/core/ScalarType.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
@@ -212,6 +210,7 @@ TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kCoshOut, AtenCosh, BuildCoshShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kErfInvOut, AtenErfInv,
                                  BuildErfInvShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kErfOut, AtenErf, BuildErfShlo);
+TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kExp2Out, AtenExp2, BuildExp2Shlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kExpM1Out, AtenExpm1, BuildExpm1Shlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kExpOut, AtenExp, BuildExpShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kLgammaOut, AtenLgamma,
@@ -230,7 +229,7 @@ TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kTanOut, AtenTan, BuildTanShlo);
 TT_DEFINE_FP_ONLY_ATEN_UNARY_OUT(OpName::kTanhOut, AtenTanh, BuildTanhShlo);
 // go/keep-sorted end
 
-at::Tensor& AtenAbsOut(const at ::Tensor& self, at ::Tensor& out) {
+at::Tensor& AtenAbsOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kAbsOut, _, (self, out), {
     TT_THROW_IF_ERROR(
         UnaryOpOut(self, out, BuildAbsShlo,

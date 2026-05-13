@@ -363,6 +363,12 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.int8: {"rtol": 3.7e-6, "atol": 1.5e-3},
         torch.uint8: {"rtol": 3.7e-6, "atol": 2.4e-3},
     },
+    "exp2": {
+        torch.bfloat16: {"rtol": 0.032, "atol": 8.4},
+        torch.complex64: {"rtol": 4.00e-06, "atol": 2.0e-03},
+        torch.float16: {"rtol": 0.0045, "atol": 0.53},
+        torch.float32: {"rtol": 3.50e-06, "atol": 2.0e-03},
+    },
     "expm1": {
         torch.complex64: {"rtol": 3.9e-6, "atol": 2e-2},
         torch.float32: {"rtol": 5.7e-6, "atol": 2.1e-2},
@@ -1287,6 +1293,12 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
     },
     "exp": {
         torch.complex64: {"rtol": 2.3e-6, "atol": 7.8e-5},
+    },
+    "exp2": {
+        torch.bfloat16: {"rtol": 2.00e-02, "atol": 1.00e-05},
+        torch.complex64: {"rtol": 4.00e-06, "atol": 1.00e-05},
+        torch.float16: {"rtol": 3.00e-03, "atol": 1.00e-05},
+        torch.float32: {"rtol": 3.50e-06, "atol": 1.00e-05},
     },
     "expm1": {
         torch.complex64: {"rtol": 3.6e-6, "atol": 1.9e-2},
@@ -2243,6 +2255,9 @@ class TestOps(TorchTpuTestBase):
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
     )
+
+  def test_exp2(self):
+    self.do_test_op("exp2")
 
   def test_expm1(self):
     self.do_test_op(

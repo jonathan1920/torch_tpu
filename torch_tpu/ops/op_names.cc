@@ -22,8 +22,7 @@
 
 namespace torch_tpu {
 
-// NOLINTNEXTLINE(readability/fn_size)
-std::string_view ToString(OpName op_name) {
+std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
   // WARNING: These names are used for computing cache keys, so they must be
   // stable. Changing them may cause key collisions in the persistent cache.
   switch (op_name) {
@@ -324,6 +323,8 @@ std::string_view ToString(OpName op_name) {
       return "erfinv.out";
     case OpName::kErfOut:
       return "erf.out";
+    case OpName::kExp2Out:
+      return "exp2.out";
     case OpName::kExpM1Out:
       return "expm1.out";
     case OpName::kExpOut:

@@ -296,6 +296,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kEqual, AtenEqual);
   Impl(m, OpName::kErfInvOut, AtenErfInvOut);
   Impl(m, OpName::kErfOut, AtenErfOut);
+  Impl(m, OpName::kExp2Out, AtenExp2Out);
   Impl(m, OpName::kExpM1Out, AtenExpm1Out);
   Impl(m, OpName::kExpOut, AtenExpOut);
   Impl(m, OpName::kExponential_, AtenExponential_);

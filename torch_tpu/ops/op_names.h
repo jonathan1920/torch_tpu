@@ -173,6 +173,7 @@ enum class OpName {
   kEqual,
   kErfInvOut,
   kErfOut,
+  kExp2Out,
   kExpM1Out,
   kExpOut,
   kExponential_,

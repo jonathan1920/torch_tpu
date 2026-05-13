@@ -23,7 +23,6 @@
 #include "absl/status/statusor.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/DeprecatedTypeProperties.h"
-#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -94,6 +93,7 @@ TT_DECLARE_ATEN_UNARY_OUT(AtenCosh);
 TT_DECLARE_ATEN_UNARY_OUT(AtenErf);
 TT_DECLARE_ATEN_UNARY_OUT(AtenErfInv);
 TT_DECLARE_ATEN_UNARY_OUT(AtenExp);
+TT_DECLARE_ATEN_UNARY_OUT(AtenExp2);
 TT_DECLARE_ATEN_UNARY_OUT(AtenExpm1);
 TT_DECLARE_ATEN_UNARY_OUT(AtenFloor);
 TT_DECLARE_ATEN_UNARY_OUT(AtenLgamma);
