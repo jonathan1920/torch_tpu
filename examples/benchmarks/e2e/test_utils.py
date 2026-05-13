@@ -81,9 +81,6 @@ class BenchmarkTest(parameterized.TestCase):
   @classmethod
   def setUpClass(cls):
     super().setUpClass()
-    # TODO: b/502604749 - Remove this after we figure out a way to clear the
-    # repeated sequence op window between tests.
-    os.environ["TORCH_TPU_INTERNAL_DETECT_REPEATED_OPS"] = ""
     if cls._is_torchax_backend():
       # Import TorchAX specific libraries only if the backend is TorchAX
       # otherwise we will attempt to overwrite privatedeviceuse1 backend.
