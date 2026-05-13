@@ -1069,14 +1069,17 @@ at::Tensor AtenLshiftTensor(const at::Tensor& self, const at::Tensor& other) {
 
 at::Tensor& AtenLtScalarOut(const at::Tensor& self, const at::Scalar& other,
                             at::Tensor& out) {
-  TT_KERNEL(OpName::kLtScalarOut, _,
-            (self, IgnoreInCacheKey(other, "Legacy usage"), out), {
-              TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
-              TT_THROW_IF_ERROR(BinaryOpOut(
-                  self, other, out, BuildLtShlo,
-                  {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
-              return out;
-            });
+  PromotedScalar promoted_other = PromoteScalar(other);
+  TT_KERNEL(OpName::kLtScalarOut, _, (self, promoted_other, out), {
+    TT_THROW_IF_ERROR(CheckComparisonOpsInputs(self, other));
+    const at::ScalarType promoted_scalar_type = at::result_type(self, other);
+    TT_ASSIGN_OR_THROW(const at::Tensor other_tensor,
+                       promoted_other.GetTensor(promoted_scalar_type));
+    TT_THROW_IF_ERROR(
+        BinaryOpOut(self, other_tensor, out, BuildLtShlo,
+                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+    return out;
+  });
 }
 
 at::Tensor& AtenLtTensorOut(const at::Tensor& self, const at::Tensor& other,
