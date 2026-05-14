@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: CI - Postsubmit on TPU
+name: CI - Postsubmit
 
 on:
   # Enable remote connections. Add a workflow dispatch to enable halting.
@@ -52,22 +52,34 @@ jobs:
     name: "Postsubmit on ${{ matrix.job_info.runner }}"
     if: >-
       github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'ci:tpu-postsubmit')
+      contains(github.event.pull_request.labels.*.name, 'ci:postsubmit')
     strategy:
       fail-fast: false
       matrix:
         job_info: [
           {
+            runner: "linux-x86-n2-16",
+            bazel_config: "ci_cpu",
+            extra_flags: "",
+          },
+          {
+            runner: "linux-x86-ct5lp-224-8tpu",
+            bazel_config: "ci_tpu",
+            extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"',
+          },
+          {
             runner: "linux-x86-ct6e-180-8tpu",
             bazel_config: "ci_tpu_on_v6",
+            extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"',
           },
           {
             runner: "linux-x86-tpu7x-224-4tpu",
             bazel_config: "ci_tpu_on_v7",
+            extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"',
           }
         ]
-    # Use self-hosted runners. For a Linux runner, a corresponding container image used for the
-    # workflow is required.
+    # Use self-hosted runners. See go/tt-devguide#test-machines for more details about the runners.
+    # For a Linux runner, a corresponding container image used for the workflow is required.
     # See go/ml-github-actions/getting_started/using_runners.md#supported-runner-scale-set.
     runs-on: ${{ matrix.job_info.runner }}
     container:
@@ -88,7 +100,7 @@ jobs:
       # running the tests. This allows test building and test running to overlap and reduce total
       # build time.
       - name: Run Bazel Test
-        run: bazel test --config=${{ matrix.job_info.bazel_config }} --run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" //...
+        run: bazel test --config=${{ matrix.job_info.bazel_config }} ${{ matrix.job_info.extra_flags }} //...
       - name: Upload Test Logs on Failure
         uses: actions/upload-artifact@v4
         if: failure()
