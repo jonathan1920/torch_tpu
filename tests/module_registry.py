@@ -146,13 +146,14 @@ class TorchvisionProvider(BaseProvider):
   def list_modules(self) -> list[str]:
     """Lists the names of all models available from this provider.
 
-    Current it's structured as {base_path}/torchvision/{model_name}/weights.pt
+    Structured as {base_path}/torchvision/{model_name}/weights.pt
 
     Returns:
       A list of model name strings.
     """
-    if self._base_path is None:
+    if not self.has_cache_dir:
       return []
+    assert self._base_path is not None
     return [path.name for path in self._base_path.iterdir() if path.is_dir()]
 
   def get_module_spec(
@@ -192,13 +193,14 @@ class TimmProvider(BaseProvider):
   def list_modules(self) -> list[str]:
     """Lists the names of all models available from this provider.
 
-    Current it's structured as {base_path}/timm/{model_name}/weights.pth
+    Structured as {base_path}/timm/{model_name}/weights.pth
 
     Returns:
       A list of model name strings.
     """
-    if self._base_path is None:
+    if not self.has_cache_dir:
       return []
+    assert self._base_path is not None
     return [path.name for path in self._base_path.iterdir() if path.is_dir()]
 
   def get_module_spec(
@@ -346,19 +348,19 @@ class TransformersProvider(BaseProvider):
   )
 
   def __init__(self, base_path: str | None = None):
-    super().__init__(base_path=base_path, subdir="huggingface")
+    super().__init__(base_path=base_path, subdir="transformers")
 
   def list_modules(self) -> list[str]:
     """Lists the names of all models available from this provider.
 
-    Current it's structured as {base_path}/huggingface/{owner}/{model}/files
-    TODO(b/507481008): Restructure the path to be {base_path}/transformers/...
+    Structured as {base_path}/transformers/{owner}/{model}/files
 
     Returns:
       A list of model name strings formatted as '{owner}/{model}'.
     """
-    if self._base_path is None:
+    if not self.has_cache_dir:
       return []
+    assert self._base_path is not None
     modules = []
     for owner_path in self._base_path.iterdir():
       if owner_path.is_dir():
@@ -498,21 +500,26 @@ class DiffusersProvider(BaseProvider):
   )
 
   def __init__(self, base_path: str | None = None):
-    super().__init__(base_path=base_path, subdir="huggingface")
+    super().__init__(base_path=base_path, subdir="diffusers")
 
   def list_modules(self) -> list[str]:
     """Lists the names of all models available from this provider.
 
-    Current it's structured as {base_path}/huggingface/{owner}/{model}/files
-    TODO(b/507481008): Restructure the path to be {base_path}/diffusers/...
+    Structured as {base_path}/diffusers/{owner}/{model}/files
 
     Returns:
       A list of model name strings formatted as '{owner}/{model}'.
     """
-    # TODO(b/507481008): Temporarily return empty list as it returns the same
-    # list as TransformersProvider. After the path is restructured, this will
-    # return the list of diffusers models.
-    return []
+    if not self.has_cache_dir:
+      return []
+    assert self._base_path is not None
+    modules = []
+    for owner_path in self._base_path.iterdir():
+      if owner_path.is_dir():
+        for model_path in owner_path.iterdir():
+          if model_path.is_dir():
+            modules.append(f"{owner_path.name}/{model_path.name}")
+    return modules
 
   def get_module_spec(
       self,
@@ -732,11 +739,10 @@ class ModuleRegistry:
     """Initializes the registry.
 
     Providers construct specific paths relative to this base_path.
-    - For Timm library, models are structured as base_path/timm/{model}/
-    - For other libraries, models are structured as
-    base_path/huggingface/{owner}/{model}/
-    - TODO(b/507481008): Restructure to base_path/{provider}/{owner}/{model}/
-      for all providers.
+    - For Timm and Torchvision library, models are structured as:
+    base_path/{provider}/{model}/
+    - For other libraries, models are structured as:
+    base_path/{provider}/{owner}/{model}/
 
     Args:
       base_path: The base directory for model weights. Defaults to the value of

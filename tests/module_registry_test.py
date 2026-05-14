@@ -60,10 +60,10 @@ class ModuleRegistryTest(absltest.TestCase):
     self.assertIn("timm/convnext_small.in12k_ft_in1k", modules)
     self.assertIn("timm/resnet50d.ra2_in1k", modules)
     self.assertIn("timm/vgg16.tv_in1k", modules)
-    # TODO(b/507481008): Restructure the path to be {base_path}/{provider}/...
     self.assertIn("transformers/openai/gpt-oss-120b", modules)
     self.assertIn("transformers/meta-llama/Llama-3.2-3B", modules)
     self.assertIn("transformers/google/gemma-3-270m", modules)
+    self.assertIn("diffusers/stabilityai/stable-diffusion-xl-base-1.0", modules)
 
   def test_torchvision_list_modules(self):
     modules = self.module_registry.list_modules("torchvision")
