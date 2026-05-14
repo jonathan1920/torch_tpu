@@ -144,6 +144,17 @@ pytype_strict_binary(
     ],
 )
 
+pytype_strict_binary(
+    name = "xm_launch_compile_bd",
+    srcs = ["xm_launch_compile_bd.py"],
+    deps = [
+        "//shims/absl_py:app",
+        "//shims/absl_py/flags",
+        "@pypi//xmanager/xm",
+        "@pypi//xmanager/xm_abc",
+    ],
+)
+
 torch_tpu_py_test(
     name = "qwen3_hf_example",
     # The test finishes fast most of the time. The timeout is for the 15% chance
@@ -174,7 +185,8 @@ torch_tpu_py_test(
     timeout = "long",  # 15 minutes
     srcs = ["qwen3_dynamic_kv_cache.py"],
     nolocal = "slow example",
-    notest_oss = "Slow test",
+    notap = "manual test for dynamic performance evaluation",
+    notest_oss = "manual test for dynamic performance evaluation",
     tags = [
         "nofastbuild",  # Benchmark.
         "requires-net:external",  # Needed to access remote files.
@@ -183,7 +195,40 @@ torch_tpu_py_test(
     deps = [
         "//examples:paths",
         "//shims/absl_py:app",
+        "//shims/absl_py/flags",
         "//shims/absl_py/logging",
+        "//shims/safetensors",  # buildcleaner: keep
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile:tpu_backend",
+        "//torch_tpu/_internal/utils:log_utils",
+        "@pypi//transformers",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "qwen3_dynamic_kv_cache_b200",
+    timeout = "long",  # 15 minutes
+    srcs = ["qwen3_dynamic_kv_cache.py"],
+    args = [
+        "--device=cuda",
+    ],
+    main = "qwen3_dynamic_kv_cache.py",
+    notap = "manual test for dynamic performance evaluation",
+    notest_oss = "manual test for dynamic performance evaluation",
+    platform = if_oss(None, "//buildenv/platforms/forge/gpu/b200"),
+    tags = [
+        "cpu:1",
+        "nofastbuild",  # Benchmark.
+        "requires-net:external",  # Needed to access remote files.
+    ],
+    deps = [
+        "//examples:paths",
+        "//shims/absl_py:app",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/logging",
+        "//shims/gpu_cuda:cuda_runtime",
+        "//shims/gpu_profiler:gpuprof_lib",  # buildcleaner: keep
         "//shims/safetensors",  # buildcleaner: keep
         "//shims/torch:pytorch",
         "//torch_tpu",

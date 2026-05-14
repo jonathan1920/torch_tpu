@@ -14,11 +14,15 @@
 
 """Example use of Qwen3 model with KV Cache."""
 
+import copy
+import pathlib
 import time
 
 from absl import app
+from absl import flags
 from absl import logging
 import torch
+import torch._inductor.config as inductor_config
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import log_utils
 from examples import paths
@@ -26,11 +30,31 @@ import transformers
 
 log_utils.log_to_stderr()
 
+_MODEL_NAME = flags.DEFINE_string(
+    "model_name",
+    "Qwen/Qwen3-0.6B",
+    "Name of the model to run. For ex: 'Qwen/Qwen3-0.6B', 'Qwen/Qwen3-1.7B', "
+    " or 'Qwen/Qwen3-4B'.",
+)
 
-#  for backend registration
+_DEVICE = flags.DEFINE_string(
+    "device",
+    "tpu",
+    "Device to run the model on. Can be 'tpu' or 'cuda'.",
+)
 
-TOKENIZER_PATH = f"{paths.XM_HOME}weights/huggingface/Qwen/Qwen3-0.6B"
-MODEL_PATH = f"{paths.XM_HOME}weights/huggingface/Qwen/Qwen3-0.6B"
+_COMPILE_ONLY = flags.DEFINE_boolean(
+    "compile_only",
+    True,
+    "If True, only do compile mode execution, else also do eager mode"
+    " execution.",
+)
+_USE_RANDOM_WEIGHTS = flags.DEFINE_boolean(
+    "use_random_weights",
+    False,
+    "Whether to initialize model with random weights instead of loading from"
+    " checkpoint.",
+)
 
 
 def model_generate(
@@ -103,30 +127,103 @@ def model_generate(
   return output_text
 
 
-# pylint: disable=unused-argument
-def main(argv):
-  device = torch.accelerator.current_accelerator()
-  torch.manual_seed(123)
-
-  # Load tokenizer from HuggingFace
-  tokenizer = transformers.AutoTokenizer.from_pretrained(TOKENIZER_PATH)
+def _run_with_actual_weights(
+    tokenizer: transformers.PreTrainedTokenizer,
+    model_path: pathlib.Path,
+    inputs: torch.Tensor,
+    max_decode_steps: int,
+    device: str,
+) -> None:
+  if device == "cuda":
+    inductor_config.compile_threads = 1
 
   # Load CPU model from HuggingFace
   model_cpu = transformers.AutoModelForCausalLM.from_pretrained(
-      MODEL_PATH, torch_dtype=torch.bfloat16, attn_implementation="eager"
+      model_path, torch_dtype=torch.bfloat16, attn_implementation="eager"
   )
-  assert str(model_cpu.device) == "cpu", "model_cpu device should be cpu"
-  assert model_cpu.dtype == torch.bfloat16, "model_cpu dtype should be bfloat16"
+  # Copy the CPU model and move it to the target device
+  model_device = copy.deepcopy(model_cpu).to(device)
+  output_cpu = model_generate(
+      model_cpu, inputs, tokenizer, max_decode_steps, prefix="[CPU] "
+  )
+  logging.info("output_cpu=%s", output_cpu)
 
-  # Load CPU model from HuggingFace and move it to the TPU
-  model_tpu = transformers.AutoModelForCausalLM.from_pretrained(
-      MODEL_PATH, torch_dtype=torch.bfloat16, attn_implementation="eager"
+  if not _COMPILE_ONLY.value:
+    output_device = model_generate(
+        model_device,
+        inputs.to(device),
+        tokenizer,
+        max_decode_steps,
+        prefix=f"[{device.upper()}] ",
+    )
+    logging.info("output_%s=%s", device, output_device)
+    assert output_cpu == output_device
+
+  if device == "cuda":
+    model_device_compiled = torch.compile(model_device, backend="inductor")
+  else:
+    model_device_compiled = torch.compile(
+        model_device, backend=_backend.TpuBackend(dynamism=True)
+    )
+  output_device_compiled = model_generate(
+      model_device_compiled,
+      inputs.to(device),
+      tokenizer,
+      max_decode_steps,
+      prefix=f"[Compiled {device.upper()}] ",
   )
-  model_tpu = model_tpu.to("tpu")
-  assert (
-      str(model_tpu.device) == f"{device}:0"
-  ), f"model_tpu device should be {device}:0, got {model_tpu.device}"
-  assert model_tpu.dtype == torch.bfloat16, "model_tpu dtype should be bfloat16"
+  logging.info("output_%s_compiled=%s", device, output_device_compiled)
+  assert output_cpu == output_device_compiled
+
+
+def _run_with_random_weights(
+    tokenizer: transformers.PreTrainedTokenizer,
+    model_path: pathlib.Path,
+    inputs: torch.Tensor,
+    max_decode_steps: int,
+    device: str,
+) -> None:
+  if device == "cuda":
+    inductor_config.compile_threads = 1
+  config = transformers.AutoConfig.from_pretrained(model_path)
+  config._attn_implementation = "eager"
+
+  with torch.device(device):
+    model_device = transformers.AutoModelForCausalLM.from_config(config).to(
+        torch.bfloat16
+    )
+
+  if device == "cuda":
+    model_device_compiled = torch.compile(model_device)
+  else:
+    model_device_compiled = torch.compile(
+        model_device, backend=_backend.TpuBackend(dynamism=True)
+    )
+
+  output_device_compiled = model_generate(
+      model_device_compiled,
+      inputs.to(device),
+      tokenizer,
+      max_decode_steps,
+      prefix=f"[Compiled {device.upper()}] ",
+  )
+  logging.info("output_%s_compiled=%s", device, output_device_compiled)
+
+
+# pylint: disable=unused-argument
+def main(argv):
+  torch.manual_seed(123)
+
+  tokenizer_path = (
+      pathlib.Path(paths.XM_HOME)
+      / "weights"
+      / "huggingface"
+      / _MODEL_NAME.value
+  )
+  model_path = tokenizer_path
+
+  # Load tokenizer from HuggingFace
+  tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_path)
 
   text = "Who are you?"
   messages = [{"role": "user", "content": text}]
@@ -140,29 +237,14 @@ def main(argv):
 
   max_decode_steps = 10
 
-  output_cpu = model_generate(
-      model_cpu, inputs, tokenizer, max_decode_steps, prefix="[CPU] "
-  )
-  logging.info("output_cpu=%s", output_cpu)
-
-  output_tpu = model_generate(
-      model_tpu, inputs.to("tpu"), tokenizer, max_decode_steps, prefix="[TPU] "
-  )
-  logging.info("output_tpu=%s", output_tpu)
-  assert output_cpu == output_tpu
-
-  model_tpu_compiled = torch.compile(
-      model_tpu, dynamic=False, backend=_backend.TpuBackend()
-  )
-  output_tpu_compiled = model_generate(
-      model_tpu_compiled,
-      inputs.to("tpu"),
-      tokenizer,
-      max_decode_steps,
-      prefix="[Compiled TPU] ",
-  )
-  logging.info("output_tpu_compiled=%s", output_tpu_compiled)
-  assert output_cpu == output_tpu_compiled
+  if _USE_RANDOM_WEIGHTS.value:
+    _run_with_random_weights(
+        tokenizer, model_path, inputs, max_decode_steps, _DEVICE.value
+    )
+  else:
+    _run_with_actual_weights(
+        tokenizer, model_path, inputs, max_decode_steps, _DEVICE.value
+    )
 
 
 if __name__ == "__main__":
