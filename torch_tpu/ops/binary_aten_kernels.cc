@@ -624,6 +624,27 @@ absl::Status AtenComparisonScalarOutHelper(
                      {.op_param_cache_keys = OpParamCacheKeys::Empty()});
 }
 
+enum class BitwiseShiftDirection {
+  kLeft,
+  kRight,
+};
+
+absl::Status BitwiseShiftScalarHelper(const at::Tensor& self,
+                                      const at::Scalar& other, at::Tensor& out,
+                                      BitwiseShiftDirection direction) {
+  at::Tensor wrapped_scalar = at::native::wrapped_scalar_tensor(other);
+  TT_RETURN_IF_ERROR(CheckBitwiseShiftInputs(self, wrapped_scalar));
+
+  at::Tensor new_self = self.to(out.scalar_type());
+  at::Tensor new_other = wrapped_scalar.to(out.scalar_type());
+
+  MlirBinaryOpBuilder builder = direction == BitwiseShiftDirection::kLeft
+                                    ? BuildBitwiseLeftShiftShlo
+                                    : BuildBitwiseRightShiftShlo;
+  return BinaryOpOut(new_self, new_other, out, std::move(builder),
+                     {.op_param_cache_keys = OpParamCacheKeys::Empty()});
+}
+
 }  // namespace
 
 // NOLINTBEGIN
@@ -1011,9 +1032,8 @@ at::Tensor& AtenGtTensorOut(const at::Tensor& self, const at::Tensor& other,
 at::Tensor& AtenIlshiftScalar(at::Tensor& self, const at::Scalar& other) {
   TT_KERNEL(OpName::kIlshiftScalar, _,
             (self, IgnoreInCacheKey(other, "Legacy usage")), {
-              at::Tensor wrapped_scalar =
-                  at::native::wrapped_scalar_tensor(other);
-              AtenBitwiseLeftShiftTensorOut(self, wrapped_scalar, self);
+              TT_THROW_IF_ERROR(BitwiseShiftScalarHelper(
+                  self, other, self, BitwiseShiftDirection::kLeft));
               return self;
             });
 }
@@ -1028,9 +1048,8 @@ at::Tensor& AtenIlshiftTensor(at::Tensor& self, const at::Tensor& other) {
 at::Tensor& AtenIrshiftScalar(at::Tensor& self, const at::Scalar& other) {
   TT_KERNEL(OpName::kIrshiftScalar, _,
             (self, IgnoreInCacheKey(other, "Legacy usage")), {
-              at::Tensor wrapped_scalar =
-                  at::native::wrapped_scalar_tensor(other);
-              AtenBitwiseRightShiftTensorOut(self, wrapped_scalar, self);
+              TT_THROW_IF_ERROR(BitwiseShiftScalarHelper(
+                  self, other, self, BitwiseShiftDirection::kRight));
               return self;
             });
 }
@@ -1070,8 +1089,8 @@ at::Tensor AtenLshiftScalar(const at::Tensor& self, const at::Scalar& other) {
         TT_ASSIGN_OR_THROW(
             at::Tensor out,
             MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device()));
-        at::Tensor wrapped_scalar = at::native::wrapped_scalar_tensor(other);
-        AtenBitwiseLeftShiftTensorOut(self, wrapped_scalar, out);
+        TT_THROW_IF_ERROR(BitwiseShiftScalarHelper(
+            self, other, out, BitwiseShiftDirection::kLeft));
         return out;
       });
 }
@@ -1282,8 +1301,8 @@ at::Tensor AtenRshiftScalar(const at::Tensor& self, const at::Scalar& other) {
         TT_ASSIGN_OR_THROW(
             at::Tensor out,
             MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device()));
-        at::Tensor wrapped_scalar = at::native::wrapped_scalar_tensor(other);
-        AtenBitwiseRightShiftTensorOut(self, wrapped_scalar, out);
+        TT_THROW_IF_ERROR(BitwiseShiftScalarHelper(
+            self, other, out, BitwiseShiftDirection::kRight));
         return out;
       });
 }
