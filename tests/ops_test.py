@@ -1595,6 +1595,9 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.bfloat16: {"rtol": 2e-2, "atol": 4e-4},
                 torch.float32: {"rtol": 7e-3, "atol": 2e-4},
             },
+            "nn.functional.glu": {
+                torch.float32: {"rtol": 6.7e-5, "atol": 1.1e-5},
+            },
             "nn.functional.group_norm": {
                 torch.bfloat16: {"rtol": 6e-1, "atol": 3e-2},
                 torch.float32: {"rtol": 1.7, "atol": 3e-1},
@@ -3528,8 +3531,6 @@ class TestOps(TorchTpuTestBase):
   def test_nn_functional_glu(self):
     self.do_test_op(
         "nn.functional.glu",
-        # TODO: fix the error glu_backward is unimplemented.
-        check_grad=False,
     )
 
   def test_nn_functional_hardsigmoid(self):

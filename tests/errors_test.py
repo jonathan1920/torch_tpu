@@ -2042,6 +2042,101 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.ops.aten.glu.out(t, dim=1, out=out)
 
+  def test_glu_backward_unsupported_dtypes(self):
+    float_tensor = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    int_tensor = torch.ones(2, 4, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""glu_backward(): expected the self dtype to be floating point, got int32""",
+        cpu="""result type Float can't be cast to the desired output type Int""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.glu_backward(
+          grad_output=float_tensor, self=int_tensor, dim=1
+      )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""glu_backward(): expected the grad_output dtype to be floating point, got int32""",
+        cpu="""Found dtype Int but expected Float""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.glu_backward(
+          grad_output=int_tensor, self=float_tensor, dim=1
+      )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""glu_backward(): expected the grad_input dtype to be floating point, got int32""",
+        cpu="""result type Float can't be cast to the desired output type Int""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.glu_backward.grad_input(
+          grad_output=float_tensor,
+          self=float_tensor,
+          dim=1,
+          grad_input=int_tensor,
+      )
+
+  def test_glu_backward_dtype_mismatch(self):
+    float32_tensor = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    float64_tensor = torch.ones(2, 4, device=et.device(), dtype=torch.float64)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""glu_backward(): expected self and grad_output to have the same dtype, got float32 and float64""",
+        cpu="""Found dtype Double but expected Float""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.glu_backward(
+          grad_output=float64_tensor, self=float32_tensor, dim=1
+      )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""glu_backward(): expected self and grad_input to have the same dtype, got float32 and float64""",
+        cpu="""Found dtype Float but expected Double""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.glu_backward.grad_input(
+          grad_output=float32_tensor,
+          self=float32_tensor,
+          dim=1,
+          grad_input=float64_tensor,
+      )
+
+  def test_glu_backward_zero_rank(self):
+    grad_output = torch.tensor(0.0, device=et.device(), dtype=torch.float32)
+    self_tensor = torch.tensor(0.0, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""glu_backward(): expected self to have at least 1 dimension, got 0""",
+        cpu="""glu does not support 0-dimensional tensors""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.glu_backward(grad_output, self_tensor, dim=0)
+
+  def test_glu_backward_invalid_dim_size(self):
+    grad_output = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    self_tensor = torch.ones(2, 5, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""glu_backward(): expected the size of dimension 1 of self to be even, got 5""",
+        cpu="""Halving dimension must be even, but dimension 1 is size 5""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.glu_backward(grad_output, self_tensor, dim=1)
+
+  def test_glu_backward_grad_output_shape_mismatch(self):
+    grad_output = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    self_tensor = torch.ones(2, 4, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""glu_backward(): expected grad_output shape to be [2, 2], got [2, 3]""",
+        cpu="""The size of tensor a (2) must match the size of tensor b (3) at non-singleton dimension 1""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.glu_backward(grad_output, self_tensor, dim=1)
+
   def test_group_norm_backward_grad_out_numel_mismatch(self):
     with et.assert_raises_message(
         RuntimeError,

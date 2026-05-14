@@ -470,6 +470,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kGeluOut, AtenGeluOut);
   Impl(m, OpName::kGeqrf, AtenGeqrf);
   Impl(m, OpName::kGeqrfA, AtenGeqrfA);
+  Impl(m, OpName::kGluBackward, AtenGluBackward);
+  Impl(m, OpName::kGluBackwardGradInput, AtenGluBackwardGradInput);
   Impl(m, OpName::kGluOut, AtenGluOut);
   Impl(m, OpName::kGridSampler2d, AtenGridSampler2d);
   Impl(m, OpName::kGridSampler2dBackward, AtenGridSampler2dBackward);

@@ -681,6 +681,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "geqrf.a";
     case OpName::kGetDimensionSize:
       return "get_dimension_size";
+    case OpName::kGluBackward:
+      return "glu_backward";
+    case OpName::kGluBackwardGradInput:
+      return "glu_backward.grad_input";
     case OpName::kGluOut:
       return "glu.out";
     case OpName::kGridSampler2d:

@@ -352,6 +352,8 @@ enum class OpName {
   kGeqrf,
   kGeqrfA,
   kGetDimensionSize,
+  kGluBackward,
+  kGluBackwardGradInput,
   kGluOut,
   kGridSampler2d,
   kGridSampler2dBackward,
