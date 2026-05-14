@@ -115,7 +115,8 @@ class ExecutionTask {
   // kernel and any dynamic adapters.
   CompiledKernel compiled_kernel_;
   // The reason that this task is being executed. Used for TORCH_TRACE logging.
-  MaterializationReason reason_;
+  // TODO(tcombes): Make use of this field or remove it.
+  [[maybe_unused]] MaterializationReason reason_;
 };
 
 }  // namespace torch_tpu
