@@ -77,9 +77,9 @@ const at::Tensor& AtenResize_(
           ABSL_VLOG(1)
               << "[C++ KERNEL AtenResize_] Resize is growing. Swapping "
                  "tensor storage with a new empty storage.";
-          // Create a new empty tensor with the new size.
-          at::Tensor larger_empty =
-              MakeEmptyTensor(size, self.scalar_type(), self.device());
+          TT_ASSIGN_OR_THROW(
+              at::Tensor larger_empty,
+              MakeEmptyTensor(size, self.scalar_type(), self.device()));
 
           // Take a view on the new tensor corresponding to the existing data.
           Strides base_strides =

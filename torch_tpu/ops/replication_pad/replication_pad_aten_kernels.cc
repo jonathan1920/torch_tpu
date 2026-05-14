@@ -412,8 +412,9 @@ at::Tensor AtenReplicationPad2dBackward(const at::Tensor& grad_output,
                      "got "
                   << ToString(self.sizes());
 
-              at::Tensor grad_input =
-                  MakeEmptyTensor(gidims, self.scalar_type(), self.device());
+              TT_ASSIGN_OR_THROW(
+                  at::Tensor grad_input,
+                  MakeEmptyTensor(gidims, self.scalar_type(), self.device()));
               AtenReplicationPad2dBackwardGradInput(grad_output, self, padding,
                                                     grad_input);
               return grad_input;
@@ -449,8 +450,9 @@ at::Tensor AtenReplicationPad3dBackward(const at::Tensor& grad_output,
             << " computed by removing the padding from the grad_output, "
                "got "
             << ToString(self.sizes());
-        at::Tensor grad_input =
-            MakeEmptyTensor(gidims, self.scalar_type(), self.device());
+        TT_ASSIGN_OR_THROW(
+            at::Tensor grad_input,
+            MakeEmptyTensor(gidims, self.scalar_type(), self.device()));
         AtenReplicationPad3dBackwardGradInput(grad_output, self, padding,
                                               grad_input);
         return grad_input;

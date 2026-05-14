@@ -150,7 +150,8 @@ at::Tensor AtenMmDtype(const at::Tensor& lhs, const at::Tensor& rhs,
                        at::ScalarType out_dtype) {
   TT_KERNEL(OpName::kMmDtype, param_keys, (lhs, rhs, out_dtype), {
     int64_t output_dims[2] = {lhs.size(0), rhs.size(1)};
-    at::Tensor out = MakeEmptyTensor(output_dims, out_dtype, lhs.device());
+    TT_ASSIGN_OR_THROW(at::Tensor out,
+                       MakeEmptyTensor(output_dims, out_dtype, lhs.device()));
 
     TT_ASSIGN_OR_THROW(auto result_buf,
                        Mm(lhs, rhs, out, std::move(param_keys), out_dtype));

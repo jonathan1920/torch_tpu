@@ -335,8 +335,9 @@ at::Tensor AtenReflectionPad2d(const at::Tensor& self,
         out_dimensions[out_dimensions.size() - 2] += padding[2] + padding[3];
         out_dimensions[out_dimensions.size() - 1] += padding[0] + padding[1];
 
-        at::Tensor out =
-            MakeEmptyTensor(out_dimensions, self.scalar_type(), self.device());
+        TT_ASSIGN_OR_THROW(
+            at::Tensor out,
+            MakeEmptyTensor(out_dimensions, self.scalar_type(), self.device()));
         return AtenReflectionPad2dOut(self, padding, out);
       });
 }
@@ -440,8 +441,9 @@ at::Tensor AtenReflectionPad2dBackward(const at::Tensor& grad_output,
                   << " computed by removing the padding from the grad_output, "
                      "got "
                   << ToString(self.sizes());
-              at::Tensor grad_input =
-                  MakeEmptyTensor(gidims, self.scalar_type(), self.device());
+              TT_ASSIGN_OR_THROW(
+                  at::Tensor grad_input,
+                  MakeEmptyTensor(gidims, self.scalar_type(), self.device()));
               AtenReflectionPad2dBackwardGradInput(grad_output, self, padding,
                                                    grad_input);
               return grad_input;

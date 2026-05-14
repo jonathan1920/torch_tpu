@@ -1175,8 +1175,10 @@ at::Tensor AtenCtcLossBackwardTensor(
                  target_lengths, neg_log_likelihood, log_alpha},
                 std::move(options))));
 
-        at::Tensor grad_in = MakeEmptyTensor(
-            grad_in_dims, log_probs.scalar_type(), log_probs.device());
+        TT_ASSIGN_OR_THROW(
+            at::Tensor grad_in,
+            MakeEmptyTensor(grad_in_dims, log_probs.scalar_type(),
+                            log_probs.device()));
         TT_THROW_IF_ERROR(
             AssignBufferToAtTensor(std::move(output_bufs), grad_in));
 

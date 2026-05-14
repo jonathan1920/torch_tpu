@@ -2496,8 +2496,9 @@ void AtenForeachSub_ScalarList(at::TensorList self,
 
 absl::StatusOr<at::Tensor> AtenClampMax(const at::Tensor& self,
                                         const at::Scalar& alpha) {
-  at::Tensor out =
-      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device());
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor out,
+      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device()));
   AtenClampMaxOut(self, alpha, out);
   return out;
 }
@@ -2528,8 +2529,9 @@ void AtenForeachClampMax_Scalar(at::TensorList self, const at::Scalar& scalar) {
 
 absl::StatusOr<at::Tensor> AtenClampMax(const at::Tensor& self,
                                         const at::Tensor& other) {
-  at::Tensor out =
-      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device());
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor out,
+      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device()));
   AtenClampMaxTensorOut(self, other, out);
   return out;
 }
@@ -2583,16 +2585,18 @@ void AtenForeachClampMax_ScalarList(at::TensorList self,
 
 absl::StatusOr<at::Tensor> AtenClampMin(const at::Tensor& self,
                                         const at::Scalar& alpha) {
-  at::Tensor out =
-      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device());
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor out,
+      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device()));
   AtenClampMinOut(self, alpha, out);
   return out;
 }
 
 absl::StatusOr<at::Tensor> AtenClampMin(const at::Tensor& self,
                                         const at::Tensor& other) {
-  at::Tensor out =
-      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device());
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor out,
+      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device()));
   AtenClampMinTensorOut(self, other, out);
   return out;
 }
@@ -2692,7 +2696,8 @@ std::vector<at::Tensor> AtenForeachNormScalar(
               for (const auto& tensor : self) {
                 auto out_dtype =
                     at::toRealValueType(dtype.value_or(tensor.scalar_type()));
-                auto out = MakeEmptyTensor({}, out_dtype, tensor.device());
+                TT_ASSIGN_OR_THROW(
+                    auto out, MakeEmptyTensor({}, out_dtype, tensor.device()));
                 // If the tensor is empty, return zero scalar.
                 // If ord < 0, to avoid inf caused by pow(0, ord), check for 0s
                 // in the tensor and return zero directly, which is the correct
@@ -2725,8 +2730,9 @@ std::vector<at::Tensor> AtenForeachMax(at::TensorList self) {
 
 absl::StatusOr<at::Tensor> AtenMaximum(const at::Tensor& self,
                                        const at::Tensor& other) {
-  at::Tensor out =
-      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device());
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor out,
+      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device()));
   AtenMaximumOut(self, other, out);
   return out;
 }
@@ -2805,8 +2811,9 @@ void AtenForeachMaximum_ScalarList(at::TensorList self,
 
 absl::StatusOr<at::Tensor> AtenMinimum(const at::Tensor& self,
                                        const at::Tensor& other) {
-  at::Tensor out =
-      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device());
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor out,
+      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device()));
   AtenMinimumOut(self, other, out);
   return out;
 }
@@ -2885,24 +2892,27 @@ void AtenForeachMinimum_ScalarList(at::TensorList self,
 
 absl::StatusOr<at::Tensor> AtenPow(const at::Tensor& self,
                                    const at::Tensor& exponent) {
-  at::Tensor out =
-      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device());
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor out,
+      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device()));
   AtenPowTensorTensorOut(self, exponent, out);
   return out;
 }
 
 absl::StatusOr<at::Tensor> AtenPow(const at::Tensor& self,
                                    const at::Scalar& exponent) {
-  at::Tensor out =
-      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device());
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor out,
+      MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device()));
   AtenPowTensorScalarOut(self, exponent, out);
   return out;
 }
 
 absl::StatusOr<at::Tensor> AtenPow(const at::Scalar& self,
                                    const at::Tensor& exponent) {
-  at::Tensor out = MakeEmptyTensor(exponent.sizes(), exponent.scalar_type(),
-                                   exponent.device());
+  TT_ASSIGN_OR_RETURN(at::Tensor out,
+                      MakeEmptyTensor(exponent.sizes(), exponent.scalar_type(),
+                                      exponent.device()));
   AtenPowScalarOut(self, exponent, out);
   return out;
 }

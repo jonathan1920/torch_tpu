@@ -65,10 +65,13 @@ absl::StatusOr<at::Tensor> MaskedScatterImpl(const at::Tensor& self,
   // For example:
   // Mask: [0, 1, 0, 1] -> Sort Desc -> [1, 1, 0, 0]
   // Indices: [1, 3, 0, 2] -> Slice(2) -> [1, 3]
-  at::Tensor mask_flat_values = MakeEmptyTensor(
-      mask_flat.sizes(), mask_flat.scalar_type(), mask_flat.device());
-  at::Tensor mask_flat_indices =
-      MakeEmptyTensor(mask_flat.sizes(), at::kLong, mask_flat.device());
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor mask_flat_values,
+      MakeEmptyTensor(mask_flat.sizes(), mask_flat.scalar_type(),
+                      mask_flat.device()));
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor mask_flat_indices,
+      MakeEmptyTensor(mask_flat.sizes(), at::kLong, mask_flat.device()));
   AtenSortValuesStable(mask_flat, /*stable_opt=*/true, /*dim=*/0,
                        /*descending=*/true, mask_flat_values,
                        mask_flat_indices);

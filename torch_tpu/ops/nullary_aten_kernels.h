@@ -63,9 +63,9 @@ at::Tensor AtenEmptyMemoryFormat(
 
 // Creates an empty tensor with the given size, dtype, and device. This tensor
 // is strided and contiguous.
-[[nodiscard]] at::Tensor MakeEmptyTensor(at::IntArrayRef size,
-                                         c10::ScalarType dtype,
-                                         c10::optional<at::Device> device_opt);
+absl::StatusOr<at::Tensor> MakeEmptyTensor(
+    at::IntArrayRef size, c10::ScalarType dtype,
+    c10::optional<at::Device> device_opt);
 
 at::Tensor AtenEmptyStrided(c10::SymIntArrayRef size_sym,
                             c10::SymIntArrayRef stride_sym,

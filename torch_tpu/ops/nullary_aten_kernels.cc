@@ -179,15 +179,12 @@ absl::StatusOr<at::Tensor> MakeEmptyMemoryFormat(
   return result;
 }
 
-at::Tensor MakeEmptyTensor(at::IntArrayRef size, c10::ScalarType dtype,
-                           c10::optional<at::Device> device_opt) {
-  // TODO(wan): change this function to return StatusOr<> instead of throwing.
-  TT_ASSIGN_OR_THROW(auto result,
-                     MakeEmptyMemoryFormat(
-                         size, dtype, /*layout_opt=*/c10::nullopt, device_opt,
-                         /*pin_memory_opt=*/c10::nullopt,
-                         /*memory_format_opt=*/c10::nullopt));
-  return result;
+absl::StatusOr<at::Tensor> MakeEmptyTensor(
+    at::IntArrayRef size, c10::ScalarType dtype,
+    c10::optional<at::Device> device_opt) {
+  return MakeEmptyMemoryFormat(size, dtype, /*layout_opt=*/c10::nullopt,
+                               device_opt, /*pin_memory_opt=*/c10::nullopt,
+                               /*memory_format_opt=*/c10::nullopt);
 }
 
 at::Tensor AtenEmptyMemoryFormat(
