@@ -45,6 +45,7 @@
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/context_manager.h"
 #include "torch_tpu/common/context_states.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
@@ -349,6 +350,100 @@ std::shared_ptr<ContextedModule> PyGetPadModuleMlir(
                                                       std::move(module));
 }
 
+// Returns the MLIR module for a slice subgraph.
+// Args:
+//   target_shapes: A list of target shapes.
+//   padded_shapes: A list of padded shapes.
+//   input_scalar_types: A list of scalar types for each tensor.
+// Returns:
+//   The MLIR module for the slice subgraph as bytes.
+// Example:
+//   target_shapes = [[1, 4]]
+//   padded_shapes = [[1, 8]]
+//   input_scalar_types = [torch.float32]
+// Example MLIR module:
+// module @slice_module {
+//   func.func @main(%arg0: tensor<1x?xf32, #stablehlo.bounds<?, 8>>) ->
+//   tensor<1x4xf32> {
+//     %c = stablehlo.constant dense<8> : tensor<i32>
+//     %0 = stablehlo.set_dimension_size %arg0, %c, dim = 1 :
+//       (tensor<1x?xf32, #stablehlo.bounds<?, 8>>, tensor<i32>) ->
+//        tensor<1x8xf32>
+//     %1 = stablehlo.slice %0 [0:1, 0:4] : (tensor<1x8xf32>) -> tensor<1x4xf32>
+//     return %1 : tensor<1x4xf32>
+//   }
+// }
+
+std::shared_ptr<ContextedModule> PyGetSliceModuleMlir(
+    const std::vector<std::vector<int64_t>>& target_shapes,  // INT_VEC_OK
+    const std::vector<std::vector<int64_t>>& padded_shapes,  // INT_VEC_OK
+    const std::vector<at::ScalarType>& input_scalar_types) {
+  auto context = std::make_unique<mlir::MLIRContext>();
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  context->appendDialectRegistry(registry);
+  context->loadAllAvailableDialects();
+
+  TT_CHECK_THROW(!target_shapes.empty(), error::kInvalidArgument)
+      << "expected at least one target shape, got none";
+  TT_CHECK_THROW(target_shapes.size() == padded_shapes.size(),
+                 error::kInvalidArgument)
+      << "target shapes and padded shapes must have the same size, "
+      << "got " << target_shapes.size() << " and " << padded_shapes.size();
+  TT_CHECK_THROW(target_shapes.size() == input_scalar_types.size(),
+                 error::kInvalidArgument)
+      << "target shapes and input scalar types must have the same size, "
+      << "got " << target_shapes.size() << " and " << input_scalar_types.size();
+
+  for (size_t i = 0; i < target_shapes.size(); ++i) {
+    TT_CHECK_THROW(target_shapes[i].size() == padded_shapes[i].size(),
+                   error::kInvalidArgument)
+        << "target shape and padded shape must have the same number of "
+           "dimensions, got "
+        << target_shapes[i].size() << " and " << padded_shapes[i].size()
+        << " for tensor index " << i;
+    for (size_t j = 0; j < target_shapes[i].size(); ++j) {
+      TT_CHECK_THROW(padded_shapes[i][j] >= target_shapes[i][j],
+                     error::kInvalidArgument)
+          << "padded shape dimension size must be greater than or equal to "
+             "target shape dimension size, got padded shape "
+          << ToString(padded_shapes[i]) << " and target shape "
+          << ToString(target_shapes[i]) << " for tensor index " << i;
+    }
+  }
+
+  std::vector<Dimensions> inlined_target_shapes;
+  inlined_target_shapes.reserve(target_shapes.size());
+  for (const auto& target_shape : target_shapes) {
+    Dimensions dims;
+    dims.assign(target_shape.begin(), target_shape.end());
+    inlined_target_shapes.push_back(std::move(dims));
+  }
+
+  std::vector<Dimensions> inlined_padded_shapes;
+  inlined_padded_shapes.reserve(padded_shapes.size());
+  for (const auto& padded_shape : padded_shapes) {
+    Dimensions dims;
+    dims.assign(padded_shape.begin(), padded_shape.end());
+    inlined_padded_shapes.push_back(std::move(dims));
+  }
+
+  std::vector<mlir::ElementType> input_dtypes;
+  input_dtypes.reserve(input_scalar_types.size());
+  for (at::ScalarType scalar_type : input_scalar_types) {
+    TT_ASSIGN_OR_THROW(mlir::ElementType element_type,
+                       internal::ToElementType(scalar_type));
+    input_dtypes.push_back(element_type);
+  }
+
+  TT_ASSIGN_OR_THROW(mlir::OwningOpRef<mlir::ModuleOp> module,
+                     GetSliceModule(*context, inlined_target_shapes,
+                                    inlined_padded_shapes, input_dtypes));
+
+  return std::make_shared<torch_tpu::ContextedModule>(std::move(context),
+                                                      std::move(module));
+}
+
 py::bytes PySerializeExecutable(
     const SharedLoadedExecutableWithMetadata& executable) {
   TT_ASSIGN_OR_THROW(const std::string serialized,
@@ -449,6 +544,13 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         "Args:\n"
         "  tensor_info: A list of (shape, dtype) pairs for each tensor.\n"
         "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.");
+  m.def("get_slice_module_mlir", PyGetSliceModuleMlir, py::arg("target_shapes"),
+        py::arg("padded_shapes"), py::arg("input_scalar_types"),
+        "Returns the MLIR module for a slice subgraph as bytecode.\n\n"
+        "Args:\n"
+        "  target_shapes: A list of target shapes.\n"
+        "  padded_shapes: A list of padded shapes.\n"
+        "  input_scalar_types: A list of scalar types for each tensor.");
   m.def("pop_enable_tracebacks", &PopContextState<EnableTracebacksContextState>,
         "Pops the current state of the enable_tracebacks context manager.");
   m.def("push_enable_tracebacks", &PyPushEnableTracebacks, py::arg("enabled"),

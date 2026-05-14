@@ -14,6 +14,7 @@
 
 """Directly test the PyBind11 API for compiled mode, without using Dynamo."""
 
+import textwrap
 from typing import TypeAlias
 from absl.testing import absltest
 import torch
@@ -165,14 +166,36 @@ class CompileApiTest(absltest.TestCase):
     mlir = tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
     mlir_text = tpu_torch_compile.serialize_mlir_text(mlir)
 
-    expected_mlir = """module @pad_module {
-  func.func @main(%arg0: tensor<1x4xi64>) -> (tensor<1x8xi64>, tensor<i32>) {
-    %c = stablehlo.constant dense<0> : tensor<i64>
-    %0 = stablehlo.pad %arg0, %c, low = [0, 0], high = [0, 4], interior = [0, 0] : (tensor<1x4xi64>, tensor<i64>) -> tensor<1x8xi64>
-    %1 = stablehlo.get_dimension_size %arg0, dim = 1 : (tensor<1x4xi64>) -> tensor<i32>
-    return %0, %1 : tensor<1x8xi64>, tensor<i32>
-  }
-}"""
+    expected_mlir = textwrap.dedent("""\
+        module @pad_module {
+          func.func @main(%arg0: tensor<1x4xi64>) -> (tensor<1x8xi64>, tensor<i32>) {
+            %c = stablehlo.constant dense<0> : tensor<i64>
+            %0 = stablehlo.pad %arg0, %c, low = [0, 0], high = [0, 4], interior = [0, 0] : (tensor<1x4xi64>, tensor<i64>) -> tensor<1x8xi64>
+            %1 = stablehlo.get_dimension_size %arg0, dim = 1 : (tensor<1x4xi64>) -> tensor<i32>
+            return %0, %1 : tensor<1x8xi64>, tensor<i32>
+          }
+        }""")
+    self.assertEqual(mlir_text.strip(), expected_mlir.strip())
+
+  def test_get_slice_module_mlir(self):
+    target_shapes = [[1, 4]]
+    padded_shapes = [[1, 8]]
+    input_scalar_types = [torch.float32]
+
+    mlir = tpu_torch_compile.get_slice_module_mlir(
+        target_shapes, padded_shapes, input_scalar_types
+    )
+    mlir_text = tpu_torch_compile.serialize_mlir_text(mlir)
+
+    expected_mlir = textwrap.dedent("""\
+        module @slice_module {
+          func.func @main(%arg0: tensor<1x?xf32, #stablehlo.bounds<?, 8>>) -> tensor<1x4xf32> {
+            %c = stablehlo.constant dense<8> : tensor<i32>
+            %0 = stablehlo.set_dimension_size %arg0, %c, dim = 1 : (tensor<1x?xf32, #stablehlo.bounds<?, 8>>, tensor<i32>) -> tensor<1x8xf32>
+            %1 = stablehlo.slice %0 [0:1, 0:4] : (tensor<1x8xf32>) -> tensor<1x4xf32>
+            return %1 : tensor<1x4xf32>
+          }
+        }""")
     self.assertEqual(mlir_text.strip(), expected_mlir.strip())
 
   def test_make_constant_tensor(self):

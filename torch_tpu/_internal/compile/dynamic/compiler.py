@@ -22,6 +22,7 @@ from absl import logging
 import torch
 from torch._inductor.utils import InputType
 from torch._logging import LazyString
+from torch.utils import _pytree
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile.dynamic.graph_transformations import apply_dynamism_transformations
@@ -204,6 +205,39 @@ def _compile_and_execute_pad_subgraph(
   return tpu_torch_compile.execute(executable, tensor_args)
 
 
+def _compile_and_execute_slice_subgraph(
+    tensor_outputs: Sequence[torch.Tensor],
+    output_shapes: Sequence[list[int]],
+) -> list[torch.Tensor]:
+  """Compiles and executes the slice subgraph."""
+  target_shapes = []
+  padded_shapes = []
+  input_scalar_types = []
+
+  for tensor, target_shape in zip(tensor_outputs, output_shapes):
+    target_shapes.append(target_shape)
+    padded_shapes.append(list(tensor.shape))
+    input_scalar_types.append(tensor.dtype)
+
+  logging.debug(
+      "[DynamicTpuBackend] Compile Slice Subgraph, target_shapes: %s,"
+      " padded_shapes: %s",
+      LazyString(lambda: str(target_shapes)),
+      LazyString(lambda: str(padded_shapes)),
+  )
+
+  mlir_module = tpu_torch_compile.get_slice_module_mlir(
+      target_shapes, padded_shapes, input_scalar_types
+  )
+  logging.debug(
+      "[DynamicTpuBackend] MLIR slice module: %s",
+      LazyString(lambda: tpu_torch_compile.serialize_mlir_text(mlir_module)),
+  )
+  return tpu_torch_compile.execute(
+      tpu_torch_compile.compile_mlir(mlir_module), tensor_outputs
+  )
+
+
 class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
   """A callable wrapper for dynamic MLIR programs with TPU executable."""
 
@@ -242,7 +276,32 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
     )
 
     # Run model executable with pads, sizes, and explicit output shapes
-    return self.model_executable(list(pad_outputs), output_shapes=output_shapes)
+    outputs = self.model_executable(list(pad_outputs))
+
+    # If the output has dynamic shape, we need to slice it back
+    if output_shapes is not None:
+      flat_outputs, spec = _pytree.tree_flatten(outputs)
+      tensor_outputs = []
+      tensor_indices = []
+      target_shapes = []
+
+      for idx, (output_tensor, target_shape) in enumerate(
+          zip(flat_outputs, output_shapes)
+      ):
+        if isinstance(output_tensor, torch.Tensor):
+          tensor_outputs.append(output_tensor)
+          tensor_indices.append(idx)
+          target_shapes.append(target_shape)
+
+      if tensor_outputs:
+        sliced_tensors = _compile_and_execute_slice_subgraph(
+            tensor_outputs, target_shapes
+        )
+        for idx, sliced_tensor in zip(tensor_indices, sliced_tensors):
+          flat_outputs[idx] = sliced_tensor
+
+      return _pytree.tree_unflatten(flat_outputs, spec)
+    return outputs
 
   def __reduce__(self) -> tuple[Callable[..., Any], tuple[Any, ...]]:
     # TODO(b/903508278): Add support for pickling to DynamicCompiler.

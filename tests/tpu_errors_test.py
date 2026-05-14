@@ -1287,6 +1287,71 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="mismatched_padded_shapes_size",
+          target_shapes=[[1, 4]],
+          padded_shapes=[[1, 8], [1, 16]],
+          input_scalar_types=[torch.float32],
+          expected_error_message=(
+              "target shapes and padded shapes must have the same size, got 1"
+              " and 2"
+          ),
+      ),
+      dict(
+          testcase_name="mismatched_input_scalar_types_size",
+          target_shapes=[[1, 4]],
+          padded_shapes=[[1, 8]],
+          input_scalar_types=[torch.float32, torch.float32],
+          expected_error_message=(
+              "target shapes and input scalar types must have the same size,"
+              " got 1 and 2"
+          ),
+      ),
+      dict(
+          testcase_name="empty_target_shapes",
+          target_shapes=[],
+          padded_shapes=[],
+          input_scalar_types=[],
+          expected_error_message="expected at least one target shape, got none",
+      ),
+      dict(
+          testcase_name="mismatched_dimensions_size",
+          target_shapes=[[1, 4]],
+          padded_shapes=[[1, 8, 16]],
+          input_scalar_types=[torch.float32],
+          expected_error_message=(
+              "target shape and padded shape must have the same number of"
+              " dimensions, got 2 and 3 for tensor index 0"
+          ),
+      ),
+      dict(
+          testcase_name="invalid_padded_shape_bound",
+          target_shapes=[[1, 4]],
+          padded_shapes=[[1, 2]],
+          input_scalar_types=[torch.float32],
+          expected_error_message=(
+              "padded shape dimension size must be greater than or equal to"
+              " target shape dimension size, got padded shape [1, 2] and target"
+              " shape [1, 4] for tensor index 0"
+          ),
+      ),
+  )
+  def test_get_slice_module_mlir_error_conditions(
+      self,
+      target_shapes,
+      padded_shapes,
+      input_scalar_types,
+      expected_error_message,
+  ):
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=expected_error_message,
+    ):
+      tpu_torch_compile.get_slice_module_mlir(
+          target_shapes, padded_shapes, input_scalar_types
+      )
+
   def test_execute_output_shapes_too_many(self):
     with execution_mode.set_eager_mode(EagerMode.INTERNAL_DEFER_ALL):
       x = torch.ones(10, device="cpu").to(device=et.device())
