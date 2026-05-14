@@ -117,7 +117,10 @@ torch_tpu_py_test(
     exec_properties = {
         "cpp_link.mem": "20g",  # Needed for asan.
     },
-    linking_mode = "static",
+    # Per go/linkularity, `sharded_dynamic` is an effective strategy to break up monolithic
+    # `py_binrary` into multiple artifacts, and reliably mitigate relocation overflow errors.
+    # See also go/be#py_binary.linking_mode.
+    linking_mode = "sharded_dynamic",
     main = "llama3_2_1b_random_data_training_test.py",
     nopresubmit = "slow example",
     notest_oss = "Disabled during switch from opt-in to opt-out",
