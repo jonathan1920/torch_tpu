@@ -75,15 +75,10 @@ class DeviceGeneratorImpl : public c10::GeneratorImpl {
 
   ~DeviceGeneratorImpl() override = default;
 
-  void set_current_seed(uint64_t seed) override;
-  void set_offset(uint64_t offset) override;
   uint64_t get_offset() const override;
   uint64_t current_seed() const override;
   uint64_t seed() override;
-  void set_state(const c10::TensorImpl& new_state) override;
   c10::intrusive_ptr<c10::TensorImpl> get_state() const override;
-  void graphsafe_set_state(
-      const c10::intrusive_ptr<c10::GeneratorImpl>& new_state) override;
   c10::intrusive_ptr<c10::GeneratorImpl> graphsafe_get_state() const override;
 
   static c10::DeviceType device_type();
@@ -109,6 +104,12 @@ class DeviceGeneratorImpl : public c10::GeneratorImpl {
 
   // The following RNG state accessors are private as it's dangerous to modify
   // the state. Only approved friends are allowed to call them.
+
+  void set_current_seed(uint64_t seed) override;
+  void set_offset(uint64_t offset) override;
+  void set_state(const c10::TensorImpl& new_state) override;
+  void graphsafe_set_state(
+      const c10::intrusive_ptr<c10::GeneratorImpl>& new_state) override;
 
   // Returns the internal TPU RNG state tensor.
   // This is a 1D uint64 tensor of 2 elements: {seed, offset}.
