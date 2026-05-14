@@ -23,6 +23,7 @@
 #include <utility>
 
 #include "absl/log/absl_log.h"
+#include "absl/log/absl_vlog_is_on.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
@@ -38,11 +39,11 @@
 #include "torch/headeronly/core/Layout.h"
 #include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -132,62 +133,82 @@ absl::Status ApplyNullaryOpOut(at::Tensor& out, MlirNullaryOpBuilder op_builder,
   return AssignBufferToAtTensor(std::move(result_buf), out);
 }
 
+absl::StatusOr<at::Tensor> MakeEmptyMemoryFormat(
+    at::IntArrayRef size, c10::optional<at::ScalarType> dtype_opt,
+    c10::optional<at::Layout> layout_opt, c10::optional<at::Device> device_opt,
+    c10::optional<bool> pin_memory_opt,
+    c10::optional<at::MemoryFormat> memory_format_opt) {
+  TT_RET_CHECK(!dtype_opt.has_value() ||
+                   dtype_opt.value() != at::ScalarType::ComplexHalf,
+               error::kUnimplemented)
+      << "TorchTPU does not yet support dtype complex32";
+  // Check that we support all the provided options.
+  CheckDeviceIsTpu(device_opt, ToString(OpName::kEmpty));
+  TT_RET_CHECK(layout_opt.value_or(at::Layout::Strided) == at::Layout::Strided,
+               error::kUnimplemented)
+      << "only layout=torch.strided is supported by TorchTPU for now, "
+         "got "
+      << LayoutToString(layout_opt);
+
+  // If device_opt is unspecified, we use the global default dtype.
+  TT_ASSIGN_OR_RETURN(const auto dtype,
+                      ConvertTo<mlir::ElementType>(dtype_opt.value_or(
+                          c10::get_default_dtype_as_scalartype())));
+
+  // Create an empty DeviceBufferRef.
+  // Note: because XLA doesn't allow for easy construction of
+  // uninitialized memory, we follow the behavior of
+  // torch.utils.deterministic.fill_uninitialized_memory (even if this
+  // flag is False), which is to fill with NaNs or max-value integers. If
+  // the empty buffer is overwritten (such as by out=torch.empty(...) or
+  // torch.empty(...).fill_(...)), then this DeferredOp node will be
+  // dropped and not used.
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer, DeviceBufferList::CreateEmpty(
+                                                  CopyIntVector(size), dtype));
+  at::Tensor result = MakeTensor(std::move(buffer));
+
+  // MakeTensor defaults to a contiguous tensor, and so
+  // does aten::empty().
+  if (memory_format_opt.value_or(at::MemoryFormat::Contiguous) !=
+      at::MemoryFormat::Contiguous) {
+    // This may throw an error if the memory format is not supported for
+    // the given tensor shape.
+    result.unsafeGetTensorImpl()->empty_tensor_restride(
+        memory_format_opt.value());
+  }
+  return result;
+}
+
+at::Tensor MakeEmptyTensor(at::IntArrayRef size, c10::ScalarType dtype,
+                           c10::optional<at::Device> device_opt) {
+  // TODO(wan): change this function to return StatusOr<> instead of throwing.
+  TT_ASSIGN_OR_THROW(auto result,
+                     MakeEmptyMemoryFormat(
+                         size, dtype, /*layout_opt=*/c10::nullopt, device_opt,
+                         /*pin_memory_opt=*/c10::nullopt,
+                         /*memory_format_opt=*/c10::nullopt));
+  return result;
+}
+
 at::Tensor AtenEmptyMemoryFormat(
     at::IntArrayRef size, c10::optional<at::ScalarType> dtype_opt,
     c10::optional<at::Layout> layout_opt, c10::optional<at::Device> device_opt,
     c10::optional<bool> pin_memory_opt,
     c10::optional<at::MemoryFormat> memory_format_opt) {
-  TT_KERNEL(
-      OpName::kEmpty, _,
-      (IgnoreInCacheKey(size, "Legacy usage"),
-       IgnoreInCacheKey(dtype_opt, "Legacy usage"),
-       IgnoreInCacheKey(layout_opt, "Legacy usage"),
-       IgnoreInCacheKey(device_opt, "Legacy usage"),
-       IgnoreInCacheKey(pin_memory_opt, "Legacy usage"),
-       IgnoreInCacheKey(memory_format_opt, "Legacy usage")),
-      {
-        TT_CHECK_THROW(!dtype_opt.has_value() ||
-                           dtype_opt.value() != at::ScalarType::ComplexHalf,
-                       error::kUnimplemented)
-            << "TorchTPU does not yet support dtype complex32";
-        // Check that we support all the provided options.
-        CheckDeviceIsTpu(device_opt, ToString(OpName::kEmpty));
-        TT_CHECK_THROW(
-            layout_opt.value_or(at::Layout::Strided) == at::Layout::Strided,
-            error::kUnimplemented)
-            << "only layout=torch.strided is supported by TorchTPU for now, "
-               "got "
-            << LayoutToString(layout_opt);
-
-        // If device_opt is unspecified, we use the global default dtype.
-        TT_ASSIGN_OR_THROW(const auto dtype,
-                           ConvertTo<mlir::ElementType>(dtype_opt.value_or(
-                               c10::get_default_dtype_as_scalartype())));
-
-        // Create an empty DeviceBufferRef.
-        // Note: because XLA doesn't allow for easy construction of
-        // uninitialized memory, we follow the behavior of
-        // torch.utils.deterministic.fill_uninitialized_memory (even if this
-        // flag is False), which is to fill with NaNs or max-value integers. If
-        // the empty buffer is overwritten (such as by out=torch.empty(...) or
-        // torch.empty(...).fill_(...)), then this DeferredOp node will be
-        // dropped and not used.
-        TT_ASSIGN_OR_THROW(
-            DeviceBufferRef buffer,
-            DeviceBufferList::CreateEmpty(CopyIntVector(size), dtype));
-        at::Tensor result = MakeTensor(std::move(buffer));
-
-        // MakeTensor defaults to a contiguous tensor, and so
-        // does aten::empty().
-        if (memory_format_opt.value_or(at::MemoryFormat::Contiguous) !=
-            at::MemoryFormat::Contiguous) {
-          // This may throw an error if the memory format is not supported for
-          // the given tensor shape.
-          result.unsafeGetTensorImpl()->empty_tensor_restride(
-              memory_format_opt.value());
-        }
-        return result;
-      });
+  TT_KERNEL(OpName::kEmpty, _,
+            (IgnoreInCacheKey(size, "doesn't generate SHLO"),
+             IgnoreInCacheKey(dtype_opt, "doesn't generate SHLO"),
+             IgnoreInCacheKey(layout_opt, "doesn't generate SHLO"),
+             IgnoreInCacheKey(device_opt, "doesn't generate SHLO"),
+             IgnoreInCacheKey(pin_memory_opt, "doesn't generate SHLO"),
+             IgnoreInCacheKey(memory_format_opt, "doesn't generate SHLO")),
+            {
+              TT_ASSIGN_OR_THROW(
+                  auto result,
+                  MakeEmptyMemoryFormat(size, dtype_opt, layout_opt, device_opt,
+                                        pin_memory_opt, memory_format_opt));
+              return result;
+            });
 }
 
 at::Tensor AtenEmptyStrided(c10::SymIntArrayRef size_sym,

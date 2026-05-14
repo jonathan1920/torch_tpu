@@ -18,6 +18,7 @@
 #define TORCH_TPU_OPS_NULLARY_ATEN_KERNELS_H_
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "c10/core/Device.h"
@@ -29,7 +30,6 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
-#include "torch_tpu/ops/op_names.h"
 
 namespace torch_tpu {
 
@@ -44,6 +44,14 @@ absl::Status ApplyNullaryOpOut(at::Tensor& out, MlirNullaryOpBuilder op_builder,
                                OpParamCacheKeys op_param_cache_keys,
                                OpSplitMode split_mode = OpSplitMode::kNone);
 
+// Implements AtenEmptyMemoryFormat() without going through TT_KERNEL
+// dispatching.
+absl::StatusOr<at::Tensor> MakeEmptyMemoryFormat(
+    at::IntArrayRef size, c10::optional<at::ScalarType> dtype_opt,
+    c10::optional<at::Layout> layout_opt, c10::optional<at::Device> device_opt,
+    c10::optional<bool> pin_memory_opt,
+    c10::optional<at::MemoryFormat> memory_format_opt);
+
 at::Tensor AtenEmptyMemoryFormat(
     at::IntArrayRef size,                     //
     c10::optional<at::ScalarType> dtype_opt,  // Defaults to the global default.
@@ -55,13 +63,9 @@ at::Tensor AtenEmptyMemoryFormat(
 
 // Creates an empty tensor with the given size, dtype, and device. This tensor
 // is strided and contiguous.
-[[nodiscard]] inline at::Tensor MakeEmptyTensor(
-    at::IntArrayRef size, c10::ScalarType dtype,
-    c10::optional<at::Device> device_opt) {
-  return AtenEmptyMemoryFormat(
-      size, dtype, /*layout_opt=*/c10::nullopt, device_opt,
-      /*pin_memory_opt=*/c10::nullopt, /*memory_format_opt=*/c10::nullopt);
-}
+[[nodiscard]] at::Tensor MakeEmptyTensor(at::IntArrayRef size,
+                                         c10::ScalarType dtype,
+                                         c10::optional<at::Device> device_opt);
 
 at::Tensor AtenEmptyStrided(c10::SymIntArrayRef size_sym,
                             c10::SymIntArrayRef stride_sym,
