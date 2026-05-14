@@ -3344,14 +3344,10 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   def test_tensor_to_tpu_with_default_device(self):
     """Tests that a tensor can be moved to TPU with a default device set."""
     device = torch.device("tpu")
-    prev_device = torch.get_default_device()
-    try:
-      torch.set_default_device(device)
+    with torch.device(device):
       a = torch.tensor(1)
       # This should not raise an error.
       a.to(device=device, dtype=torch.float)
-    finally:
-      torch.set_default_device(prev_device)
 
   def test_to_tpu_with_dtype(self):
     device = torch.device("tpu")
