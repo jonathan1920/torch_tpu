@@ -365,7 +365,6 @@ class _TorchTpuCompiledExecutable(CompiledArtifact):
       are made to match the expected output of the original FX graph,
       potentially after being processed by `reconstruct_fx_outputs_fn`.
     """
-    actual_output_shapes = output_shapes or []
     # aot_autograd with SerializableAOTDispatchCompiler passes args as a
     # single list: fn([t1, t2, ...]). Unwrap when we detect this pattern.
     if len(args) == 1 and isinstance(args[0], (list, tuple)):
@@ -388,36 +387,48 @@ class _TorchTpuCompiledExecutable(CompiledArtifact):
         device_module.default_generators[gen.device.index] for gen in generators
     ]
 
-    device_state_tensors = [
-        tpu_torch_compile.get_device_state_tensor(gen) for gen in generators
-    ]
-    executable_args = (
-        *self._take_tensor_args(args),
-        *device_state_tensors,
-    )
-
-    # When output_shapes for user-defined outputs are provided, we need to
-    # append the shapes of the device state tensors to match the number of
-    # outputs from the executable.
-    if actual_output_shapes:
-      actual_output_shapes = list(actual_output_shapes) + [
-          list(t.shape) for t in device_state_tensors
+    # Lock all generators to prevent race conditions when updating their states.
+    # TODO: b/501205098 - Generators are not locked during export.py. Address
+    # this in a follow-up.
+    with tpu_torch_compile.MultiGeneratorLocker(generators):
+      device_state_tensors = [
+          tpu_torch_compile.get_device_state_tensor(gen) for gen in generators
       ]
-    outputs_with_device_state_tensors = tpu_torch_compile.execute(
-        self._executable, executable_args, actual_output_shapes
-    )
-    if not device_state_tensors:
-      outputs = outputs_with_device_state_tensors
-    else:
-      outputs, device_state_tensors = (
-          outputs_with_device_state_tensors[: -len(device_state_tensors)],
-          outputs_with_device_state_tensors[-len(device_state_tensors) :],
+      executable_args = (
+          *self._take_tensor_args(args),
+          *device_state_tensors,
       )
 
-    # Once the executable has completed, restore the newly updated RNG state
-    # back to each generator.
-    for gen, device_state_tensor in zip(generators, device_state_tensors):
-      tpu_torch_compile.set_device_state_tensor(gen, device_state_tensor)
+      # When output_shapes for user-defined outputs are provided, we need to
+      # append the shapes of the device state tensors to match the number of
+      # outputs from the executable.
+      if output_shapes:
+        executable_output_shapes = list(output_shapes) + [
+            list(t.shape) for t in device_state_tensors
+        ]
+      else:
+        executable_output_shapes = []
+
+      outputs_with_device_state_tensors = tpu_torch_compile.execute(
+          self._executable, executable_args, executable_output_shapes
+      )
+
+      if not device_state_tensors:
+        outputs = outputs_with_device_state_tensors
+        updated_device_state_tensors = []
+      else:
+        outputs, updated_device_state_tensors = (
+            outputs_with_device_state_tensors[: -len(device_state_tensors)],
+            outputs_with_device_state_tensors[-len(device_state_tensors) :],
+        )
+
+      # Once the executable has completed, restore the newly updated RNG state
+      # back to each generator.
+      for gen, device_state_tensor in zip(
+          generators, updated_device_state_tensors
+      ):
+        tpu_torch_compile.set_device_state_tensor(gen, device_state_tensor)
+
     if self._reconstruct_fx_outputs_fn is not None:
       outputs = self._reconstruct_fx_outputs_fn(args, outputs)
 

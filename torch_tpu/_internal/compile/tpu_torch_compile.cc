@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -24,6 +26,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/log/absl_check.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
@@ -482,6 +486,74 @@ void PyAssignConstantTensor(const at::Tensor& cpu_src_tensor,
   TT_THROW_IF_ERROR(AssignConstantTensor(cpu_src_tensor, tpu_dst_tensor));
 }
 
+// A context manager for locking multiple generators' mutexes.
+//
+// This is necessary to prevent generator state conflicts in between getting the
+// device state tensor, executing compiled executable, and setting the updated
+// device state tensor.
+//
+// See Note [Acquire lock when using random generators].
+class MultiGeneratorLocker {
+ public:
+  // Constructs a MultiGeneratorLocker.
+  // Extracts mutexes from generators, sorts them by address to prevent
+  // deadlocks, and removes duplicates to prevent self-deadlocking.
+  explicit MultiGeneratorLocker(std::vector<at::Generator>& generators) {
+    // Extract the underlying std::mutex pointers
+    for (auto& gen : generators) {
+      sorted_unique_mutexes_.push_back(&gen.mutex());
+    }
+
+    // Sort by memory address to prevent AB-BA deadlocks across threads.
+    // If Thread 1 locks [A, B] and Thread 2 locks [B, A], sorting ensures
+    // they both lock A first, then B.
+    std::sort(sorted_unique_mutexes_.begin(), sorted_unique_mutexes_.end());
+
+    // Remove duplicates to prevent self-deadlocking.
+    // PyTorch uses std::mutex (which is non-recursive). Locking it twice
+    // on the same thread is Undefined Behavior and will freeze the process.
+    sorted_unique_mutexes_.erase(std::unique(sorted_unique_mutexes_.begin(),
+                                             sorted_unique_mutexes_.end()),
+                                 sorted_unique_mutexes_.end());
+  }
+
+  MultiGeneratorLocker(const MultiGeneratorLocker&) = delete;
+  MultiGeneratorLocker& operator=(const MultiGeneratorLocker&) = delete;
+  MultiGeneratorLocker(MultiGeneratorLocker&&) = delete;
+  MultiGeneratorLocker& operator=(MultiGeneratorLocker&&) = delete;
+
+  // Enters the context.
+  // Releases the GIL while waiting for the locks to avoid deadlocking
+  // the Python interpreter, then acquires locks for all mutexes. No double
+  // entering is allowed to prevent self-deadlocking.
+  void Enter() {
+    // Release the GIL while waiting for the locks to avoid deadlocking
+    // the Python interpreter.
+    pybind11::gil_scoped_release release;
+    ABSL_CHECK(  // CRASH_OK
+        locks_.empty())
+        << "double entering MultiGeneratorLocker is not allowed";
+    locks_.reserve(sorted_unique_mutexes_.size());
+    for (auto* m : sorted_unique_mutexes_) {
+      locks_.emplace_back(*m);
+    }
+  }
+
+  // Exits the context.
+  // Releases all locks by clearing the locks_ vector.
+  void Exit(pybind11::handle exc_type, pybind11::handle exc_val,
+            pybind11::handle exc_tb) {
+    locks_.clear();
+  }
+
+ private:
+  // The generators' sorted unique mutexes to lock in between Enter and Exit.
+  // - `sorted` to ensure consistent locking order and prevent deadlocks.
+  // - `unique` to deduplicate generators and prevent self-deadlocking.
+  std::vector<std::mutex* absl_nonnull> sorted_unique_mutexes_;  // NOLINT
+  std::vector<std::unique_lock<std::mutex>> locks_;              //  NOLINT
+};
+
 PYBIND11_MODULE(tpu_torch_compile, m) {
   py::class_<CompileResult>(m, "CompileResult")
       .def_readonly("module", &CompileResult::module)
@@ -498,6 +570,17 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   py::class_<xla::PjRtLoadedExecutable,  // NOLINT(bugprone-unused-raii)
              std::shared_ptr<xla::PjRtLoadedExecutable>>(
       m, "PjRtLoadedExecutable");
+
+  pybind11::class_<MultiGeneratorLocker>(
+      m, "MultiGeneratorLocker",
+      "A context manager for locking multiple generators' mutexes.\n\n"
+      "This is necessary to prevent generator state conflicts in between\n"
+      "getting the device state tensor, executing compiled executable, and\n"
+      "setting the updated device state tensor.")
+      .def(pybind11::init<std::vector<at::Generator>&>())
+      .def("__enter__", &MultiGeneratorLocker::Enter)
+      .def("__exit__", &MultiGeneratorLocker::Exit);
+
   m.def("execute", PyExecuteCompiledModel,
         // Type: PjRtLoadedExecutable
         py::arg("executable"), py::arg("argument_tensors"),

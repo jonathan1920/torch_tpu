@@ -891,6 +891,7 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "rng_stress_test",
     srcs = ["rng_stress_test.py"],
+    notest_oss = "timeout in oss",
     tags = [
         "requires-tpu-v5lite",
     ],
