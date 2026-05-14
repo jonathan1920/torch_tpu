@@ -47,6 +47,8 @@ _TORCH_TPU_COPTS = [
     "-fexceptions",
     # Make unused variable a build error.
     "-Werror=unused-variable",
+    # Enforce that member variables are initialized in the same order they are declared.
+    "-Werror=reorder-ctor",
     # Use kineto backend for profiler.
     "-DUSE_KINETO",
 ]
