@@ -472,7 +472,9 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kGeqrfA, AtenGeqrfA);
   Impl(m, OpName::kGluOut, AtenGluOut);
   Impl(m, OpName::kGridSampler2d, AtenGridSampler2d);
+  Impl(m, OpName::kGridSampler2dBackward, AtenGridSampler2dBackward);
   Impl(m, OpName::kGridSampler3d, AtenGridSampler3d);
+  Impl(m, OpName::kGridSampler3dBackward, AtenGridSampler3dBackward);
   Impl(m, OpName::kGtScalarOut, AtenGtScalarOut);
   Impl(m, OpName::kGtTensorOut, AtenGtTensorOut);
   Impl(m, OpName::kHardsigmoidBackwardGradInput,

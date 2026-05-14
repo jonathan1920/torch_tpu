@@ -16,14 +16,18 @@
 
 #include "torch_tpu/ops/grid_sampler/grid_sampler_aten_kernels.h"
 
+#include <array>
 #include <cstdint>
 #include <optional>
+#include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
@@ -36,6 +40,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -1058,6 +1063,202 @@ absl::Status Check3DInterpolationMode(
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::array<mlir::MlirOp, 2>> BuildGridSamplerNearestBackwardShlo(
+    mlir::MlirOp grad_output, mlir::MlirOp input, mlir::MlirOp grid,
+    bool align_corners, PaddingMode padding_mode, bool compute_grad_input) {
+  mlir::MlirBuilder& builder = input.getBuilder();
+  mlir::stablehlo::Dimensions input_shape = GetDimensions(input);
+  auto grid_ty = GetTensorTypeOrDie(grid);
+  Dimensions grid_shape = CopyIntVector(grid_ty.getShape());
+  const int64_t spatial_dim_size = grid_shape.back();
+  int64_t rank = input_shape.size();
+  int64_t offset_dim_size = rank - spatial_dim_size;
+
+  // Use f64 for intermediate calculation
+  mlir::Type calc_type = builder.getOpBuilder().getF64Type();
+  auto grid_calc = mlir::stablehlo::ConvertElementType(grid, calc_type);
+
+  std::vector<mlir::MlirOp> spatial_indices;
+  spatial_indices.reserve(spatial_dim_size);
+  std::vector<mlir::MlirOp> indices_ok;
+  indices_ok.reserve(spatial_dim_size);
+
+  for (int i = 0; i < spatial_dim_size; ++i) {
+    Dimensions offsets(grid_shape.size(), 0);
+    offsets.back() = i;
+    Dimensions limits = grid_shape;
+    limits.back() = i + 1;
+    Dimensions strides(grid_shape.size(), 1);
+    auto grid_coord_sliced =
+        mlir::stablehlo::Slice(grid_calc, offsets, limits, strides);
+    Dimensions coord_shape = grid_shape;
+    coord_shape.pop_back();
+    auto grid_coord_ty = mlir::RankedTensorType::get(coord_shape, calc_type);
+    auto grid_coord_raw =
+        mlir::stablehlo::Reshape(grid_coord_ty, grid_coord_sliced);
+
+    auto in_size = input_shape[offset_dim_size + spatial_dim_size - 1 - i];
+    TT_ASSIGN_OR_RETURN(auto in_size_op, DimensionInfoToOp(builder, in_size));
+    TT_ASSIGN_OR_RETURN(
+        auto src_coord,
+        ComputeSourceCoord(grid_coord_raw, in_size_op, align_corners,
+                           padding_mode, calc_type));
+
+    auto round = mlir::stablehlo::RoundNearestEven(src_coord);
+    auto indices_i32_unclamped = mlir::stablehlo::ConvertElementType(
+        round, builder.getOpBuilder().getI32Type());
+
+    auto zero_i32 = MakeConstantLike(grid_coord_raw, 0,
+                                     builder.getOpBuilder().getI32Type());
+    auto one_i32 = MakeConstantLike(grid_coord_raw, 1,
+                                    builder.getOpBuilder().getI32Type());
+    TT_ASSIGN_OR_RETURN(auto in_size_op_broadcast,
+                        BroadcastIfNeeded(in_size_op, grid_coord_raw));
+    TT_ASSIGN_OR_RETURN(auto in_size_minus_1_i32,
+                        BuildSubShlo(in_size_op_broadcast, one_i32));
+    in_size_minus_1_i32 = mlir::stablehlo::Max(zero_i32, in_size_minus_1_i32);
+    auto indices_i32 = mlir::stablehlo::Clamp(indices_i32_unclamped, zero_i32,
+                                              in_size_minus_1_i32);
+    spatial_indices.push_back(indices_i32);
+
+    if (padding_mode == PaddingMode::kZeros) {
+      auto is_in_bounds =
+          [&](mlir::MlirOp idx,
+              mlir::MlirOp in_size_op) -> absl::StatusOr<mlir::MlirOp> {
+        mlir::MlirOp limit_element = mlir::stablehlo::ConvertElementType(
+            in_size_op, builder.getOpBuilder().getI32Type());
+        TT_ASSIGN_OR_RETURN(mlir::MlirOp limit,
+                            BroadcastIfNeeded(limit_element, idx));
+        auto zero =
+            MakeConstantLike(idx, 0, builder.getOpBuilder().getI32Type());
+        auto lt_zero = mlir::stablehlo::Compare(
+            idx, zero, mlir::stablehlo::ComparisonDirection::LT);
+        auto ge_limit = mlir::stablehlo::Compare(
+            idx, limit, mlir::stablehlo::ComparisonDirection::GE);
+        auto out_of_bounds = mlir::stablehlo::Or(lt_zero, ge_limit);
+        return mlir::stablehlo::Not(out_of_bounds);
+      };
+      TT_ASSIGN_OR_RETURN(auto indices_ok_i32,
+                          is_in_bounds(indices_i32_unclamped, in_size_op));
+      indices_ok.push_back(indices_ok_i32);
+    }
+  }
+
+  auto grad_output_ty = GetTensorTypeOrDie(grad_output);
+  Dimensions grad_output_shape = CopyIntVector(grad_output_ty.getShape());
+  auto i32_type = builder.getOpBuilder().getI32Type();
+
+  mlir::MlirOp n_iota = mlir::stablehlo::Iota(
+      builder,
+      makeTensorType(builder.getContext(), grad_output_shape, i32_type), 0);
+  mlir::MlirOp c_iota = mlir::stablehlo::Iota(
+      builder,
+      makeTensorType(builder.getContext(), grad_output_shape, i32_type), 1);
+
+  std::vector<mlir::MlirOp> parts;
+  {
+    Dimensions new_shape = grad_output_shape;
+    new_shape.push_back(1);
+    auto reshaped_ty = mlir::RankedTensorType::get(new_shape, i32_type);
+    parts.push_back(mlir::stablehlo::Reshape(reshaped_ty, n_iota));
+    parts.push_back(mlir::stablehlo::Reshape(reshaped_ty, c_iota));
+  }
+
+  Dimensions bcast_dims =
+      spatial_dim_size == 2 ? Dimensions{0, 2, 3} : Dimensions{0, 2, 3, 4};
+  auto bcast_ty = mlir::RankedTensorType::get(grad_output_shape, i32_type);
+
+  if (spatial_dim_size == 2) {
+    auto h_idx = mlir::stablehlo::BroadcastInDim(bcast_ty, spatial_indices[1],
+                                                 bcast_dims);
+    auto w_idx = mlir::stablehlo::BroadcastInDim(bcast_ty, spatial_indices[0],
+                                                 bcast_dims);
+    Dimensions new_shape = grad_output_shape;
+    new_shape.push_back(1);
+    auto reshaped_ty = mlir::RankedTensorType::get(new_shape, i32_type);
+    parts.push_back(mlir::stablehlo::Reshape(reshaped_ty, h_idx));
+    parts.push_back(mlir::stablehlo::Reshape(reshaped_ty, w_idx));
+  } else {  // spatial_dim_size == 3
+    auto d_idx = mlir::stablehlo::BroadcastInDim(bcast_ty, spatial_indices[2],
+                                                 bcast_dims);
+    auto h_idx = mlir::stablehlo::BroadcastInDim(bcast_ty, spatial_indices[1],
+                                                 bcast_dims);
+    auto w_idx = mlir::stablehlo::BroadcastInDim(bcast_ty, spatial_indices[0],
+                                                 bcast_dims);
+    Dimensions new_shape = grad_output_shape;
+    new_shape.push_back(1);
+    auto reshaped_ty = mlir::RankedTensorType::get(new_shape, i32_type);
+    parts.push_back(mlir::stablehlo::Reshape(reshaped_ty, d_idx));
+    parts.push_back(mlir::stablehlo::Reshape(reshaped_ty, h_idx));
+    parts.push_back(mlir::stablehlo::Reshape(reshaped_ty, w_idx));
+  }
+
+  // Construct scatter indices of shape [N, C, spatial_dims..., rank].
+  // The last dimension contains full coordinates: (n, c, spatial_coords...).
+  // For 2D, it contains (n, c, y, x). For 3D, it contains (n, c, z, y, x).
+  auto index_vector_dim = rank;
+  auto scatter_indices =
+      mlir::stablehlo::Concatenate(builder, parts, grad_output_ty.getRank());
+
+  mlir::MlirOp updates = grad_output;
+  if (padding_mode == PaddingMode::kZeros) {
+    mlir::MlirOp all_indices_ok;
+    for (int i = 0; i < spatial_dim_size; ++i) {
+      if (i == 0) {
+        all_indices_ok = indices_ok[i];
+      } else {
+        all_indices_ok = mlir::stablehlo::And(all_indices_ok, indices_ok[i]);
+      }
+    }
+    auto all_indices_ok_bcast_ty = mlir::RankedTensorType::get(
+        grad_output_shape, GetTensorTypeOrDie(all_indices_ok).getElementType());
+    all_indices_ok = mlir::stablehlo::BroadcastInDim(
+        all_indices_ok_bcast_ty, all_indices_ok, bcast_dims);
+    auto zero_result =
+        MakeConstantLike(grad_output, 0.0, grad_output_ty.getElementType());
+    updates = mlir::stablehlo::Select(all_indices_ok, grad_output, zero_result);
+  }
+
+  auto grad_input_zeros =
+      MakeConstantLike(input, 0.0, grad_output_ty.getElementType());
+  mlir::MlirOp grad_input;
+
+  if (compute_grad_input) {
+    Dimensions all_dimensions(rank);
+    absl::c_iota(all_dimensions, 0);
+
+    mlir::stablehlo::ScatterDimensionNumbersAttr scatter_dimension_numbers =
+        mlir::stablehlo::ScatterDimensionNumbersAttr::get(
+            &builder.getContext(),
+            /*update_window_dims=*/{},
+            /*inserted_window_dims=*/all_dimensions,
+            /*input_batching_dims=*/{},
+            /*scatter_indices_batching_dims=*/{},
+            /*scatter_dims_to_operand_dims=*/all_dimensions,
+            /*index_vector_dim=*/index_vector_dim);
+
+    auto block_type =
+        mlir::RankedTensorType::get({}, grad_output_ty.getElementType());
+    auto region_builder = [block_type](mlir::RegionBuilder& rb) {
+      auto arg0 = mlir::Argument(rb, block_type);
+      auto arg1 = mlir::Argument(rb, block_type);
+      mlir::stablehlo::Return(rb, {mlir::stablehlo::Add(arg0, arg1)});
+    };
+
+    grad_input = mlir::stablehlo::Scatter(
+        {grad_input_zeros}, scatter_indices, {updates}, region_builder,
+        scatter_dimension_numbers, /*indices_are_sorted=*/false,
+        /*unique_indices=*/false)[0];
+  } else {
+    grad_input = grad_input_zeros;
+  }
+
+  auto grad_grid_zeros =
+      MakeConstantLike(grid, 0.0, grad_output_ty.getElementType());
+
+  return std::array<mlir::MlirOp, 2>{grad_input, grad_grid_zeros};
+}
+
 }  // namespace
 
 at::Tensor AtenGridSampler2d(const at::Tensor& input, const at::Tensor& grid,
@@ -1158,6 +1359,126 @@ at::Tensor AtenGridSampler3d(const at::Tensor& input, const at::Tensor& grid,
         at::Tensor out = at::empty(output_dims, input.options());
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(out_buf), out));
         return out;
+      });
+}
+
+std::tuple<at::Tensor, at::Tensor> AtenGridSampler2dBackward(
+    const at::Tensor& grad_output, const at::Tensor& input,
+    const at::Tensor& grid, int64_t interpolation_mode, int64_t padding_mode,
+    bool align_corners, std::array<bool, 2> output_mask) {
+  TT_KERNEL(
+      OpName::kGridSampler2dBackward, param_keys,
+      (grad_output, input, grid, interpolation_mode, padding_mode,
+       align_corners, output_mask),
+      {
+        auto interpolation_mode_enum =
+            static_cast<InterpolationMode>(interpolation_mode);
+        TT_THROW_IF_ERROR(CheckInputAndPaddingMode(input, padding_mode));
+        TT_THROW_IF_ERROR(Check2DInterpolationMode(interpolation_mode_enum));
+
+        TT_ASSIGN_OR_THROW(
+            const auto element_type,
+            ConvertTo<mlir::ElementType>(grad_output.scalar_type()));
+
+        const PaddingMode pm = static_cast<PaddingMode>(padding_mode);
+
+        auto op_builder = [&]() -> NAryMlirOpBuilder<3, 2> {
+          return [align_corners, pm, interpolation_mode_enum,
+                  output_mask](FixedSizeSpan<mlir::MlirOp, 3> inputs)
+                     -> absl::StatusOr<std::array<mlir::MlirOp, 2>> {
+            if (interpolation_mode_enum == InterpolationMode::kNearest) {
+              return BuildGridSamplerNearestBackwardShlo(
+                  inputs[0], inputs[1], inputs[2], align_corners, pm,
+                  output_mask[0]);
+            }
+            return TT_ERROR(error::kUnimplemented)
+                   << "Only nearest interpolation mode is supported for "
+                      "grid_sampler_2d_backward currently, got "
+                   << static_cast<int>(interpolation_mode_enum);
+          };
+        }();
+
+        auto input_dims = input.sizes();
+        auto grid_dims = grid.sizes();
+
+        const std::array<mlir::ElementType, 2> output_dtypes = {element_type,
+                                                                element_type};
+        const std::array<absl::Span<const int64_t>, 2> output_dims = {
+            input_dims, grid_dims};
+
+        TT_ASSIGN_OR_THROW(
+            auto out_bufs,
+            (DispatchOp<3, 2>(std::move(op_builder), {grad_output, input, grid},
+                              {.out_dtypes = output_dtypes,
+                               .out_dims_list = output_dims,
+                               .op_param_cache_keys = std::move(param_keys)})));
+
+        at::Tensor grad_input = at::empty(input_dims, grad_output.options());
+        at::Tensor grad_grid = at::empty(grid_dims, grad_output.options());
+
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(out_bufs[0]), grad_input));
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(out_bufs[1]), grad_grid));
+
+        return std::make_tuple(grad_input, grad_grid);
+      });
+}
+
+std::tuple<at::Tensor, at::Tensor> AtenGridSampler3dBackward(
+    const at::Tensor& grad_output, const at::Tensor& input,
+    const at::Tensor& grid, int64_t interpolation_mode, int64_t padding_mode,
+    bool align_corners, std::array<bool, 2> output_mask) {
+  TT_KERNEL(
+      OpName::kGridSampler3dBackward, param_keys,
+      (grad_output, input, grid, interpolation_mode, padding_mode,
+       align_corners, output_mask),
+      {
+        auto interpolation_mode_enum =
+            static_cast<InterpolationMode>(interpolation_mode);
+        TT_THROW_IF_ERROR(CheckInputAndPaddingMode(input, padding_mode));
+        TT_THROW_IF_ERROR(Check3DInterpolationMode(interpolation_mode_enum));
+
+        TT_ASSIGN_OR_THROW(auto element_type, ConvertTo<mlir::ElementType>(
+                                                  grad_output.scalar_type()));
+
+        PaddingMode pm = static_cast<PaddingMode>(padding_mode);
+
+        auto op_builder = [&]() -> NAryMlirOpBuilder<3, 2> {
+          return [align_corners, pm, interpolation_mode_enum,
+                  output_mask](FixedSizeSpan<mlir::MlirOp, 3> inputs)
+                     -> absl::StatusOr<std::array<mlir::MlirOp, 2>> {
+            if (interpolation_mode_enum == InterpolationMode::kNearest) {
+              return BuildGridSamplerNearestBackwardShlo(
+                  inputs[0], inputs[1], inputs[2], align_corners, pm,
+                  output_mask[0]);
+            }
+            return TT_ERROR(error::kUnimplemented)
+                   << "Only nearest interpolation mode is supported for "
+                      "grid_sampler_3d_backward currently, got "
+                   << static_cast<int>(interpolation_mode_enum);
+          };
+        }();
+
+        Dimensions input_dims(input.sizes().begin(), input.sizes().end());
+        Dimensions grid_dims(grid.sizes().begin(), grid.sizes().end());
+
+        TT_ASSIGN_OR_THROW(
+            auto out_bufs,
+            (DispatchOp<3, 2>(std::move(op_builder), {grad_output, input, grid},
+                              {.out_dtypes = {element_type, element_type},
+                               .out_dims_list = {input_dims, grid_dims},
+                               .op_param_cache_keys = std::move(param_keys)})));
+
+        at::Tensor grad_input = at::empty(input_dims, grad_output.options());
+        at::Tensor grad_grid = at::empty(grid_dims, grad_output.options());
+
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(out_bufs[0]), grad_input));
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(out_bufs[1]), grad_grid));
+
+        return std::make_tuple(grad_input, grad_grid);
       });
 }
 

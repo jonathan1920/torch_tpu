@@ -1026,6 +1026,19 @@ Please use clone() or contiguous() to copy the tensor before writing""",
       interpolation_mode = 3
       torch.grid_sampler(inp, grid, interpolation_mode, 0, False)
 
+    grad_output = torch.randn(
+        2, 3, 5, 5, device=et.device(), dtype=torch.float32
+    )
+    t = torch.randn(2, 3, 4, 4, device=et.device(), dtype=torch.float32)
+    g = torch.randn(2, 5, 5, 2, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""grid_sampler_2d_backward(): materialization failed with: Only nearest interpolation mode is supported for grid_sampler_2d_backward currently, got 0""",
+    ):
+      torch.ops.aten.grid_sampler_2d_backward(
+          grad_output, t, g, 0, 0, False, [True, True]
+      )
+
   def test_grid_sampler_3d_invalid_interpolation_mode(self):
     inp = torch.ones(1, 1, 2, 2, 2, device=et.device())
     grid = torch.zeros(1, 2, 2, 2, 3, device=et.device())
@@ -1037,6 +1050,19 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       interpolation_mode = 2
       torch.grid_sampler(inp, grid, interpolation_mode, 0, False)
+
+    grad_output = torch.randn(
+        2, 3, 5, 5, 5, device=et.device(), dtype=torch.float32
+    )
+    t = torch.randn(2, 3, 4, 4, 4, device=et.device(), dtype=torch.float32)
+    g = torch.randn(2, 5, 5, 5, 3, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""grid_sampler_3d_backward(): materialization failed with: Only nearest interpolation mode is supported for grid_sampler_3d_backward currently, got 0""",
+    ):
+      torch.ops.aten.grid_sampler_3d_backward(
+          grad_output, t, g, 0, 0, False, [True, True]
+      )
 
   # Why do we run this test only on TPU (and not on CPU)?
   # PyTorch `elu_backward` implementation doesn't error on this check.

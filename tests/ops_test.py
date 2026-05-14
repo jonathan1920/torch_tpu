@@ -2742,16 +2742,21 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("gt")
 
   def test_grid_sample(self):
+    # TODO: Add support for bilinear and bicubic interpolation modes and skip
+    # testing these modes until support is added.
+    def skip_if(device, variant, op_input):
+      del device, variant  # Unused, suppress linter error
+      return op_input.kwargs.get("mode", "bilinear") != "nearest"
+
     self.do_test_op(
         "nn.functional.grid_sample",
-        # TODO: fix the error aten::grid_sampler_2d_backward is unimplemented.
-        check_grad=False,
         check_value=CheckValueMode.LOOSE,
         exclude_dtypes={
             # CPU implementation has precision issues leading to incorrect
             # addressing for float16 and bfloat16
             "cpu": (torch.bfloat16, torch.float16),
         },
+        skip_if=skip_if,
     )
 
   def test_histc(self):

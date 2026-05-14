@@ -17,7 +17,9 @@
 #ifndef TORCH_TPU_OPS_GRID_SAMPLER_GRID_SAMPLER_ATEN_KERNELS_H_
 #define TORCH_TPU_OPS_GRID_SAMPLER_GRID_SAMPLER_ATEN_KERNELS_H_
 
+#include <array>
 #include <cstdint>
+#include <tuple>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
@@ -31,6 +33,16 @@ at::Tensor AtenGridSampler2d(const at::Tensor& input, const at::Tensor& grid,
 at::Tensor AtenGridSampler3d(const at::Tensor& input, const at::Tensor& grid,
                              int64_t interpolation_mode, int64_t padding_mode,
                              bool align_corners);
+
+std::tuple<at::Tensor, at::Tensor> AtenGridSampler2dBackward(
+    const at::Tensor& grad_output, const at::Tensor& input,
+    const at::Tensor& grid, int64_t interpolation_mode, int64_t padding_mode,
+    bool align_corners, std::array<bool, 2> output_mask);
+
+std::tuple<at::Tensor, at::Tensor> AtenGridSampler3dBackward(
+    const at::Tensor& grad_output, const at::Tensor& input,
+    const at::Tensor& grid, int64_t interpolation_mode, int64_t padding_mode,
+    bool align_corners, std::array<bool, 2> output_mask);
 
 }  // namespace torch_tpu
 
