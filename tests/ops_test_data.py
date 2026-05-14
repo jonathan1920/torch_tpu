@@ -55,7 +55,6 @@ def generate_configs_for_parameterized(configs):
 class SdpaConfig:
   """Configuration for SDPA tests."""
   batch_size: int
-  embed_dim: int
   q_seq_len: int
   q_num_heads: int
   kv_num_heads: int
@@ -72,7 +71,6 @@ SDPA_CONFIGS = [
     # Default config for smoke test.
     SdpaConfig(
         batch_size=1,
-        embed_dim=512,
         q_seq_len=512,
         q_num_heads=8,
         kv_num_heads=8,
@@ -86,7 +84,6 @@ SDPA_CONFIGS = [
     # Configs for Llama3 70B attention layers
     SdpaConfig(
         batch_size=1,
-        embed_dim=8192,
         q_seq_len=2048,
         q_num_heads=64,
         kv_num_heads=64,
@@ -98,7 +95,6 @@ SDPA_CONFIGS = [
     ),
     SdpaConfig(
         batch_size=4,
-        embed_dim=8192,
         q_seq_len=2048,
         q_num_heads=64,
         kv_num_heads=64,
@@ -111,7 +107,6 @@ SDPA_CONFIGS = [
     # Configs for Qwen3 480B attention layers
     SdpaConfig(
         batch_size=1,
-        embed_dim=6144,
         q_seq_len=2048,
         q_num_heads=96,
         kv_num_heads=96,
@@ -123,7 +118,6 @@ SDPA_CONFIGS = [
     ),
     SdpaConfig(
         batch_size=4,
-        embed_dim=6144,
         q_seq_len=2048,
         q_num_heads=96,
         kv_num_heads=96,
@@ -136,7 +130,6 @@ SDPA_CONFIGS = [
     # Configs for Gemma3 27B attention layers
     SdpaConfig(
         batch_size=1,
-        embed_dim=2048,
         q_seq_len=2048,
         q_num_heads=32,
         kv_num_heads=32,
@@ -148,7 +141,6 @@ SDPA_CONFIGS = [
     ),
     SdpaConfig(
         batch_size=4,
-        embed_dim=2048,
         q_seq_len=2048,
         q_num_heads=32,
         kv_num_heads=32,
@@ -161,7 +153,6 @@ SDPA_CONFIGS = [
     # AFM v7 configs
     SdpaConfig(
         batch_size=2,
-        embed_dim=2048,
         q_seq_len=2048,
         q_num_heads=16,
         kv_num_heads=2,
