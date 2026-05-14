@@ -51,6 +51,9 @@ _TORCH_TPU_COPTS = [
     "-Werror=reorder-ctor",
     # Use kineto backend for profiler.
     "-DUSE_KINETO",
+    # By default, all compiler warnings in third_party/... headers are suppressed.
+    # We must explicitly enable them for TorchTPU headers.
+    "--no-system-header-prefix=third_party/py/torch_tpu/",
 ]
 
 _LSAN_SUPPRESSIONS = "//build_files:lsan_suppressions.txt"

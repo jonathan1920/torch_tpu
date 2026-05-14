@@ -146,7 +146,7 @@
                       "The op parameter list passed to "                       \
                       "TT_MAKE_OP_PARAM_CACHE_KEYS() must contain "            \
                       "only identifier names.");                               \
-      },                                                                       \
+      }(),                                                                     \
       ::torch_tpu::internal::MakeOpParamCacheKeys<                             \
           ::torch_tpu::internal::EnforceSetParamType::kYes>(                   \
           #__VA_ARGS__ __VA_OPT__(, ) __VA_ARGS__))
