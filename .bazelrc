@@ -288,18 +288,25 @@ common:bench --spawn_strategy=standalone,local
 # Settings specific to CPU CI runs.
 common:ci_cpu --config=ci
 common:ci_cpu --build_tag_filters=-nobuild,-requires-gpu,-requires-tpu
-
-# Exclude anything with `-notest` or `-nobuild`
 common:ci_cpu --test_tag_filters=-nobuild,-notest,-requires-gpu,-requires-tpu
+
+common:ci_cpu_presubmit --config=ci_cpu
+# Prevent unsubmitted code from polluting the remote cache.
+common:ci_cpu_presubmit --config=remote_execution_readonly
 
 # Settings specific to TPU CI runs.
 common:ci_tpu_base --config=ci
 common:ci_tpu_base --build_tag_filters=-nobuild,requires-tpu-v5lite,requires-tpu-v5lite:8,requires-tpu-v5p,requires-tpu-v5p:4
 common:ci_tpu_base --spawn_strategy=standalone,local
 
-# Settings for presubmit and postsubmit on TPU v5.
+# Settings for postsubmit on TPU v5.
 common:ci_tpu --config=ci_tpu_base
 common:ci_tpu --test_tag_filters=requires-tpu,-notest,-nobuild,-nopresubmit
+
+# Settings for presubmit on TPU v5.
+common:ci_tpu_presubmit --config=ci_tpu
+# Prevent unsubmitted code from polluting the remote cache.
+common:ci_tpu_presubmit --config=remote_execution_readonly
 
 # Settings for presubmit and postsubmit on TPU v6.
 common:ci_tpu_on_v6 --config=ci_tpu_base
@@ -324,6 +331,7 @@ build --define=with_tpu_support=true
 # Configs for Bazel remote execution.
 # Do not use instance "projects/ml-oss-rbe-testing/instances/default_instance"
 # because it does not have RBE agents setup.
+common:remote_execution_readonly --remote_upload_local_results=false
 common:remote_execution_readonly --remote_instance_name=projects/tensorflow-testing/instances/default_instance
 common:remote_execution_readonly --google_default_credentials
 common:remote_execution_readonly --jobs=200
