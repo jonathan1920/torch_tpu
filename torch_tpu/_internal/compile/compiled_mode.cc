@@ -39,6 +39,7 @@
 #include "c10/core/TensorImpl.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"

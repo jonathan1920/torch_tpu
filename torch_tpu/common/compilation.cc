@@ -38,6 +38,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/context_manager.h"
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/env_vars.h"

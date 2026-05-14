@@ -181,11 +181,22 @@ torch_tpu_cc_test(
 )
 
 torch_tpu_cc_library(
+    name = "compilation_spec",
+    hdrs = ["compilation_spec.h"],
+    deps = [
+        ":cache_key",
+        "@com_google_absl//absl/base:nullability",
+        "@xla//xla/pjrt:pjrt_executable",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "compilation",
     srcs = ["compilation.cc"],
     hdrs = ["compilation.h"],
     deps = [
         ":cache_key",
+        ":compilation_spec",
         ":context_manager",
         ":context_states",
         ":env_vars",
@@ -839,6 +850,7 @@ torch_tpu_cc_library(
     deps = [
         ":cache_key",
         ":compilation",
+        ":compilation_spec",
         ":dimension_types",
         ":dtype",
         ":env_vars",
@@ -916,6 +928,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":compilation",
+        ":compilation_spec",
         ":compilation_test_helper",
         ":context_states",
         "//shims/torch:torch_headers",
@@ -938,6 +951,7 @@ torch_tpu_cc_test(
         ":cache_key",
         ":compilation",
         ":compilation_cache",
+        ":compilation_spec",
         ":error_utils",
         ":flags",
         ":shape",
@@ -1023,6 +1037,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":compilation",
+        ":compilation_spec",
         ":compilation_test_helper",
         ":context_states",
         "//shims/torch:torch_headers",
@@ -1048,6 +1063,7 @@ torch_tpu_cc_test(
     deps = [
         ":cache_key",
         ":compilation",
+        ":compilation_spec",
         ":compilation_test_helper",
         ":fingerprint_utils",
         "//torch_tpu/pjrt:pjrt_state",

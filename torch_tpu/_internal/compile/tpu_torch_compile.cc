@@ -42,6 +42,7 @@
 #include "torch_tpu/_internal/compile/compiled_mode.h"
 #include "torch_tpu/_internal/dynamism/dynamism_ops.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/context_manager.h"
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/dtype.h"

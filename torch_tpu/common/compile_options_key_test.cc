@@ -22,6 +22,7 @@
 #include "absl/status/status_matchers.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/compilation_test_helper.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/pjrt/pjrt_state.h"

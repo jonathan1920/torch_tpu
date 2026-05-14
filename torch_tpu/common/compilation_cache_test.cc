@@ -42,6 +42,7 @@
 #include "mlir/IR/OwningOpRef.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/contain.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/flags.h"

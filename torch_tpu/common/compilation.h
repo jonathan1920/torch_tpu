@@ -19,7 +19,6 @@
 
 // Utilities for compiling PyTorch to PjRt executables.
 
-#include <array>
 #include <future>
 #include <memory>
 #include <optional>
@@ -33,6 +32,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -95,10 +95,6 @@ struct CompiledKernel {
   std::optional<DynamicKernelAdapter> dynamic_kernel_adapter;
 };
 
-// CompileOptions is a complex object with many fields. Even moving it is
-// expensive. We wrap it in a unique_ptr to allow for cheap moving.
-using UniqueCompileOptions = absl_nonnull std::unique_ptr<xla::CompileOptions>;
-
 // Builder function for a loaded executable.
 // It transfers ownership of the underlying MLIR module and context to the
 // `PjRtClient` during compilation, and thus can only be invoked once. The `&&`
@@ -147,20 +143,6 @@ class ContextedModule {
   absl_nonnull std::unique_ptr<mlir::MLIRContext> context_;
   // The module. If the context is dropped, the module will be invalidated.
   mlir::OwningOpRef<mlir::ModuleOp> module_;
-};
-
-// Mode for compiling a computation graph.
-enum class CompilationMode {
-  kFastCompile,  // Reduces compile time, but may result in slower execution.
-  kFastRuntime,  // Produces more optimized executables, but with longer
-                 // compile.
-};
-
-inline constexpr int kNumCompilationModes = 2;
-inline constexpr std::array<CompilationMode, kNumCompilationModes>
-    kCompilationModeValues = {
-        CompilationMode::kFastCompile,
-        CompilationMode::kFastRuntime,
 };
 
 // Lifts a MlirComputationBuilder into an ExecutableBuilder.

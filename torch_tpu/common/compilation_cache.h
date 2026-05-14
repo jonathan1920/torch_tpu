@@ -33,6 +33,7 @@
 #include "absl/time/time.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/thread_pool.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"

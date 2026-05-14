@@ -33,6 +33,7 @@
 #include "ATen/core/Generator.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 
 // The core functions used for Dynamo compiled mode.
