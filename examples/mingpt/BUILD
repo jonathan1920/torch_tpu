@@ -22,6 +22,7 @@ package(
 # TPU version of the mingpt example.
 torch_tpu_py_test(
     name = "mingpt_example_tpu",
+    timeout = "long",  # 15 minutes
     srcs = ["mingpt_example.py"],
     args = [
         "--device=tpu",
@@ -54,7 +55,6 @@ torch_tpu_py_test(
 # XLA:CPU version of the mingpt example.
 torch_tpu_py_test(
     name = "mingpt_example_xla_cpu",
-    timeout = "long",  # 15 minutes
     srcs = ["mingpt_example.py"],
     args = [
         "--device=xla_cpu",
@@ -63,7 +63,7 @@ torch_tpu_py_test(
         "TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1",
     },
     main = "mingpt_example.py",
-    nopresubmit = "slow example",
+    notap = "slow example",
     notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
         "requires-net:external",
