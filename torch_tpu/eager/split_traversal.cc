@@ -61,8 +61,7 @@ SplitTraversal(
   absl::flat_hash_set<const DeviceBufferList*> split_points;
   if (GetFlagOnce<bool,
                   &FLAGS_torch_tpu_internal_safe_materialization_rule>()) {
-    auto safe_rule = SafeMaterializationRule(required_outputs);
-    split_points = safe_rule(*traversal);
+    split_points = EnforceOrderedMaterialization(*traversal, required_outputs);
   } else {
     split_points = CustomSplitRule(*traversal);
   }

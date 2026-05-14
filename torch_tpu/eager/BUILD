@@ -324,10 +324,10 @@ torch_tpu_cc_library(
     hdrs = ["safe_materialization_rule.h"],
     deps = [
         ":device_buffer",
-        ":dynamic_op_split_heuristic",
-        ":forced_split_heuristic",
         ":traversal",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:span",
         "@tsl//tsl/profiler/lib:traceme",
     ],
 )

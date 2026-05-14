@@ -17,6 +17,7 @@
 #ifndef TORCH_TPU_EAGER_SAFE_MATERIALIZATION_RULE_H_
 #define TORCH_TPU_EAGER_SAFE_MATERIALIZATION_RULE_H_
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/traversal.h"
@@ -44,56 +45,14 @@ namespace torch_tpu {
 // them is materialized or dropped. We still need to consider all later tensors
 // in the graph (retrieved via AddLeafNodes/Subgraph) because these may hold
 // references to in-scope tensors, preventing them from being dropped.
-struct SafeMaterializationRule {
-  explicit SafeMaterializationRule(
-      const absl::flat_hash_set<const DeviceBufferList*>& required_outputs)
-      : required_outputs(required_outputs) {}
-
-  absl::flat_hash_set<const DeviceBufferList*> operator()(
-      const Traversal& traversal);
-
-  // Reverse order visitor for the execution order. Because references are
-  // output-to-input, going backwards ensures that by the time we visit a node,
-  // we have the full picture of its outstanding references and can therefore
-  // infer if it is droppable or not.
-  void VisitNode(
-      const DeviceBufferList& node,
-      absl::flat_hash_set<const DeviceBufferList*>& materialization_nodes);
-
-  // After updating the live edges, add any materialization points, possibly for
-  // both the given node and any inputs it has.
-  void AddMaterializations(
-      const DeviceBufferList& node,
-      absl::flat_hash_set<const DeviceBufferList*>& materialization_nodes);
-
-  // Given a node k, insert all nodes i that it has an edge to.
-  // If there's a materialization point after k but before i, then i will be
-  // materialized.
-  void InsertLiveEdges(const DeviceBufferList& node);
-
-  // If there is an edge from node i to node k, and node j such that i < j < k
-  // is materialized, then we must materialize node i.
-  // This function is called when we identify some node j being materialized;
-  // live_edges is populated by later nodes k pointing to earlier nodes i that
-  // need to be materialized.
-  void MaterializeLiveEdges(
-      absl::flat_hash_set<const DeviceBufferList*>& materialization_nodes);
-
-  // Condition to check when we enter the required execution region.
-  // Flips to true at the first (highest creation index) required output.
-  bool found_required_output = false;
-
-  // If there is an edge from node i to node k, and node j such that i < j < k
-  // is materialized, then we must materialize node i.
-  // We iterate in reverse order over `k`s, building up a set of nodes `i` that
-  // have dependency edges, clearing them as we go pass them as nodes `j`.
-  // As soon as we encounter a materialization point j, we drain the set and
-  // mark all nodes as materialization points.
-  absl::flat_hash_set<const DeviceBufferList*> live_edges_set;
-
-  // Input parameter; these nodes are guaranteed to be materialized.
-  const absl::flat_hash_set<const DeviceBufferList*>& required_outputs;
-};
+//
+// The return value is the set of all nodes that must be materialized, assuming
+// one output node per Traversal.
+absl::flat_hash_set<const DeviceBufferList* absl_nonnull>
+EnforceOrderedMaterialization(
+    const Traversal& traversal,
+    const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        required_outputs);
 
 }  // namespace torch_tpu
 

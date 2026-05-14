@@ -43,7 +43,7 @@ absl::StatusOr<DynamicMlirOpResults> DummyBuilder(
   return DynamicMlirOpResults{};
 }
 
-TEST(SafeMaterializationRuleTest, StaleNodesDropped) {
+TEST(EnforceOrderedMaterializationTest, StaleNodesDropped) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -73,9 +73,8 @@ TEST(SafeMaterializationRuleTest, StaleNodesDropped) {
 
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_c.device_buffer_list().get()};
-  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(*traversal);
+      EnforceOrderedMaterialization(*traversal, required_outputs);
 
   // a and b are not materialized; the execution plan is a single graph.
   EXPECT_THAT(materialization_nodes, testing::SizeIs(1));
@@ -83,7 +82,7 @@ TEST(SafeMaterializationRuleTest, StaleNodesDropped) {
               testing::Contains(ref_c.device_buffer_list().get()));
 }
 
-TEST(SafeMaterializationRuleTest, LiveNodesMaterialized) {
+TEST(EnforceOrderedMaterializationTest, LiveNodesMaterialized) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -114,9 +113,8 @@ TEST(SafeMaterializationRuleTest, LiveNodesMaterialized) {
 
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_c.device_buffer_list().get()};
-  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(*traversal);
+      EnforceOrderedMaterialization(*traversal, required_outputs);
 
   // a and b are both materialized along with c; they have live tensors.
   EXPECT_THAT(materialization_nodes, testing::SizeIs(3));
@@ -128,7 +126,7 @@ TEST(SafeMaterializationRuleTest, LiveNodesMaterialized) {
               testing::Contains(ref_c.device_buffer_list().get()));
 }
 
-TEST(SafeMaterializationRuleTest, ExternalFanoutMaterialized) {
+TEST(EnforceOrderedMaterializationTest, ExternalFanoutMaterialized) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -157,9 +155,8 @@ TEST(SafeMaterializationRuleTest, ExternalFanoutMaterialized) {
 
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_b.device_buffer_list().get(), ref_c.device_buffer_list().get()};
-  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(*traversal);
+      EnforceOrderedMaterialization(*traversal, required_outputs);
 
   // a is materialized because it has two separate dependencies that are
   // materialized.
@@ -172,7 +169,7 @@ TEST(SafeMaterializationRuleTest, ExternalFanoutMaterialized) {
               testing::Contains(ref_c.device_buffer_list().get()));
 }
 
-TEST(SafeMaterializationRuleTest, InternalFanoutNotMaterialized) {
+TEST(EnforceOrderedMaterializationTest, InternalFanoutNotMaterialized) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -211,9 +208,8 @@ TEST(SafeMaterializationRuleTest, InternalFanoutNotMaterialized) {
 
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_d.device_buffer_list().get()};
-  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(*traversal);
+      EnforceOrderedMaterialization(*traversal, required_outputs);
 
   // Only d is materialized; while a has fanout, it's fully internal to d's
   // subgraph.
@@ -222,7 +218,7 @@ TEST(SafeMaterializationRuleTest, InternalFanoutNotMaterialized) {
               testing::Contains(ref_d.device_buffer_list().get()));
 }
 
-TEST(SafeMaterializationRuleTest, DispatchOrderMaintained) {
+TEST(EnforceOrderedMaterializationTest, DispatchOrderMaintained) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -263,9 +259,8 @@ TEST(SafeMaterializationRuleTest, DispatchOrderMaintained) {
 
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_d.device_buffer_list().get(), ref_e.device_buffer_list().get()};
-  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(*traversal);
+      EnforceOrderedMaterialization(*traversal, required_outputs);
 
   // b is materialized so that {a, b} is executed before {c, d}.
   // a and c are not materialized and are fused into {a, b} and {c, d}.
@@ -279,7 +274,7 @@ TEST(SafeMaterializationRuleTest, DispatchOrderMaintained) {
               testing::Contains(ref_e.device_buffer_list().get()));
 }
 
-TEST(SafeMaterializationRuleTest, ForcedSplitHeuristicRespected) {
+TEST(EnforceOrderedMaterializationTest, ForcedSplitHeuristicRespected) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -315,9 +310,8 @@ TEST(SafeMaterializationRuleTest, ForcedSplitHeuristicRespected) {
 
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_b.device_buffer_list().get(), ref_d.device_buffer_list().get()};
-  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(*traversal);
+      EnforceOrderedMaterialization(*traversal, required_outputs);
 
   // d is materialized because it is a required output.
   // Both b and c are materialized because of the forced split heuristic.
@@ -331,7 +325,7 @@ TEST(SafeMaterializationRuleTest, ForcedSplitHeuristicRespected) {
               testing::Contains(ref_d.device_buffer_list().get()));
 }
 
-TEST(SafeMaterializationRuleTest, DynamicOpSplitHeuristicRespected) {
+TEST(EnforceOrderedMaterializationTest, DynamicOpSplitHeuristicRespected) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -365,9 +359,8 @@ TEST(SafeMaterializationRuleTest, DynamicOpSplitHeuristicRespected) {
 
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_c.device_buffer_list().get()};
-  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(*traversal);
+      EnforceOrderedMaterialization(*traversal, required_outputs);
 
   // c is materialized because it is a required output.
   // b is materialized because of the dynamic shape heuristic.
@@ -379,7 +372,7 @@ TEST(SafeMaterializationRuleTest, DynamicOpSplitHeuristicRespected) {
               testing::Contains(ref_c.device_buffer_list().get()));
 }
 
-TEST(SafeMaterializationRuleTest, NonRequiredNodesNotMaterialized) {
+TEST(EnforceOrderedMaterializationTest, NonRequiredNodesNotMaterialized) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -411,9 +404,8 @@ TEST(SafeMaterializationRuleTest, NonRequiredNodesNotMaterialized) {
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_b.device_buffer_list().get()};
 
-  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(*traversal);
+      EnforceOrderedMaterialization(*traversal, required_outputs);
 
   // c is not materialized because it is after the last required output.
   // b is materialized because it is a required output.
@@ -423,7 +415,7 @@ TEST(SafeMaterializationRuleTest, NonRequiredNodesNotMaterialized) {
               testing::Contains(ref_b.device_buffer_list().get()));
 }
 
-TEST(SafeMaterializationRuleTest, EdgesFromNonRequiredNodesConsidered) {
+TEST(EnforceOrderedMaterializationTest, EdgesFromNonRequiredNodesConsidered) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   Shape shape(Dimensions{8}, mlir::ElementType::F32);
 
@@ -456,9 +448,8 @@ TEST(SafeMaterializationRuleTest, EdgesFromNonRequiredNodesConsidered) {
   absl::flat_hash_set<const DeviceBufferList*> required_outputs = {
       ref_b.device_buffer_list().get()};
 
-  auto safe_materialization_rule = SafeMaterializationRule(required_outputs);
   absl::flat_hash_set<const DeviceBufferList*> materialization_nodes =
-      safe_materialization_rule(*traversal);
+      EnforceOrderedMaterialization(*traversal, required_outputs);
 
   // c is not materialized because it is after the last required output.
   // b is materialized because it is a required output.
