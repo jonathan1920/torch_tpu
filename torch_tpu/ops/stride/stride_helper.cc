@@ -101,12 +101,15 @@ bool IsOverlapping(absl::Span<const int64_t> sizes,
                  return a.stride > b.stride;
                });
 
-  // If any dimension's total width exceeds the stride of the next-most-major
-  // dimension, then the tensor is overlapping.
-  for (int64_t i = 0; i < (size_and_strides.size() - 1); ++i) {
-    const auto& curr = size_and_strides[i];
-    const auto& next = size_and_strides[i + 1];
-    if (curr.stride < next.size * next.stride) return true;
+  // If any dimension's maximum inner offset exceeds or equals the stride of the
+  // next-most-major dimension, then the tensor is overlapping.
+  int64_t max_inner_offset = 0;
+  for (int64_t i = size_and_strides.size() - 1; i >= 0; --i) {
+    if (i < size_and_strides.size() - 1) {
+      if (size_and_strides[i].stride <= max_inner_offset) return true;
+    }
+    max_inner_offset +=
+        (size_and_strides[i].size - 1) * size_and_strides[i].stride;
   }
   return false;
 }

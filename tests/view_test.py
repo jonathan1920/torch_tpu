@@ -1330,5 +1330,25 @@ class SymbolicViewsTest(LayoutTest):
     )
 
 
+class StridedSliceViewTest(LayoutTest):
+
+  def test_view_assignment(self):
+    # Simulates the mrope interleaved assignment from vLLM.
+    # Mrope_section = [11, 11, 10], rotary_dim // 2 = 32.
+    x = torch.arange(
+        3 * 10 * 32, dtype=torch.float32, device=self.tpu_device
+    ).reshape(3, 10, 32)
+    x_t = x[0].clone()
+    x_t[..., 1:33:3] = x[1, ..., 1:33:3]
+    x_t[..., 2:30:3] = x[2, ..., 2:30:3]
+
+    x_cpu = x.cpu()
+    x_t_cpu = x_cpu[0].clone()
+    x_t_cpu[..., 1:33:3] = x_cpu[1, ..., 1:33:3]
+    x_t_cpu[..., 2:30:3] = x_cpu[2, ..., 2:30:3]
+
+    utils.assert_close(x_t.cpu(), x_t_cpu)
+
+
 if __name__ == "__main__":
   absltest.main()
