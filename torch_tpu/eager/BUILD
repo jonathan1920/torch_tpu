@@ -62,6 +62,9 @@ torch_tpu_cc_test(
 torch_tpu_cc_test(
     name = "traversal_test",
     srcs = ["traversal_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
     notest_oss = "Fails due to TPU_LIBRARY_PATH not set.",
     deps = [
         ":device_buffer",
