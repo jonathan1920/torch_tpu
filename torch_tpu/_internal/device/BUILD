@@ -25,7 +25,6 @@ torch_tpu_py_library(
     srcs = ["_device_module.py"],
     deps = [
         ":_device_ops_backend",
-        "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/precision",
         "//torch_tpu/_internal/stream:streams",
@@ -64,6 +63,7 @@ pybind_extension(
         "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/eager:tpu_hooks",
         "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",

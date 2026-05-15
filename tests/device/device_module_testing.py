@@ -170,16 +170,17 @@ class DeviceModuleBase(absltest.TestCase, metaclass=abc.ABCMeta):
 
     # Test invalid device type.
     with self.assertRaisesRegex(
-        ValueError, "RNG state can only be accessed on TPU"
+        ValueError, "expected device type 'tpu' for RNG state access, got 'cpu'"
     ):
       _device_module._rng_validate_device_index("cpu", 0)
 
-    # Test invalid device index logs warning.
-    with mock.patch(
-        "torch_tpu._internal.device._device_module.logging.warning"
-    ) as mock_warning:
+    # Test invalid device index raises ValueError.
+    with self.assertRaisesRegex(
+        ValueError,
+        "expected local device index 0, got 1: accessing RNG state of a"
+        " non-current TPU device is not supported",
+    ):
       _device_module._rng_validate_device_index(1, 0)
-      mock_warning.assert_called_once()
 
   def test_set_device_valid(self):
     with self.patch_current_device():

@@ -14,10 +14,12 @@
  * limitations under the License.
  */
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/time/time.h"
 #include "ATen/core/Generator.h"
@@ -212,12 +214,24 @@ PYBIND11_MODULE(_device_ops_backend, m) {
   m.def(
       "_get_current_device_id",
       []() -> int {
-        TT_ASSIGN_OR_THROW(int device_id,
-                           PjrtBackend::GetInstance().GetGlobalDeviceId(),
-                           _ << "failed to get current device ID");
-        return device_id;
+        xla::PjRtClient* client = PjrtBackend::GetInstance().GetClient();
+        ABSL_CHECK(client != nullptr)  // CRASH_OK
+            << "PjRtClient is null after initialization.";
+        xla::PjRtDevice* device = PjrtBackend::GetInstance().GetDevice();
+        ABSL_CHECK(device != nullptr)  // CRASH_OK
+            << "PjRtDevice is null after initialization.";
+
+        const auto& addressable_devices = client->addressable_devices();
+        for (size_t i = 0; i < addressable_devices.size(); ++i) {
+          if (addressable_devices[i] == device) {
+            return i;
+          }
+        }
+        ABSL_LOG(FATAL)  // CRASH_OK
+            << "Current device is not addressable: global_device_id="
+            << device->global_device_id();
       },
-      "Returns the global ID of the current PJRT device.");
+      "Returns the local addressable ID of the current PJRT device.");
 
   m.def(
       "_get_device_count",

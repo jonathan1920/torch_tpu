@@ -22,7 +22,6 @@ import abc
 import atexit
 from collections.abc import Mapping
 from typing import Any, Final, List
-from absl import logging
 import torch
 from torch_tpu._internal.device import _device_ops_backend
 import torch_tpu._internal.precision as _precision_module
@@ -102,16 +101,16 @@ def _rng_validate_device_index(
   elif isinstance(device, int):
     provided_idx = device
   else:
-    raise TypeError(f"Got unrecognized device type, {device}")
+    raise TypeError(f"got unrecognized device type: {device}")
 
   if provided_str is not None and provided_str != "tpu":
     raise ValueError(
-        f"RNG state can only be accessed on TPU device, got {provided_str}"
+        f"expected device type 'tpu' for RNG state access, got '{provided_str}'"
     )
   if provided_idx is not None and provided_idx != device_idx:
-    # TODO(b/496180326): allow cross-device RNG access.
-    logging.warning(
-        "Accessing RNG state of another process's TPU is not supported"
+    raise ValueError(
+        f"expected local device index {device_idx}, got {provided_idx}:"
+        " accessing RNG state of a non-current TPU device is not supported"
     )
 
 

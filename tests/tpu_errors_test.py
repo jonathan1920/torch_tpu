@@ -1545,6 +1545,15 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           False,
       )
 
+  def test_rng_validate_device_index_error(self):
+    self.assertEqual(torch.tpu.current_device(), 0)
+
+    with et.assert_raises_message(
+        ValueError,
+        tpu="""expected local device index 0, got 1: accessing RNG state of a non-current TPU device is not supported""",
+    ):
+      torch.tpu.get_rng_state(1)
+
 
 if __name__ == "__main__":
   absltest.main()
