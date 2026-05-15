@@ -497,6 +497,16 @@ def torch_tpu_cc_test(
         # Fail if no tests are linked. This is to avoid having a test target that does not run any
         # tests. This can happen if the test's link options are not set correctly.
         args = args + ["--gunit_fail_if_no_test_linked"]
+
+    # Prevent the massive output of per-thread stack traces when a test
+    # crashes. Such logs are usually more painful than useful. One can
+    # opt out of this behavior by setting `--suppress_failure_output`
+    # in a test target's `args` field, or by passing
+    # `--test_arg=--nosuppress_failure_output` on the bazel command line.
+    #
+    # Note that we add this arg before the user-provided args so that the
+    # user can override it in the `args` field (the last arg wins).
+    args = ["--suppress_failure_output"] + args
     tags = tags or []
     data = kwargs.pop("data", [])
     if is_oss():
@@ -663,6 +673,13 @@ def torch_tpu_py_test(
     if shuffle_tests:
         # Shuffle test cases to avoid test ordering dependencies.
         args = args + ["--test_randomize_ordering_seed=random"]
+
+    # See the comment about suppress_failure_output in torch_tpu_cc_test
+    # for more details.
+    if not is_oss():
+        # Python tests in OSS don't support flags, so we only do this for the
+        # internal build.
+        args = ["--suppress_failure_output"] + args
     tags = tags or []
     data = kwargs.pop("data", [])
     if is_oss():
