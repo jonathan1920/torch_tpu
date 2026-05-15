@@ -352,8 +352,10 @@ absl::Status AtomicWriteToCacheFile(const std::string& cache_entry_path,
       if (!success) {
         ABSL_LOG(ERROR) << "Failed to write cache file " << cache_entry_path
                         << ". Cleaning up.";
-        env->DeleteFile(temp_file_path).IgnoreError();
-        env->DeleteFile(cache_entry_path).IgnoreError();
+        env->DeleteFile(temp_file_path)
+            .IgnoreError();  // IGNORE_ERROR_OK=best effort
+        env->DeleteFile(cache_entry_path)
+            .IgnoreError();  // IGNORE_ERROR_OK=best effort
       }
     });
 
