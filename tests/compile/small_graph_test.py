@@ -587,6 +587,26 @@ class FunctionTest(absltest.TestCase):
     result = executable([x])
     utils.assert_close(result[0].cpu(), expected)
 
+  def test_input_is_view(self):
+    """Test that compile works even when an argument is a view."""
+
+    def expects_transposed_input(x):
+      # If x is in a transposed state, this will be valid; it will transpose
+      # back to a contiguous layout, and the flattening view() will be valid.
+      # But if x is in a contiguous layout, then the transpose will cause it to
+      # be non-contiguous, and the flattening view() will fail.
+      return x.t().view(-1)
+
+    tpu_backend = compile_lib.TpuBackend(debug=True)
+    compiled = torch.compile(expects_transposed_input, backend=tpu_backend)
+
+    x = torch.arange(6).reshape(2, 3).to(torch.device("tpu"))
+    x_t = x.t()
+
+    result = compiled(x_t)
+    expected = torch.arange(6, device="cpu")
+    utils.assert_close(actual=result.cpu(), expected=expected)
+
 
 class ModuleTest(absltest.TestCase):
 
