@@ -141,6 +141,8 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "compile_with_distributed_test",
+    size = "large",
+    timeout = "long",
     srcs = ["compile_with_distributed_test.py"],
     env = {
         "ACCELERATOR_TYPE": "v5litepod-8",  # Needed for OSS.

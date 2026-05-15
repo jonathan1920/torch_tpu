@@ -22,15 +22,34 @@ from torch_tpu._internal.compile._backend import TpuBackend
 # Register "tpu" backend
 registry.register_backend(compiler_fn=TpuBackend(), name="tpu")
 
+# pylint: disable=protected-access
+_COLLECTIVE_OPS = (
+    torch.ops._c10d_functional.all_reduce,
+    torch.ops._c10d_functional.all_reduce_,
+    torch.ops._c10d_functional.all_reduce_coalesced,
+    torch.ops._c10d_functional.all_reduce_coalesced_,
+    torch.ops._c10d_functional.all_gather_into_tensor,
+    torch.ops._c10d_functional.all_gather_into_tensor_out,
+    torch.ops._c10d_functional.all_gather_into_tensor_coalesced,
+    torch.ops._c10d_functional.reduce_scatter_tensor,
+    torch.ops._c10d_functional.reduce_scatter_tensor_out,
+    torch.ops._c10d_functional.reduce_scatter_tensor_coalesced,
+    torch.ops._c10d_functional.all_to_all_single,
+    torch.ops._c10d_functional.broadcast,
+    torch.ops._c10d_functional.broadcast_,
+    torch.ops._c10d_functional.wait_tensor,
+)
+# pylint: enable=protected-access
+
 
 def _disallow_collective_ops_in_graph():
-  # Compiling a graph with collective ops can cause deadlocks on TPU if there are
-  # slight graph differences between ranks (e.g. from "if rank == 0: ..."). We
-  # avoid this by triggering a graph break for collective ops.
+  # Compiling a graph with collective ops can cause deadlocks on TPU if there
+  # are slight graph differences between ranks (e.g. from "if rank == 0: ...").
+  # We avoid this by triggering a graph break for collective ops.
   # This behavior can be disabled by setting
   # --torch_tpu_internal_materialize_collective_tensors=False.
-  # flag is defined in /third_party/py/torch_tpu/distributed/process_group_tpu.cc
-  # with default=True.
+  # The flag is defined in torch_tpu/distributed/process_group_tpu.cc with
+  # default=True.
   # Note that as the flag is defined in distributed/process_group_tpu.cc, it is
   # possible that it is not linked by the Blaze build. So we have to check
   # if the flag exists, before using it.
@@ -42,8 +61,8 @@ def _disallow_collective_ops_in_graph():
     return
 
   logging.info("[TpuBackend] Force graph break for collective ops enabled.")
-  decorators.disallow_in_graph(torch.ops._c10d_functional.all_reduce)
-  decorators.disallow_in_graph(torch.ops._c10d_functional.wait_tensor)
+  for op in _COLLECTIVE_OPS:
+    decorators.disallow_in_graph(op)
 
 
 # Note: absl flags are not parsed until init_google is called, so we need to use
