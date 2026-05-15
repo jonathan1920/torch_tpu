@@ -172,7 +172,8 @@ void Impl(torch::Library& m, const OpName op_name, KernelFn kernel_fn) {
   // We need to convert the string_view to a std::string so that we can
   // get a NUL-terminated const char* from it. Note that string_view::data()
   // is not guaranteed to be NUL-terminated.
-  m.impl(std::string(ToString(op_name)).c_str(), kernel_fn);
+  m.impl(  // M_IMPL_OK=implementing Impl().
+      std::string(ToString(op_name)).c_str(), kernel_fn);
 }
 
 }  // namespace
