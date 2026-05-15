@@ -392,7 +392,7 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
         const bool can_use_overrideable =
             GetFlagOnce<bool,
                         &FLAGS_torch_tpu_internal_sdpa_use_custom_kernel>() &&
-            (!attn_mask.has_value() &&
+            (!attn_mask.has_value() && dropout_p == 0.0 &&
              (query.scalar_type() == at::ScalarType::Float ||
               query.scalar_type() == at::ScalarType::BFloat16) &&
              query.ndimension() == key.ndimension() &&
@@ -414,6 +414,9 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
             "for scaled_dot_product_attention when these conditions are met:\n"
             "- attn_mask is None (current: ",
             (attn_mask.has_value() ? "present" : "None"),
+            ")\n"
+            "- dropout_p is 0.0 (current: ",
+            dropout_p,
             ")\n"
             "- inputs are float32 or bfloat16 (current: ",
             query.scalar_type(),
