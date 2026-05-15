@@ -560,6 +560,8 @@ enum class OpName {
   kScaledDotProductFlashAttention,
   kScaledDotProductFusedAttentionOverrideable,
   kScaledDotProductFusedAttentionOverrideableBackward,
+  kScaledMm,
+  kScaledMmOut,
   kScatterAddOut,
   kScatterReduceOut,
   kScatterReduceTwoOut,

@@ -1097,6 +1097,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_scaled_dot_product_fused_attention_overrideable";
     case OpName::kScaledDotProductFusedAttentionOverrideableBackward:
       return "_scaled_dot_product_fused_attention_overrideable_backward";
+    case OpName::kScaledMm:
+      return "_scaled_mm";
+    case OpName::kScaledMmOut:
+      return "_scaled_mm.out";
     case OpName::kScatterAddOut:
       return "scatter_add.out";
     case OpName::kScatterReduceOut:
@@ -1269,7 +1273,7 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       // Deliberately omitting default case to let the C++ compiler enforce that
       // all cases are handled.
   }
-}
+}  // NOLINT(readability/fn_size)
 
 std::string_view ToBaseName(const OpName op_name) {
   if (op_name == OpName::kIndexPutImpl_) {

@@ -27,6 +27,7 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/native/Resize.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -47,15 +48,6 @@
 
 namespace torch_tpu {
 namespace {
-
-absl::Status CheckIsMatrix(const at::Tensor& tensor,
-                           const std::string_view arg_name) {
-  TT_RET_CHECK(tensor.dim() == 2, error::kInvalidArgument)
-      << "expected the " << arg_name
-      << " argument to be a 2D tensor (matrix), got " << tensor.dim()
-      << "D of shape " << ToString(tensor.sizes());
-  return absl::OkStatus();
-}
 
 absl::Status CheckMmOutInputs(const at::Tensor& lhs, const at::Tensor& rhs,
                               at::Tensor& out,

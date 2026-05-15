@@ -5783,6 +5783,107 @@ Supported combinations for non-constant padding:
     ):
       torch.linalg.qr(input_tensor, mode="invalid")
 
+  def test_scaled_mm_non_2d_self(self):
+    """Tests that scaled_mm fails if self is not 2D."""
+    device = et.device()
+    mat1 = torch.randn(16, dtype=torch.float32, device=device).to(
+        torch.float8_e4m3fn
+    )
+    mat2 = torch.randn(16, 16, dtype=torch.float32, device=device).to(
+        torch.float8_e4m3fn
+    )
+    scale_a = torch.tensor([1.0], dtype=torch.float32, device=device)
+    scale_b = torch.tensor([1.0], dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""scaled_mm(): expected the self argument to be a 2D tensor (matrix), got 1D of shape [16]""",
+        cpu="""mat1 must be a matrix""",
+    ):
+      torch._scaled_mm(mat1, mat2, scale_a, scale_b)
+
+  def test_scaled_mm_invalid_scale_a_size(self):
+    """Tests that scaled_mm fails if scale_a has numel > 1."""
+    device = et.device()
+    mat1 = torch.randn(16, 16, dtype=torch.float32, device=device).to(
+        torch.float8_e4m3fn
+    )
+    mat2 = torch.randn(16, 16, dtype=torch.float32, device=device).to(
+        torch.float8_e4m3fn
+    )
+    scale_a = torch.tensor([1.0, 2.0], dtype=torch.float32, device=device)
+    scale_b = torch.tensor([1.0], dtype=torch.float32, device=device)
+
+    err_type = NotImplementedError if et.device().type == "tpu" else ValueError
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm(): expected scale_a to have numel 1, got numel 2""",
+        cpu=re.compile(r"""Invalid scaling configuration\..*""", re.DOTALL),
+    ):
+      torch._scaled_mm(mat1, mat2, scale_a, scale_b)
+
+  def test_scaled_mm_invalid_scale_b_size(self):
+    """Tests that scaled_mm fails if scale_b has numel > 1."""
+    device = et.device()
+    mat1 = torch.randn(16, 16, dtype=torch.float32, device=device).to(
+        torch.float8_e4m3fn
+    )
+    mat2 = torch.randn(16, 16, dtype=torch.float32, device=device).to(
+        torch.float8_e4m3fn
+    )
+    scale_a = torch.tensor([1.0], dtype=torch.float32, device=device)
+    scale_b = torch.tensor([1.0, 2.0], dtype=torch.float32, device=device)
+
+    err_type = NotImplementedError if et.device().type == "tpu" else ValueError
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm(): expected scale_b to have numel 1, got numel 2""",
+        cpu=re.compile(r"""Invalid scaling configuration\..*""", re.DOTALL),
+    ):
+      torch._scaled_mm(mat1, mat2, scale_a, scale_b)
+
+  def test_scaled_mm_invalid_scale_result_size(self):
+    """Tests that scaled_mm fails if scale_result has numel > 1."""
+    device = et.device()
+    mat1 = torch.randn(16, 16, dtype=torch.float32, device=device).to(
+        torch.float8_e4m3fn
+    )
+    mat2 = torch.randn(16, 16, dtype=torch.float32, device=device).to(
+        torch.float8_e4m3fn
+    )
+    scale_a = torch.tensor([1.0], dtype=torch.float32, device=device)
+    scale_b = torch.tensor([1.0], dtype=torch.float32, device=device)
+    scale_result = torch.tensor([1.0, 2.0], dtype=torch.float32, device=device)
+
+    err_type = (
+        NotImplementedError if et.device().type == "tpu" else RuntimeError
+    )
+    with et.assert_raises_message(
+        err_type,
+        tpu="""scaled_mm(): expected scale_result to have numel 1, got numel 2""",
+        cpu="""scale_result must be a float scalar""",
+    ):
+      torch._scaled_mm(mat1, mat2, scale_a, scale_b, scale_result=scale_result)
+
+  def test_scaled_mm_incompatible_shapes(self):
+    """Tests that scaled_mm fails if matrix shapes are incompatible."""
+    device = et.device()
+    mat1 = torch.randn(16, 32, dtype=torch.float32, device=device).to(
+        torch.float8_e4m3fn
+    )
+    mat2 = torch.randn(16, 32, dtype=torch.float32, device=device).to(
+        torch.float8_e4m3fn
+    )
+    scale_a = torch.tensor([1.0], dtype=torch.float32, device=device)
+    scale_b = torch.tensor([1.0], dtype=torch.float32, device=device)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""scaled_mm(): expected column size of first matrix to match row size of second matrix, got shapes [16, 32] and [16, 32]""",
+        cpu="""mat_a and mat_b shapes cannot be multiplied (16x32 and 16x32)""",
+    ):
+      torch._scaled_mm(mat1, mat2, scale_a, scale_b)
+
 
 if __name__ == "__main__":
   absltest.main()

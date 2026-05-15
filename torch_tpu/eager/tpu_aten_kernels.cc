@@ -17,8 +17,6 @@
 #include "torch_tpu/eager/tpu_aten_kernels.h"
 
 #include <atomic>
-#include <cstdint>
-#include <functional>
 #include <string>
 
 #include "absl/log/absl_log.h"
@@ -31,7 +29,6 @@
 #include "ATen/native/DispatchStub.h"
 #include "ATen/native/transformers/attention.h"
 #include "ATen/ops/empty.h"
-#include "ATen/ops/max_pool2d_with_indices.h"
 #include "torch/library.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/a_min_max/a_min_max_aten_kernels.h"
@@ -137,6 +134,7 @@
 #include "torch_tpu/ops/roll/roll_aten_kernels.h"
 #include "torch_tpu/ops/round/round_aten_kernels.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/scaled_dot_product_attention_aten_kernels.h"
+#include "torch_tpu/ops/scaled_mm/scaled_mm_aten_kernels.h"
 #include "torch_tpu/ops/scatter/scatter_aten_kernels.h"
 #include "torch_tpu/ops/set/set_aten_kernels.h"
 #include "torch_tpu/ops/sigmoid/sigmoid_aten_kernels.h"
@@ -660,6 +658,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
        AtenScaledDotProductFusedAttentionOverrideable);
   Impl(m, OpName::kScaledDotProductFusedAttentionOverrideableBackward,
        AtenScaledDotProductFusedAttentionOverrideableBackward);
+  Impl(m, OpName::kScaledMm, AtenScaledMm);
+  Impl(m, OpName::kScaledMmOut, AtenScaledMmOut);
   Impl(m, OpName::kScatterAddOut, AtenScatterAddOut);
   Impl(m, OpName::kScatterReduceOut, AtenScatterReduceOut);
   Impl(m, OpName::kScatterReduceTwoOut, AtenScatterReduceTwoOut);
