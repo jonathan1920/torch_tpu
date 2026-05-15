@@ -21,6 +21,7 @@
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/ops/view_decomposition/view_sequence.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -75,6 +76,27 @@ absl::StatusOr<ViewSequence> DecomposeIntoViewSequence(
     absl::Span<const int64_t> contiguous_base_shape,
     mlir::ElementType contiguous_base_dtype, const StridedLayout& view_layout,
     mlir::ElementType view_dtype, bool is_conj = false);
+
+// Returns a base shape which can be converted to the desired view layout in
+// as few view operations as possible.
+//
+// In eager mode, every sequence of DeferredOps begins with materialized tensor
+// data. This means that every Tensor has a c10::Storage containing a contiguous
+// base DeviceBufferRef of a known shape, allowing for DecomposeIntoViewSequence
+// to be called with the actual contiguous base shape.
+//
+// However, when tracing an FX graph in compiled mode, we are only initially
+// given FakeTensors, which do not have actual storage. This means that instead
+// of reading a known contiguous base buffer, we need to choose a shape at
+// compile time, and enforce it at execution time when calling the compiled
+// function.
+//
+// We choose a base shape which will require the smallest amount of steps to
+// decompose into the target view layout, by doing a view decomposition from a
+// known valid (but not optimal) starting point, and then folding in any
+// contiguity-preserving operations at the start of the view sequence.
+absl::StatusOr<Dimensions> GetContiguousBaseShape(
+    const StridedLayout& view_layout);
 
 }  // namespace torch_tpu
 

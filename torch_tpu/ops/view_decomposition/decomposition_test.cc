@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <utility>
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -422,7 +423,6 @@ TEST(DecomposeIntoViewSequence, TensorRealToLargerReal) {
                     view_dtype);
 }
 
-
 TEST(DecomposeIntoViewSequence, TensorViewAsComplex) {
   Dimensions contiguous_base_shape = {2, 3, 4, 2};
   mlir::ElementType contiguous_base_dtype = mlir::ElementType::F32;
@@ -436,7 +436,6 @@ TEST(DecomposeIntoViewSequence, TensorViewAsComplex) {
   DecompositionTest(contiguous_base_shape, view_layout, contiguous_base_dtype,
                     view_dtype);
 }
-
 
 TEST(DecomposeIntoViewSequence, ScalarCDoubleToCFloat) {
   Dimensions contiguous_base_shape = {};
@@ -562,6 +561,123 @@ TEST(DecomposeIntoViewSequence, Conjugate_RealBase_RealView) {
   StridedLayout view_layout = MakeContiguousBaseLayout(contiguous_base_shape);
   DecompositionTest(contiguous_base_shape, view_layout, mlir::ElementType::F32,
                     mlir::ElementType::F32, /*is_conj=*/true);
+}
+
+void GetContiguousBaseShapeTest(const StridedLayout& view_layout,
+                                absl::Span<const int64_t> expected_base_shape) {
+  absl::StatusOr<Dimensions> base_shape = GetContiguousBaseShape(view_layout);
+  ASSERT_TRUE(base_shape.ok());
+
+  EXPECT_THAT(*base_shape, testing::ElementsAreArray(expected_base_shape));
+
+  DecompositionTest(*base_shape, view_layout);
+}
+
+TEST(GetContiguousBaseShape, ScalarView) {
+  StridedLayout view_layout = {
+      .strided_dims = {},
+      .storage_offset = 0,
+  };
+  Dimensions expected_base_shape = {};
+  GetContiguousBaseShapeTest(view_layout, expected_base_shape);
+}
+
+TEST(GetContiguousBaseShape, ScalarViewWithOffset) {
+  StridedLayout view_layout = {
+      .strided_dims = {},
+      .storage_offset = 7,
+  };
+  Dimensions expected_base_shape = {8};
+  GetContiguousBaseShapeTest(view_layout, expected_base_shape);
+}
+
+TEST(GetContiguousBaseShape, OneDimensionContiguousBase) {
+  StridedLayout view_layout = {
+      .strided_dims = {{.size = 7, .stride = 1}},
+      .storage_offset = 0,
+  };
+  Dimensions expected_base_shape = {7};
+  GetContiguousBaseShapeTest(view_layout, expected_base_shape);
+}
+
+TEST(GetContiguousBaseShape, OneDimensionDenseSlice) {
+  StridedLayout view_layout = {
+      .strided_dims = {{.size = 7, .stride = 1}},
+      .storage_offset = 1,
+  };
+  Dimensions expected_base_shape = {8};
+  GetContiguousBaseShapeTest(view_layout, expected_base_shape);
+}
+
+TEST(GetContiguousBaseShape, OneDimensionStridedSlice) {
+  StridedLayout view_layout = {
+      .strided_dims = {{.size = 7, .stride = 2}},
+      .storage_offset = 0,
+  };
+  Dimensions expected_base_shape = {13};
+  GetContiguousBaseShapeTest(view_layout, expected_base_shape);
+}
+
+TEST(GetContiguousBaseShape, TwoDimensionContiguousBase) {
+  StridedLayout view_layout = {
+      .strided_dims = {{.size = 3, .stride = 2}, {.size = 2, .stride = 1}},
+      .storage_offset = 0,
+  };
+  Dimensions expected_base_shape = {3, 2};
+  GetContiguousBaseShapeTest(view_layout, expected_base_shape);
+}
+
+TEST(GetContiguousBaseShape, TwoDimensionPermuted) {
+  StridedLayout view_layout = {
+      .strided_dims = {{.size = 2, .stride = 1}, {.size = 3, .stride = 2}},
+      .storage_offset = 0,
+  };
+  Dimensions expected_base_shape = {3, 2};
+  GetContiguousBaseShapeTest(view_layout, expected_base_shape);
+}
+
+TEST(GetContiguousBaseShape, TwoDimensionDenseSlice) {
+  StridedLayout view_layout = {
+      .strided_dims = {{.size = 2, .stride = 2}, {.size = 2, .stride = 1}},
+      .storage_offset = 2,
+  };
+  Dimensions expected_base_shape = {3, 2};
+  GetContiguousBaseShapeTest(view_layout, expected_base_shape);
+}
+
+TEST(GetContiguousBaseShape, TwoDimensionStridedSlice) {
+  StridedLayout view_layout = {
+      .strided_dims = {{.size = 2, .stride = 4}, {.size = 2, .stride = 1}},
+      .storage_offset = 0,
+  };
+  // This could be a strided slice like torch.ones(3, 2)[::2, :], but the
+  // decomposition prefers using padded dense slices, by padding from
+  // (6,) -> (8,), reshaping to (2, 4), and then slicing to (2, 2).
+  Dimensions expected_base_shape = {6};
+  GetContiguousBaseShapeTest(view_layout, expected_base_shape);
+}
+
+TEST(GetContiguousBaseShape, TwoDimensionBroadcast) {
+  StridedLayout view_layout = {
+      .strided_dims = {{.size = 3, .stride = 1}, {.size = 999, .stride = 0}},
+      .storage_offset = 0,
+  };
+  Dimensions expected_base_shape = {3};
+  GetContiguousBaseShapeTest(view_layout, expected_base_shape);
+}
+
+TEST(GetContiguousBaseShape, TwoDimensionOverlapping) {
+  StridedLayout view_layout = {
+      .strided_dims = {{.size = 3, .stride = 2}, {.size = 3, .stride = 1}},
+      .storage_offset = 0,
+  };
+  // The unsqueezed 1 dimension is so that the unfold can behave like
+  // ```
+  //   x = torch.ones(1, 7)
+  //   y = torch.concat([x[:, 0:3], x[:, 2:5], x[:, 4:7]], dim=0)
+  // ```
+  Dimensions expected_base_shape = {1, 7};
+  GetContiguousBaseShapeTest(view_layout, expected_base_shape);
 }
 
 }  // namespace

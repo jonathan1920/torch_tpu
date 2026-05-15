@@ -1343,4 +1343,40 @@ absl::StatusOr<ViewSequence> DecomposeIntoViewSequence(
   return result;
 }
 
+absl::StatusOr<Dimensions> GetContiguousBaseShape(
+    const StridedLayout& view_layout) {
+  // If the view is valid, then we know the base must have at least this many
+  // elements, but we don't know if it has more.
+  int64_t min_numel = view_layout.storage_offset + 1;
+  for (const auto& [size, stride] : view_layout.strided_dims) {
+    if (size < 1) {
+      return Dimensions{0};
+    }
+    min_numel += (size - 1) * stride;
+  }
+
+  // Do the decomposition and simplify it.
+  TT_ASSIGN_OR_RETURN(
+      auto one_d_view_sequence,
+      DecomposeIntoViewSequence({min_numel}, mlir::ElementType::BF16,
+                                view_layout, mlir::ElementType::BF16, false));
+  Simplify(one_d_view_sequence, {min_numel});
+
+  if (one_d_view_sequence.empty()) {
+    // The view was exactly the 1D contiguous base we started with.
+    return Dimensions{min_numel};
+  }
+
+  if (auto* reshape =
+          std::get_if<ReshapePrimitive>(&one_d_view_sequence.front())) {
+    // The view starts with a reshape from the 1D minimum element shape to
+    // another, better shape. Use that one instead.
+    return std::move(reshape->new_sizes);
+  }
+
+  // The view starts with a non-reshape operation, so we can't improve the
+  // base shape.
+  return Dimensions{min_numel};
+}
+
 }  // namespace torch_tpu
