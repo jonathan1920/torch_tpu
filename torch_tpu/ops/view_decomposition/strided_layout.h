@@ -23,7 +23,6 @@
 
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
-#include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/dimension_types.h"
 
 // A DeviceBufferRef, or a PjRtBuffer, contains information about the shape
@@ -63,9 +62,6 @@ bool operator==(const StridedDimension& lhs, const StridedDimension& rhs);
 //   storage_offset + x[0]*stride[0] + x[1]*stride[1] + ... + x[N-1]*stride[N-1]
 // provided that all 0 <= x[i] < size[i] for all i in [0, N)
 struct StridedLayout {
-  // Constructs a StridedLayout from a PyTorch tensor.
-  static StridedLayout FromTensor(const at::Tensor& tensor);
-
   // The dimensions of the tensor in strided layout.
   absl::InlinedVector<StridedDimension, 3> strided_dims;
   // The offset of the first element in the tensor in the 1D storage array.

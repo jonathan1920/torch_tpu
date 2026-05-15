@@ -60,8 +60,6 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
-#include "torch_tpu/ops/view_decomposition/decomposition.h"
-#include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
@@ -87,35 +85,10 @@ at::Tensor PyMakePlaceholder(const std::vector<int64_t>& sizes,  // INT_VEC_OK
 }
 
 at::Tensor PyMakePlaceholderLike(const at::Tensor& arg_tensor) {
-  // arg_tensor may be a view, but placeholder DeviceBufferRefs are always
-  // interpreted as contiguous.
-  // If we want to make an equivalent view, we need to create a contiguous base
-  // tensor as a placeholder, and then take a view of it with the same striding
-  // as the original view.
-
-  // First, we get a base shape for the contiguous base tensor.
-  // This is the smallest amount of data necessary to back the view.
-  // If arg_tensor is already contiguous, then this will just be its shape.
-  TT_ASSIGN_OR_THROW(
-      Dimensions minimal_base_sizes,
-      GetContiguousBaseShape(StridedLayout::FromTensor(arg_tensor)));
-
-  // Then, we create a contiguous placeholder tensor with this shape.
-  TT_ASSIGN_OR_THROW(
-      at::Tensor base_tensor,
-      MakePlaceholder(minimal_base_sizes, arg_tensor.scalar_type(),
-                      /*requires_grad=*/false),
-      _.SetPrepend() << "failed to create placeholder tensor: ");
-
-  // Finally, we create a view of the base tensor with the same striding as the
-  // original view, and preserve the requires_grad property.
-  at::Tensor view_tensor = base_tensor.as_strided(
-      arg_tensor.sizes(), arg_tensor.strides(), arg_tensor.storage_offset());
-  if (arg_tensor.requires_grad()) {
-    view_tensor.requires_grad_(true);
-  }
-
-  return view_tensor;
+  const std::vector<int64_t> sizes(arg_tensor.sizes().begin(),  // INT_VEC_OK
+                                   arg_tensor.sizes().end());
+  return PyMakePlaceholder(sizes, arg_tensor.scalar_type(),
+                           arg_tensor.requires_grad());
 }
 
 py::object PyGetDeviceLayoutIfMaterialized(const at::Tensor& tensor) {
