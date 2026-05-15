@@ -71,7 +71,6 @@ def _shard_and_materialize_model(
   """Shards the meta model and materializes it on the target device."""
   for layer in model.model.layers:
     fsdp.fully_shard(layer)
-  fsdp.fully_shard(model.model)
   fsdp.fully_shard(model)
   model.to_empty(device=device)
 

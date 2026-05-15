@@ -318,9 +318,7 @@ class _DeviceModule(abc.ABC):
   def set_stream(cls, stream: streams.TpuStream) -> None:
     """Sets the current stream."""
     # pylint: disable=protected-access
-    _device_ops_backend._set_current_stream_id(
-        stream.stream_id, stream.device.index
-    )
+    _device_ops_backend._set_current_stream_id(stream.stream_id)
 
   @classmethod
   def current_stream(
