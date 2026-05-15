@@ -1033,8 +1033,8 @@ class AnythingCompatibleWithThrow {
   if (ABSL_PREDICT_FALSE(!statusor.ok())) {                                \
     ::torch_tpu::StatusBuilderWithMessage _(std::move(statusor).status()); \
     static_cast<void>(_); /* VOID_CAST_OK=using _ is optional. */          \
-    ABSL_CHECK_OK(        /* CRASH_OK=implementing crashing macro */       \
-                  absl::Status((error_expr)));                             \
+    ABSL_LOG(FATAL)       /* CRASH_OK=implementing crashing macro */       \
+        << absl::Status((error_expr)).message();                           \
   }                                                                        \
   TT_REMOVE_PARENS_(lhs) = (*std::move(statusor))
 
