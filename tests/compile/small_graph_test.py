@@ -805,6 +805,34 @@ class ModuleTest(absltest.TestCase):
             "Parameters did not change after optimizer.step()",
         )
 
+  @absltest.skip("Fails with bfloat16 on torch.compile.")
+  def test_ctc_loss_bfloat16(self):
+    log_probs = (
+        torch.randn(10, 2, 5, dtype=torch.float32)
+        .log_softmax(2)
+        .to(torch.bfloat16)
+    )
+    targets = torch.randint(1, 5, (2, 5), dtype=torch.long)
+    input_lengths = torch.full((2,), 10, dtype=torch.long)
+    target_lengths = torch.full((2,), 5, dtype=torch.long)
+    inputs = [log_probs, targets, input_lengths, target_lengths]
+
+    inputs_cpu_f32 = [
+        log_probs.to(torch.float32),
+        targets,
+        input_lengths,
+        target_lengths,
+    ]
+    cpu_result = torch.nn.CTCLoss()(*inputs_cpu_f32).to(torch.bfloat16)
+
+    inputs_tpu = _backend.to_device(inputs, torch.device("tpu"))
+    m_tpu = torch.nn.CTCLoss().to("tpu")
+
+    tpu_backend = compile_lib.TpuBackend(debug=True)
+    compiled = torch.compile(m_tpu, backend=tpu_backend)
+    tpu_compiled_result = _backend.to_device(compiled(*inputs_tpu), "cpu")
+    utils.assert_close(tpu_compiled_result, cpu_result, rtol=1e-2, atol=1e-3)
+
 
 if __name__ == "__main__":
   absltest.main()
