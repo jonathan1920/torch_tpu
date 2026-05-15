@@ -14,7 +14,7 @@
 
 """Build rules for SDPA kernels variants."""
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library")
+load("//build_files:build_defs.bzl", "if_oss", "torch_tpu_cc_library")
 
 def define_sdpa_kernel(name, forward, dtype, is_causal):
     """Defines a SDPA kernel target.
@@ -33,11 +33,19 @@ def define_sdpa_kernel(name, forward, dtype, is_causal):
     source_name = name + "_embed.cc"
     lib_name = name + "_embed"
 
-    native.genrule(
-        name = genrule_name,
-        outs = [header_name, source_name],
-        cmd = """
-            set -e
+    cmd_discovery = """
+            # Discover PyTorch libraries to support TORCH_SOURCE=local mode.
+            # We search specifically within the generator's runfiles to maintain hermeticity
+            gen_tool="$(location :scaled_dot_product_attention_generate)"
+            if [[ -d "$${gen_tool}.runfiles" ]]; then
+              lib_dirs=$$(find -L "$${gen_tool}.runfiles" -name "libtorch.so" -exec dirname {} + 2>/dev/null | sort -u)
+              if [[ -n "$$lib_dirs" ]]; then
+                export LD_LIBRARY_PATH="$$(echo "$$lib_dirs" | tr '\n' ':')$${LD_LIBRARY_PATH:-}"
+              fi
+            fi
+"""
+
+    cmd_body = """
             read -ra out_files <<< "$(OUTS)"
             h_path=$${out_files[0]}
             cc_path=$${out_files[1]}
@@ -49,7 +57,18 @@ def define_sdpa_kernel(name, forward, dtype, is_causal):
                 --kernel_name=%s \
                 --header $$h_path \
                 --implementation $$cc_path
-        """ % (direction_flag, dtype, is_causal_str, name),
+""" % (direction_flag, dtype, is_causal_str, name)
+
+    native.genrule(
+        name = genrule_name,
+        outs = [header_name, source_name],
+        cmd = if_oss(
+            select({
+                "//shims/torch:use_local_torch": "set -e\n" + cmd_discovery + cmd_body,
+                "//conditions:default": "set -e\n" + cmd_body,
+            }),
+            "set -e\n" + cmd_body,
+        ),
         tools = [":scaled_dot_product_attention_generate"],
     )
 
