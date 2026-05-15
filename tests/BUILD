@@ -851,14 +851,7 @@ torch_tpu_py_test(
     name = "dynamism_test",
     srcs = ["dynamism_test.py"],
     main = "dynamism_test.py",
-    nonightly_oss = "Nightly OSS is running on TPU v6. This test is failing on TPU v6 and v7: b/503386468. Will wait until next libtpu release to enable this test.",
     tags = [
-        # TODO: b/503386468 - The fix cl/903975578 was verified using a nightly libtpu wheel after
-        # that timestamp: cl/904535820. Will wait until the next libtpu release to enable this test.
-        # Skip this test on tpu v6 and v7 runners: Fatal crash in XLA XPrecisionCombineEmitter due
-        # to SublaneBytes alignment assertion (32 vs 512) for dynamic 64-bit shapes (int64/float64).
-        "fails-on-tpu-v6",
-        "fails-on-tpu-v7",
         "requires-tpu-v5lite",
     ],
     deps = [
