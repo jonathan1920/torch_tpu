@@ -21,7 +21,7 @@
 #include <memory>
 
 #include "absl/base/nullability.h"
-#include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/compile_options_key.h"
 #include "xla/pjrt/pjrt_executable.h"
 
 namespace torch_tpu {

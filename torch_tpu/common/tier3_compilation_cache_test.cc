@@ -27,6 +27,7 @@
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/compile_options_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"

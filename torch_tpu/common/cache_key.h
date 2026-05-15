@@ -53,6 +53,7 @@
 #include "torch/headeronly/core/Layout.h"
 #include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/compile_options_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -791,32 +792,6 @@ template <typename Sink>
 void AbslStringify(Sink& sink, const GraphKey key) {
   absl::Format(&sink, "%016x_%016x", key.shapeless_key().key(),
                key.dimensions_key().key());
-}
-
-class CompileOptionsKey {
- public:
-  explicit CompileOptionsKey(FingerprintType key) : key_(key) {}
-
-  struct Hash {
-    [[nodiscard]] inline size_t operator()(const CompileOptionsKey key) const {
-      return key.key_;
-    }
-  };
-
-  [[nodiscard]] bool operator==(const CompileOptionsKey rhs) const {
-    return key_ == rhs.key_;
-  }
-
-  [[nodiscard]] FingerprintType key() const { return key_; }
-
- private:
-  FingerprintType key_;
-};
-
-// Formats a compile options key as a human-readable string.
-template <typename Sink>
-void AbslStringify(Sink& sink, const CompileOptionsKey key) {
-  absl::Format(&sink, "%016x", key.key());
 }
 
 // A `CompilationCacheKey` is used to identify a compilation in the compilation

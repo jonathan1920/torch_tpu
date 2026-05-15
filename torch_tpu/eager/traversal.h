@@ -36,6 +36,7 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_spec.h"
+#include "torch_tpu/common/compile_options_key.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/ops/python_context.h"

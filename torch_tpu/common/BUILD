@@ -184,7 +184,7 @@ torch_tpu_cc_library(
     name = "compilation_spec",
     hdrs = ["compilation_spec.h"],
     deps = [
-        ":cache_key",
+        ":compile_options_key",
         "@com_google_absl//absl/base:nullability",
         "@xla//xla/pjrt:pjrt_executable",
     ],
@@ -261,6 +261,7 @@ torch_tpu_cc_test(
     notest_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
         ":cache_key",
+        ":compile_options_key",
         ":dimension_types",
         ":env_vars",
         ":error_utils",
@@ -757,10 +758,21 @@ pywrap_binaries(
 )
 
 torch_tpu_cc_library(
+    name = "compile_options_key",
+    hdrs = ["compile_options_key.h"],
+    deps = [
+        ":fingerprint_utils",
+        "//shims/torch:torch_headers",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+torch_tpu_cc_library(
     name = "cache_key",
     srcs = ["cache_key.cc"],
     hdrs = ["cache_key.h"],
     deps = [
+        ":compile_options_key",
         ":dimension_types",
         ":dtype",
         ":error_utils",
@@ -851,6 +863,7 @@ torch_tpu_cc_library(
         ":cache_key",
         ":compilation",
         ":compilation_spec",
+        ":compile_options_key",
         ":dimension_types",
         ":dtype",
         ":env_vars",
@@ -952,6 +965,7 @@ torch_tpu_cc_test(
         ":compilation",
         ":compilation_cache",
         ":compilation_spec",
+        ":compile_options_key",
         ":error_utils",
         ":flags",
         ":shape",
@@ -1089,6 +1103,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":cache_key",
+        ":compile_options_key",
         ":dimension_types",
         ":env_vars",
         ":error_utils",
@@ -1122,6 +1137,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":cache_key",
+        ":compile_options_key",
         ":dimension_types",
         ":env_vars",
         ":error_utils",
@@ -1154,6 +1170,7 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":cache_key",
+        ":compile_options_key",
         ":env_vars",
         ":tier2_compilation_cache",  # buildcleaner: keep
         ":tier3_compilation_cache",
