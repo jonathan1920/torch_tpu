@@ -22,6 +22,7 @@
 #include "absl/log/absl_check.h"
 #include "absl/status/statusor.h"
 #include "torch_tpu/common/env_vars.h"
+#include "torch_tpu/common/error_utils.h"
 
 namespace torch_tpu {
 namespace {
@@ -37,9 +38,8 @@ TEST(GetPremappedBufferSizeFromEnvOnceDeathTest, Returns0ByDefault) {
   EXPECT_EXIT(
       {
         unsetenv(kTpuPremappedBufferSizeEnvVar);
-        const auto& status_or_size = GetPremappedBufferSizeFromEnvOnce();
-        ABSL_CHECK_OK(status_or_size.status());
-        exit(*status_or_size);
+        TT_ASSIGN_OR_CRASH(auto size, GetPremappedBufferSizeFromEnvOnce());
+        exit(size);
       },
       // Verifies that *status_or_size is 0.
       ExitedWithCode(0), "");

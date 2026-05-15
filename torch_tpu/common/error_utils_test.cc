@@ -645,6 +645,171 @@ TEST(AssignOrThrow, EvaluatesExpressionOnceOnError) {
   EXPECT_EQ(count, 1);  // Incremented once.
 }
 
+// Tests for TT_ASSIGN_OR_CRASH.
+
+TEST(AssignOrCrash, AssignsToExistingVariableOnOk) {
+  absl::StatusOr<int> x = 1;
+  int y = 0;
+  TT_ASSIGN_OR_CRASH(y, x);
+  EXPECT_EQ(y, 1);
+}
+
+TEST(AssignOrCrash, AssignsToNewVariableOnOk) {
+  absl::StatusOr<int> x = 1;
+  TT_ASSIGN_OR_CRASH(int y, x);
+  EXPECT_EQ(y, 1);
+}
+
+TEST(AssignOrCrash, AssignsFromConstToExistingVariableOnOk) {
+  const absl::StatusOr<int> x = 1;
+  int y = 0;
+  TT_ASSIGN_OR_CRASH(y, x);
+  EXPECT_EQ(y, 1);
+}
+
+TEST(AssignOrCrash, AssignsFromConstToNewVariableOnOk) {
+  const absl::StatusOr<int> x = 1;
+  TT_ASSIGN_OR_CRASH(int y, x);
+  EXPECT_EQ(y, 1);
+}
+
+TEST(AssignOrCrash, AssignsToNewConstVariableOnOk) {
+  const absl::StatusOr<int> x = 1;
+  TT_ASSIGN_OR_CRASH(const int y, x);
+  EXPECT_EQ(y, 1);
+}
+
+TEST(AssignOrCrash, AssignsToExistingMoveOnlyVariableOnOk) {
+  absl::StatusOr<std::unique_ptr<int>> x = std::make_unique<int>(1);
+  std::unique_ptr<int> y;
+  TT_ASSIGN_OR_CRASH(y, std::move(x));
+  ASSERT_NE(y, nullptr);
+  EXPECT_EQ(*y, 1);
+}
+
+TEST(AssignOrCrash, AssignsToNewMoveOnlyVariableOnOk) {
+  absl::StatusOr<std::unique_ptr<int>> x = std::make_unique<int>(1);
+  TT_ASSIGN_OR_CRASH(std::unique_ptr<int> y, std::move(x));
+  ASSERT_NE(y, nullptr);
+  EXPECT_EQ(*y, 1);
+}
+
+TEST(AssignOrCrashDeathTest, CrashesOnError) {
+  const auto test = [] {
+    absl::StatusOr<int> x = absl::Status(error::kInternal, "my error");
+    TT_ASSIGN_OR_CRASH(int y, x);
+    static_cast<void>(y);
+  };
+  EXPECT_DEATH(test(), "my error");
+}
+
+TEST(AssignOrCrash, AcceptsParenthesizedLhs) {
+  const std::map<int, int> map = {{1, 2}, {3, 4}};
+  const absl::StatusOr<std::map<int, int>> x = map;
+  TT_ASSIGN_OR_CRASH((const std::map<int, int> y), x);
+  EXPECT_THAT(y, ElementsAre(Pair(1, 2), Pair(3, 4)));
+}
+
+TEST(AssignOrCrashDeathTest, AcceptsErrorExpression) {
+  const auto test = [] {
+    const absl::StatusOr<int> x = absl::Status(error::kInternal, "my error");
+    TT_ASSIGN_OR_CRASH(int y, x, _);
+    static_cast<void>(y);
+  };
+  EXPECT_DEATH(test(), "my error");
+}
+
+TEST(AssignOrCrashDeathTest, ErrorExpressionDoesNotHaveToReference_) {
+  const auto test = [] {
+    const absl::StatusOr<int> x = absl::Status(error::kInternal, "my error");
+    TT_ASSIGN_OR_CRASH(int y, x, TT_ERROR(error::kInternal) << "your error");
+    static_cast<void>(y);
+  };
+  EXPECT_DEATH(test(), "your error");
+}
+
+TEST(AssignOrCrashDeathTest, AcceptsErrorExpressionWithAppend) {
+  const auto test = [] {
+    const absl::StatusOr<int> x = absl::Status(error::kInternal, "my error");
+    TT_ASSIGN_OR_CRASH(int y, x, _ << " has more info: " << 42);
+    static_cast<void>(y);
+  };
+  EXPECT_DEATH(test(), "my error has more info: 42");
+}
+
+TEST(AssignOrCrashDeathTest, AcceptsErrorExpressionWithPrepend) {
+  const auto test = [] {
+    const absl::StatusOr<int> x = absl::Status(error::kInternal, "my error");
+    TT_ASSIGN_OR_CRASH(int y, x,
+                       _.SetPrepend() << "Failed " << 42 << " times with: ");
+    static_cast<void>(y);
+  };
+  EXPECT_DEATH(test(), "Failed 42 times with: my error");
+}
+
+TEST(AssignOrCrashDeathTest, AcceptsErrorExpressionWithOverride) {
+  const auto test = [] {
+    const absl::StatusOr<int> x = absl::Status(error::kInternal, "my error");
+    TT_ASSIGN_OR_CRASH(int y, x,
+                       _.SetOverride() << "Failed " << 42 << " times");
+    static_cast<void>(y);
+  };
+  EXPECT_DEATH(test(), "Failed 42 times");
+}
+
+TEST(AssignOrCrash, SkipsEvaluatingErrorExpressionOnOk) {
+  int count = 0;
+  const auto test = [&] {
+    TT_ASSIGN_OR_CRASH(int y, absl::StatusOr<int>(1),
+                       _ << " - with count: " << ++count);
+    static_cast<void>(y);
+  };
+  test();
+  EXPECT_EQ(count, 0);
+}
+
+TEST(AssignOrCrashDeathTest, EvaluatesErrorExpressionOnceOnError) {
+  int count = 0;
+  const auto test = [&] {
+    TT_ASSIGN_OR_CRASH(
+        int y, absl::StatusOr<int>(absl::Status(error::kInternal, "my error")),
+        _ << " with count: " << ++count);
+    static_cast<void>(y);
+  };
+  EXPECT_DEATH(test(), "my error with count: 1");
+}
+
+TEST(AssignOrCrash, CanAssignToStructuredBindings) {
+  const absl::StatusOr<std::pair<int, int>> x = std::make_pair(1, 2);
+  TT_ASSIGN_OR_CRASH((auto [first, second]), x);
+  EXPECT_EQ(first, 1);
+  EXPECT_EQ(second, 2);
+}
+
+TEST(AssignOrCrash, EvaluatesExpressionOnceOnOk) {
+  const absl::StatusOr<int> x = 42;
+  int count = 0;
+  TT_ASSIGN_OR_CRASH(const int y, [&] {
+    ++count;
+    return x;
+  }());
+  EXPECT_EQ(y, 42);
+  EXPECT_EQ(count, 1);  // Incremented once.
+}
+
+TEST(AssignOrCrashDeathTest, EvaluatesExpressionOnceOnError) {
+  int count = 0;
+  const auto test = [&] {
+    const absl::StatusOr<int> x = TT_ERROR(error::kInternal) << "my error";
+    TT_ASSIGN_OR_CRASH((const int y), [&] {
+      ++count;
+      return x;
+    }());
+    static_cast<void>(y);
+  };
+  EXPECT_DEATH(test(), "my error");
+}
+
 // Tests for TT_RETURN_IF_ERROR.
 
 TEST(ReturnIfError, ProceedsOnOkStatus) {

@@ -208,25 +208,17 @@ absl::StatusOr<mlir::MlirOp> ApplySelect(mlir::MlirOp self, mlir::MlirOp mask,
       InferSize(reshaped_mask_type.getShape(), self_type.getShape(),
                 values_type.getShape()));
 
-  auto self_or_status = BroadcastIfNeeded(self, common_broadcast_shape);
-  ABSL_CHECK_OK(self_or_status.status());  // CRASH_OK=self is being broadcasted
-                                           // to common_broadcast_shape, hence
-                                           // should always succeeds.
-  self = self_or_status.value();
+  TT_ASSIGN_OR_CRASH(  // CRASH_OK=self is being broadcasted to
+                       // common_broadcast_shape, hence should always succeeds.
+      self, BroadcastIfNeeded(self, common_broadcast_shape));
 
-  auto mask_or_status =
-      BroadcastIfNeeded(reshaped_mask, common_broadcast_shape);
-  ABSL_CHECK_OK(mask_or_status.status());  // CRASH_OK=mask is being broadcasted
-                                           // to common_broadcast_shape, hence
-                                           // should always succeeds.
-  mask = mask_or_status.value();
+  TT_ASSIGN_OR_CRASH(  // CRASH_OK=mask is being broadcasted to
+                       // common_broadcast_shape, hence should always succeeds.
+      mask, BroadcastIfNeeded(reshaped_mask, common_broadcast_shape));
 
-  auto values_or_status = BroadcastIfNeeded(values, common_broadcast_shape);
-  ABSL_CHECK_OK(values_or_status.status());  // CRASH_OK=values is being
-                                             // broadcasted to
-                                             // common_broadcast_shape, hence
-                                             // should always succeeds.
-  values = values_or_status.value();
+  TT_ASSIGN_OR_CRASH(  // CRASH_OK=values is being broadcasted to
+                       // common_broadcast_shape, hence should always succeeds.
+      values, BroadcastIfNeeded(values, common_broadcast_shape));
 
   ABSL_VLOG(1) << "[BuildIndexPutSelectShlo] self: " << self.ToString();
   ABSL_VLOG(1) << "[BuildIndexPutSelectShlo] mask: " << mask.ToString();

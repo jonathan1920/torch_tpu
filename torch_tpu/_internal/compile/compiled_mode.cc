@@ -164,25 +164,21 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
   std::vector<DeviceBufferRef> result_refs;
   result_refs.reserve(result_tensors.size());
   for (const at::Tensor& tensor : result_tensors) {
-    absl::StatusOr<DeviceBufferRef> buffer_ref_or =
-        GetBufferFromAtTensor(tensor);
-    ABSL_CHECK_OK(  // CRASH_OK=implies a bug in compile backend if this happens
-        buffer_ref_or)
-        << "failed to get device buffer from result tensor: "
-        << ToString(tensor);
-    auto buffer_ref = std::move(*buffer_ref_or);
+    TT_ASSIGN_OR_CRASH(  // CRASH_OK=implies a bug in compile backend if this
+                         // happens
+        auto buffer_ref, GetBufferFromAtTensor(tensor),
+        _ << "failed to get device buffer from result tensor: "
+          << ToString(tensor));
     ABSL_CHECK(  // CRASH_OK=implies a bug in compile backend if this happens
         buffer_ref.state() != DeviceBufferRefState::kMaterialized)
         << "result tensor is already materialized: " << ToString(tensor);
     result_refs.push_back(std::move(buffer_ref));
   }
 
-  absl::StatusOr<std::unique_ptr<Traversal>> traversal_or =
-      Traversal::Create(std::move(result_refs));
-  ABSL_CHECK_OK(  // CRASH_OK=implies a bug in compile backend if this happens
-      traversal_or)
-      << "failed to create traversal";
-  auto traversal = std::move(*traversal_or);
+  TT_ASSIGN_OR_CRASH(  // CRASH_OK=implies a bug in compile backend if this
+                       // happens
+      auto traversal, Traversal::Create(std::move(result_refs)),
+      _ << "failed to create traversal");
 
   ABSL_CHECK_OK(  // CRASH_OK=implies a bug in compile backend if this happens
       traversal->ValidateAndReorderArguments(std::move(argument_refs)))
@@ -193,12 +189,10 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
       << "bounded dynamic shapes are not supported in TraverseAndCompile yet";
 
   // 2. Compile Traversal and get exec
-  absl::StatusOr<CompiledKernel> compiled_kernel_or =
-      traversal->Compile(options.compilation_mode);
-  ABSL_CHECK_OK(  // CRASH_OK=implies a bug in compile backend if this happens
-      compiled_kernel_or)
-      << "failed to compile traversal";
-  auto compiled_kernel = std::move(*compiled_kernel_or);
+  TT_ASSIGN_OR_CRASH(  // CRASH_OK=implies a bug in compile backend if this
+                       // happens
+      auto compiled_kernel, traversal->Compile(options.compilation_mode),
+      _ << "failed to compile traversal");
 
   TT_ASSIGN_OR_RETURN(auto executable, compiled_kernel.fixed_shape_kernel.get(),
                       _.SetPrepend() << "failed to get fixed shape kernel: ");
@@ -207,15 +201,16 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
   if (options.build_mlir_module) {
     ABSL_VLOG(1) << "Building MLIR module as requested.";
 
-    absl::StatusOr<ContextedModule> contexted_module_or = ContextedModule::Make(
-        [&](mlir::MLIRContext& mlir_context)
-            -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
-          return traversal->BuildMlirModule(mlir_context);
-        });
-    ABSL_CHECK_OK(  // CRASH_OK=implies a bug in compile backend if this happens
-        contexted_module_or)
-        << "failed to build MLIR module";
-    module = std::make_shared<ContextedModule>(std::move(*contexted_module_or));
+    TT_ASSIGN_OR_CRASH(  // CRASH_OK=implies a bug in compile backend if this
+                         // happens
+        auto contexted_module,
+        ContextedModule::Make(
+            [&](mlir::MLIRContext& mlir_context)
+                -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
+              return traversal->BuildMlirModule(mlir_context);
+            }),
+        _ << "failed to build MLIR module");
+    module = std::make_shared<ContextedModule>(std::move(contexted_module));
   }
 
   return CompileResult{

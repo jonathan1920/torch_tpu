@@ -394,6 +394,70 @@ class TtError : public std::runtime_error {
       (__VA_ARGS__, TT_ASSIGN_OR_RETURN_3_, TT_ASSIGN_OR_RETURN_2_)) \
   (__VA_ARGS__)
 
+// TT_ASSIGN_OR_CRASH(lhs, rexpr);
+// TT_ASSIGN_OR_CRASH(lhs, rexpr, error_expr);
+//
+// Evaluates an expression `rexpr` that returns an `absl::StatusOr<T>`. On OK,
+// moves its value into the variable defined by `lhs`; otherwise crashes the
+// process with the error message from the status. If there is an error, `lhs`
+// is not evaluated; thus any side effects that `lhs` may have only occur in the
+// success case.
+//
+// NOTE:
+//   - This macro is modeled on the ASSIGN_OR_RETURN macro inside Google.
+//     It has a similar interface, except that it crashes instead of returning
+//     an error.
+//   - If lhs is parenthesized, the parentheses are removed. See examples
+//     below for more details.
+//   - This macro expands to multiple C++ statements, so it cannot be used
+//     inside of a C++ `if` statement without braces:
+//       if (cond)
+//         TT_ASSIGN_OR_CRASH(lhs, rexpr);  // This is INVALID!
+//
+// Example: Declaring and initializing a new variable (ValueType can be anything
+//          that can be initialized with assignment--including a const
+//          reference, although that's discouraged by go/totw/107):
+//   TT_ASSIGN_OR_CRASH(ValueType value, MaybeGetValue(arg));
+//
+// Example: Assigning to an existing variable:
+//   ValueType value;
+//   TT_ASSIGN_OR_CRASH(value, MaybeGetValue(arg));
+//
+// Example: Assigning to an expression with side effects:
+//   MyProto data;
+//   TT_ASSIGN_OR_CRASH(*data.mutable_str(), MaybeGetValue(arg));
+//   // No field "str" is added on error.
+//
+// Example: Initializing a map. Because of C++ preprocessor limitations,
+// the type used in TT_ASSIGN_OR_CRASH cannot contain commas, so wrap the
+// lhs in parentheses:
+//   TT_ASSIGN_OR_CRASH((absl::flat_hash_map<Foo, Bar> my_map),
+//                             GetMap());
+// Or use `auto` if the type is obvious enough:
+//   TT_ASSIGN_OR_CRASH(auto my_map, GetMap());
+//
+// Example: Assigning to structured bindings (go/totw/169). The same situation
+// with comma as in map, so wrap the statement in parentheses.
+//   TT_ASSIGN_OR_CRASH((auto [first, second]), GetPair());
+//
+// If passed, `error_expr` is evaluated to produce the crashed error value. The
+// expression may reference any variable visible in scope, as well as a
+// `torch_tpu::StatusBuilder` object populated with the error and named by a
+// single underscore `_`. The expression uses the builder to modify the status
+// and is logged fatally in manner similar to ABSL_CHECK_OK. For example:
+//
+// Example: Adjusting the error message.
+//   TT_ASSIGN_OR_CRASH(ValueType value, MaybeGetValue(op),
+//       _ << " while processing op " << op.DebugString());
+//
+// Implementation note: when supplied with 2 arguments, the macro will delegate
+// to TT_ASSIGN_OR_CRASH_2_; when supplied with 3 arguments, it will delegate
+// to TT_ASSIGN_OR_CRASH_3_.
+#define TT_ASSIGN_OR_CRASH(...) /* CRASH_OK=implementing crashing macro */ \
+  TT_GET_VARIADIC_(                                                        \
+      (__VA_ARGS__, TT_ASSIGN_OR_CRASH_3_, TT_ASSIGN_OR_CRASH_2_))         \
+  (__VA_ARGS__)
+
 // Where the throwing macros can be used
 // =====================================
 //
@@ -931,6 +995,46 @@ class AnythingCompatibleWithThrow {
     ::torch_tpu::StatusBuilderWithMessage _(std::move(statusor).status()); \
     static_cast<void>(_);                                                  \
     TT_THROW_TT_ERROR_(absl::Status((error_expr)), TT_SOURCE_LOCATION);    \
+  }                                                                        \
+  TT_REMOVE_PARENS_(lhs) = (*std::move(statusor))
+
+// Implements TT_ASSIGN_OR_CRASH(lhs, rexpr).
+#define TT_ASSIGN_OR_CRASH_2_(lhs, rexpr) \
+  TT_ASSIGN_OR_CRASH_IMPL_2_(TT_CONCAT_(_statusor_, __LINE__), lhs, rexpr)
+
+// Implements TT_ASSIGN_OR_CRASH(lhs, rexpr). `statusor` is the name of the
+// variable that will contain the result of the expression.
+#define TT_ASSIGN_OR_CRASH_IMPL_2_(statusor, lhs, rexpr)   \
+  auto statusor = (rexpr);                                 \
+  TT_STATIC_ASSERT_NOT_STATUS_OR_REF_(statusor);           \
+  ABSL_CHECK_OK(/* CRASH_OK=implementing crashing macro */ \
+                statusor.status());                        \
+  TT_REMOVE_PARENS_(lhs) = (*std::move(statusor))
+
+// Implements TT_ASSIGN_OR_CRASH(lhs, rexpr, error_expr).
+#define TT_ASSIGN_OR_CRASH_3_(lhs, rexpr, error_expr)                      \
+  TT_ASSIGN_OR_CRASH_IMPL_3_(TT_CONCAT_(_statusor_, __LINE__), lhs, rexpr, \
+                             error_expr)
+
+// Implements TT_ASSIGN_OR_CRASH(lhs, rexpr, error_expr). `statusor` is the name
+// of the variable that will contain the result of the expression.
+//
+// The error_expr can reference the special `_` variable, which is a status
+// builder containing the error status. Since this status already has an
+// error message, we don't have to stream more messages into it. Hence the
+// type of `_` is StatusBuilderWithMessage instead of StatusBuilder.
+//
+// Since error_expr doesn't have to reference the `_` variable, we include
+// a static_cast<void>(_) to avoid a "unused variable" warning from the C++
+// compiler.
+#define TT_ASSIGN_OR_CRASH_IMPL_3_(statusor, lhs, rexpr, error_expr)       \
+  auto statusor = (rexpr);                                                 \
+  TT_STATIC_ASSERT_NOT_STATUS_OR_REF_(statusor);                           \
+  if (ABSL_PREDICT_FALSE(!statusor.ok())) {                                \
+    ::torch_tpu::StatusBuilderWithMessage _(std::move(statusor).status()); \
+    static_cast<void>(_); /* VOID_CAST_OK=using _ is optional. */          \
+    ABSL_CHECK_OK(        /* CRASH_OK=implementing crashing macro */       \
+                  absl::Status((error_expr)));                             \
   }                                                                        \
   TT_REMOVE_PARENS_(lhs) = (*std::move(statusor))
 
