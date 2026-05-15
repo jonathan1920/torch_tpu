@@ -22,6 +22,7 @@ package(
         "//:__subpackages__",
         "//shims/torchtitan:__subpackages__",
         "@pypi//helion:__subpackages__",
+        "@pypi//tokamax:__subpackages__",
     ],
 )
 
