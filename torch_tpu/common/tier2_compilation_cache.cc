@@ -417,7 +417,7 @@ static void EnsureTier2CacheDirExistsOnceOrDie() {
         << " with error: " << status.message();
     return true;
   }();
-  static_cast<void>(dir_exists);  // Avoid unused variable warning.
+  static_cast<void>(dir_exists);  // VOID_CAST_OK=dummy result.
 }
 
 Tier2CacheEntryLock::Tier2CacheEntryLock(CompilationCacheKey key)

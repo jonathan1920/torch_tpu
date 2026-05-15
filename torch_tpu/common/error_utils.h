@@ -883,7 +883,7 @@ class AnythingCompatibleWithThrow {
         ::torch_tpu::internal::MaybeAddCppSourceLoc(                    \
             std::move(statusor).status(), TT_NORMALIZED_FILE, __LINE__, \
             __func__));                                                 \
-    static_cast<void>(_);                                               \
+    static_cast<void>(_); /* VOID_CAST_OK=using _ is optional */        \
     return error_expr;                                                  \
   }                                                                     \
   TT_REMOVE_PARENS_(lhs) = (*std::move(statusor))

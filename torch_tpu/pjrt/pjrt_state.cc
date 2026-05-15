@@ -124,7 +124,7 @@ void MaybeRegisterProfiler(std::string_view plugin_name) {
         });
     return true;
   }();
-  static_cast<void>(factory_registered);
+  static_cast<void>(factory_registered);  // VOID_CAST_OK=dummy result.
 }
 
 }  // namespace

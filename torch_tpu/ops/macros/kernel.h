@@ -339,7 +339,8 @@ NoArgAffectsCacheKey(const Ts&...) -> NoArgAffectsCacheKey<Ts...>;
 template <bool kCondition, typename EvalStaticAssert>
 constexpr void ConditionalStaticAssert() {
   if constexpr (kCondition) {
-    static_cast<void>(EvalStaticAssert::value);
+    static_cast<void>(  // VOID_CAST_OK=template meta programming.
+        EvalStaticAssert::value);
   }
 }
 

@@ -114,7 +114,7 @@ static void EnsureTier3CacheDirExistsOnceOrDie() {
         << " with error: " << status.message();
     return true;
   }();
-  static_cast<void>(dir_exists);  // Avoid unused variable warning.
+  static_cast<void>(dir_exists);  // VOID_CAST_OK=don't care about dummy result.
 }
 
 std::string GetTier3CacheEntryPath(CompilationCacheKey key) {

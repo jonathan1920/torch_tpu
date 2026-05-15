@@ -116,7 +116,7 @@ namespace torch_tpu {
                 TT_ARGS_AS_STRINGS_(__VA_ARGS__)} __VA_OPT__(, ) __VA_ARGS__); \
         return true;                                                           \
       }();                                                                     \
-      static_cast<void>(_checked); /* Avoid "unused variable" warning. */      \
+      static_cast<void>(_checked); /* VOID_CAST_OK=dummy result. */            \
     }                                                                          \
   } while (false)
 
