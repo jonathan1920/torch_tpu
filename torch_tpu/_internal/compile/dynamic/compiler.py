@@ -238,6 +238,24 @@ def _compile_and_execute_slice_subgraph(
   )
 
 
+def _compute_output_shapes(
+    sym_shape_manager: SymShapeManager,
+    args: Sequence[Any],
+) -> list[list[int]] | None:
+  """Computes the runtime output shapes from symbolic shapes and arguments."""
+  if not sym_shape_manager.outputs_sym_shape:
+    return None
+
+  output_shapes = [
+      output_sym_shape.get_output_runtime_shape(args)
+      for output_sym_shape in sym_shape_manager.outputs_sym_shape
+  ]
+  logging.debug(
+      "[_DynamicTpuCompiledExecutable] Output shapes: %s", output_shapes
+  )
+  return output_shapes
+
+
 class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
   """A callable wrapper for dynamic MLIR programs with TPU executable."""
 
@@ -263,20 +281,11 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
         args,
         self.sym_shape_manager,
     )
-    # Compute output sizes
-    output_shapes = None
-    if self.sym_shape_manager.outputs_sym_shape:
-      output_shapes = []
-      for output_sym_shape in self.sym_shape_manager.outputs_sym_shape:
-        # Pass the input tensor arguments to compute the output shape
-        output_shapes.append(output_sym_shape.get_output_runtime_shape(args))
-
-    logging.debug(
-        "[_DynamicTpuCompiledExecutable] Output shapes: %s", output_shapes
-    )
 
     # Run model executable with pads, sizes, and explicit output shapes
     outputs = self.model_executable(list(pad_outputs))
+
+    output_shapes = _compute_output_shapes(self.sym_shape_manager, args)
 
     # If the output has dynamic shape, we need to slice it back
     if output_shapes is not None:
