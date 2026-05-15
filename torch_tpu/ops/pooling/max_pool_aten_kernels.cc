@@ -44,6 +44,7 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/core/dispatch/Dispatcher.h"
 #include "ATen/ops/empty.h"
+#include "ATen/ops/max_pool2d_with_indices.h"
 #include "c10/core/ScalarType.h"
 #include "torch/csrc/autograd/custom_function.h"
 #include "torch/csrc/autograd/function.h"
@@ -934,6 +935,30 @@ Dimensions GetMaxPoolOutputSize(at::IntArrayRef input_size,
     output_size[spatial_start_index + i] = std::max<int64_t>(out, 1);
   }
   return output_size;
+}
+
+at::Tensor AtenMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,
+                         at::IntArrayRef stride, at::IntArrayRef padding,
+                         at::IntArrayRef dilation, bool ceil_mode) {
+  TT_KERNEL(OpName::kMaxPool2d, _,
+            (self, IgnoreInCacheKey(kernel_size, "Handled by downstream ops"),
+             IgnoreInCacheKey(stride, "Handled by downstream ops"),
+             IgnoreInCacheKey(padding, "Handled by downstream ops"),
+             IgnoreInCacheKey(dilation, "Handled by downstream ops"),
+             IgnoreInCacheKey(ceil_mode, "Handled by downstream ops")),
+            {
+              const bool is_dilation_trivial = dilation.allMatch(
+                  std::bind_front(std::equal_to<int64_t>(), 1));
+
+              if (is_dilation_trivial) {
+                return TpuMaxPool2dAutograd::apply(
+                    self, kernel_size, stride, padding, dilation, ceil_mode);
+              }
+
+              auto [tensor, indices] = at::max_pool2d_with_indices(
+                  self, kernel_size, stride, padding, dilation, ceil_mode);
+              return tensor;
+            });
 }
 
 at::Tensor TpuMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,

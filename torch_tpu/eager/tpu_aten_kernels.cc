@@ -781,22 +781,7 @@ TORCH_LIBRARY_IMPL(_, AutogradPrivateUse1, m) {
 // SelectAndScatter does not support dilations however, so we fallback to the
 // indices variant and preserve the default composite behavior in this case.
 TORCH_LIBRARY_IMPL(aten, AutogradPrivateUse1, m) {
-  m.impl("max_pool2d",
-         [](const at::Tensor& self, at::IntArrayRef kernel_size,
-            at::IntArrayRef stride, at::IntArrayRef padding,
-            at::IntArrayRef dilation, bool ceil_mode) -> at::Tensor {
-           const bool is_dilation_trivial =
-               dilation.allMatch(std::bind_front(std::equal_to<int64_t>(), 1));
-
-           if (is_dilation_trivial) {
-             return torch_tpu::TpuMaxPool2dAutograd::apply(
-                 self, kernel_size, stride, padding, dilation, ceil_mode);
-           } else {
-             auto results = at::max_pool2d_with_indices(
-                 self, kernel_size, stride, padding, dilation, ceil_mode);
-             return std::get<0>(results);
-           }
-         });
+  Impl(m, OpName::kMaxPool2d, AtenMaxPool2d);
 }
 
 TORCH_LIBRARY(torch_tpu, m) {
@@ -864,19 +849,20 @@ TORCH_LIBRARY(torch_tpu, m) {
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, Meta, m) {
-  m.impl("max_pool2d", [](const at::Tensor& self, at::IntArrayRef kernel_size,
-                          at::IntArrayRef stride, at::IntArrayRef padding,
-                          at::IntArrayRef dilation, bool ceil_mode) {
-    return at::empty(GetMaxPoolOutputSize(self.sizes(), kernel_size, stride,
-                                          padding, dilation, ceil_mode, 2),
-                     self.options());
-  });
-  m.impl("max_pool2d_backward",
-         [](const at::Tensor& grad_output, const at::Tensor& self,
-            at::IntArrayRef kernel_size, at::IntArrayRef stride,
-            at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode) {
-           return at::empty(self.sizes(), self.options());
-         });
+  Impl(m, OpName::kMaxPool2d,
+       [](const at::Tensor& self, at::IntArrayRef kernel_size,
+          at::IntArrayRef stride, at::IntArrayRef padding,
+          at::IntArrayRef dilation, bool ceil_mode) {
+         return at::empty(
+             GetMaxPoolOutputSize(self.sizes(), kernel_size, stride, padding,
+                                  dilation, ceil_mode, 2),
+             self.options());
+       });
+  Impl(m, OpName::kMaxPool2dBackward,
+       [](const at::Tensor& grad_output, const at::Tensor& self,
+          at::IntArrayRef kernel_size, at::IntArrayRef stride,
+          at::IntArrayRef padding, at::IntArrayRef dilation,
+          bool ceil_mode) { return at::empty(self.sizes(), self.options()); });
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {

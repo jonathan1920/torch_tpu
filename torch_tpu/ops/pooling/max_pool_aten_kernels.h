@@ -28,6 +28,10 @@
 
 namespace torch_tpu {
 
+at::Tensor AtenMaxPool2d(const at::Tensor& self, at::IntArrayRef kernel_size,
+                         at::IntArrayRef stride, at::IntArrayRef padding,
+                         at::IntArrayRef dilation, bool ceil_mode);
+
 std::tuple<at::Tensor&, at::Tensor&> AtenMaxPool2dWithIndicesOut(
     const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,
     at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode,
