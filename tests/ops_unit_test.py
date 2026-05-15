@@ -2030,6 +2030,19 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         )
     )
 
+    # Test multi-way tensor broadcasting where min and max have different
+    # shapes.
+    input_t = torch.randn(1, 3)
+    min_t = torch.tensor([[0.0]])
+    max_t = torch.tensor([[1.0], [1.0]])
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.clamp(
+            input_t.to(device=device),
+            min=min_t.to(device=device),
+            max=max_t.to(device=device),
+        )
+    )
+
   def test_concurrent_ops(self):
     """Tests that ops can run concurrently without correctness issues."""
 

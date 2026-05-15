@@ -252,12 +252,6 @@ void CheckScalarInput() {
       kOpName == OpName::kBaddbmmDtypeOut ||             //
       kOpName == OpName::kBaddbmmOut ||                  //
       kOpName == OpName::kCdistForward ||                //
-      kOpName == OpName::kClampMaxOut ||                 //
-      kOpName == OpName::kClampMaxTensorOut ||           //
-      kOpName == OpName::kClampMinOut ||                 //
-      kOpName == OpName::kClampMinTensorOut ||           //
-      kOpName == OpName::kClampOut ||                    //
-      kOpName == OpName::kClampTensorOut ||              //
       kOpName == OpName::kEluBackwardGradInput ||        //
       kOpName == OpName::kEluOut ||                      //
       kOpName == OpName::kEq ||                          //

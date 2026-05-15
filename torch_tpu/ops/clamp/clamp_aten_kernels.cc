@@ -35,6 +35,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -118,18 +119,18 @@ at::ScalarType GetComputationType(const at::Tensor& self,
   return computation_scalar_type;
 }
 
-absl::StatusOr<Dimensions> ComputeOutputShape(const at::Tensor& self,
-                                              std::optional<at::Tensor> min,
-                                              std::optional<at::Tensor> max) {
+absl::StatusOr<Dimensions> ComputeOutputShape(
+    const at::Tensor& self, const std::optional<at::Tensor>& min,
+    const std::optional<at::Tensor>& max) {
+  Dimensions output_dims = CopyIntVector(self.sizes());
   if (min) {
-    return InferSize(self.sizes(), min->sizes());
+    TT_ASSIGN_OR_RETURN(output_dims, InferSize(output_dims, min->sizes()));
   }
   if (max) {
-    return InferSize(self.sizes(), max->sizes());
+    TT_ASSIGN_OR_RETURN(output_dims, InferSize(output_dims, max->sizes()));
   }
-  return CopyIntVector(self.sizes());
+  return output_dims;
 }
-
 
 absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
     const at::Tensor& self, const c10::optional<at::Tensor>& min_,
@@ -196,18 +197,19 @@ absl::StatusOr<DeviceBufferRef> AtenClampTensorHelper(
   }
 }
 
+// Helper for clamping with promoted scalar bounds.
 absl::StatusOr<DeviceBufferRef> ClampScalarHelper(
-    const at::Tensor& self, const c10::optional<at::Scalar>& min,
-    const c10::optional<at::Scalar>& max, at::ScalarType output_scalar_type,
+    const at::Tensor& self, std::optional<PromotedScalar> min,
+    std::optional<PromotedScalar> max, at::ScalarType output_scalar_type,
     OpParamCacheKeys param_keys) {
   std::optional<at::Tensor> min_tensor;
-  if (min) {
-    TT_ASSIGN_OR_RETURN(auto t, MakeTensor(*min));
+  if (min.has_value()) {
+    TT_ASSIGN_OR_RETURN(auto t, min->GetTensor());
     min_tensor = std::move(t);
   }
   std::optional<at::Tensor> max_tensor;
-  if (max) {
-    TT_ASSIGN_OR_RETURN(auto t, MakeTensor(*max));
+  if (max.has_value()) {
+    TT_ASSIGN_OR_RETURN(auto t, max->GetTensor());
     max_tensor = std::move(t);
   }
   return AtenClampTensorHelper(self, min_tensor, max_tensor, output_scalar_type,
@@ -220,22 +222,28 @@ at::Tensor& AtenClampOut(const at::Tensor& self,
                          const c10::optional<at::Scalar>& min,
                          const c10::optional<at::Scalar>& max,
                          at::Tensor& out) {
-  TT_KERNEL(OpName::kClampOut, param_keys, (self, min, max, out), {
-    TT_ASSIGN_OR_THROW(auto result_buf,
-                       ClampScalarHelper(self, min, max, out.scalar_type(),
-                                         std::move(param_keys)));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
-    return out;
-  });
+  auto promoted_min = PromoteScalar(min);
+  auto promoted_max = PromoteScalar(max);
+  TT_KERNEL(
+      OpName::kClampOut, param_keys, (self, promoted_min, promoted_max, out), {
+        TT_ASSIGN_OR_THROW(
+            auto result_buf,
+            ClampScalarHelper(self, std::move(promoted_min),
+                              std::move(promoted_max), out.scalar_type(),
+                              std::move(param_keys)));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+        return out;
+      });
 }
 
 at::Tensor& AtenClampMinOut(const at::Tensor& self, const at::Scalar& min,
                             at::Tensor& out) {
-  TT_KERNEL(OpName::kClampMinOut, param_keys, (self, min, out), {
+  auto promoted_min = PromoteScalar(min);
+  TT_KERNEL(OpName::kClampMinOut, param_keys, (self, promoted_min, out), {
     TT_ASSIGN_OR_THROW(
         auto result_buf,
-        ClampScalarHelper(self, min, std::nullopt, out.scalar_type(),
-                          std::move(param_keys)));
+        ClampScalarHelper(self, std::move(promoted_min), std::nullopt,
+                          out.scalar_type(), std::move(param_keys)));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
@@ -243,11 +251,12 @@ at::Tensor& AtenClampMinOut(const at::Tensor& self, const at::Scalar& min,
 
 at::Tensor& AtenClampMaxOut(const at::Tensor& self, const at::Scalar& max,
                             at::Tensor& out) {
-  TT_KERNEL(OpName::kClampMaxOut, param_keys, (self, max, out), {
+  auto promoted_max = PromoteScalar(max);
+  TT_KERNEL(OpName::kClampMaxOut, param_keys, (self, promoted_max, out), {
     TT_ASSIGN_OR_THROW(
         auto result_buf,
-        ClampScalarHelper(self, std::nullopt, max, out.scalar_type(),
-                          std::move(param_keys)));
+        ClampScalarHelper(self, std::nullopt, std::move(promoted_max),
+                          out.scalar_type(), std::move(param_keys)));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
