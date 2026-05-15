@@ -35,9 +35,8 @@ COPY pyproject.toml .
 
 # Install all dependencies from pyproject.toml (including optional ones for dev/test)
 # We let uv read pyproject.toml to use the explicit pytorch-cpu index only for torch/torchvision!
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system .[dev,test,benchmark,examples]
-
+RUN uv pip compile pyproject.toml --all-extras --python-version 3.12 --python-platform x86_64-manylinux_2_31 --resolution lowest-direct --generate-hashes --extra-index-url https://download.pytorch.org/whl/cpu --index-strategy unsafe-best-match -o requirements.txt && \
+    uv pip install --system -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu --index-strategy unsafe-best-match
 # Enable tcmalloc by default for all derived images
 ENV LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc.so.4"
 
