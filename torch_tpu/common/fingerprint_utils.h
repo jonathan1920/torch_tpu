@@ -18,6 +18,10 @@
 #define TORCH_TPU_COMMON_FINGERPRINT_UTILS_H_
 
 // Utilities for computing fingerprints.
+//
+// This file should only contain specializations for common STL and Abseil
+// types. Specializations for TorchTPU-specific data types, such as `OpName`,
+// should be added in their respective headers to prevent circular dependencies.
 
 #include <cstddef>
 #include <cstdint>
@@ -30,10 +34,6 @@
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
-#include "torch_tpu/common/dtype.h"
-#include "torch_tpu/ops/op_names.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
-#include "xla/xla.pb.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace torch_tpu {
@@ -66,38 +66,7 @@ struct Fingerprint64Impl {
   }
 };
 
-// Specialization for OpName.
-template <>
-struct Fingerprint64Impl<OpName, /*kIsSmallIntegral=*/false> {
-  [[nodiscard]] static FingerprintType Compute(const OpName op_name) {
-    // The string op names are unique and stable as they are used for
-    // registering ops with PyTorch.
-    return Fingerprint(ToString(op_name));
-  }
-};
 
-// Specialization for mlir::ElementType.
-template <>
-struct Fingerprint64Impl<mlir::ElementType, /*kIsSmallIntegral=*/false> {
-  [[nodiscard]] static FingerprintType Compute(
-      const mlir::ElementType element_type) {
-    // The short names for ElementType are unique and stable as they are used
-    // for parameter cache keys.
-    return Fingerprint(ToShortString(element_type));
-  }
-};
-
-// Specialization for xla::ExecutionOptions::EffortLevel.
-template <>
-struct Fingerprint64Impl<xla::ExecutionOptions::EffortLevel,
-                         /*kIsSmallIntegral=*/false> {
-  [[nodiscard]] static FingerprintType Compute(
-      const xla::ExecutionOptions::EffortLevel effort_level) {
-    // The proto enum string names for EffortLevel are unique and stable as
-    // they are used for parameter cache keys.
-    return Fingerprint(xla::ExecutionOptions::EffortLevel_Name(effort_level));
-  }
-};
 
 // Partial specialization for absl::Span.
 template <typename T>

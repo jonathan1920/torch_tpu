@@ -26,6 +26,7 @@
 #include "ATen/core/ATen_fwd.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fingerprint_utils.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/xla_data.pb.h"
 
@@ -137,6 +138,21 @@ int64_t TorchEquivalentBitwidth(mlir::ElementType element_type);
 // If the input is a complex type, returns the type of its real component;
 // otherwise returns the input type itself.
 mlir::ElementType RealComponentOf(mlir::ElementType element_type);
+
+namespace internal {
+
+// Fingerprint specialization for `mlir::ElementType`.
+template <>
+struct Fingerprint64Impl<mlir::ElementType, /*kIsSmallIntegral=*/false> {
+  [[nodiscard]] static FingerprintType Compute(
+      const mlir::ElementType element_type) {
+    // The short names for ElementType are unique and stable as they are used
+    // for parameter cache keys.
+    return Fingerprint(ToShortString(element_type));
+  }
+};
+
+}  // namespace internal
 
 }  // namespace torch_tpu
 

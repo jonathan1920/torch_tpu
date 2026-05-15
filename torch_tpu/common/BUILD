@@ -60,6 +60,7 @@ torch_tpu_cc_library(
     deps = [
         ":dimension_types",
         ":error_utils",
+        ":fingerprint_utils",
         ":to_string",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
@@ -195,8 +196,8 @@ torch_tpu_cc_library(
     srcs = ["compilation.cc"],
     hdrs = ["compilation.h"],
     deps = [
-        ":cache_key",
         ":compilation_spec",
+        ":compile_options_key",
         ":context_manager",
         ":context_states",
         ":env_vars",
@@ -522,14 +523,10 @@ torch_tpu_cc_library(
     srcs = ["fingerprint_utils.cc"],
     hdrs = ["fingerprint_utils.h"],
     deps = [
-        ":dtype",
-        "//torch_tpu/ops:op_names",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
-        "@stablehlo//:attr_type_builder_util",
         "@tsl//tsl/platform:fingerprint",
-        "@xla//xla:xla_proto_cc",
     ],
 )
 
@@ -537,6 +534,7 @@ torch_tpu_cc_test(
     name = "fingerprint_utils_test",
     srcs = ["fingerprint_utils_test.cc"],
     deps = [
+        ":dtype",
         ":fingerprint_utils",
         "//torch_tpu/ops:op_names",
         "@com_google_absl//absl/types:span",
@@ -1079,10 +1077,10 @@ torch_tpu_cc_test(
         "requires-tpu-v5lite",
     ],
     deps = [
-        ":cache_key",
         ":compilation",
         ":compilation_spec",
         ":compilation_test_helper",
+        ":compile_options_key",
         ":fingerprint_utils",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",

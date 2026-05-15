@@ -37,8 +37,8 @@
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation_spec.h"
+#include "torch_tpu/common/compile_options_key.h"
 #include "torch_tpu/common/context_manager.h"
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/env_vars.h"
@@ -57,6 +57,22 @@
 #include "xla/xla.pb.h"
 
 namespace torch_tpu {
+namespace internal {
+
+// Fingerprint specialization for `xla::ExecutionOptions::EffortLevel`.
+template <>
+struct Fingerprint64Impl<xla::ExecutionOptions::EffortLevel,
+                         /*kIsSmallIntegral=*/false> {
+  [[nodiscard]] static FingerprintType Compute(
+      const xla::ExecutionOptions::EffortLevel effort_level) {
+    // The proto enum string names for EffortLevel are unique and stable as
+    // they are used for parameter cache keys.
+    return Fingerprint(xla::ExecutionOptions::EffortLevel_Name(effort_level));
+  }
+};
+
+}  // namespace internal
+
 namespace {
 
 // Names of special XLA compiler options.

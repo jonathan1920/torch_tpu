@@ -29,7 +29,10 @@ torch_tpu_cc_library(
     name = "op_names",
     srcs = ["op_names.cc"],
     hdrs = ["op_names.h"],
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        "//torch_tpu/common:fingerprint_utils",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 torch_tpu_cc_test(

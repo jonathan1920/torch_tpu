@@ -20,6 +20,8 @@
 #include <ostream>
 #include <string_view>
 
+#include "torch_tpu/common/fingerprint_utils.h"
+
 namespace torch_tpu {
 
 // Identifies ops implemented by TorchTPU. The numerical values of the enum
@@ -687,6 +689,20 @@ inline std::ostream& operator<<(std::ostream& os, const OpName op_name) {
       return false;
   }
 }
+
+namespace internal {
+
+// Specialization for `OpName`.
+template <>
+struct Fingerprint64Impl<OpName, /*kIsSmallIntegral=*/false> {
+  [[nodiscard]] static FingerprintType Compute(const OpName op_name) {
+    // The string op names are unique and stable as they are used for
+    // registering ops with PyTorch.
+    return Fingerprint(ToString(op_name));
+  }
+};
+
+}  // namespace internal
 
 }  // namespace torch_tpu
 

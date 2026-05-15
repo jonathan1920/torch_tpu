@@ -27,6 +27,7 @@
 
 #include "gtest/gtest.h"
 #include "absl/types/span.h"
+#include "torch_tpu/common/dtype.h"  // IWYU pragma: keep
 #include "torch_tpu/ops/op_names.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -192,21 +193,6 @@ TEST(Fingerprint, WorksForOpName) {
          "Instead, figure out why your code change caused the fingerprint to "
          "change.";
   EXPECT_EQ(Fingerprint(OpName::kZero_), 10492423113836821119ULL)
-      << "Fingerprint stability is vital for the compilation cache "
-         "correctness. Do not change the expected value to make the test pass. "
-         "Instead, figure out why your code change caused the fingerprint to "
-         "change.";
-}
-
-TEST(Fingerprint, WorksForXlaExecutionOptionsEffortLevel) {
-  EXPECT_EQ(Fingerprint(xla::ExecutionOptions::EFFORT_O1),
-            1209527397252475055ULL)
-      << "Fingerprint stability is vital for the compilation cache "
-         "correctness. Do not change the expected value to make the test pass. "
-         "Instead, figure out why your code change caused the fingerprint to "
-         "change.";
-  EXPECT_EQ(Fingerprint(xla::ExecutionOptions::EFFORT_O3),
-            16240567011948058057ULL)
       << "Fingerprint stability is vital for the compilation cache "
          "correctness. Do not change the expected value to make the test pass. "
          "Instead, figure out why your code change caused the fingerprint to "
