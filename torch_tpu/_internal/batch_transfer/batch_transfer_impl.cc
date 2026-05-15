@@ -20,6 +20,7 @@
 #include "ATen/core/TensorBody.h"
 #include "torch/extension.h"  // IWYU pragma: keep
 #include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/experimental/batch_transfer/batch_transfer.h"
 #include "pybind11/attr.h"
 #include "pybind11/cast.h"
@@ -27,9 +28,88 @@
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 
+namespace torch_tpu {
+
 namespace py = pybind11;
 
-namespace torch_tpu {
+static void PyBatchTransferD2HSync(
+    const std::vector<at::Tensor>& src_arrs,
+    const std::vector<at::Tensor>& dst_arrs,
+    const std::vector<int64_t>& src_offsets_major_dim,   // INT_VEC_OK
+    const std::vector<int64_t>& dst_offsets_major_dim,   // INT_VEC_OK
+    const std::vector<int64_t>& copy_sizes_major_dim) {  // INT_VEC_OK
+  py::gil_scoped_release release;
+  Dimensions src_offsets(src_offsets_major_dim.begin(),
+                         src_offsets_major_dim.end());
+  Dimensions dst_offsets(dst_offsets_major_dim.begin(),
+                         dst_offsets_major_dim.end());
+  Dimensions copy_sizes(copy_sizes_major_dim.begin(),
+                        copy_sizes_major_dim.end());
+  TT_THROW_IF_ERROR(BatchTransferD2HSync(src_arrs, dst_arrs, src_offsets,
+                                         dst_offsets, copy_sizes));
+}
+
+static void PyBatchTransferH2DSync(
+    const std::vector<at::Tensor>& src_arrs,
+    const std::vector<at::Tensor>& dst_arrs,
+    const std::vector<int64_t>& src_offsets_major_dim,   // INT_VEC_OK
+    const std::vector<int64_t>& dst_offsets_major_dim,   // INT_VEC_OK
+    const std::vector<int64_t>& copy_sizes_major_dim) {  // INT_VEC_OK
+  py::gil_scoped_release release;
+  Dimensions src_offsets(src_offsets_major_dim.begin(),
+                         src_offsets_major_dim.end());
+  Dimensions dst_offsets(dst_offsets_major_dim.begin(),
+                         dst_offsets_major_dim.end());
+  Dimensions copy_sizes(copy_sizes_major_dim.begin(),
+                        copy_sizes_major_dim.end());
+  TT_THROW_IF_ERROR(BatchTransferH2DSync(src_arrs, dst_arrs, src_offsets,
+                                         dst_offsets, copy_sizes));
+}
+
+static TransferFuture PyBatchTransferD2H(
+    const std::vector<at::Tensor>& src_arrs,
+    const std::vector<at::Tensor>& dst_arrs,
+    const std::vector<int64_t>& src_offsets_major_dim,   // INT_VEC_OK
+    const std::vector<int64_t>& dst_offsets_major_dim,   // INT_VEC_OK
+    const std::vector<int64_t>& copy_sizes_major_dim) {  // INT_VEC_OK
+  py::gil_scoped_release release;
+  Dimensions src_offsets(src_offsets_major_dim.begin(),
+                         src_offsets_major_dim.end());
+  Dimensions dst_offsets(dst_offsets_major_dim.begin(),
+                         dst_offsets_major_dim.end());
+  Dimensions copy_sizes(copy_sizes_major_dim.begin(),
+                        copy_sizes_major_dim.end());
+  TT_ASSIGN_OR_THROW(auto result,
+                     BatchTransferD2H(src_arrs, dst_arrs, src_offsets,
+                                      dst_offsets, copy_sizes));
+  return result;
+}
+
+static TransferFuture PyBatchTransferH2D(
+    const std::vector<at::Tensor>& src_arrs,
+    const std::vector<at::Tensor>& dst_arrs,
+    const std::vector<int64_t>& src_offsets_major_dim,   // INT_VEC_OK
+    const std::vector<int64_t>& dst_offsets_major_dim,   // INT_VEC_OK
+    const std::vector<int64_t>& copy_sizes_major_dim) {  // INT_VEC_OK
+  py::gil_scoped_release release;
+  Dimensions src_offsets(src_offsets_major_dim.begin(),
+                         src_offsets_major_dim.end());
+  Dimensions dst_offsets(dst_offsets_major_dim.begin(),
+                         dst_offsets_major_dim.end());
+  Dimensions copy_sizes(copy_sizes_major_dim.begin(),
+                        copy_sizes_major_dim.end());
+  TT_ASSIGN_OR_THROW(auto result,
+                     BatchTransferH2D(src_arrs, dst_arrs, src_offsets,
+                                      dst_offsets, copy_sizes));
+  return result;
+}
+
+static void PyAwaitAll(std::vector<TransferFuture>& futures) {
+  py::gil_scoped_release release;
+  for (auto& f : futures) {
+    f.Await();
+  }
+}
 
 PYBIND11_MODULE(batch_transfer_impl, m) {
   py::class_<TransferFuture>(m, "TransferFuture")
@@ -38,99 +118,38 @@ PYBIND11_MODULE(batch_transfer_impl, m) {
            py::call_guard<py::gil_scoped_release>());
 
   m.def(
-      "batch_transfer_d2h",
-      [](const std::vector<at::Tensor>& src_arrs,
-         const std::vector<at::Tensor>& dst_arrs,
-         const std::vector<int64_t>& src_offsets_major_dim,   // INT_VEC_OK
-         const std::vector<int64_t>& dst_offsets_major_dim,   // INT_VEC_OK
-         const std::vector<int64_t>& copy_sizes_major_dim) {  // INT_VEC_OK
-        py::gil_scoped_release release;
-        Dimensions src_offsets(src_offsets_major_dim.begin(),
-                               src_offsets_major_dim.end());
-        Dimensions dst_offsets(dst_offsets_major_dim.begin(),
-                               dst_offsets_major_dim.end());
-        Dimensions copy_sizes(copy_sizes_major_dim.begin(),
-                              copy_sizes_major_dim.end());
-        return BatchTransferD2H(src_arrs, dst_arrs, src_offsets, dst_offsets,
-                                copy_sizes);
-      },
-      py::arg("src_arrs"), py::arg("dst_arrs"),
+      "batch_transfer_d2h", &PyBatchTransferD2H,  //
+      py::arg("src_arrs"),                        //
+      py::arg("dst_arrs"),
       py::arg("src_offsets_major_dim") = std::vector<int64_t>{},  // INT_VEC_OK
       py::arg("dst_offsets_major_dim") = std::vector<int64_t>{},  // INT_VEC_OK
       py::arg("copy_sizes_major_dim") = std::vector<int64_t>{});  // INT_VEC_OK
 
   m.def(
-      "batch_transfer_h2d",
-      [](const std::vector<at::Tensor>& src_arrs,
-         const std::vector<at::Tensor>& dst_arrs,
-         const std::vector<int64_t>& src_offsets_major_dim,   // INT_VEC_OK
-         const std::vector<int64_t>& dst_offsets_major_dim,   // INT_VEC_OK
-         const std::vector<int64_t>& copy_sizes_major_dim) {  // INT_VEC_OK
-        py::gil_scoped_release release;
-        Dimensions src_offsets(src_offsets_major_dim.begin(),
-                               src_offsets_major_dim.end());
-        Dimensions dst_offsets(dst_offsets_major_dim.begin(),
-                               dst_offsets_major_dim.end());
-        Dimensions copy_sizes(copy_sizes_major_dim.begin(),
-                              copy_sizes_major_dim.end());
-        return BatchTransferH2D(src_arrs, dst_arrs, src_offsets, dst_offsets,
-                                copy_sizes);
-      },
-      py::arg("src_arrs"), py::arg("dst_arrs"),
+      "batch_transfer_h2d", &PyBatchTransferH2D,  //
+      py::arg("src_arrs"),                        //
+      py::arg("dst_arrs"),
       py::arg("src_offsets_major_dim") = std::vector<int64_t>{},  // INT_VEC_OK
       py::arg("dst_offsets_major_dim") = std::vector<int64_t>{},  // INT_VEC_OK
       py::arg("copy_sizes_major_dim") = std::vector<int64_t>{});  // INT_VEC_OK
 
   m.def(
-      "batch_transfer_d2h_sync",
-      [](const std::vector<at::Tensor>& src_arrs,
-         const std::vector<at::Tensor>& dst_arrs,
-         const std::vector<int64_t>& src_offsets_major_dim,   // INT_VEC_OK
-         const std::vector<int64_t>& dst_offsets_major_dim,   // INT_VEC_OK
-         const std::vector<int64_t>& copy_sizes_major_dim) {  // INT_VEC_OK
-        py::gil_scoped_release release;
-        Dimensions src_offsets(src_offsets_major_dim.begin(),
-                               src_offsets_major_dim.end());
-        Dimensions dst_offsets(dst_offsets_major_dim.begin(),
-                               dst_offsets_major_dim.end());
-        Dimensions copy_sizes(copy_sizes_major_dim.begin(),
-                              copy_sizes_major_dim.end());
-        BatchTransferD2HSync(src_arrs, dst_arrs, src_offsets, dst_offsets,
-                             copy_sizes);
-      },
-      py::arg("src_arrs"), py::arg("dst_arrs"),
+      "batch_transfer_d2h_sync", &PyBatchTransferD2HSync,  //
+      py::arg("src_arrs"),                                 //
+      py::arg("dst_arrs"),
       py::arg("src_offsets_major_dim") = std::vector<int64_t>{},  // INT_VEC_OK
       py::arg("dst_offsets_major_dim") = std::vector<int64_t>{},  // INT_VEC_OK
       py::arg("copy_sizes_major_dim") = std::vector<int64_t>{});  // INT_VEC_OK
 
   m.def(
-      "batch_transfer_h2d_sync",
-      [](const std::vector<at::Tensor>& src_arrs,
-         const std::vector<at::Tensor>& dst_arrs,
-         const std::vector<int64_t>& src_offsets_major_dim,   // INT_VEC_OK
-         const std::vector<int64_t>& dst_offsets_major_dim,   // INT_VEC_OK
-         const std::vector<int64_t>& copy_sizes_major_dim) {  // INT_VEC_OK
-        py::gil_scoped_release release;
-        Dimensions src_offsets(src_offsets_major_dim.begin(),
-                               src_offsets_major_dim.end());
-        Dimensions dst_offsets(dst_offsets_major_dim.begin(),
-                               dst_offsets_major_dim.end());
-        Dimensions copy_sizes(copy_sizes_major_dim.begin(),
-                              copy_sizes_major_dim.end());
-        BatchTransferH2DSync(src_arrs, dst_arrs, src_offsets, dst_offsets,
-                             copy_sizes);
-      },
-      py::arg("src_arrs"), py::arg("dst_arrs"),
+      "batch_transfer_h2d_sync", &PyBatchTransferH2DSync,  //
+      py::arg("src_arrs"),                                 //
+      py::arg("dst_arrs"),
       py::arg("src_offsets_major_dim") = std::vector<int64_t>{},  // INT_VEC_OK
       py::arg("dst_offsets_major_dim") = std::vector<int64_t>{},  // INT_VEC_OK
       py::arg("copy_sizes_major_dim") = std::vector<int64_t>{});  // INT_VEC_OK
 
-  m.def("await_all", [](std::vector<TransferFuture>& futures) {
-    py::gil_scoped_release release;
-    for (auto& f : futures) {
-      f.Await();
-    }
-  });
+  m.def("await_all", &PyAwaitAll);
 }
 
 }  // namespace torch_tpu

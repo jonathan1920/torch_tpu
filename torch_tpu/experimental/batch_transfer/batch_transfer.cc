@@ -21,9 +21,7 @@
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <ratio>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,6 +37,7 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "xla/future.h"
@@ -151,28 +150,30 @@ void TransferFuture::AndThen(std::vector<xla::Future<>> other_futures,
 
 namespace {
 
-void ValidatePartialSpec(const Dimensions& src_offsets_major_dim,
-                         const Dimensions& dst_offsets_major_dim,
-                         const Dimensions& copy_sizes_major_dim) {
+absl::Status ValidatePartialSpec(const Dimensions& src_offsets_major_dim,
+                                 const Dimensions& dst_offsets_major_dim,
+                                 const Dimensions& copy_sizes_major_dim) {
   bool partial_spec_present = !src_offsets_major_dim.empty() ||
                               !dst_offsets_major_dim.empty() ||
                               !copy_sizes_major_dim.empty();
   if (partial_spec_present) {
-    TT_CHECK_THROW(
+    TT_RET_CHECK(
         src_offsets_major_dim.size() == dst_offsets_major_dim.size() &&
             dst_offsets_major_dim.size() == copy_sizes_major_dim.size(),
         error::kInvalidArgument)
         << "src_offsets_major_dim, dst_offsets_major_dim, and "
            "copy_sizes_major_dim must have the same size";
   }
+  return absl::OkStatus();
 }
 
-int64_t GetSizePerMajorDim(const xla::Shape& shape,
-                           const xla::Layout* xla_layout, int64_t itemsize) {
+absl::StatusOr<int64_t> GetSizePerMajorDim(const xla::Shape& shape,
+                                           const xla::Layout* xla_layout,
+                                           int64_t itemsize) {
   if (xla_layout && !xla_layout->tiles().empty()) {
     const xla::Tile& tile = xla_layout->tiles()[0];
     auto tile_dims = tile.dimensions();
-    TT_CHECK_THROW(tile_dims.size() == 2, error::kInternal)
+    TT_RET_CHECK(tile_dims.size() == 2, error::kInternal)
         << "Only 2D tiling supported for now";
     int64_t tH = tile_dims[0];
     int64_t tW = tile_dims[1];
@@ -193,31 +194,21 @@ int64_t GetSizePerMajorDim(const xla::Shape& shape,
   return 0;
 }
 
-std::optional<DeviceBufferRef> GetPjrtBufferOrThrow(
-    const at::Tensor& tpu_tensor, xla::PjRtBuffer*& out_buffer) {
-  if (tpu_tensor.device().type() != at::DeviceType::PrivateUse1) {
-    throw std::runtime_error(  // TORCH_ERROR_API_OK=internal C++ exception
-        "Expected TPU tensor.");
-  }
-  auto buffer_ref_or =
-      GetMaterialized(tpu_tensor, MaterializationReason::kCpuTransfer);
-  if (!buffer_ref_or.ok()) {
-    throw std::runtime_error(  // TORCH_ERROR_API_OK=internal C++ exception
-        "Failed to materialize TPU tensor.");
-  }
-  auto out_buffer_ref = std::move(buffer_ref_or.value());
-  auto pjrt_buffer_or = out_buffer_ref.GetOrMaterializeBuffer();
-  if (!pjrt_buffer_or.ok()) {
-    throw std::runtime_error(  // TORCH_ERROR_API_OK=internal C++ exception
-        "Failed to get PjRtBuffer.");
-  }
-  out_buffer = pjrt_buffer_or.value();
-  return out_buffer_ref;
+absl::StatusOr<DeviceBufferRef> GetPjrtBuffer(const at::Tensor& tpu_tensor,
+                                              xla::PjRtBuffer*& out_buffer) {
+  TT_RET_CHECK(tpu_tensor.device().type() == GetPrivateUse1DeviceType(),
+               error::kInvalidArgument)
+      << "Expected TPU tensor.";
+  TT_ASSIGN_OR_RETURN(
+      auto buffer_ref,
+      GetMaterialized(tpu_tensor, MaterializationReason::kCpuTransfer));
+  TT_ASSIGN_OR_RETURN(out_buffer, buffer_ref.GetOrMaterializeBuffer());
+  return buffer_ref;
 }
 
 }  // namespace
 
-TransferFuture
+absl::StatusOr<TransferFuture>
 BatchTransferD2H(  // NOLINT(readability-function-cognitive-complexity)
     const std::vector<at::Tensor>& src_arrs,
     const std::vector<at::Tensor>& dst_arrs,
@@ -229,22 +220,22 @@ BatchTransferD2H(  // NOLINT(readability-function-cognitive-complexity)
   double raw_copy_issue_ms = 0.0;
 
   // Step 1: Validate input sizes.
-  TT_CHECK_THROW(src_arrs.size() == dst_arrs.size(), error::kInvalidArgument)
+  TT_RET_CHECK(src_arrs.size() == dst_arrs.size(), error::kInvalidArgument)
       << "Lengths of src_arrs and dst_arrs must match";
-  ValidatePartialSpec(src_offsets_major_dim, dst_offsets_major_dim,
-                      copy_sizes_major_dim);
+  TT_RETURN_IF_ERROR(ValidatePartialSpec(
+      src_offsets_major_dim, dst_offsets_major_dim, copy_sizes_major_dim));
   size_t n = src_arrs.size();
   TransferFuture acc;
   if (src_arrs.empty()) return acc;
 
   // Step 2: Extract metadata from the first tensor.
   // We assume all tensors in the batch have the same shape and layout.
-  // Measure time spent in GetPjrtBufferOrThrow, which relates to materializing
+  // Measure time spent in GetPjrtBuffer, which relates to materializing
   // PJRT buffers.
   auto start_mat = std::chrono::high_resolution_clock::now();
   xla::PjRtBuffer* first_buffer = nullptr;
-  std::optional<DeviceBufferRef> first_buffer_ref =
-      GetPjrtBufferOrThrow(src_arrs[0], first_buffer);
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef first_buffer_ref,
+                      GetPjrtBuffer(src_arrs[0], first_buffer));
   materialize_ms += std::chrono::duration<double, std::milli>(
                         std::chrono::high_resolution_clock::now() - start_mat)
                         .count();
@@ -258,8 +249,8 @@ BatchTransferD2H(  // NOLINT(readability-function-cognitive-complexity)
                     !copy_sizes_major_dim.empty();
 
   // Step 4: Validate constraints for partial copies.
-  TT_CHECK_THROW(!is_partial || shape.dimensions().size() >= 3,
-                 error::kInvalidArgument)
+  TT_RET_CHECK(!is_partial || shape.dimensions().size() >= 3,
+               error::kInvalidArgument)
       << "Only support arrays with rank >= 3 for partial copies";
 
   int64_t itemsize =
@@ -273,15 +264,13 @@ BatchTransferD2H(  // NOLINT(readability-function-cognitive-complexity)
 
   // Partial copy constraints: product of non-major dimensions must align with
   // TPU 4KB tile boundaries.
-  TT_CHECK_THROW(!is_partial || (stride * itemsize) % 4096 == 0,
-                 error::kInvalidArgument)
+  TT_RET_CHECK(!is_partial || (stride * itemsize) % 4096 == 0,
+               error::kInvalidArgument)
       << "Unsupported shape: product of non-major dimensions must be a "
          "multiple of tile size (4KB) on device for partial copies";
 
-  auto status_or_src_size = first_buffer->GetOnDeviceSizeInBytes();
-  TT_CHECK_THROW(status_or_src_size.ok(), error::kInternal)
-      << "Failed to get source buffer size";
-  int64_t physical_size = *status_or_src_size;  // NOLINT
+  TT_ASSIGN_OR_RETURN(int64_t physical_size,
+                      first_buffer->GetOnDeviceSizeInBytes());
 
   // Step 5: Retrieve PJRT C API and Raw Buffer Extension.
   const PJRT_Api* c_api = nullptr;
@@ -289,18 +278,18 @@ BatchTransferD2H(  // NOLINT(readability-function-cognitive-complexity)
   xla::PjRtCApiBuffer* first_capi_buffer =
       dynamic_cast<xla::PjRtCApiBuffer*>(first_buffer);
 
-  TT_CHECK_THROW(first_capi_buffer != nullptr, error::kInvalidArgument)
+  TT_RET_CHECK(first_capi_buffer != nullptr, error::kInvalidArgument)
       << "first_buffer must be a PjRtCApiBuffer";
   c_api = ABSL_DIE_IF_NULL(first_capi_buffer)->pjrt_c_api();
-  TT_CHECK_THROW(c_api != nullptr, error::kInternal) << "PJRT C API not found";
+  TT_RET_CHECK(c_api != nullptr, error::kInternal) << "PJRT C API not found";
   xla::PjRtCApiClient* capi_client = dynamic_cast<xla::PjRtCApiClient*>(
       ABSL_DIE_IF_NULL(first_capi_buffer)->client());
-  TT_CHECK_THROW(capi_client != nullptr, error::kInternal)
+  TT_RET_CHECK(capi_client != nullptr, error::kInternal)
       << "Failed to cast client to PjRtCApiClient";
   extension = ABSL_DIE_IF_NULL(capi_client)
                   ->FindExtension<PJRT_RawBuffer_Extension>(
                       PJRT_Extension_Type::PJRT_Extension_Type_RawBuffer);
-  TT_CHECK_THROW(extension != nullptr, error::kInternal)
+  TT_RET_CHECK(extension != nullptr, error::kInternal)
       << "RawBuffer extension not found in PjRtCApiClient";
 
   // Step 6: Handle 2D tiling if applicable to calculate bytes per major
@@ -313,7 +302,8 @@ BatchTransferD2H(  // NOLINT(readability-function-cognitive-complexity)
 
   int64_t size_per_major_dim = 0;
   if (is_partial) {
-    size_per_major_dim = GetSizePerMajorDim(shape, xla_layout, itemsize);
+    TT_ASSIGN_OR_RETURN(size_per_major_dim,
+                        GetSizePerMajorDim(shape, xla_layout, itemsize));
   }
 
   std::vector<xla::Future<>> batch_futures;
@@ -327,8 +317,8 @@ BatchTransferD2H(  // NOLINT(readability-function-cognitive-complexity)
     const at::Tensor& src = src_arrs[layer_idx];
     const at::Tensor& dst = dst_arrs[layer_idx];
 
-    TT_CHECK_THROW(dst.device().type() == at::DeviceType::CPU,
-                   error::kInvalidArgument)
+    TT_RET_CHECK(dst.device().type() == at::DeviceType::CPU,
+                 error::kInvalidArgument)
         << "Destination must be on CPU.";
     size_t dst_size = dst.nbytes();
     uint8_t* dst_data = reinterpret_cast<uint8_t*>(dst.data_ptr());
@@ -336,19 +326,17 @@ BatchTransferD2H(  // NOLINT(readability-function-cognitive-complexity)
     // Step 7a: Materialize current tensor.
     auto start_mat_loop = std::chrono::high_resolution_clock::now();
     xla::PjRtBuffer* src_buffer = nullptr;
-    std::optional<DeviceBufferRef> src_buffer_ref =
-        GetPjrtBufferOrThrow(src, src_buffer);
-    TT_CHECK_THROW(src_buffer->on_device_shape() == shape,
-                   error::kInvalidArgument)
+    TT_ASSIGN_OR_RETURN(DeviceBufferRef src_buffer_ref,
+                        GetPjrtBuffer(src, src_buffer));
+    TT_RET_CHECK(src_buffer->on_device_shape() == shape,
+                 error::kInvalidArgument)
         << "Tensor at index " << layer_idx << " has shape "
         << src_buffer->on_device_shape().ToString()
         << " which is different from expected shape " << shape.ToString();
     // The raw PJRT copy API does not chain on buffer readiness, so we must wait
     // here for the producing computation to commit its result before issuing
     // the DMA.
-    absl::Status src_ready = src_buffer->GetReadyFuture().Await();
-    TT_CHECK_THROW(src_ready.ok(), error::kInternal)
-        << "Source buffer not ready: " << src_ready.message();
+    TT_RETURN_IF_ERROR(src_buffer->GetReadyFuture().Await());
     materialize_ms +=
         std::chrono::duration<double, std::milli>(
             std::chrono::high_resolution_clock::now() - start_mat_loop)
@@ -360,17 +348,15 @@ BatchTransferD2H(  // NOLINT(readability-function-cognitive-complexity)
 
     xla::PjRtCApiBuffer* capi_buffer =
         static_cast<xla::PjRtCApiBuffer*>(src_buffer);
-    auto status_or_raw = pjrt::PjRtCApiBuffer_CreateRawAliasOfBuffer(
-        c_api, extension, capi_buffer->c_buffer());
-    TT_CHECK_THROW(status_or_raw.ok(), error::kInternal)
-        << "Failed to create raw alias of buffer";
-    c_raw_buffer = *status_or_raw;  // NOLINT
+    TT_ASSIGN_OR_RETURN(c_raw_buffer,
+                        pjrt::PjRtCApiBuffer_CreateRawAliasOfBuffer(
+                            c_api, extension, capi_buffer->c_buffer()));
     batch_c_api_holds.push_back(
         std::make_shared<RawBufferHolder>(c_api, extension, c_raw_buffer));
 
     // Step 7c: Issue DMA copy (Full or Partial).
     if (!is_partial) {
-      TT_CHECK_THROW(dst_size >= physical_size, error::kInvalidArgument)
+      TT_RET_CHECK(dst_size >= physical_size, error::kInvalidArgument)
           << "Destination buffer too small for raw copy";
       xla::Future<> future = pjrt::PjRtCApiRawBuffer_CopyRawDeviceToHost(
           c_api, extension, c_raw_buffer, dst_data, 0,
@@ -393,11 +379,11 @@ BatchTransferD2H(  // NOLINT(readability-function-cognitive-complexity)
           size_to_copy = major_dim_size * stride * itemsize;
         }
 
-        TT_CHECK_THROW(src_offset + size_to_copy <= physical_size,
-                       error::kInvalidArgument)
+        TT_RET_CHECK(src_offset + size_to_copy <= physical_size,
+                     error::kInvalidArgument)
             << "Copy range exceeds source buffer size";
-        TT_CHECK_THROW(dst_offset + size_to_copy <= dst_size,
-                       error::kInvalidArgument)
+        TT_RET_CHECK(dst_offset + size_to_copy <= dst_size,
+                     error::kInvalidArgument)
             << "Copy range exceeds destination buffer size";
 
         uint8_t* dst_ptr = dst_data + dst_offset;
@@ -413,7 +399,7 @@ BatchTransferD2H(  // NOLINT(readability-function-cognitive-complexity)
             .count();
     // Keep the DeviceBufferRef alive until the transfer completes.
     batch_holds.push_back(
-        std::make_shared<DeviceBufferRef>(std::move(*src_buffer_ref)));
+        std::make_shared<DeviceBufferRef>(std::move(src_buffer_ref)));
   }
 
   // Step 8: Aggregate futures and keep tensors alive.
@@ -435,25 +421,25 @@ BatchTransferD2H(  // NOLINT(readability-function-cognitive-complexity)
   return acc;
 }
 
-TransferFuture
+absl::StatusOr<TransferFuture>
 BatchTransferH2D(  // NOLINT(readability-function-cognitive-complexity)
     const std::vector<at::Tensor>& src_arrs,
     const std::vector<at::Tensor>& dst_arrs,
     const Dimensions& src_offsets_major_dim,
     const Dimensions& dst_offsets_major_dim,
     const Dimensions& copy_sizes_major_dim) {
-  TT_CHECK_THROW(src_arrs.size() == dst_arrs.size(), error::kInvalidArgument)
+  TT_RET_CHECK(src_arrs.size() == dst_arrs.size(), error::kInvalidArgument)
       << "Lengths of src_arrs and dst_arrs must match";
-  ValidatePartialSpec(src_offsets_major_dim, dst_offsets_major_dim,
-                      copy_sizes_major_dim);
+  TT_RETURN_IF_ERROR(ValidatePartialSpec(
+      src_offsets_major_dim, dst_offsets_major_dim, copy_sizes_major_dim));
   size_t n = src_arrs.size();
   TransferFuture acc;
   if (src_arrs.empty()) return acc;
 
   // Extract metadata from the first tensor.
   xla::PjRtBuffer* first_buffer = nullptr;
-  std::optional<DeviceBufferRef> first_buffer_ref =
-      GetPjrtBufferOrThrow(dst_arrs[0], first_buffer);
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef first_buffer_ref,
+                      GetPjrtBuffer(dst_arrs[0], first_buffer));
 
   const xla::Shape& shape = first_buffer->on_device_shape();
 
@@ -461,8 +447,8 @@ BatchTransferH2D(  // NOLINT(readability-function-cognitive-complexity)
                     !dst_offsets_major_dim.empty() ||
                     !copy_sizes_major_dim.empty();
 
-  TT_CHECK_THROW(!is_partial || shape.dimensions().size() >= 3,
-                 error::kInvalidArgument)
+  TT_RET_CHECK(!is_partial || shape.dimensions().size() >= 3,
+               error::kInvalidArgument)
       << "Only support arrays with rank >= 3 for partial copies";
 
   int64_t itemsize =
@@ -474,33 +460,31 @@ BatchTransferH2D(  // NOLINT(readability-function-cognitive-complexity)
     }
   }
 
-  TT_CHECK_THROW(!is_partial || (stride * itemsize) % 4096 == 0,
-                 error::kInvalidArgument)
+  TT_RET_CHECK(!is_partial || (stride * itemsize) % 4096 == 0,
+               error::kInvalidArgument)
       << "Unsupported shape: product of non-major dimensions must be a "
          "multiple of tile size (4KB) on device for partial copies";
 
-  auto status_or_dst_size = first_buffer->GetOnDeviceSizeInBytes();
-  TT_CHECK_THROW(status_or_dst_size.ok(), error::kInternal)
-      << "Failed to get destination buffer size";
-  int64_t physical_size = *status_or_dst_size;  // NOLINT
+  TT_ASSIGN_OR_RETURN(int64_t physical_size,
+                      first_buffer->GetOnDeviceSizeInBytes());
 
   const PJRT_Api* c_api = nullptr;
   const PJRT_RawBuffer_Extension* extension = nullptr;
   xla::PjRtCApiBuffer* first_capi_buffer =
       dynamic_cast<xla::PjRtCApiBuffer*>(first_buffer);
 
-  TT_CHECK_THROW(first_capi_buffer != nullptr, error::kInvalidArgument)
+  TT_RET_CHECK(first_capi_buffer != nullptr, error::kInvalidArgument)
       << "first_buffer must be a PjRtCApiBuffer";
   c_api = ABSL_DIE_IF_NULL(first_capi_buffer)->pjrt_c_api();
-  TT_CHECK_THROW(c_api != nullptr, error::kInternal) << "PJRT C API not found";
+  TT_RET_CHECK(c_api != nullptr, error::kInternal) << "PJRT C API not found";
   xla::PjRtCApiClient* capi_client = dynamic_cast<xla::PjRtCApiClient*>(
       ABSL_DIE_IF_NULL(first_capi_buffer)->client());
-  TT_CHECK_THROW(capi_client != nullptr, error::kInternal)
+  TT_RET_CHECK(capi_client != nullptr, error::kInternal)
       << "Failed to cast client to PjRtCApiClient";
   extension = ABSL_DIE_IF_NULL(capi_client)
                   ->FindExtension<PJRT_RawBuffer_Extension>(
                       PJRT_Extension_Type::PJRT_Extension_Type_RawBuffer);
-  TT_CHECK_THROW(extension != nullptr, error::kInternal)
+  TT_RET_CHECK(extension != nullptr, error::kInternal)
       << "RawBuffer extension not found in PjRtCApiClient";
 
   auto pjrt_layout = first_buffer->layout();
@@ -511,7 +495,8 @@ BatchTransferH2D(  // NOLINT(readability-function-cognitive-complexity)
 
   int64_t size_per_major_dim = 0;
   if (is_partial) {
-    size_per_major_dim = GetSizePerMajorDim(shape, xla_layout, itemsize);
+    TT_ASSIGN_OR_RETURN(size_per_major_dim,
+                        GetSizePerMajorDim(shape, xla_layout, itemsize));
   }
 
   std::vector<xla::Future<>> batch_futures;
@@ -524,40 +509,36 @@ BatchTransferH2D(  // NOLINT(readability-function-cognitive-complexity)
     const at::Tensor& src = src_arrs[layer_idx];
     const at::Tensor& dst = dst_arrs[layer_idx];
 
-    TT_CHECK_THROW(src.device().type() == at::DeviceType::CPU,
-                   error::kInvalidArgument)
+    TT_RET_CHECK(src.device().type() == at::DeviceType::CPU,
+                 error::kInvalidArgument)
         << "Source must be on CPU";
     size_t src_size = src.nbytes();
     const uint8_t* src_data = reinterpret_cast<const uint8_t*>(src.data_ptr());
 
     xla::PjRtBuffer* dst_buffer = nullptr;
-    std::optional<DeviceBufferRef> dst_buffer_ref =
-        GetPjrtBufferOrThrow(dst, dst_buffer);
-    TT_CHECK_THROW(dst_buffer->on_device_shape() == shape,
-                   error::kInvalidArgument)
+    TT_ASSIGN_OR_RETURN(DeviceBufferRef dst_buffer_ref,
+                        GetPjrtBuffer(dst, dst_buffer));
+    TT_RET_CHECK(dst_buffer->on_device_shape() == shape,
+                 error::kInvalidArgument)
         << "Tensor at index " << layer_idx << " has shape "
         << dst_buffer->on_device_shape().ToString()
         << " which is different from expected shape " << shape.ToString();
     // The raw PJRT copy API does not chain on buffer readiness; the destination
     // buffer's ready future signals that it is safe to write into.
-    absl::Status dst_ready = dst_buffer->GetReadyFuture().Await();
-    TT_CHECK_THROW(dst_ready.ok(), error::kInternal)
-        << "Destination buffer not ready: " << dst_ready.message();
+    TT_RETURN_IF_ERROR(dst_buffer->GetReadyFuture().Await());
 
     PJRT_RawBuffer* c_raw_buffer = nullptr;
 
     xla::PjRtCApiBuffer* capi_buffer =
         static_cast<xla::PjRtCApiBuffer*>(dst_buffer);
-    auto status_or_raw = pjrt::PjRtCApiBuffer_CreateRawAliasOfBuffer(
-        c_api, extension, capi_buffer->c_buffer());
-    TT_CHECK_THROW(status_or_raw.ok(), error::kInternal)
-        << "Failed to create raw alias of buffer";
-    c_raw_buffer = *status_or_raw;  // NOLINT
+    TT_ASSIGN_OR_RETURN(c_raw_buffer,
+                        pjrt::PjRtCApiBuffer_CreateRawAliasOfBuffer(
+                            c_api, extension, capi_buffer->c_buffer()));
     batch_c_api_holds.push_back(
         std::make_shared<RawBufferHolder>(c_api, extension, c_raw_buffer));
 
     if (!is_partial) {
-      TT_CHECK_THROW(src_size >= physical_size, error::kInvalidArgument)
+      TT_RET_CHECK(src_size >= physical_size, error::kInvalidArgument)
           << "Source buffer too small for raw copy";
       xla::Future<> future = pjrt::PjRtCApiRawBuffer_CopyRawHostToDevice(
           c_api, extension, c_raw_buffer, src_data, 0,
@@ -580,11 +561,11 @@ BatchTransferH2D(  // NOLINT(readability-function-cognitive-complexity)
           size_to_copy = major_dim_size * stride * itemsize;
         }
 
-        TT_CHECK_THROW(src_offset + size_to_copy <= src_size,
-                       error::kInvalidArgument)
+        TT_RET_CHECK(src_offset + size_to_copy <= src_size,
+                     error::kInvalidArgument)
             << "Copy range exceeds source buffer size";
-        TT_CHECK_THROW(dst_offset + size_to_copy <= physical_size,
-                       error::kInvalidArgument)
+        TT_RET_CHECK(dst_offset + size_to_copy <= physical_size,
+                     error::kInvalidArgument)
             << "Copy range exceeds destination buffer size";
 
         const uint8_t* src_ptr = src_data + src_offset;
@@ -609,24 +590,28 @@ BatchTransferH2D(  // NOLINT(readability-function-cognitive-complexity)
   return acc;
 }
 
-void BatchTransferD2HSync(const std::vector<at::Tensor>& src_arrs,
-                          const std::vector<at::Tensor>& dst_arrs,
-                          const Dimensions& src_offsets_major_dim,
-                          const Dimensions& dst_offsets_major_dim,
-                          const Dimensions& copy_sizes_major_dim) {
-  BatchTransferD2H(src_arrs, dst_arrs, src_offsets_major_dim,
-                   dst_offsets_major_dim, copy_sizes_major_dim)
-      .Await();
+absl::Status BatchTransferD2HSync(const std::vector<at::Tensor>& src_arrs,
+                                  const std::vector<at::Tensor>& dst_arrs,
+                                  const Dimensions& src_offsets_major_dim,
+                                  const Dimensions& dst_offsets_major_dim,
+                                  const Dimensions& copy_sizes_major_dim) {
+  TT_ASSIGN_OR_RETURN(
+      auto res, BatchTransferD2H(src_arrs, dst_arrs, src_offsets_major_dim,
+                                 dst_offsets_major_dim, copy_sizes_major_dim));
+  res.Await();
+  return absl::OkStatus();
 }
 
-void BatchTransferH2DSync(const std::vector<at::Tensor>& src_arrs,
-                          const std::vector<at::Tensor>& dst_arrs,
-                          const Dimensions& src_offsets_major_dim,
-                          const Dimensions& dst_offsets_major_dim,
-                          const Dimensions& copy_sizes_major_dim) {
-  BatchTransferH2D(src_arrs, dst_arrs, src_offsets_major_dim,
-                   dst_offsets_major_dim, copy_sizes_major_dim)
-      .Await();
+absl::Status BatchTransferH2DSync(const std::vector<at::Tensor>& src_arrs,
+                                  const std::vector<at::Tensor>& dst_arrs,
+                                  const Dimensions& src_offsets_major_dim,
+                                  const Dimensions& dst_offsets_major_dim,
+                                  const Dimensions& copy_sizes_major_dim) {
+  TT_ASSIGN_OR_RETURN(
+      auto res, BatchTransferH2D(src_arrs, dst_arrs, src_offsets_major_dim,
+                                 dst_offsets_major_dim, copy_sizes_major_dim));
+  res.Await();
+  return absl::OkStatus();
 }
 
 }  // namespace torch_tpu

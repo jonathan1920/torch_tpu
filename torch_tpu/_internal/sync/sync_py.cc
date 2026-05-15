@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "ATen/core/TensorBody.h"
 #include "torch/csrc/autograd/python_variable.h"
@@ -123,13 +124,13 @@ bool PyIsReady(const at::Tensor& tensor) {
   return is_ready;
 }
 
-std::vector<DeviceBufferRef> GetComputationBuffers(
+absl::StatusOr<std::vector<DeviceBufferRef>> GetComputationBuffers(
     const std::vector<at::Tensor>& tensors) {
   std::vector<DeviceBufferRef> buffer_refs;
   buffer_refs.reserve(tensors.size());
   for (const at::Tensor& tensor : tensors) {
-    TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref,
-                       GetBaseBufferFromAtTensor(tensor));
+    TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref,
+                        GetBaseBufferFromAtTensor(tensor));
     buffer_refs.push_back(buffer_ref);
   }
   return buffer_refs;
@@ -158,7 +159,7 @@ std::string PyGetComputationGraphviz(const std::vector<at::Tensor>& tensors,
   ScopedPythonContextCapturer capturer(OpName::kCompileMlir);
   ScopedPythonContextProvider provider(
       ScopedPythonContextCapturer::GetContext());
-  auto refs = GetComputationBuffers(tensors);
+  TT_ASSIGN_OR_THROW(auto refs, GetComputationBuffers(tensors));
   auto refs_to_vars = GetComputationGraph(capture_names_from);
   TT_ASSIGN_OR_THROW(auto res_str, GetComputationGraphviz(refs, refs_to_vars));
   return res_str;
@@ -170,7 +171,7 @@ std::string PyGetComputationMlir(const std::vector<at::Tensor>& tensors) {
   ScopedPythonContextCapturer capturer(OpName::kCompileMlir);
   ScopedPythonContextProvider provider(
       ScopedPythonContextCapturer::GetContext());
-  auto refs = GetComputationBuffers(tensors);
+  TT_ASSIGN_OR_THROW(auto refs, GetComputationBuffers(tensors));
   TT_ASSIGN_OR_THROW(auto res_str, GetComputationMlir(refs));
   return res_str;
 }

@@ -67,6 +67,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -111,6 +112,7 @@ pybind_extension(
         "//torch_tpu/ops:python_context",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
 )

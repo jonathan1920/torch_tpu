@@ -22,6 +22,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "xla/future.h"
@@ -61,35 +63,37 @@ class TransferFuture {
 };
 
 // Batch transfers
-TransferFuture BatchTransferD2H(const std::vector<at::Tensor>& src_arrs,
-                                const std::vector<at::Tensor>& dst_arrs,
-                                const Dimensions& src_offsets_major_dim = {},
-                                const Dimensions& dst_offsets_major_dim = {},
-                                const Dimensions& copy_sizes_major_dim = {});
+absl::StatusOr<TransferFuture> BatchTransferD2H(
+    const std::vector<at::Tensor>& src_arrs,
+    const std::vector<at::Tensor>& dst_arrs,
+    const Dimensions& src_offsets_major_dim = {},
+    const Dimensions& dst_offsets_major_dim = {},
+    const Dimensions& copy_sizes_major_dim = {});
 
 // Asynchronous Host to Device batch transfer.
 // NOTE: This API does not register the raw-copy future with TorchTPU stream
 // state, and therefore does not synchronize with TPU streams. Callers must
 // explicitly wait for the returned TransferFuture to complete before launching
 // TPU computations that consume the destination buffer.
-TransferFuture BatchTransferH2D(const std::vector<at::Tensor>& src_arrs,
-                                const std::vector<at::Tensor>& dst_arrs,
-                                const Dimensions& src_offsets_major_dim = {},
-                                const Dimensions& dst_offsets_major_dim = {},
-                                const Dimensions& copy_sizes_major_dim = {});
+absl::StatusOr<TransferFuture> BatchTransferH2D(
+    const std::vector<at::Tensor>& src_arrs,
+    const std::vector<at::Tensor>& dst_arrs,
+    const Dimensions& src_offsets_major_dim = {},
+    const Dimensions& dst_offsets_major_dim = {},
+    const Dimensions& copy_sizes_major_dim = {});
 
 // Synchronous batch transfers
-void BatchTransferD2HSync(const std::vector<at::Tensor>& src_arrs,
-                          const std::vector<at::Tensor>& dst_arrs,
-                          const Dimensions& src_offsets_major_dim = {},
-                          const Dimensions& dst_offsets_major_dim = {},
-                          const Dimensions& copy_sizes_major_dim = {});
+absl::Status BatchTransferD2HSync(const std::vector<at::Tensor>& src_arrs,
+                                  const std::vector<at::Tensor>& dst_arrs,
+                                  const Dimensions& src_offsets_major_dim = {},
+                                  const Dimensions& dst_offsets_major_dim = {},
+                                  const Dimensions& copy_sizes_major_dim = {});
 
-void BatchTransferH2DSync(const std::vector<at::Tensor>& src_arrs,
-                          const std::vector<at::Tensor>& dst_arrs,
-                          const Dimensions& src_offsets_major_dim = {},
-                          const Dimensions& dst_offsets_major_dim = {},
-                          const Dimensions& copy_sizes_major_dim = {});
+absl::Status BatchTransferH2DSync(const std::vector<at::Tensor>& src_arrs,
+                                  const std::vector<at::Tensor>& dst_arrs,
+                                  const Dimensions& src_offsets_major_dim = {},
+                                  const Dimensions& dst_offsets_major_dim = {},
+                                  const Dimensions& copy_sizes_major_dim = {});
 
 }  // namespace torch_tpu
 
