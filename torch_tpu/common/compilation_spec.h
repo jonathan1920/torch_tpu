@@ -18,7 +18,10 @@
 #define TORCH_TPU_COMMON_COMPILATION_SPEC_H_
 
 #include <array>
+#include <map>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/base/nullability.h"
 #include "torch_tpu/common/compile_options_key.h"
@@ -58,6 +61,40 @@ struct CompilationSpec {
 
 using CompilationSpecsByMode =
     std::array<CompilationSpec, kNumCompilationModes>;
+
+// Maps an XLA compiler option name to its string value. We pick this
+// representation for easy interop with Python.
+using CompilerOptionOverrides = std::map<std::string, std::string>;
+
+// Python thread-local context to manage currently effective XLA compile options
+// along with its fingerprint.
+//
+// All op compilation tasks initiated by the same thread will reuse the cached
+// `xla::CompileOptions`.
+class CompilationContext {
+ public:
+  // Movable but not copyable.
+  CompilationContext(const CompilationContext&) = delete;
+  CompilationContext& operator=(const CompilationContext&) = delete;
+  CompilationContext(CompilationContext&&) = default;
+  CompilationContext& operator=(CompilationContext&&) = default;
+
+  const CompilationSpecsByMode& compilation_specs() const {
+    return compilation_specs_;
+  }
+  const CompilerOptionOverrides& compiler_option_overrides() const {
+    return compiler_option_overrides_;
+  }
+
+ private:
+  CompilationContext(CompilationSpecsByMode specs,
+                     CompilerOptionOverrides overrides)
+      : compilation_specs_(std::move(specs)),
+        compiler_option_overrides_(std::move(overrides)) {}
+
+  CompilationSpecsByMode compilation_specs_;
+  CompilerOptionOverrides compiler_option_overrides_;
+};
 
 }  // namespace torch_tpu
 

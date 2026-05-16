@@ -21,7 +21,7 @@
 
 #include "absl/log/absl_check.h"
 #include "torch_tpu/common/compilation.h"
-#include "torch_tpu/common/context_states.h"
+#include "torch_tpu/common/compilation_spec.h"
 
 namespace torch_tpu {
 

@@ -46,6 +46,7 @@ torch_tpu_cc_library(
     name = "context_states",
     hdrs = ["context_states.h"],
     deps = [
+        ":compilation_spec",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/util:base",
         "@stablehlo//:stablehlo_ops",
@@ -926,7 +927,7 @@ torch_tpu_cc_library(
     hdrs = ["compilation_test_helper.h"],
     deps = [
         ":compilation",
-        ":context_states",
+        ":compilation_spec",
         "@com_google_absl//absl/log:absl_check",
     ],
 )

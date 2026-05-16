@@ -17,11 +17,10 @@
 #ifndef TORCH_TPU_COMMON_CONTEXT_STATES_H_
 #define TORCH_TPU_COMMON_CONTEXT_STATES_H_
 
-#include <map>
 #include <memory>
 #include <optional>
-#include <string>
 
+#include "torch_tpu/common/compilation_spec.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/layout.h"
 
@@ -87,11 +86,8 @@ using EnableTracebacksContextState = std::optional<TracebackMode>;
 // The state of the `spmd_safe` context manager.
 using IsSpmdSafeContextState = bool;
 
-// Maps an XLA compiler option name to its string value. We pick this
-// representation for easy interop with Python.
-using CompilerOptionOverrides = std::map<std::string, std::string>;
-
 // The state of the `custom_compiler_options` context manager.
+// TODO(b/502270689): switch the context state to `CompilationContext`.
 using CustomCompilerOptionsContextState = CompilerOptionOverrides;
 
 // The state of the `layout` context manager.

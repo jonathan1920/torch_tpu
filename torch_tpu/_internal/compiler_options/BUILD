@@ -33,7 +33,7 @@ torch_tpu_cc_library(
         "//shims/torch:aten",
         "//shims/torch:torch_headers",
         "//torch_tpu/common:compilation",
-        "//torch_tpu/common:context_states",
+        "//torch_tpu/common:compilation_spec",
         "//torch_tpu/common:error_utils",
     ],
 )
@@ -51,7 +51,7 @@ pybind_extension(
         "//shims/torch:aten",
         "//shims/torch:torch_headers",
         "//torch_tpu/common:compilation",
-        "//torch_tpu/common:context_states",
+        "//torch_tpu/common:compilation_spec",
         "//torch_tpu/common:error_utils",
         "@com_google_absl//absl/status",
     ],
