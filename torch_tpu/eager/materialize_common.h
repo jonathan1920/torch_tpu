@@ -54,7 +54,8 @@ class ExecutionTask {
   static absl::StatusOr<ExecutionTask> FromTraversal(
       absl_nonnull std::unique_ptr<Traversal> traversal,
       MaterializationReason reason = MaterializationReason::kUnknown,
-      mlir::MLIRContext* absl_nullable mlir_context = nullptr);
+      mlir::MLIRContext* absl_nullable mlir_context = nullptr,
+      std::string* absl_nullable out_mlir_text = nullptr);
 
   // Creates an execution task from a pre-compiled executable.
   // This will set all outputs to the "pending materialization" state.

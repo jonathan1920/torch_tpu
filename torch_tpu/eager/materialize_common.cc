@@ -87,8 +87,8 @@ absl::Status PropagateBoundedDynamism(Traversal& traversal,
 
 absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
     absl_nonnull std::unique_ptr<Traversal> traversal,
-    MaterializationReason reason,
-    mlir::MLIRContext* absl_nullable mlir_context) {
+    MaterializationReason reason, mlir::MLIRContext* absl_nullable mlir_context,
+    std::string* absl_nullable out_mlir_text) {
   // Propagate bounded dynamism annotations if needed.
   if (traversal->IsBoundedDynamic()) {
     TT_RET_CHECK(mlir_context != nullptr, error::kInvalidArgument)
@@ -104,7 +104,8 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
   absl::StatusOr<CompiledKernel> compiled_kernel;
   {
     tsl::profiler::TraceMe t("CompileTraversal");
-    TT_ASSIGN_OR_RETURN(compiled_kernel, traversal->Compile(compilation_mode));
+    TT_ASSIGN_OR_RETURN(compiled_kernel,
+                        traversal->Compile(compilation_mode, out_mlir_text));
   }
 
   // Mark all outputs of the split as scheduled/materialized.

@@ -44,6 +44,7 @@ py::dict PyDrainStructuredLogBuffer() {
     d["ts_us"] = absl::ToUnixMicros(ev.timestamp);
     d["dur_us"] = absl::ToInt64Microseconds(ev.duration);
     d["cache_hit"] = ev.cache_hit;
+    d["compile_failed"] = ev.compile_failed;
     d["aten_graph"] = ev.aten_graph_payload;
     d["stablehlo"] = ev.mlir_payload;
     d["reason"] = std::string(ToString(ev.reason));

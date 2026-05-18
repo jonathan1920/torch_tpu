@@ -1095,6 +1095,21 @@ test_suite(
 )
 
 torch_tpu_py_test(
+    name = "tracing_test",
+    srcs = ["tracing_test.py"],
+    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu:_loader",
+        "//torch_tpu/_internal/execution_mode",
+        "//torch_tpu/_internal/sync",
+        "//torch_tpu/_internal/tracing",
+    ],
+)
+
+torch_tpu_py_test(
     name = "batch_transfer_test",
     srcs = ["batch_transfer_test.py"],
     tags = ["requires-tpu-v5lite"],

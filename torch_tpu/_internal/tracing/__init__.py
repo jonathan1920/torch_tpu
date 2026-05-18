@@ -78,6 +78,7 @@ def _emit_event_artifacts(event: Mapping[str, Any]) -> None:
         "encoding": "string",
         "op_name": event["name"],
         "cache_hit": event["cache_hit"],
+        "compile_failed": event.get("compile_failed", False),
         "reason": event["reason"],
     }
     payload = event.get(payload_key, "")

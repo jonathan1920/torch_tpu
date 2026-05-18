@@ -40,8 +40,10 @@
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -529,17 +531,32 @@ std::vector<Shape> GetShapes(absl::Span<const DeviceBufferRef> buffers) {
   }
   return shapes;
 }
+
+std::string MlirModuleToString(mlir::ModuleOp module) {
+  mlir::OpPrintingFlags flags;
+  flags.elideLargeElementsAttrs(100);
+  std::string s;
+  llvm::raw_string_ostream os(s);
+  module.print(os, flags);
+  return os.str();
+}
 }  // namespace
 
 absl::StatusOr<CompiledKernel> Traversal::Compile(
-    CompilationMode compilation_mode) const {
+    CompilationMode compilation_mode,
+    std::string* absl_nullable out_mlir_text) const {
   // Prepare a computation builder closure to be called on a cache miss.  Okay
   // to capture this here since CompilationCache::GetOrCompile() will call this
   // builder before the function returns and in the same thread it is invoked.
   MlirComputationBuilder final_op_builder =
-      [this](mlir::MLIRContext& mlir_context) {
-        return BuildMlirModule(mlir_context);
-      };
+      [this, out_mlir_text](mlir::MLIRContext& mlir_context)
+      -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
+    TT_ASSIGN_OR_RETURN(auto module, BuildMlirModule(mlir_context));
+    if (out_mlir_text != nullptr) {
+      *out_mlir_text = MlirModuleToString(*module);
+    }
+    return module;
+  };
   std::vector<Shape> argument_shapes = GetShapes(arguments_);
   std::vector<Shape> output_shapes = GetShapes(outputs_);
 
