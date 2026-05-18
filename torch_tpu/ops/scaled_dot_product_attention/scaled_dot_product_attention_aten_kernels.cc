@@ -67,9 +67,6 @@
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 
-ABSL_FLAG(bool, torch_tpu_internal_sdpa_use_custom_kernel, true,
-          "Use a custom kernel for scaled dot product attention.");
-
 namespace torch_tpu {
 
 namespace {
