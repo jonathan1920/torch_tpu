@@ -84,13 +84,17 @@ AtenScaledDotProductEfficientAttention(
     const std::optional<at::Tensor>& attn_bias, bool compute_log_sumexp,
     double dropout_p, bool is_causal, std::optional<double> scale);
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, c10::SymInt,
-           c10::SymInt, at::Tensor, at::Tensor, at::Tensor>
-AtenScaledDotProductFlashAttention(const at::Tensor& query,
-                                   const at::Tensor& key,
-                                   const at::Tensor& value, double dropout_p,
-                                   bool is_causal, bool return_debug_mask,
-                                   std::optional<double> scale);
+std::tuple<at::Tensor, at::Tensor> AtenScaledDotProductFlashAttention(
+    const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
+    double dropout_p, bool is_causal,
+    const std::optional<at::Tensor>& attn_mask, std::optional<double> scale);
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor>
+AtenScaledDotProductFlashAttentionBackward(
+    const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
+    const at::Tensor& value, const at::Tensor& out, const at::Tensor& logsumexp,
+    double dropout_p, bool is_causal,
+    const std::optional<at::Tensor>& attn_mask, std::optional<double> scale);
 
 }  // namespace torch_tpu
 

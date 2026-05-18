@@ -654,6 +654,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
        AtenScaledDotProductEfficientAttention);
   Impl(m, OpName::kScaledDotProductFlashAttention,
        AtenScaledDotProductFlashAttention);
+  Impl(m, OpName::kScaledDotProductFlashAttentionBackward,
+       AtenScaledDotProductFlashAttentionBackward);
   Impl(m, OpName::kScaledDotProductFusedAttentionOverrideable,
        AtenScaledDotProductFusedAttentionOverrideable);
   Impl(m, OpName::kScaledDotProductFusedAttentionOverrideableBackward,

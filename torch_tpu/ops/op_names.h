@@ -560,6 +560,7 @@ enum class OpName {
   kScalarTensor,
   kScaledDotProductEfficientAttention,
   kScaledDotProductFlashAttention,
+  kScaledDotProductFlashAttentionBackward,
   kScaledDotProductFusedAttentionOverrideable,
   kScaledDotProductFusedAttentionOverrideableBackward,
   kScaledMm,

@@ -389,7 +389,7 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
             (query.size(query.ndimension() - 1) < min_block_size ||
              query.size(query.ndimension() - 1) % min_block_size == 0);
 
-        const bool can_use_overrideable =
+        const bool can_use_flash =
             GetFlagOnce<bool,
                         &FLAGS_torch_tpu_internal_sdpa_use_custom_kernel>() &&
             (!attn_mask.has_value() && dropout_p == 0.0 &&
@@ -399,12 +399,8 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
              query.ndimension() == value.ndimension() &&
              is_supported_flash_attention_shape);
 
-        if (can_use_overrideable) {
-          // We unconditionally use "overrideable" as returning flash_attention
-          // falls through to calling
-          // at::_scaled_dot_product_flash_attention_for_cpu, see
-          // torch/aten/src/ATen/native/transformers/attention.cpp.
-          return static_cast<int64_t>(at::SDPBackend::overrideable);
+        if (can_use_flash) {
+          return static_cast<int64_t>(at::SDPBackend::flash_attention);
         }
 
         // Use c10::str rather than absl::StrCat as it will convert enums into
@@ -559,24 +555,48 @@ AtenScaledDotProductEfficientAttention(
             });
 }
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, c10::SymInt,
-           c10::SymInt, at::Tensor, at::Tensor, at::Tensor>
-AtenScaledDotProductFlashAttention(const at::Tensor& query,
-                                   const at::Tensor& key,
-                                   const at::Tensor& value, double dropout_p,
-                                   bool is_causal, bool return_debug_mask,
-                                   std::optional<double> scale) {
+std::tuple<at::Tensor, at::Tensor> AtenScaledDotProductFlashAttention(
+    const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
+    double dropout_p, bool is_causal,
+    const std::optional<at::Tensor>& attn_mask, std::optional<double> scale) {
   TT_KERNEL(OpName::kScaledDotProductFlashAttention, _,
-            (query, key, value, IgnoreInCacheKey(dropout_p, "Legacy usage"),
-             IgnoreInCacheKey(is_causal, "Legacy usage"),
-             IgnoreInCacheKey(return_debug_mask, "Legacy usage"),
-             IgnoreInCacheKey(scale, "Legacy usage")),
+            (query, key, value, IgnoreInCacheKey(dropout_p, "Unused"),
+             IgnoreInCacheKey(is_causal, "Constructed in implementation"),
+             IgnoreInCacheKey(attn_mask, "Unused"),
+             IgnoreInCacheKey(scale, "Constructed in implementation")),
             {
               TT_ASSIGN_OR_THROW(auto out,
                                  ScaledDotProductFusedAttentionImpl(
                                      query, key, value, is_causal, scale));
+              int64_t batch = get_batch_size(query);
+              int64_t heads = query.size(query.ndimension() - 3);
+              int64_t q_seq_len = query.size(query.ndimension() - 2);
+              // We don't currently use this for the backward pass, so we return
+              // a dummy tensor.
+              at::Tensor logsumexp = at::zeros({batch, heads, q_seq_len},
+                                               out.options().dtype(at::kFloat));
+              return {out, logsumexp};
+            });
+}
 
-              return GenerateResults(out);
+std::tuple<at::Tensor, at::Tensor, at::Tensor>
+AtenScaledDotProductFlashAttentionBackward(
+    const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
+    const at::Tensor& value, const at::Tensor& out, const at::Tensor& logsumexp,
+    double dropout_p, bool is_causal,
+    const std::optional<at::Tensor>& attn_mask, std::optional<double> scale) {
+  TT_KERNEL(OpName::kScaledDotProductFlashAttentionBackward, _,
+            (grad_out, query, key, value, out, logsumexp,
+             IgnoreInCacheKey(dropout_p, "Unused"),
+             IgnoreInCacheKey(is_causal, "Constructed in implementation"),
+             IgnoreInCacheKey(attn_mask, "Unused"),
+             IgnoreInCacheKey(scale, "Constructed in implementation")),
+            {
+              TT_ASSIGN_OR_THROW(
+                  auto out, ScaledDotProductFusedAttentionBackwardImpl(
+                                grad_out, query, key, value, scale, is_causal));
+
+              return out;
             });
 }
 
