@@ -75,7 +75,7 @@ class _OutputSymShape:
       if isinstance(dim, int):
         new_shape.append(dim)
         continue
-      subs = {
+      kwargs = {
           s: (
               inputs[idx].shape[dim]
               if isinstance(inputs[idx], torch.Tensor)
@@ -83,7 +83,8 @@ class _OutputSymShape:
           )
           for s, (idx, dim) in dim["deps"].items()
       }
-      runtime_size = int(sympy.sympify(dim["expr"]).subs(subs))
+
+      runtime_size = dim["compiled_fn"](**kwargs)
       new_shape.append(runtime_size)
     return new_shape
 
@@ -128,12 +129,27 @@ class _OutputSymShape:
               can_evaluate = False
               break
           if can_evaluate:
-            output_sym_shape.append({"expr": str(expr), "deps": deps})
+            # Pre-compile the sympy expression using sympy.lambdify.
+            # Sort symbols to ensure consistent argument order.
+            symbols = sorted(list(expr.free_symbols), key=str)
+            param_names = [str(s) for s in symbols]
+            base_fn = sympy.lambdify(
+                symbols, expr, modules=[sym_utils.CUSTOM_SYMPY_FUNCS, "math"]
+            )
+
+            # Use a helper to avoid closure variables being overwritten in the
+            # loop.
+            def make_compiled_fn(b_fn, p_names):
+              return lambda **kwargs: int(
+                  b_fn(*[kwargs[name] for name in p_names])
+              )
+
+            compiled_fn = make_compiled_fn(base_fn, param_names)
+            output_sym_shape.append({"deps": deps, "compiled_fn": compiled_fn})
           else:
             raise RuntimeError(
                 f"Output shape dimension '{dim}' depends on symbols not derived"
-                " from input tensor dimensions. Dynamic output shapes must be"
-                " computable from the input tensor shapes."
+                " from input tensor dimensions."
             )
         elif isinstance(dim, int):
           output_sym_shape.append(dim)

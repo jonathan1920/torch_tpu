@@ -21,6 +21,12 @@ import sympy
 import torch
 
 
+CUSTOM_SYMPY_FUNCS = {
+    "FloorDiv": operator.floordiv,
+    "CeilDiv": lambda a, b: -(-a // b),
+}
+
+
 def is_symint_node(node: torch.fx.Node) -> bool:
   """Checks if the FX node evaluates to a symbolic integer (SymInt).
 
@@ -95,7 +101,7 @@ def symexpr_to_aten(
       return None
 
   # Create a Python function from the sympy expression
-  f = sympy.lambdify(symbols, expr, modules=[{"FloorDiv": operator.floordiv}])
+  f = sympy.lambdify(symbols, expr, modules=[CUSTOM_SYMPY_FUNCS, "math"])
 
   # Create Proxies for the placeholders
   proxies = [torch.fx.Proxy(symint_to_placeholder[str(sym)]) for sym in symbols]
