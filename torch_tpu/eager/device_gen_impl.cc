@@ -379,8 +379,7 @@ absl::StatusOr<at::Tensor> DeviceGeneratorImpl::GetAndAdvanceDeviceStateTensor(
 
   // Snapshot the original buffer so that we can return it after updating the
   // state.
-  TT_ASSIGN_OR_RETURN(DeviceBufferRef original_buf,
-                      GetBufferFromAtTensor(rng_input_state));
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef original_buf, GetBuffer(rng_input_state));
 
   // Dispatch the state update.
   TT_ASSIGN_OR_RETURN(auto state_param_keys,

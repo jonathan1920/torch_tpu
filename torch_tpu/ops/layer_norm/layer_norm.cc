@@ -232,7 +232,7 @@ absl::StatusOr<LayerNormShloResults> BuildLayerNormShlo(
   }
 
   // mean and rstd are returned without trailing size-1 dimensions.
-  // Future calls to GetBufferFromAtTensor will use the appropriate view logic
+  // Future calls to GetBuffer will use the appropriate view logic
   // to reshape them as desired for downstream use.
   return LayerNormShloResults{
       .normalized_values = affine_output, .mean = mean, .reciprocal_std = rstd};

@@ -55,7 +55,7 @@
 //  -  Providing getter functions to resolve the DeviceBufferRef from a given
 //     c10::Storage or at::Tensor. This includes the logic necessary to convert
 //     from a contiguous base DeviceBufferRef to a strided view; this logic
-//     is defined in view_decomposition.h and applied in GetBufferFromAtTensor.
+//     is defined in view_decomposition.h and applied in GetBuffer.
 //
 // These functions primarily operate at the boundaries of any call from aten;
 // a function call provides at::Tensors, which we extract DeviceBufferRefs from,
@@ -63,23 +63,28 @@
 // or update an existing tensor (using AssignBufferToAtTensor).
 namespace torch_tpu {
 
-// Extracts the DeviceBufferRef from the given ATen tensor or storage.
+// Returns the device buffer for the given tensor's base tensor.
+//
+// Every tensor has a base: for a view tensor, the base is the actual tensor
+// that backs up the view; for an independent tensor, the base is itself.
+//
 // The tensor must be allocated by the TpuAllocator
 // and have a valid DeviceBufferRef via the data_ptr context.
 //
 // The returned DeviceBufferRef is always the contiguous buffer that was used
 // to create the c10::StorageImpl backing the tensor; if tensor is a view, then
 // the returned DeviceBufferRef may have different dimensions than the tensor.
-absl::StatusOr<DeviceBufferRef> GetBaseBufferFromAtTensor(
-    const c10::TensorImpl& tensor);
-absl::StatusOr<DeviceBufferRef> GetBaseBufferFromAtTensor(
-    const at::Tensor& tensor);
-absl::StatusOr<DeviceBufferRef> GetBaseBufferFromStorage(
-    const c10::Storage& storage);
+absl::StatusOr<DeviceBufferRef> GetBaseBuffer(const c10::TensorImpl& tensor);
+absl::StatusOr<DeviceBufferRef> GetBaseBuffer(const at::Tensor& tensor);
+absl::StatusOr<DeviceBufferRef> GetBaseBuffer(const c10::Storage& storage);
 
-// Extracts the DeviceBufferRef from the given ATen tensor. The tensor must be
-// allocated by the TpuAllocator and have a valid DeviceBufferRef via the
-// data_ptr context.
+// Extracts the DeviceBufferRef from the given ATen tensor.
+//
+// If the tensor is a view, the buffer will be a view of the base buffer.
+// Otherwise, the buffer will be the base buffer itself.
+//
+// The tensor must be allocated by the TpuAllocator
+// and have a valid DeviceBufferRef via the data_ptr context.
 //
 // If the tensor is a view, then the returned DeviceBufferRef will always be
 // in the kDeferred state, with a DeferredOp that will convert the inner
@@ -89,13 +94,12 @@ absl::StatusOr<DeviceBufferRef> GetBaseBufferFromStorage(
 // kMaterialized, kDeferred, and kPlaceholder. Callers are
 // responsible for handling any unexpected states; for example, erroring on a
 // kPlaceholder state before calling a PjRtLoadedExecutable.
-absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(const at::Tensor& tensor);
-absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(
-    const c10::TensorImpl& tensor);
+absl::StatusOr<DeviceBufferRef> GetBuffer(const at::Tensor& tensor);
+absl::StatusOr<DeviceBufferRef> GetBuffer(const c10::TensorImpl& tensor);
 
 // Extracts all DeviceBufferRefs from the list of AtenTensors.
-// This is just GetBufferFromAtTensor in a loop, exiting on the first error.
-absl::StatusOr<std::vector<DeviceBufferRef>> GetBuffersFromAtTensors(
+// This is just GetBuffer in a loop, exiting on the first error.
+absl::StatusOr<std::vector<DeviceBufferRef>> GetBuffers(
     absl::Span<const at::Tensor> tensors);
 
 // Creates a c10::Storage pointer to a new c10::StorageImpl, which holds a

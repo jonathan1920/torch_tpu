@@ -37,11 +37,9 @@ absl::StatusOr<at::Tensor> MarkDynamic(const at::Tensor& tensor,
                << tensor.sizes() << " on dimension " << dimension
                << " lower_bound " << lower_bound << " upper_bound "
                << upper_bound;
-  TT_ASSIGN_OR_RETURN(DeviceBufferRef base_buffer_ref,
-                      GetBaseBufferFromAtTensor(tensor));
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef base_buffer_ref, GetBaseBuffer(tensor));
 
-  TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref,
-                      GetBufferFromAtTensor(tensor));
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref, GetBuffer(tensor));
 
   auto dynamic_dimensions = buffer_ref.dynamic_dimensions();
   auto it_find = std::find_if(
@@ -68,8 +66,7 @@ absl::StatusOr<at::Tensor> MarkDynamic(const at::Tensor& tensor,
 
 absl::StatusOr<absl::Span<const BoundedDynamicDimension>> GetDynamismInfo(
     const at::Tensor& tensor) {
-  TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref,
-                      GetBaseBufferFromAtTensor(tensor));
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref, GetBaseBuffer(tensor));
   return buffer_ref.dynamic_dimensions();
 }
 

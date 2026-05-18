@@ -92,7 +92,7 @@ at::Tensor PyMakePlaceholderLike(const at::Tensor& arg_tensor) {
 }
 
 py::object PyGetDeviceLayoutIfMaterialized(const at::Tensor& tensor) {
-  TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref, GetBufferFromAtTensor(tensor));
+  TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref, GetBuffer(tensor));
   if (!buffer_ref.IsMaterialized()) {
     return py::none();
   }

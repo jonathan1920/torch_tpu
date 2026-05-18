@@ -82,7 +82,7 @@ absl::StatusOr<bool> IsMaterialized(const at::Tensor& tensor) {
   // Since view tensors are ephemeral and re-materialized every time, there's
   // no point in checking whether the view is materialized.
   // Instead, we check the base buffer.
-  TT_ASSIGN_OR_RETURN(auto base_buffer_ref, GetBaseBufferFromAtTensor(tensor));
+  TT_ASSIGN_OR_RETURN(auto base_buffer_ref, GetBaseBuffer(tensor));
 
   return (base_buffer_ref.state() == DeviceBufferRefState::kMaterialized);
 }
@@ -91,7 +91,7 @@ absl::StatusOr<bool> IsReady(const at::Tensor& tensor) {
   // Since view tensors are ephemeral and re-materialized every time, there's
   // no point in checking whether the view is ready.
   // Instead, we check the base buffer.
-  TT_ASSIGN_OR_RETURN(auto buffer_ref, GetBaseBufferFromAtTensor(tensor));
+  TT_ASSIGN_OR_RETURN(auto buffer_ref, GetBaseBuffer(tensor));
   if (buffer_ref.state() != DeviceBufferRefState::kMaterialized) {
     // Deferred and placeholder buffers are not ready.
     return false;

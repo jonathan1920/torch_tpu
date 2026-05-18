@@ -59,7 +59,7 @@ const at::Tensor& AtenResize_(
 
         // Validate new size, and determine if this is shrinking or growing.
         TT_ASSIGN_OR_THROW(DeviceBufferRef base_buffer_ref,
-                           GetBaseBufferFromAtTensor(self));
+                           GetBaseBuffer(self));
         const int64_t old_storage_capacity = base_buffer_ref.num_elements();
         TT_ASSIGN_OR_THROW(const auto mlir_dtype,
                            ConvertTo<mlir::ElementType>(self.scalar_type()));

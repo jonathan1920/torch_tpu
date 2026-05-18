@@ -158,7 +158,7 @@ class TpuWork : public c10d::Work {
 };
 
 std::string DeviceBufferRefDebugString(const at::Tensor& input) {
-  auto maybe_base_buffer_ref = GetBaseBufferFromAtTensor(input);
+  auto maybe_base_buffer_ref = GetBaseBuffer(input);
   if (!maybe_base_buffer_ref.ok()) {
     return std::string(maybe_base_buffer_ref.status().message());
   }

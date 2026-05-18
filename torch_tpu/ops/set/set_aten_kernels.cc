@@ -89,8 +89,7 @@ at::Tensor& AtenSet_SourceStorageOffset(at::Tensor& self, c10::Storage src,
        IgnoreInCacheKey(stride_vec, "Legacy usage")),
       {
         c10::TensorImpl* impl = self.unsafeGetTensorImpl();
-        TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref,
-                           GetBaseBufferFromStorage(src));
+        TT_ASSIGN_OR_THROW(DeviceBufferRef buffer_ref, GetBaseBuffer(src));
         const int64_t storage_numel = buffer_ref.num_elements();
         const mlir::ElementType storage_dtype = buffer_ref.element_type();
         TT_ASSIGN_OR_THROW(const mlir::ElementType tensor_dtype,

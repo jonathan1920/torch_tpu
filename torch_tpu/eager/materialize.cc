@@ -480,13 +480,12 @@ absl::StatusOr<DeviceBufferRef> GetMaterialized(const at::Tensor& tensor,
   const auto* tensor_impl = tensor.unsafeGetTensorImpl();
   TT_RET_CHECK(tensor_impl, error::kInvalidArgument) << "tensor is undefined";
   TT_ASSIGN_OR_RETURN(const DeviceBufferRef base_buffer_ref,
-                      GetBaseBufferFromAtTensor(*tensor_impl));
+                      GetBaseBuffer(*tensor_impl));
   TT_RETURN_IF_ERROR(
       Materialize(base_buffer_ref, reason, MaterializationMode::kSplitGraph));
 
   // Get the view DeviceBufferRef (may be the same as the base)
-  TT_ASSIGN_OR_RETURN(const DeviceBufferRef view_buffer_ref,
-                      GetBufferFromAtTensor(tensor));
+  TT_ASSIGN_OR_RETURN(const DeviceBufferRef view_buffer_ref, GetBuffer(tensor));
   // Materialize the view (no-op if the tensor is a continuous base tensor)
   TT_RETURN_IF_ERROR(
       Materialize(view_buffer_ref, reason, MaterializationMode::kSplitGraph));
@@ -512,7 +511,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> GetMaterialized(
     const auto* tensor_impl = tensor.unsafeGetTensorImpl();
     TT_RET_CHECK(tensor_impl, error::kInvalidArgument) << "tensor is undefined";
     TT_ASSIGN_OR_RETURN(const DeviceBufferRef base_buffer_ref,
-                        GetBaseBufferFromAtTensor(*tensor_impl));
+                        GetBaseBuffer(*tensor_impl));
     base_buffer_refs.push_back(base_buffer_ref);
   }
   TT_RETURN_IF_ERROR(
@@ -523,7 +522,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> GetMaterialized(
   view_buffer_refs.reserve(tensors.size());
   for (const at::Tensor& tensor : tensors) {
     TT_ASSIGN_OR_RETURN(const DeviceBufferRef view_buffer_ref,
-                        GetBufferFromAtTensor(tensor));
+                        GetBuffer(tensor));
     view_buffer_refs.push_back(view_buffer_ref);
   }
   TT_RETURN_IF_ERROR(

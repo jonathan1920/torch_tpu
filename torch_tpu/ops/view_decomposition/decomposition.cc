@@ -68,7 +68,7 @@ void CheckViewPreconditions(absl::Span<const int64_t> contiguous_base_shape,
         << dim.size << " at index " << i << "; this is a TorchTPU bug";
 
     ABSL_CHECK_NE(  // CRASH_OK=0-sized views are handled directly by
-                    // both callers: `GetBufferFromAtTensor()` and
+                    // both callers: `GetBuffer()` and
                     // `AssignBufferToAtTensor()` functions.
         dim.size, 0)
         << "creating a 0-sized view of shape "

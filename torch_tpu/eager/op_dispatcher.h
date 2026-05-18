@@ -276,7 +276,7 @@ absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
   }
 
   TT_ASSIGN_OR_RETURN(std::vector<DeviceBufferRef> inputs_vec,
-                      GetBuffersFromAtTensors(inputs_span));
+                      GetBuffers(inputs_span));
   std::vector<DeviceBufferRef> results;
   if constexpr (kNumOutputs == 1) {
     TT_ASSIGN_OR_RETURN(

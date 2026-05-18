@@ -269,7 +269,7 @@ struct TORCH_API TpuHooksInterface : public at::PrivateUse1HooksInterface {
         {
           const size_t current_bytes = storage.nbytes();
           TT_ASSIGN_OR_THROW(const DeviceBufferRef old_buffer_ref,
-                             GetBaseBufferFromStorage(storage));
+                             GetBaseBuffer(storage));
           const mlir::ElementType element_type = old_buffer_ref.element_type();
           const at::ScalarType dtype = ConvertTo<at::ScalarType>(element_type);
           const int64_t itemsize = static_cast<int64_t>(at::elementSize(dtype));

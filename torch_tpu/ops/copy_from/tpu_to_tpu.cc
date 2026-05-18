@@ -55,8 +55,7 @@ absl::Status CopyTpuToTpu(const at::Tensor& src, const at::Tensor& dest) {
   if (src.dtype() == dest.dtype()) {
     // Shape and type match, can simply reuse the existing DeviceBufferRef
     // from src for dest.
-    TT_ASSIGN_OR_RETURN(const DeviceBufferRef src_buf,
-                        GetBufferFromAtTensor(src));
+    TT_ASSIGN_OR_RETURN(const DeviceBufferRef src_buf, GetBuffer(src));
     return AssignBufferToAtTensor(src_buf, dest);
   }
 

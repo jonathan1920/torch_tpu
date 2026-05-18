@@ -169,8 +169,7 @@ absl::StatusOr<mlir::MlirOp> BuildFftR2cShlo(mlir::MlirOp input,
 
 absl::Status CheckStaticShape(const at::Tensor& tensor,
                               const std::string_view arg_name) {
-  TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref,
-                      GetBaseBufferFromAtTensor(tensor));
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref, GetBaseBuffer(tensor));
   return CheckStaticShape(tensor, buffer_ref, arg_name);
 }
 

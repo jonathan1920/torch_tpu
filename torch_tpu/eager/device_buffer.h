@@ -659,7 +659,7 @@ class MaterializedBuffers {
 // contrast, an XLA PjRtBuffer is a concrete, typed buffer with some on-device
 // layout, but that does not support random-access indexing. Equivalent "view"
 // semantics are achieved by lazily constructing DeferredOps defining the
-// base-to-view conversions on-demand (see GetBufferFromAtTensor and
+// base-to-view conversions on-demand (see GetBuffer and
 // view_decomposition library).
 //
 // The conceptual buffers contained in a DeviceBufferList are immutable. It is

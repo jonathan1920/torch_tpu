@@ -129,8 +129,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> GetComputationBuffers(
   std::vector<DeviceBufferRef> buffer_refs;
   buffer_refs.reserve(tensors.size());
   for (const at::Tensor& tensor : tensors) {
-    TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref,
-                        GetBaseBufferFromAtTensor(tensor));
+    TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref, GetBaseBuffer(tensor));
     buffer_refs.push_back(buffer_ref);
   }
   return buffer_refs;
@@ -141,8 +140,7 @@ BufferRefToVarMap GetComputationGraph(py::dict capture_names_from) {
   for (auto item : capture_names_from) {
     if (py::isinstance<py::str>(item.first) &&
         THPVariable_Check(item.second.ptr())) {
-      auto maybe_buffer_ref =
-          GetBaseBufferFromAtTensor(item.second.cast<at::Tensor>());
+      auto maybe_buffer_ref = GetBaseBuffer(item.second.cast<at::Tensor>());
       if (maybe_buffer_ref.ok()) {
         buffer_ref_to_var[*maybe_buffer_ref] = item.first.cast<std::string>();
       }

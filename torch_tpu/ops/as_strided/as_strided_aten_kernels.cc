@@ -73,9 +73,8 @@ at::Tensor AtenAsStrided(const at::Tensor& self, c10::SymIntArrayRef size_sym,
                                // undefined tensor on Python.
                   self.defined(), error::kInvalidArgument)
                   << "the input tensor cannot be undefined";
-              TT_ASSIGN_OR_THROW(
-                  DeviceBufferRef base_buffer_ref,
-                  GetBaseBufferFromAtTensor(*self.unsafeGetTensorImpl()));
+              TT_ASSIGN_OR_THROW(DeviceBufferRef base_buffer_ref,
+                                 GetBaseBuffer(*self.unsafeGetTensorImpl()));
 
               const int64_t storage_numel = base_buffer_ref.num_elements();
               const mlir::ElementType storage_element_type =

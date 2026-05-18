@@ -191,7 +191,7 @@ absl::Status AssignBufferToAtTensor(DeviceBufferRef result_buf,
   // view-equivalent shapes, for example, a (10, 10) tensor may be backed by
   // a DeviceBufferRef of shape (100,), or vice-versa.
   // Shape alignments will be handled by view decomposition logic on extraction
-  // during GetBufferFromAtTensor later, if and only if required.
+  // during GetBuffer later, if and only if required.
   ABSL_CHECK_EQ(result_buf.num_elements(), tensor.numel());  // CRASH_OK
   TT_ASSIGN_OR_RETURN(const auto tensor_element_type,
                       ConvertTo<mlir::ElementType>(tensor.scalar_type()));
@@ -246,8 +246,7 @@ absl::Status AssignBufferToAtTensor(DeviceBufferRef result_buf,
     ABSL_VLOG(2)
         << "[AssignBufferToAtTensor] Assigning to non-contiguous base.";
 
-    TT_ASSIGN_OR_RETURN(DeviceBufferRef base_buffer_ref,
-                        GetBaseBufferFromAtTensor(tensor));
+    TT_ASSIGN_OR_RETURN(DeviceBufferRef base_buffer_ref, GetBaseBuffer(tensor));
 
     // Compute the operations needed to invert the view sequence.
     StridedLayout view_layout{.storage_offset = tensor.storage_offset()};
@@ -308,8 +307,7 @@ absl::Status AssignBufferToAtTensor(DeviceBufferRef result_buf,
                << "\nstorage offset: " << tensor.storage_offset();
   return absl::OkStatus();
 }
-absl::StatusOr<DeviceBufferRef> GetBaseBufferFromAtTensor(
-    const c10::TensorImpl& tensor) {
+absl::StatusOr<DeviceBufferRef> GetBaseBuffer(const c10::TensorImpl& tensor) {
   // If the user tries to call a torch_tpu kernel with tensors that are
   // on different devices, then we return an error status, which will be
   // propagated to the user as a Python exception (with context).
@@ -332,18 +330,16 @@ absl::StatusOr<DeviceBufferRef> GetBaseBufferFromAtTensor(
       << "tensor is on PrivateUse1 device, but is not allocated by "
          "g_tpu_allocator";
 
-  return GetBaseBufferFromStorage(tensor.storage());
+  return GetBaseBuffer(tensor.storage());
 }
 
-absl::StatusOr<DeviceBufferRef> GetBaseBufferFromAtTensor(
-    const at::Tensor& tensor) {
+absl::StatusOr<DeviceBufferRef> GetBaseBuffer(const at::Tensor& tensor) {
   const c10::TensorImpl* tensor_impl = tensor.unsafeGetTensorImpl();
   TT_RET_CHECK(tensor_impl, error::kInvalidArgument) << "tensor is undefined.";
-  return GetBaseBufferFromAtTensor(*tensor.unsafeGetTensorImpl());
+  return GetBaseBuffer(*tensor.unsafeGetTensorImpl());
 }
 
-absl::StatusOr<DeviceBufferRef> GetBaseBufferFromStorage(
-    const c10::Storage& storage) {
+absl::StatusOr<DeviceBufferRef> GetBaseBuffer(const c10::Storage& storage) {
   // The DeviceBufferRef in the c10::StorageImpl represents the "contiguous
   // base" buffer--this is the shape of the original tensor that was used to
   // construct the tensor, and represents all of the data available to all
@@ -354,10 +350,8 @@ absl::StatusOr<DeviceBufferRef> GetBaseBufferFromStorage(
       << "tensor storage has a null DeviceBufferRef via data_ptr context";
   return *base_buffer_ref;
 }
-absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(
-    const c10::TensorImpl& tensor) {
-  TT_ASSIGN_OR_RETURN(DeviceBufferRef base_buffer_ref,
-                      GetBaseBufferFromAtTensor(tensor));
+absl::StatusOr<DeviceBufferRef> GetBuffer(const c10::TensorImpl& tensor) {
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef base_buffer_ref, GetBaseBuffer(tensor));
 
   // Get the element types; if they're different, we need to do a bitwise cast.
   auto scalar_type = GetScalarType(tensor);
@@ -368,7 +362,7 @@ absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(
       tensor.storage_offset() == 0 &&
       tensor.sizes() == base_buffer_ref.dimensions() &&
       tensor_element_type == base_buffer_ref.element_type()) {
-    ABSL_VLOG(1) << "[GetBufferFromAtTensor] Tensor is a contiguous base, "
+    ABSL_VLOG(1) << "[GetBuffer] Tensor is a contiguous base, "
                     "returning base buffer.";
     // This is the base tensor, no view to apply.
     return base_buffer_ref;
@@ -377,7 +371,7 @@ absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(
   // If the view is zero-sized, then we don't need a view decomposition; a view
   // of nothing is valid.
   if (tensor.numel() < 1) {
-    ABSL_VLOG(1) << "[GetBufferFromAtTensor] Tensor is a zero-sized view, "
+    ABSL_VLOG(1) << "[GetBuffer] Tensor is a zero-sized view, "
                     "returning zero-sized constant.";
     return DeviceBufferList::CreateZeroSize(CopyIntVector(tensor.sizes()),
                                             tensor_element_type);
@@ -407,12 +401,12 @@ absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(
                                 base_buffer_ref.element_type(), view_layout,
                                 tensor_element_type, tensor.is_conj()));
   Simplify(view_sequence, base_buffer_ref.dimensions());
-  ABSL_VLOG(1)
-      << "[GetBufferFromAtTensor] Decomposed base buffer dtype and shape "
-      << ToString(base_buffer_ref.element_type())
-      << ToString(base_buffer_ref.dimensions()) << " into view sequence "
-      << ToString(view_sequence) << " to achieve target view layout "
-      << view_layout << " (is_conj=" << tensor.is_conj() << ")";
+  ABSL_VLOG(1) << "[GetBuffer] Decomposed base buffer dtype and shape "
+               << ToString(base_buffer_ref.element_type())
+               << ToString(base_buffer_ref.dimensions())
+               << " into view sequence " << ToString(view_sequence)
+               << " to achieve target view layout " << view_layout
+               << " (is_conj=" << tensor.is_conj() << ")";
 
   // Create cache key for the view sequence before moving into builder
   TT_ASSIGN_OR_RETURN(OpParamCacheKeys param_keys,
@@ -448,21 +442,20 @@ absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(
   return std::move(deferred_refs[0]);
 }
 
-absl::StatusOr<DeviceBufferRef> GetBufferFromAtTensor(
-    const at::Tensor& tensor) {
+absl::StatusOr<DeviceBufferRef> GetBuffer(const at::Tensor& tensor) {
   // Trying to get the buffer from an undefined tensor is a user error, not
   // a critical invariant violation.
   const c10::TensorImpl* tensor_impl = tensor.unsafeGetTensorImpl();
   TT_RET_CHECK(tensor_impl, error::kInvalidArgument) << "tensor is undefined";
-  return GetBufferFromAtTensor(*tensor.unsafeGetTensorImpl());
+  return GetBuffer(*tensor.unsafeGetTensorImpl());
 }
 
-absl::StatusOr<std::vector<DeviceBufferRef>> GetBuffersFromAtTensors(
+absl::StatusOr<std::vector<DeviceBufferRef>> GetBuffers(
     absl::Span<const at::Tensor> tensors) {
   std::vector<DeviceBufferRef> buffers;
   buffers.reserve(tensors.size());
   for (const auto& tensor : tensors) {
-    TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer, GetBufferFromAtTensor(tensor));
+    TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer, GetBuffer(tensor));
     buffers.push_back(std::move(buffer));
   }
   return buffers;

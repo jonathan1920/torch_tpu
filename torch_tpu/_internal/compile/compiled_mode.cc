@@ -94,10 +94,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
   std::vector<DeviceBufferRef> argument_refs;
   argument_refs.reserve(arg_tensors.size());
   for (const at::Tensor& tensor : arg_tensors) {
-    TT_ASSIGN_OR_RETURN(
-        DeviceBufferRef buffer_ref, GetBufferFromAtTensor(tensor),
-        _.SetPrepend() << "failed to get buffer from argument tensor: "
-                       << ToString(tensor));
+    TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref, GetBuffer(tensor),
+                        _.SetPrepend()
+                            << "failed to get buffer from argument tensor: "
+                            << ToString(tensor));
     TT_RET_CHECK(buffer_ref.state() != DeviceBufferRefState::kDeferred,
                  error::kInternal)
         << "argument tensor has deferred ops: " << ToString(tensor);
@@ -109,10 +109,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
   std::vector<DeviceBufferRef> result_refs;
   result_refs.reserve(result_tensors.size());
   for (const at::Tensor& tensor : result_tensors) {
-    TT_ASSIGN_OR_RETURN(
-        DeviceBufferRef buffer_ref, GetBufferFromAtTensor(tensor),
-        _.SetPrepend() << "failed to get buffer from result tensor: "
-                       << ToString(tensor));
+    TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref, GetBuffer(tensor),
+                        _.SetPrepend()
+                            << "failed to get buffer from result tensor: "
+                            << ToString(tensor));
     TT_RET_CHECK(buffer_ref.state() != DeviceBufferRefState::kMaterialized,
                  error::kInternal)
         << "result tensor is already materialized: " << ToString(tensor);
@@ -148,8 +148,7 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
   std::vector<DeviceBufferRef> argument_refs;
   argument_refs.reserve(argument_tensors.size());
   for (const at::Tensor& tensor : argument_tensors) {
-    absl::StatusOr<DeviceBufferRef> buffer_ref_or =
-        GetBufferFromAtTensor(tensor);
+    absl::StatusOr<DeviceBufferRef> buffer_ref_or = GetBuffer(tensor);
     ABSL_CHECK_OK(  // CRASH_OK=implies a bug in compile backend if this happens
         buffer_ref_or)
         << "failed to get device buffer from argument tensor: "
@@ -166,7 +165,7 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
   for (const at::Tensor& tensor : result_tensors) {
     TT_ASSIGN_OR_CRASH(  // CRASH_OK=implies a bug in compile backend if this
                          // happens
-        auto buffer_ref, GetBufferFromAtTensor(tensor),
+        auto buffer_ref, GetBuffer(tensor),
         _ << "failed to get device buffer from result tensor: "
           << ToString(tensor));
     ABSL_CHECK(  // CRASH_OK=implies a bug in compile backend if this happens
