@@ -15,25 +15,17 @@
 """Tests PyTorch distributed ops with torch.compile()."""
 
 import os
-import unittest
 
 from absl.testing import absltest
 import torch
 from torch import distributed as dist
 import torch.multiprocessing as mp
 from torch_tpu._internal import compile as tt_compile
-from torch_tpu._internal import env
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import utils
 from tests.distributed import distributed_utils
 
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
-
-
-def expected_to_fail_in_oss(func):
-  """Annotates a test to fail in OSS."""
-
-  return func if env.IS_INTERNAL_TORCH_TPU else unittest.expectedFailure(func)
 
 
 def compile_and_assert_outputs(func, inputs, expected_outputs=None):
@@ -330,9 +322,6 @@ def run_broadcast_with_torch_compile() -> None:
 
 class MultiTpuTorchCompileTest(absltest.TestCase):
 
-  # TODO: fix the failure "compile_mlir(): failed to validate and reorder
-  # inputs" error in OSS.
-  @expected_to_fail_in_oss
   def test_all_reduce_with_torch_compile(self):
     distributed_utils.dist_run(
         nproc_per_node=8,
@@ -341,7 +330,6 @@ class MultiTpuTorchCompileTest(absltest.TestCase):
         ),
     )
 
-  @expected_to_fail_in_oss
   def test_all_gather_into_tensor_with_torch_compile(self):
     distributed_utils.dist_run(
         nproc_per_node=8,
@@ -350,7 +338,6 @@ class MultiTpuTorchCompileTest(absltest.TestCase):
         ),
     )
 
-  @expected_to_fail_in_oss
   def test_all_to_all_single_with_torch_compile(self):
     distributed_utils.dist_run(
         nproc_per_node=8,
@@ -359,7 +346,6 @@ class MultiTpuTorchCompileTest(absltest.TestCase):
         ),
     )
 
-  @expected_to_fail_in_oss
   def test_all_to_all_with_torch_compile(self):
     distributed_utils.dist_run(
         nproc_per_node=8,
@@ -368,7 +354,6 @@ class MultiTpuTorchCompileTest(absltest.TestCase):
         ),
     )
 
-  @expected_to_fail_in_oss
   def test_all_gather_with_torch_compile(self):
     distributed_utils.dist_run(
         nproc_per_node=8,
@@ -377,7 +362,6 @@ class MultiTpuTorchCompileTest(absltest.TestCase):
         ),
     )
 
-  @expected_to_fail_in_oss
   def test_barrier_with_torch_compile(self):
     distributed_utils.dist_run(
         nproc_per_node=8,
@@ -386,7 +370,6 @@ class MultiTpuTorchCompileTest(absltest.TestCase):
         ),
     )
 
-  @expected_to_fail_in_oss
   def test_reduce_scatter_tensor_with_torch_compile(self):
     distributed_utils.dist_run(
         nproc_per_node=8,
@@ -395,7 +378,6 @@ class MultiTpuTorchCompileTest(absltest.TestCase):
         ),
     )
 
-  @expected_to_fail_in_oss
   def test_broadcast_with_torch_compile(self):
     distributed_utils.dist_run(
         nproc_per_node=8,
@@ -404,7 +386,6 @@ class MultiTpuTorchCompileTest(absltest.TestCase):
         ),
     )
 
-  @expected_to_fail_in_oss
   def test_reduce_scatter_with_torch_compile(self):
     distributed_utils.dist_run(
         nproc_per_node=8,
@@ -413,7 +394,6 @@ class MultiTpuTorchCompileTest(absltest.TestCase):
         ),
     )
 
-  @expected_to_fail_in_oss
   def test_gather_with_torch_compile(self):
     distributed_utils.dist_run(
         nproc_per_node=8,

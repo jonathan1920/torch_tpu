@@ -13,7 +13,6 @@
 # limitations under the License.
 load(
     "//build_files:build_defs.bzl",
-    "if_oss",
     "torch_tpu_package_end",
     "torch_tpu_py_library",
     "torch_tpu_py_test",
@@ -144,16 +143,9 @@ torch_tpu_py_test(
     size = "large",
     timeout = "long",
     srcs = ["compile_with_distributed_test.py"],
-    env = {
-        "ACCELERATOR_TYPE": "v5litepod-8",  # Needed for OSS.
-    },
+    notest_oss = "Disabled in OSS due to infra limitations on distributed tests",
     shard_count = 1,
-    tags = if_oss(
-        # In OSS, we have to run the test exclusively to avoid the
-        # "TPU initialization failed ... Device or resource busy" error.
-        ["exclusive"],
-        [],
-    ) + [
+    tags = [
         "requires-accel-hbm",
         "requires-tpu-v5lite:8",
     ],
@@ -162,7 +154,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//tests/distributed:distributed_utils",
         "//torch_tpu",
-        "//torch_tpu/_internal:env",
         "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
