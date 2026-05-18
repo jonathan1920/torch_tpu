@@ -123,6 +123,12 @@ def _init_device_impl(device: str) -> torch.device:
   device_module._init_runtime_options()  # pylint: disable=protected-access
 
   torch.utils.rename_privateuse1_backend(device)
+  # Generate `Tensor.is_{device}`, `Tensor.{device}()`, `Module.{device}()`,
+  # `PackedSequence.{device}()` attrs so user code can use the same idioms it
+  # uses with cuda/xpu/npu (e.g. `if t.is_tpu`, `model.tpu()`). Without this,
+  # `device.type == "{device}"` works but the convenience attrs are absent.
+  # Storage methods are not generated (default `for_storage=False`).
+  torch.utils.generate_methods_for_privateuse1_backend()
   device_d = torch.device(device)
   if device_d is None:
     raise RuntimeError("Failed to set privateuse1_backend in torch")
