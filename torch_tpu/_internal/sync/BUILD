@@ -1,4 +1,4 @@
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end")
+load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end", "torch_tpu_py_library")
 
 # Copyright 2025 Google LLC
 #
@@ -13,7 +13,7 @@ load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
+load("//shims/py_rules:strict.bzl", "py_library_providing_imports_info")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
 package(
@@ -72,14 +72,29 @@ torch_tpu_cc_library(
     ],
 )
 
-pytype_strict_library(
+# We use py_library_providing_imports_info with sync.modspec.json to explicitly
+# re-export the submodules provided by :sync_lib. This prevents PyStrictDeps
+# violations at downstream use sites that import `from torch_tpu._internal.sync import sync`
+# without requiring them to directly depend on :sync_lib.
+py_library_providing_imports_info(
     name = "sync",
     srcs = [
         "__init__.py",
-        "sync.py",
     ],
-    visibility = [
-        "//:__subpackages__",
+    lib_rule = torch_tpu_py_library,
+    module_specs = [
+        "sync.modspec.json",
+    ],
+    deps = [
+        ":sync_lib",
+        "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "sync_lib",
+    srcs = [
+        "sync.py",
     ],
     deps = [
         ":_tpu_torch_sync",

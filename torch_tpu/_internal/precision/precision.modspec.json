@@ -1,0 +1,10 @@
+[
+  {
+    "name": "torch_tpu._internal.precision",
+    "type": "PACKAGE"
+  },
+  {
+    "name": "torch_tpu._internal.precision.precision",
+    "type": "MODULE"
+  }
+]

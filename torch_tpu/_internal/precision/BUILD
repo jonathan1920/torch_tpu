@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end")
-load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
+load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end", "torch_tpu_py_library")
+load("//shims/py_rules:strict.bzl", "py_library_providing_imports_info")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
 licenses(["notice"])
@@ -39,13 +39,32 @@ pybind_extension(
     ],
 )
 
-pytype_strict_library(
+# We use py_library_providing_imports_info with precision.modspec.json to explicitly
+# re-export the submodules provided by :precision_lib. This prevents PyStrictDeps
+# violations at downstream use sites that import `from torch_tpu._internal.precision import precision`
+# without requiring them to directly depend on :precision_lib.
+py_library_providing_imports_info(
     name = "precision",
     srcs = [
         "__init__.py",
+    ],
+    lib_rule = torch_tpu_py_library,
+    module_specs = [
+        "precision.modspec.json",
+    ],
+    deps = [
+        ":precision_lib",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "precision_lib",
+    srcs = [
         "precision.py",
     ],
-    deps = [":precision_impl"],
+    deps = [
+        ":precision_impl",
+    ],
 )
 
 # This library is not used directly, but is needed for go/cclean.

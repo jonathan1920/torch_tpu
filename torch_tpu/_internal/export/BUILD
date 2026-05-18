@@ -12,22 +12,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end")
-load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
+load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_library")
+load("//shims/py_rules:strict.bzl", "py_library_providing_imports_info")
 
 package(
     default_applicable_licenses = ["//:license"],
     default_visibility = ["//:__subpackages__"],
 )
 
-pytype_strict_library(
+# We use py_library_providing_imports_info with export.modspec.json to explicitly
+# re-export the submodules provided by :export_lib. This prevents PyStrictDeps
+# violations at downstream use sites that import `from torch_tpu._internal.export import export`
+# without requiring them to directly depend on :export_lib.
+py_library_providing_imports_info(
     name = "export",
     srcs = [
         "__init__.py",
-        "export.py",
     ],
-    visibility = [
-        "//:__subpackages__",
+    lib_rule = torch_tpu_py_library,
+    module_specs = [
+        "export.modspec.json",
+    ],
+    deps = [
+        ":export_lib",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "export_lib",
+    srcs = [
+        "export.py",
     ],
     deps = [
         "//shims/absl_py/logging",
