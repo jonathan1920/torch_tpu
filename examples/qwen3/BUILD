@@ -271,6 +271,7 @@ torch_tpu_py_test(
     nopresubmit = "slow example",
     notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
+        "requires-mem:28g",  # For the msan build
         "requires-tpu-v5lite",
     ],
     deps = [
