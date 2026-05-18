@@ -32,7 +32,6 @@ package(
 bzl_library(
     name = "build_defs_bzl",
     srcs = ["build_defs.bzl"],
-    visibility = ["//visibility:private"],
     deps = [
         "//shims/build_cleaner:build_defs_lib",
         "//shims/py_rules:pytype_bzl",
