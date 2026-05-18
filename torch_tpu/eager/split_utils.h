@@ -30,10 +30,16 @@ namespace torch_tpu {
 
 // Creates a new set of traversals, one for each split point in the original
 // traversal.
+//
+// If `use_sorted` is true, then the execution order of the traversal will be
+// partitioned into sequential chunks rather than re-traversing.
+// If `use_sorted` is false, then the split points will be re-traversed for
+// each returned traversal.
 absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
 ApplySplitPoints(
-    const Traversal& traversal,
-    const absl::flat_hash_set<const DeviceBufferList*>& split_points);
+    absl_nonnull std::unique_ptr<Traversal> traversal,
+    const absl::flat_hash_set<const DeviceBufferList*>& split_points,
+    bool use_sorted = true);
 
 }  // namespace torch_tpu
 

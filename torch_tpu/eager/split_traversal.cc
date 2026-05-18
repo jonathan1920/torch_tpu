@@ -77,7 +77,7 @@ SplitTraversal(
     return traversals;
   }
 
-  return ApplySplitPoints(*traversal, split_points);
+  return ApplySplitPoints(std::move(traversal), split_points);
 }
 
 }  // namespace torch_tpu

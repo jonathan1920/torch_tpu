@@ -30,8 +30,10 @@
 
 namespace torch_tpu {
 
+namespace {
+
 absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
-ApplySplitPoints(
+ApplySplitPointsUnsorted(
     const Traversal& traversal,
     const absl::flat_hash_set<const DeviceBufferList*>& split_points) {
   std::vector<absl_nonnull std::unique_ptr<Traversal>> traversals;
@@ -42,6 +44,48 @@ ApplySplitPoints(
     traversals.push_back(std::move(new_traversal));
   }
   return traversals;
+}
+
+absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
+ApplySplitPointsSorted(
+    absl_nonnull std::unique_ptr<Traversal> traversal,
+    const absl::flat_hash_set<const DeviceBufferList*>& split_points) {
+  std::vector<SharedDeviceBufferList> queue;
+  {
+    auto parts = traversal->IntoParts();
+    queue = std::move(parts.execution_order);
+  }
+  std::vector<SharedDeviceBufferList> execution_order;
+  std::vector<SharedDeviceBufferList> nodes_to_materialize;
+  std::vector<absl_nonnull std::unique_ptr<Traversal>> traversals;
+  for (auto& node : queue) {
+    if (!split_points.contains(node.get())) {
+      execution_order.push_back(std::move(node));
+    } else {
+      execution_order.push_back(node);  // intentional copy
+      nodes_to_materialize.push_back(std::move(node));
+      TT_ASSIGN_OR_RETURN(auto new_traversal,
+                          Traversal::CreateFromExecutionOrder(
+                              execution_order, nodes_to_materialize));
+      traversals.push_back(std::move(new_traversal));
+      execution_order.clear();
+      nodes_to_materialize.clear();
+    }
+  }
+  return traversals;
+}
+
+}  // namespace
+
+absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
+ApplySplitPoints(
+    absl_nonnull std::unique_ptr<Traversal> traversal,
+    const absl::flat_hash_set<const DeviceBufferList*>& split_points,
+    bool use_sorted) {
+  if (use_sorted) {
+    return ApplySplitPointsSorted(std::move(traversal), split_points);
+  }
+  return ApplySplitPointsUnsorted(*traversal, split_points);
 }
 
 }  // namespace torch_tpu
