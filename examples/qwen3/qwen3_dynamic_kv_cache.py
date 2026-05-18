@@ -58,6 +58,17 @@ _USE_RANDOM_WEIGHTS = flags.DEFINE_boolean(
     "Whether to initialize model with random weights instead of loading from"
     " checkpoint.",
 )
+_PREFILL_SEQ_LEN = flags.DEFINE_integer(
+    "prefill_seq_len",
+    None,
+    "If set, overrides the input text with a random tensor of this length (for"
+    " benchmark).",
+)
+_WARMUP_STEPS = flags.DEFINE_integer(
+    "warmup_steps",
+    3,
+    "Number of decode steps to skip for average latency calculation.",
+)
 
 
 def model_generate(
@@ -93,6 +104,8 @@ def model_generate(
     next_token = None
     start_time = time.time()
     steps_completed = 0
+    step_times = []
+
     for i in range(max_decode_steps):
       if next_token == 0:
         break
@@ -110,9 +123,12 @@ def model_generate(
         )
         logits = output.logits.to("cpu")
         current_time = time.time()
+
+      step_time_ms = (current_time - prev_time) * 1000
+      step_times.append(step_time_ms)
       print(
           f"{prefix} Decode step {i + 1}:"
-          f" {(current_time - prev_time) * 1000:.2f} ms,"
+          f" {step_time_ms:.2f} ms,"
           f" device={model.device}"
       )
       past_key_values = output.past_key_values
@@ -120,9 +136,19 @@ def model_generate(
 
     end_time = time.time()
     decode_time = end_time - start_time
+
+    warmup = _WARMUP_STEPS.value
+    if steps_completed > warmup:
+      non_warmup_times = step_times[warmup:]
+      avg_decode_time = sum(non_warmup_times) / len(non_warmup_times)
+      print(
+          f"{prefix} Average Decode time per token (excluding first {warmup}"
+          f" steps): {avg_decode_time:.2f} ms"
+      )
+
     if steps_completed > 0:
       print(
-          f"{prefix} Decode time per token:"
+          f"{prefix} Decode time per token (including warmup):"
           f" {decode_time * 1000 / steps_completed:.2f} ms"
       )
     else:
@@ -206,14 +232,13 @@ def _run_with_random_weights(
         model_device, backend=_backend.TpuBackend(dynamism=True)
     )
 
-  output_device_compiled = model_generate(
+  model_generate(
       model_device_compiled,
       inputs.to(device),
       tokenizer,
       max_decode_steps,
       prefix=f"[Compiled {device.upper()}] ",
   )
-  logging.info("output_%s_compiled=%s", device, output_device_compiled)
 
 
 # pylint: disable=unused-argument
@@ -240,15 +265,20 @@ def main(argv):
   # Load tokenizer from HuggingFace
   tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_path)
 
-  text = "Who are you?"
-  messages = [{"role": "user", "content": text}]
-  inputs = tokenizer.apply_chat_template(
-      messages,
-      add_generation_prompt=True,
-      tokenize=True,
-      return_dict=True,
-      return_tensors="pt",
-  ).input_ids
+  if _PREFILL_SEQ_LEN.value is not None:
+    inputs = torch.randint(
+        0, tokenizer.vocab_size, (1, _PREFILL_SEQ_LEN.value), dtype=torch.long
+    )
+  else:
+    text = "Who are you?"
+    messages = [{"role": "user", "content": text}]
+    inputs = tokenizer.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt",
+    ).input_ids
 
   max_decode_steps = 10
 
