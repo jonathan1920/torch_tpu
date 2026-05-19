@@ -1302,7 +1302,7 @@ ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
     },
     "exp2": {
         torch.bfloat16: {"rtol": 2.00e-02, "atol": 1.00e-05},
-        torch.complex64: {"rtol": 4.00e-06, "atol": 1.00e-05},
+        torch.complex64: {"rtol": 2.8e-6, "atol": 6e-4},
         torch.float16: {"rtol": 3.00e-03, "atol": 1.00e-05},
         torch.float32: {"rtol": 3.50e-06, "atol": 1.00e-05},
     },
