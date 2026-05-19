@@ -1259,6 +1259,329 @@ absl::StatusOr<std::array<mlir::MlirOp, 2>> BuildGridSamplerNearestBackwardShlo(
   return std::array<mlir::MlirOp, 2>{grad_input, grad_grid_zeros};
 }
 
+struct BilinearScatterOperands {
+  std::vector<mlir::MlirOp> all_scatter_indices;
+  std::vector<mlir::MlirOp> all_updates;
+};
+
+struct CornerScatterOperands {
+  mlir::MlirOp scatter_indices;
+  mlir::MlirOp updates;
+};
+
+absl::StatusOr<CornerScatterOperands> ComputeGradInputOperandsForCorner(
+    mlir::MlirBuilder& builder, mlir::MlirOp gathered,
+    mlir::MlirOp current_weight, Dimensions bcast_dims,
+    mlir::MlirOp grad_output_calc, PaddingMode padding_mode,
+    const std::vector<mlir::MlirOp>& indices_unclamped,
+    const mlir::stablehlo::Dimensions& input_shape, int64_t spatial_dim_size,
+    mlir::Type calc_type, mlir::MlirOp n_iota_reshaped,
+    mlir::MlirOp c_iota_reshaped,
+    const std::vector<mlir::MlirOp>& current_indices,
+    Dimensions grad_output_shape, mlir::Type i32_type,
+    mlir::RankedTensorType index_reshaped_ty, int64_t rank) {
+  auto weight_bcast = mlir::stablehlo::BroadcastInDim(
+      gathered.getType(), current_weight, bcast_dims);
+  TT_ASSIGN_OR_RETURN(auto updates,
+                      BuildMulShlo(grad_output_calc, weight_bcast));
+
+  if (padding_mode == PaddingMode::kZeros) {
+    TT_ASSIGN_OR_RETURN(
+        updates,
+        ApplyZeroPadding(builder, updates, indices_unclamped, input_shape,
+                         spatial_dim_size, calc_type, bcast_dims));
+  }
+
+  std::vector<mlir::MlirOp> parts = {n_iota_reshaped, c_iota_reshaped};
+  const auto bcast_idx_ty =
+      mlir::RankedTensorType::get(grad_output_shape, i32_type);
+  for (int i = 0; i < spatial_dim_size; ++i) {
+    auto idx = current_indices[spatial_dim_size - 1 - i];
+    auto bcast_idx =
+        mlir::stablehlo::BroadcastInDim(bcast_idx_ty, idx, bcast_dims);
+    parts.push_back(mlir::stablehlo::Reshape(index_reshaped_ty, bcast_idx));
+  }
+  auto scatter_indices = mlir::stablehlo::Concatenate(builder, parts, rank);
+
+  return CornerScatterOperands{scatter_indices, updates};
+}
+
+absl::StatusOr<CornerScatterOperands>
+ComputeBuildBilinearScatterIndicesForCorner(
+    int corner_idx, int64_t spatial_dim_size, mlir::MlirBuilder& builder,
+    mlir::Type calc_type, const std::vector<DimInfo>& dim_infos,
+    mlir::MlirOp input, const GridSamplerGatherConfig& gather_config,
+    PaddingMode padding_mode, const mlir::stablehlo::Dimensions& input_shape,
+    Dimensions bcast_dims, mlir::MlirOp grad_output_calc,
+    mlir::MlirOp n_iota_reshaped, mlir::MlirOp c_iota_reshaped,
+    Dimensions grad_output_shape, mlir::Type i32_type,
+    mlir::RankedTensorType index_reshaped_ty, int64_t rank,
+    mlir::MlirOp one_tensor, mlir::MlirOp minus_one_tensor,
+    const std::vector<mlir::MlirOp>& grid_coords,
+    std::vector<mlir::MlirOp>& total_dl) {
+  auto sum_reduce_builder = [calc_type](mlir::RegionBuilder& rb) {
+    mlir::stablehlo::buildReduceBody<mlir::stablehlo::AddOp>(
+        calc_type, rb.getRegion(), rb.getOpBuilder());
+  };
+  const auto zero_scalar = MakeScalarConstant(builder, 0.0, calc_type);
+
+  std::vector<int> bits(spatial_dim_size);
+  for (int i = 0; i < spatial_dim_size; ++i) {
+    bits[i] = (corner_idx >> i) & 1;
+  }
+
+  mlir::MlirOp current_weight =
+      MakeConstantLike(grid_coords[0], 1.0, calc_type);
+  std::vector<mlir::MlirOp> current_indices(spatial_dim_size);
+  std::vector<mlir::MlirOp> indices_unclamped(spatial_dim_size);
+
+  for (int i = 0; i < spatial_dim_size; ++i) {
+    BilinearDimInfo dim_info = GetBilinearDimInfo(dim_infos[i], bits[i]);
+    TT_ASSIGN_OR_RETURN(current_weight,
+                        BuildMulShlo(current_weight, dim_info.weight));
+    current_indices[i] = dim_info.idx;
+    indices_unclamped[i] = dim_info.idx_unclamped;
+  }
+
+  const auto input_calc = mlir::stablehlo::ConvertElementType(input, calc_type);
+  TT_ASSIGN_OR_RETURN(auto gathered,
+                      GatherInterpolatedValue(builder, input_calc,
+                                              current_indices, gather_config));
+
+  if (padding_mode == PaddingMode::kZeros) {
+    TT_ASSIGN_OR_RETURN(
+        gathered,
+        ApplyZeroPadding(builder, gathered, indices_unclamped, input_shape,
+                         spatial_dim_size, calc_type, bcast_dims));
+  }
+
+  TT_ASSIGN_OR_RETURN(
+      CornerScatterOperands corner_operands,
+      ComputeGradInputOperandsForCorner(
+          builder, gathered, current_weight, bcast_dims, grad_output_calc,
+          padding_mode, indices_unclamped, input_shape, spatial_dim_size,
+          calc_type, n_iota_reshaped, c_iota_reshaped, current_indices,
+          grad_output_shape, i32_type, index_reshaped_ty, rank));
+
+  TT_ASSIGN_OR_RETURN(const auto prod,
+                      BuildMulShlo(grad_output_calc, gathered));
+  const auto c_sum = mlir::stablehlo::Reduce(builder, {prod}, {zero_scalar},
+                                             sum_reduce_builder, {1})[0];
+
+  for (int i = 0; i < spatial_dim_size; ++i) {
+    mlir::MlirOp dW_di = MakeConstantLike(grid_coords[0], 1.0, calc_type);
+    for (int j = 0; j < spatial_dim_size; ++j) {
+      if (i == j) {
+        auto sign = bits[i] ? one_tensor : minus_one_tensor;
+        TT_ASSIGN_OR_RETURN(dW_di, BuildMulShlo(dW_di, sign));
+      } else {
+        BilinearDimInfo dim_info = GetBilinearDimInfo(dim_infos[j], bits[j]);
+        TT_ASSIGN_OR_RETURN(dW_di, BuildMulShlo(dW_di, dim_info.weight));
+      }
+    }
+    TT_ASSIGN_OR_RETURN(auto dL_di, BuildMulShlo(dW_di, c_sum));
+    TT_ASSIGN_OR_RETURN(total_dl[i], BuildAddShlo(total_dl[i], dL_di));
+  }
+
+  return corner_operands;
+}
+
+absl::StatusOr<BilinearScatterOperands> BuildBilinearScatterIndices(
+    mlir::MlirBuilder& builder, mlir::MlirOp input, mlir::MlirOp grad_output,
+    mlir::MlirOp grad_output_calc, const std::vector<DimInfo>& dim_infos,
+    const std::vector<mlir::MlirOp>& grid_coords,
+    const GridSamplerGatherConfig& gather_config, int64_t spatial_dim_size,
+    PaddingMode padding_mode, mlir::Type calc_type,
+    std::vector<mlir::MlirOp>& total_dl) {
+  auto i32_type = builder.getOpBuilder().getI32Type();
+  auto grad_output_ty = GetTensorTypeOrDie(grad_output);
+  Dimensions grad_output_shape = CopyIntVector(grad_output_ty.getShape());
+  mlir::stablehlo::Dimensions input_shape = GetDimensions(input);
+
+  mlir::MlirOp n_iota = mlir::stablehlo::Iota(
+      builder,
+      makeTensorType(builder.getContext(), grad_output_shape, i32_type), 0);
+  mlir::MlirOp c_iota = mlir::stablehlo::Iota(
+      builder,
+      makeTensorType(builder.getContext(), grad_output_shape, i32_type), 1);
+
+  Dimensions index_new_shape = grad_output_shape;
+  index_new_shape.push_back(1);
+  auto index_reshaped_ty =
+      mlir::RankedTensorType::get(index_new_shape, i32_type);
+  auto n_iota_reshaped = mlir::stablehlo::Reshape(index_reshaped_ty, n_iota);
+  auto c_iota_reshaped = mlir::stablehlo::Reshape(index_reshaped_ty, c_iota);
+
+  const auto bcast_dims =
+      spatial_dim_size == 2 ? Dimensions{0, 2, 3} : Dimensions{0, 2, 3, 4};
+
+  int64_t rank = GetDimensions(input).size();
+
+  BilinearScatterOperands operands;
+  int num_corners = 1 << spatial_dim_size;
+  operands.all_scatter_indices.reserve(num_corners);
+  operands.all_updates.reserve(num_corners);
+
+  auto one_tensor = MakeConstantLike(grid_coords[0], 1.0, calc_type);
+  auto minus_one_tensor = MakeConstantLike(grid_coords[0], -1.0, calc_type);
+
+  for (int corner_idx = 0; corner_idx < num_corners; ++corner_idx) {
+    TT_ASSIGN_OR_RETURN(
+        auto corner_operands,
+        ComputeBuildBilinearScatterIndicesForCorner(
+            corner_idx, spatial_dim_size, builder, calc_type, dim_infos, input,
+            gather_config, padding_mode, input_shape, bcast_dims,
+            grad_output_calc, n_iota_reshaped, c_iota_reshaped,
+            grad_output_shape, i32_type, index_reshaped_ty, rank, one_tensor,
+            minus_one_tensor, grid_coords, total_dl));
+
+    operands.all_scatter_indices.push_back(corner_operands.scatter_indices);
+    operands.all_updates.push_back(corner_operands.updates);
+  }
+
+  return operands;
+}
+
+absl::StatusOr<std::array<mlir::MlirOp, 2>>
+BuildGridSamplerBilinearBackwardShlo(mlir::MlirOp grad_output,
+                                     mlir::MlirOp input, mlir::MlirOp grid,
+                                     bool align_corners,
+                                     PaddingMode padding_mode,
+                                     bool compute_grad_input) {
+  mlir::MlirBuilder& builder = input.getBuilder();
+  const auto input_ty = GetTensorTypeOrDie(input);
+  mlir::stablehlo::Dimensions input_shape = GetDimensions(input);
+  const auto grid_ty = GetTensorTypeOrDie(grid);
+  Dimensions grid_shape = CopyIntVector(grid_ty.getShape());
+  int64_t spatial_dim_size = grid_shape.back();
+  int64_t rank = input_shape.size();
+  int64_t offset_dim_size = rank - spatial_dim_size;
+
+  GridSamplerGatherConfig gather_config =
+      GetGridSamplerGatherConfig(input, spatial_dim_size);
+
+  const auto element_type = input_ty.getElementType();
+  // Use f64 for intermediate calculation to match PyTorch accscalar_t.
+  const mlir::Type calc_type = builder.getOpBuilder().getF64Type();
+  auto grid_calc = mlir::stablehlo::ConvertElementType(grid, calc_type);
+  auto grad_output_calc =
+      mlir::stablehlo::ConvertElementType(grad_output, calc_type);
+
+  std::vector<DimInfo> dim_infos;
+  dim_infos.reserve(spatial_dim_size);
+  std::vector<mlir::MlirOp> grid_coords;
+  grid_coords.reserve(spatial_dim_size);
+
+  for (int i = 0; i < spatial_dim_size; ++i) {
+    Dimensions offsets(grid_shape.size(), 0);
+    offsets.back() = i;
+    Dimensions limits = grid_shape;
+    limits.back() = i + 1;
+    Dimensions strides(grid_shape.size(), 1);
+    auto grid_coord_sliced =
+        mlir::stablehlo::Slice(grid_calc, offsets, limits, strides);
+    Dimensions coord_shape = grid_shape;
+    coord_shape.pop_back();
+    auto grid_coord_ty = mlir::RankedTensorType::get(coord_shape, calc_type);
+    auto grid_coord_raw =
+        mlir::stablehlo::Reshape(grid_coord_ty, grid_coord_sliced);
+    grid_coords.push_back(grid_coord_raw);
+
+    auto in_size = input_shape[offset_dim_size + spatial_dim_size - 1 - i];
+    TT_ASSIGN_OR_RETURN(auto in_size_op, DimensionInfoToOp(builder, in_size));
+    TT_ASSIGN_OR_RETURN(
+        const auto src_coord,
+        ComputeSourceCoord(grid_coord_raw, in_size_op, align_corners,
+                           padding_mode, calc_type));
+    TT_ASSIGN_OR_RETURN(auto dim_info, ComputeDimInfo(builder, src_coord,
+                                                      in_size_op, calc_type));
+    dim_infos.push_back(std::move(dim_info));
+  }
+
+  auto grad_input_accum = MakeConstantLike(input, 0.0, calc_type);
+
+  std::vector<mlir::MlirOp> total_dl(spatial_dim_size);
+  for (int i = 0; i < spatial_dim_size; ++i) {
+    total_dl[i] = MakeConstantLike(grid_coords[0], 0.0, calc_type);
+  }
+
+  if (compute_grad_input) {
+    TT_ASSIGN_OR_RETURN(
+        auto operands,
+        BuildBilinearScatterIndices(builder, input, grad_output,
+                                    grad_output_calc, dim_infos, grid_coords,
+                                    gather_config, spatial_dim_size,
+                                    padding_mode, calc_type, total_dl));
+
+    Dimensions all_dimensions(rank);
+    absl::c_iota(all_dimensions, 0);
+    auto index_vector_dim = rank;
+
+    auto block_type = mlir::RankedTensorType::get({}, calc_type);
+    auto scatter_region_builder = [block_type](mlir::RegionBuilder& rb) {
+      auto arg0 = mlir::Argument(rb, block_type);
+      auto arg1 = mlir::Argument(rb, block_type);
+      mlir::stablehlo::Return(rb, {mlir::stablehlo::Add(arg0, arg1)});
+    };
+
+    mlir::stablehlo::ScatterDimensionNumbersAttr scatter_dimension_numbers =
+        mlir::stablehlo::ScatterDimensionNumbersAttr::get(
+            &builder.getContext(),
+            /*update_window_dims=*/{},
+            /*inserted_window_dims=*/all_dimensions,
+            /*input_batching_dims=*/{},
+            /*scatter_indices_batching_dims=*/{},
+            /*scatter_dims_to_operand_dims=*/all_dimensions,
+            /*index_vector_dim=*/index_vector_dim);
+
+    auto final_scatter_indices =
+        mlir::stablehlo::Concatenate(builder, operands.all_scatter_indices, 0);
+    auto final_updates =
+        mlir::stablehlo::Concatenate(builder, operands.all_updates, 0);
+
+    grad_input_accum = mlir::stablehlo::Scatter(
+        {grad_input_accum}, final_scatter_indices, {final_updates},
+        scatter_region_builder, scatter_dimension_numbers,
+        /*indices_are_sorted=*/false,
+        /*unique_indices=*/false)[0];
+  }
+
+  std::vector<mlir::MlirOp> grad_grid_parts;
+  for (int i = 0; i < spatial_dim_size; ++i) {
+    auto in_size = input_shape[offset_dim_size + spatial_dim_size - 1 - i];
+    TT_ASSIGN_OR_RETURN(auto in_size_op, DimensionInfoToOp(builder, in_size));
+    auto in_size_f64 =
+        mlir::stablehlo::ConvertElementType(in_size_op, calc_type);
+    auto one_f64 = MakeConstantLike(in_size_f64, 1.0, calc_type);
+    auto two_f64 = MakeConstantLike(in_size_f64, 2.0, calc_type);
+
+    mlir::MlirOp factor;
+    if (align_corners) {
+      TT_ASSIGN_OR_RETURN(auto temp, BuildSubShlo(in_size_f64, one_f64));
+      TT_ASSIGN_OR_RETURN(factor, BuildDivShlo(temp, two_f64));
+    } else {
+      TT_ASSIGN_OR_RETURN(factor, BuildDivShlo(in_size_f64, two_f64));
+    }
+
+    TT_ASSIGN_OR_RETURN(auto total_dim_dL, BuildMulShlo(total_dl[i], factor));
+
+    Dimensions part_shape =
+        CopyIntVector(GetTensorTypeOrDie(total_dim_dL).getShape());
+    part_shape.push_back(1);
+    auto part_ty = mlir::RankedTensorType::get(part_shape, calc_type);
+    grad_grid_parts.push_back(mlir::stablehlo::Reshape(part_ty, total_dim_dL));
+  }
+  auto grad_grid = mlir::stablehlo::Concatenate(builder, grad_grid_parts,
+                                                spatial_dim_size + 1);
+
+  auto grad_input_final =
+      mlir::stablehlo::ConvertElementType(grad_input_accum, element_type);
+  auto grad_grid_final =
+      mlir::stablehlo::ConvertElementType(grad_grid, element_type);
+
+  return std::array<mlir::MlirOp, 2>{grad_input_final, grad_grid_final};
+}
+
 }  // namespace
 
 at::Tensor AtenGridSampler2d(const at::Tensor& input, const at::Tensor& grid,
@@ -1390,9 +1713,15 @@ std::tuple<at::Tensor, at::Tensor> AtenGridSampler2dBackward(
               return BuildGridSamplerNearestBackwardShlo(
                   inputs[0], inputs[1], inputs[2], align_corners, pm,
                   output_mask[0]);
+            } else if (interpolation_mode_enum ==
+                       InterpolationMode::kBilinear) {
+              return BuildGridSamplerBilinearBackwardShlo(
+                  inputs[0], inputs[1], inputs[2], align_corners, pm,
+                  output_mask[0]);
             }
             return TT_ERROR(error::kUnimplemented)
-                   << "Only nearest interpolation mode is supported for "
+                   << "Only nearest and bilinear interpolation modes are "
+                      "supported for "
                       "grid_sampler_2d_backward currently, got "
                    << static_cast<int>(interpolation_mode_enum);
           };
@@ -1452,9 +1781,15 @@ std::tuple<at::Tensor, at::Tensor> AtenGridSampler3dBackward(
               return BuildGridSamplerNearestBackwardShlo(
                   inputs[0], inputs[1], inputs[2], align_corners, pm,
                   output_mask[0]);
+            } else if (interpolation_mode_enum ==
+                       InterpolationMode::kBilinear) {
+              return BuildGridSamplerBilinearBackwardShlo(
+                  inputs[0], inputs[1], inputs[2], align_corners, pm,
+                  output_mask[0]);
             }
             return TT_ERROR(error::kUnimplemented)
-                   << "Only nearest interpolation mode is supported for "
+                   << "Only nearest and bilinear interpolation modes are "
+                      "supported for "
                       "grid_sampler_3d_backward currently, got "
                    << static_cast<int>(interpolation_mode_enum);
           };

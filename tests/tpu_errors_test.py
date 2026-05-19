@@ -1026,17 +1026,45 @@ Please use clone() or contiguous() to copy the tensor before writing""",
       interpolation_mode = 3
       torch.grid_sampler(inp, grid, interpolation_mode, 0, False)
 
+    inp_backward = torch.randn(
+        2, 3, 4, 4, device=et.device(), dtype=torch.float32
+    )
+    grid_backward = torch.randn(
+        2, 5, 5, 2, device=et.device(), dtype=torch.float32
+    )
     grad_output = torch.randn(
         2, 3, 5, 5, device=et.device(), dtype=torch.float32
     )
-    t = torch.randn(2, 3, 4, 4, device=et.device(), dtype=torch.float32)
-    g = torch.randn(2, 5, 5, 2, device=et.device(), dtype=torch.float32)
+
+    # TODO: b/512187715 - Remove this once bicubic is supported
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""grid_sampler_2d_backward(): materialization failed with: Only nearest interpolation mode is supported for grid_sampler_2d_backward currently, got 0""",
+        tpu="""grid_sampler_2d_backward(): materialization failed with: Only nearest and bilinear interpolation modes are supported for grid_sampler_2d_backward currently, got 2""",
     ):
+      interpolation_mode = 2
       torch.ops.aten.grid_sampler_2d_backward(
-          grad_output, t, g, 0, 0, False, [True, True]
+          grad_output,
+          inp_backward,
+          grid_backward,
+          interpolation_mode,
+          0,
+          False,
+          [True, True],
+      )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""grid_sampler_2d_backward(): expected the interpolation mode to be 0 (bilinear), 1 (nearest), or 2 (bicubic), got 3""",
+    ):
+      interpolation_mode = 3
+      torch.ops.aten.grid_sampler_2d_backward(
+          grad_output,
+          inp_backward,
+          grid_backward,
+          interpolation_mode,
+          0,
+          False,
+          [True, True],
       )
 
   def test_grid_sampler_3d_invalid_interpolation_mode(self):
@@ -1054,14 +1082,25 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     grad_output = torch.randn(
         2, 3, 5, 5, 5, device=et.device(), dtype=torch.float32
     )
-    t = torch.randn(2, 3, 4, 4, 4, device=et.device(), dtype=torch.float32)
-    g = torch.randn(2, 5, 5, 5, 3, device=et.device(), dtype=torch.float32)
+    inp_backward = torch.randn(
+        2, 3, 4, 4, 4, device=et.device(), dtype=torch.float32
+    )
+    grid_backward = torch.randn(
+        2, 5, 5, 5, 3, device=et.device(), dtype=torch.float32
+    )
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""grid_sampler_3d_backward(): materialization failed with: Only nearest interpolation mode is supported for grid_sampler_3d_backward currently, got 0""",
+        tpu="""grid_sampler_3d_backward(): expected the interpolation mode to be 0 (bilinear) or 1 (nearest), got 2""",
     ):
+      interpolation_mode = 2
       torch.ops.aten.grid_sampler_3d_backward(
-          grad_output, t, g, 0, 0, False, [True, True]
+          grad_output,
+          inp_backward,
+          grid_backward,
+          interpolation_mode,
+          0,
+          False,
+          [True, True],
       )
 
   # Why do we run this test only on TPU (and not on CPU)?
