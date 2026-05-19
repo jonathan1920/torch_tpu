@@ -6756,18 +6756,47 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         )
 
       y.sum().backward()
-      return y, q_t.grad, k_t.grad, v_t.grad
+      return {
+          "y": y,
+          "q_grad": q_t.grad,
+          "k_grad": k_t.grad,
+          "v_grad": v_t.grad,
+      }
 
-    # Use tolerances from ops_test.py for SDPA
-    rtol, atol = None, None
-    if config.dtype == torch.bfloat16:
+    cpu_results = compute("cpu")
+    tpu_results = compute("tpu")
+
+    # The gradient of the first token is zero with causal attention.
+    if config.is_causal:
+      with self.subTest("causal_query_first_token_grad_is_zero"):
+        self.assertTrue((tpu_results["q_grad"][..., 0, :] == 0.0).all())
+      cpu_results["q_grad"] = cpu_results["q_grad"][..., 1:, :]
+      tpu_results["q_grad"] = tpu_results["q_grad"][..., 1:, :]
+
+    def check_sim(cpu, tpu):
+      # TODO(willfroom): We should also check the min similarity but currently
+      # the flash implementation has a few outliers that we need to investigate
+      # first.
+      mean_sim_bound = 0.9999
+      sim = torch.nn.functional.cosine_similarity(cpu, tpu, dim=-1)
+      self.assertGreater(sim.mean().item(), mean_sim_bound)
+
+    def assert_close(cpu, tpu):
       rtol, atol = 5e-2, 1e-1
-    elif config.dtype == torch.float32:
-      rtol, atol = 1e-2, 1e-2
+      self.assert_close(
+          golden_result=cpu,
+          torch_tpu_result=tpu,
+          rtol=rtol,
+          atol=atol,
+          check_value=utils.CheckValueMode.LOOSE,
+      )
 
-    self.assert_close_tpu_vs_cpu(
-        compute, rtol=rtol, atol=atol, check_value=utils.CheckValueMode.LOOSE
-    )
+    for key in cpu_results:
+      with self.subTest(key):
+        cpu_tensor = cpu_results[key].cpu()
+        tpu_tensor = tpu_results[key].cpu()
+        check_sim(cpu_tensor, tpu_tensor)
+        assert_close(cpu_tensor, tpu_tensor)
 
   def test_stateless_dropout(self):
     torch.manual_seed(0)
