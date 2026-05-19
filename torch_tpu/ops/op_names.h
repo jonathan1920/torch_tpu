@@ -196,6 +196,7 @@ enum class OpName {
   kFmaxOut,
   kFminOut,
   kFmodTensorOut,
+  kForceStrides,
   kForeachAbs,
   kForeachAbs_,
   kForeachAcos,

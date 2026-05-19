@@ -339,8 +339,8 @@ class CompileApiTest(absltest.TestCase):
     cpu_src = torch.tensor([[1, 2], [3, 4]], dtype=torch.float32, device='cpu')
     # tpu_dst is non-contiguous, but has the right shape and dtype.
     tpu_dst = torch.empty(3, 2, dtype=torch.float32, device=tpu_device)[1:3, :]
-    expected_strides = tpu_dst.stride
-    expected_storage_offset = tpu_dst.storage_offset
+    expected_strides = tpu_dst.stride()
+    expected_storage_offset = tpu_dst.storage_offset()
     expected_shape = tpu_dst.shape
     expected_dtype = tpu_dst.dtype
 
@@ -354,8 +354,8 @@ class CompileApiTest(absltest.TestCase):
     # tpu_dst's layout metadata should be preserved.
     self.assertEqual(tpu_dst.shape, expected_shape)
     self.assertEqual(tpu_dst.dtype, expected_dtype)
-    self.assertEqual(tpu_dst.stride, expected_strides)
-    self.assertEqual(tpu_dst.storage_offset, expected_storage_offset)
+    self.assertEqual(tpu_dst.stride(), expected_strides)
+    self.assertEqual(tpu_dst.storage_offset(), expected_storage_offset)
 
     # tpu_dst is (still) on the TPU.
     self.assertEqual(tpu_dst.device.type, tpu_device.type)
@@ -393,6 +393,172 @@ class CompileApiTest(absltest.TestCase):
     )
 
     self.assertIn(expected_mlir, mlir_text)
+
+  def test_force_strides_no_op(self):
+    # Arrange: create a contiguous tensor on CPU and a copy of it on the TPU
+    expected = torch.arange(24, device='cpu').view(2, 3, 4)
+    x = expected.to(device='tpu')
+
+    # Act: force the strides to be contiguous (they already are)
+    y = tpu_torch_compile.force_strides(
+        x, expected.stride(), expected.storage_offset()
+    )
+
+    # Assert: the tensor metadata is unchanged
+    self.assertEqual(y.shape, expected.shape)
+    self.assertEqual(y.dtype, expected.dtype)
+    self.assertEqual(y.stride(), expected.stride())
+    self.assertEqual(y.storage_offset(), expected.storage_offset())
+
+    # Assert: the tensor values are unchanged
+    actual = y.cpu()
+    utils.assert_close(actual=actual, expected=expected)
+
+  def test_force_strides_permute(self):
+    # Arrange: create a permuted tensor on the CPU, and a contiguous copy of it
+    # on the TPU.
+    expected = torch.arange(24, device='cpu').view(2, 3, 4).permute(2, 1, 0)
+    x = expected.to(device='tpu')
+    self.assertTrue(x.is_contiguous())
+
+    # Act: force the strides to match expected
+    y = tpu_torch_compile.force_strides(
+        x, expected.stride(), expected.storage_offset()
+    )
+
+    # Assert: the tensor metadata is changed to match expected
+    self.assertEqual(y.shape, expected.shape)
+    self.assertEqual(y.dtype, expected.dtype)
+    self.assertEqual(y.stride(), expected.stride())
+    self.assertEqual(y.storage_offset(), expected.storage_offset())
+
+    # Assert: the tensor values are unchanged
+    actual = y.cpu()
+    utils.assert_close(actual=actual, expected=expected)
+
+  def test_force_strides_slice(self):
+    # Arrange: create a sliced tensor on the CPU, and a contiguous copy of it
+    # on the TPU.
+    expected = torch.arange(60, device='cpu').view(3, 4, 5)[1:, ::2, :4]
+    x = expected.to(device='tpu')
+    self.assertTrue(x.is_contiguous())
+
+    # Act: force the strides to match expected
+    y = tpu_torch_compile.force_strides(
+        x, expected.stride(), expected.storage_offset()
+    )
+
+    # Assert: the tensor metadata is changed to match expected
+    self.assertEqual(y.shape, expected.shape)
+    self.assertEqual(y.dtype, expected.dtype)
+    self.assertEqual(y.stride(), expected.stride())
+    self.assertEqual(y.storage_offset(), expected.storage_offset())
+
+    # Assert: the tensor values are unchanged
+    actual = y.cpu()
+    utils.assert_close(actual=actual, expected=expected)
+
+  def test_force_strides_broadcast(self):
+    # Arrange: create a broadcasted tensor on the CPU, and a contiguous copy of
+    # it on the TPU.
+    expected = torch.arange(6, device='cpu').view(2, 3, 1).expand(2, 3, 4)
+    x = expected.to(device='tpu')
+    self.assertTrue(x.is_contiguous())
+
+    # Act: force the strides to match expected
+    y = tpu_torch_compile.force_strides(
+        x, expected.stride(), expected.storage_offset()
+    )
+
+    # Assert: the tensor metadata is changed to match expected
+    self.assertEqual(y.shape, expected.shape)
+    self.assertEqual(y.dtype, expected.dtype)
+    self.assertEqual(y.stride(), expected.stride())
+    self.assertEqual(y.storage_offset(), expected.storage_offset())
+
+    # Assert: the tensor values are unchanged
+    actual = y.cpu()
+    utils.assert_close(actual=actual, expected=expected)
+
+  def test_force_strides_one_dimension_overlap(self):
+    # Arrange: create a tensor on the CPU with overlapping strides on a single
+    # dimension
+    expected = torch.arange(13, dtype=torch.float32, device='cpu').as_strided(
+        size=(2, 3, 4), stride=(6, 1, 1), storage_offset=1
+    )
+    # Check that the view logic is correct on the CPU.
+    # expected[0] and expected[1] each contain overlapping data,
+    # but expected[0] and expected[1] are disjoint from each other.
+    expected_values = torch.tensor(
+        [
+            [[1.0, 2.0, 3.0, 4.0], [2.0, 3.0, 4.0, 5.0], [3.0, 4.0, 5.0, 6.0]],
+            [
+                [7.0, 8.0, 9.0, 10.0],
+                [8.0, 9.0, 10.0, 11.0],
+                [9.0, 10.0, 11.0, 12.0],
+            ],
+        ],
+        dtype=torch.float32,
+        device='cpu',
+    )
+    utils.assert_close(actual=expected, expected=expected_values)
+    x = expected.to(device='tpu')
+    self.assertTrue(x.is_contiguous())
+
+    # Act: force the strides to match expected
+    y = tpu_torch_compile.force_strides(
+        x, expected.stride(), expected.storage_offset()
+    )
+
+    # Assert: the tensor metadata is changed to match expected
+    self.assertEqual(y.shape, expected.shape)
+    self.assertEqual(y.dtype, expected.dtype)
+    self.assertEqual(y.stride(), expected.stride())
+    self.assertEqual(y.storage_offset(), expected.storage_offset())
+
+    # Assert: the tensor values are unchanged
+    actual = y.cpu()
+    utils.assert_close(actual=actual, expected=expected)
+
+  def test_force_strides_two_dimension_overlap(self):
+    # Arrange: create a tensor on the CPU with overlapping strides on multiple
+    # dimensions
+    expected = torch.arange(12, dtype=torch.float32, device='cpu').as_strided(
+        size=(2, 3, 4), stride=(5, 1, 1), storage_offset=1
+    )
+    # Check that the view logic is correct on the CPU.
+    # expected[0] and expected[1] each contain overlapping data, and they also
+    # overlap with each other.
+    expected_values = torch.tensor(
+        [
+            [[1.0, 2.0, 3.0, 4.0], [2.0, 3.0, 4.0, 5.0], [3.0, 4.0, 5.0, 6.0]],
+            [
+                [6.0, 7.0, 8.0, 9.0],
+                [7.0, 8.0, 9.0, 10.0],
+                [8.0, 9.0, 10.0, 11.0],
+            ],
+        ],
+        dtype=torch.float32,
+        device='cpu',
+    )
+    utils.assert_close(actual=expected, expected=expected_values)
+    x = expected.to(device='tpu')
+    self.assertTrue(x.is_contiguous())
+
+    # Act: force the strides to match expected
+    y = tpu_torch_compile.force_strides(
+        x, expected.stride(), expected.storage_offset()
+    )
+
+    # Assert: the tensor metadata is changed to match expected
+    self.assertEqual(y.shape, expected.shape)
+    self.assertEqual(y.dtype, expected.dtype)
+    self.assertEqual(y.stride(), expected.stride())
+    self.assertEqual(y.storage_offset(), expected.storage_offset())
+
+    # Assert: the tensor values are unchanged
+    actual = y.cpu()
+    utils.assert_close(actual=actual, expected=expected)
 
 
 if __name__ == '__main__':

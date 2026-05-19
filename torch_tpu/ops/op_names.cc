@@ -365,6 +365,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "fmin.out";
     case OpName::kFmodTensorOut:
       return "fmod.Tensor_out";
+    case OpName::kForceStrides:
+      return "force_strides";
     case OpName::kForeachAbs:
       return "_foreach_abs";
     case OpName::kForeachAbs_:

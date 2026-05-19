@@ -468,4 +468,25 @@ torch_tpu_cc_test(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "contiguous_to_view",
+    srcs = ["contiguous_to_view.cc"],
+    hdrs = ["contiguous_to_view.h"],
+    deps = [
+        ":decomposition",
+        ":strided_layout",
+        "//shims/torch:aten_headers",
+        "//torch_tpu/common:dimension_types",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:to_string",
+        "//torch_tpu/common:utils",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:tensor_to_buffer",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 torch_tpu_package_end()

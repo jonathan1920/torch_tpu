@@ -54,12 +54,14 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
+#include "torch_tpu/ops/view_decomposition/contiguous_to_view.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
@@ -486,6 +488,32 @@ void PyAssignConstantTensor(const at::Tensor& cpu_src_tensor,
   TT_THROW_IF_ERROR(AssignConstantTensor(cpu_src_tensor, tpu_dst_tensor));
 }
 
+at::Tensor PyForceStrides(
+    const at::Tensor& tensor,
+    const std::vector<int64_t>& target_strides,  // INT_VEC_OK
+    int64_t target_storage_offset) {
+  TT_CHECK_THROW(tensor.dim() == target_strides.size(), error::kInvalidArgument)
+      << "target strides must have the same number of dimensions "
+      << "as the tensor, got " << tensor.ndimension() << " and "
+      << target_strides.size();
+  TT_CHECK_THROW(target_storage_offset >= 0, error::kInvalidArgument)
+      << "target_storage_offset must be non-negative";
+
+  if (tensor.strides() == target_strides &&
+      tensor.storage_offset() == target_storage_offset) {
+    return tensor;
+  }
+
+  TT_ASSIGN_OR_THROW(DeviceBufferRef contiguous_buffer, GetBuffer(tensor));
+
+  ScopedPythonContextCapturer capturer(OpName::kForceStrides);
+  TT_ASSIGN_OR_THROW(
+      at::Tensor view_tensor,
+      ContiguousToView(std::move(contiguous_buffer),
+                       CopyIntVector(target_strides), target_storage_offset));
+  return view_tensor;
+}
+
 // A context manager for locking multiple generators' mutexes.
 //
 // This is necessary to prevent generator state conflicts in between getting the
@@ -655,6 +683,11 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   m.def("set_device_state_tensor", PySetDeviceStateTensor, py::arg("generator"),
         py::arg("rng_state"),
         "Sets the internal TPU RNG state tensor on a generator.");
+  m.def("force_strides", PyForceStrides, py::arg("tensor"),
+        py::arg("target_strides"), py::arg("target_storage_offset"),
+        "Returns a tensor with equivalent logical values to the input tensor, "
+        "but with the given strides and storage offset, copying "
+        "data as necessary.");
 }
 
 }  // namespace torch_tpu
