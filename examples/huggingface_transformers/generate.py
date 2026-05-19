@@ -38,12 +38,6 @@ from transformers import modeling_outputs
 log_utils.log_to_stderr()
 
 
-# Monkey patch to address b/417424824
-masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping["sdpa"] = (  # pylint: disable=protected-access
-    masking_utils.sdpa_mask_older_torch
-)
-
-
 @enum.unique
 class Device(enum.Enum):
   CUDA = "cuda"
