@@ -329,5 +329,61 @@ TEST_F(SubgraphTest, CollectivesMergeNonCollectives) {
                            collective_ref_c.device_buffer_list().get()));
 }
 
+TEST_F(SubgraphTest, CollectivesAreAnchoredAndUnprunable) {
+  ScopedPythonContextCapturer capturer(OpName::kDistributedAllReduce);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+
+  std::shared_ptr<Subgraph> subgraph;
+  DeviceBufferList* raw_collective_ptr = nullptr;
+
+  {
+    // Create a collective op inside a nested scope.
+    auto collective_refs_or = DeviceBufferList::CreateDeferred(
+        OpName::kDistributedAllReduce, DummyBuilder, {},
+        OpParamCacheKeys::Empty(), {shape});
+    ASSERT_TRUE(collective_refs_or.ok());
+    auto collective_ref = collective_refs_or.value()[0];
+    raw_collective_ptr = collective_ref.device_buffer_list().get();
+    subgraph = collective_ref.device_buffer_list()->subgraph()->Find();
+  }
+  // collective_ref is now out of scope. Without AnchorSideEffect, the refcount
+  // on DeviceBufferList would drop to 0 and it would be pruned by
+  // GetLeafNodes().
+
+  auto leaf_nodes = subgraph->GetLeafNodes();
+  ASSERT_THAT(leaf_nodes, SizeIs(1));
+  EXPECT_EQ(leaf_nodes[0].get(), raw_collective_ptr);
+}
+
+TEST_F(SubgraphTest, SideEffectingOpWithChildOpIsUnprunable) {
+  ScopedPythonContextCapturer capturer(OpName::kDistributedAllReduce);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+
+  std::shared_ptr<Subgraph> subgraph;
+  DeviceBufferList* raw_collective_ptr = nullptr;
+
+  {
+    // Create a collective op inside a nested scope.
+    // Collective op is side-effecting and should not be pruned even when
+    // there are no references to it, or if it has a child op
+    auto collective_refs_or = DeviceBufferList::CreateDeferred(
+        OpName::kDistributedAllReduce, DummyBuilder, {},
+        OpParamCacheKeys::Empty(), {shape});
+    ASSERT_TRUE(collective_refs_or.ok());
+    auto collective_ref = collective_refs_or.value()[0];
+    raw_collective_ptr = collective_ref.device_buffer_list().get();
+    subgraph = collective_ref.device_buffer_list()->subgraph()->Find();
+    // Add a child op to the collective.
+    auto child_refs_or = DeviceBufferList::CreateDeferred(
+        OpName::kAdd, DummyBuilder, {collective_ref}, OpParamCacheKeys::Empty(),
+        {shape});
+    ASSERT_TRUE(child_refs_or.ok());
+  }
+
+  auto leaf_nodes = subgraph->GetLeafNodes();
+  ASSERT_THAT(leaf_nodes, SizeIs(1));
+  EXPECT_EQ(leaf_nodes[0].get(), raw_collective_ptr);
+}
+
 }  // namespace
 }  // namespace torch_tpu

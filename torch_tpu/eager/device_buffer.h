@@ -157,6 +157,10 @@ class Subgraph : public std::enable_shared_from_this<Subgraph> {
   // Pushes a deferred node onto this subgraph's queue.
   void push(std::weak_ptr<DeviceBufferList> device_buffer);
 
+  // Anchors a strong pointer to prevent pruning of side-effecting/barrier
+  // nodes.
+  void AnchorSideEffect(std::shared_ptr<DeviceBufferList> device_buffer);
+
   // Returns the representative subgraph (root of the DSU tree).
   std::shared_ptr<Subgraph> Find();
 
@@ -178,6 +182,10 @@ class Subgraph : public std::enable_shared_from_this<Subgraph> {
   absl::Mutex mu_;
   std::shared_ptr<Subgraph> parent_ ABSL_GUARDED_BY(mu_);
   std::vector<std::weak_ptr<DeviceBufferList>> queue_ ABSL_GUARDED_BY(mu_);
+  // Retains strong ownership of unconsumed side-effecting/barrier nodes (e.g.,
+  // distributed collectives).
+  std::vector<std::shared_ptr<DeviceBufferList>> unprunable_side_effects_
+      ABSL_GUARDED_BY(mu_);
 };
 
 // A global singleton registry of all Subgraphs that currently exist.

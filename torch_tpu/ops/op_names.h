@@ -693,6 +693,11 @@ inline std::ostream& operator<<(std::ostream& os, const OpName op_name) {
   }
 }
 
+// Returns true if the op is a side-effecting op.
+[[nodiscard]] inline bool IsSideEffectingOp(OpName op_name) {
+  return IsDistributedOp(op_name);
+}
+
 namespace internal {
 
 // Specialization for `OpName`.
