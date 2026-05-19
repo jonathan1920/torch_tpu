@@ -46,7 +46,6 @@ torch_tpu_cc_library(
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:to_string",
-        "//torch_tpu/common:utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@stablehlo//:attr_type_builder_util",

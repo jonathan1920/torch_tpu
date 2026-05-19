@@ -26,8 +26,6 @@ torch_tpu_cc_library(
     deps = [
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
-        "//shims/torch/c10/core:base_headers",
-        "//shims/torch/c10/util:base_headers",
         "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",
@@ -38,11 +36,8 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
-        "//torch_tpu/ops:xla_utils",
         "//torch_tpu/ops/macros:kernel",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
@@ -50,8 +45,6 @@ torch_tpu_cc_library(
         "@stablehlo//:mlir_builder",
         "@stablehlo//:stablehlo_builder",
         "@stablehlo//:stablehlo_ops",
-        "@xla//xla:shape_util",
-        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 

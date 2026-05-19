@@ -354,7 +354,6 @@ torch_tpu_cc_test(
         "//shims/torch:aten_headers",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:dimension_types",
-        "//torch_tpu/common:shape",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",

@@ -41,8 +41,6 @@ torch_tpu_cc_library(
         "//torch_tpu/ops:nullary_aten_kernels",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
-        "//torch_tpu/ops:python_context",
-        "//torch_tpu/ops:xla_utils",
         "//torch_tpu/ops/as_strided:as_strided_aten_kernels",
         "//torch_tpu/ops/macros:kernel",
         "//torch_tpu/ops/macros:logging",

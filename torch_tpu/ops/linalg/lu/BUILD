@@ -33,7 +33,6 @@ torch_tpu_cc_library(
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
-        "//torch_tpu/common:shape",
         "//torch_tpu/common:to_string",
         "//torch_tpu/common:utils",
         "//torch_tpu/eager:device_buffer",
