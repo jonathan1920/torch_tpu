@@ -18,9 +18,11 @@
 
 #include <string>
 
+#include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
 
@@ -44,13 +46,24 @@ absl::Status InitializeDistributedEnvironment(
 
   std::string libtpu_init_args_str =
       GetEnvOnce<kLibtpuInitArgsEnvVar>().value_or("");
-  if (!absl::StrContains(libtpu_init_args_str,
-                         "--xla_tpu_use_enhanced_launch_barrier")) {
+  if (absl::StrContains(libtpu_init_args_str,
+                        "--xla_tpu_use_enhanced_launch_barrier=true")) {
+    ABSL_LOG(WARNING)
+        << "libtpu_init_args contains "
+           "--xla_tpu_use_enhanced_launch_barrier=true, "
+           "this can cause distributed hangs. Rewriting environment "
+           "variable to false.";
+    libtpu_init_args_str =
+        absl::StrReplaceAll(libtpu_init_args_str,
+                            {{"--xla_tpu_use_enhanced_launch_barrier=true",
+                              "--xla_tpu_use_enhanced_launch_barrier=false"}});
+  } else if (!absl::StrContains(libtpu_init_args_str,
+                                "--xla_tpu_use_enhanced_launch_barrier")) {
     // Preventing distributed hangs, see b/477673365.
     absl::StrAppend(&libtpu_init_args_str,
                     " --xla_tpu_use_enhanced_launch_barrier=false");
-    SetEnv(kLibtpuInitArgsEnvVar, libtpu_init_args_str);
   }
+  SetEnv(kLibtpuInitArgsEnvVar, libtpu_init_args_str);
   return absl::OkStatus();
 }
 

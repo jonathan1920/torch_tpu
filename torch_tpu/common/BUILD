@@ -691,6 +691,7 @@ torch_tpu_cc_library(
     deps = [
         ":env_vars",
         "//torch_tpu/distributed/slicebuilder:discovery",
+        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
