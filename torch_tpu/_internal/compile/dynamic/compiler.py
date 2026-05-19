@@ -119,92 +119,6 @@ class _ShapeBoundInfo(NamedTuple):
   upper_bounds: list[int]
 
 
-def _get_pad_subgraph_inputs(
-    args: Sequence[Any],
-    sym_shape_manager: SymShapeManager,
-) -> tuple[
-    list[torch.Tensor],
-    list[_TensorInfo],
-    list[_ShapeBoundInfo],
-]:
-  """Returns inputs for the pad subgraph."""
-  tensor_args = []
-  tensor_info = []
-  bounds_list = []
-
-  backend_device = torch.accelerator.current_accelerator()
-
-  for idx, arg in enumerate(args):
-    if arg is None:
-      continue
-
-    if isinstance(arg, numbers.Integral):
-      example_arg = sym_shape_manager.example_inputs[idx]
-      if isinstance(example_arg, torch.SymInt):
-        if str(example_arg) in sym_shape_manager.symint_to_placeholder:
-          tensor_val = torch.tensor(
-              arg, dtype=torch.int32, device=backend_device
-          )
-          tensor_args.append(tensor_val)
-          tensor_info.append(_TensorInfo(shape=[], dtype=torch.int32))
-          bounds_list.append(_ShapeBoundInfo(dynamic_dims=[], upper_bounds=[]))
-      continue
-
-    # Handle any other missing type above
-    assert isinstance(arg, torch.Tensor)
-
-    if arg.device.type == "cpu":
-      raise ValueError(
-          "CPU tensors are not supported in dynamic shapes compilation, please"
-          " move inputs to TPU."
-      )
-
-    tensor_args.append(arg)
-    static_shape = list(arg.shape)
-    tensor_info.append(_TensorInfo(shape=static_shape, dtype=arg.dtype))
-
-    tensor_metadata = sym_shape_manager.input_tensors_metadata[idx]
-    if not tensor_metadata.dynamic_dims:
-      bounds_list.append(_ShapeBoundInfo(dynamic_dims=[], upper_bounds=[]))
-      continue
-    bounds_list.append(
-        _ShapeBoundInfo(
-            dynamic_dims=tensor_metadata.dynamic_dims,
-            upper_bounds=[upper for _, upper in tensor_metadata.dynamic_bounds],
-        )
-    )
-  return tensor_args, tensor_info, bounds_list
-
-
-def _compile_and_execute_pad_subgraph(
-    args: Sequence[Any],
-    sym_shape_manager: SymShapeManager,
-) -> list[torch.Tensor]:
-  """Compiles and executes the pad subgraph."""
-  tensor_args, tensor_info, bounds_list = _get_pad_subgraph_inputs(
-      args, sym_shape_manager
-  )
-
-  logging.debug(
-      "[DynamicTpuBackend] Compile Pad Subgraph, tensor_info: %s,"
-      " bounds_list: %s",
-      tensor_info,
-      bounds_list,
-  )
-
-  # Get the MLIR module for the pad subgraph.
-  mlir_module = tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
-  logging.debug(
-      "[DynamicTpuBackend] MLIR pad module: %s",
-      LazyString(lambda: tpu_torch_compile.serialize_mlir_text(mlir_module)),
-  )
-  # Compile the pad subgraph to a PJRT executable.
-  executable = tpu_torch_compile.compile_mlir(mlir_module)
-
-  # Execute the pad subgraph with the input tensors and get the padded tensors.
-  return tpu_torch_compile.execute(executable, tensor_args)
-
-
 def _compile_and_execute_slice_subgraph(
     tensor_outputs: Sequence[torch.Tensor],
     output_shapes: Sequence[list[int]],
@@ -266,6 +180,126 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
   ):
     self.model_executable = model_executable
     self.sym_shape_manager = sym_shape_manager
+    self._precomputed_bounds_list = self._precompute_bounds_list()
+    self._scalar_tensor_cache = {}
+    self._backend_device = None
+    self._dynamic_scalar_indices = self._precompute_dynamic_scalar_indices()
+
+  def _precompute_dynamic_scalar_indices(self) -> set[int]:
+    indices = set()
+    for idx, arg in enumerate(self.sym_shape_manager.example_inputs):
+      if isinstance(arg, torch.SymInt):
+        if str(arg) in self.sym_shape_manager.symint_to_placeholder:
+          indices.add(idx)
+    return indices
+
+  def _get_backend_device(self) -> torch.device:
+    if self._backend_device is None:
+      self._backend_device = torch.accelerator.current_accelerator()
+    return self._backend_device
+
+  def _get_cached_scalar_tensor(
+      self, val: int, dtype: torch.dtype, device: torch.device
+  ) -> torch.Tensor:
+    key = (val, dtype, device)
+    tensor = self._scalar_tensor_cache.get(key)
+    if tensor is None:
+      tensor = torch.tensor(val, dtype=dtype, device=device)
+      self._scalar_tensor_cache[key] = tensor
+    return tensor
+
+  def _get_pad_subgraph_inputs(
+      self,
+      args: Sequence[Any],
+  ) -> tuple[list[torch.Tensor], list[_TensorInfo]]:
+    """Returns inputs for the pad subgraph."""
+    tensor_args = []
+    tensor_info = []
+
+    backend_device = self._get_backend_device()
+
+    for idx, arg in enumerate(args):
+      if arg is None:
+        continue
+
+      if isinstance(arg, numbers.Integral):
+        if idx in self._dynamic_scalar_indices:
+          tensor_val = self._get_cached_scalar_tensor(
+              arg, dtype=torch.int32, device=backend_device
+          )
+          tensor_args.append(tensor_val)
+          tensor_info.append(_TensorInfo(shape=[], dtype=torch.int32))
+        continue
+
+      # Handle any other missing type above
+      assert isinstance(arg, torch.Tensor)
+
+      if arg.device.type == "cpu":
+        raise ValueError(
+            "CPU tensors are not supported in dynamic shapes compilation,"
+            " please move inputs to TPU."
+        )
+
+      tensor_args.append(arg)
+      static_shape = list(arg.shape)
+      tensor_info.append(_TensorInfo(shape=static_shape, dtype=arg.dtype))
+
+    return tensor_args, tensor_info
+
+  def _compile_and_execute_pad_subgraph(
+      self,
+      args: Sequence[Any],
+  ) -> list[torch.Tensor]:
+    """Compiles and executes the pad subgraph."""
+    tensor_args, tensor_info = self._get_pad_subgraph_inputs(args)
+
+    logging.debug(
+        "[DynamicTpuBackend] Compile Pad Subgraph, tensor_info: %s,"
+        " bounds_list: %s",
+        tensor_info,
+        self._precomputed_bounds_list,
+    )
+
+    # Get the MLIR module for the pad subgraph.
+    mlir_module = tpu_torch_compile.get_pad_module_mlir(
+        tensor_info, self._precomputed_bounds_list
+    )
+    logging.debug(
+        "[DynamicTpuBackend] MLIR pad module: %s",
+        LazyString(lambda: tpu_torch_compile.serialize_mlir_text(mlir_module)),
+    )
+    # Compile the pad subgraph to a PJRT executable.
+    executable = tpu_torch_compile.compile_mlir(mlir_module)
+
+    # Execute the pad subgraph with the input tensors and get the
+    # padded tensors.
+    return tpu_torch_compile.execute(executable, tensor_args)
+
+  def _precompute_bounds_list(self) -> list[_ShapeBoundInfo]:
+    bounds_list = []
+    for idx, arg in enumerate(self.sym_shape_manager.example_inputs):
+      if arg is None:
+        continue
+
+      if isinstance(arg, torch.SymInt):
+        if str(arg) in self.sym_shape_manager.symint_to_placeholder:
+          bounds_list.append(_ShapeBoundInfo(dynamic_dims=[], upper_bounds=[]))
+        continue
+
+      assert isinstance(arg, torch.Tensor)
+      tensor_metadata = self.sym_shape_manager.input_tensors_metadata[idx]
+      if not tensor_metadata.dynamic_dims:
+        bounds_list.append(_ShapeBoundInfo(dynamic_dims=[], upper_bounds=[]))
+        continue
+      bounds_list.append(
+          _ShapeBoundInfo(
+              dynamic_dims=tensor_metadata.dynamic_dims,
+              upper_bounds=[
+                  upper for _, upper in tensor_metadata.dynamic_bounds
+              ],
+          )
+      )
+    return bounds_list
 
   def __call__(self, *args: Any) -> Any:
     logging.debug("[DynamicTpuBackend] Execute Model")
@@ -277,10 +311,7 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
 
     # Compile and run pad executable to get statically padded tensors
     # and runtime size tensors
-    pad_outputs = _compile_and_execute_pad_subgraph(
-        args,
-        self.sym_shape_manager,
-    )
+    pad_outputs = self._compile_and_execute_pad_subgraph(args)
 
     # Run model executable with pads, sizes, and explicit output shapes
     outputs = self.model_executable(list(pad_outputs))
