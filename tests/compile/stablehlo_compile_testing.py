@@ -14,34 +14,16 @@
 
 """Utilities for testing StableHLO compilation speed."""
 
-import os
 import time
 from typing import Callable
 
 from absl import flags
 from absl import logging
 from absl.testing import absltest
-from torch.utils import tensorboard
 from torch_tpu._internal.compile import tpu_torch_compile
-from torch_tpu._internal.utils import benchmarking
-
-record_tensorboard_metrics = benchmarking.record_tensorboard_metrics
-METRIC_PROFILES = benchmarking.METRIC_PROFILES
-SummaryWriter = tensorboard.SummaryWriter
-
-_TB_SUMMARY_LOGGING_DIR = flags.DEFINE_string(
-    "tb_summary_logging_dir",
-    default=os.environ.get("TB_SUMMARY_LOGGING_DIR", None),
-    help="TensorBoard summary logging directory.",
-)
 
 _NUM_RUNS = flags.DEFINE_integer(
     "num_runs", 10, "Number of runs for each benchmark."
-)
-_ENABLE_TENSORBOARD_LOGGING = flags.DEFINE_bool(
-    "enable_tensorboard_logging",
-    True,
-    "Whether to enable TensorBoard logging.",
 )
 
 
@@ -49,35 +31,13 @@ class StableHloCompileTimeTestBase(absltest.TestCase):
   """StableHLO compilation benchmarks."""
 
   # Tell the type checker that these attributes exist.
-  _writer: SummaryWriter | None
   _preheat_xla_done: bool
 
   @classmethod
   def setUpClass(cls):
     """Initializes the TPU runtime for all tests."""
     super().setUpClass()
-    cls._writer = None
     cls._preheat_xla_done = False  # Whether XLA has been preheated.
-
-    if _ENABLE_TENSORBOARD_LOGGING.value:
-      log_dir = _TB_SUMMARY_LOGGING_DIR.value
-      if log_dir:
-        logging.info("TensorBoard logging enabled. Writing to: %s", log_dir)
-        cls._writer = SummaryWriter(log_dir)
-      else:
-        logging.warning(
-            "TensorBoard logging is enabled but --tb_summary_logging_dir is"
-            " not set. No logs will be written."
-        )
-
-  @classmethod
-  def tearDownClass(cls):
-    """Closes the SummaryWriter after all tests are done."""
-    super().tearDownClass()
-    if cls._writer:
-      logging.info("Flushing and closing TensorBoard SummaryWriter.")
-      cls._writer.flush()
-      cls._writer.close()
 
   def setUp(self):
     """Initializes the TPU runtime for each test."""
@@ -172,17 +132,6 @@ class StableHloCompileTimeTestBase(absltest.TestCase):
       compile_times.append(elapsed_time)
 
     logging.info("Benchmark %s raw times (seconds): %s", bm_name, compile_times)
-    # It's important to do this outside of the `if self._writer` block because
-    # ._writer is not set in the presubmit tests and we want presubmit to catch
-    # bugs where bm_name is not a valid profile name.
-    assert bm_name in METRIC_PROFILES, (
-        f"Invalid benchmark name: {bm_name}. Please make sure the name is in "
-        "METRIC_PROFILES in torch_tpu/_internal/utils/benchmarking.py"
-    )
-    if self._writer:
-      record_tensorboard_metrics(
-          self._writer, METRIC_PROFILES[bm_name], compile_times
-      )
 
   def _preheat_xla(self) -> None:
     """Pre-compiles a trivial StableHLO module to warm up XLA.

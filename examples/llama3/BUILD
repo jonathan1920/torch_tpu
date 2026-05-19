@@ -99,7 +99,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/shims/xprof:traceme",
         "//torch_tpu/_internal/sync",
-        "//torch_tpu/_internal/utils:benchmarking",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//transformers",
         "@rules_python//python/runfiles",
@@ -140,7 +139,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/shims/xprof:traceme",
         "//torch_tpu/_internal/sync",
-        "//torch_tpu/_internal/utils:benchmarking",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//transformers",
         "@rules_python//python/runfiles",
@@ -174,7 +172,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/shims/xprof:traceme",
         "//torch_tpu/_internal/sync",
-        "//torch_tpu/_internal/utils:benchmarking",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//transformers",
         "@rules_python//python/runfiles",
@@ -209,7 +206,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/shims/xprof:traceme",
-        "//torch_tpu/_internal/utils:benchmarking",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//accelerate",  # buildcleaner: keep
         "@pypi//datasets",
@@ -246,7 +242,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/shims/xprof:traceme",
-        "//torch_tpu/_internal/utils:benchmarking",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//accelerate",  # buildcleaner: keep
         "@pypi//datasets",
@@ -283,7 +278,6 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/shims/xprof:traceme",
-        "//torch_tpu/_internal/utils:benchmarking",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//accelerate",  # buildcleaner: keep
         "@pypi//datasets",

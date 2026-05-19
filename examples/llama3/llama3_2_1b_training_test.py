@@ -27,10 +27,8 @@ import datasets
 from etils import epath
 import torch
 import torch._inductor.config as inductor_config
-from torch.utils import tensorboard
 from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
-from torch_tpu._internal.utils import benchmarking
 from torch_tpu._internal.utils import log_utils
 from examples import paths
 import tqdm
@@ -72,16 +70,6 @@ BASE_PATH = epath.Path(paths.XM_HOME)
 MODEL_PATH = BASE_PATH / "weights/huggingface/meta-llama/Llama-3.2-1B"
 TOK_PATH = (
     BASE_PATH / "weights/huggingface/meta-llama/Meta-Llama-3-8B-Instruct/"
-)
-_ENABLE_TENSORBOARD_LOGGING = flags.DEFINE_bool(
-    "enable_tensorboard_logging",
-    False,
-    "Whether to enable TensorBoard logging.",
-)
-_TB_SUMMARY_LOGGING_DIR = flags.DEFINE_string(
-    "tb_summary_logging_dir",
-    default=os.environ.get("TB_SUMMARY_LOGGING_DIR", None),
-    help="TensorBoard summary logging directory.",
 )
 
 
@@ -357,44 +345,6 @@ def _plot_stats(stats: Dict[str, Any]):
 
 
 # %%
-def _record_metrics(
-    stats: Dict[str, Any],
-    writer: "tensorboard.SummaryWriter",
-    epochs: int,
-    steps_per_epoch: int,
-):
-  """Calculates and records training metrics with TensorBoard.
-
-  Args:
-    stats: A dictionary containing training statistics.
-    writer: An optional TensorBoard SummaryWriter for logging.
-    epochs: The number of training epochs.
-    steps_per_epoch: The number of steps per epoch.
-  """
-
-  # Retrieve the final validation loss
-  final_val_loss = stats["val_loss"][-1]
-  stable_step_times = None
-  if epochs > 1:
-    stable_step_times = stats["step_times"][steps_per_epoch:]
-  else:
-    logging.warning(
-        "Cannot calculate training step time with only one epoch."
-        " Run with epochs > 1 for a stable performance metric."
-    )
-
-  logging.info("Exporting metrics to TensorBoard...")
-  benchmarking.record_tensorboard_metrics(
-      writer,
-      benchmarking.METRIC_PROFILES["Training/ValidationLoss"],
-      [final_val_loss],
-  )
-  if stable_step_times is not None:
-    benchmarking.record_tensorboard_metrics(
-        writer,
-        benchmarking.METRIC_PROFILES["Training/StepTime"],
-        stable_step_times,
-    )
 
 
 # %%
@@ -419,18 +369,6 @@ class Llama31BTrainingTest(absltest.TestCase):
       inductor_config.compile_threads = 1
     torch.manual_seed(seed)
 
-    self.writer = None
-    if _ENABLE_TENSORBOARD_LOGGING.value:
-      log_dir = _TB_SUMMARY_LOGGING_DIR.value
-      if log_dir:
-        logging.info("TensorBoard logging enabled. Writing to: %s", log_dir)
-        self.writer = tensorboard.SummaryWriter(log_dir)
-      else:
-        logging.warning(
-            "TensorBoard logging is enabled but --tb_summary_logging_dir is"
-            " not set. No logs will be written."
-        )
-
     # Initialize device
     self.device = get_torch_device()
 
@@ -452,10 +390,6 @@ class Llama31BTrainingTest(absltest.TestCase):
 
   def tearDown(self):
     super().tearDown()
-    if self.writer:
-      logging.info("Flushing and closing TensorBoard SummaryWriter.")
-      self.writer.flush()
-      self.writer.close()
 
   def test_training(self):
     """Test llama3.1B model training with instruct SFT dataset."""
@@ -493,18 +427,6 @@ class Llama31BTrainingTest(absltest.TestCase):
     _generate_text(self.model, self.tokenizer, self.device, max_new_tokens=100)
 
     # Report metrics to TensorBoard (using the number of optimizer steps per epoch)
-    if self.writer:
-      gradient_accumulation_steps = global_batch_size // (
-          local_batch_size * dp_degree
-      )
-      # Total number of optimizer steps per epoch.
-      num_optimizer_steps = steps // gradient_accumulation_steps
-      _record_metrics(
-          stats=stats,
-          writer=self.writer,
-          epochs=epochs,
-          steps_per_epoch=num_optimizer_steps,
-      )
 
     return stats
 

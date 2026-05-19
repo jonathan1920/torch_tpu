@@ -25,11 +25,9 @@ from absl import logging
 from absl.testing import absltest
 import torch
 import torch._inductor.config as inductor_config
-from torch.utils import tensorboard
 from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
-from torch_tpu._internal.utils import benchmarking
 from torch_tpu._internal.utils import log_utils
 import transformers
 
@@ -97,16 +95,6 @@ _TRAINING_STYLE = flags.DEFINE_enum(
     " a single executable using grad_and_value.",
 )
 
-_ENABLE_TENSORBOARD_LOGGING = flags.DEFINE_bool(
-    "enable_tensorboard_logging",
-    False,
-    "Whether to enable TensorBoard logging.",
-)
-_TB_SUMMARY_LOGGING_DIR = flags.DEFINE_string(
-    "tb_summary_logging_dir",
-    default=os.environ.get("TB_SUMMARY_LOGGING_DIR", None),
-    help="TensorBoard summary logging directory.",
-)
 
 BASE_MODEL_CONFIG_PATH = "__main__/examples/huggingface_transformers/model_configs"
 
@@ -166,56 +154,6 @@ def get_optimizer_step_fn(optimizer):
     optimizer.step()
 
   return step_fn
-
-
-def _record_metrics(
-    stats: Dict[str, Any],
-    writer: "tensorboard.SummaryWriter",
-    epochs: int,
-):
-  """Calculates and records training metrics with TensorBoard.
-
-  Args:
-    stats: A dictionary containing training statistics.
-    writer: An optional TensorBoard SummaryWriter for logging.
-    epochs: The number of training epochs.
-    steps_per_epoch: The number of steps per epoch.
-  """
-  cache_misses = stats["cache_misses"]
-  final_warmup_epoch = None
-  for epoch in range(epochs - 1):
-    if cache_misses[epoch] == cache_misses[epoch + 1]:
-      final_warmup_epoch = epoch
-      break
-  if final_warmup_epoch == None:
-    logging.error(
-        "Cannot calculate training step time as number of cache misses hasn't"
-        " stabilized."
-    )
-    return
-  stable_step_times = stats["step_times"][final_warmup_epoch + 1 :]
-  avg_stable_step_time = sum(stable_step_times) / len(stable_step_times)
-
-  # The preheat time is mostly the time spent on initial compilation. This may
-  # take multiple epochs to stabilize. We measure the cumulative overhead,
-  # rather than a per-epoch average, so that we get a stable metric even if the
-  # number of warmup epochs changes.
-  preheat_step_times = stats["step_times"][: final_warmup_epoch + 1]
-  preheat_overhead = (
-      sum(preheat_step_times) - len(preheat_step_times) * avg_stable_step_time
-  )
-
-  logging.info("Exporting metrics to TensorBoard...")
-  benchmarking.record_tensorboard_metrics(
-      writer,
-      benchmarking.METRIC_PROFILES["Training/PreheatOverhead"],
-      [preheat_overhead],
-  )
-  benchmarking.record_tensorboard_metrics(
-      writer,
-      benchmarking.METRIC_PROFILES["Training/StepTime"],
-      stable_step_times,
-  )
 
 
 def _make_pytorch_style_training_step(
@@ -372,24 +310,8 @@ class Llama321BRandomDataTrainingTest(absltest.TestCase):
     torch.manual_seed(seed)
     logging.info("Using absltest.FLAGS.test_random_seed: %d", seed)
 
-    self.writer = None
-    if _ENABLE_TENSORBOARD_LOGGING.value:
-      log_dir = _TB_SUMMARY_LOGGING_DIR.value
-      if log_dir:
-        logging.info("TensorBoard logging enabled. Writing to: %s", log_dir)
-        self.writer = tensorboard.SummaryWriter(log_dir)
-      else:
-        logging.warning(
-            "TensorBoard logging is enabled but --tb_summary_logging_dir is"
-            " not set. No logs will be written."
-        )
-
   def tearDown(self):
     super().tearDown()
-    if self.writer:
-      logging.info("Flushing and closing TensorBoard SummaryWriter.")
-      self.writer.flush()
-      self.writer.close()
 
   def test_training(self):
     """Test llama3.2 tiny model random data training."""
@@ -476,14 +398,7 @@ class Llama321BRandomDataTrainingTest(absltest.TestCase):
       stats["train_loss"].append(step_loss)
       stats["step_times"].append(step_time)
 
-    if self.writer:
-      _record_metrics(
-          stats=stats,
-          writer=self.writer,
-          epochs=num_epochs,
-      )
-    else:
-      pprint.pp(stats)
+    pprint.pp(stats)
 
     if _DEVICE.value == "cuda":
       peak_memory_usage_mb = torch.cuda.memory.max_memory_allocated() / 1048576

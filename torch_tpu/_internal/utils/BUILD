@@ -93,16 +93,6 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_library(
-    name = "benchmarking",
-    srcs = ["benchmarking.py"],
-    deps = [
-        "//shims/torch:pytorch",
-        "//shims/torch:tensorboard_support",  # buildcleaner: keep
-        "@pypi//numpy",
-    ],
-)
-
-torch_tpu_py_library(
     name = "tracer_utils",
     srcs = ["tracer_utils.py"],
     deps = [

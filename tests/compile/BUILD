@@ -188,11 +188,9 @@ torch_tpu_py_library(
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/minipyspy:minipyspy_enable",
-        "//shims/torch:pytorch",
         "//shims/torch:tensorboard_support",  # buildcleaner: keep
         "//torch_tpu/_internal/compile:tpu_torch_compile",
         "//torch_tpu/_internal/device:_device_ops_backend",  # buildcleaner: keep
-        "//torch_tpu/_internal/utils:benchmarking",
     ],
 )
 
@@ -200,9 +198,6 @@ torch_tpu_py_test(
     name = "stablehlo_compile_test",
     timeout = "long",
     srcs = ["stablehlo_compile_test.py"],
-    args = [
-        "--enable_tensorboard_logging=False",
-    ],
     exec_properties = {
         "cpp_link.mem": "20g",  # Needed for asan.
     },

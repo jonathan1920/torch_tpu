@@ -24,11 +24,9 @@ from absl import logging
 from absl.testing import absltest
 import torch
 import torch._inductor.config as inductor_config
-from torch.utils import tensorboard
 from torch_tpu._internal import compile as torch_tpu_compile
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
-from torch_tpu._internal.utils import benchmarking
 from torch_tpu._internal.utils import log_utils
 from examples import paths
 import transformers
@@ -88,17 +86,6 @@ _COMPILE_OPTIM = flags.DEFINE_bool(
     False,
     "Whether to torch.compile the optimizer. If use_torch_compile == False, "
     " this flag is overridden to False.",
-)
-
-_ENABLE_TENSORBOARD_LOGGING = flags.DEFINE_bool(
-    "enable_tensorboard_logging",
-    False,
-    "Whether to enable TensorBoard logging.",
-)
-_TB_SUMMARY_LOGGING_DIR = flags.DEFINE_string(
-    "tb_summary_logging_dir",
-    default=os.environ.get("TB_SUMMARY_LOGGING_DIR", None),
-    help="TensorBoard summary logging directory.",
 )
 
 
@@ -171,46 +158,6 @@ def _create_model_and_config(device):
   return model, config
 
 
-def _record_metrics(
-    stats: Dict[str, Any],
-    writer: "tensorboard.SummaryWriter",
-    epochs: int,
-):
-  """Calculates and records training metrics with TensorBoard.
-
-  Args:
-    stats: A dictionary containing training statistics.
-    writer: An optional TensorBoard SummaryWriter for logging.
-    epochs: The number of training epochs.
-  """
-  cache_misses = stats["cache_misses"]
-  final_warmup_epoch = None
-  for epoch in range(epochs - 1):
-    if cache_misses[epoch] == cache_misses[epoch + 1]:
-      final_warmup_epoch = epoch
-      break
-  if final_warmup_epoch is None:
-    logging.error(
-        "Cannot calculate training step time as number of cache misses hasn't"
-        " stabilized."
-    )
-    return
-  preheat_step_times = stats["step_times"][: final_warmup_epoch + 1]
-  stable_step_times = stats["step_times"][final_warmup_epoch + 1 :]
-
-  logging.info("Exporting metrics to TensorBoard...")
-  benchmarking.record_tensorboard_metrics(
-      writer,
-      benchmarking.METRIC_PROFILES["Training/PreheatStepTime"],
-      preheat_step_times,
-  )
-  benchmarking.record_tensorboard_metrics(
-      writer,
-      benchmarking.METRIC_PROFILES["Training/StepTime"],
-      stable_step_times,
-  )
-
-
 class Resnet50RandomDataTrainingTest(absltest.TestCase):
   """Tests ResNet50 model training with random data."""
 
@@ -237,24 +184,8 @@ class Resnet50RandomDataTrainingTest(absltest.TestCase):
     torch.manual_seed(seed)
     logging.info("Using absltest.FLAGS.test_random_seed: %d", seed)
 
-    self.writer = None
-    if _ENABLE_TENSORBOARD_LOGGING.value:
-      log_dir = _TB_SUMMARY_LOGGING_DIR.value
-      if log_dir:
-        logging.info("TensorBoard logging enabled. Writing to: %s", log_dir)
-        self.writer = tensorboard.SummaryWriter(log_dir)
-      else:
-        logging.warning(
-            "TensorBoard logging is enabled but --tb_summary_logging_dir is"
-            " not set. No logs will be written."
-        )
-
   def tearDown(self):
     super().tearDown()
-    if self.writer:
-      logging.info("Flushing and closing TensorBoard SummaryWriter.")
-      self.writer.flush()
-      self.writer.close()
 
   def test_training(self):
     """Test resnet50 model random data training."""
@@ -336,13 +267,6 @@ class Resnet50RandomDataTrainingTest(absltest.TestCase):
       stats["epoch"].append(epoch)
       stats["train_loss"].append(step_loss)
       stats["step_times"].append(step_time)
-
-    if self.writer:
-      _record_metrics(
-          stats=stats,
-          writer=self.writer,
-          epochs=num_epochs,
-      )
 
     if _DEVICE.value == "cuda":
       peak_memory_usage_mb = torch.cuda.memory.max_memory_allocated() / 1048576
