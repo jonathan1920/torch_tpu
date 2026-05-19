@@ -703,6 +703,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kTriuOut, AtenTriuOut);
   Impl(m, OpName::kTruncOut, AtenTruncOut);
   Impl(m, OpName::kUnfold, AtenUnfold);
+  Impl(m, OpName::kUnfoldBackward, AtenUnfoldBackward);
   Impl(m, OpName::kUniform_, AtenUniform_);
   Impl(m, OpName::kUnique2, AtenUnique2);
   Impl(m, OpName::kUpsampleBilinear2dBackwardGradInput,

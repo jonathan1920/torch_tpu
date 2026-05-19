@@ -3907,11 +3907,7 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("unbind")
 
   def test_unfold(self):
-    self.do_test_op(
-        "unfold",
-        # TODO: fix the error unfold_backward is unimplemented.
-        check_grad=False,
-    )
+    self.do_test_op("unfold")
 
   def test_unsqueeze(self):
     self.do_test_op("unsqueeze")

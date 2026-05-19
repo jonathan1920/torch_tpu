@@ -1207,6 +1207,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "trunc.out";
     case OpName::kUnfold:
       return "unfold";
+    case OpName::kUnfoldBackward:
+      return "unfold_backward";
     case OpName::kUniform_:
       return "uniform_";
     case OpName::kUnique2:

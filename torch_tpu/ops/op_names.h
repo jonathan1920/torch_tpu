@@ -615,6 +615,7 @@ enum class OpName {
   kTriuOut,
   kTruncOut,
   kUnfold,
+  kUnfoldBackward,
   kUniform_,
   kUnique2,
   kUnsqueeze,
