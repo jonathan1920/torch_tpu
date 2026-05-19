@@ -1417,9 +1417,20 @@ class TorchTpuTestBase(TestCase):
       return _GOLDEN_GPU_DATA.get(op_name, {}).get(dtype, [])
 
     # Generate sample inputs on the golden device.
-    golden_samples = list(
-        op.sample_inputs(self.golden_device, dtype, requires_grad=False)
-    )
+    try:
+      golden_samples = list(
+          op.sample_inputs(self.golden_device, dtype, requires_grad=False)
+      )
+    except Exception as e:  # pylint: disable=broad-except
+      if _gen_gpu_golden_mode():
+        print(
+            f"WARNING: Skipping golden generation for {op_name}() with dtype"
+            f" {dtype} because sample generation failed on"
+            f" {self.golden_device}: {e}",
+            flush=True,
+        )
+        return []
+      raise
     if max_samples is None:
       max_samples = _MAX_SAMPLES_PER_OP_DTYPE.value
     if max_samples >= 0 and len(golden_samples) > max_samples:
@@ -2034,6 +2045,14 @@ class TorchTpuTestBase(TestCase):
       ),
   ) -> Sequence[torch.dtype]:
     """Resolves the exclude_dtypes argument."""
+    if _gen_gpu_golden_mode():
+      # During golden generation, we ignore all exclusions (both general and
+      # device-specific) to proactively collect as much golden data as
+      # possible for future compatibility.
+      # Robustness against GPU-unsupported cases is handled by catching
+      # exceptions during sample generation.
+      return ()
+
     exclude_dtypes = exclude_dtypes or ()
     if isinstance(exclude_dtypes, dict):
       # Ensure that only "cpu" and "gpu" are used as keys.
