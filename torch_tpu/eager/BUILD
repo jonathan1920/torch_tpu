@@ -633,6 +633,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/glu:glu_aten_kernels",
         "//torch_tpu/ops/grid_sampler:grid_sampler_aten_kernels",
         "//torch_tpu/ops/group_norm:group_norm_aten_kernels",
+        "//torch_tpu/ops/grouped_mm:grouped_mm_aten_kernels",
         "//torch_tpu/ops/hardsigmoid:hardsigmoid_aten_kernels",
         "//torch_tpu/ops/hardswish:hardswish_aten_kernels",
         "//torch_tpu/ops/hardtanh:hardtanh_aten_kernels",

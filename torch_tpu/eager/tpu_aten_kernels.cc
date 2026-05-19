@@ -82,6 +82,7 @@
 #include "torch_tpu/ops/glu/glu_aten_kernels.h"
 #include "torch_tpu/ops/grid_sampler/grid_sampler_aten_kernels.h"
 #include "torch_tpu/ops/group_norm/group_norm_aten_kernels.h"
+#include "torch_tpu/ops/grouped_mm/grouped_mm_aten_kernels.h"
 #include "torch_tpu/ops/hardsigmoid/hardsigmoid_aten_kernels.h"
 #include "torch_tpu/ops/hardswish/hardswish_aten_kernels.h"
 #include "torch_tpu/ops/hardtanh/hardtanh_aten_kernels.h"
@@ -476,6 +477,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kGridSampler2dBackward, AtenGridSampler2dBackward);
   Impl(m, OpName::kGridSampler3d, AtenGridSampler3d);
   Impl(m, OpName::kGridSampler3dBackward, AtenGridSampler3dBackward);
+  Impl(m, OpName::kGroupedMm, AtenGroupedMm);
   Impl(m, OpName::kGtScalarOut, AtenGtScalarOut);
   Impl(m, OpName::kGtTensorOut, AtenGtTensorOut);
   Impl(m, OpName::kHardsigmoidBackwardGradInput,

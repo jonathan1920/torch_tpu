@@ -3744,6 +3744,92 @@ Supported combinations for non-constant padding:
     ):
       torch.bmm(a, b, out=out)
 
+  def test_grouped_mm_unsupported_bias(self):
+    a = torch.randn(3, 4, device=et.device())
+    b = torch.randn(3, 4, 8, device=et.device())
+    offs = torch.tensor([1, 2, 3], dtype=torch.int32, device=et.device())
+    bias = torch.randn(8, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""grouped_mm(): expected bias to be undefined, got defined tensor""",
+        cpu="""Bias not supported yet""",
+    ):
+      torch._grouped_mm(a, b, offs=offs, bias=bias)
+
+  def test_grouped_mm_invalid_self_dim(self):
+    a = torch.randn(1, 2, 3, 4, device=et.device())
+    b = torch.randn(3, 4, 8, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""grouped_mm(): expected self to be 2D or 3D, got 4D""",
+        cpu="""mat_a has to be 2 or 3d""",
+    ):
+      torch._grouped_mm(a, b)
+
+  def test_grouped_mm_invalid_mat2_dim(self):
+    a = torch.randn(3, 4, device=et.device())
+    b = torch.randn(1, 2, 3, 4, device=et.device())
+    offs = torch.tensor([1, 2, 3], dtype=torch.int32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""grouped_mm(): expected mat2 to be 2D or 3D, got 4D""",
+        cpu="""mat_b has to be 2 or 3d""",
+    ):
+      torch._grouped_mm(a, b, offs=offs)
+
+  def test_grouped_mm_missing_offs(self):
+    a = torch.randn(3, 4, device=et.device())
+    b = torch.randn(3, 4, 8, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""grouped_mm(): expected offs to be provided if and only if either self or mat2 is 2D""",
+        cpu="""Have to provide offsets if there is a 2d matrix, or no offset if both matrices are 3d""",
+    ):
+      torch._grouped_mm(a, b)
+
+  def test_grouped_mm_unexpected_offs(self):
+    a = torch.randn(2, 8, 8, device=et.device())
+    b = torch.randn(2, 8, 8, device=et.device())
+    offs = torch.tensor([1, 2], dtype=torch.int32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""grouped_mm(): expected offs to be provided if and only if either self or mat2 is 2D""",
+        cpu="""Have to provide offsets if there is a 2d matrix, or no offset if both matrices are 3d""",
+    ):
+      torch._grouped_mm(a, b, offs=offs)
+
+  def test_grouped_mm_mismatch_matrix_batch_sizes_case1(self):
+    a = torch.randn(10, 4, device=et.device())
+    b = torch.randn(3, 4, 8, device=et.device())
+    offs = torch.tensor([2, 5], dtype=torch.int32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""grouped_mm(): expected offs batch size to match mat2 batch size, got 2 and 3""",
+        cpu="""matrix batch sizes have to match""",
+    ):
+      torch._grouped_mm(a, b, offs=offs)
+
+  def test_grouped_mm_mismatch_matrix_batch_sizes_case2(self):
+    a = torch.randn(3, 4, 8, device=et.device())
+    b = torch.randn(5, 8, device=et.device())
+    offs = torch.tensor([2, 5], dtype=torch.int32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""grouped_mm(): expected offs batch size to match self batch size, got 2 and 3""",
+        cpu="""contraction dimension of mat_a and mat_b must match""",
+    ):
+      torch._grouped_mm(a, b, offs=offs)
+
+  def test_grouped_mm_mismatch_batched_dimension_case4(self):
+    a = torch.randn(3, 4, 8, device=et.device())
+    b = torch.randn(2, 8, 8, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""grouped_mm(): expected self batch size to match mat2 batch size, got 3 and 2""",
+        cpu="""batched dimension has to match""",
+    ):
+      torch._grouped_mm(a, b)
+
   def test_baddbmm_unsupported_bool(self):
     input_tensor = torch.ones(1, 2, 2, device=et.device())
     batch1 = torch.ones(1, 2, 3, device=et.device())

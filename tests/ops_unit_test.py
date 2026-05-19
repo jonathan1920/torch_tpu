@@ -5373,6 +5373,73 @@ module {
     expected = torch.tensor([], dtype=torch.int32)
     self.assert_close(golden_result=expected, torch_tpu_result=out[:0].cpu())
 
+  @parameterized.product(
+      dtype=[torch.float32, torch.bfloat16],
+  )
+  def test_grouped_mm_2d_3d(self, dtype):
+    """Tests torch.ops.aten._grouped_mm: Case 1 (2D x 3D with offs)."""
+    t1 = torch.randn(16, 8, dtype=dtype)
+    t2 = torch.randn(2, 8, 8, dtype=dtype)
+    offs = torch.tensor([8, 16], dtype=torch.int32)
+    self.assert_close_tpu_vs_cpu(
+        lambda device, t1=t1, t2=t2, offs=offs: torch.ops.aten._grouped_mm(
+            t1.to(device), t2.to(device), offs=offs.to(device)
+        ),
+        check_value=CheckValueMode.LOOSE,
+        rtol=2e-1,
+        atol=2e-1,
+    )
+
+  @parameterized.product(
+      dtype=[torch.float32, torch.bfloat16],
+  )
+  def test_grouped_mm_3d_2d(self, dtype):
+    """Tests torch.ops.aten._grouped_mm: Case 2 (3D x 2D with offs)."""
+    t1 = torch.randn(2, 8, 8, dtype=dtype)
+    t2 = torch.randn(8, 16, dtype=dtype)
+    offs = torch.tensor([8, 16], dtype=torch.int32)
+    self.assert_close_tpu_vs_cpu(
+        lambda device, t1=t1, t2=t2, offs=offs: torch.ops.aten._grouped_mm(
+            t1.to(device), t2.to(device), offs=offs.to(device)
+        ),
+        check_value=CheckValueMode.LOOSE,
+        rtol=2e-1,
+        atol=2e-1,
+    )
+
+  @parameterized.product(
+      dtype=[torch.float32, torch.bfloat16],
+  )
+  def test_grouped_mm_2d_2d(self, dtype):
+    """Tests torch.ops.aten._grouped_mm: Case 3 (2D x 2D with offs)."""
+    t1 = torch.randn(8, 16, dtype=dtype)
+    t2 = torch.randn(16, 8, dtype=dtype)
+    offs = torch.tensor([8, 16], dtype=torch.int32)
+    self.assert_close_tpu_vs_cpu(
+        lambda device, t1=t1, t2=t2, offs=offs: torch.ops.aten._grouped_mm(
+            t1.to(device), t2.to(device), offs=offs.to(device)
+        ),
+        check_value=CheckValueMode.LOOSE,
+        rtol=2e-1,
+        atol=2e-1,
+    )
+
+  @parameterized.product(
+      dtype=[torch.float32, torch.bfloat16],
+  )
+  def test_grouped_mm_3d_3d(self, dtype):
+    """Tests torch.ops.aten._grouped_mm: Case 4 (3D x 3D without offs)."""
+    t1 = torch.randn(2, 8, 8, dtype=dtype)
+    t2 = torch.randn(2, 8, 8, dtype=dtype)
+    self.assert_close_tpu_vs_cpu(
+        lambda device, t1=t1, t2=t2: torch.ops.aten._grouped_mm(
+            t1.to(device), t2.to(device), offs=None
+        ),
+        check_value=CheckValueMode.LOOSE,
+        rtol=2e-1,
+        atol=2e-1,
+    )
+
 
 class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for backward ops."""

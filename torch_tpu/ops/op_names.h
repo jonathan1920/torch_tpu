@@ -361,6 +361,7 @@ enum class OpName {
   kGridSampler2dBackward,
   kGridSampler3d,
   kGridSampler3dBackward,
+  kGroupedMm,
   kGt,
   kGtOut,
   kGtScalarOut,
