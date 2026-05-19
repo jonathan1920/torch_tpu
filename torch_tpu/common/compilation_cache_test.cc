@@ -52,6 +52,7 @@
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_compilation_container);
@@ -152,9 +153,9 @@ TEST_F(CompilationCacheTest, GetOrCompileLogsOnMiss) {
     return mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   };
 
-  auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
-  ASSERT_TRUE(options_or.ok())
-      << "MakeCompilerOptions failed: " << options_or.status();
+  TF_ASSERT_OK_AND_ASSIGN(CompilationSpecsByMode compilation_specs,
+                          MakeCompilationSpecs(CompilationMode::kFastCompile));
+  auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
 
   absl::ScopedMockLog log;
   EXPECT_CALL(
@@ -164,7 +165,8 @@ TEST_F(CompilationCacheTest, GetOrCompileLogsOnMiss) {
 
   log.StartCapturingLogs();
   auto result = cache.GetOrCompile(key, input_shapes, /*output_shapes=*/{},
-                                   std::move(builder), std::move(*options_or));
+                                   std::move(builder),
+                                   std::move(spec.xla_compile_options));
 
   // Clean up.
   cache.SetDumpOnCacheMissMode(initial_mode);
@@ -273,12 +275,14 @@ TEST_F(CompilationCacheTest, PeakMemoryReported) {
       return mlir::OwningOpRef<mlir::ModuleOp>(module);
     };
 
-    auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
-    ASSERT_TRUE(options_or.ok());
+    TF_ASSERT_OK_AND_ASSIGN(
+        CompilationSpecsByMode compilation_specs,
+        MakeCompilationSpecs(CompilationMode::kFastCompile));
+    auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
 
     auto key = DummyKey(i + 100);
     auto result = cache.GetOrCompile(key, {}, {}, std::move(builder),
-                                     std::move(*options_or));
+                                     std::move(spec.xla_compile_options));
     ASSERT_TRUE(result.ok()) << "GetOrCompile failed: " << result.status();
     futures.push_back(std::move(result->fixed_shape_kernel));
   }

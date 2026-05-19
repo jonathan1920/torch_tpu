@@ -20,11 +20,10 @@
 
 #include "gtest/gtest.h"
 #include "absl/log/absl_check.h"
-#include "absl/status/status.h"
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/compilation_test_helper.h"
-#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace torch_tpu {
@@ -42,47 +41,55 @@ class MakeCompilerOptionsTest : public testing::Test {
 };
 
 TEST_F(MakeCompilerOptionsTest, DefaultToO1ForEagerMode) {
-  const auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
-  ASSERT_EQ(options_or.status(), absl::OkStatus());
-  const auto& options = options_or.value();
-  EXPECT_EQ(options->executable_build_options.optimization_level(),
-            xla::ExecutionOptions::EFFORT_O1);
+  TF_ASSERT_OK_AND_ASSIGN(CompilationSpecsByMode compilation_specs,
+                          MakeCompilationSpecs(CompilationMode::kFastCompile));
+  const auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
+  EXPECT_EQ(
+      spec.xla_compile_options->executable_build_options.optimization_level(),
+      xla::ExecutionOptions::EFFORT_O1);
 }
 
 TEST_F(MakeCompilerOptionsTest, DefaultToUnsetForTorchCompileMode) {
-  const auto options_or = MakeCompilerOptions(CompilationMode::kFastRuntime);
-  ASSERT_EQ(options_or.status(), absl::OkStatus());
-  const auto& options = options_or.value();
-  EXPECT_EQ(options->executable_build_options.optimization_level(),
-            xla::ExecutionOptions::EFFORT_UNKNOWN);
+  TF_ASSERT_OK_AND_ASSIGN(CompilationSpecsByMode compilation_specs,
+                          MakeCompilationSpecs(CompilationMode::kFastRuntime));
+  const auto& spec = compilation_specs.at(CompilationMode::kFastRuntime);
+  EXPECT_EQ(
+      spec.xla_compile_options->executable_build_options.optimization_level(),
+      xla::ExecutionOptions::EFFORT_UNKNOWN);
 }
 
 TEST_F(MakeCompilerOptionsTest, CompilerOptionOverrides) {
   ScopedCompilerOptionOverrides outer({{"xla_optimization_level", "O1"}});
 
   {
-    const auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
-    ASSERT_EQ(options_or.status(), absl::OkStatus());
-    const auto& options = options_or.value();
-    EXPECT_EQ(options->executable_build_options.optimization_level(),
-              xla::ExecutionOptions::EFFORT_O1);
+    TF_ASSERT_OK_AND_ASSIGN(
+        CompilationSpecsByMode compilation_specs,
+        MakeCompilationSpecs(CompilationMode::kFastCompile));
+    const auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
+    EXPECT_EQ(
+        spec.xla_compile_options->executable_build_options.optimization_level(),
+        xla::ExecutionOptions::EFFORT_O1);
   }
 
   {
     ScopedCompilerOptionOverrides inner({{"xla_optimization_level", "O2"}});
-    const auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
-    ASSERT_EQ(options_or.status(), absl::OkStatus());
-    const auto& options = options_or.value();
-    EXPECT_EQ(options->executable_build_options.optimization_level(),
-              xla::ExecutionOptions::EFFORT_O2);
+    TF_ASSERT_OK_AND_ASSIGN(
+        CompilationSpecsByMode compilation_specs,
+        MakeCompilationSpecs(CompilationMode::kFastCompile));
+    const auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
+    EXPECT_EQ(
+        spec.xla_compile_options->executable_build_options.optimization_level(),
+        xla::ExecutionOptions::EFFORT_O2);
   }
 
   {
-    const auto options_or = MakeCompilerOptions(CompilationMode::kFastCompile);
-    ASSERT_EQ(options_or.status(), absl::OkStatus());
-    const auto& options = options_or.value();
-    EXPECT_EQ(options->executable_build_options.optimization_level(),
-              xla::ExecutionOptions::EFFORT_O1);
+    TF_ASSERT_OK_AND_ASSIGN(
+        CompilationSpecsByMode compilation_specs,
+        MakeCompilationSpecs(CompilationMode::kFastCompile));
+    const auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
+    EXPECT_EQ(
+        spec.xla_compile_options->executable_build_options.optimization_level(),
+        xla::ExecutionOptions::EFFORT_O1);
   }
 }
 

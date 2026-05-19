@@ -946,14 +946,13 @@ torch_tpu_cc_test(
         ":compilation",
         ":compilation_spec",
         ":compilation_test_helper",
-        ":context_states",
         "//shims/torch:torch_headers",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@xla//xla:xla_proto_cc",
         "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -993,6 +992,7 @@ torch_tpu_cc_test(
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -1056,7 +1056,6 @@ torch_tpu_cc_test(
         ":compilation",
         ":compilation_spec",
         ":compilation_test_helper",
-        ":context_states",
         "//shims/torch:torch_headers",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",
@@ -1065,6 +1064,7 @@ torch_tpu_cc_test(
         "@xla//xla:xla_proto_cc",
         "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -1082,12 +1082,14 @@ torch_tpu_cc_test(
         ":compilation_spec",
         ":compilation_test_helper",
         ":compile_options_key",
+        ":error_utils",
         ":fingerprint_utils",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/pjrt:pjrt_executable",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

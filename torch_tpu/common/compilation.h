@@ -33,7 +33,6 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "torch_tpu/common/compilation_spec.h"
-#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -155,12 +154,12 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> Compile(
     xla::PjRtClient& client, LoadedExecutableBuilder executable_builder,
     UniqueCompileOptions compile_options);
 
-// Returns the compiler options for the current host/thread and the given graph
-// compilation mode. Returns an error if the replica count for compilation
-// cannot be determined.
+// On success, returns compilation specs for all compilation modes. Each
+// compilation spec includes compiler options and its fingerprint for the
+// current host/thread and a given compilation mode.
 //
-// The options are constructed from the following sources, in order of
-// precedence:
+// The compiler options (in the form of `xla::CompileOptions`) are constructed
+// from the following sources, in order of precedence:
 //  - explicitly-specified compiler options set via
 //    PushCompilerOptionOverrides() (or via the custom_compiler_options context
 //    manager in Python); with nested custom_compiler_options contexts, the
@@ -172,12 +171,15 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> Compile(
 //  - the global device count,
 //  - debug options set via environment variable XLA_FLAGS.
 //
+// Returns an error if any of the above sources cannot be resolved properly.
+//
 // The format of TORCH_TPU_INTERNAL_XLA_OPTIONS is a space-separated list of
 // key=value pairs, e.g. "xla_optimization_level=O1
 // xla_tpu_enable_deduplicated_calls=AUTO".
 // Valid options for TORCH_TPU_INTERNAL_XLA_OPTIONS are documented on
 // https://openxla.org/xla/flags_guidance
-absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(CompilationMode mode);
+absl::StatusOr<CompilationSpecsByMode> MakeCompilationSpecs(
+    CompilationMode mode);
 
 // Pushes the compile option overrides for the current thread on to the
 // custom compiler option stack. Thread-safe.

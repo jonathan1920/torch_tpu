@@ -529,4 +529,18 @@ absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(CompilationMode mode) {
 }
 // LINT.ThenChange()
 
+absl::StatusOr<CompilationSpecsByMode> MakeCompilationSpecs(
+    CompilationMode mode) {
+  CompilationSpecsByMode specs;
+
+  TT_ASSIGN_OR_RETURN(UniqueCompileOptions compile_options,
+                      MakeCompilerOptions(mode));
+  specs.try_emplace(
+      mode, std::move(compile_options),
+      // TODO(b/502270689): use `GetCompileOptionsKey to generate fingerprint.
+      CompileOptionsKey(0));
+
+  return specs;
+}
+
 }  // namespace torch_tpu

@@ -17,7 +17,6 @@
 #ifndef TORCH_TPU_COMMON_COMPILATION_SPEC_H_
 #define TORCH_TPU_COMMON_COMPILATION_SPEC_H_
 
-#include <array>
 #include <map>
 #include <memory>
 #include <string>
@@ -30,22 +29,11 @@
 namespace torch_tpu {
 
 // Mode for compiling a computation graph.
-// LINT.IfChange
 enum class CompilationMode {
   kFastCompile,  // Reduces compile time, but may result in slower execution.
   kFastRuntime,  // Produces more optimized executables, but with longer
                  // compile.
 };
-// LINT.ThenChange(:compilation_mode_constants)
-
-// LINT.IfChange(compilation_mode_constants)
-inline constexpr int kNumCompilationModes = 2;
-inline constexpr std::array<CompilationMode, kNumCompilationModes>
-    kCompilationModeValues = {
-        CompilationMode::kFastCompile,
-        CompilationMode::kFastRuntime,
-};
-// LINT.ThenChange()
 
 // `xla::CompileOptions` is a complex object with many fields. Even moving it
 // is expensive. We wrap it in a unique_ptr to allow for cheap moving.
@@ -55,12 +43,21 @@ using UniqueCompileOptions = absl_nonnull std::unique_ptr<xla::CompileOptions>;
 //   1. a fully resolved `xla::CompileOptions` to generate compiled kernels, and
 //   2. its fingerprint used as part of compilation cache key.
 struct CompilationSpec {
-  xla::CompileOptions xla_compile_options;
+  CompilationSpec(UniqueCompileOptions options, CompileOptionsKey key)
+      : xla_compile_options(std::move(options)),
+        compile_options_key(std::move(key)) {}
+
+  // Movable but not copyable.
+  CompilationSpec(const CompilationSpec&) = delete;
+  CompilationSpec& operator=(const CompilationSpec&) = delete;
+  CompilationSpec(CompilationSpec&&) = default;
+  CompilationSpec& operator=(CompilationSpec&&) = default;
+
+  UniqueCompileOptions xla_compile_options;
   CompileOptionsKey compile_options_key;
 };
 
-using CompilationSpecsByMode =
-    std::array<CompilationSpec, kNumCompilationModes>;
+using CompilationSpecsByMode = std::map<CompilationMode, CompilationSpec>;
 
 // Maps an XLA compiler option name to its string value. We pick this
 // representation for easy interop with Python.

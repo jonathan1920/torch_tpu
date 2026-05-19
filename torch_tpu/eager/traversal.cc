@@ -560,8 +560,12 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
   std::vector<Shape> argument_shapes = GetShapes(arguments_);
   std::vector<Shape> output_shapes = GetShapes(outputs_);
 
-  TT_ASSIGN_OR_RETURN(UniqueCompileOptions compile_options,
-                      MakeCompilerOptions(compilation_mode));
+  TT_ASSIGN_OR_RETURN(CompilationSpecsByMode compilation_specs,
+                      MakeCompilationSpecs(compilation_mode));
+  // TODO(b/502270689): create a copy of `xla::CompileOptions` for every
+  // compilation once it becomes part of the thread-local state.
+  UniqueCompileOptions compile_options =
+      std::move(compilation_specs.at(compilation_mode).xla_compile_options);
 
   CompilationCacheKey compilation_cache_key = GetCacheKey(compilation_mode);
   ABSL_VLOG(1) << "[Compile] compilation cache key: " << compilation_cache_key;
