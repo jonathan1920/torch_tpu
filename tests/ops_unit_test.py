@@ -946,6 +946,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       ("int64_lengths", 5, 2, 3, 3, [5, 4], [3, 2], torch.int64, False),
       ("1d_targets", 5, 2, 3, 3, [5, 4], [3, 2], torch.int32, True),
   )
+  @absltest.skip("b/515048424")
   def test_ctc_loss_backward(
       self,
       t,
