@@ -14,6 +14,7 @@
 
 import concurrent.futures
 import threading
+import unittest
 
 from absl.testing import absltest
 import torch
@@ -264,6 +265,46 @@ class PrecisionTest(absltest.TestCase):
     t = threading.Thread(target=worker)
     t.start()
     t.join()
+
+  @unittest.skip("b/514829191")
+  def test_torch_compile_precision_caching_bug(self):
+    # Arrange
+    n = 256
+    device = torch.device("tpu")
+    eye = torch.eye(n, dtype=torch.float32, device=device)
+
+    one_plus_beyond_bf16_epsilon = 1 + 2**-8
+    # Under DEFAULT (bf16 math), one_plus_beyond_bf16_epsilon rounds to 1.0.
+    expected_default = 1.0
+    # Under HIGHEST (f32 math), one_plus_beyond_bf16_epsilon is preserved.
+    expected_highest = 1.0 + 2**-7 + 2**-16
+
+    a = eye.clone() * one_plus_beyond_bf16_epsilon
+
+    def tensor_square(a):
+      return a @ a
+
+    # Verify eager semantics.
+    with precision(Precision.DEFAULT):
+      actual = tensor_square(a)
+      self.assertEqual(actual[0, 0].item(), expected_default)
+    with precision(Precision.HIGHEST):
+      actual = tensor_square(a)
+      self.assertEqual(actual[0, 0].item(), expected_highest)
+
+    # Populate torch.compile cache.
+    with precision(Precision.HIGHEST):
+      actual = torch.compile(tensor_square)(a)
+      self.assertEqual(actual[0, 0].item(), expected_highest)
+
+    # Act
+    with precision(Precision.DEFAULT):
+      actual = torch.compile(tensor_square)(a)
+
+      # Assert
+      # This assert fails because tensor_square is not freshly compiled.
+      # Instead, torch.compile gives a false positive cache hit.
+      self.assertEqual(actual[0, 0].item(), expected_default)
 
 
 if __name__ == "__main__":
