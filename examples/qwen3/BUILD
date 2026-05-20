@@ -189,8 +189,9 @@ torch_tpu_py_test(
     notest_oss = "manual test for dynamic performance evaluation",
     tags = [
         "nofastbuild",  # Benchmark.
+        "requires-accel-hbm",
         "requires-net:external",  # Needed to access remote files.
-        "requires-tpu-v5lite",
+        "requires-tpu-v7x",
     ],
     deps = [
         "//examples:paths",
