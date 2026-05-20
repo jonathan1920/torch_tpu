@@ -64,6 +64,11 @@ _PREFILL_SEQ_LEN = flags.DEFINE_integer(
     "If set, overrides the input text with a random tensor of this length (for"
     " benchmark).",
 )
+_BATCH_SIZE = flags.DEFINE_integer(
+    "batch_size",
+    16,
+    "Batch size for the input tensor when prefill_seq_len is set.",
+)
 _WARMUP_STEPS = flags.DEFINE_integer(
     "warmup_steps",
     3,
@@ -107,8 +112,9 @@ def model_generate(
     step_times = []
 
     for i in range(max_decode_steps):
-      if next_token == 0:
-        break
+      if isinstance(next_token, torch.Tensor):
+        if torch.eq(next_token, 0).all():
+          break
       # greedy sampling
       next_token_cpu = torch.argmax(logits[:, -1, :], dim=-1).unsqueeze(-1)
       output_tokens = torch.cat([output_tokens, next_token_cpu], dim=1)
@@ -267,7 +273,10 @@ def main(argv):
 
   if _PREFILL_SEQ_LEN.value is not None:
     inputs = torch.randint(
-        0, tokenizer.vocab_size, (1, _PREFILL_SEQ_LEN.value), dtype=torch.long
+        0,
+        tokenizer.vocab_size,
+        (_BATCH_SIZE.value, _PREFILL_SEQ_LEN.value),
+        dtype=torch.long,
     )
   else:
     text = "Who are you?"
