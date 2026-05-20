@@ -44,6 +44,7 @@ torch_tpu_py_test(
     nopresubmit = "slow example",
     notest_oss = "Disabled during switch from opt-in to opt-out",
     tags = [
+        "nomsan",  # 3p 'rust/tempfile' error: use-of-uninitialized-value in tempfile::file::imp::platform::reopen
         "requires-net:external",  # Needed to access remote files.
         "requires-tpu-v5lite",
     ],

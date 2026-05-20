@@ -81,6 +81,9 @@ torch_tpu_py_test(
     env = {
         "TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1",
     },
+    tags = [
+        "nomsan",  # 3p 'py/torch' error: use-of-uninitialized-value in 3 in reduced_float_type_copy
+    ],
     deps = [
         ":test_fixtures",
         ":utils",

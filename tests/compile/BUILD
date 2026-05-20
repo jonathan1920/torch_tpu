@@ -260,6 +260,7 @@ torch_tpu_py_test(
     shard_count = 6,
     tags = [
         "cpu:4",
+        "nomsan",  # 3p 'rust/tempfile' error: use-of-uninitialized-value in tempfile::file::imp::platform::reopen
         "requires-accel-hbm",
         "requires-net:external",
         "requires-tpu-v7x",
@@ -343,6 +344,7 @@ torch_tpu_py_test(
     notest_oss = "Disabled during switch from opt-in to opt-out",
     strict = "true",
     tags = [
+        "nomsan",  # 3p 'py/torch' error: use-of-uninitialized-value in 3 in reduced_float_type_copy
         "requires-tpu-v5lite",
     ],
     deps = [
