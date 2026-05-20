@@ -587,6 +587,106 @@ class FunctionTest(absltest.TestCase):
     result = executable([x])
     utils.assert_close(result[0].cpu(), expected)
 
+  def test_input_is_view(self):
+    """Test that compile works even when an argument is a view."""
+
+    def expects_transposed_input(x):
+      # If x is in a transposed state, this will be valid; it will transpose
+      # back to a contiguous layout, and the flattening view() will be valid.
+      # But if x is in a contiguous layout, then the transpose will cause it to
+      # be non-contiguous, and the flattening view() will fail.
+      return x.t().view(-1)
+
+    tpu_backend = compile_lib.TpuBackend(debug=True)
+    compiled = torch.compile(expects_transposed_input, backend=tpu_backend)
+
+    x = torch.arange(6).reshape(2, 3).to(torch.device("tpu"))
+    x_t = x.t()
+
+    result = compiled(x_t)
+    expected = torch.arange(6, device="cpu")
+    utils.assert_close(actual=result.cpu(), expected=expected)
+
+  def test_output_is_non_overlapping_view(self):
+    """Test that compile works even when an output is a non-overlapping view."""
+
+    def returns_non_overlapping_output(x):
+      # Returns every odd-offset element of the input.
+      return x.view(-1, 2).t()[1]
+
+    tpu_backend = compile_lib.TpuBackend(debug=True)
+    compiled = torch.compile(
+        returns_non_overlapping_output, backend=tpu_backend
+    )
+
+    x = torch.arange(6).to(torch.device("tpu"))
+
+    result = compiled(x)
+    # Logical values: torch.tensor([1, 3, 5])
+    # Physical values: [0, 1, 2, 3, 4, 5]
+    expected = torch.arange(6, device="cpu").view(-1, 2).t()[1]
+
+    # The layout on-device should be the same as the expected layout on CPU.
+    self.assertEqual(result.dtype, expected.dtype)
+    self.assertEqual(result.shape, expected.shape)
+    self.assertEqual(result.stride(), expected.stride())
+    self.assertEqual(result.storage_offset(), expected.storage_offset())
+
+    # The values should be the same as well.
+    utils.assert_close(actual=result.cpu(), expected=expected)
+
+  def test_output_is_broadcast_view(self):
+    """Test that compile works even when an output is a broadcast view."""
+
+    def returns_broadcast_output(x):
+      return x.expand(2, *x.shape)
+
+    tpu_backend = compile_lib.TpuBackend(debug=True)
+    compiled = torch.compile(returns_broadcast_output, backend=tpu_backend)
+
+    x = torch.arange(6).to(torch.device("tpu"))
+
+    result = compiled(x)
+    # Logical values: torch.tensor([[0, 1, 2, 3, 4, 5], [0, 1, 2, 3, 4, 5]])
+    # Physical values: [0, 1, 2, 3, 4, 5]
+    expected = torch.arange(6, device="cpu").expand(2, *x.shape)
+
+    # The layout on-device should be the same as the expected layout on CPU.
+    self.assertEqual(result.dtype, expected.dtype)
+    self.assertEqual(result.shape, expected.shape)
+    self.assertEqual(result.stride(), expected.stride())
+    self.assertEqual(result.storage_offset(), expected.storage_offset())
+
+    # The values should be the same as well.
+    utils.assert_close(actual=result.cpu(), expected=expected)
+
+  def test_output_is_overlapping_view(self):
+    """Test that compile works even when an output is an overlapping view."""
+
+    def returns_overlapping_output(x):
+      return x.as_strided(size=(2, 4), stride=(1, 1), storage_offset=1)
+
+    tpu_backend = compile_lib.TpuBackend(debug=True)
+    compiled = torch.compile(returns_overlapping_output, backend=tpu_backend)
+
+    x = torch.arange(6).to(torch.device("tpu"))
+
+    result = compiled(x)
+    # Logical values: torch.tensor([[1, 2, 3, 4], [2, 3, 4, 5]])
+    # Physical values: [0, 1, 2, 3, 4, 5]
+    expected = torch.arange(6, device="cpu").as_strided(
+        size=(2, 4), stride=(1, 1), storage_offset=1
+    )
+
+    # The layout on-device should be the same as the expected layout on CPU.
+    self.assertEqual(result.dtype, expected.dtype)
+    self.assertEqual(result.shape, expected.shape)
+    self.assertEqual(result.stride(), expected.stride())
+    self.assertEqual(result.storage_offset(), expected.storage_offset())
+
+    # The values should be the same as well.
+    utils.assert_close(actual=result.cpu(), expected=expected)
+
 
 class ModuleTest(absltest.TestCase):
 

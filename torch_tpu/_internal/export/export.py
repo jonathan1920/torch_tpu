@@ -230,9 +230,26 @@ class _NonTensorPassthrough:
   input_idx: int
 
 
+@dataclasses.dataclass(frozen=True)
+class _TensorLayout:
+  dtype: torch.dtype
+  shape: torch.Size
+  stride: tuple[int, ...]
+  storage_offset: int
+
+  def matches_tensor(self, tensor: torch.Tensor) -> bool:
+    return (
+        tensor.dtype == self.dtype
+        and tensor.shape == self.shape
+        and tensor.stride() == self.stride
+        and tensor.storage_offset() == self.storage_offset
+    )
+
+
 def _reconstruct_fx_outputs(
     inputs: Sequence[Any],
     deduped_outputs: Sequence[torch.Tensor],
+    expected_layouts: Sequence[_TensorLayout],
     output_map: Sequence[_DedupedTensorOutput | _NonTensorPassthrough | None],
     spec: pytree.TreeSpec,
 ) -> Any:
@@ -242,11 +259,30 @@ def _reconstruct_fx_outputs(
   for item in output_map:
     if isinstance(item, _DedupedTensorOutput):
       idx = item.tensor_idx
+
+      # Get the contiguous output and the expected layout it should have.
+      expected_layout = expected_layouts[idx]
       if output_used[idx]:
-        reconstructed_flat.append(deduped_outputs[idx].clone())
+        # Duplicate outputs should have independent storage; in-place mutations
+        # to one should not affect the other. We clone() every output after the
+        # first use to ensure this behavior holds.
+        contiguous_output_tensor = deduped_outputs[idx].clone()
       else:
-        reconstructed_flat.append(deduped_outputs[idx])
+        contiguous_output_tensor = deduped_outputs[idx]
         output_used[idx] = True
+
+      # Force the contiguous output to have the expected layout.
+      # b/514662948: avoid the copy/slice for broadcasted return values
+      if expected_layout.matches_tensor(contiguous_output_tensor):
+        reconstructed_flat.append(contiguous_output_tensor)
+      else:
+        reconstructed_flat.append(
+            tpu_torch_compile.force_strides(
+                contiguous_output_tensor,
+                expected_layout.stride,
+                expected_layout.storage_offset,
+            )
+        )
     elif isinstance(item, _NonTensorPassthrough):
       reconstructed_flat.append(inputs[item.input_idx])
     elif item is None:
@@ -298,6 +334,32 @@ def _map_unused_fake_inputs_to_outputs(
   return output_to_input_map
 
 
+@dataclasses.dataclass(frozen=True)
+class _TensorDedupeKey:
+  """A key for deduplicating tensors based on their data and view layout.
+
+  Two tensors are considered equivalent if and only if they are the same view of
+  the same underlying buffer. The data_ptr encodes the buffer (and the storage
+  offset, redundantly), and the layout encodes the view's interpretation of the
+  buffer.
+  """
+
+  data_ptr: int
+  layout: _TensorLayout
+
+  @classmethod
+  def from_tensor(cls, tensor: torch.Tensor) -> "_TensorDedupeKey":
+    return cls(
+        data_ptr=tensor.data_ptr(),
+        layout=_TensorLayout(
+            dtype=tensor.dtype,
+            shape=tensor.shape,
+            stride=tensor.stride(),
+            storage_offset=tensor.storage_offset(),
+        ),
+    )
+
+
 def _process_fx_outputs(
     gm: torch.fx.GraphModule,
     outputs: Any,
@@ -330,31 +392,19 @@ def _process_fx_outputs(
   output_to_input_map = _map_unused_fake_inputs_to_outputs(gm)
   flat_outputs, spec = pytree.tree_flatten(outputs)
   deduped_outputs: list[torch.Tensor] = []
+  expected_layouts: list[_TensorLayout] = []
   output_map: list[_DedupedTensorOutput | _NonTensorPassthrough | None] = []
-  # We deduplicate outputs based on a composite key: (data_ptr, dtype, shape).
-  # - data_ptr(): Identifies the starting memory address.
-  # - dtype: Differentiates views of the same memory interpreted as different
-  #   types.
-  # - shape: Differentiates views of the same memory with different shapes
-  #   (e.g., overlapping slices).
-  #
-  # This prevents false deduplication where different views of the same storage
-  # share the same base address but represent different data structures (e.g.,
-  # overlapping views from `unbind` or complex tensor operations).
-  #
-  # Note: If two slices of the same buffer have the same dtype and shape but
-  # different offsets, their data_ptr() will be different (since data_ptr()
-  # includes the storage offset), so they will not be falsely deduplicated.
-  index_by_dedupe_key: dict[tuple[int, torch.dtype, torch.Size], int] = {}
+  index_by_dedupe_key: dict[_TensorDedupeKey, int] = {}
 
   for idx, item in enumerate(flat_outputs):
     if item is None:
       output_map.append(None)
     elif isinstance(item, torch.Tensor):
-      key = (item.data_ptr(), item.dtype, item.shape)
+      key = _TensorDedupeKey.from_tensor(item)
       if key not in index_by_dedupe_key:
         index_by_dedupe_key[key] = len(deduped_outputs)
         deduped_outputs.append(item)
+        expected_layouts.append(key.layout)
       output_map.append(_DedupedTensorOutput(index_by_dedupe_key[key]))
     elif idx in output_to_input_map:
       output_map.append(_NonTensorPassthrough(output_to_input_map[idx]))
@@ -367,6 +417,7 @@ def _process_fx_outputs(
   return deduped_outputs, functools.partial(
       _reconstruct_fx_outputs,
       output_map=output_map,
+      expected_layouts=expected_layouts,
       spec=spec,
   )
 
