@@ -47,6 +47,9 @@ common --per_file_copt=.*[.](cc|cpp|hpp)$@-std=c++20
 # Support Bzlmod-style mangled repository paths.
 common --per_file_copt=external/.*(onednn|llvm-project).*[.](cc|cpp|hpp)$@-std=c++17
 
+# Treat warnings as errors.
+build --copt=-Werror
+
 # ===== Start spammy C++ compile warning disables =====
 # Some low-level legacy glibc macros are used in lots of
 # places, which very spammy, so silence this one.
