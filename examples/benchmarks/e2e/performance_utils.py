@@ -194,6 +194,44 @@ def _setup_absl() -> None:
   logging.use_absl_handler()
 
 
+# Used to make sure that the TensorBoard logging is used only when we run
+# one test per bazel run.
+_TENSORBOARD_EXPORTED = False
+
+
+def _export_to_tensorboard(
+    result: benchmark_utils.BenchmarkResultInterface,
+    tblog_dir: str,
+) -> None:
+  """Exports benchmark results to TensorBoard.
+
+  Args:
+    result: The benchmark result to export.
+    tblog_dir: The directory to write the TensorBoard logs to.
+
+  Raises:
+    RuntimeError: If an export has already happened in this process.
+  """
+  global _TENSORBOARD_EXPORTED
+  if _TENSORBOARD_EXPORTED:
+    raise RuntimeError(
+        "TensorBoard export already happened in this process. "
+        "Each run is expected to export only once."
+    )
+
+  try:
+    os.makedirs(tblog_dir, exist_ok=True)
+    tb_writer = writer.SummaryWriter(log_dir=tblog_dir)
+
+    for metric_name, value in result.metric_map().items():
+      tb_writer.add_scalar(f"{metric_name}", value, global_step=0)
+    tb_writer.close()
+  except (OSError, IOError):
+    logging.exception("Error writing TensorBoard logs")
+  finally:
+    _TENSORBOARD_EXPORTED = True
+
+
 # Not using keyword arguments here because the google version of torchrun
 # doesn't support passing keyword arguments to the worker function.
 def run_single_process_benchmark(
@@ -355,22 +393,7 @@ def run_single_process_benchmark(
   ):
     tblog_dir = os.environ.get(benchmark_utils.TENSORBOARD_OUTPUT_ENV_VAR.value)
     if tblog_dir:
-      try:
-        tb_writer = writer.SummaryWriter(log_dir=tblog_dir)
-        metric_tag = (
-            f"{mlcompass_utils.TEAM_NAME}/{platform.value}/{test_method_name}/"
-            f"{benchmark_name}"
-        )
-        if microbenchmark_name:
-          metric_tag = f"{metric_tag}/{microbenchmark_name}"
-
-        for metric_name, value in result.metric_map().items():
-          tb_writer.add_scalar(
-              f"{metric_tag}/{metric_name}", value, global_step=0
-          )
-        tb_writer.close()
-      except (OSError, IOError):
-        logging.exception("Error writing TensorBoard logs")
+      _export_to_tensorboard(result, tblog_dir)
 
 
 def run_torch_tpu_task(
