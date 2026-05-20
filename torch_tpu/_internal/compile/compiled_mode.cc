@@ -54,8 +54,6 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
-#include "torch_tpu/ops/view_decomposition/decomposition.h"
-#include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -65,45 +63,6 @@
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
-
-namespace {
-
-// To call a compiled PjRtExecutable, we need to get materialized base buffers
-// for each argument tensor, in the same shape expected by the executable.
-// This **must** match the logic in tpu_torch_compile's PyMakePlaceholderLike.
-absl::StatusOr<std::vector<DeviceBufferRef>> PrepareCompiledModeArguments(
-    absl::Span<const at::Tensor> argument_tensors) {
-  // Get each argument buffer ref's expected contiguous base shape.
-  std::vector<DeviceBufferRef> argument_buffer_refs;
-  for (const at::Tensor& argument_tensor : argument_tensors) {
-    // Using as_strided, restrict the base tensor to only the minimal contiguous
-    // block of data needed for the view to be valid.
-    TT_ASSIGN_OR_RETURN(
-        Dimensions base_sizes,
-        GetContiguousBaseShape(StridedLayout::FromTensor(argument_tensor)));
-    Strides base_strides = GetStrides(MakeContiguousBaseLayout(base_sizes));
-
-    at::Tensor base_tensor =
-        argument_tensor.as_strided(base_sizes, base_strides,
-                                   /*storage_offset=*/0);
-    TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref, GetBuffer(base_tensor),
-                        _.SetPrepend()
-                            << "failed to get buffer from argument tensor: "
-                            << ToString(argument_tensor));
-    argument_buffer_refs.push_back(std::move(buffer_ref));
-  }
-
-  // Materialize the argument buffers.
-  TT_RETURN_IF_ERROR(Materialize(argument_buffer_refs,
-                                 MaterializationReason::kCompileModeExecution));
-
-  // After materialization, each argument buffer will be a materialized,
-  // contiguous tensor which the compiled executable can safely apply view
-  // logic to.
-  return argument_buffer_refs;
-}
-
-}  // namespace
 
 absl::StatusOr<at::Tensor> MakePlaceholder(absl::Span<const int64_t> sizes,
                                            at::ScalarType dtype,
@@ -135,9 +94,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
   std::vector<DeviceBufferRef> argument_refs;
   argument_refs.reserve(arg_tensors.size());
   for (const at::Tensor& tensor : arg_tensors) {
-    // Get the base buffer, not the view; view tensors will always have
-    // deferred ops.
-    TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref, GetBaseBuffer(tensor),
+    TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref, GetBuffer(tensor),
                         _.SetPrepend()
                             << "failed to get buffer from argument tensor: "
                             << ToString(tensor));
@@ -191,12 +148,12 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
   std::vector<DeviceBufferRef> argument_refs;
   argument_refs.reserve(argument_tensors.size());
   for (const at::Tensor& tensor : argument_tensors) {
-    // Get the base buffer, not the view; view tensors will always have
-    // deferred ops.
-    TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref, GetBaseBuffer(tensor),
-                        _.SetPrepend()
-                            << "failed to get buffer from argument tensor: "
-                            << ToString(tensor));
+    absl::StatusOr<DeviceBufferRef> buffer_ref_or = GetBuffer(tensor);
+    ABSL_CHECK_OK(  // CRASH_OK=implies a bug in compile backend if this happens
+        buffer_ref_or)
+        << "failed to get device buffer from argument tensor: "
+        << ToString(tensor);
+    auto buffer_ref = std::move(*buffer_ref_or);
     ABSL_CHECK(  // CRASH_OK=implies a bug in compile backend if this happens
         buffer_ref.state() != DeviceBufferRefState::kDeferred)
         << "argument tensor has deferred ops: " << ToString(tensor);
@@ -374,11 +331,11 @@ std::vector<at::Tensor> ExecuteCompiledModel(
         output_shapes) {
   TT_ASSIGN_OR_THROW(std::vector<Shape> result_shapes_vec,
                      GetOutputShapes(executable, output_shapes));
-  // Get the materialized buffers for the bases of the argument tensors.
-  TT_ASSIGN_OR_THROW(std::vector<DeviceBufferRef> argument_buffer_refs,
-                     PrepareCompiledModeArguments(argument_tensors),
-                     _.SetPrepend()
-                         << "failed to prepare compiled mode arguments: ");
+  // Get the materialized buffers for the argument tensors.
+  TT_ASSIGN_OR_THROW(
+      std::vector<DeviceBufferRef> argument_buffer_refs,
+      GetMaterialized(argument_tensors,
+                      MaterializationReason::kCompileModeExecution));
 
   TT_ASSIGN_OR_THROW(
       std::vector<DeviceBufferRef> result_buffer_refs,

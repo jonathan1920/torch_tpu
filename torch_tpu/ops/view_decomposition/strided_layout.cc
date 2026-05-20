@@ -22,7 +22,6 @@
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
-#include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/to_string.h"
 
@@ -51,18 +50,6 @@ StridedLayout MakeContiguousBaseLayout(absl::Span<const int64_t> shape) {
     right_num_elements *= shape[i];
   }
 
-  return layout;
-}
-
-StridedLayout StridedLayout::FromTensor(const at::Tensor& tensor) {
-  auto sizes = tensor.sizes();
-  auto strides = tensor.strides();
-  StridedLayout layout{.storage_offset = tensor.storage_offset()};
-  layout.strided_dims.reserve(tensor.dim());
-  for (int i = 0; i < tensor.dim(); ++i) {
-    layout.strided_dims.push_back(
-        StridedDimension{.size = sizes[i], .stride = strides[i]});
-  }
   return layout;
 }
 
