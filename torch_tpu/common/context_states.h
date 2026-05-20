@@ -20,6 +20,7 @@
 #include <memory>
 #include <optional>
 
+#include "absl/base/nullability.h"
 #include "torch_tpu/common/compilation_spec.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/layout.h"
@@ -90,8 +91,9 @@ using IsSpmdSafeContextState = bool;
 // TODO(b/502270689): switch the context state to `CompilationContext`.
 using CustomCompilerOptionsContextState = CompilerOptionOverrides;
 
-// The state of the `layout` context manager.
-using LayoutContextState = std::shared_ptr<xla::Layout>;
+// The state of the `layout` context manager. Null means there's no active
+// layout context.
+using LayoutContextState = absl_nullable std::shared_ptr<const xla::Layout>;
 
 }  // namespace torch_tpu
 

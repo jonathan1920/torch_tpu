@@ -49,6 +49,7 @@ torch_tpu_cc_library(
         ":compilation_spec",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/util:base",
+        "@com_google_absl//absl/base:nullability",
         "@stablehlo//:stablehlo_ops",
         "@xla//xla:shape_util",
     ],
