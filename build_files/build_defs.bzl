@@ -49,6 +49,8 @@ _TORCH_TPU_COPTS = [
     "-Werror=unused-variable",
     # Enforce that member variables are initialized in the same order they are declared.
     "-Werror=reorder-ctor",
+    # Enforce thread safety analysis.
+    "-Werror=thread-safety-precise",
     # Use kineto backend for profiler.
     "-DUSE_KINETO",
     # By default, all compiler warnings in third_party/... headers are suppressed.

@@ -180,6 +180,8 @@ void Subgraph::Merge(std::shared_ptr<Subgraph> s1,
   }
   absl::MutexLock lock1(r1_ptr->mu_);
   absl::MutexLock lock2(r2_ptr->mu_);
+  r1->mu_.AssertHeld();
+  r2->mu_.AssertHeld();
 
   // Use non swapped r1 and r2 for the rest of the function to maintain the
   // order of merging requested by the caller.
