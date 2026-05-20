@@ -34,9 +34,6 @@
 
 namespace torch_tpu {
 
-// TODO(b/499296481): - Remove this guard once OSS migrates to torch 2.12.
-#if TT_IS_INTERNAL_TORCH_TPU
-
 // TPU implementation of libkineto::IActivityProfilerSession.
 // It manages a single profiling session, interacting with tensorflow::profiler.
 class TpuKinetoProfilerSession : public libkineto::IActivityProfilerSession {
@@ -104,8 +101,6 @@ class TpuProfiler : public libkineto::IActivityProfiler {
     return configure(activity_types, config);
   }
 };
-
-#endif  // TT_IS_INTERNAL_TORCH_TPU
 
 }  // namespace torch_tpu
 

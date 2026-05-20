@@ -55,13 +55,9 @@
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
-#if TT_IS_INTERNAL_TORCH_TPU
 #include "torch/csrc/profiler/standalone/privateuse1_profiler.h"
-#endif
 
 namespace torch_tpu {
-
-#if TT_IS_INTERNAL_TORCH_TPU
 
 constexpr std::string_view kDeviceTracerLevel = "device_tracer_level";
 constexpr std::string_view kHostTracerLevel = "host_tracer_level";
@@ -283,7 +279,5 @@ void TpuKinetoProfilerSession::processTrace(libkineto::ActivityLogger& logger) {
 
 REGISTER_PRIVATEUSE1_PROFILER(
     TpuProfiler);  // NOLINT(readability-named-parameter)
-
-#endif  // TT_IS_INTERNAL_TORCH_TPU
 
 }  // namespace torch_tpu

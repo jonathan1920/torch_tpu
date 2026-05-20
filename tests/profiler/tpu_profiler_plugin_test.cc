@@ -37,8 +37,6 @@ absl::Status UpdateProfileOptions(tensorflow::ProfileOptions& opts,
 
 namespace {
 
-#if TT_IS_INTERNAL_TORCH_TPU
-
 TEST(TpuProfilerPluginTest, BasicSanity) {
   TpuProfiler profiler;
 
@@ -124,8 +122,6 @@ TEST(TpuProfilerPluginTest, UpdateProfileOptionsInvalidValue) {
             "expected the value of parameter device_tracer_level to be an "
             "integer, got 'abc'");
 }
-
-#endif  // TT_IS_INTERNAL_TORCH_TPU
 
 }  // namespace
 }  // namespace torch_tpu
