@@ -601,6 +601,9 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 2e-2, "atol": 2.5e-4},
         torch.float16: {"rtol": 2.2e-3, "atol": 9.8e-4},
     },
+    "sqrt": {
+        torch.float64: {"rtol": 2e-6, "atol": 3e-6},
+    },
     "sum": {
         torch.float16: {"rtol": 3.5e-3, "atol": 1.2e-2},
     },
