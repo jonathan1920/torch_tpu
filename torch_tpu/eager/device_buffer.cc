@@ -171,20 +171,20 @@ void Subgraph::Merge(std::shared_ptr<Subgraph> s1,
   auto r2 = s2->Find();
   if (r1 == r2) return;
 
-  Subgraph* r1_ptr = r1.get();
-  Subgraph* r2_ptr = r2.get();
   // Swap r1 and r2 based on their addresses to ensure consistent locking order
   // in case two threads try to merge the same two subgraphs in opposite orders.
-  if (r1_ptr > r2_ptr) {
-    std::swap(r1_ptr, r2_ptr);
+  const bool swap = r1 > r2;
+  if (swap) {
+    std::swap(r1, r2);
   }
-  absl::MutexLock lock1(r1_ptr->mu_);
-  absl::MutexLock lock2(r2_ptr->mu_);
-  r1->mu_.AssertHeld();
-  r2->mu_.AssertHeld();
+  absl::MutexLock lock1(r1->mu_);
+  absl::MutexLock lock2(r2->mu_);
 
   // Use non swapped r1 and r2 for the rest of the function to maintain the
   // order of merging requested by the caller.
+  if (swap) {
+    std::swap(r1, r2);
+  }
 
   // Prune r1's queue to avoid reallocation if possible.
   r1->Prune();
