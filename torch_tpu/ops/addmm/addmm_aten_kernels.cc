@@ -100,14 +100,13 @@ absl::Status CheckInputBroadcast(const at::Tensor& self,
       << "input tensor should not have more dimensions than the"
       << " product of mat1 @ mat2, got " << self.dim() << "-D input and "
       << output_dims_vec.size() << "-D product of mat1 @ mat2";
-  for (int i = 0; i < self.dim(); ++i) {
-    TT_RET_CHECK(self.size(i) ==
-                     output_dims_vec[output_dims_vec.size() - self.dim() + i],
-                 error::kInvalidArgument)
-        << "input tensor shape [" << absl::StrJoin(self.sizes(), ", ")
-        << "] cannot be broadcasted to matmul result shape ["
-        << absl::StrJoin(output_dims_vec, ", ") << "]";
-  }
+  absl::StatusOr<Dimensions> broadcast_shape =
+      InferSize(self.sizes(), output_dims_vec);
+  TT_RET_CHECK(broadcast_shape.ok() && *broadcast_shape == output_dims_vec,
+               error::kInvalidArgument)
+      << "input tensor shape [" << absl::StrJoin(self.sizes(), ", ")
+      << "] cannot be broadcasted to matmul result shape ["
+      << absl::StrJoin(output_dims_vec, ", ") << "]";
   return absl::OkStatus();
 }
 

@@ -79,6 +79,21 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   add it here.
   """
 
+  def test_addmm_input_broadcasting(self):
+    """Tests torch.addmm input broadcasting rules."""
+    mat1 = torch.arange(6, dtype=torch.float32).reshape(2, 3)
+    mat2 = torch.arange(12, dtype=torch.float32).reshape(3, 4)
+    self_shapes = [[1, 4], [2, 1], [1, 1], [1]]
+
+    for self_shape in self_shapes:
+      numel = math.prod(self_shape)
+      self_input = torch.arange(numel, dtype=torch.float32).reshape(self_shape)
+      self.assert_close_tpu_vs_cpu(
+          lambda device, self_input=self_input, m1=mat1, m2=mat2: (
+              torch.addmm(self_input.to(device), m1.to(device), m2.to(device))
+          )
+      )
+
   def test_max_pool2d_no_indices(self):
     """Tests nn.functional.max_pool2d without indices."""
     device = torch.device("tpu")
