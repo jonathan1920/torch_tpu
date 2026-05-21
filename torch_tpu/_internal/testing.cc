@@ -16,6 +16,7 @@
 
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/repeated_ops_heuristic.h"
+#include "torch_tpu/experimental/eager/materialize_new.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 
@@ -24,7 +25,10 @@ namespace py = pybind11;
 
 namespace {
 
-void ResetEagerState() { ResetRepeatedOpsHeuristicState(); }
+void ResetEagerState() {
+  ResetRepeatedOpsHeuristicState();
+  ResetNewMaterializationState();
+}
 
 }  // namespace
 

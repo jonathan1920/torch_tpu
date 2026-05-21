@@ -36,6 +36,7 @@
 #include "torch_tpu/eager/device_types.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/tpu_hooks.h"
+#include "torch_tpu/experimental/eager/materialize_new.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "pybind11/chrono.h"
 #include "pybind11/gil.h"
@@ -173,6 +174,7 @@ PYBIND11_MODULE(_device_ops_backend, m) {
   m.def(
       "_shutdown_runtime",
       []() {
+        ShutDownNewMaterializationState();
         CompilationCache::ShutDown();
         PjrtBackend::GetInstance().Shutdown();
       },

@@ -74,6 +74,10 @@ class MaterializationWorker {
 
   absl::Status BlockOnPendingMaterializations();
 
+  void Reset();
+
+  void Exit();
+
  private:
   friend class absl::NoDestructor<MaterializationWorker>;
   static constexpr int kNumQueues = 2;
@@ -82,19 +86,27 @@ class MaterializationWorker {
     std::vector<SharedDeviceBufferList> queue;
     std::vector<SharedDeviceBufferList> nodes_to_materialize;
     MaterializationReason reason;
-    bool is_full = false;
+    bool is_full;
+    QueueState() { Reset(); }
+    void Reset() {
+      is_full = false;
+      queue.clear();
+      nodes_to_materialize.clear();
+      reason = MaterializationReason::kUnknown;
+    }
   };
 
   mutable absl::Mutex mutex_;
-  int dispatch_queue_id_ ABSL_GUARDED_BY(mutex_) = 0;
-  int execution_queue_id_ ABSL_GUARDED_BY(mutex_) = 0;
+  int dispatch_queue_id_ ABSL_GUARDED_BY(mutex_);
+  int execution_queue_id_ ABSL_GUARDED_BY(mutex_);
   QueueState queues_[kNumQueues] ABSL_GUARDED_BY(mutex_);
-  bool must_exit_ ABSL_GUARDED_BY(mutex_) = false;
+  bool must_exit_ ABSL_GUARDED_BY(mutex_);
 
   absl::Status last_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
   std::thread execution_thread_;
 
   MaterializationWorker() {
+    Reset();
     execution_thread_ = std::thread([this]() { ThreadLoop(); });
   }
 
@@ -106,8 +118,6 @@ class MaterializationWorker {
   }
 
   void IncrementQueueId(int& id) { id = (id + 1) % kNumQueues; }
-
-  void Exit();
 
   bool IsReadyToDispatch() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     return !queues_[dispatch_queue_id_].is_full;
@@ -198,6 +208,19 @@ absl::Status MaterializationWorker::BlockOnPendingMaterializations() {
 
   ABSL_VLOG(1) << ">>> BlockOnPendingMaterializations DONE";
   return GetLastStatus();
+}
+
+void MaterializationWorker::Reset() {
+  absl::MutexLock lock(mutex_);
+  mutex_.Await(
+      absl::Condition(this, &MaterializationWorker::IsExecutionThreadCaughtUp));
+  dispatch_queue_id_ = 0;
+  execution_queue_id_ = 0;
+  for (auto& queue : queues_) {
+    queue.Reset();
+  }
+  must_exit_ = false;
+  last_status_ = absl::OkStatus();
 }
 
 void MaterializationWorker::Exit() {
@@ -512,7 +535,7 @@ absl::Status MaterializationWorker::MaterializeQueue(
 
   // Launch compiled kernels.
   for (auto& execution_task : execution_tasks) {
-    execution_task.Run();
+    TT_RETURN_IF_ERROR(execution_task.Run());
   }
 
   return absl::OkStatus();
@@ -537,6 +560,16 @@ absl::Status MaterializeImplNew(
 absl::Status BlockOnPendingMaterializations() {
   ABSL_VLOG(1) << ">>> BlockOnPendingMaterializations";
   return MaterializationWorker::GetInstance().BlockOnPendingMaterializations();
+}
+
+void ResetNewMaterializationState() {
+  ABSL_VLOG(1) << ">>> ResetNewMaterializationState";
+  return MaterializationWorker::GetInstance().Reset();
+}
+
+void ShutDownNewMaterializationState() {
+  ABSL_VLOG(1) << ">>> ShutDownNewMaterializationState";
+  MaterializationWorker::GetInstance().Exit();
 }
 
 }  // namespace torch_tpu

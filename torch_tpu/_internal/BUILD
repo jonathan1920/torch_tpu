@@ -57,6 +57,7 @@ torch_tpu_cc_library(
         "//shims/torch:torch_headers",
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/eager:repeated_ops_heuristic",
+        "//torch_tpu/experimental/eager:materialize_new",
     ],
 )
 
@@ -74,6 +75,7 @@ pybind_extension(
         "//shims/torch:torch_headers",
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/eager:repeated_ops_heuristic",
+        "//torch_tpu/experimental/eager:materialize_new",
         "@com_google_absl//absl/flags:flag",
     ],
 )

@@ -32,6 +32,10 @@ absl::Status MaterializeImplNew(
 
 absl::Status BlockOnPendingMaterializations();
 
+void ResetNewMaterializationState();
+
+void ShutDownNewMaterializationState();
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_EXPERIMENTAL_EAGER_MATERIALIZE_NEW_H_

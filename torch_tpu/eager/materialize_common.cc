@@ -395,10 +395,11 @@ absl::Status ExecutionTask::RunInternal() {
   return absl::OkStatus();
 }
 
-void ExecutionTask::Run() {
+absl::Status ExecutionTask::Run() {
   absl::Status status = RunInternal();
   if (!status.ok()) {
     SetOutputNodesAsError(status);
   }
+  return status;
 }
 }  // namespace torch_tpu

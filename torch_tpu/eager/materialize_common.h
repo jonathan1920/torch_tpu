@@ -72,7 +72,7 @@ class ExecutionTask {
   //   * Execute the compiled kernel(s) to get new PjRtBuffers
   //   * Set all outputs to the "materialized" state with these buffers
   // Any failures will be set as errors on the output buffers.
-  void Run();
+  absl::Status Run();
 
  private:
   explicit ExecutionTask(std::string name,
