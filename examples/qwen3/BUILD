@@ -188,6 +188,7 @@ torch_tpu_py_test(
     notap = "manual test for dynamic performance evaluation",
     notest_oss = "manual test for dynamic performance evaluation",
     tags = [
+        "cpu:4",  # Match b200 variant for fairness.
         "nofastbuild",  # Benchmark.
         "requires-accel-hbm",
         "requires-net:external",  # Needed to access remote files.
@@ -209,6 +210,7 @@ torch_tpu_py_test(
     ],
 )
 
+# buildozer: disable=forbidden-tag-requires-gpu
 torch_tpu_py_test(
     name = "qwen3_dynamic_kv_cache_b200",
     timeout = "long",  # 15 minutes
@@ -216,13 +218,15 @@ torch_tpu_py_test(
     args = [
         "--device=cuda",
     ],
+    exec_properties = {"cpp_link.mem": "16g"},
     main = "qwen3_dynamic_kv_cache.py",
     notap = "manual test for dynamic performance evaluation",
     notest_oss = "manual test for dynamic performance evaluation",
-    platform = if_oss(None, "//buildenv/platforms/forge/gpu/b200"),
     tags = [
-        "cpu:1",
+        "cpu:4",
         "nofastbuild",  # Benchmark.
+        "requires-accel-hbm",
+        "requires-gpu-sm100-full-only",
         "requires-net:external",  # Needed to access remote files.
     ],
     deps = [
