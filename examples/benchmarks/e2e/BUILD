@@ -31,6 +31,7 @@ torch_tpu_py_library(
     name = "benchmark_utils",
     srcs = ["benchmark_utils.py"],
     deps = [
+        ":device_utils",
         "//examples/benchmarks/quality_utils:quality_benchmark_model",
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",
@@ -38,7 +39,6 @@ torch_tpu_py_library(
         "//torch_tpu/_internal/shims/xprof:traceme",
         "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
         "//torch_tpu/_internal/shims/xprof:xprof_session",
-        "//torch_tpu/_internal/utils:device_utils",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//numpy",
     ],
@@ -62,6 +62,7 @@ torch_tpu_py_library(
     srcs = ["performance_utils.py"],
     deps = [
         ":benchmark_utils",
+        ":device_utils",
         ":mlcompass_utils",
         ":model_utils",
         "//shims/absl_py/flags",
@@ -72,7 +73,6 @@ torch_tpu_py_library(
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
-        "//torch_tpu/_internal/utils:device_utils",
         "//torch_tpu/_internal/utils:log_utils",
         "@pypi//tensorboardx",
     ],
@@ -198,6 +198,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":benchmark_utils",
+        ":device_utils",
         ":mlcompass_utils",
         ":model_utils",
         ":performance_utils",
@@ -207,7 +208,6 @@ torch_tpu_py_test(
         "//shims/torch:pytorch",
         "//torch_tpu",
         "//torch_tpu/_internal/shims/xprof:traceme",
-        "//torch_tpu/_internal/utils:device_utils",
         "//torch_tpu/_internal/utils:log_utils",
     ],
 )
@@ -478,6 +478,36 @@ torch_tpu_py_library(
     srcs = ["ragged_moe.py"],
     deps = [
         "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "device_utils",
+    srcs = ["device_utils.py"],
+    deps = [
+        "//shims/absl_py/logging",
+        "//shims/torch:pytorch",
+        "//torch_tpu/_internal/compile",
+        "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
+        "//torch_tpu/_internal/sync",
+        "@pypi//psutil",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "device_utils_test",
+    srcs = ["device_utils_test.py"],
+    args = ["--torch_tpu_internal_enable_compilation_container=true"],
+    tags = [
+        "nofastbuild",
+        "nopresubmit",
+        "requires-tpu-v7x",
+    ],
+    deps = [
+        ":device_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
     ],
 )
 

@@ -24,21 +24,6 @@ package(
 )
 
 torch_tpu_py_library(
-    name = "device_utils",
-    srcs = ["device_utils.py"],
-    deps = [
-        "//shims/absl_py/logging",
-        "//shims/torch",
-        "//shims/torch:pytorch",
-        "//torch_tpu/_internal/compile",
-        "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
-        "//torch_tpu/_internal/sync",
-        "@pypi//psutil",
-        "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
-    ],
-)
-
-torch_tpu_py_library(
     name = "utils",
     srcs = ["utils.py"],
     tags = [

@@ -23,9 +23,9 @@ import time
 from absl import logging
 from absl.testing import absltest
 import torch
-from torch_tpu._internal.utils import device_utils
 from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import model_utils
 from examples.benchmarks.e2e import performance_utils

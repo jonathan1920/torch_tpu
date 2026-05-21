@@ -85,7 +85,6 @@ pytype_strict_library(
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/tracing",
         "//torch_tpu/_internal/utils",
-        "//torch_tpu/_internal/utils:device_utils",
         "//torch_tpu/_internal/utils:hardware",
         "//torch_tpu/_internal/utils:log_utils",
         "//torch_tpu/_internal/utils:tracer_utils",

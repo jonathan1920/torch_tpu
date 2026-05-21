@@ -33,9 +33,9 @@ torch_tpu_py_library(
     srcs = ["meta_llama3_quality_benchmark.py"],
     deps = [
         ":configs",
+        "//examples/benchmarks/e2e:device_utils",
         "//examples/benchmarks/quality_utils:quality_benchmark_model",
         "//shims/torch:pytorch",
-        "//torch_tpu/_internal/utils:device_utils",
         "@pypi//fairscale",
         "@pypi//llama_models",
     ],

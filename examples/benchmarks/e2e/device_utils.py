@@ -168,6 +168,50 @@ def cache_miss_count(device: str) -> int:
     raise ValueError(f'Unsupported device: {device}')
 
 
+def get_peak_host_compilation_memory_mb(device: str) -> float | None:
+  """Get peak host compilation memory for the specified device.
+
+  This value represents the entire process. Technical limitations of the
+  underlying infrastructure prevents resetting of this value during eviction.
+
+  Args:
+    device: The device type ('cuda', 'tpu', 'xla_cuda').
+
+  Returns:
+    The peak host compilation memory in MB. None if not supported by the
+    backend, or not available.
+  """
+  if device != 'tpu':
+    return None
+  # pylint: disable=protected-access
+  perf_stats = getattr(torch, 'tpu')._get_cache_stats()
+  if perf_stats.peak_compilation_host_memory_bytes is None:
+    return None
+  return perf_stats.peak_compilation_host_memory_bytes / _BYTES_IN_MB
+
+
+def get_peak_host_compilation_memory_mb(device: str) -> float | None:
+  """Get peak host compilation memory for the specified device.
+
+  This value represents the entire process. Technical limitations of the
+  underlying infrastructure prevents resetting of this value during eviction.
+
+  Args:
+    device: The device type ('cuda', 'tpu', 'xla_cuda').
+
+  Returns:
+    The peak host compilation memory in MB. None if not supported by the
+    backend, or not available.
+  """
+  if device != 'tpu':
+    return None
+  # pylint: disable=protected-access
+  perf_stats = getattr(torch, 'tpu')._get_cache_stats()
+  if perf_stats.peak_compilation_host_memory_bytes is None:
+    return None
+  return perf_stats.peak_compilation_host_memory_bytes / _BYTES_IN_MB
+
+
 def torch_compile(
     func: Callable[..., Any], device: str, dynamic: bool = False
 ) -> Callable[..., Any]:

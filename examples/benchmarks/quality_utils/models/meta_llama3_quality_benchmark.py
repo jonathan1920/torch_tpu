@@ -17,7 +17,7 @@
 from fairscale.nn.model_parallel import initialize as fairscale_init
 from llama_models.llama3 import generation
 import torch
-from torch_tpu._internal.utils import device_utils
+from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.quality_utils import quality_benchmark_model
 from examples.benchmarks.quality_utils.models import configs
 
