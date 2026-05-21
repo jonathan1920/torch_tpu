@@ -106,8 +106,15 @@ def _call_functional_model(model_jittable, params, buffers, inputs):
   Returns:
     The output of the functional call.
   """
-  args = () if isinstance(inputs, dict) else (inputs,)
-  kwargs = inputs if isinstance(inputs, dict) else {}
+  if isinstance(inputs, dict):
+    args = ()
+    kwargs = inputs
+  elif isinstance(inputs, tuple):
+    args = inputs
+    kwargs = {}
+  else:
+    args = (inputs,)
+    kwargs = {}
 
   # Call the functional model and get the result. The functional_call is used
   # to represent the model as a function that can be called with JAX-compatible
@@ -247,24 +254,31 @@ def _run_torchax_backward_pass(
   # Generate dummy labels
   with torch.no_grad():
     out = _call_functional_model(model_jittable, weights, buffers, inputs)
-  if isinstance(out.data, dict):
-    labels = {k: torch.rand_like(v, device="jax") for k, v in out.data.items()}
+  output_data = out.data[0] if isinstance(out.data, tuple) else out.data
+  if isinstance(output_data, dict):
+    labels = {
+        k: torch.rand_like(v, device="jax") for k, v in output_data.items()
+    }
   else:
-    labels = torch.rand_like(out.data, device="jax")
+    labels = torch.rand_like(output_data, device="jax")
 
   def loss_fn(outputs, labels):
     if isinstance(outputs, ModelBenchmarkOutput):
       if outputs.return_type == ModelBenchmarkOutputType.LOSS:
         return outputs.data
-      if isinstance(outputs.data, dict):
+      outputs_data = (
+          outputs.data[0] if isinstance(outputs.data, tuple) else outputs.data
+      )
+      if isinstance(outputs_data, dict):
         # Accumulate MSE for all discovered tensor components.
         total_loss = 0.0
-        for k, v in outputs.data.items():
+        for k, v in outputs_data.items():
           if k in labels:
             total_loss = total_loss + torch.mean((v - labels[k]) ** 2)
         return total_loss
-      return torch.mean((outputs.data - labels) ** 2)
-    return torch.mean((outputs - labels) ** 2)
+      return torch.mean((outputs_data - labels) ** 2)
+    outputs_data = outputs[0] if isinstance(outputs, tuple) else outputs
+    return torch.mean((outputs_data - labels) ** 2)
 
   optimizer = optax.adam(0.1)
   opt_state = torchax.interop.call_jax(optimizer.init, weights)
