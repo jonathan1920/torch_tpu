@@ -13,6 +13,7 @@
 # limitations under the License.
 
 load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
+load("@rules_python//python:py_test.bzl", "py_test")
 load("@torch_tpu_deps//:dependencies.bzl", "WHEEL_REQUIRES")
 load("@torch_tpu_version//:version.bzl", "WHEEL_VERSION")
 load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
@@ -33,19 +34,17 @@ config_setting(
     },
 )
 
+TORCH_FROM_PYPROJECT = [req for req in WHEEL_REQUIRES if req.startswith("torch")]
+
 # Define requirements list that conditionally includes torch
-# If TORCH_SOURCE=local, we do not require torch==2.12.0, allowing
+# If TORCH_SOURCE=local, we do not require any torch version, allowing
 # the wheel to be installed alongside any local PyTorch version.
 TORCH_REQ = select({
     ":use_local_torch": [],
-    "//conditions:default": ["torch==2.12.0"],
+    "//conditions:default": TORCH_FROM_PYPROJECT,
 })
 
 FILTERED_REQUIRES = [req for req in WHEEL_REQUIRES if not req.startswith("torch")]
-
-# Check the value of FILTERED_REQUIRES locally by uncommenting the line below and running:
-# `bazel query //ci/wheel:torch_tpu_wheel`.
-print("FILTERED_REQUIRES: ", FILTERED_REQUIRES)
 
 pytype_strict_binary(
     name = "wheel_mapper_bin",
@@ -131,5 +130,27 @@ py_wheel(
     deps = [
         ":remapped_pywrap_binaries",
         ":torch_tpu_package_end",
+    ],
+)
+
+_COMMON_ENV = {
+    "WHEEL_PATH": "$(location :torch_tpu_wheel)",
+    "PYPROJECT_PATH": "$(location //:pyproject.toml)",
+}
+
+py_test(
+    name = "wheel_single_source_test",
+    srcs = ["wheel_single_source_test.py"],
+    data = [
+        ":torch_tpu_wheel",
+        "//:pyproject.toml",
+    ],
+    env = select({
+        ":use_local_torch": _COMMON_ENV | {"LOCAL_TORCH": "1"},
+        "//conditions:default": _COMMON_ENV,
+    }),
+    python_version = "PY3",
+    deps = [
+        "//shims/absl_py/testing:absltest",
     ],
 )
