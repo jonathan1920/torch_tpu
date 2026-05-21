@@ -18,9 +18,12 @@
 
 #include <complex>
 #include <utility>
+#include <vector>
 
+#include "absl/log/absl_check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
@@ -32,7 +35,6 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -146,18 +148,25 @@ absl::StatusOr<DeviceBufferRef> Baddbmm(
                       ConvertTo<mlir::ElementType>(out_dtype));
   Dimensions out_dims = {batch1.size(0), batch1.size(1), batch2.size(2)};
 
-  auto op_builder = [beta, alpha,
-                     out_dtype](FixedSizeSpan<mlir::MlirOp, 3> inputs)
-      -> absl::StatusOr<mlir::MlirOp> {
-    auto& [self_op, batch1_op, batch2_op] = inputs;
+  const std::vector<at::Tensor> inputs = {self, batch1, batch2};
+
+  auto op_builder =
+      [beta, alpha, out_dtype](
+          absl::Span<mlir::MlirOp> inputs_op,
+          mlir::MlirBuilder& builder) -> absl::StatusOr<mlir::MlirOp> {
+    ABSL_CHECK_EQ(  // CRASH_OK=Dispatcher parameter binding safety boundary.
+        inputs_op.size(), 3);
+    const mlir::MlirOp self_op = inputs_op[0];
+    const mlir::MlirOp batch1_op = inputs_op[1];
+    const mlir::MlirOp batch2_op = inputs_op[2];
     return BuildBaddbmmShlo(self_op, batch1_op, batch2_op, beta, alpha,
                             out_dtype);
   };
 
   TT_ASSIGN_OR_RETURN(
       auto result_buffer,
-      DispatchOp<3>(
-          std::move(op_builder), {self, batch1, batch2},
+      DispatchOp<kDynamicSize>(
+          std::move(op_builder), inputs,
           // It's OK for both calls to Baddbmm() to use the same OpName for
           // dispatching, as the logic is the same for both.
           {.op_name = OpName::kBaddbmmOut,
