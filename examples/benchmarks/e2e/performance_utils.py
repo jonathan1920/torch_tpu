@@ -342,7 +342,8 @@ def run_single_process_benchmark(
           "  peak_device_memory (MB): %s\n"
           "  e2e_wall_time (seconds): %s\n"
           "  warmup_session_xprof_url: %s\n"
-          "  post_warmup_run_session_xprof_url: %s",
+          "  post_warmup_run_session_xprof_url: %s\n"
+          "  peak_host_compilation_memory (MB): %s\n",
           test_method_name,
           benchmark_name,
           microbenchmark_name,
@@ -359,6 +360,7 @@ def run_single_process_benchmark(
           result.e2e_wall_time_seconds,
           result.warmup_session_xprof_url,
           result.post_warmup_run_session_xprof_url,
+          result.peak_host_compilation_memory_mb,
       )
   except Exception as e:
     logging.exception("Benchmark failed: %s", e)

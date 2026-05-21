@@ -256,6 +256,7 @@ class PerformanceBenchmarkResult(BenchmarkResultInterface):
   peak_device_memory_mb: float = 0.0
   warmup_session_xprof_url: str | None = None
   post_warmup_run_session_xprof_url: str | None = None
+  peak_host_compilation_memory_mb: float = 0.0
 
   def metric_map(self) -> Mapping[str, float]:
     """Returns a map of metrics to be exported to MLCompass."""
@@ -265,6 +266,7 @@ class PerformanceBenchmarkResult(BenchmarkResultInterface):
         "warmup_overhead_seconds": self.warmup_overhead_seconds,
         "post_warmup_step_time_seconds": self.post_warmup_step_time_seconds,
         "peak_device_memory_mb": self.peak_device_memory_mb,
+        "peak_host_compilation_memory_mb": self.peak_host_compilation_memory_mb,
     }
 
 
@@ -678,6 +680,10 @@ def run_performance_benchmark(
             sync_params=sync_params,
         )
     )
+
+  result_kwargs["peak_host_compilation_memory_mb"] = (
+      device_utils.get_peak_host_compilation_memory_mb(_get_device_name(device))
+  )
 
   return PerformanceBenchmarkResult(
       e2e_wall_time_seconds=time.perf_counter() - start_time,
