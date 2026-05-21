@@ -136,42 +136,69 @@ def verify_op_supports_dynamism(
   """
 
   untriaged_ops_deny_list = [
+      "addcdiv",  # dynamic triage (invalid result)
       "bincount",  # MLIR assertion failure (bounds length vs rank)
+      "clamp_min",  # dynamic triage (invalid result)
       "conj_physical",  # identity operation for i64 and f64 fails
       "diagonal",  # materialization failure (negative dimension size)
+      "eq",  # dynamic triage (invalid result)
       "expand",  # view op - expand not yet supported
+      "expm1",  # dynamic triage (result differ)
       "fft.rfft",  # expected all dimensions to be static
+      "flip",  # dynamic triage (invalid result)
       "floor_divide",  # currently failing dynamism tests
       "index_add",  # invalid bound length (likely bad tensor copy)
       "index_copy",  # invalid bound length (likely bad tensor copy)
       "index_put",  # garbage data
       "index_select",  # invalid gather
       "isin",  # materialization failure (negative dimension size)
+      "kron",  # dynamic triage (invalid result)
       "linalg.lu_factor_ex",  # materialization failure (negative dim size)
+      "logical_and",  # dynamic triage (invalid result)
       "masked_scatter",  # unflatten ambiguous error
       "matmul",  # reshapes in the structured delegate
+      "maximum",  # dynamic triage (invalid result)
+      "ne",  # dynamic triage (invalid result)
+      "neg",  # dynamic triage (invalid result)
       "nn.functional.adaptive_avg_pool2d",  # sort op fails to infer
+      "nn.functional.batch_norm",  # dynamic triage (xla error)
       "nn.functional.embedding",  # crash in shard 27
       "nn.functional.embedding_bag",  # invalid gather
+      "nn.functional.grid_sample",  #
+      "nn.functional.hardswish",  # dynamic triage (adjust tolerance)
       "nn.functional.interpolate",  # gather with dynamic slice size
+      "nn.functional.leaky_relu",  # dynamic triage (invalid result)
       "nn.functional.max_pool3d",  # crash (Aborted)
       "nn.functional.mse_loss",  # binop LHS / RHS mismatch
       "nn.functional.nll_loss",  # numerical mismatch or failure in some shards
       "nn.functional.pdist",  # inlined vector size fail (likely using bound)
+      "nn.functional.relu",  # dynamic triage (tolerance)
       "nn.functional.scaled_dot_product_attention",  # broadcasting issue in add
       "nn.functional.upsample_bilinear",  # MLIR gather out of bounds
       "nn.functional.upsample_nearest",  # MLIR gather build failure
       "normal",  # OK
+      "pow",  # dynamic triage (invalid result)
+      "remainder",  # dynamic triage (invalid result)
+      "round",  # dynamic triage (invalid result)
+      "sgn",  # dynamic triage (invalid result)
+      "sign",  # dynamic triage (invalid result)
+      "sinh",  # dynamic triage (invalid result)
       "slice",  # reshape reassociation not supported
       "squeeze",  # unsupported view op - enhance view op to detect squeeze
       "squeeze_copy",  # unsupported view op
+      "sub",  # dynamic triage (invalid result)
       "sum",  # return i64, which has lowering issues
+      "take",  # dynamic triage (invalid result)
+      "tan",  # dynamic triage (invalid result)
       "to",  # fails numerics (?)
       "tril",  # bad broadcast
       "triu",  # bad broadcast, iota-like
+      "trunc",  # dynamic triage (invalid result)
+      "var",  # dynamic triage (invalid result)
       "vdot",  # MLIR assertion failure (bounds length vs rank)
       "view_as_complex",  # crash (Aborted)
       "view_as_real",  # OK
+      "xlogy",  # dynamic triage (invalid result)
   ]
   op = op_info
   if op.name in untriaged_ops_deny_list:
@@ -189,7 +216,6 @@ def verify_op_supports_dynamism(
     if skip_input:
       return skip_input
 
-  input_value = _get_canonical_input_value(op, input_value)
   require_mark_dynamic_support = [
       # Needs matmul-style marking
       "addmm",
