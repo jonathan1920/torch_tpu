@@ -1042,7 +1042,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         tpu="""grid_sampler_2d_backward(): materialization failed with: Only nearest and bilinear interpolation modes are supported for grid_sampler_2d_backward currently, got 2""",
     ):
       interpolation_mode = 2
-      torch.ops.aten.grid_sampler_2d_backward(
+      grads = torch.ops.aten.grid_sampler_2d_backward(
           grad_output,
           inp_backward,
           grid_backward,
@@ -1051,6 +1051,11 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           False,
           [True, True],
       )
+      # Force materialization to catch deferred background compilation errors
+      # under asynchronous execution queues. Without forcing
+      # synchronization/copy, the python thread exits the context-manager
+      # successfully before the exception is raised.
+      grads[0].cpu()
 
     with et.assert_raises_message(
         RuntimeError,
