@@ -139,7 +139,7 @@ torch_tpu_py_test(
     main = "model_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
     notest_oss = "Disabled during switch from opt-in to opt-out",
-    shard_count = 4,
+    shard_count = 8,
     strict = True,
     tags = if_oss(
         ["exclusive"],
@@ -168,7 +168,7 @@ torch_tpu_py_test(
     main = "model_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
     notest_oss = "Benchmarks have a separate workflow.",
-    shard_count = 7,
+    shard_count = 8,
     strict = True,
     tags = [
         "cpu:4",
