@@ -21,6 +21,7 @@ from typing import Final
 from unittest import mock
 from absl.testing import absltest
 import torch
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.device import _device_module
 
 _DEVICE_LOCK: Final[threading.Lock] = threading.Lock()
@@ -38,6 +39,7 @@ class DeviceModuleBase(absltest.TestCase, metaclass=abc.ABCMeta):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
 
     # Acquire a lock to be released on cleanup, since we are modifying a global
     self.enter_context(_DEVICE_LOCK)

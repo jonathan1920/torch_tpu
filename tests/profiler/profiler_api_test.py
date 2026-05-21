@@ -20,6 +20,7 @@ from absl.testing import absltest
 import torch
 from torch_tpu._internal import profiler
 from torch_tpu._internal import sync as tpu_sync
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.profiler import _impl as profiler_impl
 from torch_tpu._internal.profiler import profiler_api
 
@@ -28,6 +29,7 @@ class ProfilerApiTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     profiler_impl._profile_state.reset()
     # Clean up any previous server potentially left running from a crashed test
     if profiler_impl._profiler_server is not None:

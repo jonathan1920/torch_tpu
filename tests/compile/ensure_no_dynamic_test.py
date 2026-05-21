@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Ensure we error out at torch.compile() when "dynamic" is applyed"""
+"""Ensure we error out at torch.compile() when "dynamic" is applied."""
 
 import os
 
@@ -20,8 +20,10 @@ from absl.testing import absltest
 import sympy
 import torch
 from torch.fx.experimental.symbolic_shapes import ShapeEnv
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile.compiler import has_dynamic_symints
 from torch_tpu._internal.utils import utils
+
 
 def simple(x):
   a = 0.3 * x
@@ -32,6 +34,7 @@ class EnsureNoDynamicTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     os.environ["TORCHDYNAMO_VERBOSE"] = "1"
     os.environ["TORCH_LOGS"] = "+dynamo"
     torch.compiler.reset()

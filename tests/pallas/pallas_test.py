@@ -24,6 +24,7 @@ import torch
 from torch_tpu._internal import compile  # pylint: disable=redefined-builtin
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import pallas
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import utils
 
 EagerMode: TypeAlias = execution_mode.EagerMode
@@ -105,7 +106,7 @@ def jax_add_or_subtract_vectors_wrapper(
   """
 
   @functools.partial(jax.jit, static_argnums=(0,))
-  def add_subtract_vectors(mode, x_ref, y_ref, o_ref):
+  def _add_or_subtract_vectors_kernel(mode, x_ref, y_ref, o_ref):
     x, y = x_ref[...], y_ref[...]
     if mode == "add":
       o_ref[...] = x + y
@@ -113,7 +114,7 @@ def jax_add_or_subtract_vectors_wrapper(
       o_ref[...] = x - y
 
   out_shape = jax.ShapeDtypeStruct(x.shape, x.dtype)
-  wrapped = functools.partial(add_subtract_vectors, mode)
+  wrapped = functools.partial(_add_or_subtract_vectors_kernel, mode)
   return pl.pallas_call(wrapped, out_shape=out_shape)(x, y)
 
 
@@ -121,6 +122,7 @@ class TestPallasKernels(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     self.device = torch.device("tpu")
 
   def _assert_donated(self, x: torch.Tensor):

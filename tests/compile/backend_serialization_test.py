@@ -21,6 +21,7 @@ from torch._dynamo.functional_export import dynamo_graph_capture_for_export
 from torch._functorch._aot_autograd.aot_autograd_result import (
     deserialize_bundled_cache_entry,
 )
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import utils
 
@@ -29,6 +30,7 @@ class BackendSerializationTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     # Set a fixed random seed to avoid flakes.
     random.seed(42)
     torch.manual_seed(42)

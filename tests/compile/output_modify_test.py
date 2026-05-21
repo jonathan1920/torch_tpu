@@ -20,7 +20,7 @@ from typing import Callable, List, Tuple
 from absl import logging
 from absl.testing import absltest
 import torch
-from torch._dynamo.backends.common import aot_autograd
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.utils import utils
 
@@ -76,8 +76,9 @@ def _run_tpu_backend_with_injected_test_case(
     # return signature expected by torch.compile for the original function.
     def wrapped_executable(*args):
       results = executable(list(args))
-      # inject_test_case can modify the output of the executable. To get the code running
-      # We need to apply the counterpart before returning them.
+      # inject_test_case can modify the output of the executable. To make the
+      # code run successfully, we must apply the mapping counterpart before
+      # returning them.
       results = map_output(results)
       return results
 
@@ -90,6 +91,7 @@ class OutputModifyTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     os.environ["TORCHDYNAMO_VERBOSE"] = "1"
     os.environ["TORCH_LOGS"] = "+dynamo"
     torch.compiler.reset()

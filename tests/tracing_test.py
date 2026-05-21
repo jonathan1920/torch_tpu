@@ -42,6 +42,7 @@ from absl.testing import absltest
 import torch
 from torch_tpu import _loader
 from torch_tpu._internal import execution_mode
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal import tracing
 from torch_tpu._internal.sync import sync
 
@@ -103,6 +104,7 @@ class TracingTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     self.assertTrue(
         tracing._tpu_torch_tracing._structured_log_enabled(),
         "TORCH_TRACE not enabled. This test requires TORCH_TRACE to be set.",

@@ -17,6 +17,7 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 import torch
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import utils
 
 
@@ -24,6 +25,7 @@ class UntypedStorageTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     self.tpu = torch.device('tpu')
 
   @parameterized.named_parameters(
@@ -35,6 +37,9 @@ class UntypedStorageTest(parameterized.TestCase):
     """Checks behavior of untyped_storage().resize_() going to 0 and back.
 
     This effectively erases the data but preserve view relationships.
+
+    Args:
+      dtype: The data type to run the test with.
     """
     tensor = torch.arange(8, device=self.tpu, dtype=dtype)
     view = tensor.reshape(4, 2)
@@ -70,9 +75,12 @@ class UntypedStorageTest(parameterized.TestCase):
       ('int64', torch.int64),
   )
   def test_resize_smaller_and_back(self, dtype):
-    """Checks behavior of untyped_storage().resize_() going to a nonzero value and back.
+    """Checks behavior of untyped_storage().resize_() going to smaller size.
 
     This erases part of the data while preserving view relationships.
+
+    Args:
+      dtype: The data type to run the test with.
     """
     init_tensor_cpu = torch.arange(8, dtype=dtype)
     init_view_cpu = init_tensor_cpu.reshape(4, 2)

@@ -21,6 +21,7 @@ import tempfile
 
 from absl.testing import absltest
 import portpicker
+from torch_tpu._internal import testing as tt_testing
 import torch_tpu._internal.profiler
 
 profiler_backend = torch_tpu._internal.profiler._profiler_backend
@@ -30,6 +31,7 @@ class ProfilerBackendTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     self.tmpdir = tempfile.mkdtemp()
     # Ensure state is clean before each test.
     try:

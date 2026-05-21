@@ -25,6 +25,7 @@ from etils import epath
 from PIL import Image
 import torch
 from torch_tpu._internal import compile as torch_tpu_compile
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import utils
 from tests import module_registry
 
@@ -111,6 +112,7 @@ class ModelCoverageTimmTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     random.seed(42)
     torch.manual_seed(42)
 

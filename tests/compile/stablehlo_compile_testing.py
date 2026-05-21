@@ -20,6 +20,7 @@ from typing import Callable
 from absl import flags
 from absl import logging
 from absl.testing import absltest
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import tpu_torch_compile
 
 _NUM_RUNS = flags.DEFINE_integer(
@@ -42,6 +43,7 @@ class StableHloCompileTimeTestBase(absltest.TestCase):
   def setUp(self):
     """Initializes the TPU runtime for each test."""
     super().setUp()
+    tt_testing.reset_eager_state()
     if not self._preheat_xla_done:
       self._preheat_xla()
       self._preheat_xla_done = True

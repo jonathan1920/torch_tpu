@@ -19,6 +19,7 @@ from absl.testing import absltest
 import torch
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import sync
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import utils
 
 EagerMode: TypeAlias = execution_mode.EagerMode
@@ -29,6 +30,7 @@ class SynchronizeTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     self.old_eager_mode = execution_mode.eager_mode
     execution_mode.eager_mode = EagerMode.DEFER_AND_FUSE
 

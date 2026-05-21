@@ -90,11 +90,14 @@ def _parse_error(msg: str):
   #
   #   C++ error trace (starting from the origin):
   #   third_party/py/torch_tpu/common/error_utils.cc:53: SafeMultiply()
-  #   third_party/py/torch_tpu/common/error_utils.cc:101: ValidateTensorByteSize()
+  #   third_party/py/torch_tpu/common/error_utils.cc:101:
+  #   ValidateTensorByteSize()
   #   third_party/py/torch_tpu/device_buffer.cc:361: CreateEmpty()
   #   third_party/py/torch_tpu/ops/nullary_aten_kernels.cc:90: MakeEmptyBuffer()
   #
-  #   Exception raised from operator() at third_party/py/torch_tpu/ops/nullary_aten_kernels.cc:155 (most recent call first):
+  #   Exception raised from operator() at
+  #   third_party/py/torch_tpu/ops/nullary_aten_kernels.cc:155
+  #   (most recent call first):
   #   ...
   #
   # We need to extract the source locations from the C++ error trace and the
@@ -380,6 +383,7 @@ class ErrorTestBase(absltest.TestCase):
     # op dispatch failures in setUp() and tearDown() to avoid influencing
     # other tests.
     tt_testing.set_op_dispatch_failure("", "")
+    tt_testing.reset_eager_state()
 
   def tearDown(self):
     # Error tests sometimes force op dispatch failures. We reset the forced

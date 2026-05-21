@@ -22,6 +22,7 @@ from unittest import mock
 from absl.testing import absltest
 import torch
 from torch_tpu._internal import compile as compile_lib
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.utils import utils
@@ -31,6 +32,7 @@ class FunctionTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     os.environ["TORCHDYNAMO_VERBOSE"] = "1"
     os.environ["TORCH_LOGS"] = "+dynamo"
 
@@ -592,6 +594,7 @@ class ModuleTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
 
     os.environ["TORCHDYNAMO_VERBOSE"] = "1"
     os.environ["TORCH_LOGS"] = "+dynamo"

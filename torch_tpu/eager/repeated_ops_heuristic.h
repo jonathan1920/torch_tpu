@@ -29,6 +29,8 @@ bool MustApplyRepeatedOpsHeuristic();
 absl::Status ApplyRepeatedOpsHeuristic(
     const SharedDeviceBufferList& device_buffer_list);
 
+void ResetRepeatedOpsHeuristicState();
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_EAGER_REPEATED_OPS_HEURISTIC_H_

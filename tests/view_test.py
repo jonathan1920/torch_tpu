@@ -21,6 +21,7 @@ from typing import Callable, Tuple
 
 from absl.testing import absltest
 import torch
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import utils
 
 
@@ -100,6 +101,7 @@ class LayoutTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     self.tpu_device = torch.device("tpu")
 
   def _assert_same_layout(

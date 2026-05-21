@@ -23,6 +23,7 @@ from absl.testing import absltest
 os.environ["TORCH_SHOW_CPP_STACKTRACES"] = "1"
 
 import torch  # pylint: disable=g-import-not-at-top
+from torch_tpu._internal import testing as tt_testing
 
 
 class TestErrorsWithCppContext(absltest.TestCase):
@@ -30,6 +31,7 @@ class TestErrorsWithCppContext(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     self.device = torch.device("tpu")
     self.maxDiff = None  # Show long diffs in assertEqual.
 
@@ -40,11 +42,15 @@ class TestErrorsWithCppContext(absltest.TestCase):
     #   empty(): dimension sizes must be >= 0, got [-1], which contains -1
     #
     #   C++ error trace (starting from the origin):
-    #   third_party/py/torch_tpu/common/error_utils.cc:95: ValidateTensorByteSize()
+    #   third_party/py/torch_tpu/common/error_utils.cc:95:
+    #   ValidateTensorByteSize()
     #   third_party/py/torch_tpu/device_buffer.cc:361: CreateEmpty()
-    #   third_party/py/torch_tpu/ops/nullary_aten_kernels.cc:90: MakeEmptyBuffer()
+    #   third_party/py/torch_tpu/ops/nullary_aten_kernels.cc:90:
+    #   MakeEmptyBuffer()
     #
-    #   Exception raised from operator() at third_party/py/torch_tpu/ops/nullary_aten_kernels.cc:155 (most recent call first):
+    #   Exception raised from operator() at
+    #   third_party/py/torch_tpu/ops/nullary_aten_kernels.cc:155
+    #   (most recent call first):
     #   C++ CapturedTraceback:
     #   ...
     self.assertRegex(  # This does a substring match.

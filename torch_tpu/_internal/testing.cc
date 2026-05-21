@@ -15,11 +15,18 @@
  */
 
 #include "torch_tpu/eager/op_dispatcher.h"
+#include "torch_tpu/eager/repeated_ops_heuristic.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 
 namespace torch_tpu {
 namespace py = pybind11;
+
+namespace {
+
+void ResetEagerState() { ResetRepeatedOpsHeuristicState(); }
+
+}  // namespace
 
 // Internal testing utilities.
 PYBIND11_MODULE(testing, m) {
@@ -31,6 +38,8 @@ PYBIND11_MODULE(testing, m) {
   // call will take effect.
   m.def("set_op_dispatch_failure", internal::SetOpDispatchFailure,  //
         py::arg("op_base_name"), py::arg("failure_message"));
+  m.def("reset_eager_state", ResetEagerState,
+        "Resets the eager mode maintained state.");
 }
 
 }  // namespace torch_tpu

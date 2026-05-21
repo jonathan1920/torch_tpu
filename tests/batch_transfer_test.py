@@ -15,6 +15,7 @@
 from absl.testing import absltest
 import torch
 from torch_tpu._internal import batch_transfer
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import utils
 
 
@@ -22,6 +23,7 @@ class BatchTransferTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     self.device = torch.device('tpu')
 
   def test_d2h_full_copy(self):

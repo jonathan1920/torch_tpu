@@ -56,6 +56,7 @@ torch_tpu_cc_library(
         "//shims/torch:aten",
         "//shims/torch:torch_headers",
         "//torch_tpu/eager:op_dispatcher",
+        "//torch_tpu/eager:repeated_ops_heuristic",
     ],
 )
 
@@ -72,6 +73,7 @@ pybind_extension(
         "//shims/torch:aten",
         "//shims/torch:torch_headers",
         "//torch_tpu/eager:op_dispatcher",
+        "//torch_tpu/eager:repeated_ops_heuristic",
         "@com_google_absl//absl/flags:flag",
     ],
 )

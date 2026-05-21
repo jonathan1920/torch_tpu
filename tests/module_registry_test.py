@@ -26,6 +26,7 @@ from absl.testing import absltest
 from etils import epath
 from PIL import Image
 import torch
+from torch_tpu._internal import testing as tt_testing
 from tests import module_registry
 
 _GOLDFISH_IMG_PATH = (
@@ -37,6 +38,7 @@ class ModuleRegistryTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     self.module_registry = module_registry.ModuleRegistry()
 
   def test_non_existent_path(self):

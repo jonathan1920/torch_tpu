@@ -17,6 +17,7 @@ from absl.testing import parameterized
 import torch
 from torch_tpu._internal import dynamism
 from torch_tpu._internal import sync
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import utils
 
 
@@ -25,6 +26,7 @@ class DynamismModelTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     self.device = torch.device("tpu")
     torch.manual_seed(1234)
 
@@ -87,6 +89,7 @@ class KVCacheDynamismTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     self.device = torch.device("tpu")
     torch.manual_seed(42)
 

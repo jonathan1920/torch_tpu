@@ -17,6 +17,7 @@
 from unittest import mock
 from absl.testing import absltest
 import torch
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import utils
 
@@ -25,6 +26,7 @@ class CompileTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     self.device = torch.accelerator.current_accelerator()
 
   def call_and_compare(

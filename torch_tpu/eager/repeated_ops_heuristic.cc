@@ -47,15 +47,24 @@ constexpr int kMaxRepeatedSubsequenceLength = 128;
 constexpr std::string_view kRepeatedOpSafeMode = "safe";
 constexpr std::string_view kRepeatedOpAggressiveMode = "aggressive";
 
-
-
 class OpWindow {
  public:
   OpWindow(size_t min_repeated_sequence_size, size_t max_repeated_sequence_size)
       : min_repeated_sequence_size_(min_repeated_sequence_size),
         // We need a history that is at least 2 times the maximum repeated
         // sequence size we want to detect.
-        max_history_size_(2 * max_repeated_sequence_size) {}
+        max_history_size_(2 * max_repeated_sequence_size) {
+    Reset();
+  }
+
+  absl::Mutex& mutex() { return mutex_; }
+
+  void Reset() {
+    history_.clear();
+    pos_ = 0;
+    next_valid_pos_ = 0;
+    last_repeated_sequence_size_ = 0;
+  }
 
   void Append(const DeferredOp& op) {
     // Here we store only a quick hash of the op. At the op level, this will
@@ -152,13 +161,20 @@ class OpWindow {
     return false;
   }
 
+  absl::Mutex mutex_;
   size_t min_repeated_sequence_size_;
   size_t max_history_size_;
   std::deque<size_t> history_;
-  size_t pos_ = 0;
-  size_t next_valid_pos_ = 0;
-  size_t last_repeated_sequence_size_ = 0;
+  size_t pos_;
+  size_t next_valid_pos_;
+  size_t last_repeated_sequence_size_;
 };
+
+OpWindow& GetOpWindow() {
+  static absl::NoDestructor<OpWindow> g_op_window(
+      kMinRepeatedSubsequenceLength, kMaxRepeatedSubsequenceLength);
+  return *g_op_window;
+}
 
 }  // namespace
 
@@ -172,10 +188,6 @@ bool MustApplyRepeatedOpsHeuristic() {
 
 absl::Status ApplyRepeatedOpsHeuristic(
     const SharedDeviceBufferList& device_buffer_list) {
-  static absl::Mutex mutex{absl::kConstInit};
-  static absl::NoDestructor<OpWindow> op_window(kMinRepeatedSubsequenceLength,
-                                                kMaxRepeatedSubsequenceLength);
-
   const std::string& detect_repeated_ops =
       GetEnvOnce<kTorchTpuInternalDetectRepeatedOpsEnvVar>().value_or(
           std::string(kRepeatedOpSafeMode));
@@ -187,9 +199,10 @@ absl::Status ApplyRepeatedOpsHeuristic(
   ABSL_CHECK(op != nullptr);  // CRASH_OK
   bool found_repetition = false;
   {
-    absl::MutexLock lock(mutex);
-    op_window->Append(*op);
-    found_repetition = op_window->FindRepeatedSequence();
+    auto& op_window = GetOpWindow();
+    absl::MutexLock lock(op_window.mutex());
+    op_window.Append(*op);
+    found_repetition = op_window.FindRepeatedSequence();
   }
 
   if (found_repetition) {
@@ -203,6 +216,12 @@ absl::Status ApplyRepeatedOpsHeuristic(
   }
 
   return absl::OkStatus();
+}
+
+void ResetRepeatedOpsHeuristicState() {
+  auto& op_window = GetOpWindow();
+  absl::MutexLock lock(op_window.mutex());
+  op_window.Reset();
 }
 
 }  // namespace torch_tpu

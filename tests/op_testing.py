@@ -55,6 +55,7 @@ from torch.testing._internal.opinfo.definitions import linalg
 from torch.utils import _pytree
 from torch_tpu._internal import compile as tt_compile
 from torch_tpu._internal import compiler_options as compiler
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import utils
 
 # In this file, we use the following naming convention for variables:
@@ -1154,6 +1155,7 @@ class TorchTpuTestBase(TestCase):
 
   def setUp(self) -> None:
     super().setUp()
+    tt_testing.reset_eager_state()
     # Show long diffs in assertEqual.
     self.maxDiff = None  # pylint: disable=invalid-name
 

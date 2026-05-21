@@ -570,10 +570,19 @@ def torch_tpu_py_library(name, srcs = [], **kwargs):
         fail("torch_tpu_py_library must contain at most one srcs file. This prevents build bloat " +
              "and circular dependencies between files.")
 
+    deps = kwargs.pop("deps", [])
+    if not is_oss():
+        if type(deps) == "list":
+            if "//torch_tpu/_internal:testing" not in deps:
+                deps = deps + ["//torch_tpu/_internal:testing"]
+        else:
+            deps = deps + ["//torch_tpu/_internal:testing"]
+
     pytype_strict_library(
         # PY_LIBRARY_OK=for implementing torch_tpu_py_library.
         name = name,
         srcs = srcs,
+        deps = deps,
         **kwargs
     )
     build_test(
@@ -792,6 +801,13 @@ def torch_tpu_py_test(
     deps_to_add = []
     if use_pywrap_rules():
         deps_to_add = extra_pywrap_deps
+
+    if not is_oss():
+        if type(deps) == "list":
+            if "//torch_tpu/_internal:testing" not in deps:
+                deps = deps + ["//torch_tpu/_internal:testing"]
+        else:
+            deps = deps + ["//torch_tpu/_internal:testing"]
 
     all_deps = if_oss(
         select({

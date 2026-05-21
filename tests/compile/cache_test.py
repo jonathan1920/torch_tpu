@@ -25,6 +25,7 @@ from absl import flags
 from absl import logging
 from absl.testing import absltest
 import torch
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 
@@ -70,6 +71,7 @@ class CacheTest(absltest.TestCase):
 
   def setUp(self) -> None:
     super().setUp()
+    tt_testing.reset_eager_state()
     if _TEST_MODE.value is None:
       self.skipTest("test_mode flag not provided.")
 
@@ -201,6 +203,7 @@ class MasterCacheTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
+    tt_testing.reset_eager_state()
     if _TEST_MODE.value is not None:
       self.skipTest("Skipping master test in sub-test mode.")
 
