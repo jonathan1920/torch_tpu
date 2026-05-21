@@ -45,8 +45,11 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/_internal/compile/compiled_mode.h"
 #include "torch_tpu/_internal/dynamism/dynamism_ops.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_cache.h"
 #include "torch_tpu/common/compilation_spec.h"
+#include "torch_tpu/common/compile_options_key.h"
 #include "torch_tpu/common/context_manager.h"
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/dimension_types.h"
@@ -269,14 +272,211 @@ void PySetDeviceStateTensor(at::Generator gen, at::Tensor rng_state) {
   TT_THROW_IF_ERROR(device_gen->SetDeviceStateTensor(std::move(rng_state)));
 }
 
-// Returns the MLIR module for a pad subgraph.
+namespace {
+
+std::vector<Shape> MakePadDynamicShapes(
+    const std::vector<std::pair<std::vector<int64_t>  // INT_VEC_OK
+                                ,
+                                at::ScalarType>>& tensor_info,
+    const std::vector<std::pair<std::vector<int64_t>  // INT_VEC_OK
+                                ,
+                                std::vector<int64_t>  // INT_VEC_OK
+                                >>& bounds_list) {
+  std::vector<Shape> dynamic_shapes;
+  dynamic_shapes.reserve(tensor_info.size());
+  for (int i = 0; i < tensor_info.size(); ++i) {
+    const auto& [dim_sizes, dtype] = tensor_info[i];
+    const auto& [dynamic_dims, upper_bounds] = bounds_list[i];
+    Dimensions dims = CopyIntVector(dim_sizes);
+    TT_ASSIGN_OR_THROW(mlir::ElementType element_type,
+                       ConvertTo<mlir::ElementType>(dtype));
+    Shape shape(dims, element_type);
+
+    TT_CHECK_THROW(dynamic_dims.size() == upper_bounds.size(),
+                   error::kInvalidArgument)
+        << "dimension indices and upper bounds must have the same size, got "
+        << dynamic_dims.size() << " and " << upper_bounds.size();
+
+    for (int j = 0; j < dynamic_dims.size(); ++j) {
+      const int64_t dim_index = dynamic_dims[j];
+      const int64_t dim_upper_bound = upper_bounds[j];
+
+      TT_CHECK_THROW(dim_index >= 0 && dim_index < dims.size(),
+                     error::kInvalidArgument)
+          << "dimension index must be within bounds [0, " << dims.size() - 1
+          << "], got " << dim_index << " for input tensor " << i
+          << " with shape " << ToString(dims);
+
+      const int64_t dim_size = dims[dim_index];
+      TT_CHECK_THROW(dim_upper_bound >= dim_size, error::kInvalidArgument)
+          << "upper bound must be greater than or equal to the static shape's "
+             "dimension size, got upper bound "
+          << dim_upper_bound << " for dimension " << dim_index
+          << " for input tensor " << i << " with shape " << ToString(dims);
+
+      shape.dynamic_dimensions().push_back(BoundedDynamicDimension{
+          .dimension = dim_index,
+          .lower_bound = 2,  // Or shape_bounds[i].lower if available
+          .upper_bound = dim_upper_bound});
+    }
+    dynamic_shapes.push_back(shape);
+  }
+  return dynamic_shapes;
+}
+
+std::vector<Shape> ToStaticShapes(const std::vector<Shape>& shapes) {
+  std::vector<Shape> static_shapes;
+  static_shapes.reserve(shapes.size());
+  for (const auto& shape : shapes) {
+    static_shapes.push_back({shape.dimensions(), shape.dtype()});
+  }
+  return static_shapes;
+}
+
+std::vector<Shape> ToPaddedShapes(const std::vector<Shape>& shapes) {
+  std::vector<Shape> padded_shapes;
+  padded_shapes.reserve(shapes.size());
+  for (const auto& shape : shapes) {
+    Dimensions padded_dimensions = shape.dimensions();
+    for (const auto& dynamic_dim : shape.dynamic_dimensions()) {
+      padded_dimensions[dynamic_dim.dimension] = dynamic_dim.upper_bound;
+    }
+    padded_shapes.push_back({padded_dimensions, shape.dtype()});
+  }
+  return padded_shapes;
+}
+
+struct SliceSubgraphInputs {
+  // TODO: unda - Remove target_dims and padded_dims by reworking the
+  // SliceModuleCacheKey and GetSliceModule function.
+  std::vector<Dimensions> target_dims;
+  std::vector<Dimensions> padded_dims;
+  std::vector<mlir::ElementType> element_types;
+  std::vector<Shape> input_shapes;
+  std::vector<Shape> output_shapes;
+};
+
+SliceSubgraphInputs UnpackSliceInputs(
+    const std::vector<std::vector<int64_t>>&  // INT_VEC_OK
+        target_shapes,
+    const std::vector<std::vector<int64_t>>&  // INT_VEC_OK
+        padded_shapes,
+    const std::vector<at::ScalarType>& input_scalar_types) {
+  TT_CHECK_THROW(!target_shapes.empty(), error::kInvalidArgument)
+      << "expected at least one target shape, got none";
+  TT_CHECK_THROW(target_shapes.size() == padded_shapes.size(),
+                 error::kInvalidArgument)
+      << "target shapes and padded shapes must have the same size, got "
+      << target_shapes.size() << " and " << padded_shapes.size();
+  TT_CHECK_THROW(target_shapes.size() == input_scalar_types.size(),
+                 error::kInvalidArgument)
+      << "target shapes and input scalar types must have the same size, got "
+      << target_shapes.size() << " and " << input_scalar_types.size();
+
+  SliceSubgraphInputs inputs;
+  const size_t num_tensors = target_shapes.size();
+  inputs.target_dims.reserve(num_tensors);
+  inputs.padded_dims.reserve(num_tensors);
+  inputs.element_types.reserve(num_tensors);
+  inputs.input_shapes.reserve(num_tensors);
+  inputs.output_shapes.reserve(num_tensors);
+
+  for (size_t i = 0; i < num_tensors; ++i) {
+    const auto& target = target_shapes[i];
+    const auto& padded = padded_shapes[i];
+    TT_CHECK_THROW(target.size() == padded.size(), error::kInvalidArgument)
+        << "target shape and padded shape must have the same number of "
+           "dimensions, got "
+        << target.size() << " and " << padded.size() << " for tensor index "
+        << i;
+
+    Dimensions target_dims = CopyIntVector(target);
+    Dimensions padded_dims = CopyIntVector(padded);
+
+    for (size_t j = 0; j < target.size(); ++j) {
+      TT_CHECK_THROW(padded[j] >= target[j], error::kInvalidArgument)
+          << "padded shape dimension size must be greater than or equal to "
+             "target shape dimension size, got padded shape "
+          << ToString(padded_dims) << " and target shape "
+          << ToString(target_dims) << " for tensor index " << i;
+    }
+
+    TT_ASSIGN_OR_THROW(mlir::ElementType element_type,
+                       internal::ToElementType(input_scalar_types[i]));
+
+    // Assemble both Shape vectors and primitive vectors in the same pass
+    inputs.input_shapes.push_back(Shape(padded_dims, element_type));
+    inputs.output_shapes.push_back(Shape(target_dims, element_type));
+
+    inputs.target_dims.push_back(std::move(target_dims));
+    inputs.padded_dims.push_back(std::move(padded_dims));
+    inputs.element_types.push_back(element_type);
+  }
+  return inputs;
+}
+
+absl::StatusOr<CompileResult> CompileModuleWithCache(
+    MlirComputationBuilder builder, const GraphKey& cache_key,
+    const std::vector<Shape>& input_shapes,
+    const std::vector<Shape>& output_shapes, CompilationMode compilation_mode,
+    bool build_mlir_module, bool is_caching_disabled) {
+  CompileResult result;
+  std::optional<ContextedModule> contexted_module;
+
+  // Create the MLIR module before compilation, since GetOrCompile consumes the
+  // builder.
+  if (build_mlir_module || is_caching_disabled) {
+    TT_ASSIGN_OR_RETURN(contexted_module, ContextedModule::Make(builder),
+                        _ << "failed to build MLIR module");
+  }
+
+  if (is_caching_disabled) {
+    TT_ASSIGN_OR_RETURN(result.executable,
+                        CompileMlirExecutable(
+                            xla::MaybeOwningMlirModule(contexted_module->get()),
+                            compilation_mode));
+  } else {
+    TT_ASSIGN_OR_RETURN(CompilationSpecsByMode compilation_specs,
+                        MakeCompilationSpecs(compilation_mode));
+    UniqueCompileOptions compile_options =
+        std::move(compilation_specs.at(compilation_mode).xla_compile_options);
+
+    TT_ASSIGN_OR_RETURN(
+        CompiledKernel compiled_kernel,
+        CompilationCache::GetInstance().GetOrCompile(
+            CompilationCacheKey(cache_key, CompileOptionsKey(0)), input_shapes,
+            output_shapes, std::move(builder), std::move(compile_options)));
+
+    TT_ASSIGN_OR_RETURN(result.executable,
+                        compiled_kernel.fixed_shape_kernel.get(),
+                        _.SetPrepend() << "Failed to get fixed shape kernel: ");
+  }
+
+  if (build_mlir_module) {
+    result.module =
+        std::make_shared<ContextedModule>(std::move(*contexted_module));
+  }
+  return result;
+}
+
+}  // namespace
+
+// Returns a CompileResult containing the executable and optionally the MLIR
+// module for a pad subgraph.
 // Args:
 //   tensor_info: A list of pairs, where each pair contains the shape of a
 //     tensor and its scalar type.
 //   bounds_list: A list of pairs, where each pair contains the dynamic
 //     dimensions of a tensor and their upper bounds.
+//   fast_compile: If true, use the compiler profile optimized for eager
+//         execution; otherwise, use the profile optimized for
+//         torch.compile.
+//   build_mlir_module: If true, populate the module field in the CompileResult
+//     with the MLIR module for the pad subgraph.
+//   is_caching_disabled: If true, do not use the cache.
 // Returns:
-//   The MLIR module for the pad subgraph as bytes.
+//   A CompileResult containing the executable and optionally the MLIR module
+//   for the pad subgraph.
 // Example:
 //   tensor_info = [([1, 4], torch.int64)]
 //   bounds_list = [([1], [8])]. // Dynamic dimension is 1, upper bound is 8.
@@ -291,78 +491,52 @@ void PySetDeviceStateTensor(at::Generator gen, at::Tensor rng_state) {
 //     return %0, %1 : tensor<1x8xi64>, tensor<i32>
 //   }
 // }
-
-std::shared_ptr<ContextedModule> PyGetPadModuleMlir(
+CompileResult PyGetOrCompilePadModule(
     const std::vector<
         std::pair<std::vector<int64_t>, at::ScalarType>>&  // INT_VEC_OK
         tensor_info,
     const std::vector<
         std::pair<std::vector<int64_t>, std::vector<int64_t>>>&  // INT_VEC_OK
-        bounds_list) {
-  auto context = std::make_unique<mlir::MLIRContext>();
-  mlir::DialectRegistry registry;
-  xla::RegisterMlirToHloDependentDialects(registry);
-  context->appendDialectRegistry(registry);
-  context->loadAllAvailableDialects();
+        bounds_list,
+    const bool fast_compile, const bool build_mlir_module,
+    const bool is_caching_disabled) {
+  std::vector<Shape> dynamic_shapes =
+      MakePadDynamicShapes(tensor_info, bounds_list);
 
-  std::vector<Shape> shapes;
-  shapes.reserve(tensor_info.size());
-  for (int64_t i = 0; i < tensor_info.size(); ++i) {
-    const auto& info = tensor_info[i];
-    Shape shape;
-    shape.dimensions().assign(info.first.begin(), info.first.end());
-    TT_ASSIGN_OR_THROW(mlir::ElementType element_type,
-                       internal::ToElementType(info.second));
-    shape.set_dtype(element_type);
+  MlirComputationBuilder pad_builder = [&](mlir::MLIRContext& mlir_context) {
+    return GetPadModule(mlir_context, dynamic_shapes);
+  };
 
-    if (i < bounds_list.size()) {
-      const auto& dims = bounds_list[i].first;
-      const auto& bounds = bounds_list[i].second;
-      if (!bounds.empty() && !dims.empty()) {
-        TT_CHECK_THROW(dims.size() == bounds.size(), error::kInvalidArgument)
-            << "dimension indices and upper bounds must have the same size, "
-            << "got " << dims.size() << " and " << bounds.size();
-        for (size_t j = 0; j < dims.size(); ++j) {
-          const int64_t dim_index = dims[j];
-          const int64_t dim_upper_bound = bounds[j];
-          TT_CHECK_THROW(
-              dim_index >= 0 && dim_index < shape.dimensions().size(),
-              error::kInvalidArgument)
-              << "dimension index must be within bounds [0, "
-              << shape.dimensions().size() - 1 << "], got " << dim_index
-              << " for input tensor " << i << " with shape "
-              << ToString(shape.dimensions());
+  auto compilation_mode = fast_compile ? CompilationMode::kFastCompile
+                                       : CompilationMode::kFastRuntime;
+  GraphKey key = PadModuleCacheKey(dynamic_shapes);
+  std::vector<Shape> runtime_input_shapes = ToStaticShapes(dynamic_shapes);
+  std::vector<Shape> cache_output_shapes = ToPaddedShapes(dynamic_shapes);
 
-          const int64_t dim_size = shape.dimensions()[dim_index];
-          TT_CHECK_THROW(dim_upper_bound >= dim_size, error::kInvalidArgument)
-              << "upper bound must be greater than or equal to the static "
-                 "shape's dimension size, got upper bound "
-              << dim_upper_bound << " for dimension " << dim_index
-              << " for input tensor " << i << " with shape "
-              << ToString(shape.dimensions());
-
-          shape.dynamic_dimensions().push_back(
-              {dim_index, dim_size, dim_upper_bound});
-        }
-      }
-    }
-    shapes.push_back(shape);
-  }
-
-  TT_ASSIGN_OR_THROW(mlir::OwningOpRef<mlir::ModuleOp> module,
-                     GetPadModule(*context, shapes));
-
-  return std::make_shared<torch_tpu::ContextedModule>(std::move(context),
-                                                      std::move(module));
+  TT_ASSIGN_OR_THROW(
+      CompileResult result,
+      CompileModuleWithCache(std::move(pad_builder), key, runtime_input_shapes,
+                             cache_output_shapes, compilation_mode,
+                             build_mlir_module, is_caching_disabled));
+  return result;
 }
 
-// Returns the MLIR module for a slice subgraph.
+// Returns a CompileResult containing the executable and optionally the MLIR
+// module for a slice subgraph.
+//
 // Args:
 //   target_shapes: A list of target shapes.
 //   padded_shapes: A list of padded shapes.
 //   input_scalar_types: A list of scalar types for each tensor.
+//   fast_compile: If true, use the compiler profile optimized for eager
+//         execution; otherwise, use the profile optimized for
+//         torch.compile.
+//   build_mlir_module: If true, populate the module field in the CompileResult
+//     with the MLIR module for the slice subgraph.
+//   is_caching_disabled: If true, do not use the cache.
 // Returns:
-//   The MLIR module for the slice subgraph as bytes.
+//   A CompileResult containing the executable and optionally the MLIR module
+//   for the slice subgraph.
 // Example:
 //   target_shapes = [[1, 4]]
 //   padded_shapes = [[1, 8]]
@@ -379,75 +553,35 @@ std::shared_ptr<ContextedModule> PyGetPadModuleMlir(
 //     return %1 : tensor<1x4xf32>
 //   }
 // }
-
-std::shared_ptr<ContextedModule> PyGetSliceModuleMlir(
+CompileResult PyGetOrCompileSliceModule(
     const std::vector<std::vector<int64_t>>& target_shapes,  // INT_VEC_OK
     const std::vector<std::vector<int64_t>>& padded_shapes,  // INT_VEC_OK
-    const std::vector<at::ScalarType>& input_scalar_types) {
-  auto context = std::make_unique<mlir::MLIRContext>();
-  mlir::DialectRegistry registry;
-  xla::RegisterMlirToHloDependentDialects(registry);
-  context->appendDialectRegistry(registry);
-  context->loadAllAvailableDialects();
+    const std::vector<at::ScalarType>& input_scalar_types,
+    const bool fast_compile, const bool build_mlir_module,
+    const bool is_caching_disabled) {
+  SliceSubgraphInputs inputs =
+      UnpackSliceInputs(target_shapes, padded_shapes, input_scalar_types);
 
-  TT_CHECK_THROW(!target_shapes.empty(), error::kInvalidArgument)
-      << "expected at least one target shape, got none";
-  TT_CHECK_THROW(target_shapes.size() == padded_shapes.size(),
-                 error::kInvalidArgument)
-      << "target shapes and padded shapes must have the same size, "
-      << "got " << target_shapes.size() << " and " << padded_shapes.size();
-  TT_CHECK_THROW(target_shapes.size() == input_scalar_types.size(),
-                 error::kInvalidArgument)
-      << "target shapes and input scalar types must have the same size, "
-      << "got " << target_shapes.size() << " and " << input_scalar_types.size();
+  MlirComputationBuilder slice_builder = [&](mlir::MLIRContext& mlir_context) {
+    return GetSliceModule(mlir_context, inputs.target_dims, inputs.padded_dims,
+                          inputs.element_types);
+  };
 
-  for (size_t i = 0; i < target_shapes.size(); ++i) {
-    TT_CHECK_THROW(target_shapes[i].size() == padded_shapes[i].size(),
-                   error::kInvalidArgument)
-        << "target shape and padded shape must have the same number of "
-           "dimensions, got "
-        << target_shapes[i].size() << " and " << padded_shapes[i].size()
-        << " for tensor index " << i;
-    for (size_t j = 0; j < target_shapes[i].size(); ++j) {
-      TT_CHECK_THROW(padded_shapes[i][j] >= target_shapes[i][j],
-                     error::kInvalidArgument)
-          << "padded shape dimension size must be greater than or equal to "
-             "target shape dimension size, got padded shape "
-          << ToString(padded_shapes[i]) << " and target shape "
-          << ToString(target_shapes[i]) << " for tensor index " << i;
-    }
-  }
+  GraphKey key = SliceModuleCacheKey(inputs.target_dims, inputs.padded_dims,
+                                     inputs.element_types);
+  // For slice, the inputs to the compiled module are the padded shapes, and
+  // outputs are target shapes.
+  const std::vector<Shape>& runtime_input_shapes = inputs.input_shapes;
+  const std::vector<Shape>& cache_output_shapes = inputs.output_shapes;
 
-  std::vector<Dimensions> inlined_target_shapes;
-  inlined_target_shapes.reserve(target_shapes.size());
-  for (const auto& target_shape : target_shapes) {
-    Dimensions dims;
-    dims.assign(target_shape.begin(), target_shape.end());
-    inlined_target_shapes.push_back(std::move(dims));
-  }
-
-  std::vector<Dimensions> inlined_padded_shapes;
-  inlined_padded_shapes.reserve(padded_shapes.size());
-  for (const auto& padded_shape : padded_shapes) {
-    Dimensions dims;
-    dims.assign(padded_shape.begin(), padded_shape.end());
-    inlined_padded_shapes.push_back(std::move(dims));
-  }
-
-  std::vector<mlir::ElementType> input_dtypes;
-  input_dtypes.reserve(input_scalar_types.size());
-  for (at::ScalarType scalar_type : input_scalar_types) {
-    TT_ASSIGN_OR_THROW(mlir::ElementType element_type,
-                       internal::ToElementType(scalar_type));
-    input_dtypes.push_back(element_type);
-  }
-
-  TT_ASSIGN_OR_THROW(mlir::OwningOpRef<mlir::ModuleOp> module,
-                     GetSliceModule(*context, inlined_target_shapes,
-                                    inlined_padded_shapes, input_dtypes));
-
-  return std::make_shared<torch_tpu::ContextedModule>(std::move(context),
-                                                      std::move(module));
+  auto compilation_mode = fast_compile ? CompilationMode::kFastCompile
+                                       : CompilationMode::kFastRuntime;
+  TT_ASSIGN_OR_THROW(CompileResult result,
+                     CompileModuleWithCache(
+                         std::move(slice_builder), key, runtime_input_shapes,
+                         cache_output_shapes, compilation_mode,
+                         build_mlir_module, is_caching_disabled));
+  return result;
 }
 
 py::bytes PySerializeExecutable(
@@ -649,19 +783,30 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   m.def("serialize_mlir_portable_artifact", PySerializePortableArtifact,
         py::arg("module"),
         "Serializes a ContextedModule to a versioned portable artifact.");
-  m.def("get_pad_module_mlir", PyGetPadModuleMlir, py::arg("tensor_info"),
-        py::arg("bounds_list"),
-        "Returns the MLIR module for a pad subgraph as bytecode.\n\n"
+  m.def("get_or_compile_pad_module", PyGetOrCompilePadModule,
+        py::arg("tensor_info"), py::arg("bounds_list"),
+        py::arg("fast_compile") = false, py::arg("build_mlir_module") = false,
+        py::arg("is_caching_disabled") = false,
+        "Returns the compiled PJRT executable for a pad subgraph.\n\n"
         "Args:\n"
         "  tensor_info: A list of (shape, dtype) pairs for each tensor.\n"
-        "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.");
-  m.def("get_slice_module_mlir", PyGetSliceModuleMlir, py::arg("target_shapes"),
-        py::arg("padded_shapes"), py::arg("input_scalar_types"),
-        "Returns the MLIR module for a slice subgraph as bytecode.\n\n"
+        "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.\n"
+        "  fast_compile: Whether to use the fast compile mode.\n"
+        "  build_mlir_module: Whether to build the MLIR module.\n"
+        "  is_caching_disabled: Whether to use the cache.");
+  m.def("get_or_compile_slice_module", PyGetOrCompileSliceModule,
+        py::arg("target_shapes"), py::arg("padded_shapes"),
+        py::arg("input_scalar_types"), py::arg("fast_compile") = false,
+        py::arg("build_mlir_module") = false,
+        py::arg("is_caching_disabled") = false,
+        "Returns the compiled PJRT executable for a slice subgraph.\n\n"
         "Args:\n"
         "  target_shapes: A list of target shapes.\n"
         "  padded_shapes: A list of padded shapes.\n"
-        "  input_scalar_types: A list of scalar types for each tensor.");
+        "  input_scalar_types: A list of scalar types for each tensor.\n"
+        "  fast_compile: Whether to use the fast compile mode.\n"
+        "  build_mlir_module: Whether to build the MLIR module.\n"
+        "  is_caching_disabled: Whether to use the cache.");
   m.def("pop_enable_tracebacks", &PopContextState<EnableTracebacksContextState>,
         "Pops the current state of the enable_tracebacks context manager.");
   m.def("push_enable_tracebacks", &PyPushEnableTracebacks, py::arg("enabled"),

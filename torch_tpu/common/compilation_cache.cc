@@ -651,7 +651,7 @@ CompilationCache::CreatePaddingKernel(
     std::vector<Shape> input_shapes_with_updated_dynamism,
     UniqueCompileOptions compile_options) {
   CompilationCacheKey padding_cache_key(
-      shape_dynamism_metadata.GetPadModuleCacheKey(static_runtime_input_shapes),
+      PadModuleCacheKey(input_shapes_with_updated_dynamism),
       CompileOptionsKey(0));
 
   MlirComputationBuilder padding_module_builder =

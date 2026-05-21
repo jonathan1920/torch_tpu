@@ -1296,7 +1296,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch.view_as_complex(t1)
 
-  def test_get_pad_module_mlir_mismatched_bounds_size(self):
+  def test_get_or_compile_pad_module_invalid_bounds(self):
     tensor_info = [([1, 4], torch.int64)]
     bounds_list = [([1], [8, 16])]
 
@@ -1304,9 +1304,12 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         RuntimeError,
         tpu="""dimension indices and upper bounds must have the same size, got 1 and 2""",
     ):
-      tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
+      tpu_torch_compile.get_or_compile_pad_module(
+          tensor_info,
+          bounds_list,
+      )
 
-  def test_get_pad_module_mlir_dim_out_of_bounds(self):
+  def test_get_or_compile_pad_module_dim_out_of_bounds(self):
     tensor_info = [([1, 4], torch.int64)]
     bounds_list = [([2], [8])]
 
@@ -1314,9 +1317,12 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         RuntimeError,
         tpu="""dimension index must be within bounds [0, 1], got 2 for input tensor 0 with shape [1, 4]""",
     ):
-      tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
+      tpu_torch_compile.get_or_compile_pad_module(
+          tensor_info,
+          bounds_list,
+      )
 
-  def test_get_pad_module_mlir_invalid_upper_bound(self):
+  def test_get_or_compile_pad_module_invalid_upper_bound(self):
     tensor_info = [([1, 4], torch.int64)]
     bounds_list = [([1], [2])]
 
@@ -1324,7 +1330,10 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         RuntimeError,
         tpu="""upper bound must be greater than or equal to the static shape's dimension size, got upper bound 2 for dimension 1 for input tensor 0 with shape [1, 4]""",
     ):
-      tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
+      tpu_torch_compile.get_or_compile_pad_module(
+          tensor_info,
+          bounds_list,
+      )
 
   @parameterized.named_parameters(
       dict(
@@ -1376,7 +1385,7 @@ Please use clone() or contiguous() to copy the tensor before writing""",
           ),
       ),
   )
-  def test_get_slice_module_mlir_error_conditions(
+  def test_get_or_compile_slice_module_error_conditions(
       self,
       target_shapes,
       padded_shapes,
@@ -1387,8 +1396,11 @@ Please use clone() or contiguous() to copy the tensor before writing""",
         RuntimeError,
         tpu=expected_error_message,
     ):
-      tpu_torch_compile.get_slice_module_mlir(
-          target_shapes, padded_shapes, input_scalar_types
+      tpu_torch_compile.get_or_compile_slice_module(
+          target_shapes,
+          padded_shapes,
+          input_scalar_types,
+          build_mlir_module=True,
       )
 
   def test_execute_output_shapes_too_many(self):

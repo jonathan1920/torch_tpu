@@ -159,44 +159,75 @@ class CompileApiTest(absltest.TestCase):
     self.assertLen(results, 1)
     self.assertEqual(results[0].shape, (5,))
 
-  def test_get_pad_module_mlir(self):
+  def test_get_or_compile_pad_module(self):
     tensor_info = [([1, 4], torch.int64)]
     bounds_list = [([1], [8])]
 
-    mlir = tpu_torch_compile.get_pad_module_mlir(tensor_info, bounds_list)
-    mlir_text = tpu_torch_compile.serialize_mlir_text(mlir)
+    compile_result = tpu_torch_compile.get_or_compile_pad_module(
+        tensor_info, bounds_list, build_mlir_module=True
+    )
 
-    expected_mlir = textwrap.dedent("""\
-        module @pad_module {
-          func.func @main(%arg0: tensor<1x4xi64>) -> (tensor<1x8xi64>, tensor<i32>) {
-            %c = stablehlo.constant dense<0> : tensor<i64>
-            %0 = stablehlo.pad %arg0, %c, low = [0, 0], high = [0, 4], interior = [0, 0] : (tensor<1x4xi64>, tensor<i64>) -> tensor<1x8xi64>
-            %1 = stablehlo.get_dimension_size %arg0, dim = 1 : (tensor<1x4xi64>) -> tensor<i32>
-            return %0, %1 : tensor<1x8xi64>, tensor<i32>
-          }
-        }""")
-    self.assertEqual(mlir_text.strip(), expected_mlir.strip())
+    with self.subTest('Test MLIR Output'):
+      mlir_text = tpu_torch_compile.serialize_mlir_text(compile_result.module)
+      expected_mlir = textwrap.dedent("""\
+          module @pad_module {
+            func.func @main(%arg0: tensor<1x4xi64>) -> (tensor<1x8xi64>, tensor<i32>) {
+              %c = stablehlo.constant dense<0> : tensor<i64>
+              %0 = stablehlo.pad %arg0, %c, low = [0, 0], high = [0, 4], interior = [0, 0] : (tensor<1x4xi64>, tensor<i64>) -> tensor<1x8xi64>
+              %1 = stablehlo.get_dimension_size %arg0, dim = 1 : (tensor<1x4xi64>) -> tensor<i32>
+              return %0, %1 : tensor<1x8xi64>, tensor<i32>
+            }
+          }""")
+      self.assertEqual(mlir_text.strip(), expected_mlir.strip())
+      self.assertIsNotNone(compile_result.executable)
 
-  def test_get_slice_module_mlir(self):
+    with self.subTest('Test Execution Results'):
+      result = tpu_torch_compile.execute(
+          compile_result.executable,
+          [torch.ones(1, 4, dtype=torch.int64).to(device=torch.device('tpu'))],
+      )
+      self.assertLen(result, 2)
+      padded_tensor, dim_size = result
+      self.assertEqual(padded_tensor.shape, (1, 8))
+      self.assertEqual(padded_tensor.dtype, torch.int64)
+      self.assertEqual(dim_size.shape, ())
+      self.assertEqual(dim_size.dtype, torch.int32)
+
+  def test_get_or_compile_slice_module(self):
     target_shapes = [[1, 4]]
     padded_shapes = [[1, 8]]
     input_scalar_types = [torch.float32]
 
-    mlir = tpu_torch_compile.get_slice_module_mlir(
-        target_shapes, padded_shapes, input_scalar_types
+    compile_result = tpu_torch_compile.get_or_compile_slice_module(
+        target_shapes, padded_shapes, input_scalar_types, build_mlir_module=True
     )
-    mlir_text = tpu_torch_compile.serialize_mlir_text(mlir)
 
-    expected_mlir = textwrap.dedent("""\
-        module @slice_module {
-          func.func @main(%arg0: tensor<1x?xf32, #stablehlo.bounds<?, 8>>) -> tensor<1x4xf32> {
-            %c = stablehlo.constant dense<8> : tensor<i32>
-            %0 = stablehlo.set_dimension_size %arg0, %c, dim = 1 : (tensor<1x?xf32, #stablehlo.bounds<?, 8>>, tensor<i32>) -> tensor<1x8xf32>
-            %1 = stablehlo.slice %0 [0:1, 0:4] : (tensor<1x8xf32>) -> tensor<1x4xf32>
-            return %1 : tensor<1x4xf32>
-          }
-        }""")
-    self.assertEqual(mlir_text.strip(), expected_mlir.strip())
+    with self.subTest('Test MLIR Output'):
+      mlir_text = tpu_torch_compile.serialize_mlir_text(compile_result.module)
+      expected_mlir = textwrap.dedent("""\
+          module @slice_module {
+            func.func @main(%arg0: tensor<1x?xf32, #stablehlo.bounds<?, 8>>) -> tensor<1x4xf32> {
+              %c = stablehlo.constant dense<8> : tensor<i32>
+              %0 = stablehlo.set_dimension_size %arg0, %c, dim = 1 : (tensor<1x?xf32, #stablehlo.bounds<?, 8>>, tensor<i32>) -> tensor<1x8xf32>
+              %1 = stablehlo.slice %0 [0:1, 0:4] : (tensor<1x8xf32>) -> tensor<1x4xf32>
+              return %1 : tensor<1x4xf32>
+            }
+          }""")
+      self.assertEqual(mlir_text.strip(), expected_mlir.strip())
+      self.assertIsNotNone(compile_result.executable)
+
+    with self.subTest('Test Execution Results'):
+      result = tpu_torch_compile.execute(
+          compile_result.executable,
+          [
+              torch.ones(1, 8, dtype=torch.float32).to(
+                  device=torch.device('tpu')
+              )
+          ],
+      )
+      self.assertLen(result, 1)
+      self.assertEqual(result[0].shape, (1, 4))
+      self.assertEqual(result[0].dtype, torch.float32)
 
   def test_make_constant_tensor(self):
     # Arrange

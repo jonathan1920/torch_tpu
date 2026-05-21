@@ -140,16 +140,24 @@ def _compile_and_execute_slice_subgraph(
       LazyString(lambda: str(padded_shapes)),
   )
 
-  mlir_module = tpu_torch_compile.get_slice_module_mlir(
-      target_shapes, padded_shapes, input_scalar_types
+  build_mlir_module = logging.vlog_is_on(logging.DEBUG)
+
+  compile_result = tpu_torch_compile.get_or_compile_slice_module(
+      target_shapes,
+      padded_shapes,
+      input_scalar_types,
+      build_mlir_module=build_mlir_module,
   )
-  logging.debug(
-      "[DynamicTpuBackend] MLIR slice module: %s",
-      LazyString(lambda: tpu_torch_compile.serialize_mlir_text(mlir_module)),
-  )
-  return tpu_torch_compile.execute(
-      tpu_torch_compile.compile_mlir(mlir_module), tensor_outputs
-  )
+
+  if compile_result.module is not None:
+    logging.debug(
+        "[DynamicTpuBackend] MLIR slice module: %s",
+        LazyString(
+            lambda: tpu_torch_compile.serialize_mlir_text(compile_result.module)
+        ),
+    )
+
+  return tpu_torch_compile.execute(compile_result.executable, tensor_outputs)
 
 
 def _compute_output_shapes(
@@ -260,20 +268,25 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
         self._precomputed_bounds_list,
     )
 
-    # Get the MLIR module for the pad subgraph.
-    mlir_module = tpu_torch_compile.get_pad_module_mlir(
-        tensor_info, self._precomputed_bounds_list
-    )
-    logging.debug(
-        "[DynamicTpuBackend] MLIR pad module: %s",
-        LazyString(lambda: tpu_torch_compile.serialize_mlir_text(mlir_module)),
-    )
-    # Compile the pad subgraph to a PJRT executable.
-    executable = tpu_torch_compile.compile_mlir(mlir_module)
+    build_mlir_module = logging.vlog_is_on(logging.DEBUG)
 
-    # Execute the pad subgraph with the input tensors and get the
-    # padded tensors.
-    return tpu_torch_compile.execute(executable, tensor_args)
+    compile_result = tpu_torch_compile.get_or_compile_pad_module(
+        tensor_info,
+        self._precomputed_bounds_list,
+        build_mlir_module=build_mlir_module,
+    )
+
+    if compile_result.module is not None:
+      logging.debug(
+          "[DynamicTpuBackend] MLIR pad module: %s",
+          LazyString(
+              lambda: tpu_torch_compile.serialize_mlir_text(
+                  compile_result.module
+              )
+          ),
+      )
+
+    return tpu_torch_compile.execute(compile_result.executable, tensor_args)
 
   def _precompute_bounds_list(self) -> list[_ShapeBoundInfo]:
     bounds_list = []

@@ -401,50 +401,30 @@ void LogShapes(absl::Span<const Shape> shapes, std::string_view prefix) {
   }
 }
 
-GraphKey ShapeDynamismMetadata::GetPadModuleCacheKey(
-    absl::Span<const Shape> shapes) const {
-  ABSL_VLOG(3) << "[GetPadModuleCacheKey] Creating a cache key for dynamism "
-                  "with "
-               << shapes.size() << " shapes:";
-  if (ABSL_VLOG_IS_ON(3)) {
-    LogShapes(shapes, "[GetPadModuleCacheKey]");
-  }
-  ABSL_VLOG(3) << "[GetPadModuleCacheKey] input dimension bounds: "
-               << absl::StrJoin(
-                      input_dimension_bounds_, ",",
-                      [](std::string* out, const DimensionBounds& bounds) {
-                        absl::StrAppend(out, "[", bounds.lower, ",",
-                                        bounds.upper, "]");
-                      });
+GraphKey PadModuleCacheKey(absl::Span<const Shape> dynamic_shapes) {
+  ABSL_VLOG(3) << "[PadModuleCacheKey] Creating a cache key for a pad "
+               << "module with " << dynamic_shapes.size();
 
+  if (ABSL_VLOG_IS_ON(3)) {
+    LogShapes(dynamic_shapes, "[PadModuleCacheKey]");
+  }
   GraphSignature graph;
 
-  for (const Shape& shape : shapes) {
+  for (const Shape& shape : dynamic_shapes) {
     graph.AddInput(shape.dimensions(), shape.dtype());
   }
 
-  absl::Span<const DimensionBounds> bounds = input_dimension_bounds_;
-  int bounds_index = 0;
-  for (int i = 0; i < shapes.size(); ++i) {
-    const Shape& shape = shapes[i];
-    const int64_t span_size = shape.dimensions().size();
-    auto shape_bounds = bounds.subspan(bounds_index, span_size);
-    bounds_index += span_size;
+  for (int i = 0; i < dynamic_shapes.size(); ++i) {
+    const Shape& shape = dynamic_shapes[i];
 
-    bool has_dynamic_dimensions = std::any_of(
-        shape_bounds.begin(), shape_bounds.end(),
-        [](const DimensionBounds& b) { return b.lower != b.upper; });
-
-    if (!has_dynamic_dimensions) {
+    if (shape.dynamic_dimensions().empty()) {
       graph.AddGraphOutput(i);
       continue;
     }
 
     Dimensions padded_dimensions = shape.dimensions();
-    for (int d = 0; d < span_size; ++d) {
-      if (shape_bounds[d].lower != shape_bounds[d].upper) {
-        padded_dimensions[d] = shape_bounds[d].upper;
-      }
+    for (const auto& dynamic_dim : shape.dynamic_dimensions()) {
+      padded_dimensions[dynamic_dim.dimension] = dynamic_dim.upper_bound;
     }
 
     const int padded_tensor_index = graph.AddOp(
@@ -455,23 +435,59 @@ GraphKey ShapeDynamismMetadata::GetPadModuleCacheKey(
         });
     graph.AddGraphOutput(padded_tensor_index);
 
-    for (int d = 0; d < span_size; ++d) {
-      if (shape_bounds[d].lower != shape_bounds[d].upper) {
-        TT_ASSIGN_OR_THROW(
-            OpParamCacheKeys params,
-            *OpParamCacheKeysBuilder().SetParam("dimension_index", d));
+    for (const auto& dynamic_dim : shape.dynamic_dimensions()) {
+      TT_ASSIGN_OR_THROW(OpParamCacheKeys params,
+                         *OpParamCacheKeysBuilder().SetParam(
+                             "dimension_index", dynamic_dim.dimension));
+      const int dim_size_index =
+          graph.AddOp(OpName::kGetDimensionSize, params, /*donated_inputs=*/{},
+                      [i](GraphSignature::OpSignatureBuilder& op) {
+                        op.AddInput(i);
+                        op.AddOutput({1}, mlir::ElementType::I32);
+                      });
+      graph.AddGraphOutput(dim_size_index);
+    }
+  }
+  return graph.GetKey();
+}
 
-        const int dim_size_index = graph.AddOp(
-            OpName::kGetDimensionSize, params, /*donated_inputs=*/{},
-            [i](GraphSignature::OpSignatureBuilder& op) {
-              op.AddInput(i);
-              op.AddOutput({1}, mlir::ElementType::I32);
-            });
-        graph.AddGraphOutput(dim_size_index);
+GraphKey SliceModuleCacheKey(
+    absl::Span<const Dimensions> target_shapes,
+    absl::Span<const Dimensions> padded_shapes,
+    absl::Span<const mlir::ElementType> element_types) {
+  ABSL_VLOG(3) << "[SliceModuleCacheKey] Creating a slice module cache key "
+                  "for dynamism with "
+               << target_shapes.size() << " shapes:";
+  GraphSignature graph;
+  std::vector<bool> requires_slicing(target_shapes.size(), false);
+  TT_CHECK_THROW(target_shapes.size() == padded_shapes.size(), error::kInternal)
+      << "target shapes and padded shapes must have the same size, "
+      << "got " << target_shapes.size() << " and " << padded_shapes.size();
+
+  for (int i = 0; i < target_shapes.size(); ++i) {
+    const Dimensions& target_dims = target_shapes[i];
+    const Dimensions padded_dims = padded_shapes[i];
+    graph.AddInput(padded_dims, element_types[i]);
+    for (int d = 0; d < target_dims.size(); ++d) {
+      if (padded_dims[d] != target_dims[d]) {
+        requires_slicing[i] = true;
+        break;
       }
     }
   }
-
+  for (int i = 0; i < target_shapes.size(); ++i) {
+    if (!requires_slicing[i]) {
+      graph.AddGraphOutput(i);
+      continue;
+    }
+    int op_index = graph.AddOp(
+        OpName::kSlice, OpParamCacheKeys::Empty(),
+        /*donated_inputs=*/{}, [&](GraphSignature::OpSignatureBuilder& op) {
+          op.AddInput(i);
+          op.AddOutput(target_shapes[i], element_types[i]);
+        });
+    graph.AddGraphOutput(op_index);
+  }
   return graph.GetKey();
 }
 
@@ -480,49 +496,30 @@ GraphKey ShapeDynamismMetadata::GetSliceModuleCacheKey(
   ABSL_VLOG(3) << "[GetSliceModuleCacheKey] Creating a slice module cache key "
                   "for dynamism with "
                << shapes.size() << " shapes:";
-  if (ABSL_VLOG_IS_ON(3)) {
-    LogShapes(shapes, "[GetSliceModuleCacheKey]");
-  }
-  ABSL_VLOG(3) << "[GetSliceModuleCacheKey] output dimension bounds: "
-               << absl::StrJoin(
-                      output_dimension_bounds_, ",",
-                      [](std::string* out, const DimensionBounds& bounds) {
-                        absl::StrAppend(out, "[", bounds.lower, ",",
-                                        bounds.upper, "]");
-                      });
-  GraphSignature graph;
-  std::vector<bool> requires_slicing(shapes.size(), false);
+  std::vector<Dimensions> target_shapes;
+  target_shapes.reserve(shapes.size());
+  std::vector<Dimensions> padded_shapes;
+  padded_shapes.reserve(shapes.size());
+  std::vector<mlir::ElementType> element_types;
+  element_types.reserve(shapes.size());
   absl::Span<const DimensionBounds> bounds = output_dimension_bounds_;
   int bounds_index = 0;
   for (int i = 0; i < shapes.size(); ++i) {
     const Shape& shape = shapes[i];
+    element_types.push_back(shape.dtype());
+    target_shapes.push_back(shape.dimensions());
     auto shape_bounds = bounds.subspan(bounds_index, shape.dimensions().size());
+    Dimensions padded_dims = shape.dimensions();
     bounds_index += shape.dimensions().size();
-    Dimensions padded_dimensions = shape.dimensions();
 
     for (int d = 0; d < shape.dimensions().size(); ++d) {
       if (shape_bounds[d].lower != shape_bounds[d].upper) {
-        padded_dimensions[d] = shape_bounds[d].upper;
-        requires_slicing[i] = true;
+        padded_dims[d] = shape_bounds[d].upper;
       }
     }
-    graph.AddInput(padded_dimensions, shape.dtype());
+    padded_shapes.push_back(std::move(padded_dims));
   }
-  for (int i = 0; i < shapes.size(); ++i) {
-    if (!requires_slicing[i]) {
-      graph.AddGraphOutput(i);
-      continue;
-    }
-
-    int op_index = graph.AddOp(
-        OpName::kSlice, OpParamCacheKeys::Empty(), /*aliased_inputs=*/{},
-        [&](GraphSignature::OpSignatureBuilder& op) {
-          op.AddInput(i);
-          op.AddOutput(shapes[i].dimensions(), shapes[i].dtype());
-        });
-    graph.AddGraphOutput(op_index);
-  }
-  return graph.GetKey();
+  return SliceModuleCacheKey(target_shapes, padded_shapes, element_types);
 }
 
 int GraphSignature::AddTensor(absl::Span<const int64_t> dimensions,

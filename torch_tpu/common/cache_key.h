@@ -868,6 +868,15 @@ struct DimensionBounds {
 
 Dimensions GetUpperBounds(absl::Span<const DimensionBounds> bounds);
 
+// Returns a cache key for the pad module for the given input dynamic shapes.
+GraphKey PadModuleCacheKey(absl::Span<const Shape> dynamic_shapes);
+
+// Returns a cache key for the slice module with the given target and padded
+// shapes.
+GraphKey SliceModuleCacheKey(absl::Span<const Dimensions> target_shapes,
+                             absl::Span<const Dimensions> padded_shapes,
+                             absl::Span<const mlir::ElementType> element_types);
+
 // The metadata necessary to check if a static graph is compatible with a
 // BoundedDynamicCacheEntry.
 class ShapeDynamismMetadata {
@@ -890,10 +899,6 @@ class ShapeDynamismMetadata {
       const {
     return output_dimension_bounds_;
   }
-
-  // Returns a cache key for the pad module with the given input shapes. This
-  // ignores dynamic annotations.
-  GraphKey GetPadModuleCacheKey(absl::Span<const Shape> shapes) const;
 
   // Returns a cache key for the slice module with the given output shapes.
   // This ignores dynamic annotations.
