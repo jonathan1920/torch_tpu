@@ -92,6 +92,7 @@
 #include "torch_tpu/ops/index_add/index_add_aten_kernels.h"
 #include "torch_tpu/ops/index_copy/index_copy_aten_kernels.h"
 #include "torch_tpu/ops/index_put/index_put_aten_kernels.h"
+#include "torch_tpu/ops/index_reduce/index_reduce_aten_kernels.h"
 #include "torch_tpu/ops/index_select/index_select_aten_kernels.h"
 #include "torch_tpu/ops/is/is_aten_kernels.h"
 #include "torch_tpu/ops/isin/isin_aten_kernels.h"
@@ -499,6 +500,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kIndexAddOut, TpuAtenIndexAddOut);
   Impl(m, OpName::kIndexCopyOut, AtenIndexCopyOut);
   Impl(m, OpName::kIndexPutImpl_, TpuAtenIndexPutImpl_);
+  Impl(m, OpName::kIndexReduceOut, TpuAtenIndexReduceOut);
   Impl(m, OpName::kIndexSelect, TpuAtenIndexSelect);
   Impl(m, OpName::kIndexTensorOut, AtenIndexTensorOut);
   Impl(m, OpName::kIrshiftScalar, AtenIrshiftScalar);

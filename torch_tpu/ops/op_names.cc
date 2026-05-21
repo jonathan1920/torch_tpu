@@ -747,6 +747,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "index_copy.out";
     case OpName::kIndexPutImpl_:
       return "_index_put_impl_";
+    case OpName::kIndexReduceOut:
+      return "index_reduce.out";
     case OpName::kIndexSelect:
       return "index_select";
     case OpName::kIndexTensorOut:
