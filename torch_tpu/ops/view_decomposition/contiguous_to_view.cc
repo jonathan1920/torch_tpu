@@ -59,7 +59,7 @@ struct IndexedStridedDim {
 //
 // Precondition: dimensions.size() == target_strides.size() (unchecked).
 Indices GetOverlappingAxes(absl::Span<const int64_t> dimensions,
-                           const Strides& target_strides) {
+                           absl::Span<const int64_t> target_strides) {
   // Sort the dimensions in descending order of stride (row-major), preserving
   // the original index of each dimension.
   std::vector<IndexedStridedDim> indexed_strided_dims;
@@ -117,9 +117,9 @@ Indices GetOverlappingAxes(absl::Span<const int64_t> dimensions,
 // This requires slicing all broadcasted and overlapping dimensions to 1 to
 // ensure that no two elements in a window refer to the same element in a view
 // tensor with target strides.
-Dimensions GetNonOverlappingWindowShape(absl::Span<const int64_t> dimensions,
-                                        const Strides& target_strides,
-                                        const Indices& overlapping_axes) {
+Dimensions GetNonOverlappingWindowShape(
+    absl::Span<const int64_t> dimensions,
+    absl::Span<const int64_t> target_strides, const Indices& overlapping_axes) {
   // Initialize assuming we slice to the entire base shape.
   Dimensions non_overlapping_window_shape = CopyIntVector(dimensions);
   // Slice away any broadcasted dimensions.
@@ -163,7 +163,7 @@ struct NonOverlappingWindow {
 //
 // Precondition: contiguous_buffer.dimensions().size() == target_strides.size().
 absl::StatusOr<std::vector<NonOverlappingWindow>> GetNonOverlappingWindows(
-    DeviceBufferRef contiguous_buffer, const Strides& target_strides,
+    DeviceBufferRef contiguous_buffer, absl::Span<const int64_t> target_strides,
     int64_t target_storage_offset) {
   // Set up the properties which are constant across all windows.
   // Find which specific dimensions are overlapping.
@@ -235,7 +235,7 @@ absl::StatusOr<std::vector<NonOverlappingWindow>> GetNonOverlappingWindows(
 //
 // The output tensor will be modified in place.
 absl::Status WriteWindowsToTensor(
-    const at::Tensor& output_tensor, const Strides& target_strides,
+    const at::Tensor& output_tensor, absl::Span<const int64_t> target_strides,
     std::vector<NonOverlappingWindow> non_overlapping_windows) {
   for (auto& window : non_overlapping_windows) {
     // Take a view of the correct destination slice in the output tensor.
@@ -257,9 +257,9 @@ absl::Status WriteWindowsToTensor(
 
 }  // namespace
 
-absl::StatusOr<at::Tensor> ContiguousToView(DeviceBufferRef contiguous_buffer,
-                                            const Strides& target_strides,
-                                            int64_t target_storage_offset) {
+absl::StatusOr<at::Tensor> ContiguousToView(
+    DeviceBufferRef contiguous_buffer, absl::Span<const int64_t> target_strides,
+    int64_t target_storage_offset) {
   // Check argument validity.
   TT_RET_CHECK(contiguous_buffer.dimensions().size() == target_strides.size(),
                error::kInvalidArgument)

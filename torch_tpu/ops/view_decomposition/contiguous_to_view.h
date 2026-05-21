@@ -20,8 +20,8 @@
 #include <cstdint>
 
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "ATen/core/TensorBody.h"
-#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/eager/device_buffer.h"
 
 namespace torch_tpu {
@@ -56,9 +56,9 @@ namespace torch_tpu {
 // and just returns the contiguous buffer (wrapping it in an at::Tensor).
 // In the case where the target strides are non-overlapping (permitting simple
 // broadcasts), this will perform a single write operation (see inversion.cc).
-absl::StatusOr<at::Tensor> ContiguousToView(DeviceBufferRef contiguous_buffer,
-                                            const Strides& target_strides,
-                                            int64_t target_storage_offset);
+absl::StatusOr<at::Tensor> ContiguousToView(
+    DeviceBufferRef contiguous_buffer, absl::Span<const int64_t> target_strides,
+    int64_t target_storage_offset);
 
 }  // namespace torch_tpu
 
