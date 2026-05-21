@@ -17,7 +17,6 @@
 #include "torch_tpu/ops/scaled_dot_product_attention/scaled_dot_product_attention_aten_kernels.h"
 
 #include <array>
-#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -28,10 +27,10 @@
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/flags/flag.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "ATen/Context.h"
 #include "ATen/SDPBackend.h"
@@ -54,6 +53,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/scaled_dot_product_attention/helpers.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_bwd_bf16_causal_mlir_embed.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_bwd_bf16_non_causal_mlir_embed.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_bwd_f32_causal_mlir_embed.h"
@@ -62,55 +62,14 @@
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_fwd_bf16_non_causal_mlir_embed.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_fwd_f32_causal_mlir_embed.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_fwd_f32_non_causal_mlir_embed.h"
+#include "torch_tpu/ops/scaled_dot_product_attention/scaled_dot_product_attention_shlo.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 
 namespace torch_tpu {
 
 namespace {
-
-mlir::MlirOp flatten_batch_dims(mlir::MlirOp mlir_op, int batch_size,
-                                int num_batch_dims) {
-  const mlir::RankedTensorType type = GetTensorTypeOrDie(mlir_op);
-  int rank = type.getRank();
-  int num_non_batch_dims = rank - num_batch_dims;
-  Dimensions new_dims(num_non_batch_dims + 1);
-  new_dims[0] = batch_size;
-  for (int i = 0; i < num_non_batch_dims; i++)
-    new_dims[i + 1] = type.getDimSize(i + num_batch_dims);
-
-  return mlir::stablehlo::Reshape(mlir_op, new_dims);
-}
-
-mlir::MlirOp unflatten_batch_dims(mlir::MlirOp mlir_op,
-                                  const Dimensions& shape) {
-  Dimensions shape_vec(shape.begin(), shape.end());
-  return mlir::stablehlo::Reshape(mlir_op, shape_vec);
-}
-
-mlir::MlirOp unflatten_batch_dims(mlir::MlirOp mlir_op,
-                                  mlir::MlirOp mlir_op_with_target_dims) {
-  const mlir::RankedTensorType type =
-      GetTensorTypeOrDie(mlir_op_with_target_dims);
-  return mlir::stablehlo::Reshape(mlir_op, type.getShape());
-}
-
-int get_batch_size(const at::Tensor& tensor) {
-  int batch_size = 1;
-  for (int i = 0; i < tensor.ndimension() - 3; i++)
-    batch_size *= tensor.size(i);
-  return batch_size;
-}
-
-mlir::MlirOp GetScaleDefaulted(mlir::MlirBuilder& builder,
-                               std::optional<double> maybe_scale,
-                               int64_t head_dim) {
-  double scale = maybe_scale ? *maybe_scale : 1.0 / std::sqrt(head_dim);
-  return MakeScalarConstant(builder, scale,
-                            builder.getOpBuilder().getF32Type());
-}
 
 absl::StatusOr<std::string_view> GetSdpaForwardKernel(at::ScalarType dtype,
                                                       bool is_causal) {
@@ -311,6 +270,31 @@ ScaledDotProductFusedAttentionBackwardImpl(
                          MakeTensor(std::move(results[2])));
 }
 
+bool IsSupportedFlashAttentionShape(const at::Tensor& query,
+                                    const at::Tensor& key,
+                                    const at::Tensor& value) {
+  // TODO(elliotenglish): Add support for attn_mask and attributes.
+  constexpr int min_block_size = 128;
+  constexpr int config_block_size = 512;
+  constexpr int min_batch_size = 1;
+
+  // TODO(b/483131156): Support all shapes.
+  // We don't support all shapes because the kernel is specialized to
+  // block_size 512 and we don't want to generate a new kernel for every
+  // possible sequence length and head dim.
+  bool has_batch = query.ndimension() >= 4 &&
+                   get_batch_size(query.sizes()) >= min_batch_size;
+  bool valid_seq_lens =
+      query.size(query.ndimension() - 2) % config_block_size == 0 &&
+      key.size(key.ndimension() - 2) % config_block_size == 0 &&
+      value.size(value.ndimension() - 2) % config_block_size == 0;
+  bool valid_head_dim =
+      (query.size(query.ndimension() - 1) < min_block_size ||
+       query.size(query.ndimension() - 1) % min_block_size == 0);
+
+  return has_batch && valid_seq_lens && valid_head_dim;
+}
+
 }  // namespace
 
 // Torch's extensibility is pretty gross here due to weird SDPA
@@ -345,107 +329,102 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
        IgnoreInCacheKey(enable_gqa, "Legacy usage")),
       {
         const auto& ctx = at::globalContext();
+        bool flash_enabled = ctx.userEnabledFlashSDP();
+        bool math_enabled = ctx.userEnabledMathSDP();
+        bool overrideable_enabled = ctx.userEnabledOverrideableSDP();
 
-        // The first 2 branches check for SDP kernel options, falling through
-        // to the next set of specific kernel implementation checks.
-        // Otherwise the else immediately falls back to the MATH backend.
-        if (ctx.userEnabledOverrideableSDP() || ctx.userEnabledFlashSDP() ||
-            ctx.userEnabledMemEfficientSDP()) {
-          // No warning needed. Fall through to can_use_custom_kernel check.
-        } else if (ctx.userEnabledCuDNNSDP()) {
-          TORCH_WARN_ONCE(
-              "TorchTPU only supports FLASH, EFFICIENT, OVERRIDEABLE, and MATH "
-              "SDPBackends for scaled_dot_product_attention. All other backends"
-              " will use FLASH if possible, or MATH for unsupported "
-              "arguments.");
-        } else {
-          TT_CHECK_THROW(ctx.userEnabledMathSDP(), error::kFailedPrecondition)
-              << "no viable SDPBackend found: all supported backends are "
-                 "disabled, including the fallback MATH backend; enable at "
-                 "least one of FLASH, EFFICIENT, OVERRIDEABLE, or MATH for "
-                 "TorchTPU";
-          return static_cast<int64_t>(at::SDPBackend::math);
+        bool consistent_ranks = query.ndimension() == key.ndimension() &&
+                                query.ndimension() == value.ndimension();
+        bool has_batch = query.ndimension() >= 4;
+        bool has_mask = attn_mask.has_value();
+        bool has_dropout = dropout_p != 0.0;
+
+        if (flash_enabled) {
+          bool supported_flash_dtype =
+              (query.scalar_type() == at::ScalarType::Float ||
+               query.scalar_type() == at::ScalarType::BFloat16);
+          if (supported_flash_dtype &&
+              IsSupportedFlashAttentionShape(query, key, value) &&
+              consistent_ranks && !has_mask && !has_dropout) {
+            return static_cast<int64_t>(at::SDPBackend::flash_attention);
+          } else {
+            // Use c10::str rather than absl::StrCat as it will convert enums
+            // into their string representation.
+            TORCH_WARN_ONCE(
+                "TorchTPU only supports FLASH_ATTENTION SDPBackend "
+                "for scaled_dot_product_attention when these conditions are "
+                "met:\n"
+                "- attn_mask is None (current: ",
+                (attn_mask.has_value() ? "present" : "None"),
+                ")\n"
+                "- dropout_p is 0.0 (current: ",
+                dropout_p,
+                ")\n"
+                "- inputs are float32 or bfloat16 (current: ",
+                query.scalar_type(),
+                ")\n"
+                "- inputs have the same rank (query: ",
+                query.ndimension(), ", key: ", key.ndimension(),
+                ", value: ", value.ndimension(),
+                ")\n"
+                "- query rank is at least 4 (current: ",
+                query.ndimension(),
+                ")\n"
+                "- batch size is at least 1 (current: ",
+                get_batch_size(query.sizes()),
+                ")\n"
+                "- Sequence lengths (dim - 2) are divisible by 512 (query: ",
+                query.size(query.ndimension() - 2),
+                ", key: ", key.size(key.ndimension() - 2),
+                ", value: ", value.size(value.ndimension() - 2),
+                ")\n"
+                "- Head dimension (dim - 1) is less than 128 or divisible by "
+                "128 "
+                "(query: ",
+                query.size(query.ndimension() - 1), ")");
+          }
         }
 
-        // TODO(elliotenglish): Add support for attn_mask and attributes.
-        constexpr int min_block_size = 128;
-        constexpr int config_block_size = 512;
-        constexpr int min_batch_size = 1;
-
-        // TODO(b/483131156): Support all shapes.
-        // We don't support all shapes because the kernel is specialized to
-        // block_size 512 and we don't want to generate a new kernel for every
-        // possible sequence length and head dim.
-        const bool is_supported_flash_attention_shape =
-            query.ndimension() >= 4 &&
-            get_batch_size(query) >= min_batch_size &&
-            query.size(query.ndimension() - 2) % config_block_size == 0 &&
-            key.size(key.ndimension() - 2) % config_block_size == 0 &&
-            value.size(value.ndimension() - 2) % config_block_size == 0 &&
-            (query.size(query.ndimension() - 1) < min_block_size ||
-             query.size(query.ndimension() - 1) % min_block_size == 0);
-
-        const bool can_use_flash =
-            (!attn_mask.has_value() && dropout_p == 0.0 &&
-             (query.scalar_type() == at::ScalarType::Float ||
-              query.scalar_type() == at::ScalarType::BFloat16) &&
-             query.ndimension() == key.ndimension() &&
-             query.ndimension() == value.ndimension() &&
-             is_supported_flash_attention_shape);
-
-        if (can_use_flash) {
-          return static_cast<int64_t>(at::SDPBackend::flash_attention);
+        // We treat the SHLO implementation as an optimized version of MATH so
+        // also try it when it is enabled.
+        if (math_enabled || overrideable_enabled) {
+          bool is_floating_type = c10::isFloatingType(query.scalar_type());
+          if (consistent_ranks && has_batch && !has_mask && !has_dropout &&
+              is_floating_type) {
+            return static_cast<int64_t>(at::SDPBackend::overrideable);
+          } else {
+            TORCH_WARN_ONCE(
+                "TorchTPU only supports SHLO optimized MATH SDPBackend when "
+                "these conditions "
+                "are met:\n"
+                "- attn_mask is None (current: ",
+                (attn_mask.has_value() ? "present" : "None"),
+                ")\n"
+                "- dropout_p is 0.0 (current: ",
+                dropout_p,
+                ")\n"
+                "- inputs are not complex (current: ",
+                query.scalar_type(),
+                ")\n"
+                "- inputs have the same rank (query: ",
+                query.ndimension(), ", key: ", key.ndimension(),
+                ", value: ", value.ndimension(), ")");
+          }
         }
 
-        // Use c10::str rather than absl::StrCat as it will convert enums into
-        // their string representation.
-        std::string failure_reason = c10::str(
-            "TorchTPU only supports FLASH, EFFICIENT, OVERRIDEABLE SDPBackend "
-            "for scaled_dot_product_attention when these conditions are met:\n"
-            "- attn_mask is None (current: ",
-            (attn_mask.has_value() ? "present" : "None"),
-            ")\n"
-            "- dropout_p is 0.0 (current: ",
-            dropout_p,
-            ")\n"
-            "- inputs are float32 or bfloat16 (current: ",
-            query.scalar_type(),
-            ")\n"
-            "- inputs have the same rank (query: ",
-            query.ndimension(), ", key: ", key.ndimension(),
-            ", value: ", value.ndimension(),
-            ")\n"
-            "- query rank is at least 4 (current: ",
-            query.ndimension(),
-            ")\n"
-            "- batch size is at least 1 (current: ",
-            get_batch_size(query),
-            ")\n"
-            "- Sequence lengths (dim - 2) are divisible by 512 (query: ",
-            query.size(query.ndimension() - 2),
-            ", key: ", key.size(key.ndimension() - 2),
-            ", value: ", value.size(value.ndimension() - 2),
-            ")\n"
-            "- Head dimension (dim - 1) is less than 128 or divisible by 128 "
-            "(query: ",
-            query.size(query.ndimension() - 1), ")");
-
-        TT_CHECK_THROW(ctx.userEnabledMathSDP(), error::kFailedPrecondition)
-            << failure_reason << "\nFallback MATH backend is disabled.";
-        TORCH_WARN_ONCE(failure_reason, "\nFalling back to MATH backend.");
+        TT_CHECK_THROW(math_enabled, error::kFailedPrecondition)
+            << "no viable SDPBackend found: all supported backends are "
+               "disabled, including the fallback MATH backend; enable at "
+               "least one of FLASH, OVERRIDEABLE, or MATH for "
+               "TorchTPU";
         return static_cast<int64_t>(at::SDPBackend::math);
       });
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, c10::SymInt,
            c10::SymInt, at::Tensor, at::Tensor, at::Tensor>
-GenerateResults(const at::Tensor& out) {
-  int64_t batch = get_batch_size(out);
-  int64_t heads = out.size(out.ndimension() - 3);
-  int64_t q_seq_len = out.size(out.ndimension() - 2);
-
-  at::Tensor logsumexp =
-      at::zeros({batch, heads, q_seq_len}, out.options().dtype(at::kFloat));
+GenerateResults(at::Tensor out, at::Tensor logsumexp) {
+  int64_t batch = get_batch_size(out.sizes());
   at::Tensor cum_seq_q = at::zeros({batch + 1}, out.options().dtype(at::kInt));
   at::Tensor cum_seq_k = at::zeros({batch + 1}, out.options().dtype(at::kInt));
   at::Tensor philox_seed = at::zeros({1}, out.options().dtype(at::kLong));
@@ -471,11 +450,11 @@ AtenScaledDotProductFusedAttentionOverrideable(
              IgnoreInCacheKey(return_debug_mask, "Legacy usage"),
              IgnoreInCacheKey(scale, "Legacy usage")),
             {
-              TT_ASSIGN_OR_THROW(auto out,
-                                 ScaledDotProductFusedAttentionImpl(
+              TT_ASSIGN_OR_THROW(auto results,
+                                 ScaledDotProductFusedAttentionShlo(
                                      query, key, value, is_causal, scale));
-
-              return GenerateResults(out);
+              auto [out, logsumexp] = results;
+              return GenerateResults(out, logsumexp);
             });
 }
 
@@ -497,12 +476,10 @@ AtenScaledDotProductFusedAttentionOverrideableBackward(
              IgnoreInCacheKey(is_causal, "Legacy usage"), philox_seed,
              philox_offset, IgnoreInCacheKey(scale, "Legacy usage")),
             {
-              // Unused arguments: grad_input_mask, out, logsumexp,
-              // cum_seq_q, cum_seq_k, max_q, max_k, dropout_p, is_causal,
-              // philox_seed, philox_offset, scale.
               TT_ASSIGN_OR_THROW(
-                  auto out, ScaledDotProductFusedAttentionBackwardImpl(
-                                grad_out, query, key, value, scale, is_causal));
+                  auto out, ScaledDotProductFusedAttentionShloBackward(
+                                grad_out, query, key, value, logsumexp, scale,
+                                is_causal));
 
               return std::make_tuple(
                   grad_input_mask[0] ? std::get<0>(out)
@@ -532,7 +509,7 @@ AtenScaledDotProductEfficientAttention(
               TT_ASSIGN_OR_THROW(auto out,
                                  ScaledDotProductFusedAttentionImpl(
                                      query, key, value, is_causal, scale));
-              int64_t batch = get_batch_size(query);
+              int64_t batch = get_batch_size(query.sizes());
               int64_t heads = query.size(query.ndimension() - 3);
               int64_t q_seq_len = query.size(query.ndimension() - 2);
 
@@ -562,7 +539,7 @@ std::tuple<at::Tensor, at::Tensor> AtenScaledDotProductFlashAttention(
               TT_ASSIGN_OR_THROW(auto out,
                                  ScaledDotProductFusedAttentionImpl(
                                      query, key, value, is_causal, scale));
-              int64_t batch = get_batch_size(query);
+              int64_t batch = get_batch_size(query.sizes());
               int64_t heads = query.size(query.ndimension() - 3);
               int64_t q_seq_len = query.size(query.ndimension() - 2);
               // We don't currently use this for the backward pass, so we return

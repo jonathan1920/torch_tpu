@@ -6759,8 +6759,8 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
       with torch.nn.attention.sdpa_kernel(
           torch.nn.attention.SDPBackend.MATH
-          if config.use_math_backend or device == "cpu"
-          else torch.nn.attention.SDPBackend.FLASH_ATTENTION
+          if device == "cpu"
+          else config.backend
       ):
         y = torch.nn.functional.scaled_dot_product_attention(
             q_t,

@@ -5477,7 +5477,7 @@ Supported combinations for non-constant padding:
     with torch.nn.attention.sdpa_kernel(backends=[]):
       with et.assert_raises_message(
           RuntimeError,
-          tpu="""fused_sdp_choice(): no viable SDPBackend found: all supported backends are disabled, including the fallback MATH backend; enable at least one of FLASH, EFFICIENT, OVERRIDEABLE, or MATH for TorchTPU""",
+          tpu="""fused_sdp_choice(): no viable SDPBackend found: all supported backends are disabled, including the fallback MATH backend; enable at least one of FLASH, OVERRIDEABLE, or MATH for TorchTPU""",
           cpu="""No viable backend for scaled_dot_product_attention was found. This is likely due to turning off both the math kernel and the fused kernels.""",
           message_reviewed_by="wan",
       ):

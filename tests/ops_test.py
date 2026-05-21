@@ -557,6 +557,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 2400, "atol": 8.4e-1},
         torch.float16: {"rtol": 21, "atol": 9.7e-1},
         torch.float32: {"rtol": 74, "atol": 9.5e-1},
+        torch.float64: {"rtol": 1e-6, "atol": 1e-5},
     },
     "nn.functional.silu": {
         torch.bfloat16: {"rtol": 3.6e-2, "atol": 7.7e-5},
@@ -3415,6 +3416,7 @@ class TestOps(TorchTpuTestBase):
           exclude_dtypes=(torch.int64,),
       )
 
+  @absltest.skip("EFFICIENT_ATTENTION is not supported on TPU.")
   # TODO: b/476147793 association of (inputs, outputs) pairs with the op name
   # and dtype only causes comparison of outputs of different tests.
   @op_testing.skip_if_torch_tpu_vs_gpu_mode

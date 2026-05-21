@@ -54,6 +54,7 @@ def generate_configs_for_parameterized(configs):
 @dataclasses.dataclass(frozen=True)
 class SdpaConfig:
   """Configuration for SDPA tests."""
+
   batch_size: int
   q_seq_len: int
   q_num_heads: int
@@ -64,10 +65,12 @@ class SdpaConfig:
   enable_gqa: bool
   dtype: torch.dtype
   scale: float | None = None
-  use_math_backend: bool = False
+  backend: torch.nn.attention.SDPBackend = (
+      torch.nn.attention.SDPBackend.FLASH_ATTENTION
+  )
 
 
-SDPA_CONFIGS = [
+SDPA_CONFIGS = (
     # Default config for smoke test.
     SdpaConfig(
         batch_size=1,
@@ -80,6 +83,18 @@ SDPA_CONFIGS = [
         enable_gqa=True,
         dtype=torch.bfloat16,
         scale=1.1 / 64**0.5,  # Slightly different from default 1.0 / sqrt(64)
+    ),
+    SdpaConfig(
+        batch_size=1,
+        q_seq_len=128,
+        q_num_heads=8,
+        kv_num_heads=8,
+        qk_head_dim=64,
+        v_head_dim=64,
+        is_causal=True,
+        enable_gqa=True,
+        dtype=torch.bfloat16,
+        backend=torch.nn.attention.SDPBackend.OVERRIDEABLE,
     ),
     # Configs for Llama3 70B attention layers
     SdpaConfig(
@@ -162,4 +177,14 @@ SDPA_CONFIGS = [
         enable_gqa=True,
         dtype=torch.bfloat16,
     ),
-]
+)
+
+
+# Also test with OVERRIDEABLE backend.
+SDPA_CONFIGS = SDPA_CONFIGS + tuple(
+    dataclasses.replace(
+        config, backend=torch.nn.attention.SDPBackend.OVERRIDEABLE
+    )
+    for config in SDPA_CONFIGS
+    if config.backend is not torch.nn.attention.SDPBackend.OVERRIDEABLE
+)

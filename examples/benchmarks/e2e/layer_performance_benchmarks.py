@@ -922,7 +922,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
                   torch.nn.attention.SDPBackend.MATH,
                   # Allow fallback to math backend.
                   [
-                      torch.nn.attention.SDPBackend.OVERRIDEABLE,
+                      torch.nn.attention.SDPBackend.FLASH_ATTENTION,
                       torch.nn.attention.SDPBackend.MATH,
                   ],
               )

@@ -89,7 +89,7 @@ class BackwardsTest(parameterized.TestCase):
   @parameterized.product(
       dtype=[torch.float32, torch.bfloat16], is_causal=[True, False]
   )
-  def test_sdpa_backward_overrideable(self, dtype, is_causal):
+  def test_sdpa_backward_flash(self, dtype, is_causal):
     device = torch.device('tpu')
     cpu_device = torch.device('cpu')
 
@@ -114,8 +114,8 @@ class BackwardsTest(parameterized.TestCase):
           query_cpu, key_cpu, value_cpu, is_causal=is_causal
       )
 
-    # tpu (using overrideable backend)
-    with attention.sdpa_kernel(attention.SDPBackend.OVERRIDEABLE):
+    # tpu (using flash backend)
+    with attention.sdpa_kernel(attention.SDPBackend.FLASH_ATTENTION):
       sdpa_tpu = torch.nn.functional.scaled_dot_product_attention(
           query_tpu, key_tpu, value_tpu, is_causal=is_causal
       )
