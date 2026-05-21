@@ -106,6 +106,8 @@ inline constexpr char kTorchTpuInternalXlaOptionsEnvVar[] =
 inline constexpr char kTorchTraceEnvVar[] = "TORCH_TRACE";
 inline constexpr char kTpuChipsPerHostBoundsEnvVar[] =
     "TPU_CHIPS_PER_HOST_BOUNDS";  // Read by Google Cloud.
+inline constexpr char kTpuChipsPerProcessBoundsEnvVar[] =
+    "TPU_CHIPS_PER_PROCESS_BOUNDS";
 inline constexpr char kTpuDeferAndFuse[] =
     "TPU_DEFER_AND_FUSE";  // Used to enable EagerMode::kDeferAndFuse by
                            // default.
@@ -120,6 +122,7 @@ inline constexpr char kTpuPremappedBufferSizeEnvVar[] =
                                   // client.
 inline constexpr char kTpuProcessAddressesEnvVar[] =
     "TPU_PROCESS_ADDRESSES";  // Set by Google Cloud.
+inline constexpr char kTpuProcessBoundsEnvVar[] = "TPU_PROCESS_BOUNDS";
 inline constexpr char kTpuProcessPortEnvVar[] =
     "TPU_PROCESS_PORT";  // Read by Google Cloud.
 // The output directory for TPU profiler XPlane files.

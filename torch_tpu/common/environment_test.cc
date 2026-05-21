@@ -31,6 +31,10 @@ TEST(EnvironmentTest,
      InitializeDistributedEnvironmentSetsAllowMultipleLibtpuLoad) {
   unsetenv(kAllowMultipleLibtpuLoadEnvVar);
   unsetenv(kTpuProcessAddressesEnvVar);
+  unsetenv(kTpuHostBoundsEnvVar);
+  unsetenv(kTpuChipsPerHostBoundsEnvVar);
+  unsetenv(kTpuProcessBoundsEnvVar);
+  unsetenv(kTpuChipsPerProcessBoundsEnvVar);
   DistributedWorkerConfiguration config;
   config.rank = 0;
   config.local_rank = 0;
@@ -47,6 +51,48 @@ TEST(EnvironmentTest,
   const char* addr_val = std::getenv(kTpuProcessAddressesEnvVar);
   ASSERT_NE(addr_val, nullptr);
   EXPECT_STREQ(addr_val, "localhost:1234");
+
+  const char* host_bounds_val = std::getenv(kTpuHostBoundsEnvVar);
+  ASSERT_NE(host_bounds_val, nullptr);
+  EXPECT_STREQ(host_bounds_val, "1,1,1");
+
+  const char* host_chips_val = std::getenv(kTpuChipsPerHostBoundsEnvVar);
+  ASSERT_NE(host_chips_val, nullptr);
+  EXPECT_STREQ(host_chips_val, "1,1,1");
+
+  const char* proc_bounds_val = std::getenv(kTpuProcessBoundsEnvVar);
+  ASSERT_NE(proc_bounds_val, nullptr);
+  EXPECT_STREQ(proc_bounds_val, "1,1,1");
+
+  const char* proc_chips_val = std::getenv(kTpuChipsPerProcessBoundsEnvVar);
+  ASSERT_NE(proc_chips_val, nullptr);
+  EXPECT_STREQ(proc_chips_val, "1,1,1");
+}
+
+TEST(EnvironmentTest,
+     InitializeDistributedEnvironmentSetsChipsBoundsFor4DTopology) {
+  unsetenv(kAllowMultipleLibtpuLoadEnvVar);
+  unsetenv(kTpuProcessAddressesEnvVar);
+  unsetenv(kTpuHostBoundsEnvVar);
+  unsetenv(kTpuChipsPerHostBoundsEnvVar);
+  unsetenv(kTpuProcessBoundsEnvVar);
+  unsetenv(kTpuChipsPerProcessBoundsEnvVar);
+  DistributedWorkerConfiguration config;
+  config.rank = 0;
+  config.local_rank = 0;
+  config.sb_port = "1234";
+  config.sb_addrs = "localhost:1234";
+  config.topology = "2,2,1,2";
+
+  EXPECT_EQ(InitializeDistributedEnvironment(config), absl::OkStatus());
+
+  const char* host_chips_val = std::getenv(kTpuChipsPerHostBoundsEnvVar);
+  ASSERT_NE(host_chips_val, nullptr);
+  EXPECT_STREQ(host_chips_val, "1,1,1,1");
+
+  const char* proc_chips_val = std::getenv(kTpuChipsPerProcessBoundsEnvVar);
+  ASSERT_NE(proc_chips_val, nullptr);
+  EXPECT_STREQ(proc_chips_val, "1,1,1,1");
 }
 
 TEST(EnvironmentTest, InitializeDistributedEnvironmentUnsetsAddressesFirst) {

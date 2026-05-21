@@ -23,6 +23,7 @@
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/str_split.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/distributed/slicebuilder/discovery.h"
 
@@ -32,8 +33,14 @@ absl::Status InitializeDistributedEnvironment(
     const DistributedWorkerConfiguration& config) {
   SetEnv(kCloudTpuTaskIdEnvVar, absl::StrCat(config.rank));
   SetEnv(kTpuVisibleChipsEnvVar, absl::StrCat(config.local_rank));
+
+  std::vector<std::string> topology_dims = absl::StrSplit(config.topology, ',');
+  std::string chips_bounds = (topology_dims.size() == 4) ? "1,1,1,1" : "1,1,1";
+
   SetEnv(kTpuHostBoundsEnvVar, config.topology);
-  SetEnv(kTpuChipsPerHostBoundsEnvVar, "1,1,1,1");
+  SetEnv(kTpuChipsPerHostBoundsEnvVar, chips_bounds);
+  SetEnv(kTpuProcessBoundsEnvVar, config.topology);
+  SetEnv(kTpuChipsPerProcessBoundsEnvVar, chips_bounds);
 
   // The free slicebuilder port of this process.
   SetEnv(kTpuProcessPortEnvVar, config.sb_port);
