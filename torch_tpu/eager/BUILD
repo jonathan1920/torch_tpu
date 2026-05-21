@@ -28,6 +28,7 @@ torch_tpu_cc_test(
     notest_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
         ":device_buffer",
+        ":eager_mode",
         ":tensor_to_buffer",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:dimension_types",
@@ -136,11 +137,13 @@ torch_tpu_cc_library(
     ],
     deps = [
         ":device_types",
+        ":eager_mode",
         "//shims/torch:aten_headers",
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
         "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:context_states",
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",

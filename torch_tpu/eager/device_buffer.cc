@@ -45,6 +45,7 @@
 #include "c10/core/impl/DeviceGuardImplInterface.h"
 #include "c10/util/accumulate.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -52,6 +53,7 @@
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_types.h"
+#include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -537,7 +539,8 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
       new DeviceBufferList(std::move(op), std::move(output_shapes), subgraph));
 
   subgraph->push(std::weak_ptr<DeviceBufferList>(device_buffer));
-  if (IsSideEffectingOp(device_buffer->deferred_op()->op_name())) {
+  if (IsSideEffectingOp(op_name) &&
+      GetEagerMode() != EagerMode::kInternalDeferAll) {
     subgraph->AnchorSideEffect(device_buffer);
   }
 

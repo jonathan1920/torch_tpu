@@ -27,6 +27,7 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/shape.h"
+#include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -383,6 +384,33 @@ TEST_F(SubgraphTest, SideEffectingOpWithChildOpIsUnprunable) {
   auto leaf_nodes = subgraph->GetLeafNodes();
   ASSERT_THAT(leaf_nodes, SizeIs(1));
   EXPECT_EQ(leaf_nodes[0].get(), raw_collective_ptr);
+}
+
+TEST_F(SubgraphTest, CollectivesInInternalDeferAllArePrunable) {
+  ScopedPythonContextCapturer capturer(OpName::kDistributedAllReduce);
+  EagerMode old_mode = GetEagerMode();
+  SetEagerMode(EagerMode::kInternalDeferAll);
+  Shape shape(Dimensions{8}, mlir::ElementType::F32);
+
+  std::shared_ptr<Subgraph> subgraph;
+
+  {
+    // Create a collective op inside a nested scope.
+    auto collective_refs_or = DeviceBufferList::CreateDeferred(
+        OpName::kDistributedAllReduce, DummyBuilder, {},
+        OpParamCacheKeys::Empty(), {shape});
+    ASSERT_TRUE(collective_refs_or.ok());
+    auto collective_ref = collective_refs_or.value()[0];
+    subgraph = collective_ref.device_buffer_list()->subgraph()->Find();
+  }
+  // collective_ref is now out of scope. In kInternalDeferAll mode (used during
+  // torch.compile tracing with fake tensors), side effects are not anchored, so
+  // it should be pruned by GetLeafNodes().
+
+  auto leaf_nodes = subgraph->GetLeafNodes();
+  EXPECT_THAT(leaf_nodes, SizeIs(0));
+
+  SetEagerMode(old_mode);
 }
 
 }  // namespace

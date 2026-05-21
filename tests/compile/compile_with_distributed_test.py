@@ -19,8 +19,10 @@ import os
 from absl.testing import absltest
 import torch
 from torch import distributed as dist
+from torch.distributed import tensor
 import torch.multiprocessing as mp
 from torch_tpu._internal import compile as tt_compile
+from torch_tpu._internal.device import _device_module as tpu_device
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import utils
 from tests.distributed import distributed_utils
@@ -320,7 +322,43 @@ def run_broadcast_with_torch_compile() -> None:
   assert len(execs) == 2, f"Expected 2 graphs, got {len(execs)}"
 
 
+def run_fake_tensor_side_effect_pruning_with_torch_compile() -> None:
+  """Tests that fake tensors from compile tracing are not incorrectly anchored."""
+  dist.init_process_group(backend="tpu_dist")
+
+  rank = int(os.environ["RANK"])
+  world_size = dist.get_world_size()
+  mesh = tensor.DeviceMesh("tpu", list(range(world_size)))
+
+  def my_func(x):
+    dt = tensor.DTensor.from_local(x, mesh, [tensor.Shard(0)])
+    dt_repl = dt.redistribute(mesh, [tensor.Replicate()])
+    return dt_repl.to_local()
+
+  backend = tt_compile.TpuBackend(debug=True)
+  compiled_func = torch.compile(my_func, backend=backend, fullgraph=True)
+
+  input_tpu = torch.tensor([float(rank)], dtype=torch.float32, device="tpu")
+
+  output = compiled_func(input_tpu)
+
+  tpu_device.get_device_module("tpu").synchronize()
+
+  expected = torch.tensor(
+      [float(i) for i in range(world_size)], dtype=torch.float32
+  )
+  utils.assert_close(output.to("cpu"), expected)
+
+
 class MultiTpuTorchCompileTest(absltest.TestCase):
+
+  def test_fake_tensor_side_effect_pruning_with_torch_compile(self):
+    distributed_utils.dist_run(
+        nproc_per_node=8,
+        fn=singlehost_wrapper.tpu_env_wrapper(
+            run_fake_tensor_side_effect_pruning_with_torch_compile, world_size=8
+        ),
+    )
 
   def test_all_reduce_with_torch_compile(self):
     distributed_utils.dist_run(
