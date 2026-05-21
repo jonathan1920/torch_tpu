@@ -6749,6 +6749,23 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         dtype=config.dtype,
     )
 
+    if config.attn_bias_type is not None:
+      bias_shape = (
+          config.q_seq_len,
+          config.q_seq_len,
+      )
+      if config.attn_bias_type is torch.bool:
+        attn_mask = torch.randint(
+            0,
+            2,
+            bias_shape,
+            dtype=torch.bool,
+        )
+      elif config.attn_bias_type.is_floating_point:
+        attn_mask = torch.randn(*bias_shape, dtype=config.dtype)
+    else:
+      attn_mask = None
+
     def compute(device: torch.device):
       q_t = q.clone().detach().to(device)
       k_t = k.clone().detach().to(device)
@@ -6766,6 +6783,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
             q_t,
             k_t,
             v_t,
+            attn_mask=attn_mask.to(device) if attn_mask is not None else None,
             is_causal=config.is_causal,
             enable_gqa=config.enable_gqa,
             scale=config.scale,
@@ -6813,6 +6831,20 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         tpu_tensor = tpu_results[key].cpu()
         check_sim(cpu_tensor, tpu_tensor)
         assert_close(cpu_tensor, tpu_tensor)
+
+  def test_sdpa_masked_out_row(self):
+    """Check that a masked out row does not contain NaNs."""
+    q = torch.ones((1, 1, 2, 2), dtype=torch.float32).tpu()
+    k = torch.ones((1, 1, 2, 2), dtype=torch.float32).tpu()
+    v = torch.ones((1, 1, 2, 2), dtype=torch.float32).tpu()
+    mask = torch.tensor([[0, 0], [1, 1]], dtype=torch.bool).tpu()
+    with torch.nn.attention.sdpa_kernel(
+        torch.nn.attention.SDPBackend.OVERRIDEABLE
+    ):
+      result = torch.nn.functional.scaled_dot_product_attention(
+          q, k, v, attn_mask=mask
+      ).cpu()
+      self.assertFalse(torch.isnan(result).any())
 
   def test_stateless_dropout(self):
     torch.manual_seed(0)

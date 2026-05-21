@@ -29,14 +29,15 @@ namespace torch_tpu {
 absl::StatusOr<std::pair<at::Tensor, at::Tensor>>
 ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
                                    const at::Tensor& key,
-                                   const at::Tensor& value, bool is_causal,
-                                   std::optional<double> scale);
+                                   const at::Tensor& value,
+                                   const std::optional<at::Tensor>& attn_bias,
+                                   bool is_causal, std::optional<double> scale);
 
 absl::StatusOr<std::tuple<at::Tensor, at::Tensor, at::Tensor>>
 ScaledDotProductFusedAttentionShloBackward(
     const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
-    const at::Tensor& value, const at::Tensor& sum_exp,
-    std::optional<double> scale, bool is_causal);
+    const at::Tensor& value, const at::Tensor& attn_bias,
+    const at::Tensor& sum_exp, std::optional<double> scale, bool is_causal);
 
 }  // namespace torch_tpu
 

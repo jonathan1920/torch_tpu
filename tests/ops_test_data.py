@@ -65,6 +65,7 @@ class SdpaConfig:
   enable_gqa: bool
   dtype: torch.dtype
   scale: float | None = None
+  attn_bias_type: torch.dtype | None = None
   backend: torch.nn.attention.SDPBackend = (
       torch.nn.attention.SDPBackend.FLASH_ATTENTION
   )
@@ -176,6 +177,33 @@ SDPA_CONFIGS = (
         is_causal=True,
         enable_gqa=True,
         dtype=torch.bfloat16,
+    ),
+    # Configs for testing attn_bias.
+    SdpaConfig(
+        batch_size=1,
+        q_seq_len=128,
+        q_num_heads=8,
+        kv_num_heads=8,
+        qk_head_dim=64,
+        v_head_dim=64,
+        is_causal=False,
+        enable_gqa=True,
+        dtype=torch.bfloat16,
+        attn_bias_type=torch.bool,
+        backend=torch.nn.attention.SDPBackend.OVERRIDEABLE,
+    ),
+    SdpaConfig(
+        batch_size=1,
+        q_seq_len=128,
+        q_num_heads=8,
+        kv_num_heads=8,
+        qk_head_dim=64,
+        v_head_dim=64,
+        is_causal=False,
+        enable_gqa=True,
+        dtype=torch.bfloat16,
+        attn_bias_type=torch.bfloat16,
+        backend=torch.nn.attention.SDPBackend.OVERRIDEABLE,
     ),
 )
 

@@ -16,13 +16,16 @@
 
 #include "torch_tpu/ops/scaled_dot_product_attention/scaled_dot_product_attention_shlo.h"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -60,7 +63,6 @@ struct AttentionPrepResults {
   mlir::MlirOp scale_value;
   int64_t head_count_ratio;
 };
-
 mlir::MlirOp GetNegInf(mlir::MlirBuilder& builder,
                        mlir::FloatType element_type) {
   mlir::OpBuilder& op_builder = builder.getOpBuilder();
@@ -72,10 +74,23 @@ mlir::MlirOp GetNegInf(mlir::MlirBuilder& builder,
                           op_builder.getFloatAttr(element_type, neg_inf)));
 }
 
+mlir::MlirOp GetCausalMask(mlir::MlirBuilder& builder,
+                           mlir::ArrayRef<int64_t> shape) {
+  auto iota_type =
+      mlir::RankedTensorType::get(shape, builder.getOpBuilder().getI32Type());
+  mlir::MlirOp iota_i = mlir::stablehlo::Iota(builder, iota_type,
+                                              /*dimension=*/shape.size() - 2);
+  mlir::MlirOp iota_j = mlir::stablehlo::Iota(builder, iota_type,
+                                              /*dimension=*/shape.size() - 1);
+
+  return mlir::stablehlo::Compare(iota_i, iota_j,
+                                  mlir::stablehlo::ComparisonDirection::LT);
+}
+
 absl::StatusOr<AttentionPrepResults> PrepareAttentionLogits(
     mlir::MlirBuilder& builder, mlir::MLIRContext* context, mlir::MlirOp query,
-    mlir::MlirOp key, mlir::MlirOp value, bool is_causal,
-    std::optional<double> scale) {
+    mlir::MlirOp key, mlir::MlirOp value, std::optional<mlir::MlirOp> mask,
+    bool is_causal, std::optional<double> scale) {
   auto query_tensor_type = GetTensorTypeOrDie(query);
   auto key_tensor_type = GetTensorTypeOrDie(key);
   int rank = query_tensor_type.getRank();
@@ -126,25 +141,42 @@ absl::StatusOr<AttentionPrepResults> PrepareAttentionLogits(
   mlir::MlirOp scaled_attn_logits =
       mlir::stablehlo::Mul(attn_logits, broadcasted_scale_value);
 
+  mlir::Attribute min_attr =
+      GetMinFiniteValueAttr(element_type, builder.getOpBuilder());
+  mlir::MlirOp min_val = mlir::MlirOp(
+      builder, mlir::stablehlo::ConstantOp::create(builder.getOpBuilder(),
+                                                   builder.getLoc(), min_attr));
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp mask_out_value,
+                      BroadcastIfNeeded(min_val, scaled_attn_logits));
+
   mlir::MlirOp masked_attn_logits = scaled_attn_logits;
   if (is_causal) {
     auto shape = GetTensorTypeOrDie(scaled_attn_logits).getShape();
-    auto iota_type =
-        mlir::RankedTensorType::get(shape, builder.getOpBuilder().getI32Type());
-    mlir::MlirOp iota_i =
-        mlir::stablehlo::Iota(builder, iota_type, /*dimension=*/2);
-    mlir::MlirOp iota_j =
-        mlir::stablehlo::Iota(builder, iota_type, /*dimension=*/3);
+    mlir::MlirOp causal_mask = GetCausalMask(builder, shape);
+    masked_attn_logits = mlir::stablehlo::Select(causal_mask, mask_out_value,
+                                                 scaled_attn_logits);
+  } else if (mask) {
+    // PyTorch converts boolean masks to float before passing them to the
+    // attention op.
+    if (IsBooleanType(GetTensorTypeOrDie(*mask))) {
+      return TT_ERROR(error::kInvalidArgument)
+             << "Boolean mask is not supported";
+    }
 
-    mlir::MlirOp mask = mlir::stablehlo::Compare(
-        iota_i, iota_j, mlir::stablehlo::ComparisonDirection::LT);
+    int64_t mask_rank = GetTensorTypeOrDie(*mask).getRank();
+    mlir::MlirOp flat_mask =
+        mask_rank > 4 ? flatten_batch_dims(*mask, batch_size, rank - 3) : *mask;
+    TT_ASSIGN_OR_RETURN(mlir::MlirOp broadcasted_mask,
+                        BroadcastIfNeeded(flat_mask, scaled_attn_logits));
 
-    mlir::MlirOp neg_inf_val = GetNegInf(builder, element_type);
-    TT_ASSIGN_OR_RETURN(mlir::MlirOp broadcasted_neg_inf,
-                        BroadcastIfNeeded(neg_inf_val, shape));
-
-    masked_attn_logits =
-        mlir::stablehlo::Select(mask, broadcasted_neg_inf, scaled_attn_logits);
+    // We clamp the mask so that it is finite. This avoids the issue where a
+    // whole row is masked out resulting in a divide by zero in the softmax.
+    // The reason this works is because when we shift the logits by the max
+    // value the result is that the entire row will then just be zero ->
+    // exp(0) = 1.
+    mlir::MlirOp clamped_mask =
+        mlir::stablehlo::Max(broadcasted_mask, mask_out_value);
+    masked_attn_logits = mlir::stablehlo::Add(scaled_attn_logits, clamped_mask);
   }
 
   auto max_reduce_builder = [element_type](mlir::RegionBuilder& rb) {
@@ -188,7 +220,9 @@ mlir::MlirOp SumReduce(mlir::MlirBuilder& builder, mlir::MlirOp input,
 absl::StatusOr<std::pair<at::Tensor, at::Tensor>>
 ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
                                    const at::Tensor& key,
-                                   const at::Tensor& value, bool is_causal,
+                                   const at::Tensor& value,
+                                   const std::optional<at::Tensor>& attn_bias,
+                                   bool is_causal,
                                    std::optional<double> scale) {
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(query.scalar_type()));
@@ -197,17 +231,23 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
   out_dims.push_back(value.sizes().back());
   Dimensions lse_dims(query.sizes().begin(), query.sizes().end() - 1);
 
-  auto op_builder = [out_dims, lse_dims, is_causal,
-                     scale](FixedSizeSpan<mlir::MlirOp, 3> inputs)
-      -> absl::StatusOr<MlirOpResults<2>> {
-    auto [query_mlir, key_mlir, value_mlir] = inputs;
-    mlir::MlirBuilder& builder = query_mlir.getBuilder();
+  auto op_builder =
+      [out_dims, lse_dims, is_causal, scale](
+          absl::Span<mlir::MlirOp> inputs,
+          mlir::MlirBuilder& builder) -> absl::StatusOr<MlirOpResults<2>> {
+    mlir::MlirOp query_mlir = inputs[0];
+    mlir::MlirOp key_mlir = inputs[1];
+    mlir::MlirOp value_mlir = inputs[2];
+    std::optional<mlir::MlirOp> mask_mlir;
+    if (inputs.size() == 4) {
+      mask_mlir = inputs[3];
+    }
     mlir::MLIRContext* context = &builder.getContext();
 
     TT_ASSIGN_OR_RETURN(
         auto prep_results,
         PrepareAttentionLogits(builder, context, query_mlir, key_mlir,
-                               value_mlir, is_causal, scale));
+                               value_mlir, mask_mlir, is_causal, scale));
     auto [query_4d, key_4d, value_4d, shifted_attn_logits, scale_value,
           head_count_ratio] = prep_results;
 
@@ -245,12 +285,17 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
                                             .SetParam("is_causal", is_causal)
                                             .SetParam("scale", scale));
 
-  TT_ASSIGN_OR_RETURN(
-      auto results,
-      (DispatchOp<3, 2>(std::move(op_builder), {query, key, value},
-                        {.out_dtypes = {out_dtype, mlir::ElementType::F32},
-                         .out_dims_list = {out_dims, lse_dims},
-                         .op_param_cache_keys = std::move(param_keys)})));
+  std::vector<at::Tensor> inputs = {query, key, value};
+  if (attn_bias.has_value() && attn_bias->defined()) {
+    inputs.push_back(*attn_bias);
+  }
+
+  TT_ASSIGN_OR_RETURN(auto results,
+                      (DispatchOp<kDynamicSize, 2>(
+                          std::move(op_builder), inputs,
+                          {.out_dtypes = {out_dtype, mlir::ElementType::F32},
+                           .out_dims_list = {out_dims, lse_dims},
+                           .op_param_cache_keys = std::move(param_keys)})));
 
   // The output must have the same layout as the query.
   // This may be needed in other places but aten does not define what the result
@@ -273,8 +318,8 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
 absl::StatusOr<std::tuple<at::Tensor, at::Tensor, at::Tensor>>
 ScaledDotProductFusedAttentionShloBackward(
     const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
-    const at::Tensor& value, const at::Tensor& sum_exp,
-    std::optional<double> scale, bool is_causal) {
+    const at::Tensor& value, const at::Tensor& attn_bias,
+    const at::Tensor& sum_exp, std::optional<double> scale, bool is_causal) {
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(query.scalar_type()));
 
@@ -285,18 +330,24 @@ ScaledDotProductFusedAttentionShloBackward(
   int64_t head_dim = query.size(rank - 1);
 
   auto op_builder = [rank, batch_size, is_causal, scale, num_head_kv,
-                     seq_len_kv,
-                     head_dim](FixedSizeSpan<mlir::MlirOp, 5> inputs)
-      -> absl::StatusOr<MlirOpResults<3>> {
-    auto [grad_out_mlir, query_mlir, key_mlir, value_mlir, sum_exp_mlir] =
-        inputs;
-    mlir::MlirBuilder& builder = grad_out_mlir.getBuilder();
+                     seq_len_kv, head_dim](absl::Span<mlir::MlirOp> inputs,
+                                           mlir::MlirBuilder& builder)
+      -> absl::StatusOr<std::array<mlir::MlirOp, 3>> {
+    mlir::MlirOp grad_out_mlir = inputs[0];
+    mlir::MlirOp query_mlir = inputs[1];
+    mlir::MlirOp key_mlir = inputs[2];
+    mlir::MlirOp value_mlir = inputs[3];
+    mlir::MlirOp sum_exp_mlir = inputs[4];
+    std::optional<mlir::MlirOp> mask_mlir;
+    if (inputs.size() == 6) {
+      mask_mlir = inputs[5];
+    }
     mlir::MLIRContext* context = &builder.getContext();
 
     TT_ASSIGN_OR_RETURN(
         auto prep_results,
         PrepareAttentionLogits(builder, context, query_mlir, key_mlir,
-                               value_mlir, is_causal, scale));
+                               value_mlir, mask_mlir, is_causal, scale));
     auto [query_4d, key_4d, value_4d, shifted_attn_logits, scale_value,
           hedad_count_ratio] = prep_results;
     auto element_type = GetTensorTypeOrDie(query_mlir).getElementType();
@@ -402,10 +453,15 @@ ScaledDotProductFusedAttentionShloBackward(
                                             .SetParam("is_causal", is_causal)
                                             .SetParam("scale", scale));
 
+  std::vector<at::Tensor> inputs = {grad_out, query, key, value, sum_exp};
+  if (attn_bias.defined()) {
+    inputs.push_back(attn_bias);
+  }
+
   TT_ASSIGN_OR_RETURN(
       auto results,
-      (DispatchOp<5, 3>(
-          std::move(op_builder), {grad_out, query, key, value, sum_exp},
+      (DispatchOp<kDynamicSize, 3>(
+          std::move(op_builder), inputs,
           {.out_dtypes = {out_dtype, out_dtype, out_dtype},
            .out_dims_list = {query.sizes(), key.sizes(), value.sizes()},
            .op_param_cache_keys = std::move(param_keys)})));

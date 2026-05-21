@@ -389,7 +389,7 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
         // also try it when it is enabled.
         if (math_enabled || overrideable_enabled) {
           bool is_floating_type = c10::isFloatingType(query.scalar_type());
-          if (consistent_ranks && has_batch && !has_mask && !has_dropout &&
+          if (consistent_ranks && has_batch && !has_dropout &&
               is_floating_type) {
             return static_cast<int64_t>(at::SDPBackend::overrideable);
           } else {
@@ -397,9 +397,6 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
                 "TorchTPU only supports SHLO optimized MATH SDPBackend when "
                 "these conditions "
                 "are met:\n"
-                "- attn_mask is None (current: ",
-                (attn_mask.has_value() ? "present" : "None"),
-                ")\n"
                 "- dropout_p is 0.0 (current: ",
                 dropout_p,
                 ")\n"
@@ -450,9 +447,10 @@ AtenScaledDotProductFusedAttentionOverrideable(
              IgnoreInCacheKey(return_debug_mask, "Legacy usage"),
              IgnoreInCacheKey(scale, "Legacy usage")),
             {
-              TT_ASSIGN_OR_THROW(auto results,
-                                 ScaledDotProductFusedAttentionShlo(
-                                     query, key, value, is_causal, scale));
+              TT_ASSIGN_OR_THROW(
+                  auto results,
+                  ScaledDotProductFusedAttentionShlo(
+                      query, key, value, attn_bias, is_causal, scale));
               auto [out, logsumexp] = results;
               return GenerateResults(out, logsumexp);
             });
@@ -476,10 +474,10 @@ AtenScaledDotProductFusedAttentionOverrideableBackward(
              IgnoreInCacheKey(is_causal, "Legacy usage"), philox_seed,
              philox_offset, IgnoreInCacheKey(scale, "Legacy usage")),
             {
-              TT_ASSIGN_OR_THROW(
-                  auto out, ScaledDotProductFusedAttentionShloBackward(
-                                grad_out, query, key, value, logsumexp, scale,
-                                is_causal));
+              TT_ASSIGN_OR_THROW(auto out,
+                                 ScaledDotProductFusedAttentionShloBackward(
+                                     grad_out, query, key, value, attn_bias,
+                                     logsumexp, scale, is_causal));
 
               return std::make_tuple(
                   grad_input_mask[0] ? std::get<0>(out)
