@@ -42,7 +42,7 @@ namespace torch_tpu {
 
 namespace {
 
-constexpr int kMinRepeatedSubsequenceLength = 10;
+constexpr int kMinRepeatedSubsequenceLength = 2;
 constexpr int kMaxRepeatedSubsequenceLength = 128;
 constexpr std::string_view kRepeatedOpSafeMode = "safe";
 constexpr std::string_view kRepeatedOpAggressiveMode = "aggressive";
