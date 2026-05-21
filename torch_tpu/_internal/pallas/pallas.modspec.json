@@ -1,0 +1,10 @@
+[
+  {
+    "name": "torch_tpu._internal.pallas",
+    "type": "PACKAGE"
+  },
+  {
+    "name": "torch_tpu._internal.pallas.pallas",
+    "type": "MODULE"
+  }
+]

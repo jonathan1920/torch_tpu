@@ -13,7 +13,6 @@
 # limitations under the License.
 
 load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_library")
-load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -40,10 +39,18 @@ torch_tpu_py_library(
     ],
 )
 
-pytype_strict_library(
+torch_tpu_py_library(
+    name = "init",
+    srcs = ["__init__.py"],
+    visibility = [
+        "//:__subpackages__",
+        "//learning/agents/tern/torch_agent:__subpackages__",
+    ],
+)
+
+torch_tpu_py_library(
     name = "sym_shape_manager",
     srcs = [
-        "__init__.py",
         "sym_shape_manager.py",
     ],
     visibility = [
@@ -72,10 +79,9 @@ torch_tpu_py_library(
     ],
 )
 
-pytype_strict_library(
+torch_tpu_py_library(
     name = "compiler",
     srcs = [
-        "__init__.py",
         "compiler.py",
     ],
     visibility = [

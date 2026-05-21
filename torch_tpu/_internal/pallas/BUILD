@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end", "torch_tpu_py_library")
-load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
+load("//shims/py_rules:strict.bzl", "py_library_providing_imports_info")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
 package(
@@ -26,20 +26,33 @@ package(
     ],
 )
 
-pytype_strict_library(
+# We use py_library_providing_imports_info with pallas.modspec.json to explicitly
+# re-export the submodules provided by :pallas_lib. This prevents PyStrictDeps
+# violations at downstream use sites that import `from torch_tpu._internal.pallas import pallas`
+# without requiring them to directly depend on :pallas_lib.
+py_library_providing_imports_info(
     name = "pallas",
     srcs = [
         "__init__.py",
-        "pallas.py",
     ],
+    lib_rule = torch_tpu_py_library,
+    module_specs = [
+        "pallas.modspec.json",
+    ],
+    deps = [
+        ":pallas_lib",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "pallas_lib",
+    srcs = ["pallas.py"],
     deps = [
         ":tpu_torch_pallas",
         "//shims/absl_py/logging",
-        "//shims/jax:pallas",  # buildcleaner: keep
-        "//shims/jax:pallas_tpu",  # buildcleaner: keep
         "//shims/torch:pytorch",
         "@pypi//frozendict",
-        "@pypi//jax",  # buildcleaner: keep
+        "@pypi//jax",
     ],
 )
 

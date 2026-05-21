@@ -14,7 +14,7 @@
 
 load("@rules_license//rules:license.bzl", "license")
 load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_library")
-load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
+load("//shims/py_rules:strict.bzl", "py_library_providing_imports_info")
 
 package(
     default_applicable_licenses = [":license"],
@@ -28,13 +28,27 @@ license(
 
 licenses(["notice"])
 
-pytype_strict_library(
-    name = "mingpt",
-    srcs = [
-        "mingpt.py",
-        "trainer.py",
-        "utils.py",
+torch_tpu_py_library(
+    name = "utils",
+    srcs = ["utils.py"],
+    deps = [
+        "//shims/torch:pytorch",
+        "@pypi//numpy",
     ],
+)
+
+torch_tpu_py_library(
+    name = "trainer",
+    srcs = ["trainer.py"],
+    deps = [
+        ":utils",  # build_cleaner: keep - relative import
+        "//shims/torch:pytorch",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "mingpt_lib",
+    srcs = ["mingpt.py"],
     tags = [
         # Prevent build_cleaner from adding @pypi//transformers, which is a lazy import
         # that is invisible to this package. See go/build-cleaner/customize-behavior#ignore-for-dep
@@ -42,8 +56,28 @@ pytype_strict_library(
         "ignore_for_dep=third_party.py.transformers",
     ],
     deps = [
+        ":utils",
         "//shims/torch:pytorch",
-        "@pypi//numpy",
+    ],
+)
+
+# We use py_library_providing_imports_info with mingpt.modspec.json to explicitly
+# re-export the submodules provided by :mingpt_lib, :trainer, and :utils. This prevents
+# PyStrictDeps violations at downstream use sites that import `from examples.mingpt.impl import mingpt`
+# or trainer/utils without requiring them to directly depend on the sub-targets.
+py_library_providing_imports_info(
+    name = "mingpt",
+    srcs = [
+        "__init__.py",
+    ],
+    lib_rule = torch_tpu_py_library,
+    module_specs = [
+        "mingpt.modspec.json",
+    ],
+    deps = [
+        ":mingpt_lib",
+        ":trainer",
+        ":utils",
     ],
 )
 

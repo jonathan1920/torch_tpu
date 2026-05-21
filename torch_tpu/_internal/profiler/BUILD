@@ -18,7 +18,7 @@ load(
     "torch_tpu_package_end",
     "torch_tpu_py_library",
 )
-load("//shims/py_rules:pytype.bzl", "pytype_strict_library")
+load("//shims/py_rules:strict.bzl", "py_library_providing_imports_info")
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
 package(
@@ -37,16 +37,39 @@ torch_tpu_py_library(
     ],
 )
 
-pytype_strict_library(
+# We use py_library_providing_imports_info with profiler.modspec.json to explicitly
+# re-export the submodules provided by :profiler_lib. This prevents PyStrictDeps
+# violations at downstream use sites that import `from torch_tpu._internal.profiler import profiler`
+# without requiring them to directly depend on :profiler_lib.
+py_library_providing_imports_info(
     name = "profiler",
     srcs = [
         "__init__.py",
-        "_impl.py",
-        "profiler_api.py",
+    ],
+    lib_rule = torch_tpu_py_library,
+    module_specs = [
+        "profiler.modspec.json",
     ],
     deps = [
-        ":_profiler_backend",
         ":profiler_config",
+        ":profiler_lib",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "profiler_lib",
+    srcs = ["profiler_api.py"],
+    deps = [
+        ":_impl",
+        ":_profiler_backend",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "_impl",
+    srcs = ["_impl.py"],
+    deps = [
+        ":_profiler_backend",
         "//shims/absl_py/logging",
     ],
 )
