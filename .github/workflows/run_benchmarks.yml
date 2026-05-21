@@ -29,6 +29,9 @@ jobs:
   run_benchmarks:
     name: Run TorchTPU benchmarks
     uses: google-ml-infra/actions/.github/workflows/run-benchmarks.yaml@39838909a83f01eb2d61de181ea843bb48ee9269
+    publish_metrics: true
+    pub_sub_gcp_project_id: "ml-oss-benchmarking-production"
+    pub_sub_gcp_topic_id: "private-torch-tpu-prod"
     with:
       registry_file: "examples/benchmarks/benchmark_registry.pbtxt"
       ml_actions_ref: "39838909a83f01eb2d61de181ea843bb48ee9269"
