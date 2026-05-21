@@ -22,13 +22,10 @@
 
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/flags/flag.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "torch_tpu/common/flags.h"
-#include "torch_tpu/eager/custom_split.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/safe_materialization_rule.h"
 #include "torch_tpu/eager/split_utils.h"
@@ -36,9 +33,6 @@
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 
-ABSL_FLAG(bool, torch_tpu_internal_safe_materialization_rule, true,
-          "Use a set of materialization heuristics that ensures nodes are "
-          "dropped or materialized sequentially.");
 namespace torch_tpu {
 
 absl::StatusOr<std::vector<absl_nonnull std::unique_ptr<Traversal>>>
@@ -58,13 +52,8 @@ SplitTraversal(
 
   // Here we collect a set of nodes that should be split into separate
   // traversals.
-  absl::flat_hash_set<const DeviceBufferList*> split_points;
-  if (GetFlagOnce<bool,
-                  &FLAGS_torch_tpu_internal_safe_materialization_rule>()) {
-    split_points = EnforceOrderedMaterialization(*traversal, required_outputs);
-  } else {
-    split_points = CustomSplitRule(*traversal);
-  }
+  absl::flat_hash_set<const DeviceBufferList*> split_points =
+      EnforceOrderedMaterialization(*traversal, required_outputs);
 
   ABSL_VLOG(1) << "Found " << required_outputs.size()
                << " required outputs and "

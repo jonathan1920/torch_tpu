@@ -243,63 +243,6 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
-    name = "dynamic_op_split_heuristic",
-    srcs = ["dynamic_op_split_heuristic.cc"],
-    hdrs = ["dynamic_op_split_heuristic.h"],
-    deps = [
-        ":device_buffer",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
-torch_tpu_cc_library(
-    name = "fanout_heuristic",
-    srcs = ["fanout_heuristic.cc"],
-    hdrs = ["fanout_heuristic.h"],
-    deps = [
-        ":device_buffer",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
-torch_tpu_cc_library(
-    name = "reexecution_heuristic",
-    srcs = ["reexecution_heuristic.cc"],
-    hdrs = ["reexecution_heuristic.h"],
-    deps = [
-        ":device_buffer",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log:absl_check",
-    ],
-)
-
-torch_tpu_cc_library(
-    name = "forced_split_heuristic",
-    srcs = ["forced_split_heuristic.cc"],
-    hdrs = ["forced_split_heuristic.h"],
-    deps = [
-        ":device_buffer",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
-torch_tpu_cc_library(
-    name = "stale_heuristic",
-    srcs = ["stale_heuristic.cc"],
-    hdrs = ["stale_heuristic.h"],
-    deps = [
-        ":device_buffer",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log:absl_check",
-    ],
-)
-
-torch_tpu_cc_library(
     name = "repeated_ops_heuristic",
     srcs = ["repeated_ops_heuristic.cc"],
     hdrs = ["repeated_ops_heuristic.h"],
@@ -547,16 +490,13 @@ torch_tpu_cc_library(
     srcs = ["split_traversal.cc"],
     hdrs = ["split_traversal.h"],
     deps = [
-        ":custom_split",
         ":device_buffer",
         ":safe_materialization_rule",
         ":split_utils",
         ":traversal",
         "//shims/torch:torch_headers",
-        "//torch_tpu/common:flags",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status:statusor",
@@ -798,25 +738,6 @@ torch_tpu_cc_library(
         "@tsl//tsl/platform:path",
         "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla:xla_data_proto_cc",
-    ],
-)
-
-torch_tpu_cc_library(
-    name = "custom_split",
-    srcs = ["custom_split.cc"],
-    hdrs = ["custom_split.h"],
-    deps = [
-        ":device_buffer",
-        ":dynamic_op_split_heuristic",
-        ":fanout_heuristic",
-        ":forced_split_heuristic",
-        ":reexecution_heuristic",
-        ":stale_heuristic",
-        ":traversal",
-        "//torch_tpu/common:flags",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/flags:flag",
-        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 
