@@ -32,6 +32,7 @@ torch_tpu_py_library(
     srcs = ["benchmark_utils.py"],
     deps = [
         ":device_utils",
+        "//examples/benchmarks/ops:op_capture",
         "//examples/benchmarks/quality_utils:quality_benchmark_model",
         "//shims/absl_py/flags",
         "//shims/absl_py/logging",
@@ -156,6 +157,7 @@ torch_tpu_py_test(
     ],
     deps = [
         ":model_performance_benchmarks_lib",
+        "//examples/benchmarks/ops:op_capture",
         "//torch_tpu",
     ],
 )
