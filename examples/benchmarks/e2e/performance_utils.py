@@ -346,6 +346,7 @@ def run_single_process_benchmark(
           "  first_step_time (seconds): %s\n"
           "  warmup_overhead (seconds): %s\n"
           "  average_step_time (seconds): %s\n"
+          "  average_post_warmup_device_time (seconds): %s\n"
           "  peak_device_memory (MB): %s\n"
           "  e2e_wall_time (seconds): %s\n"
           "  warmup_session_xprof_url: %s\n"
@@ -363,6 +364,7 @@ def run_single_process_benchmark(
           result.first_step_time_seconds,
           result.warmup_overhead_seconds,
           result.post_warmup_step_time_seconds,
+          result.average_post_warmup_device_time_seconds,
           result.peak_device_memory_mb,
           result.e2e_wall_time_seconds,
           result.warmup_session_xprof_url,

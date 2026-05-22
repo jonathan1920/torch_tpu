@@ -27,7 +27,6 @@ from torch_tpu._internal import sync as tpu_sync
 
 from torch_tpu._internal.shims.xprof import xprof_analysis_client
 
-
 _BYTES_IN_MB = 1024 * 1024
 
 
@@ -78,6 +77,89 @@ def _get_peak_hbm_memory_mb(
         'Failed to parse memory profile for session_id %s',
         session_id,
         exc_info=True,
+    )
+    return -1.0
+
+
+def get_max_total_device_time(
+    session_id: str | None = None,
+    client: xprof_analysis_client.XprofAnalysisClient | None = None,
+) -> float:
+  """Gets the max total device time across all devices running the model.
+
+  Args:
+    session_id: The session ID to get the profile for.
+    client: The xprof client to use.
+
+  Returns:
+    The total device active time in seconds, or None if failed or not available.
+  """
+  logging.info(
+      'get_total_device_time called with session_id=%s, client=%s',
+      session_id,
+      client,
+  )
+  if not session_id or not client:
+    logging.warning('get_total_device_time: session_id or client is None')
+    return -1.0
+
+  try:
+    logging.info('Fetching hosts for session_id=%s', session_id)
+    hosts = client.get_hosts(session_id)
+    if not hosts:
+      logging.warning('No hosts found for session_id: %s', session_id)
+      return -1.0
+
+    max_device_time_s = 0.0
+    has_any_device = False
+
+    for host in hosts:
+      logging.info(
+          'Fetching XSpace for session_id=%s, host=%s', session_id, host
+      )
+      xspace = client.get_xspace(session_id, host=host)
+      if xspace is None:
+        logging.warning('get_xspace returned None for host: %s', host)
+        continue
+
+      for plane in xspace.planes:
+        if plane.name.startswith('/device:'):
+          logging.info('Analyzing plane: %s on host: %s', plane.name, host)
+          device_time_ps = 0
+          event_count = 0
+          for line in plane.lines:
+            if line.name.startswith('XLA Modules'):
+              for e in line.events:
+                device_time_ps += e.duration_ps
+                event_count += 1
+
+          if event_count > 0:
+            device_time_s = device_time_ps / 1e12
+            logging.info(
+                'Device %s on host %s time: %.6f seconds (events=%d)',
+                plane.name,
+                host,
+                device_time_s,
+                event_count,
+            )
+            if device_time_s > max_device_time_s:
+              max_device_time_s = device_time_s
+              has_any_device = True
+
+    if not has_any_device:
+      logging.warning('No XLA Modules execution events found in any XSpace')
+      return -1.0
+
+    logging.info(
+        'Calculated max_device_time_s across all hosts: %s',
+        max_device_time_s,
+    )
+    return max_device_time_s
+
+  except Exception:  # pylint: disable=broad-except
+    logging.exception(
+        'Failed to parse device time from XSpace for session_id %s',
+        session_id,
     )
     return -1.0
 

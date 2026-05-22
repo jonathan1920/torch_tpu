@@ -259,6 +259,7 @@ class PerformanceBenchmarkResult(BenchmarkResultInterface):
   peak_device_memory_mb: float = 0.0
   warmup_session_xprof_url: str | None = None
   post_warmup_run_session_xprof_url: str | None = None
+  average_post_warmup_device_time_seconds: float = -1.0
   peak_host_compilation_memory_mb: float = 0.0
 
   def metric_map(self) -> Mapping[str, float]:
@@ -269,6 +270,9 @@ class PerformanceBenchmarkResult(BenchmarkResultInterface):
         "warmup_overhead_seconds": self.warmup_overhead_seconds,
         "post_warmup_step_time_seconds": self.post_warmup_step_time_seconds,
         "peak_device_memory_mb": self.peak_device_memory_mb,
+        "average_post_warmup_device_time_seconds": (
+            self.average_post_warmup_device_time_seconds
+        ),
         "peak_host_compilation_memory_mb": self.peak_host_compilation_memory_mb,
     }
 
@@ -325,6 +329,7 @@ class _PostWarmupRunResult:
   post_warmup_step_time_seconds: float = 0.0
   peak_device_memory_mb: float = 0.0
   post_warmup_run_session_xprof_url: str | None = None
+  average_post_warmup_device_time_seconds: float = -1.0
 
 
 class XprofContext:
@@ -583,6 +588,14 @@ def _post_warmup_run(
       device_name, xprof_context.session_id, xprof_client
   )
 
+  total_device_time = device_utils.get_max_total_device_time(
+      xprof_context.session_id, xprof_client
+  )
+
+  avg_device_time = -1.0
+  if total_device_time != -1.0:
+    avg_device_time = total_device_time / POST_WARMUP_STEPS.value
+
   logging.info("Post Warmup Timings: %s", timings)
 
   if capture_mode and capture_file_name:
@@ -596,6 +609,7 @@ def _post_warmup_run(
       post_warmup_step_time_seconds=np.mean(timings),
       peak_device_memory_mb=memory_usage,
       post_warmup_run_session_xprof_url=post_warmup_run_session_xprof_url,
+      average_post_warmup_device_time_seconds=avg_device_time,
   )
 
 

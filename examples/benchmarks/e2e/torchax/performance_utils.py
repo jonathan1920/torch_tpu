@@ -26,6 +26,7 @@ import optax
 import torch
 from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import benchmark_utils as pt_benchmark_utils
+from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import performance_utils as pt_performance_utils
 import torchax
@@ -157,6 +158,26 @@ def _call_functional_model(model_jittable, params, buffers, inputs):
   return ModelBenchmarkOutput(ModelBenchmarkOutputType.RAW, res)
 
 
+def _get_device_timings(enable_xprof, session_id) -> tuple[float, float]:
+  """Returns the total and average device timings for a given session id."""
+  xprof_client = None
+  if enable_xprof:
+    xprof_client = pt_performance_utils.get_xprof_client()
+
+  total_device_time = -1.0
+  avg_device_time = -1.0
+  if enable_xprof and xprof_client:
+    total_device_time = device_utils.get_max_total_device_time(
+        session_id, xprof_client
+    )
+    if total_device_time != -1.0:
+      avg_device_time = (
+          total_device_time / pt_benchmark_utils.POST_WARMUP_STEPS.value
+      )
+
+  return total_device_time, avg_device_time
+
+
 def _run_torchax_forward_pass(
     model_jittable: torchax.interop.JittableModule,
     inputs: Any,
@@ -222,6 +243,10 @@ def _run_torchax_forward_pass(
         f"http://xprof/?session_id={post_warmup_run_context.session_id}"
     )
 
+  total_device_time, avg_device_time = _get_device_timings(
+      enable_xprof, post_warmup_run_context.session_id
+  )
+
   eval_time = np.mean(eval_timings) if len(eval_timings) > 0 else 0.0
 
   warmup_overhead = np.sum(warmup_timings) - (eval_time * len(warmup_timings))
@@ -234,6 +259,7 @@ def _run_torchax_forward_pass(
       e2e_wall_time_seconds=time.perf_counter() - e2e_start,
       warmup_session_xprof_url=warmup_session_xprof_url,
       post_warmup_run_session_xprof_url=post_warmup_run_session_xprof_url,
+      average_post_warmup_device_time_seconds=avg_device_time,
   )
 
 
@@ -344,6 +370,10 @@ def _run_torchax_backward_pass(
         f"http://xprof/?session_id={post_warmup_run_context.session_id}"
     )
 
+  total_device_time, avg_device_time = _get_device_timings(
+      enable_xprof, post_warmup_run_context.session_id
+  )
+
   eval_time = np.mean(eval_timings) if len(eval_timings) > 0 else 0.0
 
   warmup_overhead = np.sum(warmup_timings) - (eval_time * len(warmup_timings))
@@ -356,6 +386,7 @@ def _run_torchax_backward_pass(
       e2e_wall_time_seconds=time.perf_counter() - e2e_start,
       warmup_session_xprof_url=warmup_session_xprof_url,
       post_warmup_run_session_xprof_url=post_warmup_run_session_xprof_url,
+      average_post_warmup_device_time_seconds=avg_device_time,
   )
 
 
@@ -494,6 +525,7 @@ def run_benchmark(
         "  is_training: %s\n"
         "  warmup_overhead (seconds): %s\n"
         "  average_step_time (seconds): %s\n"
+        "  average_post_warmup_device_time (seconds): %s\n"
         "  first_step_time (seconds): %s\n"
         "  e2e_wall_time (seconds): %s\n"
         "  warmup_session_xprof_url: %s\n"
@@ -505,6 +537,7 @@ def run_benchmark(
         config.is_training,
         result.warmup_overhead_seconds,
         result.post_warmup_step_time_seconds,
+        result.average_post_warmup_device_time_seconds,
         result.first_step_time_seconds,
         result.e2e_wall_time_seconds,
         result.warmup_session_xprof_url,
