@@ -1256,6 +1256,7 @@ class TorchTpuTestBase(TestCase):
       check_dtype: bool = True,
       rtol: float | None = None,
       atol: Tolerance | None = None,
+      preamble: str | None = None,
   ) -> None:
     """Asserts that the TPU result is close to the golden result.
 
@@ -1269,6 +1270,7 @@ class TorchTpuTestBase(TestCase):
       check_dtype: Check if the dtypes are the same.
       rtol: The relative tolerance for checking the values.
       atol: The absolute tolerance for checking the values.
+      preamble: Optional string to describe the objects being compared.
     """
 
     if _perf_mode():
@@ -1285,6 +1287,7 @@ class TorchTpuTestBase(TestCase):
             check_dtype=check_dtype,
             rtol=rtol,
             atol=atol,
+            preamble=preamble,
         )
       return
 
@@ -1299,7 +1302,7 @@ class TorchTpuTestBase(TestCase):
         atol=atol,
         check_value=check_value,
         check_dtype=check_dtype,
-        preamble="Comparing TorchTPU to golden result",
+        preamble=preamble or "Comparing TorchTPU to golden result",
     )
 
   # TODO: Move the failure-handling logic to util.assert_close to avoid
@@ -1817,26 +1820,22 @@ class TorchTpuTestBase(TestCase):
     for i, golden_result_i in enumerate(golden_result_tuple):
       if i in skip_output_indices:
         continue
-      try:
-        self.assert_close(
-            golden_result=golden_result_i,
-            torch_tpu_result=torch_tpu_result_tuple[i],
-            check_value=check_value[i],
-            check_dtype=check_dtype,
-            **accuracy_override,
-        )
-      except AssertionError as e:
-        e.add_note(
-            f"{torch_tpu_printable_input}\n"
-            + (
-                f"Mismatching result item: {i}\n"
-                if isinstance(torch_tpu_result, tuple)
-                else ""
-            )
-            + f"{self.golden_device_name()} result: {golden_result}\n"
-            f"TorchTPU result: {torch_tpu_result}",
-        )
-        raise
+
+      preamble_parts = []
+      preamble_parts.append(str(torch_tpu_printable_input))
+      if isinstance(torch_tpu_result, tuple):
+        preamble_parts.append(f"Mismatching result item: {i}")
+      preamble_parts.append("Comparing TorchTPU to golden result")
+      preamble = "\n".join(preamble_parts)
+
+      self.assert_close(
+          golden_result=golden_result_i,
+          torch_tpu_result=torch_tpu_result_tuple[i],
+          check_value=check_value[i],
+          check_dtype=check_dtype,
+          preamble=preamble,
+          **accuracy_override,
+      )
 
   def _sub_test(
       self,
@@ -1873,6 +1872,7 @@ class TorchTpuTestBase(TestCase):
       )
 
     torch_tpu_printable_input = _to_torch_tpu_printable_input(golden_input)
+    torch_tpu_printable_input.name = subtest_name
     if _PRINT_OP_INPUTS.value > 0:
       # TODO b/486861095
       if op.name != "normal":
