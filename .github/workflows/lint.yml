@@ -15,17 +15,7 @@
 name: "Lint checks"
 
 on:
-  # Add a workflow dispatch to enable halting for remote connections
-  # See go/ml-github-actions:connect#enable-workflow-dispatch.
   workflow_dispatch:
-    inputs:
-      halt-for-connection:
-        description: "Should this workflow run wait for a remote connection?"
-        type: choice
-        default: "no"
-        options:
-          - "yes"
-          - "no"
   pull_request:
     branches:
       - main
@@ -44,36 +34,16 @@ concurrency:
 
 jobs:
   run_tests:
-    name: "Lint check on ${{ matrix.job_info.runner }}"
-    strategy:
-      matrix:
-        job_info:
-          [
-            {
-              runner: "linux-x86-n2-16",
-              container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
-            },
-          ]
-    # Use self-hosted runners. For a Linux runner, a corresponding container
-    # image used for the workflow is required.
-    # See go/ml-github-actions/getting_started/using_runners.md#supported-runner-scale-set.
-    runs-on: ${{ matrix.job_info.runner }}
-    container:
-      image: ${{ matrix.job_info.container }}
+    name: "Lint check"
+    runs-on: ubuntu-latest
     steps:
       - name: "Check out code"
         uses: "actions/checkout@v5"
       - name: "Set up Go"
-        uses: "actions/setup-go@v5"
+        uses: "actions/setup-go@v6"
         with:
           go-version: "1.24"
-          cache: true
-      # If halting was requested, wait for remote connection
-      # See go/ml-github-actions:connect#add-waiting-step.
-      - name: "Wait For Connection"
-        uses: "google-ml-infra/actions/ci_connection@08e5394bb8179c66a50ac783fb8b2501a034c06f"
-        with:
-          halt-dispatch-input: ${{ inputs.halt-for-connection }}
+          cache: false
       - name: "Validate License Headers"
         shell: "bash"
         run: |
@@ -82,7 +52,7 @@ jobs:
         if: (success() || failure()) && github.event_name == 'pull_request'
         shell: "bash"
         run: |
-          # Fix dubious ownership issue in Actions containers
+          # Fix dubious ownership issue in Actions
           git config --global --add safe.directory '*'
 
           # Get the exact number of commits in the PR to minimize git fetch depth
