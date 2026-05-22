@@ -116,6 +116,7 @@ def model_generate(
     tokenizer: transformers.PreTrainedTokenizer,
     max_decode_steps: int,
     prefix: str = "",
+    use_static_cache: bool = False,
 ) -> tuple[str, Mapping[str, Any]]:
   """Generates text using a model with dynamic KV caching.
 
@@ -125,14 +126,44 @@ def model_generate(
     tokenizer: The tokenizer to decode the generated token IDs.
     max_decode_steps: The maximum number of decoding steps to perform.
     prefix: A prefix string to prepend to log messages.
+    use_static_cache: If True, uses pre-allocated StaticCache to prevent shape
+      recompilation.
 
   Returns:
     A tuple of (decoded text, latency metrics dictionary).
   """
+  batch_size, seq_len = initial_inputs.shape[:2]
+
   with torch.inference_mode():
+    past_key_values = None
+    if use_static_cache:
+      past_key_values = transformers.StaticCache(
+          config=model.config,
+          max_cache_len=seq_len + max_decode_steps,
+      )
+      num_heads = getattr(
+          model.config, "num_key_value_heads", model.config.num_attention_heads
+      )
+      head_dim = getattr(
+          model.config,
+          "head_dim",
+          model.config.hidden_size // model.config.num_attention_heads,
+      )
+      past_key_values.early_initialization(
+          batch_size=batch_size,
+          num_heads=num_heads,
+          head_dim=head_dim,
+          dtype=next(model.parameters()).dtype,
+          device=initial_inputs.device,
+      )
+
     with traceme.TraceMe(f"[{prefix}] Prefill"):
       start_time = time.time()
-      output = model(input_ids=initial_inputs, use_cache=True)
+      output = model(
+          input_ids=initial_inputs,
+          past_key_values=past_key_values,
+          use_cache=True,
+      )
       logits = output.logits.to("cpu")
       past_key_values = output.past_key_values
       end_time = time.time()
@@ -381,6 +412,7 @@ def _run_with_actual_weights(
           tokenizer,
           max_decode_steps,
           prefix="[CPU] ",
+          use_static_cache=False,
       )
       logging.info("output_cpu=%s", result_output)
       return result_output, {"CPU": metrics_cpu}
@@ -394,6 +426,7 @@ def _run_with_actual_weights(
           tokenizer,
           max_decode_steps,
           prefix=f"[{device.value.upper()}] ",
+          use_static_cache=False,
       )
       logging.info("output_%s=%s", device.value, output_device)
       return output_device, {device.value.upper(): metrics_device}
@@ -410,6 +443,7 @@ def _run_with_actual_weights(
           tokenizer,
           max_decode_steps,
           prefix=config.prefix,
+          use_static_cache=False,
       )
       logging.info(
           "output_%s_compiled=%s", device.value, output_device_compiled
@@ -428,6 +462,7 @@ def _run_with_actual_weights(
           tokenizer,
           max_decode_steps,
           prefix=config.prefix,
+          use_static_cache=True,
       )
       logging.info(
           "output_%s_compiled_static=%s", device.value, output_device_compiled
@@ -476,6 +511,7 @@ def _run_with_random_weights(
         tokenizer,
         max_decode_steps,
         prefix=compiled_config.prefix,
+        use_static_cache=False,
     )
     return {compiled_config.key: metrics_compiled}
 
@@ -491,6 +527,7 @@ def _run_with_random_weights(
         tokenizer,
         max_decode_steps,
         prefix=compiled_config.prefix,
+        use_static_cache=True,
     )
     return {compiled_config.key: metrics_compiled}
 
