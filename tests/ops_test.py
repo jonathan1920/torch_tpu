@@ -1968,10 +1968,8 @@ class TestOps(TorchTpuTestBase):
         # By definition, bernoulli() returns a tensor with random values, so
         # there's no point in checking the values.
         check_value=CheckValueMode.SKIP,
-        # TODO: implement bernoulli() for probability tensor argument.
-        skip_if=lambda _1, _2, op_input: isinstance(
-            op_input.input_value, torch.Tensor
-        ),
+        # GPU (CUDA) does not support complex dtypes for bernoulli.
+        exclude_dtypes=COMPLEX_DTYPES,
     )
 
   def test_bincount(self):

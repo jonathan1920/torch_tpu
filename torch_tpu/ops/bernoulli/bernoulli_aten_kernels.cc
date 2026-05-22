@@ -28,6 +28,7 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -59,7 +60,7 @@ absl::StatusOr<MlirOpResults<2>> BuildBernoulliShlo(
 
   // bernoulli = u < p
   const mlir::RankedTensorType u_type = GetTensorTypeOrDie(u);
-  p_op = mlir::stablehlo::BroadcastInDim(u_type, p_op, {});
+  TT_ASSIGN_OR_RETURN(p_op, BroadcastIfNeeded(p_op, u));
 
   // If u has a different dtype than p, cast p to the dtype of u.
   if (u_type.getElementType() != GetTensorTypeOrDie(p_op).getElementType()) {
@@ -83,7 +84,39 @@ NAryMlirOpBuilder<1, 2> GetBernoulliFloatFunctional(
   };
 }
 
+NAryMlirOpBuilder<2, 2> GetBernoulliTensorFunctional(
+    Dimensions dims, mlir::ElementType output_dtype) {
+  return [dims, output_dtype](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+             -> absl::StatusOr<MlirOpResults<2>> {
+    return BuildBernoulliShlo(inputs[0], inputs[1], dims, output_dtype);
+  };
+}
+
 }  // namespace
+
+at::Tensor& AtenBernoulliOut(const at::Tensor& self,
+                             std::optional<at::Generator> generator,
+                             at::Tensor& out) {
+  TT_KERNEL(OpName::kBernoulliOut, param_keys, (self, generator, out), {
+    if (self.numel() == 0) {
+      return out;
+    }
+
+    TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
+                       ConvertTo<mlir::ElementType>(out.scalar_type()));
+    const auto dims = CopyIntVector(self.sizes());
+    TT_THROW_IF_ERROR(
+        DispatchRngOp(out, generator, [&](at::Tensor rng_input_state) {
+          return DispatchOp<2, 2>(
+              GetBernoulliTensorFunctional(dims, output_dtype),
+              {rng_input_state, self},
+              {.out_dtypes = {mlir::ElementType::UI64, output_dtype},
+               .out_dims_list = {{2}, dims},
+               .op_param_cache_keys = std::move(param_keys)});
+        }));
+    return out;
+  });
+}
 
 at::Tensor& AtenBernoulli_Float(at::Tensor& self, double p,
                                 std::optional<at::Generator> generator) {
@@ -104,6 +137,29 @@ at::Tensor& AtenBernoulli_Float(at::Tensor& self, double p,
           return DispatchOp<1, 2>(
               GetBernoulliFloatFunctional(dims, output_dtype, p),
               {rng_input_state},
+              {.out_dtypes = {mlir::ElementType::UI64, output_dtype},
+               .out_dims_list = {{2}, dims},
+               .op_param_cache_keys = std::move(param_keys)});
+        }));
+    return self;
+  });
+}
+
+at::Tensor& AtenBernoulli_Tensor(at::Tensor& self, const at::Tensor& p,
+                                 std::optional<at::Generator> generator) {
+  TT_KERNEL(OpName::kBernoulli_Tensor, param_keys, (self, p, generator), {
+    if (self.numel() == 0) {
+      return self;
+    }
+
+    TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
+                       ConvertTo<mlir::ElementType>(self.scalar_type()));
+    const auto dims = CopyIntVector(self.sizes());
+    TT_THROW_IF_ERROR(
+        DispatchRngOp(self, generator, [&](at::Tensor rng_input_state) {
+          return DispatchOp<2, 2>(
+              GetBernoulliTensorFunctional(dims, output_dtype),
+              {rng_input_state, p},
               {.out_dtypes = {mlir::ElementType::UI64, output_dtype},
                .out_dims_list = {{2}, dims},
                .op_param_cache_keys = std::move(param_keys)});

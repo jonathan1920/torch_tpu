@@ -199,6 +199,9 @@ class RandomOpsTest(parameterized.TestCase):
       ("rand", lambda x: torch.rand(x.shape, device=x.device)),
       ("randn", lambda x: torch.randn(x.shape, device=x.device)),
       ("bernoulli", lambda x: x.bernoulli_(0.5)),
+      ("bernoulli_tensor", lambda x: x.bernoulli_(torch.full_like(x, 0.5))),
+      ("bernoulli_functional", torch.bernoulli),
+      ("bernoulli_out", lambda x: torch.bernoulli(x, out=torch.zeros_like(x))),
       ("exponential", lambda x: x.exponential_()),
   )
   def test_random_ops_compile(self, op_fn):

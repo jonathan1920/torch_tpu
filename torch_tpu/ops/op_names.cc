@@ -137,8 +137,12 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "baddbmm.dtype_out";
     case OpName::kBaddbmmOut:
       return "baddbmm.out";
+    case OpName::kBernoulliOut:
+      return "bernoulli.out";
     case OpName::kBernoulli_Float:
       return "bernoulli_.float";
+    case OpName::kBernoulli_Tensor:
+      return "bernoulli_.Tensor";
     case OpName::kBinCount:
       return "bincount";
     case OpName::kBitwiseAnd:

@@ -233,7 +233,9 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kBaddbmmDtype, AtenBaddbmmDtype);
   Impl(m, OpName::kBaddbmmDtypeOut, AtenBaddbmmDtypeOut);
   Impl(m, OpName::kBaddbmmOut, AtenBaddbmmOut);
+  Impl(m, OpName::kBernoulliOut, AtenBernoulliOut);
   Impl(m, OpName::kBernoulli_Float, AtenBernoulli_Float);
+  Impl(m, OpName::kBernoulli_Tensor, AtenBernoulli_Tensor);
   Impl(m, OpName::kBinCount, AtenBinCount);
   Impl(m, OpName::kBitwiseAndTensorOut, AtenBitwiseAndTensorOut);
   Impl(m, OpName::kBitwiseLeftShiftTensorOut, AtenBitwiseLeftShiftTensorOut);
