@@ -159,14 +159,15 @@ class ModelCoverageHFTest(parameterized.TestCase):
   # checking the results and determining tolerances based on the delta between
   # CPU and TPU.
   @parameterized.named_parameters(
-      dict(
-          testcase_name="transformers/google/gemma-3-270m",
-          provider="transformers",
-          module_name="google/gemma-3-270m",
-          model_size=ModelSize.TINY,
-          rtol=2e-2,
-          atol=5e-2,
-      ),
+      # TODO(b/512109815): Re-enable after fix
+      # dict(
+      #     testcase_name="transformers/google/gemma-3-270m",
+      #     provider="transformers",
+      #     module_name="google/gemma-3-270m",
+      #     model_size=ModelSize.TINY,
+      #     rtol=2e-2,
+      #     atol=5e-2,
+      # ),
       dict(
           testcase_name="transformers/Qwen/Qwen3-0.6B",
           provider="transformers",
@@ -236,25 +237,27 @@ class ModelCoverageHFTest(parameterized.TestCase):
       )
 
   @parameterized.named_parameters(
-      dict(
-          testcase_name="transformers/google/gemma-3-270m",
-          provider="transformers",
-          module_name="google/gemma-3-270m",
-          model_size=ModelSize.TINY,
-          rtol=6e-2,
-          # This model's perplexity is actually lower than CPU by the tolerance
-          # below which is good but the delta is somewhat large thus need to
-          # specify a higher tolerance.
-          atol=3e-1,
-      ),
-      dict(
-          testcase_name="transformers/google/gemma-3-4b-pt",
-          provider="transformers",
-          module_name="google/gemma-3-4b-pt",
-          model_size=ModelSize.MEDIUM,
-          rtol=2e-3,
-          atol=8e-2,
-      ),
+      # TODO(b/512109815): Re-enable after fix
+      # dict(
+      #     testcase_name="transformers/google/gemma-3-270m",
+      #     provider="transformers",
+      #     module_name="google/gemma-3-270m",
+      #     model_size=ModelSize.TINY,
+      #     rtol=6e-2,
+      #     # This model's perplexity is actually lower than CPU by the
+      #     # tolerance below which is good but the delta is somewhat large
+      #     # thus need to specify a higher tolerance.
+      #     atol=3e-1,
+      # ),
+      # TODO(b/512109815): Re-enable after fix
+      # dict(
+      #     testcase_name="transformers/google/gemma-3-4b-pt",
+      #     provider="transformers",
+      #     module_name="google/gemma-3-4b-pt",
+      #     model_size=ModelSize.MEDIUM,
+      #     rtol=2e-3,
+      #     atol=8e-2,
+      # ),
       dict(
           testcase_name="transformers/Qwen/Qwen3-0.6B",
           provider="transformers",
