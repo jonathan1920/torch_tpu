@@ -24,6 +24,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
+#include "ATen/WrapDimUtils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/reductions/reductions.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -84,7 +85,9 @@ mlir::MlirOp BuildProdShlo(std::optional<int64_t> dim, ReductionMode mode,
   llvm::SmallVector<int64_t> dims;
   if (dim.has_value()) {
     // If dim is provided, then reduce only the specified dimension.
-    dims.push_back(dim.value());
+    int64_t normalized_dim =
+        at::maybe_wrap_dim(*dim, rank);  // MAYBE_WRAP_DIM_OK=Verified in kernel
+    dims.push_back(normalized_dim);
   } else {
     // If dim is not provided, then reduce all dimensions.
     // This is the default behavior of torch.prod.
@@ -96,7 +99,9 @@ mlir::MlirOp BuildProdShlo(std::optional<int64_t> dim, ReductionMode mode,
                                              {init_value}, reduce_fn, dims)[0];
 
   if (dim.has_value() && mode == ReductionMode::kKeepDims) {
-    result_op = BuildKeepDimsShlo(converted_input, result_op, {dim.value()});
+    int64_t normalized_dim =
+        at::maybe_wrap_dim(*dim, rank);  // MAYBE_WRAP_DIM_OK=Verified in kernel
+    result_op = BuildKeepDimsShlo(converted_input, result_op, {normalized_dim});
   }
   return result_op;
 }

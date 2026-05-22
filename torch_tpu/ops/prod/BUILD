@@ -50,6 +50,7 @@ torch_tpu_cc_library(
     srcs = ["prod.cc"],
     hdrs = ["prod.h"],
     deps = [
+        "//shims/torch:aten_headers",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops/reductions",
         "@com_google_absl//absl/algorithm:container",
