@@ -6798,6 +6798,39 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       with self.subTest(shape=shape):
         self.assert_close_tpu_vs_cpu(compute)
 
+  def test_unique2_empty_inverse_shape_parity(self):
+    """Verifies that unique2 with empty inputs properly materializes inverse_indices.
+
+    Prior to the fix, using return_inverse=True on multidimensional empty inputs
+    (like shape [2, 0, 3]) would result in a mismatch between PyTorch's declared
+    output shape (which expects rank-3, e.g. [2, 0, 3]) and the backend's
+    internally generated zero-sized tensor (which was statically 1D [0]).
+    Although empty tensors skip host copy-to-CPU (which hides runtime errors),
+    enforcing synchronization in this test guarantees that the TPU backend
+    materialization runs and fails without the fix.
+    """
+    shapes = [(2, 0, 3), (0, 0)]
+    for shape in shapes:
+      input_value = torch.randint(0, 10, shape, dtype=torch.int32)
+
+      def compute(device, input_value=input_value):
+        device = torch.device(device)
+        res = torch._unique2(
+            input_value.to(device),
+            sorted=True,
+            return_inverse=True,
+            return_counts=True,
+        )
+        if device.type == "tpu":
+          # Force materialization and waiting of the unique2 output tensors
+          # explicitly, which catches and propagates background execution
+          # failures for empty/0-element outputs!
+          sync.synchronize(list(res), wait=True)
+        return res
+
+      with self.subTest(shape=shape):
+        self.assert_close_tpu_vs_cpu(compute)
+
   @parameterized.named_parameters(
       ops_test_data.generate_configs_for_parameterized([
           # Reduce the batch size to max 2 to avoid OOM on smaller devices.
