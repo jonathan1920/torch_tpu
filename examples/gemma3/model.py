@@ -725,7 +725,7 @@ class Gemma3DecoderLayer(nn.Module):
     hidden_states = self.post_feedforward_layernorm(hidden_states)
     hidden_states = residual + hidden_states
 
-    return (hidden_states,)
+    return hidden_states
 
 
 def _create_causal_mask(
@@ -845,7 +845,7 @@ class Gemma3TextModel(nn.Module):
     )
 
     for decoder_layer in self.layers[: self.config.num_hidden_layers]:
-      (hidden_states,) = decoder_layer(
+      hidden_states = decoder_layer(
           hidden_states,
           position_embeddings_global=position_embeddings_global,
           position_embeddings_local=position_embeddings_local,

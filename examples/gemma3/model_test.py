@@ -90,7 +90,8 @@ class TestModel(absltest.TestCase):
         torch.arange(32, device=self.device).unsqueeze(0).expand(2, 32)
     )
 
-    hf_output = hf_rope(x, position_ids)
+    # Gemma3 v5 rotary embedding requires specifying the layer type.
+    hf_output = hf_rope(x, position_ids, layer_type="full_attention")
     custom_output = custom_rope(x, position_ids)
 
     utils.assert_close(hf_output, custom_output)

@@ -471,7 +471,7 @@ torch_tpu_py_library(
         "@pypi//llama_models",
         "@pypi//numpy",
         "@pypi//timm",
-        "@pypi//transformers",
+        "@pypi//transformers",  # buildcleaner: keep
     ],
 )
 
@@ -480,6 +480,7 @@ torch_tpu_py_library(
     srcs = ["ragged_moe.py"],
     deps = [
         "//shims/torch:pytorch",
+        "@pypi//transformers",  # buildcleaner: keep
     ],
 )
 
