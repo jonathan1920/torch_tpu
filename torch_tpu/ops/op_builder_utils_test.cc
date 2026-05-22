@@ -575,7 +575,6 @@ TEST(GetNumElements, DynamicShape) {
       num_elements->getValue().getDefiningOp()));
 }
 
-namespace {
 // Helper for DynamicReshapeFromStaticDimensions tests.
 struct ReshapeTestResult {
   absl::StatusOr<mlir::MlirOp> reshaped_op;
@@ -608,7 +607,6 @@ ReshapeTestResult BuildReshapeGraph(
   }
   return {reshaped, mb.build()};
 }
-}  // namespace
 
 struct DynamicReshapeParams {
   std::string test_name;
@@ -791,7 +789,6 @@ TEST(DynamicReshapeFromStaticDimensions, ErrorNonTransposeLikeReshape) {
           "reshape reassociation not supported for same sized reshapes"));
 }
 
-namespace {
 // Helper for Broadcast tests.
 struct BroadcastTestResult {
   absl::StatusOr<mlir::MlirOp> broadcasted_op;
@@ -814,7 +811,6 @@ BroadcastTestResult BuildBroadcastGraph(
   }
   return {broadcasted, mb.build()};
 }
-}  // namespace
 
 struct BroadcastParams {
   std::string test_name;
@@ -881,7 +877,6 @@ TEST(BroadcastTest, InvalidRank) {
               testing::HasSubstr("must not be more than output rank"));
 }
 
-namespace {
 // Helper for DynamicBroadcast tests.
 struct DynamicBroadcastTestResult {
   absl::StatusOr<mlir::MlirOp> broadcasted_op;
@@ -913,7 +908,6 @@ DynamicBroadcastTestResult BuildDynamicBroadcastGraph(
   }
   return {broadcasted, mb.build()};
 }
-}  // namespace
 
 struct DynamicBroadcastParams {
   std::string test_name;
