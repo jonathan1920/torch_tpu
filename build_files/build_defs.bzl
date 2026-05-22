@@ -935,6 +935,9 @@ def _define_cpp_filegroup(name):
             "**/*.h",
         ]),
         visibility = ["//:__subpackages__"],
+        # The no-ide tag prevents IDEs from associating source files with this
+        # helper filegroup instead of their actual test/library targets.
+        tags = ["no-ide"],
     )
     native.filegroup(
         name = name,
@@ -942,6 +945,8 @@ def _define_cpp_filegroup(name):
             name = name,
         ),
         visibility = ["//:__subpackages__"],
+        # See the comment on no-ide above.
+        tags = ["no-ide"],
     )
 
 def _define_py_filegroup(name):
@@ -961,6 +966,8 @@ def _define_py_filegroup(name):
         name = "all_py_files",
         srcs = native.glob(["**/*.py"]),
         visibility = ["//visibility:public"],
+        # See the comment on no-ide above.
+        tags = ["no-ide"],
     )
     native.filegroup(
         name = name,
@@ -968,6 +975,8 @@ def _define_py_filegroup(name):
             name = name,
         ),
         visibility = ["//visibility:public"],
+        # See the comment on no-ide above.
+        tags = ["no-ide"],
     )
 
 # buildifier: disable=unnamed-macro
