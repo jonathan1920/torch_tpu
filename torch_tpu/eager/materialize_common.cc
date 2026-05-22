@@ -143,9 +143,7 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
 
   // Start compiling the traversal.
   ABSL_VLOG(1) << "[ExecutionTask] Compiling traversal";
-  auto compilation_mode = (GetEagerMode() == EagerMode::kDeferAndFuse)
-                              ? CompilationMode::kFastRuntime
-                              : CompilationMode::kFastCompile;
+  auto compilation_mode = GetCompilationMode(GetEagerMode());
   absl::StatusOr<CompiledKernel> compiled_kernel;
   {
     tsl::profiler::TraceMe t("CompileTraversal");
@@ -471,4 +469,16 @@ absl::Status ExecutionTask::Run() {
   }
   return status;
 }
+
+CompilationMode GetCompilationMode(EagerMode eager_mode) {
+  switch (eager_mode) {
+    case EagerMode::kInternalDeferAll:
+    case EagerMode::kDeferAndFuse:
+      return CompilationMode::kFastRuntime;
+    case EagerMode::kDeferNever:
+    case EagerMode::kDeferNeverAndLaunchBlocking:
+      return CompilationMode::kFastCompile;
+  };
+}
+
 }  // namespace torch_tpu

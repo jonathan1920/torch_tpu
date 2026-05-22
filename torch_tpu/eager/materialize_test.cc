@@ -27,9 +27,12 @@
 #include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation_cache.h"
+#include "torch_tpu/common/compilation_spec.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/materialize_common.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/tpu_hooks.h"
@@ -207,6 +210,17 @@ TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
   // e is not materialized because it was dispatched after the last required
   // node (d).
   EXPECT_EQ(ref_e.state(), DeviceBufferRefState::kDeferred);
+}
+
+TEST(MaterializeCommonTest, GetCompilationMode) {
+  EXPECT_EQ(GetCompilationMode(EagerMode::kInternalDeferAll),
+            CompilationMode::kFastRuntime);
+  EXPECT_EQ(GetCompilationMode(EagerMode::kDeferAndFuse),
+            CompilationMode::kFastRuntime);
+  EXPECT_EQ(GetCompilationMode(EagerMode::kDeferNever),
+            CompilationMode::kFastCompile);
+  EXPECT_EQ(GetCompilationMode(EagerMode::kDeferNeverAndLaunchBlocking),
+            CompilationMode::kFastCompile);
 }
 
 }  // namespace

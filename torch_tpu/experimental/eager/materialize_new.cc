@@ -486,9 +486,7 @@ absl::Status MaterializationWorker::MaterializeQueue(
   const auto num_regions = regions.size();
 
   // Launch compilations for the identified regions.
-  auto compilation_mode = (GetEagerMode() == EagerMode::kDeferAndFuse)
-                              ? CompilationMode::kFastRuntime
-                              : CompilationMode::kFastCompile;
+  auto compilation_mode = GetCompilationMode(GetEagerMode());
 
   std::vector<ExecutionTask> execution_tasks;
   execution_tasks.reserve(num_regions);

@@ -133,6 +133,8 @@ class ExecutionTask {
   [[maybe_unused]] MaterializationReason reason_;
 };
 
+CompilationMode GetCompilationMode(EagerMode eager_mode);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_EAGER_MATERIALIZE_COMMON_H_
