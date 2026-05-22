@@ -50,11 +50,13 @@
 #include "mlir/IR/MLIRContext.h"
 #include "ATen/core/TensorBody.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize_common.h"
 #include "torch_tpu/eager/split_traversal.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
@@ -72,14 +74,6 @@ ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 namespace torch_tpu {
 namespace {
 
-absl_nonnull std::unique_ptr<mlir::MLIRContext> MakeMlirContext() {
-  auto context = std::make_unique<mlir::MLIRContext>();
-  mlir::DialectRegistry registry;
-  xla::RegisterMlirToHloDependentDialects(registry);
-  context->appendDialectRegistry(registry);
-  context->loadAllAvailableDialects();
-  return context;
-}
 struct MaterializationTask {
   std::vector<SharedDeviceBufferList> nodes_to_materialize;
   xla::Promise<void> completion_promise;
@@ -304,7 +298,7 @@ class MaterializationWorker {
       }
 
       auto execution_task_or = ExecutionTask::FromTraversal(
-          std::move(split_traversal), task.reason, &mlir_context,
+          std::move(split_traversal), mlir_context, task.reason,
           event ? &captured_mlir : nullptr);
 
       if (event) {
@@ -441,7 +435,11 @@ absl::Status MaterializeImpl(
 
   if (GetFlagOnce<bool,
                   &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
-    return MaterializeImplNew(nodes_to_materialize, reason);
+    TT_RETURN_IF_ERROR(MaterializeImplNew(nodes_to_materialize, reason));
+    if (GetEagerMode() == EagerMode::kDeferNeverAndLaunchBlocking) {
+      TT_RETURN_IF_ERROR(BlockOnPendingMaterializations());
+    }
+    return absl::OkStatus();
   }
 
   ABSL_VLOG(1) << "[MaterializeImpl] Materializing "

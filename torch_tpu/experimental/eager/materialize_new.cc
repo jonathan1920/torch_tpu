@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
@@ -38,6 +39,8 @@
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "mlir/IR/MLIRContext.h"
+#include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/error_utils.h"
@@ -140,7 +143,7 @@ class MaterializationWorker {
   absl::Status MaterializeQueue(
       const std::vector<SharedDeviceBufferList>& queue,
       const std::vector<SharedDeviceBufferList>& nodes_to_materialize,
-      MaterializationReason reason);
+      MaterializationReason reason, mlir::MLIRContext& mlir_context);
 };
 
 absl::Status MaterializationWorker::OnNewOpDispatch(
@@ -236,6 +239,8 @@ void MaterializationWorker::Exit() {
 
 void MaterializationWorker::ThreadLoop() {
   ABSL_VLOG(1) << ">>> MaterializationWorker::ThreadLoop";
+  absl_nonnull std::unique_ptr<mlir::MLIRContext> mlir_context =
+      MakeMlirContext();
   while (true) {
     int current_execution_id;
     std::vector<SharedDeviceBufferList> current_queue;
@@ -262,8 +267,8 @@ void MaterializationWorker::ThreadLoop() {
     }
 
     // Materialize the claimed queue without holding the mutex.
-    absl::Status status =
-        MaterializeQueue(current_queue, nodes_to_materialize, current_reason);
+    absl::Status status = MaterializeQueue(current_queue, nodes_to_materialize,
+                                           current_reason, *mlir_context);
 
     {
       absl::MutexLock lock(mutex_);
@@ -425,17 +430,55 @@ std::string ToString(const std::vector<SharedDeviceBufferList>& v) {
 absl::Status MaterializationWorker::MaterializeQueue(
     const std::vector<SharedDeviceBufferList>& queue,
     const std::vector<SharedDeviceBufferList>& nodes_to_materialize,
-    MaterializationReason reason) {
+    MaterializationReason reason, mlir::MLIRContext& mlir_context) {
   tsl::profiler::TraceMe t("Worker_MaterializeQueue");
 
+  // Under concurrent multi-threaded eager dispatch, a deferred operation could
+  // have already been compiled and materialized on device by an earlier
+  // background task (since queue dispatch is non-blocking on the Python
+  // thread). We dynamically filter out already materialized nodes (where
+  // deferred_op() is null) to prevent redundant execution and avoid
+  // DeviceBufferList state conflicts.
+  std::vector<SharedDeviceBufferList> filtered_queue;
+  filtered_queue.reserve(queue.size());
+  for (const auto& node : queue) {
+    if (node->deferred_op() != nullptr) {
+      filtered_queue.push_back(node);
+    }
+  }
+
+  std::vector<SharedDeviceBufferList> filtered_nodes_to_materialize;
+  filtered_nodes_to_materialize.reserve(nodes_to_materialize.size());
+  for (const auto& node : nodes_to_materialize) {
+    if (node->deferred_op() != nullptr) {
+      filtered_nodes_to_materialize.push_back(node);
+    }
+  }
+
+  ABSL_VLOG(1)
+      << ">>> MaterializationWorker::MaterializeQueue filtered queue size "
+      << filtered_queue.size() << " (original: " << queue.size() << ")";
+
+  ABSL_VLOG(1) << "Queue: " << ToString(filtered_queue);
+  ABSL_VLOG(1) << "Nodes to Materialize: "
+               << ToString(filtered_nodes_to_materialize);
+
+  if (filtered_queue.empty() && filtered_nodes_to_materialize.empty()) {
+    ABSL_VLOG(1) << "[MaterializationWorker] All nodes are already "
+                    "materialized, skipping queue.";
+    return absl::OkStatus();
+  }
+
   ABSL_VLOG(1) << ">>> MaterializationWorker::MaterializeQueue "
-               << queue.size();
+               << filtered_queue.size();
 
-  ABSL_VLOG(1) << "Queue: " << ToString(queue);
-  ABSL_VLOG(1) << "Nodes to Materialize: " << ToString(nodes_to_materialize);
+  ABSL_VLOG(1) << "Queue: " << ToString(filtered_queue);
+  ABSL_VLOG(1) << "Nodes to Materialize: "
+               << ToString(filtered_nodes_to_materialize);
 
-  TT_ASSIGN_OR_RETURN(std::vector<SharedDeviceBufferList> execution_order,
-                      ExtractExecutionOrder(queue, nodes_to_materialize));
+  TT_ASSIGN_OR_RETURN(
+      std::vector<SharedDeviceBufferList> execution_order,
+      ExtractExecutionOrder(filtered_queue, filtered_nodes_to_materialize));
 
   ABSL_VLOG(1) << "Execution Order: " << ToString(execution_order);
 
@@ -527,9 +570,10 @@ absl::Status MaterializationWorker::MaterializeQueue(
       continue;
     }
     ABSL_VLOG(1) << "==== TRAVERSAL ===\n" << traversal->DebugString();
-    // TODO(cbasile): support bounded dynamism, requires an MLIR context
-    TT_ASSIGN_OR_RETURN(auto execution_task, ExecutionTask::FromTraversal(
-                                                 std::move(traversal), reason));
+    // Supported bounded dynamism using the passed mlir_context.
+    TT_ASSIGN_OR_RETURN(auto execution_task,
+                        ExecutionTask::FromTraversal(std::move(traversal),
+                                                     mlir_context, reason));
     execution_tasks.push_back(std::move(execution_task));
   }
 

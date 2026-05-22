@@ -352,6 +352,7 @@ torch_tpu_cc_library(
     ],
     deps = [
         ":device_buffer",
+        ":eager_mode",
         ":materialize_common",
         ":split_traversal",
         ":structured_log_buffer",
@@ -360,6 +361,7 @@ torch_tpu_cc_library(
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//torch_tpu/common:compilation",
+        "//torch_tpu/common:context_states",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:flags",

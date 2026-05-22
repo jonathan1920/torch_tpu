@@ -87,13 +87,11 @@ absl::Status PropagateBoundedDynamism(Traversal& traversal,
 
 absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
     absl_nonnull std::unique_ptr<Traversal> traversal,
-    MaterializationReason reason, mlir::MLIRContext* absl_nullable mlir_context,
+    mlir::MLIRContext& mlir_context, MaterializationReason reason,
     std::string* absl_nullable out_mlir_text) {
   // Propagate bounded dynamism annotations if needed.
   if (traversal->IsBoundedDynamic()) {
-    TT_RET_CHECK(mlir_context != nullptr, error::kInvalidArgument)
-        << "mlir_context is required for bounded dynamic traversals";
-    TT_RETURN_IF_ERROR(PropagateBoundedDynamism(*traversal, *mlir_context));
+    TT_RETURN_IF_ERROR(PropagateBoundedDynamism(*traversal, mlir_context));
   }
 
   // Start compiling the traversal.

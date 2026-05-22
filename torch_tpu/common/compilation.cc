@@ -90,14 +90,6 @@ enum class ExcessPrecisionState {
   kDisallow,
 };
 
-absl_nonnull std::unique_ptr<mlir::MLIRContext> MakeMlirContext() {
-  auto context = std::make_unique<mlir::MLIRContext>();
-  mlir::DialectRegistry registry;
-  xla::RegisterMlirToHloDependentDialects(registry);
-  context->appendDialectRegistry(registry);
-  context->loadAllAvailableDialects();
-  return context;
-}
 
 // Returns the cached default `xla::ExecutableBuildOptions` instance. This
 // function is memoized, so the XLA_FLAGS environment variable is parsed exactly
@@ -114,6 +106,15 @@ const xla::ExecutableBuildOptions& GetDefaultExecutableBuildOptions() {
 }
 
 }  // namespace
+
+absl_nonnull std::unique_ptr<mlir::MLIRContext> MakeMlirContext() {
+  auto context = std::make_unique<mlir::MLIRContext>();
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  context->appendDialectRegistry(registry);
+  context->loadAllAvailableDialects();
+  return context;
+}
 
 ContextedModule::ContextedModule(std::unique_ptr<mlir::MLIRContext> context,
                                  mlir::OwningOpRef<mlir::ModuleOp> module)

@@ -149,6 +149,9 @@ absl::StatusOr<LoadedExecutableBuilder>
 MlirComputationBuilderToExecutableBuilder(
     const MlirComputationBuilder& computation_builder);
 
+// Creates an MLIR context and registers all required TPU dialects.
+absl_nonnull std::unique_ptr<mlir::MLIRContext> MakeMlirContext();
+
 // Synchronously compiles a program, without any cache behavior.
 absl::StatusOr<SharedLoadedExecutableWithMetadata> Compile(
     xla::PjRtClient& client, LoadedExecutableBuilder executable_builder,

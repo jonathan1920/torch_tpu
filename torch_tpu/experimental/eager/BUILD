@@ -25,6 +25,7 @@ torch_tpu_cc_library(
     hdrs = ["materialize_new.h"],
     deps = [
         "//shims/torch:torch_headers",
+        "//torch_tpu/common:compilation",
         "//torch_tpu/common:compilation_spec",
         "//torch_tpu/common:context_states",
         "//torch_tpu/common:error_utils",
@@ -35,6 +36,7 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:traversal",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log",
@@ -44,6 +46,7 @@ torch_tpu_cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
         "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla:xla_data_proto_cc",
     ],
