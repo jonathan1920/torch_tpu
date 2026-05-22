@@ -936,6 +936,21 @@ class ModuleTest(absltest.TestCase):
     tpu_compiled_result = _backend.to_device(compiled(*inputs_tpu), "cpu")
     utils.assert_close(tpu_compiled_result, cpu_result, rtol=1e-2, atol=1e-3)
 
+  def test_geqrf_empty(self):
+    # geqrf under torch.compile with empty inputs is not tested in the standard
+    # ops_test_tpu_vs_gpu_compiled target because the GPU golden files lack
+    # geqrf samples. This test provides explicit compile-mode coverage for
+    # geqrf with empty inputs.
+    class GeqrfModule(torch.nn.Module):
+
+      def forward(self, x):
+        return torch.geqrf(x)
+
+    for shape in [(4, 0), (0, 4), (0, 0)]:
+      with self.subTest(shape=shape):
+        inputs = [torch.randn(shape)]
+        self._run_and_compare(GeqrfModule, inputs)
+
 
 if __name__ == "__main__":
   absltest.main()

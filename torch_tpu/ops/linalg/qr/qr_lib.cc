@@ -182,6 +182,20 @@ absl::StatusOr<MlirOpResults<2>> BuildGeqrfShlo(mlir::MlirOp input) {
   const auto tau_type =
       mlir::RankedTensorType::get(tau_dims, a_type.getElementType());
 
+  mlir::MlirBuilder& builder = input.getBuilder();
+
+  // Empty case: return zero matrix for a and zero vector for tau.
+  // Bypassing the custom call prevents unnecessary backend overhead and avoids
+  // potential codegen issues for empty tensor FFI parameters.
+  if (m == 0 || n == 0) {
+    TT_ASSIGN_OR_RETURN(const mlir::ElementType element_type,
+                        GetElementType(input));
+    mlir::MlirOp zero_sized = MakeZeroSizedTensor(builder, element_type);
+    mlir::MlirOp a = mlir::stablehlo::Reshape(zero_sized, a_shape);
+    mlir::MlirOp tau = mlir::stablehlo::Reshape(zero_sized, tau_dims);
+    return {{a, tau}};
+  }
+
   return BuildGeqrfCustomCallOp(input, /*out_a_type=*/a_type, tau_type);
 }
 
