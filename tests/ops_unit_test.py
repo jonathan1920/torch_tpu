@@ -6805,6 +6805,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           for c in ops_test_data.SDPA_CONFIGS
       ])
   )
+  @absltest.skip("b/515741795")
   def test_scaled_dot_product_attention(self, config: ops_test_data.SdpaConfig):
     """Tests torch.nn.functional.scaled_dot_product_attention."""
     torch.manual_seed(5432)

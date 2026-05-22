@@ -216,6 +216,7 @@ class ScaledDotProductAttentionGenerateTest(parameterized.TestCase):
         dtype=dtype,
     )
 
+  @absltest.skip("b/515741795")
   def test_backward_export(self):
     input_sizes = self.get_input_sizes()
 

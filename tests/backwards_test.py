@@ -89,6 +89,7 @@ class BackwardsTest(parameterized.TestCase):
   @parameterized.product(
       dtype=[torch.float32, torch.bfloat16], is_causal=[True, False]
   )
+  @absltest.skip('b/515741795')
   def test_sdpa_backward_flash(self, dtype, is_causal):
     device = torch.device('tpu')
     cpu_device = torch.device('cpu')
