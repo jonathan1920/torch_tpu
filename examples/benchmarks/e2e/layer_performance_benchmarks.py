@@ -49,6 +49,9 @@ _BERT_OUTPUT_BENCHMARK_NAME = "bert_output"
 _BERT_POOLER_BENCHMARK_NAME = "bert_pooler"
 _BERT_EMBEDDINGS_BENCHMARK_NAME = "bert_embeddings"
 _SILU_ACTIVATION_BENCHMARK_NAME = "silu_activation"
+_GLU_LAYER_BENCHMARK_NAME = "glu"
+_CONV1D_LAYER_BENCHMARK_NAME = "conv1d"
+_MULTIHEAD_ATTENTION_LAYER_BENCHMARK_NAME = "multihead_attention"
 _QWEN3_ATTENTION_BENCHMARK_NAME = "qwen3_attention"
 _QWEN3_RMSNORM_BENCHMARK_NAME = "qwen3_rms_norm"
 _QWEN3_MLP_BENCHMARK_NAME = "qwen3_mlp"
@@ -155,6 +158,7 @@ _DYNAMIC_SKIPS = {
     "nn.LayerNorm": "LayerNorm dynamic input generation not yet updated.",
     "nn.Conv2d": "Conv2d dynamic input generation not yet updated.",
     "nn.Tanh": "Tanh dynamic input generation not yet updated.",
+    "nn.GLU": "GLU dynamic input generation not yet updated.",
     "BertPooler": "BertPooler dynamic input generation not yet updated.",
     "BertEmbeddings": (
         "BertEmbeddings dynamic input generation not yet updated."
@@ -763,6 +767,36 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
+          _ALL_RUN_MODES, (True, False), layer_configs.GLU_CONFIGS
+      )
+  )
+  def test_glu(self, run_mode, is_training, layer_config):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nn.GLU",
+            batch_size=layer_config.batch_size,
+            sequence_length=layer_config.seq_len,
+            custom_kwargs={
+                "shape": layer_config.shape,
+                "dim": layer_config.dim,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _GLU_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
           _ALL_RUN_MODES, (False,), layer_configs.QWEN3_CONFIGS
       )
   )
@@ -1351,6 +1385,78 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
     self.run_performance_benchmark_test(
         config, _RELU_TIMM_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          (benchmark_utils.RunMode.COMPILED,),
+          (False,),
+          layer_configs.CONV1D_CONFIGS,
+      )
+  )
+  def test_conv1d(self, run_mode, is_training, layer_config):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nn.Conv1d",
+            batch_size=layer_config.batch_size,
+            sequence_length=layer_config.seq_len,
+            custom_kwargs={
+                "in_channels": layer_config.in_channels,
+                "out_channels": layer_config.out_channels,
+                "kernel_size": layer_config.kernel_size,
+                "stride": layer_config.stride,
+                "padding": layer_config.padding,
+                "dilation": layer_config.dilation,
+                "groups": layer_config.groups,
+                "bias": layer_config.bias,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _CONV1D_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          (benchmark_utils.RunMode.COMPILED,),
+          (False,),
+          layer_configs.MULTIHEAD_ATTENTION_CONFIGS,
+      )
+  )
+  def test_multihead_attention(self, run_mode, is_training, layer_config):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nn.MultiheadAttention",
+            batch_size=layer_config.batch_size,
+            sequence_length=layer_config.seq_len,
+            custom_kwargs={
+                "embed_dim": layer_config.embed_dim,
+                "num_heads": layer_config.num_heads,
+                "dropout": layer_config.dropout,
+                "bias": layer_config.bias,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _MULTIHEAD_ATTENTION_LAYER_BENCHMARK_NAME, microbenchmark_name
     )
 
 

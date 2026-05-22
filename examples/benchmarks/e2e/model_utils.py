@@ -806,6 +806,136 @@ def ml_layer_model_builder(
         dtype=weights_dtype,
         device=device,
     )
+  elif model_name == "nn.GLU":
+    dim = kwargs.get("dim", -1)
+    shape = kwargs["shape"]
+    num_features = shape[-1]
+
+    class GLUModel(torch.nn.Module):
+
+      def __init__(self, dim, features, is_training, dtype):
+        super().__init__()
+        self.dim = dim
+        self.is_training = is_training
+        if is_training:
+          self.linear = torch.nn.Linear(features, features, dtype=dtype)
+
+      def forward(self, x):
+        if self.is_training:
+          x = self.linear(x)
+        return torch.nn.functional.glu(x, dim=self.dim)
+
+    model = GLUModel(dim, num_features, is_training, dtype=weights_dtype)
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: torch.randn(
+            (bs, seq, num_features),
+            dtype=weights_dtype,
+            device=device,
+        ),
+    )
+  elif model_name == "nn.Conv1d":
+    in_channels = kwargs["in_channels"]
+    out_channels = kwargs["out_channels"]
+    kernel_size = kwargs["kernel_size"]
+    stride = kwargs.get("stride", 1)
+    padding = kwargs.get("padding", 0)
+    dilation = kwargs.get("dilation", 1)
+    groups = kwargs.get("groups", 1)
+    bias = kwargs.get("bias", True)
+
+    class Conv1dModel(torch.nn.Module):
+
+      def __init__(
+          self,
+          in_channels,
+          out_channels,
+          kernel_size,
+          stride,
+          padding,
+          dilation,
+          groups,
+          bias,
+          dtype,
+      ):
+        super().__init__()
+        self.conv = torch.nn.Conv1d(
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=groups,
+            bias=bias,
+            dtype=dtype,
+        )
+
+      def forward(self, x):
+        return self.conv(x)
+
+    model = Conv1dModel(
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        groups,
+        bias,
+        dtype=weights_dtype,
+    )
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: torch.randn(
+            (bs, in_channels, seq),
+            dtype=weights_dtype,
+            device=device,
+        ),
+    )
+  elif model_name == "nn.MultiheadAttention":
+    embed_dim = kwargs["embed_dim"]
+    num_heads = kwargs["num_heads"]
+    dropout = kwargs.get("dropout", 0.0)
+    bias = kwargs.get("bias", True)
+
+    class MultiheadAttentionModel(torch.nn.Module):
+
+      def __init__(self, embed_dim, num_heads, dropout, bias, dtype):
+        super().__init__()
+        self.mha = torch.nn.MultiheadAttention(
+            embed_dim,
+            num_heads,
+            dropout=dropout,
+            bias=bias,
+            dtype=dtype,
+        )
+
+      def forward(self, query, key, value, key_padding_mask=None):
+        return self.mha(
+            query,
+            key,
+            value,
+            key_padding_mask=key_padding_mask,
+            need_weights=False,
+        )[0]
+
+    model = MultiheadAttentionModel(
+        embed_dim, num_heads, dropout, bias, dtype=weights_dtype
+    )
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: (
+            torch.randn(seq, bs, embed_dim, dtype=weights_dtype, device=device),
+            torch.randn(seq, bs, embed_dim, dtype=weights_dtype, device=device),
+            torch.randn(seq, bs, embed_dim, dtype=weights_dtype, device=device),
+            None,
+        ),
+    )
+
   elif model_name == "SelectAdaptivePool2d":
     import timm.layers
 

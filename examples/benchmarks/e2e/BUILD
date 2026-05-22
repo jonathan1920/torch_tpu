@@ -527,7 +527,7 @@ torch_tpu_py_test(
     main = "layer_performance_benchmarks.py",
     notap = "disabled until dynamic shape support is added.",
     notest_oss = "disabled until dynamic shape support is added",
-    shard_count = 8,
+    shard_count = 50,
     strict = True,
     tags = [
         "cpu:4",

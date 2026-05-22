@@ -129,6 +129,25 @@ LINEAR_CONFIGS = (
         in_features=3072,
         out_features=768,
     ),
+    # Conformer configs
+    LinearConfig(
+        batch_size=32,
+        seq_len=128,
+        in_features=512,
+        out_features=2048,
+    ),
+    LinearConfig(
+        batch_size=32,
+        seq_len=128,
+        in_features=2048,
+        out_features=512,
+    ),
+    LinearConfig(
+        batch_size=32,
+        seq_len=128,
+        in_features=512,
+        out_features=512,
+    ),
 )
 
 LINEAR_TIMM_CONFIGS = (
@@ -161,6 +180,12 @@ BATCH_NORM_CONFIGS = (
         batch_size=2056,
         seq_len=512,
         num_features=1024,
+    ),
+    # Conformer config
+    BatchNormConfig(
+        batch_size=32,
+        seq_len=128,
+        num_features=512,
     ),
 )
 
@@ -960,6 +985,19 @@ DROPOUT_CONFIGS = (
         p=0.1,
         shape=(32, 128, 768),
     ),
+    # Conformer configs
+    DropoutConfig(
+        p=0.1,
+        shape=(128, 32, 2048),
+    ),
+    DropoutConfig(
+        p=0.1,
+        shape=(128, 32, 512),
+    ),
+    DropoutConfig(
+        p=0.1,
+        shape=(32, 512, 128),
+    ),
 )
 
 
@@ -1004,7 +1042,40 @@ class SiLUConfig:
   shape: tuple[int, ...] = (1, 128, 512)
 
 
-SILU_CONFIGS = (SiLUConfig(batch_size=1, seq_len=128),)
+SILU_CONFIGS = (
+    SiLUConfig(batch_size=1, seq_len=128),
+    # Conformer configs
+    SiLUConfig(
+        batch_size=32,
+        seq_len=128,
+        shape=(128, 32, 2048),
+    ),
+    SiLUConfig(
+        batch_size=32,
+        seq_len=128,
+        shape=(32, 512, 128),
+    ),
+)
+
+
+@dataclasses.dataclass
+class GluConfig:
+  batch_size: int
+  seq_len: int
+  shape: tuple[int, ...] = (1, 128, 512)
+  dim: int = -1
+
+
+GLU_CONFIGS = (
+    GluConfig(batch_size=1, seq_len=128),
+    # Conformer config
+    GluConfig(
+        batch_size=32,
+        seq_len=128,
+        shape=(32, 1024, 128),
+        dim=1,
+    ),
+)
 
 
 @dataclasses.dataclass
@@ -1026,3 +1097,57 @@ class DeepSeekConfig:
 
 
 DEEPSEEK_CONFIGS = (DeepSeekConfig(batch_size=1, seq_len=128),)
+
+
+@dataclasses.dataclass
+class Conv1dConfig:
+  batch_size: int
+  seq_len: int
+  in_channels: int
+  out_channels: int
+  kernel_size: int
+  stride: int = 1
+  padding: int = 0
+  dilation: int = 1
+  groups: int = 1
+  bias: bool = True
+
+
+CONV1D_CONFIGS = (
+    Conv1dConfig(
+        batch_size=32,
+        seq_len=128,
+        in_channels=512,
+        out_channels=1024,
+        kernel_size=1,
+    ),
+    Conv1dConfig(
+        batch_size=32,
+        seq_len=128,
+        in_channels=512,
+        out_channels=512,
+        kernel_size=31,
+        padding=15,
+        groups=512,
+    ),
+)
+
+
+@dataclasses.dataclass
+class MultiheadAttentionConfig:
+  batch_size: int
+  seq_len: int
+  embed_dim: int
+  num_heads: int
+  dropout: float = 0.0
+  bias: bool = True
+
+
+MULTIHEAD_ATTENTION_CONFIGS = (
+    MultiheadAttentionConfig(
+        batch_size=32,
+        seq_len=128,
+        embed_dim=512,
+        num_heads=8,
+    ),
+)
