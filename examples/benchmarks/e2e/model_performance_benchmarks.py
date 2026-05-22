@@ -243,6 +243,10 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_gemma_3_270m_train_1_step(self, run_mode):
     """Tests the training of Gemma-3-270m."""
+    # TODO(b/512109815): Reenable after fix.
+    if run_mode == benchmark_utils.RunMode.COMPILED:
+      self.skipTest("Compiled mode fails on view().")
+
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,

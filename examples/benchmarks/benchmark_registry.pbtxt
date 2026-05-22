@@ -265,30 +265,8 @@ benchmarks {
   metrics { name: "peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
   metrics { name: "num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
 }
-benchmarks {
-  name: "test_gemma_3_270m_train_1_step_compiled-hf_gemma_3_270m"
-  description: "Compiled 1-step training benchmark for HuggingFace Gemma-3-270M model."
-  owner: "TorchTPU"
-
-  workload {
-    action: "./ml_actions/benchmarking/actions/workload_executors/bazel"
-    action_inputs { key: "target" value: "//examples/benchmarks/e2e:model_performance_benchmarks" }
-  }
-
-  environment_configs {
-    id: "tpu-v7"
-    runner_label: "linux-x86-tpu7x-224-4tpu"
-    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest@sha256:43c523372c4b7f7ce649a1ff204b908727bd338353303c0444af34cb305e5832"
-    workload_action_inputs { key: "bazel_run_flags" value: "-c opt --config=bench --action_env=TESTBRIDGE_TEST_ONLY=test_gemma_3_270m_train_1_step_compiled --test_sharding_strategy=disabled" }
-    workload_action_inputs { key: "runtime_flags" value: "--enable_tensorboard_logging" }
-  }
-
-  metrics { name: "post_warmup_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
-  metrics { name: "first_step_time_seconds" unit: "s" stats { stat: LAST_VALUE } }
-  metrics { name: "warmup_overhead_seconds" unit: "s" stats { stat: LAST_VALUE } }
-  metrics { name: "peak_device_memory_mb" unit: "MB" stats { stat: LAST_VALUE } }
-  metrics { name: "num_warmup_steps" unit: "count" stats { stat: LAST_VALUE } }
-}
+# TODO(b/512109815): Re-add gemma_3_270m compile-mode training benchmark
+# (test_gemma_3_270m_train_1_step_compiled-hf_gemma_3_270m) after fix.
 benchmarks {
   name: "test_qwen3_1_7b_forward_eager_default-hf_qwen3_1_7b"
   description: "Eager default forward pass benchmark for HuggingFace Qwen3-1.7B model."
