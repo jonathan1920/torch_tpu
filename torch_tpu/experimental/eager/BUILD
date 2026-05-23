@@ -32,6 +32,7 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:eager_mode",
         "//torch_tpu/eager:materialize_common",
+        "//torch_tpu/eager:split_traversal",
         "//torch_tpu/eager:structured_log_buffer",
         "//torch_tpu/eager:traversal",
         "@com_google_absl//absl/base:core_headers",

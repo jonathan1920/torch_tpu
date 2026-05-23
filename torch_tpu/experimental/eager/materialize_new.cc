@@ -47,6 +47,7 @@
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize_common.h"
+#include "torch_tpu/eager/split_traversal.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/traversal.h"
 #include "xla/xla_data.pb.h"
@@ -349,7 +350,7 @@ MaterializationWorker::SplitQueueIntoRegions(
   return split_regions;
 }
 
-absl::StatusOr<std::vector<SharedDeviceBufferList>> ExtractExecutionOrder(
+absl::StatusOr<std::unique_ptr<Traversal>> ExtractTraversal(
     const std::vector<SharedDeviceBufferList>& queue,
     const std::vector<SharedDeviceBufferList>& nodes_to_materialize) {
   // Unfortunately the nodes that have been dispatched in `queue` are not all
@@ -385,9 +386,7 @@ absl::StatusOr<std::vector<SharedDeviceBufferList>> ExtractExecutionOrder(
     }
   }
 
-  TT_ASSIGN_OR_RETURN(auto traversal, Traversal::Create(traversal_outputs));
-  auto parts = traversal->IntoParts();
-  return parts.execution_order;
+  return Traversal::Create(traversal_outputs);
 }
 
 // Compute the values used in each region and return a vector of sets, where
@@ -476,81 +475,30 @@ absl::Status MaterializationWorker::MaterializeQueue(
   ABSL_VLOG(1) << "Nodes to Materialize: "
                << ToString(filtered_nodes_to_materialize);
 
-  TT_ASSIGN_OR_RETURN(
-      std::vector<SharedDeviceBufferList> execution_order,
-      ExtractExecutionOrder(filtered_queue, filtered_nodes_to_materialize));
+  std::vector<absl_nonnull std::unique_ptr<Traversal>> split_traversals;
+  {
+    ABSL_VLOG(1) << "[MaterializationWorker] Creating traversal";
+    TT_ASSIGN_OR_RETURN(
+        auto traversal,
+        ExtractTraversal(filtered_queue, filtered_nodes_to_materialize));
+    absl::flat_hash_set<const DeviceBufferList*> required_outputs;
+    for (const auto& node : filtered_nodes_to_materialize) {
+      required_outputs.insert(node.get());
+    }
+    TT_ASSIGN_OR_RETURN(split_traversals,
+                        SplitTraversal(std::move(traversal), required_outputs));
+  }
 
-  ABSL_VLOG(1) << "Execution Order: " << ToString(execution_order);
-
-  auto regions = SplitQueueIntoRegions(execution_order);
-  const auto num_regions = regions.size();
+  ABSL_VLOG(1) << "[MaterializationWorker] Split traversal into "
+               << split_traversals.size() << " traversals";
 
   // Launch compilations for the identified regions.
   auto compilation_mode = GetCompilationMode(GetEagerMode());
 
   std::vector<ExecutionTask> execution_tasks;
-  execution_tasks.reserve(num_regions);
+  execution_tasks.reserve(split_traversals.size());
 
-  auto per_region_uses = GetPerRegionUses(regions);
-
-  absl::flat_hash_set<const DeviceBufferList*> explicit_targets;
-  for (const auto& n : nodes_to_materialize) {
-    explicit_targets.insert(n.get());
-  }
-
-  for (auto i = 0; i < num_regions; ++i) {
-    const auto& region = regions[i];
-
-    // For each region, we compute the desired outputs. Those are nodes that
-    // have already executed in a previous region, or nodes that are used as
-    // input in a subsequent region, or nodes that are defined in the current
-    // region, but not used in any subsequent region and, hence, could be used
-    // in the future.
-    std::vector<SharedDeviceBufferList> region_outputs;
-    for (const auto& n : region) {
-      bool must_materialize_node = false;
-      const auto* deferred_op = n->deferred_op();
-
-      if (deferred_op && deferred_op->has_been_executed()) {
-        // The node was already executed.
-        must_materialize_node = true;
-      } else if (explicit_targets.contains(n.get())) {
-        // The node was explicitly requested by the caller.
-        must_materialize_node = true;
-      } else if (per_region_uses[i].find(n.get()) == per_region_uses[i].end()) {
-        // The node is defined in the current region, but not used there.
-        must_materialize_node = true;
-      } else {
-        for (auto j = i + 1; j < num_regions; ++j) {
-          if (per_region_uses[j].find(n.get()) != per_region_uses[j].end()) {
-            // The node is defined in the current region and used in a next
-            // region.
-            must_materialize_node = true;
-            break;
-          }
-        }
-      }
-      if (must_materialize_node) {
-        region_outputs.push_back(n);
-      }
-    }
-
-    // Sort `region_outputs` deterministically so as to ensure identical
-    // traversal creations across different workers.
-    std::sort(region_outputs.begin(), region_outputs.end(),
-              [](const auto& a, const auto& b) {
-                return a->creation_index() < b->creation_index();
-              });
-    // Remove any duplicates.
-    region_outputs.erase(
-        std::unique(region_outputs.begin(), region_outputs.end()),
-        region_outputs.end());
-
-    // We create a traversal for the given region because that's the only way to
-    // compile the DeferredOps in the region. Note that this traversal
-    // constructor doesn't perform a DFS.
-    TT_ASSIGN_OR_RETURN(auto traversal, Traversal::CreateFromExecutionOrder(
-                                            region, region_outputs));
+  for (auto& traversal : split_traversals) {
     // Don't launch kernels if this is part of TorchTPU tracing of an FX graph,
     // which is indicated by placeholder inputs.
     bool has_placeholder = false;
