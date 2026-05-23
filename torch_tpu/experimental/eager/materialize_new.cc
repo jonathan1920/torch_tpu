@@ -116,9 +116,11 @@ class MaterializationWorker {
 
   ~MaterializationWorker() { Exit(); }
 
-  absl::Status GetLastStatus() const {
+  absl::Status GetAndResetLastStatus() {
     absl::MutexLock lock(mutex_);
-    return last_status_;
+    absl::Status status = std::move(last_status_);
+    last_status_ = absl::OkStatus();
+    return status;
   }
 
   void IncrementQueueId(int& id) { id = (id + 1) % kNumQueues; }
@@ -150,7 +152,7 @@ class MaterializationWorker {
 absl::Status MaterializationWorker::OnNewOpDispatch(
     const SharedDeviceBufferList& device_buffer_list) {
   tsl::profiler::TraceMe t("Worker_OnNewOpDispatch");
-  TT_RETURN_IF_ERROR(GetLastStatus());
+  TT_RETURN_IF_ERROR(GetAndResetLastStatus());
   absl::MutexLock lock(mutex_);
   // Wait if the current dispatch queue is being processed.
   mutex_.Await(
@@ -163,7 +165,7 @@ absl::Status MaterializationWorker::Materialize(
     absl::Span<const SharedDeviceBufferList> nodes_to_materialize,
     MaterializationReason reason) {
   tsl::profiler::TraceMe t("Worker_Materialize");
-  TT_RETURN_IF_ERROR(GetLastStatus());
+  TT_RETURN_IF_ERROR(GetAndResetLastStatus());
   {
     absl::MutexLock lock(mutex_);
     // Wait if the current dispatch queue is being processed.
@@ -201,7 +203,7 @@ absl::Status MaterializationWorker::Materialize(
 absl::Status MaterializationWorker::BlockOnPendingMaterializations() {
   tsl::profiler::TraceMe t("Worker_BlockOnPendingMaterializations");
   ABSL_VLOG(1) << ">>> BlockOnPendingMaterializations";
-  TT_RETURN_IF_ERROR(GetLastStatus());
+  TT_RETURN_IF_ERROR(GetAndResetLastStatus());
 
   {
     absl::MutexLock lock(mutex_);
@@ -211,7 +213,7 @@ absl::Status MaterializationWorker::BlockOnPendingMaterializations() {
   }
 
   ABSL_VLOG(1) << ">>> BlockOnPendingMaterializations DONE";
-  return GetLastStatus();
+  return GetAndResetLastStatus();
 }
 
 void MaterializationWorker::Reset() {

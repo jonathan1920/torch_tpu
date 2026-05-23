@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end")
+load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_cc_test", "torch_tpu_package_end")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -50,6 +50,40 @@ torch_tpu_cc_library(
         "@llvm-project//mlir:IR",
         "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla:xla_data_proto_cc",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "materialize_recovery_test",
+    srcs = ["materialize_recovery_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
+    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
+    deps = [
+        ":materialize_new",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:compilation_cache",
+        "//torch_tpu/common:dimension_types",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:materialize",
+        "//torch_tpu/eager:structured_log_buffer",
+        "//torch_tpu/eager:tensor_to_buffer",
+        "//torch_tpu/eager:tpu_hooks",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:python_context",
+        "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
