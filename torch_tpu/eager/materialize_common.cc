@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <future>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -61,6 +62,70 @@ ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 namespace torch_tpu {
 
 namespace {
+
+#ifndef NDEBUG
+// Formatting helper for error messages when VerifyPerNodeOutputs fails for any
+// reason.
+absl::Status InvalidNodeOutputsError(
+    absl::Span<const DeviceBufferRef> outputs) {
+  std::ostringstream outputs_error_stream;
+  if (!outputs.empty()) {
+    for (const auto& output : outputs) {
+      outputs_error_stream << "\ndevice buffer list: "
+                           << output.device_buffer_list().get() << ", buffer #"
+                           << output.index();
+    }
+  } else {
+    outputs_error_stream << "<no outputs>";
+  }
+  return TT_ERROR(error::kInternal)
+         << "execution task must have sequential, non-duplicate node "
+            "outputs.\nActual outputs:"
+         << outputs_error_stream.str();
+}
+
+// Debug mode-only verification that output nodes are correctly ordered.
+// If a traversal is expected to materialize a unique set of tensors
+// {A, B, C, ...} then the outputs should be ordered as A0, A1, ... A(n-1), B0,
+// B1, ... B(m-1), C0, C1, ... C(k-1), ... etc assuming that A.size() = n,
+// B.size() = m, C.size() = k, etc.
+absl::Status VerifyPerNodeOutputs(absl::Span<const DeviceBufferRef> outputs) {
+  if (outputs.empty()) {
+    return InvalidNodeOutputsError(outputs);
+  }
+  if (outputs.front().index() != 0) {
+    return InvalidNodeOutputsError(outputs);
+  }
+  absl::flat_hash_set<const DeviceBufferList*> seen_nodes;
+  seen_nodes.insert(outputs.front().device_buffer_list().get());
+  auto node_expected_size = outputs.front().device_buffer_list()->size();
+
+  for (int i = 1; i < outputs.size(); ++i) {
+    if (outputs[i].device_buffer_list() ==
+        outputs[i - 1].device_buffer_list()) {
+      if (outputs[i].index() != outputs[i - 1].index() + 1) {
+        return InvalidNodeOutputsError(outputs);
+      }
+    } else {
+      if (outputs[i - 1].index() + 1 != node_expected_size) {
+        return InvalidNodeOutputsError(outputs);
+      }
+      if (outputs[i].index() != 0) {
+        return InvalidNodeOutputsError(outputs);
+      }
+      if (!seen_nodes.insert(outputs[i].device_buffer_list().get()).second) {
+        return InvalidNodeOutputsError(outputs);
+      }
+      node_expected_size = outputs[i].device_buffer_list()->size();
+    }
+  }
+  if (outputs.back().index() + 1 != node_expected_size) {
+    return InvalidNodeOutputsError(outputs);
+  }
+
+  return absl::OkStatus();
+}
+#endif  // NDEBUG
 
 // Propagates bounded dynamism annotations from one traversal to others
 // when one traversal's output is bounded dynamic and is another traversal's
@@ -141,6 +206,12 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
     TT_RETURN_IF_ERROR(PropagateBoundedDynamism(*traversal, mlir_context));
   }
 
+#ifndef NDEBUG
+  // Check that the traversal has a valid set of outputs before we start
+  // compiling.
+  TT_RETURN_IF_ERROR(VerifyPerNodeOutputs(traversal->outputs()));
+#endif  // NDEBUG
+
   // Start compiling the traversal.
   ABSL_VLOG(1) << "[ExecutionTask] Compiling traversal";
   auto compilation_mode = GetCompilationMode(GetEagerMode());
@@ -189,6 +260,11 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromExecutable(
     std::vector<DeviceBufferRef> arguments,
     std::vector<DeviceBufferRef> outputs, MaterializationReason reason,
     std::string_view task_name) {
+#ifndef NDEBUG
+  // Check that the outputs buffers are valid.
+  TT_RETURN_IF_ERROR(VerifyPerNodeOutputs(outputs));
+#endif  // NDEBUG
+
   for (const auto& output : outputs) {
     TT_RETURN_IF_ERROR(output.device_buffer_list()->SetAsMaterialized());
   }
