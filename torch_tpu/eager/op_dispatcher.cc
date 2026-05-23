@@ -48,6 +48,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/env_vars.h"
@@ -242,20 +243,45 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
   for (int i = 0; i < num_outputs; ++i) {
     output_shapes.emplace_back(CopyIntVector(out_dims_list[i]), out_dtypes[i]);
   }
-  TT_ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferRef> results,
-      DeviceBufferList::CreateDeferred(
-          op_name, std::move(op_builder), std::move(inputs),
-          std::move(options.op_param_cache_keys), std::move(output_shapes),
-          options.split_mode, std::move(options.donated_indices)));
 
   auto eager_mode = GetEagerMode();
+  bool skip_subgraph = false;
+  if ((eager_mode == EagerMode::kDeferNever) ||
+      (eager_mode == EagerMode::kDeferNeverAndLaunchBlocking)) {
+    // In either kDeferNever mode, we want to enqueue each op's execution as
+    // quickly as possible to unblock the main thread.
+    // To achieve this, we skip connecting the newly-created node to any
+    // Subgraph, and we use kFullGraph to skip the SplitTraveral logic.
+    // Skipping SplitTraversal means we need to manually apply kSplitBefore for
+    // relevant ops.
+    skip_subgraph = true;
+    if (options.split_mode == OpSplitMode::kSplitBefore ||
+        options.split_mode == OpSplitMode::kSplitBoth) {
+      // Most of the time, this Materialize() should be a no-op; all non-view,
+      // non-`empty()` tensors should already be materialized.
+      // If this isn't the case, then using kSplitGraph will insert additional
+      // materialization points to ensure all deferred inputs are materialized
+      // or dropped.
+      TT_RETURN_IF_ERROR(Materialize(inputs, MaterializationReason::kDebugMode,
+                                     MaterializationMode::kSplitGraph));
+    }
+    // Don't block here even in kDeferNeverAndLaunchBlocking mode; we'll block
+    // after the new op is dispatched.
+  }
+
+  TT_ASSIGN_OR_RETURN(std::vector<DeviceBufferRef> results,
+                      DeviceBufferList::CreateDeferred(
+                          op_name, std::move(op_builder), std::move(inputs),
+                          std::move(options.op_param_cache_keys),
+                          std::move(output_shapes), options.split_mode,
+                          std::move(options.donated_indices), skip_subgraph));
+
   if ((eager_mode == EagerMode::kDeferNever) ||
       (eager_mode == EagerMode::kDeferNeverAndLaunchBlocking)) {
     auto& device_buffer_list = results[0].device_buffer_list();
     TT_RETURN_IF_ERROR(Materialize(device_buffer_list,
                                    MaterializationReason::kDebugMode,
-                                   MaterializationMode::kSplitGraph));
+                                   MaterializationMode::kFullGraph));
     if (eager_mode == EagerMode::kDeferNeverAndLaunchBlocking) {
       TT_RETURN_IF_ERROR(device_buffer_list->Synchronize());
     }

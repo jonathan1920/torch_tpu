@@ -489,7 +489,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
     OpName op_name, MlirOpBuilder op_builder,
     std::vector<DeviceBufferRef> inputs, OpParamCacheKeys op_param_cache_keys,
     std::vector<Shape> output_shapes, OpSplitMode split_mode,
-    Indices donated_indices) {
+    Indices donated_indices, bool skip_subgraph) {
   // Validate that the output shapes are valid.
   for (const auto& output_shape : output_shapes) {
     TT_RETURN_IF_ERROR(ValidateTensorByteSize(output_shape.dimensions(),
@@ -499,33 +499,35 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
 
   std::shared_ptr<Subgraph> subgraph = nullptr;
 
-  if (IsDistributedOp(op_name)) {
-    // Each distributed op acts as a barrier; all prior operations (connected or
-    // not) that were created before it must be considered part of the same
-    // graph so that proper ordering is maintained.
-    // Otherwise, two independent collective operations could be isolated in
-    // disconnected subgraphs, and different rank processes could have different
-    // orderings of these subgraphs, leading to a deadlock.
-    subgraph = SubgraphRegistry::GetInstance().MergeAll();
-  }
+  if (!skip_subgraph) {
+    if (IsDistributedOp(op_name)) {
+      // Each distributed op acts as a barrier; all prior operations (connected
+      // or not) that were created before it must be considered part of the same
+      // graph so that proper ordering is maintained.
+      // Otherwise, two independent collective operations could be isolated in
+      // disconnected subgraphs, and different rank processes could have
+      // different orderings of these subgraphs, leading to a deadlock.
+      subgraph = SubgraphRegistry::GetInstance().MergeAll();
+    }
 
-  for (const auto& input : inputs) {
-    if (input.state() == DeviceBufferRefState::kDeferred) {
-      auto input_subgraph = input.device_buffer_list()->subgraph();
-      if (!input_subgraph) continue;
+    for (const auto& input : inputs) {
+      if (input.state() == DeviceBufferRefState::kDeferred) {
+        auto input_subgraph = input.device_buffer_list()->subgraph();
+        if (!input_subgraph) continue;
 
-      auto input_rep = input_subgraph->Find();
-      if (!subgraph) {
-        subgraph = input_rep;
-      } else if (subgraph != input_rep) {
-        Subgraph::Merge(subgraph, input_rep);
-        subgraph = subgraph->Find();
+        auto input_rep = input_subgraph->Find();
+        if (!subgraph) {
+          subgraph = input_rep;
+        } else if (subgraph != input_rep) {
+          Subgraph::Merge(subgraph, input_rep);
+          subgraph = subgraph->Find();
+        }
       }
     }
-  }
 
-  if (!subgraph) {
-    subgraph = Subgraph::Create();
+    if (!subgraph) {
+      subgraph = Subgraph::Create();
+    }
   }
 
   // Create the DeferredOp.
@@ -538,10 +540,12 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
   auto device_buffer = std::shared_ptr<DeviceBufferList>(
       new DeviceBufferList(std::move(op), std::move(output_shapes), subgraph));
 
-  subgraph->push(std::weak_ptr<DeviceBufferList>(device_buffer));
-  if (IsSideEffectingOp(op_name) &&
-      GetEagerMode() != EagerMode::kInternalDeferAll) {
-    subgraph->AnchorSideEffect(device_buffer);
+  if (subgraph) {
+    subgraph->push(std::weak_ptr<DeviceBufferList>(device_buffer));
+    if (IsSideEffectingOp(op_name) &&
+        GetEagerMode() != EagerMode::kInternalDeferAll) {
+      subgraph->AnchorSideEffect(device_buffer);
+    }
   }
 
   // Construct one DeviceBufferRef for each output.
@@ -555,7 +559,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
 
 absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateConstant(
     std::vector<char> cpu_tensor_data, Dimensions dimensions,
-    mlir::ElementType element_type) {
+    mlir::ElementType element_type, bool skip_subgraph) {
   // Create the components of the DeferredOp.
   auto op_name = OpName::kTorchTpuInternalConstant;
   ScopedPythonContextCapturer capturer(op_name);
@@ -620,18 +624,19 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateConstant(
 
   // OpSplitMode is kNone; we don't need to split around a constant.
   // No device inputs, so no aliased inputs.
-  TT_ASSIGN_OR_RETURN(
-      auto results,
-      DeviceBufferList::CreateDeferred(
-          op_name, std::move(op_builder), /*inputs=*/{},
-          std::move(op_param_cache_keys), std::move(output_shapes)));
+  TT_ASSIGN_OR_RETURN(auto results,
+                      DeviceBufferList::CreateDeferred(
+                          op_name, std::move(op_builder), /*inputs=*/{},
+                          std::move(op_param_cache_keys),
+                          std::move(output_shapes), OpSplitMode::kNone,
+                          /*donated_indices=*/{}, skip_subgraph));
   TT_RET_CHECK(results.size() == 1, error::kInternal)
       << "CreateConstant should return exactly one output";
   return std::move(results[0]);
 }
 
 absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateEmpty(
-    Dimensions dimensions, mlir::ElementType element_type) {
+    Dimensions dimensions, mlir::ElementType element_type, bool skip_subgraph) {
   TT_RETURN_IF_ERROR(ValidateTensorByteSize(dimensions, element_type));
   auto op_builder = [dimensions =
                          CopyIntVector(absl::MakeConstSpan(dimensions)),
@@ -644,16 +649,18 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateEmpty(
         BuildFillUninitialized(builder, element_type, dimensions)};
   };
   Shape output_shape(std::move(dimensions), element_type);
-  TT_ASSIGN_OR_RETURN(
-      auto results, DeviceBufferList::CreateDeferred(
-                        OpName::kEmpty, std::move(op_builder), /*inputs=*/{},
-                        OpParamCacheKeys::Empty(), {std::move(output_shape)}));
+  TT_ASSIGN_OR_RETURN(auto results,
+                      DeviceBufferList::CreateDeferred(
+                          OpName::kEmpty, std::move(op_builder), /*inputs=*/{},
+                          OpParamCacheKeys::Empty(), {std::move(output_shape)},
+                          OpSplitMode::kNone,
+                          /*donated_indices=*/{}, skip_subgraph));
   ABSL_CHECK_EQ(results.size(), 1);  // CRASH_OK
   return std::move(results[0]);
 }
 
 absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateZeroSize(
-    Dimensions dimensions, mlir::ElementType element_type) {
+    Dimensions dimensions, mlir::ElementType element_type, bool skip_subgraph) {
   bool is_zero_sized = false;
   for (int64_t dim : dimensions) {
     if (dim == 0) {
@@ -664,7 +671,7 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateZeroSize(
   TT_RET_CHECK(is_zero_sized, error::kInvalidArgument)
       << "CreateZeroSize requires a zero-sized tensor, but got: "
       << ToString(dimensions);
-  return CreateConstant({}, std::move(dimensions), element_type);
+  return CreateConstant({}, std::move(dimensions), element_type, skip_subgraph);
 }
 
 absl::StatusOr<DeviceBufferRef> DeviceBufferList::MakePlaceholder(
