@@ -27,6 +27,7 @@ from absl import flags
 from absl import logging
 import torch
 import torch._inductor.config as inductor_config
+from torch_tpu._internal import sync as tpu_sync
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import log_utils
 from examples import paths
@@ -158,21 +159,22 @@ def model_generate(
       )
 
     with traceme.TraceMe(f"[{prefix}] Prefill"):
-      start_time = time.time()
+      prefill_start_time = time.time()
       output = model(
           input_ids=initial_inputs,
           past_key_values=past_key_values,
           use_cache=True,
       )
-      logits = output.logits.to("cpu")
+      logits = output.logits
       past_key_values = output.past_key_values
-      end_time = time.time()
+      tpu_sync.synchronize(logits, wait=True)
+      prefill_end_time = time.time()
+    logits = logits.to("cpu")
 
-    prefill_time_ms = (end_time - start_time) * 1000
+    prefill_time_ms = (prefill_end_time - prefill_start_time) * 1000
     print(f"{prefix} Prefill time: {prefill_time_ms:.2f} ms")
     output_tokens = initial_inputs.to("cpu")
     next_token = None
-    start_time = time.time()
     steps_completed = 0
     decode_step_times_ms = []
 
@@ -186,27 +188,21 @@ def model_generate(
 
       next_token = next_token_cpu.to(model.device)
       with traceme.TraceMe(f"[{prefix}] Decode step {i + 1}"):
-        prev_time = time.time()
+        step_start_time = time.time()
         output = model(
             input_ids=next_token,
             past_key_values=past_key_values,
             use_cache=True,
         )
-        logits = output.logits.to("cpu")
-        current_time = time.time()
+        logits = output.logits
+        tpu_sync.synchronize(logits, wait=True)
+        step_end_time = time.time()
 
-      step_time_ms = (current_time - prev_time) * 1000
-      print(
-          f"{prefix} Decode step {i + 1}:"
-          f" {step_time_ms:.2f} ms,"
-          f" device={model.device}"
-      )
+      logits = logits.to("cpu")
+      step_time_ms = (step_end_time - step_start_time) * 1000
       decode_step_times_ms.append(step_time_ms)
       past_key_values = output.past_key_values
       steps_completed += 1
-
-    end_time = time.time()
-    decode_time = end_time - start_time
 
     warmup = _WARMUP_STEPS.value
     avg_decode_time_no_warmup_ms = None
@@ -215,21 +211,11 @@ def model_generate(
       avg_decode_time_no_warmup_ms = sum(non_warmup_times) / len(
           non_warmup_times
       )
-      print(
-          f"{prefix} Average Decode time per token (excluding first {warmup}"
-          f" steps): {avg_decode_time_no_warmup_ms:.2f} ms"
-      )
 
-    avg_decode_time_ms = (
-        decode_time * 1000 / steps_completed if steps_completed > 0 else None
-    )
+    avg_decode_time_ms = None
     if steps_completed > 0:
-      print(
-          f"{prefix} Decode time per token (including warmup):"
-          f" {avg_decode_time_ms:.2f} ms"
-      )
-    else:
-      print(f"{prefix} No decode steps were run.")
+      avg_decode_time_ms = sum(decode_step_times_ms) / len(decode_step_times_ms)
+
   output = output_tokens
   output_list = output.tolist()
   output_text = tokenizer.decode(output_list[0], skip_special_tokens=True)
