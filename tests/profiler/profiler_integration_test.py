@@ -297,6 +297,78 @@ class ProfilerIntegrationTest(absltest.TestCase):
         f"expected device_tracer_level=3, got {options.device_tracer_level}",
     )
 
+  def test_tpu_profiler_config_run_dir(self):
+    device = tpu_api.tpu_device()
+    custom_run_dir = self.create_tempdir("custom_run_dir_path").full_path
+
+    _cleanup_profile_dir()
+
+    config = TpuProfilerConfig(run_dir=pathlib.Path(custom_run_dir))
+
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.PrivateUse1,
+        ],
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(custom_run_dir),
+        experimental_config=config,
+    ):
+      a = torch.ones((16, 16)).to(device)
+      b = torch.ones((16, 16)).to(device)
+      c = a @ b
+      tpu_sync.synchronize(c)
+
+    expected_profile_dir = pathlib.Path(custom_run_dir) / "plugins" / "profile"
+    self.assertTrue(
+        expected_profile_dir.exists(),
+        "plugins/profile directory should exist under the configured run_dir",
+    )
+
+    timestamp_dirs = list(expected_profile_dir.glob("*"))
+    self.assertLen(timestamp_dirs, 1)
+
+    (timestamp_dir,) = timestamp_dirs
+    xplane_files = list(timestamp_dir.glob("*.xplane.pb"))
+    self.assertNotEmpty(
+        xplane_files, "Should have a .xplane.pb file in custom run_dir"
+    )
+
+  def test_tpu_profiler_config_run_dir_none(self):
+    device = tpu_api.tpu_device()
+    output_dir = self.create_tempdir("run_dir_none").full_path
+
+    _cleanup_profile_dir()
+    profile_dir = _get_profile_dir()
+
+    config = TpuProfilerConfig(run_dir=None)
+
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.PrivateUse1,
+        ],
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
+        experimental_config=config,
+    ):
+      a = torch.ones((16, 16)).to(device)
+      b = torch.ones((16, 16)).to(device)
+      c = a @ b
+      tpu_sync.synchronize(c)
+
+    self.assertTrue(
+        profile_dir.exists(),
+        "plugins/profile directory should exist under Kineto's fallback path",
+    )
+
+    timestamp_dirs = list(profile_dir.glob("*"))
+    self.assertLen(timestamp_dirs, 1)
+
+    (timestamp_dir,) = timestamp_dirs
+    xplane_files = list(timestamp_dir.glob("*.xplane.pb"))
+    self.assertNotEmpty(
+        xplane_files, "Should have a .xplane.pb file in fallback directory"
+    )
+
   def test_invalid_profiler_config(self):
     """Tests that invalid profiler configuration raises a Python exception."""
     device = tpu_api.tpu_device()

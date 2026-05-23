@@ -71,6 +71,7 @@ class TpuKinetoProfilerSession : public libkineto::IActivityProfilerSession {
   const libkineto::Config& config_;
   std::set<libkineto::ActivityType> activity_types_;
   std::unique_ptr<XProfCallbackHandler> callback_handler_;
+  std::string run_dir_ ABSL_GUARDED_BY(mutex_);
 };
 
 // TPU implementation of libkineto::IActivityProfiler.

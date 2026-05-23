@@ -32,8 +32,9 @@
 
 namespace torch_tpu {
 
-absl::Status UpdateProfileOptions(tensorflow::ProfileOptions& opts,
-                                  std::string_view custom_config);
+absl::Status UpdateProfileOptions(std::string_view custom_config,
+                                  tensorflow::ProfileOptions& opts,
+                                  std::string& out_run_dir);
 
 namespace {
 
@@ -65,57 +66,80 @@ TEST(TpuProfilerPluginTest, BasicSanity) {
 
 TEST(TpuProfilerPluginTest, UpdateProfileOptionsValid) {
   tensorflow::ProfileOptions opts;
+  std::string run_dir;
   opts.set_device_tracer_level(1);
   opts.set_host_tracer_level(2);
   opts.set_python_tracer_level(0);
 
-  EXPECT_TRUE(UpdateProfileOptions(opts,
-                                   "device_tracer_level:3,host_tracer_level:3,"
-                                   "python_tracer_level:1")
+  EXPECT_TRUE(UpdateProfileOptions("device_tracer_level:3,host_tracer_level:3,"
+                                   "python_tracer_level:1",
+                                   opts, run_dir)
                   .ok());
 
   EXPECT_EQ(opts.device_tracer_level(), 3);
   EXPECT_EQ(opts.host_tracer_level(), 3);
   EXPECT_EQ(opts.python_tracer_level(), 1);
+  EXPECT_TRUE(run_dir.empty());
+}
+
+TEST(TpuProfilerPluginTest, UpdateProfileOptionsRunDir) {
+  tensorflow::ProfileOptions opts;
+  std::string run_dir;
+
+  EXPECT_TRUE(
+      UpdateProfileOptions("device_tracer_level:3,run_dir:/home/user/tb_logs,"
+                           "host_tracer_level:3",
+                           opts, run_dir)
+          .ok());
+
+  EXPECT_EQ(opts.device_tracer_level(), 3);
+  EXPECT_EQ(opts.host_tracer_level(), 3);
+  EXPECT_EQ(run_dir, "/home/user/tb_logs");
 }
 
 TEST(TpuProfilerPluginTest, UpdateProfileOptionsWhitespace) {
   tensorflow::ProfileOptions opts;
+  std::string run_dir;
   opts.set_device_tracer_level(1);
   opts.set_host_tracer_level(2);
   opts.set_python_tracer_level(0);
 
   EXPECT_TRUE(UpdateProfileOptions(
-                  opts,
                   " device_tracer_level : 3 ,  host_tracer_level : 3 , "
-                  " python_tracer_level : 1 ")
+                  " python_tracer_level : 1 ",
+                  opts, run_dir)
                   .ok());
 
   EXPECT_EQ(opts.device_tracer_level(), 3);
   EXPECT_EQ(opts.host_tracer_level(), 3);
   EXPECT_EQ(opts.python_tracer_level(), 1);
+  EXPECT_TRUE(run_dir.empty());
 }
 
 TEST(TpuProfilerPluginTest, UpdateProfileOptionsInvalidFormat) {
   tensorflow::ProfileOptions opts;
+  std::string run_dir;
 
-  absl::Status status = UpdateProfileOptions(opts, "invalid_format");
+  absl::Status status = UpdateProfileOptions("invalid_format", opts, run_dir);
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.code(), error::kInvalidArgument);
 }
 
 TEST(TpuProfilerPluginTest, UpdateProfileOptionsUnknownOption) {
   tensorflow::ProfileOptions opts;
+  std::string run_dir;
 
-  absl::Status status = UpdateProfileOptions(opts, "unknown_option:1");
+  absl::Status status = UpdateProfileOptions("unknown_option:1", opts, run_dir);
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.code(), error::kInvalidArgument);
 }
 
 TEST(TpuProfilerPluginTest, UpdateProfileOptionsInvalidValue) {
   tensorflow::ProfileOptions opts;
+  std::string run_dir;
 
-  absl::Status status = UpdateProfileOptions(opts, "device_tracer_level:abc");
+  absl::Status status =
+      UpdateProfileOptions("device_tracer_level:abc", opts, run_dir);
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.code(), error::kInvalidArgument);
   EXPECT_EQ(status.message(),

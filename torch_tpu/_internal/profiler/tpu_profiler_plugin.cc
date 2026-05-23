@@ -59,9 +59,17 @@
 
 namespace torch_tpu {
 
+// The set of valid parameter names for configuring the TPU profiler.
 constexpr std::string_view kDeviceTracerLevel = "device_tracer_level";
 constexpr std::string_view kHostTracerLevel = "host_tracer_level";
 constexpr std::string_view kPythonTracerLevel = "python_tracer_level";
+constexpr std::string_view kRunDir = "run_dir";
+
+// Represents a parsed custom configuration option.
+struct ProfilerOption {
+  std::string_view name;
+  std::string_view value;
+};
 
 // Helper to parse uint32_t and apply to a setter method of ProfileOptions.
 absl::Status ParseAndSetUint(
@@ -78,9 +86,9 @@ absl::Status ParseAndSetUint(
   return absl::OkStatus();
 }
 
-// Applies a single key-value pair to the ProfileOptions.
-absl::Status CreateProfileOptions(tensorflow::ProfileOptions& opts,
-                                  std::string_view key, std::string_view val) {
+// Updates a single key-value option in the ProfileOptions.
+absl::Status UpdateProfileOption(tensorflow::ProfileOptions& opts,
+                                 std::string_view key, std::string_view val) {
   if (key == kDeviceTracerLevel) {
     return ParseAndSetUint(
         opts, key, val, &tensorflow::ProfileOptions::set_device_tracer_level);
@@ -95,28 +103,47 @@ absl::Status CreateProfileOptions(tensorflow::ProfileOptions& opts,
   }
   return TT_ERROR(error::kInvalidArgument)
          << "expected the profiler option to be one of " << kDeviceTracerLevel
-         << ", " << kHostTracerLevel << ", or " << kPythonTracerLevel
-         << ", got '" << key << "'";
+         << ", " << kHostTracerLevel << ", " << kPythonTracerLevel << ", or "
+         << kRunDir << ", got '" << key << "'";
 }
 
-// Parses the custom configuration string from Kineto and updates the
-// ProfileOptions. Leading and trailing whitespace is ignored around keys and
-// values. The configuration string is expected to be a comma-separated
-// list of key-value pairs, where keys and values are separated by ':' (e.g.,
-// "host_tracer_level:3").
-absl::Status UpdateProfileOptions(tensorflow::ProfileOptions& opts,
-                                  std::string_view custom_config) {
+// Splits a single custom config item (e.g., "key:value") by the first
+// occurrence of ':'. Leading and trailing whitespace is stripped from both the
+// key and value.
+absl::StatusOr<ProfilerOption> SplitConfigItem(std::string_view item) {
+  size_t colon_pos = item.find(':');
+  if (colon_pos == std::string_view::npos) {
+    return TT_ERROR(error::kInvalidArgument)
+           << "expected the config item to be in the 'key:value' format, "
+           << "got '" << item << "'";
+  }
+  std::string_view key = absl::StripAsciiWhitespace(item.substr(0, colon_pos));
+  std::string_view val = absl::StripAsciiWhitespace(item.substr(colon_pos + 1));
+  return ProfilerOption{key, val};
+}
+
+// Parses the custom configuration string from Kineto. Leading and trailing
+// whitespace is ignored around keys and values. The configuration string is
+// expected to be a comma-separated list of key-value pairs, where keys and
+// values are separated by ':' (e.g., "host_tracer_level:3"). If a valid
+// "run_dir" is found, it is written to out_run_dir; all other valid profiler
+// options update the ProfileOptions object in place.
+absl::Status UpdateProfileOptions(std::string_view custom_config,
+                                  tensorflow::ProfileOptions& opts,
+                                  std::string& out_run_dir) {
   for (std::string_view item :
        absl::StrSplit(custom_config, ',', absl::SkipEmpty())) {
-    std::vector<std::string_view> kv = absl::StrSplit(item, ':');
-    if (kv.size() != 2) {
-      return TT_ERROR(error::kInvalidArgument)
-             << "expected the config item to be in the 'key:value' format, "
-             << "got '" << item << "'";
+    absl::StatusOr<ProfilerOption> profiler_option = SplitConfigItem(item);
+    if (!profiler_option.ok()) {
+      return profiler_option.status();
     }
-    std::string_view key = absl::StripAsciiWhitespace(kv[0]);
-    std::string_view val = absl::StripAsciiWhitespace(kv[1]);
-    TT_RETURN_IF_ERROR(CreateProfileOptions(opts, key, val));
+    const auto& [name, val] = *profiler_option;
+
+    if (name == kRunDir) {
+      out_run_dir = std::string(val);
+      continue;
+    }
+    TT_RETURN_IF_ERROR(UpdateProfileOption(opts, name, val));
   }
   return absl::OkStatus();
 }
@@ -209,7 +236,8 @@ void TpuKinetoProfilerSession::start() {
   tensorflow::ProfileOptions opts = tsl::ProfilerSession::DefaultOptions();
   opts.set_device_type(tensorflow::ProfileOptions::TPU);
 
-  TT_THROW_IF_ERROR(UpdateProfileOptions(opts, config_.getCustomConfig()));
+  TT_THROW_IF_ERROR(
+      UpdateProfileOptions(config_.getCustomConfig(), opts, run_dir_));
 
   session_ = tsl::ProfilerSession::Create(opts);
   if (session_ == nullptr) {
@@ -244,7 +272,9 @@ void TpuKinetoProfilerSession::stop() {
     status_ = libkineto::TraceStatus::READY;
 
     std::string run_dir =
-        std::string(tsl::io::Dirname(config_.activitiesLogFile()));
+        !run_dir_.empty()
+            ? run_dir_
+            : std::string(tsl::io::Dirname(config_.activitiesLogFile()));
 
     absl::StatusOr<std::string> resolved_path = GetXPlaneOutputPath(run_dir);
     if (!resolved_path.ok()) {
