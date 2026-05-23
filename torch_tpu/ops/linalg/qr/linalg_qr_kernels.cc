@@ -57,15 +57,20 @@ absl::StatusOr<mlir::ElementType> GetOutDtype(const at::Tensor& self) {
   return out_dtype;
 }
 
-mlir::MlirOp MaybeCastToFloat(mlir::MlirOp self_op, const at::Tensor& self) {
-  return IsInteger(self) ? mlir::stablehlo::ConvertElementType(
-                               self_op, kCastDtypeForIntegerInput)
-                         : self_op;
+mlir::MlirOp MaybeCastToFloat(mlir::MlirOp self_op, bool input_is_integer) {
+  return input_is_integer ? mlir::stablehlo::ConvertElementType(
+                                self_op, kCastDtypeForIntegerInput)
+                          : self_op;
 }
 
 absl::StatusOr<DeviceBufferRefArray<2>> Geqrf(const at::Tensor& self,
                                               OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(const mlir::ElementType out_dtype, GetOutDtype(self));
+
+  // Capture metadata properties (like 'input_is_integer') by copy instead of
+  // capturing the 'at::Tensor self' handle. This prevents locking 'self' and
+  // its entire autograd graph in memory, avoiding high peak HBM consumption.
+  const bool input_is_integer = IsInteger(self);
 
   TT_RET_CHECK(self.dim() >= 2, error::kInvalidArgument)
       << "expected input to have at least 2 dimensions, got " << self.dim();
@@ -75,8 +80,10 @@ absl::StatusOr<DeviceBufferRefArray<2>> Geqrf(const at::Tensor& self,
   tau_dims.push_back(std::min(m, n));
 
   auto op_builder =
-      [self](mlir::MlirOp self_op) -> absl::StatusOr<MlirOpResults<2>> {
-    const mlir::MlirOp cast_self_op = MaybeCastToFloat(self_op, self);
+      [input_is_integer](
+          mlir::MlirOp self_op) -> absl::StatusOr<MlirOpResults<2>> {
+    const mlir::MlirOp cast_self_op =
+        MaybeCastToFloat(self_op, input_is_integer);
     TT_ASSIGN_OR_RETURN(const MlirOpResults<2> result_ops,
                         BuildGeqrfShlo(cast_self_op));
     return result_ops;

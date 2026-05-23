@@ -146,8 +146,12 @@ absl::StatusOr<at::Tensor> ScaledDotProductFusedAttentionImpl(
   out_dims[rank - 1] = value.size(rank - 1);
 
   const auto query_scalar_type = query.scalar_type();
+  // Capture static dimension parameters (like 'head_dim') by copy instead of
+  // capturing the 'at::Tensor query' handle. This prevents locking 'query' and
+  // its entire autograd graph in memory, avoiding high peak HBM consumption.
+  const int64_t head_dim = query.size(rank - 1);
   auto op_builder = [rank, batch_size, out_dims, query_scalar_type, is_causal,
-                     scale, query](FixedSizeSpan<mlir::MlirOp, 3> inputs)
+                     scale, head_dim](FixedSizeSpan<mlir::MlirOp, 3> inputs)
       -> absl::StatusOr<mlir::MlirOp> {
     auto [query_mlir, key_mlir, value_mlir] = inputs;
 
@@ -167,8 +171,7 @@ absl::StatusOr<at::Tensor> ScaledDotProductFusedAttentionImpl(
     mlir::MlirOp value_4d =
         flatten_batch_dims(value_mlir, batch_size, rank - 3);
 
-    mlir::MlirOp scale_value =
-        GetScaleDefaulted(builder, scale, query.size(rank - 1));
+    mlir::MlirOp scale_value = GetScaleDefaulted(builder, scale, head_dim);
 
     // Specialize the kernel given the inputs.
     std::array<mlir::MlirOp, 4> input_array = {query_4d, key_4d, value_4d,
@@ -209,8 +212,12 @@ ScaledDotProductFusedAttentionBackwardImpl(
                       ConvertTo<mlir::ElementType>(query.scalar_type()));
 
   const auto query_scalar_type = query.scalar_type();
+  // Capture static dimension parameters (like 'head_dim') by copy instead of
+  // capturing the 'at::Tensor query' handle. This prevents locking 'query' and
+  // its entire autograd graph in memory, avoiding high peak HBM consumption.
+  const int64_t head_dim = query.size(rank - 1);
   auto op_builder = [rank, batch_size, query_scalar_type, is_causal, scale,
-                     query](FixedSizeSpan<mlir::MlirOp, 4> inputs)
+                     head_dim](FixedSizeSpan<mlir::MlirOp, 4> inputs)
       -> absl::StatusOr<MlirOpResults<3>> {
     auto [grad_out_mlir, query_mlir, key_mlir, value_mlir] = inputs;
 
@@ -231,8 +238,7 @@ ScaledDotProductFusedAttentionBackwardImpl(
     mlir::MlirOp value_batch =
         flatten_batch_dims(value_mlir, batch_size, rank - 3);
 
-    mlir::MlirOp scale_value =
-        GetScaleDefaulted(builder, scale, query.size(rank - 1));
+    mlir::MlirOp scale_value = GetScaleDefaulted(builder, scale, head_dim);
 
     std::array<mlir::MlirOp, 5> input_array = {
         grad_out_batch, query_batch, key_batch, value_batch, scale_value};
