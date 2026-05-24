@@ -54,6 +54,40 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_test(
+    name = "materialize_new_test",
+    srcs = ["materialize_new_test.cc"],
+    notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
+    deps = [
+        "//shims/torch:aten_headers",
+        "//torch_tpu/_internal/compile:compiled_mode",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:compilation",
+        "//torch_tpu/common:compilation_cache",
+        "//torch_tpu/common:dimension_types",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:tensor_to_buffer",
+        "//torch_tpu/eager:tpu_aten_kernels",
+        "//torch_tpu/eager:tpu_hooks",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:python_context",
+        "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+        "@xla//xla/tsl/platform:statusor",
+    ],
+)
+
+torch_tpu_cc_test(
     name = "materialize_recovery_test",
     srcs = ["materialize_recovery_test.cc"],
     exec_properties = {

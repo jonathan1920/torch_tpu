@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/flags/declare.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/check.h"
@@ -43,6 +44,7 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
@@ -51,6 +53,7 @@
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/traversal.h"
+#include "torch_tpu/experimental/eager/materialize_new.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -63,6 +66,8 @@
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla_data.pb.h"
+
+ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 
 namespace torch_tpu {
 
@@ -96,6 +101,20 @@ absl::StatusOr<std::vector<DeviceBufferRef>> PrepareCompiledModeArguments(
   // Materialize the argument buffers.
   TT_RETURN_IF_ERROR(Materialize(argument_buffer_refs,
                                  MaterializationReason::kCompileModeExecution));
+  if (GetFlagOnce<bool,
+                  &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
+    // Under experimental asynchronous eager materialization, eager operations
+    // (such as those preparing argument views) compile and execute in the
+    // background on a dedicated worker.
+    //
+    // Since compiled model execution is enqueued to a separate, independent
+    // background execution queue (the old execution worker), we must block the
+    // main thread here and wait for the new materialization thread to catch up.
+    // This ensures all arguments are fully compiled and materialized on the
+    // device before the old execution worker attempts to retrieve their
+    // buffers, preventing deterministic "unexpectedly deferred" crashes.
+    TT_RETURN_IF_ERROR(BlockOnPendingMaterializations());
+  }
 
   // After materialization, each argument buffer will be a materialized,
   // contiguous tensor which the compiled executable can safely apply view
