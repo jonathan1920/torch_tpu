@@ -18,7 +18,7 @@
 
 set -e
 
-# Usage: ./build_image_multistage.sh [LOCAL_REPO_ROOT] [IMAGE_TAG_PREFIX]
+# Usage: ./build_image_multistage.sh [LOCAL_REPO_ROOT] [IMAGE_TAG_PREFIX] [-v|--pytorch-version <version>] [--2.10] [--2.12]
 # LOCAL_REPO_ROOT: Path to the root of the torch_tpu repository (optional,
 #                  defaults to parent dir).
 # IMAGE_TAG_PREFIX: Prefix for the built images (optional, defaults to
@@ -28,8 +28,40 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_REPO_ROOT="$(cd "${SCRIPT_DIR}/../" && pwd)"
 
-LOCAL_REPO_ROOT=${1:-"${DEFAULT_REPO_ROOT}"}
-IMAGE_TAG_PREFIX=${2:-"torch-tpu"}
+PYTORCH_VERSION="2.12"
+LOCAL_REPO_ROOT="${DEFAULT_REPO_ROOT}"
+IMAGE_TAG_PREFIX="torch-tpu"
+
+# Parse flags
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -v|--pytorch-version)
+      PYTORCH_VERSION="$2"
+      shift 2
+      ;;
+    --2.10)
+      PYTORCH_VERSION="2.10"
+      shift
+      ;;
+    --2.12)
+      PYTORCH_VERSION="2.12"
+      shift
+      ;;
+    *)
+      if [ -z "${LOCAL_REPO_ROOT_SET}" ]; then
+        LOCAL_REPO_ROOT="$1"
+        LOCAL_REPO_ROOT_SET=1
+      elif [ -z "${IMAGE_TAG_PREFIX_SET}" ]; then
+        IMAGE_TAG_PREFIX="$1"
+        IMAGE_TAG_PREFIX_SET=1
+      else
+        echo "Unknown argument: $1"
+        exit 1
+      fi
+      shift
+      ;;
+  esac
+done
 
 ABS_REPO_ROOT=$(cd "${LOCAL_REPO_ROOT}" && pwd)
 DOCKERFILE="docker/Dockerfile.multistage"
@@ -39,12 +71,13 @@ if [ ! -f "${ABS_REPO_ROOT}/${DOCKERFILE}" ]; then
   exit 1
 fi
 
-echo "===> Building Docker images with prefix '${IMAGE_TAG_PREFIX}' using local source at ${ABS_REPO_ROOT}..."
+echo "===> Building Docker images with prefix '${IMAGE_TAG_PREFIX}' (PyTorch Version: ${PYTORCH_VERSION}) using local source at ${ABS_REPO_ROOT}..."
 
 # Build base image
 echo "===> Building Base Image..."
 docker build \
   --progress=plain \
+  --build-arg PYTORCH_VERSION="${PYTORCH_VERSION}" \
   --target base \
   -f "${ABS_REPO_ROOT}/${DOCKERFILE}" \
   -t "${IMAGE_TAG_PREFIX}-base:latest" \
@@ -54,6 +87,7 @@ docker build \
 echo "===> Building Final Image..."
 docker build \
   --progress=plain \
+  --build-arg PYTORCH_VERSION="${PYTORCH_VERSION}" \
   -f "${ABS_REPO_ROOT}/${DOCKERFILE}" \
   -t "${IMAGE_TAG_PREFIX}:latest" \
   "${ABS_REPO_ROOT}"

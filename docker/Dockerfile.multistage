@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+ARG PYTORCH_VERSION=2.12
 ARG BASEIMAGE=python:3.12-slim-bookworm
 
 # =====================================================================
@@ -20,8 +21,9 @@ ARG BASEIMAGE=python:3.12-slim-bookworm
 FROM $BASEIMAGE AS base
 
 # Install runtime system dependencies
-RUN apt-get update && apt-get install -y libgoogle-perftools-dev && \
+RUN apt-get update && apt-get install -y libgoogle-perftools-dev patch && \
     rm -rf /var/lib/apt/lists/*
+
 
 # Ensure python3 is available in /usr/bin for Bazel shims and local scripts.
 RUN ln -sf $(which python) /usr/bin/python3
@@ -32,6 +34,14 @@ WORKDIR /workspace
 
 # Copy pyproject.toml to install dependencies
 COPY pyproject.toml .
+
+# Conditionally apply PyTorch 2.10.0 dependency modifications if requested
+ARG PYTORCH_VERSION
+COPY docker/patches/pyproject_2.10_compat.patch /tmp/
+RUN if [ "$PYTORCH_VERSION" = "2.10.0" ] || [ "$PYTORCH_VERSION" = "2.10" ]; then \
+      patch -p1 < /tmp/pyproject_2.10_compat.patch ; \
+    fi
+
 
 # Install all dependencies from pyproject.toml (including optional ones for dev/test)
 # We let uv read pyproject.toml to use the explicit pytorch-cpu index only for torch/torchvision!
@@ -58,6 +68,14 @@ WORKDIR /workspace
 
 # Copy the local repository source from the build context
 COPY . /workspace/torch_tpu_src
+
+# Conditionally apply PyTorch 2.10.0 C++ code modifications if requested
+ARG PYTORCH_VERSION
+RUN if [ "$PYTORCH_VERSION" = "2.10.0" ] || [ "$PYTORCH_VERSION" = "2.10" ]; then \
+      cd /workspace/torch_tpu_src && \
+      patch -p1 < docker/patches/pytorch_2.10_compat.patch ; \
+    fi
+
 
 # Build the wheel using bazel.
 # Preserving cache mounts and flags from Dockerfile.from_src
