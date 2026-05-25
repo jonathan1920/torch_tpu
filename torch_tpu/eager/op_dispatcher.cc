@@ -255,8 +255,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DynamicDispatchOp(
     // Skipping SplitTraversal means we need to manually apply kSplitBefore for
     // relevant ops.
     skip_subgraph = true;
-    if (options.split_mode == OpSplitMode::kSplitBefore ||
-        options.split_mode == OpSplitMode::kSplitBoth) {
+    if (IsSplitBefore(options.split_mode)) {
       // Most of the time, this Materialize() should be a no-op; all non-view,
       // non-`empty()` tensors should already be materialized.
       // If this isn't the case, then using kSplitGraph will insert additional

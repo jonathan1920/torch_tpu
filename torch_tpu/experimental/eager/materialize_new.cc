@@ -317,19 +317,14 @@ bool IsSplitPoint(const SharedDeviceBufferList& current_op,
   }
 #endif
 
-  if (deferred_op->split_mode() == OpSplitMode::kSplitAfter ||
-      deferred_op->split_mode() == OpSplitMode::kSplitBoth) {
+  if (IsSplitAfter(deferred_op->split_mode())) {
     return true;
   }
 
   if (next_op) {
     if (const auto next_deferred_op = (*next_op)->deferred_op();
-        next_deferred_op) {
-      OpSplitMode split_mode = next_deferred_op->split_mode();
-      if (split_mode == OpSplitMode::kSplitBoth ||
-          split_mode == OpSplitMode::kSplitBefore) {
-        return true;
-      }
+        next_deferred_op && IsSplitBefore(next_deferred_op->split_mode())) {
+      return true;
     }
   }
   return false;

@@ -135,6 +135,16 @@ enum class OpSplitMode {
   kSplitBoth,
 };
 
+inline bool IsSplitBefore(OpSplitMode split_mode) {
+  return split_mode == OpSplitMode::kSplitBefore ||
+         split_mode == OpSplitMode::kSplitBoth;
+}
+
+inline bool IsSplitAfter(OpSplitMode split_mode) {
+  return split_mode == OpSplitMode::kSplitAfter ||
+         split_mode == OpSplitMode::kSplitBoth;
+}
+
 class DeviceBufferList;
 class DeferredOp;
 
