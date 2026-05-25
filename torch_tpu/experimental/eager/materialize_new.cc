@@ -309,14 +309,6 @@ bool IsSplitPoint(const SharedDeviceBufferList& current_op,
     return false;
   }
 
-  // TODO: Enabling this lowers the initial compilation time, but doesn't affect
-  // the long-term step time.
-#if 0
-  if (deferred_op->has_been_executed()) {
-    return true;
-  }
-#endif
-
   if (IsSplitAfter(deferred_op->split_mode())) {
     return true;
   }

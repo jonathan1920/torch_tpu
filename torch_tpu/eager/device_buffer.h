@@ -469,23 +469,6 @@ class DeferredOp {
   // Context where the op is used in the user's PyTorch code.
   [[nodiscard]] const PythonContext& op_context() const { return op_context_; }
 
-  // If true, then this DeferredOp has been executed at least once as a
-  // non-output node; that is, it has been included as part of a materialized
-  // DeferredOp graph without being a target materialization node. For example,
-  // ```
-  //   x = torch.zeros(1)
-  //   y = x + 1
-  //   print(y.cpu())
-  // ```
-  // will materialize `y` (replacing its DeferredOp with a PjRtBuffer), but
-  // `x` will be left as a DeferredOp with has_been_executed() == true.
-  // This can be used to detect nodes which are used persistently across loop
-  // iterations; see ReexecutionHeuristic for its use.
-  [[nodiscard]] bool has_been_executed() const { return has_been_executed_; }
-
-  // Marks this DeferredOp as having been executed at least once.
-  void mark_executed() const { has_been_executed_ = true; }
-
   // Returns the cache keys for the op parameters. These are used to ensure that
   // the compilation cache does not reuse a cached compiled op if there are
   // meaningful differences in the op_builder (such as "floor" vs "trunc" in
@@ -562,11 +545,6 @@ class DeferredOp {
   // When computing the cache key, use op_name_ to ensure that the key is
   // unique.
   PythonContext op_context_;
-
-  // If true, then this DeferredOp has been executed at least once as a
-  // non-output node. This can be used to detect nodes which are used
-  // persistently across loop iterations.
-  mutable bool has_been_executed_ = false;
 
   // Records the number of other DeferredOps that have been created which depend
   // on this one. This is also called the "fanout" of the node.

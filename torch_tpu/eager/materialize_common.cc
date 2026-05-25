@@ -235,15 +235,6 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
     output.device_buffer_list()->SetMaterializationPending();
   }
 
-  ABSL_VLOG(1) << "[ExecutionTask] Marking all nodes as having been executed";
-
-  // Mark all deferred ops in the split as having been executed (scheduled).
-  for (const auto& node : traversal->execution_order()) {
-    if (auto deferred_op = node->deferred_op()) {
-      deferred_op->mark_executed();
-    }
-  }
-
   std::string task_name;
   if (ABSL_VLOG_IS_ON(1)) {
     task_name = absl::StrCat(traversal->GetCacheKey(compilation_mode));
