@@ -139,21 +139,25 @@ TEST_F(MaterializeRecoveryTest, IndependentTensorsRecoverOnEagerError) {
   // Even though the global error was reset, accessing x's data or materializing
   // a child z = x + 1 should still fail natively!
 
-  // a) Direct access to x yields FAILED_PRECONDITION because it was never
-  // materialized:
-  auto argument_status = ref_x.GetOrMaterializeBuffer();
+  // a) Direct access to x yields the compilation error:
+  auto argument_status = ref_x.AwaitBuffer();
   EXPECT_FALSE(argument_status.ok());
-  EXPECT_EQ(argument_status.status().code(), error::kFailedPrecondition);
+  EXPECT_EQ(argument_status.status().code(), error::kInternal);
   EXPECT_THAT(argument_status.status().message(),
-              testing::HasSubstr("because it is not materialized"));
+              testing::HasSubstr("Simulated compilation failure"));
 
-  // Repeating materialization on x still fails-fast with the compilation error:
+  // Repeating materialization on x will no-op and will not block, as X is
+  // already in the "materialized error" state
   EXPECT_EQ(Materialize(ref_x, MaterializationReason::kExplicitSync),
             absl::OkStatus());
   absl::Status status_x_retry = BlockOnPendingMaterializations();
-  EXPECT_FALSE(status_x_retry.ok());
-  EXPECT_EQ(status_x_retry.code(), error::kInternal);
-  EXPECT_THAT(status_x_retry.message(),
+  EXPECT_TRUE(status_x_retry.ok());
+
+  // ...but the inner error on ref_x is still the same:
+  auto after_retry_status = ref_x.AwaitBuffer();
+  EXPECT_FALSE(argument_status.ok());
+  EXPECT_EQ(argument_status.status().code(), error::kInternal);
+  EXPECT_THAT(argument_status.status().message(),
               testing::HasSubstr("Simulated compilation failure"));
 
   // b) Downstream operations using x also fail natively:

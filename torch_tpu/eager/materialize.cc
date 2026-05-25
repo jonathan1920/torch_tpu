@@ -51,6 +51,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/shape.h"
+#include "torch_tpu/common/status_builder.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize_common.h"
@@ -61,7 +62,6 @@
 #include "torch_tpu/experimental/eager/materialize_new.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "xla/future.h"
-#include "xla/hlo/translate/register.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -99,10 +99,10 @@ void LogDeferredNodes(absl::Span<const SharedDeviceBufferList> nodes,
   if (ABSL_VLOG_IS_ON(1)) {
     for (int64_t i = 0; i < nodes.size(); i++) {
       const auto& node = nodes[i];
+      const auto deferred_op = node->deferred_op();
       ABSL_VLOG(1) << msg_prefix << i << ": " << node.get()
-                   << (node->deferred_op()
-                           ? absl::StrCat(" op: ",
-                                          node->deferred_op()->op_name())
+                   << (deferred_op
+                           ? absl::StrCat(" op: ", deferred_op->op_name())
                            : "<Not Deferred>");
     }
   }
@@ -278,6 +278,15 @@ class MaterializationWorker {
                       execute_jobs_.push(std::move(task));
                     }
                   }
+                } else {
+                  // This typically indicates a compilation failure, rather than
+                  // an execution failure.
+                  // Mark all nodes in the job as materialization failures so
+                  // that AwaitBuffer() will return the compilation error
+                  // instead of hanging.
+                  for (const auto& node : job.nodes_to_materialize) {
+                    node->SetAsError(tasks.status());
+                  }
                 }
 
                 job.completion_promise.Set(tasks.status());
@@ -398,7 +407,7 @@ absl::Status MaterializeImpl(
 
   // Check that all nodes to materialize have indeed been materialized.
   for (auto& node : nodes_to_materialize) {
-    TT_RET_CHECK(node->state(0) == DeviceBufferRefState::kMaterialized,
+    TT_RET_CHECK(node->state() == DeviceBufferRefState::kMaterialized,
                  error::kInternal)
         << "Materialization failed for node " << node;
   }
@@ -425,15 +434,12 @@ absl::Status Materialize(absl::Span<const SharedDeviceBufferList> nodes,
       }
       continue;
     }
-    // Node is not deferred; check to make sure it doesn't have any placeholder
-    // buffers.
-    for (int i = 0; i < node->size(); ++i) {
-      TT_RET_CHECK(node->state(i) != DeviceBufferRefState::kPlaceholder,
-                   error::kInternal)
-          << "Materialize was called on a placeholder tensor. This should "
-             "never happen.\nkPlaceholder tensors should only appear in "
-             "compiled mode, which should never try to materialize tensors.";
-    }
+    // Node is not deferred; check to make sure it's not a placeholder.
+    TT_RET_CHECK(node->state() != DeviceBufferRefState::kPlaceholder,
+                 error::kInternal)
+        << "Materialize was called on a placeholder tensor. This should "
+           "never happen.\nkPlaceholder tensors should only appear in "
+           "compiled mode, which should never try to materialize tensors.";
   }
   return MaterializeImpl(nodes_to_materialize, reason, materialization_mode);
 }
@@ -545,12 +551,7 @@ void SetOutputNodesAsError(absl::Span<const SharedDeviceBufferList> outputs,
                            absl::Status status) {
   ABSL_VLOG(1) << "[SetOutputNodesAsError] Starting";
   for (const auto& output : outputs) {
-    auto* absl_nonnull node = output.get();
-    auto* materialized_buffers = node->materialized_buffers();
-    if (materialized_buffers == nullptr) {
-      continue;
-    }
-    materialized_buffers->SetAsError(status);
+    output->SetAsError(status);
   }
   ABSL_VLOG(1) << "[SetOutputNodesAsError] Set error for nodes";
 }
@@ -579,7 +580,7 @@ void AddLeafNodes(std::vector<SharedDeviceBufferList>& nodes) {
   for (const auto& node : nodes) {
     // Get the root of the deferred op and check that we haven't processed it
     // yet. Skip if there's no op, no subgraph, or a non-unique root.
-    const auto* deferred_op = node->deferred_op();
+    const auto deferred_op = node->deferred_op();
     if (!deferred_op) continue;
 
     std::shared_ptr<Subgraph> subgraph = deferred_op->subgraph();

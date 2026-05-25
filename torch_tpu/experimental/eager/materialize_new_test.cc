@@ -127,7 +127,7 @@ TEST_F(MaterializeNewTest, AsyncMaterializationSynchronization) {
   // If the compiled model failed, this will return the failure status.
   TF_ASSERT_OK_AND_ASSIGN(DeviceBufferRef result_ref,
                           GetBuffer(result_tensors[0]));
-  auto status_or = result_ref.GetOrMaterializeBuffer();
+  auto status_or = result_ref.AwaitBuffer();
   EXPECT_TRUE(status_or.ok());
 }
 
