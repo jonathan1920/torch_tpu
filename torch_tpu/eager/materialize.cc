@@ -198,6 +198,39 @@ class MaterializationWorker {
 
     ABSL_VLOG(1) << "[MaterializationWorker] Getting leaf nodes";
     std::vector<SharedDeviceBufferList> all_nodes = task.nodes_to_materialize;
+
+    // Filter out non-deferred nodes that may have been materialized by an
+    // earlier materialization task. Return an error if any of the nodes are
+    // placeholders.
+    {
+      absl::Status no_placeholder_status = absl::OkStatus();
+      std::erase_if(all_nodes, [&no_placeholder_status](
+                                   const SharedDeviceBufferList& node) {
+        switch (node->state()) {
+          case DeviceBufferRefState::kDeferred:
+            return false;
+          case DeviceBufferRefState::kPlaceholder:
+            no_placeholder_status =
+                TT_ERROR(error::kInternal)
+                << "Materialize was called on a placeholder tensor. This "
+                   "should "
+                   "never happen.\nkPlaceholder tensors should only appear in "
+                   "compiled mode, which should never try to materialize "
+                   "tensors.";
+            return true;
+          case DeviceBufferRefState::kMaterialized:
+            return true;
+        }
+      });
+      if (!no_placeholder_status.ok()) {
+        return no_placeholder_status;
+      }
+      if (all_nodes.empty()) {
+        // Everything was already materialized, nothing more to do.
+        return std::vector<ExecutionTask>();
+      }
+    }
+
     {
       tsl::profiler::TraceMe t("AddLeafNodes");
       AddLeafNodes(all_nodes);
@@ -206,10 +239,6 @@ class MaterializationWorker {
     ABSL_VLOG(1) << "[MaterializationWorker] Found " << all_nodes.size()
                  << " leaf nodes";
     LogDeferredNodes(all_nodes, /* msg_prefix= */ "  Output leaf node");
-
-    if (all_nodes.empty()) {
-      return std::vector<ExecutionTask>();
-    }
 
     ABSL_VLOG(1) << "[MaterializationWorker] Creating traversal";
     std::unique_ptr<Traversal> traversal;
@@ -378,9 +407,12 @@ absl::Status MaybeBlockOnPendingMaterializationsNew(const at::Tensor& tensor) {
 
 // Common pathway for all Materialize() overloads.
 absl::Status MaterializeImpl(
-    absl::Span<const SharedDeviceBufferList> nodes_to_materialize,
+    std::vector<SharedDeviceBufferList>& nodes_to_materialize,
     MaterializationReason reason, MaterializationMode materialization_mode) {
-  tsl::profiler::TraceMe t([] { return "MaterializeImpl"; });
+  if (nodes_to_materialize.empty()) {
+    return absl::OkStatus();
+  }
+  tsl::profiler::TraceMe t("MaterializeImpl");
 
   if (GetFlagOnce<bool,
                   &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
@@ -391,17 +423,19 @@ absl::Status MaterializeImpl(
     return absl::OkStatus();
   }
 
+  // Deduplicate nodes_to_materialize.
+  {
+    absl::flat_hash_set<const DeviceBufferList*> unique_nodes;
+    std::erase_if(nodes_to_materialize,
+                  [&unique_nodes](const SharedDeviceBufferList& node) {
+                    return !unique_nodes.insert(node.get()).second;
+                  });
+  }
   ABSL_VLOG(1) << "[MaterializeImpl] Materializing "
                << nodes_to_materialize.size() << " nodes";
-  if (nodes_to_materialize.empty()) {
-    return absl::OkStatus();
-  }
-
-  std::vector<SharedDeviceBufferList> nodes(nodes_to_materialize.begin(),
-                                            nodes_to_materialize.end());
 
   auto future = GetMaterializationWorker().EnqueueNodes(
-      std::move(nodes), reason, materialization_mode);
+      nodes_to_materialize, reason, materialization_mode);  // intentional copy
   TT_RETURN_IF_ERROR(future.Await()).SetPrepend()
       << "materialization failed with: ";
 
@@ -423,24 +457,12 @@ absl::Status Materialize(absl::Span<const SharedDeviceBufferList> nodes,
   if (nodes.empty()) {
     return absl::OkStatus();
   }
-  std::vector<SharedDeviceBufferList> nodes_to_materialize;
-  // Optimistically assume all deferred and unique (most common case).
-  nodes_to_materialize.reserve(nodes.size());
-  absl::flat_hash_set<SharedDeviceBufferList> unique_nodes;
-  for (const SharedDeviceBufferList& node : nodes) {
-    if (node->deferred_op()) {
-      if (unique_nodes.insert(node).second) {
-        nodes_to_materialize.push_back(node);
-      }
-      continue;
-    }
-    // Node is not deferred; check to make sure it's not a placeholder.
-    TT_RET_CHECK(node->state() != DeviceBufferRefState::kPlaceholder,
-                 error::kInternal)
-        << "Materialize was called on a placeholder tensor. This should "
-           "never happen.\nkPlaceholder tensors should only appear in "
-           "compiled mode, which should never try to materialize tensors.";
-  }
+  // Optimistically assume that all nodes are deferred.
+  // Copy to a vector to allow for deduplication inside MaterializeImpl.
+  // Non-deferred nodes are skipped inside the MaterializationWorker
+  std::vector<SharedDeviceBufferList> nodes_to_materialize(nodes.begin(),
+                                                           nodes.end());
+
   return MaterializeImpl(nodes_to_materialize, reason, materialization_mode);
 }
 
@@ -450,30 +472,13 @@ absl::Status Materialize(absl::Span<const DeviceBufferRef> buffer_refs,
   if (buffer_refs.empty()) {
     return absl::OkStatus();
   }
-  absl::flat_hash_set<SharedDeviceBufferList> unique_deferred_nodes;
+  // Optimistically assume that all refs are deferred and unique.
+  // Deduplication happens in MaterializeImpl.
+  // Non-deferred nodes are skipped inside the MaterializationWorker.
   std::vector<SharedDeviceBufferList> nodes_to_materialize;
+  nodes_to_materialize.reserve(buffer_refs.size());
   for (const DeviceBufferRef& buffer_ref : buffer_refs) {
-    switch (buffer_ref.state()) {
-      case DeviceBufferRefState::kMaterialized:
-        // Already materialized, no-op for this node.
-        continue;
-      case DeviceBufferRefState::kDeferred: {
-        if (unique_deferred_nodes.insert(buffer_ref.device_buffer_list())
-                .second) {
-          nodes_to_materialize.push_back(buffer_ref.device_buffer_list());
-        }
-        continue;
-      }
-      case DeviceBufferRefState::kPlaceholder:
-        return TT_ERROR(error::kInternal)
-               << "Materialize was called on a placeholder tensor. This should "
-                  "never happen.\nkPlaceholder tensors should only appear in "
-                  "compiled mode, which should never try to materialize "
-                  "tensors.";
-      default:
-        return TT_ERROR(error::kInternal)
-               << "DeviceBufferRef has unknown state";
-    }
+    nodes_to_materialize.push_back(buffer_ref.device_buffer_list());
   }
   return MaterializeImpl(nodes_to_materialize, reason, materialization_mode);
 }
