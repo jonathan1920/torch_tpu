@@ -1555,7 +1555,7 @@ def _apply_tensor_parallel_plan(
     full_name = full_name.removeprefix("model.")
 
     if isinstance(child, ragged_moe.RaggedMoeQwen3):
-      # Handled during Qwen3MoeSparseMoeBlock -> RaggedMoeQwen3 replacement
+      # Handled during MoE replacement
       continue
 
     if isinstance(child, torch.nn.Linear):
@@ -1603,6 +1603,15 @@ def _replace_qwen_moe_with_ragged_moe(model, config):
   for layer in model.model.layers:
     assert isinstance(layer.mlp, modeling_qwen3_moe.Qwen3MoeSparseMoeBlock)
     layer.mlp = ragged_moe.RaggedMoeQwen3(config, is_tensor_parallel=True)
+
+
+def _replace_gemma_moe_with_ragged_moe(model, config):
+  layers = model.model.language_model.layers
+  for layer in layers:
+    if hasattr(layer, "enable_moe_block") and layer.enable_moe_block:
+      layer.experts = ragged_moe.RaggedExpertsGemma4(
+          config.text_config if hasattr(config, "text_config") else config
+      )
 
 
 def qwen_ragged_moe_model_builder(
@@ -1665,4 +1674,40 @@ def qwen_ragged_moe_model_builder(
   _, example_inputs = module_spec.sample_inputs_factory(
       (batch_size, sequence_length), str(device)
   )
+  return ModelAndInput(model=model, example_inputs=example_inputs)
+
+
+def gemma_ragged_moe_model_builder(
+    model_and_input_args: Any,
+    device: torch.device,
+    weights_dtype: torch.dtype,
+    is_training: bool,
+) -> ModelAndInput:
+  """Returns a ModelAndInput for the specified Gemma 4 Ragged MoE model."""
+  del is_training  # Unused
+  model_name = model_and_input_args.model_name
+  sequence_length = model_and_input_args.sequence_length
+  batch_size = model_and_input_args.batch_size
+  modify_config_hook = model_and_input_args.custom_kwargs.get(
+      "modify_config_hook", None
+  )
+  registry = get_module_registry()
+  module_spec = registry.get_module_spec(
+      "transformers",
+      model_name,
+      load_weights=False,
+      modify_config_hook=modify_config_hook,
+  )
+  module_config = module_spec.config
+
+  with torch.device(device), set_default_dtype(weights_dtype):
+    model = module_spec.module_factory()
+    _replace_gemma_moe_with_ragged_moe(model, module_config)
+
+    model.apply(_init_model_weights)
+
+  _, example_inputs = module_spec.sample_inputs_factory(
+      (batch_size, sequence_length), str(device)
+  )
+  example_inputs.pop("attention_mask", None)
   return ModelAndInput(model=model, example_inputs=example_inputs)

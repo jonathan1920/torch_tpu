@@ -18,6 +18,7 @@ import math
 
 import torch
 import torch.nn.functional as F
+from transformers import activations
 
 
 class RaggedMoeQwen3(torch.nn.Module):
@@ -136,3 +137,85 @@ class RaggedMoeQwen3(torch.nn.Module):
 
     # Split back the sequence dimension
     return h.view(batch_size, sequence_length, hidden_size), router_logits
+
+
+class RaggedExpertsGemma4(torch.nn.Module):
+  """Drop-in replacement for Gemma4TextExperts using XLA ragged dot."""
+
+  def __init__(self, config):
+    super().__init__()
+    self.num_experts = config.num_experts
+    self.top_k = config.top_k_experts
+    self.hidden_size = config.hidden_size
+    self.moe_intermediate_size = config.moe_intermediate_size
+
+    self.up = torch.nn.Parameter(
+        torch.randn(
+            self.num_experts,
+            self.hidden_size,
+            self.moe_intermediate_size,
+        )
+        / math.sqrt(self.hidden_size)
+    )
+
+    self.gate = torch.nn.Parameter(
+        torch.randn(
+            self.num_experts,
+            self.hidden_size,
+            self.moe_intermediate_size,
+        )
+        / math.sqrt(self.hidden_size)
+    )
+
+    self.down = torch.nn.Parameter(
+        torch.randn(
+            self.num_experts,
+            self.moe_intermediate_size,
+            self.hidden_size,
+        )
+        / math.sqrt(self.moe_intermediate_size)
+    )
+
+    self.act_fn = activations.ACT2FN[config.hidden_activation]
+    self.ragged_dot_impl = torch.ops.torch_tpu.ragged_dot
+
+  def forward(
+      self,
+      hidden_states: torch.Tensor,
+      top_k_index: torch.Tensor,
+      top_k_weights: torch.Tensor,
+  ) -> torch.Tensor:
+    batch_fused, hidden_size = hidden_states.shape
+
+    top_k_weights = top_k_weights.to(dtype=hidden_states.dtype)
+    selected_indices = top_k_index.flatten()  # [B*K]
+    sortidx = torch.argsort(selected_indices)  # [B*K]
+    reverse_sortidx = torch.argsort(sortidx)  # [B*K]
+
+    group_sizes = torch.zeros(
+        self.num_experts, dtype=torch.int32, device=hidden_states.device
+    )  # [E]
+    group_sizes.scatter_add_(
+        dim=0,
+        index=selected_indices,
+        src=torch.ones(
+            batch_fused * self.top_k,
+            dtype=torch.int32,
+            device=hidden_states.device,
+        ),
+    )
+
+    h = hidden_states.view(batch_fused, 1, hidden_size)  # [B, 1, dm]
+    h = h.broadcast_to(batch_fused, self.top_k, hidden_size)  # [B, K, dm]
+    h = h.reshape(-1, hidden_size)  # [B*K, dm]
+    h = h[sortidx, :]  # [B*K, dm] - sorted by expert id
+
+    h_up = self.ragged_dot_impl(h, self.up, group_sizes)  # [B*K, df]
+    h_gate = self.ragged_dot_impl(h, self.gate, group_sizes)
+    h = h_up * self.act_fn(h_gate)  # [B*K, df]
+    h = self.ragged_dot_impl(h, self.down, group_sizes)  # [B*K, dm]
+
+    h = h[reverse_sortidx, :].view(batch_fused, self.top_k, hidden_size)
+    h = (h * top_k_weights.view(batch_fused, self.top_k, 1)).sum(dim=1)
+
+    return h

@@ -34,6 +34,7 @@ _HF_QWEN3_1_7B_BENCHMARK_NAME = "hf_qwen3_1_7b"
 _HF_GPT_OSS_20B_BENCHMARK_NAME = "hf_gpt_oss_20b"
 _HF_GPT_OSS_120B_BENCHMARK_NAME = "hf_gpt_oss_120b"
 _HF_QWEN3_CODER_30B_RAGGED_MOE_BENCHMARK_NAME = "hf_qwen3_30b_ragged_moe"
+_HF_GEMMA_4_26B_A4B_RAGGED_MOE_BENCHMARK_NAME = "hf_gemma_4_26b_ragged_moe"
 _TIMM_RESNET_50_BENCHMARK_NAME = "timm_resnet_50"
 _WAN_2_2_TI2V_5B_BENCHMARK_NAME = "wan_2_2_ti2v_5b"
 
@@ -267,6 +268,41 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         ),
     )
     self.run_performance_benchmark_test(config, _HF_GEMMA_3_270M_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+      ])
+  )
+  def test_gemma_4_26b_a4b_ragged_moe_12_layers_forward(self, run_mode):
+    """Tests the forward pass of Gemma-4-26B-A4B (12 Layers) with Ragged MoE."""
+    if self._is_torchax_backend():
+      self.skipTest("TorchAX does not support distributed tests yet.")
+
+    def modify_config_hook(config):
+      if hasattr(config, "text_config"):
+        config.text_config.num_hidden_layers = 12
+      config.num_hidden_layers = 12
+      return config
+
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        benchmark_category=benchmark_utils.BenchmarkCategory.GEMMA_RAGGED_MOE,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="google/gemma-4-26B-A4B",
+            sequence_length=2048,
+            batch_size=8,
+            custom_kwargs={"modify_config_hook": modify_config_hook},
+        ),
+        model_and_input_factory=model_utils.gemma_ragged_moe_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(
+        config, _HF_GEMMA_4_26B_A4B_RAGGED_MOE_BENCHMARK_NAME
+    )
 
   # ============================================================================
   # 3. Qwen Architecture Family
