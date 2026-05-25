@@ -352,6 +352,58 @@ def _init_model_weights(model):
     tensor.fill_(0.0)
 
 
+def whisper_model_builder(
+    model_and_input_args: Any,
+    device: torch.device,
+    weights_dtype: torch.dtype,
+    is_training: bool,
+) -> ModelAndInput:
+  """Returns a ModelAndInput for the Whisper speech-to-text model."""
+  model_name = model_and_input_args.model_name
+  batch_size = model_and_input_args.batch_size
+  sequence_length = model_and_input_args.sequence_length
+
+  registry = get_module_registry()
+  module_spec = registry.get_module_spec(
+      "transformers", model_name, load_weights=False
+  )
+  config = module_spec.config
+
+  with torch.device(device), set_default_dtype(weights_dtype):
+    model = module_spec.module_factory()
+
+  if is_training:
+    model.train()
+  else:
+    model.eval()
+
+  num_mel_bins = getattr(config, "num_mel_bins", 128)
+  feature_length = (
+      3000  # Whisper convolution layers strictly require 3000 frames
+  )
+  vocab_size = getattr(config, "vocab_size", 51866)
+  decoder_start = getattr(config, "decoder_start_token_id", 50258)
+
+  input_features = torch.randn(
+      (batch_size, num_mel_bins, feature_length),
+      dtype=weights_dtype,
+      device=device,
+  )
+  decoder_input_ids = torch.full(
+      (batch_size, sequence_length),
+      decoder_start,
+      dtype=torch.long,
+      device=device,
+  )
+
+  example_inputs = {
+      "input_features": input_features,
+      "decoder_input_ids": decoder_input_ids,
+  }
+
+  return ModelAndInput(model=model, example_inputs=example_inputs)
+
+
 def meta_llama_model_builder(
     model_and_input_args: Any,
     device: torch.device,
