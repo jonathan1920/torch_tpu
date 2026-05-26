@@ -86,12 +86,13 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "collective_ops_test",
+    timeout = "long",
     srcs = ["collective_ops_test.py"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT": "/tmp/collective_ops_test",
     },
     notest_oss = "fix hang in OSS",  # TODO
-    shard_count = 8,
+    shard_count = 12,
     tags = if_oss(
         ["exclusive"],
         [],
@@ -116,6 +117,7 @@ torch_tpu_py_test(
 # Like collective_ops_test, but uses a remote filesystem for the tier-3 cache.
 torch_tpu_py_test(
     name = "collective_ops_remote_cache_test",
+    timeout = "long",
     srcs = ["collective_ops_test.py"],
     env = {
         "TORCH_TPU_INTERNAL_TIER3_COMPILATION_CACHE_ROOT":
@@ -125,7 +127,7 @@ torch_tpu_py_test(
     },
     main = "collective_ops_test.py",
     notest_oss = "fix hang in OSS",  # TODO
-    shard_count = 8,
+    shard_count = 12,
     tags = if_oss(
         ["exclusive"],
         [],
@@ -150,13 +152,14 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "collective_errors_test",
+    timeout = "long",
     srcs = ["collective_errors_test.py"],
     args = [
         "--test_mode=tpu",
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
     notest_oss = "fix hang in OSS",  # TODO
-    shard_count = 8,
+    shard_count = 12,
     tags = if_oss(
         ["exclusive"],
         [],
@@ -177,6 +180,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "collective_errors_test_cov",
+    timeout = "long",
     srcs = ["collective_errors_test.py"],
     args = [
         "--test_mode=cov",
@@ -184,7 +188,7 @@ torch_tpu_py_test(
     env = {"TORCH_SHOW_CPP_STACKTRACES": "1"},
     main = "collective_errors_test.py",
     notest_oss = "fix hang in OSS",  # TODO
-    shard_count = 8,
+    shard_count = 12,
     tags = if_oss(
         ["exclusive"],
         [],
@@ -287,12 +291,14 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "all_gather_errors_test",
+    timeout = "long",
     srcs = ["all_gather_errors_test.py"],
     args = [
         "--test_mode=tpu",
     ],
     env = {"TORCH_SHOW_CPP_STACKTRACES": "0"},
     notest_oss = "fix hang in OSS",  # TODO
+    shard_count = 3,
     tags = if_oss(
         ["exclusive"],
         [],
@@ -314,6 +320,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "all_gather_errors_test_cov",
+    timeout = "long",
     srcs = ["all_gather_errors_test.py"],
     args = [
         "--test_mode=cov",
@@ -321,6 +328,7 @@ torch_tpu_py_test(
     env = {"TORCH_SHOW_CPP_STACKTRACES": "1"},
     main = "all_gather_errors_test.py",
     notest_oss = "fix hang in OSS",  # TODO
+    shard_count = 3,
     tags = if_oss(
         ["exclusive"],
         [],
@@ -503,8 +511,10 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "dcp_test",
+    timeout = "long",
     srcs = ["dcp_test.py"],
     notest_oss = "fix hang in OSS",  # TODO
+    shard_count = 2,
     tags = if_oss(
         ["exclusive"],
         [],
