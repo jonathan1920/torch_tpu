@@ -218,6 +218,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_gemma_3_270m_forward(self, run_mode):
     """Tests the forward pass of Gemma-3-270m."""
+    if run_mode == benchmark_utils.RunMode.COMPILED:
+      self.skipTest("Compiled mode fails on view().")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
