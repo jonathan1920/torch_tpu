@@ -64,15 +64,6 @@ absl::Status CheckMmOutInputs(const at::Tensor& lhs, const at::Tensor& rhs,
            "got out_dtype "
         << ToString(out_scalar_type) << " vs out tensor dtype "
         << ToString(out.scalar_type());
-    TT_RET_CHECK(out_scalar_type == lhs.scalar_type() ||
-                     (out_scalar_type == at::ScalarType::Float &&
-                      (lhs.scalar_type() == at::ScalarType::Half ||
-                       lhs.scalar_type() == at::ScalarType::BFloat16)),
-                 error::kInvalidArgument)
-        << "expected out_dtype to be the same as input dtype or "
-        << "fp32 for fp16/bf16 inputs, "
-        << "got out_dtype " << ToString(out_scalar_type) << " vs inputs dtype "
-        << ToString(lhs.scalar_type());
   } else {
     // For mm, the inputs and output should have the same dtype
     TT_RET_CHECK(out.scalar_type() == lhs.scalar_type(),

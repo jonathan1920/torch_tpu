@@ -1465,18 +1465,6 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch.ops.aten.mm.dtype_out(lhs, rhs, out_dtype=torch.int32, out=out)
 
-  def test_mm_dtype_output_dtype_mismatch_fp32(self):
-    lhs = torch.ones(3, 4, device=et.device(), dtype=torch.float16)
-    rhs = torch.ones(4, 5, device=et.device(), dtype=torch.float16)
-    out = torch.ones(3, 5, device=et.device(), dtype=torch.float64)
-
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""mm(): expected out_dtype to be the same as input dtype or fp32 for fp16/bf16 inputs, got out_dtype float64 vs inputs dtype float16""",
-        message_reviewed_by="gunhyun",
-    ):
-      torch.ops.aten.mm.dtype_out(lhs, rhs, out_dtype=torch.float64, out=out)
-
   # Why do we run this test only on TPU (and not on CPU)?
   # PyTorch CPU does not raise an error when g size does not match the size of
   # weight in dim 0.

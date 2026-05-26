@@ -5343,6 +5343,33 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     torch.ops.aten._assert_async.msg(true_cond, "should not fail")
     torch.ops.aten._assert_async.msg(false_cond, "intended failure but no-op")
 
+  def test_matmul_fp8_bf16(self):
+    """Tests torch.matmul on TPU with FP8 inputs and BF16 output."""
+    device = torch.device("tpu")
+
+    a_fp32 = torch.randn(16, 16, dtype=torch.float32, device=device)
+    b_fp32 = torch.randn(16, 16, dtype=torch.float32, device=device)
+
+    a_fp8 = a_fp32.to(torch.float8_e4m3fn)
+    b_fp8 = b_fp32.to(torch.float8_e4m3fn)
+
+    out_bf16 = torch.empty(16, 16, dtype=torch.bfloat16, device=device)
+
+    torch.mm(a_fp8, b_fp8, out_dtype=torch.bfloat16, out=out_bf16)
+
+    a_cpu_fp8 = a_fp8.cpu()
+    b_cpu_fp8 = b_fp8.cpu()
+    expected_cpu = torch.matmul(a_cpu_fp8.float(), b_cpu_fp8.float()).to(
+        torch.bfloat16
+    )
+
+    self.assert_close(
+        golden_result=expected_cpu,
+        torch_tpu_result=out_bf16.cpu(),
+        rtol=1e-2,
+        atol=1e-2,
+    )
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""
