@@ -615,8 +615,12 @@ torch_tpu_cc_test(
 
 torch_tpu_cc_library(
     name = "env_vars",
+    srcs = ["env_vars.cc"],
     hdrs = ["env_vars.h"],
-    deps = ["@com_google_absl//absl/base:no_destructor"],
+    deps = [
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 torch_tpu_cc_library(

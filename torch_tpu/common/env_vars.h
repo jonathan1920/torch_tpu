@@ -76,6 +76,11 @@ inline constexpr char kTorchTpuInternalDetectRepeatedOpsEnvVar[] =
 // be overridden by setting this env var to "0".
 inline constexpr char kTorchTpuInternalEnableDebugChecksEnvVar[] =
     "TORCH_TPU_INTERNAL_ENABLE_DEBUG_CHECKS";
+// If set to "0" or "false", disables forcing graph breaks for collective ops.
+// This is useful for SPMD workloads where graph differences between ranks are
+// not expected. Default is "true".
+inline constexpr char kTorchTpuInternalMaterializeCollectiveTensorsEnvVar[] =
+    "TORCH_TPU_INTERNAL_MATERIALIZE_COLLECTIVE_TENSORS";
 // The name of the tier-2 compilation cache. The special name "disabled" can be
 // used to disable the tier-2 cache. If not set, TorchTPU decides whether to use
 // the tier-2 cache or not based on the world size: if the world size is 1, the
@@ -163,6 +168,19 @@ const std::optional<std::string>& GetEnvOnce() {
       }());
   return *env_var;
 }
+
+// Returns whether to materialize collective tensors.
+//
+// Compiling a graph with collective ops can cause deadlocks on TPU if there are
+// slight graph differences between ranks (e.g. from "if rank == 0: ..."). We
+// avoid this by triggering a graph break for collective ops (materializing
+// them). This behavior can be disabled by setting the environment variable
+// `TORCH_TPU_INTERNAL_MATERIALIZE_COLLECTIVE_TENSORS` to `"false"` or `"0"`.
+// This is useful for SPMD workloads where graph differences between ranks are
+// not expected.
+//
+// Default is true.
+bool GetMaterializeCollectiveTensorsEnvValue();
 
 }  // namespace torch_tpu
 

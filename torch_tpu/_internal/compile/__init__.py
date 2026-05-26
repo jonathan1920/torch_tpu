@@ -11,12 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from absl import app
-from absl import flags
 from absl import logging
 import torch
 from torch._dynamo import decorators
 from torch._dynamo.backends import registry
+from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.compile._backend import TpuBackend
 
 # Register "tpu" backend
@@ -42,22 +41,17 @@ _COLLECTIVE_OPS = (
 # pylint: enable=protected-access
 
 
-def _disallow_collective_ops_in_graph():
-  # Compiling a graph with collective ops can cause deadlocks on TPU if there
-  # are slight graph differences between ranks (e.g. from "if rank == 0: ...").
-  # We avoid this by triggering a graph break for collective ops.
-  # This behavior can be disabled by setting
-  # --torch_tpu_internal_materialize_collective_tensors=False.
-  # The flag is defined in torch_tpu/distributed/process_group_tpu.cc with
-  # default=True.
-  # Note that as the flag is defined in distributed/process_group_tpu.cc, it is
-  # possible that it is not linked by the Blaze build. So we have to check
-  # if the flag exists, before using it.
-  # TODO: Add necessary distributed ops with tests.
-  if (
-      "torch_tpu_internal_materialize_collective_tensors" in flags.FLAGS
-      and not flags.FLAGS.torch_tpu_internal_materialize_collective_tensors
-  ):
+def _disallow_collective_ops_in_graph() -> None:
+  """Disallows collective ops in the Dynamo graph.
+
+  Compiling a graph with collective ops can cause deadlocks on TPU if there are
+  slight graph differences between ranks (e.g. from "if rank == 0: ..."). We
+  avoid this by triggering a graph break for collective ops. This behavior can
+  be disabled by setting the environment variable
+  `TORCH_TPU_INTERNAL_MATERIALIZE_COLLECTIVE_TENSORS` to `"false"` or `"0"`.
+  """
+
+  if not tpu_torch_compile.get_materialize_collective_tensors_env_value():
     return
 
   logging.info("[TpuBackend] Force graph break for collective ops enabled.")
@@ -65,9 +59,8 @@ def _disallow_collective_ops_in_graph():
     decorators.disallow_in_graph(op)
 
 
-# Note: absl flags are not parsed until init_google is called, so we need to use
-# call_after_init to register the callback.
-app.call_after_init(_disallow_collective_ops_in_graph)
+_disallow_collective_ops_in_graph()
+
 
 # New Dynamo flag that enables tracing through the `backward` function call.
 # This enables the possibility of generating of a single fx graph containing

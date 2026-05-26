@@ -54,6 +54,7 @@
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
@@ -675,6 +676,10 @@ at::Tensor PyForceStrides(
   return view_tensor;
 }
 
+bool PyGetMaterializeCollectiveTensorsEnvValue() {
+  return torch_tpu::GetMaterializeCollectiveTensorsEnvValue();
+}
+
 // A context manager for locking multiple generators' mutexes.
 //
 // This is necessary to prevent generator state conflicts in between getting the
@@ -860,6 +865,9 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         "Returns a tensor with equivalent logical values to the input tensor, "
         "but with the given strides and storage offset, copying "
         "data as necessary.");
+  m.def("get_materialize_collective_tensors_env_value",
+        PyGetMaterializeCollectiveTensorsEnvValue,
+        "Returns whether to materialize collective tensors.");
 }
 
 }  // namespace torch_tpu

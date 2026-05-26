@@ -29,7 +29,6 @@
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
-#include "absl/flags/flag.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
@@ -62,8 +61,8 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
+#include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/distributed/allgather.h"
@@ -87,9 +86,6 @@
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/runtime/device_id.h"
 #include "xla/shape.h"
-
-ABSL_FLAG(bool, torch_tpu_internal_materialize_collective_tensors, true,
-          "Split the execution graph before and after collectives.");
 
 namespace torch_tpu {
 
@@ -294,8 +290,8 @@ OpSplitMode GetCollectiveSplitMode() {
   if (IsSpmdSafe()) {
     return OpSplitMode::kNone;
   }
-  if (GetFlagOnce<bool,
-                  &FLAGS_torch_tpu_internal_materialize_collective_tensors>()) {
+
+  if (GetMaterializeCollectiveTensorsEnvValue()) {
     return OpSplitMode::kSplitBoth;
   }
   return OpSplitMode::kNone;
