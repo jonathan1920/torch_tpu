@@ -62,14 +62,15 @@ std::tuple<at::Tensor, at::Tensor> AtenDropout(const at::Tensor& input,
                                                double p,
                                                c10::optional<bool> train) {
   TT_KERNEL(OpName::kDropout, param_keys, (input, p, train), {
-    TT_CHECK_THROW(p > 0 && p < 1.0, error::kInvalidArgument)
-        << "expected p to be in the exclusive range (0, 1), got " << p;
+    TT_CHECK_THROW(p >= 0.0 && p <= 1.0, error::kInvalidArgument)
+        << "expected p to be in the range [0, 1], got " << p;
 
-    // https://docs.pytorch.org/docs/stable/generated/torch.nn.functionelu_aten_kernelsal.dropout.html#torch-nn-functional-dropout
+    // https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.dropout.html#torch-nn-functional-dropout
     // at::dropout returns a scaled tensor, and a boolean mask of retained
-    // values. In inference mode or with nonpositive drop rate p, we don't scale
-    // the tensor, and return an all-true mask as a no-op.
-    if (!train.has_value() || p <= 0.0) {
+    // values. In inference mode or with zero drop rate p, we don't scale
+    // the tensor, and return an all-true mask as a no-op. The rng state is not
+    // advanced.
+    if (!train.value_or(true) || p <= 0.0) {
       return {
           input,
           at::ones(input.sizes(),

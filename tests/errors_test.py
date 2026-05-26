@@ -4886,7 +4886,7 @@ Supported combinations for non-constant padding:
     def check(p: float) -> None:
       with et.assert_raises_message(
           RuntimeError,
-          tpu="""dropout(): expected p to be in the exclusive range (0, 1), got"""
+          tpu="""dropout(): expected p to be in the range [0, 1], got"""
           f""" {p}""",
           cpu=f"""bernoulli_ expects p to be in [0, 1], but got p={1 - p}""",
           message_reviewed_by="wan",

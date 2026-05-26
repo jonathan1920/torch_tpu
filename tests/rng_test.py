@@ -13,11 +13,12 @@
 # limitations under the License.
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import torch
 from torch._subclasses import fake_tensor
 
 
-class RngTest(absltest.TestCase):
+class RngTest(parameterized.TestCase):
 
   def test_get_rng_state_metadata(self):
     device = torch.device("tpu")
@@ -177,6 +178,46 @@ class RngTest(absltest.TestCase):
     self.assertGreater(torch.tpu.device_count(), 0)
     self.assertLen(torch.tpu.default_generators, torch.tpu.device_count())
     self.assertIsInstance(torch.tpu.default_generators[0], torch.Generator)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="inference_mode",
+          p=0.5,
+          train=False,
+          advances=False,
+      ),
+      dict(
+          testcase_name="p_zero",
+          p=0.0,
+          train=True,
+          advances=False,
+      ),
+      dict(
+          testcase_name="p_one",
+          p=1.0,
+          train=True,
+          advances=False,
+      ),
+      dict(
+          testcase_name="training_mode",
+          p=0.5,
+          train=True,
+          advances=True,
+      ),
+  )
+  def test_dropout_rng_advances(self, p, train, advances):
+    device = torch.accelerator.current_accelerator()
+    x = torch.ones(10, device=device)
+    initial_state = torch.tpu.get_rng_state(device)
+
+    out, _ = torch.native_dropout(x, p=p, train=train)
+    out.cpu()
+
+    new_state = torch.tpu.get_rng_state(device)
+    if advances:
+      self.assertFalse(torch.equal(initial_state, new_state))
+    else:
+      self.assertTrue(torch.equal(initial_state, new_state))
 
 
 if __name__ == "__main__":
