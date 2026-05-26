@@ -552,7 +552,6 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/cat:cat_aten_kernels",
         "//torch_tpu/ops/clamp:clamp_aten_kernels",
         "//torch_tpu/ops/col2im:col2im_aten_kernels",
-        "//torch_tpu/ops/compile:stateless_rng_kernels",
         "//torch_tpu/ops/convolution:convolution_aten_kernels",
         "//torch_tpu/ops/copy_from:copy_from_aten_kernels",
         "//torch_tpu/ops/ctc_loss:ctc_loss_aten_kernels",

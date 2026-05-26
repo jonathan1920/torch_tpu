@@ -49,7 +49,6 @@
 #include "torch_tpu/ops/cat/cat_aten_kernels.h"
 #include "torch_tpu/ops/clamp/clamp_aten_kernels.h"
 #include "torch_tpu/ops/col2im/col2im_aten_kernels.h"
-#include "torch_tpu/ops/compile/stateless_rng_kernels.h"
 #include "torch_tpu/ops/convolution/convolution_aten_kernels.h"
 #include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
 #include "torch_tpu/ops/ctc_loss/ctc_loss_aten_kernels.h"
@@ -810,9 +809,6 @@ TORCH_LIBRARY(torch_tpu, m) {
       "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor grop_sizes, *, "
       "Tensor(a!) out) -> Tensor(a!)");
   m.def("optimization_barrier(Tensor[] inputs) -> Tensor[]");
-  m.def(
-      "stateless_dropout(Tensor rng_state, Tensor input, float p, "
-      "bool? train) -> (Tensor, Tensor, Tensor)");
   // This op is a torch_tpu custom op for use in torch.compile() mode to handle
   // dynamic tensor shapes on TPU. It lowers down to
   // stablehlo.set_dimension_size which XLA uses to determine the runtime size
@@ -884,7 +880,6 @@ TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
   Impl(m, OpName::kRaggedDot, AtenRaggedDot);
   Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
   Impl(m, OpName::kTorchTpuOptimizationBarrier, TorchTpuOptimizationBarrier);
-  Impl(m, OpName::kTorchTpuStatelessDropout, TorchTpuStatelessDropout);
   Impl(m, OpName::kSetDimensionLogicalSize, SetDimensionLogicalSize);
   Impl(m, OpName::kDynamicArange, DynamicArange);
 }

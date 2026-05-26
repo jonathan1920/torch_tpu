@@ -20,14 +20,6 @@ package(
 )
 
 torch_tpu_py_library(
-    name = "rewrite_stateless_rng_ops",
-    srcs = ["rewrite_stateless_rng_ops.py"],
-    deps = [
-        "//shims/torch:pytorch",
-    ],
-)
-
-torch_tpu_py_library(
     name = "mark_embedded_constants",
     srcs = ["mark_embedded_constants.py"],
     deps = [

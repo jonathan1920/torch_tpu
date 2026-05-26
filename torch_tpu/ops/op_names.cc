@@ -1207,8 +1207,6 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_torchtpu_internal_gather_all_subgroups";
     case OpName::kTorchTpuOptimizationBarrier:
       return "optimization_barrier";
-    case OpName::kTorchTpuStatelessDropout:
-      return "stateless_dropout";
     case OpName::kTrilIndices:
       return "tril_indices";
     case OpName::kTrilOut:

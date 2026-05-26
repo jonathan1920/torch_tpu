@@ -6960,29 +6960,6 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
       ).cpu()
       self.assertFalse(torch.isnan(result).any())
 
-  def test_stateless_dropout(self):
-    torch.manual_seed(0)
-    input_tensor = torch.randn(
-        10,
-        10,
-        dtype=torch.float32,
-        device=torch.device("tpu"),
-    )
-
-    rng_state = torch.get_device_module(torch.device("tpu")).get_rng_state()
-    # rng_state by spec is on CPU, move it to TPU.
-    rng_state = rng_state.to(torch.device("tpu"))
-
-    expected_out, expected_mask = torch.ops.aten.native_dropout(
-        input_tensor, 0.5, True
-    )
-    _, out, mask = torch.ops.torch_tpu.stateless_dropout(
-        rng_state, input_tensor, 0.5, True
-    )
-
-    self.assertEqual(expected_out.cpu(), out.cpu())
-    self.assertEqual(expected_mask.cpu(), mask.cpu())
-
   def test_pointwise_op_dtype_promotion(self):
     """Ensure that pointwise ops promote as expected.
 
