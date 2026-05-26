@@ -209,37 +209,37 @@ absl::Status TpuProfilerSession::Stop(const std::string& filename) {
   return absl::OkStatus();
 }
 
-static void StartProfilerServerPy(int port) {
+static void PyStartProfilerServer(int port) {
   TT_THROW_IF_ERROR(TpuProfilerServer::GetInstance().Start(port));
 }
 
-static void StopProfilerServerPy() {
+static void PyStopProfilerServer() {
   TT_THROW_IF_ERROR(TpuProfilerServer::GetInstance().Stop());
 }
 
-static void StartTracePy(const std::string& logdir, py::object options_obj) {
+static void PyStartTrace(const std::string& logdir, py::object options_obj) {
   TT_THROW_IF_ERROR(
       TpuProfilerSession::GetInstance().Start(logdir, options_obj));
 }
 
-static void StopTracePy(const std::string& filename) {
+static void PyStopTrace(const std::string& filename) {
   TT_THROW_IF_ERROR(TpuProfilerSession::GetInstance().Stop(filename));
 }
 
 PYBIND11_MODULE(_profiler_backend, m) {
   m.doc() = "PjRt backend for PyTorch profiler.";
 
-  m.def("start_trace", &StartTracePy, py::arg("logdir"),
+  m.def("start_trace", &PyStartTrace, py::arg("logdir"),
         py::arg("options") = py::none(),
         "Starts a profiler trace with the given options; fails if the trace "
         "has already been started.");
-  m.def("stop_trace", &StopTracePy,
+  m.def("stop_trace", &PyStopTrace,
         "Stops the profiler trace and writes the trace data to the log dir; "
         "fails if the trace has not been started or has already been stopped.");
-  m.def("start_profiler_server", &StartProfilerServerPy, py::arg("port"),
+  m.def("start_profiler_server", &PyStartProfilerServer, py::arg("port"),
         "Starts the profiler gRPC server on the given port; fails if the "
         "server has already been started.");
-  m.def("stop_profiler_server", &StopProfilerServerPy,
+  m.def("stop_profiler_server", &PyStopProfilerServer,
         "Stops the profiler gRPC server; fails if the server has not been "
         "started or has already been stopped.");
 

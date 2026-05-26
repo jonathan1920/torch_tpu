@@ -50,7 +50,7 @@ namespace py = pybind11;
 
 namespace {
 
-void SynchronizePy(std::optional<int> device_index) {
+void PySynchronize(std::optional<int> device_index) {
   const c10::impl::DeviceGuardImplInterface* impl =
       c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
   TT_CHECK_THROW(impl != nullptr, error::kInternal)
@@ -63,7 +63,7 @@ void SynchronizePy(std::optional<int> device_index) {
   impl->synchronizeDevice(index);
 }
 
-int64_t RecordEventPy(std::optional<int> device_index,
+int64_t PyRecordEvent(std::optional<int> device_index,
                       std::optional<int64_t> stream_id) {
   const c10::impl::DeviceGuardImplInterface* impl =
       c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
@@ -98,18 +98,18 @@ void InitRuntimeOptions(const std::string& device_type) {
   CompilationCache::GetInstance().SetOptions({});
 }
 
-void WaitEventSnapshotPy(int64_t event_id) {
+void PyWaitEventSnapshot(int64_t event_id) {
   TT_THROW_IF_ERROR(WaitEventSnapshot(event_id)).SetPrepend()
       << "failed waiting for event snapshot: ";
 }
 
-bool QueryEventSnapshotPy(int64_t event_id) {
+bool PyQueryEventSnapshot(int64_t event_id) {
   TT_ASSIGN_OR_THROW(bool is_ready, QueryEventSnapshot(event_id),
                      _.SetPrepend() << "failed querying event snapshot: ");
   return is_ready;
 }
 
-int64_t GetCurrentStreamIdPy(std::optional<int> device_index) {
+int64_t PyGetCurrentStreamId(std::optional<int> device_index) {
   const c10::impl::DeviceGuardImplInterface* impl =
       c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
   TT_CHECK_THROW(impl != nullptr, error::kInternal)
@@ -123,7 +123,7 @@ int64_t GetCurrentStreamIdPy(std::optional<int> device_index) {
   return current_stream.id();
 }
 
-void SetCurrentStreamIdPy(int64_t stream_id, std::optional<int> device_index) {
+void PySetCurrentStreamId(int64_t stream_id, std::optional<int> device_index) {
   const c10::impl::DeviceGuardImplInterface* impl =
       c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
   TT_CHECK_THROW(impl != nullptr, error::kInternal)
@@ -138,7 +138,7 @@ void SetCurrentStreamIdPy(int64_t stream_id, std::optional<int> device_index) {
   impl->exchangeStream(s);
 }
 
-void SynchronizeStreamPy(int64_t stream_id, std::optional<int> device_index) {
+void PySynchronizeStream(int64_t stream_id, std::optional<int> device_index) {
   const c10::impl::DeviceGuardImplInterface* impl =
       c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
   TT_CHECK_THROW(impl != nullptr, error::kInternal)
@@ -180,34 +180,34 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       },
       "Shuts down the PjRt runtime.");
 
-  m.def("_get_current_stream_id", &GetCurrentStreamIdPy,
+  m.def("_get_current_stream_id", &PyGetCurrentStreamId,
         py::arg("device_index") = py::none(),
         "Returns the current stream ID for the specified device.");
 
-  m.def("_set_current_stream_id", &SetCurrentStreamIdPy, py::arg("stream_id"),
+  m.def("_set_current_stream_id", &PySetCurrentStreamId, py::arg("stream_id"),
         py::arg("device_index") = py::none(),
         "Sets the current stream ID for the specified device.");
 
-  m.def("_synchronize_stream", &SynchronizeStreamPy, py::arg("stream_id"),
+  m.def("_synchronize_stream", &PySynchronizeStream, py::arg("stream_id"),
         py::arg("device_index") = py::none(),
         py::call_guard<py::gil_scoped_release>(),
         "Blocks until all operations on the specified stream have completed.");
 
-  m.def("_synchronize", &SynchronizePy, py::arg("device_index") = py::none(),
+  m.def("_synchronize", &PySynchronize, py::arg("device_index") = py::none(),
         py::call_guard<py::gil_scoped_release>(),
         "Blocks until all async d2h copies and deferred operations on the "
         "specified device have completed.");
 
-  m.def("_record_event", &RecordEventPy, py::arg("device_index") = py::none(),
+  m.def("_record_event", &PyRecordEvent, py::arg("device_index") = py::none(),
         py::arg("stream_id") = py::none(),
         "Records a fence over async d2h copies already enqueued on the "
         "specified device and stream.");
 
-  m.def("_wait_event", &WaitEventSnapshotPy, py::arg("event_id"),
+  m.def("_wait_event", &PyWaitEventSnapshot, py::arg("event_id"),
         py::call_guard<py::gil_scoped_release>(),
         "Blocks until the recorded event snapshot has completed.");
 
-  m.def("_query_event", &QueryEventSnapshotPy, py::arg("event_id"),
+  m.def("_query_event", &PyQueryEventSnapshot, py::arg("event_id"),
         "Returns whether the recorded event snapshot has completed.");
 
   m.def("_release_event", &ReleaseEventSnapshot, py::arg("event_id"),
