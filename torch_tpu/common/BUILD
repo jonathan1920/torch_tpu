@@ -1088,6 +1088,7 @@ torch_tpu_cc_test(
         ":compilation_spec",
         ":compilation_test_helper",
         ":compile_options_key",
+        ":env_vars",
         ":error_utils",
         ":fingerprint_utils",
         "//torch_tpu/pjrt:pjrt_state",

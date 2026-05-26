@@ -294,32 +294,19 @@ static const CompilerOptionOverrides& GetCompilerOptionOverridesFromEnvVar() {
 
 // Updates the `executable_build_options.debug_options` field of the given
 // `options` with the settings derived from the XLA_FLAGS environment variable.
-// LINT.IfChange
 static void UpdateFromXlaFlags(xla::CompileOptions& options) {
   // Use the cached `ExecutableBuildOptions` to avoid parsing the XLA_FLAGS
   // environment variable multiple times when calling `mutable_debug_options`.
+  // LINT.IfChange
   options.executable_build_options = GetDefaultExecutableBuildOptions();
+  // LINT.ThenChange(:xla_flags_fingerprint)
 
   xla::DebugOptions* debug_options =
       options.executable_build_options.mutable_debug_options();
+  // LINT.IfChange
   debug_options->set_xla_allow_excess_precision(GetAllowExcessPrecision());
+  // LINT.ThenChange(:xla_flags_overrides_fingerprint)
 }
-// LINT.ThenChange(:xla_flags_fingerprint)
-
-// Returns fingerprint of raw string value read from XLA_FLAGS environment
-// variable. The environment variable is only read exactly once per process.
-//
-// It is intended not to replicate parsing XLA_FLAGS into `tsl::Flag`. The
-// current approach is simpler and practically sufficient to capture XLA
-// behavioral changes controlled by XLA_FLAGS. Semantically identical flags in a
-// different order will yield different keys, but it is an acceptable trade-off.
-//
-// LINT.IfChange(xla_flags_fingerprint)
-[[nodiscard]] static FingerprintType GetXlaFlagsFingerprint() {
-  const std::optional<std::string>& xla_flags = GetEnvOnce<kXlaFlagsEnvVar>();
-  return xla_flags.has_value() ? Fingerprint(*xla_flags) : FingerprintCat();
-}
-// LINT.ThenChange()
 
 static absl::Status SetDefaultDeviceAssignment(
     xla::ExecutableBuildOptions& options) {
@@ -353,15 +340,17 @@ static absl::Status SetDefaultDeviceAssignment(
 }
 
 // Returns fingerprint of `xla::ExecutableBuildOptions` fields that are used
-// in `SetDefaultDeviceAssignment` and `ApplyCompilerOptionOverrides`.
-//
-// Note that `options.debug_options` is excluded because it is already included
-// in the XLA_FLAGS fingerprint (via `GetXlaFlagsFingerprint`).
+// in `UpdateFromXlaFlags`, `SetDefaultDeviceAssignment` and
+// `ApplyCompilerOptionOverrides`.
 //
 // LINT.IfChange(xla_executable_build_options_fingerprint)
-[[nodiscard]] static FingerprintType GetXlaExecutableBuildOptionsFingerprint(
+[[nodiscard]] static FingerprintType Fingerprint(
     const xla::ExecutableBuildOptions& options) {
   return FingerprintCat(
+      // Debug options overridden by APIs other than XLA_FLAGS.
+      // LINT.IfChange(xla_flags_overrides_fingerprint)
+      options.debug_options().xla_allow_excess_precision(),
+      // LINT.ThenChange()
       // Device assignment related fields.
       options.num_replicas(), options.num_partitions(),
       options.use_spmd_partitioning(), options.use_shardy_partitioner(),
@@ -515,18 +504,38 @@ absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(CompilationMode mode) {
 }
 // LINT.ThenChange(:compile_options_key)
 
+// Returns fingerprint of `xla::CompileOptions` to be used as part of
+// compilation cache key.
+//
+// For efficiency, only fingerprint the fields that are set in
+// `MakeCompilerOptions` instead of the entire complex struct.
 // LINT.IfChange(compile_options_key)
-[[nodiscard]] CompileOptionsKey GetCompileOptionsKey(
+[[nodiscard]] static FingerprintType Fingerprint(
     const xla::CompileOptions& options) {
-  return CompileOptionsKey(FingerprintCat(
-      // Fingerprint of XLA_FLAGS environment variable.
-      GetXlaFlagsFingerprint(),
+  return FingerprintCat(
       // Fingerprint of XLA executable build options, mainly device-related
       // information.
-      GetXlaExecutableBuildOptionsFingerprint(options.executable_build_options),
+      Fingerprint(options.executable_build_options),
       // Fingerprint of resolved eventual compiler option overrides, including
       // TorchTPU defaults, TorchTPU-internal and explicit user overrides.
-      Fingerprint(options.env_option_overrides)));
+      Fingerprint(options.env_option_overrides));
+}
+
+[[nodiscard]] CompileOptionsKey GetCompileOptionsKey(
+    const std::string_view xla_flags, const xla::CompileOptions& options) {
+  return CompileOptionsKey(FingerprintCat(
+      // Fingerprint of XLA_FLAGS environment variable, effectively fingerprint
+      // of `xla::DebugOptions` fields populated via parsing XLA_FLAGS.
+      //
+      // It is intended not to replicate parsing XLA_FLAGS into `tsl::Flag`. The
+      // current approach is simpler and practically sufficient to capture XLA
+      // behavioral changes controlled by XLA_FLAGS. Semantically identical
+      // flags in a different order will yield different keys, but it is an
+      // acceptable trade-off.
+      // LINT.IfChange(xla_flags_fingerprint)
+      Fingerprint(xla_flags),
+      // LINT.ThenChange()
+      Fingerprint(options)));
 }
 // LINT.ThenChange()
 
