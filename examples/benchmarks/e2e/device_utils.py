@@ -172,7 +172,7 @@ def get_peak_memory_hbm(
   """Get peak memory usage for the specified device.
 
   Args:
-    device: The device type ('cuda', 'cpu', 'tpu', 'xla_cuda').
+    device: The device type ('cuda', 'cpu', 'tpu', 'xla_cuda', 'xla_cpu').
     session_id: Optional Xprof session ID to retrieve TPU/XLA_CUDA peak memory
       from. This is a no-op for CPU and CUDA.
     xprof_client: Optional Xprof analysis client to use for retrieving memory
@@ -189,7 +189,7 @@ def get_peak_memory_hbm(
     total = psutil.virtual_memory().total
     percentage = psutil.Process(os.getpid()).memory_percent()
     peak_memory_usage_mb = percentage / 100.0 * total / _BYTES_IN_MB
-  elif device in ('tpu', 'xla_cuda'):
+  elif device in ('tpu', 'xla_cuda', 'xla_cpu'):
     peak_memory_usage_mb = _get_peak_hbm_memory_mb(session_id, xprof_client)
   else:
     raise ValueError(f'Unsupported device: {device}')
@@ -199,7 +199,7 @@ def get_peak_memory_hbm(
 def reset_peak_memory_stats(device):
   if device == 'cuda':
     torch.cuda.memory.reset_max_memory_allocated()
-  elif device == 'tpu' or device == 'cpu' or device == 'xla_cuda':
+  elif device in ('tpu', 'cpu', 'xla_cuda', 'xla_cpu'):
     pass
   else:
     raise ValueError(f'Unsupported device: {device}')
@@ -224,7 +224,9 @@ def synchronize(
   """
   if device == 'cuda':
     torch.cuda.synchronize()
-  elif device == 'tpu' or device == 'xla_cuda':
+  elif device == 'cpu':
+    pass
+  elif device in ('tpu', 'xla_cuda', 'xla_cpu'):
     # TODO(b/507181043): Investigate why sync(None, wait=True) doesn't work.
     tensors = _collect_tensors(tensor_to_sync)
     tpu_sync.synchronize(tensors, wait=True)
@@ -236,14 +238,14 @@ def cache_miss_count(device: str) -> int:
   """Get cache miss count for the specified device. Always returns 0 for CUDA.
 
   Args:
-    device: The device type ('cuda', 'tpu', 'xla_cuda').
+    device: The device type ('cuda', 'tpu', 'xla_cuda', 'xla_cpu').
 
   Returns:
     The cache miss count.
   """
-  if device == 'cuda':
+  if device in ('cuda', 'cpu'):
     return 0
-  elif device in ('tpu', 'xla_cuda'):
+  elif device in ('tpu', 'xla_cuda', 'xla_cpu'):
     # pylint: disable=protected-access
     return getattr(torch, device)._get_cache_misses()
   else:
@@ -301,7 +303,7 @@ def torch_compile(
 
   Args:
     func: The callable to be compiled.
-    device: The device type ('cuda', 'tpu', 'xla_cuda').
+    device: The device type ('cuda', 'tpu', 'xla_cuda', 'xla_cpu').
     dynamic: Whether to use dynamic shapes in compilation. Defaults to False.
 
   Returns:
@@ -310,9 +312,9 @@ def torch_compile(
   Raises:
     ValueError: If the device is not supported.
   """
-  if device == 'cuda':
+  if device in ('cuda', 'cpu'):
     func = torch.compile(func, backend='inductor')
-  elif device in ('tpu', 'xla_cuda'):
+  elif device in ('tpu', 'xla_cuda', 'xla_cpu'):
     if dynamic:
       func = torch.compile(
           func,
@@ -335,14 +337,14 @@ def clear_cache(device: str) -> None:
   """Clears the compilation cache for the specified device. No-op for CUDA.
 
   Args:
-    device: The device type ('cuda', 'tpu', 'xla_cuda').
+    device: The device type ('cuda', 'tpu', 'xla_cuda', 'xla_cpu').
 
   Raises:
     ValueError: If the device is not supported.
   """
-  if device == 'cuda':
+  if device in ('cuda', 'cpu'):
     pass
-  elif device in ('tpu', 'xla_cuda'):
+  elif device in ('tpu', 'xla_cuda', 'xla_cpu'):
     # pylint: disable=protected-access
     getattr(torch, device)._clear_cache()
   else:

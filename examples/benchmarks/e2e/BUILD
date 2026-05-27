@@ -186,6 +186,53 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "model_performance_benchmarks_xla_cpu",
+    timeout = "eternal",
+    srcs = ["model_performance_benchmarks.py"],
+    args = ["--platform=xla_cpu"],
+    env = {"TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1"},
+    linking_mode = "static",
+    main = "model_performance_benchmarks.py",
+    notap = "Tested on guitar workflow.",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
+    shard_count = 4,
+    strict = True,
+    tags = [
+        "cpu:4",
+        "nofastbuild",  # Benchmark.
+        "requires-net:external",
+    ],
+    deps = [
+        ":model_performance_benchmarks_lib",
+        "//torch_tpu",
+    ],
+)
+
+# TODO(b/327271919): This target is only runnable in OSS.
+torch_tpu_py_test(
+    name = "model_performance_benchmarks_torch_cpu",
+    timeout = "eternal",
+    srcs = ["model_performance_benchmarks.py"],
+    args = ["--platform=torch_cpu"],
+    env = {"TORCH_TPU_INTERNAL_ALLOW_XLA_BACKEND": "1"},
+    linking_mode = "static",
+    main = "model_performance_benchmarks.py",
+    notap = "Tested on guitar workflow.",
+    notest_oss = "Disabled during switch from opt-in to opt-out",
+    shard_count = 4,
+    strict = True,
+    tags = [
+        "cpu:4",
+        "nofastbuild",  # Benchmark.
+        "requires-net:external",
+    ],
+    deps = [
+        ":model_performance_benchmarks_lib",
+        "//torch_tpu",
+    ],
+)
+
+torch_tpu_py_test(
     name = "model_compile_benchmarks",
     timeout = "long",
     srcs = ["model_compile_benchmarks.py"],

@@ -79,6 +79,8 @@ class Platform(enum.Enum):
   B200_1 = "b200_1"
   B200_4 = "b200_4"
   B200_8 = "b200_8"
+  XLA_CPU = "xla_cpu"
+  TORCH_CPU = "torch_cpu"
 
 
 class Backend(enum.Enum):
@@ -163,6 +165,8 @@ PLATFORM_DEVICE_MAP = {
     Platform.B200_1: "cuda",
     Platform.B200_4: "cuda",
     Platform.B200_8: "cuda",
+    Platform.TORCH_CPU: "cpu",
+    Platform.XLA_CPU: "xla_cpu",
 }
 
 PLATFORM_TO_NODE_CONFIG = {

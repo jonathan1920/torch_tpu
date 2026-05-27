@@ -63,6 +63,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
             benchmark_utils.Platform.B200_1,
+            benchmark_utils.Platform.XLA_CPU,
+            benchmark_utils.Platform.TORCH_CPU,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -299,6 +301,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
             benchmark_utils.Platform.B200_1,
+            benchmark_utils.Platform.XLA_CPU,
+            benchmark_utils.Platform.TORCH_CPU,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -642,6 +646,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
             benchmark_utils.Platform.B200_1,
+            benchmark_utils.Platform.XLA_CPU,
+            benchmark_utils.Platform.TORCH_CPU,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.TIMM,
         run_mode=run_mode,
@@ -700,6 +706,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
             benchmark_utils.Platform.B200_1,
+            benchmark_utils.Platform.XLA_CPU,
+            benchmark_utils.Platform.TORCH_CPU,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_DIFFUSER,
         run_mode=run_mode,
