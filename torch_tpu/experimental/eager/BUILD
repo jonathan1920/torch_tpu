@@ -56,6 +56,10 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "materialize_new_test",
     srcs = ["materialize_new_test.cc"],
+    # go/cppdebugflags#increasing-your-size-limits
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for ASan to avoid CppLink OOM.
+    },
     notest_oss = "Environment variable TPU_LIBRARY_PATH is not set. Can't load PJRT plugin TPU.",
     deps = [
         "//shims/torch:aten_headers",
