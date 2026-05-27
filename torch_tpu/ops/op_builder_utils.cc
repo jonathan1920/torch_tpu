@@ -147,12 +147,18 @@ absl::StatusOr<std::string> SerializeBytecode(mlir::ModuleOp module) {
 absl::StatusOr<std::string> SerializePortableArtifact(mlir::ModuleOp module) {
   std::string portable_artifact_str;
   llvm::raw_string_ostream os(portable_artifact_str);
+  // TODO(hyeontaek): Migrate this call to supply a Shardy target version once
+  // the new XLA API that accepts `sdy_version` is available for use by
+  // torch_tpu.
   TT_ASSIGN_OR_RETURN(
       const std::string serialized,
       xla::SerializeUsingVersionedStablehlo(
-          module, mlir::vhlo::Version::fromCompatibilityRequirement(
-                      mlir::vhlo::Version::CompatibilityRequirement::WEEK_4)
-                      .toString()),
+          module,
+          mlir::vhlo::Version::fromCompatibilityRequirement(
+              mlir::vhlo::Version::CompatibilityRequirement::WEEK_4)
+              .toString(),
+          /*inplace=*/false,
+          /*allow_mixed_serialization=*/true),
       _.SetPrepend() << "Failed to serialize MLIR module to StableHLO: ");
   return serialized;
 }
