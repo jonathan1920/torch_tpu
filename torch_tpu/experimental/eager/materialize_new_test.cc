@@ -18,17 +18,19 @@
 #include <utility>
 #include <vector>
 
-#include "gtest/gtest.h"
+#include "ATen/core/TensorBody.h"
 #include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "gtest/gtest.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
-#include "ATen/core/TensorBody.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch_tpu/_internal/compile/compiled_mode.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
@@ -44,8 +46,6 @@
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
-#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "xla/tsl/platform/statusor.h"
 
 ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
