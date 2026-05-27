@@ -1016,20 +1016,23 @@ absl::StatusOr<mlir::MlirOp> BuildRngStateUpdateShlo(mlir::MlirOp state,
                                                      int64_t bit_width) {
   auto& builder = state.getBuilder();
 
-  // seed: output_state[0] = initial_state[0]
-  mlir::MlirOp state_seed = mlir::stablehlo::Slice(state, {0}, {1}, {1});
-  // offset: output_state[1] = initial_state[1] + ceil(num_bits / 128)
   // Note that num_bits = num_elements * bit_width.
   // Each Philox step consumes 128 bits of randomness and increments the offset
   // by 1.
   int64_t increment_val = (num_elements * bit_width + 127) / 128;
 
-  mlir::MlirOp state_offset = mlir::stablehlo::Slice(state, {1}, {2}, {1});
-  mlir::MlirOp increment =
-      MakeConstant(builder, increment_val, mlir::ElementType::UI64, {1});
-  mlir::MlirOp new_offset = mlir::stablehlo::Add(state_offset, increment);
+  // Create a constant tensor [0, increment_val]
+  mlir::RankedTensorType tensor_ui64_type =
+      mlir::makeTensorType(builder.getContext(), {2}, mlir::ElementType::UI64);
+  mlir::DenseElementsAttr value_attr = mlir::DenseElementsAttr::get(
+      tensor_ui64_type,
+      llvm::ArrayRef<uint64_t>({0, static_cast<uint64_t>(increment_val)}));
+  mlir::MlirOp increment_tensor =
+      mlir::stablehlo::Constant(builder, value_attr);
 
-  return {{mlir::stablehlo::Concatenate(builder, {state_seed, new_offset}, 0)}};
+  // output_state[0] = initial_state[0] + 0
+  // output_state[1] = initial_state[1] + increment_val
+  return {{mlir::stablehlo::Add(state, increment_tensor)}};
 }
 
 //////
