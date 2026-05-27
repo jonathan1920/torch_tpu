@@ -136,7 +136,11 @@ class PerformanceBenchmarkConfig:
 
 
 @contextlib.contextmanager
-def _run_mode_context(run_mode: benchmark_utils.RunMode, device: torch.device):
+def _run_mode_context(
+    run_mode: benchmark_utils.RunMode,
+    device: torch.device,
+    clear_device_cache: bool = True,
+):
   """Context manager to configure the environment for different run modes.
 
   This includes adjusting environment variables and performing necessary
@@ -178,7 +182,7 @@ def _run_mode_context(run_mode: benchmark_utils.RunMode, device: torch.device):
     # Change back to the original value.
     execution_mode.eager_mode = original_eager_mode
     # pylint: disable=protected-access
-    if device.type != "cpu":
+    if clear_device_cache and device.type != "cpu":
       device_utils.clear_cache(device.type)
     if benchmark_utils.is_torch_compile(run_mode):
       torch._dynamo.reset()
