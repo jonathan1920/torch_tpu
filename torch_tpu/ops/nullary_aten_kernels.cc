@@ -48,6 +48,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/device_buffer_utils.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/as_strided/as_strided_aten_kernels.h"
@@ -163,8 +164,8 @@ absl::StatusOr<at::Tensor> MakeEmptyMemoryFormat(
   // the empty buffer is overwritten (such as by out=torch.empty(...) or
   // torch.empty(...).fill_(...)), then this DeferredOp node will be
   // dropped and not used.
-  TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer, DeviceBufferList::CreateEmpty(
-                                                  CopyIntVector(size), dtype));
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer,
+                      CreateEmptyDeviceBufferRef(CopyIntVector(size), dtype));
   at::Tensor result = MakeTensor(std::move(buffer));
 
   // MakeTensor defaults to a contiguous tensor, and so

@@ -51,6 +51,7 @@
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/device_buffer_utils.h"
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -444,8 +445,8 @@ absl::StatusOr<at::Tensor> MakeConstantTensor(const at::Tensor& cpu_tensor) {
                       ConvertTo<mlir::ElementType>(cpu_tensor.scalar_type()));
   TT_ASSIGN_OR_RETURN(
       DeviceBufferRef buffer_ref,
-      DeviceBufferList::CreateConstant(std::move(cpu_bytes_copy),
-                                       std::move(dimensions), element_type));
+      CreateConstantDeviceBufferRef(std::move(cpu_bytes_copy),
+                                    std::move(dimensions), element_type));
 
   return MakeTensor(std::move(buffer_ref));
 }

@@ -46,6 +46,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/device_buffer_utils.h"
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -284,7 +285,7 @@ struct TORCH_API TpuHooksInterface : public at::PrivateUse1HooksInterface {
             // number of elements and assigns the storage to it.
             TT_ASSIGN_OR_THROW(
                 DeviceBufferRef buffer_ref,
-                DeviceBufferList::CreateEmpty({new_numel}, element_type));
+                CreateEmptyDeviceBufferRef({new_numel}, element_type));
             c10::DataPtr data_ptr =
                 MakeDataPtr(std::move(buffer_ref), storage.device().index());
             storage.set_data_ptr(std::move(data_ptr));
@@ -314,7 +315,7 @@ struct TORCH_API TpuHooksInterface : public at::PrivateUse1HooksInterface {
               at::TensorOptions().dtype(dtype).device(storage.device());
           TT_ASSIGN_OR_THROW(
               DeviceBufferRef new_buffer_ref,
-              DeviceBufferList::CreateEmpty({new_numel}, element_type));
+              CreateEmptyDeviceBufferRef({new_numel}, element_type));
           at::Tensor new_tensor = MakeTensor(new_buffer_ref);
           at::Tensor dummy_tensor = at::empty({0}, options).set_(storage);
           new_tensor.copy_(

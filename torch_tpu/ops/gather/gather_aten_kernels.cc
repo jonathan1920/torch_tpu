@@ -32,6 +32,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/device_buffer_utils.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/gather/gather.h"
@@ -56,7 +57,7 @@ absl::StatusOr<DeviceBufferRef> Gather(const at::Tensor& self, int64_t dim,
 
   if (index.numel() == 0) {
     // Gathering with 0 indexes results in a zero-sized tensor.
-    return DeviceBufferList::CreateZeroSize(output_dims, output_dtype);
+    return CreateZeroSizeDeviceBufferRef(output_dims, output_dtype);
   }
 
   auto gather_op_builder =

@@ -32,6 +32,7 @@
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/device_buffer_utils.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/view_decomposition/decomposition.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
@@ -288,8 +289,8 @@ absl::StatusOr<at::Tensor> ContiguousToView(
                       GetContiguousBaseShape(target_view_layout));
   TT_ASSIGN_OR_RETURN(
       DeviceBufferRef empty_contiguous_base,
-      DeviceBufferList::CreateEmpty(target_contiguous_base_shape,
-                                    contiguous_buffer.element_type()));
+      CreateEmptyDeviceBufferRef(target_contiguous_base_shape,
+                                 contiguous_buffer.element_type()));
   at::Tensor output_tensor = MakeTensor(std::move(empty_contiguous_base));
 
   // Get the non-overlapping windows to write to the output tensor.

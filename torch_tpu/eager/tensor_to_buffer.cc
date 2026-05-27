@@ -52,14 +52,15 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/device_buffer_utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -375,8 +376,8 @@ absl::StatusOr<DeviceBufferRef> GetBuffer(const c10::TensorImpl& tensor) {
   if (tensor.numel() < 1) {
     ABSL_VLOG(1) << "[GetBuffer] Tensor is a zero-sized view, "
                     "returning zero-sized constant.";
-    return DeviceBufferList::CreateZeroSize(CopyIntVector(tensor.sizes()),
-                                            tensor_element_type);
+    return CreateZeroSizeDeviceBufferRef(CopyIntVector(tensor.sizes()),
+                                         tensor_element_type);
   }
 
   // We need to apply a view decomposition.
@@ -532,7 +533,7 @@ class TpuAllocator final : public c10::DeviceAllocator {
     // Allocated DeviceBufferRef will be equivalent to
     // torch.empty(nbytes, dtype=torch.uint8) with
     // fill_uninitialized_memory=True, which fills the buffer with 0xFF bytes.
-    TT_ASSIGN_OR_THROW(auto buffer_ref, DeviceBufferList::CreateEmpty(
+    TT_ASSIGN_OR_THROW(auto buffer_ref, CreateEmptyDeviceBufferRef(
                                             {static_cast<int64_t>(nbytes)},
                                             mlir::ElementType::UI8));
     return MakeDataPtr(std::move(buffer_ref), device_idx);

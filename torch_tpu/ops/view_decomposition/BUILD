@@ -482,6 +482,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:to_string",
         "//torch_tpu/common:utils",
         "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:device_buffer_utils",
         "//torch_tpu/eager:tensor_to_buffer",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",

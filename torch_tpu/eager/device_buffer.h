@@ -624,33 +624,6 @@ class DeviceBufferList {
       OpSplitMode split_mode = OpSplitMode::kNone, Indices donated_indices = {},
       bool skip_subgraph = false);
 
-  // Creates a deferred DeviceBufferList containing a constant tensor value,
-  // based on a 1D byte array.
-  // Under the hood, this uses `mlir::DenseElementsAttr::getFromRawBuffer`,
-  // with special handling for booleans and complex numbers (which have
-  // differing layout requirements between PyTorch and XLA).
-  // This value will be "baked into" the MLIR for XLA compilation, allowing for
-  // greater optimization potential.
-  // However, this means that any future execution which have a different value
-  // for the constant will require a re-compilation.
-  static absl::StatusOr<DeviceBufferRef> CreateConstant(
-      std::vector<char> cpu_tensor_data, Dimensions dimensions,
-      mlir::ElementType element_type, bool skip_subgraph = false);
-
-  // Creates a DeviceBufferList as if by using the torch.empty() operation
-  // with fill_uninitialized_memory=True.
-  // This will be a DeferredOp that fills the buffer with NaNs for floats
-  // (including complex floats), and max for integers and booleans.
-  static absl::StatusOr<DeviceBufferRef> CreateEmpty(
-      Dimensions dimensions, mlir::ElementType element_type,
-      bool skip_subgraph = false);
-
-  // Creates a DeviceBufferList with a constant value of "no data".
-  // Equivalent to CreateConstant with an empty cpu_tensor_data vector.
-  static absl::StatusOr<DeviceBufferRef> CreateZeroSize(
-      Dimensions dimensions, mlir::ElementType element_type,
-      bool skip_subgraph = false);
-
   // Creates a DeviceBufferList that represents a compiled-mode placeholder.
   // This is a buffer that is not backed by any data, but is used to represent
   // an argument to a compiled executable.

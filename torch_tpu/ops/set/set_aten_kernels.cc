@@ -30,6 +30,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/device_buffer_utils.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
@@ -42,7 +43,7 @@ at::Tensor& AtenSet_(at::Tensor& self) {
     TT_ASSIGN_OR_THROW(auto element_type,
                        ConvertTo<mlir::ElementType>(self.scalar_type()));
     TT_ASSIGN_OR_THROW(DeviceBufferRef zero_size_buffer_ref,
-                       DeviceBufferList::CreateEmpty({0}, element_type));
+                       CreateZeroSizeDeviceBufferRef({0}, element_type));
     c10::Storage storage = MakeStorage(zero_size_buffer_ref);
     c10::TensorImpl* impl = self.unsafeGetTensorImpl();
     impl->set_storage_keep_dtype(std::move(storage));

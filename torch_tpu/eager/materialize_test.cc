@@ -34,6 +34,7 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/device_buffer_utils.h"
 #include "torch_tpu/eager/materialize_common.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -71,7 +72,7 @@ TEST_F(MaterializeTest, EmptyListNoOpSuccess) {
 TEST_F(MaterializeTest, MaterializedZeroSizeBufferSuccess) {
   const mlir::ElementType dtype = mlir::ElementType::F32;
   TF_ASSERT_OK_AND_ASSIGN(DeviceBufferRef ref,
-                          DeviceBufferList::CreateZeroSize({0}, dtype));
+                          CreateZeroSizeDeviceBufferRef({0}, dtype));
   EXPECT_EQ(ref.state(), DeviceBufferRefState::kDeferred);
   EXPECT_EQ(Materialize(ref, MaterializationReason::kExplicitSync),
             absl::OkStatus());
@@ -88,7 +89,7 @@ TEST_F(MaterializeTest, AddLeafNodes) {
   // ```
   TF_ASSERT_OK_AND_ASSIGN(
       DeviceBufferRef arg,
-      DeviceBufferList::CreateZeroSize({0}, mlir::ElementType::F32));
+      CreateZeroSizeDeviceBufferRef({0}, mlir::ElementType::F32));
 
   const Shape shape(Dimensions{8}, mlir::ElementType::F32);
 

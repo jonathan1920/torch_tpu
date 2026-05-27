@@ -43,6 +43,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/device_buffer_utils.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/cat/cat.h"
@@ -156,7 +157,7 @@ absl::StatusOr<CatComputationResult> CatHelper(
     // also a 0-element tensor, and we can skip stablehlo::ConcatenateOp().
     TT_ASSIGN_OR_RETURN(
         DeviceBufferRef result_buf,
-        DeviceBufferList::CreateZeroSize(output_dims, output_dtype));
+        CreateZeroSizeDeviceBufferRef(output_dims, output_dtype));
     return CatComputationResult{
         .result_buf = std::move(result_buf),
         .promoted_dtype = target_dtype,

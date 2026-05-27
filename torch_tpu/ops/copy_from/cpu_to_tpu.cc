@@ -30,6 +30,7 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/device_buffer_utils.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/pjrt/pjrt_utils.h"
 #include "xla/xla_data.pb.h"
@@ -53,8 +54,8 @@ absl::StatusOr<DeviceBufferRef> CopyCpuToTpuBuffer(const at::Tensor& src,
     // buffer directly and avoid blocking on host/device synchronization.
     Dimensions zero_sized_dimensions(contiguous_src_for_tpu.sizes().begin(),
                                      contiguous_src_for_tpu.sizes().end());
-    return DeviceBufferList::CreateZeroSize(std::move(zero_sized_dimensions),
-                                            dtype);
+    return CreateZeroSizeDeviceBufferRef(std::move(zero_sized_dimensions),
+                                         dtype);
   }
 
   return TpuMallocAndMemcpyHtoD(
