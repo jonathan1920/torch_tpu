@@ -49,6 +49,27 @@ class _OutputSymShape:
     """Initializes the instance."""
     self.output_sym_shape = output_sym_shape
 
+  def get_output_runtime_shape_from_sym_values(
+      self, sym_values: dict[str, int]
+  ) -> list[int]:
+    """Computes the runtime shape of this output tensor from symbol values.
+
+    Args:
+      sym_values: A dictionary mapping symbol names (e.g., 's0') to concrete
+        integer values.
+
+    Returns:
+      The calculated runtime shape of the output tensor.
+    """
+    new_shape = []
+    for dim in self.output_sym_shape:
+      if isinstance(dim, int):
+        new_shape.append(dim)
+      else:
+        kwargs = {s: sym_values[s] for s in dim["deps"]}
+        new_shape.append(dim["compiled_fn"](**kwargs))
+    return new_shape
+
   def get_output_runtime_shape(
       self, inputs: Sequence[torch.Tensor | int]
   ) -> list[int]:
@@ -197,6 +218,11 @@ class SymShapeManager:
       ops).
     symint_node_to_tensor_node: Maps scalar nodes representing expressions to
       tensor nodes.
+    dynamic_scalar_indices: Set of indices of dynamic scalars in the example
+      inputs.
+    symint_to_arg_idx: Maps symint string to its input argument index.
+    symint_to_tensor_and_dim_idx: Maps symint string to its input tensor and
+      dimension index.
   """
 
   # Tensor idx is its position in the example inputs.
@@ -218,6 +244,15 @@ class SymShapeManager:
   # Mapping of scalar nodes representing expressions to tensor nodes.
   symint_node_to_tensor_node: dict[torch.fx.Node, torch.fx.Node]
 
+  # Set of indices of dynamic scalars in the example inputs.
+  dynamic_scalar_indices: set[int]
+
+  # Mapping of symint string to its input argument index.
+  symint_to_arg_idx: dict[str, int]
+
+  # Mapping of symint string to its input tensor and dimension index.
+  symint_to_tensor_and_dim_idx: dict[str, tuple[int, int]]
+
   def __init__(
       self,
       graph_module: torch.fx.GraphModule,
@@ -227,6 +262,8 @@ class SymShapeManager:
     self._example_inputs = example_inputs
     self.symint_to_placeholder = {}
     self.symint_node_to_tensor_node = {}
+    self.symint_to_tensor_and_dim_idx = {}
+    self.symint_to_arg_idx = {}
     self._create_outputs_sym_shape()
     self._populate_input_tensors_metadata()
 
@@ -234,6 +271,43 @@ class SymShapeManager:
   def example_inputs(self) -> Sequence[torch.Tensor | int]:
     """The example inputs used to create the SymShapeManager."""
     return self._example_inputs
+
+  def extract_symint_locations(self) -> None:
+    """Maps symint strings (e.g., 's0') to their input argument/tensor indices.
+
+    This method populates mappings that allow us to extract the concrete values
+    of dynamic shape symbols at runtime, which are needed to evaluate the exact
+    mathematical output shapes of the slice module during precompilation.
+    """
+    self.symint_to_tensor_and_dim_idx = {}
+    self.symint_to_arg_idx = {}
+    tensor_idx = 0
+    for idx, arg in enumerate(self.example_inputs):
+      if arg is None:
+        continue
+      if isinstance(arg, torch.SymInt):
+        # Dynamic scalars are converted to tensors, so we need to increment the
+        # tensor index to ensure that the tensor info locations are correct.
+        if idx in self.dynamic_scalar_indices:
+          tensor_idx += 1
+        else:
+          self.symint_to_arg_idx[str(arg)] = idx
+        continue
+      assert isinstance(arg, torch.Tensor)
+      for dim_idx, dim in enumerate(arg.shape):
+        if isinstance(dim, torch.SymInt):
+          sym_str = str(dim)
+          if sym_str not in self.symint_to_tensor_and_dim_idx:
+            self.symint_to_tensor_and_dim_idx[sym_str] = (tensor_idx, dim_idx)
+      tensor_idx += 1
+
+  def compute_dynamic_scalar_indices(self) -> None:
+    """Computes the indices of dynamic scalars in the example inputs."""
+    self.dynamic_scalar_indices = set()
+    for idx, arg in enumerate(self._example_inputs):
+      if isinstance(arg, torch.SymInt):
+        if str(arg) in self.symint_to_placeholder:
+          self.dynamic_scalar_indices.add(idx)
 
   def _populate_input_tensors_metadata(self) -> None:
     """Populates metadata for input tensors."""
@@ -300,6 +374,32 @@ class SymShapeManager:
         metas.append(node)
     return metas
 
+  def get_output_dtypes(self) -> list[torch.dtype]:
+    """Returns the data types (dtypes) of all output tensors in the graph."""
+    return [meta.dtype for meta in self._get_output_node_meta_val()]
+
+  def compute_output_shapes_from_sym_values(
+      self, sym_values: dict[str, int]
+  ) -> list[list[int]] | None:
+    """Computes the runtime output shapes directly from a dict of symbol values.
+
+    This is used to predict output slice shapes for future steps without
+    re-evaluating graph-module runtime inputs.
+    Args:
+      sym_values: A dictionary mapping symbol names to their predicted integer
+        values.
+
+    Returns:
+      A list of shapes (each a list of ints) for each output tensor, or None
+      if the graph has no symbolic outputs.
+    """
+    if not self.outputs_sym_shape:
+      return None
+    return [
+        output_sym.get_output_runtime_shape_from_sym_values(sym_values)
+        for output_sym in self.outputs_sym_shape
+    ]
+
   def _create_outputs_sym_shape(self) -> None:
     """Creates sym shape for the output tensors.
 
@@ -349,6 +449,23 @@ class SymShapeManager:
         [output_sym_shape for output_sym_shape in outputs_sym_shape],
     )
     self.outputs_sym_shape = outputs_sym_shape
+
+  def get_symint_upper_bound(self, symint: torch.SymInt) -> int:
+    """Returns the upper bound of a given SymInt symbol.
+
+    Args:
+      symint: The symbolic integer whose upper bound is requested.
+
+    Returns:
+      The concrete upper bound integer value.
+    Raises:
+      ValueError: If no bounds are found for the given SymInt.
+    """
+    sym_str = str(symint)
+    for s, (_, upper) in self.symints_to_bounds:
+      if s == symint:
+        return upper
+    raise ValueError(f"No bounds found for SymInt {sym_str}")
 
   def get_bounded_shape(self, tensor_pos: int) -> list[int]:
     """Returns the shape of the tensor with dynamic dimensions replaced by their bounds.

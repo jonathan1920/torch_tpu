@@ -257,6 +257,7 @@ class TpuBackend:
       debug: bool = False,
       dynamism: bool = False,
       enable_serialization: bool = False,
+      precompile_steps: int = 0,
   ):
     """Initializes the TPU backend.
 
@@ -268,10 +269,12 @@ class TpuBackend:
         that .serialize() is attached to compiled functions. This allows
         compilation artifacts to be saved/loaded without re-running
         aot_autograd.
+      precompile_steps: The number of steps to precompile dynamic adapters for.
     """
     self._debug = debug
     self._dynamism = dynamism
     self._enable_serialization = enable_serialization
+    self._precompile_steps = precompile_steps
     # Stores information about each compiled executable.
     # Organized by order of compilation (index 0 is the first compilation, etc.)
     self._compiled_executables: list[compiler.CompiledArtifact] = []
@@ -291,7 +294,10 @@ class TpuBackend:
     _log_gm_and_inputs("__call__", "Pre", graph_module, example_inputs)
 
     if compiler.has_dynamic_symints(example_inputs):
-      compiler_instance = dynamic_compiler.DynamicCompiler(debug=self._debug)
+      compiler_instance = dynamic_compiler.DynamicCompiler(
+          debug=self._debug,
+          precompile_steps=self._precompile_steps,
+      )
     else:
       compiler_instance = compiler.StaticCompiler(debug=self._debug)
 

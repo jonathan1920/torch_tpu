@@ -80,6 +80,13 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_library(
+    name = "dynamic_adapters",
+    srcs = [
+        "dynamic_adapters.py",
+    ],
+)
+
+torch_tpu_py_library(
     name = "compiler",
     srcs = [
         "compiler.py",
@@ -89,6 +96,7 @@ torch_tpu_py_library(
         "//learning/agents/tern/torch_agent:__subpackages__",
     ],
     deps = [
+        ":dynamic_adapters",
         ":graph_transformations",
         ":sym_shape_manager",
         ":symbol_bounds",

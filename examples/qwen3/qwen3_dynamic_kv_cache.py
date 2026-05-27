@@ -79,6 +79,11 @@ _WARMUP_STEPS = flags.DEFINE_integer(
     3,
     "Number of decode steps to skip for average latency calculation.",
 )
+_PRECOMPILE_STEPS = flags.DEFINE_integer(
+    "precompile_steps",
+    0,
+    "Number of steps to precompile dynamic adapters for.",
+)
 
 
 @enum.unique
@@ -350,7 +355,9 @@ def _get_compiled_config(device: Device, mode: Mode) -> CompiledConfig:
           key="Compiled CUDA",
       )
     return CompiledConfig(
-        backend=_backend.TpuBackend(dynamism=True),
+        backend=_backend.TpuBackend(
+            dynamism=True, precompile_steps=_PRECOMPILE_STEPS.value
+        ),
         prefix="[Compiled TPU (Dynamic)] ",
         key="Compiled TPU (Dynamic)",
     )

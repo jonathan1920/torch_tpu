@@ -25,6 +25,8 @@ from torch._logging import LazyString
 from torch.utils import _pytree
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.compile import tpu_torch_compile
+from torch_tpu._internal.compile.dynamic.dynamic_adapters import DynamicAdapterLinearHypothesis
+from torch_tpu._internal.compile.dynamic.dynamic_adapters import ShapeBoundInfo
 from torch_tpu._internal.compile.dynamic.graph_transformations import apply_dynamism_transformations
 from torch_tpu._internal.compile.dynamic.sym_shape_manager import SymShapeManager
 from torch_tpu._internal.compile.dynamic.symbol_bounds import get_symint_bounds
@@ -106,19 +108,6 @@ class _TensorInfo(NamedTuple):
   dtype: torch.dtype
 
 
-class _ShapeBoundInfo(NamedTuple):
-  """Shape bound information for dynamic dimensions of a tensor.
-
-  Attributes:
-    dynamic_dims: A list of indices of the dynamic dimensions.
-    upper_bounds: A list of upper bounds for each corresponding dynamic
-      dimension.
-  """
-
-  dynamic_dims: list[int]
-  upper_bounds: list[int]
-
-
 def _compile_and_execute_slice_subgraph(
     tensor_outputs: Sequence[torch.Tensor],
     output_shapes: Sequence[list[int]],
@@ -185,21 +174,18 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
       self,
       model_executable: Any,
       sym_shape_manager: SymShapeManager,
+      precompile_steps: int,
   ):
     self.model_executable = model_executable
     self.sym_shape_manager = sym_shape_manager
+    self._precompile_steps = precompile_steps
     self._precomputed_bounds_list = self._precompute_bounds_list()
+    self.input_linear_hypothesis = DynamicAdapterLinearHypothesis(
+        self._precomputed_bounds_list
+    )
     self._scalar_tensor_cache = {}
     self._backend_device = None
-    self._dynamic_scalar_indices = self._precompute_dynamic_scalar_indices()
-
-  def _precompute_dynamic_scalar_indices(self) -> set[int]:
-    indices = set()
-    for idx, arg in enumerate(self.sym_shape_manager.example_inputs):
-      if isinstance(arg, torch.SymInt):
-        if str(arg) in self.sym_shape_manager.symint_to_placeholder:
-          indices.add(idx)
-    return indices
+    self._padded_output_shapes = self._get_padded_output_shapes()
 
   def _get_backend_device(self) -> torch.device:
     if self._backend_device is None:
@@ -231,7 +217,7 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
         continue
 
       if isinstance(arg, numbers.Integral):
-        if idx in self._dynamic_scalar_indices:
+        if idx in self.sym_shape_manager.dynamic_scalar_indices:
           tensor_val = self._get_cached_scalar_tensor(
               arg, dtype=torch.int32, device=backend_device
           )
@@ -256,11 +242,10 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
 
   def _compile_and_execute_pad_subgraph(
       self,
-      args: Sequence[Any],
+      tensor_args: Sequence[torch.Tensor],
+      tensor_info: Sequence[_TensorInfo],
   ) -> list[torch.Tensor]:
     """Compiles and executes the pad subgraph."""
-    tensor_args, tensor_info = self._get_pad_subgraph_inputs(args)
-
     logging.debug(
         "[DynamicTpuBackend] Compile Pad Subgraph, tensor_info: %s,"
         " bounds_list: %s",
@@ -288,7 +273,7 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
 
     return tpu_torch_compile.execute(compile_result.executable, tensor_args)
 
-  def _precompute_bounds_list(self) -> list[_ShapeBoundInfo]:
+  def _precompute_bounds_list(self) -> list[ShapeBoundInfo]:
     bounds_list = []
     for idx, arg in enumerate(self.sym_shape_manager.example_inputs):
       if arg is None:
@@ -296,16 +281,16 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
 
       if isinstance(arg, torch.SymInt):
         if str(arg) in self.sym_shape_manager.symint_to_placeholder:
-          bounds_list.append(_ShapeBoundInfo(dynamic_dims=[], upper_bounds=[]))
+          bounds_list.append(ShapeBoundInfo(dynamic_dims=[], upper_bounds=[]))
         continue
 
       assert isinstance(arg, torch.Tensor)
       tensor_metadata = self.sym_shape_manager.input_tensors_metadata[idx]
       if not tensor_metadata.dynamic_dims:
-        bounds_list.append(_ShapeBoundInfo(dynamic_dims=[], upper_bounds=[]))
+        bounds_list.append(ShapeBoundInfo(dynamic_dims=[], upper_bounds=[]))
         continue
       bounds_list.append(
-          _ShapeBoundInfo(
+          ShapeBoundInfo(
               dynamic_dims=tensor_metadata.dynamic_dims,
               upper_bounds=[
                   upper for _, upper in tensor_metadata.dynamic_bounds
@@ -313,6 +298,85 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
           )
       )
     return bounds_list
+
+  def _get_padded_output_shapes(self):
+    padded_input_shapes = []
+    for idx, arg in enumerate(self.sym_shape_manager.example_inputs):
+      if isinstance(arg, torch.SymInt):
+        upper_bound = self.sym_shape_manager.get_symint_upper_bound(arg)
+        padded_input_shapes.append(upper_bound)
+      else:
+        padded_input_shapes.append(
+            self.sym_shape_manager.get_bounded_shape(idx)
+        )
+    padded_output_shapes = _compute_output_shapes(
+        self.sym_shape_manager, padded_input_shapes
+    )
+    return padded_output_shapes
+
+  def _precompile_dynamic_adapters(
+      self,
+      args: Sequence[Any],
+      tensor_info: Sequence[_TensorInfo],
+  ) -> None:
+    """Precompiles dynamic adapters in the background with a linear hypothesis.
+
+    This method updates the input linear tracker, and if the input behavior is
+    linear, predicts the future input shapes and output slice shapes, and
+    enqueues their compilation.
+    Args:
+      args: The runtime positional arguments passed to the executable call.
+      tensor_info: Tensor metadata representing current input shapes and dtypes.
+    """
+    self.input_linear_hypothesis.update([info.shape for info in tensor_info])
+    if self.input_linear_hypothesis.is_linear:
+      logging.debug(
+          "[DynamicTpuBackend] Linear hypothesis detected, precompiling dynamic"
+          " adapters"
+      )
+      output_types = self.sym_shape_manager.get_output_dtypes()
+      updated_tensor_info = [
+          _TensorInfo(shape=list(info.shape), dtype=info.dtype)
+          for info in tensor_info
+      ]
+      for shape_update in self.input_linear_hypothesis.get_shape_updates(
+          self._precompile_steps
+      ):
+        for (tensor_idx, dim_idx), value in shape_update.items():
+          updated_tensor_info[tensor_idx].shape[dim_idx] = value
+        tpu_torch_compile.precompile_pad_module(
+            updated_tensor_info, self._precomputed_bounds_list
+        )
+
+        sym_values = {}
+        for sym_name, (
+            t_idx,
+            d_idx,
+        ) in self.sym_shape_manager.symint_to_tensor_and_dim_idx.items():
+          sym_values[sym_name] = updated_tensor_info[t_idx].shape[d_idx]
+
+        for (
+            sym_name,
+            arg_idx,
+        ) in self.sym_shape_manager.symint_to_arg_idx.items():
+          if sym_name not in sym_values:
+            sym_values[sym_name] = args[arg_idx]
+
+        runtime_output_shapes = (
+            self.sym_shape_manager.compute_output_shapes_from_sym_values(
+                sym_values
+            )
+        )
+
+        if runtime_output_shapes is not None:
+          tpu_torch_compile.precompile_slice_module(
+              runtime_output_shapes, self._padded_output_shapes, output_types
+          )
+    else:
+      logging.debug(
+          "[DynamicTpuBackend] Non-linear hypothesis detected, not precompiling"
+          " slice subgraph"
+      )
 
   def __call__(self, *args: Any) -> Any:
     logging.debug("[DynamicTpuBackend] Execute Model")
@@ -322,12 +386,18 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
       # directly execute the model executable.
       return self.model_executable(list(args))
 
+    tensor_args, tensor_info = self._get_pad_subgraph_inputs(args)
+
     # Compile and run pad executable to get statically padded tensors
     # and runtime size tensors
-    pad_outputs = self._compile_and_execute_pad_subgraph(args)
-
+    pad_outputs = self._compile_and_execute_pad_subgraph(
+        tensor_args, tensor_info
+    )
     # Run model executable with pads, sizes, and explicit output shapes
     outputs = self.model_executable(list(pad_outputs))
+
+    if self._precompile_steps > 0:
+      self._precompile_dynamic_adapters(args, tensor_info)
 
     output_shapes = _compute_output_shapes(self.sym_shape_manager, args)
 
@@ -370,6 +440,7 @@ class DynamicCompiler(compiler.Compiler):
       self,
       compilation_context: compiler.CompilationContext | None = None,
       debug: bool = False,
+      precompile_steps: int = 0,
   ):
     """Initializes the DynamicCompiler instance.
 
@@ -378,10 +449,12 @@ class DynamicCompiler(compiler.Compiler):
         maintaining compilation state.
       debug: A `bool` that, when `True`, enables debug logging and artifact
         generation.
+      precompile_steps: The number of steps to precompile dynamic adapters.
     """
     if compilation_context is None:
       compilation_context = compiler.CompilationContext()
     super().__init__(compilation_context, debug=debug)
+    self._precompile_steps = precompile_steps
     self.static_compiler = compiler.StaticCompiler(
         compilation_context, debug=debug
     )
@@ -424,6 +497,11 @@ class DynamicCompiler(compiler.Compiler):
 
     # Transform the graph module to handle dynamic shapes.
     apply_dynamism_transformations(graph_module, sym_shape_manager)
+    # These need to be called after the graph transformations, as the
+    # graph transformations may change the function signature.
+    # TODO: Can this be reworked?
+    sym_shape_manager.compute_dynamic_scalar_indices()
+    sym_shape_manager.extract_symint_locations()
 
     # TODO: Prevent truncation of log lines.
     logging.debug(
@@ -456,4 +534,5 @@ class DynamicCompiler(compiler.Compiler):
     return _DynamicTpuCompiledExecutable(
         model_executable=static_model_executable,
         sym_shape_manager=sym_shape_manager,
+        precompile_steps=self._precompile_steps,
     )

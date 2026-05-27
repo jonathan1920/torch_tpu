@@ -302,22 +302,27 @@ void PySetDeviceStateTensor(at::Generator gen, at::Tensor rng_state) {
 
 namespace {
 
+struct TensorInfo {
+  std::vector<int64_t> shape;  // INT_VEC_OK
+  at::ScalarType dtype;
+};
+
+struct TensorBounds {
+  std::vector<int64_t> dynamic_dims;  // INT_VEC_OK
+  std::vector<int64_t> upper_bounds;  // INT_VEC_OK
+};
+
 std::vector<Shape> MakePadDynamicShapes(
-    const std::vector<std::pair<std::vector<int64_t>  // INT_VEC_OK
-                                ,
-                                at::ScalarType>>& tensor_info,
-    const std::vector<std::pair<std::vector<int64_t>  // INT_VEC_OK
-                                ,
-                                std::vector<int64_t>  // INT_VEC_OK
-                                >>& bounds_list) {
+    const std::vector<TensorInfo>& tensor_info,
+    const std::vector<TensorBounds>& bounds_list) {
   std::vector<Shape> dynamic_shapes;
   dynamic_shapes.reserve(tensor_info.size());
   for (int i = 0; i < tensor_info.size(); ++i) {
-    const auto& [dim_sizes, dtype] = tensor_info[i];
-    const auto& [dynamic_dims, upper_bounds] = bounds_list[i];
-    Dimensions dims = CopyIntVector(dim_sizes);
+    const auto& dynamic_dims = bounds_list[i].dynamic_dims;
+    const auto& upper_bounds = bounds_list[i].upper_bounds;
+    Dimensions dims = CopyIntVector(tensor_info[i].shape);
     TT_ASSIGN_OR_THROW(mlir::ElementType element_type,
-                       ConvertTo<mlir::ElementType>(dtype));
+                       ConvertTo<mlir::ElementType>(tensor_info[i].dtype));
     Shape shape(dims, element_type);
 
     TT_CHECK_THROW(dynamic_dims.size() == upper_bounds.size(),
@@ -488,6 +493,43 @@ absl::StatusOr<CompileResult> CompileModuleWithCache(
 }
 
 }  // namespace
+// Precompiles the pad subgraph for the given shapes. Doesn't wait for the
+// compilation to complete.
+//
+// Args:
+//   tensor_info: A list of pairs, where each pair contains the shape of a
+//     tensor and its scalar type.
+//   bounds_list: A list of pairs, where each pair contains the dynamic
+//     dimensions of a tensor and their upper bounds.
+//   fast_compile: If true, use the compiler profile optimized for eager
+//         execution; otherwise, use the profile optimized for
+//         torch.compile.
+void PyPrecompilePadModule(const std::vector<TensorInfo>& tensor_info,
+                           const std::vector<TensorBounds>& bounds_list,
+                           const bool fast_compile) {
+  std::vector<Shape> dynamic_shapes =
+      MakePadDynamicShapes(tensor_info, bounds_list);
+
+  MlirComputationBuilder pad_builder = [&](mlir::MLIRContext& mlir_context) {
+    return GetPadModule(mlir_context, dynamic_shapes);
+  };
+  GraphKey key = PadModuleCacheKey(dynamic_shapes);
+
+  auto compilation_mode = fast_compile ? CompilationMode::kFastCompile
+                                       : CompilationMode::kFastRuntime;
+
+  TT_ASSIGN_OR_THROW(CompilationSpecsByMode compilation_specs,
+                     MakeCompilationSpecs(compilation_mode));
+  UniqueCompileOptions compile_options =
+      std::move(compilation_specs.at(compilation_mode).xla_compile_options);
+  std::vector<Shape> runtime_input_shapes = ToStaticShapes(dynamic_shapes);
+  std::vector<Shape> padded_input_shapes = ToPaddedShapes(dynamic_shapes);
+  TT_ASSIGN_OR_THROW(CompiledKernel compiled_pad,
+                     CompilationCache::GetInstance().GetOrCompile(
+                         CompilationCacheKey(key, CompileOptionsKey(0)),
+                         runtime_input_shapes, padded_input_shapes,
+                         std::move(pad_builder), std::move(compile_options)));
+}
 
 // Returns a CompileResult containing the executable and optionally the MLIR
 // module for a pad subgraph.
@@ -520,14 +562,9 @@ absl::StatusOr<CompileResult> CompileModuleWithCache(
 //   }
 // }
 CompileResult PyGetOrCompilePadModule(
-    const std::vector<
-        std::pair<std::vector<int64_t>, at::ScalarType>>&  // INT_VEC_OK
-        tensor_info,
-    const std::vector<
-        std::pair<std::vector<int64_t>, std::vector<int64_t>>>&  // INT_VEC_OK
-        bounds_list,
-    const bool fast_compile, const bool build_mlir_module,
-    const bool is_caching_disabled) {
+    const std::vector<TensorInfo>& tensor_info,
+    const std::vector<TensorBounds>& bounds_list, const bool fast_compile,
+    const bool build_mlir_module, const bool is_caching_disabled) {
   std::vector<Shape> dynamic_shapes =
       MakePadDynamicShapes(tensor_info, bounds_list);
 
@@ -539,14 +576,53 @@ CompileResult PyGetOrCompilePadModule(
                                        : CompilationMode::kFastRuntime;
   GraphKey key = PadModuleCacheKey(dynamic_shapes);
   std::vector<Shape> runtime_input_shapes = ToStaticShapes(dynamic_shapes);
-  std::vector<Shape> cache_output_shapes = ToPaddedShapes(dynamic_shapes);
+  std::vector<Shape> padded_input_shapes = ToPaddedShapes(dynamic_shapes);
 
   TT_ASSIGN_OR_THROW(
       CompileResult result,
       CompileModuleWithCache(std::move(pad_builder), key, runtime_input_shapes,
-                             cache_output_shapes, compilation_mode,
+                             padded_input_shapes, compilation_mode,
                              build_mlir_module, is_caching_disabled));
   return result;
+}
+
+// Precompiles the slice subgraph for the given shapes. Doesn't wait for the
+// compilation to complete.
+//
+// Args:
+//   target_shapes: A list of target shapes.
+//   padded_shapes: A list of padded shapes.
+//   input_scalar_types: A list of scalar types for each tensor.
+//   fast_compile: If true, use the compiler profile optimized for eager
+//         execution; otherwise, use the profile optimized for
+//         torch.compile.
+void PyPrecompileSliceModule(
+    const std::vector<std::vector<int64_t>>& target_shapes,  // INT_VEC_OK
+    const std::vector<std::vector<int64_t>>& padded_shapes,  // INT_VEC_OK
+    const std::vector<at::ScalarType>& input_scalar_types,
+    const bool fast_compile) {
+  SliceSubgraphInputs inputs =
+      UnpackSliceInputs(target_shapes, padded_shapes, input_scalar_types);
+
+  MlirComputationBuilder slice_builder = [&](mlir::MLIRContext& mlir_context) {
+    return GetSliceModule(mlir_context, inputs.target_dims, inputs.padded_dims,
+                          inputs.element_types);
+  };
+  GraphKey key = SliceModuleCacheKey(inputs.target_dims, inputs.padded_dims,
+                                     inputs.element_types);
+
+  auto compilation_mode = fast_compile ? CompilationMode::kFastCompile
+                                       : CompilationMode::kFastRuntime;
+  TT_ASSIGN_OR_THROW(CompilationSpecsByMode compilation_specs,
+                     MakeCompilationSpecs(compilation_mode));
+  UniqueCompileOptions compile_options =
+      std::move(compilation_specs.at(compilation_mode).xla_compile_options);
+
+  TT_ASSIGN_OR_THROW(CompiledKernel compiled_slice,
+                     CompilationCache::GetInstance().GetOrCompile(
+                         CompilationCacheKey(key, CompileOptionsKey(0)),
+                         inputs.input_shapes, inputs.output_shapes,
+                         std::move(slice_builder), std::move(compile_options)));
 }
 
 // Returns a CompileResult containing the executable and optionally the MLIR
@@ -749,6 +825,25 @@ class MultiGeneratorLocker {
 };
 
 PYBIND11_MODULE(tpu_torch_compile, m) {
+  py::class_<TensorInfo>(m, "TensorInfo")
+      .def(py::init([](const py::tuple& t) {
+        return TensorInfo{t[0].cast<std::vector<int64_t>>(),  // INT_VEC_OK
+                          t[1].cast<at::ScalarType>()};
+      }))
+      .def_readonly("shape", &TensorInfo::shape)
+      .def_readonly("dtype", &TensorInfo::dtype);
+
+  py::class_<TensorBounds>(m, "TensorBounds")
+      .def(py::init([](const py::tuple& t) {
+        return TensorBounds{t[0].cast<std::vector<int64_t>>(),   // INT_VEC_OK
+                            t[1].cast<std::vector<int64_t>>()};  // INT_VEC_OK
+      }))
+      .def_readonly("dynamic_dims", &TensorBounds::dynamic_dims)
+      .def_readonly("upper_bounds", &TensorBounds::upper_bounds);
+
+  py::implicitly_convertible<py::tuple, TensorInfo>();
+  py::implicitly_convertible<py::tuple, TensorBounds>();
+
   py::class_<CompileResult>(m, "CompileResult")
       .def_readonly("module", &CompileResult::module)
       .def_readonly("executable", &CompileResult::executable);
@@ -826,6 +921,13 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         "  fast_compile: Whether to use the fast compile mode.\n"
         "  build_mlir_module: Whether to build the MLIR module.\n"
         "  is_caching_disabled: Whether to use the cache.");
+  m.def("precompile_pad_module", PyPrecompilePadModule, py::arg("tensor_info"),
+        py::arg("bounds_list"), py::arg("fast_compile") = false,
+        "Returns immediately after enqueuing compilation of a pad module.\n\n"
+        "Args:\n"
+        "  tensor_info: A list of (shape, dtype) pairs for each tensor.\n"
+        "  bounds_list: A list of (dynamic_dimensions, upper_bounds) pairs.\n"
+        "  fast_compile: Whether to use the fast compile mode.");
   m.def("get_or_compile_slice_module", PyGetOrCompileSliceModule,
         py::arg("target_shapes"), py::arg("padded_shapes"),
         py::arg("input_scalar_types"), py::arg("fast_compile") = false,
@@ -839,6 +941,15 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
         "  fast_compile: Whether to use the fast compile mode.\n"
         "  build_mlir_module: Whether to build the MLIR module.\n"
         "  is_caching_disabled: Whether to use the cache.");
+  m.def("precompile_slice_module", PyPrecompileSliceModule,
+        py::arg("target_shapes"), py::arg("padded_shapes"),
+        py::arg("input_scalar_types"), py::arg("fast_compile") = false,
+        "Returns immediately after enqueuing compilation of a slice module.\n\n"
+        "Args:\n"
+        "  target_shapes: A list of target shapes.\n"
+        "  padded_shapes: A list of padded shapes.\n"
+        "  input_scalar_types: A list of scalar types for each tensor.\n"
+        "  fast_compile: Whether to use the fast compile mode.");
   m.def("pop_enable_tracebacks", &PopContextState<EnableTracebacksContextState>,
         "Pops the current state of the enable_tracebacks context manager.");
   m.def("push_enable_tracebacks", &PyPushEnableTracebacks, py::arg("enabled"),

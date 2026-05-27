@@ -452,6 +452,7 @@ class HandleGenerativeOpsPass:
           torch.ops.aten.mul.Tensor,
           args=(new_arange, step_tensor),
       )
+      mul_node.meta = node.meta.copy()
 
     # Create ((arange * step) + start)
     with graph_module.graph.inserting_after(mul_node):
@@ -459,6 +460,7 @@ class HandleGenerativeOpsPass:
           torch.ops.aten.add.Tensor,
           args=(mul_node, start_tensor),
       )
+      add_node.meta = node.meta.copy()
 
     # Replace the original arange node with the new final node
     node.replace_all_uses_with(add_node)
