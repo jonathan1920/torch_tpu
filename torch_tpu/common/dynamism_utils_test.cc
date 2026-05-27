@@ -68,11 +68,11 @@ TEST(DynamismOpsTest, GetTraversalOutputDimensionsNoBoundedInput) {
   // Create Input DeviceBufferRefs.
   TF_ASSERT_OK_AND_ASSIGN(
       DeviceBufferRef input1,
-      DeviceBufferList::MakePlaceholder({5, 10}, mlir::ElementType::F32));
+      DeviceBufferList::CreatePlaceholder({5, 10}, mlir::ElementType::F32));
 
   TF_ASSERT_OK_AND_ASSIGN(
       DeviceBufferRef input2,
-      DeviceBufferList::MakePlaceholder({5, 10}, mlir::ElementType::F32));
+      DeviceBufferList::CreatePlaceholder({5, 10}, mlir::ElementType::F32));
 
   // Create a Deferred Op that uses the inputs.
   std::vector<DeviceBufferRef> add_inputs = {input1, input2};
@@ -118,13 +118,13 @@ TEST(DynamismOpsTest, GetTraversalOutputDimensionsWithBoundedInput) {
   // Create Input DeviceBufferRefs.
   TF_ASSERT_OK_AND_ASSIGN(
       DeviceBufferRef input1,
-      DeviceBufferList::MakePlaceholder({5, 10}, mlir::ElementType::F32));
+      DeviceBufferList::CreatePlaceholder({5, 10}, mlir::ElementType::F32));
   ASSERT_EQ(input1.MarkDynamic(/*dimension=*/1, /*lower_bound=*/10,
                                /*upper_bound=*/100),
             absl::OkStatus());
   TF_ASSERT_OK_AND_ASSIGN(
       DeviceBufferRef input2,
-      DeviceBufferList::MakePlaceholder({5, 10}, mlir::ElementType::F32));
+      DeviceBufferList::CreatePlaceholder({5, 10}, mlir::ElementType::F32));
   ASSERT_EQ(input2.MarkDynamic(/*dimension=*/1, /*lower_bound=*/2,
                                /*upper_bound=*/100),
             absl::OkStatus());

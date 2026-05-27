@@ -142,9 +142,9 @@ class MaterializationWorker {
     outputs.reserve(output_shapes.size());
     for (const auto& shape : output_shapes) {
       // Make a placeholders to hold the results.
-      TT_ASSIGN_OR_RETURN(
-          DeviceBufferRef output_ref,
-          DeviceBufferList::MakePlaceholder(shape.dimensions(), shape.dtype()));
+      TT_ASSIGN_OR_RETURN(DeviceBufferRef output_ref,
+                          DeviceBufferList::CreatePlaceholder(
+                              shape.dimensions(), shape.dtype()));
       outputs.push_back(std::move(output_ref));
     }
 

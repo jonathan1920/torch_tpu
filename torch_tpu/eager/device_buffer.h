@@ -654,7 +654,7 @@ class DeviceBufferList {
   // Creates a DeviceBufferList that represents a compiled-mode placeholder.
   // This is a buffer that is not backed by any data, but is used to represent
   // an argument to a compiled executable.
-  static absl::StatusOr<DeviceBufferRef> MakePlaceholder(
+  static absl::StatusOr<DeviceBufferRef> CreatePlaceholder(
       Dimensions dimensions, mlir::ElementType element_type);
 
   // Sets the DeviceBufferList to a pending-materialized state.

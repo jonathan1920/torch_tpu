@@ -731,7 +731,7 @@ absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateZeroSize(
   return CreateConstant({}, std::move(dimensions), element_type, skip_subgraph);
 }
 
-absl::StatusOr<DeviceBufferRef> DeviceBufferList::MakePlaceholder(
+absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreatePlaceholder(
     Dimensions dimensions, mlir::ElementType element_type) {
   TT_RETURN_IF_ERROR(ValidateTensorByteSize(dimensions, element_type));
   // Can't use make_shared because the constructor is private.

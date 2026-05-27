@@ -130,8 +130,8 @@ absl::StatusOr<at::Tensor> MakePlaceholder(absl::Span<const int64_t> sizes,
   TT_ASSIGN_OR_RETURN(mlir::ElementType tensor_element_type,
                       ConvertTo<mlir::ElementType>(dtype));
   TT_ASSIGN_OR_RETURN(DeviceBufferRef placeholder,
-                      DeviceBufferList::MakePlaceholder(CopyIntVector(sizes),
-                                                        tensor_element_type));
+                      DeviceBufferList::CreatePlaceholder(CopyIntVector(sizes),
+                                                          tensor_element_type));
   auto new_tensor = MakeTensor(std::move(placeholder));
   new_tensor.set_requires_grad(requires_grad);
   return new_tensor;
