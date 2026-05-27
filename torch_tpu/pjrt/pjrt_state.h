@@ -30,6 +30,7 @@
 #include "c10/core/Device.h"
 #include "torch_tpu/common/device_type.h"
 #include "xla/future.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/tsl/framework/allocator.h"
 
@@ -92,7 +93,7 @@ class PjrtBackend {
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Returns the PjRt host allocator from the PjRt client.
-  absl::StatusOr<xla::PjRtClient::HostAllocator*> GetHostAllocator()
+  absl::StatusOr<xla::HostMemoryAllocator*> GetHostAllocator()
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Shuts down the PjRt runtime and resets the global state.

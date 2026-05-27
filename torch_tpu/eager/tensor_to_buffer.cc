@@ -26,6 +26,7 @@
 #include "ATen/core/CachingHostAllocator.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -68,6 +69,7 @@
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/ops/view_decomposition/view_sequence.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
+#include "xla/pjrt/host_memory_allocator.h"
 
 namespace torch_tpu {
 
@@ -629,20 +631,20 @@ class TpuPinnedAllocator final : public at::HostAllocator {
       return {nullptr, nullptr, &DeleteTpuPinnedBufferStatic,
               c10::Device(c10::DeviceType::CPU)};
     }
-    TT_ASSIGN_OR_THROW(auto* host_allocator,
+    TT_ASSIGN_OR_THROW(xla::HostMemoryAllocator * host_allocator,
                        PjrtBackend::GetInstance().GetHostAllocator(),
                        _ << "Failed to get PJRT host allocator");
-    void* data = host_allocator->Allocate(
-        nbytes, host_allocator->GetPreferredAlignment());
+    xla::HostMemoryAllocator::OwnedPtr data = host_allocator->Allocate(nbytes);
     TT_CHECK_THROW(data != nullptr, error::kResourceExhausted)
         << "Failed to allocate " << nbytes << " bytes of pinned host memory";
 
+    void* raw_ptr = data.get();
     {
       absl::MutexLock lock(mutex_);
-      pinned_ptrs_.insert(data);
+      pinned_ptrs_.emplace(raw_ptr, std::move(data));
     }
 
-    return {data, data, &DeleteTpuPinnedBufferStatic,
+    return {raw_ptr, raw_ptr, &DeleteTpuPinnedBufferStatic,
             c10::Device(c10::DeviceType::CPU)};
   }
 
@@ -681,13 +683,11 @@ class TpuPinnedAllocator final : public at::HostAllocator {
 
   void free_ptr(void* ptr) {
     if (ptr) {
+      decltype(pinned_ptrs_)::node_type data;
       {
         absl::MutexLock lock(mutex_);
-        pinned_ptrs_.erase(ptr);
+        data = pinned_ptrs_.extract(ptr);
       }
-      TT_ASSIGN_OR_THROW(auto* host_allocator,
-                         PjrtBackend::GetInstance().GetHostAllocator());
-      host_allocator->Free(ptr);
     }
   }
 
@@ -695,7 +695,8 @@ class TpuPinnedAllocator final : public at::HostAllocator {
   static void DeleteTpuPinnedBufferStatic(void* ptr);
 
   absl::Mutex mutex_;
-  absl::flat_hash_set<const void*> pinned_ptrs_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<const void*, xla::HostMemoryAllocator::OwnedPtr>
+      pinned_ptrs_ ABSL_GUARDED_BY(mutex_);
 };
 
 at::HostAllocator* GetTpuPinnedAllocatorInternal() {

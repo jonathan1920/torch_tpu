@@ -73,6 +73,7 @@ torch_tpu_cc_library(
         "@xla//xla:future",
         "@xla//xla/backends/profiler/plugin:plugin_tracer",
         "@xla//xla/backends/profiler/plugin:profiler_c_api_hdrs",
+        "@xla//xla/pjrt:host_memory_allocator",
         "@xla//xla/pjrt:pjrt_api",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt/c:pjrt_c_api_hdrs",

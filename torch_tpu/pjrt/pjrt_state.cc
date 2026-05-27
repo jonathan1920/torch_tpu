@@ -49,6 +49,7 @@
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/plugin_names.h"
@@ -292,13 +293,17 @@ absl::StatusOr<tsl::AllocatorStats> PjrtBackend::GetAllocatorStats() {
   return device->GetAllocatorStats();
 }
 
-absl::StatusOr<xla::PjRtClient::HostAllocator*>
-PjrtBackend::GetHostAllocator() {
+absl::StatusOr<xla::HostMemoryAllocator*> PjrtBackend::GetHostAllocator() {
   xla::PjRtClient* client = GetClient();
   if (client == nullptr) {
     return TT_ERROR(error::kInternal) << "PjRt client is not initialized";
   }
-  return client->GetHostAllocator();
+  if (auto host_allocator = client->GetHostMemoryAllocator();
+      host_allocator != nullptr) {
+    return host_allocator;
+  }
+  return TT_ERROR(error::kUnimplemented)
+         << "Host memory allocator is not implemented for this client.";
 }
 
 void PjrtBackend::Shutdown() {
