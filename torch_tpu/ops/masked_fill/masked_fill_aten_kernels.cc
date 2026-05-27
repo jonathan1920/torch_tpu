@@ -43,31 +43,6 @@ namespace torch_tpu {
 
 namespace {
 
-absl::StatusOr<DeviceBufferRef> MaskedFillScalar(const at::Tensor& input,
-                                                 const at::Tensor& mask,
-                                                 const at::Scalar& scalar,
-                                                 OpParamCacheKeys param_keys) {
-  const Dimensions output_dims = CopyIntVector(input.sizes());
-  TT_ASSIGN_OR_RETURN(const auto output_mlir_dtype,
-                      ConvertTo<mlir::ElementType>(input.scalar_type()));
-
-  auto op_builder = [scalar,
-                     output_mlir_dtype](FixedSizeSpan<mlir::MlirOp, 2> inputs)
-      -> absl::StatusOr<mlir::MlirOp> {
-    auto& [input, mask] = inputs;
-    mlir::MlirBuilder& builder = input.getBuilder();
-    TT_ASSIGN_OR_RETURN(auto scalar_op, MakeConstant(builder, scalar));
-    // masked_fill(input, mask, value) == where(mask, value, input)
-    return BuildWhereShlo(mask, scalar_op, input, output_mlir_dtype);
-  };
-
-  const auto elem_type = output_mlir_dtype;
-  return DispatchOp<2>(std::move(op_builder), {input, mask},
-                       {.out_dtype = elem_type,
-                        .out_dims = output_dims,
-                        .op_param_cache_keys = std::move(param_keys)});
-}
-
 absl::StatusOr<DeviceBufferRef> MaskedFillTensor(const at::Tensor& input,
                                                  const at::Tensor& mask,
                                                  const at::Tensor& value) {
@@ -100,10 +75,12 @@ absl::StatusOr<DeviceBufferRef> MaskedFillTensor(const at::Tensor& input,
 
 at::Tensor& AtenMaskedFill_Scalar(at::Tensor& self, const at::Tensor& mask,
                                   const at::Scalar& value) {
-  TT_KERNEL(OpName::kMaskedFill_Scalar, param_keys, (self, mask, value), {
-    TT_ASSIGN_OR_THROW(
-        DeviceBufferRef result_buf,
-        MaskedFillScalar(self, mask, value, std::move(param_keys)));
+  auto promoted_value = PromoteScalar(value);
+  TT_KERNEL(OpName::kMaskedFill_Scalar, _, (self, mask, promoted_value), {
+    TT_ASSIGN_OR_THROW(const at::Tensor value_tensor,
+                       promoted_value.GetTensor(self.scalar_type()));
+    TT_ASSIGN_OR_THROW(DeviceBufferRef result_buf,
+                       MaskedFillTensor(self, mask, value_tensor));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), self));
 
     return self;

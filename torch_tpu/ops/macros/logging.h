@@ -294,7 +294,6 @@ void CheckScalarInput() {
       kOpName == OpName::kLocalScalarDense ||            //
       kOpName == OpName::kLogSoftmaxBackwardDataOut ||   //
       kOpName == OpName::kLt ||                          //
-      kOpName == OpName::kMaskedFill_Scalar ||           //
       kOpName == OpName::kNativeBatchNormBackward ||     //
       kOpName == OpName::kNe ||                          //
       kOpName == OpName::kPdistForward ||                //
