@@ -16,15 +16,19 @@
 
 #include "torch_tpu/eager/device_buffer_utils.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/hash/hash.h"
 #include "absl/log/absl_check.h"
+#include "absl/log/absl_log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "c10/util/accumulate.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -40,6 +44,11 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
+#include "torch_tpu/ops/stride/stride_helper.h"
+#include "torch_tpu/ops/view_decomposition/decomposition.h"
+#include "torch_tpu/ops/view_decomposition/inversion.h"
+#include "torch_tpu/ops/view_decomposition/strided_layout.h"
+#include "torch_tpu/ops/view_decomposition/view_sequence.h"
 
 namespace torch_tpu {
 
@@ -157,6 +166,250 @@ absl::StatusOr<DeviceBufferRef> CreateZeroSizeDeviceBufferRef(
       << "CreateZeroSizeDeviceBufferRef requires a zero-sized tensor, but got: "
       << ToString(dimensions);
   return CreateConstantDeviceBufferRef({}, std::move(dimensions), element_type);
+}
+
+namespace {
+
+absl::StatusOr<int64_t> RequiredStorageBytes(
+    absl::Span<const int64_t> view_dimensions,
+    absl::Span<const int64_t> view_strides, mlir::ElementType view_element_type,
+    int64_t view_storage_offset) {
+  TT_RET_CHECK(view_dimensions.size() == view_strides.size(),
+               error::kInvalidArgument)
+      << "view dimensions and strides must have the same size.";
+  // The number of storage elements required is
+  //  storage_offset + 1 + maximum element index.
+  // This accounts for overlapping or non-dense views, which can span more or
+  // fewer storage elements than there are logical elements in the tensor.
+  int64_t required_numel = view_storage_offset + 1;
+  for (auto i = 0; i < view_dimensions.size(); ++i) {
+    if (view_dimensions[i] == 0) return 0;
+    required_numel += (view_dimensions[i] - 1) * view_strides[i];
+  }
+  // Multiply by the size of the scalar type to get the number of bits.
+  // Round up to the nearest byte, in the case of sub-byte-size types
+  const int64_t element_bitwidth = TorchEquivalentBitwidth(view_element_type);
+  return (required_numel * element_bitwidth + 7) / 8;
+}
+
+// A builder and its required inputs for a view inversion (simulated write).
+struct AsStridedInverseBuilderPair {
+  // The MlirOpBuilder to put in the constructed DeferredOp.
+  MlirOpBuilder builder;
+  // Either the write buffer only (if the view covers the entire base), or both
+  // the write buffer and the base buffer (if the write is only partial).
+  std::vector<DeviceBufferRef> inputs;
+};
+
+// Helper function for AssignBufferToAtTensor to switch between two cases:
+//   * If the view is not a slice (so that the inversion fully overwrites the
+//     original tensor), then we don't care what the original tensor's values
+//     were, and the DeferredOp is unary.
+//   * If the view is a slice, then some amount of its original data will be
+//     retained, so we need to carry a dependency on the original base_buffer,
+//     and the DeferredOp is binary.
+// Returns the appropriate builder and inputs for the DeferredOp.
+AsStridedInverseBuilderPair MakeAsStridedInverseBuilder(
+    InverseViewOperation inverse_view_operation,
+    DeviceBufferRef base_buffer_ref, DeviceBufferRef write_buf) {
+  if (inverse_view_operation.stages.size() == 1) {
+    ABSL_VLOG(3)
+        << "[MakeAsStridedInverseBuilder] View elements are 1:1 with base, "
+           "creating an inverse DeferredOp that overwrites the base.";
+    // Merge the view bitcast with the inverse sequence.
+    ViewSequence merged_sequence;
+    merged_sequence.reserve(inverse_view_operation.bitcast_view.size() +
+                            inverse_view_operation.stages[0].inverse.size());
+    for (auto& primitive : inverse_view_operation.bitcast_view) {
+      merged_sequence.push_back(std::move(primitive));
+    }
+    for (auto& inverse_primitive : inverse_view_operation.stages[0].inverse) {
+      std::visit(
+          [&merged_sequence](auto& prim) {
+            merged_sequence.push_back(std::move(prim));
+          },
+          inverse_primitive);
+    }
+
+    auto op_builder = [view_sequence = std::move(merged_sequence)](
+                          mlir::MlirBuilder& builder,
+                          absl::Span<mlir::MlirOp> inputs)
+        -> absl::StatusOr<DynamicMlirOpResults> {
+      TT_RET_CHECK(inputs.size() == 1, error::kInternal)
+          << "expected 1 input, got " << inputs.size();
+      TT_ASSIGN_OR_RETURN(auto output,
+                          ViewSequenceShlo(inputs[0], view_sequence));
+      return DynamicMlirOpResults{std::move(output)};
+    };
+    auto inputs = {std::move(write_buf)};
+    return {.builder = std::move(op_builder), .inputs = std::move(inputs)};
+  }
+
+  // Otherwise, apply the full operation.
+  ABSL_VLOG(3) << "[MakeAsStridedInverseBuilder] View is a slice, creating an "
+                  "inverse DeferredOp that partially overwrites the base.";
+  auto op_builder =
+      [inverse_view_operation = std::move(inverse_view_operation)](
+          mlir::MlirBuilder& builder, absl::Span<mlir::MlirOp> inputs)
+      -> absl::StatusOr<DynamicMlirOpResults> {
+    TT_RET_CHECK(inputs.size() == 2, error::kInternal)
+        << "expected 2 inputs, got " << inputs.size();
+    TT_ASSIGN_OR_RETURN(
+        auto output,
+        InverseViewOperationShlo(inputs[0], inputs[1], inverse_view_operation));
+    return DynamicMlirOpResults{std::move(output)};
+  };
+  auto inputs = {std::move(base_buffer_ref), std::move(write_buf)};
+  return {std::move(op_builder), std::move(inputs)};
+}
+
+}  // namespace
+
+absl::StatusOr<DeviceBufferRef> CreateViewDeviceBufferRef(
+    DeviceBufferRef base_buffer_ref, absl::Span<const int64_t> view_dimensions,
+    absl::Span<const int64_t> view_strides, int64_t view_storage_offset,
+    mlir::ElementType view_element_type, bool view_is_conj) {
+  TT_RET_CHECK(view_dimensions.size() == view_strides.size(),
+               error::kInvalidArgument)
+      << "view dimensions and strides must have the same size.";
+  // If the view is zero-sized, then we don't need a view decomposition; a view
+  // of nothing is valid.
+  if (std::any_of(view_dimensions.begin(), view_dimensions.end(),
+                  [](int64_t dim) { return dim == 0; })) {
+    ABSL_VLOG(1) << "[CreateViewDeviceBufferRef] View is zero-sized, "
+                    "returning zero-sized constant.";
+    return CreateZeroSizeDeviceBufferRef(CopyIntVector(view_dimensions),
+                                         view_element_type);
+  }
+
+  // We need to apply a view decomposition.
+  // Check to make sure we have enough data to read the tensor.
+  TT_ASSIGN_OR_RETURN(
+      const int64_t required_bytes,
+      RequiredStorageBytes(view_dimensions, view_strides, view_element_type,
+                           view_storage_offset));
+  const int64_t actual_bytes =
+      (base_buffer_ref.num_elements() *
+           TorchEquivalentBitwidth(base_buffer_ref.element_type()) +
+       7) /
+      8;
+
+  TT_RET_CHECK(required_bytes <= actual_bytes, error::kOutOfRange)
+      << "cannot read " << required_bytes << " bytes ("
+      << c10::multiply_integers(view_dimensions) << " elements of type "
+      << ToString(view_element_type) << " with an offset of "
+      << view_storage_offset << " elements) from a storage buffer with "
+      << actual_bytes << " bytes";
+
+  // Compute the steps in the decomposition.
+  StridedLayout view_layout = {.storage_offset = view_storage_offset};
+  view_layout.strided_dims.reserve(view_dimensions.size());
+  for (auto i = 0; i < view_dimensions.size(); ++i) {
+    view_layout.strided_dims.push_back(
+        {.size = view_dimensions[i], .stride = view_strides[i]});
+  }
+  TT_ASSIGN_OR_RETURN(
+      ViewSequence view_sequence,
+      DecomposeIntoViewSequence(base_buffer_ref.dimensions(),
+                                base_buffer_ref.element_type(), view_layout,
+                                view_element_type, view_is_conj));
+  Simplify(view_sequence, base_buffer_ref.dimensions());
+  ABSL_VLOG(1) << "[GetBuffer] Decomposed base buffer dtype and shape "
+               << ToString(base_buffer_ref.element_type())
+               << ToString(base_buffer_ref.dimensions())
+               << " into view sequence " << ToString(view_sequence)
+               << " to achieve target view layout " << view_layout
+               << " (is_conj=" << view_is_conj << ")";
+
+  // Create cache key for the view sequence before moving into builder
+  TT_ASSIGN_OR_RETURN(
+      OpParamCacheKeys param_keys,
+      ViewSequenceCacheKey(view_sequence, view_strides, view_storage_offset));
+
+  // Build the values to construct an ephemeral DeferredOp.
+  const auto op_name = OpName::kAsStrided;
+  ScopedPythonContextCapturer capturer(op_name);
+
+  auto op_builder = [view_sequence = std::move(view_sequence)](
+                        mlir::MlirBuilder& builder,
+                        absl::Span<mlir::MlirOp> inputs)
+      -> absl::StatusOr<DynamicMlirOpResults> {
+    TT_RET_CHECK(inputs.size() == 1, error::kInternal)
+        << "expected 1 input, got " << inputs.size();
+    TT_ASSIGN_OR_RETURN(auto output,
+                        ViewSequenceShlo(inputs[0], view_sequence));
+    return DynamicMlirOpResults{std::move(output)};
+  };
+
+  std::vector<DeviceBufferRef> inputs = {std::move(base_buffer_ref)};
+
+  std::vector<Shape> output_shapes;
+  output_shapes.emplace_back(CopyIntVector(view_dimensions), view_element_type);
+
+  // Create the deferred op.
+  TT_ASSIGN_OR_RETURN(std::vector<DeviceBufferRef> deferred_refs,
+                      DeviceBufferList::CreateDeferred(
+                          op_name, std::move(op_builder), std::move(inputs),
+                          std::move(param_keys), std::move(output_shapes)));
+  ABSL_CHECK_EQ(deferred_refs.size(), 1);  // CRASH_OK
+  return std::move(deferred_refs[0]);
+}
+
+absl::StatusOr<DeviceBufferRef> CreateInverseViewDeviceBufferRef(
+    DeviceBufferRef base_buffer_ref, DeviceBufferRef write_buf,
+    absl::Span<const int64_t> view_dimensions,
+    absl::Span<const int64_t> view_strides, int64_t view_storage_offset,
+    mlir::ElementType view_element_type, bool view_is_conj) {
+  TT_RET_CHECK(view_dimensions.size() == view_strides.size(),
+               error::kInvalidArgument)
+      << "view dimensions and strides must have the same size.";
+  TT_RET_CHECK(!IsOverlapping(view_dimensions, view_strides),
+               error::kFailedPrecondition)
+      << "inplace writes to overlapping views are undefined behavior and are "
+         "not supported.\n"
+      << "Because multiple logical tensor indices point to the same buffer "
+         "elements, writes from multiple indices may overwrite each other.\n"
+      << "Please use clone() or contiguous() to copy the tensor before "
+         "writing";
+
+  ABSL_VLOG(2) << "[AssignBufferToAtTensor] Assigning to non-contiguous base.";
+
+  // Compute the operations needed to invert the view sequence.
+  StridedLayout view_layout{.storage_offset = view_storage_offset};
+  view_layout.strided_dims.reserve(view_dimensions.size());
+  for (auto i = 0; i < view_dimensions.size(); ++i) {
+    view_layout.strided_dims.push_back(
+        {.size = view_dimensions[i], .stride = view_strides[i]});
+  }
+  TT_ASSIGN_OR_RETURN(
+      InverseViewOperation inverse_view_operation,
+      ComputeInverseViewOperation(base_buffer_ref.dimensions(),
+                                  base_buffer_ref.element_type(), view_layout,
+                                  view_element_type, view_is_conj));
+
+  // Create a new DeferredOp representing the updated base value
+  // Build the values to construct an ephemeral DeferredOp.
+  const auto op_name = OpName::kAsStridedInverse;
+  ScopedPythonContextCapturer capturer(op_name);
+
+  std::vector<Shape> output_shapes = {inverse_view_operation.final_shape};
+
+  auto [op_builder, inputs] = MakeAsStridedInverseBuilder(
+      std::move(inverse_view_operation), std::move(base_buffer_ref),
+      std::move(write_buf));
+
+  TT_ASSIGN_OR_RETURN(OpParamCacheKeys param_keys,
+                      *OpParamCacheKeysBuilder()
+                           .SetParam("strides", view_strides)
+                           .SetParam("storage_offset", view_storage_offset));
+
+  // Create the deferred DeviceBufferRef.
+  TT_ASSIGN_OR_RETURN(std::vector<DeviceBufferRef> deferred_refs,
+                      DeviceBufferList::CreateDeferred(
+                          op_name, std::move(op_builder), std::move(inputs),
+                          std::move(param_keys), std::move(output_shapes)));
+  ABSL_CHECK_EQ(deferred_refs.size(), 1);  // CRASH_OK
+  return std::move(deferred_refs[0]);
 }
 
 }  // namespace torch_tpu

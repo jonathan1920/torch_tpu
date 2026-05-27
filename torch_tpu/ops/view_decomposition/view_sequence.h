@@ -106,6 +106,9 @@ absl::StatusOr<mlir::MlirOp> ViewSequenceShlo(mlir::MlirOp input,
 // the cache uses input parameter shapes to avoid false cache hits.
 absl::StatusOr<OpParamCacheKeys> ViewSequenceCacheKey(
     ViewSequenceSpan view_sequence, const c10::TensorImpl& tensor);
+absl::StatusOr<OpParamCacheKeys> ViewSequenceCacheKey(
+    ViewSequenceSpan view_sequence, absl::Span<const int64_t> view_strides,
+    int64_t view_storage_offset);
 
 }  // namespace torch_tpu
 

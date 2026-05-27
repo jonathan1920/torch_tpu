@@ -507,7 +507,8 @@ absl::StatusOr<std::string> SymbolicViewCacheKey(
 }  // namespace
 
 absl::StatusOr<OpParamCacheKeys> ViewSequenceCacheKey(
-    ViewSequenceSpan view_sequence, const c10::TensorImpl& tensor) {
+    ViewSequenceSpan view_sequence, absl::Span<const int64_t> view_strides,
+    int64_t view_storage_offset) {
   // First try to create a symbolic cache key that represents view ops as
   // mappings from input to output tensor shapes, i.e. Reshape[A,B]->[A*B]
   // or transpose[A,B]{0,1}, instead of embedding static input and output shapes
@@ -523,8 +524,14 @@ absl::StatusOr<OpParamCacheKeys> ViewSequenceCacheKey(
   ABSL_VLOG(3) << "[ViewSequenceCacheKey] Failed to create symbolic cache key: "
                << symbolic_key.status().message();
   return *OpParamCacheKeysBuilder()
-              .SetParam("strides", tensor.strides())
-              .SetParam("storage_offset", tensor.storage_offset());
+              .SetParam("strides", view_strides)
+              .SetParam("storage_offset", view_storage_offset);
+}
+
+absl::StatusOr<OpParamCacheKeys> ViewSequenceCacheKey(
+    ViewSequenceSpan view_sequence, const c10::TensorImpl& tensor) {
+  return ViewSequenceCacheKey(view_sequence, tensor.strides(),
+                              tensor.storage_offset());
 }
 
 }  // namespace torch_tpu
