@@ -30,9 +30,9 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch/headeronly/core/DeviceType.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
-#include "torch_tpu/eager/device_types.h"
 
 namespace torch_tpu {
 

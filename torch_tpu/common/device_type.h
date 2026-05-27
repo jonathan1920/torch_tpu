@@ -24,11 +24,15 @@
 namespace torch_tpu {
 
 // The actual physical device type used by PjRt.
+// PyTorch always sees TorchTPU as the PrivateUse1 device, but TorchTPU can
+// be used for any XLA device type with a PjRt plugin.
+// However, some kernel implementations may only work on some specific physical
+// XLA device types.
 enum class PjRtDeviceType {
-  kUnknown,
-  kTpu,
+  kUnknown = 0,
   kCpu,
   kCuda,
+  kTpu,
 };
 
 // Returns the device type for TPU.
@@ -36,7 +40,10 @@ enum class PjRtDeviceType {
   return c10::DeviceType::PrivateUse1;
 }
 
-// Returns a user-friendly name for the PrivateUse1 device.
+// Returns a user-friendly name for the PrivateUse1 device. Mainly useful for
+// constructing user-facing error messages. Instead of hard-coding "tpu", call
+// this function to get the device type to use in error messages so that we have
+// the flexibility to support other hardware types in the future if we want to.
 [[nodiscard]] inline std::string GetPrivateUse1DeviceDebugName() {
   return "tpu";
 }

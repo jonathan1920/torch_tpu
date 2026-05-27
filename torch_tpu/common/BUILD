@@ -127,6 +127,7 @@ torch_tpu_cc_library(
     srcs = ["error_utils.cc"],
     hdrs = ["error_utils.h"],
     deps = [
+        ":device_type",
         ":env_vars",
         ":macro_utils",
         ":status_builder",
@@ -137,7 +138,6 @@ torch_tpu_cc_library(
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
-        "//torch_tpu/eager:device_types",
         "//torch_tpu/eager:eager_mode",
         "//torch_tpu/ops:python_context",
         "@com_google_absl//absl/base:core_headers",
@@ -648,6 +648,7 @@ torch_tpu_cc_library(
     srcs = ["aten_utils.cc"],
     hdrs = ["aten_utils.h"],
     deps = [
+        ":device_type",
         ":dtype",
         ":error_utils",
         ":to_string",
@@ -655,7 +656,6 @@ torch_tpu_cc_library(
         "//shims/torch:torch_headers",
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
-        "//torch_tpu/eager:device_types",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

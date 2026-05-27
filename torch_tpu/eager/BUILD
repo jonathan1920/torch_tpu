@@ -122,15 +122,6 @@ torch_tpu_cc_test(
 )
 
 torch_tpu_cc_library(
-    name = "device_types",
-    hdrs = ["device_types.h"],
-    deps = [
-        "//shims/torch:torch_headers",
-        "//shims/torch/torch/headeronly:torch_headeronly",
-    ],
-)
-
-torch_tpu_cc_library(
     name = "device_buffer",
     srcs = [
         "device_buffer.cc",
@@ -139,12 +130,12 @@ torch_tpu_cc_library(
         "device_buffer.h",
     ],
     deps = [
-        ":device_types",
         ":eager_mode",
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:context_states",
+        "//torch_tpu/common:device_type",
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
@@ -181,13 +172,13 @@ torch_tpu_cc_library(
     hdrs = ["tensor_to_buffer.h"],
     deps = [
         ":device_buffer",
-        ":device_types",
         "//shims/torch:aten_headers",
         "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/common:aten_utils",
         "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:device_type",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:shape",
@@ -684,7 +675,6 @@ torch_tpu_cc_library(
     deps = [
         ":device_buffer",
         ":device_gen_impl",
-        ":device_types",
         ":tensor_to_buffer",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",  # TODO: keep macros
@@ -694,6 +684,7 @@ torch_tpu_cc_library(
         "//shims/torch/torch/headeronly:torch_headeronly",
         "//torch_tpu/_internal/sync:sync_cc",
         "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:device_type",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_names",

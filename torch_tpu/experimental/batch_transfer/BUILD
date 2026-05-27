@@ -28,10 +28,10 @@ torch_tpu_cc_library(
     deps = [
         "//shims/torch:aten_headers",
         "//shims/torch/torch/headeronly:torch_headeronly",
+        "//torch_tpu/common:device_type",
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/eager:device_buffer",
-        "//torch_tpu/eager:device_types",
         "//torch_tpu/eager:materialize",
         "//torch_tpu/eager:structured_log_buffer",
         "@com_google_absl//absl/cleanup",
