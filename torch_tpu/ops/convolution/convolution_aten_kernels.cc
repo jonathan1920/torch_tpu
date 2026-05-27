@@ -374,7 +374,8 @@ absl::StatusOr<DeviceBufferRefArray<3>> ConvolutionBackward(
     auto& [grad_out, in, w] = inputs;
     mlir::MlirOp grad_in, grad_w, grad_b;
 
-    auto make_undefined = [&grad_out, output_dtype]() {
+    auto make_undefined = [&grad_out,
+                           output_dtype]() -> absl::StatusOr<mlir::MlirOp> {
       return MakeZeroSizedTensor(
           grad_out.getBuilder(),
           mlir::getElementType(grad_out.getContext(), output_dtype));
@@ -387,7 +388,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> ConvolutionBackward(
               grad_out, w, input_dims, stride, padding, dilation, groups,
               transposed, output_padding, output_dtype, current_precision));
     } else {
-      grad_in = make_undefined();
+      TT_ASSIGN_OR_RETURN(grad_in, make_undefined());
     }
 
     if (output_mask[1]) {
@@ -397,14 +398,14 @@ absl::StatusOr<DeviceBufferRefArray<3>> ConvolutionBackward(
               in, grad_out, weight_dims, stride, padding, dilation, groups,
               transposed, output_padding, output_dtype, current_precision));
     } else {
-      grad_w = make_undefined();
+      TT_ASSIGN_OR_RETURN(grad_w, make_undefined());
     }
 
     if (output_mask[2]) {
       TT_ASSIGN_OR_RETURN(grad_b, BuildConvolutionBackwardBias(
                                       grad_out, output_padding, output_dtype));
     } else {
-      grad_b = make_undefined();
+      TT_ASSIGN_OR_RETURN(grad_b, make_undefined());
     }
 
     return MlirOpResults<3>{grad_in, grad_w, grad_b};

@@ -265,20 +265,26 @@ mlir::Attribute GetMaxFiniteValueAttr(mlir::Type element_type,
   return nullptr;
 }
 
-mlir::MlirOp MakeZeroSizedTensor(mlir::MlirBuilder& builder,
-                                 mlir::Type element_type) {
+absl::StatusOr<mlir::MlirOp> MakeZeroSizedTensor(
+    mlir::MlirBuilder& builder, mlir::Type element_type,
+    mlir::ArrayRef<int64_t> shape) {
+  TT_RET_CHECK(absl::c_linear_search(shape, 0), error::kInvalidArgument)
+      << "Shape must contain at least one dimension of size 0 to be "
+         "zero-sized.";
   auto& ctx = builder.getContext();
-  auto tensor_type =
-      mlir::makeTensorType(ctx, mlir::ArrayRef<int64_t>{0}, element_type);
+  auto tensor_type = mlir::makeTensorType(ctx, shape, element_type);
   return mlir::stablehlo::Constant(
       builder, mlir::makeConstant(mlir::ArrayRef<int64_t>{}, tensor_type));
 }
 
-mlir::MlirOp MakeZeroSizedTensor(mlir::MlirBuilder& builder,
-                                 mlir::ElementType element_type) {
+absl::StatusOr<mlir::MlirOp> MakeZeroSizedTensor(
+    mlir::MlirBuilder& builder, mlir::ElementType element_type,
+    mlir::ArrayRef<int64_t> shape) {
+  TT_RET_CHECK(absl::c_linear_search(shape, 0), error::kInvalidArgument)
+      << "Shape must contain at least one dimension of size 0 to be "
+         "zero-sized.";
   auto& ctx = builder.getContext();
-  auto tensor_type =
-      mlir::makeTensorType(ctx, mlir::ArrayRef<int64_t>{0}, element_type);
+  auto tensor_type = mlir::makeTensorType(ctx, shape, element_type);
   return mlir::stablehlo::Constant(
       builder, mlir::makeConstant(mlir::ArrayRef<int64_t>{}, tensor_type));
 }

@@ -190,7 +190,8 @@ absl::StatusOr<MlirOpResults<2>> BuildGeqrfShlo(mlir::MlirOp input) {
   if (m == 0 || n == 0) {
     TT_ASSIGN_OR_RETURN(const mlir::ElementType element_type,
                         GetElementType(input));
-    mlir::MlirOp zero_sized = MakeZeroSizedTensor(builder, element_type);
+    TT_ASSIGN_OR_RETURN(mlir::MlirOp zero_sized,
+                        MakeZeroSizedTensor(builder, element_type));
     mlir::MlirOp a = mlir::stablehlo::Reshape(zero_sized, a_shape);
     mlir::MlirOp tau = mlir::stablehlo::Reshape(zero_sized, tau_dims);
     return {{a, tau}};

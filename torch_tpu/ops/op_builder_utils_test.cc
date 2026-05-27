@@ -1010,5 +1010,80 @@ TEST(OpBuilderUtils, SerializePortableArtifact) {
   EXPECT_THAT(artifact, testing::HasSubstr("StableHLO_v1."));
 }
 
+TEST(OpBuilderUtils, MakeZeroSizedTensor_MlirType_DefaultShape) {
+  OpBuilderUtilsBuilder op_builder_utils_builder;
+  mlir::MlirBuilder& builder = op_builder_utils_builder.get();
+  mlir::OpBuilder& op_builder = builder.getOpBuilder();
+
+  auto op_or = MakeZeroSizedTensor(builder, op_builder.getF32Type());
+  ASSERT_TRUE(op_or.ok());
+  auto type = mlir::dyn_cast<mlir::RankedTensorType>(op_or->getType());
+  ASSERT_TRUE(type);
+  EXPECT_TRUE(type.getElementType().isF32());
+  EXPECT_THAT(type.getShape(), ElementsAre(0));
+}
+
+TEST(OpBuilderUtils, MakeZeroSizedTensor_MlirType_CustomShape) {
+  OpBuilderUtilsBuilder op_builder_utils_builder;
+  mlir::MlirBuilder& builder = op_builder_utils_builder.get();
+  mlir::OpBuilder& op_builder = builder.getOpBuilder();
+
+  auto op_or = MakeZeroSizedTensor(builder, op_builder.getI32Type(), {2, 0, 3});
+  ASSERT_TRUE(op_or.ok());
+  auto type = mlir::dyn_cast<mlir::RankedTensorType>(op_or->getType());
+  ASSERT_TRUE(type);
+  EXPECT_TRUE(type.getElementType().isSignlessInteger(32));
+  EXPECT_THAT(type.getShape(), ElementsAre(2, 0, 3));
+}
+
+TEST(OpBuilderUtils, MakeZeroSizedTensor_MlirType_InvalidShape) {
+  OpBuilderUtilsBuilder op_builder_utils_builder;
+  mlir::MlirBuilder& builder = op_builder_utils_builder.get();
+  mlir::OpBuilder& op_builder = builder.getOpBuilder();
+
+  auto op_or = MakeZeroSizedTensor(builder, op_builder.getI32Type(), {2, 1, 3});
+  EXPECT_FALSE(op_or.ok());
+  EXPECT_EQ(op_or.status().code(), error::kInvalidArgument);
+  EXPECT_THAT(
+      op_or.status().message(),
+      testing::HasSubstr("must contain at least one dimension of size 0"));
+}
+
+TEST(OpBuilderUtils, MakeZeroSizedTensor_MlirElementType_DefaultShape) {
+  OpBuilderUtilsBuilder op_builder_utils_builder;
+  mlir::MlirBuilder& builder = op_builder_utils_builder.get();
+
+  auto op_or = MakeZeroSizedTensor(builder, mlir::ElementType::F32);
+  ASSERT_TRUE(op_or.ok());
+  auto type = mlir::dyn_cast<mlir::RankedTensorType>(op_or->getType());
+  ASSERT_TRUE(type);
+  EXPECT_TRUE(type.getElementType().isF32());
+  EXPECT_THAT(type.getShape(), ElementsAre(0));
+}
+
+TEST(OpBuilderUtils, MakeZeroSizedTensor_MlirElementType_CustomShape) {
+  OpBuilderUtilsBuilder op_builder_utils_builder;
+  mlir::MlirBuilder& builder = op_builder_utils_builder.get();
+
+  auto op_or = MakeZeroSizedTensor(builder, mlir::ElementType::I32, {2, 0, 3});
+  ASSERT_TRUE(op_or.ok());
+  auto type = mlir::dyn_cast<mlir::RankedTensorType>(op_or->getType());
+  ASSERT_TRUE(type);
+  EXPECT_TRUE(type.getElementType().isSignlessInteger(32));
+  EXPECT_THAT(type.getShape(), ElementsAre(2, 0, 3));
+}
+
+TEST(OpBuilderUtils, MakeZeroSizedTensor_MlirElementType_InvalidShape) {
+  OpBuilderUtilsBuilder op_builder_utils_builder;
+  mlir::MlirBuilder& builder = op_builder_utils_builder.get();
+
+  auto op_or = MakeZeroSizedTensor(builder, mlir::ElementType::I32, {2, 1, 3});
+  EXPECT_FALSE(op_or.ok());
+  EXPECT_EQ(op_or.status().code(), error::kInvalidArgument);
+  EXPECT_THAT(
+      op_or.status().message(),
+      testing::HasSubstr("must contain at least one dimension of size 0"));
+}
+
 }  // namespace
 }  // namespace torch_tpu

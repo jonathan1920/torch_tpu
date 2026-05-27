@@ -99,13 +99,15 @@ absl::StatusOr<MlirOpResults<3>> BuildBatchNormBackward(
     grad_bias = mlir::stablehlo::ConvertElementType(grad_bias, input_dtype);
 
     if (!output_mask[0]) {
-      grad_input = MakeZeroSizedTensor(builder, input_dtype);
+      TT_ASSIGN_OR_RETURN(grad_input,
+                          MakeZeroSizedTensor(builder, input_dtype));
     }
     if (!output_mask[1]) {
-      grad_weight = MakeZeroSizedTensor(builder, input_dtype);
+      TT_ASSIGN_OR_RETURN(grad_weight,
+                          MakeZeroSizedTensor(builder, input_dtype));
     }
     if (!output_mask[2]) {
-      grad_bias = MakeZeroSizedTensor(builder, input_dtype);
+      TT_ASSIGN_OR_RETURN(grad_bias, MakeZeroSizedTensor(builder, input_dtype));
     }
 
     return {{grad_input, grad_weight, grad_bias}};
@@ -158,7 +160,7 @@ absl::StatusOr<MlirOpResults<3>> BuildBatchNormBackward(
                                     {kTorchFeaturesDimensionIndex}));
       grad_input = mlir::stablehlo::Mul(grad_out, broadcasted_w);
     } else {
-      grad_input = MakeZeroSizedTensor(builder, acc_dtype);
+      TT_ASSIGN_OR_RETURN(grad_input, MakeZeroSizedTensor(builder, acc_dtype));
     }
 
     // Used to reduce over all dims except the feature dim.
@@ -185,14 +187,14 @@ absl::StatusOr<MlirOpResults<3>> BuildBatchNormBackward(
       TT_ASSIGN_OR_RETURN(grad_weight,
                           BuildSumShlo(grad_out_times_norm, reduce_dims));
     } else {
-      grad_weight = MakeZeroSizedTensor(builder, acc_dtype);
+      TT_ASSIGN_OR_RETURN(grad_weight, MakeZeroSizedTensor(builder, acc_dtype));
     }
 
     if (output_mask[2]) {
       // grad_bias = grad_out
       TT_ASSIGN_OR_RETURN(grad_bias, BuildSumShlo(grad_out, reduce_dims));
     } else {
-      grad_bias = MakeZeroSizedTensor(builder, acc_dtype);
+      TT_ASSIGN_OR_RETURN(grad_bias, MakeZeroSizedTensor(builder, acc_dtype));
     }
 
     // Cast results back to input precision.
@@ -286,8 +288,10 @@ absl::StatusOr<MlirOpResults<3>> BuildBatchNorm(
     // Output tensor needs to be in input precision.
     output_tensor =
         mlir::stablehlo::ConvertElementType(output_tensor, input_dtype);
-    auto output_mean = MakeZeroSizedTensor(builder, acc_dtype);
-    auto output_inverted_variance = MakeZeroSizedTensor(builder, acc_dtype);
+    TT_ASSIGN_OR_RETURN(auto output_mean,
+                        MakeZeroSizedTensor(builder, acc_dtype));
+    TT_ASSIGN_OR_RETURN(auto output_inverted_variance,
+                        MakeZeroSizedTensor(builder, acc_dtype));
     return {{output_tensor, output_mean, output_inverted_variance}};
   }
 }

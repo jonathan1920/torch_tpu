@@ -136,23 +136,18 @@ absl::StatusOr<BuildUniqueShloOutputs> BuildUnique2Shlo(int64_t output_size,
   auto i64_type = op_builder.getI64Type();
 
   if (n == 0) {
-    outputs.unique_values = MakeZeroSizedTensor(builder, val_type);
-    outputs.counts = MakeZeroSizedTensor(builder, mlir::ElementType::I64);
+    TT_ASSIGN_OR_RETURN(outputs.unique_values,
+                        MakeZeroSizedTensor(builder, val_type));
+    TT_ASSIGN_OR_RETURN(outputs.counts,
+                        MakeZeroSizedTensor(builder, mlir::ElementType::I64));
 
     // PyTorch expects empty inverse_indices shape to match the original input
     // tensor's shape even when the input size is zero (e.g. dynamic shape with
-    // a 0-sized dimension). Since MakeZeroSizedTensor returns a 1D [0] tensor,
-    // we reshape it back to the original input dimensions.
-    auto inverse_indices = MakeZeroSizedTensor(builder, mlir::ElementType::I64);
-    if (return_inverse) {
-      const mlir::RankedTensorType original_input_type =
-          GetTensorTypeOrDie(input);
-      if (original_input_type.getRank() > 1) {
-        inverse_indices = mlir::stablehlo::Reshape(
-            inverse_indices, original_input_type.getShape());
-      }
-    }
-    outputs.inverse_indices = inverse_indices;
+    // a 0-sized dimension).
+    TT_ASSIGN_OR_RETURN(
+        outputs.inverse_indices,
+        MakeZeroSizedTensor(builder, mlir::ElementType::I64,
+                            GetTensorTypeOrDie(input).getShape()));
     return outputs;
   }
 
@@ -228,7 +223,8 @@ absl::StatusOr<BuildUniqueShloOutputs> BuildUnique2Shlo(int64_t output_size,
           outputs.inverse_indices, original_input_type.getShape());
     }
   } else {
-    outputs.inverse_indices = MakeZeroSizedTensor(builder, i64_type);
+    TT_ASSIGN_OR_RETURN(outputs.inverse_indices,
+                        MakeZeroSizedTensor(builder, i64_type));
   }
 
   // 4. Counts
@@ -242,7 +238,7 @@ absl::StatusOr<BuildUniqueShloOutputs> BuildUnique2Shlo(int64_t output_size,
         mlir::stablehlo::Slice(unique_indices_plus_n, {0}, {output_size}, {1});
     outputs.counts = mlir::stablehlo::Subtract(c_start, c_end);
   } else {
-    outputs.counts = MakeZeroSizedTensor(builder, i64_type);
+    TT_ASSIGN_OR_RETURN(outputs.counts, MakeZeroSizedTensor(builder, i64_type));
   }
 
   return outputs;

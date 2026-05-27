@@ -238,10 +238,23 @@ absl::StatusOr<mlir::DenseElementsAttr> GetVerifiedMinFiniteValue(
 [[nodiscard]] mlir::Attribute GetMaxFiniteValueAttr(mlir::Type element_type,
                                                     mlir::OpBuilder& builder);
 
-[[nodiscard]] mlir::MlirOp MakeZeroSizedTensor(mlir::MlirBuilder& builder,
-                                               mlir::Type element_type);
-[[nodiscard]] mlir::MlirOp MakeZeroSizedTensor(mlir::MlirBuilder& builder,
-                                               mlir::ElementType element_type);
+// Returns a tensor of shape `shape` with zero elements and the given element
+// type. The `shape` must contain at least one dimension of size 0 to produce
+// a tensor with 0 elements, otherwise an error is returned. If no shape is
+// provided, a 1-dimensional tensor with 0 elements is returned. All dimensions
+// in shape must be non-negative.
+absl::StatusOr<mlir::MlirOp> MakeZeroSizedTensor(
+    mlir::MlirBuilder& builder, mlir::Type element_type,
+    mlir::ArrayRef<int64_t> shape = {0});
+
+// Returns a tensor of shape `shape` with zero elements and the given element
+// type. The `shape` must contain at least one dimension of size 0 to produce
+// a tensor with 0 elements, otherwise an error is returned. If no shape is
+// provided, a 1-dimensional tensor with 0 elements is returned. All dimensions
+// in shape must be non-negative.
+absl::StatusOr<mlir::MlirOp> MakeZeroSizedTensor(
+    mlir::MlirBuilder& builder, mlir::ElementType element_type,
+    mlir::ArrayRef<int64_t> shape = {0});
 
 // PyTorch Specific constant builders.
 // Consider making a separate `literal_utils.h` file if these get more complex.
