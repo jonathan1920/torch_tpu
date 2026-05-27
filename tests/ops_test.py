@@ -2719,15 +2719,6 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("gt")
 
   def test_grid_sample(self):
-    # TODO: b/512187715 - Add support for bicubic interpolation mode and skip
-    # testing this mode until support is added.
-    def skip_if(device, variant, op_input):
-      del device, variant  # Unused, suppress linter error
-      return op_input.kwargs.get("mode", "bilinear") not in [
-          "nearest",
-          "bilinear",
-      ]
-
     self.do_test_op(
         "nn.functional.grid_sample",
         check_value=CheckValueMode.LOOSE,
@@ -2736,7 +2727,6 @@ class TestOps(TorchTpuTestBase):
             # addressing for float16 and bfloat16
             "cpu": (torch.bfloat16, torch.float16),
         },
-        skip_if=skip_if,
     )
 
   def test_histc(self):
