@@ -298,7 +298,6 @@ void CheckScalarInput() {
       kOpName == OpName::kNe ||                          //
       kOpName == OpName::kPdistForward ||                //
       kOpName == OpName::kPow ||                         //
-      kOpName == OpName::kRemainder ||                   //
       kOpName == OpName::kRsub ||                        //
       kOpName == OpName::kScatterValueOut ||             //
       kOpName == OpName::kScatterValueReduceOut ||       //
