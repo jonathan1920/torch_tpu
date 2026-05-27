@@ -326,6 +326,7 @@ void CompilationCache::EvictAll() {
       const auto it = executable_cache_.find(key);
       if (it == executable_cache_.end()) {
         ABSL_VLOG(1) << "Key already evicted by another thread: " << key;
+        keys_to_evict.erase(key);
         continue;
       }
 
@@ -897,12 +898,31 @@ void CompilationCache::SetExecutable(
 
   TrySetExecutablePromise(key, *cache_entry.executable_promise(),
                           std::move(executable));
+
+  if (!allow_cache_mode_) {
+    // If the cache is disabled, we remove the executable from the cache.
+    // Note that this is done after the executable future is set, so a
+    // user holding another shared pointer to the executable future will still
+    // be able to retrieve the executable.
+    executable_cache_.erase(it);
+    ABSL_VLOG(1) << "Evicted key from cache because allow_cache_mode is false: "
+                 << key;
+  }
+}
+
+bool CompilationCache::ShouldUseTier2Cache() const {
+  bool allow_cache = true;
+  {
+    absl::MutexLock lock(cache_mutex_);
+    allow_cache = allow_cache_mode_;
+  }
+  return allow_cache && UsesTier2CompilationCache();
 }
 
 void CompilationCache::GetFromTier2OrCompile(
     CompilationCacheKey key, LoadedExecutableBuilder executable_builder,
     UniqueCompileOptions compile_options) {
-  const bool uses_tier2 = UsesTier2CompilationCache();
+  const bool uses_tier2 = ShouldUseTier2Cache();
   ABSL_VLOG(1) << "Compiling executable for key: " << key
                << (uses_tier2 ? absl::StrCat(" with tier-2 cache at ",
                                              GetTier2CompilationCachePath())

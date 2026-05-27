@@ -232,6 +232,89 @@ TEST_F(CompilationCacheInitTest, OptionsApplied) {
   CompilationCache::ShutDown();
 }
 
+TEST_F(CompilationCacheTest, AllowCacheModeDisabled) {
+  // Use xla_cpu for unit testing as it doesn't require real hardware.
+  PjrtBackend::GetInstance().SetPjRtInitializationOptions(
+      {.device_type = "xla_cpu"});
+  ABSL_CHECK_OK(PjrtBackend::GetInstance().EnsureInitialized());
+
+  CompilationCache& cache = CompilationCache::GetInstance();
+  cache.SetAllowCacheMode(false);
+
+  auto key = DummyKey(9999);
+  std::vector<Shape> input_shapes;
+
+  auto make_builder = []() {
+    return [](mlir::MLIRContext& context)
+               -> absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> {
+      auto module = mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
+      mlir::OpBuilder builder(&context);
+      builder.setInsertionPointToEnd(module.getBody());
+
+      auto tensor_type = mlir::RankedTensorType::get({4}, builder.getF32Type());
+      auto func_type = builder.getFunctionType({tensor_type}, {tensor_type});
+      auto func = builder.create<mlir::func::FuncOp>(
+          mlir::UnknownLoc::get(&context), "main", func_type);
+
+      auto* entry_block = func.addEntryBlock();
+      builder.setInsertionPointToStart(entry_block);
+
+      // Identity operation
+      builder.create<mlir::func::ReturnOp>(mlir::UnknownLoc::get(&context),
+                                           entry_block->getArgument(0));
+
+      return mlir::OwningOpRef<mlir::ModuleOp>(module);
+    };
+  };
+
+  auto builder1 = make_builder();
+  auto builder2 = make_builder();
+
+  TF_ASSERT_OK_AND_ASSIGN(CompilationSpecsByMode compilation_specs,
+                          MakeCompilationSpecs(CompilationMode::kFastCompile));
+  auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
+
+  // First compilation.
+  auto result1 = cache.GetOrCompile(key, input_shapes, /*output_shapes=*/{},
+                                    std::move(builder1),
+                                    std::move(spec.xla_compile_options));
+  ASSERT_TRUE(result1.ok())
+      << "First GetOrCompile failed: " << result1.status();
+  auto exec1_or = result1->fixed_shape_kernel.get();
+  ASSERT_TRUE(exec1_or.ok())
+      << "First compilation failed: " << exec1_or.status();
+  auto exec1 = *exec1_or;
+
+  // Second compilation for the same key.
+  // We need to recreate compile options as they are moved.
+  TF_ASSERT_OK_AND_ASSIGN(compilation_specs,
+                          MakeCompilationSpecs(CompilationMode::kFastCompile));
+  auto& spec2 = compilation_specs.at(CompilationMode::kFastCompile);
+
+  auto result2 = cache.GetOrCompile(key, input_shapes, /*output_shapes=*/{},
+                                    std::move(builder2),
+                                    std::move(spec2.xla_compile_options));
+  ASSERT_TRUE(result2.ok())
+      << "Second GetOrCompile failed: " << result2.status();
+  auto exec2_or = result2->fixed_shape_kernel.get();
+  ASSERT_TRUE(exec2_or.ok())
+      << "Second compilation failed: " << exec2_or.status();
+  auto exec2 = *exec2_or;
+
+  // Verify they are different executables.
+  EXPECT_NE(exec1.get(), exec2.get())
+      << "Executables should be different when cache is disabled";
+
+  // Verify cache stats.
+  // If cache is disabled, we shouldn't have any hits.
+  PerfStats stats = cache.GetCacheStats();
+  EXPECT_EQ(stats.num_cache_hits, 0);
+
+  // Clean up.
+  cache.SetAllowCacheMode(true);
+  CompilationCache::ShutDown();
+}
+
 // Must be done before running any tests.
 static const bool kSetFlagDone = [] {
   absl::SetFlag(&FLAGS_torch_tpu_internal_enable_compilation_container, true);

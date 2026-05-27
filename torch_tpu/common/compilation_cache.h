@@ -425,6 +425,10 @@ class CompilationCache {
                UniqueCompileOptions compile_options)
       ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
+  // Returns true if the cache is enabled and the tier-2 cache is configured.
+  [[nodiscard]] bool ShouldUseTier2Cache() const
+      ABSL_LOCKS_EXCLUDED(cache_mutex_);
+
   // Tries to get the compilation result from the tier-2 cache; if not
   // found, compiles the graph and stores the executable in the tier-1/2/3
   // caches.
