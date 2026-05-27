@@ -737,8 +737,8 @@ class DeviceBufferList {
   absl::StatusOr<xla::PjRtBuffer* absl_nonnull> AwaitBuffer(
       int64_t index) const;
 
-  // Returns the representative ID of the subgraph this node belongs to.
-  [[nodiscard]] std::shared_ptr<Subgraph> subgraph() const { return subgraph_; }
+  // Returns the representative ID of the subgraph this node belongs to, if any.
+  [[nodiscard]] absl_nullable std::shared_ptr<Subgraph> subgraph() const;
 
   // If the DeviceBufferList has no live data pointers, it is "stale", meaning
   // that it will never be directly materialized and will never have any new
@@ -766,7 +766,7 @@ class DeviceBufferList {
   // the type specified by the argument.
   DeviceBufferList(absl_nonnull std::unique_ptr<xla::PjRtBuffer> buffer,
                    const mlir::ElementType element_type)
-      : subgraph_(nullptr), data_(std::move(buffer)) {
+      : data_(std::move(buffer)) {
     creation_index_ = g_creation_index.fetch_add(1);
 
     auto buffer_or = data_[0];
@@ -791,11 +791,8 @@ class DeviceBufferList {
   // DeferredOp's op_builder; if they do not, then there may be compilation
   // failures.
   DeviceBufferList(std::unique_ptr<DeferredOp> absl_nonnull deferred_op,
-                   std::vector<Shape> shapes,
-                   std::shared_ptr<Subgraph> subgraph)
-      : shapes_(std::move(shapes)),
-        subgraph_(std::move(subgraph)),
-        data_(std::move(deferred_op)) {
+                   std::vector<Shape> shapes)
+      : shapes_(std::move(shapes)), data_(std::move(deferred_op)) {
     creation_index_ = g_creation_index.fetch_add(1);
 
     if (ABSL_VLOG_IS_ON(3)) {
@@ -805,7 +802,7 @@ class DeviceBufferList {
                       "DeferredOp: "
                    << shared_deferred_op->op_name()
                    << ", Number of outputs: " << shapes_.size()
-                   << ", Subgraph: " << subgraph_.get();
+                   << ", Subgraph: " << subgraph().get();
     }
   }
 
@@ -815,8 +812,8 @@ class DeviceBufferList {
   //
   // The buffer is a compiled mode placeholder, representing data that the
   // compiled executable will expect to be provided as an argument.
-  DeviceBufferList(Dimensions dimensions, const mlir::ElementType element_type)
-      : subgraph_(nullptr) {
+  DeviceBufferList(Dimensions dimensions,
+                   const mlir::ElementType element_type) {
     creation_index_ = g_creation_index.fetch_add(1);
     shapes_.emplace_back(std::move(dimensions), element_type);
     ABSL_VLOG(3) << "[DeviceBuffer CONSTRUCTOR (bufferless)] Created. Dims: "
@@ -834,8 +831,6 @@ class DeviceBufferList {
 
   // The shapes of all the buffers in the DeviceBufferList.
   std::vector<Shape> shapes_;
-  // The subgraph this node belongs to. Only valid for deferred nodes.
-  std::shared_ptr<Subgraph> subgraph_;
   // A global index of the creation of this DeviceBufferList (created atomically
   // for thread safety). Lower means earlier.
   uint64_t creation_index_ = 0;
@@ -890,6 +885,10 @@ class DeviceBufferList {
     // Returns nullptr for placeholders, or if the DeviceBufferList::Data is
     // pending materialization or fully materialized.
     absl_nullable std::shared_ptr<DeferredOp> deferred_op() const;
+
+    // Returns the subgraph for this DeviceBufferList::Data, if it exists.
+    // Otherwise, returns nullptr.
+    absl_nullable std::shared_ptr<Subgraph> subgraph() const;
 
     // Marks this DeviceBufferList::Data as pending materialization.
     // This will delete the DeferredOp if it exists.

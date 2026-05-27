@@ -294,6 +294,21 @@ absl_nullable std::shared_ptr<DeferredOp> DeviceBufferList::Data::deferred_op()
   return deferred_op_;
 }
 
+absl_nullable std::shared_ptr<Subgraph> DeviceBufferList::Data::subgraph()
+    const {
+  if (created_as_placeholder_ || materialization_pending_) {
+    // DeviceBufferList::Data that is created in the placeholder state never had
+    // a DeferredOp. DeviceBufferList::Data that is pending materialization may
+    // have had a DeferredOp, but if it did, it has been consumed.
+    return nullptr;
+  }
+  absl::MutexLock lock(deferred_op_mutex_);
+  if (deferred_op_) {
+    return deferred_op_->subgraph();
+  }
+  return nullptr;
+}
+
 void DeviceBufferList::Data::SetMaterializationPending() {
   // Immediately mark the DeviceBufferList::Data as pending materialization, and
   // check if this was the first time this was called.
@@ -488,6 +503,10 @@ absl::StatusOr<xla::PjRtBuffer* absl_nonnull> DeviceBufferList::AwaitBuffer(
   return data_[index];
 }
 
+absl_nullable std::shared_ptr<Subgraph> DeviceBufferList::subgraph() const {
+  return data_.subgraph();
+}
+
 // Delegate responsibility for deleting the DeviceBufferRef to the
 // c10::DataPtr.
 // The DeviceBufferRef* is used as both the "data" and "context" of the
@@ -551,10 +570,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
     }
 
     for (const auto& input : inputs) {
-      if (input.state() == DeviceBufferRefState::kDeferred) {
-        auto input_subgraph = input.device_buffer_list()->subgraph();
-        if (!input_subgraph) continue;
-
+      if (auto input_subgraph = input.device_buffer_list()->subgraph()) {
         auto input_rep = input_subgraph->Find();
         if (!subgraph) {
           subgraph = input_rep;
@@ -579,7 +595,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
   // Wrap the DeferredOp in a DeviceBufferList.
   // Can't use make_shared because the constructor is private.
   auto device_buffer = std::shared_ptr<DeviceBufferList>(
-      new DeviceBufferList(std::move(op), std::move(output_shapes), subgraph));
+      new DeviceBufferList(std::move(op), std::move(output_shapes)));
 
   if (subgraph) {
     subgraph->push(std::weak_ptr<DeviceBufferList>(device_buffer));
