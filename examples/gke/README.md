@@ -16,6 +16,12 @@ export DOCKER_IMAGE=test-docker-image:latest
 export TPU_TYPE=
 ```
 
+If using a fuse bucket, also setup:
+
+```bash
+export BUCKET=
+```
+
 ### Setup XPK
 
 XPK makes the process of setting up your TPUv7 cluster quite simple, setting up
@@ -40,6 +46,12 @@ xpk cluster create \
   --project=${PROJECT} \
   --spot # this sets up your cluster as a spot instance. Not best for long-running jobs.
 ```
+
+#### Set-up fuse bucket
+
+For examples that require model weights, you may want to refer to
+[xpk/docs/usage/storage.md](https://github.com/AI-Hypercomputer/xpk/blob/main/docs/usage/storage.md)
+on how to set-up a cluster with storage bucket.
 
 ### GCloud and docker setup
 
@@ -92,6 +104,21 @@ xpk workload create \
   --tpu-type=tpu7x-8 \
   --docker-image=${ARTIFACT_REGISTRY_URL}/${DOCKER_IMAGE} \
   --command="cd /workspace/examples/distributed/fsdp/lora/ && pip install -r requirements.txt && ./launch.sh"
+```
+
+If the example needs to leverage model weights or data, you may set them up in a
+fuse bucket and. Your new command may look something like this:
+
+```bash
+xpk workload create \
+  --workload=unique-worker-name-1 \
+  --cluster=${CLUSTER} \
+  --zone=${ZONE_NAME} \
+  --project=${PROJECT} \
+  --tpu-type=tpu7x-8 \
+  --storage=${BUCKET} \
+  --docker-image=${ARTIFACT_REGISTRY_URL}/${DOCKER_IMAGE} \
+  --command="cd /workspace/examples/distributed/manual/tensor_parallel/ && ./launch.sh"
 ```
 
 <!-- LINT.ThenChange($INTERNAL_DOCS/gke.md) -->
