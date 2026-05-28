@@ -532,7 +532,7 @@ namespace {
 // experimental asynchronous materialization, compilation and execution are
 // enqueued to the background thread. If an execution OOM happens in the
 // background, it is caught early during BlockOnPendingMaterializations() inside
-// GetMaterialized(), bypassing the standard copy-transfer wrapper's
+// MaterializeAndReturn(), bypassing the standard copy-transfer wrapper's
 // (TranslateXlaTensorOomError) execution blocks. We replicate the OOM mapping
 // here to ensure user exception signature consistency.
 absl::Status TranslateXlaOomError(const absl::Status& status,
@@ -583,63 +583,44 @@ absl::Status MaybeBlockOnPendingMaterializationsNew(const at::Tensor& tensor) {
 
 }  // namespace
 
-absl::StatusOr<DeviceBufferRef> GetMaterialized(const at::Tensor& tensor,
-                                                MaterializationReason reason) {
-  tsl::profiler::TraceMe trace("GetMaterialized");
-  // Make sure the base DeviceBufferRef is materialized
-  const auto* tensor_impl = tensor.unsafeGetTensorImpl();
-  TT_RET_CHECK(tensor_impl, error::kInvalidArgument) << "tensor is undefined";
-  TT_ASSIGN_OR_RETURN(const DeviceBufferRef base_buffer_ref,
-                      GetBaseBuffer(*tensor_impl));
-  TT_RETURN_IF_ERROR(
-      Materialize(base_buffer_ref, reason, MaterializationMode::kSplitGraph));
-
-  // Get the view DeviceBufferRef (may be the same as the base)
-  TT_ASSIGN_OR_RETURN(const DeviceBufferRef view_buffer_ref, GetBuffer(tensor));
-  // Materialize the view (no-op if the tensor is a continuous base tensor)
-  TT_RETURN_IF_ERROR(
-      Materialize(view_buffer_ref, reason, MaterializationMode::kSplitGraph));
-  // The new materialization algorithm needs us to block here until all pending
-  // jobs are done.
-  TT_RETURN_IF_ERROR(MaybeBlockOnPendingMaterializationsNew(tensor));
-
-  return view_buffer_ref;
-}
-
-absl::StatusOr<std::vector<DeviceBufferRef>> GetMaterialized(
+absl::StatusOr<std::vector<DeviceBufferRef>> MaterializeAndReturn(
     absl::Span<const at::Tensor> tensors, MaterializationReason reason) {
-  tsl::profiler::TraceMe trace("GetMaterialized (batch)");
+  tsl::profiler::TraceMe trace("MaterializeAndReturn");
   if (tensors.empty()) {
     return std::vector<DeviceBufferRef>();
   }
-  // Materialize all of the base DeviceBufferRefs (in a single execution)
-  std::vector<DeviceBufferRef> base_buffer_refs;
-  base_buffer_refs.reserve(tensors.size());
-  for (const at::Tensor& tensor : tensors) {
-    const auto* tensor_impl = tensor.unsafeGetTensorImpl();
-    TT_RET_CHECK(tensor_impl, error::kInvalidArgument) << "tensor is undefined";
-    TT_ASSIGN_OR_RETURN(const DeviceBufferRef base_buffer_ref,
-                        GetBaseBuffer(*tensor_impl));
-    base_buffer_refs.push_back(base_buffer_ref);
-  }
-  TT_RETURN_IF_ERROR(
-      Materialize(base_buffer_refs, reason, MaterializationMode::kSplitGraph));
+  // We need to materialize both the base and view for each tensor.
+  // Materialization is by node, not by buffer.
+  std::vector<SharedDeviceBufferList> nodes_to_materialize;
+  nodes_to_materialize.reserve(tensors.size() * 2);
 
-  // Materialize all of the views (no-op if all tensors are contiguous bases)
-  std::vector<DeviceBufferRef> view_buffer_refs;
-  view_buffer_refs.reserve(tensors.size());
+  // We always return one buffer per input tensor.
+  std::vector<DeviceBufferRef> buffers_to_return;
+  buffers_to_return.reserve(tensors.size());
+
   for (const at::Tensor& tensor : tensors) {
+    // If the tensor is a (non-trivial) view, these will be two different
+    // buffers. If the tensor's base is the same shape and layout as the tensor,
+    // these will be the same buffer.
+    // Deduplication will happen inside the Materialize() call; this will cover
+    // both the case where a tensor is a trivial view, and the case where two
+    // tensors are different views of the same base buffer.
+    TT_ASSIGN_OR_RETURN(const DeviceBufferRef base_buffer_ref,
+                        GetBaseBuffer(tensor));
     TT_ASSIGN_OR_RETURN(const DeviceBufferRef view_buffer_ref,
                         GetBuffer(tensor));
-    view_buffer_refs.push_back(view_buffer_ref);
+
+    nodes_to_materialize.push_back(base_buffer_ref.device_buffer_list());
+    nodes_to_materialize.push_back(view_buffer_ref.device_buffer_list());
+    buffers_to_return.push_back(std::move(view_buffer_ref));
   }
-  TT_RETURN_IF_ERROR(
-      Materialize(view_buffer_refs, reason, MaterializationMode::kSplitGraph));
+  TT_RETURN_IF_ERROR(Materialize(nodes_to_materialize, reason,
+                                 MaterializationMode::kSplitGraph));
+  nodes_to_materialize.clear();
   // The new materialization algorithm needs us to block here until all pending
   // jobs are done.
   TT_RETURN_IF_ERROR(MaybeBlockOnPendingMaterializationsNew(tensors[0]));
-
-  return view_buffer_refs;
+  return buffers_to_return;
 }
 
 }  // namespace torch_tpu

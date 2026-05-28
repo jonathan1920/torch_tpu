@@ -26,6 +26,7 @@
 #include "c10/core/Allocator.h"
 #include "c10/core/Storage.h"
 #include "c10/core/TensorImpl.h"
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 
@@ -147,16 +148,6 @@ bool IsTpuPinnedPtr(const void* ptr);
 // This must be called before using the allocator for any device operations.
 void RegisterTpuAllocator();
 
-// Returns a materialized DeviceBufferRef for the logical data in the tensor.
-// This will materialize the base tensor in-place (see Materialize()) if it is
-// deferred.
-// If the tensor is a contiguous base tensor, then it will return this tensor.
-// If it is a view, then an ephemeral DeviceBufferList will be created and
-// materialized.
-// Errors if the tensor's base DeviceBufferRef is a placeholder.
-absl::StatusOr<DeviceBufferRef> GetMaterialized(const at::Tensor& tensor,
-                                                MaterializationReason reason);
-
 // Returns a materialized DeviceBufferRefs each input tensor.
 // This will materialize each base tensor in-place (see Materialize()) if it is
 // deferred.
@@ -164,8 +155,23 @@ absl::StatusOr<DeviceBufferRef> GetMaterialized(const at::Tensor& tensor,
 // All views will be materialized into ephemeral DeviceBufferLists.
 // Errors if any of the tensors' base DeviceBufferRefs are placeholders or
 // depend on placeholders.
-absl::StatusOr<std::vector<DeviceBufferRef>> GetMaterialized(
+absl::StatusOr<std::vector<DeviceBufferRef>> MaterializeAndReturn(
     absl::Span<const at::Tensor> tensors, MaterializationReason reason);
+
+// Returns a materialized DeviceBufferRef for the logical data in the tensor.
+// This will materialize the base tensor in-place (see Materialize()) if it is
+// deferred.
+// If the tensor is a contiguous base tensor, then it will return this tensor.
+// If it is a view, then an ephemeral DeviceBufferList will be created and
+// materialized.
+// Errors if the tensor's base DeviceBufferRef is a placeholder.
+inline absl::StatusOr<DeviceBufferRef> MaterializeAndReturn(
+    const at::Tensor& tensor, MaterializationReason reason) {
+  TT_ASSIGN_OR_RETURN(
+      auto buffers,
+      MaterializeAndReturn(absl::Span<const at::Tensor>({&tensor, 1}), reason));
+  return buffers[0];
+}
 
 }  // namespace torch_tpu
 

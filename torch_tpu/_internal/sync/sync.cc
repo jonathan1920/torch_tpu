@@ -50,10 +50,10 @@ using BufferRefToVarMap = absl::flat_hash_map<DeviceBufferRef, std::string>;
 
 absl::Status SynchronizeTensors(absl::Span<const at::Tensor> tensors) {
   // Materialize the tensors and get their DeviceBufferRefs.
-  // GetMaterialized() will materialize each base tensor and each view.
+  // MaterializeAndReturn() will materialize each base tensor and each view.
   TT_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferRef> buffer_refs,
-      GetMaterialized(tensors, MaterializationReason::kExplicitSync));
+      MaterializeAndReturn(tensors, MaterializationReason::kExplicitSync));
 
   // Wait for all of the PjRtBuffers to be ready.
   for (const DeviceBufferRef& buffer_ref : buffer_refs) {
