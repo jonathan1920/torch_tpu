@@ -424,25 +424,6 @@ absl::Status Materialize(absl::Span<const DeviceBufferRef> buffer_refs,
   return MaterializeImpl(nodes_to_materialize, reason, materialization_mode);
 }
 
-void SetOutputNodesAsError(absl::Span<const DeviceBufferRef> outputs,
-                           absl::Status status) {
-  std::vector<SharedDeviceBufferList> nodes;
-  nodes.reserve(outputs.size());
-  for (const auto& output : outputs) {
-    nodes.push_back(output.device_buffer_list());
-  }
-  SetOutputNodesAsError(absl::MakeSpan(nodes), status);
-}
-
-void SetOutputNodesAsError(absl::Span<const SharedDeviceBufferList> outputs,
-                           absl::Status status) {
-  ABSL_VLOG(1) << "[SetOutputNodesAsError] Starting";
-  for (const auto& output : outputs) {
-    output->SetAsError(status);
-  }
-  ABSL_VLOG(1) << "[SetOutputNodesAsError] Set error for nodes";
-}
-
 absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
     SharedLoadedExecutableWithMetadata executable,
     std::vector<DeviceBufferRef> arguments,

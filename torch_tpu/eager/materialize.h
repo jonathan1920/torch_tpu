@@ -93,13 +93,6 @@ absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
     std::vector<DeviceBufferRef> arguments,
     absl::Span<const Shape> output_shapes, std::string_view task_name = "");
 
-// Sets the output nodes as error.
-void SetOutputNodesAsError(absl::Span<const DeviceBufferRef> outputs,
-                           absl::Status status);
-
-void SetOutputNodesAsError(absl::Span<const SharedDeviceBufferList> outputs,
-                           absl::Status status);
-
 // Given a list of target DeviceBufferLists, adds all leaf nodes of their
 // subgraphs to the list.
 void AddLeafNodes(std::vector<SharedDeviceBufferList>& nodes);
