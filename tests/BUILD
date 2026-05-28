@@ -1063,12 +1063,17 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "tpu_backend_config_test",
     srcs = ["tpu_backend_config_test.py"],
+    # To exercise global APIs that are meant to be set once, keep `shard_count` identical to
+    # the number of test cases so that each process runs exactly one test case.
+    # TODO: b/517257494 - write test properly to run one test case per process without
+    # relying on shard count.
+    shard_count = 2,
     strict = True,
     tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
         "//shims/torch:pytorch",
-        "//shims/torch:testing_internal",
         "//torch_tpu",  # build_cleaner: keep
         "//torch_tpu/_internal/execution_mode",
     ],

@@ -12,23 +12,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for torch.backends.tpu related configs.
-
-The global settings tests in this file may interfere with other tests if run in
-parallel.
-"""
+"""Tests for torch.backends.tpu related configs."""
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import torch
-from torch.testing._internal import common_utils
 from torch_tpu._internal import execution_mode as em
 
 
-class TpuBackendConfigTest(absltest.TestCase, common_utils.TestCase):
+class TpuBackendConfigTest(parameterized.TestCase):
   """Tests for torch.backends.tpu related configs."""
 
-  def test_allow_excess_precision_backend(self):
-    """Tests torch.backends.tpu.allow_excess_precision."""
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="true",
+          allow=True,
+          expected_value=1.01568603515625,
+      ),
+      dict(testcase_name="false", allow=False, expected_value=1.015625),
+  )
+  def test_allow_excess_precision(self, allow: bool, expected_value: float):
+    """Tests global torch.backends.tpu.allow_excess_precision API."""
+    # pytype: disable=module-attr
+    # Default value is True.
+    self.assertIs(torch.backends.tpu.allow_excess_precision, True)
+
+    torch.backends.tpu.allow_excess_precision = allow
+    self.assertIs(torch.backends.tpu.allow_excess_precision, allow)
+    # pytype: enable=module-attr
+
     device = torch.device("tpu")
     eps: float = torch.finfo(torch.bfloat16).eps
     x_element = 1.0 + eps
@@ -46,24 +58,7 @@ class TpuBackendConfigTest(absltest.TestCase, common_utils.TestCase):
         )
       return output[0, 0]
 
-    value_for_true_flag = 1.01568603515625
-    value_for_false_flag = 1.015625
-
-    # 1. Default should be True
-    # pytype: disable=module-attr
-    self.assertTrue(torch.backends.tpu.allow_excess_precision)
-    self.assertEqual(run_compute().cpu().item(), value_for_true_flag)
-
-    # 2. Set to False
-    torch.backends.tpu.allow_excess_precision = False
-    self.assertFalse(torch.backends.tpu.allow_excess_precision)
-    self.assertEqual(run_compute().cpu().item(), value_for_false_flag)
-
-    # 3. Set to True
-    torch.backends.tpu.allow_excess_precision = True
-    self.assertTrue(torch.backends.tpu.allow_excess_precision)
-    self.assertEqual(run_compute().cpu().item(), value_for_true_flag)
-    # pytype: enable=module-attr
+    self.assertEqual(run_compute().cpu().item(), expected_value)
 
 
 if __name__ == "__main__":

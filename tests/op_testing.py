@@ -2440,6 +2440,20 @@ def set_up_test_module() -> None:
     # test to always fail in this case.
     sys.exit(0)
 
+  # Note that global APIs must be configured before seeding PyTorch RNGs on TPU
+  # as it triggers compilation of the seed modules.
+  #
+  # The very first invocation of `CompilationCache::GetOrCompile` will determine
+  # the globally shared default compilation context.
+  if _torch_tpu_vs_gpu_mode():
+    # TODO: b/502610173 - When the default value is changed to False for excess
+    # precision, keep configuring the value as True for compile mode to compare
+    # with the GPU inductor backend.
+    if not is_compiled_mode():
+      torch.backends.tpu.allow_excess_precision = False  # pytype: disable=module-attr
+  elif _torch_tpu_vs_cpu_mode():
+    torch.backends.tpu.allow_excess_precision = False  # pytype: disable=module-attr
+
   # Pick a random seed for the test.
   global _RANDOM_SEED
   if absltest.FLAGS["test_random_seed"].present:
@@ -2467,15 +2481,7 @@ def set_up_test_module() -> None:
   if _torch_tpu_vs_gpu_mode():
     print("Running in TorchTPU vs GPU mode.", flush=True)
     _load_golden_files()
-    # TODO: b/502610173 - When the default value is changed to False for excess
-    # precision, keep configuring the value as True for compile mode to compare
-    # with the GPU inductor backend.
-    if not is_compiled_mode():
-      torch.backends.tpu.allow_excess_precision = False  # pytype: disable=module-attr
     return
-
-  if _torch_tpu_vs_cpu_mode():
-    torch.backends.tpu.allow_excess_precision = False  # pytype: disable=module-attr
 
   if _perf_mode():
     if _ANALYZE.value:
