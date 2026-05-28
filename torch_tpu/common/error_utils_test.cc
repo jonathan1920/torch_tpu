@@ -23,19 +23,31 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/log_severity.h"
+#include "absl/log/log_entry.h"
+#include "absl/log/log_sink.h"
+#include "absl/log/log_sink_registry.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "c10/util/Exception.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/env_vars.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/eager_mode.h"
+#include "torch_tpu/ops/macros/kernel.h"
+#include "torch_tpu/ops/op_names.h"
 
 namespace torch_tpu {
 namespace {
 
+using testing::AllOf;
 using testing::DescribeMatcher;
 using testing::ElementsAre;
+using testing::HasSubstr;
 using testing::Matcher;
 using testing::Pair;
 using testing::Pointee;
@@ -1273,6 +1285,120 @@ TEST(SafeWrapDim, ReturnsZeroOnValidDimForZeroDimBound) {
   ASSERT_TRUE(result1.ok());
   EXPECT_EQ(*result1, 0);
 }
+
+#if !defined(NDEBUG) && TT_IS_INTERNAL_TORCH_TPU
+
+// Throws a c10::Error with `message` as its error message.
+//
+// It does so by using the error macros that are supposed to be used by operator
+// implementations inside TorchTPU:
+//
+// TT_KERNEL(..., {
+//   TT_THROW_IF_ERROR(TT_ERROR(...)) << message;
+// });
+void ThrowWithMessage(const std::string_view message) {
+  TT_KERNEL(OpName::kAdd, _, (IgnoreInCacheKey(message, "test")),
+            { TT_THROW_IF_ERROR(TT_ERROR(error::kInternal) << message); });
+}
+
+TEST(ErrorMessageGuidelinesDeathTest, LeadingWhitespace) {
+  EXPECT_DEATH(ThrowWithMessage("  dimension size negative"),
+               HasSubstr("start with whitespace"));
+}
+
+TEST(ErrorMessageGuidelinesDeathTest, TrailingWhitespace) {
+  EXPECT_DEATH(ThrowWithMessage("dimension size negative  "),
+               HasSubstr("end with whitespace"));
+}
+
+TEST(ErrorMessageGuidelinesDeathTest, MessageContainsOnlyWhitespace) {
+  EXPECT_DEATH(ThrowWithMessage("   "), HasSubstr("should not be empty"));
+}
+
+struct TestLogSink : public absl::LogSink {
+  void Send(const absl::LogEntry& entry) override {
+    if (entry.log_severity() == absl::LogSeverity::kWarning) {
+      warnings.push_back(std::string(entry.text_message()));
+    }
+  }
+
+  std::vector<std::string> warnings;
+};
+
+class ScopedLogSink {
+ public:
+  explicit ScopedLogSink(absl::LogSink* sink) : sink_(sink) {
+    absl::AddLogSink(sink_);
+  }
+  ~ScopedLogSink() { absl::RemoveLogSink(sink_); }
+
+ private:
+  absl::LogSink* sink_;
+};
+
+TEST(ErrorMessageGuidelinesWarningTest, NonAlphaNumTrailingChar) {
+  TestLogSink sink;
+  ScopedLogSink scoped_sink(&sink);
+
+  EXPECT_THROW(ThrowWithMessage("dimension size negative."), c10::Error);
+
+  ASSERT_EQ(sink.warnings.size(), 1);
+  EXPECT_THAT(sink.warnings[0], HasSubstr("end with an alpha-numeric"));
+}
+
+TEST(ErrorMessageGuidelinesWarningTest, NonAlphaNumTrailingMultiChar) {
+  TestLogSink sink;
+  ScopedLogSink scoped_sink(&sink);
+
+  EXPECT_THROW(ThrowWithMessage("dimension size negative..."), c10::Error);
+
+  ASSERT_EQ(sink.warnings.size(), 1);
+  EXPECT_THAT(sink.warnings[0], HasSubstr("end with an alpha-numeric"));
+}
+
+TEST(ErrorMessageGuidelinesWarningTest, InvalidExpectedGotFormat) {
+  TestLogSink sink;
+  ScopedLogSink scoped_sink(&sink);
+
+  EXPECT_THROW(ThrowWithMessage("must be a 3D tensor but it is 2D"),
+               c10::Error);
+
+  ASSERT_EQ(sink.warnings.size(), 1);
+  EXPECT_THAT(sink.warnings[0], HasSubstr("expected ..., got ..."));
+}
+
+TEST(ErrorMessageGuidelinesWarningTest, NoWarningOnValidFormat) {
+  TestLogSink sink;
+  ScopedLogSink scoped_sink(&sink);
+
+  EXPECT_THROW(ThrowWithMessage("expected 3D tensor, got 2D"), c10::Error);
+
+  EXPECT_TRUE(sink.warnings.empty());
+}
+
+TEST(ErrorMessageGuidelinesWarningTest, NoWarningOnStartsWithNonLetter) {
+  TestLogSink sink;
+  ScopedLogSink scoped_sink(&sink);
+
+  EXPECT_THROW(ThrowWithMessage("1D tensor is not supported"), c10::Error);
+  EXPECT_THROW(ThrowWithMessage("-1 is not a valid dimension"), c10::Error);
+
+  EXPECT_TRUE(sink.warnings.empty());
+}
+
+TEST(ErrorMessageGuidelinesWarningTest, MultipleViolations) {
+  TestLogSink sink;
+  ScopedLogSink scoped_sink(&sink);
+
+  EXPECT_THROW(ThrowWithMessage("Dimension size negative with f32"),
+               c10::Error);
+
+  ASSERT_EQ(sink.warnings.size(), 1);
+  EXPECT_THAT(sink.warnings[0], AllOf(HasSubstr("start with a lowercase"),
+                                      HasSubstr("StableHLO type names")));
+}
+
+#endif
 
 }  // namespace
 }  // namespace torch_tpu
