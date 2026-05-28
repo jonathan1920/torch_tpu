@@ -380,6 +380,9 @@ def run_single_process_benchmark(
     benchmark_succeeded = False
     benchmark_exception = e
 
+  if benchmark_utils.CAPTURE_OPS.value:
+    return
+
   # Only export results from the rank 0 process to avoid duplicate entries in
   # MLCompass.
   if benchmark_utils.MLCOMPASS_TRACKING_ID.value and rank == 0:

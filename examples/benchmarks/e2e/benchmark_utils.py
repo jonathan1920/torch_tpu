@@ -13,10 +13,11 @@
 # limitations under the License.
 
 """Utilities for running end-to-end benchmarks."""
-
 import abc
+import contextlib
 import dataclasses
 import enum
+import os
 import random
 import time
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
@@ -28,6 +29,7 @@ import torch
 from torch.utils import _pytree as pytree
 from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import device_utils
+from examples.benchmarks.ops.op_capture import OpCaptureMode
 from examples.benchmarks.quality_utils import quality_benchmark_model
 
 from torch_tpu._internal.shims.xprof import traceme
@@ -547,7 +549,6 @@ def _post_warmup_run(
     enable_xprof: bool = False,
     xprof_client: xprof_analysis_client.XprofAnalysisClient | None = None,
     sync_params: bool = False,
-    capture_file_name: Optional[str] = None,
 ) -> _PostWarmupRunResult:
   """Runs the model once after the warmup is complete.
 
@@ -577,44 +578,34 @@ def _post_warmup_run(
   # TODO(bbahl): Calculate the number of post warmup steps based on timing
   # information.
   with XprofContext("post_warmup_run", enable_xprof) as xprof_context:
-    capture_mode = None
-    if capture_file_name:
-      from examples.benchmarks.ops.op_capture import OpCaptureMode
+    for step in range(POST_WARMUP_STEPS.value):
+      with traceme.TraceMe("Eval", step_num=step):
+        step_input = example_inputs[step] if is_sequence else example_inputs
+        start_time = time.perf_counter()
+        _run_step(
+            benchmark_function,
+            model,
+            step_input,
+            optimizer,
+            device_name,
+            sync_params,
+        )
+        timings[step] = time.perf_counter() - start_time
 
-      capture_mode = OpCaptureMode()
-
-    import contextlib
-
-    ctx = capture_mode if capture_mode else contextlib.nullcontext()
-    with ctx:
-      for step in range(POST_WARMUP_STEPS.value):
-        with traceme.TraceMe("Eval", step_num=step):
-          step_input = example_inputs[step] if is_sequence else example_inputs
-          start_time = time.perf_counter()
-          _run_step(
-              benchmark_function,
-              model,
-              step_input,
-              optimizer,
-              device_name,
-              sync_params,
+      # Assert that the cache misses are consistent across steps.
+      if not is_sequence:
+        # TODO(unda): Re-introduce a version of this check for bounded dynamism.
+        step_cache_misses = device_utils.cache_miss_count(device_name)
+        if num_cache_misses is None:
+          num_cache_misses = step_cache_misses
+        if step_cache_misses != num_cache_misses:
+          raise RuntimeError(
+              "Cache misses are not consistent across steps; expected"
+              f" {num_cache_misses}, got {step_cache_misses}. This means that"
+              " the model is not fully warmed up after"
+              f" {MAX_WARMUP_STEPS.value} warmup steps. Consider increasing"
+              " the number of warmup steps."
           )
-          timings[step] = time.perf_counter() - start_time
-
-        # Assert that the cache misses are consistent across steps.
-        if not is_sequence:
-          # TODO(unda): Re-introduce a version of this check for bounded dynamism.
-          step_cache_misses = device_utils.cache_miss_count(device_name)
-          if num_cache_misses is None:
-            num_cache_misses = step_cache_misses
-          if step_cache_misses != num_cache_misses:
-            raise RuntimeError(
-                "Cache misses are not consistent across steps; expected"
-                f" {num_cache_misses}, got {step_cache_misses}. This means that"
-                " the model is not fully warmed up after"
-                f" {MAX_WARMUP_STEPS.value} warmup steps. Consider increasing"
-                " the number of warmup steps."
-            )
 
   post_warmup_run_session_xprof_url = None
   if enable_xprof:
@@ -640,19 +631,59 @@ def _post_warmup_run(
 
   logging.info("Post Warmup Timings: %s", timings)
 
-  if capture_mode and capture_file_name:
-    import os
-
-    output_dir = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR", ".")
-    full_path = os.path.join(output_dir, capture_file_name)
-    capture_mode.save_to_json(full_path)
-
   return _PostWarmupRunResult(
       post_warmup_step_time_seconds=np.mean(timings),
       peak_device_memory_mb=memory_usage,
       post_warmup_run_session_xprof_url=post_warmup_run_session_xprof_url,
       average_post_warmup_device_time_seconds=avg_device_time,
   )
+
+
+def _op_capture_run(
+    benchmark_function: Callable[
+        [torch.nn.Module, Any, torch.optim.Optimizer | None],
+        Any,
+    ],
+    model: torch.nn.Module,
+    example_inputs: Any,
+    device: torch.device,
+    capture_file_name: str,
+    *,
+    optimizer: torch.optim.Optimizer | None = None,
+    sync_params: bool = False,
+) -> None:
+  """Runs the model under OpCaptureMode and saves the captured ops to a file.
+
+  Args:
+    benchmark_function: The benchmark function to run.
+    model: The model to run.
+    example_inputs: The example inputs to run the model with.
+    device: The device the model and input data is on.
+    capture_file_name: The name of the file to save the captured ops to.
+    optimizer: The optimizer to use for the model. Needed for training.
+    sync_params: Whether to eagerly synchronize parameter gradients inside
+      timing loops.
+  """
+  device_name = _get_device_name(device)
+  is_sequence = isinstance(example_inputs, list) and len(example_inputs) > 0
+  num_steps = len(example_inputs) if is_sequence else 1
+
+  capture_mode = OpCaptureMode()
+  with capture_mode:
+    for step in range(num_steps):
+      step_input = example_inputs[step] if is_sequence else example_inputs
+      _run_step(
+          benchmark_function,
+          model,
+          step_input,
+          optimizer,
+          device_name,
+          sync_params,
+      )
+
+  output_dir = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR", ".")
+  full_path = os.path.join(output_dir, capture_file_name)
+  capture_mode.save_to_json(full_path)
 
 
 def _synchronize_all_tensors(tensor_pytree: Any, device: torch.device):
@@ -697,6 +728,8 @@ def run_performance_benchmark(
       benchmarks.
     xprof_client: The xprof client to use for profiling.
     is_bounded_dynamic: Whether the example inputs are bounded dynamic.
+    capture_file_name: The name of the file to capture the op capture data to.
+      If None, no data related to ops will be captured.
 
   Returns:
     A PerformanceBenchmarkResult instance containing the results of the
@@ -710,6 +743,18 @@ def run_performance_benchmark(
 
   _synchronize_all_tensors(example_inputs, device)
   _synchronize_all_tensors(list(model.state_dict().values()), device)
+
+  if capture_file_name is not None:
+    _op_capture_run(
+        benchmark_function,
+        model,
+        example_inputs,
+        device,
+        capture_file_name,
+        optimizer=optimizer,
+        sync_params=sync_params,
+    )
+    return PerformanceBenchmarkResult()
 
   warmup_steps = MAX_WARMUP_STEPS.value
   if is_bounded_dynamic and (
@@ -755,7 +800,6 @@ def run_performance_benchmark(
             enable_xprof=enable_xprof,
             xprof_client=xprof_client,
             sync_params=sync_params,
-            capture_file_name=capture_file_name,
         )
     )
 
