@@ -1817,12 +1817,13 @@ class TorchTpuTestBase(TestCase):
     if isinstance(check_value, CheckValueMode):
       check_value = [check_value] * len(torch_tpu_result_tuple)
 
+    printable_input_str = str(torch_tpu_printable_input)
     for i, golden_result_i in enumerate(golden_result_tuple):
       if i in skip_output_indices:
         continue
 
       preamble_parts = []
-      preamble_parts.append(str(torch_tpu_printable_input))
+      preamble_parts.append(printable_input_str)
       if isinstance(torch_tpu_result, tuple):
         preamble_parts.append(f"Mismatching result item: {i}")
       preamble_parts.append("Comparing TorchTPU to golden result")
