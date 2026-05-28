@@ -6658,6 +6658,15 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(compute)
 
+  def test_ldexp_large_exponent(self):
+    def compute(device):
+      exponent = 127
+      t_mant = torch.tensor([1.0], dtype=torch.float32, device=device)
+      t_exp = torch.tensor([exponent], dtype=torch.int32, device=device)
+      return torch.ldexp(t_mant, t_exp)
+
+    self.assert_close_tpu_vs_cpu(compute)
+
   def test_pow_large_int(self):
     def compute(device):
       return torch.pow(
