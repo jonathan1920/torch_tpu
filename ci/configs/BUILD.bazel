@@ -16,7 +16,7 @@ sh_binary(
     name = "tsan_wrapper",
     srcs = ["tsan_wrapper.sh"],
     data = [
-        "//tests/configs:tsan_suppressions.txt",
+        "//build_files:tsan_suppressions.txt",
         "@tsan_lib//file",
     ],
     visibility = ["//visibility:public"],

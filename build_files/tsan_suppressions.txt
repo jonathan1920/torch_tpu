@@ -17,3 +17,14 @@
 # of but can't fix right away, you can temporarily suppress it here.
 # See https://github.com/google/sanitizers/wiki/ThreadSanitizerSuppressions for
 # documentation on how this file works.
+
+# Suppressions for known thread-safety issues in TorchTPU tests.
+
+# Data races in SLEEF library (SIMD math) due to lazy init of dispatch tables.
+race:Sleef_*
+
+# Data races in TPU runtime xprof state tracker.
+race:tpu::xprof::TimeSeries
+
+# Data races in PyTorch ATen.
+race:aten/src/ATen/native/cpu/CopyKernel

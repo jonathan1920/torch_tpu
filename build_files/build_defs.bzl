@@ -59,6 +59,7 @@ _TORCH_TPU_COPTS = [
 ]
 
 _LSAN_SUPPRESSIONS = "//build_files:lsan_suppressions.txt"
+_TSAN_SUPPRESSIONS = "//build_files:tsan_suppressions.txt"
 
 def is_oss():
     """Returns whether this is an OSS version of torch_tpu."""
@@ -766,10 +767,15 @@ def torch_tpu_py_test(
     # 2. Build environment variants starting from base environment
     base_env = existing_env
 
-    # Apply LSAN suppressions (propagates to copies)
+    # Apply LeakSanitizer suppressions (propagates to copies)
     lsan_opts = [base_env.get("LSAN_OPTIONS", "")]
     lsan_opts.append("suppressions=$(location %s)" % _LSAN_SUPPRESSIONS)
     base_env["LSAN_OPTIONS"] = " ".join([opt for opt in lsan_opts if opt])
+
+    # Apply ThreadSanitizer suppressions (propagates to copies)
+    tsan_opts = [base_env.get("TSAN_OPTIONS", "")]
+    tsan_opts.append("suppressions=$(location %s)" % _TSAN_SUPPRESSIONS)
+    base_env["TSAN_OPTIONS"] = " ".join([opt for opt in tsan_opts if opt])
 
     # Prepend standard library paths to base env (required for mp.spawn support)
     _prepend_to_env(base_env, "LD_LIBRARY_PATH", ":".join(std_ld))
@@ -780,11 +786,13 @@ def torch_tpu_py_test(
     _prepend_to_env(env_local, "LD_LIBRARY_PATH", ":".join(local_ld))
     _prepend_to_env(env_local, "PYTHONPATH", ":".join(local_py))
 
-    # 3. Add LSAN suppressions for known third-party leaks (e.g., safetensors, pyo3)
+    # 3. Add LSan and TSan suppressions for known third-party leaks/races
     # that are outside the project's control.
     current_data = kwargs.pop("data", [])
     if _LSAN_SUPPRESSIONS not in current_data:
         current_data.append(_LSAN_SUPPRESSIONS)
+    if _TSAN_SUPPRESSIONS not in current_data:
+        current_data.append(_TSAN_SUPPRESSIONS)
     kwargs["data"] = current_data
 
     # 4. Use select to swap between environments

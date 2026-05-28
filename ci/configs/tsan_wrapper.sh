@@ -31,7 +31,7 @@ fi
 
 # Resolve the absolute path to the suppressions file.
 SUPPRESSIONS_FILE=$(find "${TEST_SRCDIR}" -name "tsan_suppressions.txt" -print -quit)
-export TSAN_OPTIONS="halt_on_error=1,history_size=7,suppressions=${SUPPRESSIONS_FILE}"
+export TSAN_OPTIONS="halt_on_error=1 history_size=7 suppressions=${SUPPRESSIONS_FILE}"
 
 # Run the actual test command passed by Bazel.
 exec "$@"
