@@ -37,12 +37,12 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/static_shape_check.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -167,8 +167,8 @@ absl::StatusOr<mlir::MlirOp> BuildFftR2cShlo(mlir::MlirOp input,
   return fft_op;
 }
 
-absl::Status CheckStaticShape(const at::Tensor& tensor,
-                              const std::string_view arg_name) {
+absl::Status FFTCheckStaticShape(const at::Tensor& tensor,
+                                 const std::string_view arg_name) {
   TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer_ref, GetBaseBuffer(tensor));
   return CheckStaticShape(tensor, buffer_ref, arg_name);
 }
@@ -182,7 +182,7 @@ at::Tensor AtenFftR2c(const at::Tensor& self, at::IntArrayRef dim,
              IgnoreInCacheKey(normalization, "Legacy usage"),
              IgnoreInCacheKey(onesided, "Legacy usage")),
             {
-              TT_THROW_IF_ERROR(CheckStaticShape(self, "input"));
+              TT_THROW_IF_ERROR(FFTCheckStaticShape(self, "input"));
 
               auto normalized_dims = GetNormalizedDims(self, dim);
               auto out_sizes = CopyIntVector(self.sizes());
