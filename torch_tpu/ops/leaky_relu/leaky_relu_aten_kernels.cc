@@ -26,9 +26,7 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
-#include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
@@ -142,24 +140,24 @@ absl::StatusOr<DeviceBufferRef> AtenLeakyReluBackwardTensorHelper(
 }
 
 absl::StatusOr<DeviceBufferRef> LeakyReluScalarHelper(
-    const at::Tensor& self, const at::Scalar& negative_slope,
+    const at::Tensor& self, PromotedScalar negative_slope,
     const at::Tensor& out, OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(at::Tensor negative_slope_tensor,
-                      MakeTensor(negative_slope, out.scalar_type()));
+                      negative_slope.GetTensor(self.scalar_type()));
   return AtenLeakyReluTensorHelper(self, negative_slope_tensor, out,
                                    std::move(param_keys));
 }
 
 absl::StatusOr<DeviceBufferRef> LeakyReluBackwardScalarHelper(
     const at::Tensor& grad_output, const at::Tensor& self_or_result,
-    const at::Scalar& negative_slope, bool self_is_result,
+    PromotedScalar negative_slope, bool self_is_result,
     OpParamCacheKeys param_keys) {
-  TT_RET_CHECK(!self_is_result || negative_slope.toDouble() >= 0,
+  TT_RET_CHECK(!self_is_result || negative_slope.scalar().toDouble() >= 0,
                error::kInvalidArgument)
       << "expected non-negative slopes for self_is_result=true, got "
-      << negative_slope.toDouble();
+      << negative_slope.scalar().toDouble();
   TT_ASSIGN_OR_RETURN(at::Tensor negative_slope_tensor,
-                      MakeTensor(negative_slope, grad_output.scalar_type()));
+                      negative_slope.GetTensor(grad_output.scalar_type()));
   return AtenLeakyReluBackwardTensorHelper(
       grad_output, self_or_result, negative_slope_tensor, self_is_result,
       std::move(param_keys));
@@ -170,13 +168,16 @@ absl::StatusOr<DeviceBufferRef> LeakyReluBackwardScalarHelper(
 at::Tensor& AtenLeakyReluOut(const at::Tensor& self,
                              const at::Scalar& negative_slope,
                              at::Tensor& out) {
-  TT_KERNEL(OpName::kLeakyReluOut, param_keys, (self, negative_slope, out), {
-    TT_ASSIGN_OR_THROW(auto result_buf,
-                       LeakyReluScalarHelper(self, negative_slope, out,
-                                             std::move(param_keys)));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
-    return out;
-  });
+  auto promoted_negative_slope = PromoteScalar(negative_slope);
+  TT_KERNEL(
+      OpName::kLeakyReluOut, param_keys, (self, promoted_negative_slope, out), {
+        TT_ASSIGN_OR_THROW(
+            auto result_buf,
+            LeakyReluScalarHelper(self, std::move(promoted_negative_slope), out,
+                                  std::move(param_keys)));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+        return out;
+      });
 }
 
 at::Tensor& AtenLeakyReluBackwardGradInput(const at::Tensor& grad_output,
@@ -184,18 +185,20 @@ at::Tensor& AtenLeakyReluBackwardGradInput(const at::Tensor& grad_output,
                                            const at::Scalar& negative_slope,
                                            bool self_is_result,
                                            at::Tensor& grad_input) {
-  TT_KERNEL(
-      OpName::kLeakyReluBackward, param_keys,
-      (grad_output, self_or_result, negative_slope, self_is_result, grad_input),
-      {
-        TT_ASSIGN_OR_THROW(auto result_buf,
-                           LeakyReluBackwardScalarHelper(
-                               grad_output, self_or_result, negative_slope,
-                               self_is_result, std::move(param_keys)));
-        TT_THROW_IF_ERROR(
-            AssignBufferToAtTensor(std::move(result_buf), grad_input));
-        return grad_input;
-      });
+  auto promoted_negative_slope = PromoteScalar(negative_slope);
+  TT_KERNEL(OpName::kLeakyReluBackward, param_keys,
+            (grad_output, self_or_result, promoted_negative_slope,
+             self_is_result, grad_input),
+            {
+              TT_ASSIGN_OR_THROW(auto result_buf,
+                                 LeakyReluBackwardScalarHelper(
+                                     grad_output, self_or_result,
+                                     std::move(promoted_negative_slope),
+                                     self_is_result, std::move(param_keys)));
+              TT_THROW_IF_ERROR(
+                  AssignBufferToAtTensor(std::move(result_buf), grad_input));
+              return grad_input;
+            });
 }
 
 }  // namespace torch_tpu
