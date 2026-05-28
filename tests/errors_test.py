@@ -650,8 +650,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         RuntimeError,
         cpu="""fill_ only supports 0-dimension value tensor but got tensor with"""
         f""" {len(shape)} dimensions.""",
-        tpu="""fill_(): only supports 0-dimension value tensor but got tensor"""
-        f""" with {len(shape)} dimensions.""",
+        tpu=f"fill_(): expected value to be a 0-D tensor, got {len(shape)}-D",
     ):
       torch.fill(t, value)
 
