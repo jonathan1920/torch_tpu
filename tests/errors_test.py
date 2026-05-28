@@ -5002,7 +5002,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""hardtanh(): hardtanh: complex types are not supported.""",
+        tpu="""hardtanh(): expected a non-complex tensor, got complex64""",
         cpu="""clamp is not supported for complex types""",
     ):
       torch.nn.functional.hardtanh(t)
@@ -5012,7 +5012,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""hardtanh(): hardtanh: bool type is not supported.""",
+        tpu="""hardtanh(): expected a non-boolean tensor, got bool""",
         cpu="""Bool inputs not supported for hardtanh""",
     ):
       torch.nn.functional.hardtanh(t)
@@ -5022,7 +5022,7 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""hardtanh(): hardtanh: cannot do hardtanh on an unsigned type with negative limits.""",
+        tpu="""hardtanh(): expected positive limit values when executing on an unsigned tensor, got min_val=-1 and max_val=1""",
         cpu="""cannot do hardtanh on an unsigned type with negative limits""",
     ):
       torch.nn.functional.hardtanh(t, min_val=-1)
