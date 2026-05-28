@@ -819,14 +819,17 @@ at::Tensor AtenAddReluTensor(const at::Tensor& self, const at::Tensor& other,
 
 at::Tensor& AtenAddRelu_Scalar(at::Tensor& self, const at::Scalar& other,
                                const at::Scalar& alpha) {
-  TT_KERNEL(OpName::kAddRelu_Scalar, _,
-            (self, IgnoreInCacheKey(other, "Legacy usage"),
-             IgnoreInCacheKey(alpha, "Legacy usage")),
-            {
-              TT_ASSIGN_OR_THROW(auto wrapped_other, MakeTensor(other));
-              AtenAddReluOut(self, wrapped_other, alpha, self);
-              return self;
-            });
+  PromotedScalar promoted_other = PromoteScalar(other);
+  MaybePromotedScalar promoted_alpha =
+      PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
+  TT_KERNEL(
+      OpName::kAddRelu_Scalar, param_keys,
+      (self, promoted_other, promoted_alpha), {
+        TT_THROW_IF_ERROR(AddReluScalarHelper(self, promoted_other,
+                                              promoted_alpha, self, param_keys)
+                              .status());
+        return self;
+      });
 }
 
 at::Tensor& AtenAddRelu_Tensor(at::Tensor& self, const at::Tensor& other,
