@@ -504,6 +504,19 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(test_fn)
 
+  def test_rsub_with_alpha(self):
+    """Tests torch.rsub operator with alpha scaling factor != 1."""
+    self_tensor = torch.tensor([10.0, 20.0, 30.0])
+    other_tensor = torch.tensor([100.0, 200.0, 300.0])
+    alpha = 2.5
+
+    def test_fn(device):
+      return torch.rsub(
+          self_tensor.to(device), other_tensor.to(device), alpha=alpha
+      )
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
   def test__add_relu__Scalar(self):
     """Tests _add_relu_.Scalar with various inputs and dtypes."""
     x1 = torch.tensor([[1.0, -2.0], [-3.0, 4.0]], dtype=torch.float32)

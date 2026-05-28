@@ -651,6 +651,19 @@ absl::Status BitwiseShiftScalarHelper(const at::Tensor& self,
                      {.op_param_cache_keys = OpParamCacheKeys::Empty()});
 }
 
+absl::Status SubHelperOut(const at::Tensor& a, const at::Tensor& b,
+                          const at::Tensor& alpha_tensor, at::Tensor& out,
+                          OpParamCacheKeys& param_keys) {
+  auto op_builder = [](mlir::MlirOp a_op, mlir::MlirOp b_op,
+                       mlir::MlirOp alpha_op) -> absl::StatusOr<mlir::MlirOp> {
+    TT_ASSIGN_OR_RETURN(auto mul_op, BuildAlphaMulShlo(b_op, alpha_op));
+    return BuildSubShlo(a_op, mul_op);
+  };
+
+  return TernaryOpOut(a, b, alpha_tensor, out, std::move(op_builder),
+                      {.op_param_cache_keys = std::move(param_keys)});
+}
+
 }  // namespace
 
 // NOLINTBEGIN
@@ -1326,9 +1339,23 @@ at::Tensor AtenRshiftTensor(const at::Tensor& self, const at::Tensor& other) {
 
 at::Tensor AtenRsubTensor(const at::Tensor& self, const at::Tensor& other,
                           const at::Scalar& alpha) {
-  TT_KERNEL(OpName::kRsub, _,
-            (self, other, IgnoreInCacheKey(alpha, "Legacy usage")),
-            { return at::sub(other, self, alpha); });
+  auto promoted_alpha = PromoteScalar(alpha);
+  TT_KERNEL(OpName::kRsub, param_keys, (self, other, promoted_alpha), {
+    TT_THROW_IF_ERROR(CheckAlphaTypeSupported(alpha));
+    TT_THROW_IF_ERROR(CheckSubInputs(other, self));
+
+    const at::ScalarType promoted_scalar_type = at::result_type(other, self);
+    TT_ASSIGN_OR_THROW(const Dimensions output_dims,
+                       InferSize(other.sizes(), self.sizes()));
+    TT_ASSIGN_OR_THROW(
+        at::Tensor out,
+        MakeEmptyTensor(output_dims, promoted_scalar_type, self.device()));
+
+    TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
+                       promoted_alpha.GetTensor(promoted_scalar_type));
+    TT_THROW_IF_ERROR(SubHelperOut(other, self, alpha_tensor, out, param_keys));
+    return out;
+  });
 }
 
 at::Tensor& AtenSubOut(const at::Tensor& self, const at::Tensor& other,
@@ -1348,17 +1375,7 @@ at::Tensor& AtenSubOut(const at::Tensor& self, const at::Tensor& other,
 
     TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
                        promoted_alpha.GetTensor(out.scalar_type()));
-
-    auto op_builder =
-        [](mlir::MlirOp self_op, mlir::MlirOp other_op,
-           mlir::MlirOp alpha_op) -> absl::StatusOr<mlir::MlirOp> {
-      TT_ASSIGN_OR_RETURN(auto mul_op, BuildAlphaMulShlo(other_op, alpha_op));
-      return BuildSubShlo(self_op, mul_op);
-    };
-
-    TT_THROW_IF_ERROR(
-        TernaryOpOut(self, other, alpha_tensor, out, std::move(op_builder),
-                     {.op_param_cache_keys = std::move(param_keys)}));
+    TT_THROW_IF_ERROR(SubHelperOut(self, other, alpha_tensor, out, param_keys));
     return out;
   });
 }
