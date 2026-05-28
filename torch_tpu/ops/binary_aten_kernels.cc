@@ -652,8 +652,18 @@ absl::Status BitwiseShiftScalarHelper(const at::Tensor& self,
 }
 
 absl::Status SubHelperOut(const at::Tensor& a, const at::Tensor& b,
-                          const at::Tensor& alpha_tensor, at::Tensor& out,
+                          MaybePromotedScalar promoted_alpha,
+                          at::ScalarType out_dtype, at::Tensor& out,
                           OpParamCacheKeys& param_keys) {
+  // As an optimization, skip the scaling if alpha is 1.
+  if (promoted_alpha.IsOne()) {
+    return BinaryOpOut(a, b, out, BuildSubShlo,
+                       {.op_param_cache_keys = std::move(param_keys)});
+  }
+
+  TT_ASSIGN_OR_RETURN(const at::Tensor alpha_tensor,
+                      promoted_alpha.GetTensor(out_dtype));
+
   auto op_builder = [](mlir::MlirOp a_op, mlir::MlirOp b_op,
                        mlir::MlirOp alpha_op) -> absl::StatusOr<mlir::MlirOp> {
     TT_ASSIGN_OR_RETURN(auto mul_op, BuildAlphaMulShlo(b_op, alpha_op));
@@ -1339,7 +1349,7 @@ at::Tensor AtenRshiftTensor(const at::Tensor& self, const at::Tensor& other) {
 
 at::Tensor AtenRsubTensor(const at::Tensor& self, const at::Tensor& other,
                           const at::Scalar& alpha) {
-  auto promoted_alpha = PromoteScalar(alpha);
+  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
   TT_KERNEL(OpName::kRsub, param_keys, (self, other, promoted_alpha), {
     TT_THROW_IF_ERROR(CheckAlphaTypeSupported(alpha));
     TT_THROW_IF_ERROR(CheckSubInputs(other, self));
@@ -1351,9 +1361,8 @@ at::Tensor AtenRsubTensor(const at::Tensor& self, const at::Tensor& other,
         at::Tensor out,
         MakeEmptyTensor(output_dims, promoted_scalar_type, self.device()));
 
-    TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
-                       promoted_alpha.GetTensor(promoted_scalar_type));
-    TT_THROW_IF_ERROR(SubHelperOut(other, self, alpha_tensor, out, param_keys));
+    TT_THROW_IF_ERROR(SubHelperOut(other, self, std::move(promoted_alpha),
+                                   promoted_scalar_type, out, param_keys));
     return out;
   });
 }
@@ -1365,17 +1374,8 @@ at::Tensor& AtenSubOut(const at::Tensor& self, const at::Tensor& other,
     TT_THROW_IF_ERROR(CheckAlphaTypeSupported(alpha));
     TT_THROW_IF_ERROR(CheckSubInputs(self, other));
 
-    // As an optimization, skip the scaling if alpha is 1.
-    if (promoted_alpha.IsOne()) {
-      TT_THROW_IF_ERROR(
-          BinaryOpOut(self, other, out, BuildSubShlo,
-                      {.op_param_cache_keys = std::move(param_keys)}));
-      return out;
-    }
-
-    TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
-                       promoted_alpha.GetTensor(out.scalar_type()));
-    TT_THROW_IF_ERROR(SubHelperOut(self, other, alpha_tensor, out, param_keys));
+    TT_THROW_IF_ERROR(SubHelperOut(self, other, std::move(promoted_alpha),
+                                   out.scalar_type(), out, param_keys));
     return out;
   });
 }
