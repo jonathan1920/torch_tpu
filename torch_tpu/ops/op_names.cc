@@ -187,6 +187,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "cat.out";
     case OpName::kCdistForward:
       return "_cdist_forward";
+    case OpName::kCdistBackward:
+      return "_cdist_backward";
     case OpName::kCeilOut:
       return "ceil.out";
     case OpName::kClampMaxOut:

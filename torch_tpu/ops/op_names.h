@@ -107,6 +107,7 @@ enum class OpName {
   kBucketizeTensorOut,
   kCatOut,
   kCdistForward,
+  kCdistBackward,
   kCeilOut,
   kClampMaxOut,
   kClampMaxTensorOut,

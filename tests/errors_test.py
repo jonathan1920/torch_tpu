@@ -2500,6 +2500,40 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.cdist(x1, x2, p=-1.0)
 
+  @parameterized.named_parameters(
+      ("bfloat16", torch.bfloat16, "bfloat16", "BFloat16"),
+      ("float16", torch.float16, "float16", "Half"),
+  )
+  def test_cdist_backward_unsupported_floating_point_dtypes(
+      self, dtype: torch.dtype, tpu_dtype_str: str, cpu_dtype_str: str
+  ):
+    grad = torch.randn(2, 2, device=et.device(), dtype=dtype)
+    x1 = torch.randn(2, 2, device=et.device(), dtype=dtype)
+    x2 = torch.randn(2, 2, device=et.device(), dtype=dtype)
+    cdist = torch.randn(2, 2, device=et.device(), dtype=dtype)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=f"""cdist_backward(): expected the first argument's dtype not to be bfloat16 or float16, got {tpu_dtype_str}""",
+        cpu=f""""cdist_backward" not implemented for '{cpu_dtype_str}'""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._cdist_backward(grad, x1, x2, 1.0, cdist)
+
+  def test_cdist_backward_int32(self):
+    grad = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
+    x1 = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
+    x2 = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
+    cdist = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""cdist_backward(): expected the first argument's dtype to be floating point, got int32""",
+        cpu=""""cdist_backward" not implemented for 'Int'""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten._cdist_backward(grad, x1, x2, 1.0, cdist)
+
   def test_exponential_unsupported_dtypes(self):
     device = et.device()
     t_int = torch.ones((2, 2), device=device, dtype=torch.int32)

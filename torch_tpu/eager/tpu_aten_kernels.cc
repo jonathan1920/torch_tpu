@@ -249,6 +249,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kBucketizeTensor, AtenBucketizeTensor);
   Impl(m, OpName::kBucketizeTensorOut, AtenBucketizeTensorOut);
   Impl(m, OpName::kCatOut, AtenCatOut);
+  Impl(m, OpName::kCdistBackward, AtenCdistBackward);
   Impl(m, OpName::kCdistForward, AtenCdistForward);
   Impl(m, OpName::kCeilOut, AtenCeilOut);
   Impl(m, OpName::kClampMaxOut, AtenClampMaxOut);

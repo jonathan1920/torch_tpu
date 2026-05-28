@@ -16,6 +16,7 @@
 
 #include "torch_tpu/ops/distance/dist_aten_kernels.h"
 
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <string_view>
@@ -44,6 +45,7 @@
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
+#include "torch_tpu/ops/binary.h"
 #include "torch_tpu/ops/index_select/index_select.h"
 #include "torch_tpu/ops/linalg/vector_norm/pnorm.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -51,6 +53,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/reductions/reductions.h"
+#include "torch_tpu/ops/unary.h"
 
 namespace torch_tpu {
 
@@ -92,16 +95,42 @@ absl::StatusOr<mlir::MlirOp> BuildZeroNorm(mlir::MlirOp input,
   return reduce_op[0];
 }
 
+struct FeatureDimMapping {
+  int64_t first_dim;
+  int64_t second_dim;
+};
+
+// Helper to broadcast cdist inputs (x1, x2, grad, cdist) to target shape
+// based on their feature dimension mappings.
+mlir::MlirOp BroadcastCdistInput(mlir::MlirOp op,
+                                 mlir::RankedTensorType target_bcast_type,
+                                 const int64_t common_batch_rank,
+                                 FeatureDimMapping feature_dim_mappings) {
+  const mlir::RankedTensorType op_type = GetTensorTypeOrDie(op);
+  const int64_t op_rank = op_type.getRank();
+  const int64_t op_batch_dims_count = op_rank - 2;
+  const int64_t offset = common_batch_rank - op_batch_dims_count;
+
+  Dimensions bcast_dims;
+  bcast_dims.reserve(op_rank);
+  for (int i = 0; i < op_batch_dims_count; ++i) {
+    bcast_dims.push_back(i + offset);
+  }
+  bcast_dims.push_back(feature_dim_mappings.first_dim);
+  bcast_dims.push_back(feature_dim_mappings.second_dim);
+
+  return mlir::stablehlo::BroadcastInDim(target_bcast_type, op, bcast_dims);
+}
+
 // Computes the p-norm distance of the difference between each pair of row
 // vectors in x1 and x2.
 // x1 shape: (B..., R1, C)
 // x2 shape: (B..., R2, C)
 // Output shape: (B..., R1, R2)
-absl::StatusOr<mlir::MlirOp> BuildCdistForwardHlo(
+absl::StatusOr<mlir::MlirOp> BuildCdistForwardShlo(
     mlir::MlirOp x1_op, mlir::MlirOp x2_op, double p, int64_t compute_mode,
     const Dimensions common_batch_shape, int64_t r1, int64_t r2, int64_t c) {
   const mlir::RankedTensorType x1_type = GetTensorTypeOrDie(x1_op);
-  const mlir::RankedTensorType x2_type = GetTensorTypeOrDie(x2_op);
   const mlir::Type element_type = x1_type.getElementType();
   TT_ASSIGN_OR_RETURN(mlir::ElementType out_type, GetElementType(x1_op));
 
@@ -114,34 +143,14 @@ absl::StatusOr<mlir::MlirOp> BuildCdistForwardHlo(
       mlir::RankedTensorType::get(target_diff_shape, element_type);
 
   // Broadcast X1 to (B_common..., R1, 1, C)
-  int64_t x1_rank = x1_type.getRank();
-  int64_t x1_batch_dims_count = x1_rank - 2;  // last 2 dims are R1 and C
-  int64_t x1_offset = common_batch_rank - x1_batch_dims_count;
-
-  Dimensions x1_bcast_dims;
-  for (int i = 0; i < x1_batch_dims_count; ++i) {
-    x1_bcast_dims.push_back(i + x1_offset);
-  }
-  x1_bcast_dims.push_back(common_batch_rank);      // mapped to R1 index
-  x1_bcast_dims.push_back(common_batch_rank + 2);  // mapped to C index
-
   mlir::MlirOp x1_bcast =
-      mlir::stablehlo::BroadcastInDim(bcast_type, x1_op, x1_bcast_dims);
+      BroadcastCdistInput(x1_op, bcast_type, common_batch_rank,
+                          {common_batch_rank, common_batch_rank + 2});
 
   // Broadcast X2 to (B_common..., 1, R2, C)
-  int64_t x2_rank = x2_type.getRank();
-  int64_t x2_batch_dims_count = x2_rank - 2;  // last 2 dims are R2 and C
-  int64_t x2_offset = common_batch_rank - x2_batch_dims_count;
-
-  Dimensions x2_bcast_dims;
-  for (int i = 0; i < x2_batch_dims_count; ++i) {
-    x2_bcast_dims.push_back(i + x2_offset);
-  }
-  x2_bcast_dims.push_back(common_batch_rank + 1);  // mapped to R2 index
-  x2_bcast_dims.push_back(common_batch_rank + 2);  // mapped to C index
-
   mlir::MlirOp x2_bcast =
-      mlir::stablehlo::BroadcastInDim(bcast_type, x2_op, x2_bcast_dims);
+      BroadcastCdistInput(x2_op, bcast_type, common_batch_rank,
+                          {common_batch_rank + 1, common_batch_rank + 2});
 
   // Compute diff = X1 - X2
   mlir::MlirOp diff_op = mlir::stablehlo::Subtract(x1_bcast, x2_bcast);
@@ -209,6 +218,138 @@ absl::StatusOr<mlir::MlirOp> BuildPdistForwardHlo(mlir::MlirOp input_op,
     // General case for p-norm
     return BuildPNormShlo(diff_op, p, {1}, ReductionMode::kDropDims, out_type);
   }
+}
+
+absl::StatusOr<mlir::MlirOp> BuildCdistBackwardShlo(
+    mlir::MlirOp grad_op, mlir::MlirOp x1_op, mlir::MlirOp x2_op, double p,
+    mlir::MlirOp cdist_op, const Dimensions common_batch_shape, int64_t r1,
+    int64_t r2, int64_t c) {
+  const mlir::RankedTensorType x1_type = GetTensorTypeOrDie(x1_op);
+  const mlir::Type element_type = x1_type.getElementType();
+  TT_ASSIGN_OR_RETURN(mlir::ElementType out_type, GetElementType(x1_op));
+  mlir::MlirBuilder& builder = x1_op.getBuilder();
+
+  const int64_t common_batch_rank = common_batch_shape.size();
+  Dimensions target_diff_shape(common_batch_shape.begin(),
+                               common_batch_shape.end());
+  target_diff_shape.insert(target_diff_shape.end(), {r1, r2, c});
+  mlir::RankedTensorType bcast_type =
+      mlir::RankedTensorType::get(target_diff_shape, element_type);
+
+  // Broadcast X1 to (B_common..., R1, 1, C)
+  mlir::MlirOp x1_bcast =
+      BroadcastCdistInput(x1_op, bcast_type, common_batch_rank,
+                          {common_batch_rank, common_batch_rank + 2});
+
+  // Broadcast X2 to (B_common..., 1, R2, C)
+  mlir::MlirOp x2_bcast =
+      BroadcastCdistInput(x2_op, bcast_type, common_batch_rank,
+                          {common_batch_rank + 1, common_batch_rank + 2});
+
+  // Broadcast grad to (B_common..., R1, R2, C)
+  mlir::MlirOp grad_bcast =
+      BroadcastCdistInput(grad_op, bcast_type, common_batch_rank,
+                          {common_batch_rank, common_batch_rank + 1});
+
+  // Broadcast cdist to (B_common..., R1, R2, C)
+  mlir::MlirOp cdist_bcast =
+      BroadcastCdistInput(cdist_op, bcast_type, common_batch_rank,
+                          {common_batch_rank, common_batch_rank + 1});
+
+  // diff = x1_bcast - x2_bcast
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp diff, BuildSubShlo(x1_bcast, x2_bcast));
+
+  mlir::MlirOp unreduced_grad;
+  if (p == 0.0) {
+    // Case 1: p = 0.0 (Hamming distance gradient is 0.0)
+    auto zero = MakeScalarConstant(builder, 0.0, out_type);
+    unreduced_grad = mlir::stablehlo::BroadcastInDim(bcast_type, zero, {});
+  } else if (p == 1.0) {
+    // Case 2: p = 1.0 (Manhattan distance, gradient: grad * sign(diff))
+    TT_ASSIGN_OR_RETURN(auto sign_diff, BuildSignShlo(diff));
+    TT_ASSIGN_OR_RETURN(unreduced_grad, BuildMulShlo(grad_bcast, sign_diff));
+  } else if (p == 2.0) {
+    // Case 3: p = 2.0 (Euclidean distance, gradient: grad * diff / cdist)
+    // Replace cdist with 1.0 where cdist is 0.0 to avoid division-by-zero,
+    // then mask those positions to 0.0.
+    auto zero = MakeScalarConstant(builder, 0.0, out_type);
+    auto zero_bcast = mlir::stablehlo::BroadcastInDim(bcast_type, zero, {});
+    auto one = MakeScalarConstant(builder, 1.0, out_type);
+    auto one_bcast = mlir::stablehlo::BroadcastInDim(bcast_type, one, {});
+    auto cdist_is_zero = mlir::stablehlo::Compare(
+        cdist_bcast, zero_bcast, mlir::stablehlo::ComparisonDirection::EQ);
+    auto safe_cdist =
+        mlir::stablehlo::Select(cdist_is_zero, one_bcast, cdist_bcast);
+    TT_ASSIGN_OR_RETURN(auto grad_mul_diff, BuildMulShlo(grad_bcast, diff));
+    TT_ASSIGN_OR_RETURN(auto div, BuildDivShlo(grad_mul_diff, safe_cdist));
+    unreduced_grad = mlir::stablehlo::Select(cdist_is_zero, zero_bcast, div);
+  } else if (std::isinf(p)) {
+    // Case 4: p = infinity, gradient: grad * sign(diff) * [abs(diff) == cdist])
+    TT_ASSIGN_OR_RETURN(auto sign_diff, BuildSignShlo(diff));
+    TT_ASSIGN_OR_RETURN(auto abs_diff, BuildAbsShlo(diff));
+    auto is_max = mlir::stablehlo::Compare(
+        abs_diff, cdist_bcast, mlir::stablehlo::ComparisonDirection::EQ);
+    auto is_max_float = mlir::stablehlo::Convert(bcast_type, is_max);
+    TT_ASSIGN_OR_RETURN(auto grad_mul_sign,
+                        BuildMulShlo(grad_bcast, sign_diff));
+    TT_ASSIGN_OR_RETURN(unreduced_grad,
+                        BuildMulShlo(grad_mul_sign, is_max_float));
+  } else {
+    // Case 5: General p (Minkowski distance)
+    // Gradient: sign(diff) * |diff|^(p-1) * grad / cdist^(p-1)
+    // Use safety condition to mask division-by-zero positions to 0.0.
+    auto zero = MakeScalarConstant(builder, 0.0, out_type);
+    auto zero_bcast = mlir::stablehlo::BroadcastInDim(bcast_type, zero, {});
+    auto one = MakeScalarConstant(builder, 1.0, out_type);
+    auto one_bcast = mlir::stablehlo::BroadcastInDim(bcast_type, one, {});
+
+    auto cdist_is_zero = mlir::stablehlo::Compare(
+        cdist_bcast, zero_bcast, mlir::stablehlo::ComparisonDirection::EQ);
+
+    auto diff_is_zero = mlir::stablehlo::Compare(
+        diff, zero_bcast, mlir::stablehlo::ComparisonDirection::EQ);
+
+    mlir::MlirOp cond = cdist_is_zero;
+    if (p < 1.0) {
+      cond = mlir::stablehlo::Or(cdist_is_zero, diff_is_zero);
+    }
+
+    auto p_minus_1 = MakeScalarConstant(builder, p - 1.0, out_type);
+    auto p_minus_1_bcast =
+        mlir::stablehlo::BroadcastInDim(bcast_type, p_minus_1, {});
+
+    TT_ASSIGN_OR_RETURN(auto abs_diff, BuildAbsShlo(diff));
+    auto safe_abs_diff = mlir::stablehlo::Select(cond, one_bcast, abs_diff);
+    auto safe_cdist = mlir::stablehlo::Select(cond, one_bcast, cdist_bcast);
+
+    TT_ASSIGN_OR_RETURN(auto pow_diff,
+                        BuildPowShlo(safe_abs_diff, p_minus_1_bcast));
+    TT_ASSIGN_OR_RETURN(auto pow_cdist,
+                        BuildPowShlo(safe_cdist, p_minus_1_bcast));
+
+    TT_ASSIGN_OR_RETURN(auto sign_diff, BuildSignShlo(diff));
+    TT_ASSIGN_OR_RETURN(auto term1, BuildMulShlo(sign_diff, pow_diff));
+    TT_ASSIGN_OR_RETURN(auto term2, BuildMulShlo(term1, grad_bcast));
+    TT_ASSIGN_OR_RETURN(auto div, BuildDivShlo(term2, pow_cdist));
+
+    unreduced_grad = mlir::stablehlo::Select(cond, zero_bcast, div);
+  }
+
+  // Reduce sum over R2 (dimension common_batch_rank + 1)
+  auto zero = MakeScalarConstant(builder, 0.0, out_type);
+  auto reduce_op = mlir::stablehlo::Reduce(
+      builder,
+      /*inputs=*/{unreduced_grad},
+      /*init_values=*/{zero},
+      /*body_builder=*/
+      [&](mlir::RegionBuilder& rb) {
+        mlir::stablehlo::buildReduceBody<mlir::stablehlo::AddOp>(
+            element_type, rb.getRegion(), rb.getOpBuilder());
+      },
+
+      /*dimensions=*/{common_batch_rank + 1});
+
+  return reduce_op[0];
 }
 
 bool IsBFloatOrHalf(const at::Tensor& tensor) {
@@ -279,8 +420,8 @@ at::Tensor AtenCdistForward(const at::Tensor& x1, const at::Tensor& x2,
                        c](FixedSizeSpan<mlir::MlirOp, 2> inputs)
         -> absl::StatusOr<mlir::MlirOp> {
       auto& [x1_op, x2_op] = inputs;
-      return BuildCdistForwardHlo(x1_op, x2_op, p, mode, common_batch_shape, r1,
-                                  r2, c);
+      return BuildCdistForwardShlo(x1_op, x2_op, p, mode, common_batch_shape,
+                                   r1, r2, c);
     };
 
     TT_ASSIGN_OR_THROW(
@@ -288,6 +429,63 @@ at::Tensor AtenCdistForward(const at::Tensor& x1, const at::Tensor& x2,
         DispatchOp<2>(std::move(op_builder), {x1, x2},
                       {.out_dtype = out_dtype,
                        .out_dims = output_shape,
+                       .op_param_cache_keys = std::move(param_keys)}));
+
+    return MakeTensor(std::move(result_buf));
+  });
+}
+
+at::Tensor AtenCdistBackward(const at::Tensor& grad, const at::Tensor& x1,
+                             const at::Tensor& x2, double p,
+                             const at::Tensor& cdist) {
+  TT_KERNEL(OpName::kCdistBackward, param_keys, (grad, x1, x2, p, cdist), {
+    TT_ASSIGN_OR_THROW(auto out_dtype,
+                       ConvertTo<mlir::ElementType>(x1.scalar_type()));
+
+    TT_THROW_IF_ERROR(CheckIsFloatingPoint(x1, "first argument's"));
+    TT_THROW_IF_ERROR(CheckIsFloatingPoint(x2, "second argument's"));
+    TT_THROW_IF_ERROR(CheckIsFloatingPoint(grad, "gradient"));
+    TT_THROW_IF_ERROR(CheckIsFloatingPoint(cdist, "cdist"));
+
+    TT_CHECK_THROW(p >= 0, error::kInvalidArgument)
+        << "expected the p value to be >= 0, got " << p;
+
+    const int64_t r1 = x1.size(-2);
+    const int64_t c = x1.size(-1);
+    const int64_t r2 = x2.size(-2);
+    Dimensions batch_tensor1(x1.sizes().begin(), x1.sizes().end() - 2);
+    Dimensions batch_tensor2(x2.sizes().begin(), x2.sizes().end() - 2);
+    TT_ASSIGN_OR_THROW(Dimensions common_batch_shape,
+                       InferSize(batch_tensor1, batch_tensor2));
+
+    Dimensions out_shape(common_batch_shape);
+    out_shape.insert(out_shape.end(), {r1, c});
+
+    for (int64_t dim : out_shape) {
+      if (dim == 0) {
+        TT_ASSIGN_OR_THROW(
+            at::Tensor out,
+            MakeEmptyTensor(out_shape, x1.scalar_type(), x1.device()));
+        return out;
+      }
+    }
+
+    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(x1, "first argument's"));
+    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(x2, "second argument's"));
+
+    auto op_builder = [p, common_batch_shape, r1, r2,
+                       c](FixedSizeSpan<mlir::MlirOp, 4> inputs)
+        -> absl::StatusOr<mlir::MlirOp> {
+      auto& [grad_op, x1_op, x2_op, cdist_op] = inputs;
+      return BuildCdistBackwardShlo(grad_op, x1_op, x2_op, p, cdist_op,
+                                    common_batch_shape, r1, r2, c);
+    };
+
+    TT_ASSIGN_OR_THROW(
+        auto result_buf,
+        DispatchOp<4>(std::move(op_builder), {grad, x1, x2, cdist},
+                      {.out_dtype = out_dtype,
+                       .out_dims = out_shape,
                        .op_param_cache_keys = std::move(param_keys)}));
 
     return MakeTensor(std::move(result_buf));

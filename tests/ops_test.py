@@ -325,7 +325,8 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float32: {"rtol": 1.1e-1, "atol": 5.8e-1},
     },
     "cdist": {
-        torch.float32: {"rtol": 3.6e-6, "atol": 3.8e-5},
+        torch.float16: {"rtol": 1.2e-3, "atol": 7.9e-3},
+        torch.float32: {"rtol": 6.0e-3, "atol": 4.1e-2},
     },
     "cos": {
         torch.complex64: {"rtol": 2.8e-6, "atol": 4.8e-4},
@@ -1553,6 +1554,10 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.float16: {"rtol": 1e-3, "atol": 3e-1},
                 torch.float32: {"rtol": 4e-4, "atol": 8e-2},
             },
+            "cdist": {
+                torch.float16: {"rtol": 3.2e-2, "atol": 7.9e-3},
+                torch.float32: {"rtol": 3.7e-2, "atol": 8.5e-3},
+            },
             "cummax": {
                 torch.float64: {"rtol": 0, "atol": 5},
             },
@@ -2019,13 +2024,11 @@ class TestOps(TorchTpuTestBase):
   def test_cat(self):
     self.do_test_op("cat")
 
-  def test_cdist_forward(self):
+  def test_cdist(self):
     # TODO: b/470453016 look into the high relative error for bfloat16.
     # torch.bfloat16: {"rtol": 3.1, "atol": 3.9e-1}
     self.do_test_op(
         "cdist",
-        # TODO: fix the error _cdist_backward is unimplemented.
-        check_grad=False,
         # TODO: look into making this STRICT.
         # TODO: look into sometimes tests will fall into certain
         # CPU implementation.
