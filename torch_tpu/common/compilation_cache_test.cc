@@ -52,7 +52,6 @@
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_compilation_container);
@@ -152,9 +151,8 @@ TEST_F(CompilationCacheTest, GetOrCompileLogsOnMiss) {
     return mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(CompilationSpecsByMode compilation_specs,
-                          MakeCompilationSpecs(CompilationMode::kFastCompile));
-  auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
+  UniqueCompileOptions compile_options =
+      GetCompileOptions(CompilationMode::kFastCompile);
 
   absl::ScopedMockLog log;
   EXPECT_CALL(
@@ -163,9 +161,9 @@ TEST_F(CompilationCacheTest, GetOrCompileLogsOnMiss) {
           testing::HasSubstr("Dumping StableHLO module due to cache miss")));
 
   log.StartCapturingLogs();
-  auto result = cache.GetOrCompile(key, input_shapes, /*output_shapes=*/{},
-                                   std::move(builder),
-                                   std::move(spec.xla_compile_options));
+  auto result =
+      cache.GetOrCompile(key, input_shapes, /*output_shapes=*/{},
+                         std::move(builder), std::move(compile_options));
 
   // Clean up.
   cache.SetDumpOnCacheMissMode(initial_mode);
@@ -269,14 +267,10 @@ TEST_F(CompilationCacheTest, AllowCacheModeDisabled) {
   auto builder1 = make_builder();
   auto builder2 = make_builder();
 
-  TF_ASSERT_OK_AND_ASSIGN(CompilationSpecsByMode compilation_specs,
-                          MakeCompilationSpecs(CompilationMode::kFastCompile));
-  auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
-
   // First compilation.
-  auto result1 = cache.GetOrCompile(key, input_shapes, /*output_shapes=*/{},
-                                    std::move(builder1),
-                                    std::move(spec.xla_compile_options));
+  auto result1 = cache.GetOrCompile(
+      key, input_shapes, /*output_shapes=*/{}, std::move(builder1),
+      GetCompileOptions(CompilationMode::kFastCompile));
   ASSERT_TRUE(result1.ok())
       << "First GetOrCompile failed: " << result1.status();
   auto exec1_or = result1->fixed_shape_kernel.get();
@@ -284,15 +278,9 @@ TEST_F(CompilationCacheTest, AllowCacheModeDisabled) {
       << "First compilation failed: " << exec1_or.status();
   auto exec1 = *exec1_or;
 
-  // Second compilation for the same key.
-  // We need to recreate compile options as they are moved.
-  TF_ASSERT_OK_AND_ASSIGN(compilation_specs,
-                          MakeCompilationSpecs(CompilationMode::kFastCompile));
-  auto& spec2 = compilation_specs.at(CompilationMode::kFastCompile);
-
-  auto result2 = cache.GetOrCompile(key, input_shapes, /*output_shapes=*/{},
-                                    std::move(builder2),
-                                    std::move(spec2.xla_compile_options));
+  auto result2 = cache.GetOrCompile(
+      key, input_shapes, /*output_shapes=*/{}, std::move(builder2),
+      GetCompileOptions(CompilationMode::kFastCompile));
   ASSERT_TRUE(result2.ok())
       << "Second GetOrCompile failed: " << result2.status();
   auto exec2_or = result2->fixed_shape_kernel.get();
@@ -357,14 +345,12 @@ TEST_F(CompilationCacheTest, PeakMemoryReported) {
       return mlir::OwningOpRef<mlir::ModuleOp>(module);
     };
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        CompilationSpecsByMode compilation_specs,
-        MakeCompilationSpecs(CompilationMode::kFastCompile));
-    auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
+    UniqueCompileOptions compile_options =
+        GetCompileOptions(CompilationMode::kFastCompile);
 
     auto key = DummyKey(i + 100);
     auto result = cache.GetOrCompile(key, {}, {}, std::move(builder),
-                                     std::move(spec.xla_compile_options));
+                                     std::move(compile_options));
     ASSERT_TRUE(result.ok()) << "GetOrCompile failed: " << result.status();
     futures.push_back(std::move(result->fixed_shape_kernel));
   }

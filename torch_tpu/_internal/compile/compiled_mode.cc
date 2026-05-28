@@ -299,13 +299,6 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
 
 absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
     xla::MaybeOwningMlirModule module, const CompilationMode compilation_mode) {
-  TT_ASSIGN_OR_RETURN(CompilationSpecsByMode compilation_specs,
-                      MakeCompilationSpecs(compilation_mode));
-  // TODO(b/502270689): create a copy of `xla::CompileOptions` for every
-  // compilation once it becomes part of the thread-local state.
-  UniqueCompileOptions compile_options =
-      std::move(compilation_specs.at(compilation_mode).xla_compile_options);
-
   xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   TT_RET_CHECK(client, error::kFailedPrecondition)
       << "PjRtClient must be initialized";
@@ -318,7 +311,7 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
                                      std::move(*compile_options));
       };
   return Compile(*client, std::move(executable_builder),
-                 std::move(compile_options));
+                 GetCompileOptions(compilation_mode));
 }
 
 namespace {

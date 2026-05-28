@@ -28,6 +28,7 @@
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -184,24 +185,6 @@ static void UpdateMap(Map& map, Map updates) {
   for (auto& [key, value] : updates) {
     map[std::move(key)] = std::move(value);
   }
-}
-
-absl::Status PushCompilerOptionOverrides(CompilerOptionOverrides overrides) {
-  // When we push the overrides, the new overrides are merged with the existing
-  // overrides. The innermost map takes precedence.
-  auto merged_overrides =
-      GetContextState<CustomCompilerOptionsContextState>({});
-  UpdateMap(merged_overrides, std::move(overrides));
-  PushContextState<CustomCompilerOptionsContextState>(
-      std::move(merged_overrides));
-
-  // TODO(b/502270689): return the actual status when users push invalid options
-  // at context entry time.
-  return absl::OkStatus();
-}
-
-void PopCompilerOptionOverrides() {
-  PopContextState<CustomCompilerOptionsContextState>();
 }
 
 static std::atomic<ExcessPrecisionState> g_allow_excess_precision{
@@ -391,8 +374,11 @@ static absl::StatusOr<bool> SetTpuOptions(xla::CompileOptions& options) {
   return is_tpu;
 }
 
+// Returns compiler option overrides (a string-string map) for the given
+// compilation mode with Python context overrides.
 static CompilerOptionOverrides MakeCompilerOptionOverrides(
-    const bool is_tpu, const CompilationMode mode) {
+    const bool is_tpu, const CompilationMode mode,
+    const CompilerOptionOverrides& context_overrides) {
   CompilerOptionOverrides overrides;
   if (is_tpu && mode == CompilationMode::kFastCompile) {
     // Use O1 for the eager mode and the default optimization level (O2) for
@@ -405,8 +391,9 @@ static CompilerOptionOverrides MakeCompilerOptionOverrides(
     overrides["xla_tpu_autofdo"] = "false";
   }
   UpdateMap(overrides, GetCompilerOptionOverridesFromEnvVar());
-  // When merging the overrides, the Python context manager takes precedence.
-  UpdateMap(overrides, GetContextState<CustomCompilerOptionsContextState>({}));
+  // When merging the overrides, the active Python context overrides takes the
+  // highest precedence.
+  UpdateMap(overrides, context_overrides);
   return overrides;
 }
 
@@ -480,29 +467,6 @@ absl::Status ApplyCompilerOptionOverrides(
   return absl::OkStatus();
 }
 
-// LINT.IfChange
-absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(CompilationMode mode) {
-  auto compile_options = std::make_unique<xla::CompileOptions>();
-
-  // Set options derived from XLA_FLAGS environment variable in the
-  // `executable_build_options.debug_options` field.
-  UpdateFromXlaFlags(*compile_options);
-
-  // Set device-related options, primarily global device count, in the
-  // `executable_build_options` field.
-  TT_RETURN_IF_ERROR(
-      SetDefaultDeviceAssignment(compile_options->executable_build_options));
-
-  // Finally, override the default flags if needed. The overrides are eventually
-  // reflected in the `env_option_overrides` field.
-  TT_ASSIGN_OR_RETURN(const bool is_tpu, SetTpuOptions(*compile_options));
-  TT_RETURN_IF_ERROR(ApplyCompilerOptionOverrides(
-      MakeCompilerOptionOverrides(is_tpu, mode), *compile_options));
-
-  return compile_options;
-}
-// LINT.ThenChange(:compile_options_key)
-
 // Returns fingerprint of `xla::CompileOptions` to be used as part of
 // compilation cache key.
 //
@@ -520,7 +484,7 @@ absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(CompilationMode mode) {
       Fingerprint(options.env_option_overrides));
 }
 
-[[nodiscard]] CompileOptionsKey GetCompileOptionsKey(
+[[nodiscard]] CompileOptionsKey MakeCompileOptionsKey(
     const std::string_view xla_flags, const xla::CompileOptions& options) {
   return CompileOptionsKey(FingerprintCat(
       // Fingerprint of XLA_FLAGS environment variable, effectively fingerprint
@@ -538,18 +502,118 @@ absl::StatusOr<UniqueCompileOptions> MakeCompilerOptions(CompilationMode mode) {
 }
 // LINT.ThenChange()
 
+// On success, returns compilation specs for all compilation modes. Each
+// compilation spec includes compiler options and its fingerprint for a given
+// compilation mode.
+//
+// The compiler options (in the form of `xla::CompileOptions`) are constructed
+// from the following sources, in order of precedence:
+//  - explicitly-specified compiler options set via
+//    PushCompilerOptionOverrides() (or via the custom_compiler_options context
+//    manager in Python); with nested custom_compiler_options contexts, the
+//    innermost context takes precedence,
+//  - compiler options set via environment variable
+//    TORCH_TPU_INTERNAL_XLA_OPTIONS, which is an internal API and shouldn't be
+//    used by users directly,
+//  - hard-coded default compiler options,
+//  - the global device count,
+//  - debug options set via environment variable XLA_FLAGS.
+//
+// Returns an error if any of the above sources cannot be resolved properly.
+//
+// The format of TORCH_TPU_INTERNAL_XLA_OPTIONS is a space-separated list of
+// key=value pairs, e.g. "xla_optimization_level=O1
+// xla_tpu_enable_deduplicated_calls=AUTO".
+// Valid options for TORCH_TPU_INTERNAL_XLA_OPTIONS are documented on
+// https://openxla.org/xla/flags_guidance
+// LINT.IfChange
 absl::StatusOr<CompilationSpecsByMode> MakeCompilationSpecs(
-    CompilationMode mode) {
+    const CompilerOptionOverrides& overrides) {
   CompilationSpecsByMode specs;
 
-  TT_ASSIGN_OR_RETURN(UniqueCompileOptions compile_options,
-                      MakeCompilerOptions(mode));
-  specs.try_emplace(
-      mode, std::move(compile_options),
-      // TODO(b/502270689): use `GetCompileOptionsKey to generate fingerprint.
-      CompileOptionsKey(0));
+  for (const CompilationMode mode : kCompilationModeValues) {
+    auto compile_options = std::make_unique<xla::CompileOptions>();
+
+    // Set options derived from XLA_FLAGS environment variable in the
+    // `executable_build_options.debug_options` field.
+    UpdateFromXlaFlags(*compile_options);
+
+    // Set device-related options, primarily global device count, in the
+    // `executable_build_options` field.
+    TT_RETURN_IF_ERROR(
+        SetDefaultDeviceAssignment(compile_options->executable_build_options));
+
+    // Finally, override the default flags if needed. The overrides are
+    // eventually reflected in the `env_option_overrides` field.
+    TT_ASSIGN_OR_RETURN(const bool is_tpu, SetTpuOptions(*compile_options));
+    TT_RETURN_IF_ERROR(ApplyCompilerOptionOverrides(
+        MakeCompilerOptionOverrides(is_tpu, mode, overrides),
+        *compile_options));
+
+    const auto compile_options_key = MakeCompileOptionsKey(
+        GetEnvOnce<kXlaFlagsEnvVar>().value_or(""), *compile_options);
+    specs.try_emplace(mode, std::move(compile_options), compile_options_key);
+  }
 
   return specs;
+}
+// LINT.ThenChange(:compile_options_key)
+
+static absl::StatusOr<CustomCompilerOptionsContextState> MakeCompilationContext(
+    CompilerOptionOverrides overrides) {
+  TT_ASSIGN_OR_RETURN(CompilationSpecsByMode compilation_specs,
+                      MakeCompilationSpecs(overrides));
+  return std::make_shared<const CompilationContext>(
+      std::move(compilation_specs), std::move(overrides));
+}
+
+// Returns the default `CompilationContext` when no overrides are applied. This
+// function is memoized, so the default instance is is initialized exactly
+// once.
+static const CustomCompilerOptionsContextState& GetDefaultCompilationContext() {
+  static const absl::NoDestructor<CustomCompilerOptionsContextState> ctx([] {
+    auto context = MakeCompilationContext(/*overrides=*/{});
+    ABSL_CHECK(context.ok());  // CRASH_OK=implies obvious compiler option
+                               // misconfiguration if it happens.
+    return std::move(*context);
+  }());
+  return *ctx;
+}
+
+absl::Status PushCompilerOptionOverrides(CompilerOptionOverrides overrides) {
+  auto current_state = GetContextState<CustomCompilerOptionsContextState>(
+      GetDefaultCompilationContext());
+
+  CompilerOptionOverrides merged_overrides =
+      current_state->compiler_option_overrides();
+  UpdateMap(merged_overrides, std::move(overrides));
+
+  TT_ASSIGN_OR_RETURN(const auto compilation_context,
+                      MakeCompilationContext(std::move(merged_overrides)));
+  PushContextState<CustomCompilerOptionsContextState>(
+      std::move(compilation_context));
+
+  return absl::OkStatus();
+}
+
+void PopCompilerOptionOverrides() {
+  PopContextState<CustomCompilerOptionsContextState>();
+}
+
+UniqueCompileOptions GetCompileOptions(const CompilationMode mode) {
+  auto current_state = GetContextState<CustomCompilerOptionsContextState>(
+      GetDefaultCompilationContext());
+  const auto& spec = current_state->compilation_specs().at(mode);
+  // Intentionally make a copy as the input `xla::CompileOptions` object is
+  // moved into `PjRtClient::CompileAndLoad` for compilation.
+  return std::make_unique<xla::CompileOptions>(*spec.xla_compile_options);
+}
+
+CompileOptionsKey GetCompileOptionsKey(const CompilationMode mode) {
+  auto current_state = GetContextState<CustomCompilerOptionsContextState>(
+      GetDefaultCompilationContext());
+  const auto& spec = current_state->compilation_specs().at(mode);
+  return spec.compile_options_key;
 }
 
 }  // namespace torch_tpu

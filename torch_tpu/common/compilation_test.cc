@@ -23,7 +23,6 @@
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/compilation_test_helper.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace torch_tpu {
@@ -41,55 +40,34 @@ class MakeCompilerOptionsTest : public testing::Test {
 };
 
 TEST_F(MakeCompilerOptionsTest, DefaultToO1ForEagerMode) {
-  TF_ASSERT_OK_AND_ASSIGN(CompilationSpecsByMode compilation_specs,
-                          MakeCompilationSpecs(CompilationMode::kFastCompile));
-  const auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
-  EXPECT_EQ(
-      spec.xla_compile_options->executable_build_options.optimization_level(),
-      xla::ExecutionOptions::EFFORT_O1);
+  UniqueCompileOptions options =
+      GetCompileOptions(CompilationMode::kFastCompile);
+  EXPECT_EQ(options->executable_build_options.optimization_level(),
+            xla::ExecutionOptions::EFFORT_O1);
 }
 
 TEST_F(MakeCompilerOptionsTest, DefaultToUnsetForTorchCompileMode) {
-  TF_ASSERT_OK_AND_ASSIGN(CompilationSpecsByMode compilation_specs,
-                          MakeCompilationSpecs(CompilationMode::kFastRuntime));
-  const auto& spec = compilation_specs.at(CompilationMode::kFastRuntime);
-  EXPECT_EQ(
-      spec.xla_compile_options->executable_build_options.optimization_level(),
-      xla::ExecutionOptions::EFFORT_UNKNOWN);
+  UniqueCompileOptions options =
+      GetCompileOptions(CompilationMode::kFastRuntime);
+  EXPECT_EQ(options->executable_build_options.optimization_level(),
+            xla::ExecutionOptions::EFFORT_UNKNOWN);
 }
 
 TEST_F(MakeCompilerOptionsTest, CompilerOptionOverrides) {
-  ScopedCompilerOptionOverrides outer({{"xla_optimization_level", "O1"}});
-
   {
-    TF_ASSERT_OK_AND_ASSIGN(
-        CompilationSpecsByMode compilation_specs,
-        MakeCompilationSpecs(CompilationMode::kFastCompile));
-    const auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
-    EXPECT_EQ(
-        spec.xla_compile_options->executable_build_options.optimization_level(),
-        xla::ExecutionOptions::EFFORT_O1);
+    ScopedCompilerOptionOverrides overrides({{"xla_optimization_level", "O1"}});
+    UniqueCompileOptions options =
+        GetCompileOptions(CompilationMode::kFastCompile);
+    EXPECT_EQ(options->executable_build_options.optimization_level(),
+              xla::ExecutionOptions::EFFORT_O1);
   }
 
   {
-    ScopedCompilerOptionOverrides inner({{"xla_optimization_level", "O2"}});
-    TF_ASSERT_OK_AND_ASSIGN(
-        CompilationSpecsByMode compilation_specs,
-        MakeCompilationSpecs(CompilationMode::kFastCompile));
-    const auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
-    EXPECT_EQ(
-        spec.xla_compile_options->executable_build_options.optimization_level(),
-        xla::ExecutionOptions::EFFORT_O2);
-  }
-
-  {
-    TF_ASSERT_OK_AND_ASSIGN(
-        CompilationSpecsByMode compilation_specs,
-        MakeCompilationSpecs(CompilationMode::kFastCompile));
-    const auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
-    EXPECT_EQ(
-        spec.xla_compile_options->executable_build_options.optimization_level(),
-        xla::ExecutionOptions::EFFORT_O1);
+    ScopedCompilerOptionOverrides overrides({{"xla_optimization_level", "O2"}});
+    UniqueCompileOptions options =
+        GetCompileOptions(CompilationMode::kFastCompile);
+    EXPECT_EQ(options->executable_build_options.optimization_level(),
+              xla::ExecutionOptions::EFFORT_O2);
   }
 }
 

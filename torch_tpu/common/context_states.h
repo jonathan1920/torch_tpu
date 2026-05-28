@@ -88,8 +88,8 @@ using EnableTracebacksContextState = std::optional<TracebackMode>;
 using IsSpmdSafeContextState = bool;
 
 // The state of the `custom_compiler_options` context manager.
-// TODO(b/502270689): switch the context state to `CompilationContext`.
-using CustomCompilerOptionsContextState = CompilerOptionOverrides;
+using CustomCompilerOptionsContextState =
+    absl_nonnull std::shared_ptr<const CompilationContext>;
 
 // The state of the `layout` context manager. Null means there's no active
 // layout context.

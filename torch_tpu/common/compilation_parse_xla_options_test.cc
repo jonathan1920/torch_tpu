@@ -26,7 +26,6 @@
 #include "torch_tpu/common/compilation_test_helper.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace torch_tpu {
@@ -61,15 +60,14 @@ TEST_F(MakeCompilerOptionsTest, ParsesXlaOptions) {
          " xla_optimization_level=O3  xla_tpu_enable_deduplicated_calls=AUTO ",
          1);
 
-  TF_ASSERT_OK_AND_ASSIGN(CompilationSpecsByMode compilation_specs,
-                          MakeCompilationSpecs(CompilationMode::kFastCompile));
-  const auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
+  ScopedCompilerOptionOverrides overrides({});
+  UniqueCompileOptions options =
+      GetCompileOptions(CompilationMode::kFastCompile);
 
-  EXPECT_EQ(
-      spec.xla_compile_options->executable_build_options.optimization_level(),
-      xla::ExecutionOptions::EFFORT_O3);
+  EXPECT_EQ(options->executable_build_options.optimization_level(),
+            xla::ExecutionOptions::EFFORT_O3);
   EXPECT_THAT(
-      spec.xla_compile_options->env_option_overrides,
+      options->env_option_overrides,
       Contains(Pair("xla_tpu_enable_deduplicated_calls", std::string("AUTO"))));
 }
 
@@ -77,19 +75,15 @@ TEST_F(MakeCompilerOptionsTest, PythonContextManagerOverridesEnvVar) {
   setenv("TORCH_TPU_INTERNAL_XLA_OPTIONS",
          "xla_optimization_level=O3  xla_tpu_enable_deduplicated_calls=AUTO",
          1);
-  ScopedCompilerOptionOverrides overrides({
-      {"xla_optimization_level", "O2"},
-  });
 
-  TF_ASSERT_OK_AND_ASSIGN(CompilationSpecsByMode compilation_specs,
-                          MakeCompilationSpecs(CompilationMode::kFastCompile));
-  const auto& spec = compilation_specs.at(CompilationMode::kFastCompile);
+  ScopedCompilerOptionOverrides overrides({{"xla_optimization_level", "O2"}});
+  UniqueCompileOptions options =
+      GetCompileOptions(CompilationMode::kFastCompile);
 
-  EXPECT_EQ(
-      spec.xla_compile_options->executable_build_options.optimization_level(),
-      xla::ExecutionOptions::EFFORT_O2);
+  EXPECT_EQ(options->executable_build_options.optimization_level(),
+            xla::ExecutionOptions::EFFORT_O2);
   EXPECT_THAT(
-      spec.xla_compile_options->env_option_overrides,
+      options->env_option_overrides,
       Contains(Pair("xla_tpu_enable_deduplicated_calls", std::string("AUTO"))));
 }
 

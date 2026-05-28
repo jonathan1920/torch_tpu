@@ -29,11 +29,20 @@
 namespace torch_tpu {
 
 // Mode for compiling a computation graph.
+// LINT.IfChange
 enum class CompilationMode {
   kFastCompile,  // Reduces compile time, but may result in slower execution.
   kFastRuntime,  // Produces more optimized executables, but with longer
                  // compile.
 };
+// LINT.ThenChange(:compilation_mode_values)
+
+// LINT.IfChange(compilation_mode_values)
+inline constexpr CompilationMode kCompilationModeValues[] = {
+    CompilationMode::kFastCompile,
+    CompilationMode::kFastRuntime,
+};
+// LINT.ThenChange()
 
 // `xla::CompileOptions` is a complex object with many fields. Even moving it
 // is expensive. We wrap it in a unique_ptr to allow for cheap moving.
@@ -70,6 +79,11 @@ using CompilerOptionOverrides = std::map<std::string, std::string>;
 // `xla::CompileOptions`.
 class CompilationContext {
  public:
+  CompilationContext(CompilationSpecsByMode specs,
+                     CompilerOptionOverrides overrides)
+      : compilation_specs_(std::move(specs)),
+        compiler_option_overrides_(std::move(overrides)) {}
+
   // Movable but not copyable.
   CompilationContext(const CompilationContext&) = delete;
   CompilationContext& operator=(const CompilationContext&) = delete;
@@ -84,11 +98,6 @@ class CompilationContext {
   }
 
  private:
-  CompilationContext(CompilationSpecsByMode specs,
-                     CompilerOptionOverrides overrides)
-      : compilation_specs_(std::move(specs)),
-        compiler_option_overrides_(std::move(overrides)) {}
-
   CompilationSpecsByMode compilation_specs_;
   CompilerOptionOverrides compiler_option_overrides_;
 };

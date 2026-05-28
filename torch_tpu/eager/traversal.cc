@@ -560,19 +560,12 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
   std::vector<Shape> argument_shapes = GetShapes(arguments_);
   std::vector<Shape> output_shapes = GetShapes(outputs_);
 
-  TT_ASSIGN_OR_RETURN(CompilationSpecsByMode compilation_specs,
-                      MakeCompilationSpecs(compilation_mode));
-  // TODO(b/502270689): create a copy of `xla::CompileOptions` for every
-  // compilation once it becomes part of the thread-local state.
-  UniqueCompileOptions compile_options =
-      std::move(compilation_specs.at(compilation_mode).xla_compile_options);
-
   CompilationCacheKey compilation_cache_key = GetCacheKey(compilation_mode);
   ABSL_VLOG(1) << "[Compile] compilation cache key: " << compilation_cache_key;
 
   return CompilationCache::GetInstance().GetOrCompile(
       std::move(compilation_cache_key), argument_shapes, output_shapes,
-      std::move(final_op_builder), std::move(compile_options));
+      std::move(final_op_builder), GetCompileOptions(compilation_mode));
 }
 
 bool IsSimpleNodeTraversal(const Traversal& traversal) {
