@@ -20,6 +20,7 @@
 #include <string>
 #include <string_view>
 
+#include "ATen/core/TensorBody.h"
 #include "absl/log/absl_log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -76,6 +77,11 @@ std::string PercAsStr(uint64_t num, uint64_t den) {
   }
   auto k = num * 1000 / den;
   return absl::StrCat(k / 10, ".", k % 10, "%");
+}
+
+bool TensorHasTrivialLayout(const at::Tensor& tensor) {
+  return tensor.is_contiguous() && tensor.storage_offset() == 0 &&
+         tensor.numel() > 0;
 }
 
 }  // namespace torch_tpu

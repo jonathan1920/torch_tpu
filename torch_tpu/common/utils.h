@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
+#include "ATen/core/TensorBody.h"
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "c10/util/DimVector.h"
@@ -101,6 +102,9 @@ Indices FilterIndices(size_t until, const Predicate& predicate) {
 
   return indices;
 }
+
+// Does the given tensor have a trivial and standard layout in memory.
+bool TensorHasTrivialLayout(const at::Tensor& tensor);
 
 }  // namespace torch_tpu
 

@@ -111,10 +111,18 @@ at::Tensor PyMakePlaceholderLike(const at::Tensor& arg_tensor) {
                       /*requires_grad=*/false),
       _.SetPrepend() << "failed to create placeholder tensor: ");
 
-  // Finally, we create a view of the base tensor with the same striding as the
-  // original view, and preserve the requires_grad property.
-  at::Tensor view_tensor = base_tensor.as_strided(
-      arg_tensor.sizes(), arg_tensor.strides(), arg_tensor.storage_offset());
+  // NOTE: This logic must match the logic from PrepareCompiledModeArguments in
+  // compiled_mode.cc
+  at::Tensor view_tensor;  // UNINITIALIZED_TENSOR_OK
+  if (TensorHasTrivialLayout(arg_tensor)) {
+    view_tensor = base_tensor;
+  } else {
+    // Finally, we create a view of the base tensor with the same striding as
+    // the original view, and preserve the requires_grad property.
+    view_tensor = base_tensor.as_strided(
+        arg_tensor.sizes(), arg_tensor.strides(), arg_tensor.storage_offset());
+  }
+
   if (arg_tensor.requires_grad()) {
     view_tensor.requires_grad_(true);
   }

@@ -82,6 +82,19 @@ absl::StatusOr<std::vector<DeviceBufferRef>> PrepareCompiledModeArguments(
   // Get each argument buffer ref's expected contiguous base shape.
   std::vector<DeviceBufferRef> argument_buffer_refs;
   for (const at::Tensor& argument_tensor : argument_tensors) {
+    // If argument_tensor is contiguous with offset 0, then we know that
+    // base_sizes and base_stride below would be the same as
+    // `argument_tensor`, and skipping GetContiguousBaseShape saves some
+    // time.
+    if (TensorHasTrivialLayout(argument_tensor)) {
+      TT_ASSIGN_OR_RETURN(
+          DeviceBufferRef buffer_ref, GetBuffer(argument_tensor),
+          _.SetPrepend() << "failed to get buffer from argument tensor: "
+                         << ToString(argument_tensor));
+      argument_buffer_refs.push_back(std::move(buffer_ref));
+      continue;
+    }
+
     // Using as_strided, restrict the base tensor to only the minimal contiguous
     // block of data needed for the view to be valid.
     TT_ASSIGN_OR_RETURN(
