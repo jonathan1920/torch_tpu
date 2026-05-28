@@ -74,7 +74,6 @@ torch_tpu_py_library(
         "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
         "//torch_tpu/_internal/execution_mode",
         "//torch_tpu/_internal/shims/xprof:xprof_analysis_client",
-        "//torch_tpu/_internal/utils:log_utils",
         "@pypi//tensorboardx",
     ],
 )
