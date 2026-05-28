@@ -65,4 +65,59 @@ absl::StatusOr<mlir::MlirOp> BuildAMinMaxShlo(Dimensions dims,
   return min_max_value;
 }
 
+absl::StatusOr<MlirOpResults<2>> BuildFusedAMinMaxShlo(Dimensions dims,
+                                                       ReductionMode mode,
+                                                       mlir::MlirOp input_op) {
+  const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input_op);
+  mlir::Type input_element_type = input_type.getElementType();
+  mlir::MlirBuilder& builder = input_op.getBuilder();
+
+  if (input_type.getRank() == 0) {
+    return MlirOpResults<2>{input_op, input_op};
+  }
+
+  mlir::Attribute min_init_attr =
+      GetMaxFiniteValueAttr(input_element_type, builder.getOpBuilder());
+  mlir::Attribute max_init_attr =
+      GetMinFiniteValueAttr(input_element_type, builder.getOpBuilder());
+
+  mlir::DenseElementsAttr min_value_init_attr = mlir::DenseElementsAttr::get(
+      mlir::RankedTensorType::get({}, input_element_type), min_init_attr);
+  mlir::DenseElementsAttr max_value_init_attr = mlir::DenseElementsAttr::get(
+      mlir::RankedTensorType::get({}, input_element_type), max_init_attr);
+
+  mlir::MlirOp min_value_init =
+      stablehlo::Constant(builder, min_value_init_attr);
+  mlir::MlirOp max_value_init =
+      stablehlo::Constant(builder, max_value_init_attr);
+
+  mlir::Type ranked_element_type =
+      mlir::RankedTensorType::get(/*shape=*/{}, input_element_type);
+  auto reduce_builder = [ranked_element_type](mlir::RegionBuilder& rb) {
+    auto acc_min = mlir::Argument(rb, ranked_element_type);
+    auto acc_max = mlir::Argument(rb, ranked_element_type);
+    auto val_min = mlir::Argument(rb, ranked_element_type);
+    auto val_max = mlir::Argument(rb, ranked_element_type);
+
+    auto new_min = stablehlo::Min(acc_min, val_min);
+    auto new_max = stablehlo::Max(acc_max, val_max);
+
+    stablehlo::Return(rb, {new_min, new_max});
+  };
+
+  auto results =
+      stablehlo::Reduce(builder, {input_op, input_op},
+                        {min_value_init, max_value_init}, reduce_builder, dims);
+
+  mlir::MlirOp min_val = results[0];
+  mlir::MlirOp max_val = results[1];
+
+  if (mode == ReductionMode::kKeepDims) {
+    min_val = BuildKeepDimsShlo(input_op, min_val, dims);
+    max_val = BuildKeepDimsShlo(input_op, max_val, dims);
+  }
+
+  return MlirOpResults<2>{min_val, max_val};
+}
+
 }  // namespace torch_tpu

@@ -137,23 +137,41 @@ at::Tensor& AtenAminOut(const at::Tensor& self, const at::IntArrayRef dims,
 std::tuple<at::Tensor&, at::Tensor&> AtenAminmaxOut(
     const at::Tensor& self, const c10::optional<int64_t> dim,
     const bool keep_dim, at::Tensor& min, at::Tensor& max) {
-  TT_KERNEL(
-      OpName::kAminmaxOut, _,
-      (self, IgnoreInCacheKey(dim, "delegates to AMinMax"),
-       IgnoreInCacheKey(keep_dim, "delegates to AMinMax"), min, max),
-      {
-        // aminmax only supports one optional dimension, but the builder expects
-        // a vector of dimensions, so we build a vector here for the optional
-        // dim.
-        c10::DimVector dims_vec;
-        if (dim.has_value()) {
-          dims_vec.push_back(*dim);
-        }
-        at::IntArrayRef dims(dims_vec);
-        TT_THROW_IF_ERROR(AMinMax(self, dims, keep_dim, AMinMaxOp::kAmin, min));
-        TT_THROW_IF_ERROR(AMinMax(self, dims, keep_dim, AMinMaxOp::kAmax, max));
-        return std::forward_as_tuple(min, max);
-      });
+  TT_KERNEL(OpName::kAminmaxOut, param_keys, (self, dim, keep_dim, min, max), {
+    TT_THROW_IF_ERROR(CheckAMinMaxInputs(self, min));
+    TT_THROW_IF_ERROR(CheckAMinMaxInputs(self, max));
+
+    // aminmax only supports one optional dimension, but the builder expects
+    // a vector of dimensions, so we build a vector here for the optional
+    // dim.
+    auto dim_vec = at::native::make_dim_vector(
+        dim.has_value() ? at::OptionalIntArrayRef({*dim}) : std::nullopt,
+        self.dim());
+    at::maybe_wrap_dims(dim_vec, self.dim());
+    auto out_shape = at::meta::get_reduction_shape(self, dim_vec, keep_dim,
+                                                   /*allow_empty_dims=*/false);
+    Dimensions out_dims = CopyIntVector(out_shape);
+
+    TT_ASSIGN_OR_THROW(auto out_dtype,
+                       ConvertTo<mlir::ElementType>(self.scalar_type()));
+    ReductionMode mode =
+        keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
+
+    Dimensions reduction_dims = CopyIntVector(dim_vec);
+
+    TT_ASSIGN_OR_THROW(
+        auto result_bufs,
+        (DispatchOp<1, 2>(
+            absl::bind_front(BuildFusedAMinMaxShlo, reduction_dims, mode), self,
+            {.op_name = OpName::kAminmaxOut,
+             .out_dtypes = {out_dtype, out_dtype},
+             .out_dims_list = {out_dims, out_dims},
+             .op_param_cache_keys = std::move(param_keys)})));
+
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_bufs[0]), min));
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_bufs[1]), max));
+    return std::forward_as_tuple(min, max);
+  });
 }
 
 }  // namespace torch_tpu

@@ -20,6 +20,7 @@
 #include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/reductions/reductions.h"
 
 namespace torch_tpu {
@@ -32,6 +33,10 @@ enum class AMinMaxOp {
 absl::StatusOr<mlir::MlirOp> BuildAMinMaxShlo(Dimensions dims,
                                               ReductionMode mode, AMinMaxOp op,
                                               mlir::MlirOp input_op);
+
+absl::StatusOr<MlirOpResults<2>> BuildFusedAMinMaxShlo(Dimensions dims,
+                                                       ReductionMode mode,
+                                                       mlir::MlirOp input_op);
 
 }  // namespace torch_tpu
 
