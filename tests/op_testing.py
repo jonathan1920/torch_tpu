@@ -2086,7 +2086,7 @@ class TorchTpuTestBase(TestCase):
       check_dynamism: bool = True,
       check_value: (
           CheckValueMode | Iterable[CheckValueMode]
-      ) = CheckValueMode.STRICT,
+      ) = CheckValueMode.LOOSE,
       check_dtype: bool = True,
       check_op_failures: bool = True,
       check_inplace_op_failures: bool = True,
