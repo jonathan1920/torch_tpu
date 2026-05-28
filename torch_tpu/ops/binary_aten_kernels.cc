@@ -674,6 +674,33 @@ absl::Status SubHelperOut(const at::Tensor& a, const at::Tensor& b,
                       {.op_param_cache_keys = std::move(param_keys)});
 }
 
+absl::StatusOr<at::Tensor> AddReluScalarHelper(
+    const at::Tensor& self, PromotedScalar& promoted_other,
+    MaybePromotedScalar& promoted_alpha, at::Tensor& out,
+    OpParamCacheKeys& param_keys) {
+  TT_RETURN_IF_ERROR(CheckAlphaTypeSupported(promoted_alpha.scalar()));
+
+  const at::ScalarType promoted_scalar_type =
+      at::result_type(self, promoted_other.scalar());
+
+  TT_ASSIGN_OR_RETURN(const at::Tensor other_tensor,
+                      promoted_other.GetTensor(promoted_scalar_type));
+
+  if (promoted_alpha.IsOne()) {
+    TT_RETURN_IF_ERROR(
+        BinaryOpOut(self, other_tensor, out, BuildAddReluShlo,
+                    {.op_param_cache_keys = std::move(param_keys)}));
+    return out;
+  }
+
+  TT_ASSIGN_OR_RETURN(const at::Tensor alpha_tensor,
+                      promoted_alpha.GetTensor(promoted_scalar_type));
+
+  TT_RETURN_IF_ERROR(
+      TernaryOpOut(self, other_tensor, alpha_tensor, out, BuildAlphaAddReluShlo,
+                   {.op_param_cache_keys = std::move(param_keys)}));
+  return out;
+}
 }  // namespace
 
 // NOLINTBEGIN
@@ -746,30 +773,16 @@ at::Tensor AtenAddReluScalar(const at::Tensor& self, const at::Scalar& other,
   TT_KERNEL(
       OpName::kAddReluScalar, param_keys,
       (self, promoted_other, promoted_alpha), {
-        TT_THROW_IF_ERROR(CheckAlphaTypeSupported(alpha));
-
         at::ScalarType promoted_scalar_type = at::result_type(self, other);
         TT_ASSIGN_OR_THROW(
             at::Tensor out,
             MakeEmptyTensor(self.sizes(), promoted_scalar_type, self.device()));
 
-        TT_ASSIGN_OR_THROW(const at::Tensor other_tensor,
-                           promoted_other.GetTensor(promoted_scalar_type));
-
-        if (promoted_alpha.IsOne()) {
-          TT_THROW_IF_ERROR(
-              BinaryOpOut(self, other_tensor, out, BuildAddReluShlo,
-                          {.op_param_cache_keys = std::move(param_keys)}));
-          return out;
-        }
-
-        TT_ASSIGN_OR_THROW(const at::Tensor alpha_tensor,
-                           promoted_alpha.GetTensor(promoted_scalar_type));
-
-        TT_THROW_IF_ERROR(TernaryOpOut(
-            self, other_tensor, alpha_tensor, out, BuildAlphaAddReluShlo,
-            {.op_param_cache_keys = std::move(param_keys)}));
-        return out;
+        TT_ASSIGN_OR_THROW(
+            at::Tensor out_tensor,
+            AddReluScalarHelper(self, promoted_other, promoted_alpha, out,
+                                param_keys));
+        return out_tensor;
       });
 }
 
