@@ -65,7 +65,7 @@ torch_tpu_py_test(
         "--device=tpu",
     ],
     main = "sched_overhead_test.py",
-    nopresubmit = "slow test",
+    notap = "slow test",
     shard_count = 1,
     strict = True,
     tags = [
