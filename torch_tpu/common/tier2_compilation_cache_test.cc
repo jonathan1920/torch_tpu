@@ -39,7 +39,8 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "torch_tpu/common/cache_key.h"
-#include "torch_tpu/common/compile_options_key.h"
+#include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
@@ -108,7 +109,7 @@ CompilationCacheKey MakeCacheKey(uint64_t shapeless_key, int num_dims) {
   const DimensionsKey dimensions_key(dims);
   return CompilationCacheKey(
       GraphKey(ShapelessKey(shapeless_key), dimensions_key),
-      CompileOptionsKey(0));
+      GetCompileOptionsKey(CompilationMode::kFastCompile));
 }
 
 // A test environment that initializes the PjRt client, which is required for
@@ -164,7 +165,7 @@ TEST_F(Tier2CacheEntryLockTest, CreatesLockFileIfNeeded) {
   EXPECT_THAT(ListFiles(cache_path_),
               ElementsAre(absl::StrCat(
                   cache_path_, "/",
-                  "000000000000007b_5825f5f3bd962979_0000000000000000.lock")));
+                  "000000000000007b_5825f5f3bd962979_1e50903f6ba7baaf.lock")));
 }
 
 // If the lock file for a key already exists, the Tier2CacheEntryLock ctor

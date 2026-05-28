@@ -265,7 +265,8 @@ torch_tpu_cc_test(
     notest_oss = "Disabled during switch from opt-in to opt-out",
     deps = [
         ":cache_key",
-        ":compile_options_key",
+        ":compilation",
+        ":compilation_spec",
         ":dimension_types",
         ":env_vars",
         ":error_utils",
@@ -1109,7 +1110,8 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":cache_key",
-        ":compile_options_key",
+        ":compilation",
+        ":compilation_spec",
         ":dimension_types",
         ":env_vars",
         ":error_utils",
@@ -1143,7 +1145,8 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":cache_key",
-        ":compile_options_key",
+        ":compilation",
+        ":compilation_spec",
         ":dimension_types",
         ":env_vars",
         ":error_utils",
@@ -1176,7 +1179,8 @@ torch_tpu_cc_test(
     ],
     deps = [
         ":cache_key",
-        ":compile_options_key",
+        ":compilation",
+        ":compilation_spec",
         ":env_vars",
         ":tier2_compilation_cache",  # buildcleaner: keep
         ":tier3_compilation_cache",

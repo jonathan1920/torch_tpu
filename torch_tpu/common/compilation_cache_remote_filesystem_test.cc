@@ -24,7 +24,8 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "torch_tpu/common/cache_key.h"
-#include "torch_tpu/common/compile_options_key.h"
+#include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/tier3_compilation_cache.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
@@ -157,7 +158,8 @@ TEST_F(RemoteCacheTest, CreatesCacheDirectory) {
 
 TEST_F(RemoteCacheTest, GetFromTier3Cache) {
   const CompilationCacheKey key(
-      GraphKey(ShapelessKey(123), DimensionsKey({10})), CompileOptionsKey(0));
+      GraphKey(ShapelessKey(123), DimensionsKey({10})),
+      GetCompileOptionsKey(CompilationMode::kFastCompile));
 
   // Write a cache entry file.
   const std::string cache_entry_path = GetTier3CacheEntryPath(key);

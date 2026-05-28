@@ -34,6 +34,7 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_spec.h"
+#include "torch_tpu/common/compile_options_key.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/thread_pool.h"
 #include "torch_tpu/common/tier2_compilation_cache.h"
@@ -349,7 +350,8 @@ class CompilationCache {
   // bounded dynamic cache entries. Otherwise, we create a new vector of bounded
   // dynamic cache entries.
   CacheLookupInternal AddBoundedDynamicCacheEntry(
-      ShapelessKey shapeless_key, ShapeDynamismMetadata shape_dynamism_metadata,
+      ShapelessKey shapeless_key, CompileOptionsKey compile_options_key,
+      ShapeDynamismMetadata shape_dynamism_metadata,
       std::optional<BoundedDynamicCache::iterator> dynamic_it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(cache_mutex_);
 
@@ -381,6 +383,7 @@ class CompilationCache {
       const ShapeDynamismMetadata& shape_dynamism_metadata,
       const std::vector<Shape>& input_shapes,
       const std::vector<Shape>& output_shapes,
+      CompileOptionsKey compile_options_key,
       UniqueCompileOptions compile_options) ABSL_LOCKS_EXCLUDED(cache_mutex_);
 
   // Creates a padding kernel for the dynamic kernel adapter based on the shape
@@ -390,6 +393,7 @@ class CompilationCache {
       const std::vector<Shape>& static_runtime_input_shapes,
       const std::vector<Shape>& static_padded_input_shapes,
       std::vector<Shape> input_shapes_with_updated_dynamism,
+      CompileOptionsKey compile_options_key,
       UniqueCompileOptions compile_options);
 
   // Creates a slicing kernel for the dynamic kernel adapter that executes slice
@@ -397,6 +401,7 @@ class CompilationCache {
   absl::StatusOr<SharedLoadedExecutableWithMetadataFuture> CreateSlicingKernel(
       const ShapeDynamismMetadata& shape_dynamism_metadata,
       const std::vector<Shape>& output_shapes,
+      CompileOptionsKey compile_options_key,
       UniqueCompileOptions compile_options);
 
   // Sets the executable for the given key if it is not already set.

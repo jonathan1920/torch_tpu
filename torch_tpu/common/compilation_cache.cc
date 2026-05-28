@@ -19,7 +19,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <future>
@@ -165,10 +164,6 @@ int GetNumCompilationThreads() {
   return GetNumCompilationThreads(GetNumProcs());
 }
 
-// TODO: b/498591854 - Remove this callback once allow_excess_precision is
-// included in the cache key.
-extern std::atomic<void (*)()> g_excess_precision_change_callback;
-
 void CompilationCache::EnsureInitialized() {
   absl::MutexLock lock(cache_mutex_);
   if (initialized_) return;
@@ -202,13 +197,7 @@ void CompilationCache::EnsureInitialized() {
   initialized_ = true;
 }
 
-// TODO: b/498591854 - Change it back to
-// CompilationCache::CompilationCache() = default
-// once allow_excess_precision is included in the cache key.
-CompilationCache::CompilationCache() {
-  g_excess_precision_change_callback.store(
-      []() { CompilationCache::GetInstance().EvictAll(); });
-}
+CompilationCache::CompilationCache() = default;
 
 CompilationCache::~CompilationCache() {
   ABSL_VLOG(1) << "CompilationCache shutting down.";
@@ -456,7 +445,8 @@ CompilationCache::CacheLookupInternal CompilationCache::AddStaticCacheEntry(
 
 CompilationCache::CacheLookupInternal
 CompilationCache::AddBoundedDynamicCacheEntry(
-    ShapelessKey shapeless_key, ShapeDynamismMetadata shape_dynamism_metadata,
+    ShapelessKey shapeless_key, CompileOptionsKey compile_options_key,
+    ShapeDynamismMetadata shape_dynamism_metadata,
     std::optional<CompilationCache::BoundedDynamicCache::iterator> dynamic_it) {
   std::vector<BoundedDynamicCacheEntry>* entries;
   if (dynamic_it.has_value()) {
@@ -476,8 +466,7 @@ CompilationCache::AddBoundedDynamicCacheEntry(
 
   const GraphKey graph_key(shapeless_key,
                            DimensionsKey(shape_dynamism_metadata));
-  // TODO(b/502270689): set meaningful fingerprint value of XLA compile options.
-  CompilationCacheKey middle_executable_key(graph_key, CompileOptionsKey(0));
+  CompilationCacheKey middle_executable_key(graph_key, compile_options_key);
   entries->push_back(BoundedDynamicCacheEntry{
       .middle_executable_key = middle_executable_key,
       .shape_dynamism_metadata = shape_dynamism_metadata,
@@ -555,6 +544,7 @@ CompilationCache::GetOrCreateCacheEntry(
     auto dynamism_metadata = ShapeDynamismMetadata(input_shapes, output_shapes);
     ABSL_VLOG(2) << "Creating a dynamic cache entry for key: " << key;
     return AddBoundedDynamicCacheEntry(key.graph_key().shapeless_key(),
+                                       key.compile_options_key(),
                                        dynamism_metadata, dynamic_it);
   }
 
@@ -650,10 +640,11 @@ CompilationCache::CreatePaddingKernel(
     const std::vector<Shape>& static_runtime_input_shapes,
     const std::vector<Shape>& static_padded_input_shapes,
     std::vector<Shape> input_shapes_with_updated_dynamism,
+    CompileOptionsKey compile_options_key,
     UniqueCompileOptions compile_options) {
   CompilationCacheKey padding_cache_key(
       PadModuleCacheKey(input_shapes_with_updated_dynamism),
-      CompileOptionsKey(0));
+      compile_options_key);
 
   MlirComputationBuilder padding_module_builder =
       [input_shapes_with_updated_dynamism =
@@ -676,6 +667,7 @@ absl::StatusOr<SharedLoadedExecutableWithMetadataFuture>
 CompilationCache::CreateSlicingKernel(
     const ShapeDynamismMetadata& shape_dynamism_metadata,
     const std::vector<Shape>& output_shapes,
+    CompileOptionsKey compile_options_key,
     UniqueCompileOptions compile_options) {
   std::vector<Dimensions> runtime_output_dims_vec;
   runtime_output_dims_vec.reserve(output_shapes.size());
@@ -714,7 +706,7 @@ CompilationCache::CreateSlicingKernel(
 
   CompilationCacheKey slicing_cache_key(
       shape_dynamism_metadata.GetSliceModuleCacheKey(runtime_output_shapes),
-      CompileOptionsKey(0));
+      compile_options_key);
 
   MlirComputationBuilder slice_module_builder =
       [runtime_output_dims_vec = std::move(runtime_output_dims_vec),
@@ -741,6 +733,7 @@ CompilationCache::CreateDynamicKernelAdapter(
     const ShapeDynamismMetadata& shape_dynamism_metadata,
     const std::vector<Shape>& input_shapes,
     const std::vector<Shape>& output_shapes,
+    CompileOptionsKey compile_options_key,
     UniqueCompileOptions compile_options) {
   DynamicKernelAdapter adapter;
   // TODO(unda): is it possible to reuse the compile options? We make a copy
@@ -762,6 +755,7 @@ CompilationCache::CreateDynamicKernelAdapter(
       CreatePaddingKernel(shape_dynamism_metadata, static_runtime_input_shapes,
                           static_padded_input_shapes,
                           std::move(input_shapes_with_updated_dynamism),
+                          compile_options_key,
                           std::move(padding_compile_options)));
 
   // Before doing any work for the slicing kernel, we check if we need to do it
@@ -780,7 +774,7 @@ CompilationCache::CreateDynamicKernelAdapter(
   TT_ASSIGN_OR_RETURN(
       adapter.postamble,
       CreateSlicingKernel(shape_dynamism_metadata, output_shapes,
-                          std::move(compile_options)));
+                          compile_options_key, std::move(compile_options)));
   return adapter;
 }
 
@@ -810,10 +804,11 @@ absl::StatusOr<CompiledKernel> CompilationCache::GetOrCompile(
     // Create a copy of the compile options for the adapter.
     auto adapter_compile_options =
         std::make_unique<xla::CompileOptions>(*compile_options);
-    TT_ASSIGN_OR_RETURN(compiled_kernel.dynamic_kernel_adapter,
-                        CreateDynamicKernelAdapter(
-                            *cache_lookup.shape_dynamism_metadata, input_shapes,
-                            output_shapes, std::move(adapter_compile_options)));
+    TT_ASSIGN_OR_RETURN(
+        compiled_kernel.dynamic_kernel_adapter,
+        CreateDynamicKernelAdapter(
+            *cache_lookup.shape_dynamism_metadata, input_shapes, output_shapes,
+            key.compile_options_key(), std::move(adapter_compile_options)));
     // Create a key for the storage of the dynamic executable.
     const GraphKey graph_key(
         key.graph_key().shapeless_key(),

@@ -27,7 +27,8 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "torch_tpu/common/cache_key.h"
-#include "torch_tpu/common/compile_options_key.h"
+#include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
@@ -65,7 +66,7 @@ CompilationCacheKey MakeCacheKey(uint64_t shapeless_key, int num_dims) {
   const DimensionsKey dimensions_key(dims);
   return CompilationCacheKey(
       GraphKey(ShapelessKey(shapeless_key), dimensions_key),
-      CompileOptionsKey(0));
+      GetCompileOptionsKey(CompilationMode::kFastCompile));
 }
 
 class Tier3CompilationCacheTest : public testing::Test {};

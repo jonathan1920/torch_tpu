@@ -37,7 +37,6 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_spec.h"
-#include "torch_tpu/common/compile_options_key.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/ops/python_context.h"
@@ -125,14 +124,11 @@ class Traversal {
       absl::Span<const SharedDeviceBufferList> nodes_to_materialize);
 
   // Composes a cache key for the traversal for the specific compilation mode.
-  CompilationCacheKey GetCacheKey(CompilationMode) const {
+  CompilationCacheKey GetCacheKey(CompilationMode mode) const {
     if (graph_key_ == std::nullopt) {
       graph_key_ = BuildGraphKey();
     }
-    // TODO(b/502270689): set meaningful fingerprint value of XLA compile
-    // options for the given compilation mode.
-    const CompileOptionsKey compile_options_key(0);
-    return CompilationCacheKey(*graph_key_, compile_options_key);
+    return CompilationCacheKey(*graph_key_, GetCompileOptionsKey(mode));
   }
 
   // Validates that the provided arguments are a valid reordering of the
