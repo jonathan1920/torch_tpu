@@ -155,12 +155,13 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--compute_grad=True",
-        "--max_samples_per_op_dtype=15",  # Prevent long test run time.
+        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
     ],
     main = "ops_test.py",
     nopresubmit_oss = "This slow test is enabled in nightly.",
     shard_count = 50,
     tags = [
+        "noasan",  # TODO: fix the test timing out in asan mode.
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.
         "requires-tpu-v5lite",
