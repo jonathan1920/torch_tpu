@@ -401,7 +401,8 @@ void LogShapes(absl::Span<const Shape> shapes, std::string_view prefix) {
   }
 }
 
-GraphKey PadModuleCacheKey(absl::Span<const Shape> dynamic_shapes) {
+GraphKey PadModuleCacheKey(absl::Span<const Shape> dynamic_shapes,
+                           bool pad_only_module) {
   ABSL_VLOG(3) << "[PadModuleCacheKey] Creating a cache key for a pad "
                << "module with " << dynamic_shapes.size();
 
@@ -435,17 +436,19 @@ GraphKey PadModuleCacheKey(absl::Span<const Shape> dynamic_shapes) {
         });
     graph.AddGraphOutput(padded_tensor_index);
 
-    for (const auto& dynamic_dim : shape.dynamic_dimensions()) {
-      TT_ASSIGN_OR_THROW(OpParamCacheKeys params,
-                         *OpParamCacheKeysBuilder().SetParam(
-                             "dimension_index", dynamic_dim.dimension));
-      const int dim_size_index =
-          graph.AddOp(OpName::kGetDimensionSize, params, /*donated_inputs=*/{},
-                      [i](GraphSignature::OpSignatureBuilder& op) {
-                        op.AddInput(i);
-                        op.AddOutput({1}, mlir::ElementType::I32);
-                      });
-      graph.AddGraphOutput(dim_size_index);
+    if (!pad_only_module) {
+      for (const auto& dynamic_dim : shape.dynamic_dimensions()) {
+        TT_ASSIGN_OR_THROW(OpParamCacheKeys params,
+                           *OpParamCacheKeysBuilder().SetParam(
+                               "dimension_index", dynamic_dim.dimension));
+        const int dim_size_index = graph.AddOp(
+            OpName::kGetDimensionSize, params, /*donated_inputs=*/{},
+            [i](GraphSignature::OpSignatureBuilder& op) {
+              op.AddInput(i);
+              op.AddOutput({1}, mlir::ElementType::I32);
+            });
+        graph.AddGraphOutput(dim_size_index);
+      }
     }
   }
   return graph.GetKey();

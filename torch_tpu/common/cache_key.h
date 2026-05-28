@@ -870,7 +870,8 @@ struct DimensionBounds {
 Dimensions GetUpperBounds(absl::Span<const DimensionBounds> bounds);
 
 // Returns a cache key for the pad module for the given input dynamic shapes.
-GraphKey PadModuleCacheKey(absl::Span<const Shape> dynamic_shapes);
+GraphKey PadModuleCacheKey(absl::Span<const Shape> dynamic_shapes,
+                           bool pad_only_module = false);
 
 // Returns a cache key for the slice module with the given target and padded
 // shapes.

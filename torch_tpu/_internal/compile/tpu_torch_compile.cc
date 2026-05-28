@@ -504,14 +504,15 @@ void PyPrecompilePadModule(const std::vector<TensorInfo>& tensor_info,
       MakePadDynamicShapes(tensor_info, bounds_list);
 
   MlirComputationBuilder pad_builder = [&](mlir::MLIRContext& mlir_context) {
-    return GetPadModule(mlir_context, dynamic_shapes);
+    return GetPadModule(mlir_context, dynamic_shapes,
+                        /*pad_only_module=*/true);
   };
 
   const auto compilation_mode = fast_compile ? CompilationMode::kFastCompile
                                              : CompilationMode::kFastRuntime;
 
   const CompilationCacheKey cache_key(
-      /*graph_key=*/PadModuleCacheKey(dynamic_shapes),
+      /*graph_key=*/PadModuleCacheKey(dynamic_shapes, /*pad_only_module=*/true),
       /*compile_options_key=*/GetCompileOptionsKey(compilation_mode));
 
   std::vector<Shape> runtime_input_shapes = ToStaticShapes(dynamic_shapes);
@@ -544,13 +545,11 @@ void PyPrecompilePadModule(const std::vector<TensorInfo>& tensor_info,
 //   bounds_list = [([1], [8])]. // Dynamic dimension is 1, upper bound is 8.
 //  MLIR module:
 // module @pad_module {
-//   func.func @main(%arg0: tensor<1x4xi64>) -> (tensor<1x8xi64>, tensor<i32>) {
+//   func.func @main(%arg0: tensor<1x4xi64>) -> tensor<1x8xi64> {
 //     %c = stablehlo.constant dense<0> : tensor<i64>
 //     %0 = stablehlo.pad %arg0, %c, low = [0, 0], high = [0, 4],
 //       interior = [0, 0] : (tensor<1x4xi64>, tensor<i64>) -> tensor<1x8xi64>
-//     %1 = stablehlo.get_dimension_size %arg0, dim = 1 :
-//        (tensor<1x4xi64>) -> tensor<i32>
-//     return %0, %1 : tensor<1x8xi64>, tensor<i32>
+//     return %0 : tensor<1x8xi64>
 //   }
 // }
 CompileResult PyGetOrCompilePadModule(
@@ -561,13 +560,13 @@ CompileResult PyGetOrCompilePadModule(
       MakePadDynamicShapes(tensor_info, bounds_list);
 
   MlirComputationBuilder pad_builder = [&](mlir::MLIRContext& mlir_context) {
-    return GetPadModule(mlir_context, dynamic_shapes);
+    return GetPadModule(mlir_context, dynamic_shapes, /*pad_only_module=*/true);
   };
 
   const auto compilation_mode = fast_compile ? CompilationMode::kFastCompile
                                              : CompilationMode::kFastRuntime;
   const CompilationCacheKey cache_key(
-      /*graph_key=*/PadModuleCacheKey(dynamic_shapes),
+      /*graph_key=*/PadModuleCacheKey(dynamic_shapes, /*pad_only_module=*/true),
       /*compile_options_key=*/GetCompileOptionsKey(compilation_mode));
 
   std::vector<Shape> runtime_input_shapes = ToStaticShapes(dynamic_shapes);

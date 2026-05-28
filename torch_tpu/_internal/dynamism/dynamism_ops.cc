@@ -169,7 +169,8 @@ mlir::RankedTensorType MakeDynamicTensorType(
 }  // namespace
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetPadModule(
-    mlir::MLIRContext& mlir_context, absl::Span<const Shape> shapes) {
+    mlir::MLIRContext& mlir_context, absl::Span<const Shape> shapes,
+    bool pad_only_module) {
   ABSL_VLOG(2) << "[GetPadModule] Creating a padding module for dynamism with "
                << shapes.size() << " shapes.";
   TT_RET_CHECK(!shapes.empty(), error::kInvalidArgument)
@@ -198,9 +199,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetPadModule(
     }
     TT_ASSIGN_OR_RETURN(auto padded_op, Pad(input_op, padded_dimensions));
     results.push_back(padded_op);
-    for (auto dynamic_dimension : shape.dynamic_dimensions()) {
-      results.push_back(mlir::stablehlo::GetDimensionSize(
-          input_op, dynamic_dimension.dimension));
+    if (!pad_only_module) {
+      for (auto dynamic_dimension : shape.dynamic_dimensions()) {
+        results.push_back(mlir::stablehlo::GetDimensionSize(
+            input_op, dynamic_dimension.dimension));
+      }
     }
   }
   mlir::func::Return(fb, results);

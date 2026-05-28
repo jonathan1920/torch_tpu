@@ -25,7 +25,6 @@ from collections.abc import Sequence
 from typing import Any
 import torch
 from torch.fx.passes import graph_transform_observer
-from torch.fx.passes.shape_prop import TensorMetadata
 from torch_tpu._internal.compile.dynamic import sym_utils
 from torch_tpu._internal.compile.dynamic.sym_shape_manager import SymShapeManager
 from torch_tpu._internal.compile.dynamic.symbol_bounds import get_symint_bounds
@@ -40,8 +39,6 @@ class HandleDynamicInputTensorPass:
   This pass does the following:
   - Identifies input tensors with dynamic dimensions (tensors with SymInt in
     their shape).
-  - Inserts a new placeholder for each dynamic dimension to represent the
-    runtime size of the dynamic dimension.
   - Replaces all usage of the input tensor with the output of a chain of
     `set_dimension_logical_size` ops, each operating on the output of the
     previous one, and taking the new placeholder as the size input.
@@ -57,25 +54,28 @@ class HandleDynamicInputTensorPass:
           return z
 
     Input FX Graph:
-      def forward(self, arg0_1: "Sym(s27)", arg1_1: "i64[1, s27, s53]"):
-          add: "f32[1, s27, s53]" = torch.ops.aten.add.Tensor(arg1_1, 10)
+      def forward(self, arg0_1: "Sym(s27)", s27_size: "i32[]",
+                 arg1_1: "Sym(s53)", s53_size: "i32[]",
+                 arg2_1: "i64[1, s27, s53]"):
+          add: "f32[1, s27, s53]" = torch.ops.aten.add.Tensor(arg2_1, 10)
           return (add,)
 
     Modified FX Graph:
       def forward(
           self,
           arg0_1: "Sym(s27)",
-          arg1_1: "i64[1, s27, s53]",
-          dyn_size_1_dim1: "i64[]",
-          dyn_size_1_dim2: "i64[]",
+          s27_size: "i32[]",
+          arg1_1: "Sym(s53)",
+          s53_size: "i32[]",
+          arg2_1: "i64[1, s27, s53]",
       ):
         set_dimension_logical_size_1: "i64[1, s27, s53]" =
             torch.ops.torch_tpu.set_dimension_logical_size(
-                arg1_1, 1, dyn_size_1_dim1)
+                arg2_1, 1, s27_size)
 
         set_dimension_logical_size_2: "i64[1, s27, s53]" =
             torch.ops.torch_tpu.set_dimension_logical_size(
-                set_dimension_logical_size_1, 2, dyn_size_1_dim2)
+                set_dimension_logical_size_1, 2, s53_size)
 
         add: "f32[1, s27, s53]" = torch.ops.aten.add.Tensor(
             set_dimension_logical_size_2, 10)
@@ -99,25 +99,28 @@ class HandleDynamicInputTensorPass:
       if tensor_metadata is None:
         continue
 
-      self._process_node(graph_module, node, idx, tensor_metadata.dynamic_dims)
+      self._process_node(graph_module, node, tensor_metadata.dynamic_dims)
 
   def _process_node(
       self,
       graph_module: torch.fx.GraphModule,
       node: torch.fx.Node,
-      idx: int,
-      dynamic_dims: list[int],
+      dynamic_dims: Sequence[int],
   ) -> None:
     """Processes a single placeholder node and inserts set_dimension_size chains."""
     original_users = set(node.users.keys())
     current_tensor_node = node
 
     for dim in dynamic_dims:
-      size_ph = self._insert_size_placeholder(
-          graph_module, current_tensor_node, idx, dim
-      )
+      symint = node.meta["val"].shape[dim]
+      size_tensor_node = self._sym_shape_manager.symint_to_placeholder[
+          str(symint)
+      ]
+      assert (
+          size_tensor_node is not None
+      ), f"Could not find tensor node (placeholder) for symint {str(symint)}"
       set_dim_size_node = self._insert_set_dimension_logical_size_node(
-          graph_module, current_tensor_node, size_ph, dim, node.meta
+          graph_module, current_tensor_node, size_tensor_node, dim, node.meta
       )
       current_tensor_node = set_dim_size_node
 
@@ -125,42 +128,19 @@ class HandleDynamicInputTensorPass:
         current_tensor_node, delete_user_cb=lambda u: u in original_users
     )
 
-  def _insert_size_placeholder(
-      self,
-      graph_module: torch.fx.GraphModule,
-      current_tensor_node: torch.fx.Node,
-      idx: int,
-      dim: int,
-  ) -> torch.fx.Node:
-    """Inserts a size placeholder after the current tensor node."""
-    with graph_module.graph.inserting_after(current_tensor_node):
-      size_ph = graph_module.graph.placeholder(f"dyn_size_{idx}_dim_{dim}")
-      size_ph.meta = {
-          "tensor_meta": TensorMetadata(
-              shape=torch.Size([]),
-              dtype=torch.int32,
-              requires_grad=False,
-              stride=(),
-              memory_format=torch.contiguous_format,
-              is_quantized=False,
-              qparams={},
-          ),
-      }
-    return size_ph
-
   def _insert_set_dimension_logical_size_node(
       self,
       graph_module: torch.fx.GraphModule,
       current_tensor_node: torch.fx.Node,
-      size_ph: torch.fx.Node,
+      size_tensor_node: torch.fx.Node,
       dim: int,
       meta: dict[str, Any],
   ) -> torch.fx.Node:
-    """Inserts a set_dimension_logical_size node after the size placeholder."""
-    with graph_module.graph.inserting_after(size_ph):
+    """Inserts a set_dimension_logical_size node after the current tensor node."""
+    with graph_module.graph.inserting_after(current_tensor_node):
       set_dim_size_node = graph_module.graph.call_function(
           torch.ops.torch_tpu.set_dimension_logical_size,
-          args=(current_tensor_node, dim, size_ph),
+          args=(current_tensor_node, dim, size_tensor_node),
       )
       set_dim_size_node.meta = meta.copy()
     return set_dim_size_node
@@ -186,10 +166,18 @@ class ScanInputsCreatePlaceholdersPass:
     for node in self._placeholders:
       if sym_utils.is_symint_node(node):
         sym_str = str(node.meta["val"])
-        # Create a new placeholder next to it
+        # Create a new placeholder next to it (always create to keep
+        # signature match).
         with graph_module.graph.inserting_after(node):
           size_ph = graph_module.graph.placeholder(f"{sym_str}_size")
-        self._sym_shape_manager.symint_to_placeholder[sym_str] = size_ph
+
+        # Store the first placeholder encountered for this sym_str.
+        first_size_ph = (
+            self._sym_shape_manager.symint_to_placeholder.setdefault(
+                sym_str, size_ph
+            )
+        )
+        self._sym_shape_manager.symint_node_to_tensor_node[node] = first_size_ph
 
 
 class HandleGenerativeOpsPass:

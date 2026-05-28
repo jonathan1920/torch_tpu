@@ -38,9 +38,11 @@ namespace torch_tpu {
 //   {[3, 5 ;dim=0,<=10], [], [8, 2, 2 ; dim1,<=5, dim2,<=7], [6, 0 ; dim0,<=10]
 // we get a module with the following signature:
 //   ([3, 5], [], [8, 2, 2])
-//   -> ([10, 5], i32, [], [8, 5, 7], i32, i32)
+//   -> ([10, 5], i32, [], [8, 5, 7], i32, i32) if pad_only_module = false.
+//   -> ([10, 5], [], [8, 5, 7]) if pad_only_module = true.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetPadModule(
-    mlir::MLIRContext& mlir_context, absl::Span<const Shape> shapes);
+    mlir::MLIRContext& mlir_context, absl::Span<const Shape> shapes,
+    bool pad_only_module = false);
 
 // Universal slice module. Given a list of padded and unpadded shapes, returns a
 // module that converts padded dynamic dimensions into static dimensions and

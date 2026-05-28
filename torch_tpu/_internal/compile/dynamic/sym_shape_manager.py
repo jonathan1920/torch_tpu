@@ -267,12 +267,15 @@ class SymShapeManager:
     self._create_outputs_sym_shape()
     self._populate_input_tensors_metadata()
 
+    self._compute_dynamic_scalar_indices()
+    self._extract_symint_locations()
+
   @property
   def example_inputs(self) -> Sequence[torch.Tensor | int]:
     """The example inputs used to create the SymShapeManager."""
     return self._example_inputs
 
-  def extract_symint_locations(self) -> None:
+  def _extract_symint_locations(self) -> None:
     """Maps symint strings (e.g., 's0') to their input argument/tensor indices.
 
     This method populates mappings that allow us to extract the concrete values
@@ -281,16 +284,11 @@ class SymShapeManager:
     """
     self.symint_to_tensor_and_dim_idx = {}
     self.symint_to_arg_idx = {}
-    tensor_idx = 0
     for idx, arg in enumerate(self.example_inputs):
       if arg is None:
         continue
       if isinstance(arg, torch.SymInt):
-        # Dynamic scalars are converted to tensors, so we need to increment the
-        # tensor index to ensure that the tensor info locations are correct.
-        if idx in self.dynamic_scalar_indices:
-          tensor_idx += 1
-        else:
+        if idx not in self.dynamic_scalar_indices:
           self.symint_to_arg_idx[str(arg)] = idx
         continue
       assert isinstance(arg, torch.Tensor)
@@ -298,16 +296,14 @@ class SymShapeManager:
         if isinstance(dim, torch.SymInt):
           sym_str = str(dim)
           if sym_str not in self.symint_to_tensor_and_dim_idx:
-            self.symint_to_tensor_and_dim_idx[sym_str] = (tensor_idx, dim_idx)
-      tensor_idx += 1
+            self.symint_to_tensor_and_dim_idx[sym_str] = (idx, dim_idx)
 
-  def compute_dynamic_scalar_indices(self) -> None:
+  def _compute_dynamic_scalar_indices(self) -> None:
     """Computes the indices of dynamic scalars in the example inputs."""
     self.dynamic_scalar_indices = set()
     for idx, arg in enumerate(self._example_inputs):
       if isinstance(arg, torch.SymInt):
-        if str(arg) in self.symint_to_placeholder:
-          self.dynamic_scalar_indices.add(idx)
+        self.dynamic_scalar_indices.add(idx)
 
   def _populate_input_tensors_metadata(self) -> None:
     """Populates metadata for input tensors."""

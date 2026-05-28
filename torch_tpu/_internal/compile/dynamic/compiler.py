@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 from collections.abc import Callable, Sequence
-import numbers
 from typing import Any, NamedTuple
 from absl import logging
 import torch
@@ -54,8 +53,8 @@ def _get_example_inputs(
     Returns:
       updated_example_inputs = [
           10,  # s0 -> upper bound
+          tensor(),  # runtime size placeholder for s0
           tensor(10, 2),  # tensor with upper bounds
-          tensor(), # runtime size placeholder for s0
       ]
   """
   updated_example_inputs = []
@@ -73,23 +72,11 @@ def _get_example_inputs(
               requires_grad=arg.requires_grad,
           )
       )
-      # The dynamic shape info stores upper bounds for the dynamic dimensions.
-      # We add a placeholder for each dynamic dimension to be used by the
-      # set_dimension_size operation.
-      dynamic_bounds = sym_shape_manager.input_tensors_metadata[
-          index
-      ].dynamic_bounds
-      for _, upper_bound in dynamic_bounds:
-        updated_example_inputs.append(
-            torch.tensor(upper_bound, dtype=torch.int32)
-        )
     elif isinstance(arg, torch.SymInt):
       _, upper = get_symint_bounds(arg)
       updated_example_inputs.append(upper)
-      # For generative ops, we may create a new placeholder for the symint
-      # that is passed to set_dimension_size as an argument.
-      if str(arg) in sym_shape_manager.symint_to_placeholder:
-        updated_example_inputs.append(torch.tensor(upper, dtype=torch.int32))
+      # Add an input for the runtime size placeholder for the symint.
+      updated_example_inputs.append(torch.tensor(upper, dtype=torch.int32))
     else:
       updated_example_inputs.append(arg)
 
@@ -183,7 +170,8 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
     self.input_linear_hypothesis = DynamicAdapterLinearHypothesis(
         self._precomputed_bounds_list
     )
-    self._scalar_tensor_cache = {}
+    self._default_scalar_tensor_cache = {}
+    self._prepare_input_packing_plan()
     self._backend_device = None
     self._padded_output_shapes = self._get_padded_output_shapes()
 
@@ -191,16 +179,6 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
     if self._backend_device is None:
       self._backend_device = torch.accelerator.current_accelerator()
     return self._backend_device
-
-  def _get_cached_scalar_tensor(
-      self, val: int, dtype: torch.dtype, device: torch.device
-  ) -> torch.Tensor:
-    key = (val, dtype, device)
-    tensor = self._scalar_tensor_cache.get(key)
-    if tensor is None:
-      tensor = torch.tensor(val, dtype=dtype, device=device)
-      self._scalar_tensor_cache[key] = tensor
-    return tensor
 
   def _get_pad_subgraph_inputs(
       self,
@@ -210,33 +188,20 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
     tensor_args = []
     tensor_info = []
 
-    backend_device = self._get_backend_device()
-
     for idx, arg in enumerate(args):
-      if arg is None:
-        continue
-
-      if isinstance(arg, numbers.Integral):
-        if idx in self.sym_shape_manager.dynamic_scalar_indices:
-          tensor_val = self._get_cached_scalar_tensor(
-              arg, dtype=torch.int32, device=backend_device
+      # Only pass tensors with dynamic dimensions to the pad subgraph.
+      if (
+          isinstance(arg, torch.Tensor)
+          and self.sym_shape_manager.get_num_dynamic_dims(idx) > 0
+      ):
+        if arg.device.type == "cpu":
+          raise ValueError(
+              "CPU tensors are not supported in dynamic shapes compilation,"
+              " please move inputs to TPU."
           )
-          tensor_args.append(tensor_val)
-          tensor_info.append(_TensorInfo(shape=[], dtype=torch.int32))
-        continue
-
-      # Handle any other missing type above
-      assert isinstance(arg, torch.Tensor)
-
-      if arg.device.type == "cpu":
-        raise ValueError(
-            "CPU tensors are not supported in dynamic shapes compilation,"
-            " please move inputs to TPU."
-        )
-
-      tensor_args.append(arg)
-      static_shape = list(arg.shape)
-      tensor_info.append(_TensorInfo(shape=static_shape, dtype=arg.dtype))
+        tensor_args.append(arg)
+        static_shape = list(arg.shape)
+        tensor_info.append(_TensorInfo(shape=static_shape, dtype=arg.dtype))
 
     return tensor_args, tensor_info
 
@@ -246,6 +211,9 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
       tensor_info: Sequence[_TensorInfo],
   ) -> list[torch.Tensor]:
     """Compiles and executes the pad subgraph."""
+    if not tensor_args:
+      return []
+
     logging.debug(
         "[DynamicTpuBackend] Compile Pad Subgraph, tensor_info: %s,"
         " bounds_list: %s",
@@ -274,30 +242,99 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
     return tpu_torch_compile.execute(compile_result.executable, tensor_args)
 
   def _precompute_bounds_list(self) -> list[ShapeBoundInfo]:
+    """Precomputes a list of shape bound information for dynamic input tensors.
+
+    This method iterates through the example inputs provided to the
+    `SymShapeManager`. For each input tensor that contains one or more dynamic
+    dimensions, it extracts the indices of these dynamic dimensions and their
+    corresponding upper bounds. This information is
+    compiled into a list of `ShapeBoundInfo` objects.
+
+    Returns:
+      A list of `ShapeBoundInfo`, where each entry contains the dynamic
+      dimension indices and their upper bounds for each dynamic input tensor.
+    """
     bounds_list = []
+    for idx, arg in enumerate(self.sym_shape_manager.example_inputs):
+      if (
+          isinstance(arg, torch.Tensor)
+          and self.sym_shape_manager.get_num_dynamic_dims(idx) > 0
+      ):
+        tensor_metadata = self.sym_shape_manager.input_tensors_metadata[idx]
+        bounds_list.append(
+            ShapeBoundInfo(
+                dynamic_dims=tensor_metadata.dynamic_dims,
+                upper_bounds=[
+                    upper for _, upper in tensor_metadata.dynamic_bounds
+                ],
+            )
+        )
+    return bounds_list
+
+  def _prepare_input_packing_plan(self):
+    self._static_tensor_map = []
+    self._dynamic_tensor_map = []
+    self._dynamic_scalar_map = []
+
+    target_idx = 0
+    pad_idx = 0
+
     for idx, arg in enumerate(self.sym_shape_manager.example_inputs):
       if arg is None:
         continue
 
       if isinstance(arg, torch.SymInt):
-        if str(arg) in self.sym_shape_manager.symint_to_placeholder:
-          bounds_list.append(ShapeBoundInfo(dynamic_dims=[], upper_bounds=[]))
+        if idx in self.sym_shape_manager.dynamic_scalar_indices:
+          self._dynamic_scalar_map.append((idx, target_idx))
+          target_idx += 1
         continue
 
-      assert isinstance(arg, torch.Tensor)
-      tensor_metadata = self.sym_shape_manager.input_tensors_metadata[idx]
-      if not tensor_metadata.dynamic_dims:
-        bounds_list.append(ShapeBoundInfo(dynamic_dims=[], upper_bounds=[]))
-        continue
-      bounds_list.append(
-          ShapeBoundInfo(
-              dynamic_dims=tensor_metadata.dynamic_dims,
-              upper_bounds=[
-                  upper for _, upper in tensor_metadata.dynamic_bounds
-              ],
-          )
-      )
-    return bounds_list
+      if isinstance(arg, torch.Tensor):
+        if self.sym_shape_manager.get_num_dynamic_dims(idx) > 0:
+          self._dynamic_tensor_map.append((pad_idx, target_idx))
+          pad_idx += 1
+          target_idx += 1
+        else:
+          self._static_tensor_map.append((idx, target_idx))
+          target_idx += 1
+
+    self._model_inputs_template_length = target_idx
+
+  def _get_model_inputs(
+      self,
+      args: Sequence[Any],
+      pad_outputs: Sequence[torch.Tensor],
+  ) -> list[Any]:
+    """Assembles the actual runtime inputs for the model executable.
+
+    Args:
+      args: The original arguments passed to the `__call__` method.
+      pad_outputs: The output tensors from the pad subgraph, which are the
+        statically padded versions of the dynamic input tensors.
+
+    Returns:
+      A list of inputs for the model executable, where dynamic tensors are
+      replaced by their padded versions and dynamic scalar SymInts are
+      converted to tensors.
+    """
+    model_inputs = [None] * self._model_inputs_template_length
+    backend_device = self._get_backend_device()
+
+    for arg_idx, target_idx in self._static_tensor_map:
+      model_inputs[target_idx] = args[arg_idx]
+
+    for pad_idx, target_idx in self._dynamic_tensor_map:
+      model_inputs[target_idx] = pad_outputs[pad_idx]
+
+    for arg_idx, target_idx in self._dynamic_scalar_map:
+      val = args[arg_idx]
+      tensor = self._default_scalar_tensor_cache.get(val)
+      if tensor is None:
+        tensor = torch.tensor(val, dtype=torch.int32, device=backend_device)
+        self._default_scalar_tensor_cache[val] = tensor
+      model_inputs[target_idx] = tensor
+
+    return model_inputs
 
   def _get_padded_output_shapes(self):
     padded_input_shapes = []
@@ -328,6 +365,18 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
       args: The runtime positional arguments passed to the executable call.
       tensor_info: Tensor metadata representing current input shapes and dtypes.
     """
+    # Map from original tensor index to its index in tensor_info
+    # (which only has dynamic tensors).
+    original_to_dynamic_idx = {}
+    dyn_idx = 0
+    for idx, arg in enumerate(self.sym_shape_manager.example_inputs):
+      if not isinstance(arg, torch.Tensor) or (
+          self.sym_shape_manager.get_num_dynamic_dims(idx) == 0
+      ):
+        continue
+      original_to_dynamic_idx[idx] = dyn_idx
+      dyn_idx += 1
+
     self.input_linear_hypothesis.update([info.shape for info in tensor_info])
     if self.input_linear_hypothesis.is_linear:
       logging.debug(
@@ -353,7 +402,9 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
             t_idx,
             d_idx,
         ) in self.sym_shape_manager.symint_to_tensor_and_dim_idx.items():
-          sym_values[sym_name] = updated_tensor_info[t_idx].shape[d_idx]
+          dyn_idx = original_to_dynamic_idx.get(t_idx)
+          assert dyn_idx is not None, f"Expected tensor {t_idx} to be dynamic"
+          sym_values[sym_name] = updated_tensor_info[dyn_idx].shape[d_idx]
 
         for (
             sym_name,
@@ -389,12 +440,14 @@ class _DynamicTpuCompiledExecutable(compiler.CompiledArtifact):
     tensor_args, tensor_info = self._get_pad_subgraph_inputs(args)
 
     # Compile and run pad executable to get statically padded tensors
-    # and runtime size tensors
     pad_outputs = self._compile_and_execute_pad_subgraph(
         tensor_args, tensor_info
     )
-    # Run model executable with pads, sizes, and explicit output shapes
-    outputs = self.model_executable(list(pad_outputs))
+    # Create input for the model executable
+    model_inputs = self._get_model_inputs(args, pad_outputs)
+
+    # Run model executable with constructed inputs
+    outputs = self.model_executable(model_inputs)
 
     if self._precompile_steps > 0:
       self._precompile_dynamic_adapters(args, tensor_info)
@@ -497,11 +550,6 @@ class DynamicCompiler(compiler.Compiler):
 
     # Transform the graph module to handle dynamic shapes.
     apply_dynamism_transformations(graph_module, sym_shape_manager)
-    # These need to be called after the graph transformations, as the
-    # graph transformations may change the function signature.
-    # TODO: Can this be reworked?
-    sym_shape_manager.compute_dynamic_scalar_indices()
-    sym_shape_manager.extract_symint_locations()
 
     # TODO: Prevent truncation of log lines.
     logging.debug(

@@ -48,10 +48,14 @@ class GraphTransformationsTest(absltest.TestCase):
     self.assertIsNotNone(captured_gm)
     self.assertIsNotNone(captured_sm)
 
-    # Apply the pass
+    # Apply the passes
     placeholders = list(
         captured_gm.graph.find_nodes(op="placeholder", sort=True)
     )
+    graph_transformations.ScanInputsCreatePlaceholdersPass(
+        captured_sm, placeholders
+    )(captured_gm)
+
     graph_transformations.HandleDynamicInputTensorPass(
         captured_sm, placeholders
     )(captured_gm)
@@ -178,6 +182,79 @@ class GraphTransformationsTest(absltest.TestCase):
     # Verify that it is in symint_to_placeholder
     sym_str = str(symint_ph.meta["val"])
     self.assertIn(sym_str, captured_sm.symint_to_placeholder)
+
+  def test_handle_dynamic_input_tensor_pass_reuse_placeholder(self):
+    captured_gm = None
+    captured_sm = None
+
+    def fw_compiler(graph_module, example_inputs):
+      nonlocal captured_gm, captured_sm
+      captured_gm = graph_module
+      captured_sm = sym_shape_manager.SymShapeManager(
+          graph_module, example_inputs
+      )
+      return graph_module
+
+    @torch.compile(backend=aot_autograd(fw_compiler=fw_compiler), dynamic=True)
+    def f(x, y):
+      return x + y
+
+    x = torch.ones(4)
+    y = torch.ones(4)
+    torch._dynamo.mark_dynamic(x, 0, min=2, max=8)
+    torch._dynamo.mark_dynamic(y, 0, min=2, max=8)
+
+    f(x, y)
+
+    self.assertIsNotNone(captured_gm)
+    self.assertIsNotNone(captured_sm)
+
+    placeholders = list(
+        captured_gm.graph.find_nodes(op="placeholder", sort=True)
+    )
+
+    # Verify that we actually have the same SymInt for both inputs.
+    tensor_phs = [
+        node
+        for node in placeholders
+        if "val" in node.meta and isinstance(node.meta["val"], torch.Tensor)
+    ]
+    self.assertLen(tensor_phs, 2)
+
+    x_sym = tensor_phs[0].meta["val"].shape[0]
+    y_sym = tensor_phs[1].meta["val"].shape[0]
+    self.assertEqual(x_sym, y_sym)
+
+    # Apply the passes
+    graph_transformations.ScanInputsCreatePlaceholdersPass(
+        captured_sm, placeholders
+    )(captured_gm)
+
+    graph_transformations.HandleDynamicInputTensorPass(
+        captured_sm, placeholders
+    )(captured_gm)
+
+    # Verify that only ONE new placeholder was added
+    # (for the shared dynamic dimension)
+    new_placeholders = list(
+        captured_gm.graph.find_nodes(op="placeholder", sort=True)
+    )
+    self.assertLen(new_placeholders, len(placeholders) + 1)
+
+    # Verify that both set_dimension_logical_size nodes use the SAME placeholder
+    set_dim_nodes = list(
+        captured_gm.graph.find_nodes(
+            op="call_function",
+            target=torch.ops.torch_tpu.set_dimension_logical_size,
+        )
+    )
+    self.assertLen(set_dim_nodes, 2)
+
+    size_input_0 = set_dim_nodes[0].args[2]
+    size_input_1 = set_dim_nodes[1].args[2]
+    self.assertEqual(size_input_0, size_input_1)
+    self.assertEqual(size_input_0.op, "placeholder")
+    self.assertTrue(size_input_0.name.endswith("_size"))
 
 
 if __name__ == "__main__":

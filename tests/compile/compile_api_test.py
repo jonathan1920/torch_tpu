@@ -171,11 +171,10 @@ class CompileApiTest(absltest.TestCase):
       mlir_text = tpu_torch_compile.serialize_mlir_text(compile_result.module)
       expected_mlir = textwrap.dedent("""\
           module @pad_module {
-            func.func @main(%arg0: tensor<1x4xi64>) -> (tensor<1x8xi64>, tensor<i32>) {
+            func.func @main(%arg0: tensor<1x4xi64>) -> tensor<1x8xi64> {
               %c = stablehlo.constant dense<0> : tensor<i64>
               %0 = stablehlo.pad %arg0, %c, low = [0, 0], high = [0, 4], interior = [0, 0] : (tensor<1x4xi64>, tensor<i64>) -> tensor<1x8xi64>
-              %1 = stablehlo.get_dimension_size %arg0, dim = 1 : (tensor<1x4xi64>) -> tensor<i32>
-              return %0, %1 : tensor<1x8xi64>, tensor<i32>
+              return %0 : tensor<1x8xi64>
             }
           }""")
       self.assertEqual(mlir_text.strip(), expected_mlir.strip())
@@ -186,12 +185,10 @@ class CompileApiTest(absltest.TestCase):
           compile_result.executable,
           [torch.ones(1, 4, dtype=torch.int64).to(device=torch.device('tpu'))],
       )
-      self.assertLen(result, 2)
-      padded_tensor, dim_size = result
+      self.assertLen(result, 1)
+      padded_tensor = result[0]
       self.assertEqual(padded_tensor.shape, (1, 8))
       self.assertEqual(padded_tensor.dtype, torch.int64)
-      self.assertEqual(dim_size.shape, ())
-      self.assertEqual(dim_size.dtype, torch.int32)
 
   def test_get_or_compile_slice_module(self):
     target_shapes = [[1, 4]]
