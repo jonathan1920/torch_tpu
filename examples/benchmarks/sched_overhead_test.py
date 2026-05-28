@@ -195,6 +195,43 @@ class SchedOverheadTest(parameterized.TestCase):
         f" {avg_time_us:.2f} us"
     )
 
+  def test_compile_many_param_model(self):
+    device = get_torch_device()
+
+    class Layer(torch.nn.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.linear = torch.nn.Linear(128, 128)
+        self.relu = torch.nn.ReLU()
+
+      def forward(self, x):
+        return self.relu(self.linear(x))
+
+    model = torch.nn.Sequential(*[Layer() for _ in range(256)]).to(
+        device=device
+    )
+    inp = torch.randn([128, 128], device=device)
+    model = torch.compile(model, backend="tpu")
+
+    for _ in range(_NUM_WARMUP_STEPS.value):
+      _ = model(inp)
+
+    session = xprof_session.XprofSession()
+    session.start_session(host_trace_level=3, enable_python_tracer=True)
+
+    loop_start_time = time.time()
+    for i in range(_NUM_STEPS.value):
+      with traceme.TraceMe("Eval", i=i):
+        _ = model(inp)
+    time_per_step = (time.time() - loop_start_time) / _NUM_STEPS.value
+    xprof_url = session.end_session_and_get_url()
+
+    self.logs.append(
+        f"ManyParams: Run for 256 layers took {time_per_step * 1000} ms per"
+        f" step, XProf URL: {xprof_url}"
+    )
+
 
 if __name__ == "__main__":
   absltest.main()
