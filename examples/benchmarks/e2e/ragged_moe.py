@@ -136,7 +136,7 @@ class RaggedMoeQwen3(torch.nn.Module):
       torch.distributed.all_reduce(h)
 
     # Split back the sequence dimension
-    return h.view(batch_size, sequence_length, hidden_size), router_logits
+    return h.view(batch_size, sequence_length, hidden_size)
 
 
 class RaggedExpertsGemma4(torch.nn.Module):
