@@ -28,12 +28,14 @@
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "c10/core/Device.h"
 #include "c10/core/Stream.h"
+#include "c10/core/impl/DeviceGuardImplInterface.h"
 #include "torch_tpu/common/contain.h"
 #include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/env_vars.h"
@@ -379,6 +381,15 @@ void PjrtBackend::MarkStreamActive(c10::DeviceIndex device_index,
   auto& futures = state.pending_futures[{device_index, stream_id}];
   PruneCompletedFutures(futures);
   futures.push_back(std::make_shared<xla::Future<void>>(std::move(future)));
+}
+
+void PjrtBackend::MarkStreamActive(xla::Future<void> future) {
+  const auto* impl = c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
+  ABSL_CHECK(impl != nullptr)  // CRASH_OK=TPU DeviceGuardImpl required.
+      << "TPU DeviceGuardImpl not found";
+  const c10::Stream current_stream = impl->getStream(impl->getDevice());
+  MarkStreamActive(impl->getDevice().index(), current_stream.id(),
+                   std::move(future));
 }
 
 // Blocks the calling thread until all previously enqueued operations on the

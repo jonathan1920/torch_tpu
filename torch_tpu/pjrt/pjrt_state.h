@@ -103,6 +103,9 @@ class PjrtBackend {
   void MarkStreamActive(c10::DeviceIndex device_index, int64_t stream_id,
                         xla::Future<void> future);
 
+  // Updates the tracked future for the current stream.
+  void MarkStreamActive(xla::Future<void> future);
+
   // Blocks until all pending operations on the given device and stream have
   // completed.
   void SynchronizeStream(c10::DeviceIndex device_index, int64_t stream_id);

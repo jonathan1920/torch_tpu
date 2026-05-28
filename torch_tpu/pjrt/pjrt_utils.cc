@@ -37,7 +37,6 @@
 #include "absl/types/span.h"
 #include "c10/core/Device.h"
 #include "c10/core/TensorImpl.h"
-#include "c10/core/impl/DeviceGuardImplInterface.h"
 #include "llvm/ADT/STLExtras.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch/headeronly/core/DeviceType.h"
@@ -173,13 +172,7 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
   } else {
     ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] Backing tensor present, "
                     "creating DeviceBufferRef and marking stream active.";
-    const auto* impl =
-        c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
-    TT_RET_CHECK(impl != nullptr, error::kInternal)
-        << "TPU DeviceGuardImpl not found";
-    const c10::Stream current_stream = impl->getStream(impl->getDevice());
-    PjrtBackend::GetInstance().MarkStreamActive(impl->getDevice().index(),
-                                                current_stream.id(), future);
+    PjrtBackend::GetInstance().MarkStreamActive(future);
   }
 
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL EXIT] Created "
@@ -270,13 +263,7 @@ absl::Status TpuMemcpyDtoHDirect(const DeviceBufferRef& buffer_ref,
         ABSL_LOG(ERROR) << "Async D2H ToLiteral transfer failed: " << s;
       }
     });
-    const auto* impl =
-        c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
-    TT_RET_CHECK(impl != nullptr, error::kInternal)
-        << "TPU DeviceGuardImpl not found";
-    const c10::Stream current_stream = impl->getStream(impl->getDevice());
-    PjrtBackend::GetInstance().MarkStreamActive(impl->getDevice().index(),
-                                                current_stream.id(), future);
+    PjrtBackend::GetInstance().MarkStreamActive(future);
     return absl::OkStatus();
   } else {
     return future.Await();
