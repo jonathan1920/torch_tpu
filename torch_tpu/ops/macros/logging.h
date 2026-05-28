@@ -115,7 +115,7 @@ namespace torch_tpu {
                 ::torch_tpu::internal::ParseArgTypesOrEmpty(_func_sig),        \
                 TT_ARGS_AS_STRINGS_(__VA_ARGS__)} __VA_OPT__(, ) __VA_ARGS__); \
         return true;                                                           \
-      }();                                                                     \
+      }(); /* NOLINT - capturing tensors in this lambda is safe. */            \
       static_cast<void>(_checked); /* VOID_CAST_OK=dummy result. */            \
     }                                                                          \
   } while (false)
