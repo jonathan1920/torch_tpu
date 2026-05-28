@@ -135,7 +135,6 @@ torch_tpu_py_test(
     name = "model_performance_benchmarks",
     timeout = "eternal",
     srcs = ["model_performance_benchmarks.py"],
-    args = ["--torch_tpu_internal_enable_compilation_container=true"],
     # This allows us to use a single .par file for remote cluster execution.
     linking_mode = "static",
     main = "model_performance_benchmarks.py",
@@ -335,7 +334,6 @@ torch_tpu_py_test(
     name = "layer_performance_benchmarks",
     timeout = "long",
     srcs = ["layer_performance_benchmarks.py"],
-    args = ["--torch_tpu_internal_enable_compilation_container=true"],
     main = "layer_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
     notest_oss = "Disabled during switch from opt-in to opt-out",
