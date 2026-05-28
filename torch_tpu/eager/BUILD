@@ -184,6 +184,8 @@ torch_tpu_cc_library(
         "//torch_tpu/common:status_builder",
         "//torch_tpu/common:to_string",
         "//torch_tpu/experimental/eager:materialize_new",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:python_context",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",

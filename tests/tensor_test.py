@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import time
 from typing import Any, Callable, Tuple
 from absl.testing import absltest
@@ -401,6 +402,12 @@ class TensorTest(torch_test_utils.TestCase):
       for _ in range(self.num_runs_per_test):
         kwargs = op(rng, dtype)
         self._test(dtype, kwargs)
+
+  def test_deepcopy_tensor(self):
+    x = torch.tensor([1.0, 2.0, 3.0], device="tpu")
+    y = copy.deepcopy(x)
+    self.assertEqual(y.device.type, "tpu")
+    self.assertEqual(x.cpu(), y.cpu())
 
   def _test(self, dtype, kwargs):
     tpu_d = torch.device("tpu")

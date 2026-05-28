@@ -2019,6 +2019,19 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(test_fn)
 
+  def test_cat_out_resized(self):
+    t1 = torch.tensor([[1, 2], [3, 4]], dtype=torch.float32)
+    t2 = torch.tensor([[5, 6]], dtype=torch.float32)
+
+    def fn(device):
+      # Expected output shape is (3, 2)
+      # out is initialized with a different shape (1, 1)
+      out = torch.zeros((1, 1), dtype=torch.float32, device=device)
+      torch.cat([t1.to(device), t2.to(device)], dim=0, out=out)
+      return out
+
+    self.assert_close_tpu_vs_cpu(fn)
+
   def test_arange_start_step_float32(self):
     golden_result = torch.arange(
         0, 10, 2, dtype=torch.float32, device=self.golden_device

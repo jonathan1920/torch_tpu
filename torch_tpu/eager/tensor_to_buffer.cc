@@ -62,6 +62,8 @@
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/experimental/eager/materialize_new.h"
+#include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/python_context.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "xla/pjrt/host_memory_allocator.h"
@@ -312,6 +314,7 @@ class TpuAllocator final : public c10::DeviceAllocator {
   TpuAllocator& operator=(const TpuAllocator&) = delete;
 
   c10::DataPtr allocate(size_t nbytes) override {
+    ScopedPythonContextCapturer _(OpName::kTorchTpuStorageAllocate);
     c10::DeviceIndex device_idx = 0;
     if (const auto* device = PjrtBackend::GetInstance().GetDevice()) {
       device_idx =

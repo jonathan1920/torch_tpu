@@ -26,6 +26,7 @@
 #include "ATen/core/IListRef.h"
 #include "ATen/core/TensorBase.h"
 #include "ATen/core/TensorBody.h"
+#include "ATen/native/Resize.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/statusor.h"
@@ -205,6 +206,7 @@ at::Tensor& AtenCatOut(const at::ITensorListRef& tensors, int64_t dim,
     TT_ASSIGN_OR_THROW(
         CatComputationResult cat_result,
         CatHelper(tensors, dim, std::move(param_keys), out.scalar_type()));
+    at::native::resize_output(out, cat_result.result_buf.dimensions());
     TT_THROW_IF_ERROR(
         AssignBufferToAtTensor(std::move(cat_result.result_buf), out));
     ABSL_VLOG(1) << "[C++ KERNEL tpu_aten_cat_out] out(final): "
