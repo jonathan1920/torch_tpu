@@ -418,6 +418,39 @@ def _get_warmup_overhead(timings: np.ndarray, num_warmup_steps: int) -> float:
   )
 
 
+def _run_step(
+    benchmark_function: Callable[
+        [torch.nn.Module, Any, torch.optim.Optimizer | None],
+        Any,
+    ],
+    model: torch.nn.Module,
+    step_input: Any,
+    optimizer: torch.optim.Optimizer | None,
+    device_name: str,
+    sync_params: bool,
+) -> Any:
+  """Runs a single benchmark step and synchronizes the device.
+
+  Args:
+    benchmark_function: The benchmark function to run.
+    model: The model to run the step on.
+    step_input: The inputs to pass to the benchmark function.
+    optimizer: The optimizer to use for the step, or None.
+    device_name: The name of the device (e.g. 'tpu', 'cuda').
+    sync_params: Whether to eagerly synchronize parameter gradients.
+
+  Returns:
+    The output of the benchmark function.
+  """
+  out = benchmark_function(model, step_input, optimizer)
+  device_utils.synchronize(device_name, out)
+  if sync_params:
+    for p in model.parameters():
+      if p.grad is not None:
+        device_utils.synchronize(device_name, p.grad)
+  return out
+
+
 def _warmup_run(
     benchmark_function: Callable[
         [torch.nn.Module, Any, torch.optim.Optimizer | None],
@@ -467,12 +500,14 @@ def _warmup_run(
       with traceme.TraceMe("Warmup", step_num=step):
         step_input = example_inputs[step] if is_sequence else example_inputs
         start_time = time.perf_counter()
-        out = benchmark_function(model, step_input, optimizer)
-        device_utils.synchronize(device_name, out)
-        if sync_params:
-          for p in model.parameters():
-            if p.grad is not None:
-              device_utils.synchronize(device_name, p.grad)
+        _run_step(
+            benchmark_function,
+            model,
+            step_input,
+            optimizer,
+            device_name,
+            sync_params,
+        )
         timings[step] = time.perf_counter() - start_time
       cache_misses[step] = device_utils.cache_miss_count(device_name)
 
@@ -556,12 +591,14 @@ def _post_warmup_run(
         with traceme.TraceMe("Eval", step_num=step):
           step_input = example_inputs[step] if is_sequence else example_inputs
           start_time = time.perf_counter()
-          out = benchmark_function(model, step_input, optimizer)
-          device_utils.synchronize(device_name, out)
-          if sync_params:
-            for p in model.parameters():
-              if p.grad is not None:
-                device_utils.synchronize(device_name, p.grad)
+          _run_step(
+              benchmark_function,
+              model,
+              step_input,
+              optimizer,
+              device_name,
+              sync_params,
+          )
           timings[step] = time.perf_counter() - start_time
 
         # Assert that the cache misses are consistent across steps.
