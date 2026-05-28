@@ -78,10 +78,6 @@ absl::Status AMinMax(const at::Tensor& self, const at::IntArrayRef dims,
   TT_RETURN_IF_ERROR(CheckAMinMaxInputs(self, out));
   TT_ASSIGN_OR_RETURN(auto param_keys,
                       TT_MAKE_OP_PARAM_CACHE_KEYS(dims, keep_dim));
-  if (self.dim() == 0) {
-    out.copy_(self);
-    return absl::OkStatus();
-  }
 
   c10::DimVector dim_vec = at::native::make_dim_vector(
       dims.empty() ? std::nullopt : std::make_optional(dims), self.dim());

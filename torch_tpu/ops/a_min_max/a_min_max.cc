@@ -34,6 +34,9 @@ absl::StatusOr<mlir::MlirOp> BuildAMinMaxShlo(Dimensions dims,
                                               ReductionMode mode, AMinMaxOp op,
                                               mlir::MlirOp input_op) {
   const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input_op);
+  if (input_type.getRank() == 0) {
+    return input_op;
+  }
   mlir::Type input_element_type = input_type.getElementType();
   mlir::MlirBuilder& builder = input_op.getBuilder();
   mlir::Attribute min_max_init_attr =

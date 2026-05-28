@@ -59,8 +59,6 @@ void OpNameStack::Push(OpName op_name) {
       OpName::kAddRelu_Scalar,
       OpName::kAddRelu_Tensor,
       OpName::kAllOut,
-      OpName::kAmaxOut,
-      OpName::kAminOut,
       OpName::kAminmaxOut,
       OpName::kAnyOut,
       OpName::kArangeStartOut,
