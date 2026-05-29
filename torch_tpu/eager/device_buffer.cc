@@ -52,6 +52,7 @@
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
@@ -805,6 +806,53 @@ absl::Status DeviceBufferRef::Synchronize() const {
 absl::StatusOr<xla::PjRtBuffer* absl_nonnull> DeviceBufferRef::AwaitBuffer()
     const {
   return device_buffer_list_->AwaitBuffer(index_);
+}
+
+xla::Future<void> DeviceBufferRef::GetMaterializationFuture() const {
+  return device_buffer_list_->GetMaterializationFuture();
+}
+
+xla::Future<void> DeviceBufferRef::GetReadyFuture() const {
+  if (GetMaterializationFuture().IsKnownReady()) {
+    auto buffer_or = AwaitBuffer();
+    if (!buffer_or.ok()) {
+      return xla::Future<void>(buffer_or.status());
+    }
+    auto ready_future = buffer_or.value()->GetReadyFuture();
+    if (ready_future.IsKnownReady()) {
+      return ready_future;
+    }
+    auto [promise, future] = xla::MakePromise<void>();
+    ready_future.OnReady(
+        [promise = std::move(promise),
+         device_buffer_list = device_buffer_list_](
+            absl::Status status) mutable { promise.Set(status); });
+    return future;
+  }
+
+  auto [promise, future] = xla::MakePromise<void>();
+  // Capture by value to extend lifetime.
+  auto device_buffer_list = device_buffer_list_;
+  auto index = index_;
+  GetMaterializationFuture().OnReady([promise = std::move(promise),
+                                      device_buffer_list,
+                                      index](absl::Status status) mutable {
+    if (!status.ok()) {
+      promise.Set(status);
+      return;
+    }
+    auto buffer_or = device_buffer_list->AwaitBuffer(index);
+    if (!buffer_or.ok()) {
+      promise.Set(buffer_or.status());
+      return;
+    }
+    auto ready_future = buffer_or.value()->GetReadyFuture();
+    ready_future.OnReady([promise = std::move(promise),
+                          device_buffer_list](absl::Status status) mutable {
+      promise.Set(status);
+    });
+  });
+  return future;
 }
 
 absl::Status DeviceBufferRef::MarkDynamic(int64_t dimension,

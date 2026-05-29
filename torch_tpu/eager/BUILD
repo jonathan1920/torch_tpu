@@ -798,6 +798,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/view_decomposition:inversion",
         "//torch_tpu/ops/view_decomposition:strided_layout",
         "//torch_tpu/ops/view_decomposition:view_sequence",
+        "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log:absl_check",

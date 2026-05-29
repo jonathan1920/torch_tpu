@@ -315,6 +315,9 @@ class DeviceBufferRef {
   // PjRtBuffer.
   absl::StatusOr<xla::PjRtBuffer* absl_nonnull> AwaitBuffer() const;
 
+  [[nodiscard]] xla::Future<void> GetMaterializationFuture() const;
+  [[nodiscard]] xla::Future<void> GetReadyFuture() const;
+
   // The DeviceBufferList that holds the referenced buffer.
   [[nodiscard]] const SharedDeviceBufferList& device_buffer_list() const {
     return device_buffer_list_;
@@ -700,6 +703,10 @@ class DeviceBufferList {
     return data_.deferred_op();
   }
 
+  [[nodiscard]] xla::Future<void> GetMaterializationFuture() const {
+    return data_.materialization_future();
+  }
+
   // Awaits for the device buffer to be ready to read. If the buffer is the
   // output of computation, then also waits for the computation to be done.
   absl::Status Synchronize() const;
@@ -858,6 +865,12 @@ class DeviceBufferList {
     // Returns nullptr for placeholders, or if the DeviceBufferList::Data is
     // pending materialization or fully materialized.
     absl_nullable std::shared_ptr<DeferredOp> deferred_op() const;
+
+    // Returns the future that will be set when materialization is started or
+    // failed.
+    xla::Future<> materialization_future() const {
+      return materialization_future_;
+    }
 
     // Returns the subgraph for this DeviceBufferList::Data, if it exists.
     // Otherwise, returns nullptr.

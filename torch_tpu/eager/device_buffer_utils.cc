@@ -59,6 +59,7 @@
 #include "torch_tpu/ops/view_decomposition/inversion.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/ops/view_decomposition/view_sequence.h"
+#include "torch_tpu/pjrt/pjrt_state.h"
 
 ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 
@@ -134,6 +135,9 @@ absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
     TT_RETURN_IF_ERROR(Materialize(device_buffer_list,
                                    MaterializationReason::kDebugMode,
                                    MaterializationMode::kFullGraph));
+    for (const auto& result : results) {
+      PjrtBackend::GetInstance().MarkStreamActive(result.GetReadyFuture());
+    }
     if (eager_mode == EagerMode::kDeferNeverAndLaunchBlocking) {
       TT_RETURN_IF_ERROR(device_buffer_list->Synchronize());
     }

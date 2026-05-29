@@ -89,6 +89,40 @@ class SynchronizeTest(absltest.TestCase):
     self.assertTrue(sync.is_ready(x))
     self.assertTrue(sync.is_ready(y))
 
+  def test_synchronize_device_ready_defer_never(self):
+    execution_mode.eager_mode = EagerMode.DEFER_NEVER
+    x = torch.ones(100, 100, device='tpu')
+    y = x + 1.0
+
+    torch.tpu.synchronize()
+    self.assertTrue(sync.is_ready(y))
+
+  def test_synchronize_event_defer_never(self):
+    execution_mode.eager_mode = EagerMode.DEFER_NEVER
+    x = torch.ones(100, 100, device='tpu')
+    y = x + 1.0
+
+    # Record event on current stream (capturing y's ready future)
+    event = torch.tpu.Event()
+    event.record()
+
+    # Synchronizing the event should block until y is ready
+    event.synchronize()
+    self.assertTrue(sync.is_ready(y))
+
+  def test_synchronize_non_default_stream_defer_never(self):
+    execution_mode.eager_mode = EagerMode.DEFER_NEVER
+    s = torch.tpu.Stream()
+
+    with torch.tpu.stream(s):
+      x = torch.ones(100, 100, device='tpu')
+      y = x + 1.0
+
+    # Synchronizing the entire device to ensure the stream's pending futures
+    # are correctly tracked and waited on
+    torch.tpu.synchronize()
+    self.assertTrue(sync.is_ready(y))
+
   def test_sync_with_zero_sized_tensor_on_tpu(self):
     # Create a zero-sized tensor on the TPU.
     tensor = torch.ones(2, 0, 3, dtype=torch.int32, device=torch.device('tpu'))
