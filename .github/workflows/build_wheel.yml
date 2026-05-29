@@ -122,7 +122,7 @@ jobs:
           python3 -m twine upload --repository-url https://us-python.pkg.dev/ml-oss-artifacts-transient/torch-tpu-testing-registry $WHEEL_DIR/torch_tpu-*.whl
 
   test_wheels:
-    name: Test wheel on ${{ matrix.custom_name || matrix.runner }}
+    name: "Test wheel on ${{ matrix.custom_name || matrix.runner }}"
     if: github.event_name != 'schedule'
     needs: build_wheels
     strategy:
