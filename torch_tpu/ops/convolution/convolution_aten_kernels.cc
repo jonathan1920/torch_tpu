@@ -429,8 +429,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> ConvolutionBackward(
       auto results,
       (DispatchOp<3, 3>(
           std::move(op_builder), {grad_output, input, weight},
-          {.op_name = OpName::kConvolutionBackward,
-           .out_dtypes = FixedSizeSpan<const mlir::ElementType, 3>(out_dtypes),
+          {.out_dtypes = FixedSizeSpan<const mlir::ElementType, 3>(out_dtypes),
            .out_dims_list =
                FixedSizeSpan<const absl::Span<const int64_t>, 3>(out_dims_list),
            .op_param_cache_keys = std::move(param_keys)})));

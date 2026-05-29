@@ -95,7 +95,6 @@ std::vector<at::Tensor> PyCallCustomKernel(
         }
 
         DispatchOpOptions<kDynamicSize> options{
-            .op_name = OpName::kCustomKernel,
             .out_dtypes = output_dtypes,
             .out_dims_list = output_dims_list,
             .computation_dtype = std::nullopt,

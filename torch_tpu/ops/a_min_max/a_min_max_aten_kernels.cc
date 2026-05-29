@@ -163,8 +163,7 @@ std::tuple<at::Tensor&, at::Tensor&> AtenAminmaxOut(
         auto result_bufs,
         (DispatchOp<1, 2>(
             absl::bind_front(BuildFusedAMinMaxShlo, reduction_dims, mode), self,
-            {.op_name = OpName::kAminmaxOut,
-             .out_dtypes = {out_dtype, out_dtype},
+            {.out_dtypes = {out_dtype, out_dtype},
              .out_dims_list = {out_dims, out_dims},
              .op_param_cache_keys = std::move(param_keys)})));
 

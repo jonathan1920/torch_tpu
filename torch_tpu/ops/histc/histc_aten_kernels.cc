@@ -202,17 +202,20 @@ at::Tensor& AtenHistcOut(const at::Tensor& self, const int64_t bins,
             return {{min_max_outputs.min, min_max_outputs.max}};
           };
 
+          // Distinguish the bound computation from the main computation
+          // in the dispatcher.
+          const bool compute_bounds = true;
+          TT_ASSIGN_OR_CRASH(  // CRASH_OK
+              auto compute_bounds_param_keys,
+              TT_MAKE_OP_PARAM_CACHE_KEYS(compute_bounds));
+
           TT_ASSIGN_OR_THROW(
               (auto [input_min, input_max]),
-              (DispatchOp<1, 2>(
-                  std::move(op_builder), self,
-                  // Override the op name so that we can distinguish between
-                  // the bounds computation and the actual histogram
-                  // computation.
-                  {.op_name = OpName::kHistcBounds,
-                   .out_dtypes = {mlir_out_dtype, mlir_out_dtype},
-                   .out_dims_list = {Dimensions(), Dimensions()},
-                   .op_param_cache_keys = OpParamCacheKeys::Empty()})));
+              (DispatchOp<1, 2>(std::move(op_builder), self,
+                                {.out_dtypes = {mlir_out_dtype, mlir_out_dtype},
+                                 .out_dims_list = {Dimensions(), Dimensions()},
+                                 .op_param_cache_keys =
+                                     std::move(compute_bounds_param_keys)})));
           TT_THROW_IF_ERROR(
               AssignBufferToAtTensor(std::move(input_min), min_val));
           TT_THROW_IF_ERROR(

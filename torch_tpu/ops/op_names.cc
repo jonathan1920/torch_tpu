@@ -185,10 +185,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "bucketize.Tensor_out";
     case OpName::kCatOut:
       return "cat.out";
-    case OpName::kCdistForward:
-      return "_cdist_forward";
     case OpName::kCdistBackward:
       return "_cdist_backward";
+    case OpName::kCdistForward:
+      return "_cdist_forward";
     case OpName::kCeilOut:
       return "ceil.out";
     case OpName::kClampMaxOut:
@@ -733,8 +733,6 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "hardtanh_";
     case OpName::kHistc:
       return "histc";
-    case OpName::kHistcBounds:
-      return "histc_bounds";
     case OpName::kHistcOut:
       return "histc.out";
     case OpName::kIlshiftScalar:
