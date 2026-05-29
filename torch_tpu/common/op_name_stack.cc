@@ -67,7 +67,6 @@ void OpNameStack::Push(OpName op_name) {
       OpName::kBinCount,
       OpName::kBitwiseLeftShiftTensorOut,
       OpName::kBitwiseRightShiftTensorOut,
-      OpName::kBmm,
       OpName::kCatOut,
       OpName::kComplexOut,
       OpName::kCopyFrom,

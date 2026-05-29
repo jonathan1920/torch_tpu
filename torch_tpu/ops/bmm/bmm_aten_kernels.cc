@@ -114,11 +114,20 @@ absl::StatusOr<DeviceBufferRef> Bmm(const at::Tensor& self,
   return result_buffer;
 }
 
+absl::Status BmmOut(const at::Tensor& self, const at::Tensor& mat2,
+                    at::ScalarType out_dtype, at::Tensor& out,
+                    OpParamCacheKeys param_keys) {
+  TT_RETURN_IF_ERROR(CheckBmmOut(out));
+  TT_ASSIGN_OR_RETURN(auto result_buffer,
+                      Bmm(self, mat2, out_dtype, std::move(param_keys)));
+  return AssignBufferToAtTensor(std::move(result_buffer), out);
+}
+
 }  // namespace
 
 at::Tensor AtenBmmDtype(const at::Tensor& self, const at::Tensor& mat2,
                         at::ScalarType out_dtype) {
-  TT_KERNEL(OpName::kBmm, param_keys, (self, mat2, out_dtype), {
+  TT_KERNEL(OpName::kBmmDtype, param_keys, (self, mat2, out_dtype), {
     TT_ASSIGN_OR_THROW(auto result_buffer,
                        Bmm(self, mat2, out_dtype, std::move(param_keys)));
     return MakeTensor(result_buffer);
@@ -127,19 +136,20 @@ at::Tensor AtenBmmDtype(const at::Tensor& self, const at::Tensor& mat2,
 
 at::Tensor& AtenBmmDtypeOut(const at::Tensor& self, const at::Tensor& mat2,
                             at::ScalarType out_dtype, at::Tensor& out) {
-  TT_KERNEL(OpName::kBmm, param_keys, (self, mat2, out_dtype, out), {
-    TT_THROW_IF_ERROR(CheckBmmOut(out));
-    TT_ASSIGN_OR_THROW(auto result_buffer,
-                       Bmm(self, mat2, out_dtype, std::move(param_keys)));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buffer), out));
+  TT_KERNEL(OpName::kBmmDtypeOut, param_keys, (self, mat2, out_dtype, out), {
+    TT_THROW_IF_ERROR(
+        BmmOut(self, mat2, out_dtype, out, std::move(param_keys)));
     return out;
   });
 }
 
 at::Tensor& AtenBmmOut(const at::Tensor& self, const at::Tensor& mat2,
                        at::Tensor& out) {
-  TT_KERNEL(OpName::kBmm, _, (self, mat2, out),
-            { return AtenBmmDtypeOut(self, mat2, out.scalar_type(), out); });
+  TT_KERNEL(OpName::kBmmOut, param_keys, (self, mat2, out), {
+    TT_THROW_IF_ERROR(
+        BmmOut(self, mat2, out.scalar_type(), out, std::move(param_keys)));
+    return out;
+  });
 }
 
 }  // namespace torch_tpu
