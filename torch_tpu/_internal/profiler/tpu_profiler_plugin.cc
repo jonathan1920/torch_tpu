@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <functional>
 #include <ios>
 #include <memory>
 #include <set>
@@ -45,11 +46,30 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "torch/csrc/profiler/standalone/privateuse1_profiler.h"
+
+// Forward declarations of PrivateUse1ProfilerRegistry marked as weak.
+// This allows compilation against Torch 2.10 (where these don't exist)
+// and safe dynamic loading on Torch 2.10 runtimes (where symbols resolve to
+// null), enabling runtime dispatch without custom compile-time flags.
+//
+// TODO(b/499296481): Remove this weak-linking workaround and revert to
+// including the privateuse1_profiler.h header and using
+// REGISTER_PRIVATEUSE1_PROFILER(TpuProfiler) once PyTorch 2.10 support is
+// dropped and 2.12 is the minimum required version.
+namespace torch::profiler::impl {
+using PrivateUse1ProfilerFactory = std::function<  // STD_FUNCTION_OK
+    std::unique_ptr<libkineto::IActivityProfiler>()>;
+
+class PrivateUse1ProfilerRegistry {
+ public:
+  static __attribute__((weak)) PrivateUse1ProfilerRegistry& instance();
+  __attribute__((weak)) void registerFactory(
+      PrivateUse1ProfilerFactory factory);
+};
+}  // namespace torch::profiler::impl
 #include "torch_tpu/_internal/profiler/xprof_callback_handler.h"
 #include "torch_tpu/common/env_vars.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/utils.h"
 #include "tsl/platform/path.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -306,7 +326,27 @@ void TpuKinetoProfilerSession::processTrace(libkineto::ActivityLogger& logger) {
   // TODO(b/499240330): implement this.
 }
 
-REGISTER_PRIVATEUSE1_PROFILER(
-    TpuProfiler);  // NOLINT(readability-named-parameter)
+namespace {
+
+struct TpuProfilerRegisterer {
+  TpuProfilerRegisterer() {
+    if (torch::profiler::impl::PrivateUse1ProfilerRegistry::instance !=
+        nullptr) {
+      torch::profiler::impl::PrivateUse1ProfilerRegistry::instance()
+          .registerFactory(
+              []() -> std::unique_ptr<libkineto::IActivityProfiler> {
+                return std::make_unique<TpuProfiler>();
+              });
+    } else {
+      ABSL_LOG(INFO) << "PyTorch PrivateUse1ProfilerRegistry not found. "
+                        "Native TPU profiling will be disabled (this is "
+                        "expected on PyTorch < 2.12).";
+    }
+  }
+};
+
+static TpuProfilerRegisterer registerer;
+
+}  // namespace
 
 }  // namespace torch_tpu
