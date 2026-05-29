@@ -374,7 +374,7 @@ class _TorchTpuCompiledExecutable(CompiledArtifact):
     device_module = getattr(torch, device.type)
 
     # Update RNG state as the last argument.
-    generators = [arg for arg in args if isinstance(arg, torch.Generator)]
+    generators = [arg for arg in args if type(arg) is torch.Generator]  # pylint: disable=unidiomatic-typecheck
     if self._updates_default_generator_state:
       generators.append(device_module.default_generators[device.index or 0])
 
