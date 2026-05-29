@@ -174,8 +174,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
                         _.SetPrepend()
                             << "failed to get buffer from argument tensor: "
                             << ToString(tensor));
-    TT_RET_CHECK(buffer_ref.state() != DeviceBufferRefState::kDeferred,
-                 error::kInternal)
+    TT_RET_CHECK(!buffer_ref.is_deferred(), error::kInternal)
         << "argument tensor has deferred ops: " << ToString(tensor);
     ABSL_VLOG(3) << "[ExtractMlirFromGraph] arg_tensor: "
                  << buffer_ref.DebugString();
@@ -189,9 +188,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ExtractMlirFromGraph(
                         _.SetPrepend()
                             << "failed to get buffer from result tensor: "
                             << ToString(tensor));
-    TT_RET_CHECK(buffer_ref.state() != DeviceBufferRefState::kMaterialized,
-                 error::kInternal)
-        << "result tensor is already materialized: " << ToString(tensor);
+    TT_RET_CHECK(!buffer_ref.is_materializing(), error::kInternal)
+        << "result tensor is already materializing: " << ToString(tensor);
     ABSL_VLOG(3) << "[ExtractMlirFromGraph] result_tensor: "
                  << buffer_ref.DebugString();
     result_refs.push_back(std::move(buffer_ref));
@@ -231,7 +229,7 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
                             << "failed to get buffer from argument tensor: "
                             << ToString(tensor));
     ABSL_CHECK(  // CRASH_OK=implies a bug in compile backend if this happens
-        buffer_ref.state() != DeviceBufferRefState::kDeferred)
+        !buffer_ref.is_deferred())
         << "argument tensor has deferred ops: " << ToString(tensor);
     argument_refs.push_back(std::move(buffer_ref));
   }
@@ -245,8 +243,8 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
         _ << "failed to get device buffer from result tensor: "
           << ToString(tensor));
     ABSL_CHECK(  // CRASH_OK=implies a bug in compile backend if this happens
-        buffer_ref.state() != DeviceBufferRefState::kMaterialized)
-        << "result tensor is already materialized: " << ToString(tensor);
+        !buffer_ref.is_materializing())
+        << "result tensor is already materializing: " << ToString(tensor);
     result_refs.push_back(std::move(buffer_ref));
   }
 

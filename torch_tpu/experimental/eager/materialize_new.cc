@@ -499,7 +499,7 @@ absl::Status MaterializationWorker::MaterializeQueue(
     // which is indicated by placeholder inputs.
     bool has_placeholder = false;
     for (const auto& arg : traversal->arguments()) {
-      if (arg.state() == DeviceBufferRefState::kPlaceholder) {
+      if (arg.is_placeholder()) {
         has_placeholder = true;
         break;
       }

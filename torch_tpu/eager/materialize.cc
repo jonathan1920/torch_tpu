@@ -201,21 +201,16 @@ class MaterializationWorker {
       absl::Status no_placeholder_status = absl::OkStatus();
       std::erase_if(all_nodes, [&no_placeholder_status](
                                    const SharedDeviceBufferList& node) {
-        switch (node->state()) {
-          case DeviceBufferRefState::kDeferred:
-            return false;
-          case DeviceBufferRefState::kPlaceholder:
-            no_placeholder_status =
-                TT_ERROR(error::kInternal)
-                << "Materialize was called on a placeholder tensor. This "
-                   "should "
-                   "never happen.\nkPlaceholder tensors should only appear in "
-                   "compiled mode, which should never try to materialize "
-                   "tensors.";
-            return true;
-          case DeviceBufferRefState::kMaterialized:
-            return true;
+        if (node->is_placeholder()) {
+          no_placeholder_status =
+              TT_ERROR(error::kInternal)
+              << "Materialize was called on a placeholder tensor. This "
+                 "should "
+                 "never happen.\nkPlaceholder tensors should only appear in "
+                 "compiled mode, which should never try to materialize "
+                 "tensors.";
         }
+        return !node->is_deferred();
       });
       if (!no_placeholder_status.ok()) {
         return no_placeholder_status;
@@ -380,10 +375,10 @@ absl::Status MaterializeImpl(
   TT_RETURN_IF_ERROR(future.Await()).SetPrepend()
       << "materialization failed with: ";
 
-  // Check that all nodes to materialize have indeed been materialized.
+  // Check that all nodes to materialize have been put into the "pending
+  // materialization" state.
   for (auto& node : nodes_to_materialize) {
-    TT_RET_CHECK(node->state() == DeviceBufferRefState::kMaterialized,
-                 error::kInternal)
+    TT_RET_CHECK(node->is_materializing(), error::kInternal)
         << "Materialization failed for node " << node;
   }
 

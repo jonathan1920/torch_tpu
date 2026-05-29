@@ -101,7 +101,7 @@ absl::StatusOr<absl_nonnull std::unique_ptr<Traversal>> Traversal::Create(
     // If the output node has a deferred op, then we must consider it for the
     // DFS traversal; otherwise, it is an input and we store it as such.
     auto& node = output.device_buffer_list();
-    if (node->state() == DeviceBufferRefState::kDeferred) {
+    if (node->is_deferred()) {
       if (visited_deferred.insert(std::make_pair(node.get(), Color::kGray))
               .second) {
         stack.push(node);
@@ -324,8 +324,7 @@ absl::Status Traversal::ValidateAndReorderArguments(
   // Checks that all provided arguments are non-deferred, are non-duplicates,
   // and marks them as used.
   for (const DeviceBufferRef& input : arguments) {
-    TT_RET_CHECK(input.state() != DeviceBufferRefState::kDeferred,
-                 error::kInvalidArgument)
+    TT_RET_CHECK(!input.is_deferred(), error::kInvalidArgument)
         << "found a deferred argument, which is not allowed: "
         << input.DebugString();
     if (auto it = prev_arguments.find(input); it != prev_arguments.end()) {
@@ -572,7 +571,7 @@ bool IsSimpleNodeTraversal(const Traversal& traversal) {
   absl::Span<const DeviceBufferRef> outputs = traversal.outputs();
   ABSL_CHECK(!outputs.empty());  // CRASH_OK=traversals are nonempty
   const SharedDeviceBufferList& node = outputs[0].device_buffer_list();
-  if (node->state() != DeviceBufferRefState::kDeferred) {
+  if (!node->is_deferred()) {
     return false;
   }
   if (node->size() != outputs.size()) {
@@ -607,21 +606,14 @@ void StreamInputDebug(
     size_t& buffer_index,
     absl::flat_hash_map<DeviceBufferRef, size_t>& buffer_to_index) {
   StreamBufferRefDebug(os, input, buffer_index);
-  switch (input.state()) {
-    case DeviceBufferRefState::kMaterialized:
-      os << " <- input " << arg_index++ << " (materialized)";
-      break;
-    case DeviceBufferRefState::kPlaceholder:
-      os << " <- input " << arg_index++ << " (placeholder)";
-      break;
-    case DeviceBufferRefState::kDeferred:
-      os << " <- input " << arg_index++;
-      {
-        const auto deferred_op = input.deferred_op();
-        ABSL_CHECK(deferred_op);  // CRASH_OK
-        os << " (deferred " << ToString(deferred_op->op_name()) << ")";
-      }
-      break;
+  if (auto deferred_op = input.deferred_op()) {
+    os << " <- input " << arg_index++;
+    ABSL_CHECK(deferred_op);  // CRASH_OK
+    os << " (deferred " << ToString(deferred_op->op_name()) << ")";
+  } else if (input.is_placeholder()) {
+    os << " <- input " << arg_index++ << " (placeholder)";
+  } else {
+    os << " <- input " << arg_index++ << " (materialized)";
   }
   buffer_to_index[input] = buffer_index++;
   os << "\n";
@@ -925,15 +917,10 @@ std::string GraphvizVertexParams(
       os << " ";
     }
     os << ToString(ref.element_type()) << ToString(ref.dimensions());
-    switch (ref.state()) {
-      case DeviceBufferRefState::kMaterialized:
-        os << " (materialized)";
-        break;
-      case DeviceBufferRefState::kPlaceholder:
-        os << " (placeholder)";
-        break;
-      default:
-        break;
+    if (ref.is_placeholder()) {
+      os << " (placeholder)";
+    } else if (ref.is_materializing()) {
+      os << " (materialized)";
     }
     os << "\"]";
   } else {

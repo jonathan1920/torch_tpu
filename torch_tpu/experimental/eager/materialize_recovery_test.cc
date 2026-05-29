@@ -100,7 +100,7 @@ TEST_F(MaterializeRecoveryTest, IndependentTensorsRecoverOnEagerError) {
 
   // Verify that the tensor is created successfully on the main thread
   // (deferred)
-  EXPECT_EQ(ref_x.state(), DeviceBufferRefState::kDeferred);
+  EXPECT_TRUE(ref_x.is_deferred());
 
   // 4. Trigger materialization on x. This dispatches to the background worker
   // queue.
@@ -122,7 +122,7 @@ TEST_F(MaterializeRecoveryTest, IndependentTensorsRecoverOnEagerError) {
                                        /*inputs=*/{}, OpParamCacheKeys::Empty(),
                                        {shape}));
   DeviceBufferRef ref_y = refs_y[0];
-  EXPECT_EQ(ref_y.state(), DeviceBufferRefState::kDeferred);
+  EXPECT_TRUE(ref_y.is_deferred());
 
   // 7. Materialize y. Under our change, since last_status_ was reset to Ok,
   // this is allowed!
@@ -133,7 +133,7 @@ TEST_F(MaterializeRecoveryTest, IndependentTensorsRecoverOnEagerError) {
   absl::Status status_y = BlockOnPendingMaterializations();
   EXPECT_TRUE(status_y.ok())
       << "Independent tensor failed to materialize: " << status_y;
-  EXPECT_EQ(ref_y.state(), DeviceBufferRefState::kMaterialized);
+  EXPECT_TRUE(ref_y.is_materializing());
 
   // 9. VERIFY NATIVE PROMISE ERROR PROPAGATION
   // Even though the global error was reset, accessing x's data or materializing
@@ -166,7 +166,7 @@ TEST_F(MaterializeRecoveryTest, IndependentTensorsRecoverOnEagerError) {
       DeviceBufferList::CreateDeferred(OpName::kAdd, healthy_builder, {ref_x},
                                        OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef ref_z = refs_z[0];
-  EXPECT_EQ(ref_z.state(), DeviceBufferRefState::kDeferred);
+  EXPECT_TRUE(ref_z.is_deferred());
 
   // Materialize z (depends on failed x)
   EXPECT_EQ(Materialize(ref_z, MaterializationReason::kExplicitSync),

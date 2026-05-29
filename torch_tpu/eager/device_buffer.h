@@ -102,25 +102,6 @@
 
 namespace torch_tpu {
 
-// The current evaluation state of a referenced buffer in a DeviceBufferList.
-// The only valid state transition is kDeferred -> kMaterialized, which occurs
-// when a DeferredOp is executed.
-// kMaterialized is an absorbing state. Once the data exists, it is immutable.
-// kPlaceholder DeviceBufferRefs cannot change state; they can be used for
-// compilation, but later executions will use different kMaterialized buffers.
-// TODO(bawilson): rename to DeviceBufferList::DataState as this is no longer
-// ref-specific.
-enum class DeviceBufferRefState {
-  // The reference is to a materialized, ready-to-use PjRtBuffer.
-  kMaterialized,
-  // The reference is to a deferred operation that has not been applied.
-  kDeferred,
-  // The reference represents a tensor for the purposes of compiled mode, but
-  // doesn't actually have any data on-device. All compiled mode leaf inputs
-  // must be placeholders, but eager mode tensors should never be placeholders.
-  kPlaceholder,
-};
-
 enum class OpSplitMode {
   kNone,
 
@@ -285,11 +266,25 @@ class DeviceBufferRef {
   // It should never be used in user-facing error messages.
   [[nodiscard]] std::string DebugString() const;
 
-  // The current state of the referenced buffer, as an enum.
-  [[nodiscard]] DeviceBufferRefState state() const;
+  // Returns true if this DeviceBufferRef is a placeholder.
+  // This will never change state.
+  [[nodiscard]] bool is_placeholder() const;
 
-  // TODO(bawilson): better clarify "materializing" vs "materialized" states
-  [[nodiscard]] bool IsMaterialized() const;
+  // Returns true if this DeviceBufferRef is a deferred op and has not
+  // yet started materialization.
+  [[nodiscard]] bool is_deferred() const;
+
+  // Returns true if this DeviceBufferRef has started materialization.
+  // It may or may not have completed materialization.
+  [[nodiscard]] bool is_materializing() const;
+
+  // Returns true if this DeviceBufferRef is executing.
+  // The execution may or may not have completed.
+  [[nodiscard]] bool is_executing() const;
+
+  // Returns true if this DeviceBufferRef has finished materialization.
+  // It may have succeeded or failed.
+  [[nodiscard]] bool is_materialized() const;
 
   [[nodiscard]] const Shape& shape() const;
 
@@ -683,8 +678,27 @@ class DeviceBufferList {
   // determined.
   absl::StatusOr<size_t> pjrt_buffer_size(int64_t index) const;
 
-  // The current state of the DeviceBufferList, as an enum.
-  [[nodiscard]] DeviceBufferRefState state() const;
+  // Returns true if this DeviceBufferList is a placeholder.
+  // This will never change state.
+  [[nodiscard]] bool is_placeholder() const { return data_.is_placeholder(); }
+
+  // Returns true if this DeviceBufferList is a deferred op and has not
+  // yet started materialization.
+  [[nodiscard]] bool is_deferred() const { return data_.is_deferred(); }
+
+  // Returns true if this DeviceBufferList has started materialization.
+  // It may or may not have completed materialization.
+  [[nodiscard]] bool is_materializing() const {
+    return data_.is_materializing();
+  }
+
+  // Returns true if this DeviceBufferList is executing.
+  // The execution may or may not have completed.
+  [[nodiscard]] bool is_executing() const { return data_.is_executing(); }
+
+  // Returns true if this DeviceBufferList has finished materialization.
+  // It may have succeeded or failed.
+  [[nodiscard]] bool is_materialized() const { return data_.is_materialized(); }
 
   // The logical dimensions of the indexed buffer.
   [[nodiscard]] absl::Span<const int64_t> dimensions(int64_t index) const;
@@ -915,12 +929,31 @@ class DeviceBufferList {
     absl::StatusOr<xla::PjRtBuffer* absl_nonnull> operator[](
         int64_t index) const;
 
-    // Returns the state of the DeviceBufferList::Data.
-    // WARNING: this is an atomic, point-in-time snapshot. Even if this returns
-    // DeviceBufferRefState::kDeferred, any later calls to deferred_op() may
-    // return a nullptr if the DeviceBufferList::Data is being concurrently
-    // materialized.
-    [[nodiscard]] DeviceBufferRefState state() const;
+    // Returns true if this DeviceBufferList::Data is a placeholder.
+    // This will never change state.
+    [[nodiscard]] bool is_placeholder() const { return placeholder_; }
+
+    // Returns true if this DeviceBufferList::Data is a deferred op and has not
+    // yet started materialization.
+    [[nodiscard]] bool is_deferred() const {
+      return !placeholder_ && !materialization_pending_;
+    }
+
+    // Returns true if this DeviceBufferList::Data has started materialization.
+    // It may or may not have completed materialization.
+    [[nodiscard]] bool is_materializing() const {
+      return materialization_pending_;
+    }
+
+    // Returns true if this DeviceBufferList::Data is executing.
+    // The execution may or may not have completed.
+    [[nodiscard]] bool is_executing() const { return materialization_started_; }
+
+    // Returns true if this DeviceBufferList::Data has finished materialization.
+    // It may have succeeded or failed.
+    [[nodiscard]] bool is_materialized() const {
+      return materialization_future_.IsKnownReady();
+    }
 
     // Prints a debug string for the DeviceBufferList::Data into the ostream.
     std::ostream& PrintDebug(std::ostream& os) const;

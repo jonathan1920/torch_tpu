@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <ostream>
 #include <sstream>
@@ -29,6 +30,7 @@
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/hash/hash.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
@@ -184,8 +186,7 @@ void Subgraph::Merge(std::shared_ptr<Subgraph> s1,
   // Push r2's live, leaf nodes onto r1's queue.
   for (auto& weak_node : r2->queue_) {
     if (auto node = weak_node.lock()) {
-      if (node->state() == DeviceBufferRefState::kDeferred &&
-          node->num_child_ops() == 0) {
+      if (node->is_deferred() && node->num_child_ops() == 0) {
         r1->queue_.push_back(std::move(weak_node));
       }
     }
@@ -264,16 +265,6 @@ absl_nonnull std::shared_ptr<Subgraph> SubgraphRegistry::MergeAll() {
 
 std::shared_ptr<Subgraph> Subgraph::Create() {
   return SubgraphRegistry::GetInstance().MakeNewSubgraph();
-}
-
-DeviceBufferRefState DeviceBufferList::Data::state() const {
-  if (placeholder_) {
-    return DeviceBufferRefState::kPlaceholder;
-  } else if (materialization_pending_) {
-    return DeviceBufferRefState::kMaterialized;
-  } else {
-    return DeviceBufferRefState::kDeferred;
-  }
 }
 
 absl_nullable std::shared_ptr<DeferredOp> DeviceBufferList::Data::deferred_op()
@@ -470,8 +461,6 @@ std::string DeviceBufferRef::DebugString() const {
   device_buffer_list_->DebugData(os);
   return os.str();
 }
-
-DeviceBufferRefState DeviceBufferList::state() const { return data_.state(); }
 
 absl::Span<const int64_t> DeviceBufferList::dimensions(int64_t index) const {
   ABSL_CHECK(index >= 0 && index < shapes_.size());  // CRASH_OK
@@ -760,12 +749,24 @@ absl::StatusOr<size_t> DeviceBufferRef::pjrt_buffer_size() const {
   return device_buffer_list_->pjrt_buffer_size(index_);
 }
 
-DeviceBufferRefState DeviceBufferRef::state() const {
-  return device_buffer_list_->state();
+[[nodiscard]] bool DeviceBufferRef::is_placeholder() const {
+  return device_buffer_list_->is_placeholder();
 }
 
-bool DeviceBufferRef::IsMaterialized() const {
-  return state() == DeviceBufferRefState::kMaterialized;
+[[nodiscard]] bool DeviceBufferRef::is_deferred() const {
+  return device_buffer_list_->is_deferred();
+}
+
+[[nodiscard]] bool DeviceBufferRef::is_materializing() const {
+  return device_buffer_list_->is_materializing();
+}
+
+[[nodiscard]] bool DeviceBufferRef::is_executing() const {
+  return device_buffer_list_->is_executing();
+}
+
+[[nodiscard]] bool DeviceBufferRef::is_materialized() const {
+  return device_buffer_list_->is_materialized();
 }
 
 [[nodiscard]] const Shape& DeviceBufferRef::shape() const {

@@ -85,8 +85,7 @@ absl::Status CopyTpuToCpu(const at::Tensor& src, const at::Tensor& dest,
     return MaterializeAndReturn(src, MaterializationReason::kCpuTransfer);
   }());
 
-  ABSL_CHECK_EQ(materialized_src_buf.state(),  // CRASH_OK
-                DeviceBufferRefState::kMaterialized)
+  ABSL_CHECK(materialized_src_buf.is_materializing())  // CRASH_OK
       << "expected materialized buffer after MaterializeAndReturn";
 
   // Fast path: if the destination tensor is fully allocated, contiguous, and

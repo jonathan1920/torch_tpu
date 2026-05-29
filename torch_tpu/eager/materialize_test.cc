@@ -73,10 +73,10 @@ TEST_F(MaterializeTest, MaterializedZeroSizeBufferSuccess) {
   const mlir::ElementType dtype = mlir::ElementType::F32;
   TF_ASSERT_OK_AND_ASSIGN(DeviceBufferRef ref,
                           CreateZeroSizeDeviceBufferRef({0}, dtype));
-  EXPECT_EQ(ref.state(), DeviceBufferRefState::kDeferred);
+  EXPECT_TRUE(ref.is_deferred());
   EXPECT_EQ(Materialize(ref, MaterializationReason::kExplicitSync),
             absl::OkStatus());
-  EXPECT_EQ(ref.state(), DeviceBufferRefState::kMaterialized);
+  EXPECT_TRUE(ref.is_materializing());
 }
 
 TEST_F(MaterializeTest, AddLeafNodes) {
@@ -183,11 +183,11 @@ TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
   // (a leaf node with no tensors would ordinarily be dropped immediately).
   at::Tensor e = MakeTensor(ref_e);
 
-  EXPECT_EQ(ref_a.state(), DeviceBufferRefState::kDeferred);
-  EXPECT_EQ(ref_b.state(), DeviceBufferRefState::kDeferred);
-  EXPECT_EQ(ref_c.state(), DeviceBufferRefState::kDeferred);
-  EXPECT_EQ(ref_d.state(), DeviceBufferRefState::kDeferred);
-  EXPECT_EQ(ref_e.state(), DeviceBufferRefState::kDeferred);
+  EXPECT_TRUE(ref_a.is_deferred());
+  EXPECT_TRUE(ref_b.is_deferred());
+  EXPECT_TRUE(ref_c.is_deferred());
+  EXPECT_TRUE(ref_d.is_deferred());
+  EXPECT_TRUE(ref_e.is_deferred());
 
   // Materialize d. This should trace the entire graph from the leaf nodes
   // c and e.
@@ -195,22 +195,22 @@ TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
             absl::OkStatus());
 
   // a is materialized as it has fanout > 1.
-  EXPECT_EQ(ref_a.state(), DeviceBufferRefState::kMaterialized);
+  EXPECT_TRUE(ref_a.is_materializing());
 
   // b is not materialized; it is only internal to the graph of c, and has
   // neither fanout nor a live Tensor.
-  EXPECT_EQ(ref_b.state(), DeviceBufferRefState::kDeferred);
+  EXPECT_TRUE(ref_b.is_deferred());
 
   // c is materialized by SafeMaterializationRule; it was dispatched before d
   // and has a live Tensor, so it must be materialized.
-  EXPECT_EQ(ref_c.state(), DeviceBufferRefState::kMaterialized);
+  EXPECT_TRUE(ref_c.is_materializing());
 
   // d is materialized because it was the explicit target of Materialize().
-  EXPECT_EQ(ref_d.state(), DeviceBufferRefState::kMaterialized);
+  EXPECT_TRUE(ref_d.is_materializing());
 
   // e is not materialized because it was dispatched after the last required
   // node (d).
-  EXPECT_EQ(ref_e.state(), DeviceBufferRefState::kDeferred);
+  EXPECT_TRUE(ref_e.is_deferred());
 }
 
 TEST(MaterializeCommonTest, GetCompilationMode) {

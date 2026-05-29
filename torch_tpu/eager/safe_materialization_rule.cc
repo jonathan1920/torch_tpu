@@ -48,7 +48,7 @@ GetMaterializationPoints(
 
     if (IsSplitBefore(split_mode)) {
       for (const auto& input : deferred_op->inputs()) {
-        if (input.state() == DeviceBufferRefState::kDeferred) {
+        if (input.is_deferred()) {
           materialization_points.insert(input.device_buffer_list().get());
         }
       }
@@ -120,7 +120,7 @@ void SplitAllMaterializationPoints(
     // Insert any new live edges to deferred ops.
     if (const auto deferred_op = node->deferred_op()) {
       for (const auto& input : deferred_op->inputs()) {
-        if (input.state() == DeviceBufferRefState::kDeferred) {
+        if (input.is_deferred()) {
           live_edges.insert(input.device_buffer_list().get());
         }
       }
