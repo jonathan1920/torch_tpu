@@ -44,22 +44,33 @@
 namespace torch_tpu {
 namespace {
 
+IsUnique ToIsUnique(bool assume_unique) {
+  return assume_unique ? IsUnique::kYes : IsUnique::kNo;
+}
+
+IsInverted ToIsInverted(bool invert) {
+  return invert ? IsInverted::kYes : IsInverted::kNo;
+}
+
 absl::StatusOr<DeviceBufferRef> AtenIsInHelper(const at::Tensor& elements,
                                                const at::Tensor& test_elements,
-                                               bool assume_unique, bool invert,
+                                               IsUnique uniqueness,
+                                               IsInverted inversion,
                                                OpParamCacheKeys& param_keys) {
-  ABSL_VLOG(1) << "AtenIsInHelper assume_unique=" << assume_unique
-               << " invert=" << invert;
+  ABSL_VLOG(3) << "AtenIsInHelper uniqueness="
+               << (uniqueness == IsUnique::kYes ? "true" : "false")
+               << " inversion="
+               << (inversion == IsInverted::kYes ? "true" : "false");
 
   at::ScalarType computation_scalar_type =
       at::promote_types(elements.scalar_type(), test_elements.scalar_type());
   TT_ASSIGN_OR_RETURN(const auto computation_dtype,
                       ConvertTo<mlir::ElementType>(computation_scalar_type));
 
-  auto op_builder = [assume_unique,
-                     invert](FixedSizeSpan<mlir::MlirOp, 2> inputs) {
+  auto op_builder = [uniqueness,
+                     inversion](FixedSizeSpan<mlir::MlirOp, 2> inputs) {
     auto& [elements, test_elements] = inputs;
-    return BuildIsInShlo(elements, test_elements, assume_unique, invert);
+    return BuildIsInShlo(elements, test_elements, uniqueness, inversion);
   };
 
   absl::Span<const int64_t> output_dims = elements.sizes();
@@ -75,23 +86,26 @@ absl::StatusOr<DeviceBufferRef> AtenIsInHelper(const at::Tensor& elements,
 
 absl::StatusOr<DeviceBufferRef> AtenIsInHelper(const at::Tensor& elements,
                                                const at::Scalar& test_element,
-                                               bool assume_unique, bool invert,
+                                               IsUnique uniqueness,
+                                               IsInverted inversion,
                                                OpParamCacheKeys& param_keys) {
-  ABSL_VLOG(1) << "AtenIsInHelper assume_unique=" << assume_unique
-               << " invert=" << invert;
+  ABSL_VLOG(3) << "AtenIsInHelper uniqueness="
+               << (uniqueness == IsUnique::kYes ? "true" : "false")
+               << " inversion="
+               << (inversion == IsInverted::kYes ? "true" : "false");
 
   at::ScalarType computation_scalar_type =
       at::promote_types(elements.scalar_type(), test_element.type());
   TT_ASSIGN_OR_RETURN(const auto computation_dtype,
                       ConvertTo<mlir::ElementType>(computation_scalar_type));
 
-  auto op_builder = [assume_unique, invert, test_element](
+  auto op_builder = [uniqueness, inversion, test_element](
                         mlir::MlirOp elements) -> absl::StatusOr<mlir::MlirOp> {
     mlir::MlirBuilder& builder = elements.getBuilder();
     TT_ASSIGN_OR_RETURN(mlir::MlirOp test_element,
                         MakeConstant(builder, test_element));
     test_element = mlir::stablehlo::Reshape(test_element, {1});
-    return BuildIsInShlo(elements, test_element, assume_unique, invert);
+    return BuildIsInShlo(elements, test_element, uniqueness, inversion);
   };
 
   absl::Span<const int64_t> output_dims = elements.sizes();
@@ -137,9 +151,10 @@ at::Tensor& AtenIsInTensorTensorOut(const at::Tensor& elements,
   TT_KERNEL(
       OpName::kIsInTensorTensorOut, param_keys,
       (elements, test_elements, assume_unique, invert, out), {
-        TT_ASSIGN_OR_THROW(auto result_buf,
-                           AtenIsInHelper(elements, test_elements,
-                                          assume_unique, invert, param_keys));
+        TT_ASSIGN_OR_THROW(
+            auto result_buf,
+            AtenIsInHelper(elements, test_elements, ToIsUnique(assume_unique),
+                           ToIsInverted(invert), param_keys));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });
@@ -152,9 +167,10 @@ at::Tensor& AtenIsInTensorScalarOut(const at::Tensor& elements,
   TT_KERNEL(
       OpName::kIsInTensorScalarOut, param_keys,
       (elements, test_element, assume_unique, invert, out), {
-        TT_ASSIGN_OR_THROW(auto result_buf,
-                           AtenIsInHelper(elements, test_element, assume_unique,
-                                          invert, param_keys));
+        TT_ASSIGN_OR_THROW(
+            auto result_buf,
+            AtenIsInHelper(elements, test_element, ToIsUnique(assume_unique),
+                           ToIsInverted(invert), param_keys));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });

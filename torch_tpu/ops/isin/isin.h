@@ -22,9 +22,22 @@
 
 namespace torch_tpu {
 
+// Specifies whether elements are assumed to be unique to optimize search.
+enum class IsUnique {
+  kNo,
+  kYes,
+};
+
+// Specifies whether matches should be inverted in the final predicate output.
+enum class IsInverted {
+  kNo,
+  kYes,
+};
+
 absl::StatusOr<mlir::MlirOp> BuildIsInShlo(mlir::MlirOp elements,
                                            mlir::MlirOp test_elements,
-                                           bool assume_unique, bool invert);
+                                           IsUnique uniqueness,
+                                           IsInverted inversion);
 
 }  // namespace torch_tpu
 

@@ -30,10 +30,14 @@ namespace torch_tpu {
 
 absl::StatusOr<mlir::MlirOp> BuildIsInShlo(mlir::MlirOp elements,
                                            mlir::MlirOp test_elements,
-                                           bool assume_unique, bool invert) {
-  ABSL_VLOG(1) << "BuildIsInShlo elements=" << elements.ToString()
+                                           IsUnique uniqueness,
+                                           IsInverted inversion) {
+  ABSL_VLOG(3) << "BuildIsInShlo elements=" << elements.ToString()
                << " test_elements=" << test_elements.ToString()
-               << " assume_unique=" << assume_unique << " invert=" << invert;
+               << " uniqueness="
+               << (uniqueness == IsUnique::kYes ? "true" : "false")
+               << " inversion="
+               << (inversion == IsInverted::kYes ? "true" : "false");
   auto& builder = elements.getBuilder();
 
   // TODO: for now we ignore assume_unique. In principle, taking that into
@@ -91,7 +95,7 @@ absl::StatusOr<mlir::MlirOp> BuildIsInShlo(mlir::MlirOp elements,
   auto res =
       mlir::stablehlo::Reduce(builder, cmp, init, reduce_builder, {1})[0];
 
-  if (invert) {
+  if (inversion == IsInverted::kYes) {
     res = mlir::stablehlo::Not(res);
   }
 
