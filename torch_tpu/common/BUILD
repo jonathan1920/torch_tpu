@@ -1037,7 +1037,6 @@ torch_tpu_cc_test(
 )
 
 exports_files([
-    "run_cc_tpu_test.sh",
     "contain.h",
 ])
 
@@ -1047,7 +1046,7 @@ exports_files([
 oss_target(
     sh_test,
     name = "oss_compilation_test",
-    srcs = ["run_cc_tpu_test.sh"],
+    srcs = ["//ci/tools:run_cc_tpu_test.sh"],
     args = ["$(location :compilation_test)"],
     data = [
         ":compilation_test",

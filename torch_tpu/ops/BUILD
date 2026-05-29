@@ -522,7 +522,7 @@ torch_tpu_cc_test(
 oss_target(
     sh_test,
     name = "oss_custom_kernels_test",
-    srcs = ["//torch_tpu/common:run_cc_tpu_test.sh"],
+    srcs = ["//ci/tools:run_cc_tpu_test.sh"],
     args = ["$(location :custom_kernels_test)"],
     data = [
         ":custom_kernels_test",

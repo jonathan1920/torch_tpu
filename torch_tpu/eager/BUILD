@@ -817,7 +817,7 @@ torch_tpu_cc_library(
 oss_target(
     sh_test,
     name = "oss_split_utils_test",
-    srcs = ["//torch_tpu/common:run_cc_tpu_test.sh"],
+    srcs = ["//ci/tools:run_cc_tpu_test.sh"],
     args = ["$(location :split_utils_test)"],
     data = [
         ":split_utils_test",
