@@ -38,15 +38,15 @@ TEST(OpNameStackTest, ScopedOpNamePushesAndPops) {
 }
 
 TEST(OpNameStackTest, NestedScopedOpNamesBehaveAsStack) {
-  ScopedOpName guard1(OpName::kAdd);
-  EXPECT_EQ(OpNameStack::Top(), OpName::kAdd);
+  ScopedOpName guard1(OpName::kAbsOut);
+  EXPECT_EQ(OpNameStack::Top(), OpName::kAbsOut);
 
   {
     ScopedOpName guard2(OpName::kSub);
     EXPECT_EQ(OpNameStack::Top(), OpName::kSub);
   }
 
-  EXPECT_EQ(OpNameStack::Top(), OpName::kAdd);
+  EXPECT_EQ(OpNameStack::Top(), OpName::kAbsOut);
 }
 
 }  // namespace

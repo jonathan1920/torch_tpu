@@ -55,7 +55,6 @@ void OpNameStack::Push(OpName op_name) {
       OpName::kAdaptiveAvgPool2dBackward,
       OpName::kAdaptiveAvgPool3d,
       OpName::kAdaptiveAvgPool3dBackward,
-      OpName::kAdd,
       OpName::kAddRelu_Scalar,
       OpName::kAddRelu_Tensor,
       OpName::kAllOut,
