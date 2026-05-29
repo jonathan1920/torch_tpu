@@ -5030,6 +5030,53 @@ Supported combinations for non-constant padding:
     ):
       torch.nn.functional.softplus(t_complex64)
 
+  def test_softplus_backward_unsupported_dtypes(self):
+    t_bool = torch.ones(2, 2, device=et.device(), dtype=torch.bool)
+    t_int32 = torch.ones(2, 2, device=et.device(), dtype=torch.int32)
+    t_complex64 = torch.ones(2, 2, device=et.device(), dtype=torch.complex64)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""softplus_backward(): expected the input dtype to be floating-point, got bool""",
+        cpu=""""softplus_backward_cpu" not implemented for 'Bool'""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten.softplus_backward(t_bool, t_bool, 1.0, 20.0)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""softplus_backward(): expected the input dtype to be floating-point, got int32""",
+        cpu=""""softplus_backward_cpu" not implemented for 'Int'""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten.softplus_backward(t_int32, t_int32, 1.0, 20.0)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""softplus_backward(): expected the input dtype to be floating-point, got complex64""",
+        cpu=""""softplus_backward_cpu" not implemented for 'ComplexFloat'""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten.softplus_backward(t_complex64, t_complex64, 1.0, 20.0)
+
+  def test_softplus_backward_mismatched_dtypes(self):
+    if et.TEST_MODE.value == "cpu":
+      # CPU pass succeeds and does not raise an exception!
+      grad_float = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+      self_bfloat = torch.ones(2, 2, device=et.device(), dtype=torch.bfloat16)
+      torch.ops.aten.softplus_backward(grad_float, self_bfloat, 1.0, 20.0)
+      return
+
+    # TPU pass raises the strict consistency validation error!
+    grad_float = torch.ones(2, 2, device=et.device(), dtype=torch.float32)
+    self_bfloat = torch.ones(2, 2, device=et.device(), dtype=torch.bfloat16)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""softplus_backward(): expected dtype to be the same across grad_output, self, and grad_input, got grad_output=float32, self=bfloat16, and grad_input=float32""",
+    ):
+      torch.ops.aten.softplus_backward(grad_float, self_bfloat, 1.0, 20.0)
+
   def test_hardtanh_unsupported_complex_dtype(self):
     t = torch.ones(2, device=et.device(), dtype=torch.complex64)
 

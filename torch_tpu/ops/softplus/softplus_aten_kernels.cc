@@ -64,23 +64,24 @@ absl::StatusOr<mlir::MlirOp> BuildSoftplusShlo(mlir::MlirOp input_op,
 }
 
 absl::StatusOr<mlir::MlirOp> BuildSoftplusBackwardShlo(
-    mlir::MlirOp grad_output_op, mlir::MlirOp input_op, const at::Scalar& beta,
-    const at::Scalar& threshold) {
-  auto beta_op = MakeConstantLike(grad_output_op, beta.toDouble());
-  auto threshold_op = MakeConstantLike(grad_output_op, threshold.toDouble());
+    mlir::MlirOp grad_output_op, mlir::MlirOp input_op, mlir::MlirOp beta_op,
+    mlir::MlirOp threshold_op) {
+  TT_ASSIGN_OR_RETURN(
+      (auto [grad_output_bcast, input_bcast, beta_bcast, threshold_bcast]),
+      ApplyBroadcastIfNeeded(grad_output_op, input_op, beta_op, threshold_op));
 
   // grad_output * z / (z + 1.0), where z = (x * beta).exp()
   // Here we use StableHLO.LogisticOp, where Logistic(z) = z / (z + 1.0)
-  auto beta_x = mlir::stablehlo::Mul(input_op, beta_op);
+  auto beta_x = mlir::stablehlo::Mul(input_bcast, beta_bcast);
   auto sigmoid_beta_x = mlir::stablehlo::Logistic(beta_x);
-  auto grad_scaled = mlir::stablehlo::Mul(grad_output_op, sigmoid_beta_x);
+  auto grad_scaled = mlir::stablehlo::Mul(grad_output_bcast, sigmoid_beta_x);
 
   // Threshold judgment: beta * x > threshold
   // If the condition is met, reverts to the linear function
   mlir::MlirOp condition = mlir::stablehlo::Compare(
-      beta_x, threshold_op, mlir::stablehlo::ComparisonDirection::GT);
+      beta_x, threshold_bcast, mlir::stablehlo::ComparisonDirection::GT);
 
-  return mlir::stablehlo::Select(condition, grad_output_op, grad_scaled);
+  return mlir::stablehlo::Select(condition, grad_output_bcast, grad_scaled);
 }
 }  // namespace
 
@@ -108,7 +109,8 @@ at::Tensor& AtenSoftplusOut(const at::Tensor& self, const at::Scalar& beta,
 
         auto op_builder = [](FixedSizeSpan<mlir::MlirOp, 3> inputs)
             -> absl::StatusOr<mlir::MlirOp> {
-          return BuildSoftplusShlo(inputs[0], inputs[1], inputs[2]);
+          auto [self, beta, threshold] = inputs;
+          return BuildSoftplusShlo(self, beta, threshold);
         };
 
         TT_ASSIGN_OR_THROW(
@@ -129,23 +131,47 @@ at::Tensor& AtenSoftplusBackwardGradInput(const at::Tensor& grad_output,
                                           const at::Scalar& beta,
                                           const at::Scalar& threshold,
                                           at::Tensor& grad_input) {
+  auto promoted_beta = PromoteScalar(beta);
+  auto promoted_threshold = PromoteScalar(threshold);
   TT_KERNEL(
       OpName::kSoftplusBackwardGradInput, param_keys,
-      (grad_output, self, beta, threshold, grad_input), {
+      (grad_output, self, promoted_beta, promoted_threshold, grad_input), {
+        TT_CHECK_THROW(
+            !isIntegralType(self.scalar_type(), /*includeBool=*/true) &&
+                !IsComplex(self),
+            error::kUnimplemented)
+            << "expected the input dtype to be floating-point, got "
+            << ToString(self.scalar_type());
+
+        TT_CHECK_THROW(grad_output.scalar_type() == self.scalar_type() &&
+                           grad_input.scalar_type() == self.scalar_type(),
+                       error::kInvalidArgument)
+            << "expected dtype to be the same across grad_output, self, and "
+            << "grad_input, got grad_output="
+            << ToString(grad_output.scalar_type())
+            << ", self=" << ToString(self.scalar_type())
+            << ", and grad_input=" << ToString(grad_input.scalar_type());
+
+        TT_ASSIGN_OR_THROW(const at::Tensor beta_tensor,
+                           promoted_beta.GetTensor(grad_input.scalar_type()));
         TT_ASSIGN_OR_THROW(
-            mlir::ElementType out_dtype,
+            const at::Tensor threshold_tensor,
+            promoted_threshold.GetTensor(grad_input.scalar_type()));
+
+        TT_ASSIGN_OR_THROW(
+            const mlir::ElementType out_dtype,
             ConvertTo<mlir::ElementType>(grad_input.scalar_type()));
 
-        auto op_builder = [beta,
-                           threshold](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+        auto op_builder = [](FixedSizeSpan<mlir::MlirOp, 4> inputs)
             -> absl::StatusOr<mlir::MlirOp> {
-          return BuildSoftplusBackwardShlo(inputs[0], inputs[1], beta,
-                                           threshold);
+          auto [grad_output, self, beta, threshold] = inputs;
+          return BuildSoftplusBackwardShlo(grad_output, self, beta, threshold);
         };
 
         TT_ASSIGN_OR_THROW(
             auto result_buf,
-            DispatchOp<2>(std::move(op_builder), {grad_output, self},
+            DispatchOp<4>(std::move(op_builder),
+                          {grad_output, self, beta_tensor, threshold_tensor},
                           {.out_dtype = out_dtype,
                            .out_dims = CopyIntVector(grad_input.sizes()),
                            .op_param_cache_keys = std::move(param_keys)}));
