@@ -158,6 +158,11 @@ MLCOMPASS_EXECUTION_MODE = flags.DEFINE_enum(
     " otherwise. Only cbuild runs' results are recorded in the dashboards.",
 )
 
+# This limit is enough to measure two steps for fsdp benchmark which is
+# currently the longest running benchmark. Without the limit, the
+# process uploading profile can fail health checks and die.
+_PROFILE_MAX_BYTES = 500 * 1024 * 1024  # 500 MB
+
 PLATFORM_DEVICE_MAP = {
     Platform.GFC_1X1X1: "tpu",
     Platform.GFC_2X2X1: "tpu",
@@ -365,6 +370,7 @@ class XprofContext:
           host_trace_level=3,
           enable_python_tracer=True,
           host_cpu_profile=True,
+          response_max_bytes=_PROFILE_MAX_BYTES,
       )
     return self
 
