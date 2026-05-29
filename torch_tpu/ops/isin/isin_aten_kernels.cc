@@ -19,14 +19,11 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/native/Resize.h"
-#include "ATen/ops/full.h"
 #include "ATen/ops/promote_types.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
@@ -38,7 +35,6 @@
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/isin/isin.h"
 #include "torch_tpu/ops/macros/kernel.h"
-#include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 
 namespace torch_tpu {
@@ -125,23 +121,25 @@ at::Tensor& AtenIsInScalarTensorOut(const at::Scalar& element,
                                     const at::Tensor& test_elements,
                                     bool assume_unique, bool invert,
                                     at::Tensor& out) {
-  TT_KERNEL(OpName::kIsInScalarTensorOut, _,
-            (IgnoreInCacheKey(element, "Legacy usage"), test_elements,
-             IgnoreInCacheKey(assume_unique, "Legacy usage"),
-             IgnoreInCacheKey(invert, "Legacy usage"), out),
-            {
-              at::Tensor wrapper_scalar_tensor =
-                  at::full({}, element).to(test_elements.device());
+  PromotedScalar promoted_element = PromoteScalar(element);
+  TT_KERNEL(
+      OpName::kIsInScalarTensorOut, param_keys,
+      (promoted_element, test_elements, assume_unique, invert, out), {
+        TT_ASSIGN_OR_THROW(at::Tensor element_tensor,
+                           promoted_element.GetTensor());
 
-              // Resize the output tensor to the shape we expect it to be, an
-              // empty tensor for hosting a scalar.
-              Dimensions out_dims = {};
-              at::native::resize_output(out, out_dims);
+        // Resize the output tensor to the shape we expect it to be, an
+        // empty tensor for hosting a scalar.
+        const Dimensions out_dims = {};
+        at::native::resize_output(out, out_dims);
 
-              return AtenIsInTensorTensorOut(wrapper_scalar_tensor,
-                                             test_elements, assume_unique,
-                                             invert, out);
-            });
+        TT_ASSIGN_OR_THROW(auto result_buf,
+                           AtenIsInHelper(element_tensor, test_elements,
+                                          ToIsUnique(assume_unique),
+                                          ToIsInverted(invert), param_keys));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+        return out;
+      });
 }
 
 at::Tensor& AtenIsInTensorTensorOut(const at::Tensor& elements,
@@ -164,13 +162,17 @@ at::Tensor& AtenIsInTensorScalarOut(const at::Tensor& elements,
                                     const at::Scalar& test_element,
                                     bool assume_unique, bool invert,
                                     at::Tensor& out) {
+  PromotedScalar promoted_test_element = PromoteScalar(test_element);
   TT_KERNEL(
       OpName::kIsInTensorScalarOut, param_keys,
-      (elements, test_element, assume_unique, invert, out), {
-        TT_ASSIGN_OR_THROW(
-            auto result_buf,
-            AtenIsInHelper(elements, test_element, ToIsUnique(assume_unique),
-                           ToIsInverted(invert), param_keys));
+      (elements, promoted_test_element, assume_unique, invert, out), {
+        TT_ASSIGN_OR_THROW(at::Tensor test_element_tensor,
+                           promoted_test_element.GetTensor());
+
+        TT_ASSIGN_OR_THROW(auto result_buf,
+                           AtenIsInHelper(elements, test_element_tensor,
+                                          ToIsUnique(assume_unique),
+                                          ToIsInverted(invert), param_keys));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;
       });

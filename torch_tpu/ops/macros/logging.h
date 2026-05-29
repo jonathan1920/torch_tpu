@@ -277,8 +277,6 @@ void CheckScalarInput() {
       kOpName == OpName::kGt ||                          //
       kOpName == OpName::kHistc ||                       //
       kOpName == OpName::kIndexAddOut ||                 //
-      kOpName == OpName::kIsInScalarTensorOut ||         //
-      kOpName == OpName::kIsInTensorScalarOut ||         //
       kOpName == OpName::kLe ||                          //
       kOpName == OpName::kLinalgVectorNormOut ||         //
       kOpName == OpName::kLinspaceOut ||                 //

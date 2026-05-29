@@ -36,15 +36,12 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/eager:tensor_to_buffer",
-        "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops/macros:kernel",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
-        "@stablehlo//:stablehlo_builder",
     ],
 )
 
