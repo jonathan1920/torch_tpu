@@ -223,16 +223,11 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
   }
 
   // Mark all outputs of the split as scheduled/materialized.
-  absl::flat_hash_set<const DeviceBufferList*> marked_materialized;
+  ABSL_VLOG(1) << "[ExecutionTask] Setting " << traversal->outputs().size()
+               << " output buffers as pending materialization";
   for (const auto& output : traversal->outputs()) {
-    if (!marked_materialized.insert(output.device_buffer_list().get()).second) {
-      continue;
-    }
-
-    ABSL_VLOG(1) << "[ExecutionTask] Marking output as materialized: "
-                 << output.device_buffer_list();
-
-    output.device_buffer_list()->SetMaterializationPending();
+    TT_RETURN_IF_ERROR(
+        output.device_buffer_list()->SetAsPendingMaterialization());
   }
 
   std::string task_name;
@@ -254,10 +249,6 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromExecutable(
   // Check that the outputs buffers are valid.
   TT_RETURN_IF_ERROR(VerifyPerNodeOutputs(outputs));
 #endif  // NDEBUG
-
-  for (const auto& output : outputs) {
-    output.device_buffer_list()->SetMaterializationPending();
-  }
 
   // Create a promise/future that is already done using the executable.
   LoadedExecutablePromise promise;

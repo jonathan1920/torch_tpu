@@ -621,9 +621,17 @@ class DeviceBufferList {
   static absl::StatusOr<DeviceBufferRef> CreatePlaceholder(
       Dimensions dimensions, mlir::ElementType element_type);
 
+  // Creates a DeviceBufferList that represents a pending materialized buffer.
+  // This is used to hold the output of calling a precompiled executable, such
+  // as for torch.compile mode.
+  static absl::StatusOr<DeviceBufferRef> CreatePending(
+      Dimensions dimensions, mlir::ElementType element_type);
+
   // Sets the DeviceBufferList to a pending-materialized state.
   // If the DeviceBufferList is already materialized, this is a no-op.
-  void SetMaterializationPending();
+  // Returns an error if the DeviceBufferList is a placeholder, as placeholders
+  // cannot be materialized.
+  absl::Status SetAsPendingMaterialization();
 
   // Sets the DeviceBufferList to a materialized state with the given buffers.
   // Returns an error if the DeviceBufferList is already materialized.
@@ -782,10 +790,15 @@ class DeviceBufferList {
   // DeviceBufferListss should only ever be accessed via DeviceBufferRef, which
   // is returned by the Create* functions.
   //
-  // The buffer is a compiled mode placeholder, representing data that the
-  // compiled executable will expect to be provided as an argument.
-  DeviceBufferList(Dimensions dimensions,
-                   const mlir::ElementType element_type) {
+  // If placeholder is true, the buffer is a compiled mode placeholder,
+  // representing data that the compiled executable will expect to be provided
+  // as an argument.
+  //
+  // If placeholder is false, the buffer is in the pending materialization
+  // state and can later be materialized.
+  DeviceBufferList(Dimensions dimensions, const mlir::ElementType element_type,
+                   bool placeholder)
+      : data_(placeholder) {
     creation_index_ = g_creation_index.fetch_add(1);
     shapes_.emplace_back(std::move(dimensions), element_type);
     ABSL_VLOG(3) << "[DeviceBuffer CONSTRUCTOR (bufferless)] Created. Dims: "
@@ -823,12 +836,15 @@ class DeviceBufferList {
   // fails.
   class Data {
    public:
-    // Creates a placeholder DeviceBufferList::Data.
-    // This can later be materialized, but will never have a DeferredOp.
-    Data() : created_as_placeholder_(true) {
-      auto [promise, future] = xla::MakePromise<void>();
-      materialization_promise_ = std::move(promise);
-      materialization_future_ = std::move(future);
+    // Creates a either a placeholder DeviceBufferList::Data, or a pending
+    // materialization DeviceBufferList::Data.
+    explicit Data(bool placeholder = true)
+        : placeholder_(placeholder), materialization_pending_(!placeholder) {
+      if (materialization_pending_) {
+        auto [promise, future] = xla::MakePromise<void>();
+        materialization_promise_ = std::move(promise);
+        materialization_future_ = std::move(future);
+      }
     }
 
     // Creates a DeviceBufferList::Data with a DeferredOp, which can later be
@@ -872,7 +888,9 @@ class DeviceBufferList {
     // calls will be no-ops.
     // This has no effect if the DeviceBufferList::Data is already fully
     // materialized.
-    void SetMaterializationPending();
+    // Returns an error if called on a placeholder; placeholders cannot be
+    // materialized.
+    absl::Status SetAsPendingMaterialization();
 
     // Marks this DeviceBufferList::Data as having failed to materialize.
     // If the DeviceBufferList::Data has already started materialization (or was
@@ -927,26 +945,27 @@ class DeviceBufferList {
     absl::Status materialization_status_ = absl::OkStatus();
     std::vector<absl_nonnull std::unique_ptr<xla::PjRtBuffer>> buffers_;
 
+    // If the DeviceBufferList::Data was created as a placeholder, it will never
+    // change state, and we don't need to ever acquire a mutex or check any
+    // atomic flags.
+    const bool placeholder_ = false;
+
     // The following flags are used to atomically enforce a one-way "ramp":
     //
-    // (deferred or placeholder) -> materialization pending. The first time this
-    // flag is set, the DeviceBufferList::Data which sets the flag is
-    // responsible for clearing the DeferredOp (not necessary for placeholders).
+    // deferred -> materialization pending. The first time this flag is set, the
+    // DeviceBufferList::Data which sets the flag is responsible for clearing
+    // the DeferredOp.
     //
     // materialization_pending -> (materialized or error). The first time that
     // the materialization_started_ flag is set, the DeviceBufferList::Data
     // which sets the flag is responsible for setting either the buffers_ or
-    // materialization_status_ field (but not both), and then setting the
-    // materialized_ flag and notifying waiters.
+    // materialization_status_ field (but not both), and then fulfilling the
+    // materialization_promise_.
     //
-    // Once materialized_ is set, materialization_status_ and buffers_ can be
-    // read without locking.
+    // Once the materialization_future_ is ready, materialization_status_ and
+    // buffers_ can beread without locking.
 
-    // If the DeviceBufferList::Data was created as a placeholder, it will never
-    // have a DeferredOp, so the mutex never needs to be acquired.
-    const bool created_as_placeholder_ = false;
-
-    // This is set to true by the first caller to SetMaterializationPending.
+    // This is set to true by the first caller to SetAsPendingMaterialization.
     // This first caller is responsible for clearing the DeferredOp (if it
     // exists).
     std::atomic_bool materialization_pending_ = false;
