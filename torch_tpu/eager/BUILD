@@ -132,7 +132,6 @@ torch_tpu_cc_library(
     ],
     deps = [
         ":eager_mode",
-        "//shims/torch/c10/core:base_headers",
         "//shims/torch/c10/util:base_headers",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:context_states",
@@ -189,6 +188,7 @@ torch_tpu_cc_library(
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/flags:flag",

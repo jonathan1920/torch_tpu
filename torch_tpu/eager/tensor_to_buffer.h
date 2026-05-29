@@ -65,6 +65,17 @@
 // or update an existing tensor (using AssignBufferToAtTensor).
 namespace torch_tpu {
 
+// Creates a c10::DataPtr to hold the given DeviceBufferRef on the given
+// PrivateUse1 device index.
+[[nodiscard]] c10::DataPtr MakeDataPtr(DeviceBufferRef buffer_ref,
+                                       int device_idx);
+
+// Delegate responsibility for deleting the DeviceBufferRef to the
+// c10::DataPtr.
+// The DeviceBufferRef* is used as both the "data" and "context" of the
+// c10::DataPtr; this mirrors the semantics of a std::unique_ptr.
+void DeleteDeviceBufferRef(void* ctx_ptr);
+
 // Returns the device buffer for the given tensor's base tensor.
 //
 // Every tensor has a base: for a view tensor, the base is the actual tensor

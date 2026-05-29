@@ -38,7 +38,6 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "c10/core/Allocator.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
@@ -386,17 +385,6 @@ class DeviceBufferRef {
   int64_t index_ = -1;
 };
 
-// Creates a c10::DataPtr to hold the given DeviceBufferRef on the given
-// PrivateUse1 device index.
-[[nodiscard]] c10::DataPtr MakeDataPtr(DeviceBufferRef buffer_ref,
-                                       int device_idx);
-
-// Delegate responsibility for deleting the DeviceBufferRef to the
-// c10::DataPtr.
-// The DeviceBufferRef* is used as both the "data" and "context" of the
-// c10::DataPtr; this mirrors the semantics of a std::unique_ptr.
-void DeleteDeviceBufferRef(void* ctx_ptr);
-
 // A deferred operation, used to back a DeviceBufferList.
 //
 // When aten ops are dispatched through op_dispatcher.h, they may return one or
@@ -737,6 +725,10 @@ class DeviceBufferList {
 
   std::ostream& DebugData(std::ostream& os) const;
 
+  // Increments or decrements the live data pointer count.
+  void IncrementLiveDataPtrs() { live_data_ptrs_++; }
+  void DecrementLiveDataPtrs() { live_data_ptrs_--; }
+
  private:
   // Private constructor for a DeviceBufferList wrapping a single materialized
   // PjRtBuffer.
@@ -824,8 +816,6 @@ class DeviceBufferList {
   // This is incremented by MakeDataPtr and decremented by
   // DeleteDeviceBufferRef, and nowhere else.
   std::atomic_int64_t live_data_ptrs_ = 0;
-  friend c10::DataPtr MakeDataPtr(DeviceBufferRef buffer_ref, int device_idx);
-  friend void DeleteDeviceBufferRef(void* ctx_ptr);
 
   // A DeviceBufferList::Data is the data backing a DeviceBufferList. It is a
   // thread-safe class that allows for deferred ops (or placeholders) to later

@@ -24,6 +24,7 @@
 
 #include "ATen/core/CachingHostAllocator.h"
 #include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -585,6 +586,24 @@ absl::Status MaybeBlockOnPendingMaterializationsNew(const at::Tensor& tensor) {
 }
 
 }  // namespace
+
+void DeleteDeviceBufferRef(void* ctx_ptr) {
+  DeviceBufferRef* const ref_ptr = static_cast<DeviceBufferRef*>(ctx_ptr);
+  if (ref_ptr) {
+    ABSL_VLOG(3) << "[c10::DataPtr deleter] deleting "
+                 << ref_ptr->DebugString();
+    ref_ptr->device_buffer_list()->DecrementLiveDataPtrs();
+  }
+  delete ref_ptr;
+}
+
+c10::DataPtr MakeDataPtr(DeviceBufferRef buffer_ref, const int device_idx) {
+  auto* absl_nonnull const raw_ref_ptr =
+      new DeviceBufferRef(std::move(buffer_ref));
+  raw_ref_ptr->device_buffer_list()->IncrementLiveDataPtrs();
+  return c10::DataPtr(raw_ref_ptr, raw_ref_ptr, DeleteDeviceBufferRef,
+                      c10::Device(GetPrivateUse1DeviceType(), device_idx));
+}
 
 absl::StatusOr<std::vector<DeviceBufferRef>> MaterializeAndReturn(
     absl::Span<const at::Tensor> tensors, MaterializationReason reason) {

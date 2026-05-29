@@ -35,9 +35,6 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "c10/core/Allocator.h"
-#include "c10/core/Device.h"
-#include "c10/core/impl/DeviceGuardImplInterface.h"
 #include "c10/util/accumulate.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/cache_key.h"
@@ -502,28 +499,6 @@ absl::StatusOr<xla::PjRtBuffer* absl_nonnull> DeviceBufferList::AwaitBuffer(
 
 absl_nullable std::shared_ptr<Subgraph> DeviceBufferList::subgraph() const {
   return data_.subgraph();
-}
-
-// Delegate responsibility for deleting the DeviceBufferRef to the
-// c10::DataPtr.
-// The DeviceBufferRef* is used as both the "data" and "context" of the
-// c10::DataPtr; this mirrors the semantics of a std::unique_ptr.
-void DeleteDeviceBufferRef(void* ctx_ptr) {
-  DeviceBufferRef* const ref_ptr = static_cast<DeviceBufferRef*>(ctx_ptr);
-  if (ref_ptr) {
-    ABSL_VLOG(3) << "[c10::DataPtr deleter] deleting "
-                 << ref_ptr->DebugString();
-    ref_ptr->device_buffer_list()->live_data_ptrs_--;
-  }
-  delete ref_ptr;
-}
-
-c10::DataPtr MakeDataPtr(DeviceBufferRef buffer_ref, const int device_idx) {
-  auto* absl_nonnull const raw_ref_ptr =
-      new DeviceBufferRef(std::move(buffer_ref));
-  raw_ref_ptr->device_buffer_list()->live_data_ptrs_++;
-  return c10::DataPtr(raw_ref_ptr, raw_ref_ptr, DeleteDeviceBufferRef,
-                      c10::Device(GetPrivateUse1DeviceType(), device_idx));
 }
 
 std::atomic_uint64_t DeviceBufferList::g_creation_index = 0;
