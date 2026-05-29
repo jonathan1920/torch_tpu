@@ -481,9 +481,7 @@ def _run_distributed_benchmark(
         ),
     )
   else:
-    raise ValueError(
-        f"No worker function for platform: {benchmark_utils.PLATFORM.value}"
-    )
+    raise ValueError(f"No worker function for platform: {platform}")
 
 
 def run_benchmark(

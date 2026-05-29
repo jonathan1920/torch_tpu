@@ -17,6 +17,7 @@ import contextlib
 import dataclasses
 import enum
 import functools
+from importlib import resources
 import math
 import re
 from typing import Any, Callable
@@ -33,10 +34,12 @@ from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import ragged_moe
 from examples.deepseek import model as deepseek_model
 from tests import module_registry
+import transformers
 from transformers import activations
 from transformers.models.bert import modeling_bert
 from transformers.models.qwen3 import configuration_qwen3
 from transformers.models.qwen3 import modeling_qwen3
+from transformers.models.qwen3_5_moe import modeling_qwen3_5_moe
 from transformers.models.qwen3_moe import modeling_qwen3_moe
 
 
