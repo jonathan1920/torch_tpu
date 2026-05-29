@@ -77,7 +77,7 @@ absl::Status SynchronizeAll(WaitOnExecution wait = WaitOnExecution::kNo);
 // Additionally, if the tensor is a view, then this check only reflects the
 // materialization status of the base buffer. The view will always be
 // re-materialized for a device-to-host transfer.
-absl::StatusOr<bool> IsMaterialized(const at::Tensor& tensor);
+absl::StatusOr<bool> IsMaterializing(const at::Tensor& tensor);
 
 // Checks the tensor is both materialized and ready, meaning that it both has
 // a PjRtBuffer and that PjRtBuffer has completed execution.
@@ -85,7 +85,7 @@ absl::StatusOr<bool> IsMaterialized(const at::Tensor& tensor);
 // If the tensor is a view, then this check only reflects the materialization
 // status of the base buffer. The view will always be re-materialized for a
 // device-to-host transfer.
-absl::StatusOr<bool> IsReady(const at::Tensor& tensor);
+absl::StatusOr<bool> IsMaterialized(const at::Tensor& tensor);
 
 // Returns a graphviz compatible representation of the computation graph of the
 // given buffer refs. This traverses backwards from the given buffers through

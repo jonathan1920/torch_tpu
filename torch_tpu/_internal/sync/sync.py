@@ -57,14 +57,14 @@ def synchronize(
     )
 
 
-def is_materialized(tensor: torch.Tensor) -> bool:
-  return _tpu_torch_sync._is_materialized(  # pylint: disable=protected-access
+def is_materializing(tensor: torch.Tensor) -> bool:
+  return _tpu_torch_sync._is_materializing(  # pylint: disable=protected-access
       _maybe_unwrap(tensor)
   )
 
 
-def is_ready(tensor: torch.Tensor) -> bool:
-  return _tpu_torch_sync._is_ready(  # pylint: disable=protected-access
+def is_materialized(tensor: torch.Tensor) -> bool:
+  return _tpu_torch_sync._is_materialized(  # pylint: disable=protected-access
       _maybe_unwrap(tensor)
   )
 

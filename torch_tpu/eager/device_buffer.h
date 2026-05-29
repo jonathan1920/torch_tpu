@@ -288,6 +288,7 @@ class DeviceBufferRef {
   // The current state of the referenced buffer, as an enum.
   [[nodiscard]] DeviceBufferRefState state() const;
 
+  // TODO(bawilson): better clarify "materializing" vs "materialized" states
   [[nodiscard]] bool IsMaterialized() const;
 
   [[nodiscard]] const Shape& shape() const;

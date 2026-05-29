@@ -105,23 +105,23 @@ void PySyncAll(bool wait) {
       SynchronizeAll(wait ? WaitOnExecution::kYes : WaitOnExecution::kNo));
 }
 
+bool PyIsMaterializing(const at::Tensor& tensor) {
+  TT_CHECK_THROW(tensor.device().type() == GetPrivateUse1DeviceType(),
+                 error::kInvalidArgument)
+      << "tensor is not on the PrivateUse1 device";
+  TT_ASSIGN_OR_THROW(bool is_materializing, IsMaterializing(tensor));
+  return is_materializing;
+}
+
 bool PyIsMaterialized(const at::Tensor& tensor) {
   TT_CHECK_THROW(tensor.device().type() == GetPrivateUse1DeviceType(),
                  error::kInvalidArgument)
       << "tensor is not on the PrivateUse1 device";
-  TT_ASSIGN_OR_THROW(bool is_materialized, IsMaterialized(tensor));
-  return is_materialized;
-}
-
-bool PyIsReady(const at::Tensor& tensor) {
-  TT_CHECK_THROW(tensor.device().type() == GetPrivateUse1DeviceType(),
-                 error::kInvalidArgument)
-      << "tensor is not on the PrivateUse1 device";
-  if (!PyIsMaterialized(tensor)) {
+  if (!PyIsMaterializing(tensor)) {
     return false;
   }
-  TT_ASSIGN_OR_THROW(bool is_ready, IsReady(tensor));
-  return is_ready;
+  TT_ASSIGN_OR_THROW(bool is_materialized, IsMaterialized(tensor));
+  return is_materialized;
 }
 
 absl::StatusOr<std::vector<DeviceBufferRef>> GetComputationBuffers(
@@ -191,11 +191,12 @@ PYBIND11_MODULE(_tpu_torch_sync, m) {
         py::doc("Forces a materialization of all TPU tensors, optionally "
                 "waiting for them to be ready."));
 
-  m.def("_is_materialized", &PyIsMaterialized, py::arg("tensor"),
-        py::doc("Checks if the tensor has a materialized PjRtBuffer."));
+  m.def("_is_materializing", &PyIsMaterializing, py::arg("tensor"),
+        py::doc(
+            "Checks if the tensor has started materializing to a PjRtBuffer."));
 
   m.def(
-      "_is_ready", &PyIsReady, py::arg("tensor"),
+      "_is_materialized", &PyIsMaterialized, py::arg("tensor"),
       py::doc("Checks if the tensor has completed execution and is ready to be "
               "copied to CPU."));
 
