@@ -48,6 +48,9 @@ MIN_WARMUP_STEPS = flags.DEFINE_integer(
 POST_WARMUP_STEPS = flags.DEFINE_integer(
     "post_warmup_steps", 10, "Number of post-warmup steps."
 )
+XPROF_STEPS = flags.DEFINE_integer(
+    "xprof_steps", 2, "Number of steps to collect xprof for."
+)
 CAPTURE_OPS = flags.DEFINE_bool(
     "capture_ops", False, "Whether to capture ATen operators and their inputs."
 )
@@ -575,7 +578,8 @@ def _post_warmup_run(
     device memory usage.
   """
 
-  timings = np.zeros(POST_WARMUP_STEPS.value, dtype=np.float64)
+  non_xprof_timings = []
+  xprof_timings = []
   device_utils.reset_peak_memory_stats(_get_device_name(device))
   num_cache_misses = None
   device_name = _get_device_name(device)
@@ -584,38 +588,60 @@ def _post_warmup_run(
 
   # TODO(bbahl): Calculate the number of post warmup steps based on timing
   # information.
-  with XprofContext("post_warmup_run", enable_xprof) as xprof_context:
-    for step in range(POST_WARMUP_STEPS.value):
-      with traceme.TraceMe("Eval", step_num=step):
-        step_input = example_inputs[step] if is_sequence else example_inputs
-        start_time = time.perf_counter()
-        _run_step(
-            benchmark_function,
-            model,
-            step_input,
-            optimizer,
-            device_name,
-            sync_params,
-        )
-        timings[step] = time.perf_counter() - start_time
+  xprof_steps = (
+      min(POST_WARMUP_STEPS.value, XPROF_STEPS.value) if enable_xprof else 0
+  )
+  xprof_context = None
 
-      # Assert that the cache misses are consistent across steps.
-      if not is_sequence:
-        # TODO(unda): Re-introduce a version of this check for bounded dynamism.
-        step_cache_misses = device_utils.cache_miss_count(device_name)
-        if num_cache_misses is None:
-          num_cache_misses = step_cache_misses
-        if step_cache_misses != num_cache_misses:
-          raise RuntimeError(
-              "Cache misses are not consistent across steps; expected"
-              f" {num_cache_misses}, got {step_cache_misses}. This means that"
-              " the model is not fully warmed up after"
-              f" {MAX_WARMUP_STEPS.value} warmup steps. Consider increasing"
-              " the number of warmup steps."
-          )
+  def run_single_step(step, is_profiling_run: bool):
+    nonlocal num_cache_misses, xprof_timings, non_xprof_timings
+    ctx = (
+        traceme.TraceMe("Eval", step_num=step)
+        if is_profiling_run
+        else contextlib.nullcontext()
+    )
+    with ctx:
+      step_input = example_inputs[step] if is_sequence else example_inputs
+      start_time = time.perf_counter()
+      _run_step(
+          benchmark_function,
+          model,
+          step_input,
+          optimizer,
+          device_name,
+          sync_params,
+      )
+      elapsed = time.perf_counter() - start_time
+      if is_profiling_run:
+        xprof_timings.append(elapsed)
+      else:
+        non_xprof_timings.append(elapsed)
+
+    # Assert that the cache misses are consistent across steps.
+    if not is_sequence:
+      # TODO(unda): Re-introduce a version of this check for bounded dynamism.
+      step_cache_misses = device_utils.cache_miss_count(device_name)
+      if num_cache_misses is None:
+        num_cache_misses = step_cache_misses
+      if step_cache_misses != num_cache_misses:
+        raise RuntimeError(
+            "Cache misses are not consistent across steps; expected"
+            f" {num_cache_misses}, got {step_cache_misses}. This means that"
+            " the model is not fully warmed up after"
+            f" {MAX_WARMUP_STEPS.value} warmup steps. Consider increasing"
+            " the number of warmup steps."
+        )
+
+  if xprof_steps > 0:
+    with XprofContext("post_warmup_run", True) as xprof_context:
+      for step in range(xprof_steps):
+        run_single_step(step, is_profiling_run=True)
+
+  for step in range(xprof_steps, POST_WARMUP_STEPS.value):
+    run_single_step(step, is_profiling_run=False)
 
   post_warmup_run_session_xprof_url = None
-  if enable_xprof:
+  if xprof_context and xprof_context.session_id:
     post_warmup_run_session_xprof_url = (
         f"http://xprof/?session_id={xprof_context.session_id}"
     )
@@ -624,22 +650,30 @@ def _post_warmup_run(
   # requires the xprof response for TPU and XLA_CUDA devices, which is only
   # available after the xprof session ends. Memory usage is calculated for TPU
   # and XLA_CUDA devices only when Xprof is enabled.
+  session_id = xprof_context.session_id if xprof_context else None
   memory_usage = device_utils.get_peak_memory_hbm(
-      device_name, xprof_context.session_id, xprof_client
+      device_name, session_id, xprof_client
   )
 
   total_device_time = device_utils.get_max_total_device_time(
-      xprof_context.session_id, xprof_client
+      session_id, xprof_client
   )
 
   avg_device_time = -1.0
-  if total_device_time != -1.0:
-    avg_device_time = total_device_time / POST_WARMUP_STEPS.value
+  if total_device_time != -1.0 and xprof_steps > 0:
+    avg_device_time = total_device_time / xprof_steps
 
-  logging.info("Post Warmup Timings: %s", timings)
+  logging.info("Post Warmup Timings (non-xprof): %s", non_xprof_timings)
+  logging.info("Post Warmup Timings (xprof): %s", xprof_timings)
+
+  if not non_xprof_timings:
+    raise ValueError(
+        "non_xprof_timings is empty. There must be at least one non-profiling"
+        " step to measure post warmup performance."
+    )
 
   return _PostWarmupRunResult(
-      post_warmup_step_time_seconds=np.mean(timings),
+      post_warmup_step_time_seconds=np.mean(non_xprof_timings),
       peak_device_memory_mb=memory_usage,
       post_warmup_run_session_xprof_url=post_warmup_run_session_xprof_url,
       average_post_warmup_device_time_seconds=avg_device_time,
