@@ -28,10 +28,11 @@ permissions:
 jobs:
   run_benchmarks:
     name: Run TorchTPU benchmarks
-    uses: google-ml-infra/actions/.github/workflows/run-benchmarks.yaml@39838909a83f01eb2d61de181ea843bb48ee9269
+    uses: google-ml-infra/actions/.github/workflows/run-benchmarks.yaml@578b24891a0d77f3b3b837008b30835f670e94b6
     with:
       registry_file: "examples/benchmarks/benchmark_registry.pbtxt"
-      ml_actions_ref: "39838909a83f01eb2d61de181ea843bb48ee9269"
+      ml_actions_ref: "578b24891a0d77f3b3b837008b30835f670e94b6"
       publish_metrics: true
       pub_sub_gcp_project_id: "ml-oss-benchmarking-production"
       pub_sub_gcp_topic_id: "private-torch-tpu-prod"
+      runner: "linux-x86-n4-16"
