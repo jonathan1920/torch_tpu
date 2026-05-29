@@ -564,6 +564,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/index:index_aten_kernels",
         "//torch_tpu/ops/index_add:index_add_aten_kernels",
         "//torch_tpu/ops/index_copy:index_copy_aten_kernels",
+        "//torch_tpu/ops/index_fill:index_fill_aten_kernels",
         "//torch_tpu/ops/index_put:index_put_aten_kernels",
         "//torch_tpu/ops/index_reduce:index_reduce_aten_kernels",
         "//torch_tpu/ops/index_select:index_select_aten_kernels",

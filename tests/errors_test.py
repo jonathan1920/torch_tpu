@@ -632,6 +632,60 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
           t, 0, index, source, out=torch.tensor(1, device=et.device())
       )
 
+  def test_index_fill_index_invalid_rank(self):
+    tpu_err = """index_fill_(): expected index to be at most 1-D, got 2-D"""
+    cpu_err = """Index has to be a vector/scalar"""
+    t = torch.ones(2, 2, device=et.device())
+    index = torch.tensor([[0]], device=et.device(), dtype=torch.long)
+
+    # Scalar variant
+    with et.assert_raises_message(RuntimeError, tpu=tpu_err, cpu=cpu_err):
+      t.index_fill_(0, index, 5.0)
+
+    # Tensor variant
+    with et.assert_raises_message(RuntimeError, tpu=tpu_err, cpu=cpu_err):
+      t.index_fill_(0, index, torch.tensor(5.0, device=et.device()))
+
+  def test_index_fill_index_type_not_long(self):
+    tpu_err = """index_fill_(): expected index dtype to be Long, got int32"""
+    cpu_err = """index_fill_(): Expected dtype int64 for index."""
+    t = torch.ones(2, 2, device=et.device())
+    index = torch.tensor([0], device=et.device(), dtype=torch.int)
+    err_type = RuntimeError if et.device().type == "tpu" else IndexError
+
+    # Scalar variant
+    with et.assert_raises_message(err_type, tpu=tpu_err, cpu=cpu_err):
+      t.index_fill_(0, index, 5.0)
+
+    # Tensor variant
+    with et.assert_raises_message(err_type, tpu=tpu_err, cpu=cpu_err):
+      t.index_fill_(0, index, torch.tensor(5.0, device=et.device()))
+
+  def test_index_fill_dim_out_of_range(self):
+    tpu_err = """index_fill_(): Dimension out of range (expected to be in range of [-2, 1], but got 2)"""
+    cpu_err = """Dimension out of range (expected to be in range of [-2, 1], but got 2)"""
+    t = torch.ones(2, 2, device=et.device())
+    index = torch.tensor([0], device=et.device(), dtype=torch.long)
+
+    # Scalar variant
+    with et.assert_raises_message(IndexError, tpu=tpu_err, cpu=cpu_err):
+      t.index_fill_(2, index, 5.0)
+
+    # Tensor variant
+    with et.assert_raises_message(IndexError, tpu=tpu_err, cpu=cpu_err):
+      t.index_fill_(2, index, torch.tensor(5.0, device=et.device()))
+
+  def test_index_fill_value_tensor_not_0d(self):
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""index_fill_(): expected value to be a 0-D tensor, got 1-D tensor""",
+        cpu="""index_fill_ only supports a 0-dimensional value tensor, but got tensor with 1 dimension(s).""",
+    ):
+      t = torch.ones(2, 2, device=et.device())
+      index = torch.tensor([0], device=et.device(), dtype=torch.long)
+      value = torch.tensor([5.0], device=et.device())
+      t.index_fill_(0, index, value)
+
   def test_fill_with_incorrect_shape_0_dim(self):
     self.do_test_fill_with_incorrect_shape([1])
 

@@ -389,6 +389,8 @@ enum class OpName {
   kIndexAdd,
   kIndexAddOut,
   kIndexCopyOut,
+  kIndexFillIntScalar,
+  kIndexFillIntTensor,
   kIndexPutImpl_,
   kIndexReduceOut,
   kIndexSelect,

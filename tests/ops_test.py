@@ -2783,6 +2783,9 @@ class TestOps(TorchTpuTestBase):
         check_grad=False,
     )
 
+  def test_index_fill(self):
+    self.do_test_op("index_fill")
+
   def test_index_put(self):
     self.do_test_op("index_put")
 
