@@ -65,6 +65,7 @@
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_fwd_f32_causal_mlir_embed.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/kernels/sdpa_fwd_f32_non_causal_mlir_embed.h"
 #include "torch_tpu/ops/scaled_dot_product_attention/scaled_dot_product_attention_shlo.h"
+#include "torch_tpu/ops/view_decomposition/contiguous_to_view.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 
 namespace torch_tpu {
@@ -192,12 +193,15 @@ absl::StatusOr<at::Tensor> ScaledDotProductFusedAttentionImpl(
                                             .SetParam("scale", scale));
 
   TT_ASSIGN_OR_RETURN(
-      auto results,
+      auto result,
       DispatchOp<3>(std::move(op_builder), {query, key, value},
                     {.out_dtype = out_dtype,
                      .out_dims = out_dims,
                      .op_param_cache_keys = std::move(param_keys)}));
-  return MakeTensor(std::move(results));
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor strided_result,
+      ContiguousToView(result, query.strides(), query.storage_offset()));
+  return strided_result;
 }
 
 absl::StatusOr<std::tuple<at::Tensor, at::Tensor, at::Tensor>>
@@ -271,9 +275,17 @@ ScaledDotProductFusedAttentionBackwardImpl(
            .out_dims_list = {query.sizes(), key.sizes(), value.sizes()},
            .op_param_cache_keys = std::move(param_keys)})));
 
-  return std::make_tuple(MakeTensor(std::move(results[0])),
-                         MakeTensor(std::move(results[1])),
-                         MakeTensor(std::move(results[2])));
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor strided_grad_query,
+      ContiguousToView(results[0], query.strides(), query.storage_offset()));
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor strided_grad_key,
+      ContiguousToView(results[1], key.strides(), key.storage_offset()));
+  TT_ASSIGN_OR_RETURN(
+      at::Tensor strided_grad_value,
+      ContiguousToView(results[2], value.strides(), value.storage_offset()));
+  return std::make_tuple(strided_grad_query, strided_grad_key,
+                         strided_grad_value);
 }
 
 bool IsSupportedFlashAttentionShape(const at::Tensor& query,

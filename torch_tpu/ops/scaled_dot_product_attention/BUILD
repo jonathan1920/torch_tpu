@@ -53,6 +53,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/scaled_dot_product_attention/kernels:sdpa_fwd_bf16_non_causal_mlir_embed",
         "//torch_tpu/ops/scaled_dot_product_attention/kernels:sdpa_fwd_f32_causal_mlir_embed",
         "//torch_tpu/ops/scaled_dot_product_attention/kernels:sdpa_fwd_f32_non_causal_mlir_embed",
+        "//torch_tpu/ops/view_decomposition:contiguous_to_view",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",

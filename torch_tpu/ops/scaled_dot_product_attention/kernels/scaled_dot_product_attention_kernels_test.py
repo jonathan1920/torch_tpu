@@ -19,6 +19,7 @@ from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
 import numpy as np
+import torch
 from torch_tpu.ops.scaled_dot_product_attention.kernels import scaled_dot_product_attention_kernels as kernels
 
 ALL_ONES_Q = False
@@ -243,6 +244,46 @@ class ScaledDotProductAttentionGenerateTest(parameterized.TestCase):
           ),
           kernel_type=KERNEL_TYPE,
       )
+
+  @parameterized.parameters(
+      torch.nn.attention.SDPBackend.FLASH_ATTENTION,
+      torch.nn.attention.SDPBackend.OVERRIDEABLE,
+  )
+  def test_forward_backward_compile(self, backend):
+    num_heads = 8
+    head_dim = 128
+    seq_len = 512
+    batch_size = 1
+    embed_dim = num_heads * head_dim
+
+    def fn(x):
+      # We do this attention style reshape-transpose to expose any issues with
+      # the striding of the result tensors.
+      def reshape_for_attention(x):
+        reshaped = x.reshape(x.shape[0], x.shape[1], num_heads, -1)
+        return reshaped.transpose(1, 2)
+
+      q = reshape_for_attention(x)
+      k = reshape_for_attention(x)
+      v = reshape_for_attention(x)
+
+      with torch.nn.attention.sdpa_kernel(backend):
+        out = torch.nn.functional.scaled_dot_product_attention(q, k, v)
+
+      result = out.transpose(1, 2).reshape(out.shape[0], out.shape[1], -1)
+      result.sum().backward()
+
+      return out, x.grad
+
+    fn_compiled = torch.compile(fn, backend="tpu", dynamic=False)
+
+    hidden_state = torch.ones(batch_size, seq_len, embed_dim).tpu()
+    hidden_state.requires_grad_(True)
+    out, grad = fn_compiled(hidden_state)
+
+    # Simply materialize the tensors to check it correctly compiles and runs.
+    out.cpu()
+    grad.cpu()
 
 
 if __name__ == "__main__":

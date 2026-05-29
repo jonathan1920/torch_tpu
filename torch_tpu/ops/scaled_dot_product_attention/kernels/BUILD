@@ -124,6 +124,7 @@ torch_tpu_py_test(
         "//shims/absl_py/logging",
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
         "//torch_tpu",
         "@pypi//jax",
         "@pypi//numpy",
