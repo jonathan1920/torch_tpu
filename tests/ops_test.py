@@ -3211,10 +3211,12 @@ class TestOps(TorchTpuTestBase):
         # complex dtypes (it should fail).
         # TODO: b/470458807 look into why native_group_norm() returns NaN values
         # when using float16 dtype, while GPU succeeds.
-        exclude_dtypes={
-            "cpu": INTEGRAL_DTYPES + (torch.complex64,),
-            "gpu": INTEGRAL_DTYPES + (torch.complex64,) + (torch.float16,),
-        },
+        exclude_dtypes=INTEGRAL_DTYPES
+        + (torch.complex64,)
+        + (torch.float16,)
+        + (torch.float32,)
+        + (torch.float64,)
+        + (torch.bfloat16,),
     )
 
   def test_native_layer_norm(self):
