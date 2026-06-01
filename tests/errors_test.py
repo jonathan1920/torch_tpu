@@ -5635,18 +5635,6 @@ Supported combinations for non-constant padding:
     ):
       torch.tril_indices(3, 3, dtype=torch.float32, device=et.device())
 
-  def test_threshold_backward_unsupported_dtype_complex(self):
-    grad_output = torch.ones(2, device=et.device())
-    self_tensor = torch.tensor([1 + 1j, 2 + 2j], device=et.device())
-
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""threshold_backward(): expected the input dtype not to be complex, got complex64""",
-        cpu=""""threshold_cpu" not implemented for 'ComplexFloat'""",
-        message_reviewed_by="wan",
-    ):
-      torch.ops.aten.threshold_backward(grad_output, self_tensor, 0.5)
-
   def test_silu_unsupported_dtype_int(self):
     t = torch.ones(5, device=et.device(), dtype=torch.int32)
 

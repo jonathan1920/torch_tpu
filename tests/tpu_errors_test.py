@@ -1204,9 +1204,21 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     self_tensor = torch.tensor([True, False], device=et.device())
 
     with et.assert_raises_message(
-        RuntimeError,
-        tpu="""threshold_backward(): bool input dtype is not yet supported""",
-        message_reviewed_by="wan",
+        NotImplementedError,
+        tpu="""threshold_backward(): threshold is not implemented for bool type""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.ops.aten.threshold_backward(grad_output, self_tensor, 0.5)
+
+  # TODO: add support to threshold_backward() for complex input dtype.
+  def test_threshold_backward_unsupported_dtype_complex(self):
+    grad_output = torch.ones(2, device=et.device())
+    self_tensor = torch.tensor([1 + 1j, 2 + 2j], device=et.device())
+
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""threshold_backward(): threshold is not implemented for complex types""",
+        message_reviewed_by="gunhyun",
     ):
       torch.ops.aten.threshold_backward(grad_output, self_tensor, 0.5)
 
