@@ -22,7 +22,7 @@
 namespace torch_tpu {
 
 mlir::stablehlo::Precision GetPrecision() {
-  return GetContextState<mlir::stablehlo::Precision>(
+  return GetContextState<mlir::stablehlo::Precision>().value_or(
       mlir::stablehlo::Precision::DEFAULT);  // EXPLICIT_PRECISION_OK=root usage
 }
 

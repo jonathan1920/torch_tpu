@@ -60,7 +60,8 @@ namespace torch_tpu {
 // Returns the traceback mode in the current context.
 TracebackMode GetTracebackMode() {
   // If there's an override, use it.
-  const auto mode = GetContextState<EnableTracebacksContextState>(std::nullopt);
+  const auto mode =
+      GetContextState<EnableTracebacksContextState>().value_or(std::nullopt);
   if (mode.has_value()) return mode.value();
 
   // Otherwise, use the flag value if set. Read the flag once for consistent

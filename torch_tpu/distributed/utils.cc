@@ -89,6 +89,8 @@ void EnterSpmdSafeRegion() { PushContextState<IsSpmdSafeContextState>(true); }
 
 void ExitSpmdSafeRegion() { PopContextState<IsSpmdSafeContextState>(); }
 
-bool IsSpmdSafe() { return GetContextState<IsSpmdSafeContextState>(false); }
+bool IsSpmdSafe() {
+  return GetContextState<IsSpmdSafeContextState>().value_or(false);
+}
 
 }  // namespace torch_tpu

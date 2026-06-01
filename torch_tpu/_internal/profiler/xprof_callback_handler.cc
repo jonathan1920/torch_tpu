@@ -60,13 +60,15 @@ class XProfObserverContext : public at::ObserverContext {
   // Enable profiling by default if any profiling session is active via global
   // TSL or native PyTorch API. It ensures that PyTorch events are captured even
   // if the user is not using the custom TorchTPU Python context manager.
-  const auto default_state = (tsl::profiler::TraceMe::Active() ||
-                              torch::profiler::impl::profilerEnabled())
-                                 ? ProfilerStatus::kEnabled
-                                 : ProfilerStatus::kDisabled;
+  const auto get_default_state = [] {
+    return (tsl::profiler::TraceMe::Active() ||
+            torch::profiler::impl::profilerEnabled())
+               ? ProfilerStatus::kEnabled
+               : ProfilerStatus::kDisabled;
+  };
 
   // Override the default state with the current thread-local context state.
-  return GetContextState<ProfileContextState>(default_state) ==
+  return GetContextState<ProfileContextState>(get_default_state) ==
          ProfilerStatus::kEnabled;
 }
 

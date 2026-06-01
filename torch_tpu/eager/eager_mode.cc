@@ -43,7 +43,7 @@ static std::atomic<EagerMode>& GetMutableGlobalEagerMode() {
 
 EagerMode GetEagerMode() {
   return GetContextState<EagerModeContextState>(
-      GetMutableGlobalEagerMode().load());
+      [] { return GetMutableGlobalEagerMode().load(); });
 }
 
 void SetEagerMode(const EagerMode mode) {

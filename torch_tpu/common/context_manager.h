@@ -18,6 +18,8 @@
 #define TORCH_TPU_COMMON_CONTEXT_MANAGER_H_
 
 #include <memory>
+#include <optional>
+#include <type_traits>
 #include <utility>
 #include <variant>
 
@@ -29,26 +31,34 @@
 namespace torch_tpu {
 
 namespace internal {
+
 // The ThreadLocalDebugInfo slot to use for TorchTPU context states. For now, we
 // can only use the TEST_INFO slot.
 // TODO(https://github.com/pytorch/pytorch/issues/56027): use a dedicated slot
 // for each type of context manager.
 inline const auto kTpuContextSlot = c10::DebugInfoKind::TEST_INFO;
+
+// Trait that indicates whether T is one of the options for an std::variant
+// type.
+template <typename T, typename Variant>
+inline constexpr bool is_alternative_v = false;
+template <typename T, typename... Args>
+inline constexpr bool is_alternative_v<T, std::variant<Args...>> =
+    (std::is_same_v<T, Args> || ...);
+
 }  // namespace internal
 
 // The state for different types of context managers respectively.
 using ContextManagerState = std::variant<
-    // clang-format off
     // go/keep-sorted start
-    CustomCompilerOptionsContextState,  // The `custom_compiler_options` context manager.
-    EagerModeContextState,              // The `eager_mode` context manager.
-    EnableTracebacksContextState,       // The `enable_tracebacks` context manager.
-    IsSpmdSafeContextState,             // The `spmd_safe` context manager.
-    LayoutContextState,                 // The `layout` context manager.
-    PrecisionContextState,              // The `precision` context manager.
-    ProfileContextState                 // The `profile` context manager.
+    CustomCompilerOptionsContextState,  // for `custom_compiler_options`
+    EagerModeContextState,              // for `eager_mode`
+    EnableTracebacksContextState,       // for `enable_tracebacks`
+    IsSpmdSafeContextState,             // for `spmd_safe`
+    LayoutContextState,                 // for `layout`
+    PrecisionContextState,              // for `precision`
+    ProfileContextState                 // for `profile`
     // go/keep-sorted end
-    // clang-format on
     >;
 
 // A persistent stack node for TorchTPU context managers. Each node contains a
@@ -76,16 +86,21 @@ class ContextManagerNode : public c10::DebugInfoBase {
 };
 
 // Returns the context state of the given type from the current python
-// thread's context. Returns nullptr if no context state of the given type is
-// found.
+// thread's context. Returns nullopt if no context state of the given type
+// is found.
 template <typename T>
-T GetContextState(T default_value) {
+std::optional<T> GetContextState() {
+  // Statically check that T is one of the options for ContextManagerState.
+  static_assert(
+      internal::is_alternative_v<T, ContextManagerState>,
+      "T must be one of the alternative types of ContextManagerState.");
+
   // Traverse nodes in the TorchTPU context state slot until a state of the
   // given type is found.
   const auto* untyped_node =
       c10::ThreadLocalDebugInfo::get(internal::kTpuContextSlot);
   if (untyped_node == nullptr) {
-    return default_value;
+    return std::nullopt;
   }
 
   const auto* node = dynamic_cast<const ContextManagerNode*>(untyped_node);
@@ -97,13 +112,26 @@ T GetContextState(T default_value) {
       return *state;
     }
   }
-  return default_value;
+  return std::nullopt;
+}
+
+// Returns the context state of the given type from the current python
+// thread's context. Returns get_default_value() if no context state of the
+// given type is found.
+template <typename T, typename GetDefaultStateT>
+T GetContextState(GetDefaultStateT get_default_state) {
+  auto maybe_state = GetContextState<T>();
+  return maybe_state.has_value() ? std::move(maybe_state).value()
+                                 : get_default_state();
 }
 
 // Pushes the given context state onto the current python thread's state stack.
 void PushContextStateUntyped(ContextManagerState state);
 template <typename T>
 void PushContextState(T state) {
+  static_assert(
+      internal::is_alternative_v<T, ContextManagerState>,
+      "T must be one of the alternative types of ContextManagerState.");
   PushContextStateUntyped(ContextManagerState(std::move(state)));
 }
 
@@ -111,6 +139,9 @@ void PushContextState(T state) {
 absl_nonnull std::shared_ptr<const ContextManagerNode> PopContextStateUntyped();
 template <typename T>
 void PopContextState() {
+  static_assert(
+      internal::is_alternative_v<T, ContextManagerState>,
+      "T must be one of the alternative types of ContextManagerState.");
   auto node = PopContextStateUntyped();
   const T* state = std::get_if<T>(&node->state());
   ABSL_CHECK(state != nullptr)  // CRASH_OK

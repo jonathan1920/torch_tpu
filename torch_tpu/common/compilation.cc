@@ -568,7 +568,7 @@ static const CustomCompilerOptionsContextState& GetDefaultCompilationContext() {
 
 absl::Status PushCompilerOptionOverrides(CompilerOptionOverrides overrides) {
   auto current_state = GetContextState<CustomCompilerOptionsContextState>(
-      GetDefaultCompilationContext());
+      GetDefaultCompilationContext);
 
   CompilerOptionOverrides merged_overrides =
       current_state->compiler_option_overrides();
@@ -588,7 +588,7 @@ void PopCompilerOptionOverrides() {
 
 UniqueCompileOptions GetCompileOptions(const CompilationMode mode) {
   auto current_state = GetContextState<CustomCompilerOptionsContextState>(
-      GetDefaultCompilationContext());
+      GetDefaultCompilationContext);
   const auto& spec = current_state->compilation_specs().at(mode);
   // Intentionally make a copy as the input `xla::CompileOptions` object is
   // moved into `PjRtClient::CompileAndLoad` for compilation.
@@ -597,7 +597,7 @@ UniqueCompileOptions GetCompileOptions(const CompilationMode mode) {
 
 CompileOptionsKey GetCompileOptionsKey(const CompilationMode mode) {
   auto current_state = GetContextState<CustomCompilerOptionsContextState>(
-      GetDefaultCompilationContext());
+      GetDefaultCompilationContext);
   const auto& spec = current_state->compilation_specs().at(mode);
   return spec.compile_options_key;
 }

@@ -91,9 +91,8 @@ using IsSpmdSafeContextState = bool;
 using CustomCompilerOptionsContextState =
     absl_nonnull std::shared_ptr<const CompilationContext>;
 
-// The state of the `layout` context manager. Null means there's no active
-// layout context.
-using LayoutContextState = absl_nullable std::shared_ptr<const xla::Layout>;
+// The state of the `layout` context manager.
+using LayoutContextState = absl_nonnull std::shared_ptr<const xla::Layout>;
 
 }  // namespace torch_tpu
 
