@@ -472,9 +472,10 @@ absl::Status CheckNotBool(at::TensorList tensors,
 
 absl::Status CheckNotIntegral(at::TensorList tensors,
                               const std::string_view arg_name) {
-  TT_RETURN_IF_ERROR(CheckTensorsNotTypeImpl(tensors, arg_name,
-                                             /* is_type= */ IsIntegral,
-                                             /* type_name= */ "integral"));
+  TT_RETURN_IF_ERROR(
+      CheckTensorsNotTypeImpl(tensors, arg_name,
+                              /* is_type= */ IsIntegral<at::Tensor>,
+                              /* type_name= */ "integral"));
   return absl::OkStatus();
 }
 
@@ -2342,9 +2343,8 @@ std::vector<at::Tensor> AtenForeachSubList(at::TensorList self,
         // Check for invalid input types.
         size_t num_tensors = self.size();
         for (size_t i = 0; i < num_tensors; ++i) {
-          TT_CHECK_THROW(!(c10::isIntegralType(self[i].scalar_type(), true) &&
-                           c10::isIntegralType(other[i].scalar_type(), true) &&
-                           !c10::isIntegralType(alpha.type(), true)),
+          TT_CHECK_THROW(!(IsIntegral(self[i]) && IsIntegral(other[i]) &&
+                           !IsIntegral(alpha)),
                          error::kInvalidArgument)
               << "expected alpha to be integral for integral input tensors, "
                  "got "
@@ -2384,9 +2384,8 @@ void AtenForeachSub_List(at::TensorList self, at::TensorList other,
         // Check for invalid input types.
         size_t num_tensors = self.size();
         for (size_t i = 0; i < num_tensors; ++i) {
-          TT_CHECK_THROW(!(c10::isIntegralType(self[i].scalar_type(), true) &&
-                           c10::isIntegralType(other[i].scalar_type(), true) &&
-                           !c10::isIntegralType(alpha.type(), true)),
+          TT_CHECK_THROW(!(IsIntegral(self[i]) && IsIntegral(other[i]) &&
+                           !IsIntegral(alpha)),
                          error::kInvalidArgument)
               << "expected alpha to be integral for integral input tensors, "
                  "got "

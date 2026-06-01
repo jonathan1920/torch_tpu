@@ -3465,6 +3465,28 @@ Supported combinations for non-constant padding:
     ):
       torch._foreach_sub(self_list, [1, True])
 
+  def test_foreach_sub_int_tensors_float_alpha(self):
+    self_list = [torch.tensor([1, 2], dtype=torch.int32, device=et.device())]
+    other_list = [torch.tensor([3, 4], dtype=torch.int32, device=et.device())]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""foreach_sub(): expected alpha to be integral for integral input tensors, got float64""",
+        cpu="""For integral input tensors, argument alpha must not be a floating point number.""",
+        message_reviewed_by="wan",
+    ):
+      torch._foreach_sub(self_list, other_list, alpha=1.5)
+
+  def test_foreach_sub_inplace_int_tensors_float_alpha(self):
+    self_list = [torch.tensor([1, 2], dtype=torch.int32, device=et.device())]
+    other_list = [torch.tensor([3, 4], dtype=torch.int32, device=et.device())]
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""foreach_sub_(): expected alpha to be integral for integral input tensors, got float64""",
+        cpu="""For integral input tensors, argument alpha must not be a floating point number.""",
+        message_reviewed_by="wan",
+    ):
+      torch._foreach_sub_(self_list, other_list, alpha=1.5)
+
   def test_foreach_sqrt_inplace_integral(self):
     self_list = [
         torch.tensor([1, 4], dtype=torch.int32, device=et.device()),
