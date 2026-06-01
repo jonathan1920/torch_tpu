@@ -32,7 +32,6 @@
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
-#include "ATen/core/Dimname.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -275,9 +274,6 @@ absl::StatusOr<std::string> FormatParamCacheKey(at::Scalar value);
 [[nodiscard]] inline std::string FormatParamCacheKey(
     const at::ScalarType value) {
   return c10::toString(value);
-}
-[[nodiscard]] inline std::string FormatParamCacheKey(const at::Dimname value) {
-  return std::string(value.symbol().toQualString());
 }
 [[nodiscard]] std::string FormatParamCacheKey(c10d::ReduceOp value);
 [[nodiscard]] inline std::string FormatParamCacheKey(

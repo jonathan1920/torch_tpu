@@ -431,10 +431,6 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
   } else if constexpr (std::is_same_v<T, at::SymInt>) {
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "at::SymInt")  // CRASH_OK
         << message();
-  } else if constexpr (std::is_same_v<T, at::DimnameList>) {
-    ABSL_CHECK_EQ(  // CRASH_OK
-        normalized_arg_type_in_func_sig, "at::DimnameList")
-        << message();
   } else if constexpr (std::is_same_v<T, at::Generator>) {
     ABSL_CHECK_EQ(  // CRASH_OK
         normalized_arg_type_in_func_sig, "at::Generator")

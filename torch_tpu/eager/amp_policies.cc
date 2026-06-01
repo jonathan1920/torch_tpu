@@ -313,7 +313,6 @@ TORCH_LIBRARY_IMPL(aten, AutocastPrivateUse1, m) {
   TT_AMP_POLICY(polar, fp32);
   // Note: CPU uses `fp32` for prod, but `prod` supports `fp32_set_opt_dtype`,
   // which is preferred.
-  TT_AMP_POLICY(prod, dim_Dimname, fp32_set_opt_dtype);
   TT_AMP_POLICY(prod, dim_int, fp32_set_opt_dtype);
   TT_AMP_POLICY(prod, fp32_set_opt_dtype);
   TT_AMP_POLICY(qr, fp32);

@@ -20,8 +20,6 @@
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
-#include "ATen/core/Dimname.h"
-#include "ATen/core/symbol.h"
 #include "ATen/ops/empty.h"
 #include "absl/status/statusor.h"
 #include "c10/core/ConstantSymNodeImpl.h"
@@ -347,13 +345,6 @@ TEST(OpParamCacheKeys, SetParamMemoryFormat) {
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(), ElementsAre(Pair("bar", "ChannelsLast3d"),
                                              Pair("foo", "Contiguous")));
-}
-
-TEST(OpParamCacheKeys, SetParamDimname) {
-  auto params_or = *OpParamCacheKeysBuilder().SetParam(
-      "foo", at::Dimname::fromSymbol(at::Symbol::dimname("N")));
-  ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "dimname::N")));
 }
 
 TEST(OpParamCacheKeys, SetParamSymInt) {
