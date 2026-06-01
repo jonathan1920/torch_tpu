@@ -1660,6 +1660,59 @@ def huggingface_diffuser_model_builder(
   return ModelAndInput(model=model, example_inputs=example_inputs)
 
 
+def vjepa_2_model_builder(
+    model_and_input_args: Any,
+    device: torch.device,
+    weights_dtype: torch.dtype,
+    is_training: bool,
+) -> ModelAndInput:
+  """Returns a ModelAndInput for the specified VJEPA-2 model.
+
+  Args:
+      model_and_input_args: The model and input args.
+      device: The device to load the model and inputs on (e.g., 'tpu', 'cuda').
+      weights_dtype: The data type for the model weights (e.g., torch.float32,
+        torch.bfloat16).
+      is_training: Whether the model is in training mode or eval mode.
+
+  Returns:
+      A ModelAndInput dataclass containing the loaded VJEPA-2 model and example
+      inputs.
+  """
+  model_name = model_and_input_args.model_name
+
+  registry = get_module_registry()
+  module_spec = registry.get_module_spec(
+      "transformers",
+      model_name,
+      load_weights=False,
+  )
+  config = module_spec.config
+  input_shape = (
+      model_and_input_args.batch_size,
+      getattr(config, "frames_per_clip", 64),
+      getattr(config, "in_chans", 3),
+      getattr(config, "crop_size", 256),
+      getattr(config, "crop_size", 256),
+  )
+  with torch.device(device), set_default_dtype(weights_dtype):
+    model = module_spec.module_factory()
+    model.apply(_init_model_weights)
+    # Skip module registry for inputs
+    example_inputs = {
+        "pixel_values_videos": torch.randn(input_shape, dtype=weights_dtype),
+    }
+  if not is_training:
+    example_inputs["skip_predictor"] = True
+
+  if is_training:
+    model.train()
+  else:
+    model.eval()
+
+  return ModelAndInput(model=model, example_inputs=example_inputs)
+
+
 def _apply_tensor_parallel_plan(
     module,
     name_prefix="",
