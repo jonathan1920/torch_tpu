@@ -464,6 +464,13 @@ class TransformersProvider(BaseProvider):
         )
       config = modify_config_hook(config)
 
+    # When loading models offline (load_weights=False), some vision models (like
+    # DETR) will still try to download pretrained backbones (e.g. via TIMM)
+    # over the network. Disabling this forces offline initialization with
+    # random weights, avoiding network errors on Forge.
+    if not load_weights and hasattr(config, "use_pretrained_backbone"):
+      config.use_pretrained_backbone = False
+
     if load_weights:
       model_fn = lambda: transformers.AutoModelForCausalLM.from_pretrained(
           str(model_dir_or_repo_id), **kwargs

@@ -43,7 +43,7 @@ _HF_GEMMA_4_26B_A4B_RAGGED_MOE_BENCHMARK_NAME = "hf_gemma_4_26b_ragged_moe"
 _TIMM_RESNET_50_BENCHMARK_NAME = "timm_resnet_50"
 _WAN_2_2_TI2V_5B_BENCHMARK_NAME = "wan_2_2_ti2v_5b"
 _HF_WHISPER_LARGE_V3_BENCHMARK_NAME = "hf_whisper_large_v3"
-
+_DETR_RESNET_50_BENCHMARK_NAME = "detr_resnet_50"
 
 class BenchmarkTest(test_utils.BenchmarkTest):
   """Tests for end-to-end model performance benchmarks."""
@@ -834,6 +834,36 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     self.run_performance_benchmark_test(
         config, _HF_WHISPER_LARGE_V3_BENCHMARK_NAME
     )
+
+  # ============================================================================
+  # 8. DETR Object Detection Family
+  # ============================================================================
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_detr_resnet_50_forward(self, run_mode):
+    """Tests the forward pass of DETR ResNet-50."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_VISION,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="facebook/detr-resnet-50",
+            custom_kwargs={"input_shape": (8, 3, 800, 800)},
+        ),
+        model_and_input_factory=model_utils.huggingface_detr_resnet_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _DETR_RESNET_50_BENCHMARK_NAME)
 
 
 if __name__ == "__main__":

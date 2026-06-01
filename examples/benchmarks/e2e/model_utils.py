@@ -361,6 +361,51 @@ def huggingface_llm_model_builder(
   return ModelAndInput(model=model, example_inputs=example_inputs)
 
 
+def huggingface_detr_resnet_model_builder(
+    model_and_input_args: Any,
+    device: torch.device,
+    weights_dtype: torch.dtype,
+    is_training: bool,
+) -> ModelAndInput:
+  """Returns a ModelAndInput for the specified Hugging Face vision model.
+
+  Args:
+      model_and_input_args: The model and input args. Must contain 'input_shape'
+        in custom_kwargs.
+      device: The device to load the model and inputs on.
+      weights_dtype: The data type for the model weights.
+      is_training: Whether the model is in training mode or eval mode.
+
+  Returns:
+      A ModelAndInput dataclass containing the loaded Hugging Face vision model
+      and example inputs suitable for benchmarking.
+  """
+  model_name = model_and_input_args.model_name
+  input_shape = model_and_input_args.custom_kwargs.get(
+      "input_shape", (1, 3, 800, 800)
+  )
+
+  registry = get_module_registry()
+  module_spec = registry.get_module_spec(
+      "transformers",
+      model_name,
+      load_weights=False,
+  )
+
+  with torch.device(device), set_default_dtype(weights_dtype):
+    model = module_spec.module_factory()
+    example_inputs = {
+        "pixel_values": torch.randn(input_shape, dtype=weights_dtype),
+    }
+
+  if is_training:
+    model.train()
+  else:
+    model.eval()
+
+  return ModelAndInput(model=model, example_inputs=example_inputs)
+
+
 def _init_model_weights(model):
   """Initializes model weights to small random values."""
 

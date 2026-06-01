@@ -235,6 +235,7 @@ class BenchmarkCategory(enum.Enum):
 
   HUGGINGFACE_LLM = "huggingface_llm"
   HUGGINGFACE_DIFFUSER = "huggingface_diffuser"
+  HUGGINGFACE_VISION = "huggingface_vision"
   META_LLAMA = "meta_llama"
   ML_LAYER = "ml_layer"
   TIMM = "timm"
