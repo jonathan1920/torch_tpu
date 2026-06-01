@@ -164,6 +164,8 @@ def _(mo):
         *How compiled graphs are cached and reused*
     *   **[Eager Mode](?file=eager_mode.py)**
         *Guide to Fused Eager execution and debugging modes.*
+    *   **[Precision Management](?file=precision_management.py)**
+        *Guide to controlling floating-point precision on TPU.*
     *   **[Strict SPMD Synchronization](?file=spmd_synchronization.py)**
         *Why all ranks must execute the same graph*
     """)
