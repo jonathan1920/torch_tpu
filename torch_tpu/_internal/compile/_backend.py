@@ -169,10 +169,14 @@ def _serialization_context(enable: bool = False) -> Iterator[list[Any] | None]:
         graph_hash = hashlib.sha256(
             f"{version_prefix}:{aot_forward_graph_str or ''}".encode()
         ).hexdigest()
-        aot_config.cache_info = AOTAutogradCacheInfo(
-            cache_key=f"torchtpu_{graph_hash}",
-            start_time_ns=0,
-            forward_symints=[],
+        object.__setattr__(
+            aot_config,
+            "cache_info",
+            AOTAutogradCacheInfo(
+                cache_key=f"torchtpu_{graph_hash}",
+                start_time_ns=0,
+                forward_symints=[],
+            ),
         )
 
       # TODO: Remove once we bump torch past
@@ -197,7 +201,7 @@ def _serialization_context(enable: bool = False) -> Iterator[list[Any] | None]:
         )
 
       if not has_cache_info:
-        aot_config.cache_info = None
+        object.__setattr__(aot_config, "cache_info", None)
       if entry is not None:
         captured_entry[0] = entry
       return entry
