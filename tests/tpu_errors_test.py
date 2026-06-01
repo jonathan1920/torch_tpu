@@ -1223,19 +1223,6 @@ Please use clone() or contiguous() to copy the tensor before writing""",
       torch.ops.aten.threshold_backward(grad_output, self_tensor, 0.5)
 
   # Why do we run this test only on TPU (and not on CPU)?
-  # PyTorch native devices don't error on sorted=False.
-  # TODO: add support to topk() on sorted=False.
-  def test_topk_unsupported_sorted_false(self):
-    t = torch.ones(2, 2, device=et.device())
-
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""topk(): sorted=False is not yet supported""",
-        message_reviewed_by="wan",
-    ):
-      torch.topk(t, k=1, sorted=False)
-
-  # Why do we run this test only on TPU (and not on CPU)?
   # There are no other available devices on CPU runs, other than CPU.
   def test_acos_out_on_cpu(self):
     t = torch.ones(5, device=et.device())

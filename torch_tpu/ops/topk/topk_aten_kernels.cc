@@ -28,6 +28,7 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/csrc/autograd/generated/variable_factories.h"
 #include "torch_tpu/common/aten_utils.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -47,15 +48,16 @@ std::tuple<at::Tensor&, at::Tensor&> AtenTopKValues(
     at::Tensor& indices) {
   TT_KERNEL(
       OpName::kTopkValues, param_keys,
-      (self, k, dim, largest, sorted, values, indices), {
+      (self, k, dim, largest,
+       IgnoreInCacheKey(sorted, "Does not affect SHLO lowering"), values,
+       indices),
+      {
         int64_t wrapped_dim = 0;
         if (self.dim() > 0) {
           TT_ASSIGN_OR_THROW(wrapped_dim, SafeWrapDim(dim, self.dim()));
         }
 
-        // TODO(b/435537869): Support sorted = false.
-        TT_CHECK_THROW(sorted, error::kInvalidArgument)
-            << "sorted=False is not yet supported";
+        // TODO(b/435537869): Optimize sorted = false.
 
         const auto self_sizes = self.sizes();
         TT_ASSIGN_OR_THROW(const auto elem_type,

@@ -94,6 +94,17 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           )
       )
 
+  def test_topk_sorted_false(self):
+    """Tests torch.topk with sorted=False."""
+    device = torch.device("tpu")
+    t = torch.tensor([[1.0, 5.0, 2.0], [4.0, 3.0, 6.0]], device=device)
+    tpu_values, tpu_indices = torch.topk(t, k=2, sorted=False)
+    golden_values, _ = torch.topk(t, k=2, sorted=True)
+    tpu_values_sorted, _ = torch.sort(tpu_values, descending=True)
+    utils.assert_close(tpu_values_sorted, golden_values)
+    gathered = torch.gather(t, 1, tpu_indices)
+    utils.assert_close(gathered, tpu_values)
+
   def test_max_pool2d_no_indices(self):
     """Tests nn.functional.max_pool2d without indices."""
     device = torch.device("tpu")
