@@ -353,7 +353,8 @@ ExecutionTask::GetCachedExecutables(std::string_view task_name) {
   if (compiled_kernel_.dynamic_kernel_adapter.has_value()) {
     if (compiled_kernel_.dynamic_kernel_adapter->preamble.valid()) {
       absl::StatusOr<SharedLoadedExecutableWithMetadata> preamble =
-          compiled_kernel_.dynamic_kernel_adapter->preamble.get();
+          AdaptXlaError(
+              compiled_kernel_.dynamic_kernel_adapter->preamble.get());
       if (!preamble.ok()) {
         ABSL_VLOG(1) << "[ExecutionTask::Run] Failed to compile "
                         "task_name="
@@ -366,7 +367,7 @@ ExecutionTask::GetCachedExecutables(std::string_view task_name) {
 
   // Get the fixed shape kernel. This should always exist.
   absl::StatusOr<SharedLoadedExecutableWithMetadata> fixed_shape_kernel =
-      compiled_kernel_.fixed_shape_kernel.get();
+      AdaptXlaError(compiled_kernel_.fixed_shape_kernel.get());
   if (!fixed_shape_kernel.ok()) {
     ABSL_VLOG(1) << "[ExecutionTask::Run] Failed to compile "
                     "task_name="
@@ -379,7 +380,8 @@ ExecutionTask::GetCachedExecutables(std::string_view task_name) {
   if (compiled_kernel_.dynamic_kernel_adapter.has_value()) {
     if (compiled_kernel_.dynamic_kernel_adapter->postamble.valid()) {
       absl::StatusOr<SharedLoadedExecutableWithMetadata> postamble =
-          compiled_kernel_.dynamic_kernel_adapter->postamble.get();
+          AdaptXlaError(
+              compiled_kernel_.dynamic_kernel_adapter->postamble.get());
       if (!postamble.ok()) {
         ABSL_VLOG(1) << "[ExecutionTask::Run] Failed to compile "
                         "task_name="

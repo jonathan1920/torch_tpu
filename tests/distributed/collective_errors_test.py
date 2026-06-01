@@ -245,7 +245,7 @@ def run_reduce_scatter_errors() -> None:
   expected_msg = (
       "distributed.reduce_scatter(): length of input tensors list must match"
       f" world size, got {world_size-1} input tensors and"
-      f" {world_size} processes."
+      f" {world_size} processes"
   )
   with et.assert_raises_message(RuntimeError, tpu=expected_msg):
     torch.distributed.reduce_scatter(output, inputs)

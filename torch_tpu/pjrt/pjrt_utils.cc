@@ -69,7 +69,7 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
     return TT_ERROR(error::kInvalidArgument)
            << "Backing tensor that was given is not matching the received "
               "host_data "
-              "pointer.";
+              "pointer";
   }
 
   const xla::PrimitiveType type = ConvertTo<xla::PrimitiveType>(element_type);
@@ -82,9 +82,9 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
   xla::PjRtDevice* const device = PjrtBackend::GetInstance().GetDevice();
 
   TT_RET_CHECK(client != nullptr, error::kFailedPrecondition)
-      << "PjRt client not initialized in TpuMallocAndMemcpyHtoD.";
+      << "PjRt client not initialized in TpuMallocAndMemcpyHtoD";
   TT_RET_CHECK(device != nullptr, error::kFailedPrecondition)
-      << "PjRt device not initialized in TpuMallocAndMemcpyHtoD.";
+      << "PjRt device not initialized in TpuMallocAndMemcpyHtoD";
 
   int64_t num_elements = 1;
   if (dimensions.empty() && type != xla::TUPLE) {
@@ -99,7 +99,7 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
   TT_ASSIGN_OR_RETURN(xla::PjRtMemorySpace* const memory_space,
                       device->default_memory_space());
   TT_RET_CHECK(memory_space != nullptr, error::kInternal)
-      << "Default memory space is null.";
+      << "Default memory space is null";
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] Got memory space: "
                << memory_space->DebugString();
 
@@ -141,7 +141,7 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
 
   TT_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::PjRtBuffer> buffer,
-      client->BufferFromHostBuffer(
+      AdaptXlaError(client->BufferFromHostBuffer(
           effective_host_data,
 
           type, dimensions, std::nullopt, semantics,
@@ -154,7 +154,7 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
               backing_tensor.reset();
             }
           },
-          memory_space, layout_ptr));
+          memory_space, layout_ptr)));
 
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] "
                   "client->BufferFromHostBuffer SUCCEEDED.";
@@ -166,7 +166,7 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
   if (!keep_host_data_alive) {
     ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] No backing tensor, "
                     "blocking on future.";
-    TT_RETURN_IF_ERROR(future.Await());
+    TT_RETURN_IF_ERROR(AdaptXlaError(future.Await()));
   } else {
     ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] Backing tensor present, "
                     "creating DeviceBufferRef and marking stream active.";
@@ -210,7 +210,7 @@ absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref,
   TT_ASSIGN_OR_RETURN(
       auto* buffer, buffer_ref.AwaitBuffer(),
       _ << " - TpuMemcpyDtoH: DeviceBufferRef has nonzero size, "
-           "but does not have a PjRtBuffer to copy from.");
+           "but does not have a PjRtBuffer to copy from");
 
   ABSL_VLOG(1) << "[TpuMemcpyDtoH] PjRtBuffer Details - OnDeviceSizeInBytes: "
                << buffer->GetOnDeviceSizeInBytes()
@@ -229,7 +229,7 @@ absl::StatusOr<at::Tensor> TpuMemcpyDtoH(const DeviceBufferRef& buffer_ref,
   auto future = buffer->ToLiteral(literal.get());
   {
     tsl::profiler::TraceMe trace_await("TpuMemcpyDtoH::Await");
-    TT_RETURN_IF_ERROR(future.Await());
+    TT_RETURN_IF_ERROR(AdaptXlaError(future.Await()));
   }
   return cpu_tensor_receiver;
 }
@@ -244,7 +244,7 @@ absl::Status TpuMemcpyDtoHDirect(const DeviceBufferRef& buffer_ref,
   TT_ASSIGN_OR_RETURN(
       auto* buffer, buffer_ref.AwaitBuffer(),
       _ << " - TpuMemcpyDtoHDirect: DeviceBufferRef has nonzero size, "
-           "but does not have a PjRtBuffer to copy from.");
+           "but does not have a PjRtBuffer to copy from");
 
   absl::Span<const int64_t> buffer_expected_dims = buffer_ref.dimensions();
   xla::Shape xla_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
@@ -264,7 +264,7 @@ absl::Status TpuMemcpyDtoHDirect(const DeviceBufferRef& buffer_ref,
     PjrtBackend::GetInstance().MarkStreamActive(future);
     return absl::OkStatus();
   } else {
-    return future.Await();
+    return AdaptXlaError(future.Await());
   }
 }
 
@@ -280,11 +280,11 @@ absl::StatusOr<PjRtBufferPointers> Execute(
 
   TT_ASSIGN_OR_RETURN(std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>
                           results_per_device,
-                      executable->GetLoadedExecutable()->Execute(
-                          execution_arguments, execute_options));
+                      AdaptXlaError(executable->GetLoadedExecutable()->Execute(
+                          execution_arguments, execute_options)));
 
   TT_RET_CHECK(!results_per_device.empty(), error::kInternal)
-      << "XLA execution did not return any results.";
+      << "XLA execution did not return any results";
 
   PjRtBufferPointers result_pointers;
   result_pointers.reserve(results_per_device[0].size());

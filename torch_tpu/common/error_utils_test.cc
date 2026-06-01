@@ -22,6 +22,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -1336,24 +1337,14 @@ class ScopedLogSink {
   absl::LogSink* sink_;
 };
 
-TEST(ErrorMessageGuidelinesWarningTest, NonAlphaNumTrailingChar) {
-  TestLogSink sink;
-  ScopedLogSink scoped_sink(&sink);
-
-  EXPECT_THROW(ThrowWithMessage("dimension size negative."), c10::Error);
-
-  ASSERT_EQ(sink.warnings.size(), 1);
-  EXPECT_THAT(sink.warnings[0], HasSubstr("end with an alpha-numeric"));
+TEST(ErrorMessageGuidelinesDeathTest, NonAlphaNumTrailingChar) {
+  EXPECT_DEATH(ThrowWithMessage("dimension size negative."),
+               HasSubstr("end with either an alpha-numeric"));
 }
 
-TEST(ErrorMessageGuidelinesWarningTest, NonAlphaNumTrailingMultiChar) {
-  TestLogSink sink;
-  ScopedLogSink scoped_sink(&sink);
-
-  EXPECT_THROW(ThrowWithMessage("dimension size negative..."), c10::Error);
-
-  ASSERT_EQ(sink.warnings.size(), 1);
-  EXPECT_THAT(sink.warnings[0], HasSubstr("end with an alpha-numeric"));
+TEST(ErrorMessageGuidelinesDeathTest, NonAlphaNumTrailingMultiChar) {
+  EXPECT_DEATH(ThrowWithMessage("dimension size negative..."),
+               HasSubstr("end with either an alpha-numeric"));
 }
 
 TEST(ErrorMessageGuidelinesWarningTest, InvalidExpectedGotFormat) {

@@ -128,6 +128,20 @@ void CheckDeviceIsTpu(c10::optional<at::Device> device_opt,
 // TODO(wan): use a more robust mechanism to detect XLA OOM errors.
 [[nodiscard]] bool IsXlaOomError(const absl::Status& status);
 
+// Adapts an OpenXLA error status by checking if its error message ends with a
+// trailing period, and removing it if so. Returns the adapted status.
+absl::Status AdaptXlaError(absl::Status status);
+
+// Overload for adapting an absl::StatusOr containing an OpenXLA function
+// result.
+template <typename T>
+absl::StatusOr<T> AdaptXlaError(absl::StatusOr<T> status_or) {
+  if (status_or.ok()) {
+    return status_or;
+  }
+  return AdaptXlaError(std::move(status_or).status());
+}
+
 // Formats the given number of items. E.g.
 //   FormatCount(1, "tensor", "tensors") -> "1 tensor"
 //   FormatCount(2, "tensor", "tensors") -> "2 tensors"

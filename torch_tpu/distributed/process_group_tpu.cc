@@ -479,7 +479,7 @@ ProcessGroupTpu::ProcessGroupTpu(c10::intrusive_ptr<c10d::Store> store,
   // Addressable device "assigned" to this process/rank:
   TT_CHECK_THROW(pjrt_client && pjrt_client->addressable_devices().size() == 1,
                  error::kInternal)
-      << "expected exactly one TPU device per PyTorch process.";
+      << "expected exactly one TPU device per PyTorch process";
   addressable_device_id_ =
       pjrt_client->addressable_devices()[0]->global_device_id().value();
 
@@ -549,7 +549,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allreduce(
     // TODO(vladbelous): Implement support for multiple input/output
     // tensors:
     TT_CHECK_THROW(tensors.size() == 1, error::kUnimplemented)
-        << "does not yet support multiple tensors.";
+        << "does not yet support multiple tensors";
 
     at::Tensor& tensor = tensors[0];
 
@@ -603,7 +603,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::broadcast(
               // python-side of the API doesn't actually directly expose
               // multi-tensor variant. Revisit this later.
               TT_CHECK_THROW(tensors.size() == 1, error::kInvalidArgument)
-                  << "single tensor expected, but got multiple tensors.";
+                  << "single tensor expected, but got multiple tensors";
               auto& tensor = tensors[0];
 
               if (src_dev_id != cur_dev_id) {
@@ -735,7 +735,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allgather(
                          // single-element input lists.
             input_tensors.size() == 1 && output_tensors.size() == 1,
             error::kUnimplemented)
-            << "multiple input tensors not supported.";
+            << "multiple input tensors not supported";
 
         auto& input_tensor = input_tensors[0];
         std::vector<at::Tensor>& output_tensor_list = output_tensors[0];
@@ -1115,9 +1115,9 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter(
         // NOTE: Python side API only exposes single-element reduce_scatter op.
         // Same validation is done in NCCL backend.
         TT_CHECK_THROW(input_tensors.size() == 1, error::kUnimplemented)
-            << "multiple input tensor lists not supported.";
+            << "multiple input tensor lists not supported";
         TT_CHECK_THROW(output_tensors.size() == 1, error::kUnimplemented)
-            << "multiple output tensor lists not supported.";
+            << "multiple output tensor lists not supported";
 
         std::vector<at::Tensor>& inputs = input_tensors[0];
         at::Tensor& output = output_tensors[0];
@@ -1125,7 +1125,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter(
         TT_CHECK_THROW(inputs.size() == getSize(), error::kInvalidArgument)
             << "length of input tensors list must match "
             << "world size, got " << inputs.size() << " input tensors and "
-            << getSize() << " processes.";
+            << getSize() << " processes";
 
         // NOTE: NCCL does support this case, but is doing that by running a
         // sequence of world_size separate reduce calls (coalesced). Revisit

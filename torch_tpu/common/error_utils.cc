@@ -30,7 +30,6 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
-#include "absl/algorithm/container.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/numeric/int128.h"
@@ -219,8 +218,19 @@ absl::Status StartsWithNonUppercaseLetter(const std::string_view message) {
 //   - The error message must not be empty.
 //   - The error message must not end with whitespace.
 //
-// The last character of `message` should be alphanumeric.
-absl::Status EndsWithAlphaNum(const std::string_view message) {
+// The last character of `message` should be either alphanumeric or other
+// allowed characters (see kAllowedCharacters).
+absl::Status EndsWithAlphaNumAndAllowedCharacters(
+    const std::string_view message) {
+  // Each character allowed to appear at the end must have a following
+  // explanation.
+  //   - ']': covers error messages ending with lists and shapes
+  //   - ')': covers error messages ending with tuples and actual parenthesis
+  //   - '}': covers error messages ending with shapes in braces
+  //   - "'": covers error messages ending with quoted devices or arbitrary
+  //          strings (e.g. 'tpu')
+  constexpr std::string_view kAllowedCharacters = "])}'";
+
   ABSL_CHECK(  // CRASH_OK
       !message.empty())
       << kPreconditionViolatedError;
@@ -229,20 +239,23 @@ absl::Status EndsWithAlphaNum(const std::string_view message) {
       << kPreconditionViolatedError;
 
   // Find the suffix of non-alphanumeric characters.
-  auto last_alnum_it =
-      std::find_if(message.rbegin(), message.rend(), absl::ascii_isalnum);
-  const size_t non_alnum_suffix_start_pos =
-      message.size() - std::distance(last_alnum_it.base(), message.end());
-  const std::string_view non_alnum_suffix =
-      message.substr(non_alnum_suffix_start_pos);
+  auto is_character_allowed = [kAllowedCharacters](const char c) {
+    return absl::ascii_isalnum(c) || absl::StrContains(kAllowedCharacters, c);
+  };
+
+  auto last_allowed_char_it =
+      std::find_if(message.rbegin(), message.rend(), is_character_allowed);
+  const size_t not_allowed_suffix_size =
+      std::distance(last_allowed_char_it.base(), message.end());
 
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Internal error supposedly unreachable
                  // from Python.
-      non_alnum_suffix.empty(), error::kInternal)
-      << "The error message should end with an alpha-numeric character. "
-         "Remove the last "
-      << non_alnum_suffix.size() << " characters: '" << non_alnum_suffix
-      << "'.";
+      not_allowed_suffix_size == 0, error::kInternal)
+      << "The error message should end with either an alpha-numeric character "
+         "or one of the following characters: '"
+      << kAllowedCharacters << "'. Remove the last " << not_allowed_suffix_size
+      << " characters: '"
+      << message.substr(message.size() - not_allowed_suffix_size) << "'.";
 
   return absl::OkStatus();
 }
@@ -397,7 +410,8 @@ ErrorMessageChecksResult GetErrorMessageChecksResult(
   // The subsequent checks require, as pre-condition, the message to be trimmed.
   const std::string_view trimmed_message = absl::StripAsciiWhitespace(message);
 
-  handle_check(EndsWithAlphaNum(trimmed_message), CheckKind::kWarn);
+  handle_check(EndsWithAlphaNumAndAllowedCharacters(trimmed_message),
+               CheckKind::kEnforce);
   handle_check(StartsWithNonUppercaseLetter(trimmed_message), CheckKind::kWarn);
 
   return result;
@@ -504,6 +518,31 @@ bool IsXlaOomError(const absl::Status& status) {
           // Some XLA OOM errors are reported as internal errors with this
           // word in the message.
           absl::StrContains(status.message(), "allocation_size"));
+}
+
+absl::Status AdaptXlaError(absl::Status status) {
+  if (status.ok()) {
+    return status;
+  }
+
+  // Trim the error message.
+  std::string_view trimmed =
+      absl::StripTrailingAsciiWhitespace(status.message());
+
+  // Look for the position of the last character that is not a period.
+  const size_t last_not_period_pos = trimmed.find_last_not_of('.');
+
+  // If such a character is found (1st condition), and it's not the last
+  // character (2nd condition), it means that there are periods from that
+  // position onwards.
+  if (last_not_period_pos != std::string_view::npos &&
+      last_not_period_pos != trimmed.size() - 1) {
+    // Override the error message: remove the suffix of periods.
+    return StatusBuilder(std::move(status)).SetOverride()
+           << trimmed.substr(0, last_not_period_pos + 1);
+  }
+
+  return status;
 }
 
 enum class ExceptionType {

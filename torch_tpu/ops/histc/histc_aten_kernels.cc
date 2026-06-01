@@ -110,7 +110,7 @@ absl::Status ValidateBounds(
         error::kInvalidArgument)
         << "expected min and max to be finite, got " << min << " and " << max
         << ". Either make sure that the input data is finite, or provide valid "
-           "finite bounds.";
+           "finite bounds";
   }
 
   // Check for overflows.
@@ -124,7 +124,7 @@ absl::Status ValidateBounds(
            "types, but got min = "
         << min << " and max = " << max << ". "
         << "This happened because min and max were adjusted by one (due to min "
-           "== max), which resulted in an overflow.";
+           "== max), which resulted in an overflow";
   }
 
   // Check that min < max.
