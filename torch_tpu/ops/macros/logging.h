@@ -250,7 +250,6 @@ void CheckScalarInput() {
       kOpName == OpName::kCdistForward ||               //
       kOpName == OpName::kEluBackwardGradInput ||       //
       kOpName == OpName::kEluOut ||                     //
-      kOpName == OpName::kEq ||                         //
       kOpName == OpName::kExponential_ ||               //
       kOpName == OpName::kFill_Scalar ||                //
       kOpName == OpName::kForeachAddList ||             //
@@ -264,18 +263,13 @@ void CheckScalarInput() {
       kOpName == OpName::kForeachPow_ScalarList ||      //
       kOpName == OpName::kForeachSubList ||             //
       kOpName == OpName::kForeachSub_List ||            //
-      kOpName == OpName::kGe ||                         //
-      kOpName == OpName::kGt ||                         //
       kOpName == OpName::kHistc ||                      //
       kOpName == OpName::kIndexAddOut ||                //
-      kOpName == OpName::kLe ||                         //
       kOpName == OpName::kLinalgVectorNormOut ||        //
       kOpName == OpName::kLinspaceOut ||                //
       kOpName == OpName::kLocalScalarDense ||           //
       kOpName == OpName::kLogSoftmaxBackwardDataOut ||  //
-      kOpName == OpName::kLt ||                         //
       kOpName == OpName::kNativeBatchNormBackward ||    //
-      kOpName == OpName::kNe ||                         //
       kOpName == OpName::kPdistForward ||               //
       kOpName == OpName::kPow ||                        //
       kOpName == OpName::kScatterValueOut ||            //
