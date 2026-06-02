@@ -2609,26 +2609,30 @@ absl::StatusOr<at::Tensor> AtenClampMin(const at::Tensor& self,
 
 std::vector<at::Tensor> AtenForeachClampMinScalar(at::TensorList self,
                                                   const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachClampMinScalar, _,
-            (self, IgnoreInCacheKey(scalar, "Legacy usage")), {
-              std::vector<at::Tensor> result;
-              result.reserve(self.size());
-              for (const auto& tensor : self) {
-                TT_ASSIGN_OR_THROW(auto out, AtenClampMin(tensor, scalar));
-                result.push_back(out);
-              }
-              return result;
-            });
+  auto promoted_scalar = PromoteScalar(scalar);
+  TT_KERNEL(OpName::kForeachClampMinScalar, _, (self, promoted_scalar), {
+    std::vector<at::Tensor> result;
+    result.reserve(self.size());
+    for (const auto& tensor : self) {
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         promoted_scalar.GetTensor(tensor.scalar_type()));
+      TT_ASSIGN_OR_THROW(auto out, AtenClampMin(tensor, scalar_tensor));
+      result.push_back(out);
+    }
+    return result;
+  });
 }
 
 void AtenForeachClampMin_Scalar(at::TensorList self, const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachClampMin_Scalar, _,
-            (self, IgnoreInCacheKey(scalar, "Legacy usage")), {
-              for (const auto& tensor : self) {
-                AtenClampMinOut(tensor, scalar,
-                                const_cast<at::Tensor&>(tensor));
-              }
-            });
+  auto promoted_scalar = PromoteScalar(scalar);
+  TT_KERNEL(OpName::kForeachClampMin_Scalar, _, (self, promoted_scalar), {
+    for (const auto& tensor : self) {
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         promoted_scalar.GetTensor(tensor.scalar_type()));
+      AtenClampMinTensorOut(tensor, scalar_tensor,
+                            const_cast<at::Tensor&>(tensor));
+    }
+  });
 }
 
 std::vector<at::Tensor> AtenForeachClampMinList(at::TensorList self,
@@ -2655,27 +2659,31 @@ void AtenForeachClampMin_List(at::TensorList self, at::TensorList other) {
 
 std::vector<at::Tensor> AtenForeachClampMinScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachClampMinScalarList, _,
-            (self, IgnoreInCacheKey(scalars, "Legacy usage")), {
-              std::vector<at::Tensor> result;
-              result.reserve(self.size());
-              for (size_t i = 0; i < self.size(); ++i) {
-                TT_ASSIGN_OR_THROW(auto out, AtenClampMin(self[i], scalars[i]));
-                result.push_back(out);
-              }
-              return result;
-            });
+  auto promoted_scalars = PromoteScalar(scalars);
+  TT_KERNEL(OpName::kForeachClampMinScalarList, _, (self, promoted_scalars), {
+    std::vector<at::Tensor> result;
+    result.reserve(self.size());
+    for (size_t i = 0; i < self.size(); ++i) {
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         promoted_scalars[i].GetTensor(self[i].scalar_type()));
+      TT_ASSIGN_OR_THROW(auto out, AtenClampMin(self[i], scalar_tensor));
+      result.push_back(out);
+    }
+    return result;
+  });
 }
 
 void AtenForeachClampMin_ScalarList(at::TensorList self,
                                     at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachClampMin_ScalarList, _,
-            (self, IgnoreInCacheKey(scalars, "Legacy usage")), {
-              for (size_t i = 0; i < self.size(); ++i) {
-                AtenClampMinOut(self[i], scalars[i],
-                                const_cast<at::Tensor&>(self[i]));
-              }
-            });
+  auto promoted_scalars = PromoteScalar(scalars);
+  TT_KERNEL(OpName::kForeachClampMin_ScalarList, _, (self, promoted_scalars), {
+    for (size_t i = 0; i < self.size(); ++i) {
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         promoted_scalars[i].GetTensor(self[i].scalar_type()));
+      AtenClampMinTensorOut(self[i], scalar_tensor,
+                            const_cast<at::Tensor&>(self[i]));
+    }
+  });
 }
 
 void AtenForeachCopy_(at::TensorList self, at::TensorList src,
