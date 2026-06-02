@@ -31,6 +31,7 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/status_builder.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
@@ -47,9 +48,13 @@ namespace {
 //
 // `elem_type` is the element type of the tensor that caused the XLA OOM error.
 // `dims` is the dimensions of the tensor that caused the XLA OOM error.
-static absl::Status TranslateXlaTensorOomError(const absl::Status& status,
+static absl::Status TranslateXlaTensorOomError(absl::Status status,
                                                at::ScalarType elem_type,
                                                absl::Span<const int64_t> dims) {
+  if (status.ok()) {
+    return status;
+  }
+
   TT_ASSIGN_OR_RETURN(  // ERROR_COV_INFEASIBLE=All PyTorch dtypes are supported
                         // by mlir::ElementType.
       const auto dtype, ConvertTo<mlir::ElementType>(elem_type));
@@ -58,7 +63,10 @@ static absl::Status TranslateXlaTensorOomError(const absl::Status& status,
          "value "
       << ToString(dtype) << "[" << absl::StrJoin(dims, ", ") << "]:\n"
       << status.message();
-  return status;
+
+  // From this point, we know that the given status is not an XLA OOM error.
+  return StatusBuilder(std::move(status)).SetPrepend()
+         << "transfer to 'cpu' device failed with: ";
 }
 
 }  // namespace

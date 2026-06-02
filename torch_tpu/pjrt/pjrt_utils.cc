@@ -67,9 +67,8 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
   tsl::profiler::TraceMe trace("TpuMallocAndMemcpyHtoD");
   if (backing_tensor.has_value() && backing_tensor->data_ptr() != host_data) {
     return TT_ERROR(error::kInvalidArgument)
-           << "Backing tensor that was given is not matching the received "
-              "host_data "
-              "pointer";
+           << "backing tensor that was given is not matching the received "
+              "host_data pointer";
   }
 
   const xla::PrimitiveType type = ConvertTo<xla::PrimitiveType>(element_type);
@@ -99,7 +98,7 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
   TT_ASSIGN_OR_RETURN(xla::PjRtMemorySpace* const memory_space,
                       device->default_memory_space());
   TT_RET_CHECK(memory_space != nullptr, error::kInternal)
-      << "Default memory space is null";
+      << "default memory space is null";
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] Got memory space: "
                << memory_space->DebugString();
 

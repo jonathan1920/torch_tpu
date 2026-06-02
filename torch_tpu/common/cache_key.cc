@@ -76,7 +76,7 @@ absl::StatusOr<std::string> FormatParamCacheKey(const at::Scalar value) {
     key = LosslessToString(value.toComplexDouble());
   } else {
     return TT_ERROR(error::kInvalidArgument)
-           << "Unable to create key for scalar type.";
+           << "unable to create key for scalar type";
   }
   return absl::StrCat(key, ":", c10::toString(value.type()));
 }
@@ -333,7 +333,7 @@ namespace {
 bool IsShapeCompatibleWithBounds(const Shape& shape,
                                  absl::Span<const DimensionBounds> bounds) {
   TT_CHECK_THROW(shape.dimensions().size() == bounds.size(), error::kInternal)
-      << "Shape and bounds spans must have the same size.";
+      << "shape and bounds spans must have the same size";
   for (int i = 0; i < shape.dimensions().size(); ++i) {
     const int64_t dim = shape.dimensions()[i];
     if (dim < bounds[i].lower || dim > bounds[i].upper) {

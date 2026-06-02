@@ -78,7 +78,9 @@ absl::Status CopyCpuToTpu(const at::Tensor& src, const at::Tensor& dest,
   }
 
   TT_ASSIGN_OR_RETURN(DeviceBufferRef tpu_buf,
-                      CopyCpuToTpuBuffer(src_with_dest_dtype, non_blocking));
+                      CopyCpuToTpuBuffer(src_with_dest_dtype, non_blocking),
+                      _.SetPrepend()
+                          << "transfer to 'tpu' device failed with: ");
   TT_RETURN_IF_ERROR(AssignBufferToAtTensor(tpu_buf, dest));
   return absl::OkStatus();
 }

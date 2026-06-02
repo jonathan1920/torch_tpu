@@ -140,6 +140,7 @@ torch_tpu_cc_library(
         "//shims/torch/c10/util:base_headers",
         "//torch_tpu/eager:eager_mode",
         "//torch_tpu/ops:python_context",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",

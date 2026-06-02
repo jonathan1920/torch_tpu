@@ -135,7 +135,7 @@ void CheckDeviceIsTpu(c10::optional<at::Device> device_opt,
 
 // Adapts an OpenXLA error status by checking if its error message ends with a
 // trailing period, and removing it if so. Returns the adapted status.
-absl::Status AdaptXlaError(absl::Status status);
+absl::Status AdaptXlaError(const absl::Status& status);
 
 // Overload for adapting an absl::StatusOr containing an OpenXLA function
 // result.

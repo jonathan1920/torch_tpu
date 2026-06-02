@@ -72,7 +72,8 @@ absl::Status CopyTpuToTpu(const at::Tensor& src, const at::Tensor& dest) {
                     {.out_dtype = out_dtype,
                      .out_dims = dest.sizes(),
                      .op_param_cache_keys = OpParamCacheKeys::Empty()}),
-      _.SetPrepend() << "TPU->TPU copy (dtype change): ");
+      _.SetPrepend()
+          << "copy from 'tpu' to 'tpu' device (dtype change) failed with: ");
   return AssignBufferToAtTensor(new_buf, dest);
 }
 

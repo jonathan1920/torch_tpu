@@ -1234,7 +1234,7 @@ TEST(SafeWrapDim, ReturnsErrorOnInvalidNegativeDim) {
   EXPECT_FALSE(result.ok());
   EXPECT_EQ(result.status().code(), error::kOutOfRange);
   EXPECT_EQ(result.status().message(),
-            "Dimension out of range (expected to be in range of [-1, 0], but "
+            "dimension out of range (expected to be in range of [-1, 0], but "
             "got -2)");
 }
 
@@ -1243,7 +1243,7 @@ TEST(SafeWrapDim, ReturnsErrorOnInvalidPositiveDim) {
   EXPECT_FALSE(result.ok());
   EXPECT_EQ(result.status().code(), error::kOutOfRange);
   EXPECT_EQ(result.status().message(),
-            "Dimension out of range (expected to be in range of [-1, 0], but "
+            "dimension out of range (expected to be in range of [-1, 0], but "
             "got 1)");
 }
 
@@ -1252,7 +1252,7 @@ TEST(SafeWrapDim, ReturnsErrorOnNegativeDimBound) {
   const auto result = SafeWrapDim(/*dim=*/0, /*dim_bound=*/-1);
   EXPECT_FALSE(result.ok());
   EXPECT_EQ(result.status().code(), error::kOutOfRange);
-  EXPECT_EQ(result.status().message(), "Rank cannot be negative but got -1");
+  EXPECT_EQ(result.status().message(), "rank cannot be negative but got -1");
 }
 
 TEST(SafeWrapDim, ReturnsErrorOnInvalidDimForZeroDimBound) {
@@ -1260,7 +1260,7 @@ TEST(SafeWrapDim, ReturnsErrorOnInvalidDimForZeroDimBound) {
   EXPECT_FALSE(result.ok());
   EXPECT_EQ(result.status().code(), error::kOutOfRange);
   EXPECT_EQ(result.status().message(),
-            "Dimension out of range (expected to be in range of [-1, 0], but "
+            "dimension out of range (expected to be in range of [-1, 0], but "
             "got 1)");
 }
 
@@ -1314,6 +1314,11 @@ TEST(ErrorMessageGuidelinesDeathTest, TrailingWhitespace) {
 
 TEST(ErrorMessageGuidelinesDeathTest, MessageContainsOnlyWhitespace) {
   EXPECT_DEATH(ThrowWithMessage("   "), HasSubstr("should not be empty"));
+}
+
+TEST(ErrorMessageGuidelinesDeathTest, StartsWithUppercaseLetter) {
+  EXPECT_DEATH(ThrowWithMessage("Dimension size negative"),
+               HasSubstr("start with a lowercase character"));
 }
 
 struct TestLogSink : public absl::LogSink {
@@ -1377,16 +1382,10 @@ TEST(ErrorMessageGuidelinesWarningTest, NoWarningOnStartsWithNonLetter) {
   EXPECT_TRUE(sink.warnings.empty());
 }
 
-TEST(ErrorMessageGuidelinesWarningTest, MultipleViolations) {
-  TestLogSink sink;
-  ScopedLogSink scoped_sink(&sink);
-
-  EXPECT_THROW(ThrowWithMessage("Dimension size negative with f32"),
-               c10::Error);
-
-  ASSERT_EQ(sink.warnings.size(), 1);
-  EXPECT_THAT(sink.warnings[0], AllOf(HasSubstr("start with a lowercase"),
-                                      HasSubstr("StableHLO type names")));
+TEST(ErrorMessageGuidelinesDeathTest, MultipleViolationsIncludingEnforced) {
+  EXPECT_DEATH(ThrowWithMessage("Dimension size negative with f32"),
+               AllOf(HasSubstr("start with a lowercase"),
+                     HasSubstr("StableHLO type names")));
 }
 
 #endif

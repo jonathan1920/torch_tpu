@@ -42,7 +42,7 @@ absl::StatusOr<std::vector<DeviceRefDimensions>> GetTraversalOutputDimensions(
 
   TT_RET_CHECK(output_values.size() == traversal.outputs().size(),
                error::kFailedPrecondition)
-      << "Output values size: " << output_values.size()
+      << "output values size: " << output_values.size()
       << " does not match traversal outputs size: "
       << traversal.outputs().size();
 

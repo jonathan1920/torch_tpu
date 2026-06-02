@@ -219,7 +219,7 @@ class MappedCacheEntry {
     // Get the cache file size.
     struct stat sb;
     TT_RET_CHECK(fstat(fd.get(), &sb) != -1, error::kInternal)
-        << "Failed to get the size of cache file " << path;
+        << "failed to get the size of cache file " << path;
 
     // Map the cache file into memory.
     auto* const data = static_cast<const char*>(  //
@@ -229,7 +229,7 @@ class MappedCacheEntry {
              // MAP_POPULATE: Prefault pages since they are in RAM (tmpfs).
              MAP_SHARED | MAP_POPULATE, fd.get(), 0));
     TT_RET_CHECK(data != MAP_FAILED, error::kInternal)
-        << "Failed to map cache file " << path << " into memory";
+        << "failed to map cache file " << path << " into memory";
 
     // st_atime is when the file was last read.
     return MappedCacheEntry(data, sb.st_size, absl::FromTimeT(sb.st_atime));
@@ -277,13 +277,13 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> LoadSerializedExecutable(
   xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   TT_RET_CHECK(client, error::kFailedPrecondition)
       << "PjRtClient must be initialized before accessing the " << tier
-      << " cache.";
+      << " cache";
   TT_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_executable,
       client->LoadSerializedExecutable(data,
                                        /*options=*/std::nullopt,
                                        xla::LoadOptions()),
-      _.SetPrepend() << "Failed to load serialized executable from the " << tier
+      _.SetPrepend() << "failed to load serialized executable from the " << tier
                      << " cache for key " << key
                      << ", where the serialized data has " << data.size()
                      << " bytes:\n");

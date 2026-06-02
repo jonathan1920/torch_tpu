@@ -181,7 +181,7 @@ absl::Status PjrtBackend::InitializeInternal() {
     device_type = PjRtDeviceType::kCpu;
   } else {
     return TT_ERROR(error::kInvalidArgument)
-           << "Unsupported device type: " << options_.device_type;
+           << "unsupported device type: " << options_.device_type;
   }
   // Move active thread into container for memory tracking, if the flag is
   // enabled.
@@ -191,7 +191,7 @@ absl::Status PjrtBackend::InitializeInternal() {
                       pjrt::IsPjrtPluginInitialized(plugin_name));
   if (!is_initialized) {
     TT_RETURN_IF_ERROR(pjrt::InitializePjrtPlugin(plugin_name)).SetPrepend()
-        << "InitializePjrtPlugin failed: ";
+        << "initializing the PjRt plugin failed with: ";
   }
 
   // Mem tracking note: Background threads in XLA spun up during GetPjRtClient.
@@ -199,7 +199,7 @@ absl::Status PjrtBackend::InitializeInternal() {
       client_,
       torch_tpu::GetPjRtClient(options_.device_type,
                                options_.premapped_buffer_size_bytes),
-      _.SetPrepend() << "GetPjrtClient failed: ");
+      _.SetPrepend() << "retrieving a PjRtClient failed with: ");
 
   TT_RET_CHECK(client_ != nullptr, error::kInternal)
       << "PjRtClient is null after initialization";
@@ -225,7 +225,7 @@ absl::Status PjrtBackend::InitializeInternal() {
   // to determine the number of replicas of the XLA computation.
   TT_RET_CHECK(world_size == 1 || world_size == device_count,
                error::kInvalidArgument)
-      << "Invalid world_size configuration: expected 1 or " << device_count
+      << "invalid world_size configuration: expected 1 or " << device_count
       << ", but got " << world_size
       << ". Please check your environment variables.";
 
@@ -305,7 +305,7 @@ absl::StatusOr<xla::HostMemoryAllocator*> PjrtBackend::GetHostAllocator() {
     return host_allocator;
   }
   return TT_ERROR(error::kUnimplemented)
-         << "Host memory allocator is not implemented for this client.";
+         << "host memory allocator is not implemented for this client";
 }
 
 void PjrtBackend::Shutdown() {
@@ -480,7 +480,7 @@ absl::Status WaitEventSnapshot(int64_t event_id) {
     auto it = state.event_snapshots.find(event_id);
     if (it == state.event_snapshots.end()) {
       return TT_ERROR(error::kInvalidArgument)
-             << "Unknown event snapshot id: " << event_id;
+             << "unknown event snapshot id: " << event_id;
     }
     futures = it->second;
   }
@@ -501,7 +501,7 @@ absl::StatusOr<bool> QueryEventSnapshot(int64_t event_id) {
     auto it = state.event_snapshots.find(event_id);
     if (it == state.event_snapshots.end()) {
       return TT_ERROR(error::kInvalidArgument)
-             << "Unknown event snapshot id: " << event_id;
+             << "unknown event snapshot id: " << event_id;
     }
     futures = it->second;
   }

@@ -39,7 +39,7 @@ absl::StatusOr<absl_nonnull std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
     TT_ASSIGN_OR_RETURN(
         auto client, xla::GetCApiClient("gpu", {{"use_tfrt_gpu_client", true}}),
         _.SetPrepend()
-            << "Failed to create the XLA:GPU client (add a dependency on the "
+            << "failed to create the XLA:GPU client (add a dependency on the "
                "'gpu_static_registration' build target to use the XLA:GPU "
                "backend): ");
     return client;
@@ -52,7 +52,7 @@ absl::StatusOr<absl_nonnull std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
     return xla::GetCApiClient("cpu", {{"cpu_device_count", cpu_device_count}});
   }
   return TT_ERROR(error::kInvalidArgument)
-         << "Unable to get PJRT client for unsupported device type: "
+         << "unable to get PJRT client for unsupported device type: "
          << device_type;
 }
 

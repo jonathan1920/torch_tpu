@@ -31,6 +31,7 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "absl/algorithm/container.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/numeric/int128.h"
@@ -67,6 +68,19 @@
 
 namespace torch_tpu {
 namespace {
+
+// Words that are allowed to start an error message with an uppercase letter.
+// This is an exception to the rule that error messages must start with a
+// lowercase letter.
+constexpr std::array<std::string_view, 3> kAllowedStartingWords{"TorchTPU",
+                                                                "PjRt", "XLA"};
+
+// Helper to check if a message starts with any of the allowed words.
+bool StartsWithAllowedWord(const std::string_view message) {
+  return absl::c_any_of(
+      kAllowedStartingWords,
+      [&](const std::string_view word) { return message.starts_with(word); });
+}
 
 #ifdef TT_CHECK_ERROR_MESSAGE_FOLLOWS_GUIDELINES_
 
@@ -176,8 +190,12 @@ absl::Status HasNoTrailingWhitespace(const std::string_view message) {
 // The first character of `message` should be lower-case. We intentionally allow
 // other characters, e.g. punctuation and numbers.
 //
+// We also allow the message to start with specific allowed words (e.g.,
+// "TorchTPU", "PjRt", "XLA").
+//
 // Examples (the "ones(): " prefix is just for illustration purposes):
 //     [good] ones(): dimensions...
+//     [good] ones(): TorchTPU does not support...
 //      [bad] ones(): Dimensions...
 //                    |
 //                    |_ `message` starts from this character.
@@ -188,6 +206,11 @@ absl::Status StartsWithNonUppercaseLetter(const std::string_view message) {
   ABSL_CHECK(  // CRASH_OK
       !absl::ascii_isspace(message.front()))
       << kPreconditionViolatedError;
+
+  // Allowed starting words: TorchTPU, PjRt, and XLA.
+  if (StartsWithAllowedWord(message)) {
+    return absl::OkStatus();
+  }
 
   // Returns the first word of `message`.
   //
@@ -413,7 +436,8 @@ ErrorMessageChecksResult GetErrorMessageChecksResult(
 
   handle_check(EndsWithAlphaNumAndAllowedCharacters(trimmed_message),
                CheckKind::kEnforce);
-  handle_check(StartsWithNonUppercaseLetter(trimmed_message), CheckKind::kWarn);
+  handle_check(StartsWithNonUppercaseLetter(trimmed_message),
+               CheckKind::kEnforce);
 
   return result;
 }
@@ -459,6 +483,39 @@ void CheckErrorMessageFollowsGuidelines(const TtError& error) {
 }
 
 #endif  // TT_CHECK_ERROR_MESSAGE_FOLLOWS_GUIDELINES_
+
+// Adapts an external error message (e.g., from PyTorch or OpenXLA) to conform
+// to the TorchTPU error message guidelines (go/tt-error-guide).
+//
+// This function applies the following transformations:
+// 1. Trims leading and trailing whitespace.
+// 2. Lowercases the first character of the message (unless it starts with an
+//    allowed starting word like "TorchTPU", "PjRt", or "XLA").
+// 3. Removes trailing period characters.
+std::string AdaptExternalErrorMessage(const std::string_view message) {
+  // Check: trim leading and trailing whitespace.
+  std::string new_message = std::string(absl::StripAsciiWhitespace(message));
+
+  if (new_message.empty()) {
+    return new_message;
+  }
+
+  // Check: error messages should start with a lowercase character.
+  // We skip lowercasing if the message starts with specific allowed words.
+  if (!StartsWithAllowedWord(new_message) &&
+      absl::ascii_isupper(new_message[0])) {
+    new_message[0] = absl::ascii_tolower(new_message[0]);
+  }
+
+  // Check: error messages should not end with punctuation (like periods).
+  const size_t last_not_period_pos = new_message.find_last_not_of('.');
+  if (last_not_period_pos != std::string::npos &&
+      last_not_period_pos != new_message.size() - 1) {
+    new_message = new_message.substr(0, last_not_period_pos + 1);
+  }
+
+  return new_message;
+}
 
 }  // namespace
 
@@ -527,7 +584,8 @@ absl::StatusOr<int64_t> SafeWrapDim(int64_t dim, int64_t dim_bound) {
     return at::maybe_wrap_dim(  // MAYBE_WRAP_DIM_OK=implementing SafeWrapDim.
         dim, dim_bound);
   } catch (const c10::Error& e) {
-    return TT_ERROR(error::kIndexError) << e.what_without_backtrace();
+    return TT_ERROR(error::kIndexError)
+           << AdaptExternalErrorMessage(e.what_without_backtrace());
   }
 }
 
@@ -546,29 +604,15 @@ bool IsXlaOomError(const absl::Status& status) {
           absl::StrContains(status.message(), "allocation_size"));
 }
 
-absl::Status AdaptXlaError(absl::Status status) {
+absl::Status AdaptXlaError(const absl::Status& status) {
   if (status.ok()) {
     return status;
   }
 
-  // Trim the error message.
-  std::string_view trimmed =
-      absl::StripTrailingAsciiWhitespace(status.message());
-
-  // Look for the position of the last character that is not a period.
-  const size_t last_not_period_pos = trimmed.find_last_not_of('.');
-
-  // If such a character is found (1st condition), and it's not the last
-  // character (2nd condition), it means that there are periods from that
-  // position onwards.
-  if (last_not_period_pos != std::string_view::npos &&
-      last_not_period_pos != trimmed.size() - 1) {
-    // Override the error message: remove the suffix of periods.
-    return StatusBuilder(std::move(status)).SetOverride()
-           << trimmed.substr(0, last_not_period_pos + 1);
-  }
-
-  return status;
+  const std::string adapted = AdaptExternalErrorMessage(status.message());
+  return (adapted == status.message())
+             ? status
+             : StatusBuilder(std::move(status)).SetOverride() << adapted;
 }
 
 enum class ExceptionType {

@@ -405,7 +405,7 @@ ExecutionTask::GetArgumentBuffers() {
       root_args.push_back(pjrt_buffer);
     } else if (argument.is_placeholder()) {
       return TT_ERROR(error::kInternal)
-             << "Materialize was called on a placeholder tensor. This "
+             << "materialize was called on a placeholder tensor. This "
                 "should never happen.\nkPlaceholder tensors should only "
                 "appear in compiled mode, which should never try to "
                 "materialize tensors."

@@ -334,7 +334,7 @@ static absl::Status SetDefaultDeviceAssignment(
 static absl::StatusOr<bool> SetTpuOptions(xla::CompileOptions& options) {
   const xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   TT_RET_CHECK(client, error::kFailedPrecondition)
-      << "PjRtClient must be initialized.";
+      << "PjRtClient must be initialized";
   const bool is_tpu = client->platform_id() == xla::TpuId();
   if (is_tpu) {
     // WARNING: When assigning string values below, make sure to explicitly
