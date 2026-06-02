@@ -21,7 +21,6 @@
 #include <cstdint>
 #include <cstring>
 #include <iterator>
-#include <limits>
 #include <memory>
 #include <ostream>
 #include <sstream>
@@ -30,7 +29,6 @@
 #include <vector>
 
 #include "absl/base/nullability.h"
-#include "absl/hash/hash.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
@@ -41,7 +39,6 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/context_states.h"
-#include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -496,7 +493,7 @@ absl_nullable std::shared_ptr<Subgraph> DeviceBufferList::subgraph() const {
   return data_.subgraph();
 }
 
-std::atomic_uint64_t DeviceBufferList::g_creation_index = 0;
+std::atomic_uint64_t DeviceBufferList::g_creation_index_ = 0;
 
 absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateMaterialized(
     absl_nonnull std::unique_ptr<xla::PjRtBuffer> buffer) {
@@ -803,6 +800,22 @@ xla::Future<void> DeviceBufferRef::GetMaterializationFuture() const {
   return device_buffer_list_->GetMaterializationFuture();
 }
 
+void DeviceBufferList::RecordChildOp(uint64_t child_index) const {
+  num_child_ops_++;
+
+  // Do the equivalent of std::atomic::fetch_max to set last_child_index_.
+  // This is a C++ 26 feature, but we use C++ 20, so we do a manual spinlock.
+  uint64_t old_index = last_child_index_.load();
+  while (old_index < child_index &&
+         !last_child_index_.compare_exchange_weak(old_index, child_index)) {
+    // This will loop until either:
+    //   - last_child_index_ < child_index with no concurrent updates, at which
+    //     point it will update last_child_index_ to child_index, or
+    //   - last_child_index_ >= child_index, at which point it will do nothing
+    //     as the value has already been set to a higher value.
+  }
+}
+
 xla::Future<void> DeviceBufferRef::GetReadyFuture() const {
   if (GetMaterializationFuture().IsKnownReady()) {
     auto buffer_or = AwaitBuffer();
@@ -858,8 +871,8 @@ absl::Span<const BoundedDynamicDimension> DeviceBufferRef::dynamic_dimensions()
   return device_buffer_list()->dynamic_dimensions(index_);
 }
 
-void DeviceBufferRef::IncrementNumChildOps() const {
-  device_buffer_list_->IncrementNumChildOps();
+void DeviceBufferRef::RecordChildOp(uint64_t child_index) const {
+  device_buffer_list_->RecordChildOp(child_index);
 }
 
 template <>

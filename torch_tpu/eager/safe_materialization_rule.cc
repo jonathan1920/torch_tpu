@@ -16,6 +16,9 @@
 
 #include "torch_tpu/eager/safe_materialization_rule.h"
 
+#include <cstdint>
+#include <optional>
+
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
@@ -92,38 +95,33 @@ void SplitAllMaterializationPoints(
         required_outputs,
     absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
         materialization_points) {
-  absl::flat_hash_set<const DeviceBufferList*> live_edges;
-  bool found_required_output = false;
+  // The index of the node we're currently planning to materialize.
+  // Will be nullopt for all nodes after the highest-index required output.
+  std::optional<uint64_t> materializing_index = std::nullopt;
+
   for (auto node_it = execution_order.rbegin();
        node_it != execution_order.rend(); ++node_it) {
     const auto& node = *node_it;
 
     if (required_outputs.contains(node.get())) {
-      found_required_output = true;
-    }
-
-    if (materialization_points.contains(node.get())) {
-      for (const auto* live_edge : live_edges) {
-        materialization_points.insert(live_edge);
-      }
-      live_edges.clear();
-
+      // Found a required output, ensure that materializing_index has a value
+      // and stop dropping materialization points.
+      materializing_index = node->creation_index();
+    } else if (!materializing_index.has_value()) {
       // Remove any materialization points after the last required output.
-      if (!found_required_output) {
-        materialization_points.erase(node.get());
-      }
-    } else {
-      // This edge doesn't need to be materialized.
-      live_edges.erase(node.get());
-    }
-
-    // Insert any new live edges to deferred ops.
-    if (const auto deferred_op = node->deferred_op()) {
-      for (const auto& input : deferred_op->inputs()) {
-        if (input.is_deferred()) {
-          live_edges.insert(input.device_buffer_list().get());
-        }
-      }
+      materialization_points.erase(node.get());
+    } else if (materialization_points.contains(node.get())) {
+      // Retain any materialization points before the last required output.
+      materializing_index = node->creation_index();
+    } else if (node->last_child_index() > materializing_index.value()) {
+      // This node has an edge from node->creation_index() to
+      // node->last_child_index(), which crosses the current
+      // materializing_index.
+      // We need to materialize this node so that the materialization order of
+      // {node->creation_index(), materializing_index, node->last_child_index()}
+      // is maintained.
+      materialization_points.insert(node.get());
+      materializing_index = node->creation_index();
     }
   }
 }

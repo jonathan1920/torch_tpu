@@ -30,7 +30,6 @@
 
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/absl_vlog_is_on.h"
@@ -361,9 +360,9 @@ class DeviceBufferRef {
     return H::combine(std::move(h), ref.index_, ref.device_buffer_list_);
   }
 
-  // Increments the number of child ops for the DeviceBufferList that this
-  // DeviceBufferRef is attached to.
-  void IncrementNumChildOps() const;
+  // Records that a child op has been created which depends on this
+  // DeviceBufferList. This updates num_child_ops_ and last_child_index_.
+  void RecordChildOp(uint64_t child_index) const;
 
  private:
   // DeviceBufferRefs can only be constructed by DeviceBufferList::Create*
@@ -422,14 +421,7 @@ class DeferredOp {
         op_param_cache_keys_(std::move(op_param_cache_keys)),
         op_context_(ScopedPythonContextCapturer::GetContext()),
         split_mode_(split_mode),
-        subgraph_(std::move(subgraph)) {
-    absl::flat_hash_set<const DeviceBufferList*> unique_input_lists;
-    for (const auto& input : inputs_) {
-      if (unique_input_lists.insert(input.device_buffer_list().get()).second) {
-        input.IncrementNumChildOps();
-      }
-    }
-  }
+        subgraph_(std::move(subgraph)) {}
 
   // DeferredOps are copyable and movable. Per "rule of five"
   // (https://en.cppreference.com/w/cpp/language/rule_of_three.html), we should
@@ -532,12 +524,6 @@ class DeferredOp {
   // When computing the cache key, use op_name_ to ensure that the key is
   // unique.
   PythonContext op_context_;
-
-  // Records the number of other DeferredOps that have been created which depend
-  // on this one. This is also called the "fanout" of the node.
-  // This does *not* track the liveness of these ops; if a DeferredOp is
-  // destroyed, the refcount will not be decremented.
-  mutable int64_t num_child_ops_ = 0;
 
   // The split mode of the DeferredOp, which determines how the op is split into
   // subgraphs for compilation.
@@ -743,8 +729,19 @@ class DeviceBufferList {
 
   std::string DebugString() const;
 
-  int64_t num_child_ops() const { return num_child_ops_; }
-  void IncrementNumChildOps() { num_child_ops_++; }
+  // Returns the number of other DeferredOps that have been created which depend
+  // on this one. This is also called the "fanout" of the node.
+  // This does *not* track the liveness of these ops; if a DeferredOp is
+  // destroyed, the refcount will not be decremented.
+  [[nodiscard]] int64_t num_child_ops() const { return num_child_ops_; }
+
+  // Returns the creation_index of the last op which depends on this
+  // DeviceBufferList.
+  [[nodiscard]] uint64_t last_child_index() const { return last_child_index_; }
+
+  // Records that a child op has been created which depends on this
+  // DeviceBufferList. This updates num_child_ops_ and last_child_index_.
+  void RecordChildOp(uint64_t child_index) const;
 
   std::ostream& DebugData(std::ostream& os) const;
 
@@ -762,7 +759,7 @@ class DeviceBufferList {
   DeviceBufferList(absl_nonnull std::unique_ptr<xla::PjRtBuffer> buffer,
                    const mlir::ElementType element_type)
       : data_(std::move(buffer)) {
-    creation_index_ = g_creation_index.fetch_add(1);
+    creation_index_ = g_creation_index_.fetch_add(1);
 
     auto buffer_or = data_[0];
     ABSL_CHECK_OK(buffer_or);  // CRASH_OK: we just created it
@@ -788,7 +785,14 @@ class DeviceBufferList {
   DeviceBufferList(std::unique_ptr<DeferredOp> absl_nonnull deferred_op,
                    std::vector<Shape> shapes)
       : shapes_(std::move(shapes)), data_(std::move(deferred_op)) {
-    creation_index_ = g_creation_index.fetch_add(1);
+    creation_index_ = g_creation_index_.fetch_add(1);
+    {
+      const auto shared_deferred_op = data_.deferred_op();
+      ABSL_CHECK(shared_deferred_op);  // CRASH_OK=we just created it
+      for (const auto& input : shared_deferred_op->inputs()) {
+        input.RecordChildOp(creation_index_);
+      }
+    }
 
     if (ABSL_VLOG_IS_ON(3)) {
       const auto shared_deferred_op = data_.deferred_op();
@@ -814,7 +818,7 @@ class DeviceBufferList {
   DeviceBufferList(Dimensions dimensions, const mlir::ElementType element_type,
                    bool placeholder)
       : data_(placeholder) {
-    creation_index_ = g_creation_index.fetch_add(1);
+    creation_index_ = g_creation_index_.fetch_add(1);
     shapes_.emplace_back(std::move(dimensions), element_type);
     ABSL_VLOG(3) << "[DeviceBuffer CONSTRUCTOR (bufferless)] Created. Dims: "
                  << ToString(shapes_[0].dimensions())
@@ -827,7 +831,7 @@ class DeviceBufferList {
       absl::Span<const absl_nonnull std::unique_ptr<xla::PjRtBuffer>> buffers)
       const;
 
-  static std::atomic_uint64_t g_creation_index;
+  static std::atomic_uint64_t g_creation_index_;
 
   // The shapes of all the buffers in the DeviceBufferList.
   std::vector<Shape> shapes_;
@@ -839,6 +843,10 @@ class DeviceBufferList {
   // on this DeviceBufferList. This does *not* track the liveness of these ops;
   // if a DeferredOp is destroyed, the refcount will not be updated.
   mutable std::atomic_int64_t num_child_ops_ = 0;
+
+  // The creation_index of the last op which depends on this DeviceBufferList.
+  // Will be 0 if no child ops have been created.
+  mutable std::atomic_uint64_t last_child_index_ = 0;
 
   // The number of live c10::DataPtrs to this DeviceBufferList.
   // This is incremented by MakeDataPtr and decremented by
