@@ -298,7 +298,7 @@ class ProfilerIntegrationTest(absltest.TestCase):
     )
 
   def test_tpu_profiler_config_run_dir(self):
-    device = tpu_api.tpu_device()
+    device = torch.device("tpu")
     custom_run_dir = self.create_tempdir("custom_run_dir_path").full_path
 
     _cleanup_profile_dir()
@@ -334,7 +334,7 @@ class ProfilerIntegrationTest(absltest.TestCase):
     )
 
   def test_tpu_profiler_config_run_dir_none(self):
-    device = tpu_api.tpu_device()
+    device = torch.device("tpu")
     output_dir = self.create_tempdir("run_dir_none").full_path
 
     _cleanup_profile_dir()
