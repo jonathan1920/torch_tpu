@@ -110,8 +110,8 @@ jobs:
           path: bazel-testlogs/
           retention-days: 7
 
-  perf_eval_regression:
-    name: "Perf and Eval Regression"
+  vllm_perf_eval:
+    name: "vLLM Perf Eval"
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: linux-x86-tpu7x-224-4tpu
     container:
@@ -193,7 +193,7 @@ jobs:
       - name: Install torchtpu-vllm with local wheel override
         run: |
           cd torchtpu-vllm
-          
+
           WHEEL_FILE=$(ls ../dist/*.whl | head -n 1)
           if [ -z "$WHEEL_FILE" ]; then
             echo "Error: No wheel found in ../dist/"
@@ -201,7 +201,7 @@ jobs:
           fi
           WHEEL_ABS_PATH=$(realpath "$WHEEL_FILE")
           echo "torch_tpu @ file://$WHEEL_ABS_PATH" > overrides.txt
-          
+
           uv --no-config pip install .[test,benchmarking] \
             --override overrides.txt --prerelease allow
 
@@ -222,7 +222,7 @@ jobs:
 
   notify_failure:
     name: Notify Failed Runs
-    needs: [run_tests, perf_eval_regression]
+    needs: [run_tests, vllm_perf_eval]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -231,7 +231,7 @@ jobs:
         if: contains(needs.run_tests.result, 'failure') && github.event_name != 'pull_request'
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
       - name: Check whether one of the jobs failed
-        if: (contains(needs.run_tests.result, 'failure') || contains(needs.perf_eval_regression.result, 'failure')) && github.event_name != 'pull_request'
+        if: (contains(needs.run_tests.result, 'failure') || contains(needs.vllm_perf_eval.result, 'failure')) && github.event_name != 'pull_request'
         uses: jayqi/failed-build-issue-action@1a893bbf43ef1c2a8705e2b115cd4f0fe3c5649b  # v1.2.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
