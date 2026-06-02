@@ -376,6 +376,18 @@ PYBIND11_MODULE(_device_ops_backend, m) {
       "_get_cache_stats",
       []() { return CompilationCache::GetInstance().GetCacheStats(); },
       "Get compilation cache statistics.");
+
+  m.def(
+      "_is_optimized_build",
+      []() -> bool {
+#ifdef NDEBUG
+        return true;
+#else
+        return false;
+#endif
+      },
+      "Returns True if this is an optimized build (compiled with -c opt / "
+      "NDEBUG defined).");
 }
 
 }  // namespace torch_tpu

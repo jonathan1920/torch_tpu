@@ -75,6 +75,7 @@ torch_tpu_py_library(
         "//shims/torch:testing_internal",
         "//torch_tpu/_internal/compile",
         "//torch_tpu/_internal/compiler_options",
+        "//torch_tpu/_internal/device:_device_ops_backend",
         "//torch_tpu/_internal/utils",
         "//torch_tpu/eager:tpu_aten_kernels",
     ],

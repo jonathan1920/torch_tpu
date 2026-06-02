@@ -56,6 +56,7 @@ from torch.utils import _pytree
 from torch_tpu._internal import compile as tt_compile
 from torch_tpu._internal import compiler_options as compiler
 from torch_tpu._internal import testing as tt_testing
+from torch_tpu._internal.device import _device_ops_backend
 from torch_tpu._internal.utils import utils
 
 # In this file, we use the following naming convention for variables:
@@ -2460,14 +2461,17 @@ def set_up_test_module() -> None:
   if absltest.FLAGS["test_random_seed"].present:
     # The user explicitly passed --test_random_seed=N, so we use that value.
     _RANDOM_SEED = absltest.FLAGS.test_random_seed
-  elif _torch_tpu_vs_cpu_mode():
-    # The user did not pass --test_random_seed, so we pick a 5-digit seed
-    # based on the current time.
+  elif (
+      _torch_tpu_vs_cpu_mode()
+      and _device_ops_backend._is_optimized_build()  # pylint: disable=protected-access
+  ):
+    # In postsubmit (optimized build), we keep the random time-based seed
+    # to continuously explore different inputs and maintain test coverage.
     _RANDOM_SEED = time.time_ns() % 100000
   else:
-    # We are either generating the golden GPU file or using it.
-    # Pick a fixed seed to ensure that the golden file is stable and we
-    # run the tests in the same condition where the golden file was generated.
+    # The user did not pass --test_random_seed and we are in presubmit
+    # (fastbuild) or other modes, so we pick a fixed seed to prevent flaky
+    # tests.
     _RANDOM_SEED = 1234
 
   # Set the random seed for Python and Torch.
