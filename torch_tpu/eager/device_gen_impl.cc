@@ -370,15 +370,15 @@ absl::Status DeviceGeneratorImpl::CheckDeviceStateTensor(
   return absl::OkStatus();
 }
 
-absl::StatusOr<at::Tensor> DeviceGeneratorImpl::GetAndAdvanceDeviceStateTensor(
-    int64_t num_elements, int64_t bit_width) {
+absl::Status DeviceGeneratorImpl::AdvanceDeviceStateTensor(int64_t num_elements,
+                                                           int64_t bit_width) {
   ABSL_CHECK_GE(num_elements, 0)  // CRASH_OK
       << "num_elements must be non-negative.";
   ABSL_CHECK_GE(bit_width, 0) << "bit_width must be non-negative.";  // CRASH_OK
 
   auto rng_input_state = state_->device_state_tensor;
   if (num_elements == 0 || bit_width == 0) {
-    return rng_input_state;
+    return absl::OkStatus();
   }
 
   // Snapshot the original buffer so that we can return it after updating the
@@ -406,8 +406,7 @@ absl::StatusOr<at::Tensor> DeviceGeneratorImpl::GetAndAdvanceDeviceStateTensor(
   auto rng_output_state = MakeTensor(std::move(rng_output_state_buf));
   TT_RETURN_IF_ERROR(SetDeviceStateTensor(rng_output_state));
 
-  // Return a tensor pointing to the original buffer.
-  return MakeTensor(std::move(original_buf));
+  return absl::OkStatus();
 }
 
 at::Generator MakeDeviceGenerator(c10::DeviceIndex idx) {
