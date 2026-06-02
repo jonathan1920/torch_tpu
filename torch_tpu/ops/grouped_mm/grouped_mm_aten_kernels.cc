@@ -271,10 +271,7 @@ absl::StatusOr<DeviceBufferRef> GroupedMm(
 
   Dimensions out_dims_vec(out_size.begin(), out_size.end());
 
-  const auto current_precision = GetPrecision();
-  TT_ASSIGN_OR_RETURN(param_keys,
-                      *OpParamCacheKeys::Builder(std::move(param_keys))
-                           .SetParam("precision", current_precision));
+  const auto current_precision = GetAndAddPrecisionTo(param_keys);
 
   std::vector<at::Tensor> inputs = {self, mat2};
   if (offs.has_value()) {

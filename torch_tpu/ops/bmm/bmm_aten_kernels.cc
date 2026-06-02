@@ -91,11 +91,7 @@ absl::StatusOr<DeviceBufferRef> Bmm(const at::Tensor& self,
                       ConvertTo<mlir::ElementType>(out_dtype));
   Dimensions output_dims_vec = {self.size(0), self.size(1), mat2.size(2)};
 
-  const auto current_precision = GetPrecision();
-  TT_ASSIGN_OR_RETURN(param_keys,
-                      *OpParamCacheKeys::Builder(std::move(param_keys))
-                           .SetParam("precision", current_precision));
-
+  const auto current_precision = GetAndAddPrecisionTo(param_keys);
   auto op_builder = [output_dtype_mlir,
                      current_precision](FixedSizeSpan<mlir::MlirOp, 2> inputs)
       -> absl::StatusOr<mlir::MlirOp> {

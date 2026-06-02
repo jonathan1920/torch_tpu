@@ -117,8 +117,7 @@ absl::StatusOr<DeviceBufferRef> Addmv(
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(out.scalar_type()));
 
-  const auto precision = GetPrecision();
-  TT_RETURN_IF_ERROR(param_keys.SetParam("precision", precision));
+  const auto precision = GetAndAddPrecisionTo(param_keys);
   Dimensions result_shape = {mat.size(0)};
   DispatchOpOptions<1> options = {.out_dtype = out_dtype,
                                   .out_dims = result_shape,

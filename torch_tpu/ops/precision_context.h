@@ -17,7 +17,10 @@
 #ifndef TORCH_TPU_OPS_PRECISION_CONTEXT_H_
 #define TORCH_TPU_OPS_PRECISION_CONTEXT_H_
 
+#include <string_view>
+
 #include "stablehlo/dialect/StablehloOps.h"
+#include "torch_tpu/common/cache_key.h"
 
 namespace torch_tpu {
 
@@ -26,8 +29,10 @@ namespace torch_tpu {
 // different precision settings for matrix multiplications or convolutions, such
 // as DEFAULT, HIGH, or HIGHEST.
 
-// Returns the current python thread's precision.
-mlir::stablehlo::Precision GetPrecision();
+// Returns the current python thread's precision and adds it to the
+// param_keys with the given parameter name.
+[[nodiscard]] mlir::stablehlo::Precision GetAndAddPrecisionTo(
+    OpParamCacheKeys& param_keys, std::string_view param_name = "precision");
 
 }  // namespace torch_tpu
 

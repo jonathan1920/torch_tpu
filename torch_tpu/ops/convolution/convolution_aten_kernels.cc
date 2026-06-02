@@ -202,11 +202,7 @@ absl::StatusOr<DeviceBufferRef> ConvolutionBinary(
   Dimensions expanded_output_padding =
       ExpandIfNecessary(output_padding, num_spatial_dims);
 
-  const auto current_precision = GetPrecision();
-  TT_ASSIGN_OR_RETURN(param_keys,
-                      *OpParamCacheKeys::Builder(std::move(param_keys))
-                           .SetParam("precision", current_precision));
-
+  const auto current_precision = GetAndAddPrecisionTo(param_keys);
   TT_RETURN_IF_ERROR(CheckConvolutionInputs(
       input, weight, std::nullopt, expanded_stride, expanded_padding,
       expanded_dilation, transposed, expanded_output_padding, groups));
@@ -254,10 +250,7 @@ absl::StatusOr<DeviceBufferRef> ConvolutionTernary(
   Dimensions expanded_output_padding =
       ExpandIfNecessary(output_padding, num_spatial_dims);
 
-  const auto current_precision = GetPrecision();
-  TT_ASSIGN_OR_RETURN(param_keys,
-                      *OpParamCacheKeys::Builder(std::move(param_keys))
-                           .SetParam("precision", current_precision));
+  const auto current_precision = GetAndAddPrecisionTo(param_keys);
 
   TT_RETURN_IF_ERROR(CheckConvolutionInputs(
       input, weight, bias, expanded_stride, expanded_padding, expanded_dilation,
@@ -340,10 +333,7 @@ absl::StatusOr<DeviceBufferRefArray<3>> ConvolutionBackward(
   Dimensions expanded_output_padding =
       ExpandIfNecessary(output_padding, num_spatial_dims);
 
-  const auto current_precision = GetPrecision();
-  TT_ASSIGN_OR_RETURN(param_keys,
-                      (*OpParamCacheKeys::Builder(std::move(param_keys))
-                            .SetParam("precision", current_precision)));
+  const auto current_precision = GetAndAddPrecisionTo(param_keys);
 
   // A non-empty `bias_dimensions` will trigger a bias dimensions check.
   // This should only be run if we are computing the backwards w.r.t. the

@@ -100,10 +100,7 @@ absl::StatusOr<DeviceBufferRef> SoftmaxBackwardDataInternalOut(
     const at::Tensor& grad_output, const at::Tensor& output, int64_t dim,
     at::ScalarType input_dtype, SoftmaxMode softmax_mode,
     OpParamCacheKeys param_keys) {
-  const auto precision = GetPrecision();
-  TT_ASSIGN_OR_RETURN(param_keys,
-                      *OpParamCacheKeys::Builder(std::move(param_keys))
-                           .SetParam("precision", precision));
+  const auto precision = GetAndAddPrecisionTo(param_keys);
 
   TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=input checked during forward
                  // pass. It is guaranteed to be floating point in the

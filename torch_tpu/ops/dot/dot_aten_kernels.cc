@@ -47,10 +47,7 @@ absl::StatusOr<DeviceBufferRef> Dot(const at::Tensor& lhs,
   TT_ASSIGN_OR_RETURN(auto result_scalar_type,
                       CheckedGetDotOutputType(lhs, rhs));
 
-  const auto current_precision = GetPrecision();
-  TT_ASSIGN_OR_RETURN(param_keys,
-                      *OpParamCacheKeys::Builder(std::move(param_keys))
-                           .SetParam("precision", current_precision));
+  const auto current_precision = GetAndAddPrecisionTo(param_keys);
 
   // TODO: XLA doesn't support matmuls with i64, so we convert them to f64.
   auto op_builder = [current_precision](FixedSizeSpan<mlir::MlirOp, 2> inputs)

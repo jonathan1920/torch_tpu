@@ -152,10 +152,7 @@ absl::StatusOr<DeviceBufferRef> AddMm(
                       _.SetOverride()
                           << "TorchTPU does not yet support the output dtype "
                           << ToString(out_scalar_type));
-  const auto current_precision = GetPrecision();
-  TT_ASSIGN_OR_RETURN(param_keys,
-                      *OpParamCacheKeys::Builder(std::move(param_keys))
-                           .SetParam("precision", current_precision));
+  const auto current_precision = GetAndAddPrecisionTo(param_keys);
 
   if (beta.ValueMatchesExclude()) {
     // If beta is zero, we can skip promoting it and dispatch the optimized

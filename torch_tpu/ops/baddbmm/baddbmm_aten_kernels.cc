@@ -29,6 +29,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
@@ -99,15 +100,15 @@ mlir::MlirOp BuildSanitizedScalarOp(mlir::MlirBuilder& builder,
 
 absl::StatusOr<mlir::MlirOp> BuildBaddbmmShlo(
     mlir::MlirOp self_op, mlir::MlirOp batch1_op, mlir::MlirOp batch2_op,
-    const at::Scalar& beta, const at::Scalar& alpha, at::ScalarType out_dtype) {
+    const at::Scalar& beta, const at::Scalar& alpha,
+    const mlir::stablehlo::Precision precision,
+    const at::ScalarType out_dtype) {
   auto& builder = self_op.getBuilder();
   TT_ASSIGN_OR_RETURN(mlir::ElementType out_dtype_mlir,
                       ConvertTo<mlir::ElementType>(out_dtype));
-
-  const auto current_precision = GetPrecision();
   TT_ASSIGN_OR_RETURN(
       mlir::MlirOp bmm_res,
-      BuildBmmShlo(batch1_op, batch2_op, out_dtype_mlir, current_precision));
+      BuildBmmShlo(batch1_op, batch2_op, out_dtype_mlir, precision));
   auto calc_type = GetTensorTypeOrDie(bmm_res).getElementType();
 
   // If alpha is not 1, multiply bmm_res by alpha.
@@ -149,9 +150,10 @@ absl::StatusOr<DeviceBufferRef> Baddbmm(
   Dimensions out_dims = {batch1.size(0), batch1.size(1), batch2.size(2)};
 
   const std::vector<at::Tensor> inputs = {self, batch1, batch2};
+  const auto precision = GetAndAddPrecisionTo(param_keys);
 
   auto op_builder =
-      [beta, alpha, out_dtype](
+      [beta, alpha, out_dtype, precision](
           absl::Span<mlir::MlirOp> inputs_op,
           mlir::MlirBuilder& builder) -> absl::StatusOr<mlir::MlirOp> {
     ABSL_CHECK_EQ(  // CRASH_OK=Dispatcher parameter binding safety boundary.
@@ -160,7 +162,7 @@ absl::StatusOr<DeviceBufferRef> Baddbmm(
     const mlir::MlirOp batch1_op = inputs_op[1];
     const mlir::MlirOp batch2_op = inputs_op[2];
     return BuildBaddbmmShlo(self_op, batch1_op, batch2_op, beta, alpha,
-                            out_dtype);
+                            precision, out_dtype);
   };
 
   TT_ASSIGN_OR_RETURN(

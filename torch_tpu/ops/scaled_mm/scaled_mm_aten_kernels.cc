@@ -221,8 +221,8 @@ absl::StatusOr<DeviceBufferRef> ScaledMm(
   TT_ASSIGN_OR_RETURN(mlir::ElementType comp_dtype,
                       InferComputationDtype(self_elem_dtype));
 
-  const mlir::stablehlo::Precision current_precision = GetPrecision();
-  TT_RETURN_IF_ERROR(param_keys.SetParam("precision", current_precision));
+  const mlir::stablehlo::Precision current_precision =
+      GetAndAddPrecisionTo(param_keys);
 
   bool has_bias = bias.has_value() && bias->defined();
   bool has_scale_result = scale_result.has_value() && scale_result->defined();

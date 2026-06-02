@@ -98,10 +98,7 @@ absl::StatusOr<DeviceBufferRef> Mm(
   TT_ASSIGN_OR_RETURN(mlir::ElementType target_elem_dtype,
                       ConvertTo<mlir::ElementType>(target_scalar_type));
 
-  const auto current_precision = GetPrecision();
-  TT_ASSIGN_OR_RETURN(param_keys,
-                      *OpParamCacheKeys::Builder(std::move(param_keys))
-                           .SetParam("precision", current_precision));
+  const auto current_precision = GetAndAddPrecisionTo(param_keys);
   bool needs_conversion = (lhs.scalar_type() != target_scalar_type);
 
   auto op_builder = [current_precision, target_elem_dtype,
