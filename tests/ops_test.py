@@ -2777,11 +2777,7 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("index_add")
 
   def test_index_copy(self):
-    self.do_test_op(
-        "index_copy",
-        # TODO: fix the error index_fill_.int_Scalar is unimplemented.
-        check_grad=False,
-    )
+    self.do_test_op("index_copy")
 
   def test_index_fill(self):
     self.do_test_op("index_fill")
