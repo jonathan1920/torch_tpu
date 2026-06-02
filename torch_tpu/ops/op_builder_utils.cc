@@ -271,6 +271,19 @@ mlir::Attribute GetMaxFiniteValueAttr(mlir::Type element_type,
   return nullptr;
 }
 
+double GetMaxFiniteDouble(mlir::Type element_type) {
+  auto float_type = mlir::dyn_cast<mlir::FloatType>(element_type);
+  ABSL_CHECK(float_type)  // CRASH_OK
+      << "expected a floating-point type, got " << ToString(element_type);
+  return llvm::APFloat::getLargest(float_type.getFloatSemantics(),
+                                   /*Negative=*/false)
+      .convertToDouble();
+}
+
+double GetMinFiniteDouble(mlir::Type element_type) {
+  return -GetMaxFiniteDouble(element_type);
+}
+
 absl::StatusOr<mlir::MlirOp> MakeZeroSizedTensor(
     mlir::MlirBuilder& builder, mlir::Type element_type,
     mlir::ArrayRef<int64_t> shape) {

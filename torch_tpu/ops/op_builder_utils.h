@@ -238,6 +238,16 @@ absl::StatusOr<mlir::DenseElementsAttr> GetVerifiedMinFiniteValue(
 [[nodiscard]] mlir::Attribute GetMaxFiniteValueAttr(mlir::Type element_type,
                                                     mlir::OpBuilder& builder);
 
+// Returns the maximum representable finite value for a given floating-point
+// type as a double. Asserts (ABSL_CHECK) that the type is a floating-point
+// type.
+[[nodiscard]] double GetMaxFiniteDouble(mlir::Type element_type);
+
+// Returns the minimum representable finite value for a given floating-point
+// type as a double. Asserts (ABSL_CHECK) that the type is a floating-point
+// type.
+[[nodiscard]] double GetMinFiniteDouble(mlir::Type element_type);
+
 // Returns a tensor of shape `shape` with zero elements and the given element
 // type. The `shape` must contain at least one dimension of size 0 to produce
 // a tensor with 0 elements, otherwise an error is returned. If no shape is

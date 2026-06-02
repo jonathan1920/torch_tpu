@@ -923,6 +923,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "multinomial";
     case OpName::kMultinomialOut:
       return "multinomial.out";
+    case OpName::kNanToNumOut:
+      return "nan_to_num.out";
     case OpName::kNativeBatchNorm:
       return "native_batch_norm";
     case OpName::kNativeBatchNormBackward:

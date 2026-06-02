@@ -475,6 +475,7 @@ enum class OpName {
   kMulOut,
   kMultinomial,
   kMultinomialOut,
+  kNanToNumOut,
   kNativeBatchNorm,
   kNativeBatchNormBackward,
   kNativeBatchNormLegit,

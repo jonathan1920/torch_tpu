@@ -3160,6 +3160,9 @@ class TestOps(TorchTpuTestBase):
   def test_mul(self):
     self.do_test_op("mul")
 
+  def test_nan_to_num(self):
+    self.do_test_op("nan_to_num")
+
   def test_native_batch_norm(self):
     self.do_test_op(
         "native_batch_norm",

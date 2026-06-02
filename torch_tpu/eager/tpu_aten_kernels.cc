@@ -113,6 +113,7 @@
 #include "torch_tpu/ops/mm/mm_aten_kernels.h"
 #include "torch_tpu/ops/mse_loss/mse_loss_aten_kernels.h"
 #include "torch_tpu/ops/multinomial/multinomial_aten_kernels.h"
+#include "torch_tpu/ops/nan_to_num/nan_to_num_aten_kernels.h"
 #include "torch_tpu/ops/native_batch_norm/native_batch_norm_aten_kernels.h"
 #include "torch_tpu/ops/nll_loss/nll_loss_aten_kernels.h"
 #include "torch_tpu/ops/nonzero/nonzero_aten_kernels.h"
@@ -581,6 +582,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kMulOut, AtenMulOut);
   Impl(m, OpName::kMultinomial, AtenMultinomial);
   Impl(m, OpName::kMultinomialOut, AtenMultinomialOut);
+  Impl(m, OpName::kNanToNumOut, AtenNanToNumOut);
   Impl(m, OpName::kNativeBatchNorm, AtenNativeBatchNorm);
   Impl(m, OpName::kNativeBatchNormBackward, AtenNativeBatchNormBackward);
   Impl(m, OpName::kNativeBatchNormLegit, AtenNativeBatchNormLegit);

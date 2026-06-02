@@ -531,6 +531,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/cummin:cummin_aten_kernels",
         "//torch_tpu/ops/cumprod:cumprod_aten_kernels",
         "//torch_tpu/ops/cumsum:cumsum_aten_kernels",
+        "//torch_tpu/ops/nan_to_num:nan_to_num_aten_kernels",
         "//torch_tpu/ops/distance:dist_aten_kernels",
         "//torch_tpu/ops/dot:dot_aten_kernels",
         "//torch_tpu/ops/dot:vdot_aten_kernels",
