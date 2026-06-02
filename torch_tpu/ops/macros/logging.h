@@ -257,7 +257,6 @@ void CheckScalarInput() {
       kOpName == OpName::kForeachAddTensor ||           //
       kOpName == OpName::kForeachAdd_List ||            //
       kOpName == OpName::kForeachAdd_Tensor ||          //
-      kOpName == OpName::kForeachNormScalar ||          //
       kOpName == OpName::kForeachPowScalar ||           //
       kOpName == OpName::kForeachPowScalarAndTensor ||  //
       kOpName == OpName::kForeachPowScalarList ||       //

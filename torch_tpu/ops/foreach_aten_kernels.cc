@@ -2700,34 +2700,36 @@ void AtenForeachCopy_(at::TensorList self, at::TensorList src,
 std::vector<at::Tensor> AtenForeachNormScalar(
     at::TensorList self, const at::Scalar& ord,
     const std::optional<c10::ScalarType> dtype) {
-  TT_KERNEL(OpName::kForeachNormScalar, _,
-            (self, IgnoreInCacheKey(ord, "Legacy usage"),
-             IgnoreInCacheKey(dtype, "Legacy usage")),
-            {
-              TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
-              std::vector<at::Tensor> result;
-              result.reserve(self.size());
-              for (const auto& tensor : self) {
-                auto out_dtype =
-                    at::toRealValueType(dtype.value_or(tensor.scalar_type()));
-                TT_ASSIGN_OR_THROW(
-                    auto out, MakeEmptyTensor({}, out_dtype, tensor.device()));
-                // If the tensor is empty, return zero scalar.
-                // If ord < 0, to avoid inf caused by pow(0, ord), check for 0s
-                // in the tensor and return zero directly, which is the correct
-                // result.
-                if (tensor.numel() == 0 ||
-                    (ord.to<double>() < 0 && tensor.eq(0).any().item<bool>())) {
-                  out.fill_(0);
-                  result.push_back(out);
-                  continue;
-                }
-                AtenLinalgVectorNormOut(tensor.to(out_dtype), ord, /*dim=*/{},
-                                        /*keepdim=*/false, dtype, out);
-                result.push_back(out);
-              }
-              return result;
-            });
+  auto promoted_ord = PromoteScalar(ord);
+  TT_KERNEL(
+      OpName::kForeachNormScalar, _,
+      (self, promoted_ord, IgnoreInCacheKey(dtype, "Legacy usage")), {
+        TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
+        TT_ASSIGN_OR_THROW(at::Tensor ord_tensor, promoted_ord.GetTensor());
+        std::vector<at::Tensor> result;
+        result.reserve(self.size());
+        for (const auto& tensor : self) {
+          auto out_dtype =
+              at::toRealValueType(dtype.value_or(tensor.scalar_type()));
+          TT_ASSIGN_OR_THROW(auto out,
+                             MakeEmptyTensor({}, out_dtype, tensor.device()));
+          // If the tensor is empty, return zero scalar.
+          // If ord < 0, to avoid inf caused by pow(0, ord), check for 0s
+          // in the tensor and return zero directly, which is the correct
+          // result.
+          if (tensor.numel() == 0 || (promoted_ord.scalar().to<double>() < 0 &&
+                                      tensor.eq(0).any().item<bool>())) {
+            out.fill_(0);
+            result.push_back(out);
+            continue;
+          }
+          AtenLinalgVectorNormOut(tensor.to(out_dtype), promoted_ord.scalar(),
+                                  /*dim=*/{},
+                                  /*keepdim=*/false, dtype, out);
+          result.push_back(out);
+        }
+        return result;
+      });
 }
 
 std::vector<at::Tensor> AtenForeachMax(at::TensorList self) {
