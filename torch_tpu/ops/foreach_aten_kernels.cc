@@ -269,6 +269,15 @@ absl::Status ForeachAssignToTensor(std::vector<DeviceBufferRef> result_buffers,
   return absl::OkStatus();
 }
 
+absl::Status ForeachAssignToTensor(std::vector<DeviceBufferRef> result_buffers,
+                                   at::TensorList self) {
+  for (int i = 0; i < result_buffers.size(); ++i) {
+    TT_RETURN_IF_ERROR(
+        AssignBufferToAtTensor(std::move(result_buffers[i]), self[i]));
+  }
+  return absl::OkStatus();
+}
+
 std::vector<absl::Span<const int64_t>> GetDimsList(at::TensorList tensor_list) {
   std::vector<absl::Span<const int64_t>> dims_list;
   dims_list.reserve(tensor_list.size());
@@ -884,12 +893,12 @@ void AtenForeachAbs_(at::TensorList self) {
     TT_THROW_IF_ERROR(CheckNotComplex(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildAbsShlo,
+                       ForeachUnaryOp(self, std::move(out_dtypes), BuildAbsShlo,
                                       // Share OpName with AtenForeachAbs() as
                                       // the underlying Shlo is the same.
                                       OpName::kForeachAbsCommon,
                                       /*cast_inputs=*/false));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -907,12 +916,13 @@ void AtenForeachAcos_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachAcos_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildAcosShlo,
-                                      // Share OpName with AtenForeachAcos() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachAcos));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildAcosShlo,
+                       // Share OpName with AtenForeachAcos() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachAcos));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -930,12 +940,13 @@ void AtenForeachAsin_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachAsin_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildAsinShlo,
-                                      // Share OpName with AtenForeachAsin() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachAsin));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildAsinShlo,
+                       // Share OpName with AtenForeachAsin() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachAsin));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -953,12 +964,13 @@ void AtenForeachAtan_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachAtan_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildAtanShlo,
-                                      // Share OpName with AtenForeachAtan() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachAtan));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildAtanShlo,
+                       // Share OpName with AtenForeachAtan() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachAtan));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -976,12 +988,13 @@ void AtenForeachCeil_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachCeil_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildCeilShlo,
-                                      // Share OpName with AtenForeachCeil() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachCeil));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildCeilShlo,
+                       // Share OpName with AtenForeachCeil() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachCeil));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1000,11 +1013,11 @@ void AtenForeachCos_(at::TensorList self) {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildCosShlo,
+                       ForeachUnaryOp(self, std::move(out_dtypes), BuildCosShlo,
                                       // Share OpName with AtenForeachCos() as
                                       // the underlying Shlo is the same.
                                       OpName::kForeachCos));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1022,12 +1035,13 @@ void AtenForeachCosh_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachCosh_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildCoshShlo,
-                                      // Share OpName with AtenForeachCosh() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachCosh));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildCoshShlo,
+                       // Share OpName with AtenForeachCosh() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachCosh));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1046,11 +1060,11 @@ void AtenForeachErf_(at::TensorList self) {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildErfShlo,
+                       ForeachUnaryOp(self, std::move(out_dtypes), BuildErfShlo,
                                       // Share OpName with AtenForeachErf() as
                                       // the underlying Shlo is the same.
                                       OpName::kForeachErf));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1068,12 +1082,13 @@ void AtenForeachErfc_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachErfc_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildErfcShlo,
-                                      // Share OpName with AtenForeachErfc() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachErfc));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildErfcShlo,
+                       // Share OpName with AtenForeachErfc() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachErfc));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1092,11 +1107,11 @@ void AtenForeachExp_(at::TensorList self) {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildExpShlo,
+                       ForeachUnaryOp(self, std::move(out_dtypes), BuildExpShlo,
                                       // Share OpName with AtenForeachExp() as
                                       // the underlying Shlo is the same.
                                       OpName::kForeachExp));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1114,12 +1129,13 @@ void AtenForeachExpm1_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachExpm1_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildExpm1Shlo,
-                                      // Share OpName with AtenForeachExpm1() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachExpm1));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildExpm1Shlo,
+                       // Share OpName with AtenForeachExpm1() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachExpm1));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1137,12 +1153,13 @@ void AtenForeachFloor_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachFloor_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildFloorShlo,
-                                      // Share OpName with AtenForeachFloor() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachFloor));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildFloorShlo,
+                       // Share OpName with AtenForeachFloor() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachFloor));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1161,12 +1178,13 @@ void AtenForeachFrac_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachFrac_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildFracShlo,
-                                      // Share OpName with AtenForeachFrac() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachFrac));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildFracShlo,
+                       // Share OpName with AtenForeachFrac() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachFrac));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1184,12 +1202,13 @@ void AtenForeachLgamma_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachLgamma_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildLgammaShlo,
-                                      // Share OpName with AtenForeachLgamma()
-                                      // as the underlying Shlo is the same.
-                                      OpName::kForeachLgamma));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildLgammaShlo,
+                       // Share OpName with AtenForeachLgamma()
+                       // as the underlying Shlo is the same.
+                       OpName::kForeachLgamma));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1208,11 +1227,11 @@ void AtenForeachLog_(at::TensorList self) {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildLogShlo,
+                       ForeachUnaryOp(self, std::move(out_dtypes), BuildLogShlo,
                                       // Share OpName with AtenForeachLog() as
                                       // the underlying Shlo is the same.
                                       OpName::kForeachLog));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1230,12 +1249,13 @@ void AtenForeachLog10_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachLog10_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildLog10Shlo,
-                                      // Share OpName with AtenForeachLog10() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachLog10));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildLog10Shlo,
+                       // Share OpName with AtenForeachLog10() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachLog10));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1253,12 +1273,13 @@ void AtenForeachLog1p_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachLog1p_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildLog1pShlo,
-                                      // Share OpName with AtenForeachLog1p() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachLog1p));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildLog1pShlo,
+                       // Share OpName with AtenForeachLog1p() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachLog1p));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1276,12 +1297,13 @@ void AtenForeachLog2_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachLog2_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildLog2Shlo,
-                                      // Share OpName with AtenForeachLog2() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachLog2));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildLog2Shlo,
+                       // Share OpName with AtenForeachLog2() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachLog2));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1298,11 +1320,11 @@ void AtenForeachNeg_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachNeg_, _, (self), {
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildNegShlo,
+                       ForeachUnaryOp(self, std::move(out_dtypes), BuildNegShlo,
                                       // Share OpName with AtenForeachNeg() as
                                       // the underlying Shlo is the same.
                                       OpName::kForeachNeg));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1322,11 +1344,11 @@ void AtenForeachReciprocal_(at::TensorList self) {
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
-        ForeachUnaryOp(self, out_dtypes, BuildReciprocalShlo,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildReciprocalShlo,
                        // Share OpName with AtenForeachReciprocal() as
                        // the underlying Shlo is the same.
                        OpName::kForeachReciprocal));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1352,8 +1374,9 @@ std::vector<at::Tensor> AtenForeachRound(at::TensorList self) {
 void AtenForeachRound_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachRound_, _, (self), {
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers, ForeachRound(self, out_dtypes));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(auto result_buffers,
+                       ForeachRound(self, std::move(out_dtypes)));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1371,12 +1394,13 @@ void AtenForeachRsqrt_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachRsqrt_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildRsqrtShlo,
-                                      // Share OpName with AtenForeachRsqrt() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachRsqrt));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildRsqrtShlo,
+                       // Share OpName with AtenForeachRsqrt() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachRsqrt));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1394,12 +1418,13 @@ void AtenForeachSigmoid_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachSigmoid_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildSigmoidShlo,
-                                      // Share OpName with AtenForeachSigmoid()
-                                      // as the underlying Shlo is the same.
-                                      OpName::kForeachSigmoid));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildSigmoidShlo,
+                       // Share OpName with AtenForeachSigmoid()
+                       // as the underlying Shlo is the same.
+                       OpName::kForeachSigmoid));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1417,12 +1442,13 @@ void AtenForeachSign_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachSign_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotComplex(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildSignShlo,
-                                      // Share OpName with AtenForeachSign() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachSign));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildSignShlo,
+                       // Share OpName with AtenForeachSign() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachSign));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1441,11 +1467,11 @@ void AtenForeachSin_(at::TensorList self) {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildSinShlo,
+                       ForeachUnaryOp(self, std::move(out_dtypes), BuildSinShlo,
                                       // Share OpName with AtenForeachSin() as
                                       // the underlying Shlo is the same.
                                       OpName::kForeachSin));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1463,12 +1489,13 @@ void AtenForeachSinh_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachSinh_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildSinhShlo,
-                                      // Share OpName with AtenForeachSinh() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachSinh));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildSinhShlo,
+                       // Share OpName with AtenForeachSinh() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachSinh));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1486,12 +1513,13 @@ void AtenForeachSqrt_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachSqrt_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildSqrtShlo,
-                                      // Share OpName with AtenForeachSqrt() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachSqrt));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildSqrtShlo,
+                       // Share OpName with AtenForeachSqrt() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachSqrt));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1510,11 +1538,11 @@ void AtenForeachTan_(at::TensorList self) {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildTanShlo,
+                       ForeachUnaryOp(self, std::move(out_dtypes), BuildTanShlo,
                                       // Share OpName with AtenForeachTan() as
                                       // the underlying Shlo is the same.
                                       OpName::kForeachTan));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1532,12 +1560,13 @@ void AtenForeachTanh_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachTanh_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildTanhShlo,
-                                      // Share OpName with AtenForeachTanh() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachTanh));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildTanhShlo,
+                       // Share OpName with AtenForeachTanh() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachTanh));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1555,12 +1584,13 @@ void AtenForeachTrunc_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachTrunc_, _, (self), {
     TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-    TT_ASSIGN_OR_THROW(auto result_buffers,
-                       ForeachUnaryOp(self, out_dtypes, BuildTruncShlo,
-                                      // Share OpName with AtenForeachTrunc() as
-                                      // the underlying Shlo is the same.
-                                      OpName::kForeachTrunc));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(
+        auto result_buffers,
+        ForeachUnaryOp(self, std::move(out_dtypes), BuildTruncShlo,
+                       // Share OpName with AtenForeachTrunc() as
+                       // the underlying Shlo is the same.
+                       OpName::kForeachTrunc));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
@@ -1571,10 +1601,10 @@ void AtenForeachZero_(at::TensorList self) {
     auto tensor_transform = [](mlir::MlirOp input, mlir::ElementType) {
       return MakeConstantLike(input, 0.0);
     };
-    TT_ASSIGN_OR_THROW(
-        auto result_buffers,
-        ForeachUnaryOp(self, out_dtypes, std::move(tensor_transform)));
-    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
+    TT_ASSIGN_OR_THROW(auto result_buffers,
+                       ForeachUnaryOp(self, std::move(out_dtypes),
+                                      std::move(tensor_transform)));
+    TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self));
   });
 }
 
