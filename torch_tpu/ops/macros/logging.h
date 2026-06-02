@@ -252,17 +252,11 @@ void CheckScalarInput() {
       kOpName == OpName::kEluOut ||                     //
       kOpName == OpName::kExponential_ ||               //
       kOpName == OpName::kFill_Scalar ||                //
-      kOpName == OpName::kForeachAddList ||             //
-      kOpName == OpName::kForeachAddTensor ||           //
-      kOpName == OpName::kForeachAdd_List ||            //
-      kOpName == OpName::kForeachAdd_Tensor ||          //
       kOpName == OpName::kForeachPowScalar ||           //
       kOpName == OpName::kForeachPowScalarAndTensor ||  //
       kOpName == OpName::kForeachPowScalarList ||       //
       kOpName == OpName::kForeachPow_Scalar ||          //
       kOpName == OpName::kForeachPow_ScalarList ||      //
-      kOpName == OpName::kForeachSubList ||             //
-      kOpName == OpName::kForeachSub_List ||            //
       kOpName == OpName::kHistc ||                      //
       kOpName == OpName::kIndexAddOut ||                //
       kOpName == OpName::kLinalgVectorNormOut ||        //
