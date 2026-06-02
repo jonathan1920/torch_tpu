@@ -90,7 +90,7 @@ class DeviceGeneratorImpl : public c10::GeneratorImpl {
   // advances the generator's state by the amount specified
   // (num_elements * bit_width).
   absl::StatusOr<at::Tensor> GetAndAdvanceDeviceStateTensor(
-      int64_t num_elements, int64_t bit_width = 64);
+      int64_t num_elements, int64_t bit_width);
 
  private:
   template <typename DispatchFunc>

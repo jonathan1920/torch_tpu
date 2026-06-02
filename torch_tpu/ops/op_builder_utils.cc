@@ -1033,24 +1033,35 @@ absl::StatusOr<mlir::MlirOp> PromoteFloatDtype(
 absl::StatusOr<mlir::MlirOp> BuildRngStateUpdateShlo(mlir::MlirOp state,
                                                      int64_t num_elements,
                                                      int64_t bit_width) {
+  ABSL_CHECK_GE(num_elements, 0)  // CRASH_OK
+      << "num_elements must be non-negative.";
+  ABSL_CHECK_GE(bit_width, 0) << "bit_width must be non-negative.";  // CRASH_OK
+
+  // Do the computation as unsigned numbers to match CUDA behavior.
+  const uint64_t num_elements_u64 = static_cast<uint64_t>(num_elements);
+  const uint64_t bit_width_u64 = static_cast<uint64_t>(bit_width);
+
   auto& builder = state.getBuilder();
 
   // Note that num_bits = num_elements * bit_width.
   // Each Philox step consumes 128 bits of randomness and increments the offset
   // by 1.
-  int64_t increment_val = (num_elements * bit_width + 127) / 128;
+  TT_ASSIGN_OR_RETURN(const uint64_t num_bits_u64,
+                      SafeMultiply(num_elements_u64, bit_width_u64));
+  // Round up to the nearest multiple of 128. We deliberately want overflows to
+  // wrap around, matching CUDA behavior.
+  const uint64_t increment_val_u64 = (num_bits_u64 + 127u) / 128u;
 
   // Create a constant tensor [0, increment_val]
   mlir::RankedTensorType tensor_ui64_type =
       mlir::makeTensorType(builder.getContext(), {2}, mlir::ElementType::UI64);
   mlir::DenseElementsAttr value_attr = mlir::DenseElementsAttr::get(
-      tensor_ui64_type,
-      llvm::ArrayRef<uint64_t>({0, static_cast<uint64_t>(increment_val)}));
+      tensor_ui64_type, llvm::ArrayRef<uint64_t>({0, increment_val_u64}));
   mlir::MlirOp increment_tensor =
       mlir::stablehlo::Constant(builder, value_attr);
 
   // output_state[0] = initial_state[0] + 0
-  // output_state[1] = initial_state[1] + increment_val
+  // output_state[1] = initial_state[1] + increment_val_u64
   return {{mlir::stablehlo::Add(state, increment_tensor)}};
 }
 

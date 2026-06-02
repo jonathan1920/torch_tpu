@@ -21,6 +21,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -471,12 +472,37 @@ bool GetEnableDebugChecks() {
   return GetEagerMode() == EagerMode::kDeferNeverAndLaunchBlocking;
 }
 
-absl::StatusOr<int64_t> SafeMultiply(int64_t x, int64_t y) {
+absl::StatusOr<int64_t> SafeAdd(const int64_t x, const int64_t y) {
+  if (y == 0) return x;
+
+  if (y > 0) {
+    const int64_t upper_bound = std::numeric_limits<int64_t>::max() - y;
+    TT_RET_CHECK(x <= upper_bound, error::kInvalidArgument)
+        << "sum of " << x << " and " << y << " overflows as int64";
+  } else {  // y < 0
+    const int64_t lower_bound = std::numeric_limits<int64_t>::min() - y;
+    TT_RET_CHECK(x >= lower_bound, error::kInvalidArgument)
+        << "sum of " << x << " and " << y << " underflows as int64";
+  }
+
+  return x + y;
+}
+
+absl::StatusOr<int64_t> SafeMultiply(const int64_t x, const int64_t y) {
   const auto product_i128 = absl::int128(x) * y;  // Guaranteed to not overflow.
   const auto product_i64 = static_cast<int64_t>(product_i128);
   TT_RET_CHECK(product_i64 == product_i128, error::kInvalidArgument)
       << "product of " << x << " and " << y << " overflows as int64";
   return product_i64;
+}
+
+absl::StatusOr<uint64_t> SafeMultiply(const uint64_t x, const uint64_t y) {
+  const auto product_u128 =
+      absl::uint128(x) * y;  // Guaranteed to not overflow.
+  const auto product_u64 = static_cast<uint64_t>(product_u128);
+  TT_RET_CHECK(product_u64 == product_u128, error::kInvalidArgument)
+      << "product of " << x << " and " << y << " overflows as uint64";
+  return product_u64;
 }
 
 absl::StatusOr<int64_t> NumElements(absl::Span<const int64_t> dims) {

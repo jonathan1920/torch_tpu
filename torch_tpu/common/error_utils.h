@@ -93,9 +93,14 @@ inline constexpr absl::StatusCode kUnknown = absl::StatusCode::kUnknown;
 // if the environment variable is changed.
 [[nodiscard]] bool GetEnableDebugChecks();
 
+// Returns the sum of x and y, or returns an error if the sum overflows or
+// underflows.
+absl::StatusOr<int64_t> SafeAdd(int64_t x, int64_t y);
+
 // Returns the product of two numbers, or returns an error if the product
 // overflows.
 absl::StatusOr<int64_t> SafeMultiply(int64_t x, int64_t y);
+absl::StatusOr<uint64_t> SafeMultiply(uint64_t x, uint64_t y);
 
 // Returns the number of elements in a tensor with the given dimensions.
 // Returns an error if the result overflows as int64 or if a dimension is
