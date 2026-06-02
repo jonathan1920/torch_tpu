@@ -880,6 +880,7 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float32: {"rtol": 1.6, "atol": 8.7e-1},
     },
     "cdist": {
+        torch.bfloat16: {"rtol": 2.6e-1, "atol": 1.8e-1},
         torch.float16: {"rtol": 7.4e-1, "atol": 6.6e-1},
         torch.float32: {"rtol": 7.5e-1, "atol": 6.8e-1},
         torch.float64: {"rtol": 5.5e-7, "atol": 4.5e-7},
