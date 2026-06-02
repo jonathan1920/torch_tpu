@@ -2501,30 +2501,6 @@ absl::StatusOr<at::Tensor> AtenClampMax(const at::Tensor& self,
   return out;
 }
 
-std::vector<at::Tensor> AtenForeachClampMaxScalar(at::TensorList self,
-                                                  const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachClampMaxScalar, _,
-            (self, IgnoreInCacheKey(scalar, "Legacy usage")), {
-              std::vector<at::Tensor> result;
-              result.reserve(self.size());
-              for (const auto& tensor : self) {
-                TT_ASSIGN_OR_THROW(auto out, AtenClampMax(tensor, scalar));
-                result.push_back(out);
-              }
-              return result;
-            });
-}
-
-void AtenForeachClampMax_Scalar(at::TensorList self, const at::Scalar& scalar) {
-  TT_KERNEL(OpName::kForeachClampMax_Scalar, _,
-            (self, IgnoreInCacheKey(scalar, "Legacy usage")), {
-              for (const auto& tensor : self) {
-                AtenClampMaxOut(tensor, scalar,
-                                const_cast<at::Tensor&>(tensor));
-              }
-            });
-}
-
 absl::StatusOr<at::Tensor> AtenClampMax(const at::Tensor& self,
                                         const at::Tensor& other) {
   TT_ASSIGN_OR_RETURN(
@@ -2532,6 +2508,34 @@ absl::StatusOr<at::Tensor> AtenClampMax(const at::Tensor& self,
       MakeEmptyTensor(self.sizes(), self.scalar_type(), self.device()));
   AtenClampMaxTensorOut(self, other, out);
   return out;
+}
+
+std::vector<at::Tensor> AtenForeachClampMaxScalar(at::TensorList self,
+                                                  const at::Scalar& scalar) {
+  auto promoted_scalar = PromoteScalar(scalar);
+  TT_KERNEL(OpName::kForeachClampMaxScalar, _, (self, promoted_scalar), {
+    std::vector<at::Tensor> result;
+    result.reserve(self.size());
+    for (const auto& tensor : self) {
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         promoted_scalar.GetTensor(tensor.scalar_type()));
+      TT_ASSIGN_OR_THROW(auto out, AtenClampMax(tensor, scalar_tensor));
+      result.push_back(out);
+    }
+    return result;
+  });
+}
+
+void AtenForeachClampMax_Scalar(at::TensorList self, const at::Scalar& scalar) {
+  auto promoted_scalar = PromoteScalar(scalar);
+  TT_KERNEL(OpName::kForeachClampMax_Scalar, _, (self, promoted_scalar), {
+    for (const auto& tensor : self) {
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         promoted_scalar.GetTensor(tensor.scalar_type()));
+      AtenClampMaxTensorOut(tensor, scalar_tensor,
+                            const_cast<at::Tensor&>(tensor));
+    }
+  });
 }
 
 std::vector<at::Tensor> AtenForeachClampMaxList(at::TensorList self,
@@ -2558,27 +2562,31 @@ void AtenForeachClampMax_List(at::TensorList self, at::TensorList other) {
 
 std::vector<at::Tensor> AtenForeachClampMaxScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachClampMaxScalarList, _,
-            (self, IgnoreInCacheKey(scalars, "Legacy usage")), {
-              std::vector<at::Tensor> result;
-              result.reserve(self.size());
-              for (size_t i = 0; i < self.size(); ++i) {
-                TT_ASSIGN_OR_THROW(auto out, AtenClampMax(self[i], scalars[i]));
-                result.push_back(out);
-              }
-              return result;
-            });
+  auto promoted_scalars = PromoteScalar(scalars);
+  TT_KERNEL(OpName::kForeachClampMaxScalarList, _, (self, promoted_scalars), {
+    std::vector<at::Tensor> result;
+    result.reserve(self.size());
+    for (size_t i = 0; i < self.size(); ++i) {
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         promoted_scalars[i].GetTensor(self[i].scalar_type()));
+      TT_ASSIGN_OR_THROW(auto out, AtenClampMax(self[i], scalar_tensor));
+      result.push_back(out);
+    }
+    return result;
+  });
 }
 
 void AtenForeachClampMax_ScalarList(at::TensorList self,
                                     at::ArrayRef<at::Scalar> scalars) {
-  TT_KERNEL(OpName::kForeachClampMax_ScalarList, _,
-            (self, IgnoreInCacheKey(scalars, "Legacy usage")), {
-              for (size_t i = 0; i < self.size(); ++i) {
-                AtenClampMaxOut(self[i], scalars[i],
-                                const_cast<at::Tensor&>(self[i]));
-              }
-            });
+  auto promoted_scalars = PromoteScalar(scalars);
+  TT_KERNEL(OpName::kForeachClampMax_ScalarList, _, (self, promoted_scalars), {
+    for (size_t i = 0; i < self.size(); ++i) {
+      TT_ASSIGN_OR_THROW(at::Tensor scalar_tensor,
+                         promoted_scalars[i].GetTensor(self[i].scalar_type()));
+      AtenClampMaxTensorOut(self[i], scalar_tensor,
+                            const_cast<at::Tensor&>(self[i]));
+    }
+  });
 }
 
 absl::StatusOr<at::Tensor> AtenClampMin(const at::Tensor& self,

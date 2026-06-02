@@ -257,10 +257,6 @@ void CheckScalarInput() {
       kOpName == OpName::kForeachAddTensor ||            //
       kOpName == OpName::kForeachAdd_List ||             //
       kOpName == OpName::kForeachAdd_Tensor ||           //
-      kOpName == OpName::kForeachClampMaxScalar ||       //
-      kOpName == OpName::kForeachClampMaxScalarList ||   //
-      kOpName == OpName::kForeachClampMax_Scalar ||      //
-      kOpName == OpName::kForeachClampMax_ScalarList ||  //
       kOpName == OpName::kForeachClampMinScalar ||       //
       kOpName == OpName::kForeachClampMinScalarList ||   //
       kOpName == OpName::kForeachClampMin_Scalar ||      //
