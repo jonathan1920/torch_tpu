@@ -1619,6 +1619,18 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch._scaled_mm(mat1, mat2, scale_a, scale_b, use_fast_accum=True)
 
+  def test_pdist_backward_negative_p(self):
+    grad = torch.randn(1, device=et.device())
+    self_tensor = torch.randn(2, 2, device=et.device())
+    pdist = torch.randn(1, device=et.device())
+
+    # CPU does not perform a negative p check (relies on forward validation)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""pdist_backward(): expected the p value to be >= 0, got -1""",
+    ):
+      torch.ops.aten._pdist_backward(grad, self_tensor, -1.0, pdist)
+
 
 if __name__ == "__main__":
   absltest.main()

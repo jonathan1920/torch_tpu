@@ -615,6 +615,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kNormalTensorTensor, AtenNormalTensorTensor);
   Impl(m, OpName::kNormalTensorTensorOut, AtenNormalTensorTensorOut);
   Impl(m, OpName::kNormal_, AtenNormal_);
+  Impl(m, OpName::kPdistBackward, AtenPdistBackward);
   Impl(m, OpName::kPdistForward, AtenPdistForward);
   Impl(m, OpName::kPolarOut, AtenPolarOut);
   Impl(m, OpName::kPowScalarOut, AtenPowScalarOut);

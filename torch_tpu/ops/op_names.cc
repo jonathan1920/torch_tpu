@@ -993,6 +993,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "normal_";
     case OpName::kPadUninitialized_:
       return "pad_uninitialized_";
+    case OpName::kPdistBackward:
+      return "_pdist_backward";
     case OpName::kPdistForward:
       return "_pdist_forward";
     case OpName::kPolarOut:

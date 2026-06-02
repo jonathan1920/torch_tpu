@@ -510,6 +510,7 @@ enum class OpName {
   kNormalTensorTensorOut,
   kNormal_,
   kPadUninitialized_,
+  kPdistBackward,
   kPdistForward,
   kPolarOut,
   kPow,

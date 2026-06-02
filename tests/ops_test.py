@@ -3528,8 +3528,6 @@ class TestOps(TorchTpuTestBase):
   def test_pdist_forward(self):
     self.do_test_op(
         "nn.functional.pdist",
-        # TODO: fix the error _pdist_backward is unimplemented.
-        check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
     )

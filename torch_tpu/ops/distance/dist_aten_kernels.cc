@@ -220,6 +220,187 @@ absl::StatusOr<mlir::MlirOp> BuildPdistForwardHlo(mlir::MlirOp input_op,
   }
 }
 
+absl::StatusOr<mlir::MlirOp> BuildPdistBackwardShlo(mlir::MlirOp grad_op,
+                                                    mlir::MlirOp self_op,
+                                                    double p,
+                                                    mlir::MlirOp pdist_op) {
+  mlir::MlirBuilder& builder = self_op.getBuilder();
+  const mlir::RankedTensorType self_type = GetTensorTypeOrDie(self_op);
+  const mlir::Type element_type = self_type.getElementType();
+  TT_ASSIGN_OR_RETURN(mlir::ElementType out_type, GetElementType(self_op));
+
+  const int64_t n = self_type.getDimSize(0);
+  const int64_t m = self_type.getDimSize(1);
+  const int64_t num_pairs = n * (n - 1) / 2;
+
+  // Create tensors of indices for pairs (i, j) such that i < j.
+  Dimensions idx_left;
+  Dimensions idx_right;
+  idx_left.reserve(num_pairs);
+  idx_right.reserve(num_pairs);
+
+  for (int64_t i = 0; i < n; ++i) {
+    for (int64_t j = i + 1; j < n; ++j) {
+      idx_left.push_back(i);
+      idx_right.push_back(j);
+    }
+  }
+
+  auto indices_type = mlir::RankedTensorType::get(
+      {num_pairs}, builder.getOpBuilder().getI64Type());
+  mlir::MlirOp idx_left_op = mlir::stablehlo::Constant(
+      builder, mlir::cast<mlir::DenseElementsAttr>(mlir::makeConstant(
+                   llvm::ArrayRef<int64_t>(idx_left), indices_type)));
+  mlir::MlirOp idx_right_op = mlir::stablehlo::Constant(
+      builder, mlir::cast<mlir::DenseElementsAttr>(mlir::makeConstant(
+                   llvm::ArrayRef<int64_t>(idx_right), indices_type)));
+
+  mlir::MlirOp lhs = BuildIndexSelectShlo(self_op, /*dim=*/0, idx_left_op);
+  mlir::MlirOp rhs = BuildIndexSelectShlo(self_op, /*dim=*/0, idx_right_op);
+
+  mlir::MlirOp diff = mlir::stablehlo::Subtract(lhs, rhs);
+
+  // Reshape grad and pdist from (num_pairs) to (num_pairs, 1)
+  mlir::RankedTensorType reshaped_type =
+      mlir::RankedTensorType::get({num_pairs, 1}, element_type);
+  mlir::MlirOp grad_reshaped = mlir::stablehlo::Reshape(reshaped_type, grad_op);
+  mlir::MlirOp pdist_reshaped =
+      mlir::stablehlo::Reshape(reshaped_type, pdist_op);
+
+  // Broadcast grad and pdist to (num_pairs, m)
+  mlir::RankedTensorType bcast_type =
+      mlir::RankedTensorType::get({num_pairs, m}, element_type);
+  mlir::MlirOp grad_bcast =
+      mlir::stablehlo::BroadcastInDim(bcast_type, grad_reshaped, {0, 1});
+  mlir::MlirOp pdist_bcast =
+      mlir::stablehlo::BroadcastInDim(bcast_type, pdist_reshaped, {0, 1});
+
+  mlir::MlirOp unreduced_grad;
+  if (p == 0.0) {
+    // Case 1: p = 0.0
+    auto zero = MakeScalarConstant(builder, 0.0, out_type);
+    unreduced_grad = mlir::stablehlo::BroadcastInDim(bcast_type, zero, {});
+  } else if (p == 1.0) {
+    // Case 2: p = 1.0
+    TT_ASSIGN_OR_RETURN(auto sign_diff, BuildSignShlo(diff));
+    TT_ASSIGN_OR_RETURN(unreduced_grad, BuildMulShlo(grad_bcast, sign_diff));
+  } else if (p == 2.0) {
+    // Case 3: p = 2.0
+    auto zero = MakeScalarConstant(builder, 0.0, out_type);
+    auto zero_bcast = mlir::stablehlo::BroadcastInDim(bcast_type, zero, {});
+    auto one = MakeScalarConstant(builder, 1.0, out_type);
+    auto one_bcast = mlir::stablehlo::BroadcastInDim(bcast_type, one, {});
+    auto cdist_is_zero = mlir::stablehlo::Compare(
+        pdist_bcast, zero_bcast, mlir::stablehlo::ComparisonDirection::EQ);
+    auto safe_cdist =
+        mlir::stablehlo::Select(cdist_is_zero, one_bcast, pdist_bcast);
+    TT_ASSIGN_OR_RETURN(auto grad_mul_diff, BuildMulShlo(grad_bcast, diff));
+    TT_ASSIGN_OR_RETURN(auto div, BuildDivShlo(grad_mul_diff, safe_cdist));
+    unreduced_grad = mlir::stablehlo::Select(cdist_is_zero, zero_bcast, div);
+  } else if (std::isinf(p)) {
+    // Case 4: p = infinity
+    TT_ASSIGN_OR_RETURN(auto sign_diff, BuildSignShlo(diff));
+    TT_ASSIGN_OR_RETURN(auto abs_diff, BuildAbsShlo(diff));
+    auto is_max = mlir::stablehlo::Compare(
+        abs_diff, pdist_bcast, mlir::stablehlo::ComparisonDirection::EQ);
+    auto is_max_float = mlir::stablehlo::Convert(bcast_type, is_max);
+    TT_ASSIGN_OR_RETURN(auto grad_mul_sign,
+                        BuildMulShlo(grad_bcast, sign_diff));
+    TT_ASSIGN_OR_RETURN(unreduced_grad,
+                        BuildMulShlo(grad_mul_sign, is_max_float));
+  } else {
+    // Case 5: General p
+    auto zero = MakeScalarConstant(builder, 0.0, out_type);
+    auto zero_bcast = mlir::stablehlo::BroadcastInDim(bcast_type, zero, {});
+    auto one = MakeScalarConstant(builder, 1.0, out_type);
+    auto one_bcast = mlir::stablehlo::BroadcastInDim(bcast_type, one, {});
+
+    auto cdist_is_zero = mlir::stablehlo::Compare(
+        pdist_bcast, zero_bcast, mlir::stablehlo::ComparisonDirection::EQ);
+
+    auto diff_is_zero = mlir::stablehlo::Compare(
+        diff, zero_bcast, mlir::stablehlo::ComparisonDirection::EQ);
+
+    mlir::MlirOp cond = cdist_is_zero;
+    if (p < 1.0) {
+      cond = mlir::stablehlo::Or(cdist_is_zero, diff_is_zero);
+    }
+
+    auto p_minus_1 = MakeScalarConstant(builder, p - 1.0, out_type);
+    auto p_minus_1_bcast =
+        mlir::stablehlo::BroadcastInDim(bcast_type, p_minus_1, {});
+
+    TT_ASSIGN_OR_RETURN(auto abs_diff, BuildAbsShlo(diff));
+    auto safe_abs_diff = mlir::stablehlo::Select(cond, one_bcast, abs_diff);
+    auto safe_cdist = mlir::stablehlo::Select(cond, one_bcast, pdist_bcast);
+
+    TT_ASSIGN_OR_RETURN(auto pow_diff,
+                        BuildPowShlo(safe_abs_diff, p_minus_1_bcast));
+    TT_ASSIGN_OR_RETURN(auto pow_cdist,
+                        BuildPowShlo(safe_cdist, p_minus_1_bcast));
+
+    TT_ASSIGN_OR_RETURN(auto sign_diff, BuildSignShlo(diff));
+    TT_ASSIGN_OR_RETURN(auto term1, BuildMulShlo(sign_diff, pow_diff));
+    TT_ASSIGN_OR_RETURN(auto term2, BuildMulShlo(term1, grad_bcast));
+    TT_ASSIGN_OR_RETURN(auto div, BuildDivShlo(term2, pow_cdist));
+
+    unreduced_grad = mlir::stablehlo::Select(cond, zero_bcast, div);
+  }
+
+  // Create self_grad filled with zeros
+  auto zero_scalar = MakeScalarConstant(builder, 0.0, out_type);
+  mlir::MlirOp self_grad =
+      mlir::stablehlo::BroadcastInDim(self_type, zero_scalar, {});
+
+  // Reshape indices to (num_pairs, 1) for Scatter
+  auto indices_scatter_type = mlir::RankedTensorType::get(
+      {num_pairs, 1}, builder.getOpBuilder().getI64Type());
+  mlir::MlirOp idx_left_scatter =
+      mlir::stablehlo::Reshape(indices_scatter_type, idx_left_op);
+  mlir::MlirOp idx_right_scatter =
+      mlir::stablehlo::Reshape(indices_scatter_type, idx_right_op);
+
+  // Setup scatter dimensions numbers (scatter to dim 0 of self_grad)
+  mlir::stablehlo::ScatterDimensionNumbersAttr scatter_dimension_numbers =
+      mlir::stablehlo::ScatterDimensionNumbersAttr::get(
+          &self_op.getContext(),
+          /*update_window_dims=*/{1},
+          /*inserted_window_dims=*/{0},
+          /*input_batching_dims=*/{},
+          /*scatter_indices_batching_dims=*/{},
+          /*scatter_dims_to_operand_dims=*/{0},
+          /*index_vector_dim=*/1);
+
+  // Setup add region builder
+  auto block_type = self_type.clone({}, element_type);
+  auto add_region_builder = [block_type](mlir::RegionBuilder& r_builder) {
+    auto arg0 = mlir::Argument(r_builder, block_type);
+    auto arg1 = mlir::Argument(r_builder, block_type);
+    mlir::MlirOp result = mlir::stablehlo::Add(arg0, arg1);
+    mlir::stablehlo::Return(r_builder, {result});
+  };
+
+  // Setup sub region builder (for rhs contribution)
+  auto sub_region_builder = [block_type](mlir::RegionBuilder& r_builder) {
+    auto arg0 = mlir::Argument(r_builder, block_type);
+    auto arg1 = mlir::Argument(r_builder, block_type);
+    mlir::MlirOp result = mlir::stablehlo::Subtract(arg0, arg1);
+    mlir::stablehlo::Return(r_builder, {result});
+  };
+
+  // Scatter add unreduced_grad to left indices
+  mlir::MlirOp grad_left = mlir::stablehlo::Scatter(
+      {self_grad}, idx_left_scatter, {unreduced_grad}, add_region_builder,
+      scatter_dimension_numbers)[0];
+
+  // Scatter subtract unreduced_grad from right indices
+  mlir::MlirOp grad_final = mlir::stablehlo::Scatter(
+      {grad_left}, idx_right_scatter, {unreduced_grad}, sub_region_builder,
+      scatter_dimension_numbers)[0];
+
+  return grad_final;
+}
+
 absl::StatusOr<mlir::MlirOp> BuildCdistBackwardShlo(
     mlir::MlirOp grad_op, mlir::MlirOp x1_op, mlir::MlirOp x2_op, double p,
     mlir::MlirOp cdist_op, const Dimensions common_batch_shape, int64_t r1,
@@ -521,6 +702,52 @@ at::Tensor AtenPdistForward(const at::Tensor& self, double p) {
     TT_ASSIGN_OR_THROW(
         auto result_buf,
         DispatchOp<1>(std::move(op_builder), self,
+                      {.out_dtype = out_dtype,
+                       .out_dims = output_shape,
+                       .op_param_cache_keys = std::move(param_keys)}));
+
+    return MakeTensor(std::move(result_buf));
+  });
+}
+
+at::Tensor AtenPdistBackward(const at::Tensor& grad, const at::Tensor& self,
+                             double p, const at::Tensor& pdist) {
+  TT_KERNEL(OpName::kPdistBackward, param_keys, (grad, self, p, pdist), {
+    TT_ASSIGN_OR_THROW(auto out_dtype,
+                       ConvertTo<mlir::ElementType>(self.scalar_type()));
+
+    TT_THROW_IF_ERROR(CheckIsFloatingPoint(self, "input"));
+    TT_THROW_IF_ERROR(CheckIsFloatingPoint(grad, "gradient"));
+    TT_THROW_IF_ERROR(CheckIsFloatingPoint(pdist, "pdist"));
+
+    TT_CHECK_THROW(p >= 0, error::kInvalidArgument)
+        << "expected the p value to be >= 0, got " << p;
+
+    const int64_t n = self.size(0);
+    const int64_t m = self.size(1);
+    Dimensions output_shape = {n, m};
+
+    // Handle empty inputs
+    if (n <= 1 || m == 0) {
+      TT_ASSIGN_OR_THROW(
+          at::Tensor out,
+          MakeEmptyTensor(output_shape, self.scalar_type(), self.device()));
+      return out;
+    }
+
+    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(self, "input"));
+    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(grad, "gradient"));
+    TT_THROW_IF_ERROR(CheckNotBFloatOrHalf(pdist, "pdist"));
+
+    auto op_builder = [p](FixedSizeSpan<mlir::MlirOp, 3> inputs)
+        -> absl::StatusOr<mlir::MlirOp> {
+      auto& [grad_op, self_op, pdist_op] = inputs;
+      return BuildPdistBackwardShlo(grad_op, self_op, p, pdist_op);
+    };
+
+    TT_ASSIGN_OR_THROW(
+        auto result_buf,
+        DispatchOp<3>(std::move(op_builder), {grad, self, pdist},
                       {.out_dtype = out_dtype,
                        .out_dims = output_shape,
                        .op_param_cache_keys = std::move(param_keys)}));

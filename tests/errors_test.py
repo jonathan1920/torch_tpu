@@ -2776,6 +2776,40 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.nn.functional.pdist(inp, p=2.0)
 
+  @parameterized.named_parameters(
+      ("int32", torch.int32, "int32", "Int"),
+      ("bfloat16", torch.bfloat16, "bfloat16", "BFloat16"),
+      ("float16", torch.float16, "float16", "Half"),
+  )
+  def test_pdist_backward_unsupported_dtypes(
+      self, dtype: torch.dtype, tpu_dtype_str: str, cpu_dtype_str: str
+  ):
+    grad = torch.randn(1, device=et.device())
+    self_tensor = (
+        torch.ones(2, 2, device=et.device(), dtype=dtype)
+        if dtype == torch.int32
+        else torch.randn(2, 2, device=et.device(), dtype=dtype)
+    )
+    pdist = torch.randn(1, device=et.device())
+
+    if dtype in (torch.bfloat16, torch.float16):
+      expected_tpu_msg = (
+          "pdist_backward(): expected the input dtype not to be bfloat16 or"
+          f" float16, got {tpu_dtype_str}"
+      )
+    else:
+      expected_tpu_msg = (
+          "pdist_backward(): expected the input dtype to be floating point,"
+          f" got {tpu_dtype_str}"
+      )
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=expected_tpu_msg,
+        cpu=f""""pdist_backward" not implemented for '{cpu_dtype_str}'""",
+    ):
+      torch.ops.aten._pdist_backward(grad, self_tensor, 2.0, pdist)
+
   # TODO(lwh): fix this test once G3 pytorch version is updated
   @unittest.skip("Disabled due to pytorch version mismatch")
   def test_replication_pad_backward(self):
