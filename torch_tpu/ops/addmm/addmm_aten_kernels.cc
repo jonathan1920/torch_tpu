@@ -171,8 +171,7 @@ absl::StatusOr<DeviceBufferRef> AddMm(
     };
     return DispatchOp<4>(std::move(op_builder),
                          {self, mat1, mat2, alpha_tensor},
-                         {.op_name = OpName::kAddmm,
-                          .out_dtype = output_dtype_mlir,
+                         {.out_dtype = output_dtype_mlir,
                           .out_dims = output_dims_vec,
                           .op_param_cache_keys = std::move(param_keys)});
   }
@@ -192,8 +191,7 @@ absl::StatusOr<DeviceBufferRef> AddMm(
   };
   return DispatchOp<5>(std::move(op_builder),
                        {self, mat1, mat2, beta_tensor, alpha_tensor},
-                       {.op_name = OpName::kAddmm,
-                        .out_dtype = output_dtype_mlir,
+                       {.out_dtype = output_dtype_mlir,
                         .out_dims = output_dims_vec,
                         .op_param_cache_keys = std::move(param_keys)});
 }

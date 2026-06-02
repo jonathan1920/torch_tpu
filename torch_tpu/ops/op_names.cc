@@ -375,12 +375,16 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "force_strides";
     case OpName::kForeachAbs:
       return "_foreach_abs";
+    case OpName::kForeachAbsCommon:
+      return "_foreach_abs.common";
     case OpName::kForeachAbs_:
       return "_foreach_abs_";
     case OpName::kForeachAcos:
       return "_foreach_acos";
     case OpName::kForeachAcos_:
       return "_foreach_acos_";
+    case OpName::kForeachAddCommon:
+      return "_foreach_add.common";
     case OpName::kForeachAddList:
       return "_foreach_add.List";
     case OpName::kForeachAddScalar:
@@ -467,6 +471,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_foreach_cosh";
     case OpName::kForeachCosh_:
       return "_foreach_cosh_";
+    case OpName::kForeachDivCommon:
+      return "_foreach_div.common";
     case OpName::kForeachDivList:
       return "_foreach_div.List";
     case OpName::kForeachDivScalar:
@@ -507,6 +513,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_foreach_frac";
     case OpName::kForeachFrac_:
       return "_foreach_frac_";
+    case OpName::kForeachLerpCommon:
+      return "_foreach_lerp.common";
     case OpName::kForeachLerpList:
       return "_foreach_lerp.List";
     case OpName::kForeachLerpScalar:
@@ -565,6 +573,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_foreach_minimum_.Scalar";
     case OpName::kForeachMinimum_ScalarList:
       return "_foreach_minimum_.ScalarList";
+    case OpName::kForeachMulCommon:
+      return "_foreach_mul.common";
     case OpName::kForeachMulList:
       return "_foreach_mul.List";
     case OpName::kForeachMulScalar:
@@ -607,6 +617,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_foreach_reciprocal_";
     case OpName::kForeachRound:
       return "_foreach_round";
+    case OpName::kForeachRoundCommon:
+      return "_foreach_round.common";
     case OpName::kForeachRound_:
       return "_foreach_round_";
     case OpName::kForeachRsqrt:
@@ -1087,6 +1099,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "set_offset";
     case OpName::kRngSetSeed:
       return "set_current_seed";
+    case OpName::kRngSetStateComponent:
+      return "set_state_comp";
     case OpName::kRngStateUpdate:
       return "rng_state_update";
     case OpName::kRoll:

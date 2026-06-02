@@ -20,14 +20,12 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
-#include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -37,7 +35,6 @@
 #include "c10/core/ScalarType.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
-#include "stablehlo/integrations/cpp/builder/ChloBuilder.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
@@ -629,7 +626,7 @@ std::vector<DeviceBufferRef> ForeachAddList(at::TensorList self,
   DispatchOpOptions<kDynamicSize> options = {
       // Share the same OpName for all ForeachAddList() calls, as the underlying
       // Shlo is the same.
-      .op_name = OpName::kForeachAddList,
+      .op_name = OpName::kForeachAddCommon,
       .out_dtypes = out_dtypes,
       .out_dims_list = absl::MakeConstSpan(out_dims_list),
       .op_param_cache_keys = std::move(param_keys),
@@ -772,7 +769,7 @@ std::vector<DeviceBufferRef> ForeachDiv(at::TensorList self,
   DispatchOpOptions<kDynamicSize> options = {
       // Share the same OpName for all ForeachDiv() calls, as the underlying
       // Shlo is the same.
-      .op_name = OpName::kForeachDivList,
+      .op_name = OpName::kForeachDivCommon,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = OpParamCacheKeys::Empty(),
@@ -815,7 +812,7 @@ std::vector<DeviceBufferRef> ForeachLerp(at::TensorList self,
   DispatchOpOptions<kDynamicSize> options = {
       // Share the same OpName for all ForeachLerp() calls, as the underlying
       // Shlo is the same.
-      .op_name = OpName::kForeachLerpScalar,
+      .op_name = OpName::kForeachLerpCommon,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = OpParamCacheKeys::Empty(),
@@ -851,7 +848,7 @@ std::vector<DeviceBufferRef> ForeachMulList(at::TensorList self,
   DispatchOpOptions<kDynamicSize> options = {
       // Share the same OpName for all ForeachMulList() calls, as the underlying
       // Shlo is the same.
-      .op_name = OpName::kForeachMulList,
+      .op_name = OpName::kForeachMulCommon,
       .out_dtypes = out_dtypes,
       .out_dims_list = out_dims_list,
       .op_param_cache_keys = OpParamCacheKeys::Empty(),
@@ -871,10 +868,12 @@ std::vector<at::Tensor> AtenForeachAbs(at::TensorList self) {
     TT_ASSIGN_OR_THROW(auto out_dtypes,
                        GetOutputDtypes(self, /*cast_integral_to_float=*/false,
                                        /*cast_complex_to_float=*/true));
-    TT_ASSIGN_OR_THROW(
-        auto result_buffers,
-        ForeachUnaryOp(self, out_dtypes, BuildAbsShlo, OpName::kForeachAbs,
-                       /*cast_inputs=*/false));
+    TT_ASSIGN_OR_THROW(auto result_buffers,
+                       ForeachUnaryOp(self, out_dtypes, BuildAbsShlo,
+                                      // Share OpName with AtenForeachAbs_() as
+                                      // the underlying Shlo is the same.
+                                      OpName::kForeachAbsCommon,
+                                      /*cast_inputs=*/false));
     return ForeachConvertToTensor(result_buffers, out_dtypes);
   });
 }
@@ -888,7 +887,7 @@ void AtenForeachAbs_(at::TensorList self) {
                        ForeachUnaryOp(self, out_dtypes, BuildAbsShlo,
                                       // Share OpName with AtenForeachAbs() as
                                       // the underlying Shlo is the same.
-                                      OpName::kForeachAbs,
+                                      OpName::kForeachAbsCommon,
                                       /*cast_inputs=*/false));
     TT_THROW_IF_ERROR(ForeachAssignToTensor(result_buffers, self, out_dtypes));
   });
@@ -1339,7 +1338,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> ForeachRound(
     return BuildRoundShlo(input, 0);
   };
   return ForeachUnaryOp(self, out_dtypes, std::move(tensor_transform),
-                        OpName::kForeachRound);
+                        OpName::kForeachRoundCommon);
 }
 
 std::vector<at::Tensor> AtenForeachRound(at::TensorList self) {

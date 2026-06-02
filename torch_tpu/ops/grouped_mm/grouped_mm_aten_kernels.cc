@@ -298,8 +298,7 @@ absl::StatusOr<DeviceBufferRef> GroupedMm(
   TT_ASSIGN_OR_RETURN(
       auto result_buffer,
       DispatchOp<kDynamicSize>(std::move(op_builder), inputs,
-                               {.op_name = OpName::kGroupedMm,
-                                .out_dtype = output_elem_type,
+                               {.out_dtype = output_elem_type,
                                 .out_dims = out_dims_vec,
                                 .op_param_cache_keys = std::move(param_keys)}));
   return result_buffer;

@@ -26,6 +26,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/log/absl_vlog_is_on.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -37,11 +38,11 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -215,23 +216,18 @@ absl::StatusOr<at::Tensor> ApplySumReduction(const at::Tensor& self,
 absl::Status ApplySumReductionOut(const at::Tensor& self, at::Tensor& out,
                                   c10::OptionalArrayRef<int64_t> dim,
                                   ReductionMode reduction_mode,
-                                  c10::ScalarType out_dtype) {
+                                  c10::ScalarType out_dtype,
+                                  OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(Dimensions canonical_dims, CanonicalizeDims(self, dim));
   Dimensions output_dims =
       GetSizesAfterReduction(self.sizes(), reduction_mode, canonical_dims);
-  TT_ASSIGN_OR_RETURN(auto param_keys,
-                      MakeSumCacheKeys(canonical_dims, reduction_mode));
   TT_ASSIGN_OR_RETURN(mlir::ElementType mlir_type,
                       ConvertTo<mlir::ElementType>(out_dtype));
 
   return UnaryOpOut(
       self, out,
       GetSumFunctional(std::move(canonical_dims), reduction_mode, mlir_type),
-      // Use kSumIntListOut instead of the OpName passed to TT_KERNEL() as this
-      // is not for implementing a specific op, but rather a general reduction
-      // utility.
-      {.op_name = OpName::kSumIntListOut,
-       .op_param_cache_keys = std::move(param_keys),
+      {.op_param_cache_keys = std::move(param_keys),
        .out_dtype = mlir_type,
        .out_dims = std::move(output_dims)});
 }

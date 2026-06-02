@@ -262,17 +262,24 @@ template <int kArity, int kNumOutputs = 1>
 absl::StatusOr<DeviceBufferRefArray<kNumOutputs>> DispatchOp(
     NAryMlirOpBuilder<kArity, kNumOutputs> op_builder,
     const OpInputs<kArity>& inputs, DispatchOpOptions<kNumOutputs> options) {
-  // If the op name is provided in the options, respect the override. Otherwise,
-  // use the op name from the active TT_KERNEL() context.
-  if (!options.op_name.has_value()) {
-    options.op_name = internal::OpNameStack::MaybeTop();
-  }
-  ABSL_CHECK(options.op_name.has_value())  // CRASH_OK
+  // Get the op name from the active TT_KERNEL() context.
+  const std::optional<OpName> maybe_ctx_op_name =
+      internal::OpNameStack::MaybeTop();
+  ABSL_CHECK(maybe_ctx_op_name.has_value())  // CRASH_OK
       << "DispatchOp() called without an active TT_KERNEL() context. "
-         "Move the call inside a TT_KERNEL(). Or, if there's a good reason for "
-         "not using TT_KERNEL(), use DispatchOp(..., {.op_name = ...}) "
-         "instead.";
-  const auto op_name = options.op_name.value();
+         "Move the call inside a TT_KERNEL().";
+  const OpName ctx_op_name = maybe_ctx_op_name.value();
+
+  // If the op name is provided in the options, check that the override is
+  // necessary (i.e. it doesn't match the op name from the active TT_KERNEL()
+  // context).
+  if (options.op_name.has_value()) {
+    ABSL_CHECK_NE(*options.op_name, ctx_op_name)  // CRASH_OK
+        << "The op name provided in the DispatchOp() options matches "
+           "the one from the active TT_KERNEL() context. Please remove the "
+           ".op_name override from the options as it's redundant.";
+  }
+  const auto op_name = options.op_name.value_or(ctx_op_name);
 
   absl::Span<const at::Tensor> inputs_span;
   if constexpr (kArity == kDynamicSize) {

@@ -24,6 +24,7 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/empty.h"
+#include "absl/log/absl_check.h"
 #include "absl/status/statusor.h"
 #include "c10/core/SymIntArrayRef.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -33,13 +34,13 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -662,8 +663,12 @@ at::Tensor& AtenAdaptiveAvgPool3dOut(const at::Tensor& self,
         // is mathematically equivalent to a standard average pool with:
         // Stride = Input / Output
         // Kernel = Input - (Output - 1) * Stride
-        if (in_d >= out_d && in_h >= out_h && in_w >= out_w &&
-            in_d % out_d == 0 && in_h % out_h == 0 && in_w % out_w == 0) {
+        const bool use_std_avg_pool = in_d >= out_d && in_h >= out_h &&
+                                      in_w >= out_w && in_d % out_d == 0 &&
+                                      in_h % out_h == 0 && in_w % out_w == 0;
+        ABSL_CHECK_OK(  // CRASH_OK
+            param_keys.SetParam("std_avg_pool", use_std_avg_pool));
+        if (use_std_avg_pool) {
           auto stride_d = in_d / out_d;
           auto stride_h = in_h / out_h;
           auto stride_w = in_w / out_w;
@@ -695,11 +700,7 @@ at::Tensor& AtenAdaptiveAvgPool3dOut(const at::Tensor& self,
           TT_ASSIGN_OR_THROW(
               auto result,
               DispatchOp<1>(std::move(op_builder), self,
-                            // Override the OpName passed to TT_KERNEL() as we
-                            // need a different computation than the one in the
-                            // true branch above.
-                            {.op_name = OpName::kAdaptiveAvgPool3dOut,
-                             .out_dtype = output_dtype,
+                            {.out_dtype = output_dtype,
                              .out_dims = CopyIntVector(out.sizes()),
                              .op_param_cache_keys = std::move(param_keys)}));
 

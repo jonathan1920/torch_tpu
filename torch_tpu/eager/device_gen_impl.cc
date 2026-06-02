@@ -87,15 +87,15 @@ absl::StatusOr<DeviceBufferRef> UpdateDeviceRngState(at::Tensor rng_state,
     return mlir::stablehlo::DynamicUpdateSlice(input, value_op, start_indices);
   };
 
-  TT_ASSIGN_OR_RETURN(auto params, TT_MAKE_OP_PARAM_CACHE_KEYS(value));
-  return DispatchOp<1>(
-      std::move(set_seed_builder), {rng_state},
-      // Override the op name as this is a subroutine rather than a top-level
-      // op.
-      {.op_name = position == 0 ? OpName::kRngSetSeed : OpName::kRngSetOffset,
-       .out_dtype = mlir::ElementType::UI64,
-       .out_dims = {2},
-       .op_param_cache_keys = std::move(params)});
+  TT_ASSIGN_OR_RETURN(auto params,
+                      TT_MAKE_OP_PARAM_CACHE_KEYS(value, position));
+  return DispatchOp<1>(std::move(set_seed_builder), {rng_state},
+                       // Override the op name as this is a subroutine rather
+                       // than a top-level op.
+                       {.op_name = OpName::kRngSetStateComponent,
+                        .out_dtype = mlir::ElementType::UI64,
+                        .out_dims = {2},
+                        .op_param_cache_keys = std::move(params)});
 }
 
 absl::StatusOr<DeviceBufferRef> UpdateDeviceRngSeed(at::Tensor rng_state,

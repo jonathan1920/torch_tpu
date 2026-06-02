@@ -24,6 +24,7 @@
 #include "absl/status/statusor.h"
 #include "c10/util/OptionalArrayRef.h"
 #include "torch/headeronly/core/ScalarType.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/ops/reductions/reductions.h"
 
@@ -71,7 +72,8 @@ absl::StatusOr<at::Tensor> ApplySumReduction(const at::Tensor& self,
 absl::Status ApplySumReductionOut(const at::Tensor& self, at::Tensor& out,
                                   c10::OptionalArrayRef<int64_t> dim,
                                   ReductionMode reduction_mode,
-                                  c10::ScalarType out_dtype);
+                                  c10::ScalarType out_dtype,
+                                  OpParamCacheKeys param_keys);
 
 }  // namespace torch_tpu
 

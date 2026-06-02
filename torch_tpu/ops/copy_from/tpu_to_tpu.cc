@@ -34,7 +34,6 @@
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/op_builder_utils.h"
-#include "torch_tpu/ops/op_names.h"
 
 namespace torch_tpu {
 
@@ -69,14 +68,10 @@ absl::Status CopyTpuToTpu(const at::Tensor& src, const at::Tensor& dest) {
   };
   TT_ASSIGN_OR_RETURN(
       auto new_buf,
-      DispatchOp<1>(
-          std::move(unary_op_builder), src,
-          // We deleberately use kCopyFrom as opposed to the OpName passed
-          // to TT_KERNEL(), as this is not for implementing a specific op.
-          {.op_name = OpName::kCopyFrom,
-           .out_dtype = out_dtype,
-           .out_dims = dest.sizes(),
-           .op_param_cache_keys = OpParamCacheKeys::Empty()}),
+      DispatchOp<1>(std::move(unary_op_builder), src,
+                    {.out_dtype = out_dtype,
+                     .out_dims = dest.sizes(),
+                     .op_param_cache_keys = OpParamCacheKeys::Empty()}),
       _.SetPrepend() << "TPU->TPU copy (dtype change): ");
   return AssignBufferToAtTensor(new_buf, dest);
 }

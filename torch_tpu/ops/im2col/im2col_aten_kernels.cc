@@ -22,11 +22,11 @@
 #include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-#include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -38,10 +38,12 @@
 namespace torch_tpu {
 namespace {
 
-absl::StatusOr<DeviceBufferRef> AtenIm2Col(
-    const OpName op_name, const at::Tensor& self, at::IntArrayRef kernel_size,
-    at::IntArrayRef dilation, at::IntArrayRef padding, at::IntArrayRef stride,
-    OpParamCacheKeys param_keys) {
+absl::StatusOr<DeviceBufferRef> AtenIm2Col(const at::Tensor& self,
+                                           at::IntArrayRef kernel_size,
+                                           at::IntArrayRef dilation,
+                                           at::IntArrayRef padding,
+                                           at::IntArrayRef stride,
+                                           OpParamCacheKeys param_keys) {
   TT_RET_CHECK(kernel_size.size() == 2, error::kInvalidArgument)
       << "expected kernel_size to have 2 dimensions, got "
       << kernel_size.size();
@@ -105,8 +107,7 @@ absl::StatusOr<DeviceBufferRef> AtenIm2Col(
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
 
   return DispatchOp<1>(std::move(op_builder), input,
-                       {.op_name = op_name,
-                        .out_dtype = elem_type,
+                       {.out_dtype = elem_type,
                         .out_dims = output_dims,
                         .op_param_cache_keys = std::move(param_keys)});
 }
@@ -120,8 +121,8 @@ at::Tensor AtenIm2Col(const at::Tensor& self, at::IntArrayRef kernel_size,
             (self, kernel_size, dilation, padding, stride), {
               TT_ASSIGN_OR_THROW(
                   DeviceBufferRef result,
-                  AtenIm2Col(OpName::kIm2Col, self, kernel_size, dilation,
-                             padding, stride, std::move(param_keys)));
+                  AtenIm2Col(self, kernel_size, dilation, padding, stride,
+                             std::move(param_keys)));
               return MakeTensor(std::move(result));
             });
 }
@@ -133,8 +134,8 @@ at::Tensor& AtenIm2ColOut(const at::Tensor& self, at::IntArrayRef kernel_size,
             (self, kernel_size, dilation, padding, stride, out), {
               TT_ASSIGN_OR_THROW(
                   DeviceBufferRef result,
-                  AtenIm2Col(OpName::kIm2ColOut, self, kernel_size, dilation,
-                             padding, stride, std::move(param_keys)));
+                  AtenIm2Col(self, kernel_size, dilation, padding, stride,
+                             std::move(param_keys)));
               TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
               return out;
             });

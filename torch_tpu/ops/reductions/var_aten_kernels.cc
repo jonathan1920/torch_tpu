@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <utility>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
@@ -109,11 +110,7 @@ at::Tensor& AtenVarOut(const at::Tensor& self,
                        const std::optional<at::Scalar>& correction,
                        bool keep_dim, at::Tensor& out) {
   TT_KERNEL(
-      OpName::kVarOut, _,
-      (self, IgnoreInCacheKey(dim, "Legacy usage"),
-       IgnoreInCacheKey(correction, "Legacy usage"),
-       IgnoreInCacheKey(keep_dim, "Legacy usage"), out),
-      {
+      OpName::kVarOut, param_keys, (self, dim, correction, keep_dim, out), {
         c10::ScalarType scalar_dtype = out.scalar_type();
         TT_THROW_IF_ERROR(CheckFloatOrComplex(scalar_dtype));
         if (self.numel() == 0) {
@@ -125,7 +122,7 @@ at::Tensor& AtenVarOut(const at::Tensor& self,
         TT_THROW_IF_ERROR(ApplySumReductionOut(
             diff_sq_tensor, out, dim,
             keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims,
-            scalar_dtype));
+            scalar_dtype, std::move(param_keys)));
 
         TT_ASSIGN_OR_THROW(const int64_t reduction_size,
                            GetReductionFactor(self, dim));

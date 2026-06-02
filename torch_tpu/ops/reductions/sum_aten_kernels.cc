@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
@@ -38,11 +39,7 @@ at::Tensor& AtenSumIntListOut(const at::Tensor& self,
                               std::optional<c10::ScalarType> dtype,
                               at::Tensor& out) {
   TT_KERNEL(
-      OpName::kSumIntListOut, _,
-      (self, IgnoreInCacheKey(dim, "Legacy usage"),
-       IgnoreInCacheKey(keep_dim, "Legacy usage"),
-       IgnoreInCacheKey(dtype, "Legacy usage"), out),
-      {
+      OpName::kSumIntListOut, param_keys, (self, dim, keep_dim, dtype, out), {
         c10::ScalarType scalar_dtype = dtype.value_or(out.scalar_type());
         if (self.numel() == 0) {
           out = at::zeros({}, at::TensorOptions().dtype(scalar_dtype));
@@ -51,7 +48,7 @@ at::Tensor& AtenSumIntListOut(const at::Tensor& self,
         TT_THROW_IF_ERROR(ApplySumReductionOut(
             self, out, dim,
             keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims,
-            scalar_dtype));
+            scalar_dtype, std::move(param_keys)));
         return out;
       });
 }
