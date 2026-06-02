@@ -739,6 +739,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "hardswish_";
     case OpName::kHardtanh:
       return "hardtanh";
+    case OpName::kHardtanhBackward:
+      return "hardtanh_backward";
+    case OpName::kHardtanhBackwardGradInput:
+      return "hardtanh_backward.grad_input";
     case OpName::kHardtanhOut:
       return "hardtanh.out";
     case OpName::kHardtanh_:

@@ -5201,20 +5201,52 @@ Supported combinations for non-constant padding:
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""hardtanh(): expected a non-complex tensor, got complex64""",
+        tpu="""hardtanh(): expected the input dtype to be non-complex, got complex64""",
         cpu="""clamp is not supported for complex types""",
     ):
       torch.nn.functional.hardtanh(t)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""hardtanh_backward(): expected the input dtype to be floating point, got complex64""",
+        cpu=""""hardshrink_backward_cpu" not implemented for 'ComplexFloat'""",
+    ):
+      torch.ops.aten.hardtanh_backward(t, t, min_val=0, max_val=1)
 
   def test_hardtanh_unsupported_bool_dtype(self):
     t = torch.tensor([True, False], device=et.device(), dtype=torch.bool)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""hardtanh(): expected a non-boolean tensor, got bool""",
+        tpu="""hardtanh(): expected the input dtype to be non-boolean, got bool""",
         cpu="""Bool inputs not supported for hardtanh""",
     ):
       torch.nn.functional.hardtanh(t)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""hardtanh_backward(): expected the input dtype to be floating point, got bool""",
+        cpu=""""hardshrink_backward_cpu" not implemented for 'Bool'""",
+    ):
+      torch.ops.aten.hardtanh_backward(t, t, min_val=0, max_val=1)
+
+  def test_hardtanh_backward_unsupported_integral_dtypes(self):
+    # hardtanh_backward does not support integral types.
+    t_uint8 = torch.ones(2, device=et.device(), dtype=torch.uint8)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""hardtanh_backward(): expected the input dtype to be floating point, got uint8""",
+        cpu=""""hardshrink_backward_cpu" not implemented for 'Byte'""",
+    ):
+      torch.ops.aten.hardtanh_backward(t_uint8, t_uint8, min_val=0, max_val=1)
+
+    t_int32 = torch.ones(2, device=et.device(), dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""hardtanh_backward(): expected the input dtype to be floating point, got int32""",
+        cpu=""""hardshrink_backward_cpu" not implemented for 'Int'""",
+    ):
+      torch.ops.aten.hardtanh_backward(t_int32, t_int32, min_val=0, max_val=1)
 
   def test_hardtanh_unsupported_unsigned_negative_limits(self):
     t = torch.ones(2, device=et.device(), dtype=torch.uint8)
@@ -5224,7 +5256,7 @@ Supported combinations for non-constant padding:
         tpu="""hardtanh(): expected positive limit values when executing on an unsigned tensor, got min_val=-1 and max_val=1""",
         cpu="""cannot do hardtanh on an unsigned type with negative limits""",
     ):
-      torch.nn.functional.hardtanh(t, min_val=-1)
+      torch.nn.functional.hardtanh(t, min_val=-1, max_val=1)
 
   def test_leaky_relu_unsupported_bool_dtype(self):
     inp = torch.tensor([True, False], device=et.device())

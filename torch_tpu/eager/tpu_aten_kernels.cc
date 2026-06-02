@@ -494,6 +494,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kHardswishOut, AtenHardswishOut);
   Impl(m, OpName::kHardswish_, AtenHardswish_);
   Impl(m, OpName::kHardtanh, AtenHardtanh);
+  Impl(m, OpName::kHardtanhBackward, AtenHardtanhBackward);
+  Impl(m, OpName::kHardtanhBackwardGradInput, AtenHardtanhBackwardGradInput);
   Impl(m, OpName::kHardtanhOut, AtenHardtanhOut);
   Impl(m, OpName::kHardtanh_, AtenHardtanh_);
   Impl(m, OpName::kHistc, AtenHistc);

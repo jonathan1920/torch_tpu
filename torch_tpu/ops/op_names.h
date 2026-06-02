@@ -383,6 +383,8 @@ enum class OpName {
   kHardswishOut,
   kHardswish_,
   kHardtanh,
+  kHardtanhBackward,
+  kHardtanhBackwardGradInput,
   kHardtanhOut,
   kHardtanh_,
   kHistc,

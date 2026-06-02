@@ -28,6 +28,15 @@ at::Tensor& AtenHardtanh_(at::Tensor& self, const at::Scalar& min_val,
                           const at::Scalar& max_val);
 at::Tensor& AtenHardtanhOut(const at::Tensor& self, const at::Scalar& min_val,
                             const at::Scalar& max_val, at::Tensor& out);
+at::Tensor AtenHardtanhBackward(const at::Tensor& grad_output,
+                                const at::Tensor& self,
+                                const at::Scalar& min_val,
+                                const at::Scalar& max_val);
+at::Tensor& AtenHardtanhBackwardGradInput(const at::Tensor& grad_output,
+                                          const at::Tensor& self,
+                                          const at::Scalar& min_val,
+                                          const at::Scalar& max_val,
+                                          at::Tensor& grad_input);
 
 }  // namespace torch_tpu
 

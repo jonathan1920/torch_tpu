@@ -3490,11 +3490,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_nn_functional_hardtanh(self):
-    self.do_test_op(
-        "nn.functional.hardtanh",
-        # TODO: fix the error hardtanh_backward is unimplemented.
-        check_grad=False,
-    )
+    self.do_test_op("nn.functional.hardtanh")
 
   def test_nn_functional_silu(self):
     self.do_test_op(
