@@ -241,6 +241,8 @@ void OpNameStack::Push(OpName op_name) {
       OpName::kPolarOut,
       OpName::kProd,
       OpName::kProdDimOut,
+      OpName::kRaggedAllToAll,
+      OpName::kRaggedAllToAllOut,
       OpName::kRandom_,
       OpName::kRandom_From,
       OpName::kRandom_To,

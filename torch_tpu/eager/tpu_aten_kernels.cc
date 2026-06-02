@@ -65,6 +65,7 @@
 #include "torch_tpu/ops/elu/elu_aten_kernels.h"
 #include "torch_tpu/ops/embedding/embedding_aten_kernels.h"
 #include "torch_tpu/ops/equal/equal_aten_kernels.h"
+#include "torch_tpu/ops/experimental/ragged_all_to_all/ragged_all_to_all_aten_kernels.h"
 #include "torch_tpu/ops/experimental/ragged_dot_aten_kernels.h"
 #include "torch_tpu/ops/experimental/send_recv_kernels.h"
 #include "torch_tpu/ops/exponential/exponential_aten_kernels.h"
@@ -817,6 +818,15 @@ TORCH_LIBRARY(torch_tpu, m) {
   m.def(
       "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor grop_sizes, *, "
       "Tensor(a!) out) -> Tensor(a!)");
+  m.def(
+      "ragged_all_to_all(Tensor operand, Tensor output, Tensor "
+      "input_offsets, Tensor send_sizes, Tensor output_offsets, Tensor "
+      "recv_sizes, Tensor replica_groups) -> Tensor");
+  m.def(
+      "ragged_all_to_all.out(Tensor operand, Tensor output, Tensor "
+      "input_offsets, Tensor send_sizes, Tensor output_offsets, Tensor "
+      "recv_sizes, Tensor replica_groups, *, Tensor(a!) out) "
+      "-> Tensor(a!)");
   m.def("optimization_barrier(Tensor[] inputs) -> Tensor[]");
   // This op is a torch_tpu custom op for use in torch.compile() mode to handle
   // dynamic tensor shapes on TPU. It lowers down to
@@ -888,6 +898,8 @@ TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
   Impl(m, OpName::kMaxPool2dBackward, TpuMaxPool2dBackward);
   Impl(m, OpName::kRaggedDot, AtenRaggedDot);
   Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
+  Impl(m, OpName::kRaggedAllToAll, AtenRaggedAllToAll);
+  Impl(m, OpName::kRaggedAllToAllOut, AtenRaggedAllToAllOut);
   Impl(m, OpName::kTorchTpuOptimizationBarrier, TorchTpuOptimizationBarrier);
   Impl(m, OpName::kSetDimensionLogicalSize, SetDimensionLogicalSize);
   Impl(m, OpName::kDynamicArange, DynamicArange);
@@ -896,6 +908,8 @@ TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
 TORCH_LIBRARY_IMPL(torch_tpu, CPU, m) {
   Impl(m, OpName::kRaggedDot, AtenRaggedDot);
   Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
+  Impl(m, OpName::kRaggedAllToAll, AtenRaggedAllToAll);
+  Impl(m, OpName::kRaggedAllToAllOut, AtenRaggedAllToAllOut);
 }
 
 // Returns a mutable reference to the global CPU fallback mode (defaulted to

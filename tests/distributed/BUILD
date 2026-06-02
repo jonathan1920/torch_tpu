@@ -554,6 +554,27 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "ragged_all_to_all_test",
+    srcs = ["ragged_all_to_all_test.py"],
+    notap = "Requires 4 tpu v5p chips.",
+    tags = [
+        "noasan",  # TODO(b/497035517): fix the test in asan mode.
+        "nomsan",  # TODO(b/497035517): fix the test in msan mode.
+        "notsan",  # TODO(b/497035517): fix the test in tsan mode.
+        "requires-tpu-v5p:4",
+    ],
+    deps = [
+        ":distributed_utils",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/distributed/launchers:singlehost_wrapper",
+        "//torch_tpu/_internal/shims/pyglib/contrib/g3_multiprocessing",
+        "//torch_tpu/_internal/utils",
+    ],
+)
+
+torch_tpu_py_test(
     name = "spmd_util_test",
     srcs = ["spmd_util_test.py"],
     tags = [

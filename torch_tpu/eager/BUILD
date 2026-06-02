@@ -542,6 +542,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/embedding:embedding_aten_kernels",
         "//torch_tpu/ops/equal:equal_aten_kernels",
         "//torch_tpu/ops/experimental:ragged_dot_aten_kernels",
+        "//torch_tpu/ops/experimental/ragged_all_to_all:ragged_all_to_all_aten_kernels",
         "//torch_tpu/ops/experimental:send_recv_kernels",
         "//torch_tpu/ops/exponential:exponential_aten_kernels",
         "//torch_tpu/ops/eye:eye_aten_kernels",

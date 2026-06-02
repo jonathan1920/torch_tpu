@@ -1029,6 +1029,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "prod";
     case OpName::kProdDimOut:
       return "prod.int_out";
+    case OpName::kRaggedAllToAll:
+      return "ragged_all_to_all";
+    case OpName::kRaggedAllToAllOut:
+      return "ragged_all_to_all.out";
     case OpName::kRaggedDot:
       return "ragged_dot";
     case OpName::kRaggedDotOut:
