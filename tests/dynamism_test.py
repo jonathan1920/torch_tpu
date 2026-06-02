@@ -200,6 +200,8 @@ class DynamismTest(parameterized.TestCase):
 
   @parameterized.product(dtype=op_testing.all_xla_supported_dtypes())
   def test_elementwise_unary_op_one_dimension_dynamic(self, dtype):
+    if dtype in (torch.int64, torch.float64):
+      self.skipTest("Skipping 64-bit dtypes due to compiler bug in libtpu 0.40")
     mark_dynamic = lambda x: dynamism.mark_dynamic(x, 0, 2, 20)
     args = (torch.rand(5, 3, dtype=torch.float32).to(dtype),)
     aten_op = torch.abs if dtype != torch.bool else torch.logical_not
@@ -228,8 +230,8 @@ class DynamismTest(parameterized.TestCase):
       dynamism.mark_dynamic(y, 2, 2, 15)
 
     args = (
-        torch.rand(5, 10, 5, device=self.device, dtype=torch.float64),
-        torch.rand(5, 10, 5, device=self.device, dtype=torch.float64),
+        torch.rand(5, 10, 5, device=self.device, dtype=torch.float32),
+        torch.rand(5, 10, 5, device=self.device, dtype=torch.float32),
     )
     self._run_bounded_dynamism_test(torch.pow, mark_dynamic, *args)
 
