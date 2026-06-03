@@ -67,7 +67,22 @@ def _get_peak_hbm_memory_mb(
     # https://github.com/openxla/xprof/blob/master/plugin/xprof/protobuf/memory_profile.proto
     # for the output schema.
     # The key '0' corresponds to the allocator for device 0.
-    allocator_stats = profile['memoryProfilePerAllocator']['0']
+    allocator_mem_profiles = profile.get('memoryProfilePerAllocator', {})
+    if '0' in allocator_mem_profiles:
+      allocator_stats = allocator_mem_profiles['0']
+    elif allocator_mem_profiles:
+      # If '0' is not present, try the first available allocator
+      first_key = list(allocator_mem_profiles.keys())[0]
+      logging.warning(
+          "Allocator '0' not found, using '%s'. Available allocators: %s",
+          first_key,
+          list(allocator_mem_profiles.keys()),
+      )
+      allocator_stats = allocator_mem_profiles[first_key]
+    else:
+      logging.warning('No allocators found in memory profile')
+      return -1.0
+
     peak_bytes = allocator_stats['profileSummary']['peakStats'][
         'peakBytesInUse'
     ]
@@ -172,9 +187,10 @@ def get_peak_memory_hbm(
   """Get peak memory usage for the specified device.
 
   Args:
-    device: The device type ('cuda', 'cpu', 'tpu', 'xla_cuda', 'xla_cpu').
-    session_id: Optional Xprof session ID to retrieve TPU/XLA_CUDA peak memory
-      from. This is a no-op for CPU and CUDA.
+    device: The device type ('cuda', 'cpu', 'tpu', 'xla_cuda', 'xla_cpu',
+      'jax').
+    session_id: Optional Xprof session ID to retrieve TPU/XLA_CUDA/JAX peak
+      memory from. This is a no-op for CPU and CUDA.
     xprof_client: Optional Xprof analysis client to use for retrieving memory
       profile data.
 
@@ -189,7 +205,7 @@ def get_peak_memory_hbm(
     total = psutil.virtual_memory().total
     percentage = psutil.Process(os.getpid()).memory_percent()
     peak_memory_usage_mb = percentage / 100.0 * total / _BYTES_IN_MB
-  elif device in ('tpu', 'xla_cuda', 'xla_cpu'):
+  elif device in ('tpu', 'xla_cuda', 'xla_cpu', 'jax'):
     peak_memory_usage_mb = _get_peak_hbm_memory_mb(session_id, xprof_client)
   else:
     raise ValueError(f'Unsupported device: {device}')
@@ -199,7 +215,7 @@ def get_peak_memory_hbm(
 def reset_peak_memory_stats(device):
   if device == 'cuda':
     torch.cuda.memory.reset_max_memory_allocated()
-  elif device in ('tpu', 'cpu', 'xla_cuda', 'xla_cpu'):
+  elif device in ('tpu', 'cpu', 'xla_cuda', 'xla_cpu', 'jax'):
     pass
   else:
     raise ValueError(f'Unsupported device: {device}')

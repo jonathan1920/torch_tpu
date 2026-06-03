@@ -243,9 +243,15 @@ def _run_torchax_forward_pass(
         f"http://xprof/?session_id={post_warmup_run_context.session_id}"
     )
 
-  total_device_time, avg_device_time = _get_device_timings(
+  _, avg_device_time = _get_device_timings(
       enable_xprof, post_warmup_run_context.session_id
   )
+  peak_device_memory_mb = -1.0
+  if enable_xprof:
+    xprof_client = pt_performance_utils.get_xprof_client()
+    peak_device_memory_mb = device_utils.get_peak_memory_hbm(
+        "jax", post_warmup_run_context.session_id, xprof_client
+    )
 
   eval_time = np.mean(eval_timings) if len(eval_timings) > 0 else 0.0
 
@@ -260,6 +266,7 @@ def _run_torchax_forward_pass(
       warmup_session_xprof_url=warmup_session_xprof_url,
       post_warmup_run_session_xprof_url=post_warmup_run_session_xprof_url,
       average_post_warmup_device_time_seconds=avg_device_time,
+      peak_device_memory_mb=peak_device_memory_mb,
   )
 
 
@@ -370,9 +377,15 @@ def _run_torchax_backward_pass(
         f"http://xprof/?session_id={post_warmup_run_context.session_id}"
     )
 
-  total_device_time, avg_device_time = _get_device_timings(
+  _, avg_device_time = _get_device_timings(
       enable_xprof, post_warmup_run_context.session_id
   )
+  peak_device_memory_mb = -1.0
+  if enable_xprof:
+    xprof_client = pt_performance_utils.get_xprof_client()
+    peak_device_memory_mb = device_utils.get_peak_memory_hbm(
+        "jax", post_warmup_run_context.session_id, xprof_client
+    )
 
   eval_time = np.mean(eval_timings) if len(eval_timings) > 0 else 0.0
 
@@ -387,6 +400,7 @@ def _run_torchax_backward_pass(
       warmup_session_xprof_url=warmup_session_xprof_url,
       post_warmup_run_session_xprof_url=post_warmup_run_session_xprof_url,
       average_post_warmup_device_time_seconds=avg_device_time,
+      peak_device_memory_mb=peak_device_memory_mb,
   )
 
 
@@ -514,7 +528,6 @@ def run_benchmark(
     )
     exception = e
 
-  # TODO: b/510335427) - Enable memory for torchax benchmarks.
   if succeeded and result is not None:
     logging.info(
         "Performance Benchmark Results:\n"
@@ -526,6 +539,7 @@ def run_benchmark(
         "  warmup_overhead (seconds): %s\n"
         "  average_step_time (seconds): %s\n"
         "  average_post_warmup_device_time (seconds): %s\n"
+        "  peak_device_memory (MB): %s\n"
         "  first_step_time (seconds): %s\n"
         "  e2e_wall_time (seconds): %s\n"
         "  warmup_session_xprof_url: %s\n"
@@ -538,6 +552,7 @@ def run_benchmark(
         result.warmup_overhead_seconds,
         result.post_warmup_step_time_seconds,
         result.average_post_warmup_device_time_seconds,
+        result.peak_device_memory_mb,
         result.first_step_time_seconds,
         result.e2e_wall_time_seconds,
         result.warmup_session_xprof_url,
