@@ -42,8 +42,11 @@ torch_tpu_py_library(
 torch_tpu_py_test(
     name = "single_tpu_pg_test",
     srcs = ["single_tpu_pg_test.py"],
+    # Must run where a single process sees more than one addressable device
+    # (v7 chips expose two TensorCores), so the world_size==1 path is actually
+    # exercised. On a single-device target it passes with or without the fix.
     tags = [
-        "requires-tpu-v5lite",
+        "requires-tpu-v7x",
     ],
     deps = [
         "//shims/absl_py/logging",

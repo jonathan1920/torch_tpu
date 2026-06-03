@@ -39,11 +39,14 @@ class SingleTpuPGTest(absltest.TestCase):
     )
 
   def test_init_pg(self):
-    """A world_size=1 group initializes even when >1 TensorCore is visible.
+    """A world_size=1 group initializes when a process sees >1 addressable device.
 
-    On TPU v7 each chip exposes two addressable cores, so a single process sees
-    more than one addressable device. A single-rank group must still bind to one
-    core (like cuda:0 with several GPUs visible) rather than rejecting init.
+    This is the path the fix exercises: when a single unpinned process sees more
+    than one addressable device (e.g. v7, where each chip exposes two
+    TensorCores), a single-rank group must bind to the first one (like cuda:0
+    with several GPUs visible) rather than rejecting init. On a single-device
+    target this test passes with or without the fix, so it must run somewhere
+    more than one core is visible.
     """
     logging.info("TPU device: %s", torch.device("tpu"))
     logging.info("global_device_id: %s", tpu_distributed.global_device_id())
