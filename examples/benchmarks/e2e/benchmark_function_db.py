@@ -232,3 +232,54 @@ def simple_train_factory() -> (
     return loss.detach()
 
   return train_step
+
+
+# TODO(lukeboyer): Refactor generic_train_factory later to improve failure debugging.
+def generic_train_factory(
+    grad_accumulation_steps: int,
+) -> Callable[[torch.nn.Module, Any, torch.optim.Optimizer], Any]:
+  """A fully generic training step runner supporting NLP, Diffusers, and TIMM.
+
+  Args:
+    grad_accumulation_steps: The number of gradient accumulation steps.
+
+  Returns:
+    A callable step function that executes training iterations with gradient
+    accumulation, optimizer updates, and returns the average step loss.
+  """
+
+  def train_step(
+      model: torch.nn.Module, inputs: Any, optimizer: torch.optim.Optimizer
+  ) -> float:
+    if optimizer is None:
+      raise ValueError("Optimizer must be provided for training.")
+    accumulated_losses = []
+    optimizer.zero_grad()
+    for _ in range(grad_accumulation_steps):
+      # Forward pass based on input format
+      if isinstance(inputs, dict):
+        output = model(**inputs)
+      elif isinstance(inputs, tuple):
+        output = model(*inputs)
+      else:
+        output = model(inputs)
+
+      # Resolve loss based on output format
+      if hasattr(output, "loss") and output.loss is not None:
+        loss = output.loss
+      elif hasattr(output, "logits"):
+        loss = torch.mean(output.logits)
+      elif hasattr(output, "sample"):
+        loss = torch.mean(output.sample)
+      elif isinstance(output, tuple):
+        loss = torch.mean(output[0])
+      else:
+        loss = torch.mean(output)
+
+      loss.backward()
+      accumulated_losses.append(loss.detach())
+    optimizer.step()
+    step_loss = torch.sum(torch.stack(accumulated_losses)).item()
+    return step_loss
+
+  return train_step

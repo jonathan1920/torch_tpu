@@ -1650,7 +1650,33 @@ def huggingface_diffuser_model_builder(
         example_inputs[k] = v.to(weights_dtype)
 
   else:
-    raise ValueError(f"Unknown diffuser model: {model_name}")
+    # Generic fallback for other diffusers using registry default shapes
+    registry = get_module_registry()
+    subfolder = model_and_input_args.custom_kwargs.get("subfolder", None)
+    module_spec = registry.get_module_spec(
+        "diffusers", model_name, load_weights=False, subfolder=subfolder
+    )
+
+    with torch.device("cpu"):
+      model_cpu = module_spec.module_factory().to(weights_dtype)
+
+    # Generate inputs on CPU, passing None for shape to use registry defaults
+    # pytype: disable=wrong-arg-count
+    _, example_inputs = module_spec.sample_inputs_factory(None, "cpu")
+
+    # Move inputs to device and weights_dtype
+    device_inputs = {}
+    for k, v in example_inputs.items():
+      if isinstance(v, torch.Tensor):
+        if v.is_floating_point():
+          device_inputs[k] = v.to(device).to(weights_dtype)
+        else:
+          device_inputs[k] = v.to(device)
+      else:
+        device_inputs[k] = v
+
+    model = model_cpu.to(device)
+    example_inputs = device_inputs
 
   if is_training:
     model.train()
@@ -1845,6 +1871,56 @@ def qwen_ragged_moe_model_builder(
   _, example_inputs = module_spec.sample_inputs_factory(
       (batch_size, sequence_length), str(device)
   )
+  return ModelAndInput(model=model, example_inputs=example_inputs)
+
+
+def huggingface_resnet_model_builder(
+    model_and_input_args: Any,
+    device: torch.device,
+    weights_dtype: torch.dtype,
+    is_training: bool,
+) -> ModelAndInput:
+  """Returns a Hugging Face ResNet model with custom vision inputs.
+
+  See supported models in
+  `third_party/py/torch_tpu/examples/huggingface_transformers/model_configs`.
+
+  Args:
+      model_and_input_args: The model and input args.
+      device: The device to load the model and inputs on (e.g., "tpu", "cuda").
+      weights_dtype: The data type for the model weights (e.g., torch.float32,
+        torch.bfloat16).
+      is_training: Whether the model is in training mode or eval mode.
+
+  Returns:
+      A ModelAndInput dataclass containing the loaded Hugging Face model
+      and custom inputs suitable for benchmarking.
+  """
+  model_name = model_and_input_args.model_name
+  batch_size = model_and_input_args.batch_size
+
+  registry = get_module_registry()
+  module_spec = registry.get_module_spec(
+      "transformers",
+      model_name,
+      load_weights=False,
+  )
+
+  with torch.device("cpu"):
+    model_cpu = module_spec.module_factory().to(weights_dtype)
+
+  example_inputs = {
+      "pixel_values": torch.randn(
+          batch_size, 3, 224, 224, device=device, dtype=weights_dtype
+      )
+  }
+
+  model = model_cpu.to(device)
+  if is_training:
+    model.train()
+  else:
+    model.eval()
+
   return ModelAndInput(model=model, example_inputs=example_inputs)
 
 
