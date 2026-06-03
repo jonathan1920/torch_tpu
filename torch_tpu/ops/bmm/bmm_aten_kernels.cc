@@ -66,6 +66,11 @@ absl::Status CheckBmmInputs(const at::Tensor& self, const at::Tensor& mat2) {
          "got "
       << mat2.dim() << "D";
 
+  TT_RET_CHECK(self.scalar_type() == mat2.scalar_type(),
+               error::kInvalidArgument)
+      << "expected self and mat2 to have the same dtype, got "
+      << ToString(self.scalar_type()) << " vs " << ToString(mat2.scalar_type());
+
   TT_RET_CHECK(self.size(0) == mat2.size(0), error::kInvalidArgument)
       << "expected the batch dimension of the first argument "
       << ToString(self.sizes())

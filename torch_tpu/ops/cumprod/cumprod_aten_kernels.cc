@@ -23,10 +23,12 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/ScalarType.h"
 #include "absl/functional/bind_front.h"
+#include "c10/core/ScalarType.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/ops/cumprod/cumprod.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
@@ -45,6 +47,9 @@ at::Tensor& AtenCumprodOut(const at::Tensor& self, int64_t dim,
       out.copy_(self);
       return out;
     }
+
+    TT_CHECK_THROW(out.scalar_type() != at::kBool, error::kUnimplemented)
+        << "cumprod not implemented for " << ToString(at::kBool);
 
     TT_ASSIGN_OR_THROW(const auto out_mlir_type,
                        ConvertTo<mlir::ElementType>(out.scalar_type()));

@@ -22,8 +22,27 @@
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
+#include "absl/cleanup/cleanup.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "gtest/gtest.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Types.h"
+#include "stablehlo/dialect/StablehloOps.h"
+#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch_tpu/common/cache_key.h"
+#include "torch_tpu/common/context_states.h"
+#include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/shape.h"
+#include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/device_buffer_utils.h"
+#include "torch_tpu/eager/eager_mode.h"
+#include "torch_tpu/ops/op_builder_utils.h"
+#include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/python_context.h"
 
 namespace torch_tpu {
 namespace {
@@ -71,6 +90,69 @@ TEST(FormatParamCacheKey, OptionalPromotedScalar) {
 
   std::optional<PromotedScalar> empty;
   EXPECT_EQ(internal::FormatParamCacheKey(empty), "");
+}
+
+TEST(OpDispatcher, OutputCastingWithoutComputationDtype) {
+  ScopedPythonContextCapturer capturer(OpName::kAdd);
+  EagerMode prev_mode = GetEagerMode();
+  SetEagerMode(EagerMode::kInternalDeferAll);
+  auto cleanup_mode =
+      absl::MakeCleanup([prev_mode]() { SetEagerMode(prev_mode); });
+
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::stablehlo::StablehloDialect>();
+  mlir::ModuleBuilder builder(context);
+
+  auto bf16_mlir_type = mlir::getElementType(context, mlir::ElementType::BF16);
+  auto tensor_type = mlir::RankedTensorType::get({2, 2}, bf16_mlir_type);
+  auto attr = mlir::DenseElementsAttr::get(
+      tensor_type, builder.getOpBuilder().getFloatAttr(bf16_mlir_type, 1.0));
+  mlir::MlirOp input_op = builder.create<mlir::stablehlo::ConstantOp>(attr);
+
+  // Mock original_builder to return F32 output even though input is BF16
+  // and we don't specify computation_dtype.
+  auto original_builder = [&](mlir::MlirBuilder& b,
+                              absl::Span<mlir::MlirOp> inputs)
+      -> absl::StatusOr<DynamicMlirOpResults> {
+    auto f32_mlir_type = mlir::getElementType(context, mlir::ElementType::F32);
+    auto f32_tensor_type = mlir::RankedTensorType::get({2, 2}, f32_mlir_type);
+    auto f32_attr = mlir::DenseElementsAttr::get(
+        f32_tensor_type, b.getOpBuilder().getFloatAttr(f32_mlir_type, 2.0));
+    mlir::MlirOp res = b.create<mlir::stablehlo::ConstantOp>(f32_attr);
+    return DynamicMlirOpResults{res};
+  };
+
+  auto input_ref_or = DeviceBufferList::CreatePlaceholder(
+      Dimensions{2, 2}, mlir::ElementType::BF16);
+  ASSERT_TRUE(input_ref_or.ok());
+  auto input_ref = input_ref_or.value();
+
+  internal::DeferredOpParams params{
+      .op_name = OpName::kAdd,
+      .op_builder = original_builder,
+      .op_param_cache_keys = OpParamCacheKeys::Empty(),
+      .inputs = {input_ref},
+      .output_shapes = {Shape(Dimensions{2, 2}, mlir::ElementType::BF16)},
+  };
+
+  auto results_or = internal::CreateDeferredDeviceBufferList(std::move(params));
+  ASSERT_TRUE(results_or.ok());
+  auto results = results_or.value();
+  ASSERT_EQ(results.size(), 1);
+
+  auto deferred_op = results[0].deferred_op();
+  ASSERT_TRUE(deferred_op != nullptr);
+  const auto& wrapped_builder = deferred_op->op_builder();
+
+  auto wrapped_results_or =
+      wrapped_builder(builder, absl::MakeSpan(&input_op, 1));
+  ASSERT_TRUE(wrapped_results_or.ok());
+  auto wrapped_results = wrapped_results_or.value();
+  ASSERT_EQ(wrapped_results.size(), 1);
+
+  // The output should have been casted to BF16
+  auto res_type = GetTensorTypeOrDie(wrapped_results[0]);
+  EXPECT_EQ(res_type.getElementType(), bf16_mlir_type);
 }
 
 }  // namespace

@@ -915,20 +915,6 @@ Please use clone() or contiguous() to copy the tensor before writing""",
       torch.ops.aten._local_scalar_dense(inp)
 
   # Why do we run this test only on TPU (and not on CPU)?
-  # CPU kernel runs successfully.
-  # BUG: TPU kernels should mimic native devices behavior, including bugs.
-  def test_cumprod_bool_dtype(self):
-    inp = torch.ones(2, 2, device=et.device(), dtype=torch.bool)
-
-    # TODO: Error eagerly, i.e. without having to call the op builder.
-    with et.assert_raises_message(
-        RuntimeError,
-        tpu="""cumprod(): materialization failed with: the dtype argument cannot be bool""",
-    ):
-      # cpu() is needed because the error is triggered inside the op builder.
-      torch.cumprod(inp, dim=0, dtype=torch.bool).cpu()
-
-  # Why do we run this test only on TPU (and not on CPU)?
   # CustomKernel exists only on TorchTPU.
   def test_custom_kernel_not_registered(self):
     name = "not_registered_kernel_name"

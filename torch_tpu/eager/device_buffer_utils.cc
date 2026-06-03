@@ -17,6 +17,7 @@
 #include "torch_tpu/eager/device_buffer_utils.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <string_view>
@@ -69,26 +70,61 @@ namespace internal {
 
 absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
     DeferredOpParams&& params) {
-  if (params.computation_dtype) {
-    params.op_builder = [computation_dtype = *params.computation_dtype,
-                         op_builder = std::move(params.op_builder)](
-                            mlir::MlirBuilder& builder,
-                            absl::Span<mlir::MlirOp> inputs)
-        -> absl::StatusOr<DynamicMlirOpResults> {
+  std::vector<mlir::ElementType> expected_out_dtypes;
+  expected_out_dtypes.reserve(params.output_shapes.size());
+  for (const auto& shape : params.output_shapes) {
+    expected_out_dtypes.push_back(shape.dtype());
+  }
+
+  params.op_builder = [computation_dtype = params.computation_dtype,
+                       expected_out_dtypes = std::move(expected_out_dtypes),
+                       op_builder = std::move(params.op_builder)](
+                          mlir::MlirBuilder& builder,
+                          absl::Span<mlir::MlirOp> inputs)
+      -> absl::StatusOr<DynamicMlirOpResults> {
+    std::vector<mlir::MlirOp> casted_inputs;
+    if (computation_dtype) {
+      // 1. Upcast inputs to computation_dtype.
       mlir::Type computation_type =
-          mlir::getElementType(builder.getContext(), computation_dtype);
-      std::vector<mlir::MlirOp> casted_inputs;
+          mlir::getElementType(builder.getContext(), *computation_dtype);
       casted_inputs.reserve(inputs.size());
       for (auto input : inputs) {
         const mlir::RankedTensorType input_type = GetTensorTypeOrDie(input);
         if (input_type.getElementType() != computation_type) {
-          input = mlir::stablehlo::ConvertElementType(input, computation_dtype);
+          input =
+              mlir::stablehlo::ConvertElementType(input, *computation_dtype);
         }
         casted_inputs.push_back(input);
       }
-      return op_builder(builder, absl::MakeSpan(casted_inputs));
-    };
-  }
+    } else {
+      casted_inputs.assign(inputs.begin(), inputs.end());
+    }
+
+    // 2. Run the original op builder.
+    TT_ASSIGN_OR_RETURN(DynamicMlirOpResults results,
+                        op_builder(builder, absl::MakeSpan(casted_inputs)));
+
+    // 3. Verify that the number of outputs matches expected.
+    ABSL_CHECK_EQ(results.size(),  // CRASH_OK=bug in torch_tpu
+                  expected_out_dtypes.size())
+        << "expected " << expected_out_dtypes.size()
+        << " outputs from op, but got " << results.size();
+
+    // 4. Downcast outputs to their expected dtypes.
+    DynamicMlirOpResults casted_results;
+    casted_results.reserve(results.size());
+    for (size_t i = 0; i < results.size(); ++i) {
+      mlir::MlirOp res = results[i];
+      const mlir::RankedTensorType res_type = GetTensorTypeOrDie(res);
+      const mlir::Type expected_type =
+          mlir::getElementType(builder.getContext(), expected_out_dtypes[i]);
+      if (res_type.getElementType() != expected_type) {
+        res = mlir::stablehlo::ConvertElementType(res, expected_out_dtypes[i]);
+      }
+      casted_results.push_back(res);
+    }
+    return casted_results;
+  };
 
   auto eager_mode = GetEagerMode();
   bool skip_subgraph = false;

@@ -61,6 +61,17 @@ absl::Status CheckBaddbmmOut(const at::Tensor& out) {
 absl::Status CheckBaddbmmInputs(const at::Tensor& self,
                                 const at::Tensor& batch1,
                                 const at::Tensor& batch2) {
+  TT_RET_CHECK(batch1.scalar_type() == batch2.scalar_type(),
+               error::kInvalidArgument)
+      << "expected batch1 and batch2 to have the same dtype, got "
+      << ToString(batch1.scalar_type()) << " vs "
+      << ToString(batch2.scalar_type());
+  TT_RET_CHECK(self.scalar_type() == batch1.scalar_type(),
+               error::kInvalidArgument)
+      << "expected self and batch1 to have the same dtype, got "
+      << ToString(self.scalar_type()) << " vs "
+      << ToString(batch1.scalar_type());
+
   TT_RET_CHECK(batch1.dim() == 3, error::kInvalidArgument)
       << "expected batch1 to be a 3D tensor (batch of matrices), got "
       << batch1.dim() << "D";
