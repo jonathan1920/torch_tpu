@@ -126,20 +126,22 @@ absl::StatusOr<AttentionPrepResults> PrepareAttentionLogits(
     value_4d = replicate(value_4d);
   }
 
+  // Scale Q before Dot product - matches pytorch attention implementation and
+  // improves stability https://tinyurl.com/sudb9s96
+  mlir::MlirOp scale_value =
+      GetScaleDefaulted(builder, scale, head_dim, element_type);
+  mlir::MlirOp broadcasted_scale_value = mlir::stablehlo::Broadcast(
+      scale_value, GetTensorTypeOrDie(query_4d).getShape());
+  mlir::MlirOp scaled_query_4d =
+      mlir::stablehlo::Mul(query_4d, broadcasted_scale_value);
+
   auto attention_dot_dims = mlir::stablehlo::DotDimensionNumbersAttr::get(
       context, /*lhs_batching_dimensions=*/{0, 1},
       /*rhs_batching_dimensions=*/{0, 1}, /*lhs_contracting_dimensions=*/{3},
       /*rhs_contracting_dimensions=*/{3});
 
-  mlir::MlirOp attn_logits =
-      mlir::stablehlo::DotGeneral(query_4d, key_4d, attention_dot_dims);
-
-  mlir::MlirOp scale_value =
-      GetScaleDefaulted(builder, scale, head_dim, element_type);
-  mlir::MlirOp broadcasted_scale_value = mlir::stablehlo::Broadcast(
-      scale_value, GetTensorTypeOrDie(attn_logits).getShape());
   mlir::MlirOp scaled_attn_logits =
-      mlir::stablehlo::Mul(attn_logits, broadcasted_scale_value);
+      mlir::stablehlo::DotGeneral(scaled_query_4d, key_4d, attention_dot_dims);
 
   mlir::Attribute min_attr =
       GetMinFiniteValueAttr(element_type, builder.getOpBuilder());
@@ -244,10 +246,44 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
     }
     mlir::MLIRContext* context = &builder.getContext();
 
-    TT_ASSIGN_OR_RETURN(
-        auto prep_results,
-        PrepareAttentionLogits(builder, context, query_mlir, key_mlir,
-                               value_mlir, mask_mlir, is_causal, scale));
+    auto& ctx = at::globalContext();
+    bool allow_half_precision_reduction_math =
+        ctx.allowFP16BF16ReductionMathSDP();
+
+    auto get_element_type = [](mlir::MlirOp op) {
+      return GetTensorTypeOrDie(op).getElementType();
+    };
+
+    auto should_promote = [&](mlir::MlirOp op) {
+      auto type = get_element_type(op);
+      return !allow_half_precision_reduction_math &&
+             (type.isF16() || type.isBF16());
+    };
+
+    auto promote_if_required = [&](mlir::MlirOp op) {
+      return should_promote(op) ? mlir::stablehlo::ConvertElementType(
+                                      op, builder.getOpBuilder().getF32Type())
+                                : op;
+    };
+
+    mlir::MlirOp query = promote_if_required(query_mlir);
+
+    mlir::MlirOp key = promote_if_required(key_mlir);
+
+    mlir::MlirOp value = promote_if_required(value_mlir);
+
+    std::optional<mlir::MlirOp> mask;
+    if (mask_mlir) {
+      auto query_acc_type = get_element_type(query);
+      mask =
+          (get_element_type(*mask_mlir) != query_acc_type)
+              ? mlir::stablehlo::ConvertElementType(*mask_mlir, query_acc_type)
+              : *mask_mlir;
+    }
+
+    TT_ASSIGN_OR_RETURN(auto prep_results,
+                        PrepareAttentionLogits(builder, context, query, key,
+                                               value, mask, is_causal, scale));
     auto [query_4d, key_4d, value_4d, shifted_attn_logits, scale_value,
           head_count_ratio] = prep_results;
 
@@ -270,7 +306,17 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
         mlir::stablehlo::DotGeneral(softmax, value_4d, output_dot_dims);
 
     // Unflatten batch dimensions of output.
-    mlir::MlirOp out = unflatten_batch_dims(out_4d, out_dims);
+    mlir::MlirOp out_unflattened = unflatten_batch_dims(out_4d, out_dims);
+
+    // Convert back to original dtype
+    auto original_element_type =
+        GetTensorTypeOrDie(query_mlir).getElementType();
+    mlir::MlirOp out = out_unflattened;
+    if (GetTensorTypeOrDie(out_unflattened).getElementType() !=
+        original_element_type) {
+      out = mlir::stablehlo::ConvertElementType(out_unflattened,
+                                                original_element_type);
+    }
 
     // The aten op requires sum_exp to be f32.
     mlir::MlirOp sum_exp_f32 = mlir::stablehlo::ConvertElementType(
@@ -344,19 +390,60 @@ ScaledDotProductFusedAttentionShloBackward(
     }
     mlir::MLIRContext* context = &builder.getContext();
 
-    TT_ASSIGN_OR_RETURN(
-        auto prep_results,
-        PrepareAttentionLogits(builder, context, query_mlir, key_mlir,
-                               value_mlir, mask_mlir, is_causal, scale));
+    auto& ctx = at::globalContext();
+    bool allow_half_precision_reduction_math =
+        ctx.allowFP16BF16ReductionMathSDP();
+
+    auto get_element_type = [](mlir::MlirOp op) {
+      return GetTensorTypeOrDie(op).getElementType();
+    };
+
+    auto should_promote = [&](mlir::MlirOp op) {
+      auto type = get_element_type(op);
+      return !allow_half_precision_reduction_math &&
+             (type.isF16() || type.isBF16());
+    };
+
+    auto promote_if_required = [&](mlir::MlirOp op) {
+      return should_promote(op) ? mlir::stablehlo::ConvertElementType(
+                                      op, builder.getOpBuilder().getF32Type())
+                                : op;
+    };
+
+    mlir::MlirOp query = promote_if_required(query_mlir);
+
+    mlir::MlirOp key = promote_if_required(key_mlir);
+
+    mlir::MlirOp value = promote_if_required(value_mlir);
+
+    auto query_acc_type = get_element_type(query);
+    mlir::MlirOp grad_out =
+        (get_element_type(grad_out_mlir) != query_acc_type)
+            ? mlir::stablehlo::ConvertElementType(grad_out_mlir, query_acc_type)
+            : grad_out_mlir;
+
+    mlir::MlirOp sum_exp = sum_exp_mlir;
+
+    std::optional<mlir::MlirOp> mask;
+    if (mask_mlir) {
+      mask =
+          (get_element_type(*mask_mlir) != query_acc_type)
+              ? mlir::stablehlo::ConvertElementType(*mask_mlir, query_acc_type)
+              : *mask_mlir;
+    }
+
+    TT_ASSIGN_OR_RETURN(auto prep_results,
+                        PrepareAttentionLogits(builder, context, query, key,
+                                               value, mask, is_causal, scale));
     auto [query_4d, key_4d, value_4d, shifted_attn_logits, scale_value,
           hedad_count_ratio] = prep_results;
-    auto element_type = GetTensorTypeOrDie(query_mlir).getElementType();
+    auto element_type = GetTensorTypeOrDie(query).getElementType();
 
     auto num_batch_dims = rank - 3;
     mlir::MlirOp grad_out_4d =
-        flatten_batch_dims(grad_out_mlir, batch_size, num_batch_dims);
+        flatten_batch_dims(grad_out, batch_size, num_batch_dims);
     mlir::MlirOp sum_exp_3d =
-        flatten_batch_dims(sum_exp_mlir, batch_size, num_batch_dims);
+        flatten_batch_dims(sum_exp, batch_size, num_batch_dims);
 
     // Softmax using previously computed sum_exp
     // sum_exp_3d has shape [B, H, Lq].
@@ -441,10 +528,28 @@ ScaledDotProductFusedAttentionShloBackward(
       grad_value_4d = reduce_gqa(grad_value_4d);
     }
 
-    mlir::MlirOp grad_query =
+    mlir::MlirOp grad_query_unflattened =
         unflatten_batch_dims(scaled_grad_query_4d, query_mlir);
-    mlir::MlirOp grad_key = unflatten_batch_dims(scaled_grad_key_4d, key_mlir);
-    mlir::MlirOp grad_value = unflatten_batch_dims(grad_value_4d, value_mlir);
+    mlir::MlirOp grad_key_unflattened =
+        unflatten_batch_dims(scaled_grad_key_4d, key_mlir);
+    mlir::MlirOp grad_value_unflattened =
+        unflatten_batch_dims(grad_value_4d, value_mlir);
+
+    auto original_element_type =
+        GetTensorTypeOrDie(query_mlir).getElementType();
+
+    auto convert_if_required = [&](mlir::MlirOp grad_input) {
+      if (GetTensorTypeOrDie(grad_input).getElementType() !=
+          original_element_type) {
+        return mlir::stablehlo::ConvertElementType(grad_input,
+                                                   original_element_type);
+      }
+      return grad_input;
+    };
+
+    mlir::MlirOp grad_query = convert_if_required(grad_query_unflattened);
+    mlir::MlirOp grad_key = convert_if_required(grad_key_unflattened);
+    mlir::MlirOp grad_value = convert_if_required(grad_value_unflattened);
 
     return {{grad_query, grad_key, grad_value}};
   };
