@@ -49,6 +49,7 @@ _HF_VJEPA2_VITL_BENCHMARK_NAME = "hf_vjepa2_vitl"
 _DETR_RESNET_50_BENCHMARK_NAME = "detr_resnet_50"
 _HF_VJEPA2_VITG_BENCHMARK_NAME = "hf_vjepa2_vitg"
 
+
 class BenchmarkTest(test_utils.BenchmarkTest):
   """Tests for end-to-end model performance benchmarks."""
 
@@ -66,8 +67,12 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_llama_3_2_1b_forward(self, run_mode):
     """Tests the forward pass of Llama-3.2-1B."""
+    batch_size, sequence_length = (
+        (1, 256) if benchmark_utils.SMOKE_TEST.value else (1, 4096)
+    )
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
+            benchmark_utils.Platform.V5E_1X1,
             benchmark_utils.Platform.GFC_1X1X1,
             benchmark_utils.Platform.B200_1,
             benchmark_utils.Platform.XLA_CPU,
@@ -78,8 +83,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         is_training=False,
         model_and_input_args=performance_utils.ModelAndInputArgs(
             model_name="meta-llama/Llama-3.2-1B",
-            sequence_length=4096,
-            batch_size=1,
+            sequence_length=sequence_length,
+            batch_size=batch_size,
         ),
         model_and_input_factory=model_utils.huggingface_llm_model_builder,
         eval_factory=benchmark_function_db.huggingface_eval_factory,

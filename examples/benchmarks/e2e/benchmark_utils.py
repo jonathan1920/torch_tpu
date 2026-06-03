@@ -54,6 +54,9 @@ XPROF_STEPS = flags.DEFINE_integer(
 CAPTURE_OPS = flags.DEFINE_bool(
     "capture_ops", False, "Whether to capture ATen operators and their inputs."
 )
+SMOKE_TEST = flags.DEFINE_bool(
+    "smoke_test", False, "Whether to run in smoke test mode."
+)
 _RANDOM_SEED = 0
 
 
@@ -86,6 +89,7 @@ class Platform(enum.Enum):
   B200_8 = "b200_8"
   XLA_CPU = "xla_cpu"
   TORCH_CPU = "torch_cpu"
+  V5E_1X1 = "v5e_1x1"
 
 
 class Backend(enum.Enum):
@@ -177,6 +181,7 @@ PLATFORM_DEVICE_MAP = {
     Platform.B200_8: "cuda",
     Platform.TORCH_CPU: "cpu",
     Platform.XLA_CPU: "xla_cpu",
+    Platform.V5E_1X1: "tpu",
 }
 
 PLATFORM_TO_NODE_CONFIG = {
@@ -681,7 +686,7 @@ def _post_warmup_run(
   )
 
 
-def _op_capture_run(
+def _smoke_test_run(
     benchmark_function: Callable[
         [torch.nn.Module, Any, torch.optim.Optimizer | None],
         Any,
@@ -689,19 +694,25 @@ def _op_capture_run(
     model: torch.nn.Module,
     example_inputs: Any,
     device: torch.device,
-    capture_file_name: str,
+    op_capture_file_name: str | None,
     *,
     optimizer: torch.optim.Optimizer | None = None,
     sync_params: bool = False,
 ) -> None:
-  """Runs the model under OpCaptureMode and saves the captured ops to a file.
+  """Runs the model for a single step (or multiple steps for dynamism tests).
+
+  This function only checks if the model runs successfully and doesn't measure
+  any metrics for model runs.
+
+  Optionally captures ops using OpCaptureMode and saves the captured ops to a
+  file when op_capture_file_name is not None.
 
   Args:
     benchmark_function: The benchmark function to run.
     model: The model to run.
     example_inputs: The example inputs to run the model with.
     device: The device the model and input data is on.
-    capture_file_name: The name of the file to save the captured ops to.
+    op_capture_file_name: The name of the file to save the captured ops to.
     optimizer: The optimizer to use for the model. Needed for training.
     sync_params: Whether to eagerly synchronize parameter gradients inside
       timing loops.
@@ -710,7 +721,11 @@ def _op_capture_run(
   is_sequence = isinstance(example_inputs, list) and len(example_inputs) > 0
   num_steps = len(example_inputs) if is_sequence else 1
 
-  capture_mode = OpCaptureMode()
+  capture_mode = (
+      OpCaptureMode()
+      if op_capture_file_name is not None
+      else contextlib.nullcontext()
+  )
   with capture_mode:
     for step in range(num_steps):
       step_input = example_inputs[step] if is_sequence else example_inputs
@@ -723,9 +738,13 @@ def _op_capture_run(
           sync_params,
       )
 
-  output_dir = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR", ".")
-  full_path = os.path.join(output_dir, capture_file_name)
-  capture_mode.save_to_json(full_path)
+  if (
+      isinstance(capture_mode, OpCaptureMode)
+      and op_capture_file_name is not None
+  ):
+    output_dir = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR", ".")
+    full_path = os.path.join(output_dir, op_capture_file_name)
+    capture_mode.save_to_json(full_path)
 
 
 def _synchronize_all_tensors(tensor_pytree: Any, device: torch.device):
@@ -786,8 +805,8 @@ def run_performance_benchmark(
   _synchronize_all_tensors(example_inputs, device)
   _synchronize_all_tensors(list(model.state_dict().values()), device)
 
-  if capture_file_name is not None:
-    _op_capture_run(
+  if SMOKE_TEST.value or capture_file_name is not None:
+    _smoke_test_run(
         benchmark_function,
         model,
         example_inputs,
