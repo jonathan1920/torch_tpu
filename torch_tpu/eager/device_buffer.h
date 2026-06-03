@@ -273,6 +273,11 @@ class DeviceBufferRef {
   // yet started materialization.
   [[nodiscard]] bool is_deferred() const;
 
+  // Returns true if this DeviceBufferRef depends, directly or indirectly, on a
+  // placeholder input through its DeferredOp. False if this DeviceBufferRef is
+  // not deferred.
+  [[nodiscard]] bool depends_on_placeholder() const;
+
   // Returns true if this DeviceBufferRef has started materialization.
   // It may or may not have completed materialization.
   [[nodiscard]] bool is_materializing() const;
@@ -421,7 +426,12 @@ class DeferredOp {
         op_param_cache_keys_(std::move(op_param_cache_keys)),
         op_context_(ScopedPythonContextCapturer::GetContext()),
         split_mode_(split_mode),
-        subgraph_(std::move(subgraph)) {}
+        subgraph_(std::move(subgraph)) {
+    for (const auto& input : inputs_) {
+      depends_on_placeholder_ |=
+          input.is_placeholder() || input.depends_on_placeholder();
+    }
+  }
 
   // DeferredOps are copyable and movable. Per "rule of five"
   // (https://en.cppreference.com/w/cpp/language/rule_of_three.html), we should
@@ -495,6 +505,13 @@ class DeferredOp {
     return donated_indices_;
   }
 
+  // Whether this DeferredOp depends on a placeholder (indirectly).
+  // If this is true, this DeferredOp is part of a compiled mode graph and
+  // cannot be executed.
+  [[nodiscard]] bool depends_on_placeholder() const {
+    return depends_on_placeholder_;
+  }
+
  private:
   // The name of the deferred op.
   OpName op_name_;
@@ -531,6 +548,11 @@ class DeferredOp {
 
   // The subgraph this op belongs to.
   std::shared_ptr<Subgraph> subgraph_;
+
+  // Whether this DeferredOp depends on a placeholder (indirectly).
+  // If this is true, this DeferredOp is part of a compiled mode graph and
+  // cannot be executed.
+  bool depends_on_placeholder_ = false;
 
   friend std::ostream& operator<<(std::ostream& os,
                                   const DeferredOp& deferred_op);
@@ -671,6 +693,13 @@ class DeviceBufferList {
   // Returns true if this DeviceBufferList is a deferred op and has not
   // yet started materialization.
   [[nodiscard]] bool is_deferred() const { return data_.is_deferred(); }
+
+  // Returns true if this DeviceBufferList depends, directly or indirectly, on a
+  // placeholder input through its DeferredOp. False if this DeviceBufferList is
+  // not deferred.
+  [[nodiscard]] bool depends_on_placeholder() const {
+    return data_.depends_on_placeholder();
+  }
 
   // Returns true if this DeviceBufferList has started materialization.
   // It may or may not have completed materialization.
@@ -932,7 +961,8 @@ class DeviceBufferList {
     // Returns the PjRtBuffer at the given index.
     // If the DeviceBufferList::Data is not yet materialized, this will block
     // the caller until it has a PjRtBuffer to return. Returns an error if:
-    //   - The materialization failed, or
+    //   - The materialization failed
+    //   - The data is a placeholder or depends on a placeholder
     //   - The index is out of bounds.
     absl::StatusOr<xla::PjRtBuffer* absl_nonnull> operator[](
         int64_t index) const;
@@ -946,6 +976,10 @@ class DeviceBufferList {
     [[nodiscard]] bool is_deferred() const {
       return !placeholder_ && !materialization_pending_;
     }
+
+    // Returns true if this DeviceBufferList::Data has a deferred op that
+    // depends on a placeholder.
+    [[nodiscard]] bool depends_on_placeholder() const;
 
     // Returns true if this DeviceBufferList::Data has started materialization.
     // It may or may not have completed materialization.

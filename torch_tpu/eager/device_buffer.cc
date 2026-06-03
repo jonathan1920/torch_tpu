@@ -276,6 +276,17 @@ absl_nullable std::shared_ptr<DeferredOp> DeviceBufferList::Data::deferred_op()
   return deferred_op_;
 }
 
+[[nodiscard]] bool DeviceBufferList::Data::depends_on_placeholder() const {
+  if (placeholder_ || materialization_pending_) {
+    return false;
+  }
+  absl::MutexLock lock(deferred_op_mutex_);
+  if (!deferred_op_) {
+    return false;
+  }
+  return deferred_op_->depends_on_placeholder();
+}
+
 absl_nullable std::shared_ptr<Subgraph> DeviceBufferList::Data::subgraph()
     const {
   if (placeholder_ || materialization_pending_) {
@@ -294,6 +305,9 @@ absl_nullable std::shared_ptr<Subgraph> DeviceBufferList::Data::subgraph()
 absl::Status DeviceBufferList::Data::SetAsPendingMaterialization() {
   TT_RET_CHECK(!placeholder_, error::kFailedPrecondition)
       << "placeholders cannot be materialized";
+  TT_RET_CHECK(!depends_on_placeholder(), error::kFailedPrecondition)
+      << "compiled mode tensors which depend on a placeholder cannot be "
+         "materialized";
   // Immediately mark the DeviceBufferList::Data as pending materialization, and
   // check if this was the first time this was called.
   const bool already_pending = materialization_pending_.exchange(true);
@@ -346,6 +360,9 @@ absl::StatusOr<xla::PjRtBuffer* absl_nonnull>
 DeviceBufferList::Data::operator[](int64_t index) const {
   TT_RET_CHECK(!placeholder_, error::kFailedPrecondition)
       << "placeholders do not have buffers";
+  TT_RET_CHECK(!depends_on_placeholder(), error::kFailedPrecondition)
+      << "compiled mode tensors which depend on a placeholder cannot be "
+         "materialized and will never have PjRtBuffers";
 
   if (!materialization_future_.IsKnownReady()) {
     TT_RETURN_IF_ERROR(materialization_future_.Await());
@@ -752,6 +769,10 @@ absl::StatusOr<size_t> DeviceBufferRef::pjrt_buffer_size() const {
 
 [[nodiscard]] bool DeviceBufferRef::is_deferred() const {
   return device_buffer_list_->is_deferred();
+}
+
+[[nodiscard]] bool DeviceBufferRef::depends_on_placeholder() const {
+  return device_buffer_list_->depends_on_placeholder();
 }
 
 [[nodiscard]] bool DeviceBufferRef::is_materializing() const {

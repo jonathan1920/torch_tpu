@@ -18,6 +18,7 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -195,30 +196,13 @@ class MaterializationWorker {
     std::vector<SharedDeviceBufferList> all_nodes = task.nodes_to_materialize;
 
     // Filter out non-deferred nodes that may have been materialized by an
-    // earlier materialization task. Return an error if any of the nodes are
-    // placeholders.
-    {
-      absl::Status no_placeholder_status = absl::OkStatus();
-      std::erase_if(all_nodes, [&no_placeholder_status](
-                                   const SharedDeviceBufferList& node) {
-        if (node->is_placeholder()) {
-          no_placeholder_status =
-              TT_ERROR(error::kInternal)
-              << "Materialize was called on a placeholder tensor. This "
-                 "should "
-                 "never happen.\nkPlaceholder tensors should only appear in "
-                 "compiled mode, which should never try to materialize "
-                 "tensors.";
-        }
-        return !node->is_deferred();
-      });
-      if (!no_placeholder_status.ok()) {
-        return no_placeholder_status;
-      }
-      if (all_nodes.empty()) {
-        // Everything was already materialized, nothing more to do.
-        return std::vector<ExecutionTask>();
-      }
+    // earlier materialization task.
+    std::erase_if(all_nodes, [](const SharedDeviceBufferList& node) {
+      return !node->is_deferred();
+    });
+    if (all_nodes.empty()) {
+      // Everything was already materialized, nothing more to do.
+      return std::vector<ExecutionTask>();
     }
 
     {
@@ -348,6 +332,18 @@ absl::Status MaterializeImpl(
   if (nodes_to_materialize.empty()) {
     return absl::OkStatus();
   }
+  if (std::any_of(nodes_to_materialize.begin(), nodes_to_materialize.end(),
+                  [](const SharedDeviceBufferList& node) {
+                    return node->is_placeholder() ||
+                           node->depends_on_placeholder();
+                  })) {
+    return TT_ERROR(error::kInternal)
+           << "cannot Materialize() a placeholder tensor or a tensor that "
+              "depends on a placeholder. \nPlaceholder tensors should only "
+              "appear in compiled mode, which should never try to materialize "
+              "tensors";
+  }
+
   tsl::profiler::TraceMe t("MaterializeImpl");
 
   if (GetFlagOnce<bool,
