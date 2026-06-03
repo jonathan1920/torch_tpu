@@ -53,6 +53,7 @@
 #include "torch_tpu/ops/col2im/col2im_aten_kernels.h"
 #include "torch_tpu/ops/convolution/convolution_aten_kernels.h"
 #include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
+#include "torch_tpu/ops/count_nonzero/count_nonzero_aten_kernels.h"
 #include "torch_tpu/ops/ctc_loss/ctc_loss_aten_kernels.h"
 #include "torch_tpu/ops/cummax/cummax_aten_kernels.h"
 #include "torch_tpu/ops/cummin/cummin_aten_kernels.h"
@@ -282,6 +283,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kCopy_, AtenCopy_);
   Impl(m, OpName::kCosOut, AtenCosOut);
   Impl(m, OpName::kCoshOut, AtenCoshOut);
+  Impl(m, OpName::kCountNonzeroDimIntList, AtenCountNonzeroDimIntList);
   Impl(m, OpName::kCtcLoss, AtenCtcLoss);
   Impl(m, OpName::kCtcLossBackward, AtenCtcLossBackward);
   Impl(m, OpName::kCtcLossBackwardTensor, AtenCtcLossBackwardTensor);

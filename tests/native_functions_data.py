@@ -240,7 +240,6 @@ UNREGISTERED_OPS = frozenset([
     'conv_depthwise3d',
     'copy_sparse_to_sparse_',
     'copysign.out',
-    'count_nonzero.dim_IntList',
     'dequantize.self',
     'dequantize.tensors',
     'empty_quantized',

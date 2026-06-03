@@ -231,6 +231,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "cos.out";
     case OpName::kCoshOut:
       return "cosh.out";
+    case OpName::kCountNonzeroDimIntList:
+      return "count_nonzero.dim_IntList";
     case OpName::kCtcLoss:
       return "_ctc_loss";
     case OpName::kCtcLossBackward:

@@ -129,6 +129,7 @@ enum class OpName {
   kCopy_,
   kCosOut,
   kCoshOut,
+  kCountNonzeroDimIntList,
   kCtcLoss,
   kCtcLossBackward,
   kCtcLossBackwardTensor,
