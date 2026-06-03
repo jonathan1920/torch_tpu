@@ -21,13 +21,10 @@
 #include <utility>
 #include <vector>
 
-#include "ATen/ScalarOps.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/native/Resize.h"
 #include "ATen/ops/div.h"
 #include "ATen/ops/result_type.h"
-#include "ATen/ops/sub.h"
-#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -47,7 +44,6 @@
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
-#include "torch_tpu/common/device_type.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -202,9 +198,9 @@ absl::Status TernaryOpOut(const at::Tensor& self, const at::Tensor& other,
                           const at::Tensor& third, at::Tensor& out,
                           MlirTernaryOpBuilder op_builder,
                           TernaryOpOptions opts) {
-  TT_RET_CHECK(out.device().type() == GetPrivateUse1DeviceType(),
-               error::kInvalidArgument)
-      << "the out tensor is expected to be on tpu, got " << out.device().str();
+  TT_RET_CHECK(IsPrivateUse1Device(out), error::kInvalidArgument)
+      << "expected output tensor to be on 'tpu' device, got '" << out.device()
+      << "'";
   if (!opts.output_dtype_override) {
     TT_ASSIGN_OR_RETURN(auto output_dtype,
                         ConvertTo<mlir::ElementType>(out.scalar_type()));

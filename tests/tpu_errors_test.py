@@ -98,6 +98,17 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
     ):
       torch.prod(t1).to("cpu")
 
+  def test_add_out_device_mismatch(self):
+    a = torch.ones(4, device=et.device())
+    b = torch.ones(4, device=et.device())
+    out = torch.empty(4, device="cpu")
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""add(): expected output tensor to be on 'tpu' device, got 'cpu'""",
+        message_reviewed_by="wan",
+    ):
+      torch.add(a, b, alpha=2, out=out)
+
   def test_prod_out_with_op_dispatch_failure(self):
     """Tests that prod() bubbles up errors in op dispatching."""
 

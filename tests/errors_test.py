@@ -3236,6 +3236,16 @@ Supported combinations for non-constant padding:
     ):
       op(x, y.to(torch.float64))
 
+  def test_bitwise_left_shift_scalar_float(self):
+    x = torch.ones(5, dtype=torch.int64, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""_lshift__(): expected the dtype of the second argument to be integer, got float64""",
+        cpu=""""lshift_cpu" not implemented for 'Float'""",
+        message_reviewed_by="wan",
+    ):
+      x.__lshift__(1.5)
+
   def test_col2im_output_size_must_be_2d(self):
     img = torch.randn(1, 4, 16, device=et.device())
     with et.assert_raises_message(
