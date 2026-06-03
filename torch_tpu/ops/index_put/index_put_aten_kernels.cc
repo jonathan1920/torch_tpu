@@ -45,6 +45,7 @@
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/index_put/index_put.h"
+#include "torch_tpu/ops/index_utils.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/nonzero/nonzero_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -395,6 +396,9 @@ absl::StatusOr<DeviceBufferRef> IndexPut(
   TT_ASSIGN_OR_RETURN(
       std::vector<at::Tensor> index_tensors,
       ConvertBooleanIndicesToPositional(self, indices_list_opt, indexed_dims));
+
+  TT_RETURN_IF_ERROR(
+      ResolveNegativeIndices(index_tensors, self.sizes(), indexed_dims));
 
   TT_RET_CHECK(!indexed_dims.empty(), error::kInvalidArgument)
       << "indices must be specified";

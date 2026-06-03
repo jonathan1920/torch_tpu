@@ -26,7 +26,6 @@
 #include "absl/log/absl_log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "c10/core/ScalarType.h"
 #include "c10/util/Optional.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -40,6 +39,7 @@
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/index/index.h"
+#include "torch_tpu/ops/index_utils.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/masked_select/masked_select_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -152,6 +152,9 @@ at::Tensor& AtenIndexTensorOut(
 
         TT_ASSIGN_OR_THROW(IndicesInfo info,
                            CheckedGetIndicesInfo(indices_list_opt));
+
+        TT_THROW_IF_ERROR(ResolveNegativeIndices(info.indices, self.sizes(),
+                                                 info.dimensions));
 
         // If the indices are a single boolean tensor, use masked_select.
         if (info.indices.size() == 1 &&

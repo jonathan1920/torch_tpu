@@ -2702,6 +2702,26 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         ],
     )
 
+  def test_index_tensor_negative(self):
+    t = torch.arange(60).reshape(3, 4, 5)
+    self.assert_close_tpu_vs_cpu(
+        lambda device: t.to(device=device)[
+            torch.tensor([-1, 1], device=device),
+            :,
+            torch.tensor([-2, -1], device=device),
+        ],
+    )
+
+  def test_negative_indexing_put_scalar(self):
+
+    def test_fn(device: torch.device) -> torch.Tensor:
+      t = torch.arange(8, dtype=torch.float32, device=device)
+      idx = torch.tensor([-1], dtype=torch.int, device=device)
+      t[idx] = torch.tensor(99.0, device=device)
+      return t
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
   def test_index_tensor_multidim_1(self):
     t = torch.arange(60).reshape(3, 4, 5)
     i1 = torch.tensor([[0, 1], [1, 2]])

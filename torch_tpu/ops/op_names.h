@@ -565,6 +565,7 @@ enum class OpName {
   kReplicationPad3dOut,
   kReshapeAlias,
   kResize_,
+  kResolveNegativeIndices,
   kRmsNorm,
   kRngSeed,
   kRngSetOffset,

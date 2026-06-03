@@ -1103,6 +1103,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_reshape_alias";
     case OpName::kResize_:
       return "resize_";
+    case OpName::kResolveNegativeIndices:
+      return "resolve_negative_indices";
     case OpName::kRmsNorm:
       return "rms_norm";
     case OpName::kRngSeed:

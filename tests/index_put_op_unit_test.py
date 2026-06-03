@@ -738,6 +738,49 @@ class IndexPutTest(TorchTpuVsCpuTestBase):
 
     self.assert_close_tpu_vs_cpu(test_fn)
 
+  def test_negative_indices_1d(self):
+    self.assert_close_tpu_vs_cpu(
+        lambda device: self._run_index_put(
+            device,
+            torch.zeros(5, dtype=torch.float32),
+            (torch.tensor([-1, -3, 1]),),
+            torch.tensor([10.0, 20.0, 30.0], dtype=torch.float32),
+        )
+    )
+
+  def test_negative_indices_2d_pointwise(self):
+    self.assert_close_tpu_vs_cpu(
+        lambda device: self._run_index_put(
+            device,
+            torch.arange(12, dtype=torch.float32).view(3, 4),
+            (torch.tensor([-3, 1, -3]), torch.tensor([1, -2, -1])),
+            torch.tensor([100.0, 101.0, 102.0], dtype=torch.float32),
+        )
+    )
+
+  def test_negative_indices_broadcast_3d(self):
+    idx0 = torch.tensor([[-3], [-1]])  # shape (2, 1)
+    idx1 = torch.tensor([[-3, 2, -1]])  # shape (1, 3)
+    self.assert_close_tpu_vs_cpu(
+        lambda device: self._run_index_put(
+            device,
+            torch.zeros(3, 4, 5, dtype=torch.float32),
+            (idx0, idx1),
+            torch.arange(1, 7, dtype=torch.float32).view(2, 3, 1),
+        )
+    )
+
+  def test_negative_indices_accumulate(self):
+    self.assert_close_tpu_vs_cpu(
+        lambda device: self._run_index_put(
+            device,
+            torch.ones(3, 4, dtype=torch.float32),
+            (torch.tensor([-1, -2, 1]), torch.tensor([-1, -3, 0])),
+            torch.tensor([10.0, 20.0, 30.0], dtype=torch.float32),
+            accumulate=True,
+        )
+    )
+
 
 if __name__ == "__main__":
   absltest.main()
