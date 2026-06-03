@@ -242,7 +242,6 @@ void CheckScalarInput() {
                 // DO NOT ADD NEW ENTRIES TO THIS LIST.
                 // TODO: make this list empty.
                 // go/keep-sorted start
-      kOpName == OpName::kAdd ||                        //
       kOpName == OpName::kArangeStartOut ||             //
       kOpName == OpName::kBaddbmmDtype ||               //
       kOpName == OpName::kBaddbmmDtypeOut ||            //
@@ -265,10 +264,8 @@ void CheckScalarInput() {
       kOpName == OpName::kLogSoftmaxBackwardDataOut ||  //
       kOpName == OpName::kNativeBatchNormBackward ||    //
       kOpName == OpName::kPdistForward ||               //
-      kOpName == OpName::kPow ||                        //
       kOpName == OpName::kScatterValueOut ||            //
       kOpName == OpName::kScatterValueReduceOut ||      //
-      kOpName == OpName::kSub ||                        //
       kOpName == OpName::kVar ||                        //
       kOpName == OpName::kVarOut ||                     //
                                                         // go/keep-sorted end
