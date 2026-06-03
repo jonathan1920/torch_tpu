@@ -580,10 +580,10 @@ absl::StatusOr<std::vector<DeviceBufferRef>> ForeachUnaryOp(
                         op_name, cast_inputs);
 }
 
-std::vector<DeviceBufferRef> ForeachAddList(
-    at::TensorList self, at::TensorList other,
-    MaybePromotedScalar promoted_alpha, DtypeSpan out_dtypes,
-    OpParamCacheKeys param_keys = OpParamCacheKeys::Empty()) {
+std::vector<DeviceBufferRef> ForeachAddList(at::TensorList self,
+                                            at::TensorList other,
+                                            const at::Scalar& alpha,
+                                            DtypeSpan out_dtypes) {
   // self and other are guaranteed to have the same size.
   // The error is handled by the upstream torch.
   size_t num_tensors = self.size();
@@ -591,7 +591,9 @@ std::vector<DeviceBufferRef> ForeachAddList(
   // The op builder.
   std::vector<at::Tensor> inputs(self.begin(), self.end());
   inputs.insert(inputs.end(), other.begin(), other.end());
-  bool alpha_is_one = promoted_alpha.IsOne();
+  bool alpha_is_one = (alpha.isIntegral(true) && alpha.to<int64_t>() == 1) ||
+                      (alpha.isFloatingPoint() && alpha.to<double>() == 1.0);
+  auto param_keys = OpParamCacheKeys::Empty();
   // We create different Shlo based on whether alpha is one or not.
   // Alpha is not multiplied if equal to 1.0.
   TT_THROW_IF_ERROR(param_keys.SetParam("alpha_is_one", alpha_is_one));
@@ -599,7 +601,7 @@ std::vector<DeviceBufferRef> ForeachAddList(
     for (auto i = 0; i < num_tensors; ++i) {
       at::ScalarType scalar_type = ConvertTo<at::ScalarType>(out_dtypes[i]);
       TT_ASSIGN_OR_THROW(at::Tensor alpha_tensor,
-                         promoted_alpha.GetTensor(scalar_type));
+                         MakeTensor(alpha, scalar_type));
       inputs.push_back(alpha_tensor);
     }
   }
@@ -1613,9 +1615,9 @@ void AtenForeachZero_(at::TensorList self) {
 std::vector<at::Tensor> AtenForeachAddList(at::TensorList self,
                                            at::TensorList other,
                                            const at::Scalar& alpha) {
-  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
   TT_KERNEL(
-      OpName::kForeachAddList, param_keys, (self, other, promoted_alpha), {
+      OpName::kForeachAddList, _,
+      (self, other, IgnoreInCacheKey(alpha, "Legacy usage")), {
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, other));
 
         // Check for invalid input types.
@@ -1639,9 +1641,7 @@ std::vector<at::Tensor> AtenForeachAddList(at::TensorList self,
         }
 
         return ForeachConvertToTensor(
-            ForeachAddList(self, other, std::move(promoted_alpha), out_dtypes,
-                           std::move(param_keys)),
-            out_dtypes);
+            ForeachAddList(self, other, alpha, out_dtypes), out_dtypes);
       });
 }
 
@@ -1658,12 +1658,8 @@ std::vector<at::Tensor> AtenForeachAddScalar(at::TensorList self,
                          promoted_scalar.GetTensor(scalar_type));
       other.push_back(scalar_tensor);
     }
-    return ForeachConvertToTensor(
-        ForeachAddList(
-            self, other,
-            PromoteScalar(at::Scalar(1.0)).AvoidPromoting(ScalarValue::kOne),
-            out_dtypes),
-        out_dtypes);
+    return ForeachConvertToTensor(ForeachAddList(self, other, 1.0, out_dtypes),
+                                  out_dtypes);
   });
 }
 
@@ -1680,41 +1676,33 @@ std::vector<at::Tensor> AtenForeachAddScalarList(
                          promoted_scalars[i].GetTensor(scalar_type));
       other.push_back(scalar_tensor);
     }
-    return ForeachConvertToTensor(
-        ForeachAddList(
-            self, other,
-            PromoteScalar(at::Scalar(1.0)).AvoidPromoting(ScalarValue::kOne),
-            out_dtypes),
-        out_dtypes);
+    return ForeachConvertToTensor(ForeachAddList(self, other, 1.0, out_dtypes),
+                                  out_dtypes);
   });
 }
 
 std::vector<at::Tensor> AtenForeachAddTensor(at::TensorList self,
                                              const at::Tensor& other,
                                              const at::Scalar& alpha) {
-  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
   TT_KERNEL(
-      OpName::kForeachAddTensor, param_keys, (self, other, promoted_alpha), {
+      OpName::kForeachAddTensor, _,
+      (self, other, IgnoreInCacheKey(alpha, "Legacy usage")), {
         std::vector<at::Tensor> other_list(self.size(), other);
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, other_list));
         return ForeachConvertToTensor(
-            ForeachAddList(self, other_list, std::move(promoted_alpha),
-                           out_dtypes, std::move(param_keys)),
-            out_dtypes);
+            ForeachAddList(self, other_list, alpha, out_dtypes), out_dtypes);
       });
 }
 
 void AtenForeachAdd_List(at::TensorList self, at::TensorList other,
                          const at::Scalar& alpha) {
-  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
-  TT_KERNEL(OpName::kForeachAdd_List, param_keys, (self, other, promoted_alpha),
-            {
-              TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
-              TT_THROW_IF_ERROR(ForeachAssignToTensor(
-                  ForeachAddList(self, other, std::move(promoted_alpha),
-                                 out_dtypes, std::move(param_keys)),
-                  self, out_dtypes));
-            });
+  TT_KERNEL(
+      OpName::kForeachAdd_List, _,
+      (self, other, IgnoreInCacheKey(alpha, "Legacy usage")), {
+        TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
+        TT_THROW_IF_ERROR(ForeachAssignToTensor(
+            ForeachAddList(self, other, alpha, out_dtypes), self, out_dtypes));
+      });
 }
 
 void AtenForeachAdd_Scalar(at::TensorList self, const at::Scalar& scalar) {
@@ -1730,11 +1718,7 @@ void AtenForeachAdd_Scalar(at::TensorList self, const at::Scalar& scalar) {
       other.push_back(scalar_tensor);
     }
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
-        ForeachAddList(
-            self, other,
-            PromoteScalar(at::Scalar(1.0)).AvoidPromoting(ScalarValue::kOne),
-            out_dtypes),
-        self, out_dtypes));
+        ForeachAddList(self, other, 1.0, out_dtypes), self, out_dtypes));
   });
 }
 
@@ -1752,25 +1736,19 @@ void AtenForeachAdd_ScalarList(at::TensorList self,
       other.push_back(scalar_tensor);
     }
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
-        ForeachAddList(
-            self, other,
-            PromoteScalar(at::Scalar(1.0)).AvoidPromoting(ScalarValue::kOne),
-            out_dtypes),
-        self, out_dtypes));
+        ForeachAddList(self, other, 1.0, out_dtypes), self, out_dtypes));
   });
 }
 
 void AtenForeachAdd_Tensor(at::TensorList self, const at::Tensor& other,
                            const at::Scalar& alpha) {
-  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
-  TT_KERNEL(OpName::kForeachAdd_Tensor, param_keys,
-            (self, other, promoted_alpha), {
+  TT_KERNEL(OpName::kForeachAdd_Tensor, _,
+            (self, other, IgnoreInCacheKey(alpha, "Legacy usage")), {
               std::vector<at::Tensor> other_list(self.size(), other);
               TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
               TT_THROW_IF_ERROR(ForeachAssignToTensor(
-                  ForeachAddList(self, other_list, std::move(promoted_alpha),
-                                 out_dtypes, std::move(param_keys)),
-                  self, out_dtypes));
+                  ForeachAddList(self, other_list, alpha, out_dtypes), self,
+                  out_dtypes));
             });
 }
 
@@ -2375,10 +2353,20 @@ std::vector<at::Tensor> AtenForeachSubList(at::TensorList self,
   if (self.empty()) {
     return {};
   }
-  auto promoted_neg_alpha =
-      PromoteScalar(-alpha).AvoidPromoting(ScalarValue::kOne);
   TT_KERNEL(
-      OpName::kForeachSubList, param_keys, (self, other, promoted_neg_alpha), {
+      OpName::kForeachSubList, _,
+      // IgnoreInCacheKey is used to workaround a crash happening because of the
+      // use of -alpha below in the kernel body.
+      //
+      // Inside the kernel block, AtenForeachSubList delegates the actual MLIR
+      // lowering to the ForeachAddList helper. ForeachAddList accepts the raw
+      // -alpha as a const at::Scalar&. It does not accept a PromotedScalar
+      // object. Instead, it internally creates tensors for the scalar on the
+      // fly using MakeTensor(alpha, scalar_type). Because ForeachAddList uses
+      // its own MakeTensor logic instead of calling .GetTensor() on the
+      // promoted_alpha object we created, the outer TT_KERNEL would see that
+      // promoted_alpha.GetTensor() was never called and crash the program.
+      (self, other, IgnoreInCacheKey(alpha, "Legacy usage")), {
         // _foreach_add supports bool, but _foreach_sub does not.
         TT_THROW_IF_ERROR(CheckNotBool(alpha, /* arg_name= */ "alpha"));
         TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
@@ -2397,9 +2385,7 @@ std::vector<at::Tensor> AtenForeachSubList(at::TensorList self,
         }
 
         return ForeachConvertToTensor(
-            ForeachAddList(self, other, std::move(promoted_neg_alpha),
-                           out_dtypes, std::move(param_keys)),
-            out_dtypes);
+            ForeachAddList(self, other, -alpha, out_dtypes), out_dtypes);
       });
 }
 
@@ -2408,10 +2394,20 @@ void AtenForeachSub_List(at::TensorList self, at::TensorList other,
   if (self.empty()) {
     return;
   }
-  auto promoted_neg_alpha =
-      PromoteScalar(-alpha).AvoidPromoting(ScalarValue::kOne);
   TT_KERNEL(
-      OpName::kForeachSub_List, param_keys, (self, other, promoted_neg_alpha), {
+      OpName::kForeachSub_List, _,
+      // IgnoreInCacheKey is used to workaround a crash happening because of the
+      // use of -alpha below in the kernel body.
+      //
+      // Inside the kernel block, AtenForeachSubList delegates the actual MLIR
+      // lowering to the ForeachAddList helper. ForeachAddList accepts the raw
+      // -alpha as a const at::Scalar&. It does not accept a PromotedScalar
+      // object. Instead, it internally creates tensors for the scalar on the
+      // fly using MakeTensor(alpha, scalar_type). Because ForeachAddList uses
+      // its own MakeTensor logic instead of calling .GetTensor() on the
+      // promoted_alpha object we created, the outer TT_KERNEL would see that
+      // promoted_alpha.GetTensor() was never called and crash the program.
+      (self, other, IgnoreInCacheKey(alpha, "Legacy usage")), {
         // _foreach_add supports bool, but _foreach_sub does not.
         TT_THROW_IF_ERROR(CheckNotBool(alpha, /* arg_name= */ "alpha"));
         TT_THROW_IF_ERROR(CheckNotBool(self, /* arg_name= */ "self"));
@@ -2430,9 +2426,7 @@ void AtenForeachSub_List(at::TensorList self, at::TensorList other,
         }
 
         TT_THROW_IF_ERROR(ForeachAssignToTensor(
-            ForeachAddList(self, other, std::move(promoted_neg_alpha),
-                           out_dtypes, std::move(param_keys)),
-            self, out_dtypes));
+            ForeachAddList(self, other, -alpha, out_dtypes), self, out_dtypes));
       });
 }
 
@@ -2455,12 +2449,8 @@ std::vector<at::Tensor> AtenForeachSubScalar(at::TensorList self,
                          promoted_scalar.GetTensor(scalar_type));
       other.push_back(scalar_tensor);
     }
-    return ForeachConvertToTensor(
-        ForeachAddList(
-            self, other,
-            PromoteScalar(at::Scalar(-1.0)).AvoidPromoting(ScalarValue::kOne),
-            out_dtypes),
-        out_dtypes);
+    return ForeachConvertToTensor(ForeachAddList(self, other, -1.0, out_dtypes),
+                                  out_dtypes);
   });
 }
 
@@ -2483,11 +2473,7 @@ void AtenForeachSub_Scalar(at::TensorList self, const at::Scalar& scalar) {
       other.push_back(scalar_tensor);
     }
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
-        ForeachAddList(
-            self, other,
-            PromoteScalar(at::Scalar(-1.0)).AvoidPromoting(ScalarValue::kOne),
-            out_dtypes),
-        self, out_dtypes));
+        ForeachAddList(self, other, -1.0, out_dtypes), self, out_dtypes));
   });
 }
 
@@ -2510,12 +2496,8 @@ std::vector<at::Tensor> AtenForeachSubScalarList(
                          promoted_scalars[i].GetTensor(scalar_type));
       other.push_back(scalar_tensor);
     }
-    return ForeachConvertToTensor(
-        ForeachAddList(
-            self, other,
-            PromoteScalar(at::Scalar(-1.0)).AvoidPromoting(ScalarValue::kOne),
-            out_dtypes),
-        out_dtypes);
+    return ForeachConvertToTensor(ForeachAddList(self, other, -1.0, out_dtypes),
+                                  out_dtypes);
   });
 }
 
@@ -2539,11 +2521,7 @@ void AtenForeachSub_ScalarList(at::TensorList self,
       other.push_back(scalar_tensor);
     }
     TT_THROW_IF_ERROR(ForeachAssignToTensor(
-        ForeachAddList(
-            self, other,
-            PromoteScalar(at::Scalar(-1.0)).AvoidPromoting(ScalarValue::kOne),
-            out_dtypes),
-        self, out_dtypes));
+        ForeachAddList(self, other, -1.0, out_dtypes), self, out_dtypes));
   });
 }
 
