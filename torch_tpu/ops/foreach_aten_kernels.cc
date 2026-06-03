@@ -2739,13 +2739,13 @@ void AtenForeachClampMin_ScalarList(at::TensorList self,
 
 void AtenForeachCopy_(at::TensorList self, at::TensorList src,
                       bool non_blocking) {
-  TT_KERNEL(OpName::kForeachCopy_, _,
-            (self, src, IgnoreInCacheKey(non_blocking, "Legacy usage")), {
-              for (size_t i = 0; i < self.size(); ++i) {
-                AtenCopy_(const_cast<at::Tensor&>(self[i]), src[i],
-                          non_blocking);
-              }
-            });
+  TT_KERNEL(
+      OpName::kForeachCopy_, _,
+      (self, src, IgnoreInCacheKey(non_blocking, "Delegates to AtenCopy_")), {
+        for (size_t i = 0; i < self.size(); ++i) {
+          AtenCopy_(const_cast<at::Tensor&>(self[i]), src[i], non_blocking);
+        }
+      });
 }
 
 std::vector<at::Tensor> AtenForeachNormScalar(
@@ -2754,7 +2754,9 @@ std::vector<at::Tensor> AtenForeachNormScalar(
   auto promoted_ord = PromoteScalar(ord);
   TT_KERNEL(
       OpName::kForeachNormScalar, _,
-      (self, promoted_ord, IgnoreInCacheKey(dtype, "Legacy usage")), {
+      (self, promoted_ord,
+       IgnoreInCacheKey(dtype, "Delegates to AtenLinalgVectorNormOut")),
+      {
         TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
         TT_ASSIGN_OR_THROW(at::Tensor ord_tensor, promoted_ord.GetTensor());
         std::vector<at::Tensor> result;
@@ -3010,7 +3012,7 @@ void AtenForeachPow_List(at::TensorList self, at::TensorList exponent) {
 std::vector<at::Tensor> AtenForeachPowScalar(at::TensorList self,
                                              const at::Scalar& exponent) {
   TT_KERNEL(OpName::kForeachPowScalar, _,
-            (self, IgnoreInCacheKey(exponent, "Legacy usage")), {
+            (self, IgnoreInCacheKey(exponent, "Delegates to AtenPow")), {
               std::vector<at::Tensor> result;
               result.reserve(self.size());
               const at::Scalar exp_val = BoolScalarToInt(exponent);
@@ -3023,20 +3025,22 @@ std::vector<at::Tensor> AtenForeachPowScalar(at::TensorList self,
 }
 
 void AtenForeachPow_Scalar(at::TensorList self, const at::Scalar& exponent) {
-  TT_KERNEL(OpName::kForeachPow_Scalar, _,
-            (self, IgnoreInCacheKey(exponent, "Legacy usage")), {
-              const at::Scalar exp_val = BoolScalarToInt(exponent);
-              for (const auto& tensor : self) {
-                AtenPowTensorScalarOut(tensor, exp_val,
-                                       const_cast<at::Tensor&>(tensor));
-              }
-            });
+  TT_KERNEL(
+      OpName::kForeachPow_Scalar, _,
+      (self, IgnoreInCacheKey(exponent, "Delegates to AtenPowTensorScalarOut")),
+      {
+        const at::Scalar exp_val = BoolScalarToInt(exponent);
+        for (const auto& tensor : self) {
+          AtenPowTensorScalarOut(tensor, exp_val,
+                                 const_cast<at::Tensor&>(tensor));
+        }
+      });
 }
 
 std::vector<at::Tensor> AtenForeachPowScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> exponent) {
   TT_KERNEL(OpName::kForeachPowScalarList, _,
-            (self, IgnoreInCacheKey(exponent, "Legacy usage")), {
+            (self, IgnoreInCacheKey(exponent, "Delegates to AtenPow")), {
               std::vector<at::Tensor> result;
               result.reserve(self.size());
               for (size_t i = 0; i < self.size(); ++i) {
@@ -3050,20 +3054,22 @@ std::vector<at::Tensor> AtenForeachPowScalarList(
 
 void AtenForeachPow_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> exponent) {
-  TT_KERNEL(OpName::kForeachPow_ScalarList, _,
-            (self, IgnoreInCacheKey(exponent, "Legacy usage")), {
-              for (size_t i = 0; i < self.size(); ++i) {
-                const at::Scalar exp_val = BoolScalarToInt(exponent[i]);
-                AtenPowTensorScalarOut(self[i], exp_val,
-                                       const_cast<at::Tensor&>(self[i]));
-              }
-            });
+  TT_KERNEL(
+      OpName::kForeachPow_ScalarList, _,
+      (self, IgnoreInCacheKey(exponent, "Delegates to AtenPowTensorScalarOut")),
+      {
+        for (size_t i = 0; i < self.size(); ++i) {
+          const at::Scalar exp_val = BoolScalarToInt(exponent[i]);
+          AtenPowTensorScalarOut(self[i], exp_val,
+                                 const_cast<at::Tensor&>(self[i]));
+        }
+      });
 }
 
 std::vector<at::Tensor> AtenForeachPowScalarAndTensor(const at::Scalar& self,
                                                       at::TensorList exponent) {
   TT_KERNEL(OpName::kForeachPowScalarAndTensor, _,
-            (IgnoreInCacheKey(self, "Legacy usage"), exponent), {
+            (IgnoreInCacheKey(self, "Delegates to AtenPow"), exponent), {
               std::vector<at::Tensor> result;
               result.reserve(exponent.size());
               for (const auto& tensor : exponent) {

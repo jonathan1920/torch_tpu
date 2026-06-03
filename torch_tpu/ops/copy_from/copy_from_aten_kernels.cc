@@ -80,7 +80,7 @@ at::Tensor AtenCopyFrom(const at::Tensor& src, const at::Tensor& self_dest,
   tsl::profiler::TraceMe trace("AtenCopyFrom");
   TT_KERNEL(
       OpName::kCopyFrom, _,
-      (src, self_dest, IgnoreInCacheKey(non_blocking, "Legacy usage")), {
+      (src, self_dest, IgnoreInCacheKey(non_blocking, "Doesn't affect SHLO")), {
         TT_CHECK_THROW(
             IsPrivateUse1Device(src) || IsPrivateUse1Device(self_dest),
             error::kInvalidArgument)
@@ -164,11 +164,13 @@ at::Scalar AtenLocalScalarDense(const at::Tensor& self) {
 // Identical to _copy_from, only registered to avoid a dispatch error in torch.
 at::Tensor& AtenCopy_(at::Tensor& self, const at::Tensor& src,
                       bool non_blocking) {
-  TT_KERNEL(OpName::kCopy_, _,
-            (self, src, IgnoreInCacheKey(non_blocking, "Legacy usage")), {
-              AtenCopyFrom(src, self, non_blocking);
-              return self;
-            });
+  TT_KERNEL(
+      OpName::kCopy_, _,
+      (self, src, IgnoreInCacheKey(non_blocking, "Delegates to AtenCopyFrom")),
+      {
+        AtenCopyFrom(src, self, non_blocking);
+        return self;
+      });
 }
 
 }  // namespace torch_tpu
