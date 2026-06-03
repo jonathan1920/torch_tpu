@@ -29,7 +29,6 @@
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
-#include "absl/base/nullability.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -172,11 +171,10 @@ bool IsScalarEqualTo(const at::Scalar& scalar, const int value) {
   return false;
 }
 
-void AppendPromotedScalarPointers(
-    std::vector<const PromotedScalarState* absl_nonnull>& promoted_scalars,
-    const MaybePromotedScalar& arg) {
+void AppendPromotedScalarPointers(PromotedTensorStates& promoted_scalars,
+                                  const MaybePromotedScalar& arg) {
   if (!arg.ValueMatchesExclude()) {
-    promoted_scalars.push_back(arg.state().get());
+    promoted_scalars.push_back(arg.state());
   }
 }
 

@@ -83,14 +83,14 @@ struct PromotedScalarState {
   at::Scalar scalar;
   bool tensor_used = false;
 };
+using PromotedTensorStates =
+    std::vector<absl_nonnull std::shared_ptr<const PromotedScalarState>>;
 
-void AppendPromotedScalarPointers(
-    std::vector<const PromotedScalarState* absl_nonnull>& promoted_scalars,
-    const PromotedScalar& arg);
+void AppendPromotedScalarPointers(PromotedTensorStates& promoted_scalars,
+                                  const PromotedScalar& arg);
 
-void AppendPromotedScalarPointers(
-    std::vector<const PromotedScalarState* absl_nonnull>& promoted_scalars,
-    const MaybePromotedScalar& arg);
+void AppendPromotedScalarPointers(PromotedTensorStates& promoted_scalars,
+                                  const MaybePromotedScalar& arg);
 
 }  // namespace internal
 
@@ -133,10 +133,12 @@ class PromotedScalar {
  private:
   friend class MaybePromotedScalar;
   friend void internal::AppendPromotedScalarPointers(
-      std::vector<const State* absl_nonnull>& promoted_scalars,
+      internal::PromotedTensorStates& promoted_scalars,
       const PromotedScalar& arg);
 
-  absl_nonnull std::unique_ptr<State> state_;
+  // Use shared_ptr to allow AppendPromotedScalar() to extend the lifespan
+  // of the state s.t. it can be verified when we exit a TT_KERNEL scope.
+  absl_nonnull std::shared_ptr<State> state_;
 };
 
 // A scalar value that may or may not be promoted to a tensor, depending on
@@ -182,12 +184,12 @@ class MaybePromotedScalar {
 
  private:
   friend void internal::AppendPromotedScalarPointers(
-      std::vector<const internal::PromotedScalarState* absl_nonnull>&
-          promoted_scalars,
+      internal::PromotedTensorStates& promoted_scalars,
       const MaybePromotedScalar& arg);
 
   // Returns the underlying state.
-  [[nodiscard]] const std::unique_ptr<PromotedScalar::State>& state() const {
+  [[nodiscard]] const absl_nonnull std::shared_ptr<PromotedScalar::State>&
+  state() const {
     return promoted_scalar_.state_;
   }
 

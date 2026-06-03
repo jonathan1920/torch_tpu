@@ -16,7 +16,6 @@
 
 #include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/log/absl_check.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/to_string.h"
@@ -24,18 +23,15 @@
 namespace torch_tpu {
 namespace internal {
 
-void AppendPromotedScalarPointers(
-    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars,
-    const std::vector<PromotedScalar>& arg) {
+void AppendPromotedScalarPointers(PromotedTensorStates& promoted_scalars,
+                                  const std::vector<PromotedScalar>& arg) {
   for (const PromotedScalar& element : arg) {
     AppendPromotedScalarPointers(promoted_scalars, element);
   }
 }
 
-void CheckTensorsUsed(
-    const std::vector<const PromotedScalar::State* absl_nonnull>&
-        promoted_scalars) {
-  for (const PromotedScalar::State* state : promoted_scalars) {
+void CheckTensorsUsed(const PromotedTensorStates& promoted_scalars) {
+  for (const auto& state : promoted_scalars) {
     ABSL_CHECK(state->tensor_used)  // CRASH_OK
         << "The kernel didn't call .GetTensor() on the promoted scalar with "
            "value "

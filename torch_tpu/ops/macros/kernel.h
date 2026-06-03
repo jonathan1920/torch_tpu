@@ -24,12 +24,11 @@
 #include <utility>
 #include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/macro_utils.h"
-#include "torch_tpu/common/op_name_stack.h"
+#include "torch_tpu/common/op_name_stack.h"  // IWYU pragma: keep for ScopedOpName
 #include "torch_tpu/ops/macros/logging.h"
 
 // TT_KERNEL(op_name, param_keys, (arg1, arg2, ...), statements) wraps the
@@ -74,51 +73,49 @@
 //     error to happen before the kernel has a chance to call GetTensor() on
 //     some or all of the PromotedScalar arguments.
 
-#define TT_KERNEL(op_name, param_keys, args, ...)                             \
-  do {                                                                        \
-    ::torch_tpu::internal::ScopedOpName _scoped_op_name(op_name);             \
-    TT_CHECK_AND_LOG_KERNEL_ARGS_(op_name, TT_REMOVE_PARENS_(args));          \
-    TT_IF_DEBUG(                                                              \
-        std::vector<const ::torch_tpu::PromotedScalar::State* absl_nonnull>   \
-            _promoted_scalars;                                                \
-        TT_COLLECT_PROMOTED_SCALAR_POINTERS_(_promoted_scalars,               \
-                                             TT_REMOVE_PARENS_(args));        \
-        bool _kernel_threw = false;)                                          \
-    ::torch_tpu::ScopedPythonContextCapturer _capturer(op_name);              \
-    if constexpr (std::string_view(#param_keys) == "_") {                     \
-      ::torch_tpu::internal::ConditionalStaticAssert<                         \
-          std::string_view(#param_keys) == "_",                               \
-          decltype(::torch_tpu::internal::NoArgAffectsCacheKey args)>();      \
-      /* Use InvalidOpParamCacheKeys as the type of _, to prevent using it in \
-       * ...                                                                  \
-       */                                                                     \
-      ::torch_tpu::internal::InvalidOpParamCacheKeys param_keys;              \
-      try {                                                                   \
-        __VA_ARGS__;                                                          \
-      } catch (const ::torch_tpu::TtError& e) {                               \
-        TT_IF_DEBUG(_kernel_threw = true;)                                    \
-        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                          \
-      } catch (...) {                                                         \
-        TT_IF_DEBUG(_kernel_threw = true;)                                    \
-        throw; /* throw needed for implementing TT_KERNEL. */                 \
-      }                                                                       \
-    } else {                                                                  \
-      TT_ASSIGN_OR_THROW(/* ERROR_COV_INFEASIBLE=in macro definition. */      \
-                         ::torch_tpu::OpParamCacheKeys param_keys,            \
-                         TT_MAKE_OP_PARAM_CACHE_KEYS_NO_ENFORCE_ args);       \
-      try {                                                                   \
-        __VA_ARGS__;                                                          \
-      } catch (const ::torch_tpu::TtError& e) {                               \
-        TT_IF_DEBUG(_kernel_threw = true;)                                    \
-        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                          \
-      } catch (...) {                                                         \
-        TT_IF_DEBUG(_kernel_threw = true;)                                    \
-        throw; /* throw needed for implementing TT_KERNEL. */                 \
-      }                                                                       \
-    }                                                                         \
-    TT_IF_DEBUG(if (!_kernel_threw) {                                         \
-      ::torch_tpu::internal::CheckTensorsUsed(_promoted_scalars);             \
-    })                                                                        \
+#define TT_KERNEL(op_name, param_keys, args, ...)                              \
+  do {                                                                         \
+    ::torch_tpu::internal::ScopedOpName _scoped_op_name(op_name);              \
+    TT_CHECK_AND_LOG_KERNEL_ARGS_(op_name, TT_REMOVE_PARENS_(args));           \
+    TT_IF_DEBUG(::torch_tpu::internal::PromotedTensorStates _promoted_scalars; \
+                TT_COLLECT_PROMOTED_SCALAR_POINTERS_(_promoted_scalars,        \
+                                                     TT_REMOVE_PARENS_(args)); \
+                bool _kernel_threw = false;)                                   \
+    ::torch_tpu::ScopedPythonContextCapturer _capturer(op_name);               \
+    if constexpr (std::string_view(#param_keys) == "_") {                      \
+      ::torch_tpu::internal::ConditionalStaticAssert<                          \
+          std::string_view(#param_keys) == "_",                                \
+          decltype(::torch_tpu::internal::NoArgAffectsCacheKey args)>();       \
+      /* Use InvalidOpParamCacheKeys as the type of _, to prevent using it in  \
+       * ...                                                                   \
+       */                                                                      \
+      ::torch_tpu::internal::InvalidOpParamCacheKeys param_keys;               \
+      try {                                                                    \
+        __VA_ARGS__;                                                           \
+      } catch (const ::torch_tpu::TtError& e) {                                \
+        TT_IF_DEBUG(_kernel_threw = true;)                                     \
+        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                           \
+      } catch (...) {                                                          \
+        TT_IF_DEBUG(_kernel_threw = true;)                                     \
+        throw; /* throw needed for implementing TT_KERNEL. */                  \
+      }                                                                        \
+    } else {                                                                   \
+      TT_ASSIGN_OR_THROW(/* ERROR_COV_INFEASIBLE=in macro definition. */       \
+                         ::torch_tpu::OpParamCacheKeys param_keys,             \
+                         TT_MAKE_OP_PARAM_CACHE_KEYS_NO_ENFORCE_ args);        \
+      try {                                                                    \
+        __VA_ARGS__;                                                           \
+      } catch (const ::torch_tpu::TtError& e) {                                \
+        TT_IF_DEBUG(_kernel_threw = true;)                                     \
+        ::torch_tpu::TranslateToC10ErrorAndThrow(e);                           \
+      } catch (...) {                                                          \
+        TT_IF_DEBUG(_kernel_threw = true;)                                     \
+        throw; /* throw needed for implementing TT_KERNEL. */                  \
+      }                                                                        \
+    }                                                                          \
+    TT_IF_DEBUG(if (!_kernel_threw) {                                          \
+      ::torch_tpu::internal::CheckTensorsUsed(_promoted_scalars);              \
+    })                                                                         \
   } while (false)
 
 // Collects pointers to all PromotedScalar-typed arguments into the given
@@ -167,15 +164,14 @@ namespace internal {
 // Overloads for AppendPromotedScalarPointers:
 
 // Case: PromotedScalar
-inline void AppendPromotedScalarPointers(
-    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars,
-    const PromotedScalar& arg) {
-  promoted_scalars.push_back(arg.state_.get());
+inline void AppendPromotedScalarPointers(PromotedTensorStates& promoted_scalars,
+                                         const PromotedScalar& arg) {
+  promoted_scalars.push_back(arg.state_);
 }
 
 // Case: std::optional<PromotedScalar>
 inline void AppendPromotedScalarPointers(
-    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars,
+    PromotedTensorStates& promoted_scalars,
     const std::optional<PromotedScalar>& arg) {
   if (arg.has_value()) {
     AppendPromotedScalarPointers(promoted_scalars, *arg);
@@ -183,42 +179,37 @@ inline void AppendPromotedScalarPointers(
 }
 
 // Case: std::vector<PromotedScalar>
-void AppendPromotedScalarPointers(
-    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars,
-    const std::vector<PromotedScalar>& arg);
+void AppendPromotedScalarPointers(PromotedTensorStates& promoted_scalars,
+                                  const std::vector<PromotedScalar>& arg);
 
 // Case: IgnoredInCacheKey<T>
 template <typename T>
-inline void AppendPromotedScalarPointers(
-    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars,
-    const IgnoredInCacheKey<T>& arg) {
+inline void AppendPromotedScalarPointers(PromotedTensorStates& promoted_scalars,
+                                         const IgnoredInCacheKey<T>& arg) {
   AppendPromotedScalarPointers(promoted_scalars, arg.value());
 }
 
 // Case: anything else (no-op)
 template <typename T>
-inline void AppendPromotedScalarPointers(
-    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars,
-    const T& arg) {}
+inline void AppendPromotedScalarPointers(PromotedTensorStates& promoted_scalars,
+                                         const T& arg) {}
 
 // Base case: 0 arguments to collect.
 inline void CollectPromotedScalarPointers(
-    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars) {}
+    PromotedTensorStates& promoted_scalars) {}
 
 // Recursive case: collect pointers from the next argument and then call the
 // function recursively with the remaining arguments.
 template <typename T, typename... Args>
 inline void CollectPromotedScalarPointers(
-    std::vector<const PromotedScalar::State* absl_nonnull>& promoted_scalars,
-    const T& arg, const Args&... rest_args) {
+    PromotedTensorStates& promoted_scalars, const T& arg,
+    const Args&... rest_args) {
   AppendPromotedScalarPointers(promoted_scalars, arg);
   CollectPromotedScalarPointers(promoted_scalars, rest_args...);
 }
 
 // Crashes if any of the given PromotedScalars was not used in the kernel.
-void CheckTensorsUsed(
-    const std::vector<const PromotedScalar::State* absl_nonnull>&
-        promoted_scalars);
+void CheckTensorsUsed(const PromotedTensorStates& promoted_scalars);
 
 // A type that can't be used to do anything useful.
 //

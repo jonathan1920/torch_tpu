@@ -16,6 +16,7 @@
 
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
@@ -223,6 +224,20 @@ void TestCheckTensorsUsedCrash(at::Scalar s) {
 // arguments is not used in the kernel when the kernel doesn't throw an error.
 TEST(TtKernelDeathTest, CheckTensorsUsedCrashesIfNotUsed) {
   EXPECT_DEATH(TestCheckTensorsUsedCrash(1.0), "GetTensor");
+}
+
+void KernelWithMovedPromotedScalar(at::Scalar s) {
+  auto promoted_s = PromoteScalar(s);
+  TT_KERNEL(OpName::kRelu, _, (promoted_s), {
+    auto moved_s = std::move(promoted_s);
+    moved_s.GetTensor().IgnoreError();
+  });
+}
+
+// Verifies that TT_KERNEL() doesn't crash if a PromotedScalar is moved and
+// destroyed inside the kernel.
+TEST(TtKernel, PromotedScalarCanBeMovedAndDestroyedInsideKernel) {
+  KernelWithMovedPromotedScalar(1.0);
 }
 
 #endif  // NDEBUG
