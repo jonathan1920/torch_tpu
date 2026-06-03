@@ -205,11 +205,16 @@ class TracingTest(absltest.TestCase):
     self.assertIn('"cat":"torchtpu_eager"', content)
 
   def test_cache_hit_after_repeat(self):
-    a = torch.ones(32, 32, device=self._dev)
-    b = torch.ones(32, 32, device=self._dev)
-    (a + b).cpu()  # MISS
+    # Create inputs (materialized, no deferred ops).
+    a = torch.ones(32, 32, device="cpu").to(self._dev)
+    b = torch.ones(32, 32, device="cpu").to(self._dev)
+
+    # First call, cache miss.
+    (a + b).cpu()
     tracing._flush()
-    (a + b).cpu()  # HIT (same shape, same op, cache populated)
+
+    # Second call: same shape, same op, cache populated.
+    (a + b).cpu()
     tracing._flush()
 
     hits = [
