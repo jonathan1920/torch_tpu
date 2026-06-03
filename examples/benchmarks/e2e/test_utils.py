@@ -87,6 +87,7 @@ class BenchmarkTest(parameterized.TestCase):
       import torchax
 
       torchax.enable_globally()
+      torchax.enable_performance_mode()
 
   def run_performance_benchmark_test(
       self,
