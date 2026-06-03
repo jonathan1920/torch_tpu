@@ -48,7 +48,7 @@ _HF_VJEPA2_VITL_BENCHMARK_NAME = "hf_vjepa2_vitl"
 _DETR_RESNET_50_BENCHMARK_NAME = "detr_resnet_50"
 _HF_VJEPA2_VITG_BENCHMARK_NAME = "hf_vjepa2_vitg"
 _HF_GEMMA_4_31B_12L_BENCHMARK_NAME = "hf_gemma_4_31b_12l"
-
+_HF_NEMOTRON_3_NANO_30B_BENCHMARK_NAME = "hf_nemotron_3_nano_30b"
 
 class BenchmarkTest(test_utils.BenchmarkTest):
   """Tests for end-to-end model performance benchmarks."""
@@ -1026,6 +1026,40 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         eval_factory=benchmark_function_db.huggingface_eval_factory,
     )
     self.run_performance_benchmark_test(config, _HF_VJEPA2_VITG_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_nemotron_3_nano_30b_6_layers_forward(self, run_mode):
+    """Tests the forward pass of NVIDIA-Nemotron-3-Nano-30B-A3B-BF16."""
+
+    def modify_config_hook(config):
+      config.num_hidden_layers = 6
+      return config
+
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+            sequence_length=512,
+            batch_size=1,
+            custom_kwargs={"modify_config_hook": modify_config_hook},
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(
+        config, _HF_NEMOTRON_3_NANO_30B_BENCHMARK_NAME
+    )
 
 
 if __name__ == "__main__":
