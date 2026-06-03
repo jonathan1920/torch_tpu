@@ -21,7 +21,6 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/ScalarType.h"
 #include "absl/functional/bind_front.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "c10/core/ScalarType.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -30,6 +29,7 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/ops/copy_from/copy_from_aten_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
@@ -82,7 +82,9 @@ absl::StatusOr<at::Tensor> AtenProdHelper(const at::Tensor& self,
                                           OpParamCacheKeys param_keys) {
   at::ScalarType inferred_dtype = InferProdDtype(self.scalar_type(), dtype);
   if (self.dim() == 0) {
-    return self.to(inferred_dtype);
+    // Force a clone to guarantee that the output of this out-of-place reduction
+    // does not share storage/alias with input `self` when no dtype cast occurs.
+    return self.to(inferred_dtype).clone();
   }
   std::optional<int64_t> normalized_dim = std::nullopt;
   if (dim.has_value()) {
@@ -111,39 +113,6 @@ absl::StatusOr<at::Tensor> AtenProdHelper(const at::Tensor& self,
   return result;
 }
 
-absl::Status AtenProdOutHelper(const at::Tensor& self,
-                               std::optional<int64_t> dim, bool keep_dim,
-                               std::optional<at::ScalarType> dtype,
-                               at::Tensor& out, OpParamCacheKeys param_keys) {
-  at::ScalarType inferred_dtype = InferProdDtype(self.scalar_type(), dtype);
-  if (self.dim() == 0) {
-    out = self.to(inferred_dtype);
-    return absl::OkStatus();
-  }
-  std::optional<int64_t> normalized_dim = std::nullopt;
-  if (dim.has_value()) {
-    TT_ASSIGN_OR_RETURN(normalized_dim, SafeWrapDim(*dim, self.dim()));
-  }
-  std::optional<mlir::ElementType> dtype_element_type = std::nullopt;
-  if (dtype.has_value()) {
-    TT_ASSIGN_OR_RETURN(dtype_element_type,
-                        ConvertTo<mlir::ElementType>(dtype.value()));
-  }
-
-  TT_ASSIGN_OR_RETURN(auto inferred_mlir_dtype,
-                      ConvertTo<mlir::ElementType>(inferred_dtype));
-  Dimensions output_dims =
-      GetSizesAfterProd(self.sizes(), normalized_dim, keep_dim);
-  ReductionMode mode =
-      keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
-  return UnaryOpOut(
-      self, out,
-      absl::bind_front(BuildProdShlo, normalized_dim, mode, dtype_element_type),
-      {.op_param_cache_keys = std::move(param_keys),
-       .out_dtype = inferred_mlir_dtype,
-       .out_dims = std::move(output_dims)});
-}
-
 }  // namespace
 
 at::Tensor AtenProd(const at::Tensor& self,
@@ -160,11 +129,15 @@ at::Tensor AtenProd(const at::Tensor& self,
 at::Tensor& AtenProdDimOut(const at::Tensor& self, int64_t dim, bool keep_dim,
                            std::optional<at::ScalarType> dtype,
                            at::Tensor& out) {
-  TT_KERNEL(OpName::kProdDimOut, param_keys, (self, dim, keep_dim, dtype, out),
-            {
-              TT_THROW_IF_ERROR(AtenProdOutHelper(self, dim, keep_dim, dtype,
-                                                  out, std::move(param_keys)));
-              return out;
-            });
+  TT_KERNEL(
+      OpName::kProdDimOut, param_keys, (self, dim, keep_dim, dtype, out), {
+        TT_ASSIGN_OR_THROW(
+            at::Tensor result,
+            AtenProdHelper(self, dim, keep_dim, dtype, std::move(param_keys)));
+        // Copy values instead of using AssignBufferToAtTensor() to prevent
+        // mutating the physical pointer of `out`.
+        AtenCopyFrom(result, out, /*non_blocking=*/true);
+        return out;
+      });
 }
 }  // namespace torch_tpu

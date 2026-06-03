@@ -3591,12 +3591,8 @@ class TestOps(TorchTpuTestBase):
   def test_prod(self):
     self.do_test_op(
         "prod",
-        # TODO: fix the error flip is unimplemented.
-        check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
-        # TODO: fix prod(out=...) having huge numeric errors.
-        check_out_variant=False,
     )
 
   def test_randn(self):
