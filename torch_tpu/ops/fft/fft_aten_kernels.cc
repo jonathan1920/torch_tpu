@@ -25,7 +25,6 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
-#include "ATen/ops/empty.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "c10/core/ScalarType.h"
@@ -38,7 +37,6 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -418,33 +416,43 @@ absl::Status FFTCheckStaticShape(const at::Tensor& tensor,
 
 at::Tensor AtenFftR2c(const at::Tensor& self, at::IntArrayRef dim,
                       int64_t normalization, bool onesided) {
-  TT_KERNEL(OpName::kFftR2c, _,
-            (self, IgnoreInCacheKey(dim, "Legacy usage"),
-             IgnoreInCacheKey(normalization, "Legacy usage"),
-             IgnoreInCacheKey(onesided, "Legacy usage")),
-            {
-              // Explicitly check for static shape.
-              // Shape introspection is unsafe with dynamism.
-              // NOTE: This implementation is not dynamism safe. It currently
-              // uses static shape indices, more work is needed to determine how
-              // this op supports bounded dynamic values.
-              TT_THROW_IF_ERROR(FFTCheckStaticShape(self, "input"));
+  TT_KERNEL(OpName::kFftR2c, param_keys, (self, dim, normalization, onesided), {
+    FftNormalization norm_enum = static_cast<FftNormalization>(normalization);
 
-              TT_ASSIGN_OR_THROW(auto normalized_dims,
-                                 GetNormalizedDims(self, dim));
-              auto out_sizes = CopyIntVector(self.sizes());
-              if (onesided) {
-                const int64_t last_dim = normalized_dims.back();
-                out_sizes[last_dim] = self.size(last_dim) / 2 + 1;
-              }
+    // Explicitly check for static shape.
+    // Shape introspection is unsafe with dynamism.
+    // NOTE: This implementation is not dynamism safe. It currently
+    // uses static shape indices, more work is needed to determine how
+    // this op supports bounded dynamic values.
+    TT_THROW_IF_ERROR(FFTCheckStaticShape(self, "input"));
 
-              auto out = at::empty(
-                  out_sizes,
-                  self.options().dtype(c10::toComplexType(self.scalar_type())));
+    TT_ASSIGN_OR_THROW(auto normalized_dims, GetNormalizedDims(self, dim));
+    auto out_sizes = CopyIntVector(self.sizes());
+    if (onesided) {
+      const int64_t last_dim = normalized_dims.back();
+      out_sizes[last_dim] = self.size(last_dim) / 2 + 1;
+    }
 
-              AtenFftR2cOut(self, dim, normalization, onesided, out);
-              return out;
-            });
+    const auto out_scalar_type = c10::toComplexType(self.scalar_type());
+    TT_ASSIGN_OR_THROW(const auto output_dtype,
+                       ConvertTo<mlir::ElementType>(out_scalar_type));
+
+    auto op_builder = [normalized_dims, norm_enum, onesided](
+                          mlir::MlirOp input) -> absl::StatusOr<mlir::MlirOp> {
+      return BuildFftR2cShlo(input, normalized_dims, norm_enum, onesided);
+    };
+
+    TT_ASSIGN_OR_THROW(auto result, DispatchOp<1>(std::move(op_builder), self,
+                                                  {.out_dtype = output_dtype,
+                                                   .out_dims = out_sizes,
+                                                   .op_param_cache_keys =
+                                                       std::move(param_keys)}));
+
+    TT_ASSIGN_OR_THROW(
+        auto out, MakeEmptyTensor(out_sizes, out_scalar_type, self.device()));
+    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
+    return out;
+  });
 }
 
 at::Tensor& AtenFftR2cOut(const at::Tensor& self, at::IntArrayRef dim,

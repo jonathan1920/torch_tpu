@@ -95,7 +95,6 @@ void OpNameStack::Push(OpName op_name) {
       OpName::kEyeMOut,
       OpName::kEyeOut,
       OpName::kFakeQuantizePerTensorAffineCachemask,
-      OpName::kFftR2c,
       OpName::kFloorDivide,
       OpName::kForeachAdd_List,
       OpName::kForeachAdd_Scalar,
