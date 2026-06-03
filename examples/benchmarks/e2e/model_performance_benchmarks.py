@@ -28,7 +28,6 @@ from examples.benchmarks.e2e import test_utils
 
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
-
 _HF_LLAMA_3_2_1B_BENCHMARK_NAME = "hf_llama_3_2_1b"
 _HF_GEMMA_3_270M_BENCHMARK_NAME = "hf_gemma_3_270m"
 _HF_GEMMA_4_31B_BENCHMARK_NAME = "hf_gemma_4_31b"
@@ -48,6 +47,7 @@ _HF_WHISPER_LARGE_V3_BENCHMARK_NAME = "hf_whisper_large_v3"
 _HF_VJEPA2_VITL_BENCHMARK_NAME = "hf_vjepa2_vitl"
 _DETR_RESNET_50_BENCHMARK_NAME = "detr_resnet_50"
 _HF_VJEPA2_VITG_BENCHMARK_NAME = "hf_vjepa2_vitg"
+_HF_GEMMA_4_31B_12L_BENCHMARK_NAME = "hf_gemma_4_31b_12l"
 
 
 class BenchmarkTest(test_utils.BenchmarkTest):
@@ -123,138 +123,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         ),
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
-  def test_gemma_4_31b_6_layers_forward(self, run_mode):
-
-    def _modify_gemma4_config_to_small(config):
-      if hasattr(config, "text_config"):
-        config.text_config.num_hidden_layers = 6
-      return config
-
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=False,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="google/gemma-4-31B",
-            sequence_length=512,
-            batch_size=1,
-            custom_kwargs={
-                "modify_config_hook": _modify_gemma4_config_to_small
-            },
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        eval_factory=benchmark_function_db.huggingface_eval_factory,
-    )
-    self.run_performance_benchmark_test(config, _HF_GEMMA_4_31B_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
-  def test_gemma_4_31b_6_layers_train_1_step(self, run_mode):
-
-    def _modify_gemma4_config_to_small(config):
-      if hasattr(config, "text_config"):
-        config.text_config.num_hidden_layers = 6
-      return config
-
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=True,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="google/gemma-4-31B",
-            sequence_length=512,
-            batch_size=1,
-            custom_kwargs={
-                "modify_config_hook": _modify_gemma4_config_to_small
-            },
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=4,
-        ),
-    )
-    self.run_performance_benchmark_test(config, _HF_GEMMA_4_31B_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
-  def test_gemma_4_e2b_forward(self, run_mode):
-    """Tests the forward pass of Gemma-4-E2B."""
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=False,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="google/gemma-4-e2b",
-            sequence_length=512,
-            batch_size=1,
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        eval_factory=benchmark_function_db.huggingface_eval_factory,
-    )
-    self.run_performance_benchmark_test(config, _HF_GEMMA_4_E2B_BENCHMARK_NAME)
-
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
-  def test_gemma_4_e2b_train_1_step(
-      self, run_mode: benchmark_utils.RunMode
-  ) -> None:
-    """Tests the training of Gemma-4-E2B."""
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=True,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="google/gemma-4-e2b",
-            sequence_length=512,
-            batch_size=1,
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        train_factory=functools.partial(
-            benchmark_function_db.huggingface_llm_train_factory,
-            grad_accumulation_steps=4,
-        ),
-    )
-    self.run_performance_benchmark_test(config, _HF_GEMMA_4_E2B_BENCHMARK_NAME)
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
@@ -457,7 +325,175 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         config, _HF_GEMMA_4_26B_A4B_RAGGED_MOE_BENCHMARK_NAME
     )
 
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_gemma_4_31b_6_layers_forward(self, run_mode):
+
+    def _modify_gemma4_config_to_small(config):
+      if hasattr(config, "text_config"):
+        config.text_config.num_hidden_layers = 6
+      return config
+
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="google/gemma-4-31B",
+            sequence_length=512,
+            batch_size=1,
+            custom_kwargs={
+                "modify_config_hook": _modify_gemma4_config_to_small
+            },
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_GEMMA_4_31B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_gemma_4_31b_6_layers_train_1_step(self, run_mode):
+
+    def _modify_gemma4_config_to_small(config):
+      if hasattr(config, "text_config"):
+        config.text_config.num_hidden_layers = 6
+      return config
+
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=True,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="google/gemma-4-31B",
+            sequence_length=512,
+            batch_size=1,
+            custom_kwargs={
+                "modify_config_hook": _modify_gemma4_config_to_small
+            },
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        train_factory=functools.partial(
+            benchmark_function_db.huggingface_llm_train_factory,
+            grad_accumulation_steps=4,
+        ),
+    )
+    self.run_performance_benchmark_test(config, _HF_GEMMA_4_31B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_gemma_4_31b_12_layers_forward(self, run_mode):
+    """Tests the forward pass of Gemma 4 31B sliced to 12 layers."""
+
+    def modify_config_hook(config):
+      config.num_hidden_layers = 12
+      return config
+
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="google/gemma-4-31b",
+            sequence_length=512,
+            batch_size=1,
+            custom_kwargs={"modify_config_hook": modify_config_hook},
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(
+        config, _HF_GEMMA_4_31B_12L_BENCHMARK_NAME
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_gemma_4_e2b_forward(self, run_mode):
+    """Tests the forward pass of Gemma-4-E2B."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=False,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="google/gemma-4-e2b",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        eval_factory=benchmark_function_db.huggingface_eval_factory,
+    )
+    self.run_performance_benchmark_test(config, _HF_GEMMA_4_E2B_BENCHMARK_NAME)
+
+  @parameterized.named_parameters(
+      test_utils.generate_run_mode_configs([
+          benchmark_utils.RunMode.EAGER_DEFAULT,
+          benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
+      ])
+  )
+  def test_gemma_4_e2b_train_1_step(
+      self, run_mode: benchmark_utils.RunMode
+  ) -> None:
+    """Tests the training of Gemma-4-E2B."""
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
+        run_mode=run_mode,
+        is_training=True,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="google/gemma-4-e2b",
+            sequence_length=512,
+            batch_size=1,
+        ),
+        model_and_input_factory=model_utils.huggingface_llm_model_builder,
+        train_factory=functools.partial(
+            benchmark_function_db.huggingface_llm_train_factory,
+            grad_accumulation_steps=4,
+        ),
+    )
+    self.run_performance_benchmark_test(config, _HF_GEMMA_4_E2B_BENCHMARK_NAME)
+
   # ============================================================================
+
   # 3. Qwen Architecture Family
   # ============================================================================
 
