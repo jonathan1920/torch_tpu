@@ -134,16 +134,19 @@ at::Tensor& AtenScatterSrcOut(const at::Tensor& self, int64_t dim,
 at::Tensor& AtenScatterValueOut(const at::Tensor& self, int64_t dim,
                                 const at::Tensor& index,
                                 const at::Scalar& value, at::Tensor& out) {
-  TT_KERNEL(OpName::kScatterValueOut, _,
-            (self, IgnoreInCacheKey(dim, "Legacy usage"), index,
-             IgnoreInCacheKey(value, "Legacy usage"), out),
-            {
-              auto value_tensor = TensorFromValue(self, value);
-              TT_ASSIGN_OR_THROW(DeviceBufferRef result,
-                                 Scatter(self, dim, index, value_tensor));
-              TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
-              return out;
-            });
+  auto promoted_value = PromoteScalar(value);
+  TT_KERNEL(
+      OpName::kScatterValueOut, _,
+      (self, IgnoreInCacheKey(dim, "Legacy usage"), index, promoted_value, out),
+      {
+        auto promoted_type = out.scalar_type();
+        TT_ASSIGN_OR_THROW(at::Tensor value_tensor,
+                           promoted_value.GetTensor(promoted_type));
+        TT_ASSIGN_OR_THROW(DeviceBufferRef result,
+                           Scatter(self, dim, index, value_tensor));
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result), out));
+        return out;
+      });
 }
 
 at::Tensor& AtenScatterReduceOut(const at::Tensor& self, int64_t dim,

@@ -120,6 +120,15 @@ absl::StatusOr<mlir::MlirOp> BuildScatterShlo(
                << ", scatter_op: " << FormatParamCacheKey(scatter_op)
                << ", include_self: " << FormatParamCacheKey(include_self);
 
+  // Promoted scalar inputs are 0-D tensors. We must broadcast them to the shape
+  // of the 'index' tensor to satisfy rank parity with 'self' and meet StableHLO
+  // updates shape requirements.
+  if (src_type.getRank() == 0) {
+    src = mlir::stablehlo::BroadcastInDim(
+        index_type.clone(src_type.getElementType()), src, {});
+    src_type = GetTensorTypeOrDie(src);
+  }
+
   // If arguments are scalars, temporarily reshape them to rank 1.
   bool are_scalars = self_type.getRank() == 0 || src_type.getRank() == 0 ||
                      index_type.getRank() == 0;
