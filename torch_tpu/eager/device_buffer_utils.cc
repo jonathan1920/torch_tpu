@@ -29,6 +29,7 @@
 #include "absl/hash/hash.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "c10/util/accumulate.h"
@@ -65,11 +66,11 @@
 ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 
 namespace torch_tpu {
+namespace {
 
-namespace internal {
-
-absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
-    DeferredOpParams&& params) {
+// Modifies the op_builder to reflect the computation dtype of the op, if
+// specified.
+void ApplyComputationDtype(internal::DeferredOpParams& params) {
   std::vector<mlir::ElementType> expected_out_dtypes;
   expected_out_dtypes.reserve(params.output_shapes.size());
   for (const auto& shape : params.output_shapes) {
@@ -125,32 +126,82 @@ absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
     }
     return casted_results;
   };
+}
 
-  auto eager_mode = GetEagerMode();
-  bool skip_subgraph = false;
-  if (((eager_mode == EagerMode::kDeferNever) ||
-       (eager_mode == EagerMode::kDeferNeverAndLaunchBlocking)) &&
-      !IsMetadataOnly(params.op_name)) {
-    // In either kDeferNever mode, we want to enqueue each op's execution as
-    // quickly as possible to unblock the main thread.
-    // To achieve this, we skip connecting the newly-created node to any
-    // Subgraph, and we use kFullGraph to skip the SplitTraveral logic.
-    // Skipping SplitTraversal means we need to manually apply kSplitBefore for
-    // relevant ops.
-    skip_subgraph = true;
-    if (IsSplitBefore(params.split_mode)) {
-      // Most of the time, this Materialize() should be a no-op; all non-view,
-      // non-`empty()` tensors should already be materialized.
-      // If this isn't the case, then using kSplitGraph will insert additional
-      // materialization points to ensure all deferred inputs are materialized
-      // or dropped.
-      TT_RETURN_IF_ERROR(Materialize(params.inputs,
-                                     MaterializationReason::kDebugMode,
-                                     MaterializationMode::kSplitGraph));
-    }
-    // Don't block here even in kDeferNeverAndLaunchBlocking mode; we'll block
-    // after the new op is dispatched.
+// Handles post-op creation events for the kDeferNever and
+// kDeferNeverAndLaunchBlocking eager modes.
+absl::Status DeferNeverDispatch(absl::Span<const DeviceBufferRef> results,
+                                const OpName op_name,
+                                const OpSplitMode split_mode,
+                                const bool block) {
+  const auto& device_buffer_list = results[0].device_buffer_list();
+  if (IsMetadataOnly(op_name)) {
+    // Don't eagerly materialize metadata-only ops.
+    return absl::OkStatus();
   }
+  if (IsSplitBefore(split_mode)) {
+    // Most of the time, this Materialize() should be a no-op; all non-view,
+    // non-`empty()` tensors should already be materialized.
+    // If this isn't the case, then using kSplitGraph will insert additional
+    // materialization points to ensure all deferred inputs are materialized
+    // or dropped.
+    const auto deferred_op = device_buffer_list->deferred_op();
+    ABSL_CHECK(deferred_op != nullptr);  // CRASH_OK=just created it
+    TT_RETURN_IF_ERROR(Materialize(deferred_op->inputs(),
+                                   MaterializationReason::kDebugMode,
+                                   MaterializationMode::kSplitGraph));
+    // Don't block here even in kDeferNeverAndLaunchBlocking mode; block after
+    // the new op, not after its inputs.
+  }
+
+  TT_RETURN_IF_ERROR(Materialize(device_buffer_list,
+                                 MaterializationReason::kDebugMode,
+                                 MaterializationMode::kFullGraph));
+  for (const auto& result : results) {
+    PjrtBackend::GetInstance().MarkStreamActive(result.GetReadyFuture());
+  }
+  if (block) {
+    return device_buffer_list->Synchronize();
+  }
+  return absl::OkStatus();
+}
+
+// Handles post-op creation events for the kDeferAndFuse eager mode.
+absl::Status DeferAndFuseDispatch(absl::Span<const DeviceBufferRef> results,
+                                  const OpName op_name) {
+  const auto& device_buffer_list = results[0].device_buffer_list();
+  if (GetFlagOnce<bool,
+                  &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
+    TT_RETURN_IF_ERROR(OnNewOpDispatch(device_buffer_list));
+  }
+
+  // Don't consider metadata-only ops for the repeated ops heuristic.
+  if (MustApplyRepeatedOpsHeuristic() && !IsMetadataOnly(op_name)) {
+    return ApplyRepeatedOpsHeuristic(device_buffer_list);
+  }
+  return absl::OkStatus();
+}
+
+bool SkipSubgraph(const OpName op_name) {
+  const auto eager_mode = GetEagerMode();
+  // In either kDeferNever mode, we want to enqueue each op's execution as
+  // quickly as possible to unblock the main thread.
+  // To achieve this, we skip connecting the newly-created node to any
+  // Subgraph, and we use kFullGraph to skip the SplitTraveral logic.
+  // Skipping SplitTraversal means we need to manually apply kSplitBefore for
+  // relevant ops.
+  return (((eager_mode == EagerMode::kDeferNever) ||
+           (eager_mode == EagerMode::kDeferNeverAndLaunchBlocking)) &&
+          !IsMetadataOnly(op_name));
+}
+
+}  // namespace
+
+namespace internal {
+
+absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
+    DeferredOpParams&& params) {
+  ApplyComputationDtype(params);
 
   TT_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferRef> results,
@@ -158,38 +209,28 @@ absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
           params.op_name, std::move(params.op_builder),
           std::move(params.inputs), std::move(params.op_param_cache_keys),
           std::move(params.output_shapes), params.split_mode,
-          std::move(params.donated_indices), skip_subgraph));
+          std::move(params.donated_indices), SkipSubgraph(params.op_name)));
 
-  if (IsMetadataOnly(params.op_name)) {
-    // Don't eagerly materialize metadata-only ops.
-    return results;
+  switch (GetEagerMode()) {
+    case EagerMode::kDeferNever:
+      TT_RETURN_IF_ERROR(DeferNeverDispatch(results, params.op_name,
+                                            params.split_mode,
+                                            /*block=*/false));
+      break;
+    case EagerMode::kDeferNeverAndLaunchBlocking:
+      TT_RETURN_IF_ERROR(DeferNeverDispatch(results, params.op_name,
+                                            params.split_mode,
+                                            /*block=*/true));
+      break;
+    case EagerMode::kDeferAndFuse:
+      TT_RETURN_IF_ERROR(DeferAndFuseDispatch(results, params.op_name));
+      break;
+    case EagerMode::kInternalDeferAll:
+      // Do not register the DeferredOp with the materialize_new
+      // MaterializationWorker.
+      // Do not materialize the op.
+      break;
   }
-
-  if ((eager_mode == EagerMode::kDeferNever) ||
-      (eager_mode == EagerMode::kDeferNeverAndLaunchBlocking)) {
-    auto& device_buffer_list = results[0].device_buffer_list();
-    TT_RETURN_IF_ERROR(Materialize(device_buffer_list,
-                                   MaterializationReason::kDebugMode,
-                                   MaterializationMode::kFullGraph));
-    for (const auto& result : results) {
-      PjrtBackend::GetInstance().MarkStreamActive(result.GetReadyFuture());
-    }
-    if (eager_mode == EagerMode::kDeferNeverAndLaunchBlocking) {
-      TT_RETURN_IF_ERROR(device_buffer_list->Synchronize());
-    }
-
-  } else if (eager_mode != EagerMode::kInternalDeferAll) {
-    if (GetFlagOnce<bool,
-                    &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
-      TT_RETURN_IF_ERROR(OnNewOpDispatch(results[0].device_buffer_list()));
-    }
-
-    if (MustApplyRepeatedOpsHeuristic()) {
-      TT_RETURN_IF_ERROR(
-          ApplyRepeatedOpsHeuristic(results[0].device_buffer_list()));
-    }
-  }
-
   return results;
 }
 
