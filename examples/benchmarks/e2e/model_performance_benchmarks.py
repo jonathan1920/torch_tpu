@@ -234,8 +234,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_gemma_3_270m_forward(self, run_mode):
     """Tests the forward pass of Gemma-3-270m."""
-    if run_mode == benchmark_utils.RunMode.COMPILED:
-      self.skipTest("Compiled mode fails on view().")
+    if (
+        not self._is_torchax_backend()
+        and run_mode == benchmark_utils.RunMode.COMPILED
+    ):
+      self.skipTest("Compiled mode fails on view() for torch_tpu.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
@@ -266,8 +269,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   def test_gemma_3_270m_train_1_step(self, run_mode):
     """Tests the training of Gemma-3-270m."""
     # TODO(b/512109815): Reenable after fix.
-    if run_mode == benchmark_utils.RunMode.COMPILED:
-      self.skipTest("Compiled mode fails on view().")
+    if (
+        not self._is_torchax_backend()
+        and run_mode == benchmark_utils.RunMode.COMPILED
+    ):
+      self.skipTest("Compiled mode fails on view() for torch_tpu.")
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
@@ -536,11 +542,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_qwen3_1_7b_train(self, run_mode):
     """Tests the train pass of Qwen3 1.7B."""
-    if (
-        self._is_torchax_backend()
-        and run_mode != benchmark_utils.RunMode.COMPILED
-    ):
-      self.skipTest("Device OOM")
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
@@ -649,11 +650,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_gpt_oss_20b_forward(self, run_mode):
     """Tests the forward pass of GPT-OSS-20B."""
-    if (
-        self._is_torchax_backend()
-        and run_mode != benchmark_utils.RunMode.COMPILED
-    ):
-      self.skipTest("Device OOM")
+    if self._is_torchax_backend():
+      self.skipTest("Missing grouped_mm op for torchax backend.")
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
@@ -685,6 +683,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     """Tests the train pass of GPT-OSS-20B."""
     # TODO(b/510886286): Reenable after fix.
     self.skipTest("Assert async not supported yet.")
+    if self._is_torchax_backend():
+      self.skipTest("Missing grouped_mm op for torchax backend.")
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
@@ -716,6 +716,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_gpt_oss_120b_4_layers_forward(self, run_mode):
     """Tests the forward pass of GPT-OSS-20B."""
+    if self._is_torchax_backend():
+      self.skipTest("Missing grouped_mm op for torchax backend.")
 
     def modify_config_hook(config):
       config.num_hidden_layers = 4
@@ -751,6 +753,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     """Tests the train pass of GPT-OSS-20B."""
     # TODO(b/510886286): Reenable after fix.
     self.skipTest("Assert async not supported yet.")
+    if self._is_torchax_backend():
+      self.skipTest("Missing grouped_mm op for torchax backend.")
 
     def modify_config_hook(config):
       config.num_hidden_layers = 4
@@ -880,11 +884,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_wan_2_2_ti2v_5b_backward(self, run_mode):
     """Tests the backward pass of Wan-2.2-TI2V-5B."""
-    if (
-        run_mode == benchmark_utils.RunMode.COMPILED
-        and not self._is_torchax_backend()
-    ):
-      self.skipTest("Compiled mode fails for TorchTPU.")
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
@@ -952,6 +951,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_detr_resnet_50_forward(self, run_mode):
     """Tests the forward pass of DETR ResNet-50."""
+    if self._is_torchax_backend():
+      self.skipTest("Detr ResNet-50 is not supported for torchax backend.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
@@ -982,6 +983,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_vjepa2_vitl_forward(self, run_mode):
     """Tests the forward pass of VJEPA2-ViT-L."""
+    if self._is_torchax_backend():
+      self.skipTest("VJEPA2-ViT-L is not supported for torchax backend.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
@@ -1009,6 +1012,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_vjepa2_vitg_forward(self, run_mode):
     """Tests the forward pass of VJEPA2-ViT-G."""
+    if self._is_torchax_backend():
+      self.skipTest("VJEPA2-ViT-G is not supported for torchax backend.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
