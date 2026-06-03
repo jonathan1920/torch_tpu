@@ -815,6 +815,34 @@ def ml_layer_model_builder(
             device=device,
         ),
     )
+  elif model_name == "fft.fft":
+    dim = kwargs.get("dim", -1)
+    norm = kwargs.get("norm", "backward")
+    hidden_size = kwargs["hidden_size"]
+
+    class FftModel(torch.nn.Module):
+
+      def __init__(self, dim, norm):
+        super().__init__()
+        self.dim = dim
+        self.norm = norm
+
+      def forward(self, x):
+        return torch.fft.fft(x, dim=self.dim, norm=self.norm)
+
+    model = FftModel(dim, norm)
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: torch.complex(
+            torch.randn(
+                (bs, seq, hidden_size), dtype=torch.float32, device=device
+            ),
+            torch.randn(
+                (bs, seq, hidden_size), dtype=torch.float32, device=device
+            ),
+        ),
+    )
 
   elif model_name == "nn.AvgPool2d":
     kernel_size = kwargs["kernel_size"]

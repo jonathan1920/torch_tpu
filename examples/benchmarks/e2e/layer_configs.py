@@ -1151,3 +1151,21 @@ MULTIHEAD_ATTENTION_CONFIGS = (
         num_heads=8,
     ),
 )
+
+
+@dataclasses.dataclass
+class FftConfig:
+  batch_size: int
+  seq_len: int
+  hidden_size: int
+  dim: int = -1
+  norm: str = "backward"
+
+
+FFT_CONFIGS = (
+    # Default config for smoke test.
+    FftConfig(batch_size=1, seq_len=128, hidden_size=128),
+    # Standard intermediate ML shapes.
+    FftConfig(batch_size=32, seq_len=128, hidden_size=768),
+    FftConfig(batch_size=32, seq_len=1024, hidden_size=1024),
+)

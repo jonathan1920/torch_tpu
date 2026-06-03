@@ -72,6 +72,7 @@ _FLATTEN_TIMM_LAYER_BENCHMARK_NAME = "flatten_timm"
 _BOTTLENECK_TIMM_LAYER_BENCHMARK_NAME = "bottleneck_timm"
 _MAXPOOL2D_TIMM_LAYER_BENCHMARK_NAME = "maxpool2d_timm"
 _RELU_TIMM_LAYER_BENCHMARK_NAME = "relu_timm"
+_FFT_LAYER_BENCHMARK_NAME = "fft"
 
 
 _DYNAMIC_SKIPS = {
@@ -371,6 +372,37 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
     self.run_performance_benchmark_test(
         config, _EMBEDDING_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          _ALL_RUN_MODES, (False,), layer_configs.FFT_CONFIGS
+      )
+  )
+  def test_fft(self, run_mode, is_training, layer_config):
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="fft.fft",
+            batch_size=layer_config.batch_size,
+            sequence_length=layer_config.seq_len,
+            custom_kwargs={
+                "hidden_size": layer_config.hidden_size,
+                "dim": layer_config.dim,
+                "norm": layer_config.norm,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _FFT_LAYER_BENCHMARK_NAME, microbenchmark_name
     )
 
   @parameterized.named_parameters(
