@@ -55,15 +55,16 @@ def generate_configs_for_parameterized(configs):
 class SdpaConfig:
   """Configuration for SDPA tests."""
 
-  batch_size: int
   q_seq_len: int
+  kv_seq_len: int
   q_num_heads: int
   kv_num_heads: int
   qk_head_dim: int
   v_head_dim: int
   is_causal: bool
-  enable_gqa: bool
-  dtype: torch.dtype
+  batch_size: int = 1
+  enable_gqa: bool = True
+  dtype: torch.dtype = torch.bfloat16
   scale: float | None = None
   attn_bias_type: torch.dtype | None = None
   backend: torch.nn.attention.SDPBackend = (
@@ -74,134 +75,126 @@ class SdpaConfig:
 SDPA_CONFIGS = (
     # Default config for smoke test.
     SdpaConfig(
-        batch_size=1,
         q_seq_len=512,
+        kv_seq_len=512,
         q_num_heads=8,
         kv_num_heads=8,
         qk_head_dim=64,
         v_head_dim=64,
         is_causal=True,
-        enable_gqa=True,
-        dtype=torch.bfloat16,
         scale=1.1 / 64**0.5,  # Slightly different from default 1.0 / sqrt(64)
     ),
     SdpaConfig(
-        batch_size=1,
         q_seq_len=128,
+        kv_seq_len=128,
         q_num_heads=8,
         kv_num_heads=8,
         qk_head_dim=64,
         v_head_dim=64,
         is_causal=True,
-        enable_gqa=True,
-        dtype=torch.bfloat16,
         backend=torch.nn.attention.SDPBackend.OVERRIDEABLE,
+    ),
+    # Cross-Attention.
+    SdpaConfig(
+        q_seq_len=512,
+        kv_seq_len=1024,
+        q_num_heads=8,
+        kv_num_heads=8,
+        qk_head_dim=64,
+        v_head_dim=64,
+        is_causal=False,
     ),
     # Configs for Llama3 70B attention layers
     SdpaConfig(
-        batch_size=1,
         q_seq_len=2048,
+        kv_seq_len=2048,
         q_num_heads=64,
         kv_num_heads=64,
         qk_head_dim=128,
         v_head_dim=128,
         is_causal=True,
-        enable_gqa=True,
-        dtype=torch.bfloat16,
     ),
     SdpaConfig(
         batch_size=4,
         q_seq_len=2048,
+        kv_seq_len=2048,
         q_num_heads=64,
         kv_num_heads=64,
         qk_head_dim=128,
         v_head_dim=128,
         is_causal=True,
-        enable_gqa=True,
-        dtype=torch.bfloat16,
     ),
     # Configs for Qwen3 480B attention layers
     SdpaConfig(
-        batch_size=1,
         q_seq_len=2048,
+        kv_seq_len=2048,
         q_num_heads=96,
         kv_num_heads=96,
         qk_head_dim=128,
         v_head_dim=128,
         is_causal=True,
-        enable_gqa=True,
-        dtype=torch.bfloat16,
     ),
     SdpaConfig(
         batch_size=4,
         q_seq_len=2048,
+        kv_seq_len=2048,
         q_num_heads=96,
         kv_num_heads=96,
         qk_head_dim=128,
         v_head_dim=128,
         is_causal=True,
-        enable_gqa=True,
-        dtype=torch.bfloat16,
     ),
     # Configs for Gemma3 27B attention layers
     SdpaConfig(
-        batch_size=1,
         q_seq_len=2048,
+        kv_seq_len=2048,
         q_num_heads=32,
         kv_num_heads=32,
         qk_head_dim=128,
         v_head_dim=128,
         is_causal=True,
-        enable_gqa=True,
-        dtype=torch.bfloat16,
     ),
     SdpaConfig(
         batch_size=4,
         q_seq_len=2048,
+        kv_seq_len=2048,
         q_num_heads=32,
         kv_num_heads=32,
         qk_head_dim=128,
         v_head_dim=128,
         is_causal=True,
-        enable_gqa=True,
-        dtype=torch.bfloat16,
     ),
     # AFM v7 configs
     SdpaConfig(
         batch_size=2,
         q_seq_len=2048,
+        kv_seq_len=2048,
         q_num_heads=16,
         kv_num_heads=2,
         qk_head_dim=128,
         v_head_dim=128,
         is_causal=True,
-        enable_gqa=True,
-        dtype=torch.bfloat16,
     ),
     # Configs for testing attn_bias.
     SdpaConfig(
-        batch_size=1,
         q_seq_len=128,
+        kv_seq_len=128,
         q_num_heads=8,
         kv_num_heads=8,
         qk_head_dim=64,
         v_head_dim=64,
         is_causal=False,
-        enable_gqa=True,
-        dtype=torch.bfloat16,
         attn_bias_type=torch.bool,
         backend=torch.nn.attention.SDPBackend.OVERRIDEABLE,
     ),
     SdpaConfig(
-        batch_size=1,
         q_seq_len=128,
+        kv_seq_len=128,
         q_num_heads=8,
         kv_num_heads=8,
         qk_head_dim=64,
         v_head_dim=64,
         is_causal=False,
-        enable_gqa=True,
-        dtype=torch.bfloat16,
         attn_bias_type=torch.bfloat16,
         backend=torch.nn.attention.SDPBackend.OVERRIDEABLE,
     ),

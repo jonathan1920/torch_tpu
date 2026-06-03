@@ -6971,14 +6971,14 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     k = torch.randn(
         config.batch_size,
         config.kv_num_heads,
-        config.q_seq_len,  # Using q_seq_len as per ml_layers_test logic for K
+        config.kv_seq_len,
         config.qk_head_dim,
         dtype=config.dtype,
     )
     v = torch.randn(
         config.batch_size,
         config.kv_num_heads,
-        config.q_seq_len,
+        config.kv_seq_len,
         config.v_head_dim,
         dtype=config.dtype,
     )
@@ -6986,7 +6986,7 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     if config.attn_bias_type is not None:
       bias_shape = (
           config.q_seq_len,
-          config.q_seq_len,
+          config.kv_seq_len,
       )
       if config.attn_bias_type is torch.bool:
         attn_mask = torch.randint(
