@@ -697,6 +697,15 @@ absl::StatusOr<at::Tensor> AddReluScalarHelper(
                    {.op_param_cache_keys = std::move(param_keys)}));
   return out;
 }
+
+absl::Status DivOutMode(const at::Tensor& self, const at::Tensor& other,
+                        std::optional<std::string_view> mode, at::Tensor& out) {
+  TT_ASSIGN_OR_RETURN(auto div_opts, GetDivOpBuilder(self, other, mode));
+  return BinaryOpOut(
+      self, other, out, std::move(div_opts.op_builder),
+      {.op_param_cache_keys = std::move(div_opts.op_param_cache_keys)});
+}
+
 }  // namespace
 
 // NOLINTBEGIN
@@ -945,11 +954,7 @@ at::Tensor& AtenComplexOut(const at::Tensor& real, const at::Tensor& imag,
 at::Tensor& AtenDivOut(const at::Tensor& self, const at::Tensor& other,
                        at::Tensor& out) {
   TT_KERNEL(OpName::kDivOut, _, (self, other, out), {
-    TT_ASSIGN_OR_THROW(auto div_op_options, GetDivOpBuilder(self, other));
-    TT_THROW_IF_ERROR(
-        BinaryOpOut(self, other, out, std::move(div_op_options.op_builder),
-                    {.op_param_cache_keys =
-                         std::move(div_op_options.op_param_cache_keys)}));
+    TT_THROW_IF_ERROR(DivOutMode(self, other, std::nullopt, out));
     return out;
   });
 }
@@ -957,13 +962,9 @@ at::Tensor& AtenDivOut(const at::Tensor& self, const at::Tensor& other,
 at::Tensor& AtenDivOutMode(const at::Tensor& self, const at::Tensor& other,
                            std::optional<std::string_view> mode,
                            at::Tensor& out) {
-  TT_KERNEL(OpName::kDivOut, _,
+  TT_KERNEL(OpName::kDivOutMode, _,
             (self, other, IgnoreInCacheKey(mode, "Legacy usage"), out), {
-              TT_ASSIGN_OR_THROW((auto [op_builder, op_param_cache_keys, _]),
-                                 GetDivOpBuilder(self, other, mode));
-              TT_THROW_IF_ERROR(BinaryOpOut(
-                  self, other, out, std::move(op_builder),
-                  {.op_param_cache_keys = std::move(op_param_cache_keys)}));
+              TT_THROW_IF_ERROR(DivOutMode(self, other, mode, out));
               return out;
             });
 }
@@ -991,22 +992,29 @@ at::Tensor& AtenEqTensorOut(const at::Tensor& self, const at::Tensor& other,
 at::Tensor AtenFloorDivide(const at::Tensor& self, const at::Tensor& other) {
   TT_KERNEL(OpName::kFloorDivide, _, (self, other), {
     TT_THROW_IF_ERROR(CheckFloorDivideInputs(self, other));
-    return at::div(self, other, "floor");
+    TT_ASSIGN_OR_THROW(auto div_opts, GetDivOpOptionsFloorMode());
+    TT_ASSIGN_OR_THROW(auto result,
+                       BinaryOp(self, other, std::move(div_opts.op_builder),
+                                {.op_param_cache_keys =
+                                     std::move(div_opts.op_param_cache_keys)}));
+    return result;
   });
 }
 
 at::Tensor& AtenFloorDivideOut(const at::Tensor& self, const at::Tensor& other,
                                at::Tensor& out) {
-  TT_KERNEL(OpName::kFloorDivide, _, (self, other, out), {
+  TT_KERNEL(OpName::kFloorDivideOut, _, (self, other, out), {
     TT_THROW_IF_ERROR(CheckFloorDivideInputs(self, other));
-    return AtenDivOutMode(self, other, "floor", out);
+    TT_THROW_IF_ERROR(DivOutMode(self, other, "floor", out));
+    return out;
   });
 }
 
 at::Tensor& AtenFloorDivide_Tensor(at::Tensor& self, const at::Tensor& other) {
-  TT_KERNEL(OpName::kFloorDivide, _, (self, other), {
+  TT_KERNEL(OpName::kFloorDivide_Tensor, _, (self, other), {
     TT_THROW_IF_ERROR(CheckFloorDivideInputs(self, other));
-    return self.div_(other, "floor");
+    TT_THROW_IF_ERROR(DivOutMode(self, other, "floor", self));
+    return self;
   });
 }
 
