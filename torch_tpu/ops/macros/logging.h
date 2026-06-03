@@ -249,7 +249,6 @@ void CheckScalarInput() {
       kOpName == OpName::kCdistForward ||               //
       kOpName == OpName::kEluBackwardGradInput ||       //
       kOpName == OpName::kEluOut ||                     //
-      kOpName == OpName::kExponential_ ||               //
       kOpName == OpName::kFill_Scalar ||                //
       kOpName == OpName::kHistc ||                      //
       kOpName == OpName::kIndexAddOut ||                //
@@ -263,7 +262,7 @@ void CheckScalarInput() {
       kOpName == OpName::kScatterValueReduceOut ||      //
       kOpName == OpName::kVar ||                        //
       kOpName == OpName::kVarOut ||                     //
-                                                        // go/keep-sorted end
+      // go/keep-sorted end
       false;  // The `false` case is for nice code formatting.
   if constexpr (kUse == UsesScalarInput::kYes) {
     static_assert(
@@ -530,8 +529,10 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
   } else if constexpr (std::is_same_v<T, PromotedScalar>) {
     CheckScalarInput<kOpName, UsesScalarInput::kNo>();
     // The argument is a PromotedScalar, so we check it matches an at::Scalar
-    // parameter in the kernel function signature.
-    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "at::Scalar")  // CRASH_OK
+    // or double parameter in the kernel function signature.
+    ABSL_CHECK(  // CRASH_OK
+        normalized_arg_type_in_func_sig == "at::Scalar" ||
+        normalized_arg_type_in_func_sig == "double")
         << message();
   } else if constexpr (std::is_same_v<T, MaybePromotedScalar>) {
     CheckScalarInput<kOpName, UsesScalarInput::kNo>();

@@ -29,9 +29,11 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
@@ -46,7 +48,7 @@ namespace torch_tpu {
 namespace {
 
 absl::StatusOr<MlirOpResults<1>> BuildExponentialShlo(
-    mlir::MlirOp rng_input_state, const double lambd,
+    mlir::MlirOp rng_input_state, mlir::MlirOp lambd_op,
     const llvm::ArrayRef<int64_t> sizes, const mlir::ElementType mlir_type) {
   // Generate uniform distribution in [0, 1).
   TT_ASSIGN_OR_RETURN(
@@ -59,27 +61,29 @@ absl::StatusOr<MlirOpResults<1>> BuildExponentialShlo(
   // exponential = -ln(1 - U) / lambda
   // U is in [0, 1). 1 - U is in (0, 1].
 
-  mlir::MlirOp lambd_op = MakeScalarConstant(builder, lambd, mlir_type);
   mlir::MlirOp one_op = MakeScalarConstant(builder, 1.0, mlir_type);
 
   // Broadcast scalars to match tensor shape
-  auto tensor_type = GetTensorTypeOrDie(u);
-  lambd_op = mlir::stablehlo::BroadcastInDim(tensor_type, lambd_op, {});
+  TT_ASSIGN_OR_RETURN((auto [u_bcast, lambd_bcast]),
+                      ApplyBroadcastIfNeeded(u, lambd_op));
+
+  auto tensor_type = GetTensorTypeOrDie(u_bcast);
   one_op = mlir::stablehlo::BroadcastInDim(tensor_type, one_op, {});
 
-  auto one_minus_u = mlir::stablehlo::Subtract(one_op, u);
+  auto one_minus_u = mlir::stablehlo::Subtract(one_op, u_bcast);
   auto log_one_minus_u = mlir::stablehlo::Log(one_minus_u);
   auto neg_log = mlir::stablehlo::Neg(log_one_minus_u);
-  auto result = mlir::stablehlo::Div(neg_log, lambd_op);
+  auto result = mlir::stablehlo::Div(neg_log, lambd_bcast);
 
   return result;
 }
 
-NAryMlirOpBuilder<1, 1> GetExponentialFunctional(Dimensions dims,
-                                                 mlir::ElementType output_dtype,
-                                                 double lambd) {
-  return [dims, output_dtype, lambd](mlir::MlirOp rng_input_state) {
-    return BuildExponentialShlo(rng_input_state, lambd, dims, output_dtype);
+NAryMlirOpBuilder<2, 1> GetExponentialFunctional(
+    Dimensions dims, mlir::ElementType output_dtype) {
+  return [dims, output_dtype](FixedSizeSpan<mlir::MlirOp, 2> inputs) {
+    auto [rng_input_state_op, lambd_op] = inputs;
+    return BuildExponentialShlo(rng_input_state_op, lambd_op, dims,
+                                output_dtype);
   };
 }
 
@@ -87,33 +91,40 @@ NAryMlirOpBuilder<1, 1> GetExponentialFunctional(Dimensions dims,
 
 at::Tensor& AtenExponential_(at::Tensor& self, double lambd,
                              std::optional<at::Generator> generator) {
-  TT_KERNEL(OpName::kExponential_, param_keys, (self, lambd, generator), {
-    if (self.numel() == 0) {
-      return self;
-    }
-    TT_CHECK_THROW(self.is_floating_point(), error::kInvalidArgument)
-        << "expected input tensor dtype to be a floating-point real type, got "
-        << torch_tpu::ToString(self.scalar_type());
+  PromotedScalar promoted_lambd = PromoteScalar(at::Scalar(lambd));
+  TT_KERNEL(
+      OpName::kExponential_, param_keys, (self, promoted_lambd, generator), {
+        if (self.numel() == 0) {
+          return self;
+        }
+        TT_CHECK_THROW(self.is_floating_point(), error::kInvalidArgument)
+            << "expected input tensor dtype to be a floating-point real type, "
+               "got "
+            << torch_tpu::ToString(self.scalar_type());
 
-    TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
-                       ConvertTo<mlir::ElementType>(self.scalar_type()));
-    auto dims = CopyIntVector(self.sizes());
+        TT_ASSIGN_OR_THROW(mlir::ElementType output_dtype,
+                           ConvertTo<mlir::ElementType>(self.scalar_type()));
+        auto dims = CopyIntVector(self.sizes());
 
-    TT_THROW_IF_ERROR(DispatchRngOp(
-        self, generator,
-        [&](at::Tensor rng_input_state)
-            -> absl::StatusOr<std::vector<DeviceBufferRef>> {
-          TT_ASSIGN_OR_RETURN(
-              auto buf, (DispatchOp<1, 1>(
-                            GetExponentialFunctional(dims, output_dtype, lambd),
-                            {rng_input_state},
-                            {.out_dtype = output_dtype,
-                             .out_dims = self.sizes(),
-                             .op_param_cache_keys = std::move(param_keys)})));
-          return std::vector<DeviceBufferRef>{std::move(buf)};
-        }));
-    return self;
-  });
+        TT_ASSIGN_OR_THROW(at::Tensor lambd_tensor,
+                           promoted_lambd.GetTensor(self.scalar_type()));
+
+        TT_THROW_IF_ERROR(DispatchRngOp(
+            self, generator,
+            [&](at::Tensor rng_input_state)
+                -> absl::StatusOr<std::vector<DeviceBufferRef>> {
+              TT_ASSIGN_OR_RETURN(
+                  auto buf, (DispatchOp<2, 1>(
+                                GetExponentialFunctional(dims, output_dtype),
+                                {rng_input_state, lambd_tensor},
+                                {.out_dtype = output_dtype,
+                                 .out_dims = self.sizes(),
+                                 .op_param_cache_keys = std::move(param_keys),
+                                 .split_mode = OpSplitMode::kSplitAfter})));
+              return std::vector<DeviceBufferRef>{std::move(buf)};
+            }));
+        return self;
+      });
 }
 
 }  // namespace torch_tpu
