@@ -42,6 +42,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "c10/core/Device.h"
+#include "torch/csrc/autograd/custom_function.h"
 #include "torch/csrc/distributed/c10d/Types.hpp"
 #include "torch/headeronly/core/Layout.h"
 #include "torch/headeronly/core/MemoryFormat.h"
@@ -429,8 +430,9 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
                   "c10::List<std::optional<at::Tensor>>")
         << message();
   } else if constexpr (std::is_same_v<T, std::vector<at::Tensor>>) {
-    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
-                  "std::vector<at::Tensor>")
+    ABSL_CHECK(  // CRASH_OK
+        normalized_arg_type_in_func_sig == "std::vector<at::Tensor>" ||
+        normalized_arg_type_in_func_sig == "torch::autograd::variable_list")
         << message();
   } else if constexpr (                                           //
       std::is_same_v<T, std::unordered_map<int64_t, int64_t>>) {  // NOLINT
@@ -551,6 +553,10 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
     // ArrayRef of at::Scalar parameter in the kernel function signature.
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
                   "at::ArrayRef<at::Scalar>")
+        << message();
+  } else if constexpr (std::is_same_v<T, torch::autograd::AutogradContext*>) {
+    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
+                  "torch::autograd::AutogradContext *")
         << message();
   } else {
     static_assert(false, "Unsupported argument type.");

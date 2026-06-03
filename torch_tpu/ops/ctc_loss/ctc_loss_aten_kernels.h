@@ -21,6 +21,7 @@
 #include <tuple>
 
 #include "ATen/core/ATen_fwd.h"
+#include "torch/csrc/autograd/custom_function.h"
 
 namespace torch_tpu {
 
@@ -35,6 +36,61 @@ std::tuple<at::Tensor, at::Tensor> AtenCtcLossTensor(
     const at::Tensor& log_probs, const at::Tensor& targets,
     const at::Tensor& input_lengths, const at::Tensor& target_lengths,
     int64_t blank, bool zero_infinity);
+
+struct AtenCtcLossAutograd
+    : public torch::autograd::Function<AtenCtcLossAutograd> {
+  static at::Tensor forward(torch::autograd::AutogradContext* ctx,
+                            const at::Tensor& log_probs,
+                            const at::Tensor& targets,
+                            at::IntArrayRef input_lengths,
+                            at::IntArrayRef target_lengths, int64_t blank,
+                            int64_t reduction, bool zero_infinity);
+
+  static torch::autograd::variable_list backward(
+      torch::autograd::AutogradContext* ctx,
+      torch::autograd::variable_list grad_outputs);
+};
+
+struct AtenCtcLossTensorAutograd
+    : public torch::autograd::Function<AtenCtcLossTensorAutograd> {
+  static at::Tensor forward(torch::autograd::AutogradContext* ctx,
+                            const at::Tensor& log_probs,
+                            const at::Tensor& targets,
+                            const at::Tensor& input_lengths,
+                            const at::Tensor& target_lengths, int64_t blank,
+                            int64_t reduction, bool zero_infinity);
+
+  static torch::autograd::variable_list backward(
+      torch::autograd::AutogradContext* ctx,
+      torch::autograd::variable_list grad_outputs);
+};
+
+at::Tensor AtenCtcLossPublicAutograd(const at::Tensor& log_probs,
+                                     const at::Tensor& targets,
+                                     at::IntArrayRef input_lengths,
+                                     at::IntArrayRef target_lengths,
+                                     int64_t blank, int64_t reduction,
+                                     bool zero_infinity);
+
+at::Tensor AtenCtcLossPublicTensorAutograd(const at::Tensor& log_probs,
+                                           const at::Tensor& targets,
+                                           const at::Tensor& input_lengths,
+                                           const at::Tensor& target_lengths,
+                                           int64_t blank, int64_t reduction,
+                                           bool zero_infinity);
+
+at::Tensor AtenCtcLossPublic(const at::Tensor& log_probs,
+                             const at::Tensor& targets,
+                             at::IntArrayRef input_lengths,
+                             at::IntArrayRef target_lengths, int64_t blank,
+                             int64_t reduction, bool zero_infinity);
+
+at::Tensor AtenCtcLossPublicTensor(const at::Tensor& log_probs,
+                                   const at::Tensor& targets,
+                                   const at::Tensor& input_lengths,
+                                   const at::Tensor& target_lengths,
+                                   int64_t blank, int64_t reduction,
+                                   bool zero_infinity);
 
 at::Tensor AtenCtcLossBackward(
     const at::Tensor& grad_out, const at::Tensor& log_probs,

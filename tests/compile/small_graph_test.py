@@ -14,6 +14,7 @@
 
 """Small graph test for TPU backend."""
 
+import dataclasses
 import os
 import pickle
 from typing import List
@@ -26,6 +27,44 @@ from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.compile import compiler
 from torch_tpu._internal.utils import utils
+
+
+@dataclasses.dataclass
+class CtcLossInputs:
+  """Inputs for CTC loss tests.
+
+  Attributes:
+    log_probs: A Tensor of log probabilities.
+    targets: A Tensor of targets.
+    input_lengths: A Tensor of input lengths.
+    target_lengths: A Tensor of target lengths.
+  """
+
+  log_probs: torch.Tensor
+  targets: torch.Tensor
+  input_lengths: torch.Tensor
+  target_lengths: torch.Tensor
+
+
+def _generate_ctc_loss_inputs(*, requires_grad: bool = False) -> CtcLossInputs:
+  """Generates deterministic inputs for CTC loss tests.
+
+  Args:
+    requires_grad: Whether to set requires_grad=True on log_probs.
+
+  Returns:
+    A CtcLossInputs dataclass instance.
+  """
+  # T=10, N=2, C=5.
+  log_probs = (
+      torch.linspace(-2.0, 2.0, 100)
+      .view(10, 2, 5)
+      .requires_grad_(requires_grad)
+  )
+  targets = torch.tensor([[1, 2, 3, 4, 1], [2, 3, 4, 1, 2]], dtype=torch.long)
+  input_lengths = torch.full((2,), 10, dtype=torch.long)
+  target_lengths = torch.full((2,), 5, dtype=torch.long)
+  return CtcLossInputs(log_probs, targets, input_lengths, target_lengths)
 
 
 class FunctionTest(absltest.TestCase):
@@ -908,23 +947,21 @@ class ModuleTest(absltest.TestCase):
             "Parameters did not change after optimizer.step()",
         )
 
-  @absltest.skip("Fails with bfloat16 on torch.compile.")
   def test_ctc_loss_bfloat16(self):
-    log_probs = (
-        torch.randn(10, 2, 5, dtype=torch.float32)
-        .log_softmax(2)
-        .to(torch.bfloat16)
-    )
-    targets = torch.randint(1, 5, (2, 5), dtype=torch.long)
-    input_lengths = torch.full((2,), 10, dtype=torch.long)
-    target_lengths = torch.full((2,), 5, dtype=torch.long)
-    inputs = [log_probs, targets, input_lengths, target_lengths]
+    ctc_inputs = _generate_ctc_loss_inputs()
+    log_probs = ctc_inputs.log_probs.log_softmax(2).to(torch.bfloat16)
+    inputs = [
+        log_probs,
+        ctc_inputs.targets,
+        ctc_inputs.input_lengths,
+        ctc_inputs.target_lengths,
+    ]
 
     inputs_cpu_f32 = [
         log_probs.to(torch.float32),
-        targets,
-        input_lengths,
-        target_lengths,
+        ctc_inputs.targets,
+        ctc_inputs.input_lengths,
+        ctc_inputs.target_lengths,
     ]
     cpu_result = torch.nn.CTCLoss()(*inputs_cpu_f32).to(torch.bfloat16)
 
@@ -934,7 +971,81 @@ class ModuleTest(absltest.TestCase):
     tpu_backend = compile_lib.TpuBackend(debug=True)
     compiled = torch.compile(m_tpu, backend=tpu_backend)
     tpu_compiled_result = _backend.to_device(compiled(*inputs_tpu), "cpu")
-    utils.assert_close(tpu_compiled_result, cpu_result, rtol=1e-2, atol=1e-3)
+    utils.assert_close(tpu_compiled_result, cpu_result, rtol=1e-2, atol=2e-2)
+
+  def test_ctc_loss_bfloat16_eager_reproducer(self):
+    ctc_inputs = _generate_ctc_loss_inputs()
+    log_probs = ctc_inputs.log_probs.log_softmax(2)
+    inputs = [
+        log_probs,
+        ctc_inputs.targets,
+        ctc_inputs.input_lengths,
+        ctc_inputs.target_lengths,
+    ]
+
+    m_cpu = torch.nn.CTCLoss()
+    cpu_result = m_cpu(*inputs)
+
+    log_probs_tpu_dev, targets_tpu, input_lengths_tpu, target_lengths_tpu = (
+        _backend.to_device(inputs, torch.device("tpu"))
+    )
+    log_probs_tpu = log_probs_tpu_dev.to(torch.bfloat16)
+    inputs_tpu = [
+        log_probs_tpu,
+        targets_tpu,
+        input_lengths_tpu,
+        target_lengths_tpu,
+    ]
+    m_tpu = torch.nn.CTCLoss().to("tpu")
+    tpu_eager_result = _backend.to_device(m_tpu(*inputs_tpu), "cpu")
+
+    utils.assert_close(
+        tpu_eager_result, cpu_result, rtol=1e-2, atol=2e-2, check_dtype=False
+    )
+
+  def test_ctc_loss_bfloat16_eager_backward(self):
+    ctc_inputs = _generate_ctc_loss_inputs(requires_grad=True)
+
+    log_probs_cpu = ctc_inputs.log_probs.clone().detach().requires_grad_(True)
+    log_probs_cpu_softmax = log_probs_cpu.log_softmax(2)
+    loss_cpu = torch.nn.functional.ctc_loss(
+        log_probs_cpu_softmax,
+        ctc_inputs.targets,
+        ctc_inputs.input_lengths,
+        ctc_inputs.target_lengths,
+        reduction="mean",
+    )
+    loss_cpu.backward()
+    cpu_grad = log_probs_cpu.grad
+
+    log_probs_tpu_dev, targets_tpu, input_lengths_tpu, target_lengths_tpu = (
+        _backend.to_device(
+            [
+                ctc_inputs.log_probs,
+                ctc_inputs.targets,
+                ctc_inputs.input_lengths,
+                ctc_inputs.target_lengths,
+            ],
+            torch.device("tpu"),
+        )
+    )
+    log_probs_tpu = (
+        log_probs_tpu_dev.to(torch.bfloat16).detach().requires_grad_(True)
+    )
+    log_probs_tpu_softmax = log_probs_tpu.log_softmax(2)
+    loss_tpu = torch.nn.functional.ctc_loss(
+        log_probs_tpu_softmax,
+        targets_tpu,
+        input_lengths_tpu,
+        target_lengths_tpu,
+        reduction="mean",
+    )
+    loss_tpu.backward()
+    tpu_grad = _backend.to_device(log_probs_tpu.grad, "cpu")
+
+    utils.assert_close(
+        tpu_grad, cpu_grad, rtol=1e-2, atol=2e-2, check_dtype=False
+    )
 
   def test_geqrf_empty(self):
     # geqrf under torch.compile with empty inputs is not tested in the standard

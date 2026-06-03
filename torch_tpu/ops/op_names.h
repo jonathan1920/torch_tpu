@@ -132,6 +132,8 @@ enum class OpName {
   kCtcLoss,
   kCtcLossBackward,
   kCtcLossBackwardTensor,
+  kCtcLossPublic,
+  kCtcLossPublicTensor,
   kCtcLossTensor,
   kCummaxHelper,
   kCumminHelper,

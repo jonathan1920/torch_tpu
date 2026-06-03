@@ -237,6 +237,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_ctc_loss_backward";
     case OpName::kCtcLossBackwardTensor:
       return "_ctc_loss_backward.Tensor";
+    case OpName::kCtcLossPublic:
+      return "ctc_loss";
+    case OpName::kCtcLossPublicTensor:
+      return "ctc_loss.Tensor";
     case OpName::kCtcLossTensor:
       return "_ctc_loss.Tensor";
     case OpName::kCummaxHelper:

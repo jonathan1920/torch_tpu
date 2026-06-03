@@ -280,6 +280,16 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kCtcLoss, AtenCtcLoss);
   Impl(m, OpName::kCtcLossBackward, AtenCtcLossBackward);
   Impl(m, OpName::kCtcLossBackwardTensor, AtenCtcLossBackwardTensor);
+  // TODO(b/513607161): remove CtcLossPublic overrides once upstream PyTorch bug
+  // is fixed.
+  // This is a workaround for a bug in PyTorch core's ctc_loss implementation
+  // when used in combination with the privateuse1 backend and bf16 dtype. PT's
+  // ctc_loss impl attempts to initialize a tensor on CPU with bf16 and triggers
+  // a buggy codepath for non cpu/gpu backends. Overriding the "public" variant
+  // of ctc_loss (rather than strictly the internal _ctc_loss variant that we
+  // already override) is necessary to work around the bug.
+  Impl(m, OpName::kCtcLossPublic, AtenCtcLossPublic);
+  Impl(m, OpName::kCtcLossPublicTensor, AtenCtcLossPublicTensor);
   Impl(m, OpName::kCtcLossTensor, AtenCtcLossTensor);
   Impl(m, OpName::kCummaxHelper, AtenCummaxHelper);
   Impl(m, OpName::kCumminHelper, AtenCumminHelper);
@@ -790,17 +800,28 @@ TORCH_LIBRARY_IMPL(_, AutogradPrivateUse1, m) {
   m.fallback(torch::CppFunction::makeFallthrough());
 }
 
-// MaxPool is by default a CompositeImplicitAutograd op. The decomposition
-// replaces it with MaxPool2dWithIndices (even when return_indices=False).
-// Intuitively, the with-indices variant would be helpful for training, because
-// the indices are needed to compute the gradient. This is NOT the case on tpu
-// however, re-computing the indices via SelectAndScatter is much faster.
-//
-// Therefore the optimal lowering of max_pool2d uses the non-indices variant
-// for both forward and backward, the latter leveraging SelectAndScatter.
-// SelectAndScatter does not support dilations however, so we fallback to the
-// indices variant and preserve the default composite behavior in this case.
 TORCH_LIBRARY_IMPL(aten, AutogradPrivateUse1, m) {
+  // TODO(b/513607161): remove CtcLossPublic overrides once upstream PyTorch bug
+  // is fixed.
+  // Because we override the public ctc_loss in PrivateUse1, we bypass its
+  // default decomposition into _ctc_loss. Since the public ctc_loss is normally
+  // a composite op that relies on this decomposition for autograd, bypassing
+  // it means PyTorch's autograd no longer knows how to differentiate it.
+  // Therefore, we must explicitly provide this autograd override to map
+  // ctc_loss to our custom forward/backward autograd implementation.
+  Impl(m, OpName::kCtcLossPublic, AtenCtcLossPublicAutograd);
+  Impl(m, OpName::kCtcLossPublicTensor, AtenCtcLossPublicTensorAutograd);
+  // MaxPool is by default a CompositeImplicitAutograd op. The decomposition
+  // replaces it with MaxPool2dWithIndices (even when return_indices=False).
+  // Intuitively, the with-indices variant would be helpful for training,
+  // because the indices are needed to compute the gradient. This is NOT the
+  // case on tpu however, re-computing the indices via SelectAndScatter is much
+  // faster.
+  //
+  // Therefore the optimal lowering of max_pool2d uses the non-indices variant
+  // for both forward and backward, the latter leveraging SelectAndScatter.
+  // SelectAndScatter does not support dilations however, so we fallback to the
+  // indices variant and preserve the default composite behavior in this case.
   Impl(m, OpName::kMaxPool2d, AtenMaxPool2d);
 }
 
