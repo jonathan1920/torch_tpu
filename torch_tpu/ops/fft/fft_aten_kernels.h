@@ -30,6 +30,16 @@ at::Tensor& AtenFftR2cOut(const at::Tensor& self, at::IntArrayRef dim,
                           int64_t normalization, bool onesided,
                           at::Tensor& out);
 
+at::Tensor AtenFftC2c(const at::Tensor& self, at::IntArrayRef dim,
+                      int64_t normalization, bool forward);
+at::Tensor& AtenFftC2cOut(const at::Tensor& self, at::IntArrayRef dim,
+                          int64_t normalization, bool forward, at::Tensor& out);
+at::Tensor AtenFftC2r(const at::Tensor& self, at::IntArrayRef dim,
+                      int64_t normalization, int64_t last_dim_size);
+at::Tensor& AtenFftC2rOut(const at::Tensor& self, at::IntArrayRef dim,
+                          int64_t normalization, int64_t last_dim_size,
+                          at::Tensor& out);
+
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_OPS_FFT_FFT_ATEN_KERNELS_H_

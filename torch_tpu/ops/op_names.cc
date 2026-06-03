@@ -347,6 +347,14 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "eye.out";
     case OpName::kFakeQuantizePerTensorAffineCachemask:
       return "fake_quantize_per_tensor_affine_cachemask";
+    case OpName::kFftC2c:
+      return "_fft_c2c";
+    case OpName::kFftC2cOut:
+      return "_fft_c2c.out";
+    case OpName::kFftC2r:
+      return "_fft_c2r";
+    case OpName::kFftC2rOut:
+      return "_fft_c2r.out";
     case OpName::kFftR2c:
       return "_fft_r2c";
     case OpName::kFftR2cOut:

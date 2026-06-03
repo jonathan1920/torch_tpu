@@ -653,6 +653,12 @@ def update_dict(d, u):
 # Like ACCURACY_OVERRIDES_VS_CPU, but for TPU vs GPU instead.
 ACCURACY_OVERRIDES_VS_GPU = {
     # go/keep-sorted start
+    "_fft_c2c": {
+        torch.complex64: {"rtol": 2e-4, "atol": 2e-4},
+    },
+    "_fft_c2r": {
+        torch.float32: {"rtol": 2e-4, "atol": 2e-4},
+    },
     "_foreach_acos": {
         torch.complex64: {"rtol": 4.2e-5, "atol": 7.1e-5},
     },
@@ -1172,6 +1178,12 @@ ACCURACY_OVERRIDES_VS_GPU = {
 # Like ACCURACY_OVERRIDES_VS_CPU, but for TPU vs GPU with torch.compile().
 ACCURACY_OVERRIDES_VS_GPU_COMPILED = {
     # go/keep-sorted start
+    "_fft_c2c": {
+        torch.complex64: {"rtol": 2e-4, "atol": 2e-4},
+    },
+    "_fft_c2r": {
+        torch.float32: {"rtol": 2e-4, "atol": 2e-4},
+    },
     "_foreach_acos": {
         torch.complex64: {"rtol": 4.2e-5, "atol": 7e-5},
     },
@@ -2284,12 +2296,51 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("eye")
 
   def test_fft_rfft(self):
+    exclude_dtypes = [torch.float64]
+    if op_testing._torch_tpu_vs_gpu_mode():
+      # TODO: b/518595804 - PyTorch currently does not support half precision
+      # FFTs for PrivateUse1 backends. See promote_type_fft in SpectralOps.cpp.
+      exclude_dtypes.extend([torch.float16, torch.bfloat16])
     self.do_test_op(
         "fft.rfft",
-        # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
-        # TODO: float16 and float64 are not supported for fft.rfft on TPU.
-        exclude_dtypes=(torch.float16, torch.float64),
+        exclude_dtypes=tuple(exclude_dtypes),
+    )
+
+  def test_fft_fft(self):
+    exclude_dtypes = [torch.float64]
+    if op_testing._torch_tpu_vs_gpu_mode():
+      # TODO: b/518595804 - PyTorch currently does not support half precision
+      # FFTs for PrivateUse1 backends. See promote_type_fft in SpectralOps.cpp.
+      exclude_dtypes.extend([torch.float16, torch.bfloat16])
+    self.do_test_op(
+        "fft.fft",
+        check_value=CheckValueMode.LOOSE,
+        exclude_dtypes=tuple(exclude_dtypes),
+    )
+
+  def test_fft_ifft(self):
+    exclude_dtypes = [torch.float64]
+    if op_testing._torch_tpu_vs_gpu_mode():
+      # TODO: b/518595804 - PyTorch currently does not support half precision
+      # FFTs for PrivateUse1 backends. See promote_type_fft in SpectralOps.cpp.
+      exclude_dtypes.extend([torch.float16, torch.bfloat16])
+    self.do_test_op(
+        "fft.ifft",
+        check_value=CheckValueMode.LOOSE,
+        exclude_dtypes=tuple(exclude_dtypes),
+    )
+
+  def test_fft_irfft(self):
+    exclude_dtypes = [torch.float64]
+    if op_testing._torch_tpu_vs_gpu_mode():
+      # TODO: b/518595804 - PyTorch currently does not support half precision
+      # FFTs for PrivateUse1 backends. See promote_type_fft in SpectralOps.cpp.
+      exclude_dtypes.extend([torch.float16, torch.bfloat16])
+    self.do_test_op(
+        "fft.irfft",
+        check_value=CheckValueMode.LOOSE,
+        exclude_dtypes=tuple(exclude_dtypes),
     )
 
   def test_fill(self):

@@ -6221,6 +6221,24 @@ Supported combinations for non-constant padding:
     ):
       torch._scaled_mm(mat1, mat2, scale_a, scale_b)
 
+  def test_fft_c2c_non_complex_input(self):
+    t = torch.ones(4, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fft_c2c(): materialization failed with: expected complex input type, got float32""",
+        cpu="""Only supports complex dtypes, but found: Float""",
+    ):
+      torch.ops.aten._fft_c2c(t, [0], 0, True)
+
+  def test_fft_c2r_non_complex_input(self):
+    t = torch.ones(4, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""fft_c2r(): materialization failed with: expected complex input type, got float32""",
+        cpu="""expected scalar type ComplexDouble but found Float""",
+    ):
+      torch.ops.aten._fft_c2r(t, [0], 0, 4)
+
 
 if __name__ == "__main__":
   absltest.main()

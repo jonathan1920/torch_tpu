@@ -145,6 +145,9 @@ def verify_op_supports_dynamism(
       "expand",  # view op - expand not yet supported
       "expm1",  # dynamic triage (result differ)
       "fft.rfft",  # expected all dimensions to be static
+      "fft.irfft",  # expected all dimensions to be static
+      "fft.ifft",  # expected all dimensions to be static
+      "fft.fft",  # expected all dimensions to be static
       "flip",  # dynamic triage (invalid result)
       "floor_divide",  # currently failing dynamism tests
       "index_add",  # invalid bound length (likely bad tensor copy)

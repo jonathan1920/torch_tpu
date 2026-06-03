@@ -321,6 +321,10 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kEyeOut, AtenEyeOut);
   Impl(m, OpName::kFakeQuantizePerTensorAffineCachemask,
        FakeQuantizePerTensorAffineCachemask);
+  Impl(m, OpName::kFftC2c, AtenFftC2c);
+  Impl(m, OpName::kFftC2cOut, AtenFftC2cOut);
+  Impl(m, OpName::kFftC2r, AtenFftC2r);
+  Impl(m, OpName::kFftC2rOut, AtenFftC2rOut);
   Impl(m, OpName::kFftR2c, AtenFftR2c);
   Impl(m, OpName::kFftR2cOut, AtenFftR2cOut);
   Impl(m, OpName::kFill_Scalar, AtenFillScalar_);
