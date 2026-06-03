@@ -15,14 +15,14 @@
  */
 
 #include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "torch_tpu/common/context_manager.h"
 #include "torch_tpu/ops/precision_context.h"  // IWYU pragma: keep
 
 namespace torch_tpu {
 
 using Precision = mlir::stablehlo::Precision;
-mlir::stablehlo::Precision UnsafeGetPrecision();
+mlir::stablehlo::Precision PyUnsafeGetPrecision();
 
 PYBIND11_MODULE(precision_impl, m) {
   pybind11::enum_<Precision>(m, "Precision")
@@ -34,12 +34,15 @@ PYBIND11_MODULE(precision_impl, m) {
              Precision::HIGHEST)  // EXPLICIT_PRECISION_OK=root usage
       .export_values();
 
-  m.def("_get_precision", &UnsafeGetPrecision,
+  m.def("_get_precision", &PyUnsafeGetPrecision,
         "Internal get for context manager");
-  m.def("_push_precision", &PushContextState<Precision>,
+  m.def("_push_precision", &PyPushPrecision,
         "Internal push for context manager");
-  m.def("_pop_precision", &PopContextState<Precision>,
-        "Internal pop for context manager");
+  m.def("_pop_precision", &PyPopPrecision, "Internal pop for context manager");
+  m.def("_set_global_precision", &PySetGlobalPrecision,
+        "Set global float32 matmul precision");
+  m.def("_get_global_precision", &PyGetGlobalPrecision,
+        "Get global float32 matmul precision");
 }
 
 }  // namespace torch_tpu

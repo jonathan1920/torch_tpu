@@ -55,7 +55,12 @@ enum class EagerMode {
 // The state of the `eager_mode` context manager.
 using EagerModeContextState = EagerMode;
 
-// The state of the `precision` context manager.
+// The state of the `precision` context manager. If the state is empty
+// (i.e., no thread-local precision context is active), operations fall back to
+// using the global precision setting configured via
+// `torch.set_float32_matmul_precision`.
+//
+// Note: the default value for global precision is `medium` for TPU.
 using PrecisionContextState = mlir::stablehlo::Precision;
 
 enum class ProfilerStatus {

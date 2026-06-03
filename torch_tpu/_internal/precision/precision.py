@@ -46,11 +46,11 @@ def precision(mode: Precision) -> Generator[None, None, None]:
   precision of these operations, mapping directly to StableHLO precision
   settings.
 
-  WARNING: This has different behavior compared to
-  `torch.set_float32_matmul_precision` which has unpredictable precision
-  behavior across varying GPUs. While StableHLO ops are generally stable, their
-  lowering to device-specific ISA is not fully documented, and as a result
-  precision may vary across different hardware.
+  This setting overrides `torch.set_float32_matmul_precision`, the global knob
+  for controlling matmul precision in PyTorch, with a local context. While
+  StableHLO ops are generally stable, their lowering to device-specific ISA is
+  not fully documented, and as a result, precision may vary across different
+  hardwares.
 
   Args:
       mode: The precision to use. Must be a Precision enum. See the StableHLO

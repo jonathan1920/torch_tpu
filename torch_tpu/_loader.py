@@ -165,6 +165,44 @@ def _init_device_impl(device: str) -> torch.device:
 
   profiler.register_kineto_backend()
 
+  # Monkey patch torch.set_float32_matmul_precision and
+  # torch.get_float32_matmul_precision to maintain global precision state.
+  from torch_tpu._internal.precision import precision_impl  # pylint: disable=g-import-not-at-top
+
+  @functools.wraps(torch.set_float32_matmul_precision)
+  def _tpu_set_precision(precision: str) -> None:
+    match precision:
+      case "medium":
+        precision_impl._set_global_precision(precision_impl.Precision.DEFAULT)
+      case "high":
+        precision_impl._set_global_precision(precision_impl.Precision.HIGH)
+      case "highest":
+        precision_impl._set_global_precision(precision_impl.Precision.HIGHEST)
+      case _:
+        raise ValueError(
+            "expected to be one of 'highest', 'high', or 'medium', got"
+            f" '{precision}'"
+        )
+
+  @functools.wraps(torch.get_float32_matmul_precision)
+  def _tpu_get_precision() -> str:
+    global_precision = precision_impl._get_global_precision()
+    match global_precision:
+      case precision_impl.Precision.DEFAULT:
+        return "medium"
+      case precision_impl.Precision.HIGH:
+        return "high"
+      case precision_impl.Precision.HIGHEST:
+        return "highest"
+      case _:
+        raise ValueError(
+            "expected to be one of 'highest', 'high', or 'medium', got"
+            f" {global_precision}"
+        )
+
+  torch.set_float32_matmul_precision = _tpu_set_precision
+  torch.get_float32_matmul_precision = _tpu_get_precision
+
   # Monkey patch torch.compile until there is an official way to override the
   # backend: https://github.com/pytorch/pytorch/issues/178930
   # TODO(b/492505722): Update internal usage of torch.compile.

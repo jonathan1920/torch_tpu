@@ -24,14 +24,28 @@
 
 namespace torch_tpu {
 
-// These functions manage the python-thread-local precision configuration for
-// StableHLO operations. This allows different python threads to operate with
-// different precision settings for matrix multiplications or convolutions, such
-// as DEFAULT, HIGH, or HIGHEST.
+// These functions manage the precision configuration for StableHLO operations.
+// This allows different python threads to operate with different precision
+// settings for matrix multiplications or convolutions, such as DEFAULT, HIGH,
+// or HIGHEST.
 
-// Returns the current python thread's precision and adds it to the
-// param_keys with the given parameter name.
-[[nodiscard]] mlir::stablehlo::Precision GetAndAddPrecisionTo(
+// Sets the global float32 matmul precision.
+void PySetGlobalPrecision(mlir::stablehlo::Precision precision);
+
+// Returns the current global float32 matmul precision.
+mlir::stablehlo::Precision PyGetGlobalPrecision();
+
+// Pushes the given precision context state onto the stack.
+void PyPushPrecision(mlir::stablehlo::Precision precision);
+
+// Pops the current precision context state from the stack.
+void PyPopPrecision();
+
+// Returns the current python thread's precision and adds it to the param_keys
+// with the given parameter name. If no thread-local precision
+// has been set (e.g., via the `precision` context manager), this function falls
+// back to querying the global precision setting.
+mlir::stablehlo::Precision GetAndAddPrecisionTo(
     OpParamCacheKeys& param_keys, std::string_view param_name = "precision");
 
 }  // namespace torch_tpu

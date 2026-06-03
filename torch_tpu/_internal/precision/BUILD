@@ -34,6 +34,7 @@ pybind_extension(
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//torch_tpu/common:context_manager",
+        "//torch_tpu/common:context_states",
         "//torch_tpu/ops:precision_context",
         "@stablehlo//:stablehlo_ops",
     ],
@@ -73,7 +74,6 @@ torch_tpu_cc_library(
     srcs = ["precision_impl.cc"],
     deps = [
         "//shims/pybind11",
-        "//torch_tpu/common:context_manager",
         "//torch_tpu/ops:precision_context",
         "@stablehlo//:stablehlo_ops",
     ],

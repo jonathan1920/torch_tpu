@@ -41,6 +41,7 @@
 #include "c10/util/OptionalArrayRef.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "torch/csrc/distributed/c10d/Types.hpp"
 #include "torch/headeronly/core/ScalarType.h"
 
@@ -150,6 +151,11 @@ template <typename T>
 template <typename T>
 [[nodiscard]] std::string ToString(mlir::ArrayRef<T> arr) {
   return ToString(absl::MakeConstSpan(arr));
+}
+
+[[nodiscard]] inline std::string ToString(
+    mlir::stablehlo::Precision precision) {
+  return mlir::stablehlo::stringifyPrecision(precision).str();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

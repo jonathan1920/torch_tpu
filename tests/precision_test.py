@@ -15,12 +15,12 @@
 import concurrent.futures
 import threading
 import unittest
+import warnings
 
 from absl.testing import absltest
 import torch
 import torch_tpu._internal.precision as p
 from torch_tpu._internal.utils import utils
-
 
 precision = p.precision
 Precision = p.Precision
@@ -28,6 +28,15 @@ p_impl = p.precision_impl
 
 
 class PrecisionTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self._original_warn_always = torch._C._get_warnAlways()
+    torch._C._set_warnAlways(True)
+
+  def tearDown(self):
+    torch._C._set_warnAlways(self._original_warn_always)
+    super().tearDown()
 
   def test_precision_exports_to_torch_module(self):
     self.assertTrue(torch.tpu.precision)
@@ -305,6 +314,204 @@ class PrecisionTest(absltest.TestCase):
       # This assert fails because tensor_square is not freshly compiled.
       # Instead, torch.compile gives a false positive cache hit.
       self.assertEqual(actual[0, 0].item(), expected_default)
+
+  def test_pytorch_global_precision(self):
+    try:
+      torch.set_float32_matmul_precision("high")
+      self.assertEqual(p_impl._get_precision(), Precision.HIGH)
+
+      a = torch.randn(10, 10, device="tpu")
+      b = torch.randn(10, 10, device="tpu")
+
+      def model(a, b):
+        return torch.matmul(a, b)
+
+      self.assertIn(
+          "precision = [HIGH, HIGH]",
+          utils.format_model(model, a, b, shlo=True),
+      )
+    finally:
+      torch.set_float32_matmul_precision("medium")
+
+  def test_pytorch_global_precision_scoped_override(self):
+    try:
+      torch.set_float32_matmul_precision("highest")
+      self.assertEqual(p_impl._get_precision(), Precision.HIGHEST)
+
+      a = torch.randn(10, 10, device="tpu")
+      b = torch.randn(10, 10, device="tpu")
+
+      def model(a, b):
+        return torch.matmul(a, b)
+
+      with precision(Precision.DEFAULT):
+        self.assertEqual(p_impl._get_precision(), Precision.DEFAULT)
+        self.assertIn(
+            "precision = [DEFAULT, DEFAULT]",
+            utils.format_model(model, a, b, shlo=True),
+        )
+
+      self.assertEqual(p_impl._get_precision(), Precision.HIGHEST)
+      self.assertIn(
+          "precision = [HIGHEST, HIGHEST]",
+          utils.format_model(model, a, b, shlo=True),
+      )
+    finally:
+      torch.set_float32_matmul_precision("medium")
+
+  def test_pytorch_global_precision_is_process_wide(self):
+    try:
+      torch.set_float32_matmul_precision("high")
+      self.assertEqual(p_impl._get_precision(), Precision.HIGH)
+
+      def worker():
+        # Precision is process-wide.
+        self.assertEqual(p_impl._get_precision(), Precision.HIGH)
+
+      t = threading.Thread(target=worker)
+      t.start()
+      t.join()
+    finally:
+      torch.set_float32_matmul_precision("medium")
+
+  def test_global_precision_is_process_wide(self):
+    try:
+      p_impl._set_global_precision(Precision.HIGH)
+      self.assertEqual(p_impl._get_global_precision(), Precision.HIGH)
+
+      def worker():
+        # Global precision is process-wide std::atomic.
+        self.assertEqual(p_impl._get_global_precision(), Precision.HIGH)
+
+      t = threading.Thread(target=worker)
+      t.start()
+      t.join()
+    finally:
+      p_impl._set_global_precision(Precision.DEFAULT)
+
+  def test_get_float32_matmul_precision_default(self):
+    self.assertEqual(torch.get_float32_matmul_precision(), "medium")
+
+  def test_get_float32_matmul_precision_after_set(self):
+    self.assertEqual(torch.get_float32_matmul_precision(), "medium")
+    try:
+      torch.set_float32_matmul_precision("high")
+      self.assertEqual(torch.get_float32_matmul_precision(), "high")
+    finally:
+      torch.set_float32_matmul_precision("medium")
+
+  def test_no_warning_when_calling_matmul_setting_matmul_precision_medium(self):
+    a = torch.randn(10, 10, device="tpu")
+    b = torch.randn(10, 10, device="tpu")
+
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+      with precision(Precision.DEFAULT):
+        torch.matmul(a, b)
+      self.assertEmpty(w)
+
+  def test_no_warning_when_calling_matmul_setting_matmul_precision_highest(
+      self,
+  ):
+    a = torch.randn(10, 10, device="tpu")
+    b = torch.randn(10, 10, device="tpu")
+
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+      with precision(Precision.HIGHEST):
+        torch.matmul(a, b)
+      self.assertEmpty(w)
+
+  def test_no_warning_when_set_as_medium_explicitly(self):
+    a = torch.randn(10, 10, device="tpu")
+    b = torch.randn(10, 10, device="tpu")
+
+    self.assertEqual(torch.get_float32_matmul_precision(), "medium")
+    try:
+      torch.set_float32_matmul_precision("medium")
+
+      with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        torch.matmul(a, b)
+        for warning in w:
+          self.assertNotIn("TPU is using", str(warning.message))
+
+    finally:
+      torch.set_float32_matmul_precision("medium")
+
+  def test_warning_when_set_as_highest(self):
+    a = torch.randn(10, 10, device="tpu")
+    b = torch.randn(10, 10, device="tpu")
+
+    self.assertEqual(torch.get_float32_matmul_precision(), "medium")
+    try:
+      torch.set_float32_matmul_precision("highest")
+
+      with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        torch.matmul(a, b)
+        self.assertLen(w, 1)
+        self.assertIn(
+            "TPU is using HIGHEST precision as requested",
+            str(w[0].message),
+        )
+
+    finally:
+      torch.set_float32_matmul_precision("medium")
+
+  def test_warning_when_set_as_high(self):
+    self.assertEqual(torch.get_float32_matmul_precision(), "medium")
+
+    a = torch.randn(10, 10, device="tpu")
+    b = torch.randn(10, 10, device="tpu")
+
+    self.assertEqual(torch.get_float32_matmul_precision(), "medium")
+    try:
+      torch.set_float32_matmul_precision("high")
+
+      with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        torch.matmul(a, b)
+        self.assertLen(w, 1)
+        self.assertIn(
+            "TPU is using HIGH precision as requested",
+            str(w[0].message),
+        )
+
+    finally:
+      torch.set_float32_matmul_precision("medium")
+
+  def test_warning_only_once(self):
+    self.assertEqual(torch.get_float32_matmul_precision(), "medium")
+
+    # This test verifies that TORCH_WARN_ONCE actually warns only once.
+    # We temporarily disable warnAlways to test this.
+    torch._C._set_warnAlways(False)
+
+    a = torch.randn(10, 10, device="tpu")
+    b = torch.randn(10, 10, device="tpu")
+
+    try:
+      torch.set_float32_matmul_precision("highest")
+
+      # First call should warn
+      with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        torch.matmul(a, b)
+        self.assertLen(w, 1)
+        self.assertIn(
+            "TPU is using HIGHEST precision as requested",
+            str(w[0].message),
+        )
+
+      # Second call should NOT warn
+      with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        torch.matmul(a, b)
+        self.assertEmpty(w)
+
+    finally:
+      torch.set_float32_matmul_precision("medium")
 
 
 if __name__ == "__main__":
