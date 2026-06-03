@@ -787,6 +787,10 @@ absl::StatusOr<size_t> DeviceBufferRef::pjrt_buffer_size() const {
   return device_buffer_list_->is_materialized();
 }
 
+[[nodiscard]] bool DeviceBufferRef::is_empty() const {
+  return device_buffer_list_->is_empty();
+}
+
 [[nodiscard]] const Shape& DeviceBufferRef::shape() const {
   return device_buffer_list_->shapes()[index_];
 }

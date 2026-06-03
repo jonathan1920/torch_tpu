@@ -290,6 +290,14 @@ class DeviceBufferRef {
   // It may have succeeded or failed.
   [[nodiscard]] bool is_materialized() const;
 
+  // Returns true if this DeviceBufferRef was created by a deferred op like
+  // `torch.empty()`.
+  // This buffer represents uninitialized memory and is therefore expected to
+  // never be read; we avoid materialization when possible.
+  // If it is read, then it is handled according to the semantics of
+  // `torch.utils.deterministic.fill_uninitialized_memory`
+  [[nodiscard]] bool is_empty() const;
+
   [[nodiscard]] const Shape& shape() const;
 
   // The logical dimensions of the referenced buffer.
@@ -707,6 +715,16 @@ class DeviceBufferList {
     return data_.is_materializing();
   }
 
+  // Returns true if this DeviceBufferList was created from a deferred op like
+  // `torch.empty()` or `torch.empty_like()`.
+  // While these lists have a DeferredOp, they have special materialization
+  // requirements, as they represent uninitialized memory and not an actual
+  // operation most of the time. Reading uninitialized memory is not expected
+  // behavior, but is technically valid in rare cases (such as partial in-place
+  // writes).
+  // Once materialized, "empty" buffers are no longer treated as a special case.
+  [[nodiscard]] bool is_empty() const { return data_.is_empty(); }
+
   // Returns true if this DeviceBufferList is executing.
   // The execution may or may not have completed.
   [[nodiscard]] bool is_executing() const { return data_.is_executing(); }
@@ -902,7 +920,8 @@ class DeviceBufferList {
     // Creates a DeviceBufferList::Data with a DeferredOp, which can later be
     // materialized.
     explicit Data(absl_nonnull std::shared_ptr<DeferredOp> deferred_op)
-        : deferred_op_(std::move(deferred_op)) {
+        : empty_(IsEmptyOp(deferred_op->op_name())),
+          deferred_op_(std::move(deferred_op)) {
       auto [promise, future] = xla::MakePromise<void>();
       materialization_promise_ = std::move(promise);
       materialization_future_ = std::move(future);
@@ -997,10 +1016,19 @@ class DeviceBufferList {
       return materialization_future_.IsKnownReady();
     }
 
+    // Returns true if the DeviceBufferList::Data was created by a
+    // "torch.empty()" op.
+    [[nodiscard]] bool is_empty() const { return empty_; }
+
     // Prints a debug string for the DeviceBufferList::Data into the ostream.
     std::ostream& PrintDebug(std::ostream& os) const;
 
    private:
+    // If the DeviceBufferList::Data was created by a "torch.empty()" op, then
+    // we will try to avoid materializing it, as it is expected to never be
+    // read.
+    const bool empty_ = false;
+
     // If the DeviceBufferList::Data has a DeferredOp, it is stored here,
     // protected by a mutex. This ensures that if one thread is trying to access
     // the DeferredOp, there won't be a data race with another thread that is

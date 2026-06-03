@@ -725,6 +725,19 @@ inline std::ostream& operator<<(std::ostream& os, const OpName op_name) {
   return IsDistributedOp(op_name);
 }
 
+// Returns true if the op is an "empty" op, i.e. one that creates a tensor
+// with uninitialized data.
+[[nodiscard]] inline bool IsEmptyOp(OpName op_name) {
+  switch (op_name) {
+    case OpName::kEmpty:
+    case OpName::kEmptyMemoryFormat:
+    case OpName::kEmptyStrided:
+      return true;
+    default:
+      return false;
+  }
+}
+
 // Returns true if the op would would be metadata-only on CUDA.
 // When creating these ops, we should usually not need to materialize them,
 // even in kDeferNever mode.
