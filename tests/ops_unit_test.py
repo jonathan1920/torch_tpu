@@ -4760,6 +4760,33 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(_test)
 
+  @parameterized.product(
+      reduce_op=["add", "multiply"],
+      dtype=[torch.float32, torch.int32, torch.bfloat16],
+      value=[2.0, -1.5, 0.0],
+  )
+  def test_scatter_value_reduce(self, reduce_op, dtype, value):
+    """Tests torch.ops.aten.scatter.value_reduce with various reduction ops."""
+    if dtype.is_floating_point:
+      scalar_value = float(value)
+    else:
+      scalar_value = int(value)
+
+    def test_fn(device: torch.device) -> torch.Tensor:
+      self_tensor = torch.ones(3, 5, dtype=dtype, device=device) * 3.0
+      index = torch.tensor(
+          [[0, 1, 2], [0, 1, 2]], device=device, dtype=torch.int64
+      )
+      return torch.ops.aten.scatter.value_reduce(
+          self_tensor, dim=1, index=index, value=scalar_value, reduce=reduce_op
+      )
+
+    rtol, atol = None, None
+    if dtype == torch.bfloat16:
+      rtol, atol = 1e-2, 1e-2
+
+    self.assert_close_tpu_vs_cpu(test_fn, rtol=rtol, atol=atol)
+
   def test_foreach_add_different_dtypes_with_alpha(self):
     """Tests _foreach_add with different dtypes and an alpha parameter."""
 

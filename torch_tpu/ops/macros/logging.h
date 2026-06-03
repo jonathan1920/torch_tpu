@@ -258,7 +258,6 @@ void CheckScalarInput() {
       kOpName == OpName::kLogSoftmaxBackwardDataOut ||  //
       kOpName == OpName::kNativeBatchNormBackward ||    //
       kOpName == OpName::kPdistForward ||               //
-      kOpName == OpName::kScatterValueReduceOut ||      //
       kOpName == OpName::kVar ||                        //
       kOpName == OpName::kVarOut ||                     //
       // go/keep-sorted end

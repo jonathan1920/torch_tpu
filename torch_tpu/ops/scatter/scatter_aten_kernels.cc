@@ -111,12 +111,6 @@ absl::StatusOr<ScatterOp> ParseScatterOp(
   }
 }
 
-at::Tensor TensorFromValue(const at::Tensor& self, const at::Scalar& value) {
-  auto promoted_type = at::result_type(self, value);
-  return at::full_like(self, value, promoted_type, std::nullopt, self.device(),
-                       std::nullopt, std::nullopt);
-}
-
 }  // namespace
 
 at::Tensor& AtenScatterSrcOut(const at::Tensor& self, int64_t dim,
@@ -193,13 +187,15 @@ at::Tensor& AtenScatterValueReduceOut(const at::Tensor& self, int64_t dim,
                                       const at::Scalar& value,
                                       std::string_view reduction_op,
                                       at::Tensor& out) {
+  auto promoted_value = PromoteScalar(value);
   TT_KERNEL(
       OpName::kScatterValueReduceOut, _,
-      (self, IgnoreInCacheKey(dim, "Legacy usage"), index,
-       IgnoreInCacheKey(value, "Legacy usage"),
+      (self, IgnoreInCacheKey(dim, "Legacy usage"), index, promoted_value,
        IgnoreInCacheKey(reduction_op, "Legacy usage"), out),
       {
-        auto value_tensor = TensorFromValue(self, value);
+        auto promoted_type = out.scalar_type();
+        TT_ASSIGN_OR_THROW(at::Tensor value_tensor,
+                           promoted_value.GetTensor(promoted_type));
         TT_ASSIGN_OR_THROW(ScatterOp scatter_op, ParseScatterOp(reduction_op));
         TT_ASSIGN_OR_THROW(DeviceBufferRef result,
                            Scatter(self, dim, index, value_tensor, scatter_op));
