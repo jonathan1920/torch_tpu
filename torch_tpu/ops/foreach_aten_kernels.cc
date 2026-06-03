@@ -765,6 +765,10 @@ std::vector<DeviceBufferRef> ForeachDiv(at::TensorList self,
       TT_ASSIGN_OR_RETURN(
           (auto [promoted_self_op, promoted_other_op]),
           ConvertIfIntegers(self_ops[i], other_ops[i], default_dtype));
+      TT_ASSIGN_OR_RETURN(promoted_self_op,
+                          CastIfNeeded(promoted_self_op, out_dtypes[i]));
+      TT_ASSIGN_OR_RETURN(promoted_other_op,
+                          CastIfNeeded(promoted_other_op, out_dtypes[i]));
       TT_ASSIGN_OR_RETURN(mlir::MlirOp div_op,
                           BuildDivShlo(promoted_self_op, promoted_other_op));
       results.push_back(div_op);
@@ -3011,74 +3015,83 @@ void AtenForeachPow_List(at::TensorList self, at::TensorList exponent) {
 
 std::vector<at::Tensor> AtenForeachPowScalar(at::TensorList self,
                                              const at::Scalar& exponent) {
-  TT_KERNEL(OpName::kForeachPowScalar, _,
-            (self, IgnoreInCacheKey(exponent, "Delegates to AtenPow")), {
-              std::vector<at::Tensor> result;
-              result.reserve(self.size());
-              const at::Scalar exp_val = BoolScalarToInt(exponent);
-              for (const auto& tensor : self) {
-                TT_ASSIGN_OR_THROW(auto out, AtenPow(tensor, exp_val));
-                result.push_back(out);
-              }
-              return result;
-            });
+  auto promoted_exponent = PromoteScalar(BoolScalarToInt(exponent));
+  TT_KERNEL(OpName::kForeachPowScalar, _, (self, promoted_exponent), {
+    std::vector<at::Tensor> result;
+    result.reserve(self.size());
+    TT_ASSIGN_OR_THROW(at::Tensor exponent_tensor,
+                       promoted_exponent.GetTensor());
+    for (const auto& tensor : self) {
+      TT_ASSIGN_OR_THROW(auto out, AtenPow(tensor, exponent_tensor));
+      result.push_back(out);
+    }
+    return result;
+  });
 }
 
 void AtenForeachPow_Scalar(at::TensorList self, const at::Scalar& exponent) {
-  TT_KERNEL(
-      OpName::kForeachPow_Scalar, _,
-      (self, IgnoreInCacheKey(exponent, "Delegates to AtenPowTensorScalarOut")),
-      {
-        const at::Scalar exp_val = BoolScalarToInt(exponent);
-        for (const auto& tensor : self) {
-          AtenPowTensorScalarOut(tensor, exp_val,
-                                 const_cast<at::Tensor&>(tensor));
-        }
-      });
+  auto promoted_exponent = PromoteScalar(BoolScalarToInt(exponent));
+  TT_KERNEL(OpName::kForeachPow_Scalar, _, (self, promoted_exponent), {
+    TT_ASSIGN_OR_THROW(at::Tensor exponent_tensor,
+                       promoted_exponent.GetTensor());
+    for (const auto& tensor : self) {
+      AtenPowTensorTensorOut(tensor, exponent_tensor,
+                             const_cast<at::Tensor&>(tensor));
+    }
+  });
 }
 
 std::vector<at::Tensor> AtenForeachPowScalarList(
     at::TensorList self, at::ArrayRef<at::Scalar> exponent) {
-  TT_KERNEL(OpName::kForeachPowScalarList, _,
-            (self, IgnoreInCacheKey(exponent, "Delegates to AtenPow")), {
-              std::vector<at::Tensor> result;
-              result.reserve(self.size());
-              for (size_t i = 0; i < self.size(); ++i) {
-                const at::Scalar exp_val = BoolScalarToInt(exponent[i]);
-                TT_ASSIGN_OR_THROW(auto out, AtenPow(self[i], exp_val));
-                result.push_back(out);
-              }
-              return result;
-            });
+  std::vector<PromotedScalar> promoted_exponent;
+  promoted_exponent.reserve(exponent.size());
+  for (const auto& scalar : exponent) {
+    promoted_exponent.push_back(PromoteScalar(BoolScalarToInt(scalar)));
+  }
+  TT_KERNEL(OpName::kForeachPowScalarList, _, (self, promoted_exponent), {
+    std::vector<at::Tensor> result;
+    result.reserve(self.size());
+    for (size_t i = 0; i < self.size(); ++i) {
+      TT_ASSIGN_OR_THROW(at::Tensor exponent_tensor_i,
+                         promoted_exponent[i].GetTensor());
+      TT_ASSIGN_OR_THROW(auto out, AtenPow(self[i], exponent_tensor_i));
+      result.push_back(out);
+    }
+    return result;
+  });
 }
 
 void AtenForeachPow_ScalarList(at::TensorList self,
                                at::ArrayRef<at::Scalar> exponent) {
-  TT_KERNEL(
-      OpName::kForeachPow_ScalarList, _,
-      (self, IgnoreInCacheKey(exponent, "Delegates to AtenPowTensorScalarOut")),
-      {
-        for (size_t i = 0; i < self.size(); ++i) {
-          const at::Scalar exp_val = BoolScalarToInt(exponent[i]);
-          AtenPowTensorScalarOut(self[i], exp_val,
-                                 const_cast<at::Tensor&>(self[i]));
-        }
-      });
+  std::vector<PromotedScalar> promoted_exponent;
+  promoted_exponent.reserve(exponent.size());
+  for (const auto& scalar : exponent) {
+    promoted_exponent.push_back(PromoteScalar(BoolScalarToInt(scalar)));
+  }
+  TT_KERNEL(OpName::kForeachPow_ScalarList, _, (self, promoted_exponent), {
+    for (size_t i = 0; i < self.size(); ++i) {
+      TT_ASSIGN_OR_THROW(at::Tensor exponent_tensor_i,
+                         promoted_exponent[i].GetTensor());
+      AtenPowTensorTensorOut(self[i], exponent_tensor_i,
+                             const_cast<at::Tensor&>(self[i]));
+    }
+  });
 }
 
 std::vector<at::Tensor> AtenForeachPowScalarAndTensor(const at::Scalar& self,
                                                       at::TensorList exponent) {
-  TT_KERNEL(OpName::kForeachPowScalarAndTensor, _,
-            (IgnoreInCacheKey(self, "Delegates to AtenPow"), exponent), {
-              std::vector<at::Tensor> result;
-              result.reserve(exponent.size());
-              for (const auto& tensor : exponent) {
-                const at::Tensor exp_i = BoolTensorToInt(tensor);
-                TT_ASSIGN_OR_THROW(auto out, AtenPow(self, exp_i));
-                result.push_back(out);
-              }
-              return result;
-            });
+  auto promoted_self = PromoteScalar(self);
+  TT_KERNEL(OpName::kForeachPowScalarAndTensor, _, (promoted_self, exponent), {
+    std::vector<at::Tensor> result;
+    result.reserve(exponent.size());
+    TT_ASSIGN_OR_THROW(at::Tensor base_tensor, promoted_self.GetTensor());
+    for (const auto& tensor : exponent) {
+      const at::Tensor exp_i = BoolTensorToInt(tensor);
+      TT_ASSIGN_OR_THROW(auto out, AtenPow(base_tensor, exp_i));
+      result.push_back(out);
+    }
+    return result;
+  });
 }
 
 }  // namespace torch_tpu
