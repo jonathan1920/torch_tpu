@@ -1533,6 +1533,10 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
         copy.deepcopy(ACCURACY_OVERRIDES_VS_CPU),
         {
             # go/keep-sorted start
+            "_foreach_erfc": {
+                torch.bfloat16: {"rtol": 3.5e-2, "atol": 4.3e-4},
+                torch.float16: {"rtol": 9.7e-4, "atol": 9.8e-4},
+            },
             "_foreach_log10": {
                 torch.float16: {"rtol": 1.3e-3, "atol": 1.3e-4},
             },
@@ -1540,6 +1544,13 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.bfloat16: {"rtol": 2e-2, "atol": 2e-2},
                 torch.float16: {"rtol": 2e-3, "atol": 2e-3},
                 torch.float32: {"rtol": 1e-5, "atol": 1e-5},
+            },
+            "_foreach_reciprocal": {
+                torch.float32: {"rtol": 1.9e-7, "atol": 9.2e-5},
+            },
+            "_foreach_rsqrt": {
+                torch.bfloat16: {"rtol": 2.4e-2, "atol": 1e-3},
+                torch.float32: {"rtol": 2.1e-6, "atol": 1.4e-4},
             },
             "_foreach_sigmoid": {
                 torch.float16: {"rtol": 2e-5, "atol": 1e-3},
@@ -1590,6 +1601,22 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
             "lerp": {
                 torch.bfloat16: {"rtol": 4e-2, "atol": 8e-3},
                 torch.float16: {"rtol": 1.6e-3, "atol": 3.2e-2},
+            },
+            "linalg.inv": {
+                torch.float32: {"rtol": 1.2e-2, "atol": 7e-3},
+                torch.float64: {"rtol": 4.9e-6, "atol": 2.5e-7},
+            },
+            "linalg.lu": {
+                torch.float32: {"rtol": 5.6e-3, "atol": 4e-2},
+            },
+            "linalg.lu_factor_ex": {
+                torch.float32: {"rtol": 2.9e-3, "atol": 5e-2},
+            },
+            "linalg.solve_ex": {
+                torch.float32: {"rtol": 8.8e-3, "atol": 5.8e-2},
+            },
+            "linalg.solve_triangular": {
+                torch.float32: {"rtol": 4.8e-3, "atol": 4.5e-3},
             },
             "log10": {
                 torch.float16: {"rtol": 2e-3, "atol": 2e-4},
@@ -1650,6 +1677,10 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
             "rsqrt": {
                 torch.bfloat16: {"rtol": 2e-2, "atol": 1e-3},
                 torch.float16: {"rtol": 3.7e-3, "atol": 2e-3},
+            },
+            "softmax": {
+                torch.bfloat16: {"rtol": 1e-3, "atol": 5.8e-3},
+                torch.float16: {"rtol": 1e-3, "atol": 1.1e-3},
             },
             "tan": {
                 torch.float32: {"rtol": 1e-5, "atol": 2e-2},
@@ -2513,9 +2544,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_erfc(self):
-    # TODO: fix strict accuracy failure (observed rel diff ~ 1.05e-5,
-    # abs diff ~ 2.86e-6).
-    self.do_test_op("_foreach_erfc", check_grad=False)
+    self.do_test_op("_foreach_erfc")
 
   def test_foreach_exp(self):
     self.do_test_op(
@@ -2555,6 +2584,7 @@ class TestOps(TorchTpuTestBase):
         exclude_dtypes=(torch.float64,),
         exclude_inplace_dtypes=(torch.float64,),
         check_value=CheckValueMode.LOOSE,
+        # TODO: fix the error that digamma.out is unimplemented.
         check_grad=False,
     )
 
@@ -2583,9 +2613,6 @@ class TestOps(TorchTpuTestBase):
     # TODO: look into making this STRICT.
     self.do_test_op(
         "_foreach_log2",
-        # TODO: fix accuracy failure (observed abs diff ~ 0.125,
-        # rel diff ~ 0.0106).
-        check_grad=False,
         check_value=CheckValueMode.LOOSE,
     )
 
@@ -2667,20 +2694,16 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_pow(self):
-
     self.do_test_op(
         "_foreach_pow",
         # TODO: fix TPU failure for these dtypes.
         exclude_dtypes=(torch.bool, torch.int64, torch.complex64),
         exclude_inplace_dtypes=(torch.bool, torch.int64, torch.complex64),
         check_value=CheckValueMode.LOOSE,
-        check_grad=False,
     )
 
   def test_foreach_reciprocal(self):
-    # TODO: fix accuracy failure (observed abs diff ~ 3.05e-5,
-    # rel diff ~ 2.3e-7).
-    self.do_test_op("_foreach_reciprocal", check_grad=False)
+    self.do_test_op("_foreach_reciprocal")
 
   def test_foreach_round(self):
     self.do_test_op("_foreach_round")
@@ -2688,9 +2711,6 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_rsqrt(self):
     self.do_test_op(
         "_foreach_rsqrt",
-        # TODO: fix accuracy failure (observed abs diff ~ 1.37e-4,
-        # rel diff ~ 2.09e-6).
-        check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
     )
@@ -2719,9 +2739,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_foreach_sqrt(self):
-    # TODO: fix accuracy failure (observed abs diff ~ 2.44e-4,
-    # rel diff ~ 9.76e-4).
-    self.do_test_op("_foreach_sqrt", check_grad=False)
+    self.do_test_op("_foreach_sqrt")
 
   def test_foreach_sub(self):
     self.do_test_op(
@@ -2909,9 +2927,6 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_lu_factor_ex(self):
     self.do_test_op(
         "linalg.lu_factor_ex",
-        # TODO: fix accuracy failure (observed abs diff ~ 4.06e-3,
-        # rel diff ~ 2.87e-3).
-        check_grad=False,
         check_value=CheckValueMode.LOOSE,
         skip_if=_linalg_lu_without_pivot_gpu,
     )
@@ -2919,9 +2934,6 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_triangular_solve(self):
     self.do_test_op(
         "linalg.solve_triangular",
-        # TODO: fix accuracy failure. Suggestions: rtol >= 4.8e-3
-        # or atol >= 4.5e-3.
-        check_grad=False,
         # bool triggers an error in the sample generation code
         exclude_dtypes=(torch.bool,),
         check_value=CheckValueMode.LOOSE,
@@ -2954,9 +2966,6 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_solve_ex(self):
     self.do_test_op(
         "linalg.solve_ex",
-        # TODO: fix accuracy failure (observed abs diff ~ 0.058,
-        # rel diff ~ 0.0114).
-        check_grad=False,
         exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
         check_value=CheckValueMode.LOOSE,
         # TODO(b/495521055): linalg.solve_ex fails with complex64 with compile.
@@ -2969,9 +2978,6 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_lu_out(self):
     self.do_test_op(
         "linalg.lu",
-        # TODO: fix accuracy failure (observed abs diff ~ 4.31e-3,
-        # rel diff ~ 5.54e-3).
-        check_grad=False,
         check_value=CheckValueMode.LOOSE,
         # TODO(b/495521055): linalg.lu fails with complex64 with compile.
         skip_if=lambda device, variant, op_input: (
@@ -2986,9 +2992,6 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_inv_ex_out(self):
     self.do_test_op(
         "linalg.inv",
-        # TODO: fix accuracy failure. Suggestions: rtol >= 1.1e-2
-        # or atol >= 7.0e-3.
-        check_grad=False,
         exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
         check_value=CheckValueMode.LOOSE,
         # TODO(b/495521055): linalg.inv fails with complex64 with compile.
@@ -3499,9 +3502,6 @@ class TestOps(TorchTpuTestBase):
           # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
           # but on tpu it succeeds. Remove this once we fix bmm on tpu.
           exclude_dtypes=(torch.int64,),
-          # TODO: fix accuracy failure (observed abs diff ~ 4.64,
-          # rel diff ~ 0.119).
-          check_grad=False,
       )
 
   def test_nn_functional_batch_norm(self):
@@ -3740,9 +3740,6 @@ class TestOps(TorchTpuTestBase):
   def test_softmax(self):
     self.do_test_op(
         "softmax",
-        # TODO: fix accuracy failure (observed abs diff ~ 1.63e-3,
-        # rel diff = 1.0).
-        check_grad=False,
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
     )
