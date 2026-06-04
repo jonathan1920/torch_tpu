@@ -260,7 +260,6 @@ void CheckScalarInput() {
       kOpName == OpName::kHistc ||                      //
       kOpName == OpName::kIndexAddOut ||                //
       kOpName == OpName::kLinalgVectorNormOut ||        //
-      kOpName == OpName::kLinspaceOut ||                //
       kOpName == OpName::kLocalScalarDense ||           //
       kOpName == OpName::kLogSoftmaxBackwardDataOut ||  //
       kOpName == OpName::kNativeBatchNormBackward ||    //

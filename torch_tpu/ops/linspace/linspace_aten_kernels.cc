@@ -20,6 +20,7 @@
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
+#include "ATen/native/Resize.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -33,7 +34,11 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/fixed_size_span.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/eager/device_buffer.h"
+#include "torch_tpu/eager/op_dispatcher.h"
+#include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
@@ -168,8 +173,8 @@ absl::StatusOr<mlir::MlirOp> BuildLinspaceInterpolation(
 }
 
 absl::StatusOr<mlir::MlirOp> BuildLinspaceOp(
-    mlir::MlirBuilder& builder, int64_t steps, const at::Scalar& start,
-    const at::Scalar& end, mlir::ElementType output_mlir_type) {
+    mlir::MlirBuilder& builder, int64_t steps, mlir::MlirOp start_op,
+    mlir::MlirOp end_op, mlir::ElementType output_mlir_type) {
   if (steps == 0) {
     return MakeZeroSizedTensor(builder, output_mlir_type);
   }
@@ -182,12 +187,10 @@ absl::StatusOr<mlir::MlirOp> BuildLinspaceOp(
   mlir::RankedTensorType compute_tensor_type =
       mlir::RankedTensorType::get({steps}, compute_type);
 
-  // PyTorch CPU first casts start and end to output dtype, then converts to
-  // compute type.
-  TT_ASSIGN_OR_RETURN(auto start_casted,
-                      MakeConstant(builder, start, output_mlir_type, {}));
+  // start_op is already a tensor (0-D).
+  // We need to convert it to compute_type and broadcast it.
   auto start_scalar =
-      mlir::stablehlo::ConvertElementType(start_casted, compute_type);
+      mlir::stablehlo::ConvertElementType(start_op, compute_type);
   start_scalar = PrepareScalar(start_scalar, compute_tensor_type);
 
   if (steps == 1) {
@@ -198,10 +201,8 @@ absl::StatusOr<mlir::MlirOp> BuildLinspaceOp(
     return start_scalar;
   }
 
-  TT_ASSIGN_OR_RETURN(auto end_casted,
-                      MakeConstant(builder, end, output_mlir_type, {}));
-  auto end_scalar =
-      mlir::stablehlo::ConvertElementType(end_casted, compute_type);
+  // end_op is already a tensor (0-D).
+  auto end_scalar = mlir::stablehlo::ConvertElementType(end_op, compute_type);
   end_scalar = PrepareScalar(end_scalar, compute_tensor_type);
 
   TT_ASSIGN_OR_RETURN(
@@ -215,38 +216,52 @@ absl::StatusOr<mlir::MlirOp> BuildLinspaceOp(
   return compute_result;
 }
 
-absl::StatusOr<MlirNullaryOpBuilder> GetLinspaceOpBuilder(
-    int64_t steps, const at::Scalar start, const at::Scalar end,
-    const at::ScalarType output_dtype) {
-  TT_ASSIGN_OR_RETURN(const auto output_mlir_type,
-                      ConvertTo<mlir::ElementType>(output_dtype));
-
-  return [steps, output_mlir_type, start,
-          end](mlir::MlirBuilder& builder) -> absl::StatusOr<mlir::MlirOp> {
-    return BuildLinspaceOp(builder, steps, start, end, output_mlir_type);
-  };
-}
-
 }  // namespace
 
 at::Tensor& AtenLinspaceOut(const at::Scalar& start, const at::Scalar& end,
                             int64_t steps, at::Tensor& out) {
-  TT_KERNEL(OpName::kLinspaceOut, param_keys, (start, end, steps, out), {
-    TT_CHECK_THROW(steps >= 0, error::kInvalidArgument)
-        << "expected non-negative steps, got " << ToString(steps);
+  auto start_promoted = PromoteScalar(start);
+  auto end_promoted = PromoteScalar(end);
+  TT_KERNEL(
+      OpName::kLinspaceOut, param_keys,
+      (start_promoted, end_promoted, steps, out), {
+        TT_CHECK_THROW(steps >= 0, error::kInvalidArgument)
+            << "expected non-negative steps, got " << ToString(steps);
 
-    const at::ScalarType output_dtype = out.scalar_type();
-    TT_CHECK_THROW(output_dtype != at::ScalarType::Bool || steps <= 1,
-                   error::kInvalidArgument)
-        << "expected output dtype to be other than bool, got "
-        << ToString(output_dtype);
-    TT_ASSIGN_OR_THROW(auto op_builder,
-                       GetLinspaceOpBuilder(steps, start, end, output_dtype));
+        const at::ScalarType output_dtype = out.scalar_type();
+        TT_CHECK_THROW(output_dtype != at::ScalarType::Bool || steps <= 1,
+                       error::kInvalidArgument)
+            << "expected output dtype to be other than bool, got "
+            << ToString(output_dtype);
 
-    TT_THROW_IF_ERROR(ApplyNullaryOpOut(out, std::move(op_builder),
-                                        output_dtype, {steps},
-                                        std::move(param_keys)));
-  });
+        TT_ASSIGN_OR_THROW(at::Tensor start_tensor,
+                           start_promoted.GetTensor(output_dtype));
+        TT_ASSIGN_OR_THROW(at::Tensor end_tensor,
+                           end_promoted.GetTensor(output_dtype));
+
+        at::native::resize_output(out, {steps});
+
+        TT_ASSIGN_OR_THROW(const auto output_mlir_type,
+                           ConvertTo<mlir::ElementType>(output_dtype));
+
+        auto op_builder =
+            [steps, output_mlir_type](FixedSizeSpan<mlir::MlirOp, 2> inputs)
+            -> absl::StatusOr<mlir::MlirOp> {
+          auto& [start_op, end_op] = inputs;
+          mlir::MlirBuilder& builder = start_op.getBuilder();
+          return BuildLinspaceOp(builder, steps, start_op, end_op,
+                                 output_mlir_type);
+        };
+
+        TT_ASSIGN_OR_THROW(
+            auto result_buf,
+            DispatchOp<2>(std::move(op_builder), {start_tensor, end_tensor},
+                          {.out_dtype = output_mlir_type,
+                           .out_dims = {steps},
+                           .op_param_cache_keys = std::move(param_keys)}));
+
+        TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
+      });
   return out;
 }
 
