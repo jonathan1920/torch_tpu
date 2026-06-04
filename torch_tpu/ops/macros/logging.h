@@ -251,12 +251,6 @@ void CheckScalarInput() {
       kOpName == OpName::kEluBackwardGradInput ||       //
       kOpName == OpName::kEluOut ||                     //
       kOpName == OpName::kFill_Scalar ||                //
-      kOpName == OpName::kForeachAddList ||             //
-      kOpName == OpName::kForeachAddTensor ||           //
-      kOpName == OpName::kForeachAdd_List ||            //
-      kOpName == OpName::kForeachAdd_Tensor ||          //
-      kOpName == OpName::kForeachSubList ||             //
-      kOpName == OpName::kForeachSub_List ||            //
       kOpName == OpName::kHistc ||                      //
       kOpName == OpName::kIndexAddOut ||                //
       kOpName == OpName::kLinalgVectorNormOut ||        //
