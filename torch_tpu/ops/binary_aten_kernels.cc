@@ -638,12 +638,10 @@ absl::Status BitwiseShiftScalarHelper(const at::Tensor& self,
                       promoted_other.GetTensor(out.scalar_type()));
   TT_RETURN_IF_ERROR(CheckBitwiseShiftInputs(self, other_tensor));
 
-  const at::Tensor new_self = self.to(out.scalar_type());
-
   MlirBinaryOpBuilder builder = direction == BitwiseShiftDirection::kLeft
                                     ? BuildBitwiseLeftShiftShlo
                                     : BuildBitwiseRightShiftShlo;
-  return BinaryOpOut(new_self, other_tensor, out, std::move(builder),
+  return BinaryOpOut(self, other_tensor, out, std::move(builder),
                      {.op_param_cache_keys = OpParamCacheKeys::Empty()});
 }
 
