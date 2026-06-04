@@ -229,14 +229,15 @@ at::Tensor AtenReshapeAlias(const at::Tensor& self,
                             c10::SymIntArrayRef stride_sym) {
   TT_KERNEL(
       OpName::kReshapeAlias, _,
-      (self, IgnoreInCacheKey(size_sym, "Legacy usage"),
-       IgnoreInCacheKey(stride_sym, "Legacy usage")),
+      (self, IgnoreInCacheKey(size_sym, "Delegates to AtenAsStrided"),
+       IgnoreInCacheKey(stride_sym, "Delegates to AtenAsStrided")),
       { return AtenAsStrided(self, size_sym, stride_sym, c10::nullopt); });
 }
 
 at::Tensor AtenView(const at::Tensor& self, c10::SymIntArrayRef size_sym) {
   TT_KERNEL(
-      OpName::kView, _, (self, IgnoreInCacheKey(size_sym, "Legacy usage")), {
+      OpName::kView, _,
+      (self, IgnoreInCacheKey(size_sym, "Delegates to AtenAsStrided")), {
         // view is allowed to have one dimension as "-1", which needs to be
         // resolved to a positive shape.
         TT_ASSIGN_OR_THROW(Dimensions new_size,
