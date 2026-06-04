@@ -22,6 +22,7 @@ torch_tpu_py_test(
     name = "qat_linear",
     srcs = ["qat_linear.py"],
     main = "qat_linear.py",
+    nopresubmit = "slow example",
     shuffle_tests = False,
     deps = [
         "//shims/absl_py:app",
@@ -34,6 +35,7 @@ torch_tpu_py_test(
     name = "call_linear",
     srcs = ["call_linear.py"],
     main = "call_linear.py",
+    nopresubmit = "slow example",
     shuffle_tests = False,
     deps = [
         "//shims/absl_py:app",
@@ -46,6 +48,7 @@ torch_tpu_py_test(
     name = "pointwise_fusion_cuda",
     srcs = ["pointwise_fusion_cuda.py"],
     main = "pointwise_fusion_cuda.py",
+    notap = "slow example",
     tags = ["requires-gpu-sm80"],  # Triton requires Ampere+
     deps = [
         "//shims/torch:pytorch",
@@ -58,6 +61,7 @@ torch_tpu_py_test(
     srcs = ["pointwise_fusion_xla.py"],
     args = ["--undefok=xla_jf_dump_to,xla_jf_dump_llo_text"],
     main = "pointwise_fusion_xla.py",
+    nopresubmit = "slow example",
     shuffle_tests = False,
     tags = ["requires-tpu-v5lite"],
     deps = [
@@ -71,6 +75,7 @@ torch_tpu_py_test(
     name = "sigmoid_no_vanishing_grad",
     srcs = ["sigmoid_no_vanishing_grad.py"],
     main = "sigmoid_no_vanishing_grad.py",
+    nopresubmit = "slow example",
     shuffle_tests = False,
     deps = [
         "//shims/absl_py:app",
@@ -84,6 +89,7 @@ torch_tpu_py_test(
     srcs = ["quantized_sum.py"],
     args = ["--undefok=xla_jf_dump_to,xla_jf_dump_llo_text"],
     main = "quantized_sum.py",
+    nopresubmit = "slow example",
     shuffle_tests = False,
     tags = ["requires-tpu-v5lite"],
     deps = [
@@ -100,6 +106,7 @@ torch_tpu_py_test(
     srcs = ["quant.py"],
     args = ["--undefok=xla_jf_dump_to,xla_jf_dump_llo_text"],
     main = "quant.py",
+    nopresubmit = "slow example",
     shuffle_tests = False,
     tags = ["requires-tpu-v5lite"],
     deps = [
@@ -114,6 +121,7 @@ torch_tpu_py_test(
     srcs = ["quant_pallas.py"],
     args = ["--undefok=xla_jf_dump_to,xla_jf_dump_llo_text"],
     main = "quant_pallas.py",
+    nopresubmit = "slow example",
     shuffle_tests = False,
     tags = ["requires-tpu-v5lite"],
     deps = [
