@@ -125,10 +125,8 @@ absl::StatusOr<mlir::MlirOp> BuildCumprodShlo(
   mlir::MlirBuilder& builder = input.getBuilder();
 
   // Respect the dtype if provided, otherwise always convert to int64 for
-  // boolean and integer types for accumulation.
+  // integer types for accumulation.
   if (scalar_type.has_value()) {
-    TT_RET_CHECK(!IsBool(scalar_type.value()), error::kUnimplemented)
-        << "the dtype argument cannot be bool";
     TT_ASSIGN_OR_RETURN(mlir::ElementType dtype,
                         ConvertTo<mlir::ElementType>(scalar_type.value()));
     element_type = getElementType(builder.getContext(), dtype);

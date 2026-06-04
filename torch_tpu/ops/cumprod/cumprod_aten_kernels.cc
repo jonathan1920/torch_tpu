@@ -48,6 +48,10 @@ at::Tensor& AtenCumprodOut(const at::Tensor& self, int64_t dim,
       return out;
     }
 
+    if (dtype.has_value()) {
+      TT_CHECK_THROW(dtype.value() != at::kBool, error::kUnimplemented)
+          << "the dtype argument cannot be bool";
+    }
     TT_CHECK_THROW(out.scalar_type() != at::kBool, error::kUnimplemented)
         << "cumprod not implemented for " << ToString(at::kBool);
 

@@ -2044,6 +2044,13 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(fn)
 
+  def test_cumprod_default_dtype(self):
+    """Tests torch.cumprod with default dtype (None)."""
+    x = torch.randn(2, 3, dtype=torch.float32)
+    self.assert_close_tpu_vs_cpu(
+        lambda device, x=x: torch.cumprod(x.to(device), dim=0)
+    )
+
   def test_arange_start_step_float32(self):
     golden_result = torch.arange(
         0, 10, 2, dtype=torch.float32, device=self.golden_device
