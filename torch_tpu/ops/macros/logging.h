@@ -277,6 +277,196 @@ void CheckScalarInput() {
   }
 }
 
+// Does an op use restricted primitive C++ inputs (int, double, int64_t, and
+// their std::optional variants) in TT_KERNEL()? Note that bool and
+// std::optional<bool> are exempt from this check.
+enum class UsesPrimitiveInput {
+  kNo,
+  kYes,
+};
+
+// Reports a compiler error if the given op uses restricted primitive inputs
+// in TT_KERNEL() and is not on the legacy violation allowlist.
+template <OpName kOpName, UsesPrimitiveInput kUse>
+void CheckPrimitiveInput() {
+  // Is this op an existing violation of the primitive promotion pattern?
+  constexpr bool kIsLegacyViolation =
+      // clang-format off
+      // DO NOT ADD NEW ENTRIES TO THIS LIST.
+      // TODO(b/500083970): make this list empty.
+      // go/keep-sorted start
+      kOpName == OpName::kAllOut ||                                      //
+      kOpName == OpName::kAminmaxOut ||                                  //
+      kOpName == OpName::kAnyOut ||                                      //
+      kOpName == OpName::kArgMaxOut ||                                   //
+      kOpName == OpName::kArgMinOut ||                                   //
+      kOpName == OpName::kAsStrided ||                                   //
+      kOpName == OpName::kAvgPool2dBackwardGradInput ||                  //
+      kOpName == OpName::kAvgPool2dOut ||                                //
+      kOpName == OpName::kAvgPool3dBackwardGradInput ||                  //
+      kOpName == OpName::kAvgPool3dOut ||                                //
+      kOpName == OpName::kBernoulli_Float ||                             //
+      kOpName == OpName::kCatOut ||                                      //
+      kOpName == OpName::kCdistBackward ||                               //
+      kOpName == OpName::kCdistForward ||                                //
+      kOpName == OpName::kConvolution ||                                 //
+      kOpName == OpName::kConvolutionBackward ||                         //
+      kOpName == OpName::kConvolutionOut ||                              //
+      kOpName == OpName::kCtcLoss ||                                     //
+      kOpName == OpName::kCtcLossBackward ||                             //
+      kOpName == OpName::kCtcLossBackwardTensor ||                       //
+      kOpName == OpName::kCtcLossPublic ||                               //
+      kOpName == OpName::kCtcLossPublicTensor ||                         //
+      kOpName == OpName::kCtcLossTensor ||                               //
+      kOpName == OpName::kCummaxHelper ||                                //
+      kOpName == OpName::kCumminHelper ||                                //
+      kOpName == OpName::kCumprodOut ||                                  //
+      kOpName == OpName::kCumsumOut ||                                   //
+      kOpName == OpName::kDistributedExperimentalRecv ||                 //
+      kOpName == OpName::kDistributedExperimentalSend ||                 //
+      kOpName == OpName::kDropout ||                                     //
+      kOpName == OpName::kDynamicArange ||                               //
+      kOpName == OpName::kEmbeddingBag ||                                //
+      kOpName == OpName::kEmbeddingBagBackward ||                        //
+      kOpName == OpName::kEmbeddingBagForwardOnly ||                     //
+      kOpName == OpName::kEmbeddingRenorm_ ||                            //
+      kOpName == OpName::kFakeQuantizePerTensorAffineCachemask ||        //
+      kOpName == OpName::kFftC2c ||                                      //
+      kOpName == OpName::kFftC2cOut ||                                   //
+      kOpName == OpName::kFftC2r ||                                      //
+      kOpName == OpName::kFftC2rOut ||                                   //
+      kOpName == OpName::kFftR2c ||                                      //
+      kOpName == OpName::kFftR2cOut ||                                   //
+      kOpName == OpName::kFusedRmsNorm ||                                //
+      kOpName == OpName::kFusedSdpChoice ||                              //
+      kOpName == OpName::kGather ||                                      //
+      kOpName == OpName::kGatherOut ||                                   //
+      kOpName == OpName::kGluBackward ||                                 //
+      kOpName == OpName::kGluBackwardGradInput ||                        //
+      kOpName == OpName::kGluOut ||                                      //
+      kOpName == OpName::kGridSampler2d ||                               //
+      kOpName == OpName::kGridSampler2dBackward ||                       //
+      kOpName == OpName::kGridSampler3d ||                               //
+      kOpName == OpName::kGridSampler3dBackward ||                       //
+      kOpName == OpName::kHistc ||                                       //
+      kOpName == OpName::kHistcOut ||                                    //
+      kOpName == OpName::kIndexAddOut ||                                 //
+      kOpName == OpName::kIndexCopyOut ||                                //
+      kOpName == OpName::kIndexFillIntScalar ||                          //
+      kOpName == OpName::kIndexFillIntTensor ||                          //
+      kOpName == OpName::kIndexReduceOut ||                              //
+      kOpName == OpName::kIndexSelect ||                                 //
+      kOpName == OpName::kLayerNorm ||                                   //
+      kOpName == OpName::kLinspaceOut ||                                 //
+      kOpName == OpName::kLogSoftmaxBackwardDataOut ||                   //
+      kOpName == OpName::kLogSoftmaxOut ||                               //
+      kOpName == OpName::kMaxDimMax ||                                   //
+      kOpName == OpName::kMinDimMin ||                                   //
+      kOpName == OpName::kMseLossBackward ||                             //
+      kOpName == OpName::kMseLossOut ||                                  //
+      kOpName == OpName::kMultinomial ||                                 //
+      kOpName == OpName::kMultinomialOut ||                              //
+      kOpName == OpName::kNanToNumOut ||                                 //
+      kOpName == OpName::kNativeBatchNorm ||                             //
+      kOpName == OpName::kNativeBatchNormBackward ||                     //
+      kOpName == OpName::kNativeBatchNormLegit ||                        //
+      kOpName == OpName::kNativeBatchNormLegitNoStats ||                 //
+      kOpName == OpName::kNativeBatchNormLegitNoStatsOut ||              //
+      kOpName == OpName::kNativeBatchNormLegitOut ||                     //
+      kOpName == OpName::kNativeBatchNormOut ||                          //
+      kOpName == OpName::kNativeDropoutBackward ||                       //
+      kOpName == OpName::kNativeGroupNormBackward ||                     //
+      kOpName == OpName::kNllLoss2dBackward ||                           //
+      kOpName == OpName::kNllLoss2dBackwardGradInput ||                  //
+      kOpName == OpName::kNllLoss2dForward ||                            //
+      kOpName == OpName::kNllLoss2dForwardOut ||                         //
+      kOpName == OpName::kNllLossBackwardGradInput ||                    //
+      kOpName == OpName::kNllLossForwardOut ||                           //
+      kOpName == OpName::kNormalFloatTensor ||                           //
+      kOpName == OpName::kNormalFloatTensorOut ||                        //
+      kOpName == OpName::kNormalTensorFloat ||                           //
+      kOpName == OpName::kNormalTensorFloatOut ||                        //
+      kOpName == OpName::kNormal_ ||                                     //
+      kOpName == OpName::kPdistBackward ||                               //
+      kOpName == OpName::kPdistForward ||                                //
+      kOpName == OpName::kProdDimOut ||                                  //
+      kOpName == OpName::kRandom_From ||                                 //
+      kOpName == OpName::kRandom_To ||                                   //
+      kOpName == OpName::kRepeatInterleaveSelfTensor ||                  //
+      kOpName == OpName::kRoundDecimalsOut ||                            //
+      kOpName == OpName::kScaledDotProductEfficientAttention ||          //
+      kOpName == OpName::kScaledDotProductFlashAttention ||              //
+      kOpName == OpName::kScaledDotProductFlashAttentionBackward ||      //
+      kOpName == OpName::kScaledDotProductFusedAttentionOverrideable ||  //
+      kOpName == OpName::kScaledDotProductFusedAttentionOverrideableBackward ||
+      kOpName == OpName::kScatterAddOut ||                            //
+      kOpName == OpName::kScatterReduceOut ||                         //
+      kOpName == OpName::kScatterReduceTwoOut ||                      //
+      kOpName == OpName::kScatterSrcOut ||                            //
+      kOpName == OpName::kScatterValueOut ||                          //
+      kOpName == OpName::kScatterValueReduceOut ||                    //
+      kOpName == OpName::kSetDimensionLogicalSize ||                  //
+      kOpName == OpName::kSet_SourceStorageOffset ||                  //
+      kOpName == OpName::kSoftmaxBackwardDataOut ||                   //
+      kOpName == OpName::kSoftmaxOut ||                               //
+      kOpName == OpName::kSortValuesStable ||                         //
+      kOpName == OpName::kSplitWithSizesCopyOut ||                    //
+      kOpName == OpName::kTopkValues ||                               //
+      kOpName == OpName::kTrilIndices ||                              //
+      kOpName == OpName::kTrilOut ||                                  //
+      kOpName == OpName::kTriuOut ||                                  //
+      kOpName == OpName::kUnfold ||                                   //
+      kOpName == OpName::kUnfoldBackward ||                           //
+      kOpName == OpName::kUniform_ ||                                 //
+      kOpName == OpName::kUpsampleBilinear2dBackwardGradInput ||      //
+      kOpName == OpName::kUpsampleBilinear2dOut ||                    //
+      kOpName == OpName::kUpsampleNearest1dBackwardGradInput ||       //
+      kOpName == OpName::kUpsampleNearest1dOut ||                     //
+      kOpName == OpName::kUpsampleNearest2dBackwardGradInput ||       //
+      kOpName == OpName::kUpsampleNearest2dOut ||                     //
+      kOpName == OpName::kUpsampleNearest3dBackwardGradInput ||       //
+      kOpName == OpName::kUpsampleNearest3dOut ||                     //
+      kOpName == OpName::kUpsampleNearestExact1dBackwardGradInput ||  //
+      kOpName == OpName::kUpsampleNearestExact1dOut ||                //
+      kOpName == OpName::kUpsampleNearestExact2dBackwardGradInput ||  //
+      kOpName == OpName::kUpsampleNearestExact2dOut ||                //
+      kOpName == OpName::kUpsampleNearestExact3dBackwardGradInput ||  //
+      kOpName == OpName::kUpsampleNearestExact3dOut ||                //
+      kOpName == OpName::kWeightNormInterface ||                      //
+      // go/keep-sorted end
+      false;
+  // clang-format on
+  if constexpr (kUse == UsesPrimitiveInput::kYes) {
+    static_assert(
+        kIsLegacyViolation,
+        "Don't use restricted primitive inputs (int, double, int64_t, "
+        "std::optional) with TT_KERNEL(). Promote them to Tensors via "
+        "PromoteScalar(at::Scalar(val)) first.");
+  } else {
+    // Exempt existing partially migrated ops. The ops below have some
+    // primitive inputs but are already partially migrated to use Tensor inputs.
+    // TODO(b/500083970): Fully migrate these and remove them from this
+    // exemption list.
+    constexpr bool kIsPartiallyMigratedExempt =
+        // clang-format off
+        // go/keep-sorted start
+        kOpName == OpName::kHistcOut ||
+        kOpName == OpName::kIndexFillIntScalar ||
+        kOpName == OpName::kLinspaceOut ||
+        kOpName == OpName::kScatterValueOut ||
+        kOpName == OpName::kScatterValueReduceOut ||
+        // go/keep-sorted end
+        false;
+    // clang-format on
+
+    static_assert(!kIsLegacyViolation || kIsPartiallyMigratedExempt,
+                  "This op already follows the best practice of promoting "
+                  "primitive inputs to Tensors. Please remove its OpName "
+                  "from the list of OpNames in CheckPrimitiveInput() in "
+                  "logging.h.");
+  }
+}
+
 // Crashes if the type T does not match the given argument's type string.
 template <OpName kOpName, typename T>
 void CheckKernelArgType(  // NOLINT: cognitive complexity
@@ -302,6 +492,7 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
         normalized_arg_type_in_func_sig, "at::Scalar")
         << message();
   } else if constexpr (std::is_same_v<T, int>) {
+    CheckPrimitiveInput<kOpName, UsesPrimitiveInput::kYes>();
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "int")  // CRASH_OK
         << message();
   } else if constexpr (std::is_same_v<T, std::string>) {
@@ -344,6 +535,7 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "bool")  // CRASH_OK
         << message();
   } else if constexpr (std::is_same_v<T, double>) {
+    CheckPrimitiveInput<kOpName, UsesPrimitiveInput::kYes>();
     ABSL_CHECK(  // CRASH_OK
         normalized_arg_type_in_func_sig == "double" ||
         // Sometimes a kernel normalizes an optional<double> to double before
@@ -381,14 +573,17 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
         normalized_arg_type_in_func_sig, "std::optional<bool>")
         << message();
   } else if constexpr (std::is_same_v<T, std::optional<double>>) {
+    CheckPrimitiveInput<kOpName, UsesPrimitiveInput::kYes>();
     ABSL_CHECK_EQ(  // CRASH_OK
         normalized_arg_type_in_func_sig, "std::optional<double>")
         << message();
   } else if constexpr (std::is_same_v<T, std::optional<int64_t>>) {
+    CheckPrimitiveInput<kOpName, UsesPrimitiveInput::kYes>();
     ABSL_CHECK_EQ(  // CRASH_OK
         normalized_arg_type_in_func_sig, "std::optional<int64_t>")
         << message();
   } else if constexpr (std::is_same_v<T, std::optional<int>>) {
+    CheckPrimitiveInput<kOpName, UsesPrimitiveInput::kYes>();
     ABSL_CHECK_EQ(  // CRASH_OK
         normalized_arg_type_in_func_sig, "std::optional<int>")
         << message();
@@ -497,6 +692,7 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "uint64_t")  // CRASH_OK)
         << message();
   } else if constexpr (std::is_same_v<T, int64_t>) {
+    CheckPrimitiveInput<kOpName, UsesPrimitiveInput::kYes>();
     // Some kernels normalize a SymInt, optional<SymInt>, or optional<int64_t>
     // to int64_t before invoking TT_KERNEL().
     ABSL_CHECK(normalized_arg_type_in_func_sig == "int64_t" ||  // CRASH_OK
@@ -527,31 +723,50 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
     CheckKernelArgType<kOpName, typename T::value_type>(context, arg_idx);
   } else if constexpr (std::is_same_v<T, PromotedScalar>) {
     CheckScalarInput<kOpName, UsesScalarInput::kNo>();
-    // The argument is a PromotedScalar, so we check it matches an at::Scalar
-    // or double parameter in the kernel function signature.
+    CheckPrimitiveInput<kOpName, UsesPrimitiveInput::kNo>();
+    // The argument is a PromotedScalar, so we check it matches an at::Scalar,
+    // double, or int64_t parameter in the kernel function signature.
     ABSL_CHECK(  // CRASH_OK
         normalized_arg_type_in_func_sig == "at::Scalar" ||
-        normalized_arg_type_in_func_sig == "double")
+        normalized_arg_type_in_func_sig == "double" ||
+        normalized_arg_type_in_func_sig == "int64_t" ||
+        normalized_arg_type_in_func_sig == "int")
         << message();
   } else if constexpr (std::is_same_v<T, MaybePromotedScalar>) {
     CheckScalarInput<kOpName, UsesScalarInput::kNo>();
+    CheckPrimitiveInput<kOpName, UsesPrimitiveInput::kNo>();
     // The argument is a MaybePromotedScalar, so we check it matches an
-    // at::Scalar parameter in the kernel function signature.
-    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig, "at::Scalar")  // CRASH_OK
+    // at::Scalar, double, or int64_t parameter in the kernel function
+    // signature.
+    ABSL_CHECK(  // CRASH_OK
+        normalized_arg_type_in_func_sig == "at::Scalar" ||
+        normalized_arg_type_in_func_sig == "double" ||
+        normalized_arg_type_in_func_sig == "int64_t" ||
+        normalized_arg_type_in_func_sig == "int")
         << message();
   } else if constexpr (std::is_same_v<T, std::optional<PromotedScalar>>) {
     CheckScalarInput<kOpName, UsesScalarInput::kNo>();
+    CheckPrimitiveInput<kOpName, UsesPrimitiveInput::kNo>();
     // The argument is an optional PromotedScalar, so we check it matches an
-    // optional at::Scalar parameter in the kernel function signature.
-    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
-                  "std::optional<at::Scalar>")
+    // optional at::Scalar, double, or int64_t parameter in the kernel
+    // function signature.
+    ABSL_CHECK(  // CRASH_OK
+        normalized_arg_type_in_func_sig == "std::optional<at::Scalar>" ||
+        normalized_arg_type_in_func_sig == "std::optional<double>" ||
+        normalized_arg_type_in_func_sig == "std::optional<int64_t>" ||
+        normalized_arg_type_in_func_sig == "std::optional<int>")
         << message();
   } else if constexpr (std::is_same_v<T, std::vector<PromotedScalar>>) {
     CheckScalarInput<kOpName, UsesScalarInput::kNo>();
+    CheckPrimitiveInput<kOpName, UsesPrimitiveInput::kNo>();
     // The argument is a vector of PromotedScalar, so we check it matches an
-    // ArrayRef of at::Scalar parameter in the kernel function signature.
-    ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK
-                  "at::ArrayRef<at::Scalar>")
+    // ArrayRef of at::Scalar, double, or int64_t parameter in the kernel
+    // function signature.
+    ABSL_CHECK(  // CRASH_OK
+        normalized_arg_type_in_func_sig == "at::ArrayRef<at::Scalar>" ||
+        normalized_arg_type_in_func_sig == "at::ArrayRef<double>" ||
+        normalized_arg_type_in_func_sig == "at::ArrayRef<int64_t>" ||
+        normalized_arg_type_in_func_sig == "at::ArrayRef<int>")
         << message();
   } else if constexpr (std::is_same_v<T, torch::autograd::AutogradContext*>) {
     ABSL_CHECK_EQ(normalized_arg_type_in_func_sig,  // CRASH_OK

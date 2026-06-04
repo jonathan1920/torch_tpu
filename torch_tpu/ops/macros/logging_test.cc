@@ -45,12 +45,12 @@ using testing::HasSubstr;
 using testing::IsEmpty;
 using testing::StartsWith;
 
-void Kernel2(int x, const std::string& y) {
+void Kernel2(at::Tensor x, const std::string& y) {
   TT_CHECK_AND_LOG_KERNEL_ARGS_(OpName::kAdd, x, y);
 }
 
 TEST(LogKernelStart, CompilesWhenArgsAreIdentifiers) {
-  int x = 1;
+  at::Tensor x = at::ones(3);
   std::string y = "foo";
   Kernel2(x, y);
 }

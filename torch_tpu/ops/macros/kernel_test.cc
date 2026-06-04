@@ -23,10 +23,12 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/ones.h"
 #include "absl/status/statusor.h"
+#include "c10/core/Device.h"
 #include "c10/util/Exception.h"
 #include "c10/util/StringUtil.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "torch/headeronly/core/Layout.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -46,8 +48,8 @@ using testing::StartsWith;
 static const auto kInitShowCppContext =
     setenv("TORCH_SHOW_CPP_STACKTRACES", "0", /*overwrite=*/1);
 
-void Kernel1(int ndim) {
-  TT_KERNEL(OpName::kAdd, _, (IgnoreInCacheKey(ndim, "testing")), {
+void Kernel1(at::Device device) {
+  TT_KERNEL(OpName::kAdd, _, (IgnoreInCacheKey(device, "testing")), {
     throw  // For testing error API.
         TtError(TT_ERROR(error::kInvalidArgument) << "test error",
                 c10::SourceLocation({"foo()", "bar.cc", 42}));
@@ -57,7 +59,7 @@ void Kernel1(int ndim) {
 TEST(TtKernel, PrependOpName) {
   bool thrown_c10_error = false;
   try {
-    Kernel1(1);
+    Kernel1(at::Device("cpu"));
   } catch (const c10::Error& e) {
     thrown_c10_error = true;
     EXPECT_EQ(std::string(e.what_without_backtrace()), "add(): test error");
@@ -101,36 +103,38 @@ TEST(TtKernel, PrependRootOpName) {
   EXPECT_TRUE(thrown_c10_error);
 }
 
-void Kernel5(int ndim, double alpha, std::optional<int> seed,
-             std::optional<bool> cond, std::optional<std::string> name) {
-  TT_KERNEL(OpName::kAdd, param_keys, (ndim, alpha, seed, cond, name), {
-    EXPECT_THAT(param_keys, ElementsAre(
-                                // go/keep-sorted start
-                                Pair("alpha", "2.5"),  //
-                                Pair("name", "<>"),    //
-                                Pair("ndim", "3"),     //
-                                Pair("seed", "<42>")   //
-                                // go/keep-sorted end
-                                ));
-  });
+void Kernel5(at::Device device, at::Layout layout,
+             std::optional<at::Device> opt_device, std::optional<bool> cond,
+             std::optional<std::string> name) {
+  TT_KERNEL(OpName::kAdd, param_keys, (device, layout, opt_device, cond, name),
+            {
+              EXPECT_THAT(param_keys, ElementsAre(
+                                          // go/keep-sorted start
+                                          Pair("device", "cpu"),          //
+                                          Pair("layout", "Strided"),      //
+                                          Pair("name", "<>"),             //
+                                          Pair("opt_device", "<cuda:1>")  //
+                                          // go/keep-sorted end
+                                          ));
+            });
 }
 
 TEST(TtKernel, ComputesCacheKeysWithNonTensors) {
-  const int ndim = 3;
-  const double alpha = 2.5;
-  const std::optional<int> seed = 42;
-  Kernel5(ndim, alpha, seed, std::nullopt, "");
+  const at::Device device("cpu");
+  const at::Layout layout = at::Layout::Strided;
+  const std::optional<at::Device> opt_device = at::Device("cuda:1");
+  Kernel5(device, layout, opt_device, std::nullopt, "");
 }
 
-void Kernel4(const at::Tensor& self, int ndim, bool expand,
-             std::optional<int> seed) {
-  TT_KERNEL(OpName::kAdd, param_keys, (self, ndim, expand, seed), {
+void Kernel4(const at::Tensor& self, at::Device device, bool expand,
+             std::optional<at::Device> opt_device) {
+  TT_KERNEL(OpName::kAdd, param_keys, (self, device, expand, opt_device), {
     // `self` is a Tensor and thus shouldn't be in the cache keys.
-    // `seed` is nullopt and thus should be omitted from the cache keys.
+    // `opt_device` is nullopt and thus should be omitted from the cache keys.
     EXPECT_THAT(param_keys, ElementsAre(
                                 // go/keep-sorted start
-                                Pair("expand", "t"),  //
-                                Pair("ndim", "3")     //
+                                Pair("device", "cpu"),  //
+                                Pair("expand", "t")     //
                                 // go/keep-sorted end
                                 ));
   });
@@ -138,10 +142,10 @@ void Kernel4(const at::Tensor& self, int ndim, bool expand,
 
 TEST(TtKernel, ComputesCacheKeysWithTensorAndNonTensors) {
   const at::Tensor self = at::ones(1);
-  const int ndim = 3;
+  const at::Device device("cpu");
   const bool expand = true;
-  const std::optional<int> seed = std::nullopt;
-  Kernel4(self, ndim, expand, seed);
+  const std::optional<at::Device> opt_device = std::nullopt;
+  Kernel4(self, device, expand, opt_device);
 }
 
 void Kernel0() {
@@ -153,17 +157,19 @@ void Kernel0() {
 
 TEST(TtKernel, SupportsNullaryOps) { Kernel0(); }
 
-void Kernel6(int ndim, int size, int step) {
+void Kernel6(at::Device device, at::Device size, at::Device step) {
   TT_KERNEL(
       OpName::kAdd, param_keys,
-      (ndim, IgnoreInCacheKey(size, "Ignore."),
+      (device, IgnoreInCacheKey(size, "Ignore."),
        IgnoreInCacheKey(
            step,
            "This reason contains a comma, which should be handled correctly.")),
-      { EXPECT_THAT(param_keys, ElementsAre(Pair("ndim", "1"))); });
+      { EXPECT_THAT(param_keys, ElementsAre(Pair("device", "cpu"))); });
 }
 
-TEST(TtKernel, SupportsIgnoreInCacheKeyWithReason) { Kernel6(1, 2, 3); }
+TEST(TtKernel, SupportsIgnoreInCacheKeyWithReason) {
+  Kernel6(at::Device("cpu"), at::Device("cuda:0"), at::Device("cuda:1"));
+}
 
 // _promoted_scalars is defined only in debug mode. The "tensors promoted from
 // scalars are used" check is also done only in debug mode.
@@ -171,13 +177,14 @@ TEST(TtKernel, SupportsIgnoreInCacheKeyWithReason) { Kernel6(1, 2, 3); }
 
 void KernelWithPromotedScalars(const at::Tensor& t, const at::Scalar& s,
                                const std::optional<at::Scalar>& os,
-                               const at::ArrayRef<at::Scalar>& as, int ndim) {
+                               const at::ArrayRef<at::Scalar>& as,
+                               at::Device device) {
   auto promoted_s = PromoteScalar(s);
   auto promoted_os = PromoteScalar(os);
   auto promoted_as = PromoteScalar(as);
   TT_KERNEL(OpName::kRelu, _,
             (t, promoted_s, IgnoreInCacheKey(promoted_os, "testing"),
-             promoted_as, IgnoreInCacheKey(ndim, "testing")),
+             promoted_as, IgnoreInCacheKey(device, "testing")),
             {
               EXPECT_EQ(_promoted_scalars.size(),
                         1 + (os.has_value() ? 1 : 0) + promoted_as.size());
@@ -199,7 +206,7 @@ TEST(TtKernel, CollectsPromotedScalarPointers) {
   const at::Scalar s_val = 1.0;
   const std::optional<at::Scalar> os_val = 2.0;
   std::vector<at::Scalar> as_vals = {3.0, 4.0};
-  KernelWithPromotedScalars(t, s_val, os_val, as_vals, 1);
+  KernelWithPromotedScalars(t, s_val, os_val, as_vals, at::Device("cpu"));
 }
 
 // Verifies that TT_KERNEL() collects pointers to all PromotedScalar-typed
@@ -209,7 +216,7 @@ TEST(TtKernel, CollectsPromotedScalarPointersWithNullopt) {
   const at::Scalar s_val = 1.0;
   const std::optional<at::Scalar> os_val;
   std::vector<at::Scalar> as_vals = {3.0, 4.0};
-  KernelWithPromotedScalars(t, s_val, os_val, as_vals, 1);
+  KernelWithPromotedScalars(t, s_val, os_val, as_vals, at::Device("cpu"));
 }
 
 void TestCheckTensorsUsedCrash(at::Scalar s) {
