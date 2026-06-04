@@ -249,6 +249,21 @@ void OpNameStack::Push(OpName op_name) {
           // DO NOT ADD NEW ENTRIES TO THE ABOVE LIST! Our goal is to shrink the
           // list and eventually remove it.
       });
+  // Only check known_composite_ops size once as it's a run-time constant.
+  static const bool check_once = [] {
+    ABSL_CHECK_EQ(  // CRASH_OK
+        known_composite_ops->size(), 195 /* DO NOT increase this! */)
+        << "The size of known_composite_ops MUST NOT go up. "
+           "If you are removing entries from known_composite_ops, please LOWER "
+           "the expected size in the comparison to match the new size and "
+           "prevent regression. If you are adding entries, please REVERT the "
+           "addition and implement the ops by lowering them to SHLO directly, "
+           "without delegating to other ops. DO NOT fix this crash by "
+           "increasing the expected size!";
+    return true;
+  }();
+  static_cast<void>(check_once);  // VOID_CAST_OK=dummy value
+
   if (!stack_.empty()) {
     // This op is delegated from the op at the top of the stack.
     const OpName composite = stack_.top();
