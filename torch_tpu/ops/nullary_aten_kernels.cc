@@ -194,12 +194,12 @@ at::Tensor AtenEmptyMemoryFormat(
     c10::optional<bool> pin_memory_opt,
     c10::optional<at::MemoryFormat> memory_format_opt) {
   TT_KERNEL(OpName::kEmpty, _,
-            (IgnoreInCacheKey(size, "doesn't generate SHLO"),
-             IgnoreInCacheKey(dtype_opt, "doesn't generate SHLO"),
-             IgnoreInCacheKey(layout_opt, "doesn't generate SHLO"),
-             IgnoreInCacheKey(device_opt, "doesn't generate SHLO"),
-             IgnoreInCacheKey(pin_memory_opt, "doesn't generate SHLO"),
-             IgnoreInCacheKey(memory_format_opt, "doesn't generate SHLO")),
+            (IgnoreInCacheKey(size, "Doesn't affect SHLO"),
+             IgnoreInCacheKey(dtype_opt, "Doesn't affect SHLO"),
+             IgnoreInCacheKey(layout_opt, "Doesn't affect SHLO"),
+             IgnoreInCacheKey(device_opt, "Doesn't affect SHLO"),
+             IgnoreInCacheKey(pin_memory_opt, "Doesn't affect SHLO"),
+             IgnoreInCacheKey(memory_format_opt, "Doesn't affect SHLO")),
             {
               TT_ASSIGN_OR_THROW(
                   auto result,
@@ -226,12 +226,12 @@ at::Tensor AtenEmptyStrided(c10::SymIntArrayRef size_sym,
     final_strides_vec.push_back(s.guard_int(__FILE__, __LINE__));
   TT_KERNEL(
       OpName::kEmptyStrided, _,
-      (IgnoreInCacheKey(final_sizes_vec, "Legacy usage"),
-       IgnoreInCacheKey(final_strides_vec, "Legacy usage"),
-       IgnoreInCacheKey(dtype_opt, "Legacy usage"),
-       IgnoreInCacheKey(layout_opt, "Legacy usage"),
-       IgnoreInCacheKey(device_opt, "Legacy usage"),
-       IgnoreInCacheKey(pin_memory_opt, "Legacy usage")),
+      (IgnoreInCacheKey(final_sizes_vec, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(final_strides_vec, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(dtype_opt, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(layout_opt, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(device_opt, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(pin_memory_opt, "Doesn't affect SHLO")),
       {
         TT_CHECK_THROW(!dtype_opt.has_value() ||
                            dtype_opt.value() != at::ScalarType::ComplexHalf,
