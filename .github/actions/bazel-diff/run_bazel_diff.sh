@@ -15,7 +15,7 @@
 
 # Prerequisites: bazel-diff requires Git, Bazel >= 3.3.0 and Java >= 8.
 # https://github.com/Tinder/bazel-diff/tree/16.0.0?tab=readme-ov-file#prerequisites
-# As of 2026-04, our Docker container has Git 2.34.1, Bazel 7.4.1 and Java 21.0.10.
+# As of 2026-06, our Docker container has Git 2.34.1, Bazel 8.6.0 and Java 21.0.10.
 
 set -e
 
@@ -26,8 +26,9 @@ BAZEL_CONFIG="${4}"
 EXTRA_FLAGS="${5}"
 DISABLE_BAZEL_DIFF="${6:-false}"
 
-# Check if global configuration files were modified. If so, disable bazel-diff
+# Check if global Bazel configuration were modified. If so, bypass bazel-diff
 # to guarantee a full build validation.
+#
 # We intentionally do not use bazel-diff's native `--seed-filepaths` flag for
 # handling changes to global configuration files. It forces bazel-diff to
 # calculate the entire repository graph, serialize all targets (5000+) to
@@ -37,8 +38,23 @@ if [ -n "$BASE_SHA" ] && [ "$DISABLE_BAZEL_DIFF" != "true" ]; then
   git fetch --depth=1 origin "$BASE_SHA"
   CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$CURRENT_SHA")
 
-  if echo "$CHANGED_FILES" | grep -E -q "^(\.bazelrc|MODULE\.bazel|WORKSPACE)$"; then
-    echo "Global build file (.bazelrc, MODULE.bazel, or WORKSPACE) modified."
+  GLOBAL_BAZEL_CONFIGS=(  # One regex per line.
+    # go/keep-sorted start
+    'MODULE\.bazel'
+    'REPO\.bazel'
+    'WORKSPACE'
+    'WORKSPACE\.bzlmod'
+    '\.bazelrc'
+    '\.bazelversion'
+    # go/keep-sorted end
+  )
+  # Concatenate array elements into a string where each element is prefixed by
+  # a pipe (`|`) symbol. Then, strip the leading pipe.
+  GLOBAL_BAZEL_CONFIGS_PATTERN=$(printf "|%s" "${GLOBAL_BAZEL_CONFIGS[@]}")
+  GLOBAL_BAZEL_CONFIGS_PATTERN=${GLOBAL_BAZEL_CONFIGS_PATTERN#|}
+
+  if echo "$CHANGED_FILES" | grep -E -q "^(${GLOBAL_BAZEL_CONFIGS_PATTERN})$"; then
+    echo "Global Bazel configurations modified."
     echo "Forcing a full test run to ensure global configuration validity."
     DISABLE_BAZEL_DIFF="true"
   fi
