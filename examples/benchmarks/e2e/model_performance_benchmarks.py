@@ -1538,7 +1538,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     """Tests the forward pass of NVIDIA-Nemotron-3-Nano-30B-A3B-BF16."""
 
     def modify_config_hook(config):
-      config.num_hidden_layers = 6
+      config.layers_block_type = config.layers_block_type[:6]
       return config
 
     config = performance_utils.PerformanceBenchmarkConfig(
