@@ -961,7 +961,11 @@ at::Tensor& AtenDivOutMode(const at::Tensor& self, const at::Tensor& other,
                            std::optional<std::string_view> mode,
                            at::Tensor& out) {
   TT_KERNEL(OpName::kDivOutMode, _,
-            (self, other, IgnoreInCacheKey(mode, "Legacy usage"), out), {
+            (self, other,
+             IgnoreInCacheKey(
+                 mode, "DivOutMode includes `mode` in op param cache keys"),
+             out),
+            {
               TT_THROW_IF_ERROR(DivOutMode(self, other, mode, out));
               return out;
             });
