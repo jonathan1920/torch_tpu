@@ -243,23 +243,18 @@ void CheckScalarInput() {
                 // DO NOT ADD NEW ENTRIES TO THIS LIST.
                 // TODO: make this list empty.
                 // go/keep-sorted start
-      kOpName == OpName::kArangeStartOut ||             //
-      kOpName == OpName::kBaddbmmDtype ||               //
-      kOpName == OpName::kBaddbmmDtypeOut ||            //
-      kOpName == OpName::kBaddbmmOut ||                 //
-      kOpName == OpName::kCdistForward ||               //
-      kOpName == OpName::kEluBackwardGradInput ||       //
-      kOpName == OpName::kEluOut ||                     //
-      kOpName == OpName::kFill_Scalar ||                //
-      kOpName == OpName::kHistc ||                      //
-      kOpName == OpName::kIndexAddOut ||                //
-      kOpName == OpName::kLinalgVectorNormOut ||        //
-      kOpName == OpName::kLocalScalarDense ||           //
-      kOpName == OpName::kLogSoftmaxBackwardDataOut ||  //
-      kOpName == OpName::kNativeBatchNormBackward ||    //
-      kOpName == OpName::kPdistForward ||               //
-      kOpName == OpName::kVar ||                        //
-      kOpName == OpName::kVarOut ||                     //
+      kOpName == OpName::kArangeStartOut ||        //
+      kOpName == OpName::kBaddbmmDtype ||          //
+      kOpName == OpName::kBaddbmmDtypeOut ||       //
+      kOpName == OpName::kBaddbmmOut ||            //
+      kOpName == OpName::kEluBackwardGradInput ||  //
+      kOpName == OpName::kEluOut ||                //
+      kOpName == OpName::kFill_Scalar ||           //
+      kOpName == OpName::kHistc ||                 //
+      kOpName == OpName::kIndexAddOut ||           //
+      kOpName == OpName::kLinalgVectorNormOut ||   //
+      kOpName == OpName::kVar ||                   //
+      kOpName == OpName::kVarOut ||                //
       // go/keep-sorted end
       false;  // The `false` case is for nice code formatting.
   if constexpr (kUse == UsesScalarInput::kYes) {
