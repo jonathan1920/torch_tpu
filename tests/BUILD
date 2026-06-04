@@ -151,6 +151,35 @@ torch_tpu_py_test(
 )
 
 torch_tpu_py_test(
+    name = "ops_test_tpu_v6e",
+    timeout = "long",
+    srcs = ["ops_test.py"],
+    args = [
+        "--print_op_inputs=1",
+        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
+    ],
+    main = "ops_test.py",
+    nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
+    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
+    shard_count = 50,
+    tags = [
+        "nosan",  # Rely on ops_test_tpu for *san coverage.
+        # Specifically tests TPU v6e behaviors in postsubmit. Do not change to
+        # other TPU versions.
+        "requires-tpu-v6e",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
     name = "ops_test_grad",
     timeout = "long",  # Needed for asan.
     srcs = ["ops_test.py"],
@@ -166,6 +195,35 @@ torch_tpu_py_test(
         "nomsan",  # TODO: fix the test in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.
         "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "ops_test_grad_v6e",
+    timeout = "long",  # Needed for asan.
+    srcs = ["ops_test.py"],
+    args = [
+        "--compute_grad=True",
+        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
+    ],
+    main = "ops_test.py",
+    nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
+    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
+    shard_count = 50,
+    tags = [
+        "nosan",  # Rely on ops_test_grad for *san coverage.
+        # Specifically tests TPU v6e behaviors in postsubmit. Do not change to
+        # other TPU versions.
+        "requires-tpu-v6e",
     ],
     deps = [
         ":dynamism_test_utils",
@@ -233,6 +291,40 @@ torch_tpu_py_test(
         "nomsan",  # This test times out in msan mode.
         "notsan",  # TODO: fix the test in tsan mode.  # This test times out in tsan mode.
         "requires-tpu-v5lite",
+    ],
+    deps = [
+        ":dynamism_test_utils",
+        ":op_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/eager:tpu_aten_kernels",
+    ],
+)
+
+torch_tpu_py_test(
+    name = "ops_test_tpu_vs_gpu_v6e",
+    timeout = "long",
+    srcs = ["ops_test.py"],
+    args = [
+        "--test_mode=torch_tpu_vs_gpu",
+        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
+    ],
+    data = [
+        "ops_test_gpu_golden0.gz",
+        "ops_test_gpu_golden1.gz",
+        "ops_test_gpu_golden2.gz",
+    ],
+    main = "ops_test.py",
+    nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
+    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
+    shard_count = 50,
+    tags = [
+        "nosan",  # Rely on ops_test_tpu_vs_gpu for *san coverage.
+        # Specifically tests TPU v6e behaviors in postsubmit. Do not change to
+        # other TPU versions.
+        "requires-tpu-v6e",
     ],
     deps = [
         ":dynamism_test_utils",

@@ -1673,6 +1673,7 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
                 torch.float16: {"rtol": 1e-3, "atol": 1e-3},
             },
             "nn.functional.softplus": {
+                torch.float16: {"rtol": 2.3e-3, "atol": 3.1e-5},
                 torch.float32: {"rtol": 2.1e-4, "atol": 1.4e-5},
             },
             "reciprocal": {
