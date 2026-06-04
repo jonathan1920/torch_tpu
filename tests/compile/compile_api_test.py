@@ -443,11 +443,14 @@ class CompileApiTest(absltest.TestCase):
     utils.assert_close(actual=actual, expected=expected)
 
   def test_force_strides_permute(self):
-    # Arrange: create a permuted tensor on the CPU, and a contiguous copy of it
+    # Arrange: create a permuted tensor on the CPU, and a copy of it
     # on the TPU.
     expected = torch.arange(24, device='cpu').view(2, 3, 4).permute(2, 1, 0)
     x = expected.to(device='tpu')
-    self.assertTrue(x.is_contiguous())
+
+    # Since the expected tensor is non_overlapping and dense, the original
+    # strides are preserved for it in the compiled output. We can assert this
+    # by checking the output shape and values.
 
     # Act: force the strides to match expected
     y = tpu_torch_compile.force_strides(

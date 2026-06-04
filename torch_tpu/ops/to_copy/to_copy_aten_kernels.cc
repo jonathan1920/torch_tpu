@@ -21,6 +21,7 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "ATen/ops/empty.h"
+#include "ATen/ops/empty_strided.h"
 #include "c10/core/Device.h"
 #include "c10/core/TensorOptions.h"
 #include "torch/headeronly/core/DeviceType.h"
@@ -78,7 +79,12 @@ at::Tensor AtenToCopy(const at::Tensor& self,
         // Default path: let ATen handle the intermediate allocation.
         at::TensorOptions options =
             at::TensorOptions().dtype(target_dtype).device(target_device);
-        at::Tensor dest = at::empty(self.sizes(), options, resolved_format);
+        at::Tensor dest;  // UNINITIALIZED_TENSOR_OK=initialized in the if-else
+        if (!self.is_contiguous() && self.is_non_overlapping_and_dense()) {
+          dest = at::empty_strided(self.sizes(), self.strides(), options);
+        } else {
+          dest = at::empty(self.sizes(), options, resolved_format);
+        }
         ::torch_tpu::AtenCopy_(dest, self, non_blocking);
         return dest;
       });

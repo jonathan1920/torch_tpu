@@ -21,6 +21,7 @@ from typing import Callable, Tuple
 
 from absl.testing import absltest
 import torch
+from torch_tpu._internal import compile as compile_lib
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.utils import utils
 
@@ -1350,6 +1351,35 @@ class StridedSliceViewTest(LayoutTest):
     x_t_cpu[..., 2:30:3] = x_cpu[2, ..., 2:30:3]
 
     utils.assert_close(x_t.cpu(), x_t_cpu)
+
+
+class CompileTest(LayoutTest):
+
+  def test_cast_non_contiguous_tensor_view(self):
+    class CastNonContiguousTensorViewModule(torch.nn.Module):
+
+      def forward(self, x):
+        x_fp32 = x.float()
+        x_fp32 = x_fp32 + 1.0
+        x_bf16 = x_fp32.type_as(x)
+        out = (
+            x_bf16.transpose(1, 2)
+            .contiguous()
+            .reshape(1, 512, 1024)
+            .contiguous()
+        )
+        return out
+
+    model = CastNonContiguousTensorViewModule().to(self.tpu_device)
+    # The input to the model should be a non-contiguous tensor.
+    x = torch.randn(
+        1, 512, 4, 256, dtype=torch.bfloat16, device=self.tpu_device
+    ).transpose(1, 2)
+
+    compiled_model = torch.compile(model, backend=compile_lib.TpuBackend())
+
+    y_compiled = compiled_model(x)
+    self.assertEqual(y_compiled.shape, torch.Size([1, 512, 1024]))
 
 
 if __name__ == "__main__":
