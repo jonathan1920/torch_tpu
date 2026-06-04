@@ -21,10 +21,12 @@
 #include <utility>
 
 #include "ATen/core/TensorBody.h"
+#include "absl/status/statusor.h"
 #include "c10/core/Storage.h"
 #include "c10/core/SymInt.h"
 #include "c10/core/SymIntArrayRef.h"
 #include "c10/core/TensorImpl.h"
+#include "c10/util/ArrayRef.h"
 #include "c10/util/Optional.h"
 #include "c10/util/intrusive_ptr.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
@@ -32,6 +34,7 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/macros/kernel.h"
@@ -39,6 +42,36 @@
 #include "torch_tpu/ops/stride/stride_helper.h"
 
 namespace torch_tpu {
+
+absl::StatusOr<at::Tensor> AsStrided(const at::Tensor& self,
+                                     c10::IntArrayRef size,
+                                     c10::IntArrayRef stride,
+                                     int64_t storage_offset) {
+  TT_RET_CHECK(self.defined(), error::kInvalidArgument)
+      << "the input tensor cannot be undefined";
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef base_buffer_ref,
+                      GetBaseBuffer(*self.unsafeGetTensorImpl()));
+
+  const int64_t storage_numel = base_buffer_ref.num_elements();
+  const mlir::ElementType storage_element_type = base_buffer_ref.element_type();
+  TT_ASSIGN_OR_RETURN(mlir::ElementType tensor_element_type,
+                      ConvertTo<mlir::ElementType>(self.scalar_type()));
+
+  Dimensions size_dims = CopyIntVector(size);
+  Strides stride_dims = CopyIntVector(stride);
+
+  TT_RETURN_IF_ERROR(CheckProvidedLayoutDataFitsInStorage(
+      storage_numel, storage_element_type, size_dims, stride_dims,
+      storage_offset, tensor_element_type));
+
+  c10::Storage storage_copy = self.storage();
+  at::Tensor tensor(c10::make_intrusive<c10::TensorImpl>(
+      c10::TensorImpl::VIEW, std::move(storage_copy), self.key_set(),
+      self.dtype()));
+  tensor.unsafeGetTensorImpl()->set_sizes_and_strides(size_dims, stride_dims,
+                                                      storage_offset);
+  return tensor;
+}
 
 at::Tensor AtenAsStrided(const at::Tensor& self, c10::SymIntArrayRef size_sym,
                          c10::SymIntArrayRef stride_sym,
@@ -68,34 +101,10 @@ at::Tensor AtenAsStrided(const at::Tensor& self, c10::SymIntArrayRef size_sym,
              IgnoreInCacheKey(new_strides, "Doesn't affect SHLO"),
              IgnoreInCacheKey(new_storage_offset, "Doesn't affect SHLO")),
             {
-              // Get the base buffer so we can check that the view is valid
-              TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Cannot directly create an
-                               // undefined tensor on Python.
-                  self.defined(), error::kInvalidArgument)
-                  << "the input tensor cannot be undefined";
-              TT_ASSIGN_OR_THROW(DeviceBufferRef base_buffer_ref,
-                                 GetBaseBuffer(*self.unsafeGetTensorImpl()));
-
-              const int64_t storage_numel = base_buffer_ref.num_elements();
-              const mlir::ElementType storage_element_type =
-                  base_buffer_ref.element_type();
               TT_ASSIGN_OR_THROW(
-                  mlir::ElementType tensor_element_type,
-                  ConvertTo<mlir::ElementType>(self.scalar_type()));
-              TT_THROW_IF_ERROR(CheckProvidedLayoutDataFitsInStorage(
-                  storage_numel, storage_element_type, new_sizes, new_strides,
-                  new_storage_offset, tensor_element_type));
-
-              // View is valid, so we can create the new tensor.
-              // as_strided creates a shallow view; a new tensor with the same
-              // Storage as the self tensor.
-              c10::Storage storage_copy = self.storage();
-              at::Tensor tensor(c10::make_intrusive<c10::TensorImpl>(
-                  c10::TensorImpl::VIEW, std::move(storage_copy),
-                  self.key_set(), self.dtype()));
-              tensor.unsafeGetTensorImpl()->set_sizes_and_strides(
-                  new_sizes, new_strides, new_storage_offset);
-              return tensor;
+                  at::Tensor result,
+                  AsStrided(self, new_sizes, new_strides, new_storage_offset));
+              return result;
             });
 }
 

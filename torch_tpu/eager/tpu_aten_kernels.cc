@@ -557,6 +557,11 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kLog1pOut, AtenLog1pOut);
   Impl(m, OpName::kLog2Out, AtenLog2Out);
   Impl(m, OpName::kLogOut, AtenLogOut);
+  Impl(m, OpName::kLogSigmoidBackward, torch_tpu::AtenLogSigmoidBackward);
+  Impl(m, OpName::kLogSigmoidBackwardGradInput,
+       torch_tpu::AtenLogSigmoidBackwardGradInput);
+  Impl(m, OpName::kLogSigmoidForward, torch_tpu::AtenLogSigmoidForward);
+  Impl(m, OpName::kLogSigmoidForwardOut, torch_tpu::AtenLogSigmoidForwardOut);
   Impl(m, OpName::kLogSoftmaxBackwardDataOut, AtenLogSoftmaxBackwardDataOut);
   Impl(m, OpName::kLogSoftmaxOut, AtenLogSoftmaxOut);
   Impl(m, OpName::kLogicalAndOut, AtenLogicalAndOut);

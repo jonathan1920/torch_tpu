@@ -233,6 +233,25 @@ _ADDITIONAL_TORCH_TPU_OPS: Final[Sequence[OpInfo]] = [
         supports_fwgrad_bwgrad=True,
         supports_out=False,
     ),
+    OpInfo(
+        "log_sigmoid",
+        op=torch.ops.aten.log_sigmoid,
+        dtypes=common_dtype.floating_types_and(torch.bfloat16, torch.float16),
+        sample_inputs_func=lambda op_info, device, dtype, requires_grad, **kwargs: [
+            SampleInput(
+                torch.tensor(
+                    [[0.5, 0.2], [1.0, 0.8]],
+                    device=device,
+                    dtype=dtype,
+                    requires_grad=requires_grad,
+                ),
+                name="default",
+            )
+        ],
+        supports_forward_ad=True,
+        supports_fwgrad_bwgrad=True,
+        supports_out=False,
+    ),
 ]
 
 # Used in the gen_gpu_golden mode to collect the golden results for each op.

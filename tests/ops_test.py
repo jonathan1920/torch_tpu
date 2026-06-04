@@ -441,6 +441,10 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.int8: {"rtol": 5.7e-5, "atol": 9.1e-5},
         torch.uint8: {"rtol": 5.7e-5, "atol": 9.1e-5},
     },
+    "log_sigmoid": {
+        torch.float32: {"rtol": 9e-5, "atol": 6e-5},
+        torch.float64: {"rtol": 1e-5, "atol": 1e-5},
+    },
     "log_softmax": {
         torch.bfloat16: {"rtol": 1, "atol": 7.8e-3},
         torch.float16: {"rtol": 5e-1, "atol": 9.8e-4},
@@ -3049,6 +3053,13 @@ class TestOps(TorchTpuTestBase):
         "log2",
         # TODO: look into making this STRICT.
         check_value=CheckValueMode.LOOSE,
+    )
+
+  def test_log_sigmoid(self):
+    self.do_test_op(
+        "log_sigmoid",
+        # TODO: bounded dynamism support is flaky for log_sigmoid.
+        check_dynamism=False,
     )
 
   def test_log_softmax(self):

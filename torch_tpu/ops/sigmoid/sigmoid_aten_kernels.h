@@ -17,6 +17,8 @@
 #ifndef TORCH_TPU_OPS_SIGMOID_SIGMOID_ATEN_KERNELS_H_
 #define TORCH_TPU_OPS_SIGMOID_SIGMOID_ATEN_KERNELS_H_
 
+#include <tuple>
+
 #include "ATen/core/TensorBody.h"
 #include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -30,6 +32,18 @@ at::Tensor& AtenSigmoidOut(const at::Tensor& self, at::Tensor& out);
 at::Tensor& AtenSigmoidBackwardGradInput(const at::Tensor& grad_output,
                                          const at::Tensor& output,
                                          at::Tensor& grad_input);
+
+std::tuple<at::Tensor, at::Tensor> AtenLogSigmoidForward(
+    const at::Tensor& self);
+std::tuple<at::Tensor&, at::Tensor&> AtenLogSigmoidForwardOut(
+    const at::Tensor& self, at::Tensor& output, at::Tensor& buffer);
+at::Tensor AtenLogSigmoidBackward(const at::Tensor& grad_output,
+                                  const at::Tensor& self,
+                                  const at::Tensor& buffer);
+at::Tensor& AtenLogSigmoidBackwardGradInput(const at::Tensor& grad_output,
+                                            const at::Tensor& self,
+                                            const at::Tensor& buffer,
+                                            at::Tensor& grad_input);
 
 }  // namespace torch_tpu
 

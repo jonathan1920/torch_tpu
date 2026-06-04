@@ -19,6 +19,7 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "absl/status/status.h"
 #include "c10/util/ArrayRef.h"
 #include "c10/util/Optional.h"
 #include "torch/headeronly/core/MemoryFormat.h"
@@ -29,6 +30,10 @@ namespace torch_tpu {
 const at::Tensor& AtenResize_(
     const at::Tensor& self_const, c10::IntArrayRef size,
     c10::optional<at::MemoryFormat> memory_format_opt);
+
+// Resizes the target tensor to the given size, potentially reallocating
+// storage if it grows.
+absl::Status ResizeTensor(const at::Tensor& self, c10::IntArrayRef size);
 
 }  // namespace torch_tpu
 

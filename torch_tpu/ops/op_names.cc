@@ -857,6 +857,14 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "log2.out";
     case OpName::kLogOut:
       return "log.out";
+    case OpName::kLogSigmoidBackward:
+      return "log_sigmoid_backward";
+    case OpName::kLogSigmoidBackwardGradInput:
+      return "log_sigmoid_backward.grad_input";
+    case OpName::kLogSigmoidForward:
+      return "log_sigmoid_forward";
+    case OpName::kLogSigmoidForwardOut:
+      return "log_sigmoid_forward.output";
     case OpName::kLogSoftmaxBackwardDataOut:
       return "_log_softmax_backward_data.out";
     case OpName::kLogSoftmaxOut:

@@ -17,9 +17,13 @@
 #ifndef TORCH_TPU_OPS_AS_STRIDED_AS_STRIDED_ATEN_KERNELS_H_
 #define TORCH_TPU_OPS_AS_STRIDED_AS_STRIDED_ATEN_KERNELS_H_
 
+#include <cstdint>
+
 #include "ATen/core/TensorBody.h"
+#include "absl/status/statusor.h"
 #include "c10/core/SymInt.h"
 #include "c10/core/SymIntArrayRef.h"
+#include "c10/util/ArrayRef.h"
 #include "c10/util/Optional.h"
 
 namespace torch_tpu {
@@ -27,6 +31,13 @@ namespace torch_tpu {
 at::Tensor AtenAsStrided(const at::Tensor& self, c10::SymIntArrayRef size_sym,
                          c10::SymIntArrayRef stride_sym,
                          c10::optional<c10::SymInt> storage_offset_sym_opt);
+
+// Creates a view of the target tensor with the given size, stride, and
+// storage offset.
+absl::StatusOr<at::Tensor> AsStrided(const at::Tensor& self,
+                                     c10::IntArrayRef size,
+                                     c10::IntArrayRef stride,
+                                     int64_t storage_offset);
 
 }  // namespace torch_tpu
 
