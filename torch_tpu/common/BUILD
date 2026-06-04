@@ -835,14 +835,12 @@ torch_tpu_cc_library(
     deps = [
         ":flags",
         "//torch_tpu/ops:op_names",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
