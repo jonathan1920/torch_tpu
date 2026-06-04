@@ -410,6 +410,11 @@ def run_single_process_benchmark(
     if tblog_dir:
       _export_to_tensorboard(result, tblog_dir)
 
+  if torch.distributed.is_initialized():
+    logging.info("Process %s reaching final barrier...", rank)
+    torch.distributed.barrier()
+    logging.info("Process %s passed final barrier.", rank)
+
 
 def run_torch_tpu_task(
     worker_func: Callable[..., Any],
