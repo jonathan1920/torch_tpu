@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef TORCH_TPU_OPS_EXPERIMENTAL_SEND_RECV_KERNELS_H_
-#define TORCH_TPU_OPS_EXPERIMENTAL_SEND_RECV_KERNELS_H_
+#ifndef TORCH_TPU_OPS_EXPERIMENTAL_SEND_RECV_SEND_RECV_KERNELS_H_
+#define TORCH_TPU_OPS_EXPERIMENTAL_SEND_RECV_SEND_RECV_KERNELS_H_
 
 #include <cstdint>
 
@@ -32,4 +32,4 @@ c10::IValue TorchTpuExperimentalRecv(at::ITensorListRef tensors, int64_t src,
 
 }  // namespace torch_tpu
 
-#endif  // TORCH_TPU_OPS_EXPERIMENTAL_SEND_RECV_KERNELS_H_
+#endif  // TORCH_TPU_OPS_EXPERIMENTAL_SEND_RECV_SEND_RECV_KERNELS_H_

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "torch_tpu/ops/experimental/ragged_dot_aten_kernels.h"
+#include "torch_tpu/ops/experimental/ragged_dot/ragged_dot_aten_kernels.h"
 
 #include <utility>
 

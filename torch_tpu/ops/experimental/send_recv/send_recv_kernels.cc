@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "torch_tpu/ops/experimental/send_recv_kernels.h"
+#include "torch_tpu/ops/experimental/send_recv/send_recv_kernels.h"
 
 #include <cstdint>
 #include <vector>
