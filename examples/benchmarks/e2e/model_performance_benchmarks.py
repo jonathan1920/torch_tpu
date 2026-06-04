@@ -137,11 +137,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
 
-
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
       ])
   )
   def test_distributed_meta_llama_3_2_8b_forward(self, run_mode):
