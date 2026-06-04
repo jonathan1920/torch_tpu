@@ -22,6 +22,7 @@ import portpicker
 import torch
 import torch.accelerator
 from torch_tpu._internal.distributed import tpu_distributed
+from torch_tpu._internal.utils import utils
 
 
 class SingleTpuPGTest(absltest.TestCase):
@@ -60,13 +61,13 @@ class SingleTpuPGTest(absltest.TestCase):
     x = torch.arange(8, dtype=torch.float32, device="tpu")
     expected = x.clone()
     torch.distributed.all_reduce(x)  # SUM over one rank == identity
-    torch.testing.assert_close(x.cpu(), expected.cpu())
+    utils.assert_close(x, expected)
 
   def test_allgather_into_tensor_is_identity(self):
     x = torch.arange(4, dtype=torch.float32, device="tpu") + 1
     out = torch.empty(4, dtype=torch.float32, device="tpu")
     torch.distributed.all_gather_into_tensor(out, x)
-    torch.testing.assert_close(out.cpu(), x.cpu())
+    utils.assert_close(out, x)
 
   def test_manual_pg(self):
     """Test manual/explicit ProcessGroup creation."""
