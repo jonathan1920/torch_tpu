@@ -688,7 +688,10 @@ absl::StatusOr<mlir::MlirOp> BuildMaxPoolWithIndicesBackwardShlo(
       /*update_computation=*/scatter_body,
       /*dimension_numbers=*/scatter_dnums,
       /*indices_are_sorted=*/false,
-      /*unique_indices=*/true);
+      // unique_indices must be false because overlapping pooling windows
+      // (stride < kernel_size) can result in multiple updates being scattered
+      // to the same input index.
+      /*unique_indices=*/false);
 
   auto result = mlir::stablehlo::Reshape(batch_result[0], input_shape);
 

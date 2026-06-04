@@ -373,6 +373,39 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/compile:tpu_torch_compile",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils",
+        "//torch_tpu/_internal/utils:hardware",
+        "//torch_tpu/eager:tpu_aten_kernels",
+        "@pypi//scipy",
+    ],
+)
+
+# Runs the ops unit tests on v6e TPU in postsubmit to catch v6e-specific
+# issues.
+torch_tpu_py_test(
+    name = "ops_unit_test_v6e",
+    timeout = "long",  # Needed for asan.
+    srcs = ["ops_unit_test.py"],
+    main = "ops_unit_test.py",
+    nopresubmit = "Long Forge wait times for v6e. Run in postsubmit only.",
+    notest_oss = "The test is specifically for TPU v6e, but OSS build doesn't allow specifying the TPU version yet.",
+    shard_count = 20,
+    tags = [
+        "nosan",  # Rely on ops_unit_test for *san coverage.
+        # Specifically tests TPU v6e behaviors in postsubmit. Do not change to
+        # other TPU versions.
+        "requires-tpu-v6e",
+    ],
+    deps = [
+        ":op_testing",
+        ":ops_test_data",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/compile:tpu_torch_compile",
+        "//torch_tpu/_internal/sync",
+        "//torch_tpu/_internal/utils",
+        "//torch_tpu/_internal/utils:hardware",
         "//torch_tpu/eager:tpu_aten_kernels",
         "@pypi//scipy",
     ],
@@ -404,6 +437,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/compile:tpu_torch_compile",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils",
+        "//torch_tpu/_internal/utils:hardware",
         "//torch_tpu/eager:tpu_aten_kernels",
         "@pypi//scipy",
     ],
@@ -436,6 +470,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/compile:tpu_torch_compile",
         "//torch_tpu/_internal/sync",
         "//torch_tpu/_internal/utils",
+        "//torch_tpu/_internal/utils:hardware",
         "//torch_tpu/eager:tpu_aten_kernels",
         "@pypi//scipy",
     ],

@@ -22,6 +22,7 @@ device and the world size.
 """
 
 from collections.abc import Mapping, Set
+import enum
 import os
 import pathlib
 from typing import Final
@@ -93,6 +94,15 @@ _NVIDIA_GPU_DEVICES: Final[Set[str]] = frozenset([
 ])
 
 
+class TpuVersion(enum.Enum):
+  V4 = "TPU v4"
+  V5P = "TPU v5p"
+  V5E = "TPU v5e"
+  V6E = "TPU v6e"
+  V7 = "TPU v7"
+  UNKNOWN = "TPU"
+
+
 def get_tpu_device_name() -> str:
   """Returns a human-readable name for the attached TPU device.
 
@@ -119,6 +129,19 @@ def get_tpu_device_name() -> str:
   except (OSError, IOError):
     pass
   return "TPU"
+
+
+def get_tpu_version() -> TpuVersion:
+  """Returns the TpuVersion enum of the attached TPU device.
+
+  Scans PCI devices to identify the TPU generation and returns the
+  corresponding TpuVersion enum.
+  """
+  name = get_tpu_device_name()
+  try:
+    return TpuVersion(name)
+  except ValueError:
+    return TpuVersion.UNKNOWN
 
 
 def _scan_pci_tpus() -> tuple[int, Mapping[int, str] | None]:
