@@ -231,6 +231,14 @@ def _check_and_adjust_test_tags(
         normalize the list for easy testing.
     """
 
+    # Use the nopresubmit parameter instead of tags.
+    if "nopresubmit" in tags:
+        fail("Please use the `nopresubmit=\"<reason>\"` parameter instead " +
+             "of the 'nopresubmit' tag so that you can document the reason.")
+    if "postsubmit" in tags:
+        fail("Please use the `nopresubmit=\"<reason>\"` parameter instead " +
+             "of the 'postsubmit' tag so that you can document the reason.")
+
     # Error tests should not run in *san builds.
     if _is_errors_test(name) and "nosan" not in tags:  # nosan not used in tags.
         fail(name + " is an error test. Please add a 'nosan' tag " +  # nosan not used in tags.

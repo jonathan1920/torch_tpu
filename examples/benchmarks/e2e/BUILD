@@ -573,10 +573,9 @@ torch_tpu_py_test(
     name = "device_utils_test",
     srcs = ["device_utils_test.py"],
     args = ["--torch_tpu_internal_enable_compilation_container=true"],
+    notest_oss = "Flags don't work in OSS.",
     tags = [
-        "nofastbuild",
-        "nopresubmit",
-        "requires-tpu-v7x",
+        "requires-tpu-v5lite",
     ],
     deps = [
         ":device_utils",
