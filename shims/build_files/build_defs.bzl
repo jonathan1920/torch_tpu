@@ -38,3 +38,5 @@ def process_accelerator_tags(tags):
         tags.append("requires-tpu")
     if has_gpu and "requires-gpu" not in tags:
         tags.append("requires-gpu")
+
+TT_FRIENDS = []

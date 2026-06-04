@@ -8,6 +8,7 @@ load(
 )
 load("//build_files:entry_points.bzl", "ENTRY_POINTS")
 load("//build_files:py_dist_info.bzl", "py_dist_info")
+load("//shims/build_files:build_defs.bzl", "TT_FRIENDS")
 
 # Copyright 2025 Google LLC
 #
@@ -87,7 +88,7 @@ py_library_providing_imports_info(
         "//shims/torchtitan:__subpackages__",
         "@pypi//helion:__subpackages__",
         "@pypi//tokamax:__subpackages__",
-    ],
+    ] + TT_FRIENDS,
     deps = if_oss(
         ["//shims/libtpu"],
         [],
