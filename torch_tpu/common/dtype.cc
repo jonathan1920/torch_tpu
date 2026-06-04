@@ -248,7 +248,7 @@ absl::StatusOr<mlir::ElementType> ToElementType(
       return mlir::ElementType::F32;
     case xla::PrimitiveType::F64:
       return mlir::ElementType::F64;
-    // FP8 Types
+    // FP8 types
     case xla::PrimitiveType::F8E5M2:
       return mlir::ElementType::F8E5M2;
     case xla::PrimitiveType::F8E4M3:
@@ -283,9 +283,7 @@ absl::StatusOr<mlir::ElementType> ToElementType(
     case xla::PrimitiveType::TOKEN:
     case xla::PrimitiveType::TUPLE:
     case xla::PrimitiveType::U1:
-      // go/keep-sorted end
-    // default is a temporary fix to unblock the build, remove once OSS XLA is
-    // updated.
+    // go/keep-sorted end
     default:
       return TT_ERROR(error::kInvalidArgument)
              << "unsupported XLA PrimitiveType: " << xla_type;
