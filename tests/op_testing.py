@@ -174,6 +174,12 @@ _PERF_DIR: Final[flags.FlagHolder[str]] = flags.DEFINE_string(
     "non-empty string in the perf mode.",
 )
 
+_NUM_RUNS_PER_SUBTEST: Final[flags.FlagHolder[int]] = flags.DEFINE_integer(
+    "num_runs_per_subtest",
+    1,
+    "Number of times to run each sub-test. Useful for performance testing.",
+)
+
 
 class OpVariant(enum.Enum):
   """Variant of an op to test."""
@@ -310,9 +316,9 @@ def all_xla_supported_dtypes() -> Sequence[torch.dtype]:
 _TOP_N_SLOWEST_OPS: Final[int] = 100
 
 # Match a line in the perf result file. A perf result line looks like this:
-#   test shard 3, sample 5: add float32 0.05ms
+#   test shard 3, sample 5: add float32 [add_float32_subtest0] 0.05ms
 _PERF_RESULT_LINE_RE: Final[re.Pattern[str]] = re.compile(
-    r"^test shard (\d+), sample (\d+): (\S+) (\S+) (.*)ms"
+    r"^test shard (\d+), sample (\d+): (\S+) (\S+) \[(.*)\] (.*)ms"
 )
 
 
@@ -323,7 +329,12 @@ class PerfResult:
   num_instances: int = 0
 
   def __init__(
-      self, op_name: str, dtype: torch.dtype, duration_sec: float
+      self,
+      *,
+      op_name: str,
+      dtype: torch.dtype,
+      subtest_name: str,
+      duration_sec: float,
   ) -> None:
     # Sponge uses 1-based shard indices.
     self.test_shard = _get_test_shard() + 1  # pytype: disable=name-error
@@ -331,12 +342,13 @@ class PerfResult:
     PerfResult.num_instances += 1
     self.op_name = op_name
     self.dtype = dtype
+    self.subtest_name = subtest_name
     self.duration_sec = duration_sec
 
   def __str__(self) -> str:
     return (
         f"test shard {self.test_shard}, sample {self.sequence_number}:"
-        f" {self.op_name} {_format_dtype(self.dtype)}"
+        f" {self.op_name} {_format_dtype(self.dtype)} [{self.subtest_name}]"
         f" {1000*self.duration_sec:.02f}ms"
     )
 
@@ -347,29 +359,45 @@ class PerfResult:
     return (
         self.op_name == other.op_name
         and self.dtype == other.dtype
+        and self.subtest_name == other.subtest_name
         and self.duration_sec == other.duration_sec
     )
 
   def __hash__(self) -> int:
-    return hash((self.op_name, self.dtype, self.duration_sec))
+    return hash(
+        (self.op_name, self.dtype, self.subtest_name, self.duration_sec)
+    )
 
   def __lt__(self, other: "PerfResult") -> bool:
-    return (self.duration_sec, self.op_name, _format_dtype(self.dtype)) < (
+    return (
+        self.duration_sec,
+        self.op_name,
+        _format_dtype(self.dtype),
+        self.subtest_name,
+    ) < (
         other.duration_sec,
         other.op_name,
         _format_dtype(other.dtype),
+        other.subtest_name,
     )
 
-  # Defines how to parse the string representation of the perf result.
   @classmethod
   def parse(cls, s: str) -> "PerfResult":
+    """Parses the string representation of the perf result."""
     # A perf result line looks like this:
-    #   test shard 3, sample 5: add float32 0.05ms
+    #   test shard 3, sample 5: add float32 [add_float32_subtest0] 0.05ms
     m = _PERF_RESULT_LINE_RE.match(s)
     assert m, f"Invalid perf result line: {s}"
-    test_shard, sample_number, op_name, dtype, duration_ms_str = m.groups()
+    test_shard, sample_number, op_name, dtype, subtest_name, duration_ms_str = (
+        m.groups()
+    )
     duration_ms = float(duration_ms_str)
-    result = cls(op_name, _parse_dtype(dtype), duration_ms / 1000)
+    result = cls(
+        op_name=op_name,
+        dtype=_parse_dtype(dtype),
+        subtest_name=subtest_name,
+        duration_sec=duration_ms / 1000,
+    )
     result.test_shard = int(test_shard)
     result.sequence_number = int(sample_number)
     return result
@@ -1465,6 +1493,7 @@ class TorchTpuTestBase(TestCase):
           compute_grad=compute_grad,
           use_compiled=use_compiled,
           device=self.golden_device,
+          subtest_name="golden",
           # When generating golden results, we should trust the op's output
           # to be correct and not check the device. E.g. even in the
           # gen_gpu_golden mode, torch.arange(5) should return a tensor on
@@ -1487,6 +1516,7 @@ class TorchTpuTestBase(TestCase):
       op_input: OpInput,
       device: torch.device,
       *,
+      subtest_name: str,
       check_device: bool,
       check_dynamism: bool,
       out: Any = None,
@@ -1505,6 +1535,8 @@ class TorchTpuTestBase(TestCase):
         function does not mutate op_input. Instead, it clones op_input, converts
         the clone to the given device, and runs the op on the clone.
       device: The device to run the op on.
+      subtest_name: A name for the subtest being run. Used to group results that
+        represent multiple runs of the same subtest.
       check_device: If True, check that the result tensors are on the given
         device.
       check_dynamism: If True and the test is running in dynamism checking mode
@@ -1544,6 +1576,7 @@ class TorchTpuTestBase(TestCase):
           compute_grad=False,
           use_compiled=use_compiled,
           device=device,
+          subtest_name=subtest_name,
           check_device=check_device,
           check_dynamism=check_dynamism,
           # This _run_op() call is for preparing the test data, not part of
@@ -1644,7 +1677,7 @@ class TorchTpuTestBase(TestCase):
         return _dummy_grad(device)
 
     try:
-      start_time = time.time()
+      start_time = time.perf_counter()
       result = op_func(
           input_value,
           *device_op_input.args,
@@ -1710,7 +1743,14 @@ class TorchTpuTestBase(TestCase):
         # We must measure the time after the .to("cpu") call because that's the
         # time when the compilation and execution of the op is guaranteed to be
         # done.
-        _add_perf_result(PerfResult(op_name, dtype, time.time() - start_time))
+        _add_perf_result(
+            PerfResult(
+                op_name=op_name,
+                dtype=dtype,
+                subtest_name=subtest_name,
+                duration_sec=time.perf_counter() - start_time,
+            )
+        )
     except Exception as e:  # pylint: disable=broad-except
       # The op raised an exception.
       if _gen_gpu_golden_mode():
@@ -1895,6 +1935,7 @@ class TorchTpuTestBase(TestCase):
           compute_grad=compute_grad,
           use_compiled=use_compiled,
           device=torch.device("tpu"),
+          subtest_name=subtest_name,
           check_device=check_device,
           check_dynamism=check_dynamism,
       )
@@ -2016,31 +2057,32 @@ class TorchTpuTestBase(TestCase):
         )
         continue
 
-      # Test each sample in a subtest s.t. one sample's failure doesn't prevent
-      # other samples from being tested.
+      # Test each run of each sample in a subTest s.t. one sample's failure
+      # doesn't prevent other runs.
       # Construct a meaningful and unique subtest name.
       subtest_name = f"{op_name}_{_dtype_str(dtype)}_"
-      subtest_name += golden_input.name if golden_input.name else f"sample{i}"
+      subtest_name += golden_input.name if golden_input.name else f"subtest{i}"
 
-      with self.subTest(subtest_name):
-        _run_and_print_exception(
-            functools.partial(
-                self._sub_test,
-                subtest_name,
-                op,
-                variant,
-                dtype,
-                golden_input=golden_input,
-                golden_result=golden_result,
-                check_device=check_device,
-                check_dynamism=check_dynamism,
-                check_value=check_value,
-                check_dtype=check_dtype,
-                skip_output_indices=skip_output_indices,
-                compute_grad=compute_grad,
-                use_compiled=use_compiled,
-            )
-        )
+      for run_index in range(_NUM_RUNS_PER_SUBTEST.value):
+        with self.subTest(subtest_name=subtest_name, run_index=run_index):
+          _run_and_print_exception(
+              functools.partial(
+                  self._sub_test,
+                  subtest_name,
+                  op,
+                  variant,
+                  dtype,
+                  golden_input=golden_input,
+                  golden_result=golden_result,
+                  check_device=check_device,
+                  check_dynamism=check_dynamism,
+                  check_value=check_value,
+                  check_dtype=check_dtype,
+                  skip_output_indices=skip_output_indices,
+                  compute_grad=compute_grad,
+                  use_compiled=use_compiled,
+              )
+          )
 
   def _resolve_exclude_dtypes(
       self,
