@@ -284,6 +284,9 @@ absl::StatusOr<mlir::ElementType> ToElementType(
     case xla::PrimitiveType::TUPLE:
     case xla::PrimitiveType::U1:
       // go/keep-sorted end
+    // default is a temporary fix to unblock the build, remove once OSS XLA is
+    // updated.
+    default:
       return TT_ERROR(error::kInvalidArgument)
              << "unsupported XLA PrimitiveType: " << xla_type;
       // Deliberately omitting the default case. Without the default case, if an
