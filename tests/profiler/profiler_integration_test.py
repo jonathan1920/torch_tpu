@@ -22,7 +22,6 @@ from absl import logging
 from absl.testing import absltest
 import torch
 from torch.autograd import profiler
-from torch_tpu import api as tpu_api
 from torch_tpu._internal import sync as tpu_sync
 from torch_tpu._internal.profiler.profiler_config import TpuProfilerConfig
 
@@ -261,7 +260,7 @@ class ProfilerIntegrationTest(absltest.TestCase):
 
   def test_tpu_profiler_config_override(self):
     """Verifies that TPU-specific profiler options are correctly applied."""
-    device = tpu_api.tpu_device()
+    device = torch.device("tpu")
     base_output_dir = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR", "/tmp")
     output_dir = pathlib.Path(base_output_dir) / "tpu_config_override"
     os.makedirs(output_dir, exist_ok=True)
@@ -371,7 +370,7 @@ class ProfilerIntegrationTest(absltest.TestCase):
 
   def test_invalid_profiler_config(self):
     """Tests that invalid profiler configuration raises a Python exception."""
-    device = tpu_api.tpu_device()
+    device = torch.device("tpu")
     output_dir = self.create_tempdir("invalid_config").full_path
 
     _cleanup_profile_dir()
