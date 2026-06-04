@@ -26,10 +26,13 @@ BAZEL_CONFIG="${4}"
 EXTRA_FLAGS="${5}"
 DISABLE_BAZEL_DIFF="${6:-false}"
 
-# TODO: b/515417327 - Check bazel-diff's native built-in solution
-# `--seed-filepaths` for handling changes to global configuration files.
 # Check if global configuration files were modified. If so, disable bazel-diff
 # to guarantee a full build validation.
+# We intentionally do not use bazel-diff's native `--seed-filepaths` flag for
+# handling changes to global configuration files. It forces bazel-diff to
+# calculate the entire repository graph, serialize all targets (5000+) to
+# impacted_targets.txt, and feed them back to Bazel. This introduces a slight
+# performance regression.
 if [ -n "$BASE_SHA" ] && [ "$DISABLE_BAZEL_DIFF" != "true" ]; then
   git fetch --depth=1 origin "$BASE_SHA"
   CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$CURRENT_SHA")
