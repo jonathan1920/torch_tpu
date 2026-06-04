@@ -371,6 +371,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     if (
         not self._is_torchax_backend()
         and run_mode == benchmark_utils.RunMode.COMPILED
+        and benchmark_utils.PLATFORM_DEVICE_MAP[benchmark_utils.PLATFORM.value]
+        != "cuda"
     ):
       self.skipTest("Compiled mode fails on view() for torch_tpu.")
     config = performance_utils.PerformanceBenchmarkConfig(
@@ -406,6 +408,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     if (
         not self._is_torchax_backend()
         and run_mode == benchmark_utils.RunMode.COMPILED
+        and benchmark_utils.PLATFORM_DEVICE_MAP[benchmark_utils.PLATFORM.value]
+        != "cuda"
     ):
       self.skipTest("Compiled mode fails on view() for torch_tpu.")
 

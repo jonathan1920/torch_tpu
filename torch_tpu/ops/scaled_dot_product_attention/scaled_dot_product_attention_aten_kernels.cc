@@ -35,6 +35,7 @@
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "c10/core/DeviceType.h"
 #include "c10/core/ScalarType.h"
 #include "c10/util/Exception.h"
 #include "c10/util/StringUtil.h"
@@ -357,7 +358,7 @@ int64_t AtenFusedSdpChoice(const at::Tensor& query, const at::Tensor& key,
         bool has_mask = attn_mask.has_value();
         bool has_dropout = dropout_p != 0.0;
 
-        if (flash_enabled) {
+        if (flash_enabled && c10::get_privateuse1_backend() != "xla_cpu") {
           bool supported_flash_dtype =
               (query.scalar_type() == at::ScalarType::Float ||
                query.scalar_type() == at::ScalarType::BFloat16);
