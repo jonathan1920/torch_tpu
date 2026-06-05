@@ -21,6 +21,17 @@ import torch.nn.functional as F
 from transformers import activations
 
 
+def manual_ragged_dot(x, w, groups):
+  out = torch.zeros(x.shape[0], w.shape[-1], device=x.device, dtype=x.dtype)
+  idx = 0
+  for i, g in enumerate(groups):
+    if g == 0:
+      continue
+    out[idx : (idx + g), :] = x[idx : (idx + g), :] @ w[i]
+    idx += g
+  return out
+
+
 class RaggedMoeQwen3(torch.nn.Module):
   """Drop-in replacement for Qwen3MoeSparseMoeBlock using XLA ragged dot."""
 
@@ -122,10 +133,16 @@ class RaggedMoeQwen3(torch.nn.Module):
     h = h[sortidx, :]  # [B*K, dm] - sorted by expert id
 
     # Apply SwiGLU MoE
-    h_up = self.ragged_dot_impl(h, self.up, group_sizes)  # [B*K, df]
-    h_gate = self.ragged_dot_impl(h, self.gate, group_sizes)
-    h = h_up * F.silu(h_gate)  # [B*K, df]
-    h = self.ragged_dot_impl(h, self.down, group_sizes)  # [B*K, dm]
+    if h.device.type == "cuda":
+      h_up = manual_ragged_dot(h, self.up, group_sizes)
+      h_gate = manual_ragged_dot(h, self.gate, group_sizes)
+      h = h_up * F.silu(h_gate)
+      h = manual_ragged_dot(h, self.down, group_sizes)
+    else:
+      h_up = self.ragged_dot_impl(h, self.up, group_sizes)  # [B*K, df]
+      h_gate = self.ragged_dot_impl(h, self.gate, group_sizes)
+      h = h_up * F.silu(h_gate)  # [B*K, df]
+      h = self.ragged_dot_impl(h, self.down, group_sizes)  # [B*K, dm]
 
     # Restore original order, and apply sum over selected experts
     h = h[reverse_sortidx, :].view(batch_fused, self.top_k, hidden_size)
@@ -210,10 +227,16 @@ class RaggedExpertsGemma4(torch.nn.Module):
     h = h.reshape(-1, hidden_size)  # [B*K, dm]
     h = h[sortidx, :]  # [B*K, dm] - sorted by expert id
 
-    h_up = self.ragged_dot_impl(h, self.up, group_sizes)  # [B*K, df]
-    h_gate = self.ragged_dot_impl(h, self.gate, group_sizes)
-    h = h_up * self.act_fn(h_gate)  # [B*K, df]
-    h = self.ragged_dot_impl(h, self.down, group_sizes)  # [B*K, dm]
+    if h.device.type == "cuda":
+      h_up = manual_ragged_dot(h, self.up, group_sizes)
+      h_gate = manual_ragged_dot(h, self.gate, group_sizes)
+      h = h_up * self.act_fn(h_gate)
+      h = manual_ragged_dot(h, self.down, group_sizes)
+    else:
+      h_up = self.ragged_dot_impl(h, self.up, group_sizes)  # [B*K, df]
+      h_gate = self.ragged_dot_impl(h, self.gate, group_sizes)
+      h = h_up * self.act_fn(h_gate)  # [B*K, df]
+      h = self.ragged_dot_impl(h, self.down, group_sizes)  # [B*K, dm]
 
     h = h[reverse_sortidx, :].view(batch_fused, self.top_k, hidden_size)
     h = (h * top_k_weights.view(batch_fused, self.top_k, 1)).sum(dim=1)

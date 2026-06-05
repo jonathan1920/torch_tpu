@@ -158,6 +158,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
       ])
   )
   def test_ddp_llama_3_2_1b_train_1_step(self, run_mode):
@@ -190,8 +191,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          # TODO(b/502598781): Re-enable the compiled mode.
-          # benchmark_utils.RunMode.COMPILED,
+          benchmark_utils.RunMode.COMPILED,
       ])
   )
   def test_fsdp_llama_3_2_1b_train_1_step(self, run_mode):
@@ -395,6 +395,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
       ])
   )
   def test_gemma_4_26b_a4b_ragged_moe_12_layers_forward(self, run_mode):
@@ -637,6 +638,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
       ])
   )
   def test_qwen3_coder_30b_a3b_ragged_moe_forward(self, run_mode):
@@ -646,6 +648,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_2X2X1,
+            benchmark_utils.Platform.B200_4,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.QWEN_RAGGED_MOE,
         run_mode=run_mode,
@@ -666,6 +669,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.EAGER_DEFAULT,
           benchmark_utils.RunMode.EAGER_OPTIMIZED,
+          benchmark_utils.RunMode.COMPILED,
       ])
   )
   def test_qwen3_5_397b_a17b_4layer_moe_forward(self, run_mode):
