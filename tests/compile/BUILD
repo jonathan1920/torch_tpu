@@ -28,7 +28,6 @@ exports_files(["data/goldfish.jpg"])
 torch_tpu_py_test(
     name = "backend_serialization_test",
     srcs = ["backend_serialization_test.py"],
-    env = {"ASAN_OPTIONS": "detect_leaks=0"},  # TODO: fix ASAN failure
     tags = [
         "requires-net:external",
         "requires-tpu-v5lite",
