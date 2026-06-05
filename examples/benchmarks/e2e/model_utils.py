@@ -1689,8 +1689,7 @@ def huggingface_diffuser_model_builder(
       model_cpu = module_spec.module_factory().to(weights_dtype)
 
     # Generate inputs on CPU, passing None for shape to use registry defaults
-    # pytype: disable=wrong-arg-count
-    _, example_inputs = module_spec.sample_inputs_factory(None, "cpu")
+    _, example_inputs = module_spec.sample_inputs_factory(None, "cpu")  # pytype: disable=wrong-arg-count
 
     # Move inputs to device and weights_dtype
     device_inputs = {}
