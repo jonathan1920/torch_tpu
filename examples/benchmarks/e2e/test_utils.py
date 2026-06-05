@@ -285,16 +285,24 @@ def generate_run_mode_and_train_configs(
 
 
 def generate_run_mode_configs(
-    run_modes: Sequence[Any],
+    run_modes: Sequence[benchmark_utils.RunMode] = (
+        benchmark_utils.RunMode.EAGER_DEFAULT,
+        benchmark_utils.RunMode.EAGER_OPTIMIZED,
+        benchmark_utils.RunMode.COMPILED,
+    ),
+    exclude_run_modes: Sequence[benchmark_utils.RunMode] | None = None,
 ):
   """Generates test parameters from a list of run modes.
 
   Args:
     run_modes: The run modes to generate test parameters for.
+    exclude_run_modes: Run modes to exclude from generation.
 
   Yields:
     A dictionary containing the test parameters.
   """
+  if exclude_run_modes is not None:
+    run_modes = [rm for rm in run_modes if rm not in exclude_run_modes]
   for run_mode in run_modes:
     yield dict(
         testcase_name=run_mode.value,

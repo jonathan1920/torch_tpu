@@ -59,8 +59,6 @@ _HF_PHI_3_MINI_4K_INSTRUCT_BENCHMARK_NAME = "hf_phi_3_mini_4k_instruct"
 # Note: hf_resnet_50 is from Hugging Face transformers, which differs from timm_resnet_50.
 _HF_RESNET_50_BENCHMARK_NAME = "hf_resnet_50"
 _TIMM_VIT_SMALL_DINO_BENCHMARK_NAME = "timm_vit_small_dino"
-
-_HF_GEMMA_4_31B_12L_BENCHMARK_NAME = "hf_gemma_4_31b_12l"
 _HF_NEMOTRON_3_NANO_30B_BENCHMARK_NAME = "hf_nemotron_3_nano_30b"
 
 class BenchmarkTest(test_utils.BenchmarkTest):
@@ -70,14 +68,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   # 1. Llama Architecture Family
   # ============================================================================
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_llama_3_2_1b_forward(self, run_mode):
     """Tests the forward pass of Llama-3.2-1B."""
     batch_size, sequence_length = (
@@ -104,13 +95,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_llama_3_2_1b_train_1_step(self, run_mode):
     """Tests the training of Llama-3.2-1B."""
 
@@ -359,13 +344,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   # 2. Gemma Architecture Family
   # ============================================================================
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gemma_3_270m_forward(self, run_mode):
     """Tests the forward pass of Gemma-3-270m."""
     if (
@@ -395,13 +374,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_GEMMA_3_270M_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gemma_3_270m_train_1_step(self, run_mode):
     """Tests the training of Gemma-3-270m."""
     # TODO(b/512109815): Reenable after fix.
@@ -516,13 +489,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_GEMMA_2_2B_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gemma_4_31b_6_layers_forward(self, run_mode):
 
     def _modify_gemma4_config_to_small(config):
@@ -551,13 +518,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_GEMMA_4_31B_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gemma_4_31b_6_layers_train_1_step(self, run_mode):
 
     def _modify_gemma4_config_to_small(config):
@@ -589,48 +550,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_GEMMA_4_31B_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
-  def test_gemma_4_31b_12_layers_forward(self, run_mode):
-    """Tests the forward pass of Gemma 4 31B sliced to 12 layers."""
-
-    def modify_config_hook(config):
-      config.num_hidden_layers = 12
-      return config
-
-    config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-        ],
-        benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
-        run_mode=run_mode,
-        is_training=False,
-        model_and_input_args=performance_utils.ModelAndInputArgs(
-            model_name="google/gemma-4-31b",
-            sequence_length=512,
-            batch_size=1,
-            custom_kwargs={"modify_config_hook": modify_config_hook},
-        ),
-        model_and_input_factory=model_utils.huggingface_llm_model_builder,
-        eval_factory=benchmark_function_db.huggingface_eval_factory,
-    )
-    self.run_performance_benchmark_test(
-        config, _HF_GEMMA_4_31B_12L_BENCHMARK_NAME
-    )
-
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gemma_4_e2b_forward(self, run_mode):
     """Tests the forward pass of Gemma-4-E2B."""
     config = performance_utils.PerformanceBenchmarkConfig(
@@ -651,13 +571,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_GEMMA_4_E2B_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gemma_4_e2b_train_1_step(
       self, run_mode: benchmark_utils.RunMode
   ) -> None:
@@ -688,14 +602,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   # 3. Qwen Architecture Family
   # ============================================================================
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_qwen3_1_7b_forward(self, run_mode):
     """Tests the forward pass of Qwen3 1.7B."""
 
@@ -717,14 +624,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_QWEN3_1_7B_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_qwen3_1_7b_train(self, run_mode):
     """Tests the train pass of Qwen3 1.7B."""
 
@@ -941,14 +841,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   # 4. GPT-OSS Architecture Family
   # ============================================================================
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gpt_oss_20b_forward(self, run_mode):
     """Tests the forward pass of GPT-OSS-20B."""
     if self._is_torchax_backend():
@@ -972,14 +865,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_GPT_OSS_20B_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gpt_oss_20b_train(self, run_mode):
     """Tests the train pass of GPT-OSS-20B."""
     # TODO(b/510886286): Reenable after fix.
@@ -1008,13 +894,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_GPT_OSS_20B_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gpt_oss_120b_4_layers_forward(self, run_mode):
     """Tests the forward pass of GPT-OSS-20B."""
     if self._is_torchax_backend():
@@ -1043,13 +923,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_GPT_OSS_120B_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gpt_oss_120b_4_layers_train(self, run_mode):
     """Tests the train pass of GPT-OSS-20B."""
     # TODO(b/510886286): Reenable after fix.
@@ -1130,6 +1004,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_GPT2_BENCHMARK_NAME)
 
+  # ============================================================================
+  # 5. Phi-3 Family
+  # ============================================================================
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
           benchmark_utils.RunMode.COMPILED,
@@ -1182,17 +1059,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
 
   # ============================================================================
-  # 5. TIMM / Vision Models
+  # 6. TIMM / Vision Models
   # ============================================================================
-
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_timm_resnet_50_forward(self, run_mode):
     """Tests the forward pass of resnet-50."""
     config = performance_utils.PerformanceBenchmarkConfig(
@@ -1214,14 +1083,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _TIMM_RESNET_50_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_timm_resnet_50_backward(self, run_mode):
     """Tests the backward pass of resnet-50."""
 
@@ -1338,17 +1200,10 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
 
   # ============================================================================
-  # 6. Wan Diffuser Family
+  # 7. Wan Diffuser Family
   # ============================================================================
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_wan_2_2_ti2v_5b_forward(self, run_mode):
     """Tests the forward pass of Wan-2.2-TI2V-5B."""
     config = performance_utils.PerformanceBenchmarkConfig(
@@ -1369,14 +1224,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _WAN_2_2_TI2V_5B_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_wan_2_2_ti2v_5b_backward(self, run_mode):
     """Tests the backward pass of Wan-2.2-TI2V-5B."""
 
@@ -1400,17 +1248,10 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     self.run_performance_benchmark_test(config, _WAN_2_2_TI2V_5B_BENCHMARK_NAME)
 
   # ============================================================================
-  # 7. Audio / Whisper Models
+  # 8. Audio / Whisper Models
   # ============================================================================
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_whisper_large_v3_forward(self, run_mode):
     """Tests the forward pass of Whisper-Large-v3."""
     config = performance_utils.PerformanceBenchmarkConfig(
@@ -1434,16 +1275,10 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
 
   # ============================================================================
-  # 8. DETR Object Detection Family
+  # 9. DETR Object Detection Family
   # ============================================================================
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_detr_resnet_50_forward(self, run_mode):
     """Tests the forward pass of DETR ResNet-50."""
     if self._is_torchax_backend():
@@ -1466,16 +1301,10 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     self.run_performance_benchmark_test(config, _DETR_RESNET_50_BENCHMARK_NAME)
 
   # ============================================================================
-  # 9. Vision/Video Models
+  # 10. Vision/Video Models
   # ============================================================================
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_vjepa2_vitl_forward(self, run_mode):
     """Tests the forward pass of VJEPA2-ViT-L."""
     if self._is_torchax_backend():
@@ -1498,13 +1327,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_VJEPA2_VITL_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_vjepa2_vitg_forward(self, run_mode):
     """Tests the forward pass of VJEPA2-ViT-G."""
     if self._is_torchax_backend():
@@ -1527,13 +1350,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_VJEPA2_VITG_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_nemotron_3_nano_30b_6_layers_forward(self, run_mode):
     """Tests the forward pass of NVIDIA-Nemotron-3-Nano-30B-A3B-BF16."""
 
