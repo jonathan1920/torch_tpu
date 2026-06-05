@@ -166,10 +166,14 @@ jobs:
           for i in {1..30}; do
             RUN_INFO=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
               "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW_FILE/runs?branch=${{ github.head_ref || github.ref_name }}" \
-              | python3 ci/find_successful_run.py)
+              | python3 ci/find_successful_run.py "$COMMIT_SHA")
             EXIT_CODE=$?
             if [ $EXIT_CODE -eq 2 ]; then
               echo "ERROR: No runs found for this commit. Failing immediately."
+              exit 1
+            fi
+            if [ $EXIT_CODE -eq 3 ]; then
+              echo "ERROR: build_wheel workflow failed for this commit. Failing immediately."
               exit 1
             fi
 

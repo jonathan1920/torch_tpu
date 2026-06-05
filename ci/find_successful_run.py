@@ -15,11 +15,19 @@
 
 """Script to find the latest successful workflow run from GitHub API JSON."""
 
+import argparse
 import json
 import sys
 
 
 def main():
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      "target_sha",
+      help="Enforce matching this head SHA.",
+  )
+  args = parser.parse_args()
+
   try:
     data = json.load(sys.stdin)
   except json.JSONDecodeError:
@@ -30,22 +38,60 @@ def main():
   print(f"Found {len(runs)} runs", file=sys.stderr)
 
   if not runs:
-    print("ERROR: No runs found for this commit.", file=sys.stderr)
+    print("ERROR: No runs found for this branch/workflow.", file=sys.stderr)
     sys.exit(2)
 
+  target_sha = args.target_sha
+  print(f"Filtering runs for head_sha: {target_sha}", file=sys.stderr)
+
+  matched_run_exists = False
+  active_run_exists = False
+  failed_runs = []
+
   for r in runs:
+    run_sha = r.get("head_sha")
+
+    if run_sha != target_sha:
+      continue
+
+    matched_run_exists = True
     print(
         f"Run {r['run_number']} (Attempt {r['run_attempt']}):"
-        f" status={r['status']}, conclusion={r['conclusion']}",
+        f" sha={run_sha[:8] if run_sha else 'None'}, status={r['status']},"
+        f" conclusion={r['conclusion']}",
         file=sys.stderr,
     )
-    if r["status"] == "completed" and r["conclusion"] == "success":
-      # Print to stdout for bash to capture
+
+    if r["status"] != "completed":
+      active_run_exists = True
+      continue
+
+    if r["conclusion"] == "success":
+      # Print to stdout for bash to capture.
       print(f"{r['run_number']} {r['run_attempt']}")
       sys.exit(0)
 
-  print("No successful run found yet.", file=sys.stderr)
-  sys.exit(1)
+    failed_runs.append(r)
+
+  if not matched_run_exists:
+    print(f"No runs found yet matching sha {target_sha}.", file=sys.stderr)
+    sys.exit(4)
+
+  if active_run_exists:
+    print(
+        f"Active runs exist for sha {target_sha}. Keep waiting.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+  # If we got here, all matched runs completed but none succeeded.
+  for r in failed_runs:
+    print(
+        f"ERROR: Build run {r['run_number']} completed with conclusion:"
+        f" {r['conclusion']}",
+        file=sys.stderr,
+    )
+  sys.exit(3)
 
 
 if __name__ == "__main__":
