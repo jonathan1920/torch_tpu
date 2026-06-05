@@ -291,6 +291,7 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:op_dispatcher",
         "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/ops/macros:kernel",
+        "//torch_tpu/ops/resize:resize_aten_kernels",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",

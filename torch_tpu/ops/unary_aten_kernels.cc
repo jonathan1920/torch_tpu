@@ -44,6 +44,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/ops/unary.h"
 
 // A "Simple Unary" op is an Aten op that:
@@ -185,7 +186,7 @@ absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out,
            .out_dims = shape,
            .computation_dtype = options.computation_dtype,
            .op_param_cache_keys = std::move(options.op_param_cache_keys)}));
-  at::native::resize_output(out, shape);
+  TT_RETURN_IF_ERROR(ResizeTensor(out, shape));
   return AssignBufferToAtTensor(std::move(result_buf), out);
 }
 
