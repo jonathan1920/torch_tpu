@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_library", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "if_oss", "torch_tpu_package_end", "torch_tpu_py_library", "torch_tpu_py_test")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -127,8 +127,12 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--print_op_inputs=1",
-        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
-    ],
+    ] + if_oss(
+        # Reduce samples to avoid timeouts in OSS.
+        ["--max_samples_per_op_dtype=16"],
+        # Forge has more resources, allowing a larger sample size.
+        ["--max_samples_per_op_dtype=20"],
+    ),
     main = "ops_test.py",
     nopresubmit_oss = "This slow test is enabled in nightly.",
     shard_count = 50,
@@ -185,8 +189,12 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--compute_grad=True",
-        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
-    ],
+    ] + if_oss(
+        # Reduce samples to avoid timeouts in OSS.
+        ["--max_samples_per_op_dtype=16"],
+        # Forge has more resources, allowing a larger sample size.
+        ["--max_samples_per_op_dtype=20"],
+    ),
     main = "ops_test.py",
     nopresubmit_oss = "This slow test is enabled in nightly.",
     shard_count = 50,
@@ -276,8 +284,12 @@ torch_tpu_py_test(
     srcs = ["ops_test.py"],
     args = [
         "--test_mode=torch_tpu_vs_gpu",
-        "--max_samples_per_op_dtype=20",  # Prevent long test run time.
-    ],
+    ] + if_oss(
+        # Reduce samples to avoid timeouts in OSS.
+        ["--max_samples_per_op_dtype=16"],
+        # Forge has more resources, allowing a larger sample size.
+        ["--max_samples_per_op_dtype=20"],
+    ),
     data = [
         "ops_test_gpu_golden0.gz",
         "ops_test_gpu_golden1.gz",
@@ -353,11 +365,15 @@ torch_tpu_py_test(
     args = [
         # go/keep-sorted start
         "--alsologtostderr",
-        "--max_samples_per_op_dtype=10",
         "--print_op_inputs=2",
         "--test_mode=perf",
         # go/keep-sorted end
-    ],
+    ] + if_oss(
+        # Reduce samples to avoid timeouts in OSS.
+        ["--max_samples_per_op_dtype=8"],
+        # Forge has more resources, allowing a larger sample size.
+        ["--max_samples_per_op_dtype=10"],
+    ),
     main = "ops_test.py",
     nolocal = "slow test",
     nopresubmit_oss = "This slow test is enabled in nightly.",
