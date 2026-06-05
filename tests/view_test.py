@@ -733,6 +733,31 @@ class ResizeTest(LayoutTest):
     self._assert_same_layout(base_cpu, base_tpu)
     utils.assert_close(base_tpu.cpu(), base_cpu)
 
+  def test_resize_view_different_dtype_false_grow(self):
+    x_cpu = torch.randint(0, 100, (7,), dtype=torch.uint32, device="cpu")
+    x_tpu = x_cpu.to(self.tpu_device)
+    y_cpu = x_cpu.view(torch.bool)
+    y_tpu = x_tpu.view(torch.bool)
+
+    y_cpu.resize_(28)
+    y_tpu.resize_(28)
+
+    self._assert_same_layout(y_cpu, y_tpu)
+    utils.assert_close(y_cpu, y_tpu.cpu())
+
+  def test_resize_view_different_dtype_true_grow(self):
+    x_cpu = torch.randint(0, 100, (7,), dtype=torch.uint32, device="cpu")
+    x_tpu = x_cpu.to(self.tpu_device)
+    y_cpu = x_cpu.view(torch.bool)
+    y_tpu = x_tpu.view(torch.bool)
+
+    y_cpu.resize_(29)
+    y_tpu.resize_(29)
+
+    self.assertEqual(y_cpu.size(), y_tpu.size())
+    self.assertEqual(y_cpu.dtype, y_tpu.dtype)
+    utils.assert_close(y_cpu[:28], y_tpu[:28].cpu())
+
 
 class SqueezeTest(LayoutTest):
 

@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <utility>
 
+#include "ATen/ceil_div.h"
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
 #include "absl/log/absl_log.h"
@@ -28,6 +29,7 @@
 #include "c10/util/accumulate.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch/headeronly/core/MemoryFormat.h"
+#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
@@ -40,30 +42,51 @@
 #include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/stride/stride_helper.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
 
 absl::Status ResizeTensor(const at::Tensor& self, c10::IntArrayRef size) {
-  // Validate new size, and determine if this is shrinking or growing.
+  // Validate the requested new size against the tensor's logical dtype.
+  // Then, compare the requested capacity in bytes (implied by the new size and
+  // the self tensor's logical dtype) against the current physical storage
+  // capacity in bytes (implied by the base buffer) to determine if we need
+  // to grow the storage.
   TT_ASSIGN_OR_RETURN(DeviceBufferRef base_buffer_ref, GetBaseBuffer(self));
-  const int64_t old_storage_capacity = base_buffer_ref.num_elements();
-  TT_ASSIGN_OR_RETURN(const auto mlir_dtype,
+  TT_ASSIGN_OR_RETURN(const int64_t old_storage_capacity_bytes,
+                      ValidateTensorByteSize(base_buffer_ref.dimensions(),
+                                             base_buffer_ref.element_type()));
+  TT_ASSIGN_OR_RETURN(const auto self_mlir_dtype,
                       ConvertTo<mlir::ElementType>(self.scalar_type()));
   Dimensions new_size_vec = CopyIntVector(size);
-  TT_RETURN_IF_ERROR(ValidateTensorByteSize(new_size_vec, mlir_dtype));
-  const int64_t new_storage_capacity = c10::multiply_integers(new_size_vec);
+  TT_ASSIGN_OR_RETURN(const int64_t new_storage_capacity_bytes,
+                      ValidateTensorByteSize(new_size_vec, self_mlir_dtype));
 
-  if (new_storage_capacity <= old_storage_capacity) {
+  if (new_storage_capacity_bytes <= old_storage_capacity_bytes) {
     ABSL_VLOG(1) << "[C++ KERNEL AtenResize_] Resize is shrinking or staying "
                     "the same size. Updating layout on existing tensor "
                     "without allocating new storage.";
   } else {
     ABSL_VLOG(1) << "[C++ KERNEL AtenResize_] Resize is growing. Swapping "
                     "tensor storage with a new empty storage.";
-    TT_ASSIGN_OR_RETURN(
-        at::Tensor larger_empty,
-        MakeEmptyTensor(size, self.scalar_type(), self.device()));
+
+    // Since the tensor being resized (self) might be a view with a different
+    // dtype than its physical storage (e.g. a bool view of a uint32 tensor), we
+    // must allocate the new storage using the base buffer's element type
+    // (storage type). This preserves the element type of the shared storage and
+    // avoids type mismatches when copying the existing data from the old
+    // storage to the new one.
+    const int64_t base_element_size_bytes =
+        xla::ShapeUtil::ByteSizeOfPrimitiveType(
+            ConvertTo<xla::PrimitiveType>(base_buffer_ref.element_type()));
+    const int64_t base_elements_needed =
+        at::ceil_div(new_storage_capacity_bytes, base_element_size_bytes);
+    at::ScalarType base_scalar_type =
+        ConvertTo<at::ScalarType>(base_buffer_ref.element_type());
+    TT_ASSIGN_OR_RETURN(at::Tensor larger_empty,
+                        MakeEmptyTensor({base_elements_needed},
+                                        base_scalar_type, self.device()));
 
     // Take a view on the new tensor corresponding to the existing data.
     Strides base_strides =

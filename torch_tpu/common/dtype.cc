@@ -636,15 +636,17 @@ absl::StatusOr<int64_t> ValidateTensorByteSize(at::IntArrayRef size,
       << "], which contains " << JoinBySerialComma(negative_dims);
   TT_ASSIGN_OR_RETURN(const int64_t extent_product, NumElements(size));
   const auto xla_primitive_type = ConvertTo<xla::PrimitiveType>(element_type);
-  TT_RETURN_IF_ERROR(
+  TT_ASSIGN_OR_RETURN(
+      const int64_t byte_size,
       SafeMultiply(extent_product,
-                   xla::ShapeUtil::ByteSizeOfPrimitiveType(xla_primitive_type)))
-          .SetOverride()
-      << "product of dimension sizes [" << absl::StrJoin(size, ", ")
-      << "] and size of " << ToShortString(element_type) << " ("
-      << xla::ShapeUtil::ByteSizeOfPrimitiveType(xla_primitive_type)
-      << " bytes) overflows as int64";
-  return extent_product;
+                   xla::ShapeUtil::ByteSizeOfPrimitiveType(xla_primitive_type)),
+      _.SetOverride() << "product of dimension sizes ["
+                      << absl::StrJoin(size, ", ") << "] and size of "
+                      << ToShortString(element_type) << " ("
+                      << xla::ShapeUtil::ByteSizeOfPrimitiveType(
+                             xla_primitive_type)
+                      << " bytes) overflows as int64");
+  return byte_size;
 }
 
 int64_t TorchEquivalentBitwidth(mlir::ElementType element_type) {
