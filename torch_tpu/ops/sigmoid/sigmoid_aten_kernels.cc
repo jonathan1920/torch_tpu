@@ -71,9 +71,9 @@ absl::StatusOr<mlir::MlirOp> BuildSigmoidBackwardShlo(mlir::MlirOp grad_output,
 
 absl::Status LogSigmoidForward(const at::Tensor& self, at::Tensor& out,
                                at::Tensor& buffer) {
-  TT_RET_CHECK(self.is_floating_point() || self.is_complex(),
-               error::kUnimplemented)
-      << "not implemented for input type " << ToString(self.scalar_type());
+  TT_RET_CHECK(self.is_floating_point(), error::kInvalidArgument)
+      << "expected the input dtype to be floating point, got "
+      << ToString(self.scalar_type());
 
   TT_RETURN_IF_ERROR(ResizeTensor(out, self.sizes()));
   TT_RETURN_IF_ERROR(ResizeTensor(buffer, self.sizes()));
@@ -129,9 +129,9 @@ absl::Status LogSigmoidBackward(const at::Tensor& grad_output,
                                 const at::Tensor& self,
                                 const at::Tensor& buffer,
                                 at::Tensor& grad_input) {
-  TT_RET_CHECK(self.is_floating_point() || self.is_complex(),
-               error::kUnimplemented)
-      << "not implemented for input type '" << ToString(self.scalar_type());
+  TT_RET_CHECK(self.is_floating_point(), error::kInvalidArgument)
+      << "expected the input dtype to be floating point, got "
+      << ToString(self.scalar_type());
 
   TT_RETURN_IF_ERROR(ResizeTensor(grad_input, grad_output.sizes()));
 

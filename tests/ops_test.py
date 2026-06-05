@@ -441,10 +441,6 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.int8: {"rtol": 5.7e-5, "atol": 9.1e-5},
         torch.uint8: {"rtol": 5.7e-5, "atol": 9.1e-5},
     },
-    "log_sigmoid": {
-        torch.float32: {"rtol": 9e-5, "atol": 6e-5},
-        torch.float64: {"rtol": 1e-5, "atol": 1e-5},
-    },
     "log_softmax": {
         torch.bfloat16: {"rtol": 1, "atol": 7.8e-3},
         torch.float16: {"rtol": 5e-1, "atol": 9.8e-4},
@@ -541,6 +537,11 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     "nn.functional.hardswish": {
         torch.bfloat16: {"rtol": 3e-2, "atol": 3.2e-2},
         torch.float16: {"rtol": 9.8e-4, "atol": 4e-3},
+    },
+    "nn.functional.logsigmoid": {
+        torch.bfloat16: {"rtol": 1e-2, "atol": 1e-2},
+        torch.float16: {"rtol": 1e-3, "atol": 1e-3},
+        torch.float32: {"rtol": 3e-4, "atol": 1e-4},
     },
     "nn.functional.mse_loss": {
         torch.bfloat16: {"rtol": 7e-3, "atol": 3e-1},
@@ -3057,11 +3058,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_log_sigmoid(self):
-    self.do_test_op(
-        "log_sigmoid",
-        # TODO: bounded dynamism support is flaky for log_sigmoid.
-        check_dynamism=False,
-    )
+    self.do_test_op("nn.functional.logsigmoid")
 
   def test_log_softmax(self):
     self.do_test_op(

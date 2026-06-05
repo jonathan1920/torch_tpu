@@ -6131,6 +6131,26 @@ Supported combinations for non-constant padding:
     ):
       torch.linalg.qr(input_tensor, mode="invalid")
 
+  def test_log_sigmoid_invalid_bool_dtype(self):
+    t = torch.ones(4, device=et.device(), dtype=torch.bool)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""log_sigmoid_forward(): expected the input dtype to be floating point, got bool""",
+        cpu=""""log_sigmoid_cpu" not implemented for 'Bool'""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.log_sigmoid(t)
+
+  def test_log_sigmoid_invalid_complex_dtype(self):
+    t = torch.ones(4, device=et.device(), dtype=torch.complex64)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""log_sigmoid_forward(): expected the input dtype to be floating point, got complex64""",
+        cpu=""""log_sigmoid_cpu" not implemented for 'ComplexFloat'""",
+        message_reviewed_by="wan",
+    ):
+      torch.ops.aten.log_sigmoid(t)
+
   def test_scaled_mm_non_2d_self(self):
     """Tests that scaled_mm fails if self is not 2D."""
     device = et.device()
