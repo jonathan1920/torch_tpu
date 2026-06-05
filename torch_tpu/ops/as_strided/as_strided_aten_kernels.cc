@@ -47,7 +47,8 @@ absl::StatusOr<at::Tensor> AsStrided(const at::Tensor& self,
                                      c10::IntArrayRef size,
                                      c10::IntArrayRef stride,
                                      int64_t storage_offset) {
-  TT_RET_CHECK(self.defined(), error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE==PyTorch catches this error first.
+      self.defined(), error::kInvalidArgument)
       << "the input tensor cannot be undefined";
   TT_ASSIGN_OR_RETURN(DeviceBufferRef base_buffer_ref,
                       GetBaseBuffer(*self.unsafeGetTensorImpl()));
