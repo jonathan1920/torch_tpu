@@ -30,7 +30,6 @@ from scipy import stats
 import torch
 from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
-from torch_tpu._internal.utils import hardware
 from torch_tpu._internal.utils import utils
 from tests import op_testing
 from tests import ops_test_data
@@ -7015,13 +7014,6 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   )
   def test_scaled_dot_product_attention(self, config: ops_test_data.SdpaConfig):
     """Tests torch.nn.functional.scaled_dot_product_attention."""
-    # TODO: b/519295711 - Re-enable on v6e once causal gradient leakage is
-    # fixed.
-    if (
-        config.is_causal
-        and hardware.get_tpu_version() == hardware.TpuVersion.V6E
-    ):
-      self.skipTest("Causal gradient leakage on v6e")
     torch.manual_seed(5432)
     q = torch.randn(
         config.batch_size,
