@@ -24,7 +24,6 @@
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/Generator.h"
 #include "absl/status/statusor.h"
-#include "c10/core/ScalarType.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -47,7 +46,7 @@
 namespace torch_tpu {
 namespace {
 
-absl::StatusOr<MlirOpResults<1>> BuildExponentialShlo(
+absl::StatusOr<MlirOpResults<2>> BuildExponentialShlo(
     mlir::MlirOp rng_input_state, mlir::MlirOp lambd_op,
     const llvm::ArrayRef<int64_t> sizes, const mlir::ElementType mlir_type) {
   // Generate uniform distribution in [0, 1).
@@ -55,7 +54,8 @@ absl::StatusOr<MlirOpResults<1>> BuildExponentialShlo(
       auto uniform_results,
       BuildUniformShlo(rng_input_state, 0.0, 1.0, sizes, mlir_type));
 
-  mlir::MlirOp u = uniform_results;
+  mlir::MlirOp rng_output_state = uniform_results[0];
+  mlir::MlirOp u = uniform_results[1];
   auto& builder = u.getBuilder();
 
   // exponential = -ln(1 - U) / lambda
@@ -75,10 +75,10 @@ absl::StatusOr<MlirOpResults<1>> BuildExponentialShlo(
   auto neg_log = mlir::stablehlo::Neg(log_one_minus_u);
   auto result = mlir::stablehlo::Div(neg_log, lambd_bcast);
 
-  return result;
+  return {{rng_output_state, result}};
 }
 
-NAryMlirOpBuilder<2, 1> GetExponentialFunctional(
+NAryMlirOpBuilder<2, 2> GetExponentialFunctional(
     Dimensions dims, mlir::ElementType output_dtype) {
   return [dims, output_dtype](FixedSizeSpan<mlir::MlirOp, 2> inputs) {
     auto [rng_input_state_op, lambd_op] = inputs;
@@ -109,19 +109,15 @@ at::Tensor& AtenExponential_(at::Tensor& self, double lambd,
         TT_ASSIGN_OR_THROW(at::Tensor lambd_tensor,
                            promoted_lambd.GetTensor(self.scalar_type()));
 
-        TT_THROW_IF_ERROR(DispatchRngOp(
-            self, generator,
-            [&](at::Tensor rng_input_state)
-                -> absl::StatusOr<std::vector<DeviceBufferRef>> {
-              TT_ASSIGN_OR_RETURN(
-                  auto buf, (DispatchOp<2, 1>(
-                                GetExponentialFunctional(dims, output_dtype),
-                                {rng_input_state, lambd_tensor},
-                                {.out_dtype = output_dtype,
-                                 .out_dims = self.sizes(),
-                                 .op_param_cache_keys = std::move(param_keys),
-                                 .split_mode = OpSplitMode::kSplitAfter})));
-              return std::vector<DeviceBufferRef>{std::move(buf)};
+        TT_THROW_IF_ERROR(
+            DispatchRngOp(self, generator, [&](at::Tensor rng_input_state) {
+              return DispatchOp<2, 2>(
+                  GetExponentialFunctional(dims, output_dtype),
+                  {rng_input_state, lambd_tensor},
+                  {.out_dtypes = {mlir::ElementType::UI64, output_dtype},
+                   .out_dims_list = {{2}, self.sizes()},
+                   .op_param_cache_keys = std::move(param_keys),
+                   .split_mode = OpSplitMode::kSplitAfter});
             }));
         return self;
       });
