@@ -254,18 +254,16 @@ TEST(OpParamCacheKeys, SetParamBool) {
   EXPECT_THAT(params2_or.value(), ElementsAre(Pair("bar", "f")));
 }
 
-void Kernel1(at::Device x, at::Device y) {
+void Kernel1(int x, int y) {
   TT_KERNEL(OpName::kAdd, param_keys, (IgnoreInCacheKey(x, "testing"), y), {
     // x should be ignored in the cache keys, so only y should be there.
-    EXPECT_THAT(param_keys, ElementsAre(Pair("y", "cpu")));
+    EXPECT_THAT(param_keys, ElementsAre(Pair("y", "42")));
   });
 }
 
 // Verifies that TT_KERNEL() ignores the arguments marked by
 // IgnoreInCacheKey() in the cache key.
-TEST(OpParamCacheKeys, TtKernelIgnored) {
-  Kernel1(at::Device("cuda:1"), at::Device("cpu"));
-}
+TEST(OpParamCacheKeys, TtKernelIgnored) { Kernel1(9, 42); }
 
 TEST(OpParamCacheKeys, SetParamString) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", "a,bar=b");
