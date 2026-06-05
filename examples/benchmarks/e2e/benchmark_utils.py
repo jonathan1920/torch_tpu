@@ -361,26 +361,38 @@ class XprofContext:
     name: A name for the xprof session, used in logging.
     enable_xprof: Whether to enable xprof profiling. If False, the context
       manager does nothing.
+    trace_only_host: Whether to trace only the host.
     session: The xprof_session.XprofSession object if xprof is enabled,
       otherwise None.
     session_id: The ID of the xprof session after it has ended, if xprof was
       enabled. Otherwise None.
   """
 
-  def __init__(self, name: str, enable_xprof: bool):
+  def __init__(
+      self, name: str, enable_xprof: bool, trace_only_host: bool = False
+  ):
     self.name = name
     self.enable_xprof = enable_xprof
+    self.trace_only_host = trace_only_host
     self.session = None
     self.session_id = None
 
   def __enter__(self):
     if self.enable_xprof:
       self.session = xprof_session.XprofSession()
+      kwargs = {}
+      host_trace_level = 3
+      enable_python_tracer = True
+      if self.trace_only_host:
+        kwargs["trace_mode"] = "TRACE_ONLY_HOST"
+        host_trace_level = 1
+        enable_python_tracer = False
       self.session.start_session(
-          host_trace_level=3,
-          enable_python_tracer=True,
+          host_trace_level=host_trace_level,
+          enable_python_tracer=enable_python_tracer,
           host_cpu_profile=True,
           response_max_bytes=_PROFILE_MAX_BYTES,
+          **kwargs,
       )
     return self
 
@@ -513,7 +525,9 @@ def _warmup_run(
 
   is_sequence = isinstance(example_inputs, list) and len(example_inputs) > 0
 
-  with XprofContext("warmup_run", enable_xprof) as warmup_run_context:
+  with XprofContext(
+      "warmup_run", enable_xprof, trace_only_host=True
+  ) as warmup_run_context:
     for step in range(MAX_WARMUP_STEPS.value):
       with traceme.TraceMe("Warmup", step_num=step):
         step_input = example_inputs[step] if is_sequence else example_inputs

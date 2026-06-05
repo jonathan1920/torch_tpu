@@ -413,7 +413,7 @@ torch_tpu_py_test(
     main = "layer_performance_benchmarks.py",
     notap = "Tested on guitar workflow.",
     notest_oss = "Disabled during switch from opt-in to opt-out",
-    platform = "//buildenv/platforms/forge/gpu/gb200",
+    platform = "//buildenv/platforms/forge/gpu/b200_full",
     shard_count = 2,
     strict = True,
     tags = [
@@ -500,7 +500,7 @@ torch_tpu_py_test(
 
 torch_tpu_py_test(
     name = "model_benchmark_cuda_tests",
-    timeout = "long",
+    timeout = "eternal",
     srcs = ["model_performance_benchmarks.py"],
     args = ["--platform=b200_1"],
     # go/cppdebugflags#increasing-your-size-limits
@@ -510,7 +510,7 @@ torch_tpu_py_test(
     main = "model_performance_benchmarks.py",
     notap = "Frequently causes Forge OOM.",
     notest_oss = "Disabled during switch from opt-in to opt-out",
-    platform = "//buildenv/platforms/forge/gpu/gb200",
+    platform = "//buildenv/platforms/forge/gpu/b200_full",
     shard_count = 2,
     tags = [
         "cpu:4",  # For CUDA, the only choices are 1 or 4.
