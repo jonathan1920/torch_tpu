@@ -174,6 +174,40 @@ _PERF_DIR: Final[flags.FlagHolder[str]] = flags.DEFINE_string(
     "non-empty string in the perf mode.",
 )
 
+# Example of how to use --base_perf_dir to study the impact of a change on op
+# performance:
+_COMPARISON_TO_BASE_EXAMPLE: Final[str] = r"""
+# Gather baseline results (i.e., without change). The results will be stored in
+# an output directory with the current timestamp. See op_perf.py for more
+# details.
+op_perf.py -- --num_runs_per_subtest=20
+
+# Make changes to test.
+
+# Gather current results (i.e., with change). The results will be stored in a
+# similar directory with a more recent timestamp.
+op_perf.py -- --num_runs_per_subtest=20
+
+# Note the directories where the results were stored for each run. See the logic
+# creating the perf_dir directory paths in op_perf.py.
+
+# Run the comparison analysis.
+blaze test -c opt --test_arg=--base_perf_dir=/path/to/first/perf_dir  \
+                  --test_arg=--perf_dir=/path/to/second/perf_dir      \
+                  --test_arg=--analyze                                \
+                  --test_arg=--opt_level=""                           \
+                  torch_tpu/tests:ops_test_perf
+"""
+
+_BASE_PERF_DIR: Final[flags.FlagHolder[str]] = flags.DEFINE_string(
+    "base_perf_dir",
+    "",
+    "Directory where the baseline performance results are stored (i.e., the"
+    " --perf_dir from a prior run). Only relevant when using `--analyze`. If"
+    " specified, the analysis will include a comparison of the results in"
+    " `--perf_dir` to the results in this directory.",
+)
+
 _NUM_RUNS_PER_SUBTEST: Final[flags.FlagHolder[int]] = flags.DEFINE_integer(
     "num_runs_per_subtest",
     1,
@@ -314,6 +348,10 @@ def all_xla_supported_dtypes() -> Sequence[torch.dtype]:
 
 # The number of slowest ops to print for each dtype.
 _TOP_N_SLOWEST_OPS: Final[int] = 100
+
+# The glob pattern matching data files in the performance result output
+# directories.
+_PERF_DATA_GLOB_PATTERN: Final[str] = "perf_data*.txt"
 
 # Match a line in the perf result file. A perf result line looks like this:
 #   test shard 3, sample 5: add float32 [add_float32_subtest0] 0.05ms
@@ -503,10 +541,8 @@ def _analyze_perf_data() -> None:
   if test_shard != 0:
     return
 
-  # Find all the perf data files in the output directory.
-  perf_data_files = output_dir.glob("perf_data*.txt")
-
   # Parse the perf data files.
+  perf_data_files = output_dir.glob(_PERF_DATA_GLOB_PATTERN)
   perf_results = []
   for file in perf_data_files:
     print(f"Parsing perf data file {file}", flush=True)
@@ -514,30 +550,55 @@ def _analyze_perf_data() -> None:
         [PerfResult.parse(line) for line in file.read_text().splitlines()]
     )
 
+  # Parse the perf data from the baseline directory, if provided.
+  base_perf_results = []
+  if _BASE_PERF_DIR.value:
+    base_perf_dir = epath.Path(_BASE_PERF_DIR.value)
+    base_perf_data_files = base_perf_dir.glob(_PERF_DATA_GLOB_PATTERN)
+    for file in base_perf_data_files:
+      print(f"Parsing base perf data file {file}", flush=True)
+      base_perf_results.extend(
+          [PerfResult.parse(line) for line in file.read_text().splitlines()]
+      )
+
   def _analyze(dtype: torch.dtype) -> None:
     """Analyzes the perf data for a given dtype."""
 
     results = [r for r in perf_results if r.dtype == dtype]
+    base_results = [r for r in base_perf_results if r.dtype == dtype]
     if not results:
       # The dtype is not tested.
       return
-    num = len(results)
-    print(80 * "-", flush=True)
-    print(f"Perf stats from {num} samples for dtype {dtype}.", flush=True)
-    durations = [r.duration_sec for r in results]
-    sorted_durations_ms = sorted(1000 * d for d in durations)
-    print(
-        f"""\
+
+    def print_stats(results: list[PerfResult], label: str):
+      """Prints perf stats for a list of results."""
+      if not results:
+        return
+      num = len(results)
+      print(80 * "-", flush=True)
+      print(
+          f"{label} perf stats from {num} samples for dtype {dtype}.",
+          flush=True,
+      )
+      durations = [r.duration_sec for r in results]
+      sorted_durations_ms = sorted(1000 * d for d in durations)
+      stddev = statistics.stdev(sorted_durations_ms) if num > 1 else 0.0
+      print(
+          f"""\
 Min: {min(results)}
 Max: {max(results)}
-Stddev: {statistics.stdev(sorted_durations_ms):.2f}ms
+Stddev: {stddev:.2f}ms
 Mean: {sum(sorted_durations_ms)/num:.2f}ms
 Median: {sorted_durations_ms[num//2]:.2f}ms
 P90: {sorted_durations_ms[90*num//100]:.2f}ms
 P95: {sorted_durations_ms[95*num//100]:.2f}ms
 P99: {sorted_durations_ms[99*num//100]:.2f}ms""",
-        flush=True,
-    )
+          flush=True,
+      )
+
+    if base_results:
+      print_stats(base_results, "Baseline")
+    print_stats(results, "Current")
 
     # For each op, find the slowest sample. Print the slowest ops.
     op_to_results = collections.defaultdict(list)
@@ -548,10 +609,55 @@ P99: {sorted_durations_ms[99*num//100]:.2f}ms""",
         for op, results in op_to_results.items()
     }
     sorted_result_desc = sorted(op_to_slowest_result.values(), reverse=True)
-    print(f"Top {_TOP_N_SLOWEST_OPS} slowest ops:", flush=True)
+    print(
+        f"Top {_TOP_N_SLOWEST_OPS} slowest ops for the current run:", flush=True
+    )
     for r in sorted_result_desc[:_TOP_N_SLOWEST_OPS]:
       print(r, flush=True)
     print(flush=True)
+
+    multiple_runs = False
+    durations_by_subtest = collections.defaultdict(list)
+    for r in results:
+      durations_by_subtest[r.subtest_name].append(r.duration_sec * 1000)
+      if len(durations_by_subtest[r.subtest_name]) > 1:
+        multiple_runs = True
+
+    base_durations_by_subtest = collections.defaultdict(list)
+    if base_results:
+      for r in base_results:
+        base_durations_by_subtest[r.subtest_name].append(r.duration_sec * 1000)
+
+    if multiple_runs:
+      print(f"Stats for each test (dtype {dtype}):", flush=True)
+      factors = []
+      for subtest_name in sorted(durations_by_subtest.keys()):
+        durations_ms = durations_by_subtest[subtest_name]
+        n = len(durations_ms)
+        mean = statistics.mean(durations_ms)
+        median = statistics.median(durations_ms)
+        stdev = statistics.stdev(durations_ms) if n > 1 else 0.0
+        print(
+            f" Subtest: {subtest_name}, Count: {n}\n  Mean: {mean:.2f}ms, Min:"
+            f" {min(durations_ms):.2f}ms, Max: {max(durations_ms):.2f}ms,"
+            f" Median: {median:.2f}ms, Stddev: {stdev:.2f}ms",
+            flush=True,
+        )
+        if (
+            base_durations_by_subtest
+            and subtest_name in base_durations_by_subtest
+        ):
+          base_mean = statistics.mean(base_durations_by_subtest[subtest_name])
+          if base_mean > 0:
+            factors.append(mean / base_mean)
+      if factors:
+        geomean_factor = statistics.geometric_mean(factors)
+        print("")
+        print(
+            f"Current mean duration is {geomean_factor:.4f}x of the baseline"
+            " (geomean over all tests).",
+            flush=True,
+        )
 
   for dtype in NUMERIC_DTYPES:
     _analyze(dtype)
