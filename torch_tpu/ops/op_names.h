@@ -142,6 +142,7 @@ enum class OpName {
   kCustomKernel,
   kDetach,
   kDetach_,
+  kDigammaOut,
   kDistributedAllGather,
   kDistributedAllGatherIntoTensor,
   kDistributedAllReduce,

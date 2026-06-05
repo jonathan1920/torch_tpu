@@ -56,6 +56,7 @@
 #include "torch_tpu/ops/cummin/cummin_aten_kernels.h"
 #include "torch_tpu/ops/cumprod/cumprod_aten_kernels.h"
 #include "torch_tpu/ops/cumsum/cumsum_aten_kernels.h"
+#include "torch_tpu/ops/digamma/digamma_aten_kernels.h"
 #include "torch_tpu/ops/distance/dist_aten_kernels.h"
 #include "torch_tpu/ops/dot/dot_aten_kernels.h"
 #include "torch_tpu/ops/dot/vdot_aten_kernels.h"
@@ -295,6 +296,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   Impl(m, OpName::kCumminHelper, AtenCumminHelper);
   Impl(m, OpName::kCumprodOut, AtenCumprodOut);
   Impl(m, OpName::kCumsumOut, AtenCumsumOut);
+  Impl(m, OpName::kDigammaOut, AtenDigammaOut);
   Impl(m, OpName::kDivOut, AtenDivOut);
   Impl(m, OpName::kDivOutMode, AtenDivOutMode);
   Impl(m, OpName::kDot, AtenDot);

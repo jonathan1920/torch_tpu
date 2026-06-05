@@ -257,6 +257,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "detach";
     case OpName::kDetach_:
       return "detach_";
+    case OpName::kDigammaOut:
+      return "digamma.out";
     case OpName::kDistributedAllGather:
       return "distributed.all_gather";
     case OpName::kDistributedAllGatherIntoTensor:

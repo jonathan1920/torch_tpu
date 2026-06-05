@@ -2001,6 +2001,15 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
     ):
       torch.trunc(t)
 
+  def test_digamma_unsupported_complex(self):
+    t = torch.tensor([1 + 1j], device=et.device(), dtype=torch.complex64)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""digamma(): expected the input dtype not to be complex, got complex64""",
+        cpu=""""digamma" not implemented for 'ComplexFloat'""",
+    ):
+      torch.digamma(t)
+
   @parameterized.named_parameters(
       ("bool", torch.bool, "bool", "Bool"),
       ("int64", torch.int64, "int64", "Long"),

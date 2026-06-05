@@ -354,6 +354,14 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.bfloat16: {"rtol": 1.1e-1, "atol": 1.6e-2},
         torch.float16: {"rtol": 1.5e-2, "atol": 4.9e-3},
     },
+    "digamma": {
+        torch.uint8: {"rtol": 3.9e-5, "atol": 4.9e-5},
+        torch.int8: {"rtol": 3.9e-5, "atol": 4.9e-5},
+        torch.int16: {"rtol": 3.9e-5, "atol": 4.9e-5},
+        torch.int32: {"rtol": 3.9e-5, "atol": 4.9e-5},
+        torch.int64: {"rtol": 3.9e-5, "atol": 4.9e-5},
+        torch.float32: {"rtol": 4.7e-5, "atol": 6.1e-5},
+    },
     "erfinv": {
         torch.float32: {"rtol": 1.5e-5, "atol": 2e-5},
     },
@@ -2212,6 +2220,13 @@ class TestOps(TorchTpuTestBase):
 
   def test_diagonal(self):
     self.do_test_op("diagonal")
+
+  def test_digamma(self):
+    self.do_test_op(
+        "digamma",
+        # TODO: fix the error that polygamma.out is unimplemented.
+        check_grad=False,
+    )
 
   def test_div(self):
     self.do_test_op(
