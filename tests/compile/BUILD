@@ -217,6 +217,7 @@ torch_tpu_py_test(
         "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
         "//shims/minipyspy:minipyspy_enable",
+        "//shims/torch:pytorch",  # buildcleaner: keep
         "//shims/torch:tensorboard_support",  # buildcleaner: keep
         "//torch_tpu",
     ],

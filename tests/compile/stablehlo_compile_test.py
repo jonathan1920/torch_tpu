@@ -14,8 +14,8 @@
 
 from absl import flags
 from absl.testing import absltest
+import torch  # pylint: disable=unused-import
 from tests.compile import stablehlo_compile_testing as sct
-
 
 _ITERATIONS = flags.DEFINE_integer(
     "iterations", 1, "Number of dependent operations in the generated chain."
