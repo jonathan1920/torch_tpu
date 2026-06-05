@@ -15,6 +15,7 @@
 """Utility functions for benchmarks."""
 
 import dataclasses
+import errno
 import os
 import queue
 import sys
@@ -24,6 +25,7 @@ from absl import flags
 from absl import logging
 from absl.testing import parameterized
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import model_utils
 from examples.benchmarks.e2e import performance_utils
 
@@ -34,6 +36,16 @@ USE_SUBPROCESS = flags.DEFINE_bool(
     False,
     "Whether to run each benchmark in a separate subprocess for isolation.",
 )
+
+_DRY_RUN = flags.DEFINE_bool(
+    "dry_run",
+    False,
+    "Whether to run in dry-run mode. If True, actual benchmark execution is"
+    " skipped, and the list of targets that would have run are logged and"
+    " written to the test outputs directory specified by environment variable"
+    " TEST_UNDECLARED_OUTPUTS_DIR.",
+)
+_DRY_RUN_OUTPUT_FILE = "mlcompass_test_targets.txt"
 
 # CUDA only has EAGER and COMPILED run modes. Other run modes are applicable to
 # TPU only.
@@ -50,6 +62,42 @@ def get_base_test_name(
   if not microbenchmark_name:
     return test_method_name
   return test_method_name.removesuffix(f"_{microbenchmark_name}")
+
+
+def _get_output_dir(key: str) -> str:
+  try:
+    return os.environ[key]
+  except KeyError:
+    raise RuntimeError(
+        f"Output directory not set using environment variable {key}"
+    )
+
+
+def _dry_run_test(
+    platform: benchmark_utils.Platform,
+    base_test_name: str,
+    benchmark_name: str,
+) -> None:
+  """Logs and writes dry run test details to a text file."""
+  logging.info(
+      "[DRY RUN]: Would have run benchmark with name %s and test method"
+      " name %s",
+      benchmark_name,
+      base_test_name,
+  )
+  output_dir = _get_output_dir("TEST_UNDECLARED_OUTPUTS_DIR")
+  txt_path = os.path.join(output_dir, _DRY_RUN_OUTPUT_FILE)
+  try:
+    os.makedirs(os.path.dirname(txt_path))
+  except OSError as ex:
+    if ex.errno != errno.EEXIST:
+      raise
+  with open(txt_path, mode="a", encoding="utf-8") as f:
+    mlcompass_test_name = mlcompass_utils.get_mlcompass_test_name(
+        platform, base_test_name, benchmark_name
+    )
+    f.write(mlcompass_test_name + "\n")
+    print(f"[DRY RUN] mlcompass test name: {mlcompass_test_name}", flush=True)
 
 
 def _run_benchmark_redirected(q: queue.Queue, **kwargs):
@@ -165,6 +213,15 @@ class BenchmarkTest(parameterized.TestCase):
     base_test_name = get_base_test_name(
         self._testMethodName, microbenchmark_name
     )
+    benchmark_name = (
+        f"{benchmark_name}_torchax"
+        if self._is_torchax_backend()
+        else benchmark_name
+    )
+
+    if _DRY_RUN.value:
+      _dry_run_test(platform, base_test_name, benchmark_name)
+      return
 
     if self._is_torchax_backend():
       # Import TorchAX specific libraries only if the backend is TorchAX otherwise we
@@ -174,7 +231,7 @@ class BenchmarkTest(parameterized.TestCase):
       torchax_perf_utils.run_benchmark(
           config=config,
           test_method_name=base_test_name,
-          benchmark_name=f"{benchmark_name}_torchax",
+          benchmark_name=benchmark_name,
           microbenchmark_name=microbenchmark_name,
       )
       return

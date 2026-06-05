@@ -101,6 +101,7 @@ torch_tpu_py_library(
     srcs = ["test_utils.py"],
     deps = [
         ":benchmark_utils",
+        ":mlcompass_utils",
         ":model_utils",
         ":performance_utils",
         "//examples/benchmarks/e2e/torchax:performance_utils",

@@ -28,6 +28,15 @@ log_utils.log_to_stderr()
 TEAM_NAME = "torch_tpu"
 
 
+def get_mlcompass_test_name(
+    platform: benchmark_utils.Platform,
+    test_method_name: str,
+    benchmark_name: str,
+) -> str:
+  """Constructs a MLCompass test target name."""
+  return f"{TEAM_NAME}/{platform.value}/{test_method_name}/{benchmark_name}"
+
+
 # TODO(b/470090396): Export to MLCompass for quality benchmarking as well.
 def export_to_mlcompass(
     platform: benchmark_utils.Platform,
@@ -80,8 +89,8 @@ def export_to_mlcompass(
   # what the names should be.
   metric_map = metrics.metric_map() if metrics is not None else {}
   wall_time = metrics.e2e_wall_time_seconds if metrics is not None else None
-  test_name = (
-      f"{TEAM_NAME}/{platform.value}/{test_method_name}/{benchmark_name}"
+  test_name = get_mlcompass_test_name(
+      platform, test_method_name, benchmark_name
   )
 
   mlcompass_run_tags = None
