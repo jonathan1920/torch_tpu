@@ -347,13 +347,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gemma_3_270m_forward(self, run_mode):
     """Tests the forward pass of Gemma-3-270m."""
-    if (
-        not self._is_torchax_backend()
-        and run_mode == benchmark_utils.RunMode.COMPILED
-        and benchmark_utils.PLATFORM_DEVICE_MAP[benchmark_utils.PLATFORM.value]
-        != "cuda"
-    ):
-      self.skipTest("Compiled mode fails on view() for torch_tpu.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
@@ -377,15 +370,6 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_gemma_3_270m_train_1_step(self, run_mode):
     """Tests the training of Gemma-3-270m."""
-    # TODO(b/512109815): Reenable after fix.
-    if (
-        not self._is_torchax_backend()
-        and run_mode == benchmark_utils.RunMode.COMPILED
-        and benchmark_utils.PLATFORM_DEVICE_MAP[benchmark_utils.PLATFORM.value]
-        != "cuda"
-    ):
-      self.skipTest("Compiled mode fails on view() for torch_tpu.")
-
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_1X1X1,
