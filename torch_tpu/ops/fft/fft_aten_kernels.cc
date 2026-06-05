@@ -55,13 +55,6 @@
 namespace torch_tpu {
 namespace {
 
-void ResizeOutputIfNeeded(const at::Tensor& out,
-                          at::IntArrayRef expected_size) {
-  if (out.sizes() != expected_size) {
-    AtenResize_(out, expected_size, std::nullopt);
-  }
-}
-
 // FftNormalization encapsulates PyTorch's three FFT scaling modes.
 // PyTorch maps string options to integer modes:
 // - "backward" -> 0: No scaling in forward transform,
@@ -547,7 +540,7 @@ at::Tensor& AtenFftC2cOut(const at::Tensor& self, at::IntArrayRef dim,
         // supports bounded dynamic values.
         TT_THROW_IF_ERROR(FFTCheckStaticShape(self, "input"));
 
-        ResizeOutputIfNeeded(out, self.sizes());
+        TT_THROW_IF_ERROR(ResizeTensor(out, self.sizes()));
 
         TT_ASSIGN_OR_THROW(auto normalized_dims, GetNormalizedDims(self, dim));
 
@@ -639,7 +632,7 @@ at::Tensor& AtenFftC2rOut(const at::Tensor& self, at::IntArrayRef dim,
         const int64_t last_dim = normalized_dims.back();
         out_sizes[last_dim] = last_dim_size;
 
-        ResizeOutputIfNeeded(out, out_sizes);
+        TT_THROW_IF_ERROR(ResizeTensor(out, out_sizes));
 
         TT_ASSIGN_OR_THROW(const auto output_dtype,
                            ConvertTo<mlir::ElementType>(out.scalar_type()));
