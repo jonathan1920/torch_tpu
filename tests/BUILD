@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "if_oss", "torch_tpu_package_end", "torch_tpu_py_library", "torch_tpu_py_test")
+load(
+    "//build_files:build_defs.bzl",
+    "if_oss",
+    "torch_tpu_package_end",
+    "torch_tpu_py_library",
+    "torch_tpu_py_test",
+)
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -1260,6 +1266,32 @@ torch_tpu_py_test(
         "//torch_tpu",
         "//torch_tpu/_internal/batch_transfer",
         "//torch_tpu/_internal/utils",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "native_functions_data",
+    testonly = True,
+    srcs = ["native_functions_data.py"],
+    visibility = ["//:__subpackages__"],
+)
+
+torch_tpu_py_test(
+    name = "native_functions_test",
+    srcs = ["native_functions_test.py"],
+    data = if_oss(
+        [],
+        ["//shims/torch:aten/src/ATen/RegistrationDeclarations.h"],
+    ),
+    deps = [
+        ":native_functions_data",
+        "//shims/absl_py:app",
+        "//shims/absl_py/flags",
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/eager:tpu_aten_kernels",
+        "@rules_python//python/runfiles",  # build_cleaner: keep
     ],
 )
 
