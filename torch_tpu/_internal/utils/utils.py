@@ -129,7 +129,7 @@ def assert_close(
   if not check_dtype:
     promoted_dtype = torch.promote_types(actual.dtype, expected.dtype)
     actual = actual.to(promoted_dtype)
-    expected = actual.to(promoted_dtype)
+    expected = expected.to(promoted_dtype)
 
   actual_is_seq = isinstance(
       actual, collections.abc.Sequence

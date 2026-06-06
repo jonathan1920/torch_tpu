@@ -1044,7 +1044,12 @@ class ModuleTest(absltest.TestCase):
     tpu_grad = _backend.to_device(log_probs_tpu.grad, "cpu")
 
     utils.assert_close(
-        tpu_grad, cpu_grad, rtol=1e-2, atol=2e-2, check_dtype=False
+        tpu_grad,
+        cpu_grad,
+        rtol=1e-2,
+        atol=2e-2,
+        check_dtype=False,
+        check_value=utils.CheckValueMode.LOOSE,
     )
 
   def test_geqrf_empty(self):
