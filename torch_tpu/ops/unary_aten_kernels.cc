@@ -186,7 +186,7 @@ absl::Status UnaryOpOut(const at::Tensor& self, at::Tensor& out,
            .out_dims = shape,
            .computation_dtype = options.computation_dtype,
            .op_param_cache_keys = std::move(options.op_param_cache_keys)}));
-  TT_RETURN_IF_ERROR(ResizeTensor(out, shape));
+  TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(out, shape));
   return AssignBufferToAtTensor(std::move(result_buf), out);
 }
 

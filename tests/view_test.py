@@ -676,6 +676,43 @@ class ResizeTest(LayoutTest):
         lambda tensor: tensor.resize_(99),
     )
 
+  def test_resize_non_contiguous_non_view(self):
+    def _test_fn(device):
+      a = torch.empty_strided((2, 3), (1, 2), device=device)
+      a.resize_(6)
+      return a
+
+    self._assert_same_layout_tpu_vs_cpu(_test_fn)
+
+  def test_resize_non_contiguous_view(self):
+    # Test with transpose view (size 6, storage 6)
+    # Resize to 7 (requires storage resize)
+    a_cpu = torch.randn(2, 3, device="cpu")
+    b_cpu = a_cpu.t()
+    b_cpu.resize_(7)
+
+    a_tpu = a_cpu.to(self.tpu_device)
+    b_tpu = a_tpu.t()
+    b_tpu.resize_(7)
+
+    self._assert_same_layout(b_cpu, b_tpu)
+    self._assert_same_layout(a_cpu, a_tpu)
+    utils.assert_close(b_tpu.cpu()[:6], b_cpu[:6])
+
+    # Test with slice view (size 5, storage 10)
+    # Resize to 11 (requires storage resize)
+    x_cpu = torch.randn(10, device="cpu")
+    y_cpu = x_cpu[::2]
+    y_cpu.resize_(11)
+
+    x_tpu = x_cpu.to(self.tpu_device)
+    y_tpu = x_tpu[::2]
+    y_tpu.resize_(11)
+
+    self._assert_same_layout(y_cpu, y_tpu)
+    self._assert_same_layout(x_cpu, x_tpu)
+    utils.assert_close(y_tpu.cpu()[:10], y_cpu[:10])
+
   def test_resize_grow(self):
     def _test_fn(device):
       a = torch.randn(100, device=device)

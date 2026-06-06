@@ -31,9 +31,34 @@ const at::Tensor& AtenResize_(
     const at::Tensor& self_const, c10::IntArrayRef size,
     c10::optional<at::MemoryFormat> memory_format_opt);
 
-// Resizes the target tensor to the given size, potentially reallocating
-// storage if it grows.
+// Resizes the target tensor to the given size.
+//
+// After resizing, the tensor's metadata is updated to be contiguous.
+//
+// If the requested capacity (implied by the new size and dtype) is less than or
+// equal to the current storage capacity, the layout is updated on the existing
+// tensor without reallocating storage.
+//
+// If the requested capacity exceeds the current capacity, a new larger storage
+// buffer is allocated. The existing data is copied to the new buffer, and the
+// tensor's storage pointer is updated. Since the storage is shared, this will
+// also update the storage pointer for all other views of this tensor (resizing
+// their shared storage in-place, although their shape/stride metadata remain
+// unchanged).
 absl::Status ResizeTensor(const at::Tensor& self, c10::IntArrayRef size);
+
+// Resizes the target tensor to the given shape if the shape differs.
+//
+// This should be used in place of at::native::resize_output in TPU kernels to
+// avoid dispatch overheads. Returns absl::OkStatus() if no resize was needed or
+// if the resize succeeded.
+inline absl::Status ResizeTensorIfShapeDiffers(const at::Tensor& tensor,
+                                               c10::IntArrayRef shape) {
+  if (tensor.sizes() == shape) {
+    return absl::OkStatus();
+  }
+  return ResizeTensor(tensor, shape);
+}
 
 }  // namespace torch_tpu
 
