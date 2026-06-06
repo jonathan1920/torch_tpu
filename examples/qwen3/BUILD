@@ -211,6 +211,35 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "qwen3_dynamic_kv_cache_multi",
+    timeout = "eternal",
+    srcs = ["qwen3_multi_wrapper.py"],
+    args = [
+        "--benchmark_configs=1:1024,16:1024,16:2048",
+        "--use_random_weights=true",
+    ],
+    data = [
+        ":qwen3_dynamic_kv_cache",
+    ],
+    main = "qwen3_multi_wrapper.py",
+    nolocal = "slow example",
+    notap = "manual test for dynamic performance evaluation",
+    notest_oss = "manual test for dynamic performance evaluation",
+    tags = [
+        "cpu:4",
+        "nofastbuild",
+        "requires-accel-hbm",
+        "requires-net:external",
+        "requires-tpu-v7x",
+    ],
+    deps = [
+        "//shims/absl_py:app",
+        "//shims/absl_py/flags",
+        "//torch_tpu",  # buildcleaner: keep
+    ],
+)
+
 # buildozer: disable=forbidden-tag-requires-gpu
 torch_tpu_py_test(
     name = "qwen3_dynamic_kv_cache_b200",

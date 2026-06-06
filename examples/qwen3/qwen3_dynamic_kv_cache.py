@@ -558,11 +558,29 @@ def main(argv):
 
   tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_path)
 
-  if _PREFILL_SEQ_LEN.value is not None:
+  # SINGLE CONFIG MODE (In-process)
+  batch_size = _BATCH_SIZE.value
+  prefill_seq_len = _PREFILL_SEQ_LEN.value
+
+  if _USE_RANDOM_WEIGHTS.value:
+    config = transformers.AutoConfig.from_pretrained(model_path)
+    config._attn_implementation = "eager"
+    model_cpu = None
+  else:
+    model_cpu = transformers.AutoModelForCausalLM.from_pretrained(
+        model_path, torch_dtype=torch.bfloat16, attn_implementation="eager"
+    )
+
+  logging.info(
+      "Running benchmark for batch_size=%d, prefill_seq_len=%s",
+      batch_size,
+      prefill_seq_len,
+  )
+  if prefill_seq_len is not None:
     inputs = torch.randint(
         0,
         tokenizer.vocab_size,
-        (_BATCH_SIZE.value, _PREFILL_SEQ_LEN.value),
+        (batch_size, prefill_seq_len),
         dtype=torch.long,
     )
   else:
@@ -580,9 +598,6 @@ def main(argv):
   all_metrics = {}
 
   if _USE_RANDOM_WEIGHTS.value:
-    config = transformers.AutoConfig.from_pretrained(model_path)
-    config._attn_implementation = "eager"
-
     if device == Device.TPU:
       modes = [Mode.COMPILED_DYNAMIC, Mode.COMPILED_STATIC]
     else:
@@ -599,10 +614,6 @@ def main(argv):
       )
       all_metrics.update(metrics)
   else:
-    model_cpu = transformers.AutoModelForCausalLM.from_pretrained(
-        model_path, torch_dtype=torch.bfloat16, attn_implementation="eager"
-    )
-
     modes = (
         [Mode.CPU]
         + ([Mode.EAGER] if not _COMPILE_ONLY.value else [])
@@ -640,6 +651,10 @@ def main(argv):
         assert output_cpu == output, f"{output_cpu=} != {output=}"
       all_metrics.update(metrics)
 
+  print(
+      f"\n=== Results for batch_size={batch_size},"
+      f" prefill_seq_len={prefill_seq_len} ==="
+  )
   _print_summary_table(all_metrics, max_decode_steps)
 
 
