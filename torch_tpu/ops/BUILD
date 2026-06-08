@@ -105,6 +105,51 @@ torch_tpu_cc_library(
     ],
 )
 
+torch_tpu_cc_library(
+    name = "scan_builder",
+    srcs = ["scan_builder.cc"],
+    hdrs = ["scan_builder.h"],
+    deps = [
+        ":op_builder_utils",
+        "//torch_tpu/common:error_utils",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_broadcast_lowering",
+        "@stablehlo//:stablehlo_builder",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "scan_builder_test",
+    srcs = ["scan_builder_test.cc"],
+    deps = [
+        ":op_builder_utils",
+        ":scan_builder",
+        "//torch_tpu/common:error_utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:func_builder",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:reference_api",
+        "@stablehlo//:reference_configuration",
+        "@stablehlo//:register",
+        "@stablehlo//:stablehlo_builder",
+        "@stablehlo//:stablehlo_ops",
+        "@xla//xla/tsl/platform:statusor",
+    ],
+)
+
 torch_tpu_cc_test(
     name = "op_builder_utils_test",
     srcs = ["op_builder_utils_test.cc"],
@@ -117,6 +162,7 @@ torch_tpu_cc_test(
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
