@@ -880,6 +880,14 @@ ACCURACY_OVERRIDES_VS_GPU = {
     "cummin": {
         torch.float64: {"rtol": 0, "atol": 5},
     },
+    "digamma": {
+        torch.float32: {"rtol": 3.3e-5, "atol": 6.7e-5},
+        torch.int16: {"rtol": 3.9e-5, "atol": 4.9e-5},
+        torch.int32: {"rtol": 3.9e-5, "atol": 4.9e-5},
+        torch.int64: {"rtol": 3.9e-5, "atol": 4.9e-5},
+        torch.int8: {"rtol": 3.9e-5, "atol": 4.9e-5},
+        torch.uint8: {"rtol": 3.9e-5, "atol": 4.9e-5},
+    },
     "erfinv": {
         torch.float32: {"rtol": 1.5e-5, "atol": 1.6e-5},
     },
@@ -1041,6 +1049,9 @@ ACCURACY_OVERRIDES_VS_GPU = {
     "nn.functional.hardsigmoid": {
         torch.bfloat16: {"rtol": 2.6e-1, "atol": 4e-3},
         torch.float16: {"rtol": 8.3e-4, "atol": 6.2e-5},
+    },
+    "nn.functional.logsigmoid": {
+        torch.float32: {"rtol": 2.6e-5, "atol": 3.3e-5},
     },
     "nn.functional.mse_loss": {
         torch.float32: {"rtol": 2e-6, "atol": 2.6e-4},
