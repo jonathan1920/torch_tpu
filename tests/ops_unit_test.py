@@ -94,6 +94,29 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           )
       )
 
+  def test_assert_close_partial_override(self):
+    """Tests that utils.assert_close works with partial numeric overrides.
+
+    A partial override means specifying only `rtol` or only `atol`, leaving
+    the other as `None` to be resolved to the PyTorch default.
+
+    Verifies it works in LOOSE mode.
+    """
+    t1 = torch.tensor([1.0, 2.0])
+    t2 = torch.tensor([1.0001, 2.0001])  # diff is 1e-4
+
+    # Default float32 tolerance is rtol=1.3e-6, atol=1e-5.
+    # This diff (1e-4) exceeds default atol (1e-5).
+    # If we override only atol to 2e-4, it should pass.
+    # If we didn't support partial overrides, it would crash with ValueError
+    # in LOOSE mode.
+    utils.assert_close(t1, t2, atol=2e-4, check_value=CheckValueMode.LOOSE)
+
+    # Similarly, override only rtol
+    # rel diff is 1e-4 / 1 = 1e-4.
+    # If we override only rtol to 2e-4, it should pass.
+    utils.assert_close(t1, t2, rtol=2e-4, check_value=CheckValueMode.LOOSE)
+
   def test_topk_sorted_false(self):
     """Tests torch.topk with sorted=False."""
     device = torch.device("tpu")
@@ -1651,23 +1674,23 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     # If not clamped, ceil(src_idx) becomes 4, which is OOB (valid: 0, 1, 2, 3).
 
     tpu_device = torch.device("tpu")
-    N, C = 1, 1
-    H_in, W_in = 4, 4
+    n, c = 1, 1
+    h_in, w_in = 4, 4
     # We use a large output size that triggers the precision issue.
     # We only need one dimension to trigger it, but we'll scale both.
-    H_out, W_out = 22, 22
+    h_out, w_out = 22, 22
 
     # Create input with known values (e.g., indices) to easily check correctness
-    x = torch.arange(H_in * W_in, dtype=torch.float32).reshape(N, C, H_in, W_in)
+    x = torch.arange(h_in * w_in, dtype=torch.float32).reshape(n, c, h_in, w_in)
     x_tpu = x.to(tpu_device)
 
     # We expect the last pixel to be exactly the last pixel of the input
     # because align_corners=True maps corner to corner.
     out_tpu = torch.nn.functional.interpolate(
-        x_tpu, size=(H_out, W_out), mode="bilinear", align_corners=True
+        x_tpu, size=(h_out, w_out), mode="bilinear", align_corners=True
     )
     out_cpu = torch.nn.functional.interpolate(
-        x, size=(H_out, W_out), mode="bilinear", align_corners=True
+        x, size=(h_out, w_out), mode="bilinear", align_corners=True
     )
 
     self.assert_close(golden_result=out_cpu, torch_tpu_result=out_tpu.cpu())
@@ -1685,24 +1708,24 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     #   If -1 wraps to last element (1), we get mixed result.
     #   val[0]=10, val[1]=20.
     #   lambda = -0.25 - (-1) = 0.75.
-    #   res = val[-1]*(1-0.75) + val[0]*0.75 = 20*0.25 + 10*0.75 = 5 + 7.5 = 12.5.
+    #   res = val[-1]*(1-0.75) + val[0]*0.75 = 20*0.25 + 10*0.75 = 12.5.
     # Expected (clamped): val[0] = 10.
 
     tpu_device = torch.device("tpu")
-    N, C = 1, 1
-    H_in, W_in = 1, 2
-    H_out, W_out = 1, 4
+    n, c = 1, 1
+    h_in, w_in = 1, 2
+    h_out, w_out = 1, 4
 
     x = torch.tensor([10.0, 20.0], dtype=torch.float32).reshape(
-        N, C, H_in, W_in
+        n, c, h_in, w_in
     )
     x_tpu = x.to(tpu_device)
 
     out_tpu = torch.nn.functional.interpolate(
-        x_tpu, size=(H_out, W_out), mode="bilinear", align_corners=False
+        x_tpu, size=(h_out, w_out), mode="bilinear", align_corners=False
     )
     out_cpu = torch.nn.functional.interpolate(
-        x, size=(H_out, W_out), mode="bilinear", align_corners=False
+        x, size=(h_out, w_out), mode="bilinear", align_corners=False
     )
 
     self.assert_close(golden_result=out_cpu, torch_tpu_result=out_tpu.cpu())

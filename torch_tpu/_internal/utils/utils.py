@@ -501,6 +501,12 @@ def _assert_tensor_close(
           refine_assert_close_message(msg), CheckValueMode.LOOSE
       )
 
+    # To support partial overrides (where only rtol or only atol is specified),
+    # we pre-fill the missing tolerance with the PyTorch default. This prevents
+    # assert_close from failing due to one of the tolerances being None.
+    if not callable(atol):
+      rtol, atol = _lookup_tolerances(actual, expected, rtol, atol)
+
     _raw_assert_tensor_close(
         actual=actual,
         expected=expected,
@@ -639,7 +645,7 @@ def format_model(
     if isinstance(input_tensors, torch.Tensor):
       placeholders = (tpu_torch_compile.placeholder_like(input_tensors),)
     else:
-      to_placeholder = lambda x: tpu_torch_compile.placeholder_like(x)
+      to_placeholder = tpu_torch_compile.placeholder_like
       placeholders = _pytree.tree_map_only(
           torch.Tensor, to_placeholder, input_tensors
       )
