@@ -154,17 +154,19 @@ class BenchmarkTest(test_utils.BenchmarkTest):
         config, _META_LLAMA_3_2_8B_BENCHMARK_NAME
     )
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_ddp_llama_3_2_1b_train_1_step(self, run_mode):
     """Tests training Llama-3.2-1B distributed with DDP."""
     if self._is_torchax_backend():
       self.skipTest("TorchAX does not support distributed tests yet.")
+    if (
+        benchmark_utils.PLATFORM.value == benchmark_utils.Platform.GFC_2X2X1
+        and run_mode == benchmark_utils.RunMode.COMPILED
+    ):
+      self.skipTest(
+          "Skipping compiled mode on GFC 2x2x1. Cannot view non-contiguous"
+          " attention output [8, 2056, 32, 64] as [8, 2056, 2048] without copy."
+      )
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_2X2X1,
@@ -187,17 +189,19 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     self.run_performance_benchmark_test(config, _HF_LLAMA_3_2_1B_BENCHMARK_NAME)
 
-  @parameterized.named_parameters(
-      test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
-      ])
-  )
+  @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_fsdp_llama_3_2_1b_train_1_step(self, run_mode):
     """Tests training Llama-3.2-1B distributed with FSDP."""
     if self._is_torchax_backend():
       self.skipTest("TorchAX does not support distributed tests yet.")
+    if (
+        benchmark_utils.PLATFORM.value == benchmark_utils.Platform.GFC_2X2X1
+        and run_mode == benchmark_utils.RunMode.COMPILED
+    ):
+      self.skipTest(
+          "Skipping compiled mode on GFC 2x2x1. DTensor generates symints"
+          " which are not supported by TorchTPU compiled backend."
+      )
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
             benchmark_utils.Platform.GFC_2X2X1,
@@ -674,6 +678,10 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   )
   def test_qwen3_5_397b_a17b_4layer_moe_forward(self, run_mode):
     """Tests the forward pass of Qwen3-5-397B-A17B."""
+    if self._is_torchax_backend():
+      self.skipTest(
+          "Not supported on torchax. Missing grouped_mm op for torchax."
+      )
 
     def modify_config_hook(base_config):
       if hasattr(base_config, "get_text_config"):
@@ -1341,7 +1349,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
   def test_nemotron_3_nano_30b_6_layers_forward(self, run_mode):
     """Tests the forward pass of NVIDIA-Nemotron-3-Nano-30B-A3B-BF16."""
-
+    if self._is_torchax_backend():
+      self.skipTest("Not supported on TorchAX")
     def modify_config_hook(config):
       config.layers_block_type = config.layers_block_type[:6]
       return config
