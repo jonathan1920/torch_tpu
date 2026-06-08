@@ -50,9 +50,15 @@ py_library_providing_imports_info(
 )
 
 torch_tpu_py_library(
+    name = "pallas_compat",
+    srcs = ["_compat.py"],
+)
+
+torch_tpu_py_library(
     name = "pallas_lib",
     srcs = ["pallas.py"],
     deps = [
+        ":pallas_compat",
         ":tpu_torch_pallas",
         "//shims/absl_py/logging",
         "//shims/torch:pytorch",

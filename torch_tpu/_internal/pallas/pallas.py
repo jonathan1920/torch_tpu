@@ -23,12 +23,12 @@ import pathlib
 import types
 import typing
 from typing import Any, Callable, Sequence, Union, overload
-import warnings
 from absl import logging
 import frozendict
 import torch
 from torch._library.custom_ops import CustomOpDef
 import torch.library
+from torch_tpu._internal.pallas import _compat
 from torch_tpu._internal.pallas import tpu_torch_pallas
 
 try:
@@ -450,11 +450,10 @@ class JaxCallable:
     with jax._src.config.export_ignore_forward_compatibility(True):
       self.exported = jax.export.export(jit_fn, platforms=["tpu"])
     if input_output_aliases is not None:
-      warnings.warn(
+      _compat.warn_deprecation_with_skip(
           "input_output_aliases is deprecated and will be removed soon. Please"
           " use donate_argnums instead.",
-          DeprecationWarning,
-          skip_file_prefixes=(str(pathlib.Path(__file__).parent),),
+          pathlib.Path(__file__).parent,
       )
       self.input_output_aliases = input_output_aliases
       # If donate_argnums is also provided, it must match.
@@ -633,11 +632,10 @@ def custom_jax_kernel(
     can be used to call the kernel with torch.Tensor inputs.
   """
   if warn_deprecated:
-    warnings.warn(
+    _compat.warn_deprecation_with_skip(
         "the use of `custom_jax_kernel` is deprecated and will be removed soon."
         " Please use `jax_op` instead.",
-        DeprecationWarning,
-        skip_file_prefixes=(str(pathlib.Path(__file__).parent),),
+        pathlib.Path(__file__).parent,
     )
 
   def decorator(jax_fn: Callable[..., Any]) -> JaxCallable:

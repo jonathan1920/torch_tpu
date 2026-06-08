@@ -15,7 +15,11 @@
 """Tests for Pallas custom kernels."""
 
 import functools
+import pathlib
+import sys
 from typing import Optional, Tuple, TypeAlias
+import warnings
+
 from absl.testing import absltest
 import jax
 from jax.experimental import pallas as pl
@@ -25,6 +29,7 @@ from torch_tpu._internal import compile  # pylint: disable=redefined-builtin
 from torch_tpu._internal import execution_mode
 from torch_tpu._internal import pallas
 from torch_tpu._internal import testing as tt_testing
+from torch_tpu._internal.pallas import _compat
 from torch_tpu._internal.utils import utils
 
 EagerMode: TypeAlias = execution_mode.EagerMode
@@ -931,6 +936,37 @@ class TestPallasKernels(absltest.TestCase):
       self.assertEqual(grad_x.item(), 2.0 * -37.0 - 3.0)
       # grad_y = grad_mul * x + grad_add (passes straight through)
       self.assertEqual(grad_y.item(), 2.0 * -4.0 - 3.0)
+
+
+class TestPallasCompat(absltest.TestCase):
+
+  def test_warn_deprecation_with_skip(self):
+    if sys.version_info >= (3, 12):
+      with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        _compat.warn_deprecation_with_skip(
+            "test message",
+            pathlib.Path(_compat.__file__).parent,
+        )
+        self.assertLen(w, 1)
+        self.assertTrue(issubclass(w[0].category, DeprecationWarning))
+        self.assertEqual(str(w[0].message), "test message")
+        self.assertIn("pallas_test.py", w[0].filename)
+    else:
+
+      def helper():
+        _compat.warn_deprecation_with_skip(
+            "test message",
+            pathlib.Path(_compat.__file__).parent,
+        )
+
+      with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        helper()
+        self.assertLen(w, 1)
+        self.assertTrue(issubclass(w[0].category, DeprecationWarning))
+        self.assertEqual(str(w[0].message), "test message")
+        self.assertIn("pallas_test.py", w[0].filename)
 
 
 if __name__ == "__main__":
