@@ -17,6 +17,7 @@
 #include "torch_tpu/eager/tpu_aten_kernels.h"
 
 #include <atomic>
+#include <cstdint>
 #include <string>
 
 #include "ATen/core/ATen_fwd.h"
@@ -69,6 +70,7 @@
 #include "torch_tpu/ops/experimental/ragged_all_to_all/ragged_all_to_all_aten_kernels.h"
 #include "torch_tpu/ops/experimental/ragged_dot/ragged_dot_aten_kernels.h"
 #include "torch_tpu/ops/experimental/send_recv/send_recv_kernels.h"
+#include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_aten_kernels.h"
 #include "torch_tpu/ops/exponential/exponential_aten_kernels.h"
 #include "torch_tpu/ops/eye/eye_aten_kernels.h"
 #include "torch_tpu/ops/fake_quantize/fake_quantize_aten_kernels.h"
@@ -904,6 +906,11 @@ TORCH_LIBRARY(torch_tpu, m) {
   // behaviors.
   m.def("experimental_send(Tensor[] tensors, int dst, int tag) -> Any");
   m.def("experimental_recv(Tensor[] tensors, int src, int tag) -> Any");
+  m.def(
+      "sparse_dense_matmul(Tensor row_pointers, Tensor embedding_ids, Tensor "
+      "sample_ids, Tensor gains, Tensor embedding_table, int "
+      "device_batch_size, int max_ids_per_partition, int "
+      "max_unique_ids_per_partition) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, Meta, m) {
@@ -921,6 +928,17 @@ TORCH_LIBRARY_IMPL(torch_tpu, Meta, m) {
           at::IntArrayRef kernel_size, at::IntArrayRef stride,
           at::IntArrayRef padding, at::IntArrayRef dilation,
           bool ceil_mode) { return at::empty(self.sizes(), self.options()); });
+  Impl(m, OpName::kSparseDenseMatmul,
+       [](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
+          const at::Tensor& sample_ids, const at::Tensor& gains,
+          const at::Tensor& embedding_table, int64_t device_batch_size,
+          int64_t max_ids_per_partition,
+          int64_t max_unique_ids_per_partition) -> at::Tensor {
+         TT_CHECK_THROW(embedding_table.dim() == 2, error::kInvalidArgument)
+             << "embedding_table must be 2D";
+         return at::empty({device_batch_size, embedding_table.size(1)},
+                          embedding_table.options());
+       });
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
@@ -935,6 +953,7 @@ TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
   Impl(m, OpName::kTorchTpuOptimizationBarrier, TorchTpuOptimizationBarrier);
   Impl(m, OpName::kSetDimensionLogicalSize, SetDimensionLogicalSize);
   Impl(m, OpName::kDynamicArange, DynamicArange);
+  Impl(m, OpName::kSparseDenseMatmul, AtenSparseDenseMatmul);
 }
 
 TORCH_LIBRARY_IMPL(torch_tpu, CPU, m) {

@@ -523,6 +523,24 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "sparse_dense_matmul_test",
+    srcs = ["sparse_dense_matmul_test.py"],
+    main = "sparse_dense_matmul_test.py",
+    notest_oss = "Disabled because of no support for tpu v7 in presubmit",
+    tags = [
+        "ok-to-wait-for-v7x-in-presubmit",
+        "requires-tpu-v7x",
+    ],
+    deps = [
+        ":op_testing",
+        "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+    ],
+)
+
 # Tests the tier-3 compilation cache.
 torch_tpu_py_test(
     name = "ops_unit_test_tier3_cache",

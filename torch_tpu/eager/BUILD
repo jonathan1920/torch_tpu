@@ -561,6 +561,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/experimental/ragged_dot:ragged_dot_aten_kernels",
         "//torch_tpu/ops/experimental/ragged_all_to_all:ragged_all_to_all_aten_kernels",
         "//torch_tpu/ops/experimental/send_recv:send_recv_kernels",
+        "//torch_tpu/ops/experimental/sparse_dense_matmul",
         "//torch_tpu/ops/exponential:exponential_aten_kernels",
         "//torch_tpu/ops/eye:eye_aten_kernels",
         "//torch_tpu/ops/fake_quantize:fake_quantize_aten_kernels",

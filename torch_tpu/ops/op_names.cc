@@ -1223,6 +1223,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "softplus.out";
     case OpName::kSortValuesStable:
       return "sort.values_stable";
+    case OpName::kSparseDenseMatmul:
+      return "sparse_dense_matmul";
     case OpName::kSplitWithSizesCopyOut:
       return "split_with_sizes_copy.out";
     case OpName::kSqrtOut:
