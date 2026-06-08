@@ -17,6 +17,7 @@ import pathlib
 import shutil
 import threading
 import time
+import unittest
 
 from absl import logging
 from absl.testing import absltest
@@ -450,6 +451,10 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     }
     self.assertEqual(expected, actual_subset)
 
+  @unittest.skip(
+      "Skipped until new libtpu wheel containing BrokenProfiler is rolled into"
+      " google3 (bootstrap dependency)."
+  )
   def test_tpu_profiler_config_invalid_experimental_option(self):
     device = torch.device("tpu")
     output_dir = pathlib.Path(
