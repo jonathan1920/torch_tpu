@@ -71,10 +71,8 @@ def huggingface_llm_train_factory(
     accumulated_losses = []
     optimizer.zero_grad()
     for _ in range(grad_accumulation_steps):
-      # Dynamic attention kernel overrides for HuggingFace training.
-      with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.MATH):
-        output = model(**inputs)
-        output.loss.backward()
+      output = model(**inputs)
+      output.loss.backward()
       accumulated_losses.append(output.loss.detach())
     optimizer.step()
     step_loss = torch.sum(torch.stack(accumulated_losses)).item()
