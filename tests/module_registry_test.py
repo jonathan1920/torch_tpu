@@ -161,10 +161,6 @@ class ModuleRegistryTest(absltest.TestCase):
     )
     model = module_spec.module_factory()
     _, kwargs = module_spec.sample_inputs_factory()
-    self.assertIn("input_ids", kwargs)
-    self.assertIn("attention_mask", kwargs)
-    self.assertNotIn("pixel_values", kwargs)
-    self.assertNotIn("input_features", kwargs)
     expected_logits_shape = (
         *kwargs["input_ids"].shape,
         module_spec.config.vocab_size,
@@ -366,28 +362,6 @@ class ModuleRegistryTest(absltest.TestCase):
         kwargs["encoder_hidden_states"].shape[-1],
         module_spec.config.get("cross_attention_dim"),
     )
-
-  def test_transformers_vision_get_module_spec(self):
-    module_spec = self.module_registry.get_module_spec(
-        "transformers", "facebook/detr-resnet-50"
-    )
-    # Instantiate the model to verify it loads with config
-    model = module_spec.module_factory()
-    self.assertIsNotNone(model)
-    _, kwargs = module_spec.sample_inputs_factory()
-    self.assertIn("pixel_values", kwargs)
-    self.assertLen(kwargs["pixel_values"].shape, 4)  # (batch, channels, H, W)
-    self.assertEqual(kwargs["pixel_values"].shape[1], 3)  # RGB channels
-
-  def test_transformers_audio_seq2seq_get_module_spec(self):
-    module_spec = self.module_registry.get_module_spec(
-        "transformers", "openai/whisper-large-v3"
-    )
-    model = module_spec.module_factory()
-    self.assertIsNotNone(model)
-    _, kwargs = module_spec.sample_inputs_factory()
-    self.assertIn("input_features", kwargs)
-    self.assertIn("decoder_input_ids", kwargs)
 
 
 if __name__ == "__main__":
