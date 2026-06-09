@@ -1609,7 +1609,6 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op(
         "abs",
         # TODO(b/495929595): can be incorrect close to 0.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix abs() failing with bool dtypes.
         exclude_dtypes={"gpu": (torch.bool,)},
         exclude_inplace_dtypes={"gpu": (torch.bool,)},
@@ -1624,29 +1623,21 @@ class TestOps(TorchTpuTestBase):
   def test_acos(self):
     self.do_test_op(
         "acos",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_acosh(self):
     self.do_test_op(
         "acosh",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_adaptive_avg_pool2d(self):
     self.do_test_op(
         "nn.functional.adaptive_avg_pool2d",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_adaptive_avg_pool3d(self):
     self.do_test_op(
         "nn.functional.adaptive_avg_pool3d",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         exclude_dtypes={
             "gpu": INTEGRAL_DTYPES + COMPLEX_DTYPES,
         },
@@ -1655,29 +1646,21 @@ class TestOps(TorchTpuTestBase):
   def test_add(self):
     self.do_test_op(
         "add",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_addcdiv(self):
     self.do_test_op(
         "addcdiv",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_addcmul(self):
     self.do_test_op(
         "addcmul",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_addmm(self):
     self.do_test_op(
         "addmm",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: XLA doesn't support complex dtypes currently. Fails with:
         # algebraic_simplifier.cc:584] Check failed: computation->Accept(this)
         # is OK (UNIMPLEMENTED: Converting from type C128 to type F32 is not
@@ -1701,8 +1684,6 @@ class TestOps(TorchTpuTestBase):
     # TODO: make addmv fail for integral dtypes to match GPU.
     self.do_test_op(
         "addmv",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # GPU (CUDA) does not support integral dtypes for addmv.
         exclude_dtypes={"gpu": INTEGRAL_DTYPES},
         exclude_inplace_dtypes={"gpu": INTEGRAL_DTYPES},
@@ -1732,8 +1713,6 @@ class TestOps(TorchTpuTestBase):
 
     self.do_test_op(
         "arange",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix arange(out=...) failing.
         check_out_variant=False,
         # TODO: fix arange() succeeding for bool and complex types (it should
@@ -1758,22 +1737,16 @@ class TestOps(TorchTpuTestBase):
   def test_asin(self):
     self.do_test_op(
         "asin",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_asinh(self):
     self.do_test_op(
         "asinh",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_atan(self):
     self.do_test_op(
         "atan",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_atan2(self):
@@ -1782,15 +1755,11 @@ class TestOps(TorchTpuTestBase):
   def test_atanh(self):
     self.do_test_op(
         "atanh",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_avg_pool2d(self):
     self.do_test_op(
         "nn.functional.avg_pool2d",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix avg_pool2d() succeeding for int64 on TPU.
         # GPU (CUDA) does not support int64 for avg_pool2d.
         exclude_dtypes={"gpu": (torch.int64,)},
@@ -1813,8 +1782,6 @@ class TestOps(TorchTpuTestBase):
   def test_baddbmm(self):
     self.do_test_op(
         "baddbmm",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO(b/495524286): Failed to generate integral golden results on GPU
         # GPU (CUDA) does not support integral dtypes for baddbmm.
         exclude_dtypes={
@@ -1871,8 +1838,6 @@ class TestOps(TorchTpuTestBase):
   def test_bmm(self):
     self.do_test_op(
         "bmm",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # GPU (CUDA) does not support integral dtypes for bmm.
         exclude_dtypes={
             "gpu": INTEGRAL_DTYPES,
@@ -1887,10 +1852,8 @@ class TestOps(TorchTpuTestBase):
     # torch.bfloat16: {"rtol": 3.1, "atol": 3.9e-1}
     self.do_test_op(
         "cdist",
-        # TODO: look into making this STRICT.
         # TODO: look into sometimes tests will fall into certain
         # CPU implementation.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_ceil(self):
@@ -1961,15 +1924,11 @@ class TestOps(TorchTpuTestBase):
   def test_cos(self):
     self.do_test_op(
         "cos",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_cosh(self):
     self.do_test_op(
         "cosh",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_ctc_loss(self):
@@ -1995,27 +1954,21 @@ class TestOps(TorchTpuTestBase):
   def test_cumprod(self):
     self.do_test_op(
         "cumprod",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_cummax(self):
     self.do_test_op(
         "cummax",
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_cumsum(self):
     self.do_test_op(
         "cumsum",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_cummin(self):
     self.do_test_op(
         "cummin",
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_diagonal(self):
@@ -2031,8 +1984,6 @@ class TestOps(TorchTpuTestBase):
   def test_div(self):
     self.do_test_op(
         "div",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_dot(self):
@@ -2042,7 +1993,6 @@ class TestOps(TorchTpuTestBase):
         # precision differences. The absolute difference between the expected
         # and actual results can be slightly above the strict tolerance of
         # 1e-05.
-        check_value=CheckValueMode.LOOSE,
         # GPU (CUDA) does not support integral dtypes for dot.
         exclude_dtypes={
             "gpu": INTEGRAL_DTYPES,
@@ -2105,22 +2055,16 @@ class TestOps(TorchTpuTestBase):
   def test_erf(self):
     self.do_test_op(
         "erf",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_erfinv(self):
     self.do_test_op(
         "erfinv",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_exp(self):
     self.do_test_op(
         "exp",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_exp2(self):
@@ -2129,8 +2073,6 @@ class TestOps(TorchTpuTestBase):
   def test_expm1(self):
     self.do_test_op(
         "expm1",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_expand(self):
@@ -2155,7 +2097,6 @@ class TestOps(TorchTpuTestBase):
       exclude_dtypes.extend([torch.float16, torch.bfloat16])
     self.do_test_op(
         "fft.rfft",
-        check_value=CheckValueMode.LOOSE,
         exclude_dtypes=tuple(exclude_dtypes),
     )
 
@@ -2167,7 +2108,6 @@ class TestOps(TorchTpuTestBase):
       exclude_dtypes.extend([torch.float16, torch.bfloat16])
     self.do_test_op(
         "fft.fft",
-        check_value=CheckValueMode.LOOSE,
         exclude_dtypes=tuple(exclude_dtypes),
     )
 
@@ -2179,7 +2119,6 @@ class TestOps(TorchTpuTestBase):
       exclude_dtypes.extend([torch.float16, torch.bfloat16])
     self.do_test_op(
         "fft.ifft",
-        check_value=CheckValueMode.LOOSE,
         exclude_dtypes=tuple(exclude_dtypes),
     )
 
@@ -2191,7 +2130,6 @@ class TestOps(TorchTpuTestBase):
       exclude_dtypes.extend([torch.float16, torch.bfloat16])
     self.do_test_op(
         "fft.irfft",
-        check_value=CheckValueMode.LOOSE,
         exclude_dtypes=tuple(exclude_dtypes),
     )
 
@@ -2244,15 +2182,11 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_acos(self):
     self.do_test_op(
         "_foreach_acos",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_add(self):
     self.do_test_op(
         "_foreach_add",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO(b/485291373): fix _foreach_add() failing with complex dtypes.
         exclude_dtypes=COMPLEX_DTYPES,
         # TODO(b/485291373): fix _foreach_add_() failing with complex dtypes.
@@ -2262,8 +2196,6 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_addcdiv(self):
     self.do_test_op(
         "_foreach_addcdiv",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO(b/485291373): fix _foreach_addcdiv() failing with complex dtypes.
         exclude_dtypes=COMPLEX_DTYPES,
         # TODO(b/485291373): fix _foreach_addcdiv_() failing with complex
@@ -2276,8 +2208,6 @@ class TestOps(TorchTpuTestBase):
     # TODO(b/494218929): Fix the high tolerance of 1e-2.
     self.do_test_op(
         "_foreach_addcmul",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO(b/485291373): fix _foreach_addcmul_() failing with complex
         # dtypes.
         exclude_inplace_dtypes=COMPLEX_DTYPES,
@@ -2286,15 +2216,11 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_asin(self):
     self.do_test_op(
         "_foreach_asin",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_atan(self):
     self.do_test_op(
         "_foreach_atan",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_ceil(self):
@@ -2332,22 +2258,16 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_cos(self):
     self.do_test_op(
         "_foreach_cos",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_cosh(self):
     self.do_test_op(
         "_foreach_cosh",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_div(self):
     self.do_test_op(
         "_foreach_div",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: CPU returns nans but TPU returns 0.
         # TODO(b/485291373): fix _foreach_div() failing with complex dtypes.
         exclude_dtypes=(torch.bool,) + COMPLEX_DTYPES,
@@ -2360,8 +2280,6 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_erf(self):
     self.do_test_op(
         "_foreach_erf",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_erfc(self):
@@ -2370,8 +2288,6 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_exp(self):
     self.do_test_op(
         "_foreach_exp",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_expm1(self):
@@ -2392,8 +2308,6 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_lerp(self):
     self.do_test_op(
         "_foreach_lerp",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO(b/485291373): fix _foreach_lerp_() failing with complex dtypes.
         exclude_inplace_dtypes=(torch.complex64,),
     )
@@ -2404,7 +2318,6 @@ class TestOps(TorchTpuTestBase):
         # Too slow for float64.
         exclude_dtypes=(torch.float64,),
         exclude_inplace_dtypes=(torch.float64,),
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix the error that digamma.out is unimplemented.
         check_grad=False,
     )
@@ -2412,29 +2325,21 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_log(self):
     self.do_test_op(
         "_foreach_log",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_log10(self):
     self.do_test_op(
         "_foreach_log10",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_log1p(self):
     self.do_test_op(
         "_foreach_log1p",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_log2(self):
-    # TODO: look into making this STRICT.
     self.do_test_op(
         "_foreach_log2",
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_max(self):
@@ -2520,7 +2425,6 @@ class TestOps(TorchTpuTestBase):
         # TODO: fix TPU failure for these dtypes.
         exclude_dtypes=(torch.bool, torch.int64, torch.complex64),
         exclude_inplace_dtypes=(torch.bool, torch.int64, torch.complex64),
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_reciprocal(self):
@@ -2532,14 +2436,11 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_rsqrt(self):
     self.do_test_op(
         "_foreach_rsqrt",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_sigmoid(self):
     self.do_test_op(
         "_foreach_sigmoid",
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_sign(self):
@@ -2548,15 +2449,11 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_sin(self):
     self.do_test_op(
         "_foreach_sin",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_sinh(self):
     self.do_test_op(
         "_foreach_sinh",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_sqrt(self):
@@ -2565,8 +2462,6 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_sub(self):
     self.do_test_op(
         "_foreach_sub",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix _foreach_sub() failing with complex dtypes.
         exclude_dtypes=COMPLEX_DTYPES,
         # TODO: fix _foreach_sub_() failing with complex dtypes.
@@ -2576,15 +2471,11 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_tan(self):
     self.do_test_op(
         "_foreach_tan",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_tanh(self):
     self.do_test_op(
         "_foreach_tanh",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_foreach_trunc(self):
@@ -2615,7 +2506,6 @@ class TestOps(TorchTpuTestBase):
   def test_grid_sample(self):
     self.do_test_op(
         "nn.functional.grid_sample",
-        check_value=CheckValueMode.LOOSE,
         exclude_dtypes={
             # CPU implementation has precision issues leading to incorrect
             # addressing for float16 and bfloat16
@@ -2708,8 +2598,6 @@ class TestOps(TorchTpuTestBase):
   def test_kron(self):
     self.do_test_op(
         "kron",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix kron(out=...) having huge numeric errors.
         check_out_variant=False,
     )
@@ -2720,15 +2608,11 @@ class TestOps(TorchTpuTestBase):
   def test_leaky_relu(self):
     self.do_test_op(
         "nn.functional.leaky_relu",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_lerp(self):
     self.do_test_op(
         "lerp",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         exclude_dtypes=(torch.complex64,),
         exclude_inplace_dtypes=(torch.complex64,),
     )
@@ -2738,8 +2622,6 @@ class TestOps(TorchTpuTestBase):
         "lgamma",
         # TODO: fix the error that digamma.out is unimplemented.
         check_grad=False,
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix lgamma() failing for complex.
         exclude_dtypes=(torch.complex64,),
         exclude_inplace_dtypes=(torch.complex64,),
@@ -2748,7 +2630,6 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_lu_factor_ex(self):
     self.do_test_op(
         "linalg.lu_factor_ex",
-        check_value=CheckValueMode.LOOSE,
         skip_if=_linalg_lu_without_pivot_gpu,
     )
 
@@ -2757,14 +2638,12 @@ class TestOps(TorchTpuTestBase):
         "linalg.solve_triangular",
         # bool triggers an error in the sample generation code
         exclude_dtypes=(torch.bool,),
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_lu_unpack(self):
     self.do_test_op(
         "lu_unpack",
         exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
-        check_value=CheckValueMode.LOOSE,
         # TODO(b/495521055): lu_unpack fails with complex64 with compile.
         skip_if=lambda device, variant, op_input: (
             op_testing.is_compiled_mode()
@@ -2776,7 +2655,6 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op(
         "linalg.lu_solve",
         exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
-        check_value=CheckValueMode.LOOSE,
         # TODO(b/495521055): linalg.lu_solve fails with complex64 with compile.
         skip_if=lambda device, variant, op_input: (
             op_testing.is_compiled_mode()
@@ -2788,7 +2666,6 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op(
         "linalg.solve_ex",
         exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
-        check_value=CheckValueMode.LOOSE,
         # TODO(b/495521055): linalg.solve_ex fails with complex64 with compile.
         skip_if=lambda device, variant, op_input: (
             op_testing.is_compiled_mode()
@@ -2799,7 +2676,6 @@ class TestOps(TorchTpuTestBase):
   def test_linalg_lu_out(self):
     self.do_test_op(
         "linalg.lu",
-        check_value=CheckValueMode.LOOSE,
         # TODO(b/495521055): linalg.lu fails with complex64 with compile.
         skip_if=lambda device, variant, op_input: (
             _linalg_lu_without_pivot_gpu(device, variant, op_input)
@@ -2814,7 +2690,6 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op(
         "linalg.inv",
         exclude_dtypes=INTEGRAL_DTYPES + (torch.half, torch.bfloat16),
-        check_value=CheckValueMode.LOOSE,
         # TODO(b/495521055): linalg.inv fails with complex64 with compile.
         skip_if=lambda device, variant, op_input: (
             op_testing.is_compiled_mode()
@@ -2827,13 +2702,11 @@ class TestOps(TorchTpuTestBase):
         "linalg.vector_norm",
         # TODO: fix the error that CPU result is None.
         check_grad=False,
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_linspace(self):
     self.do_test_op(
         "linspace",
-        check_value=CheckValueMode.LOOSE,
         # PyTorch's upstream sample generator for linspace includes a hardcoded
         # sample without a device kwarg: `yield SampleInput(1, args=(3, 1))`
         # (see common_methods_invocations.py).
@@ -2847,29 +2720,21 @@ class TestOps(TorchTpuTestBase):
   def test_log(self):
     self.do_test_op(
         "log",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_log1p(self):
     self.do_test_op(
         "log1p",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_log10(self):
     self.do_test_op(
         "log10",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_log2(self):
     self.do_test_op(
         "log2",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_log_sigmoid(self):
@@ -2878,15 +2743,11 @@ class TestOps(TorchTpuTestBase):
   def test_log_softmax(self):
     self.do_test_op(
         "log_softmax",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_log_softmax_backward_data(self):
     self.do_test_op(
         "_log_softmax_backward_data",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO(unda): this fails for complex and integral dtypes because the
         # sample generation process calls log_softmax() which is not supported
         # for these dtypes.
@@ -2917,8 +2778,6 @@ class TestOps(TorchTpuTestBase):
   def test_matmul(self):
     self.do_test_op(
         "matmul",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: TPU supports bool dtypes but not all CPU and GPU lowerings do.
         # Due to how PyTorch decomposes this op, some cases bool dtype is
         # supported and other cases it's not. This op is supposed to be
@@ -3009,8 +2868,6 @@ class TestOps(TorchTpuTestBase):
   def test_mean(self):
     self.do_test_op(
         "mean",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_min(self):
@@ -3026,8 +2883,6 @@ class TestOps(TorchTpuTestBase):
   def test_mm(self):
     self.do_test_op(
         "mm",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix mm() failing with integral dtypes.
         exclude_dtypes=INTEGRAL_DTYPES,
     )
@@ -3041,8 +2896,6 @@ class TestOps(TorchTpuTestBase):
   def test_native_batch_norm(self):
     self.do_test_op(
         "native_batch_norm",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # Due to a PyTorch output dtype inconsistency bw CPU and GPU, we skip
         # checking the output dtype against CPU.
         check_dtype=self.golden_device_type == "gpu",
@@ -3062,8 +2915,6 @@ class TestOps(TorchTpuTestBase):
   def test_native_batch_norm_legit(self):
     self.do_test_op(
         "_native_batch_norm_legit",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # Due to a PyTorch output dtype inconsistency bw CPU and GPU, we skip
         # checking the output dtype against CPU.
         check_dtype=self.golden_device_type == "gpu",
@@ -3085,8 +2936,6 @@ class TestOps(TorchTpuTestBase):
     # torch.bfloat16: {"rtol": 4.1, "atol": 4.0},
     self.do_test_op(
         "nn.functional.group_norm",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix native_group_norm() succeeding with integral and
         # complex dtypes (it should fail).
         # TODO: b/470458807 look into why native_group_norm() returns NaN values
@@ -3102,8 +2951,6 @@ class TestOps(TorchTpuTestBase):
   def test_native_layer_norm(self):
     self.do_test_op(
         "native_layer_norm",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: before cl/833944280 introduced the backward ops, this test runs
         # with check_grad=True. As there is no default implementation of
         # backward for native_layer_norm, it should fail. Investigate why it's
@@ -3135,8 +2982,6 @@ class TestOps(TorchTpuTestBase):
   def test_nll_loss(self):
     self.do_test_op(
         "nn.functional.nll_loss",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_nonzero(self):
@@ -3163,15 +3008,11 @@ class TestOps(TorchTpuTestBase):
   def test_pow(self):
     self.do_test_op(
         "pow",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_nn_functional_conv1d(self):
     self.do_test_op(
         "nn.functional.conv1d",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix nn.functional.conv*d() failing with integral and complex
         # dtypes.
         # Known issues:
@@ -3186,8 +3027,6 @@ class TestOps(TorchTpuTestBase):
   def test_nn_functional_conv2d(self):
     self.do_test_op(
         "nn.functional.conv2d",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix nn.functional.conv*d() failing with integral and complex
         # dtypes. See comments in test_nn_functional_conv1d.
         exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
@@ -3196,8 +3035,6 @@ class TestOps(TorchTpuTestBase):
   def test_nn_functional_conv_transpose1d(self):
     self.do_test_op(
         "nn.functional.conv_transpose1d",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix nn.functional.conv*d() failing with integral and complex
         # dtypes.
         # Known issues:
@@ -3212,8 +3049,6 @@ class TestOps(TorchTpuTestBase):
   def test_nn_functional_conv_transpose2d(self):
     self.do_test_op(
         "nn.functional.conv_transpose2d",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix nn.functional.conv*d() failing with integral and complex
         # dtypes.
         # Known issues:
@@ -3254,7 +3089,6 @@ class TestOps(TorchTpuTestBase):
   def test_nn_functional_rms_norm(self):
     self.do_test_op(
         "nn.functional.rms_norm",
-        check_value=CheckValueMode.LOOSE,
         exclude_dtypes=INTEGRAL_DTYPES + COMPLEX_DTYPES,
     )
 
@@ -3266,8 +3100,6 @@ class TestOps(TorchTpuTestBase):
     with attention.sdpa_kernel(attention.SDPBackend.MATH):
       self.do_test_op(
           "nn.functional.scaled_dot_product_attention",
-          # TODO: look into making this STRICT.
-          check_value=CheckValueMode.LOOSE,
           # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
           # but on tpu it succeeds. Remove this once we fix bmm on tpu.
           exclude_dtypes=INTEGRAL_DTYPES + (torch.int64,),
@@ -3288,8 +3120,6 @@ class TestOps(TorchTpuTestBase):
     ):
       self.do_test_op(
           "nn.functional.scaled_dot_product_attention",
-          # TODO: look into making this STRICT.
-          check_value=CheckValueMode.LOOSE,
           # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
           # but on tpu it succeeds. Remove this once we fix bmm on tpu.
           exclude_dtypes=(torch.int64,),
@@ -3307,7 +3137,6 @@ class TestOps(TorchTpuTestBase):
     ):
       self.do_test_op(
           "nn.functional.scaled_dot_product_attention",
-          check_value=CheckValueMode.LOOSE,
           # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
           # but on tpu it succeeds. Remove this once we fix bmm on tpu.
           exclude_dtypes=(torch.int64,),
@@ -3324,7 +3153,6 @@ class TestOps(TorchTpuTestBase):
     ):
       self.do_test_op(
           "nn.functional.scaled_dot_product_attention",
-          check_value=CheckValueMode.LOOSE,
           # TODO: sdpa calles bmm(), on cpu it fails with int64 dtypes.
           # but on tpu it succeeds. Remove this once we fix bmm on tpu.
           exclude_dtypes=(torch.int64,),
@@ -3333,22 +3161,16 @@ class TestOps(TorchTpuTestBase):
   def test_nn_functional_batch_norm(self):
     self.do_test_op(
         "nn.functional.batch_norm",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_nn_functional_elu(self):
     self.do_test_op(
         "nn.functional.elu",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_nn_functional_gelu(self):
     self.do_test_op(
         "nn.functional.gelu",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_nn_functional_glu(self):
@@ -3359,7 +3181,6 @@ class TestOps(TorchTpuTestBase):
   def test_nn_functional_hardsigmoid(self):
     self.do_test_op(
         "nn.functional.hardsigmoid",
-        check_value=CheckValueMode.STRICT,
     )
 
   def test_nn_functional_hardswish(self):
@@ -3373,8 +3194,6 @@ class TestOps(TorchTpuTestBase):
   def test_nn_functional_silu(self):
     self.do_test_op(
         "nn.functional.silu",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix nn.functional.silu() succeeding with integral dtypes (it
         # should fail).
         # TODO: fix nn.functional.silu() failing with complex dtypes.
@@ -3388,8 +3207,6 @@ class TestOps(TorchTpuTestBase):
   def test_nn_functional_softplus(self):
     self.do_test_op(
         "nn.functional.softplus",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_nn_functional_mse_loss(self):
@@ -3398,8 +3215,6 @@ class TestOps(TorchTpuTestBase):
   def test_pdist_forward(self):
     self.do_test_op(
         "nn.functional.pdist",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_polar(self):
@@ -3417,8 +3232,6 @@ class TestOps(TorchTpuTestBase):
   def test_prod(self):
     self.do_test_op(
         "prod",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_randn(self):
@@ -3448,8 +3261,6 @@ class TestOps(TorchTpuTestBase):
   def test_remainder(self):
     self.do_test_op(
         "remainder",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix remainder() failing with bfloat16 dtypes.
         exclude_dtypes=(torch.bfloat16,),
         exclude_inplace_dtypes=(torch.bfloat16,),
@@ -3490,22 +3301,16 @@ class TestOps(TorchTpuTestBase):
   def test_rsqrt(self):
     self.do_test_op(
         "rsqrt",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_rsub(self):
     self.do_test_op(
         "rsub",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_scatter(self):
     self.do_test_op(
         "scatter",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_scatter_add(self):
@@ -3523,8 +3328,6 @@ class TestOps(TorchTpuTestBase):
   def test_safe_softmax(self):
     self.do_test_op(
         "torch.ops.aten._safe_softmax.default",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_scalar_tensor(self):
@@ -3533,8 +3336,6 @@ class TestOps(TorchTpuTestBase):
   def test_sigmoid(self):
     self.do_test_op(
         "sigmoid",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_sgn(self):
@@ -3549,15 +3350,11 @@ class TestOps(TorchTpuTestBase):
   def test_sin(self):
     self.do_test_op(
         "sin",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_sinh(self):
     self.do_test_op(
         "sinh",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_slice(self):
@@ -3566,15 +3363,11 @@ class TestOps(TorchTpuTestBase):
   def test_softmax(self):
     self.do_test_op(
         "softmax",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_softmax_backward_data(self):
     self.do_test_op(
         "_softmax_backward_data",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # TODO: fix the op for these dtypes.
         exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
     )
@@ -3614,15 +3407,11 @@ class TestOps(TorchTpuTestBase):
   def test_sub(self):
     self.do_test_op(
         "sub",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_sum(self):
     self.do_test_op(
         "sum",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_stack(self):
@@ -3641,15 +3430,11 @@ class TestOps(TorchTpuTestBase):
   def test_tan(self):
     self.do_test_op(
         "tan",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_tanh(self):
     self.do_test_op(
         "tanh",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_threshold(self):
@@ -3730,7 +3515,6 @@ class TestOps(TorchTpuTestBase):
         "nn.functional.upsample_bilinear",
         exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
         # TODO: STRICT fails for some types. Look into narrowing this down.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_upsample_nearest_exact(self):
@@ -3744,15 +3528,11 @@ class TestOps(TorchTpuTestBase):
   def test_var(self):
     self.do_test_op(
         "var",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
     )
 
   def test_vdot(self):
     self.do_test_op(
         "vdot",
-        # TODO: look into making this STRICT.
-        check_value=CheckValueMode.LOOSE,
         # GPU (CUDA) does not support integral dtypes for vdot.
         exclude_dtypes={
             "gpu": INTEGRAL_DTYPES,
