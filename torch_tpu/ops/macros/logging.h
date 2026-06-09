@@ -247,7 +247,6 @@ void CheckScalarInput() {
       kOpName == OpName::kBaddbmmDtypeOut ||       //
       kOpName == OpName::kBaddbmmOut ||            //
       kOpName == OpName::kEluBackwardGradInput ||  //
-      kOpName == OpName::kFill_Scalar ||           //
       kOpName == OpName::kLinalgVectorNormOut ||   //
       kOpName == OpName::kVar ||                   //
       kOpName == OpName::kVarOut ||                //

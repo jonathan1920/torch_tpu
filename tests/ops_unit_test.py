@@ -2599,6 +2599,29 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         ),
     )
 
+  def test_fill_scalar(self):
+    def test_fn(device):
+      t = torch.tensor([1.0, 2.0, 3.0], device=device)
+      t.fill_(2.5)
+      return t
+
+    self.assert_close_tpu_vs_cpu(test_fn)
+
+    def test_fn_int(device):
+      t = torch.tensor([1, 2, 3], dtype=torch.int32, device=device)
+      t.fill_(5)
+      return t
+
+    self.assert_close_tpu_vs_cpu(test_fn_int)
+
+  def test_fill_complex128(self):
+    t = torch.empty((2, 2), dtype=torch.complex128, device=torch.device("tpu"))
+    with self.assertRaisesRegex(
+        RuntimeError, "complex128 dtype is not supported"
+    ):
+      t.fill_(1.0)
+      t.cpu()
+
   def test_floor_divide_tensor(self):
     sample_input = (
         torch.tensor([10.0, -10.0, 25.5, -25.5, 0.0]).repeat(12).view(3, 4, 5)
@@ -3993,6 +4016,14 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   )
   def test_randn_complex(self, dtype: torch.dtype):
     numel = 100_000
+    if dtype == torch.complex128:
+      with self.assertRaisesRegex(
+          RuntimeError, "complex128 dtype is not supported"
+      ):
+        t = torch.randn(numel, dtype=dtype, device=torch.device("tpu"))
+        t.cpu()
+      return
+
     t = torch.randn(numel, dtype=dtype, device=torch.device("tpu"))
     t_cpu = t.cpu()
 

@@ -25,10 +25,12 @@
 #include "absl/status/statusor.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/aten_utils.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
@@ -44,6 +46,9 @@ namespace {
 absl::Status FillTensorHelper(at::Tensor& self, const at::Tensor& fill_value,
                               OpParamCacheKeys param_keys) {
   auto out_aten_type = self.scalar_type();
+  TT_RET_CHECK(out_aten_type != at::ScalarType::ComplexDouble,
+               error::kUnimplemented)
+      << ToString(at::ScalarType::ComplexDouble) << " dtype is not supported";
   TT_ASSIGN_OR_RETURN(mlir::ElementType out_mlir_element_type,
                       ConvertTo<mlir::ElementType>(out_aten_type));
 
@@ -89,32 +94,13 @@ at::Tensor& AtenFillTensor_(at::Tensor& self, const at::Tensor& fill_value) {
 }
 
 at::Tensor& AtenFillScalar_(at::Tensor& self, const at::Scalar& fill_value) {
-  TT_KERNEL(OpName::kFill_Scalar, param_keys, (self, fill_value), {
+  auto promoted_fill_value = PromoteScalar(fill_value);
+  TT_KERNEL(OpName::kFill_Scalar, param_keys, (self, promoted_fill_value), {
     auto out_aten_type = self.scalar_type();
-    // Note that we fill the tensor with its own scalar type, not the
-    // fill_value's type.
-    TT_ASSIGN_OR_THROW(mlir::ElementType out_mlir_element_type,
-                       ConvertTo<mlir::ElementType>(out_aten_type));
-
-    auto sizes = self.sizes();
-
-    auto op_builder =
-        [sizes = CopyIntVector(sizes), fill_value, out_mlir_element_type](
-            mlir::MlirBuilder& builder) -> absl::StatusOr<mlir::MlirOp> {
-      TT_ASSIGN_OR_RETURN(
-          auto constant,
-          MakeConstant(builder, fill_value, out_mlir_element_type, sizes));
-      return constant;
-    };
-
-    TT_ASSIGN_OR_THROW(
-        auto result_buf,
-        DispatchOp<0>(std::move(op_builder),
-                      /*inputs=*/{},
-                      {.out_dtype = out_mlir_element_type,
-                       .out_dims = sizes,
-                       .op_param_cache_keys = std::move(param_keys)}));
-    TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), self));
+    TT_ASSIGN_OR_THROW(at::Tensor fill_value_tensor,
+                       promoted_fill_value.GetTensor(out_aten_type));
+    TT_THROW_IF_ERROR(
+        FillTensorHelper(self, fill_value_tensor, std::move(param_keys)));
     return self;
   });
 }
