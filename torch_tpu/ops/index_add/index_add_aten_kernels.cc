@@ -84,7 +84,7 @@ absl::StatusOr<int64_t> ValidateIndexAddInputsAndGetDim(
 absl::StatusOr<DeviceBufferRef> IndexAdd(const at::Tensor& self, int64_t dim,
                                          const at::Tensor& index,
                                          const at::Tensor& source,
-                                         const at::Scalar& alpha,
+                                         PromotedScalar& promoted_alpha,
                                          const at::ScalarType& out_scalar_type,
                                          OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(
@@ -95,18 +95,20 @@ absl::StatusOr<DeviceBufferRef> IndexAdd(const at::Tensor& self, int64_t dim,
   TT_ASSIGN_OR_RETURN(const auto computation_dtype,
                       ConvertTo<mlir::ElementType>(promoted_scalar_type));
 
+  TT_ASSIGN_OR_RETURN(const at::Tensor alpha_tensor,
+                      promoted_alpha.GetTensor(promoted_scalar_type));
+
   auto index_add_op_builder =
-      [dim, alpha, computation_dtype](FixedSizeSpan<mlir::MlirOp, 3> inputs) {
-        auto& [self, index, source] = inputs;
-        mlir::MlirOp alpha_op = MakeScalarConstant(
-            self.getBuilder(), alpha.toDouble(), computation_dtype);
+      [dim, computation_dtype](FixedSizeSpan<mlir::MlirOp, 4> inputs) {
+        auto& [self, index, source, alpha_op] = inputs;
         return BuildIndexAddShlo(self, dim, index, source, alpha_op,
                                  computation_dtype);
       };
 
   TT_ASSIGN_OR_RETURN(const auto output_dtype,
                       ConvertTo<mlir::ElementType>(out_scalar_type));
-  return DispatchOp<3>(std::move(index_add_op_builder), {self, index, source},
+  return DispatchOp<4>(std::move(index_add_op_builder),
+                       {self, index, source, alpha_tensor},
                        {.out_dtype = output_dtype,
                         .out_dims = CopyIntVector(self.sizes()),
                         .op_param_cache_keys = std::move(param_keys)});
@@ -118,11 +120,12 @@ at::Tensor& TpuAtenIndexAddOut(const at::Tensor& self, int64_t dim,
                                const at::Tensor& index,
                                const at::Tensor& source,
                                const at::Scalar& alpha, at::Tensor& out) {
+  PromotedScalar promoted_alpha = PromoteScalar(alpha);
   TT_KERNEL(
-      OpName::kIndexAddOut, param_keys, (self, dim, index, source, alpha, out),
-      {
+      OpName::kIndexAddOut, param_keys,
+      (self, dim, index, source, promoted_alpha, out), {
         TT_ASSIGN_OR_THROW(DeviceBufferRef result_buf,
-                           IndexAdd(self, dim, index, source, alpha,
+                           IndexAdd(self, dim, index, source, promoted_alpha,
                                     out.scalar_type(), std::move(param_keys)));
         TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
         return out;

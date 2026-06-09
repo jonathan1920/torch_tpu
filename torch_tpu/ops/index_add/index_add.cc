@@ -19,6 +19,7 @@
 #include <cstdint>
 
 #include "absl/log/absl_log.h"
+#include "absl/status/statusor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -31,16 +32,16 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 
 namespace torch_tpu {
 
 namespace stablehlo = mlir::stablehlo;
 
-mlir::MlirOp BuildIndexAddShlo(mlir::MlirOp self, int64_t dim,
-                               mlir::MlirOp index, mlir::MlirOp source,
-                               mlir::MlirOp alpha,
-                               mlir::ElementType computation_xla_type) {
+absl::StatusOr<mlir::MlirOp> BuildIndexAddShlo(
+    mlir::MlirOp self, int64_t dim, mlir::MlirOp index, mlir::MlirOp source,
+    mlir::MlirOp alpha, mlir::ElementType computation_xla_type) {
   const mlir::RankedTensorType self_type = GetTensorTypeOrDie(self);
   const mlir::RankedTensorType source_type = GetTensorTypeOrDie(source);
   const mlir::RankedTensorType index_type = GetTensorTypeOrDie(index);
@@ -79,6 +80,12 @@ mlir::MlirOp BuildIndexAddShlo(mlir::MlirOp self, int64_t dim,
   }
 
   index = mlir::stablehlo::Reshape(index, {index_type.getDimSize(0), 1});
+
+  TT_ASSIGN_OR_RETURN((auto [broadcasted_source, broadcasted_alpha]),
+                      ApplyBroadcastIfNeeded(source, alpha));
+  mlir::MlirOp source_scaled =
+      stablehlo::Mul(broadcasted_source, broadcasted_alpha);
+
   stablehlo::ScatterDimensionNumbersAttr scatter_dimension_numbers =
       stablehlo::ScatterDimensionNumbersAttr::get(
           &self.getContext(),
@@ -91,23 +98,14 @@ mlir::MlirOp BuildIndexAddShlo(mlir::MlirOp self, int64_t dim,
   ABSL_VLOG(2) << "BuildScatterShlo: ScatterDimensionNumbers = "
                << mlir::debugString(scatter_dimension_numbers);
 
-  // Do not capture MlirOps.
-  mlir::Value alpha_value = alpha.getValue();
-
   // Create a region builder callback.
-  auto block_type = self_type.clone({}, computation_type);
-  auto region_builder = [block_type,
-                         alpha_value](mlir::RegionBuilder& builder) {
-    auto arg0 = mlir::Argument(builder, block_type);
-    auto arg1 = mlir::Argument(builder, block_type);
-    mlir::MlirOp alpha_op(builder, alpha_value);
-    mlir::MlirOp alpha_mul_source = stablehlo::Mul(alpha_op, arg1);
-    mlir::MlirOp result = stablehlo::Add(arg0, alpha_mul_source);
-    stablehlo::Return(builder, {result});
+  auto region_builder = [computation_type](mlir::RegionBuilder& builder) {
+    mlir::stablehlo::buildReduceBody<mlir::stablehlo::AddOp>(
+        computation_type, builder.getRegion(), builder.getOpBuilder());
   };
 
   // Call stablehlo::Scatter
-  return stablehlo::Scatter(self, index, source, region_builder,
+  return stablehlo::Scatter(self, index, source_scaled, region_builder,
                             scatter_dimension_numbers)[0];
 }
 

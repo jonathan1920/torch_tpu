@@ -53,8 +53,10 @@ torch_tpu_cc_library(
     hdrs = ["index_add.h"],
     deps = [
         "//torch_tpu/common:dimension_types",
+        "//torch_tpu/common:error_utils",
         "//torch_tpu/ops:op_builder_utils",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@stablehlo//:attr_type_builder_util",
