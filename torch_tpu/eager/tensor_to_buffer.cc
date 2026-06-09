@@ -266,26 +266,27 @@ absl::StatusOr<std::vector<DeviceBufferRef>> GetBuffers(
   return buffers;
 }
 
-c10::Storage MakeStorage(DeviceBufferRef buffer_ref) {
+c10::Storage MakeStorage(DeviceBufferRef buffer_ref, int device_idx) {
   ABSL_VLOG(1) << "[MakeStorage] Received DeviceBufferRef with dims: ["
                << absl::StrJoin(buffer_ref.dimensions(), ",") << "]"
-               << " and dtype: " << ToString(buffer_ref.element_type());
+               << " and dtype: " << ToString(buffer_ref.element_type())
+               << " on device_idx: " << device_idx;
   const auto size = buffer_ref.size_bytes();
   return c10::Storage(c10::make_intrusive<c10::StorageImpl>(
       c10::StorageImpl::use_byte_size_t(), size,
-      MakeDataPtr(std::move(buffer_ref), /*device_idx=*/0), GetTpuAllocator(),
+      MakeDataPtr(std::move(buffer_ref), device_idx), GetTpuAllocator(),
       /*resizable=*/true));
 }
 
-at::Tensor MakeTensor(DeviceBufferRef buffer_ref) {
+at::Tensor MakeTensor(DeviceBufferRef buffer_ref, int device_idx) {
   ABSL_VLOG(1) << "[MakeTensor] Creating new ATen tensor for "
-               << buffer_ref.DebugString();
+               << buffer_ref.DebugString() << " on device_idx: " << device_idx;
 
   const auto dtype = ConvertTo<at::ScalarType>(buffer_ref.element_type());
   auto caffe2_type_meta = c10::scalarTypeToTypeMeta(dtype);
   absl::Span<const int64_t> sizes = buffer_ref.dimensions();
 
-  c10::Storage storage = MakeStorage(std::move(buffer_ref));
+  c10::Storage storage = MakeStorage(std::move(buffer_ref), device_idx);
   at::Tensor tensor(c10::make_intrusive<c10::TensorImpl>(
       std::move(storage), c10::DispatchKeySet(c10::DispatchKey::PrivateUse1),
       caffe2_type_meta));

@@ -41,6 +41,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/macros:kernel",
         "//torch_tpu/ops/view:view_aten_kernels",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
     ],

@@ -120,7 +120,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> GetBuffers(
 // The nbytes of the c10::StorageImpl will be set to the size
 // of the DeviceBufferRef.
 // The DeviceBufferRef must be in a valid state.
-c10::Storage MakeStorage(DeviceBufferRef buffer_ref);
+c10::Storage MakeStorage(DeviceBufferRef buffer_ref, int device_idx = 0);
 
 // Returns an ATen tensor with the given DeviceBufferRef.
 //
@@ -130,7 +130,7 @@ c10::Storage MakeStorage(DeviceBufferRef buffer_ref);
 // The resulting tensor will have the same sizes and dtype as the
 // DeviceBufferRef (converting from mlir::ElementType to ScalarType) and will
 // be contiguous.
-at::Tensor MakeTensor(DeviceBufferRef device_buffer_ref);
+at::Tensor MakeTensor(DeviceBufferRef device_buffer_ref, int device_idx = 0);
 
 // Assigns the given DeviceBufferRef to the given ATen tensor.
 //

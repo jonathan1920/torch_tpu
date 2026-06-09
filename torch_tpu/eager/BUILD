@@ -228,7 +228,9 @@ torch_tpu_cc_library(
     hdrs = ["device_gen_impl.h"],
     deps = [
         ":device_buffer",
+        ":materialize",
         ":op_dispatcher",
+        ":structured_log_buffer",
         ":tensor_to_buffer",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
