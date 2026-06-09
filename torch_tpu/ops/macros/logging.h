@@ -243,7 +243,6 @@ void CheckScalarInput() {
                 // DO NOT ADD NEW ENTRIES TO THIS LIST.
                 // TODO: make this list empty.
                 // go/keep-sorted start
-      kOpName == OpName::kArangeStartOut ||        //
       kOpName == OpName::kBaddbmmDtype ||          //
       kOpName == OpName::kBaddbmmDtypeOut ||       //
       kOpName == OpName::kBaddbmmOut ||            //
