@@ -58,12 +58,9 @@ def _(mo):
 @app.cell
 def device_queries():
   import torch
-  from torch_tpu import api
-  import tpu_utils  # Only used in Marimo notebooks
 
   # Initialize hardware
-  device = tpu_utils.safe_init()  # Only used in Marimo notebooks
-  # device = api.tpu_device()   # Use this for non-notebooks
+  device = torch.device("tpu")
 
   print(f"torch.tpu.is_available():    {torch.tpu.is_available()}")
   print(f"torch.accelerator.is_available(): {torch.accelerator.is_available()}")
@@ -87,7 +84,7 @@ def _(mo):
 
 @app.cell
 def seeding_example(torch):
-  # Set the seed for the TPU-resident Philox generator across all cores
+  # Set the seed across all cores
   torch.tpu.manual_seed_all(42)
   print("Seeded all TPU cores with value 42.")
   return
