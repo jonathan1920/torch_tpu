@@ -1681,6 +1681,18 @@ def _linalg_lu_without_pivot_gpu(
   )
 
 
+# Returns true for batch norm op fail on complex64 in compiled mode.
+# TODO(b/521528968): transfer to 'cpu' device failed with StableHLO error.
+def _batch_norm_complex64_compiled_gpu(
+    golden_device_type: str, unused_variant: OpVariant, op_input: OpInput
+) -> bool:
+  return (
+      golden_device_type == "gpu"
+      and op_testing.is_compiled_mode()
+      and op_input.input_value.dtype == torch.complex64
+  )
+
+
 class TestOps(TorchTpuTestBase):
   """Tests for ops using randomly generated inputs."""
 
@@ -3158,6 +3170,7 @@ class TestOps(TorchTpuTestBase):
                 torch.float64,
             )
         },
+        skip_if=_batch_norm_complex64_compiled_gpu,
     )
 
   def test_native_batch_norm_legit(self):
@@ -3178,6 +3191,7 @@ class TestOps(TorchTpuTestBase):
                 torch.float64,
             )
         },
+        skip_if=_batch_norm_complex64_compiled_gpu,
     )
 
   def test_native_group_norm(self):
