@@ -664,6 +664,16 @@ class ResizeTest(LayoutTest):
 
     self._assert_same_layout_tpu_vs_cpu(_test_fn)
 
+  def test_aminmax_out_resize(self):
+    def _test_fn(device):
+      x = torch.randn(4, 4, device=device)
+      min_out = torch.empty(2, 2, device=device)
+      max_out = torch.empty(2, 2, device=device)
+      torch.aminmax(x, out=(min_out, max_out))
+      return min_out, max_out
+
+    self._assert_same_layout_tpu_vs_cpu(_test_fn)
+
   def test_resize_shrink_mutate_base(self):
     self._assert_same_mutation_from_base(
         (100,),

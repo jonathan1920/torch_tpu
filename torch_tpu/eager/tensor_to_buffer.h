@@ -24,8 +24,13 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "c10/core/Allocator.h"
+#include "c10/core/Device.h"
 #include "c10/core/Storage.h"
 #include "c10/core/TensorImpl.h"
+#include "c10/util/Optional.h"
+#include "torch/headeronly/core/Layout.h"
+#include "torch/headeronly/core/MemoryFormat.h"
+#include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
@@ -183,6 +188,16 @@ inline absl::StatusOr<DeviceBufferRef> MaterializeAndReturn(
       MaterializeAndReturn(absl::Span<const at::Tensor>({&tensor, 1}), reason));
   return buffers[0];
 }
+
+absl::StatusOr<at::Tensor> MakeEmptyTensor(
+    at::IntArrayRef size, c10::ScalarType dtype,
+    c10::optional<at::Device> device_opt = c10::nullopt);
+
+absl::StatusOr<at::Tensor> MakeEmptyMemoryFormat(
+    at::IntArrayRef size, c10::optional<at::ScalarType> dtype_opt,
+    c10::optional<at::Layout> layout_opt, c10::optional<at::Device> device_opt,
+    c10::optional<bool> pin_memory_opt,
+    c10::optional<at::MemoryFormat> memory_format_opt);
 
 }  // namespace torch_tpu
 

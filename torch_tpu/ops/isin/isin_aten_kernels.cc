@@ -36,6 +36,7 @@
 #include "torch_tpu/ops/isin/isin.h"
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -131,7 +132,7 @@ at::Tensor& AtenIsInScalarTensorOut(const at::Scalar& element,
         // Resize the output tensor to the shape we expect it to be, an
         // empty tensor for hosting a scalar.
         const Dimensions out_dims = {};
-        at::native::resize_output(out, out_dims);
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, out_dims));
 
         TT_ASSIGN_OR_THROW(auto result_buf,
                            AtenIsInHelper(element_tensor, test_elements,

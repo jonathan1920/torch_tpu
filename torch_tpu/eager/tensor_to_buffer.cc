@@ -19,9 +19,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <sstream>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "ATen/core/ATen_fwd.h"
 #include "ATen/core/CachingHostAllocator.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
@@ -38,6 +41,7 @@
 #include "absl/types/span.h"
 #include "c10/core/Allocator.h"
 #include "c10/core/CachingDeviceAllocator.h"
+#include "c10/core/DefaultDtype.h"
 #include "c10/core/Device.h"
 #include "c10/core/DispatchKey.h"
 #include "c10/core/DispatchKeySet.h"
@@ -47,10 +51,13 @@
 #include "c10/core/Stream.h"
 #include "c10/core/TensorImpl.h"
 #include "c10/util/Exception.h"
+#include "c10/util/Optional.h"
 #include "c10/util/UniqueVoidPtr.h"
 #include "c10/util/intrusive_ptr.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch/headeronly/core/DeviceType.h"
+#include "torch/headeronly/core/Layout.h"
+#include "torch/headeronly/core/MemoryFormat.h"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/device_type.h"
@@ -59,6 +66,7 @@
 #include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/status_builder.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_buffer_utils.h"
 #include "torch_tpu/eager/eager_mode.h"
@@ -301,7 +309,6 @@ at::Tensor MakeTensor(DeviceBufferRef buffer_ref, int device_idx) {
                                           : " (non-contiguous)")
                << "\nstorage nbytes: " << tensor.storage().nbytes()
                << "\nstorage offset: " << tensor.storage_offset();
-
   ABSL_CHECK_EQ(tensor.device().type(),  // CRASH_OK
                 GetPrivateUse1DeviceType())
       << "Tensor created does NOT have PrivateUse1 device type.";
@@ -660,6 +667,69 @@ absl::StatusOr<std::vector<DeviceBufferRef>> MaterializeAndReturn(
   // jobs are done.
   TT_RETURN_IF_ERROR(MaybeBlockOnPendingMaterializationsNew(tensors[0]));
   return buffers_to_return;
+}
+
+namespace {
+
+std::string LayoutToString(c10::optional<at::Layout> layout_opt) {
+  if (layout_opt == at::Layout::Jagged) {
+    return "torch.jagged";
+  }
+  if (layout_opt.has_value()) {
+    std::stringstream ss;
+    ss << layout_opt.value();
+    return ss.str();
+  }
+  return "nullopt";  // Should not be reached.
+}
+
+}  // namespace
+
+absl::StatusOr<at::Tensor> MakeEmptyMemoryFormat(
+    at::IntArrayRef size, c10::optional<at::ScalarType> dtype_opt,
+    c10::optional<at::Layout> layout_opt, c10::optional<at::Device> device_opt,
+    c10::optional<bool> pin_memory_opt,
+    c10::optional<at::MemoryFormat> memory_format_opt) {
+  TT_RET_CHECK(!dtype_opt.has_value() ||
+                   dtype_opt.value() != at::ScalarType::ComplexHalf,
+               error::kUnimplemented)
+      << "TorchTPU does not yet support dtype complex32";
+  // Check that we support all the provided options.
+  CheckDeviceIsTpu(device_opt, "empty");
+  TT_RET_CHECK(layout_opt.value_or(at::Layout::Strided) == at::Layout::Strided,
+               error::kUnimplemented)
+      << "only layout=torch.strided is supported by TorchTPU for now, "
+         "got "
+      << LayoutToString(layout_opt);
+
+  // If device_opt is unspecified, we use the global default dtype.
+  TT_ASSIGN_OR_RETURN(const auto dtype,
+                      ConvertTo<mlir::ElementType>(dtype_opt.value_or(
+                          c10::get_default_dtype_as_scalartype())));
+
+  // Create an empty DeviceBufferRef.
+  TT_ASSIGN_OR_RETURN(DeviceBufferRef buffer,
+                      CreateEmptyDeviceBufferRef(CopyIntVector(size), dtype));
+  at::Tensor result = MakeTensor(std::move(buffer));
+
+  // MakeTensor defaults to a contiguous tensor, and so
+  // does aten::empty().
+  if (memory_format_opt.value_or(at::MemoryFormat::Contiguous) !=
+      at::MemoryFormat::Contiguous) {
+    // This may throw an error if the memory format is not supported for
+    // the given tensor shape.
+    result.unsafeGetTensorImpl()->empty_tensor_restride(
+        memory_format_opt.value());
+  }
+  return result;
+}
+
+absl::StatusOr<at::Tensor> MakeEmptyTensor(
+    at::IntArrayRef size, c10::ScalarType dtype,
+    c10::optional<at::Device> device_opt) {
+  return MakeEmptyMemoryFormat(size, dtype, /*layout_opt=*/c10::nullopt,
+                               device_opt, /*pin_memory_opt=*/c10::nullopt,
+                               /*memory_format_opt=*/c10::nullopt);
 }
 
 }  // namespace torch_tpu

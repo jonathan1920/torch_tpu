@@ -161,7 +161,6 @@ void OpNameStack::Push(OpName op_name) {
           OpName::kIndexPutImpl_,
           OpName::kIndexTensorOut,
           OpName::kIrshiftTensor,
-          OpName::kIsInScalarTensorOut,
           OpName::kLayerNorm,
           OpName::kLerpScalarOut,
           OpName::kLinalgInvExInverse,
@@ -171,9 +170,6 @@ void OpNameStack::Push(OpName op_name) {
           OpName::kLinalgSolveExOut,
           OpName::kLinalgVectorNormOut,
           OpName::kLocalScalarDense,
-          OpName::kLogicalAndOut,
-          OpName::kLogicalOrOut,
-          OpName::kLogicalXorOut,
           OpName::kLshiftTensor,
           OpName::kLuUnpackOut,
           OpName::kMaskedScatter_,
@@ -184,7 +180,6 @@ void OpNameStack::Push(OpName op_name) {
           OpName::kMaxPool3dWithIndices,
           OpName::kMaxPool3dWithIndicesBackward,
           OpName::kMin,
-          OpName::kMmOut,
           OpName::kMseLossBackward,
           OpName::kMseLossOut,
           OpName::kNativeBatchNormLegit,
@@ -249,7 +244,7 @@ void OpNameStack::Push(OpName op_name) {
   // Only check known_composite_ops size once as it's a run-time constant.
   static const bool check_once = [] {
     ABSL_CHECK_EQ(  // CRASH_OK
-        known_composite_ops->size(), 192 /* DO NOT increase this! */)
+        known_composite_ops->size(), 187 /* DO NOT increase this! */)
         << "The size of known_composite_ops MUST NOT go up. "
            "If you are removing entries from known_composite_ops, please LOWER "
            "the expected size in the comparison to match the new size and "

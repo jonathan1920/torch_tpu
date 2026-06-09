@@ -38,6 +38,7 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops/macros:kernel",
+        "//torch_tpu/ops/resize:resize_aten_kernels",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",

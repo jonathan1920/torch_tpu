@@ -57,6 +57,7 @@
 #include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 #include "torch_tpu/ops/unary.h"
 
 namespace torch_tpu {
@@ -188,7 +189,8 @@ absl::Status FinalizeOpOutput(at::Tensor& out, DeviceBufferRef result_buf,
            "in-place, which has shape "
         << ToString(out.sizes());
   } else {
-    at::native::resize_output(out, result_buf.dimensions());
+    TT_RETURN_IF_ERROR(
+        ResizeTensorIfShapeDiffers(out, result_buf.dimensions()));
   }
 
   return AssignBufferToAtTensor(std::move(result_buf), out);

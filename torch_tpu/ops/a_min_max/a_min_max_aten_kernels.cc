@@ -45,6 +45,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/reductions/reductions.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -104,7 +105,7 @@ absl::Status AMinMax(const at::Tensor& self, const at::IntArrayRef dims,
                      .out_dims = std::move(out_dims),
                      .op_param_cache_keys = std::move(param_keys)}));
 
-  at::native::resize_output(out, out_shape);
+  TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(out, out_shape));
   return AssignBufferToAtTensor(std::move(result_buf), out);
 }
 
@@ -167,6 +168,8 @@ std::tuple<at::Tensor&, at::Tensor&> AtenAminmaxOut(
              .out_dims_list = {out_dims, out_dims},
              .op_param_cache_keys = std::move(param_keys)})));
 
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(min, out_shape));
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(max, out_shape));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_bufs[0]), min));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_bufs[1]), max));
     return std::forward_as_tuple(min, max);

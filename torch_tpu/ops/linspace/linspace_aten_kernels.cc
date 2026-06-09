@@ -43,6 +43,7 @@
 #include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
@@ -239,7 +240,7 @@ at::Tensor& AtenLinspaceOut(const at::Scalar& start, const at::Scalar& end,
         TT_ASSIGN_OR_THROW(at::Tensor end_tensor,
                            end_promoted.GetTensor(output_dtype));
 
-        at::native::resize_output(out, {steps});
+        TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, {steps}));
 
         TT_ASSIGN_OR_THROW(const auto output_mlir_type,
                            ConvertTo<mlir::ElementType>(output_dtype));

@@ -39,7 +39,6 @@
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/as_strided/as_strided_aten_kernels.h"
 #include "torch_tpu/ops/macros/kernel.h"
-#include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/stride/stride_helper.h"
 #include "xla/shape_util.h"

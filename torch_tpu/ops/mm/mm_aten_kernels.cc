@@ -45,6 +45,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/precision_context.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 namespace {
@@ -146,7 +147,7 @@ at::Tensor& AtenMmDtypeOut(const at::Tensor& lhs, const at::Tensor& rhs,
     TT_ASSIGN_OR_THROW(auto result_buf,
                        Mm(lhs, rhs, out, std::move(param_keys), out_dtype));
     int64_t output_dims[2] = {lhs.size(0), rhs.size(1)};
-    at::native::resize_output(out, output_dims);
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, output_dims));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
@@ -158,7 +159,7 @@ at::Tensor& AtenMmOut(const at::Tensor& lhs, const at::Tensor& rhs,
     TT_ASSIGN_OR_THROW(auto result_buf,
                        Mm(lhs, rhs, out, std::move(param_keys)));
     int64_t output_dims[2] = {lhs.size(0), rhs.size(1)};
-    at::native::resize_output(out, output_dims);
+    TT_THROW_IF_ERROR(ResizeTensorIfShapeDiffers(out, output_dims));
     TT_THROW_IF_ERROR(AssignBufferToAtTensor(std::move(result_buf), out));
     return out;
   });
