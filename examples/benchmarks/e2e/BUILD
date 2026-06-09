@@ -142,6 +142,7 @@ torch_tpu_py_test(
     main = "model_performance_benchmarks.py",
     # TODO: b/519228522 - Re-enable OSS tests after adding data dependencies to wheel tests.
     notest_oss = "Huggingface configs are part of OSS build targets.",
+    shard_count = 8,
     strict = True,
     tags = [
         "cpu:4",

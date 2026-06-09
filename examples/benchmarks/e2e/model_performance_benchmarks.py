@@ -353,6 +353,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     """Tests the forward pass of Gemma-3-270m."""
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
+            benchmark_utils.Platform.V5E_1X1,
             benchmark_utils.Platform.GFC_1X1X1,
             benchmark_utils.Platform.B200_1,
             benchmark_utils.Platform.XLA_CPU,
@@ -376,6 +377,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     """Tests the training of Gemma-3-270m."""
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
+            benchmark_utils.Platform.V5E_1X1,
             benchmark_utils.Platform.GFC_1X1X1,
             benchmark_utils.Platform.B200_1,
         ],
@@ -1307,6 +1309,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       self.skipTest("Not supported on TorchAX")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
+            benchmark_utils.Platform.V5E_1X1,
             benchmark_utils.Platform.GFC_1X1X1,
             benchmark_utils.Platform.B200_1,
         ],
