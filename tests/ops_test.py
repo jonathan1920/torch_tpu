@@ -1504,6 +1504,7 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
             },
             "atanh": {
                 torch.bfloat16: {"rtol": 2e-2, "atol": 3e-1},
+                torch.float16: {"rtol": 1e-3, "atol": 3e-1},
                 torch.float32: {"rtol": 4e-4, "atol": 8e-2},
             },
             "cdist": {
