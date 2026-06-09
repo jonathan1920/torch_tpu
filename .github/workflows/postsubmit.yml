@@ -159,40 +159,14 @@ jobs:
         shell: bash
         run: |
           COMMIT_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
-          WORKFLOW_FILE="build_wheel.yml"
 
           mkdir dist
-          set +e
-          for i in {1..30}; do
-            RUN_INFO=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
-              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW_FILE/runs?branch=${{ github.head_ref || github.ref_name }}" \
-              | python3 ci/find_successful_run.py "$COMMIT_SHA")
-            EXIT_CODE=$?
-            if [ $EXIT_CODE -eq 2 ]; then
-              echo "ERROR: No runs found for this commit. Failing immediately."
-              exit 1
-            fi
-            if [ $EXIT_CODE -eq 3 ]; then
-              echo "ERROR: build_wheel workflow failed for this commit. Failing immediately."
-              exit 1
-            fi
-
-            if [ -n "$RUN_INFO" ]; then
-              read RUN_NUMBER RUN_ATTEMPT <<< "$RUN_INFO"
-              break
-            fi
-            echo "Waiting for build_wheel workflow to complete successfully... ($i/30)"
-            sleep 60
-          done
-          set -e
-
-          if [ -z "$RUN_NUMBER" ]; then
-            echo "Error: build_wheel workflow not found or failed after 30 minutes."
+          if ! GCS_WHEEL_PATH=$(python3 ci/find_successful_run.py "$COMMIT_SHA" --wait); then
+            echo "ERROR: Failed to find successful build_wheel run or it timed out."
             exit 1
           fi
 
-          GCS_PATH="gs://torch-tpu-ci-transient/artifacts/Build and Test Wheels/$RUN_NUMBER/$RUN_ATTEMPT"
-          gcloud storage cp "$GCS_PATH/*.whl" dist/
+          gcloud storage cp "$GCS_WHEEL_PATH" dist/
 
       - name: Install torchtpu-vllm with local wheel override
         run: |
