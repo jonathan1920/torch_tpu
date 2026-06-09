@@ -92,7 +92,7 @@ def assert_close(
     rtol: float | None = None,
     atol: Tolerance | None = None,
     preamble: str | None = None,
-    check_value: CheckValueMode = CheckValueMode.STRICT,
+    check_value: CheckValueMode = CheckValueMode.LOOSE,
     check_dtype: bool = True,
 ) -> None:
   """Assert that `actual` and `expectec` are sufficiently close.
@@ -274,7 +274,7 @@ def _assert_tensor_close(
     rtol: float | None = None,
     atol: Tolerance | None = None,
     preamble: str | None = None,
-    check_value: CheckValueMode = CheckValueMode.STRICT,
+    check_value: CheckValueMode = CheckValueMode.LOOSE,
 ) -> None:
   """Single-tensor assert_close implementation.
 

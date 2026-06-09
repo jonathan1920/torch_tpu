@@ -88,11 +88,17 @@ class AllTest(absltest.TestCase):
   def test_compare_strict_mode(self):
     t_tpu = torch.arange(8).reshape((4, 2)).to(torch.float32)
     t_cpu = torch.arange(8).reshape((4, 2)).to(torch.float32)
-    utils.assert_close(t_tpu, t_cpu)
+    utils.assert_close(t_tpu, t_cpu, check_value=utils.CheckValueMode.STRICT)
 
     t_cpu[0][-1] += 0.1
     with self.assertRaises(AssertionError) as cm:
-      utils.assert_close(t_tpu, t_cpu, rtol=1e-6, atol=1e-6)
+      utils.assert_close(
+          t_tpu,
+          t_cpu,
+          rtol=1e-6,
+          atol=1e-6,
+          check_value=utils.CheckValueMode.STRICT,
+      )
     expected_msg = """    at index (0, 1), expected=1.100000023841858, actual=1.0, relative diff=0.09090910851955414, diff=0.10000002384185791
     at index (0, 1), expected=1.100000023841858, actual=1.0, relative diff=0.09090910851955414, diff=0.10000002384185791
 
