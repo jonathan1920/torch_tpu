@@ -5762,6 +5762,23 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     expected = self_input * beta
     self.assert_close(golden_result=expected, torch_tpu_result=tpu_res.cpu())
 
+  def test_elu_backward_is_result(self):
+    """Tests torch.ops.aten.elu_backward with is_result=True and negative values."""
+    grad_output = torch.tensor([-1.0, 2.0, -3.0], dtype=torch.float32)
+    self_or_result = torch.tensor([-2.0, -1.5, 0.5], dtype=torch.float32)
+
+    def compute(device):
+      return torch.ops.aten.elu_backward(
+          to(grad_output, device),
+          alpha=1.0,
+          scale=1.0,
+          input_scale=1.0,
+          is_result=True,
+          self_or_result=to(self_or_result, device),
+      )
+
+    self.assert_close_tpu_vs_cpu(compute)
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""
