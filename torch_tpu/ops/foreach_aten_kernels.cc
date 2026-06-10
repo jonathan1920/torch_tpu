@@ -592,10 +592,13 @@ std::vector<DeviceBufferRef> ForeachAddList(
   std::vector<at::Tensor> inputs(self.begin(), self.end());
   inputs.insert(inputs.end(), other.begin(), other.end());
   bool alpha_is_one = promoted_alpha.IsOne();
-  // We create different Shlo based on whether alpha is one or not.
-  // Alpha is not multiplied if equal to 1.0.
+  bool alpha_is_minus_one = promoted_alpha.IsMinusOne();
+  // We create different Shlo based on whether alpha is one, minus one or not.
+  // Alpha is not multiplied if equal to 1.0 or -1.0.
   TT_THROW_IF_ERROR(param_keys.SetParam("alpha_is_one", alpha_is_one));
-  if (!alpha_is_one) {
+  TT_THROW_IF_ERROR(
+      param_keys.SetParam("alpha_is_minus_one", alpha_is_minus_one));
+  if (!alpha_is_one && !alpha_is_minus_one) {
     for (auto i = 0; i < num_tensors; ++i) {
       at::ScalarType scalar_type = ConvertTo<at::ScalarType>(out_dtypes[i]);
       TT_ASSIGN_OR_THROW(at::Tensor alpha_tensor,
@@ -605,7 +608,7 @@ std::vector<DeviceBufferRef> ForeachAddList(
   }
 
   auto op_builder =
-      [alpha_is_one, num_tensors,
+      [alpha_is_one, alpha_is_minus_one, num_tensors,
        out_dtypes = DtypeVec(out_dtypes.begin(), out_dtypes.end())](
           absl::Span<mlir::MlirOp> inputs, mlir::MlirBuilder& builder)
       -> absl::StatusOr<mlir::SmallVector<mlir::MlirOp>> {
@@ -617,6 +620,12 @@ std::vector<DeviceBufferRef> ForeachAddList(
     if (alpha_is_one) {
       return BuildForeachShlo(self_ops, other_ops, out_dtypes,
                               mlir::stablehlo::Add, builder);
+    }
+
+    // If alpha is -1.0, do a simple subtraction without multiplying by alpha.
+    if (alpha_is_minus_one) {
+      return BuildForeachShlo(self_ops, other_ops, out_dtypes,
+                              mlir::stablehlo::Subtract, builder);
     }
 
     absl::Span<mlir::MlirOp> alpha_ops =
@@ -1613,7 +1622,8 @@ void AtenForeachZero_(at::TensorList self) {
 std::vector<at::Tensor> AtenForeachAddList(at::TensorList self,
                                            at::TensorList other,
                                            const at::Scalar& alpha) {
-  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
+  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(
+      ScalarValue::kOne, ScalarValue::kMinusOne);
   TT_KERNEL(
       OpName::kForeachAddList, param_keys, (self, other, promoted_alpha), {
         TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self, other));
@@ -1692,7 +1702,8 @@ std::vector<at::Tensor> AtenForeachAddScalarList(
 std::vector<at::Tensor> AtenForeachAddTensor(at::TensorList self,
                                              const at::Tensor& other,
                                              const at::Scalar& alpha) {
-  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
+  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(
+      ScalarValue::kOne, ScalarValue::kMinusOne);
   TT_KERNEL(
       OpName::kForeachAddTensor, param_keys, (self, other, promoted_alpha), {
         std::vector<at::Tensor> other_list(self.size(), other);
@@ -1706,7 +1717,8 @@ std::vector<at::Tensor> AtenForeachAddTensor(at::TensorList self,
 
 void AtenForeachAdd_List(at::TensorList self, at::TensorList other,
                          const at::Scalar& alpha) {
-  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
+  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(
+      ScalarValue::kOne, ScalarValue::kMinusOne);
   TT_KERNEL(OpName::kForeachAdd_List, param_keys, (self, other, promoted_alpha),
             {
               TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
@@ -1762,7 +1774,8 @@ void AtenForeachAdd_ScalarList(at::TensorList self,
 
 void AtenForeachAdd_Tensor(at::TensorList self, const at::Tensor& other,
                            const at::Scalar& alpha) {
-  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
+  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(
+      ScalarValue::kOne, ScalarValue::kMinusOne);
   TT_KERNEL(OpName::kForeachAdd_Tensor, param_keys,
             (self, other, promoted_alpha), {
               std::vector<at::Tensor> other_list(self.size(), other);
@@ -2375,8 +2388,8 @@ std::vector<at::Tensor> AtenForeachSubList(at::TensorList self,
   if (self.empty()) {
     return {};
   }
-  auto promoted_neg_alpha =
-      PromoteScalar(-alpha).AvoidPromoting(ScalarValue::kOne);
+  auto promoted_neg_alpha = PromoteScalar(-alpha).AvoidPromoting(
+      ScalarValue::kOne, ScalarValue::kMinusOne);
   TT_KERNEL(
       OpName::kForeachSubList, param_keys, (self, other, promoted_neg_alpha), {
         // _foreach_add supports bool, but _foreach_sub does not.
@@ -2408,8 +2421,8 @@ void AtenForeachSub_List(at::TensorList self, at::TensorList other,
   if (self.empty()) {
     return;
   }
-  auto promoted_neg_alpha =
-      PromoteScalar(-alpha).AvoidPromoting(ScalarValue::kOne);
+  auto promoted_neg_alpha = PromoteScalar(-alpha).AvoidPromoting(
+      ScalarValue::kOne, ScalarValue::kMinusOne);
   TT_KERNEL(
       OpName::kForeachSub_List, param_keys, (self, other, promoted_neg_alpha), {
         // _foreach_add supports bool, but _foreach_sub does not.

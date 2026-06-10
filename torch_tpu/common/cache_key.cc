@@ -105,6 +105,9 @@ std::string FormatParamCacheKey(const MaybePromotedScalar& value) {
     if (value.IsOne()) {
       return "1";
     }
+    if (value.IsMinusOne()) {
+      return "-1";
+    }
     ABSL_LOG(FATAL)  // CRASH_OK
         << "Unexpected excluded scalar value: " << ToString(value.scalar());
   }
@@ -212,6 +215,9 @@ bool MaybePromotedScalar::MatchesAny(
     if (value == ScalarValue::kOne && IsOne()) {
       return true;
     }
+    if (value == ScalarValue::kMinusOne && IsMinusOne()) {
+      return true;
+    }
   }
   return false;
 }
@@ -231,6 +237,10 @@ bool MaybePromotedScalar::IsZero() const {
 
 bool MaybePromotedScalar::IsOne() const {
   return internal::IsScalarEqualTo(promoted_scalar_.scalar(), 1);
+}
+
+bool MaybePromotedScalar::IsMinusOne() const {
+  return internal::IsScalarEqualTo(promoted_scalar_.scalar(), -1);
 }
 
 absl::StatusOr<at::Tensor> MaybePromotedScalar::GetTensor(

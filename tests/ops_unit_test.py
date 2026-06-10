@@ -94,6 +94,167 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           )
       )
 
+  def test_foreach_add_sub_alpha(self):
+    """Tests foreach_add and foreach_sub with different alphas."""
+    tensors1 = [
+        torch.arange(6, dtype=torch.float32).reshape(2, 3) + i for i in range(3)
+    ]
+    tensors2 = [
+        torch.arange(6, dtype=torch.float32).reshape(2, 3) * 2 + i
+        for i in range(3)
+    ]
+    single_tensor = torch.tensor(1.5, dtype=torch.float32)
+
+    # Out-of-place tests (list-list)
+    # Test alpha = 1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add(
+            [t.to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=1.0,
+        )
+    )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_sub(
+            [t.to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=1.0,
+        )
+    )
+
+    # Test alpha = -1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add(
+            [t.to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=-1.0,
+        )
+    )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_sub(
+            [t.to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=-1.0,
+        )
+    )
+
+    # Test alpha = 2.5
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add(
+            [t.to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=2.5,
+        )
+    )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_sub(
+            [t.to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=2.5,
+        )
+    )
+
+    # Out-of-place tests (list-tensor)
+    # Test alpha = 1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add(
+            [t.to(device) for t in tensors1],
+            single_tensor.to(device),
+            alpha=1.0,
+        )
+    )
+    # Test alpha = -1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add(
+            [t.to(device) for t in tensors1],
+            single_tensor.to(device),
+            alpha=-1.0,
+        )
+    )
+    # Test alpha = 2.5
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add(
+            [t.to(device) for t in tensors1],
+            single_tensor.to(device),
+            alpha=2.5,
+        )
+    )
+
+    # Inplace tests (list-list)
+    # Test alpha = 1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add_(
+            [t.clone().to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=1.0,
+        )
+    )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_sub_(
+            [t.clone().to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=1.0,
+        )
+    )
+
+    # Test alpha = -1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add_(
+            [t.clone().to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=-1.0,
+        )
+    )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_sub_(
+            [t.clone().to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=-1.0,
+        )
+    )
+
+    # Test alpha = 2.5
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add_(
+            [t.clone().to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=2.5,
+        )
+    )
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_sub_(
+            [t.clone().to(device) for t in tensors1],
+            [t.to(device) for t in tensors2],
+            alpha=2.5,
+        )
+    )
+
+    # Inplace tests (list-tensor)
+    # Test alpha = 1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add_(
+            [t.clone().to(device) for t in tensors1],
+            single_tensor.to(device),
+            alpha=1.0,
+        )
+    )
+    # Test alpha = -1
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add_(
+            [t.clone().to(device) for t in tensors1],
+            single_tensor.to(device),
+            alpha=-1.0,
+        )
+    )
+    # Test alpha = 2.5
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch._foreach_add_(
+            [t.clone().to(device) for t in tensors1],
+            single_tensor.to(device),
+            alpha=2.5,
+        )
+    )
+
   def test_assert_close_partial_override(self):
     """Tests that utils.assert_close works with partial numeric overrides.
 
