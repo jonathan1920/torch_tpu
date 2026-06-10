@@ -243,9 +243,6 @@ void CheckScalarInput() {
                 // DO NOT ADD NEW ENTRIES TO THIS LIST.
                 // TODO: make this list empty.
                 // go/keep-sorted start
-      kOpName == OpName::kBaddbmmDtype ||          //
-      kOpName == OpName::kBaddbmmDtypeOut ||       //
-      kOpName == OpName::kBaddbmmOut ||            //
       kOpName == OpName::kEluBackwardGradInput ||  //
       kOpName == OpName::kLinalgVectorNormOut ||   //
       kOpName == OpName::kVar ||                   //

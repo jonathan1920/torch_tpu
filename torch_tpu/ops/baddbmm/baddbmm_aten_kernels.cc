@@ -16,7 +16,8 @@
 
 #include "torch_tpu/ops/baddbmm/baddbmm_aten_kernels.h"
 
-#include <complex>
+#include <cstddef>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -25,10 +26,6 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinTypeInterfaces.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Types.h"
-#include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -92,55 +89,34 @@ absl::Status CheckBaddbmmInputs(const at::Tensor& self,
   return absl::OkStatus();
 }
 
-mlir::MlirOp BuildSanitizedScalarOp(mlir::MlirBuilder& builder,
-                                    const at::Scalar& s,
-                                    mlir::Type element_type) {
-  if (mlir::isa<mlir::ComplexType>(element_type)) {
-    auto c = s.toComplexDouble();
-    return MakeScalarConstant(builder, std::complex<double>(c.real(), c.imag()),
-                              element_type);
-  } else if (mlir::isa<mlir::FloatType>(element_type)) {
-    return MakeScalarConstant(builder, s.toDouble(), element_type);
-  } else {
-    return MakeScalarConstant(builder, s.toLong(), element_type);
-  }
-}
-
 absl::StatusOr<mlir::MlirOp> BuildBaddbmmShlo(
-    mlir::MlirOp self_op, mlir::MlirOp batch1_op, mlir::MlirOp batch2_op,
-    const at::Scalar& beta, const at::Scalar& alpha,
-    const mlir::stablehlo::Precision precision,
-    const at::ScalarType out_dtype) {
-  auto& builder = self_op.getBuilder();
-  TT_ASSIGN_OR_RETURN(mlir::ElementType out_dtype_mlir,
-                      ConvertTo<mlir::ElementType>(out_dtype));
-  TT_ASSIGN_OR_RETURN(
-      mlir::MlirOp bmm_res,
-      BuildBmmShlo(batch1_op, batch2_op, out_dtype_mlir, precision));
-  auto calc_type = GetTensorTypeOrDie(bmm_res).getElementType();
+    std::optional<mlir::MlirOp> self_op, mlir::MlirOp batch1_op,
+    mlir::MlirOp batch2_op, std::optional<mlir::MlirOp> beta_op,
+    std::optional<mlir::MlirOp> alpha_op, const MaybePromotedScalar& beta,
+    const MaybePromotedScalar& alpha,
+    const mlir::stablehlo::Precision precision, mlir::ElementType out_dtype) {
+  TT_ASSIGN_OR_RETURN(mlir::MlirOp bmm_res,
+                      BuildBmmShlo(batch1_op, batch2_op, out_dtype, precision));
 
   // If alpha is not 1, multiply bmm_res by alpha.
-  if (!alpha.equal(1.0) && !alpha.equal(1)) {
-    mlir::MlirOp alpha_scalar =
-        BuildSanitizedScalarOp(builder, alpha, calc_type);
+  if (!alpha.IsOne()) {
     TT_ASSIGN_OR_RETURN(auto alpha_tensor,
-                        BroadcastIfNeeded(alpha_scalar, bmm_res));
+                        BroadcastIfNeeded(*alpha_op, bmm_res));
     bmm_res = mlir::stablehlo::Mul(bmm_res, alpha_tensor);
   }
 
   // If beta is 0, content of input is ignored (no NaN / infinity propagation)
-  if (beta.equal(0.0) || beta.equal(0)) {
+  if (beta.IsZero()) {
     return bmm_res;
   }
 
   // Broadcast self to match bmm_res shape
-  TT_ASSIGN_OR_RETURN(auto self_bcst, BroadcastIfNeeded(self_op, bmm_res));
+  TT_ASSIGN_OR_RETURN(auto self_bcst, BroadcastIfNeeded(*self_op, bmm_res));
 
   // If beta is not 1, multiply self_bcst by beta.
-  if (!beta.equal(1.0) && !beta.equal(1)) {
-    auto beta_scalar = BuildSanitizedScalarOp(builder, beta, calc_type);
+  if (!beta.IsOne()) {
     TT_ASSIGN_OR_RETURN(auto beta_tensor,
-                        BroadcastIfNeeded(beta_scalar, self_bcst));
+                        BroadcastIfNeeded(*beta_op, self_bcst));
     self_bcst = mlir::stablehlo::Mul(self_bcst, beta_tensor);
   }
 
@@ -149,41 +125,106 @@ absl::StatusOr<mlir::MlirOp> BuildBaddbmmShlo(
 
 absl::StatusOr<DeviceBufferRef> Baddbmm(
     const at::Tensor& self, const at::Tensor& batch1, const at::Tensor& batch2,
-    const at::Scalar& beta, const at::Scalar& alpha, at::ScalarType out_dtype,
-    OpParamCacheKeys& param_keys) {
+    MaybePromotedScalar beta, std::optional<at::Tensor> beta_tensor,
+    MaybePromotedScalar alpha, std::optional<at::Tensor> alpha_tensor,
+    at::ScalarType out_dtype, OpParamCacheKeys& param_keys,
+    std::optional<OpName> op_name_override = std::nullopt) {
   TT_RETURN_IF_ERROR(CheckBaddbmmInputs(self, batch1, batch2));
 
   TT_ASSIGN_OR_RETURN(mlir::ElementType out_dtype_mlir,
                       ConvertTo<mlir::ElementType>(out_dtype));
   Dimensions out_dims = {batch1.size(0), batch1.size(1), batch2.size(2)};
 
-  const std::vector<at::Tensor> inputs = {self, batch1, batch2};
+  // Dynamically packs only the necessary tensors to optimize dispatch and
+  // cache keys. The boolean flags are used to match this packing structure
+  // during unpacking in the lambda.
+  std::vector<at::Tensor> inputs;
+  size_t expected_size = 2;  // batch1 and batch2 are always added.
+  if (!beta.IsZero()) {
+    expected_size++;
+  }
+  if (beta_tensor.has_value()) {
+    expected_size++;
+  }
+  if (alpha_tensor.has_value()) {
+    expected_size++;
+  }
+  inputs.reserve(expected_size);
+
+  if (!beta.IsZero()) {
+    inputs.push_back(self);
+  }
+  inputs.push_back(batch1);
+  inputs.push_back(batch2);
+  if (beta_tensor.has_value()) {
+    inputs.push_back(std::move(*beta_tensor));
+  }
+  if (alpha_tensor.has_value()) {
+    inputs.push_back(std::move(*alpha_tensor));
+  }
+
+  bool beta_is_zero = beta.IsZero();
+  bool has_beta_tensor = beta_tensor.has_value();
+  bool has_alpha_tensor = alpha_tensor.has_value();
+
   const auto precision = GetAndAddPrecisionTo(param_keys);
 
   auto op_builder =
-      [beta, alpha, out_dtype, precision](
-          absl::Span<mlir::MlirOp> inputs_op,
-          mlir::MlirBuilder& builder) -> absl::StatusOr<mlir::MlirOp> {
-    ABSL_CHECK_EQ(  // CRASH_OK=Dispatcher parameter binding safety boundary.
-        inputs_op.size(), 3);
-    const mlir::MlirOp self_op = inputs_op[0];
-    const mlir::MlirOp batch1_op = inputs_op[1];
-    const mlir::MlirOp batch2_op = inputs_op[2];
-    return BuildBaddbmmShlo(self_op, batch1_op, batch2_op, beta, alpha,
-                            precision, out_dtype);
+      [beta = std::move(beta), alpha = std::move(alpha), beta_is_zero,
+       has_beta_tensor, has_alpha_tensor, out_dtype_mlir,
+       precision](absl::Span<mlir::MlirOp> inputs_op,
+                  mlir::MlirBuilder& builder) -> absl::StatusOr<mlir::MlirOp> {
+    // Unpacks inputs from the flat span. Packing order in Baddbmm():
+    // [self (if beta != 0), batch1, batch2, beta_tensor, alpha_tensor]
+    size_t idx = 0;
+    std::optional<mlir::MlirOp> self_op;
+    if (!beta_is_zero) {
+      self_op = inputs_op[idx++];
+    }
+    mlir::MlirOp batch1_op = inputs_op[idx++];
+    mlir::MlirOp batch2_op = inputs_op[idx++];
+    std::optional<mlir::MlirOp> beta_op;
+    if (has_beta_tensor) {
+      beta_op = inputs_op[idx++];
+    }
+    std::optional<mlir::MlirOp> alpha_op;
+    if (has_alpha_tensor) {
+      alpha_op = inputs_op[idx++];
+    }
+
+    return BuildBaddbmmShlo(self_op, batch1_op, batch2_op, beta_op, alpha_op,
+                            beta, alpha, precision, out_dtype_mlir);
   };
 
   TT_ASSIGN_OR_RETURN(
       auto result_buffer,
       DispatchOp<kDynamicSize>(
           std::move(op_builder), inputs,
-          // It's OK for both calls to Baddbmm() to use the same OpName for
-          // dispatching, as the logic is the same for both.
-          {.op_name = OpName::kBaddbmmOut,
+          // It's OK for all three calls to Baddbmm() to use the same OpName
+          // for dispatching, as the logic is the same for all three.
+          {.op_name = op_name_override,
            .out_dtype = out_dtype_mlir,
            .out_dims = out_dims,
            .op_param_cache_keys = std::move(param_keys)}));
   return result_buffer;
+}
+
+absl::StatusOr<DeviceBufferRef> ResolveAndRunBaddbmm(
+    const at::Tensor& self, const at::Tensor& batch1, const at::Tensor& batch2,
+    MaybePromotedScalar beta, MaybePromotedScalar alpha,
+    at::ScalarType out_dtype, OpParamCacheKeys& param_keys,
+    std::optional<OpName> op_name_override = std::nullopt) {
+  std::optional<at::Tensor> beta_tensor;
+  if (!beta.ValueMatchesExclude()) {
+    TT_ASSIGN_OR_RETURN(beta_tensor, beta.GetTensor(out_dtype));
+  }
+  std::optional<at::Tensor> alpha_tensor;
+  if (!alpha.ValueMatchesExclude()) {
+    TT_ASSIGN_OR_RETURN(alpha_tensor, alpha.GetTensor(out_dtype));
+  }
+  return Baddbmm(self, batch1, batch2, std::move(beta), std::move(beta_tensor),
+                 std::move(alpha), std::move(alpha_tensor), out_dtype,
+                 param_keys, op_name_override);
 }
 
 }  // namespace
@@ -191,13 +232,19 @@ absl::StatusOr<DeviceBufferRef> Baddbmm(
 at::Tensor AtenBaddbmmDtype(const at::Tensor& self, const at::Tensor& batch1,
                             const at::Tensor& batch2, at::ScalarType out_dtype,
                             const at::Scalar& beta, const at::Scalar& alpha) {
-  TT_KERNEL(OpName::kBaddbmmDtype, param_keys,
-            (self, batch1, batch2, out_dtype, beta, alpha), {
-              TT_ASSIGN_OR_THROW(auto result_buffer,
-                                 Baddbmm(self, batch1, batch2, beta, alpha,
-                                         out_dtype, param_keys));
-              return MakeTensor(result_buffer);
-            });
+  auto promoted_beta =
+      PromoteScalar(beta).AvoidPromoting(ScalarValue::kZero, ScalarValue::kOne);
+  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
+  TT_KERNEL(
+      OpName::kBaddbmmDtype, param_keys,
+      (self, batch1, batch2, out_dtype, promoted_beta, promoted_alpha), {
+        TT_ASSIGN_OR_THROW(
+            auto result_buffer,
+            ResolveAndRunBaddbmm(self, batch1, batch2, std::move(promoted_beta),
+                                 std::move(promoted_alpha), out_dtype,
+                                 param_keys, OpName::kBaddbmmOut));
+        return MakeTensor(result_buffer);
+      });
 }
 
 at::Tensor& AtenBaddbmmDtypeOut(const at::Tensor& self,
@@ -206,28 +253,43 @@ at::Tensor& AtenBaddbmmDtypeOut(const at::Tensor& self,
                                 at::ScalarType out_dtype,
                                 const at::Scalar& beta, const at::Scalar& alpha,
                                 at::Tensor& out) {
-  TT_KERNEL(OpName::kBaddbmmDtypeOut, param_keys,
-            (self, batch1, batch2, out_dtype, beta, alpha, out), {
-              TT_THROW_IF_ERROR(CheckBaddbmmOut(out));
-              TT_ASSIGN_OR_THROW(auto result_buffer,
-                                 Baddbmm(self, batch1, batch2, beta, alpha,
-                                         out_dtype, param_keys));
-              TT_THROW_IF_ERROR(
-                  AssignBufferToAtTensor(std::move(result_buffer), out));
-              return out;
-            });
+  auto promoted_beta =
+      PromoteScalar(beta).AvoidPromoting(ScalarValue::kZero, ScalarValue::kOne);
+  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
+  TT_KERNEL(
+      OpName::kBaddbmmDtypeOut, param_keys,
+      (self, batch1, batch2, out_dtype, promoted_beta, promoted_alpha, out), {
+        TT_THROW_IF_ERROR(CheckBaddbmmOut(out));
+        TT_ASSIGN_OR_THROW(
+            auto result_buffer,
+            ResolveAndRunBaddbmm(self, batch1, batch2, std::move(promoted_beta),
+                                 std::move(promoted_alpha), out_dtype,
+                                 param_keys, OpName::kBaddbmmOut));
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(result_buffer), out));
+        return out;
+      });
 }
 
 at::Tensor& AtenBaddbmmOut(const at::Tensor& self, const at::Tensor& batch1,
                            const at::Tensor& batch2, const at::Scalar& beta,
                            const at::Scalar& alpha, at::Tensor& out) {
-  TT_KERNEL(OpName::kBaddbmmOut, _,
-            (self, batch1, batch2, IgnoreInCacheKey(beta, "Legacy usage"),
-             IgnoreInCacheKey(alpha, "Legacy usage"), out),
-            {
-              return AtenBaddbmmDtypeOut(self, batch1, batch2,
-                                         out.scalar_type(), beta, alpha, out);
-            });
+  auto promoted_beta =
+      PromoteScalar(beta).AvoidPromoting(ScalarValue::kZero, ScalarValue::kOne);
+  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
+  TT_KERNEL(
+      OpName::kBaddbmmOut, param_keys,
+      (self, batch1, batch2, promoted_beta, promoted_alpha, out), {
+        TT_THROW_IF_ERROR(CheckBaddbmmOut(out));
+        TT_ASSIGN_OR_THROW(
+            auto result_buffer,
+            ResolveAndRunBaddbmm(self, batch1, batch2, std::move(promoted_beta),
+                                 std::move(promoted_alpha), out.scalar_type(),
+                                 param_keys));
+        TT_THROW_IF_ERROR(
+            AssignBufferToAtTensor(std::move(result_buffer), out));
+        return out;
+      });
 }
 
 }  // namespace torch_tpu
