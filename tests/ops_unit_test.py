@@ -5676,6 +5676,92 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         atol=1e-2,
     )
 
+  def test_baddbmm_zero_beta_ignores_nan_input(self):
+    """torch.baddbmm() with zero beta should ignore NaN input."""
+    nan_input = torch.full((2, 2, 4), float("nan"), dtype=torch.float32)
+    batch1 = torch.ones(2, 2, 3, dtype=torch.float32)
+    batch2 = torch.ones(2, 3, 4, dtype=torch.float32)
+    beta = 0.0
+    alpha = 1.0
+
+    # Internal check.
+    assert torch.all(torch.isnan(nan_input))
+
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.baddbmm(
+            nan_input.to(device),
+            batch1.to(device),
+            batch2.to(device),
+            beta=beta,
+            alpha=alpha,
+        )
+    )
+
+  def test_baddbmm_zero_beta_ignores_inf_input(self):
+    """torch.baddbmm() with zero beta should ignore Inf input."""
+    inf_input = torch.full((2, 2, 4), float("inf"), dtype=torch.float32)
+    batch1 = torch.ones(2, 2, 3, dtype=torch.float32)
+    batch2 = torch.ones(2, 3, 4, dtype=torch.float32)
+    beta = 0.0
+    alpha = 1.0
+
+    # Internal check.
+    assert torch.all(torch.isinf(inf_input))
+
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.baddbmm(
+            inf_input.to(device),
+            batch1.to(device),
+            batch2.to(device),
+            beta=beta,
+            alpha=alpha,
+        )
+    )
+
+  def test_baddbmm_zero_alpha_ignores_nan_mat(self):
+    """torch.baddbmm() with zero alpha should ignore NaN mat input."""
+    self_input = torch.ones(2, 2, 4, dtype=torch.float32)
+    nan_batch1 = torch.full((2, 2, 3), float("nan"), dtype=torch.float32)
+    batch2 = torch.ones(2, 3, 4, dtype=torch.float32)
+    beta = 1.0
+    alpha = 0.0
+
+    # Internal check.
+    assert torch.all(torch.isnan(nan_batch1))
+
+    device = torch.device("tpu")
+    tpu_res = torch.baddbmm(
+        self_input.to(device),
+        nan_batch1.to(device),
+        batch2.to(device),
+        beta=beta,
+        alpha=alpha,
+    )
+    expected = self_input * beta
+    self.assert_close(golden_result=expected, torch_tpu_result=tpu_res.cpu())
+
+  def test_baddbmm_zero_alpha_ignores_inf_mat(self):
+    """torch.baddbmm() with zero alpha should ignore Inf mat input."""
+    self_input = torch.ones(2, 2, 4, dtype=torch.float32)
+    inf_batch1 = torch.full((2, 2, 3), float("inf"), dtype=torch.float32)
+    batch2 = torch.ones(2, 3, 4, dtype=torch.float32)
+    beta = 1.0
+    alpha = 0.0
+
+    # Internal check.
+    assert torch.all(torch.isinf(inf_batch1))
+
+    device = torch.device("tpu")
+    tpu_res = torch.baddbmm(
+        self_input.to(device),
+        inf_batch1.to(device),
+        batch2.to(device),
+        beta=beta,
+        alpha=alpha,
+    )
+    expected = self_input * beta
+    self.assert_close(golden_result=expected, torch_tpu_result=tpu_res.cpu())
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""

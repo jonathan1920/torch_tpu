@@ -93,28 +93,57 @@ absl::StatusOr<mlir::MlirOp> BuildBaddbmmShlo(
     std::optional<mlir::MlirOp> self_op, mlir::MlirOp batch1_op,
     mlir::MlirOp batch2_op, std::optional<mlir::MlirOp> beta_op,
     std::optional<mlir::MlirOp> alpha_op, const MaybePromotedScalar& beta,
-    const MaybePromotedScalar& alpha,
-    const mlir::stablehlo::Precision precision, mlir::ElementType out_dtype) {
+    const MaybePromotedScalar& alpha, mlir::stablehlo::Precision precision,
+    mlir::ElementType out_dtype) {
+  auto batch1_shape = GetTensorTypeOrDie(batch1_op).getShape();
+  auto batch2_shape = GetTensorTypeOrDie(batch2_op).getShape();
+  Dimensions out_shape = {batch1_shape[0], batch1_shape[1], batch2_shape[2]};
+  auto& builder = batch1_op.getBuilder();
+
+  // Case 1: beta is zero. Baddbmm result is just alpha * (batch1 @ batch2).
+  if (beta.IsZero()) {
+    if (alpha.IsZero()) {
+      return MakeConstant(builder, at::Scalar(0.0), out_dtype, out_shape);
+    }
+    TT_ASSIGN_OR_RETURN(
+        mlir::MlirOp bmm_res,
+        BuildBmmShlo(batch1_op, batch2_op, out_dtype, precision));
+    if (alpha.IsOne()) {
+      return bmm_res;
+    }
+    // alpha is neither 0 nor 1, so alpha_op is guaranteed to have a value.
+    TT_ASSIGN_OR_RETURN(auto alpha_tensor,
+                        BroadcastIfNeeded(*alpha_op, bmm_res));
+    return mlir::stablehlo::Mul(bmm_res, alpha_tensor);
+  }
+
+  // Case 2: beta is not zero. self_op is guaranteed to have a value.
+
+  // Case 2a: alpha is zero. Baddbmm result is just beta * self.
+  if (alpha.IsZero()) {
+    TT_ASSIGN_OR_RETURN(auto self_bcst, BroadcastIfNeeded(*self_op, out_shape));
+    if (!beta.IsOne()) {
+      // beta is neither 0 nor 1, so beta_op is guaranteed to have a value.
+      TT_ASSIGN_OR_RETURN(auto beta_tensor,
+                          BroadcastIfNeeded(*beta_op, self_bcst));
+      self_bcst = mlir::stablehlo::Mul(self_bcst, beta_tensor);
+    }
+    return self_bcst;
+  }
+
+  // Case 2b: alpha is not zero. Compute bmm_res = alpha * (batch1 @ batch2).
   TT_ASSIGN_OR_RETURN(mlir::MlirOp bmm_res,
                       BuildBmmShlo(batch1_op, batch2_op, out_dtype, precision));
-
-  // If alpha is not 1, multiply bmm_res by alpha.
   if (!alpha.IsOne()) {
+    // alpha is neither 0 nor 1, so alpha_op is guaranteed to have a value.
     TT_ASSIGN_OR_RETURN(auto alpha_tensor,
                         BroadcastIfNeeded(*alpha_op, bmm_res));
     bmm_res = mlir::stablehlo::Mul(bmm_res, alpha_tensor);
   }
-
-  // If beta is 0, content of input is ignored (no NaN / infinity propagation)
-  if (beta.IsZero()) {
-    return bmm_res;
-  }
-
-  // Broadcast self to match bmm_res shape
+  // Compute beta * self and add.
   TT_ASSIGN_OR_RETURN(auto self_bcst, BroadcastIfNeeded(*self_op, bmm_res));
-
-  // If beta is not 1, multiply self_bcst by beta.
   if (!beta.IsOne()) {
+    // beta is neither 0 nor 1, so beta_op is guaranteed to have a value.
     TT_ASSIGN_OR_RETURN(auto beta_tensor,
                         BroadcastIfNeeded(*beta_op, self_bcst));
     self_bcst = mlir::stablehlo::Mul(self_bcst, beta_tensor);
@@ -234,7 +263,8 @@ at::Tensor AtenBaddbmmDtype(const at::Tensor& self, const at::Tensor& batch1,
                             const at::Scalar& beta, const at::Scalar& alpha) {
   auto promoted_beta =
       PromoteScalar(beta).AvoidPromoting(ScalarValue::kZero, ScalarValue::kOne);
-  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
+  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kZero,
+                                                            ScalarValue::kOne);
   TT_KERNEL(
       OpName::kBaddbmmDtype, param_keys,
       (self, batch1, batch2, out_dtype, promoted_beta, promoted_alpha), {
@@ -255,7 +285,8 @@ at::Tensor& AtenBaddbmmDtypeOut(const at::Tensor& self,
                                 at::Tensor& out) {
   auto promoted_beta =
       PromoteScalar(beta).AvoidPromoting(ScalarValue::kZero, ScalarValue::kOne);
-  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
+  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kZero,
+                                                            ScalarValue::kOne);
   TT_KERNEL(
       OpName::kBaddbmmDtypeOut, param_keys,
       (self, batch1, batch2, out_dtype, promoted_beta, promoted_alpha, out), {
@@ -276,7 +307,8 @@ at::Tensor& AtenBaddbmmOut(const at::Tensor& self, const at::Tensor& batch1,
                            const at::Scalar& alpha, at::Tensor& out) {
   auto promoted_beta =
       PromoteScalar(beta).AvoidPromoting(ScalarValue::kZero, ScalarValue::kOne);
-  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kOne);
+  auto promoted_alpha = PromoteScalar(alpha).AvoidPromoting(ScalarValue::kZero,
+                                                            ScalarValue::kOne);
   TT_KERNEL(
       OpName::kBaddbmmOut, param_keys,
       (self, batch1, batch2, promoted_beta, promoted_alpha, out), {
