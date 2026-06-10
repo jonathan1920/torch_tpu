@@ -87,6 +87,15 @@ class TpuOnlyErrorTest(et.TpuOnlyErrorTestBase, parameterized.TestCase):
       # This succeeds on CPU but is unimplemented on TPU.
       torch.ones(2, 3, device=et.device(), dtype=torch.int1)
 
+  def test_fill_complex128(self):
+    with et.assert_raises_message(
+        NotImplementedError,
+        tpu="""fill_(): complex128 dtype is not supported""",
+        message_reviewed_by="wan",
+    ):
+      t = torch.empty((2, 2), dtype=torch.complex128, device=et.device())
+      t.fill_(1.0)
+
   def test_prod_with_op_dispatch_failure(self):
     """Tests that prod() bubbles up errors in op dispatching."""
 
