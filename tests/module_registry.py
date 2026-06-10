@@ -459,7 +459,7 @@ def _generate_transformers_inputs(
     modality: Modality,
     shape: Sequence[int] | None = None,
     device: str = "cpu",
-    model_dir: str | None = None,  # pylint: disable=unused-argument
+    model_dir: str | None = None,
 ) -> dict[str, Any]:
   """Generates dummy inputs for a Transformers model based on its modality.
 
@@ -492,6 +492,39 @@ def _generate_transformers_inputs(
         actual_shape, device=device, dtype=torch.long
     )
 
+  elif modality == Modality.VISION:
+    image_size = 224
+    if hasattr(config, "image_size"):
+      val = getattr(config, "image_size")
+      if isinstance(val, int):
+        image_size = val
+      elif isinstance(val, (list, tuple)) and len(val) > 0:
+        image_size = val[0]
+
+    processor = None
+    if model_dir and _HAS_TRANSFORMERS:
+      try:
+        processor = transformers.AutoProcessor.from_pretrained(model_dir)
+      except Exception:  # pylint: disable=broad-except
+        pass
+
+    if (
+        processor
+        and hasattr(processor, "size")
+        and isinstance(processor.size, dict)
+    ):
+      if "height" in processor.size:
+        image_size = processor.size["height"]
+      elif "shortest_edge" in processor.size:
+        image_size = processor.size["shortest_edge"]
+
+    batch_size = shape[0] if shape else 1
+    num_channels = getattr(config, "num_channels", 3)
+    dummy_img = torch.randn(
+        batch_size, num_channels, image_size, image_size, device=device
+    )
+    input_kwargs["pixel_values"] = dummy_img
+
   else:  # text_default, causal_lm, seq2seq
     safe_seq_len = min(_get_max_seq_len(config), 512)
     actual_shape = shape if shape is not None else (1, safe_seq_len)
@@ -517,7 +550,10 @@ def _generate_transformers_inputs(
     ):
       pass  # Handled below for all modalities
 
-  if getattr(config, "is_encoder_decoder", False):
+  if (
+      getattr(config, "is_encoder_decoder", False)
+      and modality != Modality.VISION
+  ):
     vocab_size = getattr(config, "vocab_size", None)
     if vocab_size is None and hasattr(config, "text_config"):
       vocab_size = getattr(config.text_config, "vocab_size", None)

@@ -367,6 +367,18 @@ class ModuleRegistryTest(absltest.TestCase):
         module_spec.config.get("cross_attention_dim"),
     )
 
+  def test_transformers_vision_get_module_spec(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers", "facebook/detr-resnet-50"
+    )
+    # Instantiate the model to verify it loads with config
+    model = module_spec.module_factory()
+    self.assertIsNotNone(model)
+    _, kwargs = module_spec.sample_inputs_factory()
+    self.assertIn("pixel_values", kwargs)
+    self.assertLen(kwargs["pixel_values"].shape, 4)  # (batch, channels, H, W)
+    self.assertEqual(kwargs["pixel_values"].shape[1], 3)  # RGB channels
+
   def test_transformers_gemma4_get_module_spec(self):
     module_spec = self.module_registry.get_module_spec(
         "transformers", "google/gemma-4-31b"
