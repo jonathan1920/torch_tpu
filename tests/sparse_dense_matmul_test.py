@@ -12,10 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 from absl.testing import absltest
 from absl.testing import parameterized
+import numpy as np
 import torch
+from torch_tpu._internal.utils.hardware import get_tpu_version
+from torch_tpu._internal.utils.hardware import TpuVersion
 from tests import op_testing
+
+
+def _get_num_sc_per_device():
+  tpu_version = get_tpu_version()
+  if tpu_version in (TpuVersion.V7, TpuVersion.V6E):
+    return 2
+  elif tpu_version == TpuVersion.V5P:
+    return 4
+  else:
+    raise ValueError(
+        f"Unsupported TPU version for sparse_dense_matmul: {tpu_version}"
+    )
 
 
 class SparseDenseMatmulTest(
@@ -239,6 +255,127 @@ class SparseDenseMatmulTest(
     )
 
     self.assert_close(golden_result=expected, torch_tpu_result=out.cpu())
+
+  @parameterized.parameters(False, True)
+  def test_sparse_dense_matmul_grad_with_sgd_on_tpu(self, compile_op):
+    device = torch.device("tpu")
+    row_pointers, embedding_ids, sample_ids, gains, embedding_table = (
+        self._get_inputs(device)
+    )
+
+    num_sc_per_device = _get_num_sc_per_device()
+
+    # Shard the table for TPU (MOD sharding)
+    vocab_size = embedding_table.shape[0]
+    embedding_dim = embedding_table.shape[1]
+
+    sharded_tables = []
+    for core_id in range(num_sc_per_device):
+      indices = [
+          i for i in range(vocab_size) if i % num_sc_per_device == core_id
+      ]
+      sharded_tables.append(embedding_table[indices])
+
+    embedding_table_sharded = torch.cat(sharded_tables, dim=0)
+
+    batch_size = 16
+
+    activations_grad = (
+        torch.ones(
+            batch_size, embedding_dim, dtype=torch.float32, device=device
+        )
+        * 0.01
+    )
+    learning_rate = torch.tensor(0.01, dtype=torch.float32, device=device)
+
+    def grad_fn(rp, e_ids, s_ids, g, et, ag, lr):
+      return torch.ops.torch_tpu.sparse_dense_matmul_grad_with_sgd(
+          rp,
+          e_ids,
+          s_ids,
+          g,
+          et,
+          ag,
+          lr,
+          device_batch_size=batch_size,
+          max_ids_per_partition=16,
+          max_unique_ids_per_partition=16,
+      )
+
+    if compile_op:
+      grad_fn = torch.compile(grad_fn, fullgraph=True)
+
+    updated_table_tpu = grad_fn(
+        row_pointers,
+        embedding_ids,
+        sample_ids,
+        gains,
+        embedding_table_sharded,
+        activations_grad,
+        learning_rate,
+    )
+
+    updated_table_tpu_np = updated_table_tpu.cpu().numpy()
+    initial_table_sharded_np = embedding_table_sharded.cpu().numpy()
+
+    updated_rows = [0, 1, 2, 3, 16, 17]
+
+    # Verify that non-updated rows are indeed unchanged
+    for i in range(vocab_size):
+      if i not in updated_rows:
+        self.assertTrue(
+            np.allclose(
+                updated_table_tpu_np[i], initial_table_sharded_np[i], atol=1e-5
+            ),
+            msg=f"Row {i} expected to be unchanged",
+        )
+
+    # Numerical check using finite differences of forward op
+    def matmul_fn(rp, e_ids, s_ids, g, et):
+      return torch.ops.torch_tpu.sparse_dense_matmul(
+          rp,
+          e_ids,
+          s_ids,
+          g,
+          et,
+          device_batch_size=batch_size,
+          max_ids_per_partition=16,
+          max_unique_ids_per_partition=16,
+      )
+
+    if compile_op:
+      matmul_fn = torch.compile(matmul_fn, fullgraph=True)
+
+    eps = 1e-3
+    grad_approx = torch.zeros_like(embedding_table_sharded)
+
+    for r in updated_rows:
+      table_sharded_plus = embedding_table_sharded.clone()
+      table_sharded_plus[r] += eps
+      table_sharded_minus = embedding_table_sharded.clone()
+      table_sharded_minus[r] -= eps
+
+      out_plus = matmul_fn(
+          row_pointers, embedding_ids, sample_ids, gains, table_sharded_plus
+      )
+      out_minus = matmul_fn(
+          row_pointers, embedding_ids, sample_ids, gains, table_sharded_minus
+      )
+
+      dout = (out_plus - out_minus) / (2 * eps)
+      grad_approx[r] = torch.sum(activations_grad * dout, dim=0)
+
+    actual_update = initial_table_sharded_np - updated_table_tpu_np
+    expected_update = (learning_rate * grad_approx).cpu().numpy()
+
+    for r in updated_rows:
+      self.assertTrue(
+          np.allclose(actual_update[r], expected_update[r], atol=1e-4),
+          msg=(
+              f"Row {r} update mismatch. Actual: {actual_update[r]}, Expected:"
+              f" {expected_update[r]}"
+          ),
+      )
 
 
 if __name__ == "__main__":
