@@ -30,6 +30,7 @@ inputs.
 
 import abc
 from collections.abc import Callable, Sequence
+import enum
 from importlib import resources
 from importlib.resources import abc as resources_abc
 import inspect
@@ -71,6 +72,31 @@ try:
 except ImportError:
   _HAS_TRANSFORMERS = False
 
+_MULTIMODAL_MODEL_TYPES = ("clip", "llava", "paligemma")
+_AUDIO_MODEL_TYPES = ("whisper", "wav2vec2", "audio", "hubert")
+_VISION_MODEL_TYPES = (
+    "vit",
+    "vision",
+    "mobile",
+    "resnet",
+    "clip",
+    "siglip",
+    "dino",
+    "detr",
+    "table-transformer",
+)
+_CAUSAL_LM_MODEL_TYPES = (
+    "llama",
+    "gpt",
+    "mistral",
+    "qwen",
+    "phi",
+    "falcon",
+    "gemma",
+)
+_SEQ2SEQ_MODEL_TYPES = ("t5", "whisper", "bart", "marian", "nllb", "m2m")
+
+
 _MAX_SEQ_LEN_HEURISTIC_CAP = 100_000
 
 _WEIGHTS_BASE_PATH = flags.DEFINE_string(
@@ -79,6 +105,15 @@ _WEIGHTS_BASE_PATH = flags.DEFINE_string(
     "",
     "Default base location of model configs and weights.",
 )
+
+
+class Modality(enum.Enum):
+  MULTIMODAL = "multimodal"
+  VISION = "vision"
+  AUDIO = "audio"
+  CAUSAL_LM = "causal_lm"
+  SEQ2SEQ = "seq2seq"
+  TEXT_DEFAULT = "text_default"
 
 
 class ModuleSpec:
@@ -362,6 +397,148 @@ def _walk_package_resources(
       yield from _walk_package_resources(path)
 
 
+# Helper functions for TransformersProvider
+def _determine_modality(config: Any) -> Modality:
+  """Determines the modality of a Transformers model from its config.
+
+  Args:
+    config: The Transformers configuration object.
+
+  Returns:
+    A Modality enum value.
+  """
+  model_type = getattr(config, "model_type", "unknown").lower()
+  archs = getattr(config, "architectures", []) or []
+  arch_name = archs[0].lower() if archs else ""
+
+  is_multimodal = (
+      any(k in model_type for k in _MULTIMODAL_MODEL_TYPES)
+      or "clip" in arch_name
+      or "llava" in arch_name
+      or "paligemma" in arch_name
+      or (hasattr(config, "text_config") and hasattr(config, "vision_config"))
+  )
+  is_audio = (
+      any(k in model_type for k in _AUDIO_MODEL_TYPES)
+      or "audio" in arch_name
+      or "speech" in arch_name
+  )
+  is_vision = (
+      any(k in model_type for k in _VISION_MODEL_TYPES)
+      or "image" in arch_name
+      or "vit" in arch_name
+      or hasattr(config, "image_size")
+      or hasattr(config, "num_channels")
+      or "pixel_values" in arch_name
+  )
+  is_causal = (
+      any(k in model_type for k in _CAUSAL_LM_MODEL_TYPES)
+      or "causallm" in arch_name
+  )
+  is_seq2seq = (
+      any(k in model_type for k in _SEQ2SEQ_MODEL_TYPES)
+      or "conditionalgeneration" in arch_name
+  )
+
+  if is_multimodal:
+    return Modality.MULTIMODAL
+  elif is_audio:
+    return Modality.AUDIO
+  elif is_vision:
+    return Modality.VISION
+  elif is_causal:
+    return Modality.CAUSAL_LM
+  elif is_seq2seq:
+    return Modality.SEQ2SEQ
+  else:
+    return Modality.TEXT_DEFAULT
+
+
+def _generate_transformers_inputs(
+    config: Any,
+    modality: Modality,
+    shape: Sequence[int] | None = None,
+    device: str = "cpu",
+    model_dir: str | None = None,  # pylint: disable=unused-argument
+) -> dict[str, Any]:
+  """Generates dummy inputs for a Transformers model based on its modality.
+
+  Args:
+    config: The Transformers configuration object.
+    modality: The model modality.
+    shape: Optional input shape override.
+    device: The target device for the inputs.
+    model_dir: Optional local path to the model directory (for loading
+      processor).
+
+  Returns:
+    A dictionary of input tensors.
+  """
+  input_kwargs = {}
+
+  if modality == Modality.MULTIMODAL:
+    safe_seq_len = min(_get_max_seq_len(config), 512)
+    actual_shape = shape if shape is not None else (1, safe_seq_len)
+    vocab_size = getattr(config, "vocab_size", None)
+    if vocab_size is None and hasattr(config, "text_config"):
+      vocab_size = getattr(config.text_config, "vocab_size", None)
+    if vocab_size is None:
+      vocab_size = 32000
+
+    input_kwargs["input_ids"] = torch.randint(
+        0, vocab_size, actual_shape, device=device, dtype=torch.long
+    )
+    input_kwargs["attention_mask"] = torch.ones(
+        actual_shape, device=device, dtype=torch.long
+    )
+
+  else:  # text_default, causal_lm, seq2seq
+    safe_seq_len = min(_get_max_seq_len(config), 512)
+    actual_shape = shape if shape is not None else (1, safe_seq_len)
+    vocab_size = getattr(config, "vocab_size", None)
+    if vocab_size is None and hasattr(config, "text_config"):
+      vocab_size = getattr(config.text_config, "vocab_size", None)
+    if vocab_size is None:
+      vocab_size = 32000
+
+    input_kwargs["input_ids"] = torch.randint(
+        0,
+        vocab_size,
+        actual_shape,
+        device=device,
+        dtype=torch.long,
+    )
+    input_kwargs["attention_mask"] = torch.ones(
+        actual_shape, device=device, dtype=torch.long
+    )
+
+    if modality == Modality.SEQ2SEQ and getattr(
+        config, "is_encoder_decoder", False
+    ):
+      pass  # Handled below for all modalities
+
+  if getattr(config, "is_encoder_decoder", False):
+    vocab_size = getattr(config, "vocab_size", None)
+    if vocab_size is None and hasattr(config, "text_config"):
+      vocab_size = getattr(config.text_config, "vocab_size", None)
+    if vocab_size is None:
+      vocab_size = 32000
+
+    safe_seq_len = min(_get_max_seq_len(config), 512)
+    # Use first dimension of shape or 1 for batch size
+    batch_size = shape[0] if shape else 1
+    decoder_shape = (batch_size, safe_seq_len)
+    input_kwargs["decoder_input_ids"] = torch.randint(
+        0,
+        vocab_size,
+        decoder_shape,
+        device=device,
+        dtype=torch.long,
+    )
+
+  return input_kwargs
+
+
 class TransformersProvider(BaseProvider):
   """Provider for Hugging Face Transformers models.
 
@@ -374,8 +551,10 @@ class TransformersProvider(BaseProvider):
       "huggingface_transformers/model_configs"
   )
 
-  def __init__(self, base_path: str | None = None):
-    super().__init__(base_path=base_path, subdir="transformers")
+  def __init__(
+      self, base_path: str | None = None, subdir: str = "transformers"
+  ):
+    super().__init__(base_path=base_path, subdir=subdir)
 
   def list_modules(self) -> list[str]:
     """Lists the names of all models available from this provider.
@@ -407,7 +586,7 @@ class TransformersProvider(BaseProvider):
     """Creates a ModuleSpec for a Transformer model.
 
     Automatically detects the architecture from the config and prepares
-    integer-based input tensors (token IDs).
+    appropriate inputs based on its modality.
 
     Args:
       name: Name (str) of the hf transformer model.
@@ -471,13 +650,39 @@ class TransformersProvider(BaseProvider):
     if not load_weights and hasattr(config, "use_pretrained_backbone"):
       config.use_pretrained_backbone = False
 
+    modality = _determine_modality(config)
+
     if load_weights:
-      model_fn = lambda: transformers.AutoModelForCausalLM.from_pretrained(
+      if modality == Modality.CAUSAL_LM:
+        model_cls = transformers.AutoModelForCausalLM
+      elif modality == Modality.SEQ2SEQ:
+        if "whisper" in getattr(config, "model_type", ""):
+          model_cls = getattr(
+              transformers, "AutoModelForSpeechSeq2Seq", transformers.AutoModel
+          )
+        else:
+          model_cls = transformers.AutoModelForSeq2SeqLM
+      else:
+        model_cls = transformers.AutoModel
+
+      model_fn = lambda: model_cls.from_pretrained(
           str(model_dir_or_repo_id), **kwargs
       )
-      preprocessor_fn = lambda: (
-          transformers.AutoTokenizer.from_pretrained(str(model_dir_or_repo_id))
-      )
+
+      def _load_preprocessor():
+        try:
+          return transformers.AutoProcessor.from_pretrained(
+              str(model_dir_or_repo_id)
+          )
+        except Exception:  # pylint: disable=broad-except
+          try:
+            return transformers.AutoTokenizer.from_pretrained(
+                str(model_dir_or_repo_id)
+            )
+          except Exception:  # pylint: disable=broad-except
+            return None
+
+      preprocessor_fn = _load_preprocessor
     else:
       architectures = getattr(config, "architectures", [])
       model_cls = transformers.AutoModel
@@ -491,36 +696,25 @@ class TransformersProvider(BaseProvider):
               architectures[0],
           )
 
-      model_fn = lambda: model_cls(config)
+      model_fn = lambda: (
+          model_cls.from_config(config)
+          if hasattr(model_cls, "from_config")
+          else model_cls(config)
+      )
       preprocessor_fn = None
-
-    safe_seq_len = min(_get_max_seq_len(config), 512)
 
     def _input_fn(
         shape=None, device="cpu"
     ) -> tuple[tuple[Any, ...], dict[str, Any]]:
-      actual_shape = shape if shape is not None else (1, safe_seq_len)
-      vocab_size = getattr(config, "vocab_size", None)
-      if vocab_size is None and hasattr(config, "text_config"):
-        vocab_size = getattr(config.text_config, "vocab_size", None)
-      if vocab_size is None:
-        vocab_size = 32000
-
-      return (
-          (),
-          {
-              "input_ids": torch.randint(
-                  0,
-                  vocab_size,
-                  actual_shape,
-                  device=device,
-                  dtype=torch.long,
-              ),
-              "attention_mask": torch.ones(
-                  actual_shape, device=device, dtype=torch.long
-              ),
-          },
+      model_dir = (
+          str(model_dir_or_repo_id)
+          if self.has_cache_dir and model_dir_or_repo_id.exists()
+          else None
       )
+      input_kwargs = _generate_transformers_inputs(
+          config, modality, shape, device, model_dir
+      )
+      return (), input_kwargs
 
     return ModuleSpec(model_fn, _input_fn, preprocessor_fn, config)
 

@@ -161,6 +161,10 @@ class ModuleRegistryTest(absltest.TestCase):
     )
     model = module_spec.module_factory()
     _, kwargs = module_spec.sample_inputs_factory()
+    self.assertIn("input_ids", kwargs)
+    self.assertIn("attention_mask", kwargs)
+    self.assertNotIn("pixel_values", kwargs)
+    self.assertNotIn("input_features", kwargs)
     expected_logits_shape = (
         *kwargs["input_ids"].shape,
         module_spec.config.vocab_size,
@@ -362,6 +366,27 @@ class ModuleRegistryTest(absltest.TestCase):
         kwargs["encoder_hidden_states"].shape[-1],
         module_spec.config.get("cross_attention_dim"),
     )
+
+  def test_transformers_gemma4_get_module_spec(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers", "google/gemma-4-31b"
+    )
+    _, kwargs = module_spec.sample_inputs_factory()
+    self.assertIn("input_ids", kwargs)
+    self.assertIn("attention_mask", kwargs)
+    self.assertNotIn("pixel_values", kwargs)
+    self.assertNotIn("image_position_ids", kwargs)
+
+  def test_transformers_qwen3_5_moe_get_module_spec(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers", "Qwen/Qwen3.5-397B-A17B"
+    )
+    _, kwargs = module_spec.sample_inputs_factory()
+    self.assertIn("input_ids", kwargs)
+    self.assertIn("attention_mask", kwargs)
+    self.assertNotIn("pixel_values", kwargs)
+    self.assertNotIn("image_grid_thw", kwargs)
+    self.assertNotIn("mm_token_type_ids", kwargs)
 
 
 if __name__ == "__main__":
