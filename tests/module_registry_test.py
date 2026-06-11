@@ -379,6 +379,16 @@ class ModuleRegistryTest(absltest.TestCase):
     self.assertLen(kwargs["pixel_values"].shape, 4)  # (batch, channels, H, W)
     self.assertEqual(kwargs["pixel_values"].shape[1], 3)  # RGB channels
 
+  def test_transformers_audio_seq2seq_get_module_spec(self):
+    module_spec = self.module_registry.get_module_spec(
+        "transformers", "openai/whisper-large-v3"
+    )
+    model = module_spec.module_factory()
+    self.assertIsNotNone(model)
+    _, kwargs = module_spec.sample_inputs_factory()
+    self.assertIn("input_features", kwargs)
+    self.assertIn("decoder_input_ids", kwargs)
+
   def test_transformers_gemma4_get_module_spec(self):
     module_spec = self.module_registry.get_module_spec(
         "transformers", "google/gemma-4-31b"

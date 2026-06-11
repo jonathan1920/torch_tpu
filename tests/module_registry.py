@@ -475,6 +475,7 @@ def _generate_transformers_inputs(
     A dictionary of input tensors.
   """
   input_kwargs = {}
+  model_type = getattr(config, "model_type", "unknown").lower()
 
   if modality == Modality.MULTIMODAL:
     safe_seq_len = min(_get_max_seq_len(config), 512)
@@ -524,6 +525,19 @@ def _generate_transformers_inputs(
         batch_size, num_channels, image_size, image_size, device=device
     )
     input_kwargs["pixel_values"] = dummy_img
+
+  elif modality == Modality.AUDIO:
+    batch_size = shape[0] if shape else 1
+    if "whisper" in model_type:
+      num_mel = getattr(config, "num_mel_bins", 80)
+      input_kwargs["input_features"] = torch.randn(
+          batch_size, num_mel, 3000, device=device
+      )
+    else:
+      seq_len = shape[1] if shape and len(shape) > 1 else 16000
+      input_kwargs["input_values"] = torch.randn(
+          batch_size, seq_len, device=device
+      )
 
   else:  # text_default, causal_lm, seq2seq
     safe_seq_len = min(_get_max_seq_len(config), 512)
