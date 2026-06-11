@@ -60,7 +60,7 @@ jobs:
           {
             name: "CPU",
             runner: "linux-x86-n4-16",
-            config: "ci_cpu",
+            config: "ci_cpu_presubmit",
             extra_flags: "",
           },
           {
