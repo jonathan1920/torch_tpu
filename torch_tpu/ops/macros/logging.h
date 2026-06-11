@@ -237,29 +237,11 @@ enum class UsesScalarInput {
 // TT_KERNEL().
 template <OpName kOpName, UsesScalarInput kUse>
 void CheckScalarInput() {
-  // Is this op an existing violation of the scalar promotion pattern?
-  constexpr bool kIsLegacyViolation =
-      false ||  // The `false` case is for nice code formatting.
-                // DO NOT ADD NEW ENTRIES TO THIS LIST.
-                // TODO: make this list empty.
-                // go/keep-sorted start
-      kOpName == OpName::kVar ||     //
-      kOpName == OpName::kVarOut ||  //
-      // go/keep-sorted end
-      false;  // The `false` case is for nice code formatting.
-  if constexpr (kUse == UsesScalarInput::kYes) {
-    static_assert(
-        kIsLegacyViolation,
-        "Don't use Scalar inputs with TT_KERNEL(). Promote them to "
-        "Tensors via PromoteScalar() first. See AtenLerpScalarOut() for "
-        "an example.");
-  } else {
-    static_assert(!kIsLegacyViolation,
-                  "This op already follows the best practice of promoting "
-                  "Scalar inputs to Tensors via PromoteScalar(). Please remove "
-                  "its OpName from the list of OpNames in CheckScalarInput() "
-                  "in logging.h.");
-  }
+  static_assert(
+      kUse != UsesScalarInput::kYes,
+      "Don't use Scalar inputs with TT_KERNEL(). Promote them to "
+      "Tensors via PromoteScalar() first. See AtenLerpScalarOut() for "
+      "an example.");
 }
 
 // Crashes if the type T does not match the given argument's type string.
@@ -516,7 +498,8 @@ void CheckKernelArgType(  // NOLINT: cognitive complexity
     // or double parameter in the kernel function signature.
     ABSL_CHECK(  // CRASH_OK
         normalized_arg_type_in_func_sig == "at::Scalar" ||
-        normalized_arg_type_in_func_sig == "double")
+        normalized_arg_type_in_func_sig == "double" ||
+        normalized_arg_type_in_func_sig == "std::optional<at::Scalar>")
         << message();
   } else if constexpr (std::is_same_v<T, MaybePromotedScalar>) {
     CheckScalarInput<kOpName, UsesScalarInput::kNo>();

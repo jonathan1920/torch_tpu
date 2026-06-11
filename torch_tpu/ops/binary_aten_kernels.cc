@@ -121,11 +121,15 @@ absl::StatusOr<DeviceBufferRef> DispatchBinaryOp(
                                        ? *opts.output_dtype_override
                                        : computation_dtype;
 
-  auto op_builder = [bin_op_builder = std::move(bin_op_builder)](
-                        FixedSizeSpan<mlir::MlirOp, 2> inputs) {
-    auto& [self_op, other_op] = inputs;
-    return bin_op_builder(self_op, other_op);
-  };
+  auto op_builder =
+      [bin_op_builder = std::move(bin_op_builder),
+       reverse = opts.reverse_operands](FixedSizeSpan<mlir::MlirOp, 2> inputs) {
+        auto& [self_op, other_op] = inputs;
+        if (reverse) {
+          return bin_op_builder(other_op, self_op);
+        }
+        return bin_op_builder(self_op, other_op);
+      };
   return DispatchOp<2>(
       std::move(op_builder), {self_tpu, other_tpu},
       {.op_name = opts.op_name,
