@@ -278,7 +278,7 @@ absl::StatusOr<std::string> FormatParamCacheKey(at::Scalar value);
 [[nodiscard]] std::string FormatParamCacheKey(c10::SymIntArrayRef value);
 [[nodiscard]] inline std::string FormatParamCacheKey(
     const at::ScalarType value) {
-  return c10::toString(value);
+  return std::string(ToString(value));
 }
 [[nodiscard]] std::string FormatParamCacheKey(c10d::ReduceOp value);
 [[nodiscard]] inline std::string FormatParamCacheKey(

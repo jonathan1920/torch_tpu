@@ -77,7 +77,8 @@ absl::StatusOr<std::string> FormatParamCacheKey(const at::Scalar value) {
     return TT_ERROR(error::kInvalidArgument)
            << "unable to create key for scalar type";
   }
-  return absl::StrCat(key, ":", c10::toString(value.type()));
+  at::ScalarType dtype = value.type();
+  return absl::StrCat(key, ":", ToString(dtype));
 }
 
 std::string FormatParamCacheKey(const c10::SymInt& value) {

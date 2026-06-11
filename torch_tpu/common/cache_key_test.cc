@@ -61,7 +61,7 @@ TEST(OpParamCacheKeys, DefaultIsEmpty) {
 TEST(OpParamCacheKeys, SetParamScalar) {
   auto params_or = *OpParamCacheKeysBuilder().SetParam("foo", at::Scalar(123));
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "123:Long")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "123:int64")));
 }
 
 TEST(OpParamCacheKeys, SetParamMaybePromotedScalar_Promoted) {
@@ -139,7 +139,7 @@ TEST(OpParamCacheKeys, SetParamScalarType) {
   auto params_or =
       *OpParamCacheKeysBuilder().SetParam("foo", at::ScalarType::Float);
   ASSERT_TRUE(params_or.ok());
-  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "Float")));
+  EXPECT_THAT(params_or.value(), ElementsAre(Pair("foo", "float32")));
 }
 
 TEST(OpParamCacheKeysDeathTest, SetSameParamTwiceCrashes) {
@@ -191,7 +191,7 @@ TEST(OpParamCacheKeys, SetParamScalarArray) {
       "foo", at::ArrayRef<at::Scalar>(scalars));
   ASSERT_TRUE(params_or.ok());
   EXPECT_THAT(params_or.value(),
-              ElementsAre(Pair("foo", "[123:Long,4.5:Double,1:Bool]")));
+              ElementsAre(Pair("foo", "[123:int64,4.5:float64,1:bool]")));
 
   auto params2_or =
       *OpParamCacheKeysBuilder().SetParam("foo", at::ArrayRef<at::Scalar>());

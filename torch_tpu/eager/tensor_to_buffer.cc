@@ -102,7 +102,7 @@ absl::Status AssignBufferToAtTensor(DeviceBufferRef result_buf,
          "tensor\n"
       << result_buf.DebugString() << "\n"
       << "\nTensor:" << ToString(tensor)
-      << "\n\tscalar_type: " << c10::toString(tensor.scalar_type())
+      << "\n\tscalar_type: " << ToString(tensor.scalar_type())
       << "\n\tsizes: " << ToString(absl::MakeConstSpan(tensor.sizes()))
       << "\n\tstrides: " << ToString(absl::MakeConstSpan(tensor.strides()))
       << (tensor.is_contiguous() ? " (contiguous)" : " (non-contiguous)")
@@ -179,7 +179,7 @@ absl::Status AssignBufferToAtTensor(DeviceBufferRef result_buf,
 
   ABSL_VLOG(1) << "[AssignBufferToAtTensor] Final tensor after assignment:"
                << ToString(tensor)
-               << "\nscalar_type: " << c10::toString(tensor.scalar_type())
+               << "\nscalar_type: " << ToString(tensor.scalar_type())
                << "\nsizes: " << ToString(absl::MakeConstSpan(tensor.sizes()))
                << "\nstrides: "
                << ToString(absl::MakeConstSpan(tensor.strides()))
@@ -301,7 +301,7 @@ at::Tensor MakeTensor(DeviceBufferRef buffer_ref, int device_idx) {
   tensor.unsafeGetTensorImpl()->set_sizes_contiguous(sizes);
   tensor.unsafeGetTensorImpl()->set_storage_offset(0);
   ABSL_VLOG(1) << "[MakeTensor] Final ATen tensor created:" << ToString(tensor)
-               << "\nscalar_type: " << c10::toString(tensor.scalar_type())
+               << "\nscalar_type: " << ToString(tensor.scalar_type())
                << "\nsizes: " << ToString(absl::MakeConstSpan(tensor.sizes()))
                << "\nstrides: "
                << ToString(absl::MakeConstSpan(tensor.strides()))
