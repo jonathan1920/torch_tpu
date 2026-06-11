@@ -60,12 +60,12 @@ jobs:
           {
             name: "CPU",
             runner: "linux-x86-n4-16",
-            config: "ci_cpu_presubmit",
+            config: "ci_cpu",
             extra_flags: "",
           },
           {
             runner: "linux-x86-ct5lp-224-8tpu",
-            config: "ci_tpu_presubmit",
+            config: "ci_tpu",
             extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"',
           },
         ]
