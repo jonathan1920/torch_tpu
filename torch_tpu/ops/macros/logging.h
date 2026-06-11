@@ -243,9 +243,8 @@ void CheckScalarInput() {
                 // DO NOT ADD NEW ENTRIES TO THIS LIST.
                 // TODO: make this list empty.
                 // go/keep-sorted start
-      kOpName == OpName::kLinalgVectorNormOut ||  //
-      kOpName == OpName::kVar ||                  //
-      kOpName == OpName::kVarOut ||               //
+      kOpName == OpName::kVar ||     //
+      kOpName == OpName::kVarOut ||  //
       // go/keep-sorted end
       false;  // The `false` case is for nice code formatting.
   if constexpr (kUse == UsesScalarInput::kYes) {
