@@ -14,13 +14,17 @@
 
 import pickle
 import random
+import tempfile
 
 from absl.testing import absltest
 import torch
+from torch._dynamo.backends import registry
 from torch._dynamo.functional_export import dynamo_graph_capture_for_export
+from torch._dynamo.utils import counters
 from torch._functorch._aot_autograd.aot_autograd_result import (
     deserialize_bundled_cache_entry,
 )
+from torch._inductor.runtime.cache_dir_utils import temporary_cache_dir
 from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.compile import _backend
 from torch_tpu._internal.utils import utils
@@ -39,10 +43,7 @@ class BackendSerializationTest(absltest.TestCase):
     inputs_tpu = _backend.to_device(inputs, torch.device("tpu"))
     gm = dynamo_graph_capture_for_export(f)(*inputs_tpu)
 
-    backend = _backend.TpuBackend(
-        debug=True,
-        enable_serialization=True,
-    )
+    backend = _backend.TpuBackend(enable_serialization=True)
     compiled_fn = backend(gm, inputs_tpu)
 
     result = compiled_fn(*inputs_tpu)
@@ -70,6 +71,41 @@ class BackendSerializationTest(absltest.TestCase):
     inputs = [torch.randn(4, 4), torch.randn(4, 4)]
     self.check_serialization(simple, inputs)
 
+  def _compile_simple_with_registered_backend(self):
+    torch._dynamo.reset()
+    counters.clear()
+
+    def simple(x, y):
+      return x + y, x * y
+
+    x = torch.randn(4, 4).to(torch.device("tpu"))
+    y = torch.randn(4, 4).to(torch.device("tpu"))
+    compiled_fn = torch.compile(
+        simple,
+        backend="tpu",
+        fullgraph=True,
+        dynamic=False,
+    )
+    result = compiled_fn(x, y)
+    result = _backend.to_device(result, "cpu")
+    utils.assert_close(result[0], x.cpu() + y.cpu())
+    utils.assert_close(result[1], x.cpu() * y.cpu())
+
+    return dict(counters["aot_autograd"])
+
+  def test_registered_backend_uses_aot_autograd_cache(self):
+    registered_backend = registry.lookup_backend("tpu")
+    self.assertTrue(getattr(registered_backend, "_enable_serialization", False))
+
+    with tempfile.TemporaryDirectory() as cache_dir:
+      with temporary_cache_dir(cache_dir):
+        first_run = self._compile_simple_with_registered_backend()
+        self.assertEqual(first_run.get("autograd_cache_miss"), 1)
+        self.assertEqual(first_run.get("autograd_cache_saved"), 1)
+
+        second_run = self._compile_simple_with_registered_backend()
+        self.assertEqual(second_run.get("autograd_cache_hit"), 1)
+
   def test_int_scalar_input(self):
     def simple(x, y):
       return x + y, x * y
@@ -87,10 +123,7 @@ class BackendSerializationTest(absltest.TestCase):
     )
     gm = dynamo_graph_capture_for_export(inplace_update)(*inputs_tpu)
 
-    backend = _backend.TpuBackend(
-        debug=True,
-        enable_serialization=True,
-    )
+    backend = _backend.TpuBackend(enable_serialization=True)
     compiled_fn = backend(gm, inputs_tpu)
 
     x = torch.randn(4, 4).to(torch.device("tpu"))
@@ -115,10 +148,7 @@ class BackendSerializationTest(absltest.TestCase):
     def simple(x):
       return (x * 2,)
 
-    backend = _backend.TpuBackend(
-        debug=True,
-        enable_serialization=True,
-    )
+    backend = _backend.TpuBackend(enable_serialization=True)
 
     x_small = torch.randn(4, 4).to(torch.device("tpu"))
     gm_small = dynamo_graph_capture_for_export(simple)(x_small)
@@ -157,10 +187,7 @@ class BackendSerializationTest(absltest.TestCase):
 
     x = torch.randn(4, 4).to(torch.device("tpu"))
     gm = dynamo_graph_capture_for_export(simple)(x)
-    backend = _backend.TpuBackend(
-        debug=True,
-        enable_serialization=True,
-    )
+    backend = _backend.TpuBackend(enable_serialization=True)
     compiled_fn = backend(gm, [x])
 
     entry = compiled_fn.serialize()
