@@ -37,6 +37,10 @@ from tests import module_registry
 import transformers
 from transformers import activations
 from transformers.models.bert import modeling_bert
+from transformers.models.mamba2 import configuration_mamba2
+from transformers.models.mamba2 import modeling_mamba2
+from transformers.models.nemotron_h import configuration_nemotron_h
+from transformers.models.nemotron_h import modeling_nemotron_h
 from transformers.models.qwen3 import configuration_qwen3
 from transformers.models.qwen3 import modeling_qwen3
 from transformers.models.qwen3_5_moe import modeling_qwen3_5_moe
@@ -1560,6 +1564,71 @@ def ml_layer_model_builder(
         (batch_size, kwargs["q_seq_len"], embed_dim),
         dtype=weights_dtype,
         device=device,
+    )
+  elif model_name == "Mamba2Block":
+    config = configuration_mamba2.Mamba2Config(
+        hidden_size=kwargs["hidden_size"],
+        state_size=kwargs["state_size"],
+        conv_kernel=kwargs["conv_kernel"],
+        expand=kwargs["expand"],
+        num_heads=kwargs["num_heads"],
+        head_dim=kwargs["head_dim"],
+        n_groups=kwargs["n_groups"],
+        chunk_size=kwargs["chunk_size"],
+    )
+    model = modeling_mamba2.Mamba2Block(config, layer_idx=0)
+
+    class Mamba2BlockWrapper(torch.nn.Module):
+
+      def __init__(self, m):
+        super().__init__()
+        self.m = m
+
+      def forward(self, hidden_states):
+        return self.m(hidden_states)
+
+    model = Mamba2BlockWrapper(model).to(dtype=weights_dtype)
+
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: torch.randn(
+            bs, seq, kwargs["hidden_size"], dtype=weights_dtype, device=device
+        ),
+    )
+
+  elif model_name == "NemotronHMamba2Block":
+    config = configuration_nemotron_h.NemotronHConfig(
+        hidden_size=kwargs["hidden_size"],
+        ssm_state_size=kwargs["state_size"],
+        conv_kernel=kwargs["conv_kernel"],
+        expand=kwargs["expand"],
+        mamba_num_heads=kwargs["num_heads"],
+        mamba_head_dim=kwargs["head_dim"],
+        n_groups=kwargs["n_groups"],
+        chunk_size=kwargs["chunk_size"],
+    )
+    config.use_mamba_kernels = False
+    config.layers_block_type = ["mamba"]
+    model = modeling_nemotron_h.NemotronHBlock(config, layer_idx=0)
+
+    class NemotronHMamba2BlockWrapper(torch.nn.Module):
+
+      def __init__(self, m):
+        super().__init__()
+        self.m = m
+
+      def forward(self, hidden_states):
+        return self.m(hidden_states)
+
+    model = NemotronHMamba2BlockWrapper(model).to(dtype=weights_dtype)
+
+    example_inputs = _generate_inputs(
+        batch_size,
+        sequence_length,
+        lambda bs, seq: torch.randn(
+            bs, seq, kwargs["hidden_size"], dtype=weights_dtype, device=device
+        ),
     )
 
   else:

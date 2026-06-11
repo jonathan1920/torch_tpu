@@ -1169,3 +1169,67 @@ FFT_CONFIGS = (
     FftConfig(batch_size=32, seq_len=128, hidden_size=768),
     FftConfig(batch_size=32, seq_len=1024, hidden_size=1024),
 )
+
+
+@dataclasses.dataclass
+class Mamba2BlockConfig:
+  batch_size: int
+  seq_len: int
+  hidden_size: int
+  state_size: int = 128
+  conv_kernel: int = 4
+  expand: int = 2
+  num_heads: int = 128
+  head_dim: int = 64
+  n_groups: int = 1
+  chunk_size: int = 256
+
+
+MAMBA2_BLOCK_CONFIGS = (
+    Mamba2BlockConfig(
+        batch_size=1,
+        seq_len=128,
+        hidden_size=256,
+        num_heads=8,
+    ),
+    Mamba2BlockConfig(
+        batch_size=8,
+        seq_len=2048,
+        hidden_size=2048,
+        num_heads=64,
+        n_groups=8,
+        chunk_size=128,
+    ),
+)
+
+
+@dataclasses.dataclass
+class NemotronHMamba2BlockConfig:
+  batch_size: int
+  seq_len: int
+  hidden_size: int
+  state_size: int = 128
+  conv_kernel: int = 4
+  expand: int = 2
+  num_heads: int = 128
+  head_dim: int = 64
+  n_groups: int = 8
+  chunk_size: int = 128
+
+
+NEMOTRON_H_MAMBA2_BLOCK_CONFIGS = (
+    NemotronHMamba2BlockConfig(
+        batch_size=1,
+        seq_len=128,
+        hidden_size=2688,
+        num_heads=64,
+        head_dim=64,
+    ),
+    NemotronHMamba2BlockConfig(
+        batch_size=8,
+        seq_len=2048,
+        hidden_size=2688,
+        num_heads=64,
+        head_dim=64,
+    ),
+)

@@ -73,6 +73,8 @@ _BOTTLENECK_TIMM_LAYER_BENCHMARK_NAME = "bottleneck_timm"
 _MAXPOOL2D_TIMM_LAYER_BENCHMARK_NAME = "maxpool2d_timm"
 _RELU_TIMM_LAYER_BENCHMARK_NAME = "relu_timm"
 _FFT_LAYER_BENCHMARK_NAME = "fft"
+_MAMBA2_BLOCK_BENCHMARK_NAME = "mamba2_block"
+_NEMOTRON_H_MAMBA2_BLOCK_BENCHMARK_NAME = "nemotron_h_mamba2_block"
 
 
 _DYNAMIC_SKIPS = {
@@ -1489,6 +1491,95 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
     self.run_performance_benchmark_test(
         config, _MULTIHEAD_ATTENTION_LAYER_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          _ALL_RUN_MODES, (True, False), layer_configs.MAMBA2_BLOCK_CONFIGS
+      )
+  )
+  def test_mamba2_block(self, run_mode, is_training, layer_config):
+    if (
+        run_mode == benchmark_utils.RunMode.EAGER_DEFAULT
+        and layer_config.batch_size > 1
+    ):
+      self.skipTest("Eager mode is expected to OOM on large configurations")
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="Mamba2Block",
+            batch_size=layer_config.batch_size,
+            sequence_length=layer_config.seq_len,
+            custom_kwargs={
+                "hidden_size": layer_config.hidden_size,
+                "state_size": layer_config.state_size,
+                "conv_kernel": layer_config.conv_kernel,
+                "expand": layer_config.expand,
+                "num_heads": layer_config.num_heads,
+                "head_dim": layer_config.head_dim,
+                "n_groups": layer_config.n_groups,
+                "chunk_size": layer_config.chunk_size,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _MAMBA2_BLOCK_BENCHMARK_NAME, microbenchmark_name
+    )
+
+  @parameterized.named_parameters(
+      test_utils.generate_layer_test_configs(
+          _ALL_RUN_MODES,
+          (True, False),
+          layer_configs.NEMOTRON_H_MAMBA2_BLOCK_CONFIGS,
+      )
+  )
+  def test_nemotron_h_mamba2_block(
+      self,
+      run_mode,
+      is_training,
+      layer_config: layer_configs.NemotronHMamba2BlockConfig,
+  ):
+    if (
+        run_mode == benchmark_utils.RunMode.EAGER_DEFAULT
+        and layer_config.batch_size > 1
+    ):
+      self.skipTest("Eager mode is expected to OOM on large configurations")
+    config = performance_utils.PerformanceBenchmarkConfig(
+        supported_platforms=[
+            benchmark_utils.Platform.GFC_1X1X1,
+            benchmark_utils.Platform.B200_1,
+        ],
+        benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
+        run_mode=run_mode,
+        is_training=is_training,
+        model_and_input_factory=model_utils.ml_layer_model_builder,
+        model_and_input_args=performance_utils.ModelAndInputArgs(
+            model_name="NemotronHMamba2Block",
+            batch_size=layer_config.batch_size,
+            sequence_length=layer_config.seq_len,
+            custom_kwargs={
+                "hidden_size": layer_config.hidden_size,
+                "state_size": layer_config.state_size,
+                "conv_kernel": layer_config.conv_kernel,
+                "expand": layer_config.expand,
+                "num_heads": layer_config.num_heads,
+                "head_dim": layer_config.head_dim,
+                "n_groups": layer_config.n_groups,
+                "chunk_size": layer_config.chunk_size,
+            },
+        ),
+    )
+    microbenchmark_name = test_utils.get_microbenchmark_name(layer_config)
+    self.run_performance_benchmark_test(
+        config, _NEMOTRON_H_MAMBA2_BLOCK_BENCHMARK_NAME, microbenchmark_name
     )
 
 
