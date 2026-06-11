@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -41,6 +42,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/thread_local_context.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/materialize_common.h"
@@ -242,12 +244,16 @@ class MaterializationWorker {
     std::vector<SharedDeviceBufferList> nodes_to_materialize;
     MaterializationReason reason;
     bool is_full;
+    std::optional<ThreadLocalContext> thread_local_context;
+
     QueueState() { Reset(); }
+
     void Reset() {
       is_full = false;
       queue.clear();
       nodes_to_materialize.clear();
       reason = MaterializationReason::kUnknown;
+      thread_local_context.reset();
     }
   };
 
@@ -337,6 +343,8 @@ absl::Status MaterializationWorker::Materialize(
         queues_[dispatch_queue_id_].nodes_to_materialize.end(),
         nodes_to_materialize.begin(), nodes_to_materialize.end());
     queues_[dispatch_queue_id_].reason = reason;
+    queues_[dispatch_queue_id_].thread_local_context =
+        ThreadLocalContext::Capture();
     queues_[dispatch_queue_id_].is_full = true;
     IncrementQueueId(dispatch_queue_id_);
   }
@@ -392,6 +400,7 @@ void MaterializationWorker::ThreadLoop() {
     std::vector<SharedDeviceBufferList> current_queue;
     std::vector<SharedDeviceBufferList> nodes_to_materialize;
     MaterializationReason current_reason;
+    std::optional<ThreadLocalContext> current_thread_local_context;
 
     {
       absl::MutexLock lock(
@@ -410,11 +419,16 @@ void MaterializationWorker::ThreadLoop() {
       std::swap(nodes_to_materialize,
                 queues_[execution_queue_id_].nodes_to_materialize);
       current_reason = queues_[execution_queue_id_].reason;
+      std::swap(current_thread_local_context,
+                queues_[execution_queue_id_].thread_local_context);
     }
 
     // Materialize the claimed queue without holding the mutex.
-    absl::Status status = MaterializeQueue(current_queue, nodes_to_materialize,
-                                           current_reason, *mlir_context);
+    ABSL_CHECK(current_thread_local_context.has_value());  // CRASH_OK
+    absl::Status status = current_thread_local_context->Apply([&] {
+      return MaterializeQueue(current_queue, nodes_to_materialize,
+                              current_reason, *mlir_context);
+    });
 
     {
       absl::MutexLock lock(mutex_);
@@ -437,8 +451,11 @@ void MaterializationWorker::ThreadLoop() {
       std::swap(current_queue, queues_[current_execution_id].queue);
       std::swap(nodes_to_materialize,
                 queues_[execution_queue_id_].nodes_to_materialize);
+      std::swap(current_thread_local_context,
+                queues_[execution_queue_id_].thread_local_context);
       queues_[current_execution_id].queue.clear();
       queues_[execution_queue_id_].nodes_to_materialize.clear();
+      queues_[execution_queue_id_].thread_local_context.reset();
       queues_[current_execution_id].is_full = false;
       IncrementQueueId(execution_queue_id_);
     }
