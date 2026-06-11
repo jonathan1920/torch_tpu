@@ -52,6 +52,7 @@
 #include "torch_tpu/common/status_builder.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
+#include "torch_tpu/eager/events_queue.h"
 #include "torch_tpu/eager/materialize_common.h"
 #include "torch_tpu/eager/split_traversal.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
@@ -205,44 +206,31 @@ class MaterializationWorker {
       return std::vector<ExecutionTask>();
     }
 
-    {
-      tsl::profiler::TraceMe t("AddLeafNodes");
-      AddLeafNodes(all_nodes);
-    }
-
-    ABSL_VLOG(1) << "[MaterializationWorker] Found " << all_nodes.size()
-                 << " leaf nodes";
-    LogDeferredNodes(all_nodes, /* msg_prefix= */ "  Output leaf node");
-
-    ABSL_VLOG(1) << "[MaterializationWorker] Creating traversal";
-    std::unique_ptr<Traversal> traversal;
-    {
-      tsl::profiler::TraceMe t("Traversal::Create");
-      TT_ASSIGN_OR_RETURN(traversal, Traversal::Create(all_nodes));
-    }
-
-    ABSL_VLOG(3) << "[MaterializationWorker] Traversal created: "
-                 << GetGraphviz(*traversal);
-
-    std::vector<absl_nonnull std::unique_ptr<Traversal>> traversals;
+    TT_ASSIGN_OR_RETURN(
+        std::vector<absl_nonnull std::unique_ptr<Traversal>> traversals,
+        PrepareMaterializationTraversals(all_nodes));
 
     if (task.materialization_mode == MaterializationMode::kSplitGraph) {
-      // Split the traversal while nodes are still in the deferred state.
-      ABSL_VLOG(1) << "[MaterializationWorker] Splitting traversal";
-      {
-        tsl::profiler::TraceMe t("SplitTraversal");
-        absl::flat_hash_set<const DeviceBufferList*> required_outputs;
-        for (const auto& node : task.nodes_to_materialize) {
-          required_outputs.insert(node.get());
+      tsl::profiler::TraceMe t("SplitTraversal");
+      std::vector<absl_nonnull std::unique_ptr<Traversal>> split_traversals;
+      std::vector<absl_nonnull std::unique_ptr<Traversal>>
+          post_split_traversals;
+      absl::flat_hash_set<const DeviceBufferList*> required_outputs;
+      for (auto& pre_split_traversal : traversals) {
+        for (const auto& output : pre_split_traversal->outputs()) {
+          required_outputs.insert(output.device_buffer_list().get());
         }
         TT_ASSIGN_OR_RETURN(
-            traversals, SplitTraversal(std::move(traversal), required_outputs));
+            split_traversals,
+            SplitTraversal(std::move(pre_split_traversal), required_outputs));
+        post_split_traversals.insert(
+            post_split_traversals.end(),
+            std::make_move_iterator(split_traversals.begin()),
+            std::make_move_iterator(split_traversals.end()));
+        required_outputs.clear();
+        split_traversals.clear();
       }
-
-      ABSL_VLOG(1) << "[MaterializationWorker] Split traversal into "
-                   << traversals.size() << " traversals";
-    } else {
-      traversals.push_back(std::move(traversal));
+      std::swap(traversals, post_split_traversals);
     }
 
     std::vector<ExecutionTask> execution_tasks;
@@ -375,7 +363,7 @@ absl::Status MaterializeImpl(
   // materialization" state.
   for (auto& node : nodes_to_materialize) {
     TT_RET_CHECK(node->is_materializing(), error::kInternal)
-        << "Materialization failed for node " << node;
+        << "materialization failed for node " << node;
   }
 
   return absl::OkStatus();
@@ -421,44 +409,6 @@ absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
     absl::Span<const Shape> output_shapes, std::string_view task_name) {
   return GetMaterializationWorker().EnqueueExecutable(
       std::move(executable), std::move(arguments), output_shapes, task_name);
-}
-
-void AddLeafNodes(std::vector<SharedDeviceBufferList>& nodes) {
-  std::vector<SharedDeviceBufferList> leaf_nodes;
-
-  // Each root subgraph only needs to be processed once.
-  absl::flat_hash_set<Subgraph*> unique_roots;
-  // If a task's output is also a leaf node, we don't need to include it
-  // twice. We'll retain the original nodes in order, and append the leaf nodes
-  // to the end.
-  absl::flat_hash_set<const DeviceBufferList*> all_nodes_set;
-  for (const auto& node : nodes) {
-    all_nodes_set.insert(node.get());
-  }
-
-  for (const auto& node : nodes) {
-    // Get the root of the deferred op and check that we haven't processed it
-    // yet. Skip if there's no op, no subgraph, or a non-unique root.
-    const auto deferred_op = node->deferred_op();
-    if (!deferred_op) continue;
-
-    std::shared_ptr<Subgraph> subgraph = deferred_op->subgraph();
-    if (!subgraph) continue;
-
-    std::shared_ptr<Subgraph> root = subgraph->Find();
-    if (!unique_roots.insert(root.get()).second) continue;
-
-    std::vector<SharedDeviceBufferList> subgraph_leaf_nodes =
-        root->GetLeafNodes();
-    for (auto& leaf_node : subgraph_leaf_nodes) {
-      if (all_nodes_set.insert(leaf_node.get()).second) {
-        leaf_nodes.push_back(std::move(leaf_node));
-      }
-    }
-  }
-
-  nodes.insert(nodes.end(), std::make_move_iterator(leaf_nodes.begin()),
-               std::make_move_iterator(leaf_nodes.end()));
 }
 
 }  // namespace torch_tpu

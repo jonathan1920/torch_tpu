@@ -35,6 +35,7 @@
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/device_buffer_utils.h"
+#include "torch_tpu/eager/events_queue.h"
 #include "torch_tpu/eager/materialize_common.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -79,57 +80,6 @@ TEST_F(MaterializeTest, MaterializedZeroSizeBufferSuccess) {
   EXPECT_TRUE(ref.is_materializing());
 }
 
-TEST_F(MaterializeTest, AddLeafNodes) {
-  ScopedPythonContextCapturer capturer(OpName::kEmpty);
-  // Create a graph of:
-  // ```
-  //               / -> leaf_a
-  // arg -> target
-  //               \ -> leaf_b
-  // ```
-  TF_ASSERT_OK_AND_ASSIGN(
-      DeviceBufferRef arg,
-      CreateZeroSizeDeviceBufferRef({0}, mlir::ElementType::F32));
-
-  const Shape shape(Dimensions{8}, mlir::ElementType::F32);
-
-  auto builder = [shape](mlir::MlirBuilder& builder,
-                         absl::Span<mlir::MlirOp> inputs)
-      -> absl::StatusOr<DynamicMlirOpResults> {
-    if (!inputs.empty()) return DynamicMlirOpResults{inputs[0]};
-    return DynamicMlirOpResults{
-        BuildFillUninitialized(builder, shape.dtype(), shape.dimensions())};
-  };
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<DeviceBufferRef> target_refs,
-      DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {arg},
-                                       OpParamCacheKeys::Empty(), {shape}));
-  DeviceBufferRef target_ref = target_refs[0];
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<DeviceBufferRef> leaf_a_refs,
-      DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {target_ref},
-                                       OpParamCacheKeys::Empty(), {shape}));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<DeviceBufferRef> leaf_b_refs,
-      DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {target_ref},
-                                       OpParamCacheKeys::Empty(), {shape}));
-
-  // Call AddLeafNodes on the target list.
-  std::vector<SharedDeviceBufferList> actual_nodes = {
-      target_ref.device_buffer_list()};
-  AddLeafNodes(actual_nodes);
-
-  // The modified list should still have the target node, plus the two leaf
-  // node.
-  EXPECT_EQ(actual_nodes.size(), 3);
-  EXPECT_THAT(actual_nodes, testing::UnorderedElementsAre(
-                                target_ref.device_buffer_list(),
-                                leaf_a_refs[0].device_buffer_list(),
-                                leaf_b_refs[0].device_buffer_list()));
-}
-
 TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
   ScopedPythonContextCapturer capturer(OpName::kEmpty);
   const Shape shape(Dimensions{8}, mlir::ElementType::F32);
@@ -151,18 +101,21 @@ TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
                                        /*inputs=*/{}, OpParamCacheKeys::Empty(),
                                        {shape}));
   DeviceBufferRef ref_a = refs_a[0];
+  RecordDeferredOpCreated(refs_a[0].device_buffer_list());
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<DeviceBufferRef> refs_b,
       DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {ref_a},
                                        OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef ref_b = refs_b[0];
+  RecordDeferredOpCreated(refs_b[0].device_buffer_list());
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<DeviceBufferRef> refs_c,
       DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {ref_b},
                                        OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef ref_c = refs_c[0];
+  RecordDeferredOpCreated(refs_c[0].device_buffer_list());
 
   // Create a tensor for c to reflect how this would actually be used
   // (a leaf node with no tensors would ordinarily be dropped immediately).
@@ -173,12 +126,14 @@ TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
       DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {ref_a},
                                        OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef ref_d = refs_d[0];
+  RecordDeferredOpCreated(refs_d[0].device_buffer_list());
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<DeviceBufferRef> refs_e,
       DeviceBufferList::CreateDeferred(OpName::kAdd, builder, {ref_d},
                                        OpParamCacheKeys::Empty(), {shape}));
   DeviceBufferRef ref_e = refs_e[0];
+  RecordDeferredOpCreated(refs_e[0].device_buffer_list());
   // Create a tensor for e to reflect how this would actually be used
   // (a leaf node with no tensors would ordinarily be dropped immediately).
   at::Tensor e = MakeTensor(ref_e);
@@ -201,8 +156,8 @@ TEST_F(MaterializeTest, LeafNodeMaterializationPatternSuccess) {
   // neither fanout nor a live Tensor.
   EXPECT_TRUE(ref_b.is_deferred());
 
-  // c is materialized by SafeMaterializationRule; it was dispatched before d
-  // and has a live Tensor, so it must be materialized.
+  // c is materialized; it was dispatched before d and has a live Tensor, so it
+  // must be materialized.
   EXPECT_TRUE(ref_c.is_materializing());
 
   // d is materialized because it was the explicit target of Materialize().

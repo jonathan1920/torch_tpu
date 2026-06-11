@@ -49,6 +49,7 @@
 #include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
+#include "torch_tpu/eager/events_queue.h"
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/repeated_ops_heuristic.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
@@ -131,29 +132,15 @@ void ApplyComputationDtype(internal::DeferredOpParams& params) {
 // Handles post-op creation events for the kDeferNever and
 // kDeferNeverAndLaunchBlocking eager modes.
 absl::Status DeferNeverDispatch(absl::Span<const DeviceBufferRef> results,
-                                const OpName op_name,
-                                const OpSplitMode split_mode,
-                                const bool block) {
+                                const OpName op_name, const bool block) {
   const auto& device_buffer_list = results[0].device_buffer_list();
   if (IsMetadataOnly(op_name)) {
     // Don't eagerly materialize metadata-only ops.
     return absl::OkStatus();
   }
-  if (IsSplitBefore(split_mode)) {
-    // Most of the time, this Materialize() should be a no-op; all non-view,
-    // non-`empty()` tensors should already be materialized.
-    // If this isn't the case, then using kSplitGraph will insert additional
-    // materialization points to ensure all deferred inputs are materialized
-    // or dropped.
-    const auto deferred_op = device_buffer_list->deferred_op();
-    ABSL_CHECK(deferred_op != nullptr);  // CRASH_OK=just created it
-    TT_RETURN_IF_ERROR(Materialize(deferred_op->inputs(),
-                                   MaterializationReason::kDebugMode,
-                                   MaterializationMode::kSplitGraph));
-    // Don't block here even in kDeferNeverAndLaunchBlocking mode; block after
-    // the new op, not after its inputs.
-  }
-
+  // materialize.cc and events_queue.h will respect OpSplitMode, even with
+  // MaterializationMode::kFullGraph.
+  // materialize_new.h forces kSplitGraph even if kFullGraph is specified.
   TT_RETURN_IF_ERROR(Materialize(device_buffer_list,
                                  MaterializationReason::kDebugMode,
                                  MaterializationMode::kFullGraph));
@@ -182,19 +169,6 @@ absl::Status DeferAndFuseDispatch(absl::Span<const DeviceBufferRef> results,
   return absl::OkStatus();
 }
 
-bool SkipSubgraph(const OpName op_name) {
-  const auto eager_mode = GetEagerMode();
-  // In either kDeferNever mode, we want to enqueue each op's execution as
-  // quickly as possible to unblock the main thread.
-  // To achieve this, we skip connecting the newly-created node to any
-  // Subgraph, and we use kFullGraph to skip the SplitTraveral logic.
-  // Skipping SplitTraversal means we need to manually apply kSplitBefore for
-  // relevant ops.
-  return (((eager_mode == EagerMode::kDeferNever) ||
-           (eager_mode == EagerMode::kDeferNeverAndLaunchBlocking)) &&
-          !IsMetadataOnly(op_name));
-}
-
 }  // namespace
 
 namespace internal {
@@ -209,17 +183,23 @@ absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
           params.op_name, std::move(params.op_builder),
           std::move(params.inputs), std::move(params.op_param_cache_keys),
           std::move(params.output_shapes), params.split_mode,
-          std::move(params.donated_indices), SkipSubgraph(params.op_name)));
+          std::move(params.donated_indices)));
+
+  // materialize_new uses its own queue, separate from the DeferredOpEvent queue
+  // in events_queue.h.
+  const bool enable_new_materialization =
+      GetFlagOnce<bool, &FLAGS_torch_tpu_internal_enable_new_materialization>();
+  if (!enable_new_materialization) {
+    RecordDeferredOpCreated(results[0].device_buffer_list());
+  }
 
   switch (GetEagerMode()) {
     case EagerMode::kDeferNever:
       TT_RETURN_IF_ERROR(DeferNeverDispatch(results, params.op_name,
-                                            params.split_mode,
                                             /*block=*/false));
       break;
     case EagerMode::kDeferNeverAndLaunchBlocking:
       TT_RETURN_IF_ERROR(DeferNeverDispatch(results, params.op_name,
-                                            params.split_mode,
                                             /*block=*/true));
       break;
     case EagerMode::kDeferAndFuse:

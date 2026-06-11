@@ -93,10 +93,6 @@ absl::StatusOr<std::vector<DeviceBufferRef>> EnqueueExecutable(
     std::vector<DeviceBufferRef> arguments,
     absl::Span<const Shape> output_shapes, std::string_view task_name = "");
 
-// Given a list of target DeviceBufferLists, adds all leaf nodes of their
-// subgraphs to the list.
-void AddLeafNodes(std::vector<SharedDeviceBufferList>& nodes);
-
 }  // namespace torch_tpu
 
 #endif  // TORCH_TPU_EAGER_MATERIALIZE_H_

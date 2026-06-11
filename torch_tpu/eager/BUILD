@@ -20,32 +20,6 @@ package(
 )
 
 torch_tpu_cc_test(
-    name = "device_buffer_test",
-    srcs = ["device_buffer_test.cc"],
-    exec_properties = {
-        "cpp_link.mem": "16g",  # Needed for asan.
-    },
-    notest_oss = "Disabled during switch from opt-in to opt-out",
-    deps = [
-        ":device_buffer",
-        ":eager_mode",
-        ":tensor_to_buffer",
-        "//torch_tpu/common:cache_key",
-        "//torch_tpu/common:dimension_types",
-        "//torch_tpu/common:shape",
-        "//torch_tpu/ops:op_builder_utils",
-        "//torch_tpu/ops:op_names",
-        "//torch_tpu/ops:python_context",
-        "//torch_tpu/pjrt:pjrt_state",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
-        "@stablehlo//:attr_type_builder_util",
-        "@stablehlo//:mlir_builder",
-    ],
-)
-
-torch_tpu_cc_test(
     name = "op_dispatcher_test",
     srcs = ["op_dispatcher_test.cc"],
     exec_properties = {
@@ -112,6 +86,7 @@ torch_tpu_cc_test(
     deps = [
         ":device_buffer",
         ":device_buffer_utils",
+        ":events_queue",
         ":materialize",
         ":materialize_common",
         ":structured_log_buffer",
@@ -147,10 +122,8 @@ torch_tpu_cc_library(
         "device_buffer.h",
     ],
     deps = [
-        ":eager_mode",
         "//shims/torch/c10/util:base_headers",
         "//torch_tpu/common:cache_key",
-        "//torch_tpu/common:context_states",
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:dtype",
         "//torch_tpu/common:error_utils",
@@ -365,6 +338,7 @@ torch_tpu_cc_library(
     deps = [
         ":device_buffer",
         ":eager_mode",
+        ":events_queue",
         ":materialize_common",
         ":split_traversal",
         ":structured_log_buffer",
@@ -804,6 +778,7 @@ torch_tpu_cc_library(
     deps = [
         ":device_buffer",
         ":eager_mode",
+        ":events_queue",
         ":materialize",
         ":repeated_ops_heuristic",
         ":structured_log_buffer",
@@ -847,10 +822,19 @@ torch_tpu_cc_library(
     hdrs = ["events_queue.h"],
     deps = [
         ":device_buffer",
+        ":traversal",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/ops:op_names",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -868,6 +852,7 @@ torch_tpu_cc_test(
         ":materialize",
         ":structured_log_buffer",
         ":tensor_to_buffer",
+        ":traversal",
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:shape",

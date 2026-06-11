@@ -20,7 +20,6 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
-#include <iterator>
 #include <memory>
 #include <ostream>
 #include <sstream>
@@ -38,14 +37,12 @@
 #include "c10/util/accumulate.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "torch_tpu/common/cache_key.h"
-#include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
-#include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "xla/future.h"
@@ -56,213 +53,6 @@
 #include "xla/xla_data.pb.h"
 
 namespace torch_tpu {
-
-namespace {
-
-bool ShouldPruneNode(const std::shared_ptr<DeviceBufferList>& node) {
-  // Ref count is 0, so the node should be pruned.
-  if (!node) {
-    return true;
-  }
-  const std::shared_ptr<DeferredOp> absl_nullable deferred_op =
-      node->deferred_op();
-  bool is_side_effecting_op =
-      deferred_op && IsSideEffectingOp(deferred_op->op_name());
-  // Side-effecting ops should never be pruned.
-  if (is_side_effecting_op) {
-    return false;
-  }
-
-  if (!deferred_op || node->num_child_ops() > 0) {
-    return true;
-  }
-  return false;
-}
-
-}  // namespace
-
-void Subgraph::Prune() {
-  queue_.erase(std::remove_if(queue_.begin(), queue_.end(),
-                              [](std::weak_ptr<DeviceBufferList>& weak_node) {
-                                std::shared_ptr<DeviceBufferList> node =
-                                    weak_node.lock();
-                                return ShouldPruneNode(node);
-                              }),
-               queue_.end());
-}
-
-void Subgraph::PruneAndReturnLeafNodes(
-    std::vector<SharedDeviceBufferList>& leaf_nodes_out) {
-  queue_.erase(
-      std::remove_if(
-          queue_.begin(), queue_.end(),
-          [&leaf_nodes_out](std::weak_ptr<DeviceBufferList>& weak_node) {
-            std::shared_ptr<DeviceBufferList> node = weak_node.lock();
-            if (ShouldPruneNode(node)) {
-              return true;
-            }
-            leaf_nodes_out.push_back(std::move(node));
-            return false;
-          }),
-      queue_.end());
-  // At this point we have to clear the unprunable side effects, otherwise we
-  // maintain a circular dependency between the Subgraph and the
-  // DeviceBufferList.
-  unprunable_side_effects_.clear();
-}
-
-void Subgraph::push(std::weak_ptr<DeviceBufferList> device_buffer) {
-  absl::MutexLock lock(mu_);
-  if (queue_.size() >= queue_.capacity()) {
-    // Try to free up capacity by pruning down to just the live leaf nodes.
-    Prune();
-  }
-  queue_.push_back(std::move(device_buffer));
-}
-
-void Subgraph::AnchorSideEffect(
-    std::shared_ptr<DeviceBufferList> device_buffer) {
-  absl::MutexLock lock(mu_);
-  unprunable_side_effects_.push_back(std::move(device_buffer));
-}
-
-std::shared_ptr<Subgraph> Subgraph::Find() {
-  std::shared_ptr<Subgraph> root = shared_from_this();
-  while (true) {
-    std::shared_ptr<Subgraph> next_root;
-    {
-      absl::MutexLock lock(root->mu_);
-      next_root = root->parent_;
-    }
-    if (!next_root) break;
-    root = next_root;
-  }
-
-  // Path compression: update parents along the path to the root.
-  std::shared_ptr<Subgraph> current = shared_from_this();
-  while (current != root) {
-    std::shared_ptr<Subgraph> next;
-    {
-      absl::MutexLock lock(current->mu_);
-      next = current->parent_;
-      if (next) {
-        current->parent_ = root;
-      }
-    }
-    if (!next || next == root) break;
-    current = next;
-  }
-
-  return root;
-}
-
-void Subgraph::Merge(std::shared_ptr<Subgraph> s1,
-                     std::shared_ptr<Subgraph> s2) {
-  auto r1 = s1->Find();
-  auto r2 = s2->Find();
-  if (r1 == r2) return;
-
-  // Swap r1 and r2 based on their addresses to ensure consistent locking order
-  // in case two threads try to merge the same two subgraphs in opposite orders.
-  const bool swap = r1 > r2;
-  if (swap) {
-    std::swap(r1, r2);
-  }
-  absl::MutexLock lock1(r1->mu_);
-  absl::MutexLock lock2(r2->mu_);
-
-  // Use non swapped r1 and r2 for the rest of the function to maintain the
-  // order of merging requested by the caller.
-  if (swap) {
-    std::swap(r1, r2);
-  }
-
-  // Prune r1's queue to avoid reallocation if possible.
-  r1->Prune();
-
-  // Push r2's live, leaf nodes onto r1's queue.
-  for (auto& weak_node : r2->queue_) {
-    if (auto node = weak_node.lock()) {
-      if (node->is_deferred() && node->num_child_ops() == 0) {
-        r1->queue_.push_back(std::move(weak_node));
-      }
-    }
-  }
-  r2->queue_.clear();
-  r1->unprunable_side_effects_.insert(
-      r1->unprunable_side_effects_.end(),
-      std::make_move_iterator(r2->unprunable_side_effects_.begin()),
-      std::make_move_iterator(r2->unprunable_side_effects_.end()));
-  r2->unprunable_side_effects_.clear();
-  r2->parent_ = r1;
-}
-
-std::vector<SharedDeviceBufferList> Subgraph::GetLeafNodes() {
-  absl::MutexLock lock(mu_);
-  // Simultaneously prune the queue and write leaf nodes to the output.
-  std::vector<SharedDeviceBufferList> leaf_nodes;
-  PruneAndReturnLeafNodes(leaf_nodes);
-  return leaf_nodes;
-}
-
-SubgraphRegistry& SubgraphRegistry::GetInstance() {
-  static SubgraphRegistry* const registry = new SubgraphRegistry();
-  return *registry;
-}
-
-absl_nonnull std::shared_ptr<Subgraph> SubgraphRegistry::MakeNewSubgraph() {
-  absl::MutexLock lock(mu_);
-  if (subgraphs_.size() >= subgraphs_.capacity()) {
-    // Try to free up capacity by pruning down to just the live subgraphs.
-    subgraphs_.erase(std::remove_if(subgraphs_.begin(), subgraphs_.end(),
-                                    [](std::weak_ptr<Subgraph>& weak_subgraph) {
-                                      return weak_subgraph.lock() == nullptr;
-                                    }),
-                     subgraphs_.end());
-  }
-
-  auto subgraph = std::make_shared<Subgraph>();
-  subgraphs_.push_back(subgraph);  // intentional copy
-  return subgraph;
-}
-
-absl_nonnull std::shared_ptr<Subgraph> SubgraphRegistry::MergeAll() {
-  absl::MutexLock lock(mu_);
-  // Find the first non-expired subgraph.
-  std::shared_ptr<Subgraph> root;
-  auto it = subgraphs_.begin();
-  while (it != subgraphs_.end()) {
-    root = it->lock();
-    if (root) break;
-    ++it;
-  }
-  if (it == subgraphs_.end()) {
-    // All subgraphs are expired. Create a new one and register it as the only
-    // subgraph.
-    subgraphs_.clear();
-    auto subgraph = std::make_shared<Subgraph>();
-    subgraphs_.push_back(subgraph);  // intentional copy
-    return subgraph;
-  }
-
-  // Merge all other subgraphs into the root subgraph.
-  ++it;
-  for (; it != subgraphs_.end(); ++it) {
-    if (auto subgraph = it->lock()) {
-      Subgraph::Merge(root, subgraph);
-    }
-  }
-
-  // Make the root subgraph the only subgraph in the registry and return it.
-  ABSL_CHECK(root);  // CRASH_OK=satisfying ClangTidy
-  subgraphs_.clear();
-  subgraphs_.push_back(root);  // intentional copy
-  return root;
-}
-
-std::shared_ptr<Subgraph> Subgraph::Create() {
-  return SubgraphRegistry::GetInstance().MakeNewSubgraph();
-}
 
 absl_nullable std::shared_ptr<DeferredOp> DeviceBufferList::Data::deferred_op()
     const {
@@ -285,21 +75,6 @@ absl_nullable std::shared_ptr<DeferredOp> DeviceBufferList::Data::deferred_op()
     return false;
   }
   return deferred_op_->depends_on_placeholder();
-}
-
-absl_nullable std::shared_ptr<Subgraph> DeviceBufferList::Data::subgraph()
-    const {
-  if (placeholder_ || materialization_pending_) {
-    // DeviceBufferList::Data that is created in the placeholder state never had
-    // a DeferredOp. DeviceBufferList::Data that is pending materialization may
-    // have had a DeferredOp, but if it did, it has been consumed.
-    return nullptr;
-  }
-  absl::MutexLock lock(deferred_op_mutex_);
-  if (deferred_op_) {
-    return deferred_op_->subgraph();
-  }
-  return nullptr;
 }
 
 absl::Status DeviceBufferList::Data::SetAsPendingMaterialization() {
@@ -506,10 +281,6 @@ absl::StatusOr<xla::PjRtBuffer* absl_nonnull> DeviceBufferList::AwaitBuffer(
   return data_[index];
 }
 
-absl_nullable std::shared_ptr<Subgraph> DeviceBufferList::subgraph() const {
-  return data_.subgraph();
-}
-
 std::atomic_uint64_t DeviceBufferList::g_creation_index_ = 0;
 
 absl::StatusOr<DeviceBufferRef> DeviceBufferList::CreateMaterialized(
@@ -529,7 +300,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
     OpName op_name, MlirOpBuilder op_builder,
     std::vector<DeviceBufferRef> inputs, OpParamCacheKeys op_param_cache_keys,
     std::vector<Shape> output_shapes, OpSplitMode split_mode,
-    Indices donated_indices, bool skip_subgraph) {
+    Indices donated_indices) {
   // Validate that the output shapes are valid.
   for (const auto& output_shape : output_shapes) {
     TT_RETURN_IF_ERROR(ValidateTensorByteSize(output_shape.dimensions(),
@@ -537,54 +308,16 @@ absl::StatusOr<std::vector<DeviceBufferRef>> DeviceBufferList::CreateDeferred(
   }
   int64_t num_outputs = output_shapes.size();
 
-  std::shared_ptr<Subgraph> subgraph = nullptr;
-
-  if (!skip_subgraph) {
-    if (IsDistributedOp(op_name)) {
-      // Each distributed op acts as a barrier; all prior operations (connected
-      // or not) that were created before it must be considered part of the same
-      // graph so that proper ordering is maintained.
-      // Otherwise, two independent collective operations could be isolated in
-      // disconnected subgraphs, and different rank processes could have
-      // different orderings of these subgraphs, leading to a deadlock.
-      subgraph = SubgraphRegistry::GetInstance().MergeAll();
-    }
-
-    for (const auto& input : inputs) {
-      if (auto input_subgraph = input.device_buffer_list()->subgraph()) {
-        auto input_rep = input_subgraph->Find();
-        if (!subgraph) {
-          subgraph = input_rep;
-        } else if (subgraph != input_rep) {
-          Subgraph::Merge(subgraph, input_rep);
-          subgraph = subgraph->Find();
-        }
-      }
-    }
-
-    if (!subgraph) {
-      subgraph = Subgraph::Create();
-    }
-  }
-
   // Create the DeferredOp.
   auto op = std::make_unique<DeferredOp>(
       op_name, std::move(op_builder), std::move(inputs),
-      std::move(op_param_cache_keys), output_shapes, subgraph, split_mode,
+      std::move(op_param_cache_keys), output_shapes, split_mode,
       std::move(donated_indices));
 
   // Wrap the DeferredOp in a DeviceBufferList.
   // Can't use make_shared because the constructor is private.
   auto device_buffer = std::shared_ptr<DeviceBufferList>(
       new DeviceBufferList(std::move(op), std::move(output_shapes)));
-
-  if (subgraph) {
-    subgraph->push(std::weak_ptr<DeviceBufferList>(device_buffer));
-    if (IsSideEffectingOp(op_name) &&
-        GetEagerMode() != EagerMode::kInternalDeferAll) {
-      subgraph->AnchorSideEffect(device_buffer);
-    }
-  }
 
   // Construct one DeviceBufferRef for each output.
   std::vector<DeviceBufferRef> device_buffer_refs;
