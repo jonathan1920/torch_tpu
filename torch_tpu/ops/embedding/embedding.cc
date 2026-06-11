@@ -31,11 +31,13 @@
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
 #include "torch_tpu/common/dimension_types.h"
+#include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/cumsum/cumsum.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/reductions/reductions.h"
 #include "torch_tpu/ops/reductions/sum.h"
+#include "torch_tpu/ops/unary.h"
 
 namespace torch_tpu {
 namespace {
@@ -217,6 +219,10 @@ absl::StatusOr<mlir::MlirOp> BuildRenormRow(mlir::MlirBuilder& builder,
   mlir::Type elem_type =
       needs_upcast ? builder.getOpBuilder().getF32Type() : orig_elem_type;
 
+  TT_ASSIGN_OR_RETURN(mlir::ElementType elem_dtype,
+                      ConvertTo<mlir::ElementType>(elem_type));
+  mlir::ElementType real_elem_type = RealComponentOf(elem_dtype);
+
   mlir::MlirOp acc_row = row;
   if (needs_upcast) {
     TT_ASSIGN_OR_RETURN(acc_row, PromoteFloatDtype(acc_row));
@@ -228,13 +234,23 @@ absl::StatusOr<mlir::MlirOp> BuildRenormRow(mlir::MlirBuilder& builder,
     TT_ASSIGN_OR_RETURN(norm, BuildSumShlo(abs_row, {row_type.getRank() - 1},
                                            ReductionMode::kKeepDims));
   } else if (norm_type == 2.0) {
-    mlir::MlirOp mul_row = mlir::stablehlo::Mul(acc_row, acc_row);
+    mlir::MlirOp mul_row;
+    if (llvm::isa<mlir::ComplexType>(elem_type)) {
+      TT_ASSIGN_OR_RETURN(mlir::MlirOp conj_row,
+                          BuildConjPhysicalShlo(acc_row));
+      mlir::MlirOp complex_mul = mlir::stablehlo::Mul(acc_row, conj_row);
+      // complex_mul is guaranteed to be a real number
+      mul_row = mlir::stablehlo::Real(complex_mul);
+    } else {
+      mul_row = mlir::stablehlo::Mul(acc_row, acc_row);
+    }
     TT_ASSIGN_OR_RETURN(norm, BuildSumShlo(mul_row, {row_type.getRank() - 1},
                                            ReductionMode::kKeepDims));
     norm = mlir::stablehlo::Sqrt(norm);
   } else {
-    auto p_scalar = MakeScalarConstant(builder, norm_type, elem_type);
-    auto p_inv_scalar = MakeScalarConstant(builder, 1.0 / norm_type, elem_type);
+    auto p_scalar = MakeScalarConstant(builder, norm_type, real_elem_type);
+    auto p_inv_scalar =
+        MakeScalarConstant(builder, 1.0 / norm_type, real_elem_type);
     mlir::MlirOp abs_row = mlir::stablehlo::Abs(acc_row);
     TT_ASSIGN_OR_RETURN(auto p_bcst, BroadcastIfNeeded(p_scalar, abs_row));
     mlir::MlirOp pow_row = mlir::stablehlo::Pow(abs_row, p_bcst);
@@ -243,22 +259,27 @@ absl::StatusOr<mlir::MlirOp> BuildRenormRow(mlir::MlirBuilder& builder,
     TT_ASSIGN_OR_RETURN(auto p_inv_bcst, BroadcastIfNeeded(p_inv_scalar, norm));
     norm = mlir::stablehlo::Pow(norm, p_inv_bcst);
   }
-  auto max_norm_scalar = MakeScalarConstant(builder, max_norm, elem_type);
+  auto max_norm_scalar = MakeScalarConstant(builder, max_norm, real_elem_type);
   TT_ASSIGN_OR_RETURN(auto max_norm_bcst,
                       BroadcastIfNeeded(max_norm_scalar, norm));
   auto too_large = mlir::stablehlo::Compare(
       norm, max_norm_bcst, mlir::stablehlo::ComparisonDirection::GT);
-  auto eps_scalar = MakeScalarConstant(builder, 1e-7, elem_type);
+  auto eps_scalar = MakeScalarConstant(builder, 1e-7, real_elem_type);
   TT_ASSIGN_OR_RETURN(auto eps_bcst, BroadcastIfNeeded(eps_scalar, norm));
   auto norm_plus_eps = mlir::stablehlo::Add(norm, eps_bcst);
   auto multiplier = mlir::stablehlo::Div(max_norm_bcst, norm_plus_eps);
-  auto ones_scalar = MakeScalarConstant(builder, 1.0, elem_type);
+  auto ones_scalar = MakeScalarConstant(builder, 1.0, real_elem_type);
   TT_ASSIGN_OR_RETURN(auto ones_bcst,
                       BroadcastIfNeeded(ones_scalar, multiplier));
   auto safe_multiplier =
       mlir::stablehlo::Select(too_large, multiplier, ones_bcst);
-  TT_ASSIGN_OR_RETURN(auto mult_bcst,
-                      BroadcastIfNeeded(safe_multiplier, acc_row));
+
+  mlir::MlirOp mult_bcst = safe_multiplier;
+  if (llvm::isa<mlir::ComplexType>(elem_type)) {
+    mult_bcst = mlir::stablehlo::ConvertElementType(safe_multiplier, elem_type);
+  }
+
+  TT_ASSIGN_OR_RETURN(mult_bcst, BroadcastIfNeeded(mult_bcst, acc_row));
   auto result = mlir::stablehlo::Mul(acc_row, mult_bcst);
   if (needs_upcast) {
     result = mlir::stablehlo::ConvertElementType(result, orig_elem_type);

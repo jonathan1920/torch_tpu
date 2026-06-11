@@ -4315,6 +4315,29 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(fn)
 
+  def test_embedding_renorm_complex(self):
+    """Tests that embedding renorm works with complex types."""
+
+    def fn(device):
+      vocab_size = 16
+      embedding_size = 32
+      # Initialize with complex values
+      embedding_table = torch.complex(
+          torch.ones(
+              vocab_size, embedding_size, dtype=torch.float32, device=device
+          ),
+          torch.ones(
+              vocab_size, embedding_size, dtype=torch.float32, device=device
+          ),
+      )
+      indices = torch.tensor([0, 1, 2, 3, 10, 11, 15], device=device)
+      torch.embedding_renorm_(
+          embedding_table, indices, max_norm=1.0, norm_type=2
+      )
+      return embedding_table
+
+    self.assert_close_tpu_vs_cpu(fn)
+
   def test_materialize_empty_tensor(self):
     """Tests that materializing an empty tensor works."""
     prev_deterministic_algorithms = torch.are_deterministic_algorithms_enabled()
