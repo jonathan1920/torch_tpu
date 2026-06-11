@@ -357,5 +357,44 @@ class CompileTest(absltest.TestCase):
     self.assertEqual(metrics["bounded_compile_events"], 1)
 
 
+class SymIntArithmeticTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    tt_testing.reset_eager_state()
+
+  def test_arange_plus_symint(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        s0 = x.shape[1]
+        return torch.arange(1, device=x.device) + s0
+
+    tpu_backend = _backend.TpuBackend(dynamism=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.zeros(1, 1024, device="tpu")
+    torch._dynamo.mark_dynamic(x1, 1, min=1, max=2048)
+
+    out1 = compiled(x1)
+    utils.assert_close(out1, torch.tensor([1024], device="tpu"))
+
+  def test_arange_bounds(self):
+    class Model(torch.nn.Module):
+
+      def forward(self, x):
+        s0 = x.shape[1]
+        return torch.arange(s0, s0 + 1, device=x.device)
+
+    tpu_backend = _backend.TpuBackend(dynamism=True)
+    compiled = torch.compile(Model(), backend=tpu_backend)
+
+    x1 = torch.zeros(1, 1024, device="tpu")
+    torch._dynamo.mark_dynamic(x1, 1, min=1, max=2048)
+
+    out1 = compiled(x1)
+    utils.assert_close(out1, torch.tensor([1024], device="tpu"))
+
+
 if __name__ == "__main__":
   absltest.main()
