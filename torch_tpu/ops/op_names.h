@@ -539,6 +539,7 @@ enum class OpName {
   kPowTensorTensorOut,
   kProd,
   kProdDimOut,
+  kPut_,
   kRaggedAllToAll,
   kRaggedAllToAllOut,
   kRaggedDot,

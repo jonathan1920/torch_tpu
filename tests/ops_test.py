@@ -3235,6 +3235,9 @@ class TestOps(TorchTpuTestBase):
         "prod",
     )
 
+  def test_put(self):
+    self.do_test_op("put")
+
   def test_randn(self):
     self.do_test_op(
         "randn",

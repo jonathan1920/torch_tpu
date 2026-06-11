@@ -621,6 +621,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/pooling:avg_pool_aten_kernels",
         "//torch_tpu/ops/pooling:max_pool_aten_kernels",
         "//torch_tpu/ops/prod:prod_aten_kernels",
+        "//torch_tpu/ops/put:put_aten_kernels",
         "//torch_tpu/ops/random:random_aten_kernels",
         "//torch_tpu/ops/randperm:randperm_aten_kernels",
         "//torch_tpu/ops/reductions:mean_aten_kernels",

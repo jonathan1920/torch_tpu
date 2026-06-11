@@ -6379,6 +6379,54 @@ Supported combinations for non-constant padding:
     ):
       x >> y  # pylint: disable=pointless-statement
 
+  def test_put_index_dtype_mismatch(self):
+    self_t = torch.ones(5, device=et.device())
+    index = torch.tensor([1.0], device=et.device())
+    source = torch.tensor([2.0], device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""put_(): expected a long tensor for index, got float32""",
+        cpu="""put_(): Expected a long tensor for index, but got Float""",
+        message_reviewed_by="gunhyun",
+    ):
+      self_t.put_(index, source)
+
+  def test_put_dtype_mismatch(self):
+    self_t = torch.ones(5, device=et.device())
+    index = torch.tensor([1], device=et.device())
+    source = torch.tensor([2], dtype=torch.int32, device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""put_(): expected self and source to have the same dtype, got self dtype float32 and source dtype int32""",
+        cpu="""put_(): self and source expected to have the same dtype, but got self.dtype = Float and source.dtype = Int""",
+        message_reviewed_by="gunhyun",
+    ):
+      self_t.put_(index, source)
+
+  def test_put_size_mismatch(self):
+    self_t = torch.ones(5, device=et.device())
+    index = torch.tensor([1, 2], device=et.device())
+    source = torch.tensor([2.0], device=et.device())
+    with et.assert_raises_message(
+        IndexError,
+        tpu="""put_(): expected source and index to have the same number of elements, got source numel 1 and index numel 2""",
+        cpu="""put_(): Expected source and index to have the same number of elements, but got source.numel() = 1, index.numel() = 2""",
+        message_reviewed_by="gunhyun",
+    ):
+      self_t.put_(index, source)
+
+  def test_put_empty_destination(self):
+    self_t = torch.ones(0, device=et.device())
+    index = torch.tensor([0], device=et.device())
+    source = torch.tensor([2.0], device=et.device())
+    with et.assert_raises_message(
+        IndexError,
+        tpu="""put_(): expected self to be non-empty, got self numel 0""",
+        cpu="""put_(): Tried to put elements into an empty tensor""",
+        message_reviewed_by="gunhyun",
+    ):
+      self_t.put_(index, source)
+
 
 if __name__ == "__main__":
   absltest.main()
