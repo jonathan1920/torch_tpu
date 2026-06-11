@@ -716,7 +716,6 @@ torch_tpu_py_test(
     tags = [
         "nosan",  # *san builds are low-value for error tests.
         "requires-tpu-v5lite",
-        "wheel_test_excluded",
     ],
     deps = [
         ":error_testing",
@@ -745,7 +744,6 @@ torch_tpu_py_test(
     tags = [
         "nosan",  # *san builds are low-value for error tests.
         "requires-tpu-v5lite",
-        "wheel_test_excluded",
     ],
     deps = [
         ":error_testing",
