@@ -70,11 +70,11 @@ class HandleDynamicInputTensorPass:
           arg2_1: "i64[1, s27, s53]",
       ):
         set_dimension_logical_size_1: "i64[1, s27, s53]" =
-            torch.ops.torch_tpu.set_dimension_logical_size(
+            torch.ops.tpu.set_dimension_logical_size(
                 arg2_1, 1, s27_size)
 
         set_dimension_logical_size_2: "i64[1, s27, s53]" =
-            torch.ops.torch_tpu.set_dimension_logical_size(
+            torch.ops.tpu.set_dimension_logical_size(
                 set_dimension_logical_size_1, 2, s53_size)
 
         add: "f32[1, s27, s53]" = torch.ops.aten.add.Tensor(
@@ -139,7 +139,7 @@ class HandleDynamicInputTensorPass:
     """Inserts a set_dimension_logical_size node after the current tensor node."""
     with graph_module.graph.inserting_after(current_tensor_node):
       set_dim_size_node = graph_module.graph.call_function(
-          torch.ops.torch_tpu.set_dimension_logical_size,
+          torch.ops.tpu.set_dimension_logical_size,
           args=(current_tensor_node, dim, size_tensor_node),
       )
       set_dim_size_node.meta = meta.copy()
@@ -481,7 +481,7 @@ class HandleGenerativeOpsPass:
     # Create dynamic_arange op
     with graph_module.graph.inserting_after(node):
       dynamic_arange_node = graph_module.graph.call_function(
-          torch.ops.torch_tpu.dynamic_arange,
+          torch.ops.tpu.dynamic_arange,
           args=(
               start_tensor,
               end_tensor,
@@ -536,7 +536,7 @@ class HandleGenerativeOpsPass:
     """Inserts a set_dimension_logical_size node after the current node."""
     with graph_module.graph.inserting_after(current_node):
       set_dim_size_node = graph_module.graph.call_function(
-          torch.ops.torch_tpu.set_dimension_logical_size,
+          torch.ops.tpu.set_dimension_logical_size,
           args=(current_node, dim, tensor_size_node),
       )
       set_dim_size_node.meta = original_node.meta.copy()

@@ -70,7 +70,7 @@ class GraphTransformationsTest(absltest.TestCase):
     set_dim_nodes = list(
         captured_gm.graph.find_nodes(
             op="call_function",
-            target=torch.ops.torch_tpu.set_dimension_logical_size,
+            target=torch.ops.tpu.set_dimension_logical_size,
         )
     )
     self.assertLen(set_dim_nodes, 1)
@@ -113,7 +113,7 @@ class GraphTransformationsTest(absltest.TestCase):
     dynamic_arange_nodes = list(
         captured_gm.graph.find_nodes(
             op="call_function",
-            target=torch.ops.torch_tpu.dynamic_arange,
+            target=torch.ops.tpu.dynamic_arange,
         )
     )
     self.assertLen(dynamic_arange_nodes, 1)
@@ -245,7 +245,7 @@ class GraphTransformationsTest(absltest.TestCase):
     set_dim_nodes = list(
         captured_gm.graph.find_nodes(
             op="call_function",
-            target=torch.ops.torch_tpu.set_dimension_logical_size,
+            target=torch.ops.tpu.set_dimension_logical_size,
         )
     )
     self.assertLen(set_dim_nodes, 2)

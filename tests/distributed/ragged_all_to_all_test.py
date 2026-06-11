@@ -45,7 +45,7 @@ def run_ragged_all_to_all_test() -> None:
   operand = torch.full((4, 1, 128), rank, dtype=torch.int32).to("tpu")
   output = torch.zeros(4, 1, 128, dtype=torch.int32).to("tpu")
 
-  result = torch.ops.torch_tpu.ragged_all_to_all(
+  result = torch.ops.tpu.ragged_all_to_all(
       operand,
       output,
       input_offsets,

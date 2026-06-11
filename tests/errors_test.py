@@ -2380,7 +2380,7 @@ class TpuVsCpuErrorTest(et.ErrorTestBase, parameterized.TestCase):
         tpu=expected_error,
         cpu=expected_error,
     ):
-      torch.ops.torch_tpu.ragged_dot(lhs, rhs, group_sizes)
+      torch.ops.tpu.ragged_dot(lhs, rhs, group_sizes)
 
   def test_max_pool2d_unsupported_dtypes(self):
     t_bool = torch.zeros((1, 1, 4, 4), device=et.device(), dtype=torch.bool)

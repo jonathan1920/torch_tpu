@@ -840,7 +840,7 @@ TORCH_LIBRARY_IMPL(aten, AutogradPrivateUse1, m) {
   Impl(m, OpName::kMaxPool2d, AtenMaxPool2d);
 }
 
-TORCH_LIBRARY(torch_tpu, m) {
+TORCH_LIBRARY(tpu, m) {
   m.def(
       "max_pool2d(Tensor self, int[] kernel_size, int[] stride, int[] padding, "
       "int[] dilation, "
@@ -920,7 +920,7 @@ TORCH_LIBRARY(torch_tpu, m) {
       "int max_ids_per_partition, int max_unique_ids_per_partition) -> Tensor");
 }
 
-TORCH_LIBRARY_IMPL(torch_tpu, Meta, m) {
+TORCH_LIBRARY_IMPL(tpu, Meta, m) {
   Impl(m, OpName::kMaxPool2d,
        [](const at::Tensor& self, at::IntArrayRef kernel_size,
           at::IntArrayRef stride, at::IntArrayRef padding,
@@ -956,7 +956,7 @@ TORCH_LIBRARY_IMPL(torch_tpu, Meta, m) {
        });
 }
 
-TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
+TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
   Impl(m, OpName::kDistributedExperimentalSend, TorchTpuExperimentalSend);
   Impl(m, OpName::kDistributedExperimentalRecv, TorchTpuExperimentalRecv);
   Impl(m, OpName::kMaxPool2d, TpuMaxPool2d);
@@ -973,7 +973,7 @@ TORCH_LIBRARY_IMPL(torch_tpu, PrivateUse1, m) {
        AtenSparseDenseMatmulGradWithSgd);
 }
 
-TORCH_LIBRARY_IMPL(torch_tpu, CPU, m) {
+TORCH_LIBRARY_IMPL(tpu, CPU, m) {
   Impl(m, OpName::kRaggedDot, AtenRaggedDot);
   Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
   Impl(m, OpName::kRaggedAllToAll, AtenRaggedAllToAll);

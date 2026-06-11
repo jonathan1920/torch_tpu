@@ -1016,7 +1016,7 @@ at::Tensor TpuMaxPool2dAutograd::forward(
 
   at::AutoDispatchBelowADInplaceOrView guard;
   return at::Dispatcher::singleton()
-      .findSchemaOrThrow("torch_tpu::max_pool2d", "")
+      .findSchemaOrThrow("tpu::max_pool2d", "")
       .typed<at::Tensor(const at::Tensor&, at::IntArrayRef, at::IntArrayRef,
                         at::IntArrayRef, at::IntArrayRef, bool)>()
       .call(self, kernel_size, stride, padding, dilation, ceil_mode);
@@ -1038,7 +1038,7 @@ torch::autograd::variable_list TpuMaxPool2dAutograd::backward(
   at::AutoDispatchBelowADInplaceOrView guard;
   auto grad_input =
       at::Dispatcher::singleton()
-          .findSchemaOrThrow("torch_tpu::max_pool2d_backward", "")
+          .findSchemaOrThrow("tpu::max_pool2d_backward", "")
           .typed<at::Tensor(const at::Tensor&, const at::Tensor&,
                             at::IntArrayRef, at::IntArrayRef, at::IntArrayRef,
                             at::IntArrayRef, bool)>()

@@ -210,7 +210,7 @@ class SparseDenseMatmulTest(
     )
 
     def matmul_fn(rp, e_ids, s_ids, g, et):
-      return torch.ops.torch_tpu.sparse_dense_matmul(
+      return torch.ops.tpu.sparse_dense_matmul(
           rp,
           e_ids,
           s_ids,
@@ -289,7 +289,7 @@ class SparseDenseMatmulTest(
     learning_rate = torch.tensor(0.01, dtype=torch.float32, device=device)
 
     def grad_fn(rp, e_ids, s_ids, g, et, ag, lr):
-      return torch.ops.torch_tpu.sparse_dense_matmul_grad_with_sgd(
+      return torch.ops.tpu.sparse_dense_matmul_grad_with_sgd(
           rp,
           e_ids,
           s_ids,
@@ -332,7 +332,7 @@ class SparseDenseMatmulTest(
 
     # Numerical check using finite differences of forward op
     def matmul_fn(rp, e_ids, s_ids, g, et):
-      return torch.ops.torch_tpu.sparse_dense_matmul(
+      return torch.ops.tpu.sparse_dense_matmul(
           rp,
           e_ids,
           s_ids,

@@ -83,7 +83,7 @@ execution.
 
             ```python
             def forward(self, arg0_1: "Sym(s27)", arg1_1: "i64[1, s27]", dyn_size_1_dim1: "i64[]"):
-                set_dimension_logical_size: "i64[1, s27]" = torch.ops.torch_tpu.set_dimension_logical_size(arg1_1, 1, dyn_size_1_dim1)
+                set_dimension_logical_size: "i64[1, s27]" = torch.ops.tpu.set_dimension_logical_size(arg1_1, 1, dyn_size_1_dim1)
                 add: "f32[1, s27]" = torch.ops.aten.add.Tensor(set_dimension_logical_size, 3.0)
                 return (add,)
             ```
@@ -122,7 +122,7 @@ execution.
             ```python
             def forward(self, arg0_1: "Sym(s77)", dyn_size_0: "i32[]"):
                 arange: "i64[s77]" = torch.ops.aten.arange.start(0, 16)  # Upper bound = 2 * 8 = 16
-                set_dimension_logical_size: "i64[s77]" = torch.ops.torch_tpu.set_dimension_logical_size(arange, 0, dyn_size_0)
+                set_dimension_logical_size: "i64[s77]" = torch.ops.tpu.set_dimension_logical_size(arange, 0, dyn_size_0)
                 return (set_dimension_logical_size,)
             ```
 

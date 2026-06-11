@@ -5815,7 +5815,7 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         g, k, n
     )
     group_sizes = torch.tensor([1, 4], dtype=torch.int32, device=device)
-    out = torch.ops.torch_tpu.ragged_dot(lhs, rhs, group_sizes)
+    out = torch.ops.tpu.ragged_dot(lhs, rhs, group_sizes)
     expected = torch.asarray(
         [
             [42.0, 48.0, 54.0],
@@ -5840,7 +5840,7 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         [1, 1, 0, 1, 1], dtype=torch.int32, device=device
     )
     out = torch.zeros(m, n, dtype=torch.float32, device=device)
-    res = torch.ops.torch_tpu.ragged_dot(lhs, rhs, group_sizes, out=out)
+    res = torch.ops.tpu.ragged_dot(lhs, rhs, group_sizes, out=out)
     expected = torch.asarray(
         [
             [10.0, 13.0],
@@ -5859,7 +5859,7 @@ class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     device = torch.device("tpu")
     x = torch.arange(100, device=device, dtype=torch.int32).reshape(10, 10)
     size = torch.tensor(5, device=device, dtype=torch.int32)
-    out = torch.ops.torch_tpu.set_dimension_logical_size(x, 0, size)
+    out = torch.ops.tpu.set_dimension_logical_size(x, 0, size)
     self.assert_close(golden_result=x[:5].cpu(), torch_tpu_result=out[:5].cpu())
 
   def test_set_dimension_logical_size_with_mlir_on_tpu(self):
@@ -5893,7 +5893,7 @@ module {
     end = torch.tensor(6, device=device, dtype=torch.int32)
     step = torch.tensor(2, device=device, dtype=torch.int32)
     max_length = 5
-    out = torch.ops.torch_tpu.dynamic_arange(
+    out = torch.ops.tpu.dynamic_arange(
         start, end, step, max_length, torch.int32
     )
     expected = torch.arange(1, 6, step=2, dtype=torch.int32)
@@ -5908,7 +5908,7 @@ module {
     end = torch.tensor(2.5, device=device, dtype=torch.float32)
     step = torch.tensor(0.5, device=device, dtype=torch.float32)
     max_length = 6
-    out = torch.ops.torch_tpu.dynamic_arange(
+    out = torch.ops.tpu.dynamic_arange(
         start, end, step, max_length, torch.float32
     )
     expected = torch.arange(0.0, 2.5, step=0.5, dtype=torch.float32)
@@ -5923,7 +5923,7 @@ module {
     end = torch.tensor(2, device=device, dtype=torch.int32)
     step = torch.tensor(1, device=device, dtype=torch.int32)
     max_length = 5
-    out = torch.ops.torch_tpu.dynamic_arange(
+    out = torch.ops.tpu.dynamic_arange(
         start, end, step, max_length, torch.int32
     )
     expected = torch.tensor([], dtype=torch.int32)
