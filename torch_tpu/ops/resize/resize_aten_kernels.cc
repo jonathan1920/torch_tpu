@@ -118,8 +118,8 @@ const at::Tensor& AtenResize_(
     const at::Tensor& self, c10::IntArrayRef size,
     c10::optional<at::MemoryFormat> memory_format_opt) {
   TT_KERNEL(OpName::kResize_, _,
-            (self, IgnoreInCacheKey(size, "Legacy usage"),
-             IgnoreInCacheKey(memory_format_opt, "Legacy usage")),
+            (self, IgnoreInCacheKey(size, "Doesn't affect SHLO"),
+             IgnoreInCacheKey(memory_format_opt, "Doesn't affect SHLO")),
             {
               TT_CHECK_THROW(
                   !memory_format_opt.has_value() ||
