@@ -1010,3 +1010,12 @@ def torch_tpu_package_end():
     _define_cpp_filegroup(name = "all_cpp_files_recursive")
     _define_py_filegroup(name = "all_py_files_recursive")
     _define_test_suite(name = "all_tests")
+
+def if_cuda_dep(dep):
+    """Returns the dependency list if building with CUDA, else empty."""
+    if is_oss():
+        return []
+    return select({
+        "//shims/gpu_cuda:using_config_cuda": [dep],
+        "//conditions:default": [],
+    })
