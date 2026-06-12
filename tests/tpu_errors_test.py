@@ -748,6 +748,24 @@ Please use clone() or contiguous() to copy the tensor before writing""",
       op(tensor, dim=0, out=out)
 
   # Why do we run this test only on TPU (and not on CPU)?
+  # This test should be run only on TPU because there are no other available
+  # devices on CPU runs, other than CPU.
+  @parameterized.named_parameters(
+      {"testcase_name": "min", "op_name": "min", "op": torch.min},
+      {"testcase_name": "max", "op_name": "max", "op": torch.max},
+  )
+  def test_min_max_unary_invalid_output_device(self, op_name: str, op: Any):
+    tensor = torch.ones(5, device=et.device(), dtype=torch.float32)
+    out = torch.tensor(0.0, device="cpu", dtype=torch.float32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=f"""{op_name}(): expected output tensor to be on tpu, got cpu""",
+        message_reviewed_by="gunhyun",
+    ):
+      op(tensor, out=out)
+
+  # Why do we run this test only on TPU (and not on CPU)?
   # PyTorch core implementations don't check `pivots` rank.
   # BUG: TPU kernels should mimic native devices behavior, including bugs.
   def test_lu_unpack_pivots_invalid_rank(self):
