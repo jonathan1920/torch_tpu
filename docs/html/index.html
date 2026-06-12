@@ -94,6 +94,7 @@ limitations under the License.
         .card.green { border-top: 4px solid #34a853; }
         .card.yellow { border-top: 4px solid #fbbc04; }
         .card.red { border-top: 4px solid #ea4335; }
+        .card.purple { border-top: 4px solid #af52de; }
         .card-header {
             display: flex;
             align-items: center;
@@ -114,6 +115,7 @@ limitations under the License.
         .green .card-icon { background: #e6f4ea; color: #1e8e3e; }
         .yellow .card-icon { background: #fef7e0; color: #f9ab00; }
         .red .card-icon { background: #fce8e6; color: #d93025; }
+        .purple .card-icon { background: #f3e5f5; color: #ab47bc; }
         .card-title {
             font-size: 16px;
             font-weight: 500;
@@ -281,11 +283,48 @@ limitations under the License.
             <h3 class="card-title">Eager Mode</h3>
             <p class="card-desc">Guide to Fused Eager execution and debugging modes.</p>
         </a>
-        <a href="precision_management.html" class="card red">
-            <h3 class="card-title">Precision Management</h3>
-            <p class="card-desc">Guide to controlling floating-point precision on TPU.</p>
-        </a>
      </div>
+
+    <!-- Advanced: Custom Ops and Kernels -->
+    <h2 class="section-title" style="margin-top: 48px;">
+        <svg width="24" height="24" fill="none" stroke="#af52de" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        Advanced: Custom Ops and Kernels
+    </h2>
+    <p style="color: #5f6368; font-size: 14px; margin-top: 0;">Extend PyTorch on TPU from basic composition to low-level Pallas kernels. This progressive guide walks through different mechanisms to extend PyTorch functionality, starting with the easiest composition approach and gradually building up towards the most powerful and complex TPU hardware-level vector kernels.</p>
+    <div class="grid">
+        <a href="extending_modules_and_functions_via_composition.html" class="card purple">
+            <h3 class="card-title">Extending Modules via Composition</h3>
+            <p class="card-desc">Quantization Aware Training via module composition</p>
+        </a>
+        <a href="customizing_autograd_via_torch_autograd_function.html" class="card purple">
+            <h3 class="card-title">Customizing Autograd via torch.autograd.Function</h3>
+            <p class="card-desc">Defining custom backward passes with torch.autograd.Function</p>
+        </a>
+        <a href="background_on_aten_ops.html" class="card purple">
+            <h3 class="card-title">Background on ATen Ops</h3>
+            <p class="card-desc">Enabling aot_graphs logging to view intermediate ATen IR</p>
+        </a>
+        <a href="background_on_torch_compile.html" class="card purple">
+            <h3 class="card-title">Background on torch.compile</h3>
+            <p class="card-desc">Concept of operator fusion and memory bottlenecks</p>
+        </a>
+        <a href="background_on_torch_compile_on_tpus_via_xla.html" class="card purple">
+            <h3 class="card-title">Background on torch.compile on TPUs via XLA</h3>
+            <p class="card-desc">Dumping and inspecting TPU HLO & LLO vector instructions</p>
+        </a>
+        <a href="intro_custom_ops.html" class="card purple">
+            <h3 class="card-title">Intro to Custom Ops</h3>
+            <p class="card-desc">General custom ops concepts and wrapping JAX popcnt</p>
+        </a>
+        <a href="pt_op_quant.html" class="card purple">
+            <h3 class="card-title">Custom Ops via Pallas: Python Baseline</h3>
+            <p class="card-desc">Quantization and packing unoptimized baseline in Python</p>
+        </a>
+        <a href="custom_ops_via_pallas.html" class="card purple">
+            <h3 class="card-title">Custom Ops via Pallas: TPU Kernel</h3>
+            <p class="card-desc">Writing high-performance binarization and packing vector kernels in Pallas</p>
+        </a>
+    </div>
 </div>
 </body>
 </html>
