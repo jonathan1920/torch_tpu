@@ -46,12 +46,12 @@ at::Tensor AtenToCopy(const at::Tensor& self,
       // Note: these cache key arguments are ignored for the compiled param keys
       // because this kernel is a special case that is not "dispatched" since
       // it's not compiled.
-      (self, IgnoreInCacheKey(dtype, "Legacy usage"),
-       IgnoreInCacheKey(layout, "Legacy usage"),
-       IgnoreInCacheKey(device, "Legacy usage"),
-       IgnoreInCacheKey(pin_memory, "Legacy usage"),
-       IgnoreInCacheKey(non_blocking, "Legacy usage"),
-       IgnoreInCacheKey(memory_format, "Legacy usage")),
+      (self, IgnoreInCacheKey(dtype, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(layout, "Unused"),
+       IgnoreInCacheKey(device, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(pin_memory, "Unused"),
+       IgnoreInCacheKey(non_blocking, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(memory_format, "Doesn't affect SHLO")),
       {
         at::Device target_device = device.value_or(self.device());
         at::ScalarType target_dtype = dtype.value_or(self.scalar_type());
