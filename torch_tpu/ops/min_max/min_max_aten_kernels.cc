@@ -22,7 +22,6 @@
 #include "ATen/core/TensorBody.h"
 #include "ATen/native/Fill.h"
 #include "ATen/native/ReduceOpsUtils.h"
-#include "ATen/native/Resize.h"
 #include "ATen/ops/empty.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
@@ -39,6 +38,7 @@
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
+#include "torch_tpu/common/utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
@@ -47,6 +47,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/reductions/reductions.h"
+#include "torch_tpu/ops/resize/resize_aten_kernels.h"
 
 namespace torch_tpu {
 
@@ -116,21 +117,18 @@ absl::Status ArgMinMax(const at::Tensor& self, c10::optional<int64_t> dim,
       << "expected the output dtype to be int64, got "
       << ToString(out.scalar_type());
 
-  at::Tensor
-      input_tensor;  // UNINITIALIZED_TENSOR_OK=initialized in the if-else
-  int64_t wrapped_dim;
+  at::Tensor input_tensor = self;
+  c10::optional<int64_t> wrapped_dim_opt;
+  c10::DimVector out_shape;
   if (dim) {
-    input_tensor = self;
-    TT_ASSIGN_OR_RETURN(wrapped_dim, SafeWrapDim(dim.value(), self.dim()));
-    auto sizes = input_tensor.sizes();
-    if (sizes[wrapped_dim] == 1) {
-      out.fill_(0);
-      return absl::OkStatus();
-    }
+    TT_ASSIGN_OR_RETURN(int64_t wrapped_dim,
+                        SafeWrapDim(dim.value(), self.dim()));
+    out_shape = at::meta::get_reduction_shape(self, {wrapped_dim}, keep_dim);
+    wrapped_dim_opt = wrapped_dim;
   } else {
-    input_tensor = self.flatten();
-    wrapped_dim = 0;
+    out_shape = keep_dim ? c10::DimVector(self.dim(), 1) : c10::DimVector();
   }
+
   // native PyTorch works for complex and bool dtypes only when the input
   // dimension corresponding to the wrapped dimension is 1. All other cases are
   // not supported. Hence, this check is after the above logic to handle the
@@ -140,24 +138,16 @@ absl::Status ArgMinMax(const at::Tensor& self, c10::optional<int64_t> dim,
       << "expected the input dtype to be neither complex nor bool, got "
       << ToString(self.scalar_type());
 
-  // If the input tensor is a scalar, then argmax should just return 0.
-  if (self.dim() == 0) {
-    out.fill_(0);
-    return absl::OkStatus();
-  }
-
-  c10::DimVector out_shape = at::meta::get_reduction_shape(
-      input_tensor, {wrapped_dim}, keep_dim, /*allow_empty_dims=*/false);
   Dimensions out_dims = CopyIntVector(out_shape);
 
   ReductionMode mode =
       keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
 
   auto op_builder =
-      [wrapped_dim, op,
+      [wrapped_dim_opt, op,
        mode](mlir::MlirOp input) -> absl::StatusOr<MlirOpResults<1>> {
     TT_ASSIGN_OR_RETURN(auto min_max_outputs,
-                        BuildMinMaxShlo(wrapped_dim, op, mode, input));
+                        BuildMinMaxShlo(wrapped_dim_opt, op, mode, input));
     return {min_max_outputs.indices};
   };
 
@@ -168,7 +158,7 @@ absl::Status ArgMinMax(const at::Tensor& self, c10::optional<int64_t> dim,
                      .out_dims = std::move(out_dims),
                      .op_param_cache_keys = std::move(param_keys)}));
 
-  at::native::resize_output(out, out_shape);
+  TT_RETURN_IF_ERROR(ResizeTensorIfShapeDiffers(out, out_shape));
   return AssignBufferToAtTensor(std::move(result_buf), out);
 }
 
