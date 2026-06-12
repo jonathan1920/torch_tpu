@@ -136,19 +136,20 @@ AtenEmbeddingBagForwardOnly(const at::Tensor& weight, const at::Tensor& indices,
                             int64_t mode, bool sparse,
                             const std::optional<at::Tensor>& per_sample_weights,
                             bool include_last_offset, int64_t padding_idx) {
-  TT_KERNEL(OpName::kEmbeddingBagForwardOnly, _,
-            (weight, indices, offsets,
-             IgnoreInCacheKey(scale_grad_by_freq, "Legacy usage"),
-             IgnoreInCacheKey(mode, "Legacy usage"),
-             IgnoreInCacheKey(sparse, "Legacy usage"),
-             IgnoreInCacheKey(per_sample_weights, "Legacy usage"),
-             IgnoreInCacheKey(include_last_offset, "Legacy usage"),
-             IgnoreInCacheKey(padding_idx, "Legacy usage")),
-            {
-              return AtenEmbeddingBag(
-                  weight, indices, offsets, scale_grad_by_freq, mode, sparse,
-                  per_sample_weights, include_last_offset, padding_idx);
-            });
+  TT_KERNEL(
+      OpName::kEmbeddingBagForwardOnly, _,
+      (weight, indices, offsets,
+       IgnoreInCacheKey(scale_grad_by_freq, "Delegates to AtenEmbeddingBag"),
+       IgnoreInCacheKey(mode, "Delegates to AtenEmbeddingBag"),
+       IgnoreInCacheKey(sparse, "Delegates to AtenEmbeddingBag"),
+       IgnoreInCacheKey(per_sample_weights, "Delegates to AtenEmbeddingBag"),
+       IgnoreInCacheKey(include_last_offset, "Delegates to AtenEmbeddingBag"),
+       IgnoreInCacheKey(padding_idx, "Delegates to AtenEmbeddingBag")),
+      {
+        return AtenEmbeddingBag(weight, indices, offsets, scale_grad_by_freq,
+                                mode, sparse, per_sample_weights,
+                                include_last_offset, padding_idx);
+      });
 }
 
 at::Tensor AtenEmbeddingBagBackward(
