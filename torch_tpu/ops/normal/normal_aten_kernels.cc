@@ -211,9 +211,9 @@ at::Tensor& AtenNormal_(at::Tensor& self, double mean, double std,
                         std::optional<at::Generator> generator) {
   TT_KERNEL(
       OpName::kNormal_, _,
-      (self, IgnoreInCacheKey(mean, "Legacy usage"),
-       IgnoreInCacheKey(std, "Legacy usage"),
-       IgnoreInCacheKey(generator, "Legacy usage")),
+      (self, IgnoreInCacheKey(mean, "Converted to input tensor"),
+       IgnoreInCacheKey(std, "Converted to input tensor"),
+       IgnoreInCacheKey(generator, "Doesn't affect SHLO")),
       {
         TT_THROW_IF_ERROR(CheckNormalPreconditions(self, /*arg_name=*/"self"));
         TT_THROW_IF_ERROR(CheckNormalStdPreconditions(std));
@@ -236,8 +236,8 @@ at::Tensor& AtenNormal_(at::Tensor& self, double mean, double std,
 at::Tensor AtenNormalFloatTensor(double mean, const at::Tensor& std,
                                  std::optional<at::Generator> generator) {
   TT_KERNEL(OpName::kNormalFloatTensor, _,
-            (IgnoreInCacheKey(mean, "Legacy usage"), std,
-             IgnoreInCacheKey(generator, "Legacy usage")),
+            (IgnoreInCacheKey(mean, "Converted to input tensor"), std,
+             IgnoreInCacheKey(generator, "Doesn't affect SHLO")),
             {
               TT_THROW_IF_ERROR(
                   // This variant (scalar mean, tensor std) does not allow
@@ -255,8 +255,8 @@ at::Tensor& AtenNormalFloatTensorOut(double mean, const at::Tensor& std,
                                      at::Tensor& out) {
   TT_KERNEL(
       OpName::kNormalFloatTensorOut, _,
-      (IgnoreInCacheKey(mean, "Legacy usage"), std,
-       IgnoreInCacheKey(generator, "Legacy usage"), out),
+      (IgnoreInCacheKey(mean, "Converted to input tensor"), std,
+       IgnoreInCacheKey(generator, "Doesn't affect SHLO"), out),
       {
         TT_THROW_IF_ERROR(
             // This variant (scalar mean, tensor std) does not allow integer
@@ -282,8 +282,8 @@ at::Tensor AtenNormalTensorFloat(const at::Tensor& mean, double std,
                                  std::optional<at::Generator> generator) {
   TT_KERNEL(
       OpName::kNormalTensorFloat, _,
-      (mean, IgnoreInCacheKey(std, "Legacy usage"),
-       IgnoreInCacheKey(generator, "Legacy usage")),
+      (mean, IgnoreInCacheKey(std, "Converted to input tensor"),
+       IgnoreInCacheKey(generator, "Doesn't affect SHLO")),
       {
         TT_THROW_IF_ERROR(CheckNormalPreconditions(mean, /*arg_name=*/"mean"));
         TT_THROW_IF_ERROR(CheckNormalStdPreconditions(std));
@@ -300,8 +300,8 @@ at::Tensor& AtenNormalTensorFloatOut(const at::Tensor& mean, double std,
                                      at::Tensor& out) {
   TT_KERNEL(
       OpName::kNormalTensorFloatOut, _,
-      (mean, IgnoreInCacheKey(std, "Legacy usage"),
-       IgnoreInCacheKey(generator, "Legacy usage"), out),
+      (mean, IgnoreInCacheKey(std, "Converted to input tensor"),
+       IgnoreInCacheKey(generator, "Doesn't affect SHLO"), out),
       {
         TT_THROW_IF_ERROR(CheckNormalPreconditions(mean, /*arg_name=*/"mean"));
         TT_THROW_IF_ERROR(CheckNormalStdPreconditions(std));
@@ -325,7 +325,7 @@ at::Tensor AtenNormalTensorTensor(const at::Tensor& mean, const at::Tensor& std,
                                   std::optional<at::Generator> generator) {
   TT_KERNEL(
       OpName::kNormalTensorTensor, _,
-      (mean, std, IgnoreInCacheKey(generator, "Legacy usage")), {
+      (mean, std, IgnoreInCacheKey(generator, "Doesn't affect SHLO")), {
         TT_THROW_IF_ERROR(CheckNormalPreconditions(mean, /*arg_name=*/"mean"));
         TT_THROW_IF_ERROR(CheckNormalStdPreconditions(std));
         // ATen's normal_impl_ uses standard broadcasting via
@@ -348,7 +348,7 @@ at::Tensor& AtenNormalTensorTensorOut(const at::Tensor& mean,
                                       at::Tensor& out) {
   TT_KERNEL(
       OpName::kNormalTensorTensorOut, _,
-      (mean, std, IgnoreInCacheKey(generator, "Legacy usage"), out), {
+      (mean, std, IgnoreInCacheKey(generator, "Doesn't affect SHLO"), out), {
         TT_THROW_IF_ERROR(CheckNormalPreconditions(mean, /*arg_name=*/"mean"));
         TT_THROW_IF_ERROR(CheckNormalStdPreconditions(std));
         TT_ASSIGN_OR_THROW(auto shape, InferSize(mean, std));
