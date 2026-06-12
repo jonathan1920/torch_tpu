@@ -656,6 +656,7 @@ torch_tpu_cc_library(
     srcs = ["tpu_hooks.cc"],
     hdrs = ["tpu_hooks.h"],
     deps = [
+        ":current_stream",
         ":device_buffer",
         ":device_buffer_utils",
         ":device_gen_impl",
@@ -867,6 +868,15 @@ torch_tpu_cc_test(
         "@com_google_googletest//:gtest_main",
         "@stablehlo//:attr_type_builder_util",
         "@stablehlo//:mlir_builder",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "current_stream",
+    srcs = ["current_stream.cc"],
+    hdrs = ["current_stream.h"],
+    deps = [
+        "@com_google_absl//absl/log:absl_check",
     ],
 )
 
