@@ -306,6 +306,7 @@ torch_tpu_cc_library(
         "//torch_tpu/common:context_states",
         "//torch_tpu/common:dynamism_utils",
         "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:to_string",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/pjrt:pjrt_utils",
         "@com_google_absl//absl/base:nullability",

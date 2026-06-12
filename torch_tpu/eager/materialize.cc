@@ -235,11 +235,17 @@ class MaterializationWorker {
 
     std::vector<ExecutionTask> execution_tasks;
     for (auto& split_traversal : traversals) {
-      TT_ASSIGN_OR_RETURN(
-          ExecutionTask execution_task,
-          ExecutionTask::FromTraversalWithLogging(std::move(split_traversal),
-                                                  mlir_context, task.reason));
-      execution_tasks.push_back(std::move(execution_task));
+      auto execution_task_or = ExecutionTask::FromTraversalWithLogging(
+          std::move(split_traversal), mlir_context, task.reason);
+      if (!execution_task_or.ok()) {
+        // Fail the execution tasks we already created to ensure anything
+        // waiting on their outputs will not deadlock.
+        for (auto& task : execution_tasks) {
+          task.SetOutputNodesAsError(execution_task_or.status());
+        }
+        return execution_task_or.status();
+      }
+      execution_tasks.push_back(std::move(*execution_task_or));
     }
 
     return execution_tasks;

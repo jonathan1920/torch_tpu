@@ -87,6 +87,9 @@ class ExecutionTask {
   // Any failures will be set as errors on the output buffers.
   absl::Status Run();
 
+  // Sets all output nodes as having a specified error.
+  void SetOutputNodesAsError(absl::Status status);
+
  private:
   explicit ExecutionTask(std::string name,
                          std::vector<DeviceBufferRef> arguments,
@@ -101,9 +104,6 @@ class ExecutionTask {
 
   // Runs the execution task and early-returns if there is any failure.
   absl::Status RunInternal();
-
-  // Sets all output nodes as having a specified error.
-  void SetOutputNodesAsError(absl::Status status);
 
   // Gets cached executables from the compiled kernel.
   // This will always include a static, fixed-shape kernel, and may also include

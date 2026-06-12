@@ -47,6 +47,7 @@
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/dynamism_utils.h"
 #include "torch_tpu/common/error_utils.h"
+#include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
@@ -205,6 +206,31 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
   if (traversal->IsBoundedDynamic()) {
     TT_RETURN_IF_ERROR(PropagateBoundedDynamism(*traversal, mlir_context));
   }
+  const auto compilation_mode = GetCompilationMode(GetEagerMode());
+  for (const auto& argument : traversal->arguments()) {
+    if (!argument.is_materializing()) {
+      if (argument.is_placeholder()) {
+        return TT_ERROR(error::kInternal)
+               << "materialize was called on a placeholder tensor. This "
+                  "should never happen.\nkPlaceholder tensors should only "
+                  "appear in compiled mode, which should never try to "
+                  "materialize tensors.\n"
+               << argument.DebugString();
+      } else if (const auto deferred_op = argument.deferred_op()) {
+        return TT_ERROR(error::kInternal)
+               << "traversal " << traversal->GetCacheKey(compilation_mode)
+               << " has deferred argument " << ToString(deferred_op->op_name())
+               << ToString(argument.dimensions())
+               << ".\nAll arguments must be set to pending materialization "
+                  "before creating chained ExecutionTasks";
+      } else {
+        return TT_ERROR(error::kInternal)
+               << "traversal argument has an unknown state (not deferred, "
+                  "placeholder, or materializing):\n"
+               << argument.DebugString();
+      }
+    }
+  }
 
 #ifndef NDEBUG
   // Check that the traversal has a valid set of outputs before we start
@@ -214,7 +240,6 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
 
   // Start compiling the traversal.
   ABSL_VLOG(1) << "[ExecutionTask] Compiling traversal";
-  auto compilation_mode = GetCompilationMode(GetEagerMode());
   absl::StatusOr<CompiledKernel> compiled_kernel;
   {
     tsl::profiler::TraceMe t("CompileTraversal");
@@ -245,6 +270,26 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromExecutable(
     std::vector<DeviceBufferRef> arguments,
     std::vector<DeviceBufferRef> outputs, MaterializationReason reason,
     std::string_view task_name) {
+  for (const auto& argument : arguments) {
+    if (!argument.is_materializing()) {
+      if (argument.is_placeholder()) {
+        return TT_ERROR(error::kInternal)
+               << "ExecutionTask::FromExecutable was called on a placeholder "
+                  "tensor. This should never happen.\nkPlaceholder tensors "
+                  "should only appear at compile time, not at execution time.\n"
+               << argument.DebugString();
+      } else if (const auto deferred_op = argument.deferred_op()) {
+        return TT_ERROR(error::kInternal)
+               << "argument to task " << task_name << " has deferred input op"
+               << ToString(deferred_op->op_name());
+      } else {
+        return TT_ERROR(error::kInternal)
+               << "execution task argument has an unknown state (not deferred, "
+                  "placeholder, or materializing):\n"
+               << argument.DebugString();
+      }
+    }
+  }
 #ifndef NDEBUG
   // Check that the outputs buffers are valid.
   TT_RETURN_IF_ERROR(VerifyPerNodeOutputs(outputs));
@@ -404,9 +449,11 @@ ExecutionTask::GetArgumentBuffers() {
                           argument.AwaitBuffer());
       root_args.push_back(pjrt_buffer);
     } else if (argument.is_placeholder()) {
+      // This should already have been checked in MaterializeImpl, but we can
+      // return the same error here if that check was somehow bypassed.
       return TT_ERROR(error::kInternal)
-             << "materialize was called on a placeholder tensor. This "
-                "should never happen.\nkPlaceholder tensors should only "
+             << "cannot Materialize() a placeholder tensor or a tensor that "
+                "depends on a placeholder. \nPlaceholder tensors should only "
                 "appear in compiled mode, which should never try to "
                 "materialize tensors."
              << argument.DebugString();
