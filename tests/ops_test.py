@@ -1932,6 +1932,9 @@ class TestOps(TorchTpuTestBase):
         "cosh",
     )
 
+  def test_count_nonzero(self):
+    self.do_test_op("count_nonzero")
+
   def test_ctc_loss(self):
     self.do_test_op(
         "nn.functional.ctc_loss",
