@@ -379,46 +379,50 @@ at::Tensor& AtenReplicationPad3dBackwardGradInput(const at::Tensor& grad_output,
 at::Tensor AtenReplicationPad2dBackward(const at::Tensor& grad_output,
                                         const at::Tensor& self,
                                         at::IntArrayRef padding) {
-  TT_KERNEL(OpName::kReplicationPad2dBackward, _,
-            (grad_output, self, IgnoreInCacheKey(padding, "Legacy usage")), {
-              Dimensions gidims(grad_output.sizes().begin(),
-                                grad_output.sizes().end());
-              TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
-                               // guaranteed to be within range.
-                  gidims.size() > 2, error::kInvalidArgument)
-                  << "expected grad_output to have at least 2 dimensions"
-                  << ", got " << gidims.size() << " dimensions";
+  TT_KERNEL(
+      OpName::kReplicationPad2dBackward, _,
+      (grad_output, self,
+       IgnoreInCacheKey(padding,
+                        "Delegates to AtenReplicationPad2dBackwardGradInput")),
+      {
+        Dimensions gidims(grad_output.sizes().begin(),
+                          grad_output.sizes().end());
+        TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
+                         // guaranteed to be within range.
+            gidims.size() > 2, error::kInvalidArgument)
+            << "expected grad_output to have at least 2 dimensions"
+            << ", got " << gidims.size() << " dimensions";
 
-              TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
-                               // guaranteed to be within range.
-                  padding.size() == 4, error::kInvalidArgument)
-                  << "expected padding to have " << 4 << " elements"
-                  << ", got " << padding.size() << " elements";
+        TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
+                         // guaranteed to be within range.
+            padding.size() == 4, error::kInvalidArgument)
+            << "expected padding to have " << 4 << " elements"
+            << ", got " << padding.size() << " elements";
 
-              TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
-                               // guaranteed to be within range.
-                  gidims[gidims.size() - 2] - (padding[2] + padding[3]) > 0 &&
-                      gidims[gidims.size() - 1] - (padding[0] + padding[1]) > 0,
-                  error::kInvalidArgument)
-                  << "padding values must add up to a valid input dimension.";
-              gidims[gidims.size() - 2] -= (padding[2] + padding[3]);
-              gidims[gidims.size() - 1] -= (padding[0] + padding[1]);
+        TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
+                         // guaranteed to be within range.
+            gidims[gidims.size() - 2] - (padding[2] + padding[3]) > 0 &&
+                gidims[gidims.size() - 1] - (padding[0] + padding[1]) > 0,
+            error::kInvalidArgument)
+            << "padding values must add up to a valid input dimension.";
+        gidims[gidims.size() - 2] -= (padding[2] + padding[3]);
+        gidims[gidims.size() - 1] -= (padding[0] + padding[1]);
 
-              TT_CHECK_THROW(gidims == self.sizes(), error::kInvalidArgument)
-                  << "expected the input shape to match the output (input "
-                     "grad) shape "
-                  << ToString(gidims)
-                  << " computed by removing the padding from grad_output, "
-                     "got "
-                  << ToString(self.sizes());
+        TT_CHECK_THROW(gidims == self.sizes(), error::kInvalidArgument)
+            << "expected the input shape to match the output (input "
+               "grad) shape "
+            << ToString(gidims)
+            << " computed by removing the padding from grad_output, "
+               "got "
+            << ToString(self.sizes());
 
-              TT_ASSIGN_OR_THROW(
-                  at::Tensor grad_input,
-                  MakeEmptyTensor(gidims, self.scalar_type(), self.device()));
-              AtenReplicationPad2dBackwardGradInput(grad_output, self, padding,
-                                                    grad_input);
-              return grad_input;
-            });
+        TT_ASSIGN_OR_THROW(
+            at::Tensor grad_input,
+            MakeEmptyTensor(gidims, self.scalar_type(), self.device()));
+        AtenReplicationPad2dBackwardGradInput(grad_output, self, padding,
+                                              grad_input);
+        return grad_input;
+      });
 }
 
 at::Tensor AtenReplicationPad3dBackward(const at::Tensor& grad_output,
@@ -426,7 +430,10 @@ at::Tensor AtenReplicationPad3dBackward(const at::Tensor& grad_output,
                                         at::IntArrayRef padding) {
   TT_KERNEL(
       OpName::kReplicationPad3dBackward, _,
-      (grad_output, self, IgnoreInCacheKey(padding, "Legacy usage")), {
+      (grad_output, self,
+       IgnoreInCacheKey(padding,
+                        "Delegates to AtenReplicationPad3dBackwardGradInput")),
+      {
         Dimensions gidims(grad_output.sizes().begin(),
                           grad_output.sizes().end());
         TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are guaranteed
