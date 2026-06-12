@@ -644,6 +644,7 @@ enum class OpName {
   kTopkValues,
   kTorchTpuInternalConstant,
   kTorchTpuInternalGatherAllSubgroups,
+  kTorchTpuInternalZeroSize,
   kTorchTpuOptimizationBarrier,
   kTorchTpuStorageAllocate,
   kTrilIndices,
@@ -779,6 +780,10 @@ inline std::ostream& operator<<(std::ostream& os, const OpName op_name) {
       return true;
     case OpName::kTorchTpuInternalConstant:
       // Constant ops are compiled-mode only.
+      return true;
+    case OpName::kTorchTpuInternalZeroSize:
+      // Zero-size ops don't need to be early-materialized as they have nothing
+      // to compute.
       return true;
     case OpName::kResize_:
       // Resize_ behaves either like a view or allocation event, depending on

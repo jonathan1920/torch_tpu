@@ -216,11 +216,14 @@ absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
 
 }  // namespace internal
 
-absl::StatusOr<DeviceBufferRef> CreateConstantDeviceBufferRef(
+namespace {
+
+// Common pathway for CreateConstantDeviceBufferRef and
+// CreateZeroSizeDeviceBufferRef, allowing for different op names.
+absl::StatusOr<DeviceBufferRef> CreateConstantDeviceBufferRefImpl(
     std::vector<char> cpu_tensor_data, Dimensions dimensions,
-    mlir::ElementType element_type) {
+    mlir::ElementType element_type, OpName op_name) {
   // Create the components of the DeferredOp.
-  auto op_name = OpName::kTorchTpuInternalConstant;
   ScopedPythonContextCapturer capturer(op_name);
 
   // Create the cache keys for the op parameters.
@@ -296,6 +299,16 @@ absl::StatusOr<DeviceBufferRef> CreateConstantDeviceBufferRef(
   return std::move(results[0]);
 }
 
+}  // namespace
+
+absl::StatusOr<DeviceBufferRef> CreateConstantDeviceBufferRef(
+    std::vector<char> cpu_tensor_data, Dimensions dimensions,
+    mlir::ElementType element_type) {
+  return CreateConstantDeviceBufferRefImpl(std::move(cpu_tensor_data),
+                                           std::move(dimensions), element_type,
+                                           OpName::kTorchTpuInternalConstant);
+}
+
 absl::StatusOr<DeviceBufferRef> CreateEmptyDeviceBufferRef(
     Dimensions dimensions, mlir::ElementType element_type) {
   TT_RETURN_IF_ERROR(ValidateTensorByteSize(dimensions, element_type));
@@ -336,7 +349,9 @@ absl::StatusOr<DeviceBufferRef> CreateZeroSizeDeviceBufferRef(
   TT_RET_CHECK(is_zero_sized, error::kInvalidArgument)
       << "CreateZeroSizeDeviceBufferRef requires a zero-sized tensor, but got: "
       << ToString(dimensions);
-  return CreateConstantDeviceBufferRef({}, std::move(dimensions), element_type);
+  return CreateConstantDeviceBufferRefImpl({}, std::move(dimensions),
+                                           element_type,
+                                           OpName::kTorchTpuInternalZeroSize);
 }
 
 namespace {
