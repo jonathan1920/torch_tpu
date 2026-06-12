@@ -6272,7 +6272,7 @@ Supported combinations for non-constant padding:
     err_type = NotImplementedError if et.device().type == "tpu" else ValueError
     with et.assert_raises_message(
         err_type,
-        tpu="""scaled_mm(): expected scale_a to have numel 1, got numel 2""",
+        tpu="""scaled_mm(): expected scale_a to have numel 1 (tensorwise) or 16 (row-wise), got numel 2""",
         cpu=re.compile(r"""Invalid scaling configuration\..*""", re.DOTALL),
     ):
       torch._scaled_mm(mat1, mat2, scale_a, scale_b)
@@ -6292,7 +6292,7 @@ Supported combinations for non-constant padding:
     err_type = NotImplementedError if et.device().type == "tpu" else ValueError
     with et.assert_raises_message(
         err_type,
-        tpu="""scaled_mm(): expected scale_b to have numel 1, got numel 2""",
+        tpu="""scaled_mm(): expected scale_b to have numel 1 (tensorwise) or 16 (per-channel), got numel 2""",
         cpu=re.compile(r"""Invalid scaling configuration\..*""", re.DOTALL),
     ):
       torch._scaled_mm(mat1, mat2, scale_a, scale_b)
