@@ -33,8 +33,8 @@ void AtenSplitWithSizesCopyOut(const at::Tensor& self,
                                at::IntArrayRef split_sizes, int64_t dim,
                                at::TensorList out) {
   TT_KERNEL(OpName::kSplitWithSizesCopyOut, _,
-            (self, IgnoreInCacheKey(split_sizes, "Legacy usage"),
-             IgnoreInCacheKey(dim, "Legacy usage"), out),
+            (self, IgnoreInCacheKey(split_sizes, "Doesn't affect SHLO"),
+             IgnoreInCacheKey(dim, "Doesn't affect SHLO"), out),
             {
               // split_with_sizes_copy is an undocumented op used by PyTorch's
               // fully_shard() wrapper (FSDP2). The default decomposition, found
