@@ -576,7 +576,7 @@ class DynamicCompiler(compiler.Compiler):
 
     logging.debug(
         "[DynamicTpuBackend] Static Model Executable MLIR: %s",
-        LazyString(lambda: static_model_executable.mlir_text),
+        LazyString(lambda: getattr(static_model_executable, "mlir_text", None)),
     )
 
     return _DynamicTpuCompiledExecutable(

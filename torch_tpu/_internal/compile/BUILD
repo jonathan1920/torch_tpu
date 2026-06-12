@@ -24,12 +24,22 @@ torch_tpu_py_library(
     name = "compiler",
     srcs = ["compiler.py"],
     deps = [
+        ":torch_tpu_compiled_executable",
         ":tpu_torch_compile",
-        "//shims/absl_py/logging",
         "//shims/torch:pytorch",
         "//torch_tpu/_internal/compile/fx_passes:mark_activation_checkpoints",
         "//torch_tpu/_internal/compile/fx_passes:mark_embedded_constants",
         "//torch_tpu/_internal/export",
+    ],
+)
+
+torch_tpu_py_library(
+    name = "torch_tpu_compiled_executable",
+    srcs = ["torch_tpu_compiled_executable.py"],
+    deps = [
+        ":tpu_torch_compile",
+        "//shims/absl_py/logging",
+        "//shims/torch:pytorch",
     ],
 )
 
