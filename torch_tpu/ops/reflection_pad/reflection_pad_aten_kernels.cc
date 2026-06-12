@@ -330,7 +330,8 @@ at::Tensor AtenReflectionPad2d(const at::Tensor& self,
                                at::IntArrayRef padding) {
   TT_KERNEL(
       OpName::kReflectionPad2d, _,
-      (self, IgnoreInCacheKey(padding, "Legacy usage")), {
+      (self, IgnoreInCacheKey(padding, "Delegates to AtenReflectionPad2dOut")),
+      {
         Dimensions out_dimensions(self.sizes().begin(), self.sizes().end());
         out_dimensions[out_dimensions.size() - 2] += padding[2] + padding[3];
         out_dimensions[out_dimensions.size() - 1] += padding[0] + padding[1];
@@ -410,7 +411,10 @@ at::Tensor AtenReflectionPad2dBackward(const at::Tensor& grad_output,
                                        const at::Tensor& self,
                                        at::IntArrayRef padding) {
   TT_KERNEL(OpName::kReflectionPad2dBackward, _,
-            (grad_output, self, IgnoreInCacheKey(padding, "Legacy usage")), {
+            (grad_output, self,
+             IgnoreInCacheKey(
+                 padding, "Delegates to AtenReflectionPad2dBackwardGradInput")),
+            {
               Dimensions gidims(grad_output.sizes().begin(),
                                 grad_output.sizes().end());
               TT_CHECK_THROW(  // ERROR_COV_INFEASIBLE=Current usages are
