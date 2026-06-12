@@ -148,8 +148,9 @@ void PySynchronizeStream(int64_t stream_id, std::optional<int> device_index) {
                                ? static_cast<c10::DeviceIndex>(*device_index)
                                : impl->getDevice().index();
 
+  // TODO(bawilson): don't sync streams other than the requested one.
   TT_THROW_IF_ERROR(SynchronizeAll(WaitOnExecution::kYes));
-  PjrtBackend::GetInstance().SynchronizeStream(index, stream_id);
+  SynchronizeStream(index, stream_id);
 }
 
 }  // namespace

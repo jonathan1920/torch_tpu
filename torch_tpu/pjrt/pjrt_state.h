@@ -99,21 +99,6 @@ class PjrtBackend {
   // Shuts down the PjRt runtime and resets the global state.
   void Shutdown() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  // Updates the tracked future for the given device and stream.
-  void MarkStreamActive(c10::DeviceIndex device_index, int64_t stream_id,
-                        xla::Future<void> future);
-
-  // Updates the tracked future for the current stream.
-  void MarkStreamActive(xla::Future<void> future);
-
-  // Blocks until all pending operations on the given device and stream have
-  // completed.
-  void SynchronizeStream(c10::DeviceIndex device_index, int64_t stream_id);
-
-  // Blocks until all pending operations on ALL streams of the given device have
-  // completed.
-  void SynchronizeDevice(c10::DeviceIndex device_index);
-
  private:
   friend class absl::NoDestructor<PjrtBackend>;
 
@@ -135,6 +120,21 @@ class PjrtBackend {
   bool init_attempted_ ABSL_GUARDED_BY(mutex_) = false;
   absl::Status init_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
 };
+
+// Updates the tracked future for the given device and stream.
+void MarkStreamActive(c10::DeviceIndex device_index, int64_t stream_id,
+                      xla::Future<void> future);
+
+// Updates the tracked future for the current stream.
+void MarkStreamActive(xla::Future<void> future);
+
+// Blocks until all pending operations on the given device and stream have
+// completed.
+void SynchronizeStream(c10::DeviceIndex device_index, int64_t stream_id);
+
+// Blocks until all pending operations on ALL streams of the given device have
+// completed.
+void SynchronizeDevice(c10::DeviceIndex device_index);
 
 // Records a fence over the async d2h copies already enqueued on the device and
 // stream.

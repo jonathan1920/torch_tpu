@@ -145,7 +145,7 @@ absl::Status DeferNeverDispatch(absl::Span<const DeviceBufferRef> results,
                                  MaterializationReason::kDebugMode,
                                  MaterializationMode::kFullGraph));
   for (const auto& result : results) {
-    PjrtBackend::GetInstance().MarkStreamActive(result.GetReadyFuture());
+    MarkStreamActive(result.GetReadyFuture());
   }
   if (block) {
     return device_buffer_list->Synchronize();

@@ -373,9 +373,8 @@ struct StreamFutures {
 
 }  // namespace
 
-void PjrtBackend::MarkStreamActive(c10::DeviceIndex device_index,
-                                   int64_t stream_id,
-                                   xla::Future<void> future) {
+void MarkStreamActive(c10::DeviceIndex device_index, int64_t stream_id,
+                      xla::Future<void> future) {
   StreamState& state = GetStreamState();
   absl::MutexLock lock(state.mutex);
   auto& futures = state.pending_futures[{device_index, stream_id}];
@@ -383,7 +382,7 @@ void PjrtBackend::MarkStreamActive(c10::DeviceIndex device_index,
   futures.push_back(std::make_shared<xla::Future<void>>(std::move(future)));
 }
 
-void PjrtBackend::MarkStreamActive(xla::Future<void> future) {
+void MarkStreamActive(xla::Future<void> future) {
   const auto* impl = c10::impl::getDeviceGuardImpl(GetPrivateUse1DeviceType());
   ABSL_CHECK(impl != nullptr)  // CRASH_OK=TPU DeviceGuardImpl required.
       << "TPU DeviceGuardImpl not found";
@@ -397,8 +396,7 @@ void PjrtBackend::MarkStreamActive(xla::Future<void> future) {
 // If multiple threads call SynchronizeStream for the same device concurrently,
 // all threads will block until the pending operations at the time of their
 // call are finished.
-void PjrtBackend::SynchronizeStream(c10::DeviceIndex device_index,
-                                    int64_t stream_id) {
+void SynchronizeStream(c10::DeviceIndex device_index, int64_t stream_id) {
   ABSL_VLOG(1) << "SynchronizeStream: device=" << static_cast<int>(device_index)
                << ", stream=" << stream_id;
   StreamState& state = GetStreamState();
@@ -431,7 +429,7 @@ void PjrtBackend::SynchronizeStream(c10::DeviceIndex device_index,
   }
 }
 
-void PjrtBackend::SynchronizeDevice(c10::DeviceIndex device_index) {
+void SynchronizeDevice(c10::DeviceIndex device_index) {
   ABSL_VLOG(1) << "SynchronizeDevice: device="
                << static_cast<int>(device_index);
   StreamState& state = GetStreamState();

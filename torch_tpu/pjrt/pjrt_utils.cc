@@ -169,7 +169,7 @@ absl::StatusOr<DeviceBufferRef> TpuMallocAndMemcpyHtoD(
   } else {
     ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL] Backing tensor present, "
                     "creating DeviceBufferRef and marking stream active.";
-    PjrtBackend::GetInstance().MarkStreamActive(future);
+    MarkStreamActive(future);
   }
 
   ABSL_VLOG(1) << "[TpuMallocAndMemcpyHtoD INTERNAL EXIT] Created "
@@ -260,7 +260,7 @@ absl::Status TpuMemcpyDtoHDirect(const DeviceBufferRef& buffer_ref,
         ABSL_LOG(ERROR) << "Async D2H ToLiteral transfer failed: " << s;
       }
     });
-    PjrtBackend::GetInstance().MarkStreamActive(future);
+    MarkStreamActive(future);
     return absl::OkStatus();
   } else {
     return AdaptXlaError(future.Await());

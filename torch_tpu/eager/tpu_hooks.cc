@@ -214,13 +214,12 @@ bool TpuDeviceGuardImpl::queryStream(const c10::Stream& stream) const {
   return true;
 }
 void TpuDeviceGuardImpl::synchronizeStream(const c10::Stream& stream) const {
-  PjrtBackend::GetInstance().SynchronizeStream(stream.device_index(),
-                                               stream.id());
+  SynchronizeStream(stream.device_index(), stream.id());
 }
 void TpuDeviceGuardImpl::synchronizeDevice(
     c10::DeviceIndex device_index) const {
   TT_THROW_IF_ERROR(SynchronizeAll(WaitOnExecution::kYes));
-  PjrtBackend::GetInstance().SynchronizeDevice(device_index);
+  SynchronizeDevice(device_index);
 }
 void TpuDeviceGuardImpl::destroyEvent(
     void* event, const c10::DeviceIndex device_index) const noexcept {
