@@ -29,7 +29,6 @@
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
 #include "torch/headeronly/core/ScalarType.h"
-#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
@@ -72,12 +71,11 @@ absl::StatusOr<mlir::MlirOp> BuildMeanShlo(
 at::Tensor& AtenMeanOut(const at::Tensor& self,
                         c10::OptionalArrayRef<int64_t> dim, bool keep_dim,
                         std::optional<c10::ScalarType> dtype, at::Tensor& out) {
+  TT_ASSIGN_OR_THROW(Dimensions canonical_dims, CanonicalizeDims(self, dim));
+
   TT_KERNEL(
-      OpName::kMeanOut, _,
-      (self, IgnoreInCacheKey(dim, "Legacy usage"),
-       IgnoreInCacheKey(keep_dim, "Legacy usage"),
-       IgnoreInCacheKey(dtype, "Legacy usage"), out),
-      {
+      OpName::kMeanOut, param_keys,
+      (self, canonical_dims, keep_dim, dtype, out), {
         TT_ASSIGN_OR_THROW(c10::ScalarType scalar_dtype,
                            GetOutputScalarType(out, dtype));
         if (self.numel() == 0) {
@@ -87,17 +85,11 @@ at::Tensor& AtenMeanOut(const at::Tensor& self,
 
         const ReductionMode reduction_mode =
             keep_dim ? ReductionMode::kKeepDims : ReductionMode::kDropDims;
-        TT_ASSIGN_OR_THROW(Dimensions canonical_dims,
-                           CanonicalizeDims(self, dim));
         Dimensions output_dims = GetSizesAfterReduction(
             self.sizes(), reduction_mode, canonical_dims);
 
         TT_ASSIGN_OR_THROW(const mlir::ElementType mlir_type,
                            ConvertTo<mlir::ElementType>(scalar_dtype));
-
-        TT_ASSIGN_OR_THROW(
-            auto param_keys,
-            TT_MAKE_OP_PARAM_CACHE_KEYS(canonical_dims, keep_dim, dtype));
 
         auto op_builder =
             [canonical_dims = std::move(canonical_dims), reduction_mode,
