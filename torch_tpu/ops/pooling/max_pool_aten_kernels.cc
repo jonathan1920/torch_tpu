@@ -839,26 +839,28 @@ std::tuple<at::Tensor&, at::Tensor&> AtenMaxPool3dWithIndicesOut(
 std::tuple<at::Tensor, at::Tensor> AtenMaxPool3dWithIndices(
     const at::Tensor& self, at::IntArrayRef kernel_size, at::IntArrayRef stride,
     at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode) {
-  TT_KERNEL(OpName::kMaxPool3dWithIndices, _,
-            (self, IgnoreInCacheKey(kernel_size, "Legacy usage"),
-             IgnoreInCacheKey(stride, "Legacy usage"),
-             IgnoreInCacheKey(padding, "Legacy usage"),
-             IgnoreInCacheKey(dilation, "Legacy usage"),
-             IgnoreInCacheKey(ceil_mode, "Legacy usage")),
-            {
-              auto output_size =
-                  GetMaxPoolOutputSize(self.sizes(), kernel_size, stride,
-                                       padding, dilation, ceil_mode, 3);
+  TT_KERNEL(
+      OpName::kMaxPool3dWithIndices, _,
+      (self,
+       IgnoreInCacheKey(kernel_size,
+                        "Delegates to AtenMaxPool3dWithIndicesOut"),
+       IgnoreInCacheKey(stride, "Delegates to AtenMaxPool3dWithIndicesOut"),
+       IgnoreInCacheKey(padding, "Delegates to AtenMaxPool3dWithIndicesOut"),
+       IgnoreInCacheKey(dilation, "Delegates to AtenMaxPool3dWithIndicesOut"),
+       IgnoreInCacheKey(ceil_mode, "Delegates to AtenMaxPool3dWithIndicesOut")),
+      {
+        auto output_size = GetMaxPoolOutputSize(
+            self.sizes(), kernel_size, stride, padding, dilation, ceil_mode, 3);
 
-              at::Tensor out = at::empty(output_size, self.options());
-              at::Tensor indices =
-                  at::empty(output_size, self.options().dtype(at::kLong));
+        at::Tensor out = at::empty(output_size, self.options());
+        at::Tensor indices =
+            at::empty(output_size, self.options().dtype(at::kLong));
 
-              AtenMaxPool3dWithIndicesOut(self, kernel_size, stride, padding,
-                                          dilation, ceil_mode, out, indices);
+        AtenMaxPool3dWithIndicesOut(self, kernel_size, stride, padding,
+                                    dilation, ceil_mode, out, indices);
 
-              return std::make_tuple(out, indices);
-            });
+        return std::make_tuple(out, indices);
+      });
 }
 
 at::Tensor& AtenMaxPool2dWithIndicesBackwardGradInput(
@@ -883,20 +885,29 @@ at::Tensor AtenMaxPool3dWithIndicesBackward(
     at::IntArrayRef kernel_size, at::IntArrayRef stride,
     at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode,
     const at::Tensor& indices) {
-  TT_KERNEL(OpName::kMaxPool3dWithIndicesBackward, _,
-            (grad_output, self, IgnoreInCacheKey(kernel_size, "Legacy usage"),
-             IgnoreInCacheKey(stride, "Legacy usage"),
-             IgnoreInCacheKey(padding, "Legacy usage"),
-             IgnoreInCacheKey(dilation, "Legacy usage"),
-             IgnoreInCacheKey(ceil_mode, "Legacy usage"), indices),
-            {
-              at::Tensor grad_input = at::empty(self.sizes(), self.options());
-              AtenMaxPool3dWithIndicesBackwardGradInput(
-                  grad_output, self, kernel_size, stride, padding, dilation,
-                  ceil_mode, indices, grad_input);
+  TT_KERNEL(
+      OpName::kMaxPool3dWithIndicesBackward, _,
+      (grad_output, self,
+       IgnoreInCacheKey(
+           kernel_size,
+           "Delegates to AtenMaxPool3dWithIndicesBackwardGradInput"),
+       IgnoreInCacheKey(
+           stride, "Delegates to AtenMaxPool3dWithIndicesBackwardGradInput"),
+       IgnoreInCacheKey(
+           padding, "Delegates to AtenMaxPool3dWithIndicesBackwardGradInput"),
+       IgnoreInCacheKey(
+           dilation, "Delegates to AtenMaxPool3dWithIndicesBackwardGradInput"),
+       IgnoreInCacheKey(
+           ceil_mode, "Delegates to AtenMaxPool3dWithIndicesBackwardGradInput"),
+       indices),
+      {
+        at::Tensor grad_input = at::empty(self.sizes(), self.options());
+        AtenMaxPool3dWithIndicesBackwardGradInput(
+            grad_output, self, kernel_size, stride, padding, dilation,
+            ceil_mode, indices, grad_input);
 
-              return grad_input;
-            });
+        return grad_input;
+      });
 }
 
 at::Tensor& AtenMaxPool3dWithIndicesBackwardGradInput(
