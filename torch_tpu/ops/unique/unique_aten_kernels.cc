@@ -120,9 +120,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> AtenUnique2(
     bool return_counts) {
   TT_KERNEL(
       OpName::kUnique2, _,
-      (self, IgnoreInCacheKey(sorted, "Legacy usage"),
-       IgnoreInCacheKey(return_inverse, "Legacy usage"),
-       IgnoreInCacheKey(return_counts, "Legacy usage")),
+      (self, IgnoreInCacheKey(sorted, "delegates to Unique2"),
+       IgnoreInCacheKey(return_inverse, "delegates to Unique2"),
+       IgnoreInCacheKey(return_counts, "delegates to Unique2")),
       {
         TT_CHECK_THROW(sorted, error::kInvalidArgument)
             << "sorted=False is not yet supported";
