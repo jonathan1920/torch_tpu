@@ -260,7 +260,7 @@ class TpuBackend:
       self,
       debug: bool = False,
       dynamism: bool = False,
-      enable_serialization: bool = False,
+      enable_serialization: bool = True,
       precompile_steps: int = 0,
   ):
     """Initializes the TPU backend.
@@ -270,14 +270,15 @@ class TpuBackend:
         graph.
       dynamism (bool): If True, enable dynamism.
       enable_serialization: If True, enable the aot_autograd bundled cache so
-        that .serialize() is attached to compiled functions. This allows
-        compilation artifacts to be saved/loaded without re-running
-        aot_autograd.
+        that .serialize() is attached to compiled functions. This defaults to
+        True so PyTorch's AOTAutogradCache can save/load compilation artifacts.
+        Debug mode disables serialization so debug callers inspect freshly
+        compiled artifacts instead of cache hits.
       precompile_steps: The number of steps to precompile dynamic adapters for.
     """
     self._debug = debug
     self._dynamism = dynamism
-    self._enable_serialization = enable_serialization
+    self._enable_serialization = False if debug else enable_serialization
     self._precompile_steps = precompile_steps
     # Stores information about each compiled executable.
     # Organized by order of compilation (index 0 is the first compilation, etc.)
@@ -297,7 +298,8 @@ class TpuBackend:
 
     _log_gm_and_inputs("__call__", "Pre", graph_module, example_inputs)
 
-    if compiler.has_dynamic_symints(example_inputs):
+    has_dynamic_symints = compiler.has_dynamic_symints(example_inputs)
+    if has_dynamic_symints:
       compiler_instance = dynamic_compiler.DynamicCompiler(
           debug=self._debug,
           precompile_steps=self._precompile_steps,
@@ -307,7 +309,13 @@ class TpuBackend:
 
     compiler_instance.execute_pre_grad_passes(graph_module)
 
-    if self._enable_serialization:
+    # DynamicCompiler artifacts are not pickleable yet, so only static
+    # compilations can participate in AOTAutogradCache.
+    enable_serialization = (
+        self._enable_serialization and not has_dynamic_symints
+    )
+
+    if enable_serialization:
       fw_compiler = SerializableAOTDispatchCompiler(
           output_code_ty=compiler.CompiledArtifact,
           compiler_fn=functools.partial(
@@ -323,7 +331,7 @@ class TpuBackend:
         self._compile_graph_module, compiler_instance, False
     )
 
-    with _serialization_context(self._enable_serialization) as captured_entry:
+    with _serialization_context(enable_serialization) as captured_entry:
       result = aot_autograd(
           fw_compiler=fw_compiler,
           bw_compiler=bw_compiler,
