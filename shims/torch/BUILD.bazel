@@ -18,6 +18,39 @@ load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
 
 package(default_visibility = PACKAGE_DEFAULT_VISIBILITY)
 
+alias(
+    name = "libc10",
+    actual = select({
+        "//:wheel_test_3_11": "@pypi_torch_311//:libc10",
+        "//:wheel_test_3_12": "@pypi_torch_312//:libc10",
+        "//:wheel_test_3_13": "@pypi_torch_313//:libc10",
+        "//:wheel_test_3_14": "@pypi_torch_314//:libc10",
+        "//conditions:default": "@pypi_torch_312//:libc10",
+    }),
+)
+
+alias(
+    name = "libtorch_cpu",
+    actual = select({
+        "//:wheel_test_3_11": "@pypi_torch_311//:libtorch_cpu",
+        "//:wheel_test_3_12": "@pypi_torch_312//:libtorch_cpu",
+        "//:wheel_test_3_13": "@pypi_torch_313//:libtorch_cpu",
+        "//:wheel_test_3_14": "@pypi_torch_314//:libtorch_cpu",
+        "//conditions:default": "@pypi_torch_312//:libtorch_cpu",
+    }),
+)
+
+alias(
+    name = "libtorch_python",
+    actual = select({
+        "//:wheel_test_3_11": "@pypi_torch_311//:libtorch_python",
+        "//:wheel_test_3_12": "@pypi_torch_312//:libtorch_python",
+        "//:wheel_test_3_13": "@pypi_torch_313//:libtorch_python",
+        "//:wheel_test_3_14": "@pypi_torch_314//:libtorch_python",
+        "//conditions:default": "@pypi_torch_312//:libtorch_python",
+    }),
+)
+
 # Config setting to toggle local torch mode.
 # Use by running: bazel build ... --define TORCH_SOURCE=local
 # Other packages refer to this as "//shims/torch:use_local_torch"
@@ -77,8 +110,8 @@ cc_library(
         # NOTE: All dependencies below will be added to the torch_tpu wheel.
         # If you are adding a new dependency that is not for the wheel, please make a new shim.
         "//conditions:default": [
-            "@pypi_torch//:libc10",
-            "@pypi_torch//:libtorch_cpu",
+            ":libc10",
+            ":libtorch_cpu",
         ],
     }),
 )
@@ -93,8 +126,8 @@ cc_library(
             "@local_torch//:libtorch_cpu",
         ],
         "//conditions:default": [
-            "@pypi_torch//:libc10",
-            "@pypi_torch//:libtorch_cpu",
+            ":libc10",
+            ":libtorch_cpu",
         ],
     }),
 )
@@ -131,8 +164,8 @@ cc_library(
             "@local_torch//:torch_headers",
         ],
         "//conditions:default": [
+            ":libtorch_python",
             "@pypi//torch:torch_headers",
-            "@pypi_torch//:libtorch_python",
         ],
     }),
 )

@@ -1049,7 +1049,7 @@ oss_target(
     args = ["$(location :compilation_test)"],
     data = [
         ":compilation_test",
-        "@pypi_libtpu//:whl",
+        "//shims/libtpu:pypi_libtpu_whl",
     ],
     tags = [
         # This is normally added by the torch_tpu_... rules

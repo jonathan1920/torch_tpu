@@ -21,6 +21,8 @@ package(
     default_visibility = PACKAGE_DEFAULT_VISIBILITY,
 )
 
+exports_files(["README.md"])
+
 alias(
     name = "license",
     actual = "//torch_tpu:license",
@@ -44,16 +46,39 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
-    name = "use_prebuilt_wheel",
+[config_setting(
+    name = "wheel_test_" + v.replace(".", "_"),
+    define_values = {"PYTHON_VERSION": v},
     flag_values = {":test_wheel": "True"},
     visibility = ["//visibility:public"],
-)
+) for v in [
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14",
+]]
 
-filegroup(
-    name = "local_wheel_file",
-    srcs = glob(["dist/torch_tpu*.whl"]),
-)
+[filegroup(
+    name = "local_wheel_file_" + v.replace(".", ""),
+    srcs = glob(["dist/torch_tpu*cp" + v.replace(".", "") + "*.whl"]),
+) for v in [
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14",
+]]
+
+[genrule(
+    name = "pick_single_wheel_" + v.replace(".", ""),
+    srcs = [":local_wheel_file_" + v.replace(".", "")],
+    outs = ["selected_" + v.replace(".", "") + ".whl"],
+    cmd = "cp $$(echo $(SRCS) | tr ' ' '\\n' | sort | tail -n 1) $@",
+) for v in [
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14",
+]]
 
 # Combined config setting for ease of use in selects
 config_setting(
@@ -61,6 +86,21 @@ config_setting(
     define_values = {"TORCH_SOURCE": "local"},
     flag_values = {":test_wheel": "True"},
 )
+
+[config_setting(
+    name = "wheel_test_with_local_torch_" + v.replace(".", "_"),
+    define_values = {
+        "TORCH_SOURCE": "local",
+        "PYTHON_VERSION": v,
+    },
+    flag_values = {":test_wheel": "True"},
+    visibility = ["//visibility:public"],
+) for v in [
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14",
+]]
 
 filegroup(
     name = "torch_libs_mapped",
@@ -104,7 +144,10 @@ py_import(
     name = "torch_tpu_py_import",
     testonly = True,
     wheel = select({
-        "//:use_prebuilt_wheel": ":local_wheel_file",
+        ":wheel_test_3_11": ":pick_single_wheel_311",
+        ":wheel_test_3_13": ":pick_single_wheel_313",
+        ":wheel_test_3_14": ":pick_single_wheel_314",
+        ":wheel_test_3_12": ":pick_single_wheel_312",
         "//conditions:default": "//ci/wheel:torch_tpu_wheel",
     }),
     zip_deps = [":wheel_extra_test_deps"],

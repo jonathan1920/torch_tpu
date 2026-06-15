@@ -892,7 +892,7 @@ oss_target(
     args = ["$(location :split_utils_test)"],
     data = [
         ":split_utils_test",
-        "@pypi_libtpu//:whl",
+        "//shims/libtpu:pypi_libtpu_whl",
     ],
     tags = [
         # This is normally added by the torch_tpu_... rules
@@ -908,7 +908,7 @@ oss_target(
     args = ["$(location :events_queue_test)"],
     data = [
         ":events_queue_test",
-        "@pypi_libtpu//:whl",
+        "//shims/libtpu:pypi_libtpu_whl",
     ],
     tags = [
         # This is normally added by the torch_tpu_... rules

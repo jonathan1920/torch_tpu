@@ -38,6 +38,7 @@ on:
     branches:
       - main
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     branches:
       - main
   schedule:
@@ -50,9 +51,31 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'main' }}
 
 jobs:
+  setup:
+    name: "Set up Matrix"
+    runs-on: ubuntu-latest
+    outputs:
+      cpu_versions: '["3.11", "3.12", "3.13", "3.14"]'
+      tpu_versions: ${{ steps.set.outputs.tpu_versions }}
+      default_python_version: "3.12"
+    steps:
+      - id: set
+        run: |
+          DEFAULT_VER="3.12"
+          TPU_VERS="[\"${DEFAULT_VER}\"]"
+          if [[ "${{ github.event_name }}" == "schedule" ]] || \
+             [[ "${{ github.event_name }}" == "push" ]] || \
+             [[ "${{ contains(github.event.pull_request.labels.*.name, 'tpu-nightly') }}" == "true" ]] || \
+             [[ "${{ contains(github.event.pull_request.labels.*.name, 'ci:run_all_versions') }}" == "true" ]] || \
+             [[ "${{ contains(github.event.pull_request.labels.*.name, 'ci:postsubmit') }}" == "true" ]]; then
+            TPU_VERS='["3.11", "3.12", "3.13", "3.14"]'
+          fi
+          echo "tpu_versions=${TPU_VERS}" >> $GITHUB_OUTPUT
+
   # TODO(pganssle): Migrate to cibuildwheel
   build_wheels:
-    name: "Build wheel on ${{ matrix.job_info.name || matrix.job_info.runner }}"
+    needs: setup
+    name: "Build wheel on ${{ matrix.job_info.name || matrix.job_info.runner }} (Python ${{ matrix.python_version }})"
     strategy:
       matrix:
         job_info:
@@ -63,6 +86,7 @@ jobs:
               container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             },
           ]
+        python_version: ${{ fromJSON(needs.setup.outputs.cpu_versions) }}
     # Use self-hosted runners. For a Linux runner, a corresponding container image used for the
     # workflow is required.
     # See go/ml-github-actions/getting_started/using_runners.md#supported-runner-scale-set.
@@ -72,8 +96,8 @@ jobs:
     env:
       WHEEL_DIR: dist
     outputs:
-      # Full path to the wheel on GCS
-      gcs-wheel-path: ${{ steps.upload.outputs.gcs_wheel_path }}
+      # Directory containing wheels on GCS
+      gcs-wheel-dir: ${{ steps.upload.outputs.gcs_wheel_dir }}
     permissions:
       contents: read
     steps:
@@ -81,23 +105,20 @@ jobs:
       - name: Build wheel
         run: |
           WHEEL_VERSION_EXTRAS=".dev$(date +%Y%m%d%H%M%S)"
-          bazel build -c opt //ci/wheel:torch_tpu_wheel --config=wheel_common --repo_env=WHEEL_VERSION_EXTRAS=$WHEEL_VERSION_EXTRAS
+          bazel build -c opt //ci/wheel:torch_tpu_wheel --config=wheel_common --repo_env=WHEEL_VERSION_EXTRAS=$WHEEL_VERSION_EXTRAS --repo_env=HERMETIC_PYTHON_VERSION=${{ matrix.python_version }} --define PYTHON_VERSION=${{ matrix.python_version }}
           mkdir $WHEEL_DIR
           cp bazel-bin/ci/wheel/*.whl $WHEEL_DIR
       - name: Check wheel metadata
         run: uv run --isolated --with twine twine check $WHEEL_DIR/*.whl
       - name: Upload wheel to GCS for wheel testing
-        if: github.event_name != 'schedule'
         id: upload
         run: |
           WHEEL_PATH=$(ls $WHEEL_DIR/*.whl | head -n 1)
           WHEEL_FILENAME=$(basename "$WHEEL_PATH")
           GCS_PATH="gs://torch-tpu-ci-transient/artifacts/${{ github.workflow }}/${{ github.run_number }}/${{ github.run_attempt }}/$WHEEL_FILENAME"
           gcloud storage cp "$WHEEL_PATH" "$GCS_PATH"
-          # We must store the full path to the wheel, not just the bucket, since
-          # sometimes stale pre-existing wheels exist in the bucket, and we need
-          # to know which one is the one this particular job uploaded.
-          echo "gcs_wheel_path=$GCS_PATH" >> $GITHUB_OUTPUT
+          # Pass the directory path to the next job
+          echo "gcs_wheel_dir=gs://torch-tpu-ci-transient/artifacts/${{ github.workflow }}/${{ github.run_number }}/${{ github.run_attempt }}/" >> $GITHUB_OUTPUT
       - name: Upload to Artifact Registry
         # Run only on main branch, once a day.
         if: github.event_name == 'schedule' && github.ref == 'refs/heads/main'
@@ -121,56 +142,35 @@ jobs:
 
           python3 -m twine upload --repository-url https://us-python.pkg.dev/ml-oss-artifacts-transient/torch-tpu-testing-registry $WHEEL_DIR/torch_tpu-*.whl
 
-  test_wheels:
-    name: "Test wheel on ${{ matrix.custom_name || matrix.runner }}"
-    if: github.event_name != 'schedule'
-    needs: build_wheels
+  test_wheels_cpu:
+    name: "Test wheel on ${{ matrix.custom_name || 'CPU' }} (Python ${{ matrix.python_version }})"
+    needs: [build_wheels, setup]
     strategy:
       matrix:
+        python_version: ${{ fromJSON(needs.setup.outputs.cpu_versions) }}
+        wheel_version: ["standard"]
         include:
-          - name: CPU
+          - wheel_version: "standard"
             runner: linux-x86-n4-16
             config: "wheel_test_cpu"
+            allowed_to_fail: false
             extra_flags: ""
-            custom_name: CPU
-            allowed_to_fail: false
-          # Running the TPU wheel tests only on v5 and v7 in presubmits because
-          # at the moment we do not have many v6 runners.
-          - name: TPU
-            runner: linux-x86-ct5lp-224-8tpu
-            config: "wheel_test_tpu_v5"
-            extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"'
-            allowed_to_fail: false
-          - name: TPU v7
-            runner: linux-x86-tpu7x-224-4tpu
-            config: "wheel_test_tpu_v7"
-            extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"'
-            custom_name: "TPU v7"
-            allowed_to_fail: false
-          - name: "CPU (CUDA wheel)"
-            runner: linux-x86-n4-16
-            config: "wheel_test_cpu"
-            extra_flags: '--define TORCH_SOURCE=local --repo_env=TORCH_SOURCE=$TORCH_SOURCE'
+          - python_version: ${{ needs.setup.outputs.default_python_version }}
             wheel_version: "cuda"
-            expected_failure: true
             custom_name: "CPU (CUDA wheel)"
-            allowed_to_fail: true
-          - name: "CPU (PyTorch Nightly)"
             runner: linux-x86-n4-16
             config: "wheel_test_cpu"
             extra_flags: '--define TORCH_SOURCE=local --repo_env=TORCH_SOURCE=$TORCH_SOURCE'
-            wheel_version: "nightly"
+            allowed_to_fail: true
             expected_failure: true
+          - python_version: ${{ needs.setup.outputs.default_python_version }}
+            wheel_version: "nightly"
             custom_name: "CPU (PyTorch Nightly)"
+            runner: linux-x86-n4-16
+            config: "wheel_test_cpu"
+            extra_flags: '--define TORCH_SOURCE=local --repo_env=TORCH_SOURCE=$TORCH_SOURCE'
             allowed_to_fail: true
-          - name: "TPU (PyTorch Nightly)"
-            runner: linux-x86-ct5lp-224-8tpu
-            config: "wheel_test_tpu_v5"
-            extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" --define TORCH_SOURCE=local --repo_env=TORCH_SOURCE=$TORCH_SOURCE'
-            wheel_version: "nightly"
             expected_failure: true
-            custom_name: "TPU (PyTorch Nightly)"
-            allowed_to_fail: true
     runs-on: ${{ matrix.runner }}
     continue-on-error: ${{ matrix.allowed_to_fail }}
     container:
@@ -191,7 +191,8 @@ jobs:
       - name: Download Wheel from GCS
         run: |
           mkdir dist
-          gcloud storage cp "${{ needs.build_wheels.outputs.gcs-wheel-path }}" dist/
+          PYTHON_VER_CLEAN=$(echo "${{ matrix.python_version }}" | tr -d '.')
+          gcloud storage cp "${{ needs.build_wheels.outputs.gcs-wheel-dir }}*cp${PYTHON_VER_CLEAN}*.whl" dist/
       - name: Download a specific CUDA-enabled torch wheel to verify the override mechanism
         if: matrix.wheel_version == 'cuda'
         run: |
@@ -217,5 +218,76 @@ jobs:
           base_sha: ${{ inputs.override_base_sha || github.event.pull_request.base.sha }}
           current_sha: ${{ inputs.override_current_sha || github.sha }}
           bazel_config: ${{ matrix.config }}
-          extra_bazel_flags: ${{ matrix.extra_flags }}
+          extra_bazel_flags: ${{ matrix.extra_flags }} --repo_env=HERMETIC_PYTHON_VERSION=${{ matrix.python_version }} --define PYTHON_VERSION=${{ matrix.python_version }}
+          disable_bazel_diff: ${{ contains(github.event.pull_request.labels.*.name, 'ci:disable-bazel-diff') }}
+
+  test_wheels_tpu:
+    name: Test wheel on ${{ matrix.custom_name || 'TPU' }} (Python ${{ matrix.python_version }})
+    needs: [build_wheels, setup]
+    strategy:
+      matrix:
+        python_version: ${{ fromJSON(needs.setup.outputs.tpu_versions) }}
+        wheel_version: ["standard", "v7"]
+        include:
+          - wheel_version: "standard"
+            runner: linux-x86-ct5lp-224-8tpu
+            config: "wheel_test_tpu_v5"
+            custom_name: "TPU v5"
+            extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"'
+            allowed_to_fail: false
+          - wheel_version: "v7"
+            runner: linux-x86-tpu7x-224-4tpu
+            config: "wheel_test_tpu_v7"
+            extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"'
+            custom_name: "TPU v7"
+            allowed_to_fail: false
+          - python_version: ${{ needs.setup.outputs.default_python_version }}
+            wheel_version: "nightly"
+            runner: linux-x86-ct5lp-224-8tpu
+            config: "wheel_test_tpu_v5"
+            custom_name: "TPU v5 (PyTorch Nightly)"
+            extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" --define TORCH_SOURCE=local --repo_env=TORCH_SOURCE=$TORCH_SOURCE'
+            allowed_to_fail: true
+            expected_failure: true
+    runs-on: ${{ matrix.runner || 'linux-x86-ct5lp-224-8tpu' }}
+    continue-on-error: ${{ matrix.allowed_to_fail }}
+    container:
+      image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest
+      options: --privileged
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v5
+      # Git security patch (CVE-2022-24765) blocks root from operating on runner-owned directories:
+      # https://github.blog/open-source/git/git-security-vulnerability-announced/#cve-2022-24765.
+      # Tell Git explicitly to trust the workspace `/__w/torch_tpu/torch_tpu` inside this ephemeral
+      # container.
+      - name: Fix Git Workspace Ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Download Wheel from GCS
+        run: |
+          mkdir dist
+          PYTHON_VER_CLEAN=$(echo "${{ matrix.python_version }}" | tr -d '.')
+          gcloud storage cp "${{ needs.build_wheels.outputs.gcs-wheel-dir }}*cp${PYTHON_VER_CLEAN}*.whl" dist/
+      - name: Download PyTorch Nightly Wheel to verify the override mechanism
+        if: matrix.wheel_version == 'nightly'
+        run: |
+          pip download --no-deps --pre torch --index-url https://download.pytorch.org/whl/nightly/cpu -d dist
+          WHEEL_PATH=$(ls $(pwd)/dist/torch-*.whl | head -n 1)
+          echo "TORCH_SOURCE=$WHEEL_PATH" >> $GITHUB_ENV
+          echo "Exported TORCH_SOURCE=$WHEEL_PATH"
+      - name: Wait For Connection
+        uses: google-ml-infra/actions/ci_connection@08e5394bb8179c66a50ac783fb8b2501a034c06f
+        with:
+          halt-dispatch-input: ${{ inputs.halt-for-connection }}
+      - name: Run Impacted Tests via bazel-diff
+        uses: ./.github/actions/bazel-diff
+        continue-on-error: ${{ matrix.expected_failure == true }}
+        with:
+          base_sha: ${{ inputs.override_base_sha || github.event.pull_request.base.sha }}
+          current_sha: ${{ inputs.override_current_sha || github.sha }}
+          bazel_config: ${{ matrix.config || 'wheel_test_tpu' }}
+          extra_bazel_flags: ${{ matrix.extra_flags || '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"' }} --repo_env=HERMETIC_PYTHON_VERSION=${{ matrix.python_version }} --define PYTHON_VERSION=${{ matrix.python_version }}
           disable_bazel_diff: ${{ matrix.allowed_to_fail || contains(github.event.pull_request.labels.*.name, 'ci:disable-bazel-diff') }}

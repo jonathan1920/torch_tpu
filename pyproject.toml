@@ -33,7 +33,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "accelerate>=1.12",
-    "etils[epath]>=1",
+    "etils[epath]>=1.14",
     "expecttest>=0.3",
     "jax >= 0.9.2",
     "transformers>=5.8.0",

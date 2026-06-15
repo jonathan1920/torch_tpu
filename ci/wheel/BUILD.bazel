@@ -36,6 +36,15 @@ config_setting(
 
 TORCH_FROM_PYPROJECT = [req for req in WHEEL_REQUIRES if req.startswith("torch")]
 
+[config_setting(
+    name = "python_" + v.replace(".", "_"),
+    define_values = {"PYTHON_VERSION": v},
+) for v in [
+    "3.11",
+    "3.13",
+    "3.14",
+]]
+
 # Define requirements list that conditionally includes torch
 # If TORCH_SOURCE=local, we do not require any torch version, allowing
 # the wheel to be installed alongside any local PyTorch version.
@@ -104,7 +113,12 @@ py_package(
 
 py_wheel(
     name = "torch_tpu_wheel",
-    abi = "cp312",
+    abi = select({
+        ":python_3_11": "cp311",
+        ":python_3_13": "cp313",
+        ":python_3_14": "cp314",
+        "//conditions:default": "cp312",
+    }),
     author = "torch team",
     classifiers = [
         "Development Status :: 4 - Beta",
@@ -118,9 +132,18 @@ py_wheel(
     homepage = "https://github.com/google-pytorch/torch_tpu",
     license = "Apache 2.0",
     platform = "manylinux_2_31_x86_64",
-    # HERMETIC Python set to 3.12
-    python_requires = ">=3.12",
-    python_tag = "cp312",
+    python_requires = select({
+        ":python_3_11": ">=3.11",
+        ":python_3_13": ">=3.13",
+        ":python_3_14": ">=3.14",
+        "//conditions:default": ">=3.12",
+    }),
+    python_tag = select({
+        ":python_3_11": "cp311",
+        ":python_3_13": "cp313",
+        ":python_3_14": "cp314",
+        "//conditions:default": "cp312",
+    }),
     requires = FILTERED_REQUIRES + TORCH_REQ,
     strip_path_prefixes = ["ci/wheel/remapped_pywrap_binaries_pkg"],
     summary = "TPU/XLA support for PyTorch",

@@ -836,6 +836,18 @@ def torch_tpu_py_test(
 
     env_wheel = dict(base_env)
 
+    env_wheel_versions = {}
+    for v in ["3.11", "3.12", "3.13", "3.14"]:
+        env_v = dict(env_wheel)
+        std_ld_v = [
+            "../pypi_torch_{}/site-packages/torch/lib".format(v.replace(".", "")),
+            "../pypi_libtpu_{}/site-packages/libtpu".format(v.replace(".", "")),
+            "../torch_tpu_py_import_unpacked_wheel/torch_tpu/_internal",
+            "../_solib_x86_64",
+        ]
+        _prepend_to_env(env_v, "LD_LIBRARY_PATH", ":".join(std_ld_v))
+        env_wheel_versions[v.replace(".", "")] = env_v
+
     env_local = dict(env_wheel)  # Build on top of wheel paths
     _prepend_to_env(env_local, "LD_LIBRARY_PATH", ":".join(local_ld))
     _prepend_to_env(env_local, "PYTHONPATH", ":".join(local_py))
@@ -850,12 +862,19 @@ def torch_tpu_py_test(
     kwargs["data"] = current_data
 
     # 4. Use select to swap between environments
-    test_env = if_oss(select({
+    select_dict = {
         "//:wheel_test_with_local_torch": env_local,
         "//shims/torch:use_local_torch": env_local,
-        "//:wheel_test_enabled": env_wheel,
-        "//conditions:default": base_env,
-    }), base_env)
+    }
+    for v in ["3.11", "3.12", "3.13", "3.14"]:
+        select_dict["//:wheel_test_with_local_torch_" + v.replace(".", "_")] = env_local
+        select_dict["//:wheel_test_" + v.replace(".", "_")] = env_wheel_versions[v.replace(".", "")]
+
+    # Fallback for 3.12 if --test_wheel=True is passed without --define PYTHON_VERSION
+    select_dict["//:wheel_test_enabled"] = env_wheel_versions["312"]
+    select_dict["//conditions:default"] = base_env
+
+    test_env = if_oss(select(select_dict), base_env)
 
     if "//torch_tpu" not in deps:
         fail("torch_tpu_py_test must include \"//torch_tpu\" in its deps to " +
