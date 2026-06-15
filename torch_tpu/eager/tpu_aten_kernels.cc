@@ -19,6 +19,8 @@
 #include <atomic>
 #include <cstdint>
 #include <string>
+#include <string_view>
+#include <utility>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
@@ -31,6 +33,7 @@
 #include "ATen/ops/empty_like.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
+#include "c10/util/Exception.h"
 #include "torch/library.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/ops/a_min_max/a_min_max_aten_kernels.h"
@@ -178,12 +181,104 @@ namespace {
 // Registers the kernel function for the given op name in the given library.
 template <typename KernelFn>
 void Impl(torch::Library& m, const OpName op_name, KernelFn kernel_fn) {
-  // ToString() returns a string_view, but impl() requires a const char*.
-  // We need to convert the string_view to a std::string so that we can
-  // get a NUL-terminated const char* from it. Note that string_view::data()
-  // is not guaranteed to be NUL-terminated.
   m.impl(  // M_IMPL_OK=implementing Impl().
-      std::string(ToString(op_name)).c_str(), kernel_fn);
+      std::string(ToString(op_name)).c_str(), std::move(kernel_fn));
+}
+
+// Registers the kernel function for the given op name in the given library.
+// This is an alias for Impl() to explicitly signal that the operator is stable.
+template <OpName op_name, typename KernelFn>
+void ImplStable(torch::Library& m, KernelFn kernel_fn) {
+  Impl(m, op_name, std::move(kernel_fn));
+}
+
+// Helper to extract the concrete signature of the kernel function.
+// This is necessary because torch::Library::impl() needs to inspect the
+// signature of the registered callable at compile-time to verify it against
+// the operator schema.
+//
+// If we were to use a generic lambda (e.g., `[](auto&&... args)`), its
+// `operator()` would be a template, making the signature uninspectable
+// and causing compilation errors in CppFunction template deduction.
+//
+// ImplWrapperHelper uses template specialization to unpack the
+// return type (Ret) and argument types (Args...) of the function pointer,
+// allowing us to construct a monomorphic lambda with an explicit signature.
+template <typename Func>
+struct ImplWrapperHelper;
+
+template <typename Ret, typename... Args>
+struct ImplWrapperHelper<Ret (*)(Args...)> {
+  // Registers a kernel function with the PyTorch library, injecting a callback
+  // to be executed on entry.
+  //
+  // This helper uses template specialization to unpack the concrete signature
+  // of the kernel function pointer, allowing us to construct a monomorphic
+  // lambda that PyTorch's m.impl() can inspect at compile-time.
+  //
+  // @param op_name The OpName of the operator (compile-time template
+  // parameter).
+  // @param func The concrete kernel function pointer.
+  // @param on_entry_fn A callback executed when the operator is invoked.
+  template <OpName op_name, typename OnEntryFn>
+  static void RegisterOp(torch::Library& m, Ret (*func)(Args...),
+                         OnEntryFn on_entry_fn) {
+    const std::string_view name = ToString(op_name);
+    m.impl(  // M_IMPL_OK=implementing Impl*().
+        std::string(name).c_str(),
+        [func = std::move(func),
+         on_entry_fn = std::move(on_entry_fn)](Args... args) -> Ret {
+          on_entry_fn();
+          return func(std::forward<Args>(args)...);
+        });
+  }
+};
+
+// Registers the kernel function for the given op name in the given library,
+// and injects a user-visible warning that the operator is experimental.
+//
+// NOTE: It is critical that `op_name` is a compile-time template parameter
+// rather than a runtime parameter. `TORCH_WARN_ONCE` dedupes warnings by its
+// macro expansion site using a local `static` flag.
+//
+// If `op_name` were a runtime parameter, the macro would be expanded in a
+// single shared helper function. This would result in "once-per-program"
+// behavior, meaning only the very first experimental operator called in the
+// program would trigger a warning, and all others would remain silent.
+//
+// By making `op_name` a template parameter, `ImplExperimental<OpName::kFoo>`
+// and `ImplExperimental<OpName::kBar>` become distinct function template
+// instantiations. This forces the compiler to instantiate a unique lambda and
+// a unique `TORCH_WARN_ONCE` static flag for each operator, achieving the
+// desired "once-per-operator" warning semantics with zero runtime overhead
+// (no mutexes or registries required).
+template <OpName op_name, typename KernelFn>
+void ImplExperimental(torch::Library& m, KernelFn kernel_fn) {
+  ImplWrapperHelper<KernelFn>::template RegisterOp<op_name>(
+      m, std::move(kernel_fn), []() {
+        TORCH_WARN_ONCE("operator ", ToString(op_name),
+                        " is experimental; its name, signature, and behavior "
+                        "may change without notice; use at your own risk");
+      });
+}
+
+// Registers the kernel function for the given op name in the given library,
+// and injects a user-visible warning that the operator is deprecated and will
+// be removed in the given TorchTPU version.
+//
+// NOTE: Like `ImplExperimental`, `op_name` must be a compile-time template
+// parameter to ensure `TORCH_WARN_ONCE` generates a unique static flag per
+// operator, guaranteeing correct "once-per-operator" warning semantics.
+template <OpName op_name, typename KernelFn>
+void ImplDeprecated(torch::Library& m, KernelFn kernel_fn, int major_version,
+                    int minor_version) {
+  ImplWrapperHelper<KernelFn>::template RegisterOp<op_name>(
+      m, std::move(kernel_fn), [major_version, minor_version]() {
+        TORCH_WARN_ONCE(
+            "operator ", ToString(op_name),
+            " is deprecated and will be removed in TorchTPU version ",
+            major_version, ".", minor_version);
+      });
 }
 
 }  // namespace
@@ -961,27 +1056,31 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
 }
 
 TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
-  Impl(m, OpName::kDistributedExperimentalSend, TorchTpuExperimentalSend);
-  Impl(m, OpName::kDistributedExperimentalRecv, TorchTpuExperimentalRecv);
-  Impl(m, OpName::kMaxPool2d, TpuMaxPool2d);
-  Impl(m, OpName::kMaxPool2dBackward, TpuMaxPool2dBackward);
-  Impl(m, OpName::kRaggedDot, AtenRaggedDot);
-  Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
-  Impl(m, OpName::kRaggedAllToAll, AtenRaggedAllToAll);
-  Impl(m, OpName::kRaggedAllToAllOut, AtenRaggedAllToAllOut);
-  Impl(m, OpName::kTorchTpuOptimizationBarrier, TorchTpuOptimizationBarrier);
-  Impl(m, OpName::kSetDimensionLogicalSize, SetDimensionLogicalSize);
-  Impl(m, OpName::kDynamicArange, DynamicArange);
-  Impl(m, OpName::kSparseDenseMatmul, AtenSparseDenseMatmul);
-  Impl(m, OpName::kSparseDenseMatmulGradWithSgd,
-       AtenSparseDenseMatmulGradWithSgd);
+  ImplExperimental<OpName::kDistributedExperimentalSend>(
+      m, TorchTpuExperimentalSend);
+  ImplExperimental<OpName::kDistributedExperimentalRecv>(
+      m, TorchTpuExperimentalRecv);
+  ImplExperimental<OpName::kMaxPool2d>(m, TpuMaxPool2d);
+  ImplExperimental<OpName::kMaxPool2dBackward>(m, TpuMaxPool2dBackward);
+  ImplExperimental<OpName::kRaggedDot>(m, AtenRaggedDot);
+  ImplExperimental<OpName::kRaggedDotOut>(m, AtenRaggedDotOut);
+  ImplExperimental<OpName::kRaggedAllToAll>(m, AtenRaggedAllToAll);
+  ImplExperimental<OpName::kRaggedAllToAllOut>(m, AtenRaggedAllToAllOut);
+  ImplExperimental<OpName::kTorchTpuOptimizationBarrier>(
+      m, TorchTpuOptimizationBarrier);
+  ImplExperimental<OpName::kSetDimensionLogicalSize>(m,
+                                                     SetDimensionLogicalSize);
+  ImplExperimental<OpName::kDynamicArange>(m, DynamicArange);
+  ImplExperimental<OpName::kSparseDenseMatmul>(m, AtenSparseDenseMatmul);
+  ImplExperimental<OpName::kSparseDenseMatmulGradWithSgd>(
+      m, AtenSparseDenseMatmulGradWithSgd);
 }
 
 TORCH_LIBRARY_IMPL(tpu, CPU, m) {
-  Impl(m, OpName::kRaggedDot, AtenRaggedDot);
-  Impl(m, OpName::kRaggedDotOut, AtenRaggedDotOut);
-  Impl(m, OpName::kRaggedAllToAll, AtenRaggedAllToAll);
-  Impl(m, OpName::kRaggedAllToAllOut, AtenRaggedAllToAllOut);
+  ImplExperimental<OpName::kRaggedDot>(m, AtenRaggedDot);
+  ImplExperimental<OpName::kRaggedDotOut>(m, AtenRaggedDotOut);
+  ImplExperimental<OpName::kRaggedAllToAll>(m, AtenRaggedAllToAll);
+  ImplExperimental<OpName::kRaggedAllToAllOut>(m, AtenRaggedAllToAllOut);
 }
 
 // Returns a mutable reference to the global CPU fallback mode (defaulted to

@@ -491,10 +491,10 @@ torch_tpu_cc_library(
     srcs = ["tpu_aten_kernels.cc"],
     hdrs = ["tpu_aten_kernels.h"],
     deps = [
-        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",
         "//shims/torch/c10/core:base_headers",
+        "//shims/torch/c10/util:base_headers",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//torch_tpu/common:error_utils",
