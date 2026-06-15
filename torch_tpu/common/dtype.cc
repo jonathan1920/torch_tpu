@@ -19,6 +19,7 @@
 #include <string>
 #include <string_view>
 
+#include "ATen/AccumulateType.h"
 #include "ATen/core/ATen_fwd.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_set.h"
@@ -726,6 +727,14 @@ mlir::ElementType RealComponentOf(const mlir::ElementType element_type) {
     default:
       return element_type;
   }
+}
+
+// PyTorch uses `at::toAccumulateType` to determine this. We call it with
+// `is_cuda=true` to ensure we get the CUDA-aligned accumulation type.
+// For full details on PyTorch's accumulation type mapping, see:
+// third_party/py/torch/aten/src/ATen/AccumulateType.h
+at::ScalarType ToAccumulateType(at::ScalarType type) {
+  return at::toAccumulateType(type, /*is_cuda=*/true);
 }
 
 }  // namespace torch_tpu

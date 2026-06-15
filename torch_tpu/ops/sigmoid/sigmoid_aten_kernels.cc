@@ -180,6 +180,8 @@ absl::Status LogSigmoidBackward(const at::Tensor& grad_output,
 }  // namespace
 
 absl::StatusOr<mlir::MlirOp> BuildSigmoidShlo(mlir::MlirOp input_op) {
+  // TODO: We should not be converting unsupported dtypes to support certain
+  // dtypes. This leads to unexpected precision loss.
   // Convert integral dtypes to float since StableHLO doesn't support
   // Logistic for integer dtypes.
   TT_ASSIGN_OR_RETURN(input_op,
@@ -189,9 +191,13 @@ absl::StatusOr<mlir::MlirOp> BuildSigmoidShlo(mlir::MlirOp input_op) {
 
 at::Tensor& AtenSigmoidOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kSigmoidOut, _, (self, out), {
+    const auto comp_type = ToAccumulateType(self.scalar_type());
+    TT_ASSIGN_OR_THROW(const auto computation_dtype,
+                       ConvertTo<mlir::ElementType>(comp_type));
     TT_THROW_IF_ERROR(
         UnaryOpOut(self, out, BuildSigmoidShlo,
-                   {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+                   {.op_param_cache_keys = OpParamCacheKeys::Empty(),
+                    .computation_dtype = computation_dtype}));
     return out;
   });
 }
@@ -211,6 +217,9 @@ at::Tensor& AtenSigmoidBackwardGradInput(const at::Tensor& grad_output,
         TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=all dtypes are supported.
             const auto output_mlir_type,
             ConvertTo<mlir::ElementType>(output.scalar_type()));
+        const auto comp_type = ToAccumulateType(output.scalar_type());
+        TT_ASSIGN_OR_THROW(const auto computation_dtype,
+                           ConvertTo<mlir::ElementType>(comp_type));
         TT_ASSIGN_OR_THROW(  // ERROR_COV_INFEASIBLE=errors should be covered
                              // inside.
             auto result,
@@ -223,6 +232,7 @@ at::Tensor& AtenSigmoidBackwardGradInput(const at::Tensor& grad_output,
                 {grad_output, output},
                 {.out_dtype = output_mlir_type,
                  .out_dims = grad_input.sizes(),
+                 .computation_dtype = computation_dtype,
                  .op_param_cache_keys = OpParamCacheKeys::Empty()})));
         TT_THROW_IF_ERROR(  // ERROR_COV_INFEASIBLE=errors should be covered
                             // inside.

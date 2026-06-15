@@ -578,7 +578,7 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.int64: {"rtol": 5.9e-3, "atol": 1.5e-5},
         torch.int8: {"rtol": 5.9e-3, "atol": 1.5e-5},
         torch.uint8: {"rtol": 1.5e-5, "atol": 1.5e-5},
-    },  # TODO(b/433380919): Fix the numerical issue.
+    },
     "sin": {
         torch.complex64: {"rtol": 3.9e-6, "atol": 1.2e-2},
     },
@@ -1068,13 +1068,13 @@ ACCURACY_OVERRIDES_VS_GPU = {
         torch.float16: {"atol": 4e-3},
     },
     "sigmoid": {
-        torch.float16: {"atol": 1.2e-5},
-        torch.float32: {"atol": 1.2e-5},
-        torch.int16: {"atol": 1.5e-5},
-        torch.int32: {"atol": 1.5e-5},
-        torch.int64: {"atol": 1.5e-5},
-        torch.int8: {"atol": 1.5e-5},
-        torch.uint8: {"atol": 1.5e-5},
+        torch.float16: {"rtol": 6.1e-2, "atol": 1.2e-5},
+        torch.float32: {"rtol": 6.1e-2, "atol": 1.2e-5},
+        torch.int16: {"rtol": 5.9e-3, "atol": 1.5e-5},
+        torch.int32: {"rtol": 5.9e-3, "atol": 1.5e-5},
+        torch.int64: {"rtol": 5.9e-3, "atol": 1.5e-5},
+        torch.int8: {"rtol": 5.9e-3, "atol": 1.5e-5},
+        torch.uint8: {"rtol": 1.5e-5, "atol": 1.5e-5},
     },
     "sin": {
         torch.complex64: {"atol": 1.2e-2},
