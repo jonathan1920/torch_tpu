@@ -57,7 +57,8 @@ at::Tensor AtenToCopy(const at::Tensor& self,
         at::ScalarType target_dtype = dtype.value_or(self.scalar_type());
         at::MemoryFormat resolved_format =
             memory_format.value_or(at::MemoryFormat::Preserve);
-        if (resolved_format == at::MemoryFormat::Preserve) {
+        bool preserve_strides = resolved_format == at::MemoryFormat::Preserve;
+        if (preserve_strides) {
           resolved_format = self.suggest_memory_format();
         }
 
@@ -80,7 +81,8 @@ at::Tensor AtenToCopy(const at::Tensor& self,
         at::TensorOptions options =
             at::TensorOptions().dtype(target_dtype).device(target_device);
         at::Tensor dest;  // UNINITIALIZED_TENSOR_OK=initialized in the if-else
-        if (!self.is_contiguous() && self.is_non_overlapping_and_dense()) {
+        if (preserve_strides && !self.is_contiguous() &&
+            self.is_non_overlapping_and_dense()) {
           dest = at::empty_strided(self.sizes(), self.strides(), options);
         } else {
           dest = at::empty(self.sizes(), options, resolved_format);
