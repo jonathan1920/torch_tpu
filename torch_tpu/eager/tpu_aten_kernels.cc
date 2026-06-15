@@ -939,16 +939,15 @@ TORCH_LIBRARY_IMPL(aten, AutogradPrivateUse1, m) {
   Impl(m, OpName::kMaxPool2d, AtenMaxPool2d);
 }
 
+// Signatures of custom ops in torch.ops.tpu. Their C++ bindings are registered
+// in TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) below.
 TORCH_LIBRARY(tpu, m) {
   m.def(
       "max_pool2d(Tensor self, int[] kernel_size, int[] stride, int[] padding, "
-      "int[] dilation, "
-      "bool ceil_mode) "
-      "-> Tensor");
+      "int[] dilation, bool ceil_mode) -> Tensor");
   m.def(
       "max_pool2d_backward(Tensor grad_output, Tensor self, int[] kernel_size, "
-      "int[] stride, int[] padding, int[] dilation, bool ceil_mode) "
-      "-> Tensor");
+      "int[] stride, int[] padding, int[] dilation, bool ceil_mode) -> Tensor");
   m.def("ragged_dot(Tensor lhs, Tensor rhs, Tensor group_sizes) -> Tensor");
   m.def(
       "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor grop_sizes, *, "
