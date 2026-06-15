@@ -134,10 +134,18 @@ jobs:
             extra_flags: ""
             custom_name: CPU
             allowed_to_fail: false
+          # Running the TPU wheel tests only on v5 and v7 in presubmits because
+          # at the moment we do not have many v6 runners.
           - name: TPU
             runner: linux-x86-ct5lp-224-8tpu
-            config: "wheel_test_tpu"
+            config: "wheel_test_tpu_v5"
             extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"'
+            allowed_to_fail: false
+          - name: TPU v7
+            runner: linux-x86-tpu7x-224-4tpu
+            config: "wheel_test_tpu_v7"
+            extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh"'
+            custom_name: "TPU v7"
             allowed_to_fail: false
           - name: "CPU (CUDA wheel)"
             runner: linux-x86-n4-16
@@ -156,8 +164,8 @@ jobs:
             custom_name: "CPU (PyTorch Nightly)"
             allowed_to_fail: true
           - name: "TPU (PyTorch Nightly)"
-            runner: linux-x86-tpu7x-224-4tpu
-            config: "wheel_test_tpu_on_v7"
+            runner: linux-x86-ct5lp-224-8tpu
+            config: "wheel_test_tpu_v5"
             extra_flags: '--run_under="$(pwd)/ci/tools/parallel_accelerator_execute.sh" --define TORCH_SOURCE=local --repo_env=TORCH_SOURCE=$TORCH_SOURCE'
             wheel_version: "nightly"
             expected_failure: true

@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_library", "torch_tpu_py_test")
+load(
+    "//build_files:build_defs.bzl",
+    "torch_tpu_package_end",
+    "torch_tpu_py_library",
+    "torch_tpu_py_test",
+    "tpu_gen",
+)
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -30,8 +36,14 @@ torch_tpu_py_library(
 torch_tpu_py_test(
     name = "qwen3_explore",
     srcs = ["qwen3_explore.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
     shuffle_tests = False,
-    tags = ["requires-tpu-v5lite"],
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         ":utils",
         "//shims/absl_py:app",

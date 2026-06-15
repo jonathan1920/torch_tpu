@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load(
+    "//build_files:build_defs.bzl",
+    "torch_tpu_package_end",
+    "torch_tpu_py_test",
+    "tpu_gen",
+)
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -22,7 +27,13 @@ package(
 torch_tpu_py_test(
     name = "stream_test",
     srcs = ["stream_test.py"],
-    tags = ["requires-tpu-v5lite"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -34,6 +45,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "copy_test",
     srcs = ["copy_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
     tags = [
         "requires-tpu-v5lite",
     ],

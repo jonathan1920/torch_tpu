@@ -18,6 +18,7 @@ load(
     "torch_tpu_package_end",
     "torch_tpu_py_library",
     "torch_tpu_py_test",
+    "tpu_gen",
 )
 
 package(
@@ -610,7 +611,13 @@ torch_tpu_py_test(
     name = "compiler_option_test",
     srcs = ["compiler_option_test.py"],
     main = "compiler_option_test.py",
-    tags = ["requires-tpu-v5lite"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         ":op_testing",
         "//shims/absl_py/testing:absltest",
@@ -625,8 +632,14 @@ torch_tpu_py_test(
     name = "index_put_op_test",
     srcs = ["index_put_op_unit_test.py"],
     main = "index_put_op_unit_test.py",
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v6",
+        reason = "Load balancing",
+    ),
     shard_count = 20,
-    tags = ["requires-tpu-v5lite"],
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         ":op_testing",
         "//shims/absl_py/testing:absltest",
@@ -658,6 +671,10 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "tensor_test",
     srcs = ["tensor_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v6",
+        reason = "Load balancing",
+    ),
     tags = [
         "nomsan",  # TODO: fix the test in msan mode.
         "requires-tpu-v5lite",
@@ -693,6 +710,12 @@ torch_tpu_py_test(
     srcs = ["error_testing_test.py"],
     args = [
         "--test_mode=cpu",
+    ],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
     ],
     deps = [
         ":error_testing",
@@ -870,8 +893,14 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "booleans_test",
     srcs = ["booleans_test.py"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
     # args = [],
-    tags = ["requires-tpu-v5lite"],
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -902,7 +931,13 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "untyped_storage_test",
     srcs = ["untyped_storage_test.py"],
-    tags = ["requires-tpu-v5lite"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/absl_py/testing:parameterized",
@@ -930,7 +965,13 @@ torch_tpu_py_test(
 torch_tpu_py_test(
     name = "zero_size_test",
     srcs = ["zero_size_test.py"],
-    tags = ["requires-tpu-v5lite"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -985,7 +1026,13 @@ torch_tpu_py_test(
     name = "set_test",
     srcs = ["set_test.py"],
     main = "set_test.py",
-    tags = ["requires-tpu-v5lite"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -1079,7 +1126,13 @@ torch_tpu_py_test(
     name = "precision_test",
     srcs = ["precision_test.py"],
     main = "precision_test.py",
-    tags = ["requires-tpu-v5lite"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+        "requires-tpu-v5lite",
+    ],
     deps = [
         "//shims/absl_py/testing:absltest",
         "//shims/torch:pytorch",
@@ -1122,6 +1175,10 @@ torch_tpu_py_test(
     name = "autoload_test_tpu",
     srcs = ["autoload_tpu_test.py"],
     main = "autoload_tpu_test.py",
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v6",
+        reason = "Load balancing",
+    ),
     tags = [
         "requires-tpu-v5lite",
     ],

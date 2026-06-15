@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_cc_test", "torch_tpu_package_end")
+load(
+    "//build_files:build_defs.bzl",
+    "torch_tpu_cc_library",
+    "torch_tpu_cc_test",
+    "torch_tpu_package_end",
+    "tpu_gen",
+)
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -47,6 +53,12 @@ torch_tpu_cc_library(
 torch_tpu_cc_test(
     name = "logging_test",
     srcs = ["logging_test.cc"],
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+    ],
     deps = [
         ":logging",
         "//shims/torch:aten_headers",
@@ -83,6 +95,12 @@ torch_tpu_cc_test(
         "cpp_link.mem": "16g",  # Needed for asan.
     },
     notest_oss = "Fails due to TPU_LIBRARY_PATH not set.",
+    oss_presubmit_tpu_generation = tpu_gen(
+        "v7",
+        reason = "Load balancing",
+    ),
+    tags = [
+    ],
     deps = [
         ":kernel",
         "//shims/torch:aten_headers",
