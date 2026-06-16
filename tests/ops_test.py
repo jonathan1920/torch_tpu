@@ -3533,8 +3533,15 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_var(self):
+    # TODO: TorchTPU's AtenVar kernel incorrectly returns a 0-D scalar on
+    # 0-element tensors instead of preserving unreduced dimensions, and
+    # MakeBuffer crashes when caching NaN scalar buffers.
     self.do_test_op(
         "var",
+        skip_if=lambda _, _1, op_input: isinstance(
+            op_input.input_value, torch.Tensor
+        )
+        and op_input.input_value.numel() == 0,
     )
 
   def test_vdot(self):
