@@ -411,10 +411,7 @@ test:wheel_test_tpu_v7 --config=wheel_common_test
 test:wheel_test_tpu_v7 --config=ci_tpu_v7
 test:wheel_test_tpu_v7 --spawn_strategy=local
 
-# We need to re-specify all of these tag filters because when specified more
-# than once, they don't compose and we want to be able to also exclude
-# wheel_test_excluded
-test:wheel_test_cpu --test_tag_filters=-nobuild,-notest,-requires-gpu,-requires-tpu,-wheel_test_excluded
+test:wheel_test_cpu --test_tag_filters=-nobuild,-notest,-nopresubmit,-requires-gpu,-requires-tpu,-wheel_test_excluded
 
 test:wheel_test_tpu --test_tag_filters=requires-tpu,-notest,-nobuild,-nopresubmit,-wheel_test_excluded,-fails-on-tpu-v5,-presubmit-v6,-presubmit-v7
 
