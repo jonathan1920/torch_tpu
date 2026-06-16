@@ -33,4 +33,17 @@ torch_tpu_py_test(
     ],
 )
 
+torch_tpu_py_test(
+    name = "xla_compile_options_test",
+    srcs = ["xla_compile_options_test.py"],
+    strict = True,
+    tags = ["requires-tpu-v5lite"],
+    deps = [
+        "//shims/absl_py/testing:absltest",
+        "//shims/torch:pytorch",
+        "//torch_tpu",
+        "//torch_tpu/_internal/execution_mode",
+    ],
+)
+
 torch_tpu_package_end()
