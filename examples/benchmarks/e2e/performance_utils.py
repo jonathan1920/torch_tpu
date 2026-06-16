@@ -27,6 +27,7 @@ from absl import logging
 from tensorboardX import writer
 import torch
 from torch_tpu._internal import execution_mode
+from torch_tpu._internal import testing as tt_testing
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from examples.benchmarks.e2e import benchmark_utils
 from examples.benchmarks.e2e import device_utils
@@ -147,6 +148,7 @@ def _run_mode_context(
   Args:
     run_mode: The benchmark_utils.RunMode to configure the context for.
     device: The torch device being used.
+    clear_device_cache: Whether to clear the device cache.
 
   Yields:
     None
@@ -181,6 +183,7 @@ def _run_mode_context(
     # pylint: disable=protected-access
     if clear_device_cache and device.type != "cpu":
       device_utils.clear_cache(device.type)
+      tt_testing.reset_eager_state()
     if benchmark_utils.is_torch_compile(run_mode):
       torch._dynamo.reset()
 
