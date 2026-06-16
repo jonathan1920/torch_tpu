@@ -70,7 +70,7 @@ def _(mo):
     gcloud auth login
     gcloud auth application-default login
 
-    # 2. Install torch_tpu, PyTorch 2.10 CPU will install automatically, do not install manually.
+    # 2. Install torch_tpu, PyTorch 2.11 CPU will install automatically, do not install manually.
     pip install --pre --index-url "https://oauth2accesstoken:$(gcloud auth print-access-token)@us-python.pkg.dev/ml-oss-artifacts-transient/torch-tpu-virtual-registry/simple/" torch_tpu
 
     # 3. Install optional utilities
