@@ -448,7 +448,11 @@ class JaxCallable:
     # Ignore forward compatibility as we are directly using the exported
     # StableHLO. Without this flag we can be missing the latest optimizations.
     with jax._src.config.export_ignore_forward_compatibility(True):
-      self.exported = jax.export.export(jit_fn, platforms=["tpu"])
+      self.exported = jax.export.export(
+          jit_fn,
+          platforms=["tpu"],
+          disabled_checks=[jax.export.DisabledSafetyCheck.custom_call("ALL")],
+      )
     if input_output_aliases is not None:
       _compat.warn_deprecation_with_skip(
           "input_output_aliases is deprecated and will be removed soon. Please"

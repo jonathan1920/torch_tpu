@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_package_end", "torch_tpu_py_test")
+load("//build_files:build_defs.bzl", "if_oss", "torch_tpu_package_end", "torch_tpu_py_test")
 
 package(
     default_applicable_licenses = ["//:license"],
@@ -23,7 +23,10 @@ torch_tpu_py_test(
     name = "pallas_test",
     srcs = ["pallas_test.py"],
     # Not supported on vl chips.
-    env = {"TPU_PREMAPPED_BUFFER_SIZE": "0"},
+    env = {
+        "TPU_PREMAPPED_BUFFER_SIZE": "0",
+        "IS_OSS": if_oss("1", "0"),
+    },
     tags = ["requires-tpu-v5lite"],
     deps = [
         "//shims/absl_py/testing:absltest",
@@ -36,6 +39,7 @@ torch_tpu_py_test(
         "//torch_tpu/_internal/pallas:pallas_compat",
         "//torch_tpu/_internal/utils",
         "@pypi//jax",
+        "@pypi//packaging",
     ],
 )
 

@@ -15,15 +15,16 @@
 """Tests for Pallas custom kernels."""
 
 import functools
+import os
 import pathlib
 import sys
 from typing import Optional, Tuple, TypeAlias
 import warnings
-
 from absl.testing import absltest
 import jax
 from jax.experimental import pallas as pl
 import jax.export
+from packaging import version
 import torch
 from torch_tpu._internal import compile  # pylint: disable=redefined-builtin
 from torch_tpu._internal import execution_mode
@@ -936,6 +937,27 @@ class TestPallasKernels(absltest.TestCase):
       self.assertEqual(grad_x.item(), 2.0 * -37.0 - 3.0)
       # grad_y = grad_mul * x + grad_add (passes straight through)
       self.assertEqual(grad_y.item(), 2.0 * -4.0 - 3.0)
+
+  def test_custom_call(self):
+    is_oss = os.getenv("IS_OSS", "0") == "1"
+    jax_version = version.Version(jax.__version__)
+    if is_oss and jax_version < version.Version("0.10.3"):
+      self.skipTest("Jax version doesn't support custom_call export.")
+
+    def custom_call_fn(x: jax.Array) -> jax.Array:
+      return jax.ffi.ffi_call(
+          "test_custom_call", jax.ShapeDtypeStruct(x.shape, x.dtype)
+      )(x)
+
+    custom_call_op = pallas.jax_op("test::custom_call", custom_call_fn)
+
+    # Check that it successfully reaches XLA and raises an error.
+    with self.assertRaisesRegex(
+        RuntimeError, "custom emitter for test_custom_call not found"
+    ):
+      x = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32, device=self.device)
+      y = custom_call_op(x)
+      y.cpu()
 
 
 class TestPallasCompat(absltest.TestCase):
