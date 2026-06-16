@@ -195,7 +195,7 @@ def model_generate(
     if use_static_cache:
       past_key_values = transformers.StaticCache(
           config=model.config,
-          max_cache_len=max_buffer_size,
+          max_cache_len=max_buffer_size + 1,
       )
       num_heads = getattr(
           model.config, "num_key_value_heads", model.config.num_attention_heads
@@ -663,7 +663,7 @@ def main(argv):
           f"prefill_seq_len ({prefill_len}) exceeds max_buffer_size "
           f"({explicit_max_buffer_size})"
       )
-    potential_max_decode_steps = explicit_max_buffer_size - prefill_len
+    potential_max_decode_steps = explicit_max_buffer_size - prefill_len + 1
     if initial_max_decode_steps > potential_max_decode_steps:
       logging.warning(
           "Adjusting max_decode_steps to %d because prefill_seq_len (%d) + "
