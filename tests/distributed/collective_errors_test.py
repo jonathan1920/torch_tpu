@@ -421,7 +421,7 @@ def run_gather_output_on_non_root() -> None:
       pg.gather([gather_list], [tensor], opts)
 
 
-class CollectiveErrorsTest(et.TpuOnlyErrorTestBase):
+class CollectiveErrorsTest(et.TpuOnlyDistributedErrorTestBase):
 
   def test_all_gather(self):
     distributed_utils.dist_run(

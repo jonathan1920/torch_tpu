@@ -365,6 +365,71 @@ def assert_subprocess_raises_message(exception_type, expected_msg: str):
     )
 
 
+# Attribute name to store the @why_tpu_only reason in the test method.
+_WHY_TPU_ONLY_ATTR = "_why_tpu_only"
+
+# Explanation for why we need the @why_tpu_only decorator on a test method
+# in TpuOnlyErrorTestBase.
+_EXPLAIN_WHY_TPU_ONLY = (
+    "TpuOnlyErrorTestBase is for verifying errors that occur on TPU but not on"
+    " CPU, which usually mean a bug in TPU code. If the code under test fails"
+    " on CPU too, the test case should be moved to errors_test.py instead to"
+    " verify that the code fails on both TPU and CPU."
+)
+
+
+def why_tpu_only(reason: str):
+  """Decorates a TPU-only error test method with why it only applies to TPU."""
+  if not reason or not isinstance(reason, str) or not reason.strip():
+    raise ValueError(
+        "why_tpu_only requires a non-empty explanation of why this test case"
+        f" only applies to TPU: {_EXPLAIN_WHY_TPU_ONLY}"
+    )
+
+  def decorator(func):
+    func._why_tpu_only = reason  # pylint: disable=protected-access
+    return func
+
+  return decorator
+
+
+def _get_why_tpu_only_reason(test_case: absltest.TestCase) -> str | None:
+  """Retrieves the @why_tpu_only reason for the active test method.
+
+  When test methods are wrapped by decorators or parameterized test runners
+  (e.g. absl.testing.parameterized), the generated test methods (e.g.
+  test_foo_0) do not directly inherit custom attributes from the underlying
+  function. This function inspects the method and unwraps any standard Python
+  __wrapped__ chains to locate the @why_tpu_only reason.
+
+  Args:
+    test_case: The active test case instance.
+
+  Returns:
+    The explanation string if the active method is decorated with @why_tpu_only,
+    or None otherwise.
+  """
+  method = getattr(
+      test_case, test_case._testMethodName  # pylint: disable=protected-access
+  )
+  reason = getattr(method, _WHY_TPU_ONLY_ATTR, None)
+  if reason is None:
+    # Traverse standard Python __wrapped__ chains (set by functools.wraps) to
+    # find the underlying decorated function. This avoids relying on private
+    # test runner internals (like _test_params_reprs) or fragile test name
+    # prefix matching.
+    curr = method
+    while hasattr(curr, "__wrapped__"):
+      curr = curr.__wrapped__
+      r = getattr(curr, _WHY_TPU_ONLY_ATTR, None)
+      if r is not None:
+        reason = r
+        # Set the attribute in the original method for fast future lookups.
+        setattr(method, _WHY_TPU_ONLY_ATTR, r)
+        break
+  return reason
+
+
 class ErrorTestBase(absltest.TestCase):
   """Base class for error tests."""
 
@@ -393,8 +458,11 @@ class ErrorTestBase(absltest.TestCase):
     super().tearDown()
 
 
-class TpuOnlyErrorTestBase(ErrorTestBase):
-  """Base class for error tests that are only relevant for TPU."""
+class TpuOnlyErrorTestBaseNoCheckingWhy(ErrorTestBase):
+  """Base class for error tests that are only relevant for TPU.
+
+  This class does not enforce the @why_tpu_only decorator on test methods.
+  """
 
   def setUp(self):
     super().setUp()
@@ -416,3 +484,29 @@ class TpuOnlyErrorTestBase(ErrorTestBase):
     _allow_cpu_parameter = self.old_allow_cpu_parameter
 
     super().tearDown()
+
+
+class TpuOnlyErrorTestBase(TpuOnlyErrorTestBaseNoCheckingWhy):
+  """Base class for error tests that are only relevant for TPU.
+
+  This class enforces that each test method has a @why_tpu_only decorator.
+  """
+
+  def setUp(self):
+    super().setUp()
+
+    # Enforce that the test method has a @why_tpu_only decorator.
+    if _get_why_tpu_only_reason(self) is None:
+      self.fail(
+          'This test method must be decorated with @why_tpu_only("reason")'
+          f" to explain why it only applies to TPU: {_EXPLAIN_WHY_TPU_ONLY}"
+      )
+
+
+class TpuOnlyDistributedErrorTestBase(TpuOnlyErrorTestBaseNoCheckingWhy):
+  """Base class for distributed error tests that are only relevant for TPU.
+
+  This class does not enforce the @why_tpu_only decorator on test methods.
+  """
+
+  pass

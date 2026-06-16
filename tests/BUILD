@@ -719,7 +719,9 @@ torch_tpu_py_test(
     ],
     deps = [
         ":error_testing",
+        "//shims/absl_py/flags",
         "//shims/absl_py/testing:absltest",
+        "//shims/absl_py/testing:parameterized",
         "//torch_tpu",
     ],
 )
