@@ -133,31 +133,6 @@ torch_tpu_py_library(
 )
 
 torch_tpu_py_test(
-    name = "model_performance_benchmarks_smoke_test",
-    timeout = "long",
-    srcs = ["model_performance_benchmarks.py"],
-    args = [
-        "--platform=v5e_1x1",
-        "--smoke_test=true",
-    ],
-    main = "model_performance_benchmarks.py",
-    # TODO: b/519228522 - Re-enable OSS tests after adding data dependencies to wheel tests.
-    notest_oss = "Huggingface configs are part of OSS build targets.",
-    strict = True,
-    tags = [
-        "cpu:4",
-        "requires-accel-hbm",
-        "requires-net:external",
-        "requires-tpu-v5lite",
-    ],
-    deps = [
-        ":model_performance_benchmarks_lib",
-        "//examples/benchmarks/ops:op_capture",
-        "//torch_tpu",
-    ],
-)
-
-torch_tpu_py_test(
     name = "model_performance_benchmarks",
     timeout = "eternal",
     srcs = ["model_performance_benchmarks.py"],
