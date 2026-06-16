@@ -734,7 +734,10 @@ mlir::ElementType RealComponentOf(const mlir::ElementType element_type) {
 // For full details on PyTorch's accumulation type mapping, see:
 // third_party/py/torch/aten/src/ATen/AccumulateType.h
 at::ScalarType ToAccumulateType(at::ScalarType type) {
-  return at::toAccumulateType(type, /*is_cuda=*/true);
+  return at::toAccumulateType(  // AT_TO_ACCUMULATE_TYPE_OK=root usage for the
+                                // API.
+      type,
+      /*is_cuda=*/true);
 }
 
 }  // namespace torch_tpu
