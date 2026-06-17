@@ -59,6 +59,7 @@
 #include "torch_tpu/ops/macros/kernel.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
+#include "torch_tpu/pjrt/pjrt_utils.h"
 
 namespace torch_tpu {
 
@@ -100,11 +101,6 @@ absl::StatusOr<DeviceBufferRef> UpdateDeviceRngState(at::Tensor rng_state,
                         .op_param_cache_keys = std::move(params)});
 }
 
-absl::StatusOr<DeviceBufferRef> UpdateDeviceRngSeed(at::Tensor rng_state,
-                                                    uint64_t value) {
-  return UpdateDeviceRngState(rng_state, value, /*position=*/0);
-}
-
 absl::StatusOr<DeviceBufferRef> UpdateDeviceRngOffset(at::Tensor rng_state,
                                                       uint64_t value) {
   return UpdateDeviceRngState(rng_state, value, /*position=*/1);
@@ -118,6 +114,18 @@ at::Tensor CreateDeviceRngStateTensor(c10::Device device) {
   return at::full(/*size=*/{2}, /*fill_value=*/0, /*dtype_opt=*/at::kUInt64,
                   /*layout_opt=*/std::nullopt, /*device_opt=*/device,
                   /*pin_memory_opt=*/std::nullopt);
+}
+
+// Helper function to call TT_THROW_IF_ERROR outside of lambdas.
+// Using TT_THROW_IF_ERROR directly in lambda functions causes type deduction
+// errors because it injects a return statement for static assertion checks.
+void ThrowIfError(absl::Status status) { TT_THROW_IF_ERROR(status); }
+
+}  // namespace
+
+absl::Status InitDefaultGenerator(DeviceGeneratorImpl* gen_impl,
+                                  uint64_t seed) {
+  return gen_impl->state_->WriteStateToDevice(seed, 0);
 }
 
 // A singleton that holds one generator per device. The generators are lazily
@@ -149,8 +157,6 @@ class DeviceGenerators {
   int64_t num_devices_;
 };
 
-}  // namespace
-
 absl::Status DeviceGeneratorState::MaybeMaterializeDeviceStateTensor(
     bool force_materialization) {
   if (!force_materialization &&
@@ -173,6 +179,17 @@ absl::Status DeviceGeneratorState::SetDeviceStateTensor(
   device_state_tensor_ = std::move(device_state_tensor);
   TT_RETURN_IF_ERROR(MaybeMaterializeDeviceStateTensor());
   return absl::OkStatus();
+}
+
+absl::Status DeviceGeneratorState::WriteStateToDevice(uint64_t seed,
+                                                      uint64_t offset) {
+  uint64_t host_data[2] = {seed, offset};
+  TT_ASSIGN_OR_RETURN(
+      auto rng_state_buffer,
+      TpuMallocAndMemcpyHtoD(host_data, mlir::ElementType::UI64, {2}));
+  auto new_rng_state = MakeTensor(std::move(rng_state_buffer),
+                                  device_state_tensor_.device().index());
+  return SetDeviceStateTensor(new_rng_state);
 }
 
 c10::intrusive_ptr<DeviceGeneratorState> DeviceGeneratorState::clone() const {
@@ -218,7 +235,9 @@ at::Generator& DeviceGenerators::GetDefaultGenerator(at::DeviceIndex idx) {
 
   c10::call_once(generator_init_flags_[idx], [&] {
     generators_[idx] = at::make_generator<DeviceGeneratorImpl>(idx);
-    generators_[idx].seed();
+    auto* gen_impl = generators_[idx].get<DeviceGeneratorImpl>();
+    auto random = c10::detail::getNonDeterministicRandom(false);
+    ThrowIfError(InitDefaultGenerator(gen_impl, random));
   });
   return generators_[idx];
 }
@@ -282,17 +301,8 @@ DeviceGeneratorImpl::DeviceGeneratorImpl(
 void DeviceGeneratorImpl::set_current_seed(uint64_t seed) {
   // set_current_seed() is invoked by PyTorch and behaves like an op.
   TT_KERNEL(OpName::kRngSetSeed, _,
-            (IgnoreInCacheKey(seed, "delegates to UpdateRngSeed()")), {
-              TT_ASSIGN_OR_THROW(
-                  auto rng_state_buffer,
-                  UpdateDeviceRngSeed(state_->DeviceStateTensor(), seed));
-              auto new_rng_state = MakeTensor(std::move(rng_state_buffer),
-                                              this->device().index());
-              TT_ASSIGN_OR_THROW(auto rng_state_buffer2,
-                                 UpdateDeviceRngOffset(new_rng_state, 0));
-              TT_THROW_IF_ERROR(SetDeviceStateTensor(MakeTensor(
-                  std::move(rng_state_buffer2), this->device().index())));
-            });
+            (IgnoreInCacheKey(seed, "delegates to WriteStateToDevice")),
+            { TT_THROW_IF_ERROR(state_->WriteStateToDevice(seed, 0)); });
 }
 
 void DeviceGeneratorImpl::set_offset(uint64_t offset) {
@@ -320,7 +330,7 @@ uint64_t DeviceGeneratorImpl::seed() {
   // seed() is invoked by PyTorch and behaves like an op.
   TT_KERNEL(OpName::kRngSeed, _, (), {
     auto random = c10::detail::getNonDeterministicRandom(false);
-    this->set_current_seed(random);
+    TT_THROW_IF_ERROR(state_->WriteStateToDevice(random, 0));
     return random;
   });
 }

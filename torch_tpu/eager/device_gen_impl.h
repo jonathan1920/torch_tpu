@@ -35,6 +35,10 @@
 namespace torch_tpu {
 
 class DeviceBufferRef;
+class DeviceGeneratorImpl;
+
+// Forward declaration of internal initializer.
+absl::Status InitDefaultGenerator(DeviceGeneratorImpl* gen_impl, uint64_t seed);
 
 // Holds the device-resident state of the generator (seed and offset) as a
 // tensor. This is the TPU equivalent of PyTorch's CUDAGeneratorState,
@@ -53,6 +57,9 @@ class DeviceGeneratorState : public c10::intrusive_ptr_target {
 
   // Sets the device-resident RNG state tensor.
   absl::Status SetDeviceStateTensor(at::Tensor device_state_tensor);
+
+  // Writes seed and offset to device state tensor.
+  absl::Status WriteStateToDevice(uint64_t seed, uint64_t offset);
 
  private:
   // Materializes the RNG state tensor if the materialization counter reaches
@@ -119,6 +126,9 @@ class DeviceGeneratorImpl : public c10::GeneratorImpl {
   at::Tensor DeviceStateTensor() const;
 
  private:
+  friend absl::Status InitDefaultGenerator(DeviceGeneratorImpl* gen_impl,
+                                           uint64_t seed);
+
   template <typename DispatchFunc>
   friend absl::StatusOr<std::vector<DeviceBufferRef>> DispatchRngOpGeneral(
       c10::optional<at::Generator> generator, DispatchFunc dispatch_func);
