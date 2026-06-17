@@ -28,6 +28,7 @@ import numpy as np
 import torch
 from torch.utils import _pytree as pytree
 from torch_tpu._internal.utils import log_utils
+from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.ops.op_capture import OpCaptureMode
 from examples.benchmarks.quality_utils import quality_benchmark_model
@@ -57,8 +58,6 @@ CAPTURE_OPS = flags.DEFINE_bool(
 SMOKE_TEST = flags.DEFINE_bool(
     "smoke_test", False, "Whether to run in smoke test mode."
 )
-_RANDOM_SEED = 0
-
 
 def _do_post_warmup() -> bool:
   return POST_WARMUP_STEPS.value > 0
@@ -72,31 +71,6 @@ def _is_warmup_only() -> bool:
       and POST_WARMUP_STEPS.value == 0
       and MAX_WARMUP_STEPS.value == 1
   )
-
-
-class Platform(enum.Enum):
-  """The platform to run the benchmark on."""
-
-  # The platform names should match the ones in the MLCompass config file. See
-  # go/torchtpu-mlcompass#configuration-structure for more details.
-  GFC_1X1X1 = "gfc_1x1x1"
-  GFC_2X2X1 = "gfc_2x2x1"
-  GFC_2X2X2 = "gfc_2x2x2"
-  GFC_2X2X4 = "gfc_2x2x4"
-  GFC_2X4X4 = "gfc_2x4x4"
-  B200_1 = "b200_1"
-  B200_4 = "b200_4"
-  B200_8 = "b200_8"
-  XLA_CPU = "xla_cpu"
-  TORCH_CPU = "torch_cpu"
-  V5E_1X1 = "v5e_1x1"
-
-
-class Backend(enum.Enum):
-  """The backend to use for the benchmark."""
-
-  TORCH_TPU = "torch_tpu"
-  TORCHAX = "torchax"
 
 
 BASE_CL = flags.DEFINE_string(
@@ -131,19 +105,6 @@ ENABLE_TENSORBOARD_LOGGING = flags.DEFINE_bool(
     "Whether to enable TensorBoard logging for the benchmark results.",
 )
 
-PLATFORM = flags.DEFINE_enum_class(
-    "platform",
-    Platform.GFC_1X1X1,
-    Platform,
-    "The platform to run the tests on.",
-)
-
-BACKEND = flags.DEFINE_enum_class(
-    "backend",
-    Backend.TORCH_TPU,
-    Backend,
-    "The backend to use for the benchmark.",
-)
 
 MLCOMPASS_TRACKING_ID = flags.DEFINE_string(
     "mlcompass_tracking_id",
@@ -170,32 +131,6 @@ MLCOMPASS_EXECUTION_MODE = flags.DEFINE_enum(
 # process uploading profile can fail health checks and die.
 _PROFILE_MAX_BYTES = 500 * 1024 * 1024  # 500 MB
 
-PLATFORM_DEVICE_MAP = {
-    Platform.GFC_1X1X1: "tpu",
-    Platform.GFC_2X2X1: "tpu",
-    Platform.GFC_2X2X2: "tpu",
-    Platform.GFC_2X2X4: "tpu",
-    Platform.GFC_2X4X4: "tpu",
-    Platform.B200_1: "cuda",
-    Platform.B200_4: "cuda",
-    Platform.B200_8: "cuda",
-    Platform.TORCH_CPU: "cpu",
-    Platform.XLA_CPU: "xla_cpu",
-    Platform.V5E_1X1: "tpu",
-}
-
-PLATFORM_TO_NODE_CONFIG = {
-    Platform.GFC_2X2X2: {"num_nodes": 2, "nproc_per_node": 8},
-    Platform.GFC_2X2X4: {"num_nodes": 4, "nproc_per_node": 8},
-    Platform.GFC_2X4X4: {"num_nodes": 8, "nproc_per_node": 8},
-}
-
-
-def seed_rngs() -> None:
-  """Seeds the Python and PyTorch RNGs with the given seed."""
-  random.seed(_RANDOM_SEED)
-  torch.manual_seed(_RANDOM_SEED)
-
 
 @dataclasses.dataclass
 class BenchmarkResultInterface(abc.ABC):
@@ -211,28 +146,6 @@ class BenchmarkResultInterface(abc.ABC):
   def metric_map(self) -> Mapping[str, float]:
     """Returns a map of metrics to be exported to MLCompass."""
     raise NotImplementedError
-
-
-class RunMode(enum.Enum):
-  """The mode to run the benchmark in.
-
-  Make sure that no entry is a prefix of the other. Run mode name is appended
-  to test names, and MLCompass runs tests based on a prefix match, it can lead
-  to duplicate entries. For e.g., test_model_eager will match both
-  test_model_eager and test_model_eager_optimized. Hence, we use
-  eager_default and eager_optimized.
-  """
-
-  EAGER_DEFAULT = (  # Run the model in eager mode with DeferNever.
-      "eager_default"
-  )
-  EAGER_OPTIMIZED = (  # Run the model in eager mode with DeferAndFuse.
-      "eager_optimized"
-  )
-  EAGER_DEFER_NEVER_AND_LAUNCH_BLOCKING = (  # Run the model in eager mode with DeferNeverAndLaunchBlocking.
-      "eager_defer_never_and_launch_blocking"
-  )
-  COMPILED = "compiled"  # Run the model with torch.compile.
 
 
 class BenchmarkCategory(enum.Enum):
@@ -406,16 +319,6 @@ class XprofContext:
           self.name,
           self.session_id,
       )
-
-
-def get_torch_device(platform: Platform) -> torch.device:
-  """Returns the torch device for the given platform."""
-  return torch.device(PLATFORM_DEVICE_MAP[platform])
-
-
-def is_torch_compile(run_mode: RunMode) -> bool:
-  """Returns whether the given run mode uses torch.compile."""
-  return run_mode == RunMode.COMPILED
 
 
 def _get_device_name(device: torch.device) -> str:

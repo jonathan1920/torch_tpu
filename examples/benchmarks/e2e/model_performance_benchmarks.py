@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import torch.multiprocessing as mp
 from examples.benchmarks.e2e import benchmark_function_db
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import model_utils
 from examples.benchmarks.e2e import performance_utils
 from examples.benchmarks.e2e import test_utils
@@ -76,11 +77,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     )
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.V5E_1X1,
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-            benchmark_utils.Platform.XLA_CPU,
-            benchmark_utils.Platform.TORCH_CPU,
+            common.Platform.V5E_1X1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+            common.Platform.XLA_CPU,
+            common.Platform.TORCH_CPU,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -103,8 +104,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -124,9 +125,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.EAGER_DEFAULT,
+          common.RunMode.EAGER_OPTIMIZED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_distributed_meta_llama_3_2_8b_forward(self, run_mode):
@@ -135,9 +136,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       self.skipTest("TorchAX does not support distributed tests yet.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_2X2X1,
-            benchmark_utils.Platform.GFC_2X2X2,
-            benchmark_utils.Platform.B200_4,
+            common.Platform.GFC_2X2X1,
+            common.Platform.GFC_2X2X2,
+            common.Platform.B200_4,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.META_LLAMA,
         run_mode=run_mode,
@@ -160,8 +161,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     if self._is_torchax_backend():
       self.skipTest("TorchAX does not support distributed tests yet.")
     if (
-        benchmark_utils.PLATFORM.value == benchmark_utils.Platform.GFC_2X2X1
-        and run_mode == benchmark_utils.RunMode.COMPILED
+        common.PLATFORM.value == common.Platform.GFC_2X2X1
+        and run_mode == common.RunMode.COMPILED
     ):
       self.skipTest(
           "Skipping compiled mode on GFC 2x2x1. Cannot view non-contiguous"
@@ -169,8 +170,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       )
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_2X2X1,
-            benchmark_utils.Platform.B200_4,
+            common.Platform.GFC_2X2X1,
+            common.Platform.B200_4,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -195,8 +196,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     if self._is_torchax_backend():
       self.skipTest("TorchAX does not support distributed tests yet.")
     if (
-        benchmark_utils.PLATFORM.value == benchmark_utils.Platform.GFC_2X2X1
-        and run_mode == benchmark_utils.RunMode.COMPILED
+        common.PLATFORM.value == common.Platform.GFC_2X2X1
+        and run_mode == common.RunMode.COMPILED
     ):
       self.skipTest(
           "Skipping compiled mode on GFC 2x2x1. DTensor generates symints"
@@ -204,8 +205,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       )
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_2X2X1,
-            benchmark_utils.Platform.B200_4,
+            common.Platform.GFC_2X2X1,
+            common.Platform.B200_4,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -226,13 +227,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_llama_3_1_8b_forward(self, run_mode):
     """Tests the forward pass of Llama-3.1-8B."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=False,
@@ -248,13 +249,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_llama_3_2_3b_forward(self, run_mode):
     """Tests the forward pass of Llama-3.2-3B."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=False,
@@ -270,13 +271,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_llama_3_2_3b_train_1_step(self, run_mode):
     """Tests training Llama-3.2-3B."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=True,
@@ -295,13 +296,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_llama_3_2_tiny_forward(self, run_mode):
     """Tests the forward pass of Llama-3.2-tiny."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=False,
@@ -319,13 +320,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_llama_3_2_tiny_train_1_step(self, run_mode):
     """Tests training Llama-3.2-tiny."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=True,
@@ -353,11 +354,11 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     """Tests the forward pass of Gemma-3-270m."""
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.V5E_1X1,
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-            benchmark_utils.Platform.XLA_CPU,
-            benchmark_utils.Platform.TORCH_CPU,
+            common.Platform.V5E_1X1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+            common.Platform.XLA_CPU,
+            common.Platform.TORCH_CPU,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -377,9 +378,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     """Tests the training of Gemma-3-270m."""
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.V5E_1X1,
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.V5E_1X1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -399,9 +400,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.EAGER_DEFAULT,
+          common.RunMode.EAGER_OPTIMIZED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_gemma_4_26b_a4b_ragged_moe_12_layers_forward(self, run_mode):
@@ -416,7 +417,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       return config
 
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.GEMMA_RAGGED_MOE,
         run_mode=run_mode,
         is_training=False,
@@ -435,13 +436,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_gemma_2_2b_forward(self, run_mode):
     """Tests the forward pass of Gemma-2-2B."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=False,
@@ -457,13 +458,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_gemma_2_2b_train_1_step(self, run_mode):
     """Tests the training of Gemma-2-2B."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=True,
@@ -490,8 +491,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -519,8 +520,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -546,8 +547,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     """Tests the forward pass of Gemma-4-E2B."""
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -563,14 +564,12 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     self.run_performance_benchmark_test(config, _HF_GEMMA_4_E2B_BENCHMARK_NAME)
 
   @parameterized.named_parameters(test_utils.generate_run_mode_configs())
-  def test_gemma_4_e2b_train_1_step(
-      self, run_mode: benchmark_utils.RunMode
-  ) -> None:
+  def test_gemma_4_e2b_train_1_step(self, run_mode: common.RunMode) -> None:
     """Tests the training of Gemma-4-E2B."""
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -599,8 +598,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -621,8 +620,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -642,9 +641,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.EAGER_DEFAULT,
+          common.RunMode.EAGER_OPTIMIZED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_qwen3_coder_30b_a3b_ragged_moe_forward(self, run_mode):
@@ -653,8 +652,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       self.skipTest("TorchAX does not support distributed tests yet.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_2X2X1,
-            benchmark_utils.Platform.B200_4,
+            common.Platform.GFC_2X2X1,
+            common.Platform.B200_4,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.QWEN_RAGGED_MOE,
         run_mode=run_mode,
@@ -673,9 +672,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.EAGER_DEFAULT,
-          benchmark_utils.RunMode.EAGER_OPTIMIZED,
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.EAGER_DEFAULT,
+          common.RunMode.EAGER_OPTIMIZED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_qwen3_5_397b_a17b_4layer_moe_forward(self, run_mode):
@@ -699,7 +698,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
+            common.Platform.GFC_1X1X1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.QWEN3_5_MOE,
         run_mode=run_mode,
@@ -721,13 +720,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_qwen3_0_6b_forward(self, run_mode):
     """Tests the forward pass of Qwen3-0.6B."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=False,
@@ -743,13 +742,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_qwen3_0_6b_train_1_step(self, run_mode):
     """Tests the training of Qwen3-0.6B."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=True,
@@ -768,13 +767,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_qwen3_4b_forward(self, run_mode):
     """Tests the forward pass of Qwen3-4B."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=False,
@@ -790,13 +789,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_qwen3_4b_train_1_step(self, run_mode):
     """Tests the training of Qwen3-4B."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=True,
@@ -815,13 +814,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_qwen3_8b_forward(self, run_mode):
     """Tests the forward pass of Qwen3-8B."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=False,
@@ -847,8 +846,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -873,8 +872,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -904,8 +903,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -935,8 +934,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -957,13 +956,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_gpt2_forward(self, run_mode):
     """Tests the forward pass of GPT2."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=False,
@@ -979,13 +978,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_gpt2_train_1_step(self, run_mode):
     """Tests training GPT2."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=True,
@@ -1007,13 +1006,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
   # ============================================================================
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_phi_3_mini_4k_instruct_forward(self, run_mode):
     """Tests the forward pass of Phi-3-mini-4k-instruct."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=False,
@@ -1031,13 +1030,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_phi_3_mini_4k_instruct_train_1_step(self, run_mode):
     """Tests training Phi-3-mini-4k-instruct."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=True,
@@ -1064,10 +1063,10 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     """Tests the forward pass of resnet-50."""
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-            benchmark_utils.Platform.XLA_CPU,
-            benchmark_utils.Platform.TORCH_CPU,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+            common.Platform.XLA_CPU,
+            common.Platform.TORCH_CPU,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.TIMM,
         run_mode=run_mode,
@@ -1087,7 +1086,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
+            common.Platform.GFC_1X1X1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.TIMM,
         run_mode=run_mode,
@@ -1103,13 +1102,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_hf_resnet_50_forward(self, run_mode):
     """Tests the forward pass of HuggingFace ResNet-50."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=False,
@@ -1125,13 +1124,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_hf_resnet_50_train_1_step(self, run_mode):
     """Tests training HuggingFace ResNet-50."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
         is_training=True,
@@ -1150,13 +1149,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_timm_vit_small_dino_forward(self, run_mode):
     """Tests the forward pass of TIMM ViT Small DINO."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.TIMM,
         run_mode=run_mode,
         is_training=False,
@@ -1173,13 +1172,13 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_run_mode_configs([
-          benchmark_utils.RunMode.COMPILED,
+          common.RunMode.COMPILED,
       ])
   )
   def test_timm_vit_small_dino_train_1_step(self, run_mode):
     """Tests training TIMM ViT Small DINO."""
     config = performance_utils.PerformanceBenchmarkConfig(
-        supported_platforms=[benchmark_utils.Platform.GFC_1X1X1],
+        supported_platforms=[common.Platform.GFC_1X1X1],
         benchmark_category=benchmark_utils.BenchmarkCategory.TIMM,
         run_mode=run_mode,
         is_training=True,
@@ -1206,10 +1205,10 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     """Tests the forward pass of Wan-2.2-TI2V-5B."""
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
-            benchmark_utils.Platform.XLA_CPU,
-            benchmark_utils.Platform.TORCH_CPU,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
+            common.Platform.XLA_CPU,
+            common.Platform.TORCH_CPU,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_DIFFUSER,
         run_mode=run_mode,
@@ -1228,8 +1227,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_DIFFUSER,
         run_mode=run_mode,
@@ -1254,8 +1253,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
     """Tests the forward pass of Whisper-Large-v3."""
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -1283,8 +1282,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       self.skipTest("Not supported on TorchAX")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_VISION,
         run_mode=run_mode,
@@ -1309,9 +1308,9 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       self.skipTest("Not supported on TorchAX")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.V5E_1X1,
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.V5E_1X1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -1333,8 +1332,8 @@ class BenchmarkTest(test_utils.BenchmarkTest):
       self.skipTest("Not supported on TorchAX")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,
@@ -1360,7 +1359,7 @@ class BenchmarkTest(test_utils.BenchmarkTest):
 
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
+            common.Platform.GFC_1X1X1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.HUGGINGFACE_LLM,
         run_mode=run_mode,

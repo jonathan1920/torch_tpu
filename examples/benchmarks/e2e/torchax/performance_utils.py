@@ -26,6 +26,7 @@ import optax
 import torch
 from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import benchmark_utils as pt_benchmark_utils
+from examples.benchmarks.e2e import common as pt_common
 from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import performance_utils as pt_performance_utils
@@ -181,7 +182,7 @@ def _get_device_timings(enable_xprof, session_id) -> tuple[float, float]:
 def _run_torchax_forward_pass(
     model_jittable: torchax.interop.JittableModule,
     inputs: Any,
-    run_mode: pt_benchmark_utils.RunMode,
+    run_mode: pt_common.RunMode,
     enable_xprof: bool,
 ) -> pt_benchmark_utils.PerformanceBenchmarkResult:
   """Runs the forward pass benchmark for a TorchAx model."""
@@ -195,7 +196,7 @@ def _run_torchax_forward_pass(
   def model_fn(params, buffers, inputs):
     return _call_functional_model(model_jittable, params, buffers, inputs)
 
-  if pt_benchmark_utils.is_torch_compile(run_mode):
+  if pt_common.is_torch_compile(run_mode):
     runnable_model = torchax.interop.jax_jit(model_fn)
   else:
     runnable_model = model_fn
@@ -273,7 +274,7 @@ def _run_torchax_forward_pass(
 def _run_torchax_backward_pass(
     model_jittable: torchax.interop.JittableModule,
     inputs: Any,
-    run_mode: pt_benchmark_utils.RunMode,
+    run_mode: pt_common.RunMode,
     enable_xprof: bool,
 ) -> pt_benchmark_utils.PerformanceBenchmarkResult:
   """Runs the backward pass benchmark for a TorchAx model."""
@@ -321,7 +322,7 @@ def _run_torchax_backward_pass(
 
   train_step = torchax.train.make_train_step(model_fn, loss_fn, optimizer)
 
-  if pt_benchmark_utils.is_torch_compile(run_mode):
+  if pt_common.is_torch_compile(run_mode):
     runnable_step = torchax.interop.jax_jit(
         train_step, kwargs_for_jax_jit={"donate_argnums": (0, 2)}
     )
@@ -561,7 +562,7 @@ def run_benchmark(
 
   if pt_benchmark_utils.MLCOMPASS_TRACKING_ID.value:
     mlcompass_utils.export_to_mlcompass(
-        pt_benchmark_utils.PLATFORM.value,
+        pt_common.PLATFORM.value,
         result,
         pt_benchmark_utils.BASE_CL.value,
         pt_benchmark_utils.MLCOMPASS_TRACKING_ID.value,

@@ -20,6 +20,7 @@ import torch
 import torch.multiprocessing as mp
 from examples.benchmarks.e2e import benchmark_function_db
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import layer_configs
 from examples.benchmarks.e2e import model_utils
 from examples.benchmarks.e2e import performance_utils
@@ -28,9 +29,9 @@ from examples.benchmarks.e2e import test_utils
 from torch_tpu._internal.shims.pyglib.contrib.g3_multiprocessing import g3_multiprocessing
 
 _ALL_RUN_MODES = (
-    benchmark_utils.RunMode.EAGER_DEFAULT,
-    benchmark_utils.RunMode.EAGER_OPTIMIZED,
-    benchmark_utils.RunMode.COMPILED,
+    common.RunMode.EAGER_DEFAULT,
+    common.RunMode.EAGER_OPTIMIZED,
+    common.RunMode.COMPILED,
 )
 
 _LINEAR_LAYER_BENCHMARK_NAME = "linear"
@@ -227,8 +228,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -256,15 +257,15 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   )
   def test_batchnorm1d(self, run_mode, is_training, layer_config):
     # TODO(b/486204316): Fix batchnorm1d training with compiled mode on TPU.
-    if run_mode == benchmark_utils.RunMode.COMPILED and is_training:
+    if run_mode == common.RunMode.COMPILED and is_training:
       self.skipTest(
           "Batchnorm1d in compiled mode with training doesn't stablize in cache"
           " misses.."
       )
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -292,8 +293,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_layernorm(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -320,8 +321,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_conv2d(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -354,8 +355,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_embedding(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -384,8 +385,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_fft(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -418,8 +419,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       self.skipTest("Dropout test fails in training mode.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -449,8 +450,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       self.skipTest("Tanh test fails in training mode.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -478,8 +479,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     self.skipTest("Gelu activation test fails in training mode.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -505,8 +506,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_bert_layer(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -531,8 +532,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_bert_self_output(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -557,8 +558,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_bert_intermediate(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -583,8 +584,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_bert_output(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -609,8 +610,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_bert_pooler(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -635,8 +636,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_bert_embeddings(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -661,14 +662,14 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_rmsnorm(self, run_mode, is_training, layer_config):
     # TODO: b/494430218 - Fix RMSNorm training.
     if is_training and run_mode in (
-        benchmark_utils.RunMode.EAGER_DEFAULT,
-        benchmark_utils.RunMode.EAGER_OPTIMIZED,
+        common.RunMode.EAGER_DEFAULT,
+        common.RunMode.EAGER_OPTIMIZED,
     ):
       self.skipTest("RMSNorm training with eager mode fails.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -696,8 +697,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_qwen3_attention(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -723,8 +724,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_qwen3_rms_norm(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -750,8 +751,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_qwen3_mlp(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -780,8 +781,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_silu_activation(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -807,8 +808,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_glu(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -838,8 +839,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
     self.skipTest("TODO(b/484415655): Investigate cache miss.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -867,8 +868,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   ):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -909,8 +910,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_deepseek_rms_norm(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -949,8 +950,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_deepseek_expert(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -998,11 +999,11 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_sdpa_tpu(self, run_mode, is_training, layer_config):
-    if run_mode == benchmark_utils.RunMode.COMPILED:
+    if run_mode == common.RunMode.COMPILED:
       self.skipTest("SDPA is broken in compiled mode")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
+            common.Platform.GFC_1X1X1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1054,7 +1055,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       self.skipTest("Efficient attention doesn't support non-equal head dims.")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.B200_1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1083,7 +1084,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          (benchmark_utils.RunMode.COMPILED,),
+          (common.RunMode.COMPILED,),
           (False,),
           layer_configs.LINEAR_TIMM_CONFIGS,
       )
@@ -1091,8 +1092,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_linear_timm(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1115,7 +1116,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          (benchmark_utils.RunMode.COMPILED,),
+          (common.RunMode.COMPILED,),
           (False,),
           layer_configs.CONV2D_TIMM_CONFIGS,
       )
@@ -1123,8 +1124,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_conv2d_timm(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1151,7 +1152,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          (benchmark_utils.RunMode.COMPILED,),
+          (common.RunMode.COMPILED,),
           (False,),
           layer_configs.BATCHNORM2D_TIMM_CONFIGS,
       )
@@ -1159,8 +1160,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_batchnorm2d_timm(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1183,7 +1184,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          (benchmark_utils.RunMode.COMPILED,),
+          (common.RunMode.COMPILED,),
           (False,),
           layer_configs.AVGPOOL2D_TIMM_CONFIGS,
       )
@@ -1191,8 +1192,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_avgpool2d_timm(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1218,7 +1219,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          (benchmark_utils.RunMode.COMPILED,),
+          (common.RunMode.COMPILED,),
           (False,),
           layer_configs.SELECT_ADAPTIVE_POOL2D_TIMM_CONFIGS,
       )
@@ -1228,8 +1229,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   ):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1258,7 +1259,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          (benchmark_utils.RunMode.COMPILED,),
+          (common.RunMode.COMPILED,),
           (False,),
           layer_configs.ADAPTIVE_AVG_POOL2D_TIMM_CONFIGS,
       )
@@ -1266,8 +1267,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_adaptive_avg_pool2d_timm(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1293,7 +1294,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          (benchmark_utils.RunMode.COMPILED,),
+          (common.RunMode.COMPILED,),
           (False,),
           layer_configs.FLATTEN_TIMM_CONFIGS,
       )
@@ -1301,8 +1302,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_flatten_timm(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1324,7 +1325,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          (benchmark_utils.RunMode.COMPILED,),
+          (common.RunMode.COMPILED,),
           (False,),
           layer_configs.BOTTLENECK_TIMM_CONFIGS,
       )
@@ -1332,8 +1333,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_bottleneck_timm(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1358,7 +1359,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          (benchmark_utils.RunMode.COMPILED,),
+          (common.RunMode.COMPILED,),
           (False,),
           layer_configs.MAXPOOL2D_TIMM_CONFIGS,
       )
@@ -1366,8 +1367,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_maxpool2d_timm(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1393,7 +1394,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          (benchmark_utils.RunMode.COMPILED,),
+          (common.RunMode.COMPILED,),
           (False,),
           layer_configs.RELU_TIMM_CONFIGS,
       )
@@ -1401,8 +1402,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_relu_timm(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1423,7 +1424,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          (benchmark_utils.RunMode.COMPILED,),
+          (common.RunMode.COMPILED,),
           (False,),
           layer_configs.CONV1D_CONFIGS,
       )
@@ -1431,8 +1432,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_conv1d(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1461,7 +1462,7 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
 
   @parameterized.named_parameters(
       test_utils.generate_layer_test_configs(
-          (benchmark_utils.RunMode.COMPILED,),
+          (common.RunMode.COMPILED,),
           (False,),
           layer_configs.MULTIHEAD_ATTENTION_CONFIGS,
       )
@@ -1469,8 +1470,8 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
   def test_multihead_attention(self, run_mode, is_training, layer_config):
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1499,15 +1500,12 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       )
   )
   def test_mamba2_block(self, run_mode, is_training, layer_config):
-    if (
-        run_mode == benchmark_utils.RunMode.EAGER_DEFAULT
-        and layer_config.batch_size > 1
-    ):
+    if run_mode == common.RunMode.EAGER_DEFAULT and layer_config.batch_size > 1:
       self.skipTest("Eager mode is expected to OOM on large configurations")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,
@@ -1547,15 +1545,12 @@ class LayerPerformanceBenchmarks(test_utils.BenchmarkTest):
       is_training,
       layer_config: layer_configs.NemotronHMamba2BlockConfig,
   ):
-    if (
-        run_mode == benchmark_utils.RunMode.EAGER_DEFAULT
-        and layer_config.batch_size > 1
-    ):
+    if run_mode == common.RunMode.EAGER_DEFAULT and layer_config.batch_size > 1:
       self.skipTest("Eager mode is expected to OOM on large configurations")
     config = performance_utils.PerformanceBenchmarkConfig(
         supported_platforms=[
-            benchmark_utils.Platform.GFC_1X1X1,
-            benchmark_utils.Platform.B200_1,
+            common.Platform.GFC_1X1X1,
+            common.Platform.B200_1,
         ],
         benchmark_category=benchmark_utils.BenchmarkCategory.ML_LAYER,
         run_mode=run_mode,

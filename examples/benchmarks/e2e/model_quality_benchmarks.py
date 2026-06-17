@@ -19,6 +19,7 @@ from absl.testing import absltest
 import torch
 import torch.multiprocessing as mp
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import quality_utils
 from examples.benchmarks.quality_utils import quality_benchmark_model
 from examples.benchmarks.quality_utils.metrics import data_loader
@@ -36,14 +37,14 @@ _META_LLAMA_3_2_70B_BENCHMARK_NAME = "meta_llama_3_2_70b"
 _QWEN3_1_7B_BENCHMARK_NAME = "qwen3_1_7b"
 
 _SINGLE_DEVICE_PLATFORMS = (
-    benchmark_utils.Platform.GFC_1X1X1,
-    benchmark_utils.Platform.B200_1,
+    common.Platform.GFC_1X1X1,
+    common.Platform.B200_1,
 )
 
 _WORLD_SIZE_MAP = {
-    benchmark_utils.Platform.GFC_2X2X1: 8,
-    benchmark_utils.Platform.B200_4: 4,
-    benchmark_utils.Platform.B200_8: 8,
+    common.Platform.GFC_2X2X1: 8,
+    common.Platform.B200_4: 4,
+    common.Platform.B200_8: 8,
 }
 
 
@@ -75,9 +76,9 @@ class _DummyQualityBenchmarkModel(
 
 
 def _distributed_meta_llama_3_benchmark_config(
-    platform: benchmark_utils.Platform,
+    platform: common.Platform,
     model_config: str,
-    run_mode: benchmark_utils.RunMode,
+    run_mode: common.RunMode,
     dataset_type: data_loader.DatasetType = data_loader.DatasetType.WIKITEXT,
 ) -> quality_utils.QualityBenchmarkConfig:
   """Sets up the benchmark config for distributed Meta Llama-3.2.
@@ -105,7 +106,7 @@ def _distributed_meta_llama_3_benchmark_config(
 
   # Determine world size and device based on platform
   world_size = _WORLD_SIZE_MAP[platform]
-  device = benchmark_utils.PLATFORM_DEVICE_MAP[platform]
+  device = common.PLATFORM_DEVICE_MAP[platform]
 
   # Instantiate the benchmark model
   benchmark_model = (
@@ -129,8 +130,8 @@ def _distributed_meta_llama_3_benchmark_config(
 
 
 def _llama_3_2_1b_benchmark_config(
-    platform: benchmark_utils.Platform,
-    run_mode: benchmark_utils.RunMode,
+    platform: common.Platform,
+    run_mode: common.RunMode,
     dataset_type: data_loader.DatasetType = data_loader.DatasetType.WIKITEXT,
 ) -> quality_utils.QualityBenchmarkConfig:
   """Sets up the benchmark config for Llama 3.2 1B.
@@ -153,7 +154,7 @@ def _llama_3_2_1b_benchmark_config(
         dataset_type=dataset_type,
     )
 
-  device = benchmark_utils.PLATFORM_DEVICE_MAP[platform]
+  device = common.PLATFORM_DEVICE_MAP[platform]
 
   # Instantiate the benchmark model
   benchmark_model = (
@@ -174,8 +175,8 @@ def _llama_3_2_1b_benchmark_config(
 
 
 def _qwen3_1_7b_benchmark_config(
-    platform: benchmark_utils.Platform,
-    run_mode: benchmark_utils.RunMode,
+    platform: common.Platform,
+    run_mode: common.RunMode,
     dataset_type: data_loader.DatasetType = data_loader.DatasetType.WIKITEXT,
 ) -> quality_utils.QualityBenchmarkConfig:
   """Sets up the benchmark config for Qwen 3 1.7B.
@@ -198,7 +199,7 @@ def _qwen3_1_7b_benchmark_config(
         dataset_type=dataset_type,
     )
 
-  device = benchmark_utils.PLATFORM_DEVICE_MAP[platform]
+  device = common.PLATFORM_DEVICE_MAP[platform]
 
   # Instantiate the benchmark model
   benchmark_model = qwen3_1_7b_quality_benchmark.Qwen317BQualityBenchmarkModel(
@@ -234,10 +235,10 @@ class BenchmarkTest(absltest.TestCase):
       benchmark_name: The name of the benchmark.
       distributed: Whether the benchmark is distributed.
     """
-    platform = benchmark_utils.PLATFORM.value
+    platform = common.PLATFORM.value
     if platform not in config.supported_platforms:
       self.skipTest(
-          f"Platform {benchmark_utils.PLATFORM.value} not in"
+          f"Platform {common.PLATFORM.value} not in"
           f" {config.supported_platforms}"
       )
 
@@ -249,62 +250,54 @@ class BenchmarkTest(absltest.TestCase):
     )
 
   def test_quality_llama_3_2_1b_eager_forward(self):
-    platform = benchmark_utils.PLATFORM.value
+    platform = common.PLATFORM.value
     self.run_benchmark_test(
-        _llama_3_2_1b_benchmark_config(
-            platform, benchmark_utils.RunMode.EAGER_DEFAULT
-        ),
+        _llama_3_2_1b_benchmark_config(platform, common.RunMode.EAGER_DEFAULT),
         _HF_LLAMA_3_2_1B_BENCHMARK_NAME,
         False,  # distributed
     )
 
   def test_quality_llama_3_2_1b_compiled_forward(self):
-    platform = benchmark_utils.PLATFORM.value
+    platform = common.PLATFORM.value
     self.run_benchmark_test(
-        _llama_3_2_1b_benchmark_config(
-            platform, benchmark_utils.RunMode.COMPILED
-        ),
+        _llama_3_2_1b_benchmark_config(platform, common.RunMode.COMPILED),
         _HF_LLAMA_3_2_1B_BENCHMARK_NAME,
         False,  # distributed
     )
 
   def test_quality_qwen3_1_7b_eager_forward(self):
-    platform = benchmark_utils.PLATFORM.value
+    platform = common.PLATFORM.value
     self.run_benchmark_test(
-        _qwen3_1_7b_benchmark_config(
-            platform, benchmark_utils.RunMode.EAGER_DEFAULT
-        ),
+        _qwen3_1_7b_benchmark_config(platform, common.RunMode.EAGER_DEFAULT),
         _QWEN3_1_7B_BENCHMARK_NAME,
         False,  # distributed
     )
 
   def test_quality_qwen3_1_7b_compiled_forward(self):
-    platform = benchmark_utils.PLATFORM.value
+    platform = common.PLATFORM.value
     self.run_benchmark_test(
-        _qwen3_1_7b_benchmark_config(
-            platform, benchmark_utils.RunMode.COMPILED
-        ),
+        _qwen3_1_7b_benchmark_config(platform, common.RunMode.COMPILED),
         _QWEN3_1_7B_BENCHMARK_NAME,
         False,  # distributed
     )
 
   def test_quality_distributed_meta_llama_3_2_8b_eager_forward(self):
-    platform = benchmark_utils.PLATFORM.value
+    platform = common.PLATFORM.value
     self.run_benchmark_test(
         _distributed_meta_llama_3_benchmark_config(
-            platform, "8B", benchmark_utils.RunMode.EAGER_DEFAULT
+            platform, "8B", common.RunMode.EAGER_DEFAULT
         ),
         _META_LLAMA_3_2_8B_BENCHMARK_NAME,
         True,
     )
 
   def test_quality_distributed_meta_llama_3_2_8b_eager_forward_edge_cases(self):
-    platform = benchmark_utils.PLATFORM.value
+    platform = common.PLATFORM.value
     self.run_benchmark_test(
         _distributed_meta_llama_3_benchmark_config(
             platform,
             "8B",
-            benchmark_utils.RunMode.EAGER_DEFAULT,
+            common.RunMode.EAGER_DEFAULT,
             dataset_type=data_loader.DatasetType.EDGE_CASES,
         ),
         _META_LLAMA_3_2_8B_BENCHMARK_NAME,
@@ -312,32 +305,32 @@ class BenchmarkTest(absltest.TestCase):
     )
 
   def test_quality_distributed_meta_llama_3_2_70b_eager_forward(self):
-    platform = benchmark_utils.PLATFORM.value
+    platform = common.PLATFORM.value
     self.run_benchmark_test(
         _distributed_meta_llama_3_benchmark_config(
             platform,
             "70B",
-            benchmark_utils.RunMode.EAGER_DEFAULT,
+            common.RunMode.EAGER_DEFAULT,
         ),
         _META_LLAMA_3_2_70B_BENCHMARK_NAME,
         True,
     )
 
   def test_quality_distributed_meta_llama_3_2_8b_compiled_forward(self):
-    platform = benchmark_utils.PLATFORM.value
+    platform = common.PLATFORM.value
     self.run_benchmark_test(
         _distributed_meta_llama_3_benchmark_config(
-            platform, "8B", benchmark_utils.RunMode.COMPILED
+            platform, "8B", common.RunMode.COMPILED
         ),
         _META_LLAMA_3_2_8B_BENCHMARK_NAME,
         True,
     )
 
   def test_quality_distributed_meta_llama_3_2_70b_compiled_forward(self):
-    platform = benchmark_utils.PLATFORM.value
+    platform = common.PLATFORM.value
     self.run_benchmark_test(
         _distributed_meta_llama_3_benchmark_config(
-            platform, "70B", benchmark_utils.RunMode.COMPILED
+            platform, "70B", common.RunMode.COMPILED
         ),
         _META_LLAMA_3_2_70B_BENCHMARK_NAME,
         True,

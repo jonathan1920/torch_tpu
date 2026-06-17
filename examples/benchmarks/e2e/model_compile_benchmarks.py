@@ -25,6 +25,7 @@ from absl.testing import absltest
 import torch
 from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import device_utils
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.e2e import model_utils
@@ -183,7 +184,7 @@ class CompileBenchmarkTest(test_utils.BenchmarkTest):
           peak_device_memory_mb=peak_device_memory_mb,
       )
       mlcompass_utils.export_to_mlcompass(
-          platform=benchmark_utils.PLATFORM.value,
+          platform=common.PLATFORM.value,
           metrics=metrics,
           base_cl=benchmark_utils.BASE_CL.value,
           mlcompass_tracking_id=benchmark_utils.MLCOMPASS_TRACKING_ID.value,

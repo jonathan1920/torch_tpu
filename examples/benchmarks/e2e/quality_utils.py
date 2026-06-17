@@ -24,6 +24,7 @@ from torch_tpu._internal.distributed import gpu_env
 from torch_tpu._internal.distributed.launchers import singlehost_wrapper
 from torch_tpu._internal.utils import log_utils
 from examples.benchmarks.e2e import benchmark_utils
+from examples.benchmarks.e2e import common
 from examples.benchmarks.e2e import mlcompass_utils
 from examples.benchmarks.quality_utils import quality_benchmark_model
 from examples.benchmarks.quality_utils.metrics import data_loader
@@ -33,9 +34,9 @@ log_utils.log_to_stderr()
 
 
 N_PROC_MAP = {
-    benchmark_utils.Platform.B200_4: 4,
-    benchmark_utils.Platform.B200_8: 8,
-    benchmark_utils.Platform.GFC_2X2X1: 8,
+    common.Platform.B200_4: 4,
+    common.Platform.B200_8: 8,
+    common.Platform.GFC_2X2X1: 8,
 }
 
 
@@ -45,21 +46,21 @@ class QualityBenchmarkConfig:
 
   Attributes:
     supported_platforms: The platforms the benchmark supports as defined in
-      benchmark_utils.Platform. If the current platform is not in this Sequence,
-      the test will be skipped.
+      common.Platform. If the current platform is not in this Sequence, the test
+      will be skipped.
     benchmark_category: The category of the benchmark as defined by
       benchmark_utils.BenchmarkCategory. This defines how to get the model and
       example inputs and the benchmark function to run.
-    run_mode: The mode to run the benchmark in as defined by
-      benchmark_utils.RunMode. This is used to set environment variables.
+    run_mode: The mode to run the benchmark in as defined by common.RunMode.
+      This is used to set environment variables.
     benchmark_model: The quality benchmark model to use.
     metrics: The Sequence of metrics to use.
     dataset_type: The dataset type to use as defined by data_loader.DatasetType.
   """
 
-  supported_platforms: Sequence[benchmark_utils.Platform]
+  supported_platforms: Sequence[common.Platform]
   benchmark_category: benchmark_utils.BenchmarkCategory
-  run_mode: benchmark_utils.RunMode
+  run_mode: common.RunMode
   benchmark_model: quality_benchmark_model.QualityBenchmarkModel
   # LINT.IfChange
   metrics: Sequence[quality_benchmark_model.MetricProducer]
@@ -74,11 +75,11 @@ def _run_single_process_benchmark(
     test_method_name: str,
     benchmark_name: str,
 ) -> None:
-  platform = benchmark_utils.PLATFORM.value
-  device = benchmark_utils.get_torch_device(platform)
+  platform = common.PLATFORM.value
+  device = common.get_torch_device(platform)
   # Seed random number generators for reproducibility. This should be done after
   # initializing the device.
-  benchmark_utils.seed_rngs()
+  common.seed_rngs()
   data_iterator = data_loader.get_dataset_loader(config.dataset_type)
 
   benchmark_succeeded = True
@@ -87,7 +88,7 @@ def _run_single_process_benchmark(
   try:
     result = benchmark_utils.run_quality_benchmark(
         config.benchmark_model,
-        benchmark_utils.is_torch_compile(config.run_mode),
+        common.is_torch_compile(config.run_mode),
         data_iterator,
         config.metrics,
         device,
@@ -147,7 +148,7 @@ def _run_distributed_benchmark(
     benchmark_name: str,
 ) -> None:
   """Runs the benchmark for the given config."""
-  if benchmark_utils.PLATFORM.value == benchmark_utils.Platform.GFC_2X2X1:
+  if common.PLATFORM.value == common.Platform.GFC_2X2X1:
     singlehost_wrapper.prepare_tpu_environment()
     run_worker = singlehost_wrapper.tpu_env_wrapper(
         _run_torch_tpu_worker,
@@ -155,19 +156,16 @@ def _run_distributed_benchmark(
     )
     g3_distributed.torchrun(
         run_worker,
-        nproc_per_node=N_PROC_MAP[benchmark_utils.PLATFORM.value],
+        nproc_per_node=N_PROC_MAP[common.PLATFORM.value],
     )(
         config,
         test_method_name,
         benchmark_name,
     )
-  elif (
-      benchmark_utils.PLATFORM_DEVICE_MAP[benchmark_utils.PLATFORM.value]
-      == "cuda"
-  ):
+  elif common.PLATFORM_DEVICE_MAP[common.PLATFORM.value] == "cuda":
     g3_distributed.torchrun(
         gpu_env.run_in_workers,
-        nproc_per_node=N_PROC_MAP[benchmark_utils.PLATFORM.value],
+        nproc_per_node=N_PROC_MAP[common.PLATFORM.value],
     )(
         _run_single_process_benchmark,
         config,

@@ -63,6 +63,7 @@ torch_tpu_py_test(
     deps = [
         ":op_input_loader",
         "//examples/benchmarks/e2e:benchmark_utils",
+        "//examples/benchmarks/e2e:common",
         "//examples/benchmarks/e2e:device_utils",
         "//examples/benchmarks/e2e:mlcompass_utils",
         "//examples/benchmarks/e2e:performance_utils",
