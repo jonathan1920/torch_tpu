@@ -32,6 +32,8 @@
 
 namespace torch_tpu {
 
+enum class ScanDirection { kForward, kReverse };
+
 // (op_builder, loc, input_slice, index_0d, carries) -> new_carries.
 using ScanBodyBuilder =
     absl::AnyInvocable<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
@@ -43,6 +45,40 @@ absl::StatusOr<DynamicMlirOpResults> BuildScanShlo(
     mlir::MlirBuilder& builder, mlir::MlirOp input, int64_t dim,
     llvm::ArrayRef<mlir::MlirOp> carry_inits,
     llvm::ArrayRef<mlir::MlirOp> output_inits, ScanBodyBuilder body_builder);
+
+struct ScanBodyResults {
+  llvm::SmallVector<mlir::Value> new_carries;
+  llvm::SmallVector<mlir::Value> new_outputs;
+};
+
+// (op_builder, loc, input_slices, index_0d, carries) -> (new_carries,
+// new_outputs).
+using MultiInputScanBodyBuilder =
+    absl::AnyInvocable<absl::StatusOr<ScanBodyResults>(
+        mlir::OpBuilder&, mlir::Location, mlir::ValueRange, mlir::Value,
+        mlir::ValueRange) const>;
+
+struct ScanOptions {
+  ScanDirection direction = ScanDirection::kForward;
+  bool should_squeeze = false;
+};
+
+// Generalized version of BuildScanShlo supporting multiple inputs, separate
+// carries and outputs, and reverse scanning.
+//
+// 'scan_inputs' contains 'num_scan_inputs' scannable tensors followed by
+// additional tensors that are passed as-is to the body.
+//
+// If 'options.direction' is kReverse, scans the sequence dimension in reverse
+// order. If 'options.should_squeeze' is true, slices along the sequence
+// dimension are rank-reduced by squeezing the sequence dimension before passing
+// to the body builder.
+absl::StatusOr<DynamicMlirOpResults> BuildScanShlo(
+    mlir::MlirBuilder& builder, llvm::ArrayRef<mlir::MlirOp> scan_inputs,
+    int64_t dim, int64_t num_scan_inputs,
+    llvm::ArrayRef<mlir::MlirOp> carry_inits,
+    llvm::ArrayRef<mlir::MlirOp> output_inits,
+    MultiInputScanBodyBuilder body_builder, const ScanOptions& options = {});
 
 }  // namespace torch_tpu
 

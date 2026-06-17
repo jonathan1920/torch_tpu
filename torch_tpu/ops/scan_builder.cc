@@ -21,8 +21,10 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Types.h"
@@ -68,10 +70,9 @@ mlir::Value IncrementLoopIndex(mlir::MlirBuilder& builder,
                                const mlir::Location loc,
                                const mlir::Value index) {
   const mlir::IntegerType i64 = builder.getOpBuilder().getI64Type();
-  return mlir::stablehlo::AddOp::create(
-             builder.getOpBuilder(), loc, index,
-             MakeScalarConstant(builder, 1, i64).getValue())
-      .getResult();
+  mlir::MlirOp index_op(builder, index);
+  mlir::MlirOp one = MakeScalarConstant(builder, 1, i64);
+  return mlir::stablehlo::Add(index_op, one).getValue();
 }
 
 struct ScanLoopState {
@@ -88,12 +89,6 @@ absl::StatusOr<ScanLoopState> PrepareScanLoop(
   mlir::OpBuilder& op_builder = builder.getOpBuilder();
   TT_ASSIGN_OR_RETURN(const int64_t scan_dim,
                       SafeWrapDim(dim, GetTensorTypeOrDie(input).getRank()));
-
-  TT_RET_CHECK(carry_inits.size() == output_inits.size(),
-               error::kInvalidArgument)
-      << "expected the number of carry inits (" << carry_inits.size()
-      << ") and the number of output inits (" << output_inits.size()
-      << ") to match";
 
   const mlir::IntegerType i64 = op_builder.getI64Type();
   const mlir::RankedTensorType index_type =
@@ -116,6 +111,63 @@ absl::StatusOr<ScanLoopState> PrepareScanLoop(
                        input.getValue().getLoc()};
 }
 
+mlir::Value GetSequenceIndex(mlir::MlirBuilder& builder,
+                             const mlir::Location loc, const mlir::Value index,
+                             const mlir::Value seq_len, bool reverse) {
+  if (!reverse) {
+    return index;
+  }
+
+  mlir::MlirOp seq_len_op(builder, seq_len);
+  mlir::MlirOp one =
+      MakeScalarConstant(builder, 1, builder.getOpBuilder().getI64Type());
+  mlir::MlirOp seq_len_minus_1 = mlir::stablehlo::Subtract(seq_len_op, one);
+
+  mlir::MlirOp index_op(builder, index);
+  return mlir::stablehlo::Subtract(seq_len_minus_1, index_op).getValue();
+}
+
+absl::StatusOr<mlir::MlirOp> SliceInput(
+    mlir::MlirBuilder& builder, const mlir::Location loc, mlir::MlirOp input,
+    const mlir::Value seq_idx, const int64_t scan_dim, bool should_squeeze) {
+  const mlir::stablehlo::Dimensions input_dims = GetDimensions(input);
+  llvm::SmallVector<int64_t> slice_shape = llvm::to_vector<4>(
+      llvm::map_range(input_dims, [](const auto& d) { return d.size; }));
+  slice_shape[scan_dim] = 1;
+
+  const llvm::SmallVector<mlir::MlirOp, 4> start_indices =
+      CreateStartIndices(builder, seq_idx, input_dims.size(), scan_dim);
+  mlir::MlirOp slice =
+      mlir::stablehlo::DynamicSlice(input, start_indices, slice_shape);
+
+  const mlir::RankedTensorType type = GetTensorTypeOrDie(input);
+  for (int64_t i = 0; i < type.getRank(); ++i) {
+    if (i != scan_dim && type.isDynamicDim(i)) {
+      mlir::MlirOp dim_size = mlir::stablehlo::GetDimensionSize(input, i);
+      slice = mlir::stablehlo::SetDimensionSize(slice, dim_size, i);
+    }
+  }
+
+  return should_squeeze ? Squeeze(slice, {scan_dim}) : slice;
+}
+
+absl::StatusOr<mlir::Value> UpdateAccumulatorSlice(
+    mlir::MlirBuilder& builder, const mlir::Location loc,
+    const mlir::Value accumulator, const mlir::Value slice,
+    const mlir::Value seq_idx, const int64_t scan_dim, bool was_squeezed) {
+  mlir::MlirOp slice_op(builder, slice);
+  if (was_squeezed) {
+    TT_ASSIGN_OR_RETURN(slice_op, Unsqueeze(slice_op, scan_dim));
+  }
+
+  mlir::MlirOp accumulator_op(builder, accumulator);
+  const int64_t rank = GetTensorTypeOrDie(accumulator_op).getRank();
+  return mlir::stablehlo::DynamicUpdateSlice(
+             accumulator_op, slice_op,
+             CreateStartIndices(builder, seq_idx, rank, scan_dim))
+      .getValue();
+}
+
 void PopulateScanCondition(mlir::stablehlo::WhileOp& while_op,
                            mlir::MlirBuilder& builder, mlir::MlirOp input,
                            const int64_t scan_dim,
@@ -135,12 +187,13 @@ void PopulateScanCondition(mlir::stablehlo::WhileOp& while_op,
   mlir::stablehlo::ReturnOp::create(op_builder, loc, cond);
 }
 
-absl::Status PopulateScanBody(mlir::stablehlo::WhileOp& while_op,
-                              mlir::MlirBuilder& builder, mlir::MlirOp input,
-                              const int64_t scan_dim,
-                              const llvm::SmallVector<mlir::Type>& loop_types,
-                              const mlir::Location loc, const int num_carries,
-                              const ScanBodyBuilder& body_builder) {
+absl::Status PopulateScanBody(
+    mlir::stablehlo::WhileOp& while_op, mlir::MlirBuilder& builder,
+    llvm::ArrayRef<mlir::MlirOp> scan_inputs, const int64_t scan_dim,
+    const llvm::SmallVector<mlir::Type>& loop_types, const mlir::Location loc,
+    const int num_scan_inputs, const int num_carries,
+    const MultiInputScanBodyBuilder& body_builder, ScanDirection scan_direction,
+    bool should_squeeze) {
   mlir::OpBuilder& op_builder = builder.getOpBuilder();
   mlir::Block* const block = op_builder.createBlock(&while_op.getBody());
   block->addArguments(
@@ -151,47 +204,80 @@ absl::Status PopulateScanBody(mlir::stablehlo::WhileOp& while_op,
   const mlir::ValueRange carries = block->getArguments().slice(1, num_carries);
   const mlir::ValueRange outputs = block->getArguments().slice(1 + num_carries);
 
-  const mlir::stablehlo::Dimensions input_dims = GetDimensions(input);
-  llvm::SmallVector<int64_t> slice_shape;
-  for (const mlir::stablehlo::DimensionInfo& d : input_dims) {
-    slice_shape.push_back(d.size);
+  const mlir::Value seq_len = GetScanDimSize(builder, scan_inputs[0], scan_dim);
+  const mlir::Value seq_idx = GetSequenceIndex(
+      builder, loc, index, seq_len, scan_direction == ScanDirection::kReverse);
+
+  llvm::SmallVector<mlir::Value> sliced_inputs;
+  sliced_inputs.reserve(scan_inputs.size());
+  for (const mlir::MlirOp input : scan_inputs.take_front(num_scan_inputs)) {
+    TT_ASSIGN_OR_RETURN(
+        const mlir::MlirOp sliced_input,
+        SliceInput(builder, loc, input, seq_idx, scan_dim, should_squeeze));
+    sliced_inputs.push_back(sliced_input.getValue());
   }
-  slice_shape[scan_dim] = 1;
-
-  const llvm::SmallVector<mlir::MlirOp, 4> start_indices =
-      CreateStartIndices(builder, index, input_dims.size(), scan_dim);
-  mlir::MlirOp slice =
-      mlir::stablehlo::DynamicSlice(input, start_indices, slice_shape);
-
-  const mlir::RankedTensorType type = GetTensorTypeOrDie(input);
-  for (int64_t i = 0; i < type.getRank(); ++i) {
-    if (i != scan_dim && type.isDynamicDim(i)) {
-      mlir::MlirOp dim_size = mlir::stablehlo::GetDimensionSize(input, i);
-      slice = mlir::stablehlo::SetDimensionSize(slice, dim_size, i);
-    }
+  for (mlir::MlirOp input : scan_inputs.drop_front(num_scan_inputs)) {
+    sliced_inputs.push_back(input.getValue());
   }
 
   TT_ASSIGN_OR_RETURN(
-      const llvm::SmallVector<mlir::Value> new_carries,
-      body_builder(op_builder, loc, slice.getValue(), index, carries));
+      ScanBodyResults new_results,
+      body_builder(op_builder, loc, sliced_inputs, index, carries));
 
-  TT_RET_CHECK(new_carries.size() == num_carries, error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Internal TorchTPU error.
+      new_results.new_carries.size() == num_carries, error::kInvalidArgument)
       << "expected " << num_carries << " new carries, got "
-      << new_carries.size();
+      << new_results.new_carries.size();
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Internal TorchTPU error.
+      new_results.new_outputs.size() == outputs.size(), error::kInvalidArgument)
+      << "expected " << outputs.size() << " new outputs, got "
+      << new_results.new_outputs.size();
 
   llvm::SmallVector<mlir::Value> next_state = {
       IncrementLoopIndex(builder, loc, index)};
-  next_state.insert(next_state.end(), new_carries.begin(), new_carries.end());
+  next_state.append(std::move(new_results.new_carries));
 
-  for (int i = 0; i < outputs.size(); ++i) {
-    mlir::MlirOp out_op(builder, outputs[i]);
-    mlir::MlirOp nc_op(builder, new_carries[i]);
-    next_state.push_back(
-        mlir::stablehlo::DynamicUpdateSlice(out_op, nc_op, start_indices)
-            .getValue());
+  for (auto [output, new_output] :
+       llvm::zip(outputs, new_results.new_outputs)) {
+    TT_ASSIGN_OR_RETURN(
+        mlir::Value updated,
+        UpdateAccumulatorSlice(builder, loc, output, new_output, seq_idx,
+                               scan_dim, should_squeeze));
+    next_state.push_back(updated);
   }
 
   mlir::stablehlo::ReturnOp::create(op_builder, loc, next_state);
+  return absl::OkStatus();
+}
+
+absl::Status VerifyScanDimSizes(llvm::ArrayRef<mlir::MlirOp> scan_inputs,
+                                int64_t dim, int64_t num_scan_inputs) {
+  if (num_scan_inputs <= 1) {
+    return absl::OkStatus();
+  }
+
+  const mlir::RankedTensorType first_type =
+      GetTensorTypeOrDie(scan_inputs.front());
+  TT_ASSIGN_OR_RETURN(const int64_t first_scan_dim,
+                      SafeWrapDim(dim, first_type.getRank()));
+  const int64_t first_size = first_type.getShape()[first_scan_dim];
+
+  for (int i = 1; i < num_scan_inputs; ++i) {
+    const mlir::RankedTensorType current_type =
+        GetTensorTypeOrDie(scan_inputs[i]);
+    TT_ASSIGN_OR_RETURN(const int64_t current_scan_dim,
+                        SafeWrapDim(dim, current_type.getRank()));
+    const int64_t current_size = current_type.getShape()[current_scan_dim];
+    if (first_size != mlir::ShapedType::kDynamic &&
+        current_size != mlir::ShapedType::kDynamic) {
+      TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Internal TorchTPU error.
+          first_size == current_size, error::kInvalidArgument)
+          << "expected all scannable inputs to have matching sizes along the "
+             "scan dimension, but input 0 has size "
+          << first_size << " and input " << i << " has size " << current_size;
+    }
+  }
+
   return absl::OkStatus();
 }
 
@@ -209,6 +295,12 @@ absl::StatusOr<DynamicMlirOpResults> BuildScanShlo(
     return DynamicMlirOpResults(output_inits.begin(), output_inits.end());
   }
 
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Internal TorchTPU error.
+      carry_inits.size() == output_inits.size(), error::kInvalidArgument)
+      << "expected the number of carry inits (" << carry_inits.size()
+      << ") and the number of output inits (" << output_inits.size()
+      << ") to match";
+
   TT_ASSIGN_OR_RETURN(
       ScanLoopState state,
       PrepareScanLoop(builder, input, dim, carry_inits, output_inits));
@@ -220,9 +312,22 @@ absl::StatusOr<DynamicMlirOpResults> BuildScanShlo(
   PopulateScanCondition(while_op, builder, input, state.scan_dim,
                         state.loop_types, state.loc);
 
-  TT_RETURN_IF_ERROR(PopulateScanBody(while_op, builder, input, state.scan_dim,
-                                      state.loop_types, state.loc,
-                                      carry_inits.size(), body_builder));
+  auto multi_body_builder =
+      [&body_builder](
+          mlir::OpBuilder& op_builder, mlir::Location loc,
+          mlir::ValueRange slices, mlir::Value index,
+          mlir::ValueRange carries) -> absl::StatusOr<ScanBodyResults> {
+    TT_ASSIGN_OR_RETURN(
+        llvm::SmallVector<mlir::Value> new_carries,
+        body_builder(op_builder, loc, slices[0], index, carries));
+    llvm::SmallVector<mlir::Value> new_outputs = new_carries;
+    return ScanBodyResults{std::move(new_carries), std::move(new_outputs)};
+  };
+
+  TT_RETURN_IF_ERROR(PopulateScanBody(
+      while_op, builder, {input}, state.scan_dim, state.loop_types, state.loc,
+      /*num_scan_inputs=*/1, carry_inits.size(), std::move(multi_body_builder),
+      ScanDirection::kForward, /*should_squeeze=*/false));
 
   op_builder.setInsertionPointAfter(while_op);
   DynamicMlirOpResults results;
@@ -230,6 +335,58 @@ absl::StatusOr<DynamicMlirOpResults> BuildScanShlo(
   for (int i = 0; i < output_inits.size(); ++i) {
     results.push_back(
         mlir::MlirOp(builder, while_op.getResult(1 + carry_inits.size() + i)));
+  }
+
+  return results;
+}
+
+absl::StatusOr<DynamicMlirOpResults> BuildScanShlo(
+    mlir::MlirBuilder& builder, llvm::ArrayRef<mlir::MlirOp> scan_inputs,
+    int64_t dim, int64_t num_scan_inputs,
+    llvm::ArrayRef<mlir::MlirOp> carry_inits,
+    llvm::ArrayRef<mlir::MlirOp> output_inits,
+    MultiInputScanBodyBuilder body_builder, const ScanOptions& options) {
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Internal TorchTPU error.
+      !scan_inputs.empty(), error::kInvalidArgument)
+      << "expected at least 1 scan input, got none";
+  const mlir::RankedTensorType type = GetTensorTypeOrDie(scan_inputs.front());
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=Internal TorchTPU error.
+      num_scan_inputs <= scan_inputs.size(), error::kInvalidArgument)
+      << "expected num_scan_inputs (" << num_scan_inputs
+      << ") to be less than or equal to the number of inputs ("
+      << scan_inputs.size() << ")";
+  TT_ASSIGN_OR_RETURN(const int64_t scan_dim, SafeWrapDim(dim, type.getRank()));
+  TT_RETURN_IF_ERROR(VerifyScanDimSizes(scan_inputs, dim, num_scan_inputs));
+
+  if (type.getShape()[scan_dim] == 0) {
+    DynamicMlirOpResults results(carry_inits.begin(), carry_inits.end());
+    results.append(output_inits.begin(), output_inits.end());
+    return results;
+  }
+
+  TT_ASSIGN_OR_RETURN(ScanLoopState state,
+                      PrepareScanLoop(builder, scan_inputs.front(), dim,
+                                      carry_inits, output_inits));
+
+  mlir::OpBuilder& op_builder = builder.getOpBuilder();
+  auto while_op = mlir::stablehlo::WhileOp::create(
+      op_builder, state.loc, state.loop_types, state.loop_inits);
+
+  PopulateScanCondition(while_op, builder, scan_inputs.front(), state.scan_dim,
+                        state.loop_types, state.loc);
+
+  TT_RETURN_IF_ERROR(PopulateScanBody(
+      while_op, builder, scan_inputs, state.scan_dim, state.loop_types,
+      state.loc, num_scan_inputs, carry_inits.size(), body_builder,
+      options.direction, options.should_squeeze));
+
+  op_builder.setInsertionPointAfter(while_op);
+  const int64_t num_results = carry_inits.size() + output_inits.size();
+  DynamicMlirOpResults results;
+  results.reserve(num_results);
+  // Start at index 1, skipping the loop counter.
+  for (mlir::Value result : while_op.getResults().slice(1, num_results)) {
+    results.push_back(mlir::MlirOp(builder, result));
   }
 
   return results;

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -60,6 +61,17 @@ namespace torch_tpu {
 namespace {
 
 using absl_testing::StatusIs;
+
+mlir::MlirOp MakeDenseConstant(mlir::MlirBuilder& builder,
+                               llvm::ArrayRef<int64_t> shape,
+                               llvm::ArrayRef<int32_t> values) {
+  mlir::OpBuilder& op_builder = builder.getOpBuilder();
+  const mlir::RankedTensorType type =
+      mlir::RankedTensorType::get(shape, op_builder.getI32Type());
+  const mlir::DenseElementsAttr attr =
+      mlir::DenseElementsAttr::get(type, values);
+  return mlir::stablehlo::Constant(builder, attr);
+}
 using testing::HasSubstr;
 
 class ScanBuilderTest : public testing::Test {
@@ -114,12 +126,43 @@ class ScanBuilderTest : public testing::Test {
 
   // Body builder that adds the slice to the carry (cumulative sum).
   ScanBodyBuilder CreateAddBodyBuilder() {
+    return
+        [this](mlir::OpBuilder& op_builder, mlir::Location loc,
+               mlir::Value slice, mlir::Value index, mlir::ValueRange carries)
+            -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
+          MultiInputScanBodyBuilder multi_builder = CreateMultiAddBodyBuilder();
+          llvm::SmallVector<mlir::Value, 1> slices = {slice};
+          TT_ASSIGN_OR_RETURN(
+              ScanBodyResults results,
+              multi_builder(op_builder, loc, slices, index, carries));
+          return results.new_carries;
+        };
+  }
+
+  // Body builder that adds each input slice to its corresponding carry
+  // (cumulative sum).
+  MultiInputScanBodyBuilder CreateMultiAddBodyBuilder() {
     return [](mlir::OpBuilder& op_builder, mlir::Location loc,
-              mlir::Value slice, mlir::Value index, mlir::ValueRange carries)
-               -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
-      return llvm::SmallVector<mlir::Value>{
-          mlir::stablehlo::AddOp::create(op_builder, loc, slice, carries[0])
-              .getResult()};
+              mlir::ValueRange slices, mlir::Value index,
+              mlir::ValueRange carries) -> absl::StatusOr<ScanBodyResults> {
+      llvm::SmallVector<mlir::Value> new_carries;
+      for (size_t i = 0; i < slices.size(); ++i) {
+        new_carries.push_back(mlir::stablehlo::AddOp::create(
+                                  op_builder, loc, slices[i], carries[i])
+                                  .getResult());
+      }
+      return ScanBodyResults{new_carries, new_carries};
+    };
+  }
+
+  // Body builder that returns carries directly as new carries and outputs.
+  MultiInputScanBodyBuilder CreateIdentityBodyBuilder() {
+    return [](mlir::OpBuilder& op_builder, mlir::Location loc,
+              mlir::ValueRange slices, mlir::Value index,
+              mlir::ValueRange carries) -> absl::StatusOr<ScanBodyResults> {
+      llvm::SmallVector<mlir::Value> carries_vec(carries.begin(),
+                                                 carries.end());
+      return ScanBodyResults{carries_vec, carries_vec};
     };
   }
 
@@ -137,10 +180,29 @@ class ScanBuilderTest : public testing::Test {
     EXPECT_THAT(res_vals, testing::ElementsAreArray(expected_values));
   }
 
+  void EvaluateAndVerifyMultiOutputs(
+      mlir::ModuleOp module,
+      llvm::ArrayRef<llvm::ArrayRef<int32_t>> expected_outputs) {
+    const mlir::stablehlo::InterpreterConfiguration config;
+    const llvm::SmallVector<mlir::DenseElementsAttr> empty_inputs;
+    const mlir::FailureOr<llvm::SmallVector<mlir::DenseElementsAttr>>
+        eval_result = mlir::stablehlo::evalModule(module, empty_inputs, config);
+    ASSERT_TRUE(mlir::succeeded(eval_result));
+    ASSERT_EQ(eval_result->size(), expected_outputs.size());
+
+    for (size_t i = 0; i < expected_outputs.size(); ++i) {
+      const mlir::DenseElementsAttr res_attr = (*eval_result)[i];
+      const llvm::SmallVector<int32_t> res_vals(res_attr.getValues<int32_t>());
+      EXPECT_THAT(res_vals, testing::ElementsAreArray(expected_outputs[i]));
+    }
+  }
+
  private:
   mlir::MLIRContext context_;
   mlir::ModuleBuilder module_builder_;
 };
+
+using MultiScanBuilderTest = ScanBuilderTest;
 
 TEST_F(ScanBuilderTest, InvalidDimension) {
   // Input tensor of shape [4, 5]. Scan along an invalid dimension 2.
@@ -189,11 +251,8 @@ TEST_F(ScanBuilderTest, StaticShape1D) {
   const mlir::Type i32 = op_builder().getI32Type();
 
   // Create 1D tensor [1, 2, 3, 4] for input.
-  const mlir::RankedTensorType type = mlir::RankedTensorType::get({4}, i32);
-  const mlir::DenseElementsAttr input_attr =
-      mlir::DenseElementsAttr::get(type, llvm::ArrayRef<int32_t>{1, 2, 3, 4});
   const mlir::MlirOp input =
-      mlir::stablehlo::Constant(function_builder, input_attr);
+      MakeDenseConstant(function_builder, {4}, {1, 2, 3, 4});
 
   // Output accumulator of shape [4], initialized to zeros.
   const mlir::MlirOp output_init = MakeConstant(function_builder, 0, i32, {4});
@@ -438,6 +497,607 @@ TEST_F(ScanBuilderTest, DynamicShapeNonScanDim) {
   ASSERT_EQ(result.size(), 1);
   EXPECT_TRUE(mlir::isa<mlir::stablehlo::WhileOp>(
       result[0].getValue().getDefiningOp()));
+}
+
+TEST_F(MultiScanBuilderTest, InvalidDimension) {
+  // Input tensor of shape [4, 5]. We scan along dim 0.
+  const mlir::MlirOp input =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {4, 5});
+  // Output accumulator of shape [4, 5], initialized to zeros.
+  const mlir::MlirOp output_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {4, 5});
+  // Carry initialized with shape [1, 5] (slice along dim 0).
+  const mlir::MlirOp carry_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {1, 5});
+
+  const absl::StatusOr<DynamicMlirOpResults> result =
+      BuildScanShlo(builder(), {input}, /*dim=*/2, /*num_scan_inputs=*/1,
+                    {carry_init}, {output_init}, CreateIdentityBodyBuilder());
+  EXPECT_THAT(result, StatusIs(error::kOutOfRange,
+                               HasSubstr("dimension out of range")));
+}
+
+TEST_F(MultiScanBuilderTest, EmptyInputsListError) {
+  // Output accumulator of shape [4, 5], initialized to zeros.
+  const mlir::MlirOp output_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {4, 5});
+  // Carry initialized with shape [1, 5] (slice along dim 0).
+  const mlir::MlirOp carry_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {1, 5});
+
+  // Pass an empty inputs list, which is invalid.
+  const absl::StatusOr<DynamicMlirOpResults> result =
+      BuildScanShlo(builder(), {}, /*dim=*/0, /*num_scan_inputs=*/0,
+                    {carry_init}, {output_init}, CreateIdentityBodyBuilder());
+  EXPECT_THAT(result,
+              StatusIs(error::kInvalidArgument,
+                       HasSubstr("expected at least 1 scan input, got none")));
+}
+
+TEST_F(MultiScanBuilderTest, TooManyScanInputsError) {
+  // Input tensors of shape [4, 5]. We scan along dim 0.
+  const mlir::MlirOp input1 =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {4, 5});
+  const mlir::MlirOp input2 =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {4, 5});
+
+  // Output accumulator of shape [4, 5], initialized to zeros.
+  const mlir::MlirOp output_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {4, 5});
+  // Carry initialized with shape [1, 5] (slice along dim 0).
+  const mlir::MlirOp carry_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {1, 5});
+
+  // We provide 2 inputs, but specify num_scan_inputs = 3, which is invalid.
+  const absl::StatusOr<DynamicMlirOpResults> result = BuildScanShlo(
+      builder(), {input1, input2}, /*dim=*/0, /*num_scan_inputs=*/3,
+      {carry_init}, {output_init}, CreateIdentityBodyBuilder());
+  EXPECT_THAT(result,
+              StatusIs(error::kInvalidArgument,
+                       HasSubstr("expected num_scan_inputs (3) to be less "
+                                 "than or equal to the number of inputs (2)")));
+}
+
+TEST_F(MultiScanBuilderTest, MismatchedCarriesError) {
+  // Input tensor of shape [4, 5]. We scan along dim 0.
+  const mlir::MlirOp input =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {4, 5});
+  // Output accumulator of shape [4, 5], initialized to zeros.
+  const mlir::MlirOp output_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {4, 5});
+  // Carry initialized with shape [1, 5] (slice along dim 0).
+  const mlir::MlirOp carry_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {1, 5});
+
+  // A body builder that returns an incorrect number of carries (2 instead of
+  // 1).
+  auto wrong_carries_builder =
+      [](mlir::OpBuilder& op_builder, mlir::Location loc,
+         mlir::ValueRange slices, mlir::Value index,
+         mlir::ValueRange carries) -> absl::StatusOr<ScanBodyResults> {
+    return ScanBodyResults{{carries[0], carries[0]}, {carries[0]}};
+  };
+
+  const absl::StatusOr<DynamicMlirOpResults> result =
+      BuildScanShlo(builder(), {input}, /*dim=*/0, /*num_scan_inputs=*/1,
+                    {carry_init}, {output_init}, wrong_carries_builder);
+  EXPECT_THAT(result, StatusIs(error::kInvalidArgument,
+                               HasSubstr("expected 1 new carries, got 2")));
+}
+
+TEST_F(MultiScanBuilderTest, MismatchedOutputsError) {
+  // Input tensor of shape [4, 5]. We scan along dim 0.
+  const mlir::MlirOp input =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {4, 5});
+  // Output accumulator of shape [4, 5], initialized to zeros.
+  const mlir::MlirOp output_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {4, 5});
+  // Carry initialized with shape [1, 5] (slice along dim 0).
+  const mlir::MlirOp carry_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {1, 5});
+
+  // A body builder that returns an incorrect number of outputs (2 instead of
+  // 1).
+  auto wrong_outputs_builder =
+      [](mlir::OpBuilder& op_builder, mlir::Location loc,
+         mlir::ValueRange slices, mlir::Value index,
+         mlir::ValueRange carries) -> absl::StatusOr<ScanBodyResults> {
+    return ScanBodyResults{{carries[0]}, {carries[0], carries[0]}};
+  };
+
+  const absl::StatusOr<DynamicMlirOpResults> result =
+      BuildScanShlo(builder(), {input}, /*dim=*/0, /*num_scan_inputs=*/1,
+                    {carry_init}, {output_init}, wrong_outputs_builder);
+  EXPECT_THAT(result, StatusIs(error::kInvalidArgument,
+                               HasSubstr("expected 1 new outputs, got 2")));
+}
+
+TEST_F(MultiScanBuilderTest, BodyBuilderError) {
+  // Input tensor of shape [4, 5]. We scan along dim 0.
+  const mlir::MlirOp input =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {4, 5});
+  // Output accumulator of shape [4, 5], initialized to zeros.
+  const mlir::MlirOp output_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {4, 5});
+  // Carry initialized with shape [1, 5] (slice along dim 0).
+  const mlir::MlirOp carry_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {1, 5});
+
+  // A body builder that returns an internal error.
+  auto error_body_builder =
+      [](mlir::OpBuilder& op_builder, mlir::Location loc,
+         mlir::ValueRange slices, mlir::Value index,
+         mlir::ValueRange carries) -> absl::StatusOr<ScanBodyResults> {
+    return TT_ERROR(error::kInternal) << "Simulated multi body builder error";
+  };
+
+  const absl::StatusOr<DynamicMlirOpResults> result =
+      BuildScanShlo(builder(), {input}, /*dim=*/0, /*num_scan_inputs=*/1,
+                    {carry_init}, {output_init}, error_body_builder);
+  EXPECT_THAT(result,
+              StatusIs(error::kInternal,
+                       HasSubstr("Simulated multi body builder error")));
+}
+
+TEST_F(MultiScanBuilderTest, EmptyTensor) {
+  // Input tensor of shape [0, 5], empty along the scan dimension.
+  const mlir::MlirOp input =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {0, 5});
+  // Output accumulator of shape [0, 5], initialized to zeros.
+  const mlir::MlirOp output_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {0, 5});
+  // Carry initialized with shape [1, 5] (slice along dim 0).
+  const mlir::MlirOp carry_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {1, 5});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DynamicMlirOpResults result,
+      BuildScanShlo(builder(), {input}, /*dim=*/0, /*num_scan_inputs=*/1,
+                    {carry_init}, {output_init}, CreateIdentityBodyBuilder()));
+  ASSERT_EQ(result.size(), 2);
+  EXPECT_EQ(result[0].getValue(), carry_init.getValue());
+  EXPECT_EQ(result[1].getValue(), output_init.getValue());
+}
+
+TEST_F(MultiScanBuilderTest, StaticShape1D) {
+  mlir::func::FunctionBuilder function_builder(module_builder(), "main");
+  const mlir::Type i32 = op_builder().getI32Type();
+
+  // Create 1D tensors [1, 2, 3, 4] and [10, 20, 30, 40] for input.
+  const mlir::MlirOp input1 =
+      MakeDenseConstant(function_builder, {4}, {1, 2, 3, 4});
+  const mlir::MlirOp input2 =
+      MakeDenseConstant(function_builder, {4}, {10, 20, 30, 40});
+
+  // Carry initializers with shape [1] (slice along dim 0).
+  const mlir::MlirOp carry1_init = MakeConstant(function_builder, 0, i32, {1});
+  const mlir::MlirOp carry2_init = MakeConstant(function_builder, 10, i32, {1});
+  // Output accumulators of shape [4], initialized to zeros.
+  const mlir::MlirOp output1_init = MakeConstant(function_builder, 0, i32, {4});
+  const mlir::MlirOp output2_init = MakeConstant(function_builder, 0, i32, {4});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DynamicMlirOpResults results,
+      BuildScanShlo(function_builder, {input1, input2}, /*dim=*/0,
+                    /*num_scan_inputs=*/2, {carry1_init, carry2_init},
+                    {output1_init, output2_init}, CreateMultiAddBodyBuilder()));
+  ASSERT_EQ(results.size(), 4);
+
+  mlir::func::Return(function_builder,
+                     {mlir::MlirOp(builder(), results[2].getValue()),
+                      mlir::MlirOp(builder(), results[3].getValue())});
+  const mlir::OwningOpRef<mlir::ModuleOp> module = module_builder().build();
+
+  EvaluateAndVerifyMultiOutputs(*module, {{1, 3, 6, 10}, {20, 40, 70, 110}});
+}
+
+TEST_F(MultiScanBuilderTest, StaticShape2D) {
+  mlir::func::FunctionBuilder function_builder(module_builder(), "main");
+  const mlir::Type i32 = op_builder().getI32Type();
+
+  // Create 2D tensors [[1, 2], [3, 4]] and [[10, 20], [30, 40]] for input. We
+  // scan along dim 0.
+  const mlir::MlirOp input1 =
+      MakeDenseConstant(function_builder, {2, 2}, {1, 2, 3, 4});
+  const mlir::MlirOp input2 =
+      MakeDenseConstant(function_builder, {2, 2}, {10, 20, 30, 40});
+
+  // Carry initializers with shape [1, 2] (slice along dim 0).
+  const mlir::MlirOp carry1_init =
+      MakeConstant(function_builder, 0, i32, {1, 2});
+  const mlir::MlirOp carry2_init =
+      MakeConstant(function_builder, 10, i32, {1, 2});
+  // Output accumulators of shape [2, 2], initialized to zeros.
+  const mlir::MlirOp output1_init =
+      MakeConstant(function_builder, 0, i32, {2, 2});
+  const mlir::MlirOp output2_init =
+      MakeConstant(function_builder, 0, i32, {2, 2});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DynamicMlirOpResults results,
+      BuildScanShlo(function_builder, {input1, input2}, /*dim=*/0,
+                    /*num_scan_inputs=*/2, {carry1_init, carry2_init},
+                    {output1_init, output2_init}, CreateMultiAddBodyBuilder()));
+  ASSERT_EQ(results.size(), 4);
+
+  mlir::func::Return(function_builder,
+                     {mlir::MlirOp(builder(), results[2].getValue()),
+                      mlir::MlirOp(builder(), results[3].getValue())});
+  const mlir::OwningOpRef<mlir::ModuleOp> module = module_builder().build();
+
+  EvaluateAndVerifyMultiOutputs(*module, {{1, 2, 4, 6}, {20, 30, 50, 70}});
+}
+
+TEST_F(MultiScanBuilderTest, StaticShape2D_ScanDim1) {
+  mlir::func::FunctionBuilder function_builder(module_builder(), "main");
+  const mlir::Type i32 = op_builder().getI32Type();
+
+  // Create 2D tensors [[1, 2], [3, 4]] and [[10, 20], [30, 40]] for input. We
+  // scan along dim 1.
+  const mlir::MlirOp input1 =
+      MakeDenseConstant(function_builder, {2, 2}, {1, 2, 3, 4});
+  const mlir::MlirOp input2 =
+      MakeDenseConstant(function_builder, {2, 2}, {10, 20, 30, 40});
+
+  // Carry initializers with shape [2, 1] (slice along dim 1).
+  const mlir::MlirOp carry1_init =
+      MakeConstant(function_builder, 0, i32, {2, 1});
+  const mlir::MlirOp carry2_init =
+      MakeConstant(function_builder, 10, i32, {2, 1});
+  // Output accumulators of shape [2, 2], initialized to zeros.
+  const mlir::MlirOp output1_init =
+      MakeConstant(function_builder, 0, i32, {2, 2});
+  const mlir::MlirOp output2_init =
+      MakeConstant(function_builder, 0, i32, {2, 2});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DynamicMlirOpResults results,
+      BuildScanShlo(function_builder, {input1, input2}, /*dim=*/1,
+                    /*num_scan_inputs=*/2, {carry1_init, carry2_init},
+                    {output1_init, output2_init}, CreateMultiAddBodyBuilder()));
+  ASSERT_EQ(results.size(), 4);
+
+  mlir::func::Return(function_builder,
+                     {mlir::MlirOp(builder(), results[2].getValue()),
+                      mlir::MlirOp(builder(), results[3].getValue())});
+  const mlir::OwningOpRef<mlir::ModuleOp> module = module_builder().build();
+
+  EvaluateAndVerifyMultiOutputs(*module, {{1, 3, 3, 7}, {20, 40, 40, 80}});
+}
+
+TEST_F(MultiScanBuilderTest, StaticShape3D) {
+  mlir::func::FunctionBuilder function_builder(module_builder(), "main");
+  const mlir::Type i32 = op_builder().getI32Type();
+
+  // Create 3D tensors of shape [2, 2, 2] for input. We scan along dim 2.
+  const mlir::MlirOp input1 =
+      MakeDenseConstant(function_builder, {2, 2, 2}, {1, 2, 3, 4, 5, 6, 7, 8});
+  const mlir::MlirOp input2 = MakeDenseConstant(
+      function_builder, {2, 2, 2}, {10, 20, 30, 40, 50, 60, 70, 80});
+
+  // Carry initializers with shape [2, 2, 1] (slice along dim 2).
+  const mlir::MlirOp carry1_init =
+      MakeConstant(function_builder, 0, i32, {2, 2, 1});
+  const mlir::MlirOp carry2_init =
+      MakeConstant(function_builder, 10, i32, {2, 2, 1});
+  // Output accumulators of shape [2, 2, 2], initialized to zeros.
+  const mlir::MlirOp output1_init =
+      MakeConstant(function_builder, 0, i32, {2, 2, 2});
+  const mlir::MlirOp output2_init =
+      MakeConstant(function_builder, 0, i32, {2, 2, 2});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DynamicMlirOpResults results,
+      BuildScanShlo(function_builder, {input1, input2}, /*dim=*/2,
+                    /*num_scan_inputs=*/2, {carry1_init, carry2_init},
+                    {output1_init, output2_init}, CreateMultiAddBodyBuilder()));
+  ASSERT_EQ(results.size(), 4);
+
+  mlir::func::Return(function_builder,
+                     {mlir::MlirOp(builder(), results[2].getValue()),
+                      mlir::MlirOp(builder(), results[3].getValue())});
+  const mlir::OwningOpRef<mlir::ModuleOp> module = module_builder().build();
+
+  EvaluateAndVerifyMultiOutputs(*module, {{1, 3, 3, 7, 5, 11, 7, 15},
+                                          {20, 40, 40, 80, 60, 120, 80, 160}});
+}
+
+TEST_F(MultiScanBuilderTest, ReverseScan) {
+  mlir::func::FunctionBuilder function_builder(module_builder(), "main");
+  const mlir::Type i32 = op_builder().getI32Type();
+
+  // Create 1D tensor [1, 2, 3, 4] for input.
+  const mlir::MlirOp input =
+      MakeDenseConstant(function_builder, {4}, {1, 2, 3, 4});
+
+  // Carry initialized with shape [1] (slice along dim 0).
+  const mlir::MlirOp carry_init = MakeConstant(function_builder, 0, i32, {1});
+  // Output accumulator of shape [4].
+  const mlir::MlirOp output_init = MakeConstant(function_builder, 0, i32, {4});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DynamicMlirOpResults results,
+      BuildScanShlo(function_builder, {input}, /*dim=*/0, /*num_scan_inputs=*/1,
+                    {carry_init}, {output_init}, CreateMultiAddBodyBuilder(),
+                    ScanOptions{.direction = ScanDirection::kReverse}));
+  ASSERT_EQ(results.size(), 2);
+
+  const mlir::MlirOp out(builder(), results[1].getValue());
+  mlir::func::Return(function_builder, out);
+  const mlir::OwningOpRef<mlir::ModuleOp> module = module_builder().build();
+  EvaluateAndVerifyOutputs(*module, {10, 9, 7, 4});
+}
+
+TEST_F(MultiScanBuilderTest, SqueezeScan) {
+  mlir::func::FunctionBuilder function_builder(module_builder(), "main");
+  const mlir::Type i32 = op_builder().getI32Type();
+
+  // Create 2D tensor [[1, 2], [3, 4]] for input. We scan along dim 0.
+  const mlir::MlirOp input =
+      MakeDenseConstant(function_builder, {2, 2}, {1, 2, 3, 4});
+
+  // Carry initialized with shape [2] (squeezed slice along dim 0).
+  const mlir::MlirOp carry_init = MakeConstant(function_builder, 0, i32, {2});
+  // Output accumulator of shape [2, 2].
+  const mlir::MlirOp output_init =
+      MakeConstant(function_builder, 0, i32, {2, 2});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DynamicMlirOpResults results,
+      BuildScanShlo(function_builder, {input}, /*dim=*/0, /*num_scan_inputs=*/1,
+                    {carry_init}, {output_init}, CreateMultiAddBodyBuilder(),
+                    ScanOptions{.should_squeeze = true}));
+  ASSERT_EQ(results.size(), 2);
+
+  const mlir::MlirOp out(builder(), results[1].getValue());
+  mlir::func::Return(function_builder, out);
+  const mlir::OwningOpRef<mlir::ModuleOp> module = module_builder().build();
+  EvaluateAndVerifyOutputs(*module, {1, 2, 4, 6});
+}
+
+TEST_F(MultiScanBuilderTest, WithStaticInput) {
+  mlir::func::FunctionBuilder function_builder(module_builder(), "main");
+  const mlir::Type i32 = op_builder().getI32Type();
+
+  // Scannable input tensor of shape [4].
+  const mlir::MlirOp input =
+      MakeDenseConstant(function_builder, {4}, {1, 2, 3, 4});
+
+  // Loop-invariant static input tensor of shape [1].
+  const mlir::MlirOp static_val =
+      MakeDenseConstant(function_builder, {1}, {10});
+
+  // Carry initialized with shape [1].
+  const mlir::MlirOp carry_init = MakeConstant(function_builder, 0, i32, {1});
+  // Output accumulator of shape [4], initialized to zeros.
+  const mlir::MlirOp output_init = MakeConstant(function_builder, 0, i32, {4});
+
+  // A body builder that adds the input slice, carry, and loop-invariant static
+  // val.
+  auto body_builder =
+      [](mlir::OpBuilder& op_builder, mlir::Location loc,
+         mlir::ValueRange slices, mlir::Value index,
+         mlir::ValueRange carries) -> absl::StatusOr<ScanBodyResults> {
+    const mlir::Value x = slices[0];
+    const mlir::Value static_v = slices[1];
+    const mlir::Value carry = carries[0];
+
+    // x_and_static = x + static_v
+    const mlir::Value x_and_static =
+        mlir::stablehlo::AddOp::create(op_builder, loc, x, static_v)
+            .getResult();
+    // new_c = x_and_static + carry
+    const mlir::Value new_c =
+        mlir::stablehlo::AddOp::create(op_builder, loc, x_and_static, carry)
+            .getResult();
+    return ScanBodyResults{{new_c}, {new_c}};
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DynamicMlirOpResults results,
+      BuildScanShlo(function_builder, {input, static_val}, /*dim=*/0,
+                    /*num_scan_inputs=*/1, {carry_init}, {output_init},
+                    body_builder));
+  ASSERT_EQ(results.size(), 2);
+
+  const mlir::MlirOp out(builder(), results[1].getValue());
+  mlir::func::Return(function_builder, out);
+  const mlir::OwningOpRef<mlir::ModuleOp> module = module_builder().build();
+
+  EvaluateAndVerifyOutputs(*module, {11, 23, 36, 50});
+}
+
+TEST_F(MultiScanBuilderTest, MismatchedInitsAllowed) {
+  mlir::func::FunctionBuilder function_builder(module_builder(), "main");
+  const mlir::Type i32 = op_builder().getI32Type();
+
+  // Create 2D tensor [[1, 2], [3, 4]] for input. We scan along dim 0.
+  const mlir::RankedTensorType input_type =
+      mlir::RankedTensorType::get({2, 2}, i32);
+  const mlir::DenseElementsAttr input_attr = mlir::DenseElementsAttr::get(
+      input_type, llvm::ArrayRef<int32_t>{1, 2, 3, 4});
+  const mlir::MlirOp input =
+      mlir::stablehlo::Constant(function_builder, input_attr);
+
+  // Carry initialized with shape [1, 2] (slice along dim 0).
+  const mlir::RankedTensorType carry_type =
+      mlir::RankedTensorType::get({1, 2}, i32);
+  const mlir::DenseElementsAttr carry_attr =
+      mlir::DenseElementsAttr::get(carry_type, llvm::ArrayRef<int32_t>{10, 20});
+  const mlir::MlirOp carry_init =
+      mlir::stablehlo::Constant(function_builder, carry_attr);
+
+  // Output accumulator of shape [2, 2], initialized to zeros.
+  const mlir::MlirOp output_init =
+      MakeConstant(function_builder, 0, i32, {2, 2});
+
+  // A body builder that computes new_c1 = x + c1 and new_c2 = x + c2, returning
+  // both as carries, and new_c1 as output.
+  auto mismatched_inits_body_builder =
+      [](mlir::OpBuilder& op_builder, mlir::Location loc,
+         mlir::ValueRange slices, mlir::Value index,
+         mlir::ValueRange carries) -> absl::StatusOr<ScanBodyResults> {
+    const mlir::Value c1 = carries[0];
+    const mlir::Value c2 = carries[1];
+    const mlir::Value x = slices[0];
+    const mlir::Value new_c1 =
+        mlir::stablehlo::AddOp::create(op_builder, loc, x, c1).getResult();
+    const mlir::Value new_c2 =
+        mlir::stablehlo::AddOp::create(op_builder, loc, x, c2).getResult();
+    return ScanBodyResults{{new_c1, new_c2}, {new_c1}};
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DynamicMlirOpResults results,
+      BuildScanShlo(function_builder, {input}, /*dim=*/0, /*num_scan_inputs=*/1,
+                    {carry_init, carry_init}, {output_init},
+                    mismatched_inits_body_builder));
+  ASSERT_EQ(results.size(), 3);
+
+  mlir::func::Return(function_builder,
+                     {mlir::MlirOp(builder(), results[0].getValue()),
+                      mlir::MlirOp(builder(), results[1].getValue()),
+                      mlir::MlirOp(builder(), results[2].getValue())});
+  const mlir::OwningOpRef<mlir::ModuleOp> module = module_builder().build();
+
+  EvaluateAndVerifyMultiOutputs(*module,
+                                {{14, 26}, {14, 26}, {11, 22, 14, 26}});
+}
+
+TEST_F(MultiScanBuilderTest, DynamicShapeScanDim) {
+  mlir::func::FunctionBuilder function_builder(module_builder(), "main");
+  const mlir::Type i32 = op_builder().getI32Type();
+
+  // Input tensors of bounded shape [<=4, 5], where dimension 0 is dynamic.
+  mlir::MlirOp input_arg1 =
+      CreateBoundedTensorArg(function_builder, {4, 5}, {0}, i32);
+  mlir::MlirOp input_arg2 =
+      CreateBoundedTensorArg(function_builder, {4, 5}, {0}, i32);
+  // Set the runtime size of the dynamic dimension to 2 (less than the bound of
+  // 4).
+  mlir::MlirOp size = MakeConstant(function_builder, 2, i32, {});
+  const mlir::MlirOp input1 =
+      mlir::stablehlo::SetDimensionSize(input_arg1, size, /*dim=*/0);
+  const mlir::MlirOp input2 =
+      mlir::stablehlo::SetDimensionSize(input_arg2, size, /*dim=*/0);
+
+  // Output accumulators of shape [4, 5] (the static pad boundaries).
+  const mlir::MlirOp output1_init =
+      MakeConstant(function_builder, 0, i32, {4, 5});
+  const mlir::MlirOp output2_init =
+      MakeConstant(function_builder, 0, i32, {4, 5});
+  // Carry initializers with shape [1, 5] (slice along dim 0).
+  const mlir::MlirOp carry1_init =
+      MakeConstant(function_builder, 0, i32, {1, 5});
+  const mlir::MlirOp carry2_init =
+      MakeConstant(function_builder, 0, i32, {1, 5});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DynamicMlirOpResults results,
+      BuildScanShlo(function_builder, {input1, input2}, /*dim=*/0,
+                    /*num_scan_inputs=*/2, {carry1_init, carry2_init},
+                    {output1_init, output2_init}, CreateIdentityBodyBuilder()));
+  ASSERT_EQ(results.size(), 4);
+  EXPECT_TRUE(mlir::isa<mlir::stablehlo::WhileOp>(
+      results[2].getValue().getDefiningOp()));
+}
+
+TEST_F(MultiScanBuilderTest, DynamicShapeNonScanDim) {
+  mlir::func::FunctionBuilder function_builder(module_builder(), "main");
+  const mlir::Type i32 = op_builder().getI32Type();
+
+  // Input tensors of bounded shape [4, <=5], where dimension 1 is dynamic.
+  mlir::MlirOp input_arg1 =
+      CreateBoundedTensorArg(function_builder, {4, 5}, {1}, i32);
+  mlir::MlirOp input_arg2 =
+      CreateBoundedTensorArg(function_builder, {4, 5}, {1}, i32);
+  // Set the runtime size of the dynamic dimension to 2 (less than the bound of
+  // 5).
+  mlir::MlirOp size = MakeConstant(function_builder, 2, i32, {});
+  const mlir::MlirOp input1 =
+      mlir::stablehlo::SetDimensionSize(input_arg1, size, /*dim=*/1);
+  const mlir::MlirOp input2 =
+      mlir::stablehlo::SetDimensionSize(input_arg2, size, /*dim=*/1);
+
+  // Output accumulators of shape [4, 5] (the static pad boundaries).
+  const mlir::MlirOp output1_init =
+      MakeConstant(function_builder, 0, i32, {4, 5});
+  const mlir::MlirOp output2_init =
+      MakeConstant(function_builder, 0, i32, {4, 5});
+  // Carry initializers with shape [1, 5] (slice along dim 0).
+  const mlir::MlirOp carry1_init =
+      MakeConstant(function_builder, 0, i32, {1, 5});
+  const mlir::MlirOp carry2_init =
+      MakeConstant(function_builder, 0, i32, {1, 5});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DynamicMlirOpResults results,
+      BuildScanShlo(function_builder, {input1, input2}, /*dim=*/0,
+                    /*num_scan_inputs=*/2, {carry1_init, carry2_init},
+                    {output1_init, output2_init}, CreateIdentityBodyBuilder()));
+  ASSERT_EQ(results.size(), 4);
+  EXPECT_TRUE(mlir::isa<mlir::stablehlo::WhileOp>(
+      results[2].getValue().getDefiningOp()));
+}
+
+TEST_F(MultiScanBuilderTest, MismatchedInputScanDimSizeError) {
+  // Input 1 of shape [4, 5].
+  const mlir::MlirOp input1 =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {4, 5});
+  // Input 2 of shape [3, 5] (mismatched size along scan dimension 0).
+  const mlir::MlirOp input2 =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {3, 5});
+
+  // Output accumulator of shape [4, 5], initialized to zeros.
+  const mlir::MlirOp output_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {4, 5});
+  // Carry initialized with shape [1, 5] (slice along dim 0).
+  const mlir::MlirOp carry_init =
+      MakeConstant(builder(), 0, op_builder().getI32Type(), {1, 5});
+
+  const absl::StatusOr<DynamicMlirOpResults> result =
+      BuildScanShlo(builder(), {input1, input2}, /*dim=*/0,
+                    /*num_scan_inputs=*/2, {carry_init, carry_init},
+                    {output_init, output_init}, CreateIdentityBodyBuilder());
+  EXPECT_THAT(
+      result,
+      StatusIs(error::kInvalidArgument,
+               HasSubstr("expected all scannable inputs to have matching sizes "
+                         "along the scan dimension, but input 0 has size 4 and "
+                         "input 1 has size 3")));
+}
+
+TEST_F(MultiScanBuilderTest, Squeeze1DTo0DTensor) {
+  mlir::func::FunctionBuilder function_builder(module_builder(), "main");
+  const mlir::Type i32 = op_builder().getI32Type();
+
+  // Create 1D tensor [1, 2, 3, 4] for input. We scan along dim 0.
+  const mlir::MlirOp input =
+      MakeDenseConstant(function_builder, {4}, {1, 2, 3, 4});
+
+  // Carry initialized with shape [] (0D tensor).
+  const mlir::RankedTensorType carry_type =
+      mlir::RankedTensorType::get({}, i32);
+  const mlir::DenseElementsAttr carry_attr =
+      mlir::DenseElementsAttr::get(carry_type, llvm::ArrayRef<int32_t>{10});
+  const mlir::MlirOp carry_init =
+      mlir::stablehlo::Constant(function_builder, carry_attr);
+
+  // Output accumulator of shape [4] (since we don't squeeze the accumulator).
+  const mlir::MlirOp output_init = MakeConstant(function_builder, 0, i32, {4});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const DynamicMlirOpResults results,
+      BuildScanShlo(function_builder, {input}, /*dim=*/0, /*num_scan_inputs=*/1,
+                    {carry_init}, {output_init}, CreateMultiAddBodyBuilder(),
+                    ScanOptions{.should_squeeze = true}));
+  ASSERT_EQ(results.size(), 2);
+
+  const mlir::MlirOp out(builder(), results[1].getValue());
+  mlir::func::Return(function_builder, out);
+  const mlir::OwningOpRef<mlir::ModuleOp> module = module_builder().build();
+
+  EvaluateAndVerifyOutputs(*module, {11, 13, 16, 20});
 }
 
 }  // namespace
