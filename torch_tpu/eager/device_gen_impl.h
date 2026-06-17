@@ -18,6 +18,7 @@
 #define TORCH_TPU_EAGER_DEVICE_GEN_IMPL_H_
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -37,8 +38,15 @@ namespace torch_tpu {
 class DeviceBufferRef;
 class DeviceGeneratorImpl;
 
-// Forward declaration of internal initializer.
+// Initializes the default generator with the given seed.
 absl::Status InitDefaultGenerator(DeviceGeneratorImpl* gen_impl, uint64_t seed);
+
+// Resets all default device generators for testing.
+void PyResetDefaultDeviceGeneratorsForTesting();
+
+// Injects a failure message to be returned by the next InitDefaultGenerator().
+// For testing only.
+void PySetInitDefaultGeneratorFailureForTesting(std::string failure_message);
 
 // Holds the device-resident state of the generator (seed and offset) as a
 // tensor. This is the TPU equivalent of PyTorch's CUDAGeneratorState,

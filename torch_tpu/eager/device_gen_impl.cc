@@ -19,12 +19,14 @@
 #include <cstdint>
 #include <deque>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/Generator.h"
 #include "ATen/ops/full.h"
+#include "absl/base/no_destructor.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
@@ -116,15 +118,23 @@ at::Tensor CreateDeviceRngStateTensor(c10::Device device) {
                   /*pin_memory_opt=*/std::nullopt);
 }
 
-// Helper function to call TT_THROW_IF_ERROR outside of lambdas.
-// Using TT_THROW_IF_ERROR directly in lambda functions causes type deduction
-// errors because it injects a return statement for static assertion checks.
-void ThrowIfError(absl::Status status) { TT_THROW_IF_ERROR(status); }
-
+// A modifiable string that can be used to force the next InitDefaultGenerator()
+// call to fail. This is non-sticky: only the next call is affected. Used for
+// testing.
+[[nodiscard]] std::string& GetInjectedInitDefaultGeneratorFailure() {
+  static absl::NoDestructor<std::string> msg;
+  return *msg;
+}
 }  // namespace
 
 absl::Status InitDefaultGenerator(DeviceGeneratorImpl* gen_impl,
                                   uint64_t seed) {
+  auto& failure_msg = GetInjectedInitDefaultGeneratorFailure();
+  if (!failure_msg.empty()) {
+    std::string err = std::move(failure_msg);
+    failure_msg.clear();
+    return TT_ERROR(error::kInternal) << err;
+  }
   return gen_impl->state_->WriteStateToDevice(seed, 0);
 }
 
@@ -151,8 +161,19 @@ class DeviceGenerators {
   int64_t num_devices() const { return num_devices_; }
 
  private:
+  friend void PyResetDefaultDeviceGeneratorsForTesting();
+
   DeviceGenerators();
-  std::vector<at::Generator> generators_;
+
+  // Resets all generators to uninitialized state.
+  void ResetGenerators() {
+    generators_.clear();
+    generators_.resize(num_devices_);
+    generator_init_flags_.clear();
+    generator_init_flags_.resize(num_devices_);
+  }
+
+  std::vector<absl::StatusOr<at::Generator>> generators_;
   std::deque<c10::once_flag> generator_init_flags_;
   int64_t num_devices_;
 };
@@ -212,8 +233,7 @@ DeviceGenerators::DeviceGenerators() {
   TT_CHECK_THROW(guard != nullptr, error::kFailedPrecondition)
       << "TPU device guard is not registered.";
   num_devices_ = static_cast<int32_t>(guard->deviceCount());
-  generators_.resize(num_devices_);
-  generator_init_flags_.resize(num_devices_);
+  ResetGenerators();
 }
 
 at::Generator& DeviceGenerators::GetDefaultGenerator(at::DeviceIndex idx) {
@@ -233,13 +253,21 @@ at::Generator& DeviceGenerators::GetDefaultGenerator(at::DeviceIndex idx) {
         << generators_.size() - 1 << " got " << static_cast<int32_t>(idx);
   }
 
+  auto& generator = generators_[idx];
   c10::call_once(generator_init_flags_[idx], [&] {
-    generators_[idx] = at::make_generator<DeviceGeneratorImpl>(idx);
-    auto* gen_impl = generators_[idx].get<DeviceGeneratorImpl>();
+    generator = at::make_generator<DeviceGeneratorImpl>(idx);
+    auto* gen_impl = generator->get<DeviceGeneratorImpl>();
     auto random = c10::detail::getNonDeterministicRandom(false);
-    ThrowIfError(InitDefaultGenerator(gen_impl, random));
+    auto status = InitDefaultGenerator(gen_impl, random);
+    if (!status.ok()) {
+      generator = status;
+    }
   });
-  return generators_[idx];
+
+  // IMPORTANT: if the generator failed to initialize before, we must fail now
+  // instead of returning an uninitialized generator.
+  TT_THROW_IF_ERROR(generator.status());
+  return *generator;
 }
 
 at::Generator DeviceGenerators::CreateGenerator(c10::DeviceIndex idx) const {
@@ -282,7 +310,7 @@ DeviceGeneratorImpl::DeviceGeneratorImpl(c10::DeviceIndex device_index)
 DeviceGeneratorImpl::DeviceGeneratorImpl(c10::DeviceIndex device_index,
                                          at::Tensor rng_state)
     : DeviceGeneratorImpl(device_index) {
-  if (this->CheckDeviceStateTensor(rng_state).ok()) {
+  if (CheckDeviceStateTensor(rng_state).ok()) {
     state_ = c10::make_intrusive<DeviceGeneratorState>(std::move(rng_state));
   } else {
     // Already initialized in delegating constructor.
@@ -475,6 +503,14 @@ void SetManualSeedAll(uint64_t seed) {
   for (int i = 0; i < num_devices; ++i) {
     SetManualSeed(seed, i);
   }
+}
+
+void PySetInitDefaultGeneratorFailureForTesting(std::string failure_message) {
+  GetInjectedInitDefaultGeneratorFailure() = std::move(failure_message);
+}
+
+void PyResetDefaultDeviceGeneratorsForTesting() {
+  DeviceGenerators::GetDefaultInstance().ResetGenerators();
 }
 
 }  // namespace torch_tpu

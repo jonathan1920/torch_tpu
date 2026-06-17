@@ -16,6 +16,7 @@
 
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
+#include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/events_queue.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/repeated_ops_heuristic.h"
@@ -46,6 +47,12 @@ PYBIND11_MODULE(testing, m) {
         py::arg("op_base_name"), py::arg("failure_message"));
   m.def("reset_eager_state", ResetEagerState,
         "Resets the eager mode maintained state.");
+  m.def("set_init_default_generator_failure",
+        PySetInitDefaultGeneratorFailureForTesting, py::arg("failure_message"),
+        "Forces InitDefaultGenerator to fail with the given message.");
+  m.def("reset_default_device_generators",
+        PyResetDefaultDeviceGeneratorsForTesting,
+        "Resets the default device generators singleton state.");
 }
 
 }  // namespace torch_tpu

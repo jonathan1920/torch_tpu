@@ -1709,6 +1709,27 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch.ops.aten._pdist_backward(grad, self_tensor, -1.0, pdist)
 
+  @et.why_tpu_only("Testing TPU device generator initialization failure.")
+  def test_default_generator_init_failure(self):
+    tt_testing.reset_default_device_generators()
+    tt_testing.set_init_default_generator_failure("Simulated init failure")
+    try:
+      # The first call to default_generators[] should fail.
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu="""Simulated init failure""",
+      ):
+        _ = torch.tpu.default_generators[0]
+      # Subsequent calls to default_generators[] should fail too.
+      with et.assert_raises_message(
+          RuntimeError,
+          tpu="""Simulated init failure""",
+      ):
+        _ = torch.tpu.default_generators[0]
+    finally:
+      tt_testing.set_init_default_generator_failure("")
+      tt_testing.reset_default_device_generators()
+
 
 if __name__ == "__main__":
   absltest.main()
