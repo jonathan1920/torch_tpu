@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//build_files:build_defs.bzl", "torch_tpu_cc_library", "torch_tpu_package_end", "torch_tpu_py_library")
+load(
+    "//build_files:build_defs.bzl",
+    "torch_tpu_cc_library",
+    "torch_tpu_cc_test",
+    "torch_tpu_package_end",
+    "torch_tpu_py_library",
+)
 load("//shims/pybind11:pybind.bzl", "pybind_extension")
 
 package(
@@ -245,6 +251,80 @@ pybind_extension(
         "@xla//xla/pjrt:maybe_owning_mlir_module",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_executable",
+    ],
+)
+
+torch_tpu_cc_library(
+    name = "dispatch_scan",
+    srcs = ["dispatch_scan.cc"],
+    hdrs = ["dispatch_scan.h"],
+    deps = [
+        "//shims/torch",
+        "//shims/torch:aten",
+        "//shims/torch:aten_headers",
+        "//shims/torch:torch_headers",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:compilation",
+        "//torch_tpu/common:dtype",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/common:shape",
+        "//torch_tpu/common:utils",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:tensor_to_buffer",
+        "//torch_tpu/ops:op_builder_utils",
+        "//torch_tpu/ops:op_names",
+        "//torch_tpu/ops:python_context",
+        "//torch_tpu/ops:scan_builder",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+    ],
+)
+
+torch_tpu_cc_test(
+    name = "dispatch_scan_test",
+    srcs = ["dispatch_scan_test.cc"],
+    exec_properties = {
+        "cpp_link.mem": "16g",  # Needed for asan.
+    },
+    notest_oss = "Requires TPU PJRT plugin (transitively via eager:tensor_to_buffer -> pjrt:pjrt_state), which fails due to missing TPU_LIBRARY_PATH.",
+    deps = [
+        ":dispatch_scan",
+        "//shims/torch",
+        "//shims/torch:aten",
+        "//shims/torch:aten_headers",
+        "//shims/torch/c10/core:base_headers",
+        "//torch_tpu/common:cache_key",
+        "//torch_tpu/common:compilation",
+        "//torch_tpu/common:context_states",
+        "//torch_tpu/common:dimension_types",
+        "//torch_tpu/common:error_utils",
+        "//torch_tpu/eager:device_buffer",
+        "//torch_tpu/eager:eager_mode",
+        "//torch_tpu/eager:tensor_to_buffer",
+        "//torch_tpu/ops:scan_builder",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:attr_type_builder_util",
+        "@stablehlo//:mlir_builder",
+        "@stablehlo//:stablehlo_ops",
+        "@xla//xla/mlir/utils:error_util",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

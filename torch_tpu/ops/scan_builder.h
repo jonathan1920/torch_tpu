@@ -18,6 +18,7 @@
 #define TORCH_TPU_OPS_SCAN_BUILDER_H_
 
 #include <cstdint>
+#include <string>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
@@ -33,6 +34,11 @@
 namespace torch_tpu {
 
 enum class ScanDirection { kForward, kReverse };
+
+[[nodiscard]] inline std::string FormatParamCacheKey(
+    const ScanDirection value) {
+  return value == ScanDirection::kForward ? "forward" : "reverse";
+}
 
 // (op_builder, loc, input_slice, index_0d, carries) -> new_carries.
 using ScanBodyBuilder =
