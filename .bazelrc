@@ -312,6 +312,7 @@ common:ci_tpu --test_tag_filters=requires-tpu,-notest,-nobuild,-nopresubmit,-fai
 # Settings for nightly runs on TPU.
 common:ci_tpu_nightly --config=ci_tpu_base
 common:ci_tpu_nightly --test_tag_filters=requires-tpu,-notest,-nobuild,-nonightly
+common:ci_tpu_nightly --test_timeout=-1,-1,-1,4800
 
 # Settings for hardware-specific CI runs on TPU v5, v6, v7.
 common:ci_tpu_v5 --config=ci_tpu_base
