@@ -22,6 +22,7 @@ load(
     "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
 )
+load("//bazel:supported_python_versions.bzl", "SUPPORTED_PYTHON_VERSIONS")
 load("//shims/build_cleaner:build_defs.bzl", "register_extension_info")
 load("//shims/build_files:build_defs.bzl", "process_accelerator_tags")
 load("//shims/py_platform_test:py_platform_test.bzl", "py_platform_test")
@@ -837,7 +838,7 @@ def torch_tpu_py_test(
     env_wheel = dict(base_env)
 
     env_wheel_versions = {}
-    for v in ["3.11", "3.12", "3.13", "3.14"]:
+    for v in SUPPORTED_PYTHON_VERSIONS:
         env_v = dict(env_wheel)
         std_ld_v = [
             "../pypi_torch_{}/site-packages/torch/lib".format(v.replace(".", "")),
@@ -866,7 +867,7 @@ def torch_tpu_py_test(
         "//:wheel_test_with_local_torch": env_local,
         "//shims/torch:use_local_torch": env_local,
     }
-    for v in ["3.11", "3.12", "3.13", "3.14"]:
+    for v in SUPPORTED_PYTHON_VERSIONS:
         select_dict["//:wheel_test_with_local_torch_" + v.replace(".", "_")] = env_local
         select_dict["//:wheel_test_" + v.replace(".", "_")] = env_wheel_versions[v.replace(".", "")]
 

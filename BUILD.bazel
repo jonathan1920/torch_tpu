@@ -16,6 +16,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@pypi//:requirements.bzl", "all_requirements", "requirement")
 load("@xla//third_party/py:py_import.bzl", "py_import")
 load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
+load("//bazel:supported_python_versions.bzl", "SUPPORTED_PYTHON_VERSIONS")
 
 package(
     default_visibility = PACKAGE_DEFAULT_VISIBILITY,
@@ -51,34 +52,19 @@ config_setting(
     define_values = {"PYTHON_VERSION": v},
     flag_values = {":test_wheel": "True"},
     visibility = ["//visibility:public"],
-) for v in [
-    "3.11",
-    "3.12",
-    "3.13",
-    "3.14",
-]]
+) for v in SUPPORTED_PYTHON_VERSIONS]
 
 [filegroup(
     name = "local_wheel_file_" + v.replace(".", ""),
     srcs = glob(["dist/torch_tpu*cp" + v.replace(".", "") + "*.whl"]),
-) for v in [
-    "3.11",
-    "3.12",
-    "3.13",
-    "3.14",
-]]
+) for v in SUPPORTED_PYTHON_VERSIONS]
 
 [genrule(
     name = "pick_single_wheel_" + v.replace(".", ""),
     srcs = [":local_wheel_file_" + v.replace(".", "")],
     outs = ["selected_" + v.replace(".", "") + ".whl"],
     cmd = "cp $$(echo $(SRCS) | tr ' ' '\\n' | sort | tail -n 1) $@",
-) for v in [
-    "3.11",
-    "3.12",
-    "3.13",
-    "3.14",
-]]
+) for v in SUPPORTED_PYTHON_VERSIONS]
 
 # Combined config setting for ease of use in selects
 config_setting(
@@ -95,12 +81,7 @@ config_setting(
     },
     flag_values = {":test_wheel": "True"},
     visibility = ["//visibility:public"],
-) for v in [
-    "3.11",
-    "3.12",
-    "3.13",
-    "3.14",
-]]
+) for v in SUPPORTED_PYTHON_VERSIONS]
 
 filegroup(
     name = "torch_libs_mapped",
@@ -140,16 +121,17 @@ genrule(
     tools = ["//bazel:assemble_wheel_deps"],
 )
 
+_WHEEL_SELECT = {
+    ":wheel_test_" + v.replace(".", "_"): ":pick_single_wheel_" + v.replace(".", "")
+    for v in SUPPORTED_PYTHON_VERSIONS
+}
+
+_WHEEL_SELECT["//conditions:default"] = "//ci/wheel:torch_tpu_wheel"
+
 py_import(
     name = "torch_tpu_py_import",
     testonly = True,
-    wheel = select({
-        ":wheel_test_3_11": ":pick_single_wheel_311",
-        ":wheel_test_3_13": ":pick_single_wheel_313",
-        ":wheel_test_3_14": ":pick_single_wheel_314",
-        ":wheel_test_3_12": ":pick_single_wheel_312",
-        "//conditions:default": "//ci/wheel:torch_tpu_wheel",
-    }),
+    wheel = select(_WHEEL_SELECT),
     zip_deps = [":wheel_extra_test_deps"],
     # Add requirements coming from pip_parse from workspace
     deps = select({

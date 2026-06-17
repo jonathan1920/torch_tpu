@@ -17,6 +17,7 @@ load("@rules_python//python:py_test.bzl", "py_test")
 load("@torch_tpu_deps//:dependencies.bzl", "WHEEL_REQUIRES")
 load("@torch_tpu_version//:version.bzl", "WHEEL_VERSION")
 load("//:visibility.bzl", "PACKAGE_DEFAULT_VISIBILITY")
+load("//bazel:supported_python_versions.bzl", "SUPPORTED_PYTHON_VERSIONS")
 load("//build_files:entry_points.bzl", "ENTRY_POINTS")
 load("//ci/wheel:pywrap_mapper.bzl", "remap_pywrap_binaries")
 load("//shims/py_rules:pytype.bzl", "pytype_strict_binary", "pytype_strict_library")
@@ -39,11 +40,7 @@ TORCH_FROM_PYPROJECT = [req for req in WHEEL_REQUIRES if req.startswith("torch")
 [config_setting(
     name = "python_" + v.replace(".", "_"),
     define_values = {"PYTHON_VERSION": v},
-) for v in [
-    "3.11",
-    "3.13",
-    "3.14",
-]]
+) for v in SUPPORTED_PYTHON_VERSIONS if v != "3.12"]
 
 # Define requirements list that conditionally includes torch
 # If TORCH_SOURCE=local, we do not require any torch version, allowing
