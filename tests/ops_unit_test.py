@@ -515,7 +515,9 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     other_tensor_tpu = other_tensor.to(tpu_device)
     op_fn(self_tensor, other_tensor)
     op_fn(self_tensor_tpu, other_tensor_tpu)
-    self.assertEqual(self_tensor, self_tensor_tpu.cpu())
+    self.assert_close(
+        golden_result=self_tensor, torch_tpu_result=self_tensor_tpu.cpu()
+    )
 
   @parameterized.product(
       input_dtype=[torch.uint8, torch.int32, torch.int64],
@@ -531,7 +533,7 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     x_tpu = x.to(tpu_device)
     out = op_fn(x, 2)
     out_tpu = op_fn(x_tpu, 2)
-    self.assertEqual(out, out_tpu.cpu())
+    self.assert_close(golden_result=out, torch_tpu_result=out_tpu.cpu())
 
   @parameterized.product(
       self_dtype=[torch.uint8, torch.int32, torch.int64],
@@ -550,7 +552,9 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
     other_tensor_tpu = other_tensor.to(tpu_device)
     golden_result = op_fn(self_tensor, other_tensor)
     tpu_result = op_fn(self_tensor_tpu, other_tensor_tpu)
-    self.assertEqual(golden_result, tpu_result.cpu())
+    self.assert_close(
+        golden_result=golden_result, torch_tpu_result=tpu_result.cpu()
+    )
 
   @parameterized.product(
       self_dtype=[torch.int32, torch.float32],

@@ -22,8 +22,6 @@
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
-#include "ATen/native/Resize.h"
-#include "ATen/ops/div.h"
 #include "ATen/ops/result_type.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
@@ -54,7 +52,6 @@
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/ops/binary.h"
 #include "torch_tpu/ops/macros/kernel.h"
-#include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/resize/resize_aten_kernels.h"
@@ -710,6 +707,30 @@ absl::Status DivOutMode(const at::Tensor& self, const at::Tensor& other,
       {.op_param_cache_keys = std::move(div_opts.op_param_cache_keys)});
 }
 
+absl::Status BitwiseLeftShiftTensor(
+    const at::Tensor& self, const at::Tensor& other, at::Tensor& out,
+    std::optional<OpName> op_name = OpName::kBitwiseLeftShiftTensorOut) {
+  TT_RETURN_IF_ERROR(CheckBitwiseShiftInputs(self, other));
+  // Input/output type conversions are automatically handled in BinaryOpOut.
+  // We override op_name to allow all callers of this helper to share the same
+  // compilation cache entry.
+  return BinaryOpOut(
+      self, other, out, BuildBitwiseLeftShiftShlo,
+      {.op_name = op_name, .op_param_cache_keys = OpParamCacheKeys::Empty()});
+}
+
+absl::Status BitwiseRightShiftTensor(
+    const at::Tensor& self, const at::Tensor& other, at::Tensor& out,
+    std::optional<OpName> op_name = OpName::kBitwiseRightShiftTensorOut) {
+  TT_RETURN_IF_ERROR(CheckBitwiseShiftInputs(self, other));
+  // Input/output type conversions are automatically handled in BinaryOpOut.
+  // We override op_name to allow all callers of this helper to share the same
+  // compilation cache entry.
+  return BinaryOpOut(
+      self, other, out, BuildBitwiseRightShiftShlo,
+      {.op_name = op_name, .op_param_cache_keys = OpParamCacheKeys::Empty()});
+}
+
 }  // namespace
 
 // NOLINTBEGIN
@@ -895,12 +916,10 @@ at::Tensor& AtenBitwiseLeftShiftTensorOut(const at::Tensor& self,
                                           const at::Tensor& other,
                                           at::Tensor& out) {
   TT_KERNEL(OpName::kBitwiseLeftShiftTensorOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckBitwiseShiftInputs(self, other));
-    at::Tensor new_self = self.to(out.scalar_type());
-    at::Tensor new_other = other.to(out.scalar_type());
+    // Explicitly pass std::nullopt to avoid redundant override check, since
+    // the active context name is already kBitwiseLeftShiftTensorOut.
     TT_THROW_IF_ERROR(
-        BinaryOpOut(new_self, new_other, out, BuildBitwiseLeftShiftShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+        BitwiseLeftShiftTensor(self, other, out, /*op_name=*/std::nullopt));
     return out;
   });
 }
@@ -920,12 +939,10 @@ at::Tensor& AtenBitwiseRightShiftTensorOut(const at::Tensor& self,
                                            const at::Tensor& other,
                                            at::Tensor& out) {
   TT_KERNEL(OpName::kBitwiseRightShiftTensorOut, _, (self, other, out), {
-    TT_THROW_IF_ERROR(CheckBitwiseShiftInputs(self, other));
-    at::Tensor new_self = self.to(out.scalar_type());
-    at::Tensor new_other = other.to(out.scalar_type());
+    // Explicitly pass std::nullopt to avoid redundant override check, since
+    // the active context name is already kBitwiseRightShiftTensorOut.
     TT_THROW_IF_ERROR(
-        BinaryOpOut(new_self, new_other, out, BuildBitwiseRightShiftShlo,
-                    {.op_param_cache_keys = OpParamCacheKeys::Empty()}));
+        BitwiseRightShiftTensor(self, other, out, /*op_name=*/std::nullopt));
     return out;
   });
 }
@@ -1097,7 +1114,7 @@ at::Tensor& AtenIlshiftScalar(at::Tensor& self, const at::Scalar& other) {
 
 at::Tensor& AtenIlshiftTensor(at::Tensor& self, const at::Tensor& other) {
   TT_KERNEL(OpName::kIlshiftTensor, _, (self, other), {
-    AtenBitwiseLeftShiftTensorOut(self, other, self);
+    TT_THROW_IF_ERROR(BitwiseLeftShiftTensor(self, other, self));
     return self;
   });
 }
@@ -1113,7 +1130,7 @@ at::Tensor& AtenIrshiftScalar(at::Tensor& self, const at::Scalar& other) {
 
 at::Tensor& AtenIrshiftTensor(at::Tensor& self, const at::Tensor& other) {
   TT_KERNEL(OpName::kIrshiftTensor, _, (self, other), {
-    AtenBitwiseRightShiftTensorOut(self, other, self);
+    TT_THROW_IF_ERROR(BitwiseRightShiftTensor(self, other, self));
     return self;
   });
 }
@@ -1157,7 +1174,7 @@ at::Tensor AtenLshiftTensor(const at::Tensor& self, const at::Tensor& other) {
     TT_ASSIGN_OR_THROW(
         at::Tensor out,
         MakeEmptyTensor(self.sizes(), promoted_scalar_type, self.device()));
-    AtenBitwiseLeftShiftTensorOut(self, other, out);
+    TT_THROW_IF_ERROR(BitwiseLeftShiftTensor(self, other, out));
     return out;
   });
 }
@@ -1370,7 +1387,7 @@ at::Tensor AtenRshiftTensor(const at::Tensor& self, const at::Tensor& other) {
     TT_ASSIGN_OR_THROW(
         at::Tensor out,
         MakeEmptyTensor(self.sizes(), promoted_scalar_type, self.device()));
-    AtenBitwiseRightShiftTensorOut(self, other, out);
+    TT_THROW_IF_ERROR(BitwiseRightShiftTensor(self, other, out));
     return out;
   });
 }
