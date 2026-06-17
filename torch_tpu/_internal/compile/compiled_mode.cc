@@ -262,9 +262,12 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
       << "bounded dynamic shapes are not supported in TraverseAndCompile yet";
 
   // 2. Compile Traversal and get exec
+  auto compilation_spec =
+      CompilationSpec(GetCompileOptions(options.compilation_mode),
+                      GetCompileOptionsKey(options.compilation_mode));
   TT_ASSIGN_OR_CRASH(  // CRASH_OK=implies a bug in compile backend if this
                        // happens
-      auto compiled_kernel, traversal->Compile(options.compilation_mode),
+      auto compiled_kernel, traversal->Compile(std::move(compilation_spec)),
       _ << "failed to compile traversal");
 
   TT_ASSIGN_OR_RETURN(auto executable, compiled_kernel.fixed_shape_kernel.get(),

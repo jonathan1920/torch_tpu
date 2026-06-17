@@ -26,6 +26,7 @@ torch_tpu_cc_library(
     deps = [
         "//shims/torch:torch_headers",
         "//torch_tpu/common:compilation",
+        "//torch_tpu/common:compilation_spec",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/eager:device_buffer",
         "//torch_tpu/eager:eager_mode",

@@ -542,8 +542,7 @@ std::string MlirModuleToString(mlir::ModuleOp module) {
 }  // namespace
 
 absl::StatusOr<CompiledKernel> Traversal::Compile(
-    CompilationMode compilation_mode,
-    std::string* absl_nullable out_mlir_text) const {
+    CompilationSpec spec, std::string* absl_nullable out_mlir_text) const {
   // Prepare a computation builder closure to be called on a cache miss.  Okay
   // to capture this here since CompilationCache::GetOrCompile() will call this
   // builder before the function returns and in the same thread it is invoked.
@@ -559,12 +558,13 @@ absl::StatusOr<CompiledKernel> Traversal::Compile(
   std::vector<Shape> argument_shapes = GetShapes(arguments_);
   std::vector<Shape> output_shapes = GetShapes(outputs_);
 
-  CompilationCacheKey compilation_cache_key = GetCacheKey(compilation_mode);
+  CompilationCacheKey compilation_cache_key =
+      GetCacheKey(spec.compile_options_key);
   ABSL_VLOG(1) << "[Compile] compilation cache key: " << compilation_cache_key;
 
   return CompilationCache::GetInstance().GetOrCompile(
       std::move(compilation_cache_key), argument_shapes, output_shapes,
-      std::move(final_op_builder), GetCompileOptions(compilation_mode));
+      std::move(final_op_builder), std::move(spec.xla_compile_options));
 }
 
 bool IsSimpleNodeTraversal(const Traversal& traversal) {

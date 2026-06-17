@@ -25,6 +25,7 @@
 #include <queue>
 #include <string>
 #include <string_view>
+#include <thread>  // NOLINT(build/c++11)
 #include <utility>
 #include <variant>
 #include <vector>
@@ -42,9 +43,9 @@
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "c10/util/ThreadLocalDebugInfo.h"
 #include "mlir/IR/MLIRContext.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/flags.h"
@@ -72,8 +73,7 @@ struct MaterializationTask {
   xla::Promise<void> completion_promise;
   MaterializationMode materialization_mode = MaterializationMode::kSplitGraph;
   MaterializationReason reason;
-  // Saved ThreadLocalDebugInfo captured from the dispatch thread.
-  std::shared_ptr<c10::ThreadLocalDebugInfo> debug_info;
+  CompilationSpec compilation_spec;
 };
 
 using MaterializationJob = std::variant<ExecutionTask, MaterializationTask>;
@@ -123,13 +123,17 @@ class MaterializationWorker {
     ABSL_VLOG(1) << "[MaterializationWorker] Enqueuing " << nodes.size()
                  << " nodes for materialization";
     auto [promise, future] = xla::MakePromise<void>();
+    const CompilationMode compilation_mode = GetCompilationMode(GetEagerMode());
+
     absl::MutexLock lock(materialize_mu_);
     materialize_jobs_.push(MaterializationTask{
         .nodes_to_materialize = std::move(nodes),
         .completion_promise = std::move(promise),
         .materialization_mode = materialization_mode,
         .reason = reason,
-        .debug_info = c10::ThreadLocalDebugInfo::current(),
+        .compilation_spec =
+            CompilationSpec(GetCompileOptions(compilation_mode),
+                            GetCompileOptionsKey(compilation_mode)),
     });
     return future;
   }
@@ -194,13 +198,6 @@ class MaterializationWorker {
     ABSL_VLOG(1)
         << "[MaterializationWorker] Processing MaterializationTask with "
         << task.nodes_to_materialize.size() << " nodes";
-    // Restore the dispatch thread's ThreadLocalDebugInfo (including compilation
-    // options and eager mode configuration) across the thread boundary.
-    //
-    // We don't restore the whole at::ThreadLocalState to avoid the risk of
-    // deadlocks. at::ThreadLocalState holds Python objects, which can hold and
-    // acquire the GIL.
-    c10::DebugInfoGuard debug_info_guard(task.debug_info);
 
     LogDeferredNodes(task.nodes_to_materialize,
                      /* msg_prefix= */ "  Input node");
@@ -248,7 +245,8 @@ class MaterializationWorker {
     std::vector<ExecutionTask> execution_tasks;
     for (auto& split_traversal : traversals) {
       auto execution_task_or = ExecutionTask::FromTraversalWithLogging(
-          std::move(split_traversal), mlir_context, task.reason);
+          std::move(split_traversal), mlir_context,
+          task.compilation_spec.Copy(), task.reason);
       if (!execution_task_or.ok()) {
         // Fail the execution tasks we already created to ensure anything
         // waiting on their outputs will not deadlock.

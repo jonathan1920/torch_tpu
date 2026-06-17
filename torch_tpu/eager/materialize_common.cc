@@ -42,6 +42,7 @@
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
+#include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/context_states.h"
@@ -49,7 +50,6 @@
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/eager/device_buffer.h"
-#include "torch_tpu/eager/eager_mode.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/traversal.h"
 #include "torch_tpu/ops/op_names.h"
@@ -200,13 +200,15 @@ void FinalizePushTraceEvent(std::unique_ptr<StructuredLogEvent> event,
 
 absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
     absl_nonnull std::unique_ptr<Traversal> traversal,
-    mlir::MLIRContext& mlir_context, MaterializationReason reason,
-    std::string* absl_nullable out_mlir_text) {
+    mlir::MLIRContext& mlir_context, CompilationSpec compilation_spec,
+    MaterializationReason reason, std::string* absl_nullable out_mlir_text) {
   // Propagate bounded dynamism annotations if needed.
   if (traversal->IsBoundedDynamic()) {
     TT_RETURN_IF_ERROR(PropagateBoundedDynamism(*traversal, mlir_context));
   }
-  const auto compilation_mode = GetCompilationMode(GetEagerMode());
+
+  const CompilationCacheKey compilation_cache_key =
+      traversal->GetCacheKey(compilation_spec.compile_options_key);
   for (const auto& argument : traversal->arguments()) {
     if (!argument.is_materializing()) {
       if (argument.is_placeholder()) {
@@ -218,8 +220,8 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
                << argument.DebugString();
       } else if (const auto deferred_op = argument.deferred_op()) {
         return TT_ERROR(error::kInternal)
-               << "traversal " << traversal->GetCacheKey(compilation_mode)
-               << " has deferred argument " << ToString(deferred_op->op_name())
+               << "traversal (cache key: " << compilation_cache_key
+               << ") has deferred argument " << ToString(deferred_op->op_name())
                << ToString(argument.dimensions())
                << ".\nAll arguments must be set to pending materialization "
                   "before creating chained ExecutionTasks";
@@ -243,8 +245,9 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
   absl::StatusOr<CompiledKernel> compiled_kernel;
   {
     tsl::profiler::TraceMe t("CompileTraversal");
-    TT_ASSIGN_OR_RETURN(compiled_kernel,
-                        traversal->Compile(compilation_mode, out_mlir_text));
+    TT_ASSIGN_OR_RETURN(
+        compiled_kernel,
+        traversal->Compile(std::move(compilation_spec), out_mlir_text));
   }
 
   // Mark all outputs of the split as scheduled/materialized.
@@ -257,7 +260,7 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversal(
 
   std::string task_name;
   if (ABSL_VLOG_IS_ON(1)) {
-    task_name = absl::StrCat(traversal->GetCacheKey(compilation_mode));
+    task_name = absl::StrCat(compilation_cache_key);
   }
   Traversal::Parts traversal_parts = traversal->IntoParts();
   return ExecutionTask(
@@ -306,11 +309,13 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromExecutable(
 
 absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversalWithLogging(
     absl_nonnull std::unique_ptr<Traversal> traversal,
-    mlir::MLIRContext& mlir_context, MaterializationReason reason) {
+    mlir::MLIRContext& mlir_context, CompilationSpec compilation_spec,
+    MaterializationReason reason) {
   auto event = MaybeStartTraceEvent(reason, *traversal);
   if (!event) {
     return ExecutionTask::FromTraversal(std::move(traversal), mlir_context,
-                                        reason, /*out_mlir_text=*/nullptr);
+                                        std::move(compilation_spec), reason,
+                                        /*out_mlir_text=*/nullptr);
   }
 
   // Get the aten graph payload before moving the traversal.
@@ -319,7 +324,8 @@ absl::StatusOr<ExecutionTask> ExecutionTask::FromTraversalWithLogging(
   // Try to build the execution task and capture the MLIR if possible.
   std::string captured_mlir;
   auto execution_task_or = ExecutionTask::FromTraversal(
-      std::move(traversal), mlir_context, reason, &captured_mlir);
+      std::move(traversal), mlir_context, std::move(compilation_spec), reason,
+      &captured_mlir);
 
   // Whether or not the execution task was created successfully, finish the
   // trace event and return.

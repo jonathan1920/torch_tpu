@@ -22,7 +22,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <thread>
+#include <thread>  // NOLINT(build/c++11)
 #include <utility>
 #include <vector>
 
@@ -40,6 +40,7 @@
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "torch_tpu/common/compilation.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/eager_mode.h"
@@ -109,7 +110,8 @@ std::string ToString(const std::vector<SharedDeviceBufferList>& v) {
 absl::Status MaterializeQueue(
     const std::vector<SharedDeviceBufferList>& queue,
     const std::vector<SharedDeviceBufferList>& nodes_to_materialize,
-    MaterializationReason reason, mlir::MLIRContext& mlir_context) {
+    CompilationSpec compilation_spec, MaterializationReason reason,
+    mlir::MLIRContext& mlir_context) {
   tsl::profiler::TraceMe t("MaterializeQueue");
 
   // Under concurrent multi-threaded eager dispatch, a deferred operation could
@@ -173,8 +175,6 @@ absl::Status MaterializeQueue(
                << split_traversals.size() << " traversals";
 
   // Launch compilations for the identified regions.
-  auto compilation_mode = GetCompilationMode(GetEagerMode());
-
   std::vector<ExecutionTask> execution_tasks;
   execution_tasks.reserve(split_traversals.size());
 
@@ -191,7 +191,8 @@ absl::Status MaterializeQueue(
     if (has_placeholder) {
       ABSL_VLOG(1)
           << "[MaterializationWorker] Skipping region "
-          << absl::StrCat(traversal->GetCacheKey(compilation_mode))
+          << absl::StrCat(
+                 traversal->GetCacheKey(compilation_spec.compile_options_key))
           << " because it depends on a placeholder (likely traced by Dynamo).";
       continue;
     }
@@ -199,7 +200,8 @@ absl::Status MaterializeQueue(
     // Supported bounded dynamism using the passed mlir_context.
     TT_ASSIGN_OR_RETURN(auto execution_task,
                         ExecutionTask::FromTraversalWithLogging(
-                            std::move(traversal), mlir_context, reason));
+                            std::move(traversal), mlir_context,
+                            compilation_spec.Copy(), reason));
     execution_tasks.push_back(std::move(execution_task));
   }
 
@@ -241,6 +243,7 @@ class MaterializationWorker {
     std::vector<SharedDeviceBufferList> queue;
     std::vector<SharedDeviceBufferList> nodes_to_materialize;
     MaterializationReason reason;
+    absl_nullable std::unique_ptr<CompilationSpec> compilation_spec;
     bool is_full;
     QueueState() { Reset(); }
     void Reset() {
@@ -248,6 +251,7 @@ class MaterializationWorker {
       queue.clear();
       nodes_to_materialize.clear();
       reason = MaterializationReason::kUnknown;
+      compilation_spec.reset();
     }
   };
 
@@ -331,12 +335,16 @@ absl::Status MaterializationWorker::Materialize(
     if (current_queue.empty() && nodes_to_materialize.empty()) {
       return absl::OkStatus();
     }
+    const CompilationMode mode = GetCompilationMode(GetEagerMode());
     ABSL_CHECK(  // CRASH_OK
         queues_[dispatch_queue_id_].nodes_to_materialize.empty());
     queues_[dispatch_queue_id_].nodes_to_materialize.insert(
         queues_[dispatch_queue_id_].nodes_to_materialize.end(),
         nodes_to_materialize.begin(), nodes_to_materialize.end());
     queues_[dispatch_queue_id_].reason = reason;
+    queues_[dispatch_queue_id_].compilation_spec =
+        std::make_unique<CompilationSpec>(GetCompileOptions(mode),
+                                          GetCompileOptionsKey(mode));
     queues_[dispatch_queue_id_].is_full = true;
     IncrementQueueId(dispatch_queue_id_);
   }
@@ -392,6 +400,7 @@ void MaterializationWorker::ThreadLoop() {
     std::vector<SharedDeviceBufferList> current_queue;
     std::vector<SharedDeviceBufferList> nodes_to_materialize;
     MaterializationReason current_reason;
+    std::unique_ptr<CompilationSpec> current_compilation_spec;
 
     {
       absl::MutexLock lock(
@@ -410,10 +419,13 @@ void MaterializationWorker::ThreadLoop() {
       std::swap(nodes_to_materialize,
                 queues_[execution_queue_id_].nodes_to_materialize);
       current_reason = queues_[execution_queue_id_].reason;
+      current_compilation_spec =
+          std::move(queues_[execution_queue_id_].compilation_spec);
     }
 
     // Materialize the claimed queue without holding the mutex.
     absl::Status status = MaterializeQueue(current_queue, nodes_to_materialize,
+                                           std::move(*current_compilation_spec),
                                            current_reason, *mlir_context);
 
     {
@@ -432,13 +444,14 @@ void MaterializationWorker::ThreadLoop() {
 
       // In order to avoid capacity reallocation in
       // queue_[execution_queue_id_]), put the swapped vector back and clear it,
-      // then release the slod and move to the next one.
+      // then release the slot and move to the next one.
       ABSL_CHECK(current_execution_id == execution_queue_id_);  // CRASH_OK
       std::swap(current_queue, queues_[current_execution_id].queue);
       std::swap(nodes_to_materialize,
-                queues_[execution_queue_id_].nodes_to_materialize);
+                queues_[current_execution_id].nodes_to_materialize);
       queues_[current_execution_id].queue.clear();
-      queues_[execution_queue_id_].nodes_to_materialize.clear();
+      queues_[current_execution_id].nodes_to_materialize.clear();
+      queues_[current_execution_id].compilation_spec.reset();
       queues_[current_execution_id].is_full = false;
       IncrementQueueId(execution_queue_id_);
     }
