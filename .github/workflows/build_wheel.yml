@@ -41,8 +41,6 @@ on:
     types: [opened, synchronize, reopened, labeled]
     branches:
       - main
-  schedule:
-    - cron: '0 9 * * *' # 1 AM PST
 
 # Cancel old jobs when they are replaced by new runs
 concurrency:
@@ -119,28 +117,6 @@ jobs:
           gcloud storage cp "$WHEEL_PATH" "$GCS_PATH"
           # Pass the directory path to the next job
           echo "gcs_wheel_dir=gs://torch-tpu-ci-transient/artifacts/${{ github.workflow }}/${{ github.run_number }}/${{ github.run_attempt }}/" >> $GITHUB_OUTPUT
-      - name: Upload to Artifact Registry
-        # Run only on main branch, once a day.
-        if: github.event_name == 'schedule' && github.ref == 'refs/heads/main'
-        shell: bash
-        run: |
-          # Install package needed to authenticate to artifactregistry for Python.
-          # See https://cloud.google.com/artifact-registry/docs/python/authentication
-          pip install keyrings.google-artifactregistry-auth
-
-          # Configure pypirc for twine upload.
-          pypirc_content=$(cat <<EOF
-          [distutils]
-          index-servers =
-              torch-tpu-testing-repo
-
-          [torch-tpu-testing-repo]
-          repository = https://us-python.pkg.dev/ml-oss-artifacts-transient/torch-tpu-testing-registry/
-          EOF
-          )
-          echo "$pypirc_content" > "$HOME"/.pypirc
-
-          python3 -m twine upload --repository-url https://us-python.pkg.dev/ml-oss-artifacts-transient/torch-tpu-testing-registry $WHEEL_DIR/torch_tpu-*.whl
 
   test_wheels_cpu:
     name: "Test wheel on ${{ matrix.custom_name || 'CPU' }} (Python ${{ matrix.python_version }})"
