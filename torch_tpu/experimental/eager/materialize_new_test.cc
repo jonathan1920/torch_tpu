@@ -25,6 +25,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "gtest/gtest.h"
+#include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -35,6 +36,7 @@
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
 #include "torch_tpu/common/compilation_cache.h"
+#include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/error_utils.h"
 #include "torch_tpu/common/shape.h"
@@ -92,9 +94,12 @@ TEST_F(MaterializeNewTest, AsyncMaterializationSynchronization) {
   };
   TF_ASSERT_OK_AND_ASSIGN(ContextedModule module,
                           ContextedModule::Make(mlir_builder));
+
+  auto compilation_spec = GetCompilationSpec(CompilationMode::kFastRuntime);
   TF_ASSERT_OK_AND_ASSIGN(
       SharedLoadedExecutableWithMetadata executable,
-      CompileMlirExecutable(std::move(module).ToMaybeOwningMlirModule()));
+      CompileMlirExecutable(std::move(module).ToMaybeOwningMlirModule(),
+                            std::move(compilation_spec.xla_compile_options)));
 
   ScopedPythonContextCapturer context_capturer(OpName::kEmpty);
 

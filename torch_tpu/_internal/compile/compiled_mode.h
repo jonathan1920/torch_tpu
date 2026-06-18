@@ -106,9 +106,7 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
 //
 // Args:
 //   mlir_module_bytecode: The MLIR module bytecode.
-//   compilation_mode: Which compiler profile to use. By default, use the
-//     profile optimized for torch.compile. However, in tests we may specify
-//     the profile optimized for eager.
+//   compile_options: XLA configurations to generate the compiled executable.
 //
 // Returns:
 //   The compiled executable. When the executable runs, the argument tensors
@@ -120,7 +118,7 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
 // fail or the materialized tensors might be wrong.
 absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
     std::string_view mlir_module_bytecode,
-    CompilationMode compilation_mode = CompilationMode::kFastRuntime);
+    UniqueCompileOptions compile_options);
 
 // torch.compile integration: this is called by torch.compile() to compile the
 // FX graph, after it has generated the graph and its input/output tensors. This
@@ -129,9 +127,7 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
 //
 // Args:
 //   module: The MLIR module to compile.
-//   compilation_mode: Which compiler profile to use. By default, use the
-//     profile optimized for torch.compile. However, in tests we may specify
-//     the profile optimized for eager.
+//   compile_options: XLA configurations to generate the compiled executable.
 //
 // Returns:
 //   The compiled executable. When the executable runs, the argument tensors
@@ -142,8 +138,7 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
 // by the FX graph, including their order. Otherwise, the compilation might
 // fail or the materialized tensors might be wrong.
 absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
-    xla::MaybeOwningMlirModule module,
-    CompilationMode compilation_mode = CompilationMode::kFastRuntime);
+    xla::MaybeOwningMlirModule module, UniqueCompileOptions compile_options);
 
 // torch.compile integration: this is called to invoke the compiled executable
 // returned by CompileMlirExecutable, and return new Tensors with the results.

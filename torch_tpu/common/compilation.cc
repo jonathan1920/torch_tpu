@@ -586,20 +586,13 @@ void PopCompilerOptionOverrides() {
   PopContextState<CustomCompilerOptionsContextState>();
 }
 
-UniqueCompileOptions GetCompileOptions(const CompilationMode mode) {
+CompilationSpec GetCompilationSpec(const CompilationMode mode) {
   auto current_state = GetContextState<CustomCompilerOptionsContextState>(
       GetDefaultCompilationContext);
-  const auto& spec = current_state->compilation_specs().at(mode);
+  const CompilationSpec& spec = current_state->compilation_specs().at(mode);
   // Intentionally make a copy as the input `xla::CompileOptions` object is
   // moved into `PjRtClient::CompileAndLoad` for compilation.
-  return std::make_unique<xla::CompileOptions>(*spec.xla_compile_options);
-}
-
-CompileOptionsKey GetCompileOptionsKey(const CompilationMode mode) {
-  auto current_state = GetContextState<CustomCompilerOptionsContextState>(
-      GetDefaultCompilationContext);
-  const auto& spec = current_state->compilation_specs().at(mode);
-  return spec.compile_options_key;
+  return spec.Copy();
 }
 
 }  // namespace torch_tpu

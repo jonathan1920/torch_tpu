@@ -17,7 +17,6 @@
 #include "torch_tpu/common/compile_options_key.h"
 
 #include <string>
-#include <string_view>
 
 #include "absl/log/absl_check.h"
 #include "gtest/gtest.h"
@@ -26,13 +25,8 @@
 #include "torch_tpu/common/compilation_test_helper.h"
 #include "torch_tpu/common/fingerprint_utils.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
-#include "xla/pjrt/pjrt_executable.h"
 
 namespace torch_tpu {
-
-CompileOptionsKey GetCompileOptionsKey(std::string_view xla_flags,
-                                       const xla::CompileOptions& options);
-
 namespace {
 
 class CompileOptionsKeyTest : public testing::Test {
@@ -50,6 +44,11 @@ constexpr FingerprintType kFastCompileDefaultFingerprint =
     11255405118680073921ULL;
 constexpr FingerprintType kFastRuntimeDefaultFingerprint =
     10955459558934170598ULL;
+
+[[nodiscard]] CompileOptionsKey GetCompileOptionsKey(
+    const CompilationMode mode) {
+  return GetCompilationSpec(mode).compile_options_key;
+}
 
 TEST_F(CompileOptionsKeyTest, StableFingerprint) {
   {

@@ -66,6 +66,7 @@ torch_tpu_cc_test(
         "//torch_tpu/common:cache_key",
         "//torch_tpu/common:compilation",
         "//torch_tpu/common:compilation_cache",
+        "//torch_tpu/common:compilation_spec",
         "//torch_tpu/common:dimension_types",
         "//torch_tpu/common:error_utils",
         "//torch_tpu/common:shape",

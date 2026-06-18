@@ -262,9 +262,7 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
       << "bounded dynamic shapes are not supported in TraverseAndCompile yet";
 
   // 2. Compile Traversal and get exec
-  auto compilation_spec =
-      CompilationSpec(GetCompileOptions(options.compilation_mode),
-                      GetCompileOptionsKey(options.compilation_mode));
+  auto compilation_spec = GetCompilationSpec(options.compilation_mode);
   TT_ASSIGN_OR_CRASH(  // CRASH_OK=implies a bug in compile backend if this
                        // happens
       auto compiled_kernel, traversal->Compile(std::move(compilation_spec)),
@@ -297,7 +295,7 @@ absl::StatusOr<CompileResult> TraverseAndCompile(
 
 absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
     const std::string_view mlir_module_bytecode,
-    const CompilationMode compilation_mode) {
+    UniqueCompileOptions compile_options) {
   TT_ASSIGN_OR_RETURN(
       ContextedModule module,
       ContextedModule::Make(
@@ -308,11 +306,11 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
                 &mlir_context);
           }));
   return CompileMlirExecutable(std::move(module).ToMaybeOwningMlirModule(),
-                               compilation_mode);
+                               std::move(compile_options));
 }
 
 absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
-    xla::MaybeOwningMlirModule module, const CompilationMode compilation_mode) {
+    xla::MaybeOwningMlirModule module, UniqueCompileOptions compile_options) {
   xla::PjRtClient* const client = PjrtBackend::GetInstance().GetClient();
   TT_RET_CHECK(client, error::kFailedPrecondition)
       << "PjRtClient must be initialized";
@@ -325,7 +323,7 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> CompileMlirExecutable(
                                      std::move(*compile_options));
       };
   return Compile(*client, std::move(executable_builder),
-                 GetCompileOptions(compilation_mode));
+                 std::move(compile_options));
 }
 
 namespace {

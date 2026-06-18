@@ -197,7 +197,7 @@ TEST_F(MaterializeTest, CompilerOptionsPropagateToMaterializeThread) {
   overrides["xla_tpu_autofdo"] = "false";
   ASSERT_EQ(PushCompilerOptionOverrides(overrides), absl::OkStatus());
   const CompileOptionsKey expected_key =
-      GetCompileOptionsKey(CompilationMode::kFastCompile);
+      GetCompilationSpec(CompilationMode::kFastCompile).compile_options_key;
 
   absl::Cleanup cleanup = [] { PopCompilerOptionOverrides(); };
 

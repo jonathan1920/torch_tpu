@@ -33,7 +33,6 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "torch_tpu/common/compilation_spec.h"
-#include "torch_tpu/common/compile_options_key.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -158,12 +157,10 @@ absl::StatusOr<SharedLoadedExecutableWithMetadata> Compile(
     xla::PjRtClient& client, LoadedExecutableBuilder executable_builder,
     UniqueCompileOptions compile_options);
 
-// Returns Python thread-local compile options for the given compilation mode.
-[[nodiscard]] UniqueCompileOptions GetCompileOptions(CompilationMode mode);
-
-// Returns Python thread-local compile options fingerprint for the given
-// compilation mode.
-[[nodiscard]] CompileOptionsKey GetCompileOptionsKey(CompilationMode mode);
+// Returns resolved compilation settings for the given compilation mode.
+// The returned spec includes XLA compile options (with thread-local context
+// overrides applied) and its fingerprint.
+[[nodiscard]] CompilationSpec GetCompilationSpec(CompilationMode mode);
 
 // Pushes the compile option overrides for the current thread on to the
 // custom compiler option stack. Thread-safe.

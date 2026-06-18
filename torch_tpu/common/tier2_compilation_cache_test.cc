@@ -109,7 +109,7 @@ CompilationCacheKey MakeCacheKey(uint64_t shapeless_key, int num_dims) {
   const DimensionsKey dimensions_key(dims);
   return CompilationCacheKey(
       GraphKey(ShapelessKey(shapeless_key), dimensions_key),
-      GetCompileOptionsKey(CompilationMode::kFastCompile));
+      GetCompilationSpec(CompilationMode::kFastCompile).compile_options_key);
 }
 
 // A test environment that initializes the PjRt client, which is required for

@@ -152,7 +152,7 @@ TEST_F(CompilationCacheTest, GetOrCompileLogsOnMiss) {
   };
 
   UniqueCompileOptions compile_options =
-      GetCompileOptions(CompilationMode::kFastCompile);
+      GetCompilationSpec(CompilationMode::kFastCompile).xla_compile_options;
 
   absl::ScopedMockLog log;
   EXPECT_CALL(
@@ -270,7 +270,7 @@ TEST_F(CompilationCacheTest, AllowCacheModeDisabled) {
   // First compilation.
   auto result1 = cache.GetOrCompile(
       key, input_shapes, /*output_shapes=*/{}, std::move(builder1),
-      GetCompileOptions(CompilationMode::kFastCompile));
+      GetCompilationSpec(CompilationMode::kFastCompile).xla_compile_options);
   ASSERT_TRUE(result1.ok())
       << "First GetOrCompile failed: " << result1.status();
   auto exec1_or = result1->fixed_shape_kernel.get();
@@ -280,7 +280,7 @@ TEST_F(CompilationCacheTest, AllowCacheModeDisabled) {
 
   auto result2 = cache.GetOrCompile(
       key, input_shapes, /*output_shapes=*/{}, std::move(builder2),
-      GetCompileOptions(CompilationMode::kFastCompile));
+      GetCompilationSpec(CompilationMode::kFastCompile).xla_compile_options);
   ASSERT_TRUE(result2.ok())
       << "Second GetOrCompile failed: " << result2.status();
   auto exec2_or = result2->fixed_shape_kernel.get();
@@ -346,7 +346,7 @@ TEST_F(CompilationCacheTest, PeakMemoryReported) {
     };
 
     UniqueCompileOptions compile_options =
-        GetCompileOptions(CompilationMode::kFastCompile);
+        GetCompilationSpec(CompilationMode::kFastCompile).xla_compile_options;
 
     auto key = DummyKey(i + 100);
     auto result = cache.GetOrCompile(key, {}, {}, std::move(builder),

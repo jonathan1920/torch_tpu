@@ -343,8 +343,7 @@ absl::Status MaterializationWorker::Materialize(
         nodes_to_materialize.begin(), nodes_to_materialize.end());
     queues_[dispatch_queue_id_].reason = reason;
     queues_[dispatch_queue_id_].compilation_spec =
-        std::make_unique<CompilationSpec>(GetCompileOptions(mode),
-                                          GetCompileOptionsKey(mode));
+        std::make_unique<CompilationSpec>(GetCompilationSpec(mode));
     queues_[dispatch_queue_id_].is_full = true;
     IncrementQueueId(dispatch_queue_id_);
   }

@@ -131,9 +131,7 @@ class MaterializationWorker {
         .completion_promise = std::move(promise),
         .materialization_mode = materialization_mode,
         .reason = reason,
-        .compilation_spec =
-            CompilationSpec(GetCompileOptions(compilation_mode),
-                            GetCompileOptionsKey(compilation_mode)),
+        .compilation_spec = GetCompilationSpec(compilation_mode),
     });
     return future;
   }

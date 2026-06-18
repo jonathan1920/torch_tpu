@@ -62,7 +62,7 @@ TEST_F(MakeCompilerOptionsTest, ParsesXlaOptions) {
 
   ScopedCompilerOptionOverrides overrides({});
   UniqueCompileOptions options =
-      GetCompileOptions(CompilationMode::kFastCompile);
+      GetCompilationSpec(CompilationMode::kFastCompile).xla_compile_options;
 
   EXPECT_EQ(options->executable_build_options.optimization_level(),
             xla::ExecutionOptions::EFFORT_O3);
@@ -78,7 +78,7 @@ TEST_F(MakeCompilerOptionsTest, PythonContextManagerOverridesEnvVar) {
 
   ScopedCompilerOptionOverrides overrides({{"xla_optimization_level", "O2"}});
   UniqueCompileOptions options =
-      GetCompileOptions(CompilationMode::kFastCompile);
+      GetCompilationSpec(CompilationMode::kFastCompile).xla_compile_options;
 
   EXPECT_EQ(options->executable_build_options.optimization_level(),
             xla::ExecutionOptions::EFFORT_O2);

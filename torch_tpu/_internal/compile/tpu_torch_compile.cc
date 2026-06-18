@@ -241,11 +241,15 @@ SharedLoadedExecutableWithMetadata PyCompileMlir(
   // it can generate readable Mlir module names.
   ScopedPythonContextProvider provider(
       ScopedPythonContextCapturer::GetContext());
+
+  const auto compilation_mode = fast_compile ? CompilationMode::kFastCompile
+                                             : CompilationMode::kFastRuntime;
+  auto compilation_spec = GetCompilationSpec(compilation_mode);
+
   TT_ASSIGN_OR_THROW(
       auto executable,
       CompileMlirExecutable(xla::MaybeOwningMlirModule(module->get()),
-                            fast_compile ? CompilationMode::kFastCompile
-                                         : CompilationMode::kFastRuntime));
+                            std::move(compilation_spec.xla_compile_options)));
   return executable;
 }
 
@@ -458,8 +462,9 @@ SliceSubgraphInputs UnpackSliceInputs(
 absl::StatusOr<CompileResult> CompileModuleWithCache(
     MlirComputationBuilder builder, const CompilationCacheKey& cache_key,
     const std::vector<Shape>& input_shapes,
-    const std::vector<Shape>& output_shapes, CompilationMode compilation_mode,
-    bool build_mlir_module, bool is_caching_disabled) {
+    const std::vector<Shape>& output_shapes,
+    UniqueCompileOptions compile_options, bool build_mlir_module,
+    bool is_caching_disabled) {
   CompileResult result;
   std::optional<ContextedModule> contexted_module;
 
@@ -474,13 +479,12 @@ absl::StatusOr<CompileResult> CompileModuleWithCache(
     TT_ASSIGN_OR_RETURN(result.executable,
                         CompileMlirExecutable(
                             xla::MaybeOwningMlirModule(contexted_module->get()),
-                            compilation_mode));
+                            std::move(compile_options)));
   } else {
-    TT_ASSIGN_OR_RETURN(
-        CompiledKernel compiled_kernel,
-        CompilationCache::GetInstance().GetOrCompile(
-            cache_key, input_shapes, output_shapes, std::move(builder),
-            GetCompileOptions(compilation_mode)));
+    TT_ASSIGN_OR_RETURN(CompiledKernel compiled_kernel,
+                        CompilationCache::GetInstance().GetOrCompile(
+                            cache_key, input_shapes, output_shapes,
+                            std::move(builder), std::move(compile_options)));
 
     TT_ASSIGN_OR_RETURN(result.executable,
                         compiled_kernel.fixed_shape_kernel.get(),
@@ -519,18 +523,19 @@ void PyPrecompilePadModule(const std::vector<TensorInfo>& tensor_info,
 
   const auto compilation_mode = fast_compile ? CompilationMode::kFastCompile
                                              : CompilationMode::kFastRuntime;
+  CompilationSpec compilation_spec = GetCompilationSpec(compilation_mode);
 
   const CompilationCacheKey cache_key(
       /*graph_key=*/PadModuleCacheKey(dynamic_shapes, /*pad_only_module=*/true),
-      /*compile_options_key=*/GetCompileOptionsKey(compilation_mode));
+      compilation_spec.compile_options_key);
 
   std::vector<Shape> runtime_input_shapes = ToStaticShapes(dynamic_shapes);
   std::vector<Shape> padded_input_shapes = ToPaddedShapes(dynamic_shapes);
-  TT_ASSIGN_OR_THROW(
-      CompiledKernel compiled_pad,
-      CompilationCache::GetInstance().GetOrCompile(
-          cache_key, runtime_input_shapes, padded_input_shapes,
-          std::move(pad_builder), GetCompileOptions(compilation_mode)));
+  TT_ASSIGN_OR_THROW(CompiledKernel compiled_pad,
+                     CompilationCache::GetInstance().GetOrCompile(
+                         cache_key, runtime_input_shapes, padded_input_shapes,
+                         std::move(pad_builder),
+                         std::move(compilation_spec.xla_compile_options)));
 }
 
 // Returns a CompileResult containing the executable and optionally the MLIR
@@ -574,9 +579,11 @@ CompileResult PyGetOrCompilePadModule(
 
   const auto compilation_mode = fast_compile ? CompilationMode::kFastCompile
                                              : CompilationMode::kFastRuntime;
+  CompilationSpec compilation_spec = GetCompilationSpec(compilation_mode);
+
   const CompilationCacheKey cache_key(
       /*graph_key=*/PadModuleCacheKey(dynamic_shapes, /*pad_only_module=*/true),
-      /*compile_options_key=*/GetCompileOptionsKey(compilation_mode));
+      /*compile_options_key=*/compilation_spec.compile_options_key);
 
   std::vector<Shape> runtime_input_shapes = ToStaticShapes(dynamic_shapes);
   std::vector<Shape> padded_input_shapes = ToPaddedShapes(dynamic_shapes);
@@ -585,8 +592,8 @@ CompileResult PyGetOrCompilePadModule(
       CompileResult result,
       CompileModuleWithCache(std::move(pad_builder), cache_key,
                              runtime_input_shapes, padded_input_shapes,
-                             compilation_mode, build_mlir_module,
-                             is_caching_disabled));
+                             std::move(compilation_spec.xla_compile_options),
+                             build_mlir_module, is_caching_disabled));
   return result;
 }
 
@@ -615,17 +622,18 @@ void PyPrecompileSliceModule(
 
   const auto compilation_mode = fast_compile ? CompilationMode::kFastCompile
                                              : CompilationMode::kFastRuntime;
+  CompilationSpec compilation_spec = GetCompilationSpec(compilation_mode);
 
   const CompilationCacheKey cache_key(
       /*graph_key=*/SliceModuleCacheKey(inputs.target_dims, inputs.padded_dims,
                                         inputs.element_types),
-      /*compile_options_key=*/GetCompileOptionsKey(compilation_mode));
+      compilation_spec.compile_options_key);
 
-  TT_ASSIGN_OR_THROW(
-      CompiledKernel compiled_slice,
-      CompilationCache::GetInstance().GetOrCompile(
-          cache_key, inputs.input_shapes, inputs.output_shapes,
-          std::move(slice_builder), GetCompileOptions(compilation_mode)));
+  TT_ASSIGN_OR_THROW(CompiledKernel compiled_slice,
+                     CompilationCache::GetInstance().GetOrCompile(
+                         cache_key, inputs.input_shapes, inputs.output_shapes,
+                         std::move(slice_builder),
+                         std::move(compilation_spec.xla_compile_options)));
 }
 
 // Returns a CompileResult containing the executable and optionally the MLIR
@@ -681,17 +689,19 @@ CompileResult PyGetOrCompileSliceModule(
 
   const auto compilation_mode = fast_compile ? CompilationMode::kFastCompile
                                              : CompilationMode::kFastRuntime;
+  CompilationSpec compilation_spec = GetCompilationSpec(compilation_mode);
+
   const CompilationCacheKey cache_key(
       /*graph_key=*/SliceModuleCacheKey(inputs.target_dims, inputs.padded_dims,
                                         inputs.element_types),
-      /*compile_options_key=*/GetCompileOptionsKey(compilation_mode));
+      compilation_spec.compile_options_key);
 
   TT_ASSIGN_OR_THROW(
       CompileResult result,
       CompileModuleWithCache(std::move(slice_builder), cache_key,
                              runtime_input_shapes, cache_output_shapes,
-                             compilation_mode, build_mlir_module,
-                             is_caching_disabled));
+                             std::move(compilation_spec.xla_compile_options),
+                             build_mlir_module, is_caching_disabled));
   return result;
 }
 
