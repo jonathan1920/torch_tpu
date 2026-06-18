@@ -14,11 +14,12 @@
  * limitations under the License.
  */
 
-#include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_sgd_aten_kernels.h"
+#include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_adagrad_aten_kernels.h"
 
 #include <array>
 #include <cstdint>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -30,6 +31,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/Types.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
 #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
@@ -45,38 +47,44 @@
 #include "torch_tpu/ops/op_names.h"
 #include "xla/side_effect_util.h"
 
+using torch_tpu::is_status_or_ref;
+
 namespace torch_tpu {
 
 namespace {
 
-auto SparseDenseMatmulGradWithSgdBuilder(int64_t device_batch_size,
-                                         int64_t max_ids_per_partition,
-                                         int64_t max_unique_ids_per_partition) {
+auto SparseDenseMatmulGradWithAdagradBuilder(
+    int64_t device_batch_size, int64_t max_ids_per_partition,
+    int64_t max_unique_ids_per_partition) {
   return [max_ids_per_partition, max_unique_ids_per_partition](
-             torch_tpu::FixedSizeSpan<mlir::MlirOp, 7> inputs)
-             -> absl::StatusOr<mlir::MlirOp> {
+             torch_tpu::FixedSizeSpan<mlir::MlirOp, 9> inputs)
+             -> absl::StatusOr<torch_tpu::MlirOpResults<2>> {
     mlir::MlirOp row_pointers = inputs[0];
     mlir::MlirOp embedding_ids = inputs[1];
     mlir::MlirOp sample_ids = inputs[2];
     mlir::MlirOp gains = inputs[3];
     mlir::MlirOp embedding_table = inputs[4];
-    mlir::MlirOp activations_grad = inputs[5];
-    mlir::MlirOp learning_rate = inputs[6];
+    mlir::MlirOp accumulator = inputs[5];
+    mlir::MlirOp activations_grad = inputs[6];
+    mlir::MlirOp learning_rate = inputs[7];
+    mlir::MlirOp epsilon = inputs[8];
 
     mlir::MlirBuilder& builder = row_pointers.getBuilder();
     mlir::OpBuilder& op_builder = builder.getOpBuilder();
 
     auto embedding_table_type = torch_tpu::GetTensorTypeOrDie(embedding_table);
+    auto accumulator_type = torch_tpu::GetTensorTypeOrDie(accumulator);
     int64_t embedding_dim = embedding_table_type.getShape()[1];
 
     // Define the optimizer update function.
-    std::string computation_name = "sgd_optimizer_update";
+    std::string computation_name = "adagrad_optimizer_update";
 
     auto tensor_type = mlir::RankedTensorType::get({1, embedding_dim},
                                                    op_builder.getF32Type());
     auto func_type = op_builder.getFunctionType(
-        {tensor_type, tensor_type, tensor_type},
-        {mlir::TupleType::get(op_builder.getContext(), {tensor_type})});
+        {tensor_type, tensor_type, tensor_type, tensor_type, tensor_type},
+        {mlir::TupleType::get(op_builder.getContext(),
+                              {tensor_type, tensor_type})});
 
     mlir::ModuleOp module = torch_tpu::GetModuleOp(builder);
     // Save current insertion point
@@ -92,16 +100,21 @@ auto SparseDenseMatmulGradWithSgdBuilder(int64_t device_batch_size,
 
     mlir::MlirOp grad(builder, entry_block->getArgument(0));
     mlir::MlirOp param(builder, entry_block->getArgument(1));
-    mlir::MlirOp lr(builder, entry_block->getArgument(2));
+    mlir::MlirOp acc_arg(builder, entry_block->getArgument(2));
+    mlir::MlirOp lr(builder, entry_block->getArgument(3));
+    mlir::MlirOp epsilon_arg(builder, entry_block->getArgument(4));
 
-    // lr * grad
+    auto grad_sq = mlir::stablehlo::Mul(grad, grad);
+    auto new_acc = mlir::stablehlo::Add(acc_arg, grad_sq);
     auto lr_grad = mlir::stablehlo::Mul(lr, grad);
-    // updated_param = param - lr * grad
-    auto updated_param = mlir::stablehlo::Subtract(param, lr_grad);
+    auto sqrt_acc = mlir::stablehlo::Sqrt(new_acc);
+    auto sqrt_acc_plus_epsilon = mlir::stablehlo::Add(sqrt_acc, epsilon_arg);
+    auto update = mlir::stablehlo::Div(lr_grad, sqrt_acc_plus_epsilon);
+    auto updated_param = mlir::stablehlo::Subtract(param, update);
 
     auto tuple_op = mlir::stablehlo::TupleOp::create(
         op_builder, builder.getLoc(),
-        mlir::ValueRange{updated_param.getValue()});
+        mlir::ValueRange{updated_param.getValue(), new_acc.getValue()});
     mlir::func::ReturnOp::create(op_builder, builder.getLoc(),
                                  tuple_op.getOperation()->getResults());
 
@@ -115,6 +128,11 @@ auto SparseDenseMatmulGradWithSgdBuilder(int64_t device_batch_size,
         xla::kXlaComputeTypeAttr,
         op_builder.getStringAttr(xla::kXlaComputeTypeSparse)));
     frontend_attrs.push_back(op_builder.getNamedAttr(
+        xla::kXlaShardingStrategyAttr,
+        op_builder.getStringAttr(xla::kXlaShardingStrategyMod)));
+    frontend_attrs.push_back(op_builder.getNamedAttr(
+        xla::kXlaPadValueAttr, op_builder.getStringAttr("2147483647")));
+    frontend_attrs.push_back(op_builder.getNamedAttr(
         xla::kXlaMaxIdsPerPartitionAttr,
         op_builder.getStringAttr(std::to_string(max_ids_per_partition))));
     frontend_attrs.push_back(op_builder.getNamedAttr(
@@ -122,18 +140,9 @@ auto SparseDenseMatmulGradWithSgdBuilder(int64_t device_batch_size,
         op_builder.getStringAttr(
             std::to_string(max_unique_ids_per_partition))));
     frontend_attrs.push_back(op_builder.getNamedAttr(
-        xla::kXlaPadValueAttr, op_builder.getStringAttr("2147483647")));
+        xla::kNumSlotVariables, op_builder.getStringAttr("1")));
     frontend_attrs.push_back(op_builder.getNamedAttr(
-        xla::kXlaShardingStrategyAttr,
-        op_builder.getStringAttr(xla::kXlaShardingStrategyMod)));
-    frontend_attrs.push_back(op_builder.getNamedAttr(
-        xla::kNumSlotVariables, op_builder.getStringAttr("0")));
-    frontend_attrs.push_back(op_builder.getNamedAttr(
-        xla::kNumHyperparameters, op_builder.getStringAttr("1")));
-
-    mlir::NamedAttribute frontend_attrs_attr =
-        op_builder.getNamedAttr("mhlo.frontend_attributes",
-                                op_builder.getDictionaryAttr(frontend_attrs));
+        xla::kNumHyperparameters, op_builder.getStringAttr("2")));
 
     std::string call_target = "SparseDenseMatmulGradOpWithOptimizerUpdate";
 
@@ -147,74 +156,84 @@ auto SparseDenseMatmulGradWithSgdBuilder(int64_t device_batch_size,
             &builder.getContext(),
             mlir::stablehlo::CustomCallApiVersion::API_VERSION_ORIGINAL));
 
-    // called_computations attr
+    auto frontend_attributes_attr =
+        op_builder.getNamedAttr("mhlo.frontend_attributes",
+                                op_builder.getDictionaryAttr(frontend_attrs));
+
     auto called_computations_attr = op_builder.getNamedAttr(
         "called_computations",
         op_builder.getArrayAttr({mlir::SymbolRefAttr::get(
             op_builder.getContext(), computation_name)}));
 
-    // Operands
     std::vector<mlir::Value> operands = {
         row_pointers.getValue(),     embedding_ids.getValue(),
         sample_ids.getValue(),       gains.getValue(),
         activations_grad.getValue(), embedding_table.getValue(),
-        learning_rate.getValue()};
+        accumulator.getValue(),      learning_rate.getValue(),
+        epsilon.getValue()};
 
-    auto out_type =
-        mlir::TupleType::get(op_builder.getContext(), {embedding_table_type});
+    auto out_type = mlir::TupleType::get(
+        op_builder.getContext(), {embedding_table_type, accumulator_type});
 
     auto op = mlir::stablehlo::CustomCallOp::create(
         op_builder, builder.getLoc(),
         /*resultTypes=*/{out_type},
         /*operands=*/operands,
         {call_target_attr, has_side_effect_attr, api_version_attr,
-         called_computations_attr, frontend_attrs_attr});
+         frontend_attributes_attr, called_computations_attr});
 
-    auto gte = mlir::stablehlo::GetTupleElementOp::create(
+    auto gte_table = mlir::stablehlo::GetTupleElementOp::create(
         op_builder, builder.getLoc(), op.getResult(0), 0);
+    auto gte_accumulator = mlir::stablehlo::GetTupleElementOp::create(
+        op_builder, builder.getLoc(), op.getResult(0), 1);
 
-    return mlir::MlirOp(builder, gte.getResult());
+    return torch_tpu::MlirOpResults<2>(
+        {mlir::MlirOp(builder, gte_table.getResult()),
+         mlir::MlirOp(builder, gte_accumulator.getResult())});
   };
 }
 
 }  // namespace
 
-at::Tensor AtenSparseDenseMatmulGradWithSgd(
+std::tuple<at::Tensor, at::Tensor> AtenSparseDenseMatmulGradWithAdagrad(
     const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
     const at::Tensor& sample_ids, const at::Tensor& gains,
-    const at::Tensor& embedding_table, const at::Tensor& activations_grad,
-    const at::Tensor& learning_rate, int64_t device_batch_size,
+    const at::Tensor& embedding_table, const at::Tensor& accumulator,
+    const at::Tensor& activations_grad, const at::Tensor& learning_rate,
+    const at::Tensor& epsilon, int64_t device_batch_size,
     int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition) {
-  TT_KERNEL(torch_tpu::OpName::kSparseDenseMatmulGradWithSgd, param_keys,
-            (row_pointers, embedding_ids, sample_ids, gains, embedding_table,
-             activations_grad, learning_rate, device_batch_size,
-             max_ids_per_partition, max_unique_ids_per_partition),
-            {
-              std::array<torch_tpu::TensorHolder, 7> inputs = {
-                  row_pointers,    embedding_ids,    sample_ids,   gains,
-                  embedding_table, activations_grad, learning_rate};
+  TT_KERNEL(
+      torch_tpu::OpName::kSparseDenseMatmulGradWithAdagrad, param_keys,
+      (row_pointers, embedding_ids, sample_ids, gains, embedding_table,
+       accumulator, activations_grad, learning_rate, epsilon, device_batch_size,
+       max_ids_per_partition, max_unique_ids_per_partition),
+      {
+        std::array<torch_tpu::TensorHolder, 9> inputs = {
+            row_pointers,    embedding_ids, sample_ids,       gains,
+            embedding_table, accumulator,   activations_grad, learning_rate,
+            epsilon};
 
-              torch_tpu::Dimensions out_dims(embedding_table.sizes().begin(),
-                                             embedding_table.sizes().end());
+        torch_tpu::Dimensions out_dims(embedding_table.sizes().begin(),
+                                       embedding_table.sizes().end());
 
-              auto builder_fn = SparseDenseMatmulGradWithSgdBuilder(
-                  device_batch_size, max_ids_per_partition,
-                  max_unique_ids_per_partition);
+        auto builder_fn = SparseDenseMatmulGradWithAdagradBuilder(
+            device_batch_size, max_ids_per_partition,
+            max_unique_ids_per_partition);
 
-              TT_ASSIGN_OR_THROW(mlir::ElementType out_dtype,
-                                 torch_tpu::ConvertTo<mlir::ElementType>(
-                                     embedding_table.scalar_type()));
+        TT_ASSIGN_OR_THROW(mlir::ElementType out_dtype,
+                           torch_tpu::ConvertTo<mlir::ElementType>(
+                               embedding_table.scalar_type()));
 
-              TT_ASSIGN_OR_THROW(
-                  auto results,
-                  (torch_tpu::DispatchOp<7, 1>(
-                      builder_fn, inputs,
-                      {.out_dtype = out_dtype,
-                       .out_dims = out_dims,
-                       .op_param_cache_keys = std::move(param_keys)})));
+        TT_ASSIGN_OR_THROW(
+            auto results, (torch_tpu::DispatchOp<9, 2>(
+                              builder_fn, inputs,
+                              {.out_dtypes = {out_dtype, out_dtype},
+                               .out_dims_list = {out_dims, out_dims},
+                               .op_param_cache_keys = std::move(param_keys)})));
 
-              return torch_tpu::MakeTensor(results);
-            });
+        return std::make_tuple(torch_tpu::MakeTensor(std::move(results[0])),
+                               torch_tpu::MakeTensor(std::move(results[1])));
+      });
 }
 
 }  // namespace torch_tpu

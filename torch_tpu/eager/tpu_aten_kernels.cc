@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 
 #include "ATen/core/ATen_fwd.h"
@@ -76,6 +77,7 @@
 #include "torch_tpu/ops/experimental/ragged_dot/ragged_dot_aten_kernels.h"
 #include "torch_tpu/ops/experimental/send_recv/send_recv_kernels.h"
 #include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_aten_kernels.h"
+#include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_adagrad_aten_kernels.h"
 #include "torch_tpu/ops/experimental/sparse_dense_matmul/sparse_dense_matmul_grad_with_sgd_aten_kernels.h"
 #include "torch_tpu/ops/exponential/exponential_aten_kernels.h"
 #include "torch_tpu/ops/eye/eye_aten_kernels.h"
@@ -199,24 +201,32 @@ void ImplStable(torch::Library& m, KernelFn kernel_fn) {
 // and causing compilation errors in CppFunction template deduction.
 //
 // ImplWrapperHelper uses template specialization to unpack the
-// return type (Ret) and argument types (Args...) of the function pointer,
-// allowing us to construct a monomorphic lambda with an explicit signature.
+// return type (Ret) and argument types (Args...) of the kernel function pointer
+// or callable, allowing us to construct a monomorphic lambda with an explicit
+// signature.
 template <typename Func>
-struct ImplWrapperHelper;
+struct ImplWrapperHelper {
+  // Registers a kernel function or callable with the PyTorch library, injecting
+  // a callback to be executed on entry.
+  //
+  // @tparam op_name The OpName of the operator.
+  // @tparam OnEntryFn The type of the entry callback.
+  // @param m The PyTorch library to register against.
+  // @param func The concrete kernel function pointer or callable.
+  // @param on_entry_fn A callback executed when the operator is invoked.
+  template <OpName op_name, typename OnEntryFn>
+  static void RegisterOp(torch::Library& m, Func func, OnEntryFn on_entry_fn) {
+    using MemberPtr = decltype(&Func::operator());
+    ImplWrapperHelper<MemberPtr>::template RegisterOp<op_name>(
+        m, std::move(func), std::move(on_entry_fn));
+  }
+};
 
 template <typename Ret, typename... Args>
 struct ImplWrapperHelper<Ret (*)(Args...)> {
-  // Registers a kernel function with the PyTorch library, injecting a callback
-  // to be executed on entry.
-  //
   // This helper uses template specialization to unpack the concrete signature
-  // of the kernel function pointer, allowing us to construct a monomorphic
-  // lambda that PyTorch's m.impl() can inspect at compile-time.
-  //
-  // @param op_name The OpName of the operator (compile-time template
-  // parameter).
-  // @param func The concrete kernel function pointer.
-  // @param on_entry_fn A callback executed when the operator is invoked.
+  // of the kernel function pointer or callable, allowing us to construct a
+  // monomorphic lambda that PyTorch's m.impl() can inspect at compile-time.
   template <OpName op_name, typename OnEntryFn>
   static void RegisterOp(torch::Library& m, Ret (*func)(Args...),
                          OnEntryFn on_entry_fn) {
@@ -227,6 +237,22 @@ struct ImplWrapperHelper<Ret (*)(Args...)> {
          on_entry_fn = std::move(on_entry_fn)](Args... args) -> Ret {
           on_entry_fn();
           return func(std::forward<Args>(args)...);
+        });
+  }
+};
+
+template <typename ClassType, typename Ret, typename... Args>
+struct ImplWrapperHelper<Ret (ClassType::*)(Args...) const> {
+  template <OpName op_name, typename Functor, typename OnEntryFn>
+  static void RegisterOp(torch::Library& m, Functor functor,
+                         OnEntryFn on_entry_fn) {
+    const std::string_view name = ToString(op_name);
+    m.impl(  // M_IMPL_OK=implementing Impl*().
+        std::string(name).c_str(),
+        [functor = std::move(functor),
+         on_entry_fn = std::move(on_entry_fn)](Args... args) -> Ret {
+          on_entry_fn();
+          return functor(std::forward<Args>(args)...);
         });
   }
 };
@@ -256,25 +282,6 @@ void ImplExperimental(torch::Library& m, KernelFn kernel_fn) {
         TORCH_WARN_ONCE("operator ", ToString(op_name),
                         " is experimental; its name, signature, and behavior "
                         "may change without notice; use at your own risk");
-      });
-}
-
-// Registers the kernel function for the given op name in the given library,
-// and injects a user-visible warning that the operator is deprecated and will
-// be removed in the given TorchTPU version.
-//
-// NOTE: Like `ImplExperimental`, `op_name` must be a compile-time template
-// parameter to ensure `TORCH_WARN_ONCE` generates a unique static flag per
-// operator, guaranteeing correct "once-per-operator" warning semantics.
-template <OpName op_name, typename KernelFn>
-void ImplDeprecated(torch::Library& m, KernelFn kernel_fn, int major_version,
-                    int minor_version) {
-  ImplWrapperHelper<KernelFn>::template RegisterOp<op_name>(
-      m, std::move(kernel_fn), [major_version, minor_version]() {
-        TORCH_WARN_ONCE(
-            "operator ", ToString(op_name),
-            " is deprecated and will be removed in TorchTPU version ",
-            major_version, ".", minor_version);
       });
 }
 
@@ -1042,6 +1049,13 @@ TORCH_LIBRARY(tpu, m) {
       "device_batch_size, int max_ids_per_partition, int "
       "max_unique_ids_per_partition) -> Tensor");
   m.def(
+      "sparse_dense_matmul_grad_with_adagrad(Tensor row_pointers, Tensor "
+      "embedding_ids, Tensor sample_ids, Tensor gains, Tensor embedding_table, "
+      "Tensor accumulator, Tensor activations_grad, Tensor learning_rate, "
+      "Tensor epsilon, int "
+      "device_batch_size, int max_ids_per_partition, int "
+      "max_unique_ids_per_partition) -> (Tensor, Tensor)");
+  m.def(
       "sparse_dense_matmul_grad_with_sgd(Tensor row_pointers, Tensor "
       "embedding_ids, Tensor sample_ids, Tensor gains, Tensor embedding_table, "
       "Tensor activations_grad, Tensor learning_rate, int device_batch_size, "
@@ -1063,7 +1077,7 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
             at::IntArrayRef padding, at::IntArrayRef dilation, bool ceil_mode) {
         return at::empty(self.sizes(), self.options());
       });
-  ImplStable<OpName::kSparseDenseMatmul>(
+  ImplExperimental<OpName::kSparseDenseMatmul>(
       m,
       [](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
          const at::Tensor& sample_ids, const at::Tensor& gains,
@@ -1075,7 +1089,7 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
         return at::empty({device_batch_size, embedding_table.size(1)},
                          embedding_table.options());
       });
-  ImplStable<OpName::kSparseDenseMatmulGradWithSgd>(
+  ImplExperimental<OpName::kSparseDenseMatmulGradWithSgd>(
       m,
       [](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
          const at::Tensor& sample_ids, const at::Tensor& gains,
@@ -1083,6 +1097,17 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
          const at::Tensor& learning_rate, int64_t device_batch_size,
          int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition) {
         return at::empty_like(embedding_table);
+      });
+  ImplExperimental<OpName::kSparseDenseMatmulGradWithAdagrad>(
+      m,
+      [](const at::Tensor& row_pointers, const at::Tensor& embedding_ids,
+         const at::Tensor& sample_ids, const at::Tensor& gains,
+         const at::Tensor& embedding_table, const at::Tensor& accumulator,
+         const at::Tensor& activations_grad, const at::Tensor& learning_rate,
+         const at::Tensor& epsilon, int64_t device_batch_size,
+         int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition) {
+        return std::make_tuple(at::empty_like(embedding_table),
+                               at::empty_like(accumulator));
       });
 }
 
@@ -1105,6 +1130,8 @@ TORCH_LIBRARY_IMPL(tpu, PrivateUse1, m) {
   ImplExperimental<OpName::kSparseDenseMatmul>(m, AtenSparseDenseMatmul);
   ImplExperimental<OpName::kSparseDenseMatmulGradWithSgd>(
       m, AtenSparseDenseMatmulGradWithSgd);
+  ImplExperimental<OpName::kSparseDenseMatmulGradWithAdagrad>(
+      m, AtenSparseDenseMatmulGradWithAdagrad);
 }
 
 TORCH_LIBRARY_IMPL(tpu, CPU, m) {
