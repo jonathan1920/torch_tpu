@@ -140,6 +140,7 @@ absl::Status InitDefaultGenerator(DeviceGeneratorImpl* gen_impl,
 
 // A singleton that holds one generator per device. The generators are lazily
 // initialized.
+// TODO: make the methods return Status instead of throwing on error.
 class DeviceGenerators {
  public:
   // This class is neither copyable nor movable.
@@ -148,22 +149,22 @@ class DeviceGenerators {
   DeviceGenerators(DeviceGenerators&&) = delete;
   DeviceGenerators& operator=(DeviceGenerators&&) = delete;
 
-  static DeviceGenerators& GetDefaultInstance();
+  [[nodiscard]] static DeviceGenerators& GetDefaultInstance();
 
   // Returns the default generator for the given device index. If idx is -1,
   // returns the default generator for the current device.
-  at::Generator& GetDefaultGenerator(c10::DeviceIndex idx = -1);
+  [[nodiscard]] at::Generator& GetDefaultGenerator(c10::DeviceIndex idx = -1);
 
   // Creates a new generator for the given device index. If idx is -1, creates a
   // new generator for the current device.
-  at::Generator CreateGenerator(c10::DeviceIndex idx = -1) const;
+  [[nodiscard]] at::Generator CreateGenerator(c10::DeviceIndex idx = -1) const;
 
-  int64_t num_devices() const { return num_devices_; }
+  [[nodiscard]] int64_t num_devices() const { return num_devices_; }
 
  private:
   friend void PyResetDefaultDeviceGeneratorsForTesting();
 
-  DeviceGenerators();
+  explicit DeviceGenerators(int64_t num_devices);
 
   // Resets all generators to uninitialized state.
   void ResetGenerators() {
@@ -175,7 +176,7 @@ class DeviceGenerators {
 
   std::vector<absl::StatusOr<at::Generator>> generators_;
   std::deque<c10::once_flag> generator_init_flags_;
-  int64_t num_devices_;
+  const int64_t num_devices_ = -1;
 };
 
 absl::Status DeviceGeneratorState::MaybeMaterializeDeviceStateTensor(
@@ -223,16 +224,19 @@ c10::intrusive_ptr<DeviceGeneratorState> DeviceGeneratorState::clone() const {
 
 DeviceGenerators& DeviceGenerators::GetDefaultInstance() {
   // We cannot use absl::NoDestructor here because the constructor is private.
-  static auto* const kInstance = new DeviceGenerators();
+  static auto* const kInstance = []() -> DeviceGenerators* {
+    const auto* guard =
+        c10::impl::getDeviceGuardImpl(c10::DeviceType::PrivateUse1);
+    ABSL_CHECK(guard != nullptr)  // CRASH_OK
+        << "TPU device guard is not registered. This is a TorchTPU bug.";
+    int64_t num_devices = static_cast<int32_t>(guard->deviceCount());
+    return new DeviceGenerators(num_devices);
+  }();
   return *kInstance;
 }
 
-DeviceGenerators::DeviceGenerators() {
-  const auto* guard =
-      c10::impl::getDeviceGuardImpl(c10::DeviceType::PrivateUse1);
-  TT_CHECK_THROW(guard != nullptr, error::kFailedPrecondition)
-      << "TPU device guard is not registered.";
-  num_devices_ = static_cast<int32_t>(guard->deviceCount());
+DeviceGenerators::DeviceGenerators(int64_t num_devices)
+    : num_devices_(num_devices) {
   ResetGenerators();
 }
 
