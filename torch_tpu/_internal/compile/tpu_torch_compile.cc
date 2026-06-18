@@ -47,6 +47,7 @@
 #include "torch/extension.h"  // IWYU pragma: keep for aten::Tensor pybind type
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/_internal/compile/compiled_mode.h"
+#include "torch_tpu/_internal/compile/dispatch_scan.h"
 #include "torch_tpu/_internal/dynamism/dynamism_ops.h"
 #include "torch_tpu/common/cache_key.h"
 #include "torch_tpu/common/compilation.h"
@@ -67,6 +68,7 @@
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
+#include "torch_tpu/ops/scan_builder.h"
 #include "torch_tpu/ops/view_decomposition/contiguous_to_view.h"
 #include "torch_tpu/ops/view_decomposition/decomposition.h"
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
@@ -996,6 +998,15 @@ PYBIND11_MODULE(tpu_torch_compile, m) {
   m.def("get_materialize_collective_tensors_env_value",
         PyGetMaterializeCollectiveTensorsEnvValue,
         "Returns whether to materialize collective tensors.");
+
+  py::enum_<torch_tpu::ScanDirection>(m, "ScanDirection")
+      .value("kForward", torch_tpu::ScanDirection::kForward)
+      .value("kReverse", torch_tpu::ScanDirection::kReverse)
+      .export_values();
+  m.def("create_scan_op", &PyCreateScanOp, py::arg("inits"), py::arg("inputs"),
+        py::arg("body_module"), py::arg("scan_direction"), py::arg("dummy_ys"),
+        py::arg("num_scan_inputs"),
+        "Creates a deferred scan operation and returns the output tensors.");
 }
 
 }  // namespace torch_tpu

@@ -95,6 +95,14 @@ if hasattr(torch._dynamo.config, "trace_autograd_ops"):
   torch._dynamo.config.trace_autograd_ops = True
 # pylint: enable=protected-access
 
+
+def _register_scan_operator() -> None:
+  """Registers the custom scan operator implementation for TPU."""
+  from torch_tpu._internal.compile import scan as _  # pylint: disable=g-import-not-at-top
+
+
+_register_scan_operator()
+
 # PEP 8 requires this to be a list of strings, not a tuple or a list of objects.
 __all__ = [
     # go/keep-sorted start
