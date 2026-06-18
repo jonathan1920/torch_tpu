@@ -125,7 +125,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.PrivateUse1,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
         record_shapes=True,
@@ -185,7 +185,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.PrivateUse1,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
     ) as prof:
@@ -223,7 +223,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
 
     activities = [
         torch.profiler.ProfilerActivity.CPU,
-        torch.profiler.ProfilerActivity.PrivateUse1,
+        torch.profiler.ProfilerActivity.TPU,  # type: ignore
     ]
 
     _cleanup_profile_dir()
@@ -274,7 +274,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.PrivateUse1,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
         experimental_config=config,
@@ -309,7 +309,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.PrivateUse1,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(custom_run_dir),
         experimental_config=config,
@@ -346,7 +346,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.PrivateUse1,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
         experimental_config=config,
@@ -389,7 +389,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
       with torch.profiler.profile(
           activities=[
               torch.profiler.ProfilerActivity.CPU,
-              torch.profiler.ProfilerActivity.PrivateUse1,
+              torch.profiler.ProfilerActivity.TPU,  # type: ignore
           ],
           on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir),
           experimental_config=bad_config,
@@ -416,7 +416,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.PrivateUse1,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(
             str(output_dir)
@@ -477,7 +477,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
       with torch.profiler.profile(
           activities=[
               torch.profiler.ProfilerActivity.CPU,
-              torch.profiler.ProfilerActivity.PrivateUse1,
+              torch.profiler.ProfilerActivity.TPU,  # type: ignore
           ],
           on_trace_ready=torch.profiler.tensorboard_trace_handler(
               str(output_dir)
@@ -508,7 +508,7 @@ class ProfilerIntegrationTest(parameterized.TestCase):
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.PrivateUse1,
+            torch.profiler.ProfilerActivity.TPU,  # type: ignore
         ],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(
             str(output_dir)
