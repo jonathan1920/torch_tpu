@@ -224,8 +224,8 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
                                    const at::Tensor& key,
                                    const at::Tensor& value,
                                    const std::optional<at::Tensor>& attn_bias,
-                                   bool is_causal,
-                                   std::optional<double> scale) {
+                                   bool is_causal, std::optional<double> scale,
+                                   OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(query.scalar_type()));
 
@@ -327,10 +327,6 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
     return {{out, unflattened_sum_exp}};
   };
 
-  TT_ASSIGN_OR_RETURN(auto param_keys, *OpParamCacheKeysBuilder()
-                                            .SetParam("is_causal", is_causal)
-                                            .SetParam("scale", scale));
-
   std::vector<at::Tensor> inputs = {query, key, value};
   if (attn_bias.has_value() && attn_bias->defined()) {
     inputs.push_back(*attn_bias);
@@ -365,7 +361,8 @@ absl::StatusOr<std::tuple<at::Tensor, at::Tensor, at::Tensor>>
 ScaledDotProductFusedAttentionShloBackward(
     const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
     const at::Tensor& value, const at::Tensor& attn_bias,
-    const at::Tensor& sum_exp, std::optional<double> scale, bool is_causal) {
+    const at::Tensor& sum_exp, std::optional<double> scale, bool is_causal,
+    OpParamCacheKeys param_keys) {
   TT_ASSIGN_OR_RETURN(const auto out_dtype,
                       ConvertTo<mlir::ElementType>(query.scalar_type()));
 
@@ -553,10 +550,6 @@ ScaledDotProductFusedAttentionShloBackward(
 
     return {{grad_query, grad_key, grad_value}};
   };
-
-  TT_ASSIGN_OR_RETURN(auto param_keys, *OpParamCacheKeysBuilder()
-                                            .SetParam("is_causal", is_causal)
-                                            .SetParam("scale", scale));
 
   std::vector<at::Tensor> inputs = {grad_out, query, key, value, sum_exp};
   if (attn_bias.defined()) {

@@ -23,6 +23,7 @@
 
 #include "ATen/core/TensorBody.h"
 #include "absl/status/statusor.h"
+#include "torch_tpu/common/cache_key.h"
 
 namespace torch_tpu {
 
@@ -31,13 +32,15 @@ ScaledDotProductFusedAttentionShlo(const at::Tensor& query,
                                    const at::Tensor& key,
                                    const at::Tensor& value,
                                    const std::optional<at::Tensor>& attn_bias,
-                                   bool is_causal, std::optional<double> scale);
+                                   bool is_causal, std::optional<double> scale,
+                                   OpParamCacheKeys param_keys);
 
 absl::StatusOr<std::tuple<at::Tensor, at::Tensor, at::Tensor>>
 ScaledDotProductFusedAttentionShloBackward(
     const at::Tensor& grad_out, const at::Tensor& query, const at::Tensor& key,
     const at::Tensor& value, const at::Tensor& attn_bias,
-    const at::Tensor& sum_exp, std::optional<double> scale, bool is_causal);
+    const at::Tensor& sum_exp, std::optional<double> scale, bool is_causal,
+    OpParamCacheKeys param_keys);
 
 }  // namespace torch_tpu
 
