@@ -144,7 +144,11 @@ at::Tensor& AtenIndexTensorOut(
     at::Tensor& out) {
   TT_KERNEL(
       OpName::kIndexTensorOut, _,
-      (self, IgnoreInCacheKey(indices_list_opt, "Legacy usage"), out), {
+      (self,
+       IgnoreInCacheKey(indices_list_opt,
+                        "This is being tracked by the dimensions variable"),
+       out),
+      {
         TT_CHECK_THROW(indices_list_opt.size() <= self.dim(),
                        error::kIndexError)
             << "expected the size of the indices to be <= " << self.dim()
