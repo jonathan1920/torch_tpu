@@ -251,8 +251,8 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLuUnpackOut(
     bool unpack_pivots, at::Tensor& p, at::Tensor& l, at::Tensor& u) {
   TT_KERNEL(
       OpName::kLuUnpackOut, _,
-      (lu_data, lu_pivots, IgnoreInCacheKey(unpack_data, "Legacy usage"),
-       IgnoreInCacheKey(unpack_pivots, "Legacy usage"), p, l, u),
+      (lu_data, lu_pivots, IgnoreInCacheKey(unpack_data, "Doesn't affect SHLO"),
+       IgnoreInCacheKey(unpack_pivots, "Doesn't affect SHLO"), p, l, u),
       {
         if (unpack_data || unpack_pivots) {
           TT_CHECK_THROW(lu_data.dim() >= 2, error::kInvalidArgument)
@@ -455,7 +455,9 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> AtenLinalgLuOut(
     at::Tensor& u) {
   TT_KERNEL(
       OpName::kLinalgLuOut, _,
-      (a, IgnoreInCacheKey(pivot, "Legacy usage"), p, l, u), {
+      (a, IgnoreInCacheKey(pivot, "Delegates to AtenLinalgLuFactorExOut"), p, l,
+       u),
+      {
         at::Tensor lu = at::empty_like(a);
         Dimensions pivot_dims = CopyIntVector(a.sizes());
         pivot_dims.pop_back();
