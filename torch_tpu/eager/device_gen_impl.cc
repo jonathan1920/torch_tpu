@@ -159,12 +159,12 @@ class DeviceGenerators {
   // new generator for the current device.
   [[nodiscard]] at::Generator CreateGenerator(c10::DeviceIndex idx = -1) const;
 
-  [[nodiscard]] int64_t num_devices() const { return num_devices_; }
+  [[nodiscard]] int num_devices() const { return num_devices_; }
 
  private:
   friend void PyResetDefaultDeviceGeneratorsForTesting();
 
-  explicit DeviceGenerators(int64_t num_devices);
+  explicit DeviceGenerators(int num_devices);
 
   // Resets all generators to uninitialized state.
   void ResetGenerators() {
@@ -176,7 +176,7 @@ class DeviceGenerators {
 
   std::vector<absl::StatusOr<at::Generator>> generators_;
   std::deque<c10::once_flag> generator_init_flags_;
-  const int64_t num_devices_ = -1;
+  const int num_devices_ = -1;
 };
 
 absl::Status DeviceGeneratorState::MaybeMaterializeDeviceStateTensor(
@@ -225,24 +225,23 @@ c10::intrusive_ptr<DeviceGeneratorState> DeviceGeneratorState::clone() const {
 DeviceGenerators& DeviceGenerators::GetDefaultInstance() {
   // We cannot use absl::NoDestructor here because the constructor is private.
   static auto* const kInstance = []() -> DeviceGenerators* {
-    const auto* guard =
+    const auto* const guard =
         c10::impl::getDeviceGuardImpl(c10::DeviceType::PrivateUse1);
     ABSL_CHECK(guard != nullptr)  // CRASH_OK
         << "TPU device guard is not registered. This is a TorchTPU bug.";
-    int64_t num_devices = static_cast<int32_t>(guard->deviceCount());
-    return new DeviceGenerators(num_devices);
+    return new DeviceGenerators(guard->deviceCount());
   }();
   return *kInstance;
 }
 
-DeviceGenerators::DeviceGenerators(int64_t num_devices)
+DeviceGenerators::DeviceGenerators(int num_devices)
     : num_devices_(num_devices) {
   ResetGenerators();
 }
 
 at::Generator& DeviceGenerators::GetDefaultGenerator(at::DeviceIndex idx) {
   ABSL_VLOG(1) << "[DeviceGenerators::GetDefaultGenerator] idx: "
-               << static_cast<int32_t>(idx);
+               << static_cast<int>(idx);
   if (idx == -1) {
     const auto* guard =
         c10::impl::getDeviceGuardImpl(c10::DeviceType::PrivateUse1);
@@ -254,7 +253,7 @@ at::Generator& DeviceGenerators::GetDefaultGenerator(at::DeviceIndex idx) {
                        idx < generator_init_flags_.size(),
                    error::kFailedPrecondition)
         << "The device_index is invalid, expected an index between 0 and"
-        << generators_.size() - 1 << " got " << static_cast<int32_t>(idx);
+        << generators_.size() - 1 << " got " << static_cast<int>(idx);
   }
 
   auto& generator = generators_[idx];
@@ -275,7 +274,7 @@ at::Generator& DeviceGenerators::GetDefaultGenerator(at::DeviceIndex idx) {
 }
 
 at::Generator DeviceGenerators::CreateGenerator(c10::DeviceIndex idx) const {
-  ABSL_VLOG(1) << "[CreateGenerator] idx: " << static_cast<int32_t>(idx);
+  ABSL_VLOG(1) << "[CreateGenerator] idx: " << static_cast<int>(idx);
   if (idx == -1) {
     const auto* guard =
         c10::impl::getDeviceGuardImpl(c10::DeviceType::PrivateUse1);
@@ -285,7 +284,7 @@ at::Generator DeviceGenerators::CreateGenerator(c10::DeviceIndex idx) const {
   }
   TT_CHECK_THROW(idx >= 0 && idx < num_devices_, error::kFailedPrecondition)
       << "The device_index is invalid, expected an index between 0 and"
-      << num_devices_ - 1 << " got " << static_cast<int32_t>(idx);
+      << num_devices_ - 1 << " got " << static_cast<int>(idx);
   return at::make_generator<DeviceGeneratorImpl>(idx);
 }
 
@@ -502,8 +501,7 @@ void SetManualSeed(uint64_t seed, c10::DeviceIndex idx) {
 }
 
 void SetManualSeedAll(uint64_t seed) {
-  const int64_t num_devices =
-      DeviceGenerators::GetDefaultInstance().num_devices();
+  const int num_devices = DeviceGenerators::GetDefaultInstance().num_devices();
   for (int i = 0; i < num_devices; ++i) {
     SetManualSeed(seed, i);
   }
