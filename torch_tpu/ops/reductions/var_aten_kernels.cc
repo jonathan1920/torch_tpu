@@ -133,10 +133,7 @@ at::Tensor AtenVar(const at::Tensor& self, c10::OptionalArrayRef<int64_t> dim,
       PromoteScalar(correction.value_or(at::Scalar(1.0)));
 
   TT_KERNEL(
-      OpName::kVar, _,
-      (self, IgnoreInCacheKey(dim, "Legacy usage"), promoted_correction,
-       IgnoreInCacheKey(keep_dim, "Legacy usage")),
-      {
+      OpName::kVar, param_keys, (self, dim, promoted_correction, keep_dim), {
         c10::ScalarType scalar_dtype = self.scalar_type();
         TT_THROW_IF_ERROR(CheckFloatOrComplex(scalar_dtype));
         if (c10::isComplexType(scalar_dtype)) {
@@ -169,11 +166,10 @@ at::Tensor AtenVar(const at::Tensor& self, c10::OptionalArrayRef<int64_t> dim,
 
         TT_ASSIGN_OR_THROW(
             auto result_bufs,
-            (DispatchOp<2, 1>(
-                std::move(var_builder), {self, correction_tensor},
-                {.out_dtype = scalar_dtype_mlir,
-                 .out_dims = output_dims,
-                 .op_param_cache_keys = OpParamCacheKeys::Empty()})));
+            (DispatchOp<2, 1>(std::move(var_builder), {self, correction_tensor},
+                              {.out_dtype = scalar_dtype_mlir,
+                               .out_dims = output_dims,
+                               .op_param_cache_keys = std::move(param_keys)})));
         return MakeTensor(std::move(result_bufs));
       });
 }
