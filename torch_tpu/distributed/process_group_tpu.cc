@@ -593,7 +593,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::allreduce(
 c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::broadcast(
     std::vector<at::Tensor>& tensors, const c10d::BroadcastOptions& opts) {
   TT_KERNEL(OpName::kDistributedBroadcast, _,
-            (tensors, IgnoreInCacheKey(opts, "Legacy usage")), {
+            (tensors, IgnoreInCacheKey(opts, "Doesn't affect SHLO")), {
               auto src_rank = opts.rootRank;
               auto src_dev_id = rank_to_device_id_[src_rank];
               auto cur_dev_id = addressable_device_id_;
@@ -1041,7 +1041,7 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::scatter(
     const c10d::ScatterOptions& opts) {
   TT_KERNEL(
       OpName::kDistributedScatter, _,
-      (outputs, inputs, IgnoreInCacheKey(opts, "Legacy usage")), {
+      (outputs, inputs, IgnoreInCacheKey(opts, "Doesn't affect SHLO")), {
         const int64_t rank = getRank();
         const int64_t root_rank = opts.rootRank;
         TT_CHECK_THROW(outputs.size() == 1, error::kInvalidArgument)
@@ -1111,7 +1111,9 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter(
     const c10d::ReduceScatterOptions& opts) {
   TT_KERNEL(
       OpName::kDistributedReduceScatter, _,
-      (output_tensors, input_tensors, IgnoreInCacheKey(opts, "Legacy usage")), {
+      (output_tensors, input_tensors,
+       IgnoreInCacheKey(opts, "Delegates to _reduce_scatter_base")),
+      {
         // NOTE: Python side API only exposes single-element reduce_scatter op.
         // Same validation is done in NCCL backend.
         TT_CHECK_THROW(input_tensors.size() == 1, error::kUnimplemented)
@@ -1219,7 +1221,9 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::reduce_scatter_tensor_coalesced(
     const c10d::ReduceScatterOptions& opts) {
   TT_KERNEL(
       OpName::kDistributedReduceScatterTensorCoalesced, _,
-      (outputs, inputs, IgnoreInCacheKey(opts, "Legacy usage")), {
+      (outputs, inputs,
+       IgnoreInCacheKey(opts, "Delegates to _reduce_scatter_base")),
+      {
         TT_CHECK_THROW(inputs.size() == outputs.size(), error::kInvalidArgument)
             << "inputs and outputs must have the same size, got "
             << inputs.size() << " inputs and " << outputs.size() << " outputs";
@@ -1245,47 +1249,49 @@ c10::intrusive_ptr<c10d::Work> ProcessGroupTpu::alltoall_base(
     std::vector<int64_t>& output_split_sizes,  // INT_VEC_OK
     std::vector<int64_t>& input_split_sizes,   // INT_VEC_OK
     const c10d::AllToAllOptions& opts) {
-  TT_KERNEL(
-      OpName::kDistributedAllToAllSingle, _,
-      (output, input, IgnoreInCacheKey(output_split_sizes, "Legacy usage"),
-       IgnoreInCacheKey(input_split_sizes, "Legacy usage"), opts),
-      {
-        const int64_t rank = getRank();
-        const bool async = opts.asyncOp;
-        const int64_t group_size = subgroup_device_ids_[0].size();
+  TT_KERNEL(OpName::kDistributedAllToAllSingle, _,
+            (output, input,
+             IgnoreInCacheKey(output_split_sizes, "Doesn't affect SHLO"),
+             IgnoreInCacheKey(input_split_sizes, "Doesn't affect SHLO"), opts),
+            {
+              const int64_t rank = getRank();
+              const bool async = opts.asyncOp;
+              const int64_t group_size = subgroup_device_ids_[0].size();
 
-        // Check on input and output dtypes already done in the PyTorch
-        // layer. Hence, we do not need to check for dtypes here.
+              // Check on input and output dtypes already done in the
+              // PyTorch layer. Hence, we do not need to check for dtypes
+              // here.
 
-        TT_THROW_IF_ERROR(CheckSplitSizesForAllToAllSingle(input_split_sizes,
-                                                           input, group_size));
-        TT_THROW_IF_ERROR(CheckSplitSizesForAllToAllSingle(output_split_sizes,
-                                                           output, group_size));
+              TT_THROW_IF_ERROR(CheckSplitSizesForAllToAllSingle(
+                  input_split_sizes, input, group_size));
+              TT_THROW_IF_ERROR(CheckSplitSizesForAllToAllSingle(
+                  output_split_sizes, output, group_size));
 
-        const bool equal_input_splits = IsEqualSplits(input_split_sizes);
-        const bool equal_output_splits = IsEqualSplits(output_split_sizes);
+              const bool equal_input_splits = IsEqualSplits(input_split_sizes);
+              const bool equal_output_splits =
+                  IsEqualSplits(output_split_sizes);
 
-        if (equal_input_splits && equal_output_splits) {
-          TT_ASSIGN_OR_THROW(DeviceBufferRef result_buf,
-                             AllToAllBaseEqualSplits(output, input));
-          TT_THROW_IF_ERROR(
-              AssignBufferToAtTensor(std::move(result_buf), output));
-        } else {
-          TT_ASSIGN_OR_THROW(
-              DeviceBufferRef result_buf,
-              AllToAllBaseUnevenSplits(output, input, output_split_sizes,
-                                       input_split_sizes));
-          TT_THROW_IF_ERROR(
-              AssignBufferToAtTensor(std::move(result_buf), output));
-        }
+              if (equal_input_splits && equal_output_splits) {
+                TT_ASSIGN_OR_THROW(DeviceBufferRef result_buf,
+                                   AllToAllBaseEqualSplits(output, input));
+                TT_THROW_IF_ERROR(
+                    AssignBufferToAtTensor(std::move(result_buf), output));
+              } else {
+                TT_ASSIGN_OR_THROW(
+                    DeviceBufferRef result_buf,
+                    AllToAllBaseUnevenSplits(output, input, output_split_sizes,
+                                             input_split_sizes));
+                TT_THROW_IF_ERROR(
+                    AssignBufferToAtTensor(std::move(result_buf), output));
+              }
 
-        if (async) {
-          return c10::make_intrusive<TpuWork>(std::vector<at::Tensor>{output},
-                                              rank,
-                                              c10d::OpType::ALLTOALL_BASE);
-        }
-        return nullptr;
-      });
+              if (async) {
+                return c10::make_intrusive<TpuWork>(
+                    std::vector<at::Tensor>{output}, rank,
+                    c10d::OpType::ALLTOALL_BASE);
+              }
+              return nullptr;
+            });
 }
 
 absl::StatusOr<DeviceBufferRef> ProcessGroupTpu::AllToAllBaseEqualSplits(
