@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdlib>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -267,6 +268,7 @@ class MaterializationWorker {
   MaterializationWorker() {
     Reset();
     execution_thread_ = std::thread([this]() { ThreadLoop(); });
+    std::atexit([]() { MaterializationWorker::GetInstance().Exit(); });
   }
 
   ~MaterializationWorker() { Exit(); }
