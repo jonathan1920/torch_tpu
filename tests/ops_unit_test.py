@@ -31,6 +31,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 from scipy import stats
 import torch
+from torch.testing._internal import common_methods_invocations
 from torch_tpu._internal import sync
 from torch_tpu._internal.compile import tpu_torch_compile
 from torch_tpu._internal.utils import utils
@@ -45,6 +46,7 @@ from tests import ops_test_data
 
 OpInput = op_testing.OpInput
 TorchTpuVsCpuTestBase = op_testing.TorchTpuVsCpuTestBase
+op_db = common_methods_invocations.op_db
 to = op_testing.to
 CheckValueMode = utils.CheckValueMode
 
@@ -7763,6 +7765,137 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
               source=to(source_dtype, device=device),
           ),
       )
+
+
+class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
+  """Tests for the op_testing framework itself."""
+
+  def test_accuracy_runs_use_different_seeds(self):
+    if self.golden_device_type != "cpu":
+      self.skipTest(
+          "Only runs in CPU mode where inputs are generated dynamically."
+      )
+
+    abs_op = next(op for op in op_db if op.name == "abs")
+
+    # 1. Verify uniqueness within a single run (loop)
+    # Seed once at the start of the "loop"
+    op_testing._seed_rngs(1234)
+
+    pairs1 = self._get_golden_input_output_pairs(
+        op=abs_op,
+        dtype=torch.float32,
+        variant=op_testing.OpVariant.BASE,
+        max_samples=2,
+        verbose=False,
+        set_seed=False,  # match new loop behavior
+    )
+
+    # Run 2 continues from where Run 1 left off
+    pairs2 = self._get_golden_input_output_pairs(
+        op=abs_op,
+        dtype=torch.float32,
+        variant=op_testing.OpVariant.BASE,
+        max_samples=2,
+        verbose=False,
+        set_seed=False,  # match new loop behavior
+    )
+
+    inputs1 = [p[0].input_value for p in pairs1]
+    inputs2 = [p[0].input_value for p in pairs2]
+
+    all_equal = True
+    for t1, t2 in zip(inputs1, inputs2):
+      if not torch.allclose(t1, t2):
+        all_equal = False
+        break
+    self.assertFalse(all_equal, "Inputs within the loop were identical!")
+
+  def test_accuracy_runs_are_unique_across_runs(self):
+    if self.golden_device_type != "cpu":
+      self.skipTest(
+          "Only runs in CPU mode where inputs are generated dynamically."
+      )
+
+    abs_op = next(op for op in op_db if op.name == "abs")
+
+    # Run with base seed 1234
+    op_testing._seed_rngs(1234)
+    pairs_1234 = self._get_golden_input_output_pairs(
+        op=abs_op,
+        dtype=torch.float32,
+        variant=op_testing.OpVariant.BASE,
+        max_samples=2,
+        verbose=False,
+        set_seed=False,
+    )
+
+    # Run with base seed 5678
+    op_testing._seed_rngs(5678)
+    pairs_5678 = self._get_golden_input_output_pairs(
+        op=abs_op,
+        dtype=torch.float32,
+        variant=op_testing.OpVariant.BASE,
+        max_samples=2,
+        verbose=False,
+        set_seed=False,
+    )
+
+    inputs_1234 = [p[0].input_value for p in pairs_1234]
+    inputs_5678 = [p[0].input_value for p in pairs_5678]
+
+    all_equal = True
+    for t1, t2 in zip(inputs_1234, inputs_5678):
+      if not torch.allclose(t1, t2):
+        all_equal = False
+        break
+    self.assertFalse(
+        all_equal,
+        "Inputs across runs with different base seeds were identical!",
+    )
+
+  def test_accuracy_runs_are_deterministic_with_same_seed(self):
+    if self.golden_device_type != "cpu":
+      self.skipTest(
+          "Only runs in CPU mode where inputs are generated dynamically."
+      )
+
+    abs_op = next(op for op in op_db if op.name == "abs")
+
+    # Run 1 with base seed 1234
+    op_testing._seed_rngs(1234)
+    pairs1 = self._get_golden_input_output_pairs(
+        op=abs_op,
+        dtype=torch.float32,
+        variant=op_testing.OpVariant.BASE,
+        max_samples=2,
+        verbose=False,
+        set_seed=False,
+    )
+
+    # Run 2 with same base seed 1234
+    op_testing._seed_rngs(1234)
+    pairs2 = self._get_golden_input_output_pairs(
+        op=abs_op,
+        dtype=torch.float32,
+        variant=op_testing.OpVariant.BASE,
+        max_samples=2,
+        verbose=False,
+        set_seed=False,
+    )
+
+    inputs1 = [p[0].input_value for p in pairs1]
+    inputs2 = [p[0].input_value for p in pairs2]
+
+    all_equal = True
+    for t1, t2 in zip(inputs1, inputs2):
+      if not torch.allclose(t1, t2):
+        all_equal = False
+        break
+    self.assertTrue(
+        all_equal,
+        "Inputs across runs with same base seeds were different!",
+    )
 
 
 if __name__ == "__main__":
