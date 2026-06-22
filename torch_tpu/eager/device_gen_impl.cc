@@ -18,14 +18,12 @@
 
 #include <cstdint>
 #include <deque>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/Generator.h"
-#include "ATen/ops/full.h"
 #include "absl/base/no_destructor.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -108,14 +106,29 @@ absl::StatusOr<DeviceBufferRef> UpdateDeviceRngOffset(at::Tensor rng_state,
   return UpdateDeviceRngState(rng_state, value, /*position=*/1);
 }
 
-at::Tensor CreateDeviceRngStateTensor(c10::Device device) {
-  // Exclude the Python dispatch key to prevent FakeTensorMode and other
-  // Python-level dispatch modes from intercepting internal eager tensor
-  // allocations and operations in this scope.
-  c10::impl::ExcludeDispatchKeyGuard guard(c10::DispatchKey::Python);
-  return at::full(/*size=*/{2}, /*fill_value=*/0, /*dtype_opt=*/at::kUInt64,
-                  /*layout_opt=*/std::nullopt, /*device_opt=*/device,
-                  /*pin_memory_opt=*/std::nullopt);
+// Allocates and initializes the 1D uint64 RNG state tensor ({seed, offset})
+// eagerly on the device using host-to-device memory copy.
+//
+// This function must be used for generator state initialization and host-driven
+// seed/offset updates (like manual seeding).
+//
+// Standard alternatives like `MakeEmptyTensor` or `at::full` cannot be used
+// here because:
+// 1. They are deferred and require an active `ScopedPythonContextCapturer`
+//    to track the operation. Seeding from Python utility scripts (e.g., in test
+//    setup) does not run inside an operator context, so no capturer is alive,
+//    causing deferred allocations to crash.
+// 2. They dispatch through PyTorch, which violates operator isolation and
+//    causes `CompositeOpCheck` failures when lazy generator initialization is
+//    triggered from inside a native operator (like `normal_`).
+absl::StatusOr<at::Tensor> CreateDeviceRngStateTensor(c10::Device device,
+                                                      uint64_t seed,
+                                                      uint64_t offset) {
+  const uint64_t host_data[2] = {seed, offset};
+  TT_ASSIGN_OR_RETURN(
+      auto rng_state_buffer,
+      TpuMallocAndMemcpyHtoD(host_data, mlir::ElementType::UI64, {2}));
+  return MakeTensor(std::move(rng_state_buffer), device.index());
 }
 
 // A modifiable string that can be used to force the next InitDefaultGenerator()
@@ -205,12 +218,9 @@ absl::Status DeviceGeneratorState::SetDeviceStateTensor(
 
 absl::Status DeviceGeneratorState::WriteStateToDevice(uint64_t seed,
                                                       uint64_t offset) {
-  uint64_t host_data[2] = {seed, offset};
   TT_ASSIGN_OR_RETURN(
-      auto rng_state_buffer,
-      TpuMallocAndMemcpyHtoD(host_data, mlir::ElementType::UI64, {2}));
-  auto new_rng_state = MakeTensor(std::move(rng_state_buffer),
-                                  device_state_tensor_.device().index());
+      auto new_rng_state,
+      CreateDeviceRngStateTensor(device_state_tensor_.device(), seed, offset));
   return SetDeviceStateTensor(new_rng_state);
 }
 
@@ -306,8 +316,9 @@ DeviceGeneratorImpl::DeviceGeneratorImpl(c10::DeviceIndex device_index)
     : c10::GeneratorImpl(
           c10::Device(c10::DeviceType::PrivateUse1, device_index),
           c10::DispatchKeySet(c10::DispatchKey::PrivateUse1)) {
-  state_ = c10::make_intrusive<DeviceGeneratorState>(
-      CreateDeviceRngStateTensor(this->device()));
+  TT_ASSIGN_OR_THROW(auto tensor,
+                     CreateDeviceRngStateTensor(this->device(), 0, 0));
+  state_ = c10::make_intrusive<DeviceGeneratorState>(std::move(tensor));
 }
 
 DeviceGeneratorImpl::DeviceGeneratorImpl(c10::DeviceIndex device_index,

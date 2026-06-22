@@ -4186,14 +4186,6 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   )
   def test_randn_complex(self, dtype: torch.dtype):
     numel = 100_000
-    if dtype == torch.complex128:
-      with self.assertRaisesRegex(
-          RuntimeError, "complex128 dtype is not supported"
-      ):
-        t = torch.randn(numel, dtype=dtype, device=torch.device("tpu"))
-        t.cpu()
-      return
-
     t = torch.randn(numel, dtype=dtype, device=torch.device("tpu"))
     t_cpu = t.cpu()
 
