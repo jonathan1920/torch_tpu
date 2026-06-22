@@ -5217,7 +5217,7 @@ Supported combinations for non-constant padding:
     dim = 0
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""weight_norm_interface(): expected the input dtype to be floating point, got Int""",
+        tpu="""weight_norm_interface(): expected the input dtype to be floating point, got int32""",
         cpu=""""weight_norm_kernel" not implemented for 'Int'""",
     ):
       torch.ops.aten._weight_norm_interface(v, g, dim)

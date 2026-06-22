@@ -5492,6 +5492,65 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
         ),
     )
 
+  def test_weight_norm_interface_m(self):
+    """Tests torch.ops.aten._weight_norm_interface with 1D g."""
+    v = torch.randn(2, 3, 4, dtype=torch.float32)
+    g = torch.randn(2, dtype=torch.float32)
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.ops.aten._weight_norm_interface(
+            v.to(device), g.to(device), 0
+        ),
+    )
+
+  def test_weight_norm_interface_all_inputs(self):
+    """Tests torch.ops.aten._weight_norm_interface with all possible inputs."""
+    test_cases = [
+        # Last dim
+        ((2, 3, 4), (4,), 2),
+        # First dim
+        ((2, 3, 4), (2,), 0),
+        # Dimensions match, but g is not 1D (first dim)
+        ((5, 10, 7), (5, 1, 1), 0),
+        # Dimensions match, but g is not 1D (last dim)
+        ((2, 3, 4), (1, 1, 4), 2),
+        # Minimal dimension (Rank 1)
+        ((10,), (10,), 0),
+        # Rank-2 v with same-rank g
+        ((2, 3), (2, 1), 0),
+        ((2, 3), (1, 3), 1),
+    ]
+
+    for v_shape, g_shape, dim in test_cases:
+      with self.subTest(v_shape=v_shape, g_shape=g_shape, dim=dim):
+        v = torch.randn(v_shape, dtype=torch.float32)
+        g = torch.randn(g_shape, dtype=torch.float32)
+        self.assert_close_tpu_vs_cpu(
+            lambda device, v=v, g=g, dim=dim: torch.ops.aten._weight_norm_interface(
+                v.to(device), g.to(device), dim
+            ),
+        )
+
+  def test_weight_norm_interface_norm_shape(self):
+    """Tests that the returned norm has the expected shape (matching g)."""
+    device = torch.device("tpu")
+    v = torch.randn(2, 3, 4, device=device)
+    g = torch.randn(2, device=device)
+
+    _, norm = torch.ops.aten._weight_norm_interface(v, g, 0)
+    self.assertEqual(norm.shape, (2,))
+
+    g_last = torch.randn(4, device=device)
+    _, norm_last = torch.ops.aten._weight_norm_interface(v, g_last, 2)
+    self.assertEqual(norm_last.shape, (4,))
+
+    g_md = torch.randn(2, 1, 1, device=device)
+    _, norm_md = torch.ops.aten._weight_norm_interface(v, g_md, 0)
+    self.assertEqual(norm_md.shape, (2, 1, 1))
+
+    g_md_last = torch.randn(1, 1, 4, device=device)
+    _, norm_md_last = torch.ops.aten._weight_norm_interface(v, g_md_last, 2)
+    self.assertEqual(norm_md_last.shape, (1, 1, 4))
+
   @parameterized.product(
       input_dtype=[
           torch.float32,

@@ -1517,29 +1517,68 @@ Please use clone() or contiguous() to copy the tensor before writing""",
     ):
       torch.ops.aten.mm.dtype_out(lhs, rhs, out_dtype=torch.int32, out=out)
 
-  # PyTorch CPU does not raise an error when g size does not match the size of
-  # weight in dim 0.
-  @et.why_tpu_only("TODO: make the behavior consistent with CPU.")
+  # PyTorch CPU does not raise an error when 1D g size does not match the size
+  # of weight in the normalization dimension. TPU validates this strictly to
+  # avoid division shape mismatches during StableHLO compilation.
+  @et.why_tpu_only(
+      "TPU enforces strict shape validation to avoid StableHLO compilation"
+      " failures, whereas CPU/CUDA behavior is unsafe or undefined."
+  )
   def test_weight_norm_interface_g_size_mismatch(self):
     v = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
     g = torch.ones(3, device=et.device(), dtype=torch.float32)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""weight_norm_interface(): expected the size of the weight magnitude (g) to be 2, which is the size of the weight at dimension 0, got 3""",
+        tpu="""weight_norm_interface(): expected weight magnitude (g) size 0 to match weight size 2 at dimension 0, got 3""",
         message_reviewed_by="wan",
     ):
       torch._weight_norm(v, g, 0)
 
-  # PyTorch CPU does not raise an error when g has more than 1 dimension.
-  @et.why_tpu_only("TODO: make the behavior consistent with CPU.")
-  def test_weight_norm_interface_g_rank_too_large(self):
+  # PyTorch CPU does not raise an error when g has invalid shape for same rank
+  # (the CPU fused kernel silently ignores extra elements). However, TPU must
+  # validate this strictly because incompatible shapes will cause division and
+  # broadcasting failures during StableHLO compilation.
+  @et.why_tpu_only(
+      "TPU enforces strict shape validation to avoid StableHLO compilation"
+      " failures, whereas CPU/CUDA behavior is unsafe or undefined."
+  )
+  def test_weight_norm_interface_g_shape_mismatch_same_rank(self):
     v = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
     g = torch.ones(3, 3, device=et.device(), dtype=torch.float32)
 
     with et.assert_raises_message(
         RuntimeError,
-        tpu="""weight_norm_interface(): expected the weight magnitude (g) to be a scalar or a 1D tensor, got a tensor of shape [3, 3]""",
+        tpu="""weight_norm_interface(): expected the size of the weight magnitude (g) at dimension 0 to be 1, got 3""",
+        message_reviewed_by="wan",
+    ):
+      torch._weight_norm(v, g, 1)
+
+  @et.why_tpu_only(
+      "TPU enforces strict shape validation to avoid StableHLO compilation"
+      " failures, whereas CPU/CUDA behavior is unsafe or undefined."
+  )
+  def test_weight_norm_interface_g_rank_mismatch(self):
+    v = torch.ones(2, 3, 4, device=et.device(), dtype=torch.float32)
+    g = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""weight_norm_interface(): expected the weight magnitude (g) to be a scalar, a 1D tensor, or have the same rank as v, got a tensor of shape [2, 3]""",
+        message_reviewed_by="wan",
+    ):
+      torch._weight_norm(v, g, 0)
+
+  @et.why_tpu_only(
+      "TPU enforces strict shape validation to avoid StableHLO compilation"
+      " failures, whereas CPU/CUDA behavior is unsafe or undefined."
+  )
+  def test_weight_norm_interface_g_shape_mismatch_norm_dim(self):
+    v = torch.ones(2, 3, device=et.device(), dtype=torch.float32)
+    g = torch.ones(1, 2, device=et.device(), dtype=torch.float32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""weight_norm_interface(): expected the size of the weight magnitude (g) at dimension 1 to be 3, got 2""",
         message_reviewed_by="wan",
     ):
       torch._weight_norm(v, g, 1)
