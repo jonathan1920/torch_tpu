@@ -28,9 +28,11 @@
 #include "ATen/core/stack.h"
 #include "ATen/native/CPUFallback.h"
 #include "ATen/native/DispatchStub.h"
+#include "ATen/native/Resize.h"
 #include "ATen/native/transformers/attention.h"
 #include "ATen/ops/empty.h"
 #include "ATen/ops/empty_like.h"
+#include "ATen/ops/result_type.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "c10/util/Exception.h"
@@ -983,7 +985,7 @@ TORCH_LIBRARY(tpu, m) {
       "int[] stride, int[] padding, int[] dilation, bool ceil_mode) -> Tensor");
   m.def("ragged_dot(Tensor lhs, Tensor rhs, Tensor group_sizes) -> Tensor");
   m.def(
-      "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor grop_sizes, *, "
+      "ragged_dot.out(Tensor lhs, Tensor rhs, Tensor group_sizes, *, "
       "Tensor(a!) out) -> Tensor(a!)");
   m.def(
       "ragged_all_to_all(Tensor operand, Tensor output, Tensor "
@@ -1104,6 +1106,34 @@ TORCH_LIBRARY_IMPL(tpu, Meta, m) {
          int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition) {
         return std::make_tuple(at::empty_like(embedding_table),
                                at::empty_like(accumulator));
+      });
+  ImplStable<OpName::kRaggedDot>(
+      m, +[](const at::Tensor& lhs, const at::Tensor& rhs,
+             const at::Tensor& group_sizes) {
+        return at::empty({lhs.size(0), rhs.size(2)},
+                         lhs.options().dtype(at::result_type(lhs, rhs)));
+      });
+  ImplStable<OpName::kRaggedDotOut>(
+      m,
+      +[](const at::Tensor& lhs, const at::Tensor& rhs,
+          const at::Tensor& group_sizes, at::Tensor& out) -> at::Tensor& {
+        at::native::resize_output(out, {lhs.size(0), rhs.size(2)});
+        return out;
+      });
+  ImplStable<OpName::kRaggedAllToAll>(
+      m,
+      +[](const at::Tensor& operand, const at::Tensor& output,
+          const at::Tensor& input_offsets, const at::Tensor& send_sizes,
+          const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
+          const at::Tensor& replica_groups) { return at::empty_like(output); });
+  ImplStable<OpName::kRaggedAllToAllOut>(
+      m,
+      +[](const at::Tensor& operand, const at::Tensor& output,
+          const at::Tensor& input_offsets, const at::Tensor& send_sizes,
+          const at::Tensor& output_offsets, const at::Tensor& recv_sizes,
+          const at::Tensor& replica_groups, at::Tensor& out) -> at::Tensor& {
+        at::native::resize_output(out, output.sizes());
+        return out;
       });
 }
 
