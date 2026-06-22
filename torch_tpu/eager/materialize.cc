@@ -107,6 +107,85 @@ void LogDeferredNodes(absl::Span<const SharedDeviceBufferList> nodes,
   }
 }
 
+// Converts a sequence of Traversals to a sequence of ExecutionTasks.
+// If materialization_mode is kSplitGraph, then there may be more returned
+// tasks than there were original traversals; otherwise, there will be exactly
+// one ExecutionTask per traversal.
+absl::StatusOr<std::vector<ExecutionTask>> ApplySplitMode(
+    std::vector<absl_nonnull std::unique_ptr<Traversal>>&& traversals,
+    MaterializationMode materialization_mode,
+    const CompilationSpec& compilation_spec, MaterializationReason reason,
+    mlir::MLIRContext& mlir_context) {
+  if (materialization_mode == MaterializationMode::kSplitGraph) {
+    tsl::profiler::TraceMe t("SplitTraversal");
+    std::vector<absl_nonnull std::unique_ptr<Traversal>> split_traversals;
+    std::vector<absl_nonnull std::unique_ptr<Traversal>> post_split_traversals;
+    absl::flat_hash_set<const DeviceBufferList*> required_outputs;
+    for (auto& pre_split_traversal : traversals) {
+      for (const auto& output : pre_split_traversal->outputs()) {
+        required_outputs.insert(output.device_buffer_list().get());
+      }
+      TT_ASSIGN_OR_RETURN(
+          split_traversals,
+          SplitTraversal(std::move(pre_split_traversal), required_outputs));
+      post_split_traversals.insert(
+          post_split_traversals.end(),
+          std::make_move_iterator(split_traversals.begin()),
+          std::make_move_iterator(split_traversals.end()));
+      required_outputs.clear();
+      split_traversals.clear();
+    }
+    std::swap(traversals, post_split_traversals);
+  }
+
+  std::vector<ExecutionTask> execution_tasks;
+  execution_tasks.reserve(traversals.size());
+  for (auto& split_traversal : traversals) {
+    auto execution_task_or = ExecutionTask::FromTraversalWithLogging(
+        std::move(split_traversal), mlir_context, compilation_spec.Copy(),
+        reason);
+    if (!execution_task_or.ok()) {
+      // Fail the execution tasks we already created to ensure anything
+      // waiting on their outputs will not deadlock.
+      for (auto& task : execution_tasks) {
+        task.SetOutputNodesAsError(execution_task_or.status());
+      }
+      return execution_task_or.status();
+    }
+    execution_tasks.push_back(std::move(*execution_task_or));
+  }
+  return execution_tasks;
+}
+
+// Processes a MaterializationTask, converting it into a sequence of
+// ExecutionTasks.
+absl::StatusOr<std::vector<ExecutionTask>> ProcessMaterializationTask(
+    MaterializationTask& task, mlir::MLIRContext& mlir_context) {
+  ABSL_VLOG(1) << "[MaterializationWorker] Processing MaterializationTask with "
+               << task.nodes_to_materialize.size() << " nodes";
+  LogDeferredNodes(task.nodes_to_materialize,
+                   /* msg_prefix= */ "  Input node");
+
+  std::vector<SharedDeviceBufferList> all_nodes = task.nodes_to_materialize;
+
+  // Filter out non-deferred nodes that may have been materialized by an
+  // earlier materialization task.
+  std::erase_if(all_nodes, [](const SharedDeviceBufferList& node) {
+    return !node->is_deferred();
+  });
+  if (all_nodes.empty()) {
+    // Everything was already materialized, nothing more to do.
+    return std::vector<ExecutionTask>();
+  }
+
+  TT_ASSIGN_OR_RETURN(
+      std::vector<absl_nonnull std::unique_ptr<Traversal>> traversals,
+      PrepareMaterializationTraversals(all_nodes));
+
+  return ApplySplitMode(std::move(traversals), task.materialization_mode,
+                        task.compilation_spec, task.reason, mlir_context);
+}
+
 class MaterializationWorker {
  public:
   // This class is move-only.
@@ -189,74 +268,6 @@ class MaterializationWorker {
     ExecutionTask popped_job = std::move(execute_jobs_.front());
     execute_jobs_.pop();
     return popped_job;
-  }
-
-  absl::StatusOr<std::vector<ExecutionTask>> ProcessMaterializationTask(
-      MaterializationTask& task, mlir::MLIRContext& mlir_context) {
-    ABSL_VLOG(1)
-        << "[MaterializationWorker] Processing MaterializationTask with "
-        << task.nodes_to_materialize.size() << " nodes";
-
-    LogDeferredNodes(task.nodes_to_materialize,
-                     /* msg_prefix= */ "  Input node");
-
-    ABSL_VLOG(1) << "[MaterializationWorker] Getting leaf nodes";
-    std::vector<SharedDeviceBufferList> all_nodes = task.nodes_to_materialize;
-
-    // Filter out non-deferred nodes that may have been materialized by an
-    // earlier materialization task.
-    std::erase_if(all_nodes, [](const SharedDeviceBufferList& node) {
-      return !node->is_deferred();
-    });
-    if (all_nodes.empty()) {
-      // Everything was already materialized, nothing more to do.
-      return std::vector<ExecutionTask>();
-    }
-
-    TT_ASSIGN_OR_RETURN(
-        std::vector<absl_nonnull std::unique_ptr<Traversal>> traversals,
-        PrepareMaterializationTraversals(all_nodes));
-
-    if (task.materialization_mode == MaterializationMode::kSplitGraph) {
-      tsl::profiler::TraceMe t("SplitTraversal");
-      std::vector<absl_nonnull std::unique_ptr<Traversal>> split_traversals;
-      std::vector<absl_nonnull std::unique_ptr<Traversal>>
-          post_split_traversals;
-      absl::flat_hash_set<const DeviceBufferList*> required_outputs;
-      for (auto& pre_split_traversal : traversals) {
-        for (const auto& output : pre_split_traversal->outputs()) {
-          required_outputs.insert(output.device_buffer_list().get());
-        }
-        TT_ASSIGN_OR_RETURN(
-            split_traversals,
-            SplitTraversal(std::move(pre_split_traversal), required_outputs));
-        post_split_traversals.insert(
-            post_split_traversals.end(),
-            std::make_move_iterator(split_traversals.begin()),
-            std::make_move_iterator(split_traversals.end()));
-        required_outputs.clear();
-        split_traversals.clear();
-      }
-      std::swap(traversals, post_split_traversals);
-    }
-
-    std::vector<ExecutionTask> execution_tasks;
-    for (auto& split_traversal : traversals) {
-      auto execution_task_or = ExecutionTask::FromTraversalWithLogging(
-          std::move(split_traversal), mlir_context,
-          task.compilation_spec.Copy(), task.reason);
-      if (!execution_task_or.ok()) {
-        // Fail the execution tasks we already created to ensure anything
-        // waiting on their outputs will not deadlock.
-        for (auto& task : execution_tasks) {
-          task.SetOutputNodesAsError(execution_task_or.status());
-        }
-        return execution_task_or.status();
-      }
-      execution_tasks.push_back(std::move(*execution_task_or));
-    }
-
-    return execution_tasks;
   }
 
   void StartThreads() {
