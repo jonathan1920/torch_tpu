@@ -365,21 +365,13 @@ absl::StatusOr<DynamicMlirOpResults> BuildAssociativeScanChlo(
   const int64_t scan_dim_size = first_type.getShape()[scan_dim];
 
   // chlo.ScanOp inputs are only the scanned tensors; static inputs (beyond
-  // num_scan_inputs) are captured and handed to the body as-is. A reverse scan
-  // is expressed as a forward scan over reversed inputs with reversed outputs,
-  // since the decomposition and emitter handle forward scans.
-  const bool reverse = options.direction == ScanDirection::kReverse;
-  const llvm::SmallVector<int64_t, 1> reverse_dims = {scan_dim};
+  // num_scan_inputs) are captured and handed to the body as-is.
   llvm::SmallVector<mlir::Value> scanned_inputs;
   llvm::SmallVector<mlir::Type> body_arg_types;
   llvm::SmallVector<mlir::Location> body_arg_locs;
   scanned_inputs.reserve(num_scan_inputs);
   for (int64_t i = 0; i < num_scan_inputs; ++i) {
-    mlir::MlirOp scanned = scan_inputs[i];
-    if (reverse) {
-      scanned = mlir::stablehlo::Reverse(scanned, reverse_dims);
-    }
-    scanned_inputs.push_back(scanned.getValue());
+    scanned_inputs.push_back(scan_inputs[i].getValue());
     body_arg_types.push_back(
         RankReduceType(GetTensorTypeOrDie(scan_inputs[i]), scan_dim));
     body_arg_locs.push_back(loc);
@@ -413,9 +405,10 @@ absl::StatusOr<DynamicMlirOpResults> BuildAssociativeScanChlo(
       /*inputs=*/scanned_inputs, /*inits=*/init_values,
       /*dimension=*/op_builder.getIntegerAttr(i64, scan_dim),
       /*scan_dim_size=*/scan_dim_size_attr,
-      // Reverse is handled by reversing inputs/outputs above and below, so the
-      // chlo.ScanOp itself is always forward.
-      /*is_reverse=*/op_builder.getBoolAttr(false),
+      // The native scan emitter (and the chlo.scan decomposition) handle
+      // reverse directly via this attribute.
+      /*is_reverse=*/
+      op_builder.getBoolAttr(options.direction == ScanDirection::kReverse),
       /*is_associative=*/op_builder.getBoolAttr(true));
 
   mlir::Block* const body = op_builder.createBlock(
@@ -451,20 +444,14 @@ absl::StatusOr<DynamicMlirOpResults> BuildAssociativeScanChlo(
   mlir::stablehlo::ReturnOp::create(op_builder, loc, returned);
 
   op_builder.setInsertionPointAfter(scan_op);
-  // Match the while-loop contract: [carries..., outputs...]. For a reverse scan
-  // the per-position outputs are produced in reversed order, so flip them back
-  // along the scan dim. The carries are the full reduction and are unaffected.
+  // Match the while-loop contract: [carries..., outputs...].
   DynamicMlirOpResults op_results;
   op_results.reserve(carry_inits.size() + output_inits.size());
   for (const mlir::Value carry : scan_op.getCarries()) {
     op_results.push_back(mlir::MlirOp(builder, carry));
   }
   for (const mlir::Value out : scan_op.getOutputs()) {
-    mlir::MlirOp out_op(builder, out);
-    if (reverse) {
-      out_op = mlir::stablehlo::Reverse(out_op, reverse_dims);
-    }
-    op_results.push_back(out_op);
+    op_results.push_back(mlir::MlirOp(builder, out));
   }
   return op_results;
 }
