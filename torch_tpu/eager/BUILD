@@ -252,48 +252,6 @@ torch_tpu_cc_library(
 )
 
 torch_tpu_cc_library(
-    name = "safe_materialization_rule",
-    srcs = ["safe_materialization_rule.cc"],
-    hdrs = ["safe_materialization_rule.h"],
-    deps = [
-        ":device_buffer",
-        ":traversal",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/types:span",
-        "@tsl//tsl/profiler/lib:traceme",
-    ],
-)
-
-torch_tpu_cc_test(
-    name = "safe_materialization_rule_test",
-    srcs = ["safe_materialization_rule_test.cc"],
-    exec_properties = {
-        "cpp_link.mem": "16g",  # Needed for asan.
-    },
-    notest_oss = "Disabled because lazy-init means this requires TPU_LIBRARY_PATH",
-    deps = [
-        ":device_buffer",
-        ":safe_materialization_rule",
-        ":tensor_to_buffer",
-        ":traversal",
-        "//shims/torch:aten_headers",
-        "//torch_tpu/common:cache_key",
-        "//torch_tpu/common:dimension_types",
-        "//torch_tpu/common:shape",
-        "//torch_tpu/ops:op_builder_utils",
-        "//torch_tpu/ops:op_names",
-        "//torch_tpu/ops:python_context",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
-        "@stablehlo//:attr_type_builder_util",
-        "@stablehlo//:mlir_builder",
-    ],
-)
-
-torch_tpu_cc_library(
     name = "materialize_common",
     srcs = ["materialize_common.cc"],
     hdrs = ["materialize_common.h"],
@@ -467,7 +425,6 @@ torch_tpu_cc_library(
     hdrs = ["split_traversal.h"],
     deps = [
         ":device_buffer",
-        ":safe_materialization_rule",
         ":split_utils",
         ":traversal",
         "//shims/torch:torch_headers",

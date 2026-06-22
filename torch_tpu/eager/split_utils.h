@@ -23,10 +23,34 @@
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "torch_tpu/eager/device_buffer.h"
 #include "torch_tpu/eager/traversal.h"
 
 namespace torch_tpu {
+
+// Ensures that if a tensor is used after a materialization point, it is also
+// materialized before the materialization point.
+//
+// For example, a function like:
+// ```
+//   x = foo()
+//   y = bar()
+//   z = baz(x)
+//   print(y.item())
+// ```
+// will have:
+//   execution_order: [foo, bar, baz]
+//   required_outputs: {bar}
+//   materialization_points: {bar}
+// This function will add a materialization point for `x = foo()`, and will
+// remove any materialization points after the last required output.
+void SplitAllMaterializationPoints(
+    absl::Span<const SharedDeviceBufferList> execution_order,
+    const absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        required_outputs,
+    absl::flat_hash_set<const DeviceBufferList* absl_nonnull>&
+        materialization_points);
 
 // Creates a new set of traversals, one for each split point in the original
 // traversal.
