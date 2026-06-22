@@ -20,7 +20,6 @@
 #include "torch_tpu/eager/events_queue.h"
 #include "torch_tpu/eager/op_dispatcher.h"
 #include "torch_tpu/eager/repeated_ops_heuristic.h"
-#include "torch_tpu/experimental/eager/materialize_new.h"
 
 namespace torch_tpu {
 namespace py = pybind11;
@@ -29,7 +28,6 @@ namespace {
 
 void ResetEagerState() {
   ResetRepeatedOpsHeuristicState();
-  ResetNewMaterializationState();
   ClearEventsQueue();
 }
 

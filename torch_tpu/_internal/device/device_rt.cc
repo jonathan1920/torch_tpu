@@ -44,7 +44,6 @@
 #include "torch_tpu/eager/device_gen_impl.h"
 #include "torch_tpu/eager/tensor_to_buffer.h"
 #include "torch_tpu/eager/tpu_hooks.h"
-#include "torch_tpu/experimental/eager/materialize_new.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
 #include "xla/pjrt/pjrt_client.h"
 
@@ -191,7 +190,6 @@ PYBIND11_MODULE(_device_ops_backend, m) {
   m.def(
       "_shutdown_runtime",
       []() {
-        ShutDownNewMaterializationState();
         CompilationCache::ShutDown();
         PjrtBackend::GetInstance().Shutdown();
       },

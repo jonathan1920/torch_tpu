@@ -34,7 +34,6 @@
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/flags/declare.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/absl_vlog_is_on.h"
 #include "absl/log/log.h"
@@ -48,7 +47,6 @@
 #include "torch_tpu/common/compilation_spec.h"
 #include "torch_tpu/common/context_states.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/status_builder.h"
 #include "torch_tpu/eager/device_buffer.h"
@@ -58,12 +56,9 @@
 #include "torch_tpu/eager/split_traversal.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
 #include "torch_tpu/eager/traversal.h"
-#include "torch_tpu/experimental/eager/materialize_new.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "xla/future.h"
 #include "xla/xla_data.pb.h"
-
-ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 
 namespace torch_tpu {
 namespace {
@@ -358,15 +353,6 @@ absl::Status MaterializeImpl(
   }
 
   tsl::profiler::TraceMe t("MaterializeImpl");
-
-  if (GetFlagOnce<bool,
-                  &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
-    TT_RETURN_IF_ERROR(MaterializeImplNew(nodes_to_materialize, reason));
-    if (GetEagerMode() == EagerMode::kDeferNeverAndLaunchBlocking) {
-      TT_RETURN_IF_ERROR(BlockOnPendingMaterializations());
-    }
-    return absl::OkStatus();
-  }
 
   // Deduplicate nodes_to_materialize.
   {

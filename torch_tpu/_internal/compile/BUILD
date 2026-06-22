@@ -123,7 +123,6 @@ torch_tpu_cc_library(
         "//torch_tpu/eager:structured_log_buffer",
         "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/eager:traversal",
-        "//torch_tpu/experimental/eager:materialize_new",
         "//torch_tpu/ops:op_builder_utils",
         "//torch_tpu/ops:op_names",
         "//torch_tpu/ops:python_context",

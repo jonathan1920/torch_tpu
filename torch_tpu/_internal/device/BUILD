@@ -62,7 +62,6 @@ pybind_extension(
         "//torch_tpu/eager:device_gen_impl",
         "//torch_tpu/eager:tensor_to_buffer",
         "//torch_tpu/eager:tpu_hooks",
-        "//torch_tpu/experimental/eager:materialize_new",
         "//torch_tpu/pjrt:pjrt_state",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:absl_check",

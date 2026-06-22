@@ -25,7 +25,6 @@
 #include <variant>
 #include <vector>
 
-#include "absl/flags/declare.h"
 #include "absl/hash/hash.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -43,7 +42,6 @@
 #include "torch_tpu/common/dimension_types.h"
 #include "torch_tpu/common/dtype.h"
 #include "torch_tpu/common/error_utils.h"
-#include "torch_tpu/common/flags.h"
 #include "torch_tpu/common/shape.h"
 #include "torch_tpu/common/to_string.h"
 #include "torch_tpu/common/utils.h"
@@ -53,7 +51,6 @@
 #include "torch_tpu/eager/materialize.h"
 #include "torch_tpu/eager/repeated_ops_heuristic.h"
 #include "torch_tpu/eager/structured_log_buffer.h"
-#include "torch_tpu/experimental/eager/materialize_new.h"
 #include "torch_tpu/ops/op_builder_utils.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/python_context.h"
@@ -63,8 +60,6 @@
 #include "torch_tpu/ops/view_decomposition/strided_layout.h"
 #include "torch_tpu/ops/view_decomposition/view_sequence.h"
 #include "torch_tpu/pjrt/pjrt_state.h"
-
-ABSL_DECLARE_FLAG(bool, torch_tpu_internal_enable_new_materialization);
 
 namespace torch_tpu {
 namespace {
@@ -140,7 +135,6 @@ absl::Status DeferNeverDispatch(absl::Span<const DeviceBufferRef> results,
   }
   // materialize.cc and events_queue.h will respect OpSplitMode, even with
   // MaterializationMode::kFullGraph.
-  // materialize_new.h forces kSplitGraph even if kFullGraph is specified.
   TT_RETURN_IF_ERROR(Materialize(device_buffer_list,
                                  MaterializationReason::kDebugMode,
                                  MaterializationMode::kFullGraph));
@@ -157,10 +151,6 @@ absl::Status DeferNeverDispatch(absl::Span<const DeviceBufferRef> results,
 absl::Status DeferAndFuseDispatch(absl::Span<const DeviceBufferRef> results,
                                   const OpName op_name) {
   const auto& device_buffer_list = results[0].device_buffer_list();
-  if (GetFlagOnce<bool,
-                  &FLAGS_torch_tpu_internal_enable_new_materialization>()) {
-    TT_RETURN_IF_ERROR(OnNewOpDispatch(device_buffer_list));
-  }
 
   // Don't consider metadata-only ops for the repeated ops heuristic.
   if (MustApplyRepeatedOpsHeuristic() && !IsMetadataOnly(op_name)) {
@@ -185,13 +175,7 @@ absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
           std::move(params.output_shapes), params.split_mode,
           std::move(params.donated_indices)));
 
-  // materialize_new uses its own queue, separate from the DeferredOpEvent queue
-  // in events_queue.h.
-  const bool enable_new_materialization =
-      GetFlagOnce<bool, &FLAGS_torch_tpu_internal_enable_new_materialization>();
-  if (!enable_new_materialization) {
-    RecordDeferredOpCreated(results[0].device_buffer_list());
-  }
+  RecordDeferredOpCreated(results[0].device_buffer_list());
 
   switch (GetEagerMode()) {
     case EagerMode::kDeferNever:
@@ -206,9 +190,6 @@ absl::StatusOr<std::vector<DeviceBufferRef>> CreateDeferredDeviceBufferList(
       TT_RETURN_IF_ERROR(DeferAndFuseDispatch(results, params.op_name));
       break;
     case EagerMode::kInternalDeferAll:
-      // Do not register the DeferredOp with the materialize_new
-      // MaterializationWorker.
-      // Do not materialize the op.
       break;
   }
   return results;
