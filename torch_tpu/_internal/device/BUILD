@@ -64,6 +64,7 @@ pybind_extension(
         "//torch_tpu/eager:tpu_hooks",
         "//torch_tpu/experimental/eager:materialize_new",
         "//torch_tpu/pjrt:pjrt_state",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",

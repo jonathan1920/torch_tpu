@@ -107,7 +107,7 @@ class TpuStream:
 class TpuEvent:
   """Scoped completion marker for async TPU operations.
 
-  Implements the ``torch.xpu.Event`` interface for TPU. Because torch_tpu has
+  Implements the ``torch.tpu.Event`` interface for TPU. Because torch_tpu has
   a single implicit stream per device, events function as point-in-time
   snapshots of pending async futures rather than positional markers in a stream
   timeline.
@@ -133,14 +133,14 @@ class TpuEvent:
       external: bool = False,  # pylint: disable=unused-argument
   ):
     # Accepted for CUDA API compatibility; TPU currently ignores these flags.
-    self._event_id: int | None = None
+    self._base_event: _device_ops_backend.TpuEventBase | None = None
 
   def record(self, stream: TpuStream | None = None):
     """Snapshot all pending async futures on the current device."""
-    if self._event_id is not None:
-      _device_ops_backend._release_event(self._event_id)  # pylint: disable=protected-access
+    if self._base_event is not None:
+      del self._base_event
     stream_id = stream.stream_id if stream is not None else None
-    self._event_id = _device_ops_backend._record_event(stream_id=stream_id)  # pylint: disable=protected-access
+    self._base_event = _device_ops_backend._record_event(stream_id=stream_id)  # pylint: disable=protected-access
     return self
 
   def wait(self, stream: TpuStream | None = None) -> None:  # pylint: disable=unused-argument
@@ -157,10 +157,10 @@ class TpuEvent:
     return
 
   def query(self) -> bool:
-    """Checks if all work currently captpured by this event has completed."""
-    if self._event_id is None:
+    """Checks if all work currently captured by this event has completed."""
+    if self._base_event is None:
       return True
-    return _device_ops_backend._query_event(self._event_id)  # pylint: disable=protected-access
+    return self._base_event.query()
 
   def elapsed_time(self, end_event: Self) -> float:  # pylint: disable=unused-argument
     """Returns the time elapsed between recording and completing this event."""
@@ -174,9 +174,9 @@ class TpuEvent:
     :meth:`record` was called. If ``record()`` was never called, this returns
     immediately.
     """
-    if self._event_id is None:
+    if self._base_event is None:
       return
-    _device_ops_backend._wait_event(self._event_id)  # pylint: disable=protected-access
+    self._base_event.wait()
 
   @classmethod
   def from_ipc_handle(cls, device, handle):
@@ -189,16 +189,6 @@ class TpuEvent:
 
   def __repr__(self) -> str:
     return '<torch.tpu.TpuEvent>'
-
-  def __del__(self):
-    # Best-effort cleanup only.
-    # TODO A C++ base event object would give us a safer lifetime model
-    if self._event_id is None:
-      return
-    try:
-      _device_ops_backend._release_event(self._event_id)  # pylint: disable=protected-access
-    except Exception:  # pylint: disable=broad-exception-caught
-      pass
 
 
 def synchronize(device: Optional[int] = None) -> None:

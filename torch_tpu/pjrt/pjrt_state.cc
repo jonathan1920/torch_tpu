@@ -452,7 +452,14 @@ void SynchronizeDevice(c10::DeviceIndex device_index) {
   }
 }
 
-int64_t RecordEventSnapshot(c10::DeviceIndex device_index, int64_t stream_id) {
+EventSnapshot::~EventSnapshot() {
+  StreamState& state = GetStreamState();
+  absl::MutexLock lock(state.mutex);
+  state.event_snapshots.erase(event_id_);
+}
+
+std::shared_ptr<EventSnapshot> EventSnapshot::Record(
+    c10::DeviceIndex device_index, int64_t stream_id) {
   StreamState& state = GetStreamState();
   absl::MutexLock lock(state.mutex);
   const int64_t event_id = state.next_snapshot_id++;
@@ -462,18 +469,19 @@ int64_t RecordEventSnapshot(c10::DeviceIndex device_index, int64_t stream_id) {
           ? it->second
           : std::vector<StreamState::SharedFuture>{};
   state.event_snapshots.emplace(event_id, std::move(futures));
-  return event_id;
+  // Can't use make_shared because the constructor is private.
+  return std::shared_ptr<EventSnapshot>(new EventSnapshot(event_id));
 }
 
-absl::Status WaitEventSnapshot(int64_t event_id) {
+absl::Status EventSnapshot::Wait() const {
   std::vector<StreamState::SharedFuture> futures;
   {
     StreamState& state = GetStreamState();
     absl::MutexLock lock(state.mutex);
-    auto it = state.event_snapshots.find(event_id);
+    auto it = state.event_snapshots.find(event_id_);
     if (it == state.event_snapshots.end()) {
       return TT_ERROR(error::kInvalidArgument)
-             << "unknown event snapshot id: " << event_id;
+             << "unknown event snapshot id: " << event_id_;
     }
     futures = it->second;
   }
@@ -486,15 +494,15 @@ absl::Status WaitEventSnapshot(int64_t event_id) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> QueryEventSnapshot(int64_t event_id) {
+absl::StatusOr<bool> EventSnapshot::Query() const {
   std::vector<StreamState::SharedFuture> futures;
   {
     StreamState& state = GetStreamState();
     absl::MutexLock lock(state.mutex);
-    auto it = state.event_snapshots.find(event_id);
+    auto it = state.event_snapshots.find(event_id_);
     if (it == state.event_snapshots.end()) {
       return TT_ERROR(error::kInvalidArgument)
-             << "unknown event snapshot id: " << event_id;
+             << "unknown event snapshot id: " << event_id_;
     }
     futures = it->second;
   }
@@ -504,12 +512,6 @@ absl::StatusOr<bool> QueryEventSnapshot(int64_t event_id) {
     }
   }
   return true;
-}
-
-void ReleaseEventSnapshot(int64_t event_id) {
-  StreamState& state = GetStreamState();
-  absl::MutexLock lock(state.mutex);
-  state.event_snapshots.erase(event_id);
 }
 
 }  // namespace torch_tpu

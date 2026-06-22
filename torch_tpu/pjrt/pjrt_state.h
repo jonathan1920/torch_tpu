@@ -28,6 +28,7 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "c10/core/Device.h"
+#include "c10/core/Stream.h"
 #include "torch_tpu/common/device_type.h"
 #include "xla/future.h"
 #include "xla/pjrt/host_memory_allocator.h"
@@ -136,18 +137,34 @@ void SynchronizeStream(c10::DeviceIndex device_index, int64_t stream_id);
 // completed.
 void SynchronizeDevice(c10::DeviceIndex device_index);
 
-// Records a fence over the async d2h copies already enqueued on the device and
-// stream.
-int64_t RecordEventSnapshot(c10::DeviceIndex device_index, int64_t stream_id);
+// An EventSnapshot is a collection of XLA futures that represents the state of
+// a stream at a particular point in time.
+class EventSnapshot {
+ public:
+  ~EventSnapshot();
 
-// Blocks until the event snapshot has completed.
-absl::Status WaitEventSnapshot(int64_t event_id);
+  // Records an event snapshot for the given device and stream.
+  // This is an awaitable and queryable checkpoint; when it is reached, all
+  // prior async host-to-device and device-to-host operations on the stream
+  // are complete, as well as other futures recorded using MarkStreamActive().
+  // TODO(bawilson): also include deferred ops in the snapshot
+  static std::shared_ptr<EventSnapshot> Record(c10::DeviceIndex device_index,
+                                               c10::StreamId stream_id);
 
-// Returns whether the event snapshot has completed.
-absl::StatusOr<bool> QueryEventSnapshot(int64_t event_id);
+  // Wait for the event snapshot to complete.
+  absl::Status Wait() const;
 
-// Releases the event snapshot. Safe to call multiple times.
-void ReleaseEventSnapshot(int64_t event_id);
+  // Query whether the event snapshot has completed.
+  absl::StatusOr<bool> Query() const;
+
+ private:
+  // The event ID of the event snapshot.
+  // Private; must use Record() so that the snapshot is tracked on the stream.
+  explicit EventSnapshot(int64_t event_id) : event_id_(event_id) {}
+
+  // The event ID of the event snapshot.
+  const int64_t event_id_;
+};
 
 }  // namespace torch_tpu
 
