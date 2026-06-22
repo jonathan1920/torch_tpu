@@ -1997,11 +1997,7 @@ class TestOps(TorchTpuTestBase):
     self.do_test_op("diagonal")
 
   def test_digamma(self):
-    self.do_test_op(
-        "digamma",
-        # TODO: fix the error that polygamma.out is unimplemented.
-        check_grad=False,
-    )
+    self.do_test_op("digamma")
 
   def test_div(self):
     self.do_test_op(
@@ -2340,8 +2336,6 @@ class TestOps(TorchTpuTestBase):
         # Too slow for float64.
         exclude_dtypes=(torch.float64,),
         exclude_inplace_dtypes=(torch.float64,),
-        # TODO: fix the error that digamma.out is unimplemented.
-        check_grad=False,
     )
 
   def test_foreach_log(self):
@@ -2642,8 +2636,6 @@ class TestOps(TorchTpuTestBase):
   def test_lgamma(self):
     self.do_test_op(
         "lgamma",
-        # TODO: fix the error that digamma.out is unimplemented.
-        check_grad=False,
         # TODO: fix lgamma() failing for complex.
         exclude_dtypes=(torch.complex64,),
         exclude_inplace_dtypes=(torch.complex64,),
