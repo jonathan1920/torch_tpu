@@ -1443,6 +1443,10 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
             "linalg.solve_triangular": {
                 torch.float32: {"rtol": 4.8e-3, "atol": 4.5e-3},
             },
+            "linalg.vector_norm": {
+                torch.bfloat16: {"rtol": 2.2e-2, "atol": 1.6e-2},
+                torch.float16: {"rtol": 2.1e-3, "atol": 3.7e-4},
+            },
             "log10": {
                 torch.float16: {"rtol": 2e-3, "atol": 2e-4},
             },
@@ -2712,11 +2716,7 @@ class TestOps(TorchTpuTestBase):
     )
 
   def test_linalg_vector_norm_other_dtypes(self):
-    self.do_test_op(
-        "linalg.vector_norm",
-        # TODO: fix the error that CPU result is None.
-        check_grad=False,
-    )
+    self.do_test_op("linalg.vector_norm")
 
   def test_linspace(self):
     self.do_test_op(

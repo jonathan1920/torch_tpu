@@ -1954,7 +1954,15 @@ class TorchTpuTestBase(TestCase):
   def _assert_structure_consistency(
       self, *, golden_result: Any, torch_tpu_result: Any
   ) -> None:
-    """Asserts that golden_result and torch_tpu_result are both tensors or both tuples of the same size."""
+    """Asserts that golden_result and torch_tpu_result are both None, tensors, or tuples of the same size."""
+    if golden_result is None:
+      self.assertIsNone(
+          torch_tpu_result,
+          f"{self.golden_device_name()} result is None, but TorchTPU result is"
+          f" a {type(torch_tpu_result)}",
+      )
+      return
+
     if isinstance(golden_result, torch.Tensor):
       self.assertIsInstance(
           torch_tpu_result,
