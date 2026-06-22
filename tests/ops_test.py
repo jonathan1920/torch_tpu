@@ -561,6 +561,9 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
     "nn.functional.softplus": {
         torch.bfloat16: {"rtol": 2e-2, "atol": 9.2e-5},
     },
+    "polygamma": {
+        torch.float32: {"rtol": 2.7e-5, "atol": 1.7e-3},
+    },
     "pow": {
         torch.complex64: {"rtol": 6e-4, "atol": 1e-5},
         torch.float32: {"rtol": 5e-6, "atol": 1e-5},
@@ -1488,6 +1491,9 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
             "nn.functional.softplus": {
                 torch.float16: {"rtol": 2.3e-3, "atol": 3.1e-5},
                 torch.float32: {"rtol": 2.1e-4, "atol": 1.4e-5},
+            },
+            "polygamma": {
+                torch.float32: {"rtol": 3.1e-5, "atol": 1.7e-3},
             },
             "rsqrt": {
                 torch.bfloat16: {"rtol": 2e-2, "atol": 1e-3},
@@ -3244,6 +3250,9 @@ class TestOps(TorchTpuTestBase):
         + COMPLEX_DTYPES
         + (torch.float64, torch.float16, torch.bfloat16),
     )
+
+  def test_polygamma(self):
+    self.do_test_op("polygamma")
 
   def test_prod(self):
     self.do_test_op(

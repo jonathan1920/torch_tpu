@@ -7766,6 +7766,47 @@ class OpsGradUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
           ),
       )
 
+  def test_polygamma_n_0(self):
+    # n = 0 is digamma.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.polygamma(
+            0,
+            to(
+                torch.tensor(
+                    [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5], dtype=torch.float32
+                ),
+                device=device,
+            ),
+        ),
+        rtol=5e-5,
+        atol=5e-5,
+    )
+
+    # Test pole at 0 (should return -inf) and negative integer poles (should
+    # return NaN). Since our assert_close has equal_nan=True by default,
+    # we can safely compare NaNs.
+    self.assert_close_tpu_vs_cpu(
+        lambda device: torch.polygamma(
+            0,
+            to(
+                torch.tensor([-2.0, -1.0, 0.0], dtype=torch.float32),
+                device=device,
+            ),
+        )
+    )
+
+    # Test type promotion with float32 input and float64 output.
+    # computation_type is float32, but it must be cast to float64 for output.
+    def test_type_promotion(device):
+      self_tensor = to(
+          torch.tensor([1.0, 2.0], dtype=torch.float32), device=device
+      )
+      out_tensor = to(torch.empty(2, dtype=torch.float64), device=device)
+      torch.polygamma(0, self_tensor, out=out_tensor)
+      return out_tensor
+
+    self.assert_close_tpu_vs_cpu(test_type_promotion, rtol=1.6e-5, atol=6.8e-6)
+
 
 class OpTestingFrameworkTest(TorchTpuVsCpuTestBase):
   """Tests for the op_testing framework itself."""

@@ -600,6 +600,7 @@ torch_tpu_cc_library(
         "//torch_tpu/ops/nonzero:nonzero_aten_kernels",
         "//torch_tpu/ops/normal:normal_aten_kernels",
         "//torch_tpu/ops/optimization_barrier:optimization_barrier_kernels",
+        "//torch_tpu/ops/polygamma:polygamma_aten_kernels",
         "//torch_tpu/ops/pooling:adaptive_avg_pool_aten_kernels",
         "//torch_tpu/ops/pooling:avg_pool_aten_kernels",
         "//torch_tpu/ops/pooling:max_pool_aten_kernels",

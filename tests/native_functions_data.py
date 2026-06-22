@@ -360,7 +360,6 @@ UNREGISTERED_OPS = frozenset([
     'ormqr',
     'ormqr.out',
     'poisson',
-    'polygamma.out',
     'q_per_channel_axis',
     'q_per_channel_scales',
     'q_per_channel_zero_points',

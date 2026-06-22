@@ -3774,6 +3774,46 @@ Supported combinations for non-constant padding:
     ):
       torch.polar(absv, angle.to(torch.int32), out=out)
 
+  def test_polygamma_negative_n(self):
+    t = torch.tensor([1.0, 2.0], device=et.device())
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu=re.compile(r"polygamma\(n, x\) does not support negative n\."),
+        cpu="""polygamma(n, x) does not support negative n.""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.polygamma(-1, t)
+
+    out = torch.empty_like(t)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""polygamma(): expected n to be non-negative, got -1""",
+        cpu="""polygamma(n, x) does not support negative n.""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.polygamma(-1, t, out=out)
+
+  def test_polygamma_complex(self):
+    t = torch.tensor([1.0 + 1.0j], device=et.device(), dtype=torch.complex64)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""polygamma(): expected the input dtype not to be complex, got complex64""",
+        cpu=""""polygamma" not implemented for 'ComplexFloat'""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.polygamma(2, t)
+
+  def test_polygamma_invalid_out(self):
+    t = torch.tensor([1.0, 2.0], device=et.device())
+    out = torch.empty(2, device=et.device(), dtype=torch.uint8)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""polygamma(): expected the output dtype to be floating point or complex, got uint8""",
+        cpu="""result type Float can't be cast to the desired output type Byte""",
+        message_reviewed_by="gunhyun",
+    ):
+      torch.polygamma(1, t, out=out)
+
   def test_addmv_bool(self):
     t = torch.ones(5, device=et.device(), dtype=torch.bool)
     mat = torch.ones(5, 5, device=et.device(), dtype=torch.bool)

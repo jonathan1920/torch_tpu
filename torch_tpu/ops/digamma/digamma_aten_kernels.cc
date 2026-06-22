@@ -38,8 +38,6 @@
 #include "torch_tpu/ops/op_names.h"
 
 namespace torch_tpu {
-namespace {
-
 absl::StatusOr<mlir::MlirOp> BuildDigammaShlo(mlir::MlirOp input_op,
                                               mlir::ElementType out_mlir_type) {
   TT_ASSIGN_OR_RETURN(mlir::MlirOp op,
@@ -56,8 +54,6 @@ absl::StatusOr<mlir::MlirOp> BuildDigammaShlo(mlir::MlirOp input_op,
   // Return -inf if input is 0, else return digamma(input)
   return mlir::stablehlo::Select(is_zero, neginf_cst, digamma_op);
 }
-
-}  // namespace
 
 at::Tensor& AtenDigammaOut(const at::Tensor& self, at::Tensor& out) {
   TT_KERNEL(OpName::kDigammaOut, param_keys, (self, out), {

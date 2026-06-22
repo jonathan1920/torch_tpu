@@ -1039,6 +1039,8 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_pdist_forward";
     case OpName::kPolarOut:
       return "polar.out";
+    case OpName::kPolygammaOut:
+      return "polygamma.out";
     case OpName::kPow:
       return "pow";
     case OpName::kPowOut:

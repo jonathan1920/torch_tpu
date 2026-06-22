@@ -533,6 +533,7 @@ enum class OpName {
   kPdistBackward,
   kPdistForward,
   kPolarOut,
+  kPolygammaOut,
   kPow,
   kPowOut,
   kPowScalarOut,

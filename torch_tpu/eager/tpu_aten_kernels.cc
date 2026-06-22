@@ -132,6 +132,7 @@
 #include "torch_tpu/ops/nullary_aten_kernels.h"
 #include "torch_tpu/ops/op_names.h"
 #include "torch_tpu/ops/optimization_barrier/optimization_barrier_kernels.h"
+#include "torch_tpu/ops/polygamma/polygamma_aten_kernels.h"
 #include "torch_tpu/ops/pooling/adaptive_avg_pool_aten_kernels.h"
 #include "torch_tpu/ops/pooling/avg_pool_aten_kernels.h"
 #include "torch_tpu/ops/pooling/max_pool_aten_kernels.h"
@@ -767,6 +768,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kPdistBackward>(m, AtenPdistBackward);
   ImplStable<OpName::kPdistForward>(m, AtenPdistForward);
   ImplStable<OpName::kPolarOut>(m, AtenPolarOut);
+  ImplStable<OpName::kPolygammaOut>(m, AtenPolygammaOut);
   ImplStable<OpName::kPowScalarOut>(m, AtenPowScalarOut);
   ImplStable<OpName::kPowTensorScalarOut>(m, AtenPowTensorScalarOut);
   ImplStable<OpName::kPowTensorTensorOut>(m, AtenPowTensorTensorOut);
