@@ -518,10 +518,24 @@ def fx_to_mlir(
         != end_default_state_tensor.data_ptr()
     )
     if not updates_default_generator_state:
-      # Remove the default generator state tensor from the arguments and
-      # outputs since it is not used.
-      argument_tensors.pop()
-      result_tensors.pop()
+      if len(result_tensors) > 1:
+        # Remove the default generator state tensor from the arguments and
+        # outputs since it is not used.
+        argument_tensors.pop()
+        result_tensors.pop()
+      else:
+        # No-op graph: result_tensors holds only the default generator-state
+        # tensor, i.e. the graph produces no computed output tensors (e.g. a
+        # torch.compile(fullgraph=False) seam between two graph breaks that
+        # captures a live input but no traceable ops -- "def forward(x):
+        # return ()"). traverse_and_compile requires >=1 result tensor and
+        # aborts on an empty list (compiled_mode.cc: "no result tensors
+        # provided"). Keep the generator-state tensor purely as a placeholder
+        # output to make result_tensors non-empty so compilation succeeds -- it
+        # is not actually used; it is returned unchanged, yielding a no-op
+        # executable that preserves RNG state. Setting the flag is what keeps
+        # the placeholder plumbed in and out.
+        updates_default_generator_state = True
 
     compile_result = tpu_torch_compile.traverse_and_compile(
         result_tensors=result_tensors,

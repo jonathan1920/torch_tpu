@@ -18,6 +18,7 @@ import os
 from absl.testing import absltest
 import torch
 import torch.export
+import torch.fx
 from torch_tpu._internal.export import export as torch_tpu_export
 
 
@@ -226,6 +227,31 @@ class ExportTest(absltest.TestCase):
     # StableHLO.
     self.assertIn(b"ML\xefR", mlir_portable_artifact)
     self.assertIn(b"StableHLO_v1.", mlir_portable_artifact)
+
+
+class EmptyOutputGraphTest(absltest.TestCase):
+  """Graphs with no computed output tensors must compile, not abort.
+
+  A graph whose flattened outputs are all ``None`` has no computed result
+  tensors, so ``_process_fx_outputs`` returns an empty ``deduped_outputs``;
+  ``fx_to_mlir`` then also drops the unused default generator-state tensor,
+  leaving ``result_tensors`` empty and aborting ``traverse_and_compile``
+  ("no result tensors provided"). Such all-None segments arise from
+  ``torch.compile(fullgraph=False)`` partitioning -- e.g. the in-place
+  ``masked_fill_`` before the tensor-parallel all-reduce in a vocab-parallel
+  embedding, where the all-reduce forces a graph break.
+  """
+
+  def test_all_none_output_graph_compiles(self):
+    graph = torch.fx.Graph()
+    graph.placeholder("x")  # a real tensor input...
+    graph.output((None,))  # ...but no computed output tensor.
+    gm = torch.fx.GraphModule(torch.nn.Module(), graph)
+
+    x = torch.randn(8).to(torch.accelerator.current_accelerator())
+    # Before the fix this aborted the process inside traverse_and_compile.
+    exported_mlir = torch_tpu_export.fx_to_mlir(gm, [x])
+    self.assertIsInstance(exported_mlir, torch_tpu_export.ExportedMlir)
 
 
 if __name__ == "__main__":
