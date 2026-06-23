@@ -655,48 +655,44 @@ P99: {sorted_durations_ms[99*num//100]:.2f}ms""",
       print(r, flush=True)
     print(flush=True)
 
-    multiple_runs = False
     durations_by_subtest = collections.defaultdict(list)
     for r in results:
       durations_by_subtest[r.subtest_name].append(r.duration_sec * 1000)
-      if len(durations_by_subtest[r.subtest_name]) > 1:
-        multiple_runs = True
 
     base_durations_by_subtest = collections.defaultdict(list)
     if base_results:
       for r in base_results:
         base_durations_by_subtest[r.subtest_name].append(r.duration_sec * 1000)
 
-    if multiple_runs:
-      print(f"Stats for each test (dtype {dtype}):", flush=True)
-      factors = []
-      for subtest_name in sorted(durations_by_subtest.keys()):
-        durations_ms = durations_by_subtest[subtest_name]
-        n = len(durations_ms)
-        mean = statistics.mean(durations_ms)
-        median = statistics.median(durations_ms)
-        stdev = statistics.stdev(durations_ms) if n > 1 else 0.0
+    factors = []
+    for subtest_name in sorted(durations_by_subtest.keys()):
+      durations_ms = durations_by_subtest[subtest_name]
+      n = len(durations_ms)
+      mean = statistics.mean(durations_ms)
+      median = statistics.median(durations_ms)
+      if n > 1:
+        stdev = statistics.stdev(durations_ms)
         print(
             f" Subtest: {subtest_name}, Count: {n}\n  Mean: {mean:.2f}ms, Min:"
             f" {min(durations_ms):.2f}ms, Max: {max(durations_ms):.2f}ms,"
             f" Median: {median:.2f}ms, Stddev: {stdev:.2f}ms",
             flush=True,
         )
-        if (
-            base_durations_by_subtest
-            and subtest_name in base_durations_by_subtest
-        ):
-          base_mean = statistics.mean(base_durations_by_subtest[subtest_name])
-          if base_mean > 0:
-            factors.append(mean / base_mean)
-      if factors:
-        geomean_factor = statistics.geometric_mean(factors)
-        print("")
-        print(
-            f"Current mean duration is {geomean_factor:.4f}x of the baseline"
-            " (geomean over all tests).",
-            flush=True,
-        )
+      if (
+          base_durations_by_subtest
+          and subtest_name in base_durations_by_subtest
+      ):
+        base_mean = statistics.mean(base_durations_by_subtest[subtest_name])
+        if base_mean > 0:
+          factors.append(mean / base_mean)
+    if factors:
+      geomean_factor = statistics.geometric_mean(factors)
+      print("")
+      print(
+          f"Current mean duration is {geomean_factor:.4f}x of the baseline"
+          " (geomean over all tests).",
+          flush=True,
+      )
 
   for dtype in NUMERIC_DTYPES:
     _analyze(dtype)
