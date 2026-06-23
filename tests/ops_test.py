@@ -1882,10 +1882,10 @@ class TestOps(TorchTpuTestBase):
   def test_ceil(self):
     self.do_test_op(
         "ceil",
-        # TODO: fix ceil() failing with integral dtypes.
-        exclude_dtypes=INTEGRAL_DTYPES,
-        # TODO: fix ceil_() failing with integral dtypes.
-        exclude_inplace_dtypes=INTEGRAL_DTYPES,
+        exclude_dtypes=[torch.bool],  # EXCLUDE_DTYPES_OK=bool not on CPU ceil
+        exclude_inplace_dtypes=[  # EXCLUDE_DTYPES_OK=bool not on CPU ceil_
+            torch.bool
+        ],
     )
 
   def test_clamp(self):
@@ -2165,10 +2165,10 @@ class TestOps(TorchTpuTestBase):
   def test_floor(self):
     self.do_test_op(
         "floor",
-        # TODO: fix floor() failing with integral dtypes.
-        exclude_dtypes=INTEGRAL_DTYPES,
-        # TODO: fix floor_() failing with integral dtypes.
-        exclude_inplace_dtypes=INTEGRAL_DTYPES,
+        exclude_dtypes=[torch.bool],  # EXCLUDE_DTYPES_OK=bool not on CPU floor
+        exclude_inplace_dtypes=[  # EXCLUDE_DTYPES_OK=bool not on CPU floor_
+            torch.bool
+        ],
     )
 
   def test_floor_divide(self):
@@ -2248,10 +2248,10 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_ceil(self):
     self.do_test_op(
         "_foreach_ceil",
-        # TODO: fix ceil() failing with integral dtypes.
-        exclude_dtypes=INTEGRAL_DTYPES,
-        # TODO: fix ceil_() failing with integral dtypes.
-        exclude_inplace_dtypes=INTEGRAL_DTYPES,
+        exclude_dtypes=[torch.bool],  # EXCLUDE_DTYPES_OK=bool not on CPU ceil
+        exclude_inplace_dtypes=[  # EXCLUDE_DTYPES_OK=bool not on CPU ceil_
+            torch.bool
+        ],
     )
 
   def test_foreach_clamp_max(self):
@@ -2318,10 +2318,10 @@ class TestOps(TorchTpuTestBase):
   def test_foreach_floor(self):
     self.do_test_op(
         "_foreach_floor",
-        # TODO: fix floor() failing with integral dtypes.
-        exclude_dtypes=INTEGRAL_DTYPES,
-        # TODO: fix floor_() failing with integral dtypes.
-        exclude_inplace_dtypes=INTEGRAL_DTYPES,
+        exclude_dtypes=[torch.bool],  # EXCLUDE_DTYPES_OK=bool not on CPU floor
+        exclude_inplace_dtypes=[  # EXCLUDE_DTYPES_OK=bool not on CPU floor_
+            torch.bool
+        ],
     )
 
   def test_foreach_frac(self):

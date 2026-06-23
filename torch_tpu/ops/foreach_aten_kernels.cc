@@ -987,8 +987,7 @@ void AtenForeachAtan_(at::TensorList self) {
 
 std::vector<at::Tensor> AtenForeachCeil(at::TensorList self) {
   TT_KERNEL(OpName::kForeachCeil, _, (self), {
-    TT_ASSIGN_OR_THROW(auto out_dtypes,
-                       GetOutputDtypes(self, /*cast_integral_to_float=*/true));
+    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
                        ForeachUnaryOp(self, out_dtypes, BuildCeilShlo));
     return ForeachConvertToTensor(result_buffers, out_dtypes);
@@ -997,7 +996,6 @@ std::vector<at::Tensor> AtenForeachCeil(at::TensorList self) {
 
 void AtenForeachCeil_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachCeil_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,
@@ -1152,8 +1150,7 @@ void AtenForeachExpm1_(at::TensorList self) {
 
 std::vector<at::Tensor> AtenForeachFloor(at::TensorList self) {
   TT_KERNEL(OpName::kForeachFloor, _, (self), {
-    TT_ASSIGN_OR_THROW(auto out_dtypes,
-                       GetOutputDtypes(self, /*cast_integral_to_float=*/true));
+    TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(auto result_buffers,
                        ForeachUnaryOp(self, out_dtypes, BuildFloorShlo));
     return ForeachConvertToTensor(result_buffers, out_dtypes);
@@ -1162,7 +1159,6 @@ std::vector<at::Tensor> AtenForeachFloor(at::TensorList self) {
 
 void AtenForeachFloor_(at::TensorList self) {
   TT_KERNEL(OpName::kForeachFloor_, _, (self), {
-    TT_THROW_IF_ERROR(CheckNotIntegral(self, /* arg_name= */ "self"));
     TT_ASSIGN_OR_THROW(auto out_dtypes, GetOutputDtypes(self));
     TT_ASSIGN_OR_THROW(
         auto result_buffers,

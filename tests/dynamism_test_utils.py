@@ -109,6 +109,12 @@ def _should_skip_input_marking(
   # _foreach_exp_ does not support integral dtypes on TPU.
   if op_info.name == "_foreach_exp_" and not dtype.is_floating_point:
     return f"{op_info.name} does not support integral dtypes."
+  # ceil/floor do not support int64 under dynamism (sign-extension bugs).
+  if (
+      op_info.name in ["ceil", "floor", "_foreach_ceil", "_foreach_floor"]
+      and dtype == torch.int64
+  ):
+    return f"{op_info.name} does not support int64 under dynamism."
   # TODO: b/449736443 - Empty tensor handling needs reworking.
   if input_value.numel() == 0:
     return "Empty tensors are currently not supported."

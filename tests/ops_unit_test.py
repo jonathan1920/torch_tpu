@@ -5910,6 +5910,86 @@ class OpsUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
 
     self.assert_close_tpu_vs_cpu(compute)
 
+  def test_ceil_integral(self):
+    for dtype in [torch.int32, torch.uint8]:
+      x = torch.tensor([-2, -1, 0, 1, 2], dtype=dtype)
+      self.assert_close_tpu_vs_cpu(lambda device, x=x: torch.ceil(x.to(device)))
+      self.assert_close_tpu_vs_cpu(
+          lambda device, x=x: torch.ceil_(x.clone().to(device))
+      )
+
+    # For boolean, CPU doesn't support it, so test TPU execution alone.
+    x_bool = torch.tensor([True, False, True], dtype=torch.bool)
+    x_tpu = x_bool.to("tpu")
+    self.assertEqual(torch.ceil(x_tpu).cpu(), x_bool)
+    self.assertEqual(torch.ceil_(x_tpu.clone()).cpu(), x_bool)
+
+  def test_floor_integral(self):
+    for dtype in [torch.int32, torch.uint8]:
+      x = torch.tensor([-2, -1, 0, 1, 2], dtype=dtype)
+      self.assert_close_tpu_vs_cpu(
+          lambda device, x=x: torch.floor(x.to(device))
+      )
+      self.assert_close_tpu_vs_cpu(
+          lambda device, x=x: torch.floor_(x.clone().to(device))
+      )
+
+    # For boolean, CPU doesn't support it, so test TPU execution alone.
+    x_bool = torch.tensor([True, False, True], dtype=torch.bool)
+    x_tpu = x_bool.to("tpu")
+    self.assertEqual(torch.floor(x_tpu).cpu(), x_bool)
+    self.assertEqual(torch.floor_(x_tpu.clone()).cpu(), x_bool)
+
+  def test_foreach_ceil_integral(self):
+    for dtype in [torch.int32, torch.uint8]:
+      x = [
+          torch.tensor([-2, -1, 0, 1, 2], dtype=dtype),
+          torch.tensor([10, -5, 3], dtype=dtype),
+      ]
+      self.assert_close_tpu_vs_cpu(
+          lambda device, x=x: torch._foreach_ceil([t.to(device) for t in x])
+      )
+      self.assert_close_tpu_vs_cpu(
+          lambda device, x=x: torch._foreach_ceil_(
+              [t.clone().to(device) for t in x]
+          )
+      )
+
+    # For boolean, CPU doesn't support it, so test TPU execution alone.
+    x_bool = [
+        torch.tensor([True, False, True], dtype=torch.bool),
+        torch.tensor([False, True], dtype=torch.bool),
+    ]
+    x_tpu = [t.to("tpu") for t in x_bool]
+    res_tpu = torch._foreach_ceil(x_tpu)
+    for res, expected in zip(res_tpu, x_bool):
+      self.assertEqual(res.cpu(), expected)
+
+  def test_foreach_floor_integral(self):
+    for dtype in [torch.int32, torch.uint8]:
+      x = [
+          torch.tensor([-2, -1, 0, 1, 2], dtype=dtype),
+          torch.tensor([10, -5, 3], dtype=dtype),
+      ]
+      self.assert_close_tpu_vs_cpu(
+          lambda device, x=x: torch._foreach_floor([t.to(device) for t in x])
+      )
+      self.assert_close_tpu_vs_cpu(
+          lambda device, x=x: torch._foreach_floor_(
+              [t.clone().to(device) for t in x]
+          )
+      )
+
+    # For boolean, CPU doesn't support it, so test TPU execution alone.
+    x_bool = [
+        torch.tensor([True, False, True], dtype=torch.bool),
+        torch.tensor([False, True], dtype=torch.bool),
+    ]
+    x_tpu = [t.to("tpu") for t in x_bool]
+    res_tpu = torch._foreach_floor(x_tpu)
+    for res, expected in zip(res_tpu, x_bool):
+      self.assertEqual(res.cpu(), expected)
+
 
 class OpsCustomOpUnitTest(TorchTpuVsCpuTestBase, parameterized.TestCase):
   """Tests for custom ops."""

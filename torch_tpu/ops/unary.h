@@ -53,8 +53,6 @@ namespace torch_tpu {
 // in unary_aten_kernels.cc and make sure all of these functions are
 // being registered in tpu_aten_kernels.cc.
 // go/keep-sorted start
-TT_UNARY_BUILDER_(BuildCeilShlo, mlir::stablehlo::Ceil);
-TT_UNARY_BUILDER_(BuildFloorShlo, mlir::stablehlo::Floor);
 TT_UNARY_BUILDER_(BuildNegShlo, mlir::stablehlo::Neg);
 TT_UNARY_BUILDER_(BuildNotShlo, mlir::stablehlo::Not);
 TT_UNARY_BUILDER_FP_ONLY_(BuildAcosShlo, mlir::chlo::Acos);
@@ -84,7 +82,9 @@ TT_UNARY_BUILDER_FP_ONLY_(BuildTanhShlo, mlir::stablehlo::Tanh);
 // For functions that require more than a single-line StableHlo builder
 // call sequence, their prototypes will reside here.
 absl::StatusOr<mlir::MlirOp> BuildAbsShlo(mlir::MlirOp input);
+absl::StatusOr<mlir::MlirOp> BuildCeilShlo(mlir::MlirOp input_op);
 absl::StatusOr<mlir::MlirOp> BuildConjPhysicalShlo(mlir::MlirOp input_op);
+absl::StatusOr<mlir::MlirOp> BuildFloorShlo(mlir::MlirOp input_op);
 absl::StatusOr<mlir::MlirOp> BuildReciprocalShlo(
     mlir::MlirOp input_op, mlir::ElementType default_mlir_type);
 absl::StatusOr<mlir::MlirOp> BuildReluShlo(mlir::MlirOp input_op);
