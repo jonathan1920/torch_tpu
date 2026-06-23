@@ -739,7 +739,9 @@ torch_tpu_cc_library(
     ],
 )
 
-# Note: workaround for all pytorch .so files required by torch_tpu
+# NOTE: Configures RPATH for C++ extensions in the standalone pip wheel.
+# This ensures the dynamic linker can locate libtorch.so in site-packages/torch/
+# at runtime.
 torch_tpu_cc_library(
     name = "torch_rpath_flags",
     linkopts = [
@@ -748,6 +750,9 @@ torch_tpu_cc_library(
     visibility = ["//visibility:private"],
 )
 
+# NOTE: Central aggregator for all C++ Python extensions in torch_tpu.
+# Any new pybind_extension target created in the codebase MUST be added to the
+# deps list below to ensure it is packaged into the standalone pip wheel.
 pywrap_library(
     name = "pywrap_torch_tpu",
     extra_deps = [
