@@ -20,6 +20,7 @@
 
 #include "ATen/core/ATen_fwd.h"
 #include "ATen/core/TensorBody.h"
+#include "ATen/ops/empty.h"
 #include "absl/status/statusor.h"
 #include "c10/core/Device.h"
 #include "c10/core/TensorImpl.h"
@@ -118,9 +119,15 @@ at::Tensor CopyTensor(const at::Tensor& src, const at::Tensor& self_dest,
   if (src.grad().defined()) {
     at::Tensor dest_grad = self_dest.grad();
     if (!dest_grad.defined()) {
-      TT_ASSIGN_OR_THROW(
-          dest_grad, MakeEmptyTensor(self_dest.sizes(), self_dest.scalar_type(),
-                                     self_dest.device()));
+      if (to_copy_type == CopyType::kTpuToCpu) {
+        // at::empty here dispatches directly to the native CPU allocator and
+        // does not make the parent op composite.
+        dest_grad = at::empty(self_dest.sizes(), self_dest.options());
+      } else {
+        TT_ASSIGN_OR_THROW(dest_grad, MakeEmptyTensor(self_dest.sizes(),
+                                                      self_dest.scalar_type(),
+                                                      self_dest.device()));
+      }
       self_dest.mutable_grad() = dest_grad;
     }
     CopyTensor(src.grad(), dest_grad, non_blocking);
