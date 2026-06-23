@@ -168,10 +168,10 @@ absl::StatusOr<mlir::ElementType> ToElementType(
       // Boolean.
     case at::kBool:
       return mlir::ElementType::PRED;
-      // These cases should never happen.
-#if TT_TORCH_VERSION_GE(2, 13)
-    case at::kBComplex32:
+#if TT_TORCH_VERSION_GE(2, 13) && !TT_IS_INTERNAL_TORCH_TPU
+    case at::ScalarType::BComplex32:
 #endif
+      // These cases should never happen.
     // go/keep-sorted start
     case at::kBits16:
     case at::kBits1x8:

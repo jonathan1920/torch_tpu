@@ -30,6 +30,7 @@
 #include "torch/csrc/distributed/c10d/Types.hpp"
 #include "torch/headeronly/core/ScalarType.h"
 #include "torch_tpu/common/macro_utils.h"
+#include "torch_tpu/common/utils.h"
 
 namespace torch_tpu {
 
@@ -253,7 +254,7 @@ std::string_view ToString(const at::ScalarType scalar_type) {
       return "complex128";
     case at::ScalarType::ComplexHalf:
       return "complex32";
-#if TT_TORCH_VERSION_GE(2, 13)
+#if TT_TORCH_VERSION_GE(2, 13) && !TT_IS_INTERNAL_TORCH_TPU
     case at::ScalarType::BComplex32:
       return "bcomplex32";
 #endif

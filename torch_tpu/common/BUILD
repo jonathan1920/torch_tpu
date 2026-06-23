@@ -587,6 +587,7 @@ torch_tpu_cc_library(
     hdrs = ["to_string.h"],
     deps = [
         ":macro_utils",
+        ":utils",
         "//shims/torch:aten_headers",
         "//shims/torch:torch_headers",
         "//shims/torch/c10/util:base_headers",
