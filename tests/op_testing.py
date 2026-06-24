@@ -262,6 +262,52 @@ class OpVariant(enum.Enum):
   OUT = "out"  # op(..., out=...)
 
 
+class OutVariantType(enum.Enum):
+  """Type of out argument to test."""
+
+  CORRECT = "correct"
+  INCORRECT_SHAPE = "incorrect_shape"
+  # TODO: cover more ways to specify the out arguments (e.g. correct
+  # dimensions but incorrect dtype, both dtype and dimensions incorrect).
+
+
+# Ops that are known to fail the incorrect shape out-variant test due to
+# missing shape resizing in their TorchTPU C++ implementations, compiler
+# crashes, or incorrect decomposition.
+# TODO: fix these ops and remove them from this list.
+_OPS_WITHOUT_OUT_SHAPE_RESIZING: Final[set[str]] = {
+    "_log_softmax_backward_data",
+    "addcdiv",
+    "addcmul",
+    "addmm",
+    "addmv",
+    "baddbmm",
+    "bernoulli",
+    "bmm",
+    "bucketize",
+    "clamp_max",
+    "clamp_min",
+    "gather",
+    "index_add",
+    "index_copy",
+    "lerp",
+    "lgamma",
+    "linalg.inv",
+    "linalg.lu",
+    "linalg.lu_factor_ex",
+    "linalg.lu_solve",
+    "linalg.solve_ex",
+    "linalg.solve_triangular",
+    "log_softmax",
+    "lu_unpack",
+    "scatter",
+    "scatter_add",
+    "scatter_reduce",
+    "split_with_sizes_copy",
+    "take",
+}
+
+
 # Ops not included in the list of tested ops for pytorch.
 _ADDITIONAL_TORCH_TPU_OPS: Final[Sequence[OpInfo]] = [
     OpInfo(
@@ -826,6 +872,22 @@ def _make_tensors_empty(x: _pytree.PyTree) -> _pytree.PyTree:
   return _tensor_tree_map(transform_leaf, x)
 
 
+def _make_tensors_incorrect_shape(x: _pytree.PyTree) -> _pytree.PyTree:
+  """Makes all torch.Tensors in x have incorrect shape."""
+
+  def transform_leaf(obj: Any) -> Any:
+    if isinstance(obj, torch.Tensor):
+      if obj.ndim == 0:
+        return torch.empty((1,), dtype=obj.dtype, device=obj.device)
+      else:
+        new_shape = list(obj.shape)
+        new_shape[0] += 1
+        return torch.empty(new_shape, dtype=obj.dtype, device=obj.device)
+    return obj
+
+  return _tensor_tree_map(transform_leaf, x)
+
+
 def _gen_gpu_golden_mode() -> bool:
   """Returns true if the test is running in gen_gpu_golden mode."""
   return _TEST_MODE.value == TestMode.GEN_GPU_GOLDEN
@@ -1217,6 +1279,16 @@ def _should_skip_dtype(
   )
 
 
+def _find_first_valid_dtype(
+    dtypes: Sequence[torch.dtype], *, exclude_dtypes: Sequence[torch.dtype]
+) -> torch.dtype | None:
+  """Returns the first dtype in the sequence that should not be skipped."""
+  for dtype in dtypes:
+    if not _should_skip_dtype(dtype, exclude_dtypes=exclude_dtypes):
+      return dtype
+  return None
+
+
 def _dummy_grad(device: torch.device) -> torch.Tensor:
   """Returns a dummy gradient for use in tests."""
   return torch.tensor([], dtype=torch.float32, device=device)
@@ -1562,6 +1634,7 @@ class TorchTpuTestBase(TestCase):
       use_compiled: bool = False,
       verbose: bool = True,
       set_seed: bool = True,
+      out_variant_type: OutVariantType = OutVariantType.CORRECT,
   ) -> Sequence[tuple[OpInput, OpOutput]]:
     """Returns a list of (input, output) pairs for the op.
 
@@ -1586,6 +1659,7 @@ class TorchTpuTestBase(TestCase):
         results.
       set_seed: If True, reset the RNG seed before generating samples. Set to
         False to allow RNG to advance across multiple calls.
+      out_variant_type: The type of out argument to test.
     """
 
     op_name = _op_name_for_logging(op, variant)
@@ -1596,6 +1670,8 @@ class TorchTpuTestBase(TestCase):
       )
 
     if _torch_tpu_vs_gpu_mode():
+      if out_variant_type != OutVariantType.CORRECT:
+        return []
       return _GOLDEN_GPU_DATA.get(op_name, {}).get(dtype, [])
 
     # Generate sample inputs on the golden device.
@@ -1654,6 +1730,7 @@ class TorchTpuTestBase(TestCase):
           check_device=False,
           # No need to mark inputs as dynamic when computing golden results.
           check_dynamism=False,
+          out_variant_type=out_variant_type,
       )
       golden_output = OpOutput(golden_result)
       pairs.append((golden_input, golden_output))
@@ -1673,6 +1750,7 @@ class TorchTpuTestBase(TestCase):
       check_device: bool,
       check_dynamism: bool,
       out: Any = None,
+      out_variant_type: OutVariantType = OutVariantType.CORRECT,
       compute_grad: bool = False,
       use_compiled: bool = False,
       measure_perf: bool = True,
@@ -1698,6 +1776,7 @@ class TorchTpuTestBase(TestCase):
       out: If variant is OUT, this can be either the out argument to be used
         when running the op or None if this function should create the out
         argument itself. Otherwise this must be None.
+      out_variant_type: The type of out argument to generate if out is None.
       compute_grad: If True, compute the gradient of the op with respect to the
         input instead of the op outputs.
       use_compiled: If True, use torch.compile to compile the op before running.
@@ -1740,11 +1819,11 @@ class TorchTpuTestBase(TestCase):
       if isinstance(base_result, Exception):
         # The base variant failed, so we cannot generate the out tensor.
         return base_result
-      # Next, create the out argument with the correct dtype and size.
-      # Some ops expect the out argument to be a tuple as opposed to a
-      # single tensor (e.g. sort()), so we need _make_tensors_empty()
-      # instead of torch.empty_like() here.
-      out = to(_make_tensors_empty(base_result), device)
+      # Next, create the out argument based on out_variant_type.
+      if out_variant_type == OutVariantType.CORRECT:
+        out = to(_make_tensors_empty(base_result), device)
+      elif out_variant_type == OutVariantType.INCORRECT_SHAPE:
+        out = to(_make_tensors_incorrect_shape(base_result), device)
 
     op_func = op.inplace_variant if variant == OpVariant.INPLACE else op
 
@@ -2056,6 +2135,7 @@ class TorchTpuTestBase(TestCase):
       skip_output_indices: Sequence[int],
       compute_grad: bool,
       use_compiled: bool,
+      out_variant_type: OutVariantType = OutVariantType.CORRECT,
   ) -> None:
     op_name = _op_name_for_logging(op, variant)
     print(f">>>> Testing {subtest_name} ...", flush=True)
@@ -2101,6 +2181,7 @@ class TorchTpuTestBase(TestCase):
           subtest_name=subtest_name,
           check_device=check_device,
           check_dynamism=check_dynamism,
+          out_variant_type=out_variant_type,
       )
     golden_thrown = isinstance(golden_result, Exception)
     torch_tpu_thrown = isinstance(torch_tpu_result, Exception)
@@ -2108,7 +2189,9 @@ class TorchTpuTestBase(TestCase):
     self._assert_failure_consistency(
         golden_result=golden_result,
         torch_tpu_result=torch_tpu_result,
-        op_description=f"{op_name}() with dtype {dtype}",
+        op_description=(
+            f"{op_name}() with dtype {dtype} (variant={out_variant_type.value})"
+        ),
         torch_tpu_printable_input=torch_tpu_printable_input,
     )
 
@@ -2143,6 +2226,7 @@ class TorchTpuTestBase(TestCase):
       skip_output_indices: Sequence[int],
       skip_if: Callable[[str, OpVariant, OpInput], bool] | None,
       max_samples_per_op_dtype: int | None,
+      out_variant_type: OutVariantType = OutVariantType.CORRECT,
   ) -> None:
     """Tests that the op produces similar results on TorchTPU and the golden device.
 
@@ -2171,6 +2255,7 @@ class TorchTpuTestBase(TestCase):
       max_samples_per_op_dtype: The maximum number of samples to test for each
         (op variant, dtype) combination. If None, the number is determined by
         the --max_samples_per_op_dtype flag.
+      out_variant_type: The type of out argument to test.
     """
 
     if dtype not in _dtypes_to_test():
@@ -2185,7 +2270,22 @@ class TorchTpuTestBase(TestCase):
       return
 
     op_name = _op_name_for_logging(op, variant)
-    print(f">>> Testing {op_name}() with dtype {dtype} ...", flush=True)
+    # TODO: Remove this check once we have recorded GPU results for all
+    # out_variant_types.
+    if _torch_tpu_vs_gpu_mode() and out_variant_type != OutVariantType.CORRECT:
+      print(
+          f"Skipping test for {op_name}() with dtype {dtype} on TorchTPU as we"
+          " don't have recorded GPU results for out_variant_type"
+          f" {out_variant_type.value}.",
+          flush=True,
+      )
+      return
+
+    print(
+        f">>> Testing {op_name}() (variant={out_variant_type.value}) with dtype"
+        f" {dtype} ...",
+        flush=True,
+    )
 
     use_random_exploration = _NUM_ACCURACY_TEST_RUNS.value > 1
     if use_random_exploration:
@@ -2210,6 +2310,7 @@ class TorchTpuTestBase(TestCase):
           verbose=(acc_run_idx == 0),
           # If we are in exploration mode, we never reset seed during the loop.
           set_seed=not use_random_exploration,
+          out_variant_type=out_variant_type,
       )
       for i, [golden_input, golden_output] in enumerate(golden_pairs):
         golden_result = golden_output.output_value
@@ -2240,6 +2341,8 @@ class TorchTpuTestBase(TestCase):
         # doesn't prevent other runs.
         # Construct a meaningful and unique subtest name.
         subtest_name = f"{op_name}_{_dtype_str(dtype)}_"
+        if out_variant_type != OutVariantType.CORRECT:
+          subtest_name += f"{out_variant_type.value}_"
         subtest_name += (
             golden_input.name if golden_input.name else f"subtest{i}"
         )
@@ -2263,6 +2366,7 @@ class TorchTpuTestBase(TestCase):
                     skip_output_indices=skip_output_indices,
                     compute_grad=compute_grad,
                     use_compiled=use_compiled,
+                    out_variant_type=out_variant_type,
                 )
             )
 
@@ -2306,6 +2410,7 @@ class TorchTpuTestBase(TestCase):
           Iterable[torch.dtype] | Mapping[str, Iterable[torch.dtype]] | None
       ) = None,
       check_out_variant: bool = True,
+      exclude_out_variant_types: Iterable[OutVariantType] | None = None,
       check_grad: bool = True,
       check_device: bool = True,
       check_dynamism: bool = True,
@@ -2334,6 +2439,8 @@ class TorchTpuTestBase(TestCase):
       exclude_inplace_dtypes: Similar to exclude_dtypes, but for the inplace
         variant of the op.
       check_out_variant: Whether to check the out variant of the op.
+      exclude_out_variant_types: A list of OutVariantType values to exclude from
+        testing.
       check_grad: Whether to check the gradient of the op.
       check_device: Whether to check that the op's result is on the correct
         device.
@@ -2365,6 +2472,16 @@ class TorchTpuTestBase(TestCase):
         available. If None, the base variant set, filtering only on the op_name,
         will be tested.
     """
+
+    if exclude_out_variant_types is None:
+      exclude_out_variant_types = set()
+    else:
+      exclude_out_variant_types = set(exclude_out_variant_types)
+
+    # TODO: Remove this check and the _OPS_WITHOUT_OUT_SHAPE_RESIZING constant
+    # once all ops are fixed to support out shape resizing natively.
+    if op_name in _OPS_WITHOUT_OUT_SHAPE_RESIZING:
+      exclude_out_variant_types.add(OutVariantType.INCORRECT_SHAPE)
 
     exclude_dtypes = self._resolve_exclude_dtypes(exclude_dtypes)
     exclude_inplace_dtypes = self._resolve_exclude_dtypes(
@@ -2413,13 +2530,18 @@ class TorchTpuTestBase(TestCase):
 
       if check_out_variant:
         print(f"Testing {op_name}(out=...).", flush=True)
+
+        # Find the first valid dtype for the incorrect shape test
+        allowed_dtypes = [d for d in dtypes_to_test if d in _dtypes_to_test()]
+        first_valid_dtype = _find_first_valid_dtype(
+            allowed_dtypes, exclude_dtypes=exclude_dtypes
+        )
+
         for dtype in dtypes_to_test:
           if _should_skip_dtype(dtype, exclude_dtypes=exclude_dtypes):
             continue
-          # TODO: cover more ways to specify the out arguments (e.g. correct
-          # dtype but incorrect dimensions, correct dimensions but incorrect
-          # dtype, both dtype and dimensions incorrect, incorrect structure
-          # (e.g. tuple vs tensor for vice versa)).
+
+          # Test the correct shape out variant
           self._test_torch_tpu_vs_golden(
               op,
               dtype,
@@ -2434,7 +2556,32 @@ class TorchTpuTestBase(TestCase):
               skip_output_indices=skip_output_indices,
               skip_if=skip_if,
               max_samples_per_op_dtype=max_samples_per_op_dtype,
+              out_variant_type=OutVariantType.CORRECT,
           )
+
+          # Test the incorrect shape out variant (only once per op on the first
+          # valid dtype)
+          if (
+              dtype == first_valid_dtype
+              and OutVariantType.INCORRECT_SHAPE
+              not in exclude_out_variant_types
+          ):
+            self._test_torch_tpu_vs_golden(
+                op,
+                dtype,
+                OpVariant.OUT,
+                compute_grad=compute_grad,
+                use_compiled=use_compiled,
+                check_value=check_value,
+                check_dtype=check_dtype,
+                check_device=check_device,
+                check_dynamism=check_dynamism,
+                check_op_failures=check_op_failures,
+                skip_output_indices=skip_output_indices,
+                skip_if=skip_if,
+                max_samples_per_op_dtype=1,
+                out_variant_type=OutVariantType.INCORRECT_SHAPE,
+            )
 
       if not op.inplace_variant:
         return
