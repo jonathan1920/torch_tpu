@@ -23,6 +23,7 @@
 #include "c10/util/ThreadLocalDebugInfo.h"
 
 namespace torch_tpu {
+namespace internal {
 
 void PushContextStateUntyped(ContextManagerState state) {
   // Get the current top node of the shared slot to use as parent.
@@ -48,4 +49,5 @@ PopContextStateUntyped() {
   return manager_node;
 }
 
+}  // namespace internal
 }  // namespace torch_tpu

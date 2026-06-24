@@ -125,24 +125,36 @@ T GetContextState(GetDefaultStateT get_default_state) {
                                  : get_default_state();
 }
 
-// Pushes the given context state onto the current python thread's state stack.
+namespace internal {
+
+// Type-erased implementation that pushes a context state variant onto the
+// underlying TorchTPU-specific `c10::ThreadLocalDebugInfo` stack.
 void PushContextStateUntyped(ContextManagerState state);
+
+// Type-erased implementation that pops and returns a node from the underlying
+// TorchTPU-specific `c10::ThreadLocalDebugInfo` stack.
+absl_nonnull std::shared_ptr<const ContextManagerNode> PopContextStateUntyped();
+
+}  // namespace internal
+
+// Pushes the given context state of the specified type T onto the current
+// python thread's state stack.
 template <typename T>
 void PushContextState(T state) {
   static_assert(
       internal::is_alternative_v<T, ContextManagerState>,
       "T must be one of the alternative types of ContextManagerState.");
-  PushContextStateUntyped(ContextManagerState(std::move(state)));
+  internal::PushContextStateUntyped(ContextManagerState(std::move(state)));
 }
 
-// Pops the current python thread's context state stack.
-absl_nonnull std::shared_ptr<const ContextManagerNode> PopContextStateUntyped();
+// Pops the current python thread's context state stack, and returns the
+// context state of the specified type T.
 template <typename T>
 void PopContextState() {
   static_assert(
       internal::is_alternative_v<T, ContextManagerState>,
       "T must be one of the alternative types of ContextManagerState.");
-  auto node = PopContextStateUntyped();
+  auto node = internal::PopContextStateUntyped();
   const T* state = std::get_if<T>(&node->state());
   ABSL_CHECK(state != nullptr)  // CRASH_OK
       << "The popped context state is not of the expected type "
