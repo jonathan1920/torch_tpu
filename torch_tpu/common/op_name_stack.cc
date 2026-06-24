@@ -222,7 +222,6 @@ void OpNameStack::Push(OpName op_name) {
           OpName::kVar,
           OpName::kVarOut,
           OpName::kView,
-          OpName::kZero_,
           // go/keep-sorted end
           // DO NOT ADD NEW ENTRIES TO THE ABOVE LIST! Our goal is to shrink the
           // list and eventually remove it.
@@ -230,7 +229,7 @@ void OpNameStack::Push(OpName op_name) {
   // Only check known_composite_ops size once as it's a run-time constant.
   static const bool check_once = [] {
     ABSL_CHECK_EQ(  // CRASH_OK
-        known_composite_ops->size(), 173 /* DO NOT increase this! */)
+        known_composite_ops->size(), 172 /* DO NOT increase this! */)
         << "The size of known_composite_ops MUST NOT go up. "
            "If you are removing entries from known_composite_ops, please LOWER "
            "the expected size in the comparison to match the new size and "
