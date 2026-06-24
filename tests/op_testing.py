@@ -198,11 +198,11 @@ op_perf.py -- --num_runs_per_subtest=20
 # creating the perf_dir directory paths in op_perf.py.
 
 # Run the comparison analysis.
-blaze test -c opt --test_arg=--base_perf_dir=/path/to/first/perf_dir  \
+blaze test -c opt torch_tpu/tests:ops_test_perf                       \
+                  --test_arg=--base_perf_dir=/path/to/first/perf_dir  \
                   --test_arg=--perf_dir=/path/to/second/perf_dir      \
                   --test_arg=--analyze                                \
-                  --test_arg=--opt_level=""                           \
-                  torch_tpu/tests:ops_test_perf
+                  --test_arg=--opt_level=""
 """
 
 _BASE_PERF_DIR: Final[flags.FlagHolder[str]] = flags.DEFINE_string(
