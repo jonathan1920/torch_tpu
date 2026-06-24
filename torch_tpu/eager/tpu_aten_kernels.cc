@@ -118,6 +118,7 @@
 #include "torch_tpu/ops/linalg/solve_triangular/linalg_solve_triangular_kernels.h"
 #include "torch_tpu/ops/linalg/vector_norm/aten_vector_norm_kernels.h"
 #include "torch_tpu/ops/linspace/linspace_aten_kernels.h"
+#include "torch_tpu/ops/logcumsumexp/logcumsumexp_aten_kernels.h"
 #include "torch_tpu/ops/logical/logical_aten_kernels.h"
 #include "torch_tpu/ops/masked_fill/masked_fill_aten_kernels.h"  // IWYU pragma: keep for AtenMaskedFill
 #include "torch_tpu/ops/masked_scatter/masked_scatter_aten_kernels.h"
@@ -692,6 +693,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   ImplStable<OpName::kLogSoftmaxBackwardDataOut>(m,
                                                  AtenLogSoftmaxBackwardDataOut);
   ImplStable<OpName::kLogSoftmaxOut>(m, AtenLogSoftmaxOut);
+  ImplStable<OpName::kLogcumsumexp>(m, AtenLogcumsumexp);
+  ImplStable<OpName::kLogcumsumexpOut>(m, AtenLogcumsumexpOut);
   ImplStable<OpName::kLogicalAndOut>(m, AtenLogicalAndOut);
   ImplStable<OpName::kLogicalNotOut>(m, AtenLogicalNotOut);
   ImplStable<OpName::kLogicalOrOut>(m, AtenLogicalOrOut);

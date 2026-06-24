@@ -450,6 +450,8 @@ enum class OpName {
   kLogSigmoidForwardOut,
   kLogSoftmaxBackwardDataOut,
   kLogSoftmaxOut,
+  kLogcumsumexp,
+  kLogcumsumexpOut,
   kLogicalAndOut,
   kLogicalNotOut,
   kLogicalOrOut,

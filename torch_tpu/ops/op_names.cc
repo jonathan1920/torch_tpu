@@ -873,6 +873,10 @@ std::string_view ToString(OpName op_name) {  // NOLINT(readability/fn_size)
       return "_log_softmax_backward_data.out";
     case OpName::kLogSoftmaxOut:
       return "_log_softmax.out";
+    case OpName::kLogcumsumexp:
+      return "_logcumsumexp";
+    case OpName::kLogcumsumexpOut:
+      return "_logcumsumexp.out";
     case OpName::kLogicalAndOut:
       return "logical_and.out";
     case OpName::kLogicalNotOut:

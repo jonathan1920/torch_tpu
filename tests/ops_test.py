@@ -440,6 +440,12 @@ ACCURACY_OVERRIDES_VS_CPU: dict[str, dict[torch.dtype, dict[str, float]]] = {
         torch.float16: {"rtol": 5e-1, "atol": 9.8e-4},
         torch.float32: {"rtol": 2.7e-4, "atol": 6.9e-5},
     },
+    # exp/log accumulation plus the associative scan reordering diverge from the
+    # sequential CPU reference more than a plain cumulative reduction does.
+    "logcumsumexp": {
+        torch.float16: {"rtol": 8e-3, "atol": 1.5e-3},
+        torch.float32: {"rtol": 3e-4, "atol": 1e-4},
+    },
     "matmul": {
         torch.bfloat16: {"rtol": 3.9e-1, "atol": 2.9e-1},
         torch.complex64: {"rtol": 4e-1, "atol": 1.9},
@@ -1452,6 +1458,11 @@ ACCURACY_OVERRIDES_GRAD: dict[str, dict[torch.dtype, dict[str, float]]] = (
             },
             "log2": {
                 torch.float16: {"rtol": 1.3e-3, "atol": 2.5e-4},
+            },
+            # The logcumsumexp backward is a reverse cumulative softmax (exp and
+            # division), so bf16 gradients diverge more than the forward pass.
+            "logcumsumexp": {
+                torch.bfloat16: {"rtol": 8e-2, "atol": 2e-1},
             },
             "matmul": {
                 torch.float16: {"rtol": 1e-1, "atol": 1e-1},
@@ -2766,6 +2777,18 @@ class TestOps(TorchTpuTestBase):
         # sample generation process calls log_softmax() which is not supported
         # for these dtypes.
         exclude_dtypes=COMPLEX_DTYPES + INTEGRAL_DTYPES,
+    )
+
+  def test_logcumsumexp(self):
+    self.do_test_op(
+        "logcumsumexp",
+        # logcumsumexp is a floating-point op: integer/bool inputs are
+        # unsupported (the reference sample generator itself overflows for
+        # them), and the max-based logaddexp combiner has no defined extension
+        # to complex.
+        exclude_dtypes=(  # EXCLUDE_DTYPES_OK=float-only op
+            COMPLEX_DTYPES + INTEGRAL_DTYPES
+        ),
     )
 
   def test_logical_and(self):

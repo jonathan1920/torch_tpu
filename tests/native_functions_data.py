@@ -91,8 +91,6 @@ UNREGISTERED_OPS = frozenset([
     '_linalg_eigvals',
     '_linalg_slogdet.sign',
     '_linalg_svd.U',
-    '_logcumsumexp',
-    '_logcumsumexp.out',
     '_lstm_mps',
     '_make_dep_token',
     '_make_per_channel_quantized_tensor',

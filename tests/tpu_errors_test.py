@@ -609,6 +609,21 @@ Please use clone() or contiguous() to copy the tensor before writing""",
       t = torch.ones(2, 2, device="tpu", dtype=torch.complex64)
       torch.cummin(t, dim=1)
 
+  @et.why_tpu_only("logcumsumexp dtype validation lives in the TPU kernel.")
+  def test_logcumsumexp_with_unsupported_integer_dtype(self):
+    """Tests logcumsumexp rejects non-floating-point inputs.
+
+    Only the functional path is exercised. The out= path decomposes through the
+    functional _logcumsumexp under functionalization, so AtenLogcumsumexpOut's
+    identical check is unreachable (marked ERROR_COV_INFEASIBLE in the kernel).
+    """
+    t = torch.ones(2, 2, device="tpu", dtype=torch.int32)
+    with et.assert_raises_message(
+        RuntimeError,
+        tpu="""logcumsumexp(): expected the input dtype to be floating point, got int32""",
+    ):
+      torch.logcumsumexp(t, dim=1)
+
   @et.why_tpu_only("The behavior is undefined on CPU.")
   def test_index_add_with_assign_buffer_to_at_tensor_failure(self):
     """Tests that index_add() bubbles up the error from AssignBufferToAtTensor.
