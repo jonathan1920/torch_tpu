@@ -27,7 +27,6 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -353,9 +352,6 @@ template <typename T>
 FormattedKey<T> FormatParamCacheKey(at::ArrayRef<T> value);
 template <typename T>
 FormattedKey<T> FormatParamCacheKey(absl::Span<T> value);
-template <typename K, typename V, typename Hash, typename Eq, typename Alloc>
-std::string FormatParamCacheKey(
-    const std::unordered_map<K, V, Hash, Eq, Alloc>& value);
 template <typename T>
 FormattedKey<T> FormatParamCacheKey(c10::OptionalArrayRef<T> value);
 
@@ -416,15 +412,6 @@ template <typename T>
 FormattedKey<T> FormatParamCacheKey(absl::Span<T> value) {
   return FormatParamCacheKeyForRange<T, FormattedKey<T>>(value.begin(),
                                                          value.end());
-}
-
-template <typename K, typename V, typename Hash, typename Eq, typename Alloc>
-std::string FormatParamCacheKey(
-    const std::unordered_map<K, V, Hash, Eq, Alloc>& value) {
-  using value_type =
-      typename std::unordered_map<K, V, Hash, Eq, Alloc>::value_type;
-  return FormatParamCacheKeyForRange<value_type, std::string>(value.begin(),
-                                                              value.end());
 }
 
 template <typename T>
