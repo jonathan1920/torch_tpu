@@ -28,6 +28,7 @@
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -200,18 +201,18 @@ absl::Status PjrtBackend::InitializeInternal() {
                                options_.premapped_buffer_size_bytes),
       _.SetPrepend() << "retrieving a PjRtClient failed with: ");
 
-  TT_RET_CHECK(client_ != nullptr, error::kInternal)
-      << "PjRtClient is null after initialization";
-  TT_RET_CHECK(!client_->devices().empty(), error::kNotFound)
-      << "no PjRt devices found after client initialization";
+  ABSL_CHECK_NE(client_, nullptr)  // CRASH_OK
+      << "PjRtClient should not be null after initialization.";
+  ABSL_CHECK(!client_->devices().empty())  // CRASH_OK
+      << "No PjRt devices found after client initialization.";
 
   if (options_.device_type == "tpu") {
     MaybeRegisterProfiler(plugin_name);
   }
 
   const auto& addressable_devices = client_->addressable_devices();
-  TT_RET_CHECK(!addressable_devices.empty(), error::kInternal)
-      << "no addressable PjRt devices found";
+  ABSL_CHECK(!addressable_devices.empty())  // CRASH_OK
+      << "No addressable PjRt devices found.";
 
   int world_size = 1;
   if (auto world_size_or = GetWorldSizeFromEnvOnce(); world_size_or.ok()) {
@@ -222,11 +223,12 @@ absl::Status PjrtBackend::InitializeInternal() {
 
   // Initialize the global device count. This is used by the CompilationCache
   // to determine the number of replicas of the XLA computation.
-  TT_RET_CHECK(world_size == 1 || world_size == device_count,
-               error::kInvalidArgument)
+  TT_RET_CHECK(  // ERROR_COV_INFEASIBLE=We can hit this error check, but we
+                 // currently do not propagate its status.
+      world_size == 1 || world_size == device_count, error::kInvalidArgument)
       << "invalid world_size configuration: expected 1 or " << device_count
       << ", but got " << world_size
-      << ". Please check your environment variables.";
+      << ". Please check your environment variables";
 
   if (addressable_devices.size() > 1 && world_size == 1) {
     ABSL_LOG(WARNING) << "Only using 1 device out of all the "
